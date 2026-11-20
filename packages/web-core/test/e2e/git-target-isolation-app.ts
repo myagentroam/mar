@@ -1,5 +1,4 @@
 import { h, nextTick, ref, watch } from 'vue';
-import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
 import WorkspaceGitHistory from '../../src/view/workspace/WorkspaceGitHistory.vue';
@@ -13,7 +12,6 @@ import {
   type WorkspaceWatchSnapshot
 } from '../../src/service/workspace-file-tools-controller.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 
 localePreferenceService().setLocale('en-US');
@@ -206,5 +204,4 @@ createTooltipApp({
     ])
 })
   .use(i18n)
-  .use(ElementPlus)
   .mount('#app');

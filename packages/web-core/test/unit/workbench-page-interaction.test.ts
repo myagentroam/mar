@@ -186,7 +186,9 @@ describe('Workbench page file interaction', () => {
     const scopes = [
       ...(selectors.includes('.composer-host') ? ['pane' as const] : []),
       ...(selectors.includes('.terminal-dock') ? ['terminal' as const] : []),
-      ...(selectors.some((value) => ['.el-overlay', '.el-popper', '.el-select'].includes(value))
+      ...(selectors.some((value) =>
+        ['.mar-ui-dialog-overlay', '.mar-ui-popup', '.mar-ui-popup__content'].includes(value)
+      )
         ? ['overlay' as const]
         : [])
     ];
@@ -382,28 +384,31 @@ describe('Workbench page file interaction', () => {
     }
   );
 
-  it.each(['.terminal-dock', '.el-overlay', '.el-popper', '.el-select', '[role="dialog"]'])(
-    'keeps %s ownership even inside Composer',
-    (selector) => {
-      const f = fixture();
-      const target = focusedTarget('textarea', '.composer-host', selector);
-      for (const shortcut of [
-        { key: 'w', ctrlKey: true },
-        { key: 'Tab', ctrlKey: true },
-        { key: '2', ctrlKey: true },
-        { key: 'ArrowRight', altKey: true },
-        { key: 'n', altKey: true },
-        { key: 'n', ctrlKey: true }
-      ]) {
-        expect(dispatch(f.service, { ...shortcut, target } as unknown as KeyboardEvent)).toBe(
-          'IGNORED'
-        );
-      }
-      expect(f.closeWorkspaceTab).not.toHaveBeenCalled();
-      expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
-      expect(f.openNewSessionComposer).not.toHaveBeenCalled();
+  it.each([
+    '.terminal-dock',
+    '.mar-ui-dialog-overlay',
+    '.mar-ui-popup',
+    '.mar-ui-popup__content',
+    '[role="dialog"]'
+  ])('keeps %s ownership even inside Composer', (selector) => {
+    const f = fixture();
+    const target = focusedTarget('textarea', '.composer-host', selector);
+    for (const shortcut of [
+      { key: 'w', ctrlKey: true },
+      { key: 'Tab', ctrlKey: true },
+      { key: '2', ctrlKey: true },
+      { key: 'ArrowRight', altKey: true },
+      { key: 'n', altKey: true },
+      { key: 'n', ctrlKey: true }
+    ]) {
+      expect(dispatch(f.service, { ...shortcut, target } as unknown as KeyboardEvent)).toBe(
+        'IGNORED'
+      );
     }
-  );
+    expect(f.closeWorkspaceTab).not.toHaveBeenCalled();
+    expect(f.activateWorkspaceTab).not.toHaveBeenCalled();
+    expect(f.openNewSessionComposer).not.toHaveBeenCalled();
+  });
 
   it('does not repurpose native Tab or unavailable Ctrl+Tab shortcuts', () => {
     const f = fixture();
@@ -759,7 +764,7 @@ describe('Workbench page file interaction', () => {
     'select',
     '[contenteditable]',
     '.terminal-dock',
-    '.el-overlay',
+    '.mar-ui-dialog-overlay',
     '[role="dialog"]'
   ])('does not close tabs while %s has focus', (selector) => {
     const target = focusedTarget(
@@ -842,9 +847,9 @@ describe('Workbench page file interaction', () => {
     'textarea',
     'select',
     '.terminal-dock',
-    '.el-overlay',
-    '.el-popper',
-    '.el-select',
+    '.mar-ui-dialog-overlay',
+    '.mar-ui-popup',
+    '.mar-ui-popup__content',
     '[role="dialog"]',
     '[contenteditable]:not([contenteditable="false"])'
   ])('does not take Workspace tab shortcuts from %s', (selector) => {

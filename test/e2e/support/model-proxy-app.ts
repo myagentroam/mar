@@ -6,7 +6,6 @@ import {
 } from '../../../packages/web-core/src/service/locale-preference-service.js';
 import Page from '../../../packages/web-core/src/view/settings/MarAgentModelManagementPage.vue';
 import type { NodeSummary } from '../../../packages/web-core/src/model/node.js';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../../packages/web-core/src/styles.css';
 
 const parameters = new URLSearchParams(location.search);

@@ -1,5 +1,4 @@
 import { createApp } from 'vue';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import Fixture from './mar-switch-fixture.vue';

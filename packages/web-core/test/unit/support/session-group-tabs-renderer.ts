@@ -1,4 +1,4 @@
-import { createRenderer, defineComponent, h, ssrContextKey, type Component } from 'vue';
+import { createRenderer, h, ssrContextKey, type Component } from 'vue';
 import { i18n } from '../../../src/service/locale-preference-service.js';
 
 export class SessionGroupTestNode {
@@ -100,16 +100,6 @@ export function mountSessionGroupTestComponent(
   app.use(i18n);
   app.provide(ssrContextKey, { modules: new Set<string>() });
   app.directive('tooltip', {});
-  for (const name of ['el-badge'])
-    app.component(
-      name,
-      defineComponent({
-        setup:
-          (_, { attrs, slots }) =>
-          () =>
-            h('span', attrs, slots.default?.())
-      })
-    );
   app.mount(container);
   return { app, container };
 }

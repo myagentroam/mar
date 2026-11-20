@@ -203,15 +203,6 @@ test('Status tags do not zoom during entry or exit', async ({ page }) => {
     };
   });
   expect(result).toEqual({ transition: '0s', opacity: '1', transform: 'none' });
-  const otherTransition = await page.evaluate(() => {
-    const probe = document.createElement('span');
-    probe.className = 'el-zoom-in-center-enter-active';
-    document.body.append(probe);
-    const duration = getComputedStyle(probe).transitionDuration;
-    probe.remove();
-    return duration;
-  });
-  expect(otherTransition).not.toBe('0s');
 });
 
 test('Node detail actions stay above Close and capability refresh stays within its section', async ({

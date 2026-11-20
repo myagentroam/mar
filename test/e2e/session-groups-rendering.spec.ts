@@ -168,7 +168,7 @@ for (const [width, theme, locale] of [
           return getComputedStyle(probe).color;
         };
         const result = {
-          running: color('--el-color-success'),
+          running: color('--mar-control-color-success'),
           track: color('--mar-bg-subtle'),
           border: color('--mar-border-default'),
           selected: color('--mar-fill-selection'),

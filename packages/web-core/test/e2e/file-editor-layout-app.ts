@@ -1,8 +1,5 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
 import { h, ref } from 'vue';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import WorkspaceTextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
@@ -211,5 +208,4 @@ createApp({
   }
 })
   .use(i18n)
-  .use(ElementPlus)
   .mount('#app');

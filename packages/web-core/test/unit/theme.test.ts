@@ -96,11 +96,7 @@ describe('Web theme preference', () => {
     };
     const production = cssImports('../../src/bootstrap.ts');
     expect(production).toEqual([new URL('../../src/styles.css', import.meta.url).href]);
-    expect(cssImports('../e2e/custom-theme-app.ts')).toEqual([
-      'element-plus/theme-chalk/dark/css-vars.css',
-      ...production,
-      new URL('../support/element-plus-theme.css', import.meta.url).href
-    ]);
+    expect(cssImports('../e2e/custom-theme-app.ts')).toEqual(production);
   });
 
   it('keeps private headers and file actions in their owning components', () => {

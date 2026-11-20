@@ -1,9 +1,7 @@
 import { h, nextTick } from 'vue';
-import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import Panel from '../../src/view/settings/ResourceManagementPanel.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 
 // This standalone page mounts only the real resource component. Requests are
@@ -75,6 +73,5 @@ async function request<T>(path: string): Promise<T> {
   throw new Error(`Unexpected resource fixture request: ${path}`);
 }
 createTooltipApp({ render: () => h(Panel, { request, resourceType, writable: false }) })
-  .use(ElementPlus)
   .use(i18n)
   .mount('#app');

@@ -1,6 +1,4 @@
 import { createTooltipApp } from './tooltip-app.js';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 import Fixture from './session-groups-fixture.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
@@ -16,4 +14,4 @@ if (params.get('theme') === 'custom') {
   const custom = themes.saveCustomTheme(JSON.stringify(source));
   themes.setTheme(custom.id);
 } else themes.setTheme(params.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026');
-createTooltipApp(Fixture).use(i18n).use(ElementPlus).mount('#app');
+createTooltipApp(Fixture).use(i18n).mount('#app');

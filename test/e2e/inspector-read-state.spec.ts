@@ -292,7 +292,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           }
           const searchPanel = page.getByTestId('Search').locator('.content-search');
           const searchBounds = await searchPanel.boundingBox();
-          const checkbox = await searchPanel.locator('.el-checkbox').boundingBox();
+          const checkbox = await searchPanel.getByRole('checkbox').boundingBox();
           const searchInput = await searchPanel.locator('.mar-ui-input').boundingBox();
           expect(checkbox!.x - searchBounds!.x).toBeGreaterThanOrEqual(6);
           expect(checkbox!.y - searchBounds!.y).toBeGreaterThanOrEqual(6);

@@ -10,7 +10,6 @@ import {
 } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { serializeComposerTag } from '@myagentroam/protocol';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
@@ -765,9 +764,6 @@ async function render(
       return {};
     }
   });
-  app.use(ElementPlus);
-  app.provide(ID_INJECTION_KEY, { prefix: 600, current: 0 });
-  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
 }
 
@@ -2091,7 +2087,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     const app = renderer.createApp({ render: () => h(ConversationTimeline, props.value) });
     app.use(i18n);
     app.provide(ssrContextKey, { modules: new Set<string>() });
-    app.component('ElIcon', { template: '<span><slot /></span>' });
     app.config.warnHandler = () => {};
     app.mount(new HostNode('container'));
     try {
@@ -2165,7 +2160,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
     app.use(i18n);
     app.provide(ssrContextKey, { modules: new Set<string>() });
-    app.component('ElIcon', { template: '<span><slot /></span>' });
     app.config.warnHandler = () => {};
     app.mount(new HostNode('container'));
     try {
@@ -2257,7 +2251,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
     app.use(i18n);
     app.provide(ssrContextKey, { modules: new Set<string>() });
-    app.component('ElIcon', { template: '<span><slot /></span>' });
     app.config.warnHandler = () => {};
     app.mount(new HostNode('container'));
     try {

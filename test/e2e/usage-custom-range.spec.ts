@@ -46,7 +46,7 @@ for (const locale of ['en-US', 'zh-CN']) {
           overLimit: format(91)
         };
       });
-      const inputs = panel.locator('.custom-range .el-range-input');
+      const inputs = panel.locator('.custom-range .mar-ui-date-picker__input');
       const refresh = panel.getByRole('button', {
         name: locale === 'en-US' ? 'Refresh' : '刷新',
         exact: true

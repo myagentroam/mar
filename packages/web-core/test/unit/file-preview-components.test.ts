@@ -1,6 +1,5 @@
 import { createSSRApp, h, type Component, type Ref, type SetupContext } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fileSpecifierParser } from '@myagentroam/code-navigation';
@@ -24,10 +23,7 @@ import FilePreviewLoading from '../../src/view/workspace/FilePreviewLoading.vue'
 async function render(component: Component, props: Record<string, unknown>): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
-  app.use(ElementPlus);
   app.directive('tooltip', { getSSRProps: () => ({}) });
-  app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
-  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
 }
 

@@ -536,7 +536,7 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   const tree = page.locator('.session-tree-popup');
   await expect(tree).toBeVisible();
   await expect(tree.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
-  await expect(page.locator('.session-tree-popover .el-popper__arrow')).toHaveCount(0);
+  await expect(page.locator('.session-tree-popover')).toHaveClass(/mar-ui-popover--no-arrow/);
   await expect(tree.locator('.session-tree-list .session-tree-title')).toHaveText([
     '树会话 2',
     '树会话 3'
@@ -832,7 +832,7 @@ test('sent image attachments in Aside use the shared preview dialog and their ow
   await expect(dialog).not.toBeVisible();
   expired = true;
   await asideImage.click();
-  await expect(page.locator('.el-message').filter({ hasText: '文件已过期' })).toBeVisible();
+  await expect(page.locator('.mar-message').filter({ hasText: '文件已过期' })).toBeVisible();
   await expect(dialog).not.toBeVisible();
   expect(reads).toBe(3);
 });
@@ -1371,10 +1371,11 @@ test('mobile descendant tree fits the viewport and Back closes only the tree', a
     const popover = page.locator('.session-tree-popover');
     await expect(popover).toHaveCSS('opacity', '1');
     await popover.evaluate((element) => {
-      element.addEventListener('transitionrun', (event) => {
+      element.addEventListener('animationstart', (event) => {
         if (
-          event.propertyName === 'opacity' &&
-          element.classList.contains('el-fade-in-linear-leave-active')
+          event instanceof AnimationEvent &&
+          event.animationName.startsWith('mar-popover-out') &&
+          element.hasAttribute('data-closing')
         ) {
           document.documentElement.dataset.treeLeave = String(
             element.querySelector('.session-tree-popup')?.hasAttribute('inert')
@@ -3310,7 +3311,7 @@ test('Offline Nodes preserve their offline state and consistently degrade to rea
   await expect(page.locator('.readonly-banner')).toHaveCount(0);
   await expect(page.locator('.workspace-selection-panel')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '登记工作区', exact: true })).toHaveCount(0);
-  await expect(page.locator('.el-message')).toHaveCount(0);
+  await expect(page.locator('.mar-message')).toHaveCount(0);
 
   await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   await page.reload();
@@ -3319,7 +3320,7 @@ test('Offline Nodes preserve their offline state and consistently degrade to rea
     .getByRole('button', { name: /node-1/ })
     .click();
   await expect(placeholder).toHaveText('Node offline. Waiting for reconnection.');
-  await expect(page.locator('.el-message')).toHaveCount(0);
+  await expect(page.locator('.mar-message')).toHaveCount(0);
   await page.screenshot({
     path: test.info().outputPath('offline-node-desktop.png'),
     animations: 'disabled'
@@ -4796,7 +4797,7 @@ test('Workspace activation is immediate, Node groups create no independent selec
   await expect(composer).toHaveValue('工作区一草稿');
   await slow.click();
   await expect(slow).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('.workspace-selection-panel .el-skeleton')).toBeVisible();
+  await expect(page.locator('.workspace-selection-panel .mar-page-loading-state')).toBeVisible();
   await expect.poll(() => slowRequests).toBeGreaterThanOrEqual(1);
   const selection = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')

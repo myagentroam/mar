@@ -257,7 +257,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     });
     finishInitialRead();
     await expect(panel).toHaveAttribute('aria-busy', 'false');
-    // The paused refresh clock also controls Element Plus loading transitions.
+    // The paused refresh clock also controls MAR loading transitions.
     await page.clock.runFor(500);
     await expect(loadingMask).toBeHidden();
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
@@ -692,7 +692,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(Math.abs(layout.timeWidth - layout.runnerWidth)).toBeLessThan(2);
     expect(layout.rangeTop).toBeGreaterThan(layout.runnerBottom);
     expect(layout.width).toBeLessThanOrEqual(Math.min(layout.maximumWidth, layout.formWidth) + 1);
-    await expect(page.locator('.el-message')).toHaveCount(0);
+    await expect(page.locator('.mar-message')).toHaveCount(0);
     await panel.screenshot({
       animations: 'disabled',
       path: testInfo.outputPath(`usage-custom-${locale}.png`)

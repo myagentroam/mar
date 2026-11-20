@@ -84,7 +84,7 @@ test('tree uses the Watch snapshot order and closes on Escape and outside click'
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
   await expect(tree).not.toHaveAttribute('aria-modal', 'true');
-  await expect(page.locator('.el-overlay')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).toHaveCount(0);
   await expect(page.getByTestId('requests')).toHaveText('1');
   await expect(tree.locator('.session-tree-title')).toHaveText([
     'Running branch',
@@ -277,7 +277,7 @@ test('session tree fades out without keeping keyboard or pointer interaction', a
   await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
   // Stretch the shared fade so that the test can inspect and interrupt it.
   await page.addStyleTag({
-    content: 'html.console-ui { --el-transition-fade-linear: opacity 0.6s linear; }'
+    content: 'html.console-ui { --mar-ui-popover-leave-duration: 600ms; }'
   });
   const trigger = page.getByRole('button', { name: 'View session tree' });
   const surface = page.locator('.session-tree-popover');
@@ -304,9 +304,9 @@ test('session tree fades out without keeping keyboard or pointer interaction', a
   await surface.evaluate((element) => {
     for (const animation of element.getAnimations()) animation.pause();
   });
-  await expect(surface).toHaveClass(/el-fade-in-linear-leave-active/);
+  await expect(surface).toHaveAttribute('data-closing', 'true');
   await trigger.click();
-  await expect(surface).not.toHaveClass(/el-fade-in-linear-leave-active/);
+  await expect(surface).not.toHaveAttribute('data-closing', 'true');
   await expect(row).toBeVisible();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await page.mouse.click(2, 2);
@@ -317,7 +317,7 @@ test('closing the session tree makes an open row menu inert during the fade', as
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
   await page.addStyleTag({
-    content: 'html.console-ui { --el-transition-duration: 0.6s; }'
+    content: 'html.console-ui { --mar-ui-popover-leave-duration: 600ms; }'
   });
   const trigger = page.getByRole('button', { name: 'View session tree' });
   await trigger.click();
@@ -368,8 +368,7 @@ test('standard MessageBox respects reduced motion on desktop and mobile', async 
       button.click();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-      return [dialog, dialog.closest('.el-overlay')!].map((element) => {
-        const style = getComputedStyle(element);
+      return [getComputedStyle(dialog), getComputedStyle(dialog, '::backdrop')].map((style) => {
         return Math.max(
           Number.parseFloat(style.animationDuration),
           Number.parseFloat(style.transitionDuration)
@@ -422,7 +421,8 @@ test('keyboard-opened list actions open a non-modal tree without a preceding mou
 }) => {
   await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
   const chats = page.locator('.conversation-sidebar');
-  await chats.getByRole('tab').nth(1).click();
+  await chats.getByRole('radio', { name: 'Main Sessions', exact: true }).press('ArrowRight');
+  await expect(chats.getByRole('radio', { name: 'Child Sessions', exact: true })).toBeChecked();
   await chats.locator('.session-link').focus();
   const trigger = chats.locator('.session-more-button');
   await trigger.focus();
@@ -434,7 +434,7 @@ test('keyboard-opened list actions open a non-modal tree without a preceding mou
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
   await expect(tree).not.toHaveAttribute('aria-modal', 'true');
-  await expect(page.locator('.el-overlay')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(tree).toHaveCount(0);
   await expect
@@ -732,7 +732,6 @@ for (const width of [390, 1280]) {
       await items.nth(1).evaluate((element) => {
         (element as HTMLElement).style.setProperty('--mar-text-primary', '#d7dde5');
         (element as HTMLElement).style.setProperty('--mar-fill-selection', '#313f51');
-        (element as HTMLElement).style.setProperty('--el-color-success', '#36805a');
       });
       await current.evaluate((element) => (element as HTMLElement).blur());
       await page.mouse.move(0, 0);
@@ -775,7 +774,7 @@ for (const [width, theme] of [
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${fixture.url}session-groups.html?theme=${theme}&locale=en-US`);
     const chats = page.locator('.conversation-sidebar');
-    await chats.getByRole('tab').nth(1).click();
+    await chats.getByRole('radio', { name: 'Child Sessions', exact: true }).check();
     await chats.locator('.session-link').hover();
     await chats.locator('.session-more-button').click();
     const treeItem = page.getByRole('menuitem', { name: 'View session tree', exact: true });

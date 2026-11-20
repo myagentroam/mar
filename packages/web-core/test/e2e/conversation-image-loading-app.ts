@@ -1,7 +1,4 @@
 import { createApp, h, ref } from 'vue';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import ConversationImageThumbnail from '../../src/view/conversation/ConversationImageThumbnail.vue';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
@@ -61,6 +58,5 @@ createApp({
     ])
 })
   .use(i18n)
-  .use(ElementPlus)
   .directive('tooltip', {})
   .mount('#app');

@@ -12,6 +12,7 @@ import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import en from '@myagentroam/mar-ui/locale/en';
 import zhCn from '@myagentroam/mar-ui/locale/zh-cn';
 import { MarRadioButton, MarRadioGroup } from '@myagentroam/mar-ui/radio';
+import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 import { MarTabs, MarTabPane } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTimePicker } from '@myagentroam/mar-ui/time-picker';
@@ -24,6 +25,7 @@ const radio = ref('a');
 const quantity = ref<number | undefined>(2);
 const quantityChanges = ref<string[]>([]);
 const tab = ref('first');
+const segment = ref('day');
 const owner = ref<number>();
 const controls = ref({
   time: '08:00' as string | null,
@@ -105,6 +107,14 @@ const organizations = [
         ><MarTabPane name="second" label="Details">Details panel</MarTabPane></MarTabs
       >
       <output aria-label="Permissions value">{{ selected.join(',') }}</output>
+      <MarSegmented
+        v-model="segment"
+        label="Period"
+        :options="[
+          { value: 'day', label: 'Day' },
+          { value: 'week', label: 'Week' }
+        ]"
+      />
       <output aria-label="Metric value">{{ radio }}</output>
     </section>
     <section aria-label="Complex fields">

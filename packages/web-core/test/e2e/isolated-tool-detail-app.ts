@@ -2,7 +2,6 @@ import { h } from 'vue';
 import { createTooltipApp } from './tooltip-app.js';
 import ConversationToolDetail from '../../src/view/conversation/tool-detail/ConversationToolDetail.vue';
 import { i18n } from '../../src/service/locale-preference-service.js';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 
 createTooltipApp({

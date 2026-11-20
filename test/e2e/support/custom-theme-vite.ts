@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 const productRoot = resolve(import.meta.dirname, '../../..');
 const webRequire = createRequire(resolve(productRoot, 'packages/web-core/package.json'));
@@ -13,21 +13,16 @@ export async function startCustomThemeFixture(
     aliases?: { find: string; replacement: string }[];
   }
 ) {
-  const [{ createServer }, vue, components, resolvers] = await Promise.all([
+  const [{ createServer }, vue] = await Promise.all([
     import(webRequire.resolve('vite')),
-    import(webRequire.resolve('@vitejs/plugin-vue')),
-    import(webRequire.resolve('unplugin-vue-components/vite')),
-    import(webRequire.resolve('unplugin-vue-components/resolvers'))
+    import(webRequire.resolve('@vitejs/plugin-vue'))
   ]);
   const cacheKey = `${encodeURIComponent(entry ?? 'all')}-${options?.protocolSource ? 'source' : 'dist'}-${randomUUID()}`;
   const server = await createServer({
     root: productRoot,
     cacheDir: resolve(productRoot, `test/runs/theme-vite-${process.pid}-${cacheKey}`),
     configFile: false,
-    plugins: [
-      vue.default(),
-      components.default({ dirs: [], dts: false, resolvers: [resolvers.ElementPlusResolver()] })
-    ],
+    plugins: [vue.default()],
     optimizeDeps: { entries: [entry ?? 'test/e2e/support/*.html'] },
     resolve: {
       alias: [
@@ -41,22 +36,7 @@ export async function startCustomThemeFixture(
             ]
           : []),
         { find: '@', replacement: resolve(productRoot, 'ee/web/src') },
-        { find: 'vue', replacement: webRequire.resolve('vue/dist/vue.esm-bundler.js') },
-        {
-          find: /^element-plus\/(.*\/style\/css)$/,
-          replacement: `${dirname(webRequire.resolve('element-plus/package.json'))}/$1.mjs`
-        },
-        {
-          find: 'element-plus',
-          replacement: dirname(webRequire.resolve('element-plus/package.json'))
-        },
-        {
-          find: '@element-plus/icons-vue',
-          replacement: resolve(
-            dirname(webRequire.resolve('@element-plus/icons-vue/package.json')),
-            'dist/index.js'
-          )
-        }
+        { find: 'vue', replacement: webRequire.resolve('vue/dist/vue.esm-bundler.js') }
       ]
     },
     server: {

@@ -165,8 +165,8 @@ test('A failed manifest read has one error and no unknown-capability placeholder
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await openWorkspace(page, true, false, { manifestFailure: true });
-  await expect(page.locator('.el-message')).toHaveCount(1);
-  await expect(page.locator('.el-message')).toContainText('Manifest could not be read.');
+  await expect(page.locator('.mar-message')).toHaveCount(1);
+  await expect(page.locator('.mar-message')).toContainText('Manifest could not be read.');
   const input = page.locator('.composer-input');
   await expect(input).toHaveJSProperty('readOnly', true);
   await expect(input).not.toHaveAttribute('placeholder', /capabilit|unknown|能力|只读/i);

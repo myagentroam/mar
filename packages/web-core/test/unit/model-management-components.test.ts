@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import ModelPage from '../../src/view/settings/MarAgentModelManagementPage.vue';
 import ImagePage from '../../src/view/settings/ImageGenerationManagement.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
@@ -16,9 +15,7 @@ describe('Shared model, credential and image management', () => {
     for (const locale of ['zh-CN', 'en-US'] as const) {
       i18n.global.locale.value = locale;
       const app = createSSRApp({ render: () => h(ChatGPTManageUsageButton) });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html).toContain('class="mar-ui-button mar-ui-button--default');
       expect(html).not.toContain('mar-ui-button--primary');
@@ -212,10 +209,8 @@ describe('Shared model, credential and image management', () => {
         const app = createSSRApp({
           render: () => h(component, { request, writable: true, nodes: [] })
         });
-        app.use(i18n).use(ElementPlus);
+        app.use(i18n);
         app.directive('tooltip', { getSSRProps: () => ({}) });
-        app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
-        app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
         const html = await renderToString(app);
         expect(html).toContain('mar-ui-');
         expect(html).not.toMatch(/enterprise|organization|全企业|组织/iu);

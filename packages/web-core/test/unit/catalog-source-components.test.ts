@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import SkillPage from '../../src/view/skill/SkillSourceManagementPage.vue?unit-render';
 import McpPage from '../../src/view/skill/McpSourceManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -52,10 +51,8 @@ describe('Public source discovery and catalog management', () => {
         }
         const request = vi.fn(async <T>() => ({}) as T);
         const app = createSSRApp({ render: () => h(component, { request, writable: false }) });
-        app.use(i18n).use(ElementPlus);
+        app.use(i18n);
         app.directive('tooltip', { getSSRProps: () => ({}) });
-        app.provide(ID_INJECTION_KEY, { prefix: 923, current: 0 });
-        app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
         const html = await renderToString(app);
         expect(html).toContain('mar-management-page');
         expect(html).not.toMatch(/organization|enterprise|组织|企业/iu);

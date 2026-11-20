@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h, provide } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import NodePage from '../../src/view/settings/NodeManagementPage.vue?unit-render';
 import WorkspacePage from '../../src/view/settings/WorkspaceManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -250,9 +249,7 @@ describe('Public resource management', () => {
       for (const component of [NodePage, WorkspacePage]) {
         const request = vi.fn(async <T>() => ({}) as T);
         const app = createSSRApp({ render: () => h(component, { request, writable: true }) });
-        app.use(i18n).use(ElementPlus);
-        app.provide(ID_INJECTION_KEY, { prefix: 943, current: 0 });
-        app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+        app.use(i18n);
         const html = await renderToString(app);
         expect(html).toContain('resource-management-panel');
         expect(html).not.toMatch(/organization|enterprise|组织|企业|授权/u);

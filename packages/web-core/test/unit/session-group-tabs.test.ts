@@ -1,5 +1,4 @@
 import { createSSRApp, defineComponent, h, nextTick, ref } from 'vue';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionGroup } from '@myagentroam/protocol';
@@ -21,9 +20,7 @@ describe('Session group tabs', () => {
   it('renders plain categories without running or unread markers', async () => {
     localePreferenceService().setLocale('en-US');
     const app = createSSRApp({ render: () => h(SessionGroupTabs, { modelValue: 'MAIN' }) });
-    app.use(i18n).use(ElementPlus);
-    app.provide(ID_INJECTION_KEY, { prefix: 80, current: 0 });
-    app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+    app.use(i18n);
     const html = await renderToString(app);
     expect(html).toContain('role="radiogroup"');
     expect(html).toContain('type="radio"');

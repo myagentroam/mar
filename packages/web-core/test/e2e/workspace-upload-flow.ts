@@ -1,7 +1,5 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
 import { h, ref } from 'vue';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
 import { createWorkspaceUploadService } from '../../src/service/workspace-upload-service.js';
 import { createWorkspaceDirectTransferService } from '../../src/service/workspace-direct-transfer-service.js';
 import { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
@@ -113,7 +111,6 @@ createApp({
     ])
 })
   .use(i18n)
-  .use(ElementPlus)
   .mount('#app');
 
 export const harness = {

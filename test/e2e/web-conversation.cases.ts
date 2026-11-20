@@ -444,7 +444,9 @@ test('Ctrl-click attachment previews do not navigate Workspace directories or sh
     await expect
       .poll(() => preview.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth))
       .toBe(1);
-    await expect(popup.locator('.el-message').filter({ hasText: /FILE_NOT_FOUND/ })).toHaveCount(0);
+    await expect(popup.locator('.mar-message').filter({ hasText: /FILE_NOT_FOUND/ })).toHaveCount(
+      0
+    );
     await expect(page.locator('.attachment-preview-dialog')).toHaveCount(0);
     await popup.close();
   }
@@ -707,7 +709,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(imageFile.locator('.conversation-image-fallback')).toBeVisible();
     await expect(imageFile).toHaveText('');
     await expect(imageFile).not.toHaveAttribute('title');
-    await expect(page.locator('.el-message')).toHaveCount(0);
+    await expect(page.locator('.mar-message')).toHaveCount(0);
     expect(imageReads).toBe(0);
     thumbnailUnavailable = false;
     await imageFile.click();
@@ -724,7 +726,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await imageFile.click();
     await expect(
       page
-        .locator('.el-message')
+        .locator('.mar-message')
         .filter({ hasText: english ? 'File has expired' : '文件已过期' })
         .last()
     ).toBeVisible();
@@ -783,7 +785,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(page.getByText(/FILE_NOT_FOUND/).first()).toBeVisible();
     await expect(
       page
-        .locator('.el-message')
+        .locator('.mar-message')
         .filter({ hasText: english ? 'File has expired' : '文件已过期' })
         .last()
     ).toBeVisible();
@@ -3682,7 +3684,7 @@ for (const mobile of [false, true]) {
       });
       await retry.press('Enter');
       await expect(page.getByText('Short history', { exact: true })).toBeVisible();
-      await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 15_000 });
+      await expect(page.locator('.mar-message')).toHaveCount(0, { timeout: 15_000 });
       await expect.poll(() => olderAttempts).toBe(1);
       const scroll = page.locator('.conversation-scroll');
       const history = scroll.locator('.conversation-history-control');

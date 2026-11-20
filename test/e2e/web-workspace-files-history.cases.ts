@@ -1659,7 +1659,7 @@ test('Resource trees support expansion, Workspace drag ordering, Element icons, 
   );
   await expect(page.locator('.tree-node').first()).toHaveCSS('cursor', 'pointer');
   await expect(page.locator('.workspace-branch-button').first()).toHaveCSS('cursor', 'grab');
-  await expect(page.locator('.node-tree-actions .el-icon')).toHaveCount(1);
+  await expect(page.locator('.node-tree-actions [data-mar-icon]')).toHaveCount(1);
 
   await page.getByRole('button', { name: 'project', exact: true }).click();
   const selectedWorkspace = page.locator('.workspace-branches > li.selected');

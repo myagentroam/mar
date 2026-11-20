@@ -180,7 +180,7 @@ for (const { width, theme, lateSuccess } of [
       expect(requests).toHaveLength(count + 1);
       let requestIndex = count;
       if (success) {
-        await expect(page.locator('.el-message').filter({ hasText: '发送确认超时' })).toBeVisible({
+        await expect(page.locator('.mar-message').filter({ hasText: '发送确认超时' })).toBeVisible({
           timeout: 7_000
         });
         await expect(input).toBeEditable();
@@ -196,7 +196,7 @@ for (const { width, theme, lateSuccess } of [
         expect((await lateResponse).status()).toBe(lateSuccess ? 200 : 503);
         await expect(send).toHaveAttribute('aria-busy', 'true');
         await expect(input).toHaveValue(lateSuccess ? '' : 'First message feedback');
-        await expect(page.locator('.el-message').filter({ hasText: '无法发送消息' })).toHaveCount(
+        await expect(page.locator('.mar-message').filter({ hasText: '无法发送消息' })).toHaveCount(
           0
         );
         requestIndex = count + 1;
@@ -211,7 +211,7 @@ for (const { width, theme, lateSuccess } of [
       if (!success) {
         await expect(send).not.toHaveAttribute('aria-busy', 'true');
         expect(pageErrors).toEqual([]);
-        const failure = page.locator('.el-message').filter({ hasText: '无法发送消息' });
+        const failure = page.locator('.mar-message').filter({ hasText: '无法发送消息' });
         await expect(failure).toBeVisible();
         await expect(failure).toContainText('RUNNER_UNAVAILABLE');
         await expect(input).toHaveValue('First message feedback');

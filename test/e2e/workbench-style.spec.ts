@@ -1076,7 +1076,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await syncTag.hover();
         const hint = page.locator('.mar-tooltip:visible');
         await expect(hint).toHaveText(description!);
-        await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+        await expect
+          .poll(() => hint.evaluate((element) => getComputedStyle(element, '::before').content))
+          .toBe('""');
         await page.screenshot({ path: testInfo.outputPath('git-sync-tooltip.png') });
         await page.mouse.move(0, 0);
         await expect(hint).toHaveCount(0);
@@ -1340,7 +1342,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(offline).toBeVisible();
       await expect(offline).toContainText('Offline. Waiting for reconnection.');
       await expect(
-        page.locator('.readonly-banner, .workspace-recovery-panel, .el-message')
+        page.locator('.readonly-banner, .workspace-recovery-panel, .mar-message')
       ).toHaveCount(0);
       await offline.screenshot({ path: testInfo.outputPath('network-offline.png') });
       await page.evaluate(() => {
@@ -1350,7 +1352,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       });
       await expect(offline).toHaveCount(0);
       await expect(page.locator('.workspace-recovery-panel')).toBeVisible();
-      await expect(page.locator('.el-message')).toHaveCount(0);
+      await expect(page.locator('.mar-message')).toHaveCount(0);
 
       await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&offline=1&restriction=1`);
       const notice = page.locator('.readonly-banner');
@@ -1359,7 +1361,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(notice).toContainText('disabled');
       await expect(notice.locator('[data-mar-icon="info"]')).toBeVisible();
       await expect(notice).toHaveCSS('border-radius', '6px');
-      await expect(notice).not.toHaveClass(/el-alert/);
       const surface = (await page.locator('.session-layout').boundingBox())!;
       const box = (await notice.boundingBox())!;
       expect(box.x - surface.x).toBeGreaterThanOrEqual(8);
@@ -1376,8 +1377,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const failure = panel.locator('[role="status"]');
       const retry = panel.getByRole('button');
       await expect(failure).toBeVisible();
-      await expect(panel.locator('.el-empty')).toHaveCount(0);
-      await expect(retry).toHaveClass(/is-link/);
+      await expect(panel.locator('.mar-ui-empty')).toHaveCount(0);
+      await expect(retry).toHaveClass(/mar-ui-button--inline/);
       await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(retry).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
       await expect(retry).toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)');
@@ -2028,7 +2029,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await input.press('Enter');
     const retry = inspector.locator('button.watch-status');
     await expect(retry).toBeVisible();
-    await expect(retry).toHaveClass(/is-link/);
+    await expect(retry).toHaveClass(/mar-ui-button--inline/);
     await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await retry.hover();
     await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

@@ -1,9 +1,7 @@
 import { h } from 'vue';
-import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import { i18n } from '../../src/service/locale-preference-service.js';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 
 createTooltipApp({
@@ -21,6 +19,5 @@ createTooltipApp({
       previewEnabled: false
     })
 })
-  .use(ElementPlus)
   .use(i18n)
   .mount('#app');

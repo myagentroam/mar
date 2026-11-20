@@ -37,6 +37,16 @@ for (const [theme, width] of [
     await page.getByRole('tab', { name: 'Overview' }).press('ArrowRight');
     await expect(page.getByRole('tab', { name: 'Details' })).toBeFocused();
     await expect(page.getByRole('tabpanel')).toHaveText('Details panel');
+    const period = page.getByRole('radiogroup', { name: 'Period' });
+    const day = period.getByRole('radio', { name: 'Day' });
+    const week = period.getByRole('radio', { name: 'Week' });
+    await expect(day).toBeChecked();
+    await expect(period.locator('.mar-segmented-indicator')).toBeVisible();
+    await day.press('ArrowRight');
+    await expect(week).toBeFocused();
+    await expect(week).toBeChecked();
+    await day.click();
+    await expect(day).toBeChecked();
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
       .toBeLessThanOrEqual(width);

@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MessageBoxData } from 'element-plus';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 import PersonalInstructionsSettings from '../../src/view/settings/PersonalInstructionsSettings.vue?unit-render';
 import { MarMessageBox } from '../../src/service/message-box-service.js';
@@ -15,7 +14,7 @@ const initial = {
   openCode: ''
 };
 
-const confirmed = 'confirm' as MessageBoxData;
+const confirmed = 'confirm';
 
 function gate<T>() {
   let resolve!: (value: T) => void;
@@ -179,7 +178,7 @@ describe('Personal instruction draft ownership', () => {
   });
 
   it('clears only the confirmed scope and retains other drafts while its response is pending', async () => {
-    const confirmation = gate<MessageBoxData>();
+    const confirmation = gate<Awaited<ReturnType<typeof MarMessageBox.confirm>>>();
     vi.spyOn(MarMessageBox, 'confirm').mockReturnValue(confirmation.promise);
     const { view, edit, select, response, request, value, clear } = await setup();
     try {

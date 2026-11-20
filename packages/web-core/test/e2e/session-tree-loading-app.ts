@@ -8,7 +8,6 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import WorkspaceSessionTreePopover from '../../src/view/workspace/WorkspaceSessionTreePopover.vue';
 import { createTooltipApp } from './tooltip-app.js';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 
 type TreeStatus = 'idle' | 'loading' | 'ready' | 'failed';

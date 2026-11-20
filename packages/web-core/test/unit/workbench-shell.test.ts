@@ -1,6 +1,5 @@
 import { createSSRApp, h, ref, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { commonMessages } from '../../src/i18n/messages.js';
@@ -26,10 +25,8 @@ afterEach(() => localePreferenceService().setLocale(originalLocale));
 
 async function renderComponent(component: Component, props: Record<string, unknown>) {
   const app = createSSRApp({ render: () => h(component, props) });
-  app.use(i18n).use(ElementPlus);
+  app.use(i18n);
   app.directive('tooltip', { getSSRProps: () => ({}) });
-  app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
-  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
 }
 
@@ -77,10 +74,8 @@ async function renderOfflineSurface() {
     }
   };
   const app = createSSRApp({ render: () => h(WorkbenchSurface, { page: page as never }) });
-  app.use(i18n).use(ElementPlus);
+  app.use(i18n);
   app.directive('tooltip', { getSSRProps: () => ({}) });
-  app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
-  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   app.provide(MANAGEMENT_COMPOSITION_KEY, {} as never);
   return renderToString(app);
 }
@@ -217,10 +212,8 @@ describe('Shared workbench shell', () => {
             uploadStatusLabel: () => ''
           })
       });
-      app.use(i18n).use(ElementPlus);
+      app.use(i18n);
       app.directive('tooltip', { getSSRProps: () => ({}) });
-      app.provide(ID_INJECTION_KEY, { prefix: 80, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
 
       const html = await renderToString(app);
       expect(html).toContain(`aria-label="${label}"`);
@@ -277,7 +270,7 @@ describe('Shared workbench shell', () => {
               nodeId === 'node-1' && workspaceId === 'a'
           })
       });
-      app.use(i18n).use(ElementPlus);
+      app.use(i18n);
       app.directive('tooltip', {
         getSSRProps: (binding) => {
           const value = binding.value as string | { readonly content?: string } | null | undefined;
@@ -327,7 +320,7 @@ describe('Shared workbench shell', () => {
           hasUnread: () => true
         })
     });
-    app.use(i18n).use(ElementPlus);
+    app.use(i18n);
     app.directive('tooltip', { getSSRProps: () => ({}) });
 
     const html = await renderToString(app);
@@ -357,7 +350,7 @@ describe('Shared workbench shell', () => {
           hasUnread: () => false
         })
     });
-    app.use(i18n).use(ElementPlus);
+    app.use(i18n);
     app.directive('tooltip', { getSSRProps: () => ({}) });
 
     expect(await renderToString(app)).toBe('<!---->');
@@ -502,7 +495,7 @@ describe('Shared workbench shell', () => {
             conversationTitle: undefined
           })
       });
-      app.use(i18n).use(ElementPlus);
+      app.use(i18n);
       app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html).toContain('Host extension');
@@ -548,10 +541,8 @@ describe('Shared workbench shell', () => {
             ]
           })
       });
-      app.use(i18n).use(ElementPlus);
+      app.use(i18n);
       app.directive('tooltip', { getSSRProps: () => ({}) });
-      app.provide(ID_INJECTION_KEY, { prefix: 400, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
       expect(html).toContain('Visible node');
       expect(html).toContain('Visible workspace');

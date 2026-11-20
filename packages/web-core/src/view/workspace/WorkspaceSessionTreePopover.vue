@@ -24,7 +24,7 @@ const emit = defineEmits<{
   open: [sessionId: string, target: 'aside' | 'main'];
   retry: [];
 }>();
-// Element Plus must position against the anchor without owning the trigger's ARIA attributes.
+// Position the popover against the anchor without owning the trigger's ARIA attributes.
 const virtualReference = computed(() => {
   const anchor = props.anchor;
   return { getBoundingClientRect: () => anchor.getBoundingClientRect(), contextElement: anchor };

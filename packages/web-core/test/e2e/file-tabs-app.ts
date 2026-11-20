@@ -1,6 +1,5 @@
 import { createFileAccessFixture } from '../support/file-access-fixture.js';
 import { h, nextTick, ref } from 'vue';
-import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
@@ -23,7 +22,6 @@ import { consoleKeyboardShortcutService } from '../../src/service/console-keyboa
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 
 localePreferenceService().setLocale('en-US');
@@ -495,5 +493,4 @@ createTooltipApp({
   }
 })
   .use(i18n)
-  .use(ElementPlus)
   .mount('#app');

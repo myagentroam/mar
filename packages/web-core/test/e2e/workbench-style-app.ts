@@ -1,6 +1,4 @@
 import { createTooltipApp } from './tooltip-app.js';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 import Fixture from './workbench-style-fixture.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
@@ -16,7 +14,6 @@ themePreferenceService().setTheme(
 );
 createTooltipApp(Fixture)
   .use(i18n)
-  .use(ElementPlus)
   .provide(MANAGEMENT_COMPOSITION_KEY, {
     items: () => [],
     resolve: () => {

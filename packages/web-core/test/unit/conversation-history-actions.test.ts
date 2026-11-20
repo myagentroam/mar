@@ -5,7 +5,6 @@ import {
   shallowRef,
   ssrContextKey,
   type Component,
-  type SetupContext,
   type VNode
 } from 'vue';
 import { expect, it, vi } from 'vitest';
@@ -72,18 +71,6 @@ it.each(['initial', 'older'] as const)(
       vi.fn(() => 1)
     );
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
-    app.component('ElButton', {
-      setup:
-        (_: unknown, { slots }: SetupContext) =>
-        () =>
-          h('button', slots.default?.())
-    });
-    app.component('ElIcon', {
-      setup:
-        (_: unknown, { slots }: SetupContext) =>
-        () =>
-          h('span', slots.default?.())
-    });
     app.mount({});
     try {
       const activate = state![kind === 'initial' ? 'reload' : 'loadOlder'] as () => Promise<void>;

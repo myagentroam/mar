@@ -241,7 +241,7 @@ test('Hosted first send locks the simplified template selector while creating an
   await expect(selector).toBeDisabled();
   await expect(f.send).toBeDisabled();
   pending.release();
-  await expect(page.locator('.el-message')).toBeVisible();
+  await expect(page.locator('.mar-message')).toBeVisible();
   await expect(selector).toBeEnabled();
   await expect(f.send).toBeEnabled();
   await expect(page.locator('.conversation-create-panel textarea')).toHaveValue(
@@ -266,7 +266,7 @@ test('Hosted first send retains attachment bytes after initial Watch failure and
   page
 }) => {
   const f = await openDraft(page, { failWatch: true });
-  await expect(page.locator('.el-message')).toBeVisible();
+  await expect(page.locator('.mar-message')).toBeVisible();
   await expect(f.send).toBeDisabled();
   await expect(page.locator('.conversation-create-panel .hosted-model-trigger')).toBeDisabled();
   expect(f.writes()).toHaveLength(1);
@@ -320,7 +320,7 @@ for (const stage of ['create', 'upload'] as const) {
       'Existing history'
     );
     pending.release();
-    await expect(page.locator('.el-message')).toContainText('草稿已保留');
+    await expect(page.locator('.mar-message')).toContainText('草稿已保留');
     await expect(page.locator('.history-open[aria-current=page]')).toContainText(
       'Existing history'
     );
@@ -360,8 +360,8 @@ for (const stage of ['create', 'upload'] as const) {
     await expect(page.locator('.hosted-workspace')).toHaveCount(0);
     const route = page.url();
     pending.release();
-    await expect(page.locator('.el-message')).toContainText('已提交的创建或上传不会撤销');
-    await expect(page.locator('.el-message')).not.toContainText('草稿已保留');
+    await expect(page.locator('.mar-message')).toContainText('已提交的创建或上传不会撤销');
+    await expect(page.locator('.mar-message')).not.toContainText('草稿已保留');
     expect(page.url()).toBe(route);
     expect(f.messages()).toHaveLength(0);
     expect(f.requests.some((request) => request.path.endsWith('/cancel'))).toBe(false);

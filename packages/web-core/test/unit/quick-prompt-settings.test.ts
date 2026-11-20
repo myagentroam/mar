@@ -52,7 +52,7 @@ function mount() {
     nextSibling: () => null
   });
   let editor!: Editor;
-  // Mount the real SFC lifecycle; Chromium covers its template and Element Plus controls.
+  // Mount the real SFC lifecycle; Chromium covers its template and MAR controls.
   const app = renderer.createApp({
     render: () =>
       h({ ...QuickPromptSettings, render: () => null } as Component, {

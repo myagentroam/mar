@@ -1,7 +1,5 @@
 import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
-import Components from 'unplugin-vue-components/vite';
-import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 import type { Plugin } from 'vite';
 import { fileURLToPath } from 'node:url';
 const runId = (process.env['MAR_TEST_RUN_ID'] ?? String(process.pid)).replace(
@@ -75,13 +73,8 @@ if (typeof vueTransform === 'object') {
   };
 }
 export default defineConfig({
-  plugins: [
-    componentFixtures,
-    vuePlugin,
-    Components({ dirs: [], dts: false, resolvers: [ElementPlusResolver()] })
-  ],
+  plugins: [componentFixtures, vuePlugin],
   test: {
-    server: { deps: { inline: ['element-plus'] } },
     environment: 'node',
     include: ['test/unit/**/*.test.ts'],
     reporters: ['default', 'json'],

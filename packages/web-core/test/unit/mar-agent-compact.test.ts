@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import CompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue';
 import UnitCompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue?unit-render';
 import { showMessage } from '../../src/service/message-feedback-service.js';
@@ -124,9 +123,7 @@ describe('MAR Agent compact settings form', () => {
         render: () =>
           h(CompactSettings, { request: (async () => ({}) as never) as never, writable: true })
       });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 947, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html).toContain(commonMessages[locale].marAgentModels.compactHint);
       expect(html).toContain(commonMessages[locale].marAgentModels.compactSmartEnabled);

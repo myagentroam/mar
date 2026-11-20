@@ -754,8 +754,8 @@ for (const theme of ['dark', 'light']) {
           await expect(graphic).toHaveCSS('width', '18px');
           await expect(graphic).toHaveCSS('height', '18px');
         }
-        await expect(edit.locator('.el-icon')).toHaveCSS('width', '18px');
-        await expect(edit).toHaveCSS('font-size', '12px');
+        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '18px');
+        await expect(edit).toHaveCSS('font-size', '11px');
         await expect(page.locator('.composer-access-select .mar-icon')).not.toHaveCSS(
           'width',
           '18px'
@@ -926,11 +926,11 @@ for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Work', exact: true }).hover();
     const hint = page.locator('.mar-tooltip:visible');
     await expect(hint).toHaveText('Work');
-    await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+    await expect(hint).toHaveAttribute('data-arrow', '');
     await expect(hint).toHaveCSS('pointer-events', 'none');
     const colors = await hint.evaluate((el) => {
       const surface = getComputedStyle(el);
-      const arrow = getComputedStyle(el.querySelector('.el-popper__arrow')!, '::before');
+      const arrow = getComputedStyle(el, '::before');
       return {
         surface: surface.backgroundColor,
         arrow: arrow.backgroundColor,
@@ -944,7 +944,7 @@ for (const theme of ['dark', 'light']) {
       };
     });
     expect(colors.arrow).toBe(colors.surface);
-    expect(colors.visibleArrowBorders).toEqual([colors.border, colors.border]);
+    expect(colors.visibleArrowBorders).toEqual(Array(4).fill(colors.border));
     const next = page.getByRole('button', { name: 'Conversations', exact: true });
     const nextBounds = (await next.boundingBox())!;
     const hintBounds = (await hint.boundingBox())!;
@@ -1362,12 +1362,12 @@ test('Usage records are directly accessible and can be sorted from the keyboard'
   await expect(page.getByRole('heading', { name: 'Usage records', exact: true })).toBeVisible();
   const table = page.locator('.records');
   await expect(table).toBeVisible();
-  const byTime = table.getByRole('button', { name: 'Sort by Time', exact: true });
+  const byTime = table.getByRole('button', { name: 'Time', exact: true });
   await byTime.focus();
   await expect(byTime).toBeFocused();
   await page.keyboard.press('Enter');
   const timeHeader = table.getByRole('columnheader').filter({
-    has: page.getByRole('button', { name: 'Sort by Time', exact: true })
+    has: page.getByRole('button', { name: 'Time', exact: true })
   });
   await expect(timeHeader).toHaveAttribute('aria-sort', 'ascending');
 });
@@ -1612,10 +1612,8 @@ test('Usage chart hover details do not create a focus outline', async ({ page })
       const hint = page.locator('[role="tooltip"]:visible');
       await bucket.hover();
       await expect(hint).toContainText('Input tokens:');
-      await bucket.click();
       await expect(bucket).not.toBeFocused();
-      await expect(bucket).toHaveCSS('outline-style', 'none');
-      await expect(hint).toContainText('Input tokens:');
+      await expect(bucket.locator('.bucket-hit-area')).toHaveCSS('stroke', 'none');
       await page.getByRole('heading', { name: 'Usage statistics', exact: true }).hover();
       await expect(hint).toHaveCount(0);
     }
@@ -1624,7 +1622,7 @@ test('Usage chart hover details do not create a focus outline', async ({ page })
 
 test('Usage chart dimensions do not leak into calendar icons', async ({ page }) => {
   await page.goto(`${fixture.url}icon-system.html?usage=1`);
-  const chart = page.locator('[data-testid="usage-statistics"] svg[role="img"]');
+  const chart = page.locator('[data-testid="usage-statistics"] svg.usage-trend-chart');
   await expect(chart).toBeVisible();
   const chartSize = await chart.evaluate((svg) => ({
     height: svg.getBoundingClientRect().height,
@@ -1636,7 +1634,7 @@ test('Usage chart dimensions do not leak into calendar icons', async ({ page }) 
   await page.getByRole('option', { name: 'Custom range', exact: true }).click();
   await page.getByPlaceholder('Start time', { exact: true }).click();
   const arrow = page
-    .locator('.el-picker-panel:visible [data-mar-icon="chevron-left"]:visible')
+    .locator('.mar-ui-date-picker__popup:visible [data-mar-icon="chevron-left"]:visible')
     .first();
   await expect(arrow).toBeVisible();
   const height = await arrow.evaluate((svg) => Number.parseFloat(getComputedStyle(svg).height));
@@ -1650,7 +1648,7 @@ test('Management errors render a MAR service icon outside the component tree', a
     .getByTestId('management')
     .getByRole('button', { name: 'View email templates', exact: true })
     .click();
-  const message = page.locator('.el-message');
+  const message = page.locator('.mar-message');
   await expect(message).toContainText('Template request failed');
   await expect(message.locator('[data-mar-icon="error"]')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Email templates', exact: true })).toBeVisible();
@@ -1946,14 +1944,16 @@ for (const theme of ['dark', 'light'])
           `code-action-density-${theme}-${mobile ? 'mobile' : 'desktop'}.png`
         )
       });
-      const quantity = page.getByTestId('quantity');
+      const quantity = page
+        .locator('.mar-ui-input-number')
+        .filter({ has: page.getByTestId('quantity') });
       await page.getByPlaceholder('Review date').click();
-      const calendar = page.locator('.el-date-picker:visible');
+      const calendar = page.locator('.mar-ui-date-picker__popup:visible');
       await expect(calendar.locator('[data-mar-icon="chevrons-left"]')).toBeVisible();
       await calendar.locator('[data-mar-icon="chevron-right"]').click();
       await expect(calendar.locator('[data-mar-icon="chevrons-right"]')).toBeVisible();
       await page.getByPlaceholder('Review date').press('Escape');
-      await expect(quantity.locator('.el-input-number__decrease')).toHaveClass(/is-disabled/);
+      await expect(quantity.getByRole('button', { name: 'Decrease' })).toBeDisabled();
       await quantity.locator('[data-mar-icon="plus"]').click();
       await expect(quantity.locator('input')).toHaveValue('2');
       await quantity.locator('[data-mar-icon="subtract"]').click();

@@ -2,7 +2,6 @@ import { h, ref } from 'vue';
 import { createTooltipApp } from './tooltip-app.js';
 import WorkspaceFileTabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import { i18n } from '../../src/service/locale-preference-service.js';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 
 // Deliberately do not load any file page: the document lock belongs to the public entry.
