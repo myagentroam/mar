@@ -47,7 +47,7 @@ export const execToolDefinition: ClientToolDefinition = {
   codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
-    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, use exec_wait with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes completion from a wait timeout. A direct foreground call may return interrupted with reason=steer. Inside a cell, steer interrupts only the outer foreground wait, not the inner exec wait. In either case the process keeps running.',
+    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, use exec_wait with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes completion from a wait timeout. A direct foreground call may return interrupted with reason=steer. For tools.exec, steer interrupts only the foreground cell wait, not the initial process wait. In either case the process keeps running.',
   outputSchema: {
     type: 'object',
     required: ['content', 'data'],
@@ -68,7 +68,7 @@ export const execToolDefinition: ClientToolDefinition = {
         properties: {
           status: { enum: ['running', 'completed', 'cancelled'] },
           waitOutcome: { enum: ['snapshot', 'completion', 'timeout', 'yield', 'interrupted'] },
-          reason: { enum: ['steer'] },
+          reason: { enum: ['steer', 'superseded'] },
           processId: { type: 'string' },
           stdout: { type: 'string' },
           stderr: { type: 'string' },
@@ -127,7 +127,7 @@ export const execWaitToolDefinition: ClientToolDefinition = {
   codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
-    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends, then return incremental stdout/stderr. New output does not end the wait. write sends data to stdin; cancel terminates the process or removes its cached result. Terminal polls return a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Prefer direct calls for a single wait; use tools.exec_wait for composition. Do not duplicate an active wait for the same process. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
+    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends. New output does not end the wait. A new active poll takes over an older poll of the same process. The older poll returns normally with waitOutcome=interrupted and reason=superseded without consuming pending stdout/stderr or terminating the process. Both entry points share the same buffer of incremental stdout/stderr. write sends data to stdin; cancel terminates the process or removes its cached result. After the terminal result is collected, later polls can replay a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Interrupted with reason=steer ends only a foreground wait, never the process.',
   outputSchema: execToolDefinition.outputSchema!,
   inputSchema: {
     type: 'object',
@@ -144,7 +144,7 @@ export const execWaitToolDefinition: ClientToolDefinition = {
         minimum: 0,
         maximum: TOOL_EXECUTION_LIMITS.execMaxYieldMs,
         default: TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs,
-        description: `Poll wait window in milliseconds (floor: ${TOOL_EXECUTION_LIMITS.execMinYieldMs}). Use the ${TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs} ms default when just waiting for completion.`
+        description: `Poll wait window in milliseconds. Values below ${TOOL_EXECUTION_LIMITS.execMinYieldMs} are treated as ${TOOL_EXECUTION_LIMITS.execMinYieldMs}.`
       },
       data: { type: 'string', description: 'Required stdin data for write.' }
     },

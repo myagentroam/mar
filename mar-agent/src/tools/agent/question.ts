@@ -10,7 +10,7 @@ export const questionToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct'],
   parallelSafety: 'safe',
   description:
-    'Pause for one to three tightly related user-owned decisions that materially change the result and cannot be inferred from the request, conversation, or relevant safe discovery. Prefer asking over guessing in Plan mode; do not avoid clarification by inventing configuration, branches, abstractions, or support for multiple outcomes. Provide 2-3 mutually exclusive options with consequences, put the recommended option first and identify it in its label or description, and use another question round if key ambiguity remains. This is not a permission/approval tool and should not interrupt routine in-scope work.',
+    'Pause for tightly related user-owned decisions that materially change the result and cannot be inferred from the request, conversation, or relevant safe discovery. Users can choose an option or enter a free-text answer. This is not a permission or approval tool.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -32,7 +32,7 @@ export const questionToolDefinition: ClientToolDefinition = {
               minItems: 2,
               maxItems: 3,
               description:
-                'Provide 2-3 mutually exclusive choices with consequences. Put the recommended option first and identify it in its label or description.',
+                'Provide mutually exclusive choices with consequences. Put the recommended option first and identify it in its label or description.',
               items: {
                 type: 'object',
                 properties: {

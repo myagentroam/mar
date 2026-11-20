@@ -1083,8 +1083,14 @@ describe('Code Mode SDK and protocol integration', () => {
           expect(onlyLine!.split(', ')).toContain('read');
           expect(effectiveInstructions(request)).not.toContain('# Subagents');
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
-          expect(description).toContain('Known files or ranges to read in one ordered batch.');
-          expect(description).toContain('"inputSchema"');
+          const directory = JSON.parse(description.split('\nProgrammatic tools: ')[1]!);
+          expect(directory.tools).toContainEqual(
+            expect.objectContaining({
+              name: 'read',
+              description: expect.stringMatching(/rg --files.*rg -n/),
+              inputSchema: expect.objectContaining({ required: ['reads'] })
+            })
+          );
           expect(description).not.toContain('other schemas are provided by their direct');
         }
       } finally {

@@ -4,7 +4,6 @@ import {
   publicExtensionToolEventData
 } from '../tools/output-projection.js';
 import { requestSmartCompaction, type SmartCompactionInput } from '../runtime/compaction/smart.js';
-import { renderPromptSections } from '../prompts/prompt-sections.js';
 import { withToolPermissions } from '../tools/permissions.js';
 import type { SessionStore } from '../session/store/contracts.js';
 import type { ClientToolDefinition } from '../tools/contracts.js';
@@ -70,7 +69,6 @@ export function createExecutionToolScope(input: {
   readonly currentExecutionToolImages: Parameters<typeof currentExecutionImages>[1];
   readonly inputImageBytes: Map<string, ModelImage>;
   snapshotTools(): readonly ClientToolDefinition[];
-  baseTools(): readonly ClientToolDefinition[];
   captureTools(): ReturnType<ExtensionSession['capture']>;
   promptComposition(
     tools: readonly ClientToolDefinition[],
@@ -107,7 +105,6 @@ export function createExecutionToolScope(input: {
     currentExecutionToolImages,
     inputImageBytes,
     snapshotTools,
-    baseTools,
     captureTools,
     promptComposition,
     smartInput,
@@ -130,8 +127,6 @@ export function createExecutionToolScope(input: {
         ...defaultComposition.sections,
         { id: 'core:auto-permission', text: autoPermissionPrompt }
       ];
-    const defaultSystemPrompt = renderPromptSections(defaultComposition.sections);
-    let systemPrompt = defaultSystemPrompt;
     const roundMcpExpectations = new Map(
       roundTools
         .filter((tool) => roundBindings.get(tool.name)?.mcp !== undefined)
@@ -269,9 +264,6 @@ export function createExecutionToolScope(input: {
         input.withRecordProjection(() =>
           mcpRegistry.expose(arguments_, {
             signal: searchSignal,
-            base: baseTools(),
-            window: selectedModel.contextWindowTokens,
-            system: systemPrompt,
             ...(caller === 'programmatic'
               ? { publish: (names) => input.publishMcpDiscovery(names, searchSignal) }
               : {})
@@ -307,7 +299,6 @@ export function createExecutionToolScope(input: {
           preparedPrompt() ??
           (await operation((call) => coreExtensions.composeModelSystem(defaultComposition, call)));
         clearPreparedPrompt();
-        systemPrompt = composed.text;
         return composed;
       }
     };

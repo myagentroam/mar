@@ -540,13 +540,12 @@ function activate(tab: WorkspaceTab): void {
 .workspace-tab-context-anchor {
   position: fixed;
   z-index: 5000;
-  width: 1px;
-  height: 1px;
 }
 
 .workspace-tab-context-trigger {
-  width: 1px;
-  height: 1px;
+  /* This anchor represents a pointer coordinate, not a visible trigger. */
+  width: 0;
+  height: 0;
   padding: 0;
   border: 0;
   background: transparent;

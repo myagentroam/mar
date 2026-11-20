@@ -91,7 +91,7 @@ describe('local workspace tools', () => {
     expect(readLimit?.maximum).toBe(TOOL_EXECUTION_LIMITS.readMaxLines);
     expect(reads?.maxItems).toBe(TOOL_EXECUTION_LIMITS.readMaxBatchItems);
     expect(readToolDefinition.inputSchema.required).toEqual(['reads']);
-    expect(readToolDefinition.description).toContain('<metadata> with path');
+    expect(readToolDefinition.description).toContain('data.results[].text');
     expect(readToolDefinition.description).toContain('nextOffset');
     expect(execProperties.timeoutMs?.maximum).toBe(TOOL_EXECUTION_LIMITS.execMaxTimeoutMs);
     expect(execProperties.yieldMs?.default).toBe(TOOL_EXECUTION_LIMITS.execDefaultYieldMs);
@@ -121,7 +121,7 @@ describe('local workspace tools', () => {
     const names = BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toEqual([
-      'skill',
+      'skill_load',
       'tool_search',
       'read',
       'view_image',
@@ -136,7 +136,7 @@ describe('local workspace tools', () => {
       'sleep'
     ]);
     expect([...AGENT_TOOL_HANDLERS.keys()]).toEqual([
-      'skill',
+      'skill_load',
       'sleep',
       'smart_compact',
       'tool_search',
@@ -637,8 +637,8 @@ describe('local workspace tools', () => {
         arguments: {
           reads: [
             { path: 'short.txt' },
-            { path: 'long-a.txt', limit: 2000 },
-            { path: 'long-b.txt', limit: 2000 }
+            { path: 'long-a.txt', limit: 1500 },
+            { path: 'long-b.txt', limit: 1500 }
           ]
         }
       },
@@ -653,6 +653,13 @@ describe('local workspace tools', () => {
       modelTokenBudgetBytes(AGENT_EXECUTION_POLICY.modelToolOutputTokens)
     );
     const items = parseReadOutput(output.content).items;
+    expect(output.data).toMatchObject({
+      results: [
+        { path: 'short.txt' },
+        { path: 'long-a.txt', endLine: 1500, nextOffset: 1501 },
+        { path: 'long-b.txt', endLine: 1500, nextOffset: 1501 }
+      ]
+    });
     expect(items[0]).toMatchObject({
       index: 0,
       path: 'short.txt',
@@ -681,6 +688,7 @@ describe('local workspace tools', () => {
       expect(visibleLines.length).toBeGreaterThan(1);
       expect(metadata.endLine).toBe(Number.parseInt(visibleLines.at(-1)!, 10));
       expect(metadata.nextOffset).toBe(metadata.endLine + 1);
+      expect(metadata.nextOffset).toBeLessThan(1501);
       expect(metadata.previewComplete).toBe(false);
     }
     await host.dispose();

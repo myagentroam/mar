@@ -26,7 +26,6 @@ const surface = dropdown?.surface ?? shallowRef(null);
 <style scoped>
 .mar-ui-dropdown__popup {
   width: max-content;
-  min-width: min(10rem, var(--mar-ui-popup-width-limit));
   padding-inline: 0;
 }
 </style>

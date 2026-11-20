@@ -56,7 +56,7 @@ for (const [theme, width] of [
 
 test('Dropdown grows toward the free space when a label expands near the right edge', async ({
   page
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 640, height: 600 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(`${fixture.url}mar-controls.html?command-menu`);
@@ -65,6 +65,21 @@ test('Dropdown grows toward the free space when a label expands near the right e
   const rename = menu.getByRole('menuitem').last();
   const initial = (await menu.boundingBox())!;
   const rowHeight = (await rename.boundingBox())!.height;
+  const compact = await rename.evaluate((item) => {
+    const label = document.createRange();
+    label.selectNodeContents(item);
+    const style = getComputedStyle(item);
+    return {
+      labelAndPadding:
+        label.getBoundingClientRect().width +
+        parseFloat(style.paddingLeft) +
+        parseFloat(style.paddingRight),
+      rowWidth: item.getBoundingClientRect().width
+    };
+  });
+  expect(compact.rowWidth).toBeCloseTo(compact.labelAndPadding, 0);
+  expect(initial.width - compact.rowWidth).toBeCloseTo(2, 0);
+  await menu.screenshot({ path: testInfo.outputPath('compact-dropdown.png') });
 
   await rename.evaluate((item) => {
     item.textContent = 'Rename this shared workspace and its configuration';

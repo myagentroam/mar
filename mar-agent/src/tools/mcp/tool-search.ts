@@ -1,9 +1,10 @@
-import type { ClientToolDefinition } from '../contracts.js';
 import { AgentError } from '../../error.js';
-
-import { countModelTokens } from '../../runtime/token-budget.js';
-import { projectCodeModeSearchResult, projectCodeModeTools } from '../code-mode/index.js';
-import type { McpCatalogTool, McpToolCatalog, ToolExecutionResult } from '../contracts.js';
+import type {
+  ClientToolDefinition,
+  McpCatalogTool,
+  McpToolCatalog,
+  ToolExecutionResult
+} from '../contracts.js';
 import { assertMcpToolCatalog } from './catalog.js';
 import type { ToolRuntimeContext } from '../runtime-context.js';
 import { orderToolDefinitions, stableToolDefinition } from '../definition-projection.js';
@@ -12,16 +13,13 @@ export const TOOL_SEARCH_LIMITS = Object.freeze({
   defaultLimit: 5,
   maximumLimit: 20,
   queryBytes: 4096,
-  catalogBytes: 16 * 1024,
-  maximumDefinitionTokens: 16384,
-  definitionWindowFraction: 0.25,
-  minimumContinuationTokens: 1024
+  catalogBytes: 16 * 1024
 });
 
 export const toolSearchToolDefinition: ClientToolDefinition = {
   name: 'tool_search',
   description:
-    'Search and load deferred MCP tools for the next model request. Use an exact tool name or keywords. Returns matching names, or an empty list; definitions are supplied separately. Does not execute the discovered tools.',
+    'Search and load deferred MCP tools for the next model request. Returns matching names, or an empty list; definitions are supplied separately. Does not execute the discovered tools.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -234,9 +232,6 @@ export class DeferredMcpRegistry {
     input: unknown,
     context: {
       signal: AbortSignal;
-      base: readonly ClientToolDefinition[];
-      window: number;
-      system: string;
       publish?: (names: readonly string[]) => Promise<void>;
     }
   ): Promise<ToolExecutionResult> {
@@ -255,8 +250,6 @@ export class DeferredMcpRegistry {
         selection.push(name);
       }
     }
-    this.assertBudget(context.base, context.window, context.system, selection, executionSelection);
-    context.signal.throwIfAborted();
     const data = { tools: matches.map((tool) => tool.definition.name) };
     if (context.publish && data.tools.length) await context.publish(data.tools);
     this.#selected = selection;
@@ -266,45 +259,6 @@ export class DeferredMcpRegistry {
       data,
       ...(context.publish ? {} : { toolSearchTools: matches.map((tool) => tool.definition) })
     };
-  }
-  assertBudget(
-    base: readonly ClientToolDefinition[],
-    window: number,
-    system: string,
-    selection = this.#selected,
-    executionSelection: ReadonlySet<string> = this.#executionSelected
-  ): void {
-    const resident = this.projectDirect(base);
-    const active = this.project(base, selection, new Set(executionSelection));
-    const tools = projectCodeModeTools(active, resident);
-    const direct = projectCodeModeTools(resident);
-    const residentNames = new Set(resident.map((tool) => tool.name));
-    const definitions = active.filter((tool) => !residentNames.has(tool.name));
-    const searchResult = projectCodeModeSearchResult(
-      { role: 'tool', content: '', toolSearchTools: definitions },
-      base.some((tool) => tool.name === 'code_exec')
-    );
-    // Search-result definitions still consume context even when Only mode hides direct tools.
-    const estimated = countModelTokens(
-      searchResult.content || JSON.stringify(searchResult.toolSearchTools)
-    );
-    const full = Math.max(
-      countModelTokens(JSON.stringify(tools)),
-      countModelTokens(JSON.stringify(direct)) + estimated
-    );
-    const maximum = Math.min(
-      TOOL_SEARCH_LIMITS.maximumDefinitionTokens,
-      Math.floor(window * TOOL_SEARCH_LIMITS.definitionWindowFraction)
-    );
-    if (
-      estimated > maximum ||
-      full + countModelTokens(system) + TOOL_SEARCH_LIMITS.minimumContinuationTokens > window
-    )
-      throw new AgentError(
-        'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
-        'The selected MCP definitions cannot fit within the exposure budget.',
-        { details: { estimatedTokens: estimated, maximumTokens: maximum } }
-      );
   }
   navigation(): string | undefined {
     if (!this.hasDeferred) return undefined;

@@ -7,6 +7,7 @@ import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { AgentError } from '../../src/error.js';
 import { anthropicMessages } from '../../src/model/anthropic-messages.js';
 import { openAiInput } from '../../src/model/responses-request.js';
+import { decodeMarkupText } from '../../src/prompts/markup.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import type { AgentExtension } from '../../src/extensions/contracts.js';
@@ -202,6 +203,55 @@ async function fixture(
 }
 
 describe('MCP discovery runtime', () => {
+  it.each([false, true])(
+    'delivers a large deferred definition to the model with Code Mode=%s',
+    async (codeMode) => {
+      const f = await fixture(codeMode);
+      try {
+        const value = catalog();
+        const definition = value.tools.find(
+          (tool) => tool.definition.name === externalName
+        )!.definition;
+        const description = 'x'.repeat(65_536);
+        f.update({
+          ...value,
+          tools: value.tools.map((tool) =>
+            tool.definition.name === externalName
+              ? { ...tool, definition: { ...tool.definition, description } }
+              : tool
+          )
+        });
+        f.adapter.batches.push([
+          codeMode
+            ? searchInCell(externalName)
+            : { name: 'tool_search', arguments: { query: externalName } }
+        ]);
+        const execution = f.session.run({ prompt: 'Find a lookup tool.' });
+        expect((await execution.result()).status).toBe('completed');
+        const request = f.adapter.requests.at(-1)!;
+        const expected = { name: externalName, inputSchema: definition.inputSchema };
+        if (codeMode) {
+          const discovery = request.messages.find((message) => message.mcpDiscovery);
+          expect(discovery?.mcpDiscovery?.names).toContain(externalName);
+          const payload = discovery?.content.match(/^<mcp_discovery>(.*)<\/mcp_discovery>$/s)?.[1];
+          expect(JSON.parse(decodeMarkupText(payload ?? '')).tools).toContainEqual(
+            expect.objectContaining({
+              ...expected,
+              description: expect.stringContaining(description)
+            })
+          );
+        } else {
+          const result = request.messages.find((message) => message.role === 'tool');
+          expect(result?.toolSearchTools).toContainEqual(
+            expect.objectContaining({ ...expected, description })
+          );
+        }
+      } finally {
+        await f.agent.dispose();
+      }
+    }
+  );
+
   it('runs unmarked external MCP calls concurrently after discovery', async () => {
     const release = Promise.withResolvers<void>();
     let entered = 0;

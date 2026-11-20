@@ -15,7 +15,7 @@ server.registerTool(
   NODE_MCP.notification.tools.email,
   {
     description:
-      'Send a notification email from this MAR-managed Workspace conversation. To email the initiating user’s own account, omit recipientEmail; the Server uses that account’s saved email address and fails if no valid address is configured. Specify recipientEmail only to send to another explicitly authorized address. The Agent works with files and tools on the authorized MAR Node; the MAR Server sends email using its administrator-configured SMTP account. This is not the browser or Node local email account, nor a repository cron/CI notification. This tool cannot access SMTP credentials. Omit the template to use the built-in notification template in the sender’s preferred language; optionally select notification-en-US or notification-zh-CN. Each call may send a real email; do not retry after an uncertain result.',
+      'Send a notification email through MAR Server. To email the initiating user’s own account, omit recipientEmail; the Server uses that account’s saved email address and fails if no valid address is configured. Specify recipientEmail only to send to another explicitly authorized address. For templateId, use notification-en-US or notification-zh-CN, or omit it to use the sender’s preferred language. Each call may send a real email; do not retry after an uncertain result.',
     inputSchema: {
       templateId: z
         .string()

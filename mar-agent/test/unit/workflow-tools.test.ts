@@ -25,19 +25,32 @@ describe('workflow tools', () => {
     }
   });
 
-  it('presents question as the preferred Plan path for unresolved user-owned decisions', () => {
-    expect(questionToolDefinition.description).toContain('Prefer asking over guessing');
-    expect(questionToolDefinition.description).toContain('one to three tightly related');
-    expect(questionToolDefinition.description).toContain('another question round');
-    expect(questionToolDefinition.description).toContain('configuration, branches, abstractions');
-    expect(questionToolDefinition.description).toContain(
+  it('documents the user-decision boundary and option presentation contract', () => {
+    const { description, inputSchema } = questionToolDefinition;
+    expect(description).toContain('user-owned decisions that materially change the result');
+    expect(description).toContain(
       'cannot be inferred from the request, conversation, or relevant safe discovery'
     );
-    expect(questionToolDefinition.description).toContain('recommended option first');
-    expect(JSON.stringify(questionToolDefinition.inputSchema)).toContain(
-      'Put the recommended option first'
-    );
-    expect(questionToolDefinition.description).not.toContain('only when');
+    expect(description).toContain('not a permission or approval tool');
+    expect(inputSchema).toMatchObject({
+      properties: {
+        questions: {
+          minItems: 1,
+          maxItems: 3,
+          items: {
+            properties: {
+              options: {
+                minItems: 2,
+                maxItems: 3,
+                description: expect.stringMatching(
+                  /recommended option first and identify it in its label or description/u
+                )
+              }
+            }
+          }
+        }
+      }
+    });
   });
 
   it('documents model-visible execution and recovery behavior', () => {
@@ -45,29 +58,28 @@ describe('workflow tools', () => {
     expect(execToolDefinition.description).toContain('with processId, not exec');
     expect(execWaitToolDefinition.allowedCallers).toEqual(['direct', 'programmatic']);
     expect(execWaitToolDefinition.codeModeExposure).toBe('both');
-    expect(execWaitToolDefinition.description).toContain('Prefer direct calls for a single wait');
-    expect(execWaitToolDefinition.description).toContain('use tools.exec_wait for composition');
+    expect(execWaitToolDefinition.description).toContain(
+      'Cancelling a wait does not terminate the process'
+    );
     expect(execWaitToolDefinition.description).toContain('incremental stdout/stderr');
     expect(execWaitToolDefinition.description).toContain('cannot start a process');
     expect(execToolDefinition.description).toContain('truncated');
-    expect(applyPatchToolDefinition.description).toContain(
-      'Returns changed file paths and operations'
-    );
-    expect(applyPatchToolDefinition.description).toContain(
-      'Do not batch all task files merely to reduce tool calls'
-    );
-    expect(applyPatchToolDefinition.description).toContain('successive bounded patches');
-    expect(applyPatchToolDefinition.description).toContain('Oversized patches are rejected');
-    expect(applyPatchToolDefinition.description).not.toContain('100 files');
-    expect(applyPatchToolDefinition.description).not.toContain('4 MiB');
-    expect(applyPatchToolDefinition.description).toContain('@@ <change context>');
-    expect(applyPatchToolDefinition.description).toContain(
-      'hunk match conflicts identify the affected path and hunk'
-    );
+    const patchDescription = applyPatchToolDefinition.description;
+    expect(patchDescription).toContain('Split long or hard-to-review patches');
+    expect(patchDescription).toContain('Oversized patches are rejected');
+    expect(patchDescription).not.toContain('100 files');
+    expect(patchDescription).not.toContain('4 MiB');
+    expect(patchDescription).not.toMatch(/freeform|JSON input example|Promise/u);
+    for (const syntax of [
+      '*** Add File: <path>',
+      '*** Update File: <path>',
+      '*** Delete File: <path>',
+      '*** Move to: <new path>',
+      '@@ <change context>'
+    ])
+      expect(patchDescription).toContain(syntax);
+    expect(patchDescription).toContain('Hunk conflicts identify the path and hunk');
     expect(applyPatchToolDefinition.description).toContain('MAR_AGENT_PATCH_PARTIAL');
-    expect(todoToolDefinition.description).toContain(
-      'Do not retain completed items from an earlier objective'
-    );
   });
 
   it('replaces Todo without a revision precondition and enforces one in-progress item', () => {

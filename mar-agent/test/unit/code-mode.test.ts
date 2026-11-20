@@ -261,25 +261,9 @@ describe('QuickJS Code Mode', () => {
     );
     const description = codeModeToolDefinition.description;
     expect(description).toContain('including single-tool operations');
-    expect(description).toContain('Run independent calls concurrently with Promise.all');
-    expect(description).toContain(
-      'await sequentially when data, side effects, or failure handling require ordering'
-    );
-    expect(description).toContain(
-      'Complete known, bounded steps and deterministic result processing'
-    );
-    expect(description).toContain(
-      'Return to the model when interpretation or a new decision is needed'
-    );
-    expect(description).toContain('do not invent extra work to fill a cell');
-    expect(description).toContain(
-      'Observe only evidence needed for the next decision or verification'
-    );
-    expect(description).toContain('Preserve source and failure details needed for reasoning');
-    expect(description).toContain('keep other intermediate data in the cell');
-    expect(description).toContain('Single-tool cells are valid');
-    expect(description).toContain('Keep loops and retries bounded');
-    expect(description).toContain('do not blindly replay operations with side effects');
+    expect(description).toContain('awaited Promise.all');
+    expect(description).toContain('sequential await for dependent calls');
+    expect(description).toContain('Unawaited calls fail the cell');
     expect(description).not.toContain(
       'A good Code Mode cell should perform meaningful computation'
     );
@@ -295,7 +279,8 @@ describe('QuickJS Code Mode', () => {
     expect(description).not.toContain('restricted QuickJS runtime');
     expect(description).toContain('Do not shadow');
     expect(description).toContain('observe.result(patched)');
-    expect(description).toContain('Prefer observe.result for inspecting tool results.');
+    expect(description).toContain('an unmodified complete tools.NAME result or caught tool error');
+    expect(description).toContain('registering one does not trigger a new model request');
     expect(description).toContain('result.data.results[0].text');
     expect(description).toContain('Tool errors reject');
     expect(description).toContain('completed tool effects are not rolled back');
@@ -317,7 +302,7 @@ describe('QuickJS Code Mode', () => {
       expect(description).not.toContain(unsupported);
     expect(applyPatchToolDefinition.description).toContain('data.files');
     expect(applyPatchToolDefinition.description).toContain('data.totals');
-    expect(applyPatchToolDefinition.description).toContain('resolves on success');
+    expect(applyPatchToolDefinition.description).not.toContain('resolves on success');
   });
 
   it('executes its documented examples unchanged', async () => {

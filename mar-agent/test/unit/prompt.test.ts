@@ -423,7 +423,7 @@ describe('system prompt', () => {
     expect(promptFor(['read', 'apply_patch'])).not.toContain('built-in rg');
   });
 
-  it('leaves Todo behavior in the tool description', () => {
+  it('keeps the Todo list contract out of the system prompt', () => {
     const normalized = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
@@ -436,9 +436,8 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('do not make a single-step plan');
     expect(normalized).not.toContain('expectedrevision');
     expect(todoToolDefinition.description).not.toContain('expectedRevision');
-    expect(todoToolDefinition.description).toContain('same response');
-    expect(todoToolDefinition.description).toContain('meaningful stage changes');
-    expect(todoToolDefinition.description).toContain('materially different objective');
+    expect(todoToolDefinition.description).toContain('at most one in_progress item');
+    expect(normalized).not.toContain('at most one in_progress item');
   });
 
   it('does not impose authoring phases or sizes based on the available writing tool', () => {
@@ -480,19 +479,14 @@ describe('system prompt', () => {
     });
 
     expect(readToolDefinition.description).toContain('nextOffset');
-    expect(applyPatchToolDefinition.description).toContain('MAR_AGENT_PATCH_CONFLICT');
-    expect(applyPatchToolDefinition.description).toContain(
-      'Do not batch all task files merely to reduce tool calls'
-    );
-    expect(applyPatchToolDefinition.description).not.toContain('Prefer one file per call');
-    expect(applyPatchToolDefinition.description).not.toContain('100 files');
-    expect(applyPatchToolDefinition.description).not.toContain('4 MiB');
+    expect(applyPatchToolDefinition.description).toContain('MAR_AGENT_PATCH_PARTIAL');
     expect(shortWaitToolFixture.description).toContain('values below 10 seconds');
-    expect(questionToolDefinition.description).toContain('one to three tightly related');
+    expect(questionToolDefinition.description).toContain('free-text answer');
     expect(prompt).not.toContain('nextOffset');
     expect(prompt).not.toContain('MAR_AGENT_PATCH_CONFLICT');
+    expect(prompt).not.toContain('MAR_AGENT_PATCH_PARTIAL');
     expect(prompt).not.toContain(shortWaitToolFixture.description);
-    expect(prompt).not.toContain('one to three tightly related');
+    expect(prompt).not.toContain('free-text answer');
   });
 
   it('does not prescribe evidence reporting, commentary, or clarification timing', () => {

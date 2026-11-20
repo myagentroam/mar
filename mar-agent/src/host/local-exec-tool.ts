@@ -57,7 +57,11 @@ interface ManagedProcess {
   terminalResultReturned: boolean;
   terminate?: Promise<void>;
   waiters: Set<() => void>;
-  outputListeners: Set<(channel: 'stdout' | 'stderr', chunk: Buffer) => void>;
+  supersedePoll?: () => void;
+  outputSubscription?: {
+    onChunk: (channel: 'stdout' | 'stderr', chunk: Buffer) => void;
+    stop: () => void;
+  };
 }
 
 interface StartingProcess {
@@ -111,13 +115,43 @@ export class ExecTool {
     const input = parseExecInput(arguments_);
     if ('processId' in input) {
       this.#handles.assertType(input.processId);
-      const process = this.#processes.get(input.processId);
-      const completed = this.#completed.get(input.processId);
-      if (completed) {
-        if (owner !== undefined && completed.ownerSessionId !== owner.sessionId)
-          throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
-        if (onExecutionSource) await onExecutionSource(processSource(completed));
+      let process = this.#processes.get(input.processId);
+      let completed = this.#completed.get(input.processId);
+      const source = completed ?? process;
+      if (
+        !source ||
+        process?.native ||
+        (owner !== undefined && source.ownerSessionId !== owner.sessionId)
+      )
+        throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
+      if (onExecutionSource) {
+        await onExecutionSource(processSource(source));
         if (signal?.aborted) throw executionAbortReason(signal);
+        // Source publication can overlap terminal collection or eviction of this handle.
+        process = this.#processes.get(input.processId);
+        completed = this.#completed.get(input.processId);
+      }
+      let outcome: ProcessWaitOutcome | undefined;
+      if (process && input.action === 'poll') {
+        outcome = await waitForProcessCompletion(
+          'poll',
+          input.processId,
+          process,
+          input.yieldMs,
+          signal,
+          waitInterrupt,
+          onOutput
+        );
+        // A skipped or displaced poll must not drain the active poll's output.
+        if (outcome === 'superseded' || (outcome === 'interrupted' && process.supersedePoll))
+          return {
+            ...this.#result(input.processId, process, false),
+            waitOutcome: 'interrupted',
+            reason: outcome === 'superseded' ? 'superseded' : 'steer'
+          };
+        completed = this.#completed.get(input.processId);
+      }
+      if (completed) {
         if (input.action === 'write')
           throw new AgentError(
             'MAR_AGENT_TOOL_INPUT_INVALID',
@@ -130,24 +164,8 @@ export class ExecTool {
           ...(input.action === 'poll' ? waitMetadata('completion') : {})
         };
       }
-      if (
-        !process ||
-        process.native ||
-        (owner !== undefined && process.ownerSessionId !== owner.sessionId)
-      )
+      if (!process)
         throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
-      if (onExecutionSource) await onExecutionSource(processSource(process));
-      if (signal?.aborted) throw executionAbortReason(signal);
-      let outcome: 'ready' | 'timeout' | 'interrupted' | undefined;
-      if (input.action === 'poll')
-        outcome = await waitForProcessCompletion(
-          input.processId,
-          process,
-          input.yieldMs,
-          signal,
-          waitInterrupt,
-          onOutput
-        );
       if (input.action === 'write') {
         if (process.status !== 'running')
           throw new AgentError(
@@ -203,6 +221,7 @@ export class ExecTool {
       managed.timer.unref();
     }
     const outcome = await waitForProcessCompletion(
+      'initial',
       id,
       managed,
       input.yieldMs ?? TOOL_EXECUTION_LIMITS.execDefaultYieldMs,
@@ -282,8 +301,7 @@ export class ExecTool {
         ...(child.signalCode == null ? {} : { exitSignal: child.signalCode }),
         finalized: false,
         terminalResultReturned: false,
-        waiters: new Set(),
-        outputListeners: new Set()
+        waiters: new Set()
       };
       this.#processes.set(id, managed);
       if (native) {
@@ -302,7 +320,7 @@ export class ExecTool {
             if (managed.finalized) return;
             const decoded = Buffer.from(managed[name].decoder.write(chunk));
             appendDisplay(managed[name === 'stdout' ? 'stdoutDisplay' : 'stderrDisplay'], decoded);
-            for (const listener of managed.outputListeners) listener(name, decoded);
+            managed.outputSubscription?.onChunk(name, decoded);
             appendOutput(managed[name], decoded, this.maxOutputBytes, chunk.length);
             appendOutput(
               managed[name === 'stdout' ? 'stdoutHistory' : 'stderrHistory'],
@@ -348,7 +366,7 @@ export class ExecTool {
         } else {
           const message = Buffer.from(error.message);
           appendDisplay(managed.stderrDisplay, message);
-          for (const listener of managed.outputListeners) listener('stderr', message);
+          managed.outputSubscription?.onChunk('stderr', message);
           appendOutput(managed.stderr, message, this.maxOutputBytes);
           appendOutput(managed.stderrHistory, message, this.maxOutputBytes);
           notifyProcessChange(managed);
@@ -613,11 +631,12 @@ export class ExecTool {
     })();
     return managed.terminate;
   }
-  #result(id: string, process: ManagedProcess): ExecResult {
+  #result(id: string, process: ManagedProcess, consumeIncrement = true): ExecResult {
     // Uncollected terminal output is a live resource, not an expiring replay.
-    if (process.status !== 'running') process.terminalResultReturned = true;
-    const stdout = consumeOutput(process.stdout);
-    const stderr = consumeOutput(process.stderr);
+    if (consumeIncrement && process.status !== 'running') process.terminalResultReturned = true;
+    const empty = { value: '', droppedBytes: 0 };
+    const stdout = consumeIncrement ? consumeOutput(process.stdout) : empty;
+    const stderr = consumeIncrement ? consumeOutput(process.stderr) : empty;
     return {
       status: process.status,
       processId: id,
@@ -689,10 +708,8 @@ function finalizeManagedProcess(
   const stderrEnd = Buffer.from(managed.stderr.decoder.end());
   appendDisplay(managed.stdoutDisplay, stdoutEnd);
   appendDisplay(managed.stderrDisplay, stderrEnd);
-  for (const listener of managed.outputListeners) {
-    listener('stdout', stdoutEnd);
-    listener('stderr', stderrEnd);
-  }
+  managed.outputSubscription?.onChunk('stdout', stdoutEnd);
+  managed.outputSubscription?.onChunk('stderr', stderrEnd);
   appendOutput(managed.stdout, stdoutEnd, maximumOutputBytes);
   appendOutput(managed.stderr, stderrEnd, maximumOutputBytes);
   appendOutput(managed.stdoutHistory, stdoutEnd, maximumOutputBytes);
@@ -789,34 +806,54 @@ function notifyProcessChange(managed: ManagedProcess): void {
   for (const resolve of managed.waiters) resolve();
 }
 
+type ProcessWaitOutcome = 'ready' | 'timeout' | 'interrupted' | 'superseded';
+
 async function waitForProcessCompletion(
+  kind: 'initial' | 'poll',
   processId: string,
   managed: ManagedProcess,
   waitMs: number,
   signal?: AbortSignal,
   interrupt?: ToolWaitInterrupt,
   onOutput?: (output: ExecOutputSnapshot) => Promise<void>
-) {
-  const stopOutput = onOutput && watchProcessOutput(processId, managed, onOutput);
+): Promise<ProcessWaitOutcome> {
+  // An immediately settled wait must not take over an active poll or output subscription.
+  signal?.throwIfAborted();
+  if (managed.finalized) return 'ready';
+  if (interrupt?.pending()) return 'interrupted';
+  let stopOutput: (() => void) | undefined;
+  let superseded = false;
   try {
-    return await waitForToolCondition({
-      ready: () => managed.finalized,
+    const outcome = await waitForToolCondition({
+      ready: () => managed.finalized || superseded,
       subscribe: (notify) => {
+        const supersede = () => {
+          superseded = true;
+          stopOutput?.();
+          notify();
+        };
+        if (kind === 'poll') {
+          managed.supersedePoll?.();
+          managed.supersedePoll = supersede;
+        }
+        if (onOutput) stopOutput = watchProcessOutput(processId, managed, onOutput);
         managed.waiters.add(notify);
         return () => {
           managed.waiters.delete(notify);
+          if (managed.supersedePoll === supersede) delete managed.supersedePoll;
         };
       },
       waitMs,
       signal,
       interrupt
     });
+    return superseded ? 'superseded' : outcome;
   } finally {
     stopOutput?.();
   }
 }
 
-/** Coalesce decoded chunks into bounded per-call frames without blocking the process. */
+/** Replace the process's live subscriber and coalesce chunks without blocking the process. */
 function watchProcessOutput(
   processId: string,
   managed: ManagedProcess,
@@ -869,18 +906,22 @@ function watchProcessOutput(
     }, TOOL_EXECUTION_LIMITS.execProgressIntervalMs);
     timer.unref();
   };
-  const changed = (channel: 'stdout' | 'stderr', chunk: Buffer) => {
-    if (chunk.length === 0) return;
-    appendDisplay(channel === 'stdout' ? stdout : stderr, chunk);
-    schedule();
+  const subscription: NonNullable<ManagedProcess['outputSubscription']> = {
+    onChunk(channel, chunk) {
+      if (chunk.length === 0) return;
+      appendDisplay(channel === 'stdout' ? stdout : stderr, chunk);
+      schedule();
+    },
+    stop() {
+      stopped = true;
+      if (managed.outputSubscription === subscription) delete managed.outputSubscription;
+      if (timer) clearTimeout(timer);
+    }
   };
-  managed.outputListeners.add(changed);
+  managed.outputSubscription?.stop();
+  managed.outputSubscription = subscription;
   if (initialSnapshot) schedule();
-  return () => {
-    stopped = true;
-    managed.outputListeners.delete(changed);
-    if (timer) clearTimeout(timer);
-  };
+  return subscription.stop;
 }
 
 function executionAbortReason(signal?: AbortSignal): unknown {

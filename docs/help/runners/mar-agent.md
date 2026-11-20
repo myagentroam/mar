@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-20
+lastUpdated: 2026-11-21
 ---
 
 # 配置和使用 MAR Agent
@@ -207,7 +207,7 @@ JSON 工具调用中，`code_exec` 使用 `code` 传入 JavaScript 源码，例�
 
 Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host 提供执行能力时，MAR Agent 才向模型提供受限 JavaScript 编排入口；主 Agent 和选择其他模型的 Subagent 分别使用各自模型的开关。协议类型不会自动决定支持情况。模型可在一段代码中组合多个允许的工具调用并只返回需要的结果，以减少中间模型往返。 开启后默认采用 **Code Mode Only**：支持编排的工具（包括单工具操作）默认经 `code_exec` 调用，direct-only 工具及明确支持双边展示的工具保留直接入口；关闭时恢复普通直接调用。Only 控制模型可见入口和调用引导，不新增权限限制；运行时仍按工具调用权限、发现状态和 Host 策略处理。修改配置从下一次执行生效，不改变正在运行的执行。
 
-开启 Code Mode 时，模型可以直接调用 `exec` 启动命令，也可以在 cell 内通过 `tools.exec` 组合操作；关闭时直接调用 `exec`。`apply_patch` 和 `exec_wait` 同样保留双入口。单进程纯等待优先直接调用 `exec_wait`，包括接管由 cell 启动的进程；并行等待或组合处理使用 `tools.exec_wait`。不要通过两种入口重复等待同一进程。原有调用权限不变。
+开启 Code Mode 时，模型可直接调用 `exec` 或在 cell 内调用 `tools.exec` 启动命令；可按 `processId` 直接调用 `exec_wait` 或在 cell 内调用 `tools.exec_wait` 等待同一进程。同一进程上实际开始的新 `poll` 接管旧 `poll` 的实时输出。旧调用正常返回 `waitOutcome: interrupted`、`reason: superseded`，不读取输出增量，也不终止进程或 cell。`code_exec_wait` 仍按 `cellId` 等待或取消 cell 本身。`apply_patch` 也保留双入口。
 
 每个 cell 使用全新的 QuickJS WASM Runtime，由 Host 管理独立工作进程。支持顶层 `await` 和 `Promise.all`，不提供 Node 全局对象、模块导入、原生文件/网络 API 或 `console.*`。使用 `observe.result(result)` 登记未经修改的完整工具结果或捕获的工具错误；对派生值使用 `observe.text(value)`，对图片使用 `observe.image(value)`。观察只选择传给模型的证据，不代表已经读取或检查；没有 `out` 别名。文件、命令、网络等操作只能经显式允许 `programmatic` 的 `tools.NAME(input)` 调用，并保留工具自身的权限和安全检查。工具结果是统一 envelope，原始文件文本取 `result.data.results[0].text`，而不是带行号展示的 `content`。
 

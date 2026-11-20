@@ -127,6 +127,71 @@ describe('exec_wait', () => {
     expect(onExecutionSource).toHaveBeenCalledWith(completed.eventData!.executionSource);
   });
 
+  it.each(['before cache', 'during publication', 'evicted during publication'] as const)(
+    'resolves a poll arriving at terminal collection: %s',
+    async (timing) => {
+      const child = Object.assign(new EventEmitter(), {
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        exitCode: null as number | null
+      });
+      const { call, startRunning } = await fixture({
+        async spawn() {
+          return child as unknown as ChildProcessWithoutNullStreams;
+        }
+      });
+      const { processId } = await startRunning('fixture');
+      const older = call('exec_wait', { processId });
+      const close = () => {
+        child.stdout.write('terminal');
+        child.exitCode = 0;
+        child.emit('close', 0, null);
+      };
+      if (timing === 'before cache') {
+        close();
+        const newer = call('exec_wait', { processId });
+        const results = await Promise.all([older, newer]);
+        for (const result of results)
+          expect(result).toMatchObject({
+            status: 'completed',
+            waitOutcome: 'completion',
+            stdout: 'terminal'
+          });
+        expect(results.filter((result) => result.cached)).toHaveLength(1);
+        return;
+      }
+      let resume!: () => void;
+      const sourceGate = new Promise<void>((resolve) => (resume = resolve));
+      const onExecutionSource = vi.fn(() => sourceGate);
+      const newer = call('exec_wait', { processId }, { ...context(), onExecutionSource });
+      void newer.catch(() => {});
+      try {
+        await vi.waitFor(() => expect(onExecutionSource).toHaveBeenCalledOnce());
+        close();
+        await expect(older).resolves.toMatchObject({
+          status: 'completed',
+          waitOutcome: 'completion',
+          stdout: 'terminal'
+        });
+        if (timing === 'evicted during publication')
+          await call('exec_wait', { action: 'cancel', processId });
+      } finally {
+        resume();
+      }
+      if (timing === 'evicted during publication')
+        await expect(newer).rejects.toMatchObject({ code: 'MAR_AGENT_PROCESS_NOT_FOUND' });
+      else
+        await expect(newer).resolves.toMatchObject({
+          status: 'completed',
+          waitOutcome: 'completion',
+          cached: true,
+          stdout: 'terminal',
+          exitCode: 0
+        });
+    }
+  );
+
   it('reports cumulative display snapshots across successive polls', async () => {
     const child = Object.assign(new EventEmitter(), {
       stdin: new PassThrough(),
@@ -394,6 +459,80 @@ describe('exec_wait', () => {
       waitOutcome: 'completion'
     });
   });
+
+  it.each([true, false])(
+    'supersedes an older poll without consuming output (new poll streams: %s)',
+    async (streams) => {
+      const child = Object.assign(new EventEmitter(), {
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        exitCode: null as number | null
+      });
+      const { call, startRunning } = await fixture({
+        async spawn() {
+          return child as unknown as ChildProcessWithoutNullStreams;
+        }
+      });
+      const { processId } = await startRunning('fixture');
+      vi.useFakeTimers();
+      const interval = TOOL_EXECUTION_LIMITS.execProgressIntervalMs;
+      const olderOutput = vi.fn(async () => {});
+      const olderResult = vi.fn();
+      const older = call('exec_wait', { processId }, { ...context(), onOutput: olderOutput });
+      void older.then(olderResult, olderResult);
+      await vi.advanceTimersByTimeAsync(0);
+      child.stdout.write('before');
+      const skippedOutput = vi.fn(async () => {});
+      await expect(
+        call('exec_wait', { processId }, { ...pendingSteer(), onOutput: skippedOutput })
+      ).resolves.toMatchObject({
+        status: 'running',
+        waitOutcome: 'interrupted',
+        reason: 'steer',
+        stdout: ''
+      });
+      await vi.advanceTimersByTimeAsync(interval);
+      expect(skippedOutput).not.toHaveBeenCalled();
+      expect(olderOutput).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ mode: 'delta', stdout: 'before' })
+      );
+      child.stdout.write('-queued');
+      const newestOutput = vi.fn(async () => {});
+      const newest = call(
+        'exec_wait',
+        { processId },
+        { ...context(), ...(streams ? { onOutput: newestOutput } : {}) }
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(olderResult).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          processId,
+          status: 'running',
+          waitOutcome: 'interrupted',
+          reason: 'superseded',
+          stdout: '',
+          stderr: ''
+        })
+      );
+      child.stdout.write('-new');
+      await vi.advanceTimersByTimeAsync(interval);
+      expect(olderOutput).toHaveBeenCalledTimes(1);
+      if (streams)
+        expect(newestOutput).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ mode: 'snapshot', stdout: 'before-queued-new' })
+        );
+
+      child.exitCode = 0;
+      child.emit('close', 0, null);
+      await expect(newest).resolves.toMatchObject({
+        status: 'completed',
+        waitOutcome: 'completion',
+        stdout: 'before-queued-new',
+        exitCode: 0
+      });
+    }
+  );
 
   it('resynchronizes after slow-consumer frame overflow with the contiguous display tail', async () => {
     const child = Object.assign(new EventEmitter(), {
@@ -768,9 +907,7 @@ describe('exec_wait', () => {
           default: 60_000,
           minimum: 0,
           maximum: 300_000,
-          description: expect.stringContaining(
-            'Use the 60000 ms default when just waiting for completion.'
-          )
+          description: expect.stringContaining('Values below 10000 are treated as 10000.')
         }
       }
     });

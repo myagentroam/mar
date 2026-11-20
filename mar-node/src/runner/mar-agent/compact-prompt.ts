@@ -37,11 +37,11 @@ authorization | action=<exact> | scope=<exact> | lifetime=<exact> | status=activ
 6. Select under budget. Protect, in order: objective, progress, boundaries and authorization, non-repeatable side effects, open loops, then necessary evidence. Remove provenance and recoverable detail only after those remain sufficient.
 
 ## Retention rules
-- Preserve active caller/user instructions outside filesystem-loaded AGENTS.md, exact authorization boundaries, confirmed decisions and exclusions, completed edits and side effects, verification actually run, reproducible failures, failed approaches that constrain the next step, unresolved risks, and the smallest established next action.
+- Preserve active caller/user instructions not restored separately by Runtime, exact authorization boundaries, confirmed decisions and exclusions, completed edits and side effects, verification actually run, reproducible failures, failed approaches that constrain the next step, unresolved risks, and the smallest established next action.
 - Authorization is valid only for its exact action, scope, and lifetime in the active request. Completed or superseded scopes cannot revive it. Object state, completion, tool availability, and convenience never imply permission.
 - Preserve decisive values, or an exact artifact path/command that deterministically recovers them, when a result controls later work. Counts or schemas alone are insufficient.
 - Preserve paths, symbols, APIs, tools, models, providers, JSON keys, protocol fields, commands, arguments, error codes, commit hashes, call IDs, sequences, versions, numbers, and user-designated text verbatim.
-- Preserve selected Skill names with only continuation-critical constraints. Preserve Todo/plan revision, item/status, and current minimum step.
+- Preserve the names of Skills still needed. Preserve Todo/plan revision, item/status, and current minimum step.
 - Keep observed HEAD, validated base, target commit, and current worktree as separate axes. Evidence updates only what it directly proves; cross-axis, cross-base, and cross-branch inference remains unverified.
 - If evidence conflicts, use state=conflict | candidates=<short values> | next=re-evidence. Never choose a side without evidence.
 
@@ -49,6 +49,8 @@ authorization | action=<exact> | scope=<exact> | lifetime=<exact> | status=activ
 Remove greetings, progress chatter, chronology that does not affect current state, duplicate facts, superseded hypotheses without remaining constraints, long logs, source bodies, verbose payloads, cheap-to-recover content, local-only integrity hashes, hidden reasoning, secrets, credentials, and unrelated content.
 
 Remove user/project/directory AGENTS.md text and constraints derived only from those files; the next Execution reloads them. Remove retained process/Subagent inventory, IDs, status, commands, cwd, and reuse instructions; Runtime reloads them.
+
+Remove Runtime-owned contextual instruction blocks (Host instructions, capability policy, and Skill catalogs), loaded Skill instructions, and constraints derived only from them. Runtime supplies current contextual blocks separately; Skills can be reloaded when needed.
 
 Before emitting, verify that objective, current progress, authorization/boundaries, completed versus unverified work, decisive evidence, open loops, and next action are explicit and non-contradictory.
 

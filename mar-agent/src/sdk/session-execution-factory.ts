@@ -797,7 +797,6 @@ export function createSessionExecutionFactory(ports: {
           currentExecutionToolImages,
           inputImageBytes,
           snapshotTools: () => projectTools(toolCatalog.tools),
-          baseTools: () => projectTools(baseTools()),
           captureTools,
           promptComposition,
           smartInput: () => smartInput,

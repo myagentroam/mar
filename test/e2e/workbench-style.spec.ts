@@ -26,6 +26,51 @@ function sessionListColors(list: Locator) {
   });
 }
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Content search checkbox uses the shared control appearance in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 850 });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector
+      .locator('.workbench-aside-tabs button')
+      .filter({ hasText: /^Search$/ })
+      .click();
+    const checkbox = inspector.getByRole('checkbox', { name: 'Use regular expression' });
+    const option = inspector.locator('.content-search-options');
+    const label = option.getByText('Use regular expression', { exact: true });
+    const input = inspector.locator('.content-search-toolbar .mar-ui-input');
+    await expect(checkbox).not.toBeChecked();
+    await expect(checkbox).toHaveCSS('appearance', 'none');
+    await expect(checkbox).toHaveCSS(
+      'background-color',
+      await input.evaluate((el) => getComputedStyle(el).backgroundColor)
+    );
+    await expect(label).toHaveCSS('font-weight', '400');
+    await expect(label).toHaveCSS(
+      'font-size',
+      await option.locator('.mar-ui-checkbox').evaluate((el) => getComputedStyle(el).fontSize)
+    );
+    await option.screenshot({ path: testInfo.outputPath('regex-unchecked.png') });
+    await label.click();
+    await expect(checkbox).toBeChecked();
+    await expect(option.locator('svg')).toBeVisible();
+    await option.screenshot({ path: testInfo.outputPath('regex-checked.png') });
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(checkbox).toBeFocused();
+    await expect(checkbox).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('Space');
+    await expect(checkbox).not.toBeChecked();
+    await page.emulateMedia({ forcedColors: 'active' });
+    await expect(checkbox).toHaveCSS('appearance', 'auto');
+    await checkbox.press('Space');
+    await expect(checkbox).toBeChecked();
+    await expect(option.locator('svg')).toBeHidden();
+  });
+}
+
 test('Workspace tree rows reserve their background for hover and selection', async ({ page }) => {
   await page.goto(`${fixture.url}workbench-style.html?list-state=unselected&locale=en-US`);
   const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
