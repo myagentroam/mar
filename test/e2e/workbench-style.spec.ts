@@ -737,6 +737,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.setViewportSize({ width, height: 900 });
       await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));
       await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&list-state=main`);
+      // Give the standalone sidebar a bounded pane like the product grid.
+      await page.addStyleTag({
+        content: '[aria-label="Session fixture"] > .conversation-sidebar { height: 360px; }'
+      });
       const sessions = page.getByRole('region', { name: 'Session fixture' });
       const state = sessions.getByRole('combobox', { name: 'Set fixture list state' });
       const empty = sessions.locator('.sidebar-empty');
@@ -752,7 +756,22 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await state.selectOption('loading');
       const loading = sessions.locator('.watch-status:not(.failed)');
       await expect(loading).toBeVisible();
-      await expect(loading).toHaveCSS('text-align', 'center');
+      const centerOffset = await loading.evaluate((status) => {
+        const sidebar = status.closest<HTMLElement>('.conversation-sidebar')!;
+        const controls = status.previousElementSibling!;
+        const controlsBottom =
+          controls.getBoundingClientRect().bottom +
+          parseFloat(getComputedStyle(controls).marginBottom);
+        const pane = sidebar.getBoundingClientRect();
+        const paddingBottom = parseFloat(getComputedStyle(sidebar).paddingBottom);
+        const indicator = status.querySelector('.mar-busy-indicator')!.getBoundingClientRect();
+        return {
+          x: indicator.x + indicator.width / 2 - (pane.x + pane.width / 2),
+          y: indicator.y + indicator.height / 2 - (controlsBottom + pane.bottom - paddingBottom) / 2
+        };
+      });
+      expect(Math.abs(centerOffset.x)).toBeLessThan(1);
+      expect(Math.abs(centerOffset.y)).toBeLessThan(1);
       await expect(empty).toHaveCount(0);
       await state.selectOption('failed');
       await expect(sessions.locator('.watch-status.failed')).toBeVisible();
@@ -771,8 +790,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await state.selectOption('unselected');
       await tree.locator('.workspace-tree-filter input').fill('');
       await expect(tree.getByRole('button', { name: 'Node', exact: true })).toBeVisible();
-      await expect(tree.locator('.tree-foot')).toHaveCount(0);
+      await expect(tree.locator('.tree-foot')).toBeVisible();
       await state.selectOption('main');
+      await expect(tree.locator('.tree-foot')).toHaveCount(0);
       await sessions.getByRole('textbox', { name: 'Set fixture search' }).fill('');
       await expect(empty).toBeVisible();
       const alignment = await empty.evaluate((element) => {

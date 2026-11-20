@@ -98,6 +98,9 @@ function updateSessionActions(visible: boolean, session: Session): void {
 const sessionListElement = ref<HTMLElement>();
 const appendMarker = ref<HTMLElement>();
 const retryingAppend = ref(false);
+const hasListContent = computed(
+  () => props.sessions.length > 0 || props.canLoadMore || props.loadMoreError !== undefined
+);
 let appendObserver: IntersectionObserver | undefined;
 function canAppend(): boolean {
   return (
@@ -444,6 +447,7 @@ function submitSessionSearch(): void {
     <div
       v-if="watchStatus === 'loading'"
       class="watch-status"
+      :class="{ 'is-centered': !hasListContent }"
       role="status"
       :aria-label="translate('workspaceWatch.loadingSessions')"
     >
@@ -453,7 +457,7 @@ function submitSessionSearch(): void {
       {{ translate('workspaceWatch.sessionsFailed') }}
     </p>
     <ul
-      v-if="sessions.length || canLoadMore || loadMoreError !== undefined"
+      v-if="hasListContent"
       v-session-reorder-motion="sessionReorderSnapshot"
       ref="sessionListElement"
       class="session-list"
@@ -786,6 +790,13 @@ function submitSessionSearch(): void {
 
 .watch-status:not(.failed) {
   text-align: center;
+}
+
+.watch-status.is-centered {
+  display: grid;
+  flex: 1 1 auto;
+  margin: 0;
+  place-items: center;
 }
 
 .session-heading-meta {
