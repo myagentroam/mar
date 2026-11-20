@@ -46,11 +46,12 @@ for (const [width, theme] of [
   });
 }
 
-test('Session rows keep their desktop and mobile density', async ({ page }) => {
+test('Session rows keep their desktop and mobile density', async ({ page }, testInfo) => {
   const fixture = await startCustomThemeFixture();
   try {
     await page.setViewportSize({ width: 1280, height: 850 });
-    await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}session-groups.html?locale=en-US&theme=vscode-dark-2026`);
     const row = page.locator('.conversation-sidebar .session-row').first();
     await row.locator('..').evaluate((item) => item.after(item.cloneNode(true)));
     const nextRow = page.locator('.conversation-sidebar .session-row').nth(1);
@@ -64,6 +65,35 @@ test('Session rows keep their desktop and mobile density', async ({ page }) => {
     await expect(more).toHaveCSS('height', '24px');
     await more.click();
     await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
+    const menu = page.locator('.session-action-menu');
+    await expect(menu).toHaveAttribute('data-side', 'bottom');
+    await expect(menu).toHaveAttribute('data-arrow', '');
+    const { center, clearance } = await menu.evaluate((element) => {
+      const panel = element.getBoundingClientRect();
+      const surface = getComputedStyle(element);
+      const arrow = getComputedStyle(element, '::before');
+      const width = parseFloat(arrow.width) + parseFloat(arrow.borderLeftWidth);
+      const height = parseFloat(arrow.height) + parseFloat(arrow.borderTopWidth);
+      const center =
+        panel.left + parseFloat(surface.borderLeftWidth) + parseFloat(arrow.left) + width / 2;
+      return {
+        center,
+        clearance:
+          panel.right -
+          center -
+          Math.hypot(width, height) / 2 -
+          parseFloat(surface.borderTopRightRadius)
+      };
+    });
+    expect(clearance).toBeGreaterThanOrEqual(1);
+    const trigger = (await more.boundingBox())!;
+    expect(center).toBeGreaterThan(trigger.x);
+    expect(center).toBeLessThan(trigger.x + trigger.width);
+    const menuBounds = (await menu.boundingBox())!;
+    await page.screenshot({
+      clip: { ...menuBounds, y: menuBounds.y - 12, height: menuBounds.height + 12 },
+      path: testInfo.outputPath('session-menu-arrow.png')
+    });
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 850 });
     await expect(row).toHaveCSS('height', '32px');

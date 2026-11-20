@@ -67,10 +67,7 @@ export function usePopup(onClose: () => void) {
       surface.toggleAttribute('data-arrow', hasArrow);
       style.setProperty('--mar-ui-popup-left', String(rect.right + gap) + 'px');
       style.setProperty('--mar-ui-popup-top', String(top) + 'px');
-      style.setProperty(
-        '--mar-ui-popup-arrow-y',
-        String(Math.max(10, Math.min(rect.top + rect.height / 2 - top, panelHeight - 10))) + 'px'
-      );
+      style.setProperty('--mar-ui-popup-arrow-y', `${rect.top + rect.height / 2 - top}px`);
       return;
     }
     style.setProperty('--mar-ui-popup-max-height', `${Math.max(0, flip ? above : below)}px`);
@@ -82,10 +79,9 @@ export function usePopup(onClose: () => void) {
           ? rect.left + (rect.width - menuWidth) / 2
           : rect.left;
     const fittedLeft = Math.max(edge, Math.min(left, width - edge - menuWidth));
-    const arrowX = Math.max(10, Math.min(rect.left + rect.width / 2 - fittedLeft, menuWidth - 10));
     surface.dataset.side = flip ? 'top' : 'bottom';
     surface.toggleAttribute('data-arrow', hasArrow);
-    style.setProperty('--mar-ui-popup-arrow-x', `${arrowX}px`);
+    style.setProperty('--mar-ui-popup-arrow-x', `${rect.left + rect.width / 2 - fittedLeft}px`);
     style.setProperty('--mar-ui-popup-left', `${fittedLeft}px`);
     style.setProperty(
       '--mar-ui-popup-top',

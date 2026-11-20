@@ -518,6 +518,7 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .activity-rail-footer {
+  display: grid;
   flex: none;
   width: 100%;
   padding-bottom: 8px;

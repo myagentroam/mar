@@ -509,7 +509,7 @@ watch(controlDisabled, (disabled) => {
       :id="id"
       ref="list"
       popover="manual"
-      class="mar-ui-popup"
+      class="mar-ui-popup mar-ui-select__popup"
       :class="popperClass"
       role="listbox"
       :aria-label="ariaLabel"
@@ -541,6 +541,9 @@ watch(controlDisabled, (disabled) => {
 .mar-ui-select {
   min-width: 0;
   width: 100%;
+}
+.mar-ui-select__popup {
+  padding-inline: 0;
 }
 .mar-ui-select__field {
   --mar-ui-select-height: 32px;

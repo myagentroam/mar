@@ -32,10 +32,19 @@
 }
 
 .mar-ui-popup[data-arrow]::before {
+  /* Leave room for the rotated arrow and a straight border segment before the corner. */
+  --mar-ui-popup-arrow-inset: min(50%, calc(var(--mar-ui-radius-control) + 8px));
   position: absolute;
   z-index: -1;
   top: -5px;
-  left: calc(var(--mar-ui-popup-arrow-x) - 5px);
+  left: calc(
+    clamp(
+        var(--mar-ui-popup-arrow-inset),
+        var(--mar-ui-popup-arrow-x),
+        100% - var(--mar-ui-popup-arrow-inset)
+      ) -
+      5px
+  );
   width: 8px;
   height: 8px;
   rotate: 45deg;
@@ -54,7 +63,14 @@
 }
 
 .mar-ui-popup[data-side='right']::before {
-  top: calc(var(--mar-ui-popup-arrow-y) - 5px);
+  top: calc(
+    clamp(
+        var(--mar-ui-popup-arrow-inset),
+        var(--mar-ui-popup-arrow-y),
+        100% - var(--mar-ui-popup-arrow-inset)
+      ) -
+      5px
+  );
   left: -5px;
   rotate: -45deg;
 }

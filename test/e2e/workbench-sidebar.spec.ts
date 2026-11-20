@@ -376,28 +376,31 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const header = (await history.locator('.history-header').boundingBox())!;
     expect(header.y).toBeCloseTo(geometry.top, 1);
     const expectHistoryTitles = async () => {
-      const { primary, secondary, selection, fontSize } = await history.evaluate((element) => {
-        const probe = document.createElement('span');
-        probe.style.fontSize = 'var(--mar-font-size-body)';
-        element.append(probe);
-        const resolve = (token: string) => {
-          probe.style.color = `var(${token})`;
-          return getComputedStyle(probe).color;
-        };
-        const colors = {
-          primary: resolve('--mar-text-primary'),
-          secondary: resolve('--mar-text-secondary'),
-          selection: resolve('--mar-fill-selection'),
-          fontSize: getComputedStyle(probe).fontSize
-        };
-        probe.remove();
-        return colors;
-      });
+      const { primary, secondary, muted, selection, fontSize } = await history.evaluate(
+        (element) => {
+          const probe = document.createElement('span');
+          probe.style.fontSize = 'var(--mar-font-size-body)';
+          element.append(probe);
+          const resolve = (token: string) => {
+            probe.style.color = `var(${token})`;
+            return getComputedStyle(probe).color;
+          };
+          const colors = {
+            primary: resolve('--mar-text-primary'),
+            secondary: resolve('--mar-text-secondary'),
+            muted: resolve('--mar-text-muted'),
+            selection: resolve('--mar-fill-selection'),
+            fontSize: getComputedStyle(probe).fontSize
+          };
+          probe.remove();
+          return colors;
+        }
+      );
       expect(primary).toBe(selectedWorkspaceColor);
       expect(secondary).toBe(otherWorkspaceColor);
       const current = history.locator('.history-open[aria-current="page"]');
       await expect(current).toContainText('Current chat');
-      await expect(current.locator('time')).toHaveCSS('color', secondary);
+      await expect(current.locator('time')).toHaveCSS('color', muted);
       for (const title of ['Current chat', 'Another chat']) {
         const selected = title === 'Current chat';
         const row = history.locator('article').filter({ hasText: title });
@@ -408,7 +411,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(text).toHaveCSS('font-weight', '400');
         await expect(pin).toBeVisible();
         await expect(pin).toHaveAttribute('data-mar-icon', 'pin');
-        await expect(pin).toHaveCSS('color', primary);
+        await expect(pin).toHaveCSS('color', selected ? primary : secondary);
         if (selected) await expect(row).toHaveCSS('background-color', selection);
         else await expect(row).not.toHaveCSS('background-color', selection);
       }

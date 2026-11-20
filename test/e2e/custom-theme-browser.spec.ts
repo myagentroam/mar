@@ -219,13 +219,32 @@ test('MAR choice and command menus keep selection and actions separate', async (
   await expect(disabled).toHaveAttribute('aria-disabled', 'true');
   await expect(apply).toBeFocused();
   await expect(trigger).toHaveAttribute('aria-controls', (await menu.getAttribute('id'))!);
+  const reset = menu.getByRole('menuitem', { name: 'Reset command' });
+  const layout = await reset.evaluate((item) => {
+    const menu = item.closest('[role="menu"]')!;
+    const menuStyle = getComputedStyle(menu);
+    const menuRect = menu.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    const divider = getComputedStyle(item, '::before');
+    const dividerTop = itemRect.top + parseFloat(divider.insetBlockStart);
+    return {
+      leftInset: itemRect.left - menuRect.left - parseFloat(menuStyle.borderLeftWidth),
+      rightInset: menuRect.right - itemRect.right - parseFloat(menuStyle.borderRightWidth),
+      before: dividerTop - item.previousElementSibling!.getBoundingClientRect().bottom,
+      after: itemRect.top - (dividerTop + parseFloat(divider.height)),
+      dividerPoint: { x: itemRect.left + itemRect.width / 2, y: dividerTop + 0.5 }
+    };
+  });
+  expect(layout.leftInset).toBeCloseTo(0, 0);
+  expect(layout.rightInset).toBeCloseTo(0, 0);
+  expect(layout.before).toBeGreaterThan(0);
+  expect(layout.after).toBeCloseTo(layout.before, 1);
   await menu.screenshot({
     path: testInfo.outputPath('mar-dropdown-dark.png'),
     animations: 'disabled'
   });
   await disabled.dispatchEvent('click');
   await expect(command).toBeEmpty();
-  const reset = menu.getByRole('menuitem', { name: 'Reset command' });
   await page.keyboard.press('ArrowDown');
   await expect(reset).toBeFocused();
   await page.keyboard.press('Home');
@@ -244,6 +263,9 @@ test('MAR choice and command menus keep selection and actions separate', async (
   await expect(menu).toBeHidden();
   await expect(trigger).toBeFocused();
   await trigger.press('Enter');
+  await expect(menu).toBeVisible();
+  await page.mouse.click(layout.dividerPoint.x, layout.dividerPoint.y);
+  await expect(command).toHaveText('apply');
   await expect(menu).toBeVisible();
   await outside.click();
   await expect(menu).toBeHidden();
