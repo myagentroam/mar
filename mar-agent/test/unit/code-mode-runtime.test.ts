@@ -310,7 +310,7 @@ describe('Code Mode SDK and protocol integration', () => {
         );
         for (const request of requests) {
           expect(request.tools.some((tool) => tool.name === 'exec_wait')).toBe(true);
-          expect(request.tools.some((tool) => tool.name === 'exec')).toBe(false);
+          expect(request.tools.some((tool) => tool.name === 'exec')).toBe(true);
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
           expect(description).toContain('"name":"exec_wait"');
           expect(description).toContain('"name":"exec"');
@@ -1065,18 +1065,19 @@ describe('Code Mode SDK and protocol integration', () => {
             'apply_patch',
             'code_exec',
             'code_exec_wait',
+            'exec',
             'exec_wait',
             'sleep'
           ]);
           expect(effectiveInstructions(request)).toContain(
-            'Available client tools: apply_patch, code_exec, code_exec_wait, exec_wait, sleep.'
+            'Available client tools: apply_patch, code_exec, code_exec_wait, exec, exec_wait, sleep.'
           );
           expect(effectiveInstructions(request)).toContain('Code Mode Only');
           const onlyLine = /Code Mode Only: ([^.]+) are callable/.exec(
             effectiveInstructions(request)
           )?.[1];
           expect(onlyLine).toBeDefined();
-          expect(onlyLine!.split(', ')).toContain('exec');
+          expect(onlyLine!.split(', ')).not.toContain('exec');
           expect(onlyLine).not.toContain('apply_patch');
           expect(onlyLine).not.toContain('exec_wait');
           expect(onlyLine!.split(', ')).toContain('read');
@@ -1694,8 +1695,8 @@ describe('Code Mode SDK and protocol integration', () => {
         expect(childCodeModeDescription).toContain('callableNames');
         expect(childCodeModeDescription).not.toContain('ToolResults');
         expect(childCodeModeDescription).toContain('"agent_start"');
-        expect(childCodeModeDescription).toContain('Call only as tools.exec inside code_exec');
-        expect(child.tools.some((tool) => tool.name === 'exec')).toBe(false);
+        expect(childCodeModeDescription).toContain('Call directly or as tools.exec');
+        expect(child.tools.some((tool) => tool.name === 'exec')).toBe(true);
         expect(child.messages).toContainEqual(
           expect.objectContaining({
             role: 'user',

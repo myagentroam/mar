@@ -15,10 +15,10 @@ function focusContent(): void {
   if (dialog.value?.panel === document.activeElement) emit('focus');
 }
 
-function requestClose(done: () => void): void {
-  // Only an owner-approved close may start Dialog's built-in leave transition.
-  if (finishClose) done();
-  else emit('close');
+function requestClose(): void {
+  // Backdrop and native cancel (including mobile close requests) ask the
+  // owner to close its tabs. Only close() starts the leave transition.
+  if (!closing.value) emit('close');
 }
 
 function close(): Promise<boolean> {
@@ -55,7 +55,6 @@ defineExpose({ close, cancelClose });
     :show-close="false"
     :close-on-click-modal="true"
     :before-close="requestClose"
-    :close-on-press-escape="false"
     append-to-body
     align-center
     destroy-on-close

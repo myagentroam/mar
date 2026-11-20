@@ -44,6 +44,7 @@ type ParsedExecInput =
 export const execToolDefinition: ClientToolDefinition = {
   name: 'exec',
   allowedCallers: ['direct', 'programmatic'],
+  codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
     'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, use exec_wait with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes completion from a wait timeout. A direct foreground call may return interrupted with reason=steer. Inside a cell, steer interrupts only the outer foreground wait, not the inner exec wait. In either case the process keeps running.',
