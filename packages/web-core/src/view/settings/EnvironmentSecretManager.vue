@@ -133,10 +133,15 @@ const pagination = createManagementPageService<Secret>({
     ])
 });
 watchManagementPageFailure(pagination);
+const pageReady = ref(false);
+watch(pagination.result, (result) => {
+  if (result !== undefined) pageReady.value = true;
+});
+const loadingVariant = computed(() => (targetScoped.value || pageReady.value ? 'region' : 'page'));
 const loading = computed(
   () => saving.value || operationLoading.value || (!targetScoped.value && pagination.loading.value)
 );
-const regionLoading = computed(
+const panelLoading = computed(
   () =>
     (operationLoading.value && !refreshLoading.value) ||
     (!targetScoped.value &&
@@ -332,8 +337,8 @@ function message(error: unknown): string {
 
 <template>
   <LoadingPanel
-    :loading="regionLoading"
-    variant="region"
+    :loading="panelLoading"
+    :variant="loadingVariant"
     class="secret-manager"
     :aria-label="translate('generated.environmentSecretManager.environmentSecrets')"
   >
