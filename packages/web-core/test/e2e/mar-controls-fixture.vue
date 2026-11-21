@@ -58,6 +58,7 @@ const organizations = [
       <div>
         <MarButton :loading="actionsBusy">Cancel</MarButton>
         <MarButton type="primary" icon="plus" :loading="actionsBusy">Create</MarButton>
+        <MarButton tag="a" href="#action-destination" icon="external-link">Open</MarButton>
       </div>
       <button @click="actionsBusy = !actionsBusy">Toggle busy</button>
     </section>

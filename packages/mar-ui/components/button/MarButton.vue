@@ -123,6 +123,7 @@ function handleClick(event: MouseEvent): void {
   --mar-ui-button-disabled-fg: var(--mar-ui-text-disabled);
   --mar-ui-button-disabled-bg: var(--mar-ui-bg-panel);
   --mar-ui-button-disabled-border: var(--mar-ui-border-subtle);
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;

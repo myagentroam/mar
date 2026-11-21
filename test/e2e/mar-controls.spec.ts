@@ -10,6 +10,27 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Button-shaped links match native button geometry without a global box-sizing reset', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 720 });
+  await page.goto(`${fixture.url}mar-controls.html?theme=dark&button-row=1`);
+  // Restore the browser defaults only for the action roots to exercise MAR UI in isolation.
+  await page.addStyleTag({
+    content: `:where([aria-label="Standard actions"] .mar-ui-button) { box-sizing: revert; }`
+  });
+  const row = page.getByRole('region', { name: 'Standard actions' });
+  const button = row.getByRole('button', { name: 'Create', exact: true });
+  const link = row.getByRole('link', { name: 'Open', exact: true });
+  await expect(link).toBeVisible();
+  const action = (await button.boundingBox())!;
+  const navigation = (await link.boundingBox())!;
+  expect(navigation.height).toBeCloseTo(action.height, 0);
+  expect(navigation.y).toBeCloseTo(action.y, 0);
+  await link.press('Enter');
+  await expect(page).toHaveURL(/#action-destination$/u);
+});
+
 test('Standard actions with and without icons align outside a dialog, including while busy', async ({
   page
 }, testInfo) => {
