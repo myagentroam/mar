@@ -109,6 +109,8 @@ function handleClick(event: MouseEvent): void {
 }
 
 .mar-ui-button {
+  --mar-ui-button-icon-size: 1em;
+  --mar-ui-button-padding-block: 0.125rem;
   --mar-ui-button-fg: var(--mar-ui-text-secondary);
   --mar-ui-button-bg: var(--mar-ui-bg-panel);
   --mar-ui-button-border: var(--mar-ui-border-default);
@@ -126,7 +128,7 @@ function handleClick(event: MouseEvent): void {
   justify-content: center;
   gap: 0.375rem;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
-  padding: 0.125rem 0.625rem;
+  padding: var(--mar-ui-button-padding-block) 0.625rem;
   border: 1px solid var(--mar-ui-button-border);
   border-radius: var(--mar-ui-radius-control);
   background: var(--mar-ui-button-bg);
@@ -137,6 +139,17 @@ function handleClick(event: MouseEvent): void {
   line-height: 1.35;
   cursor: pointer;
   text-decoration: none;
+}
+
+.mar-ui-button:where(
+  :has(> .mar-ui-button__label):not(.mar-ui-button--inline, .mar-icon-action, .mar-text-action)
+) {
+  /* Reserve the same single-line space even if there is no icon. Longer labels can still wrap. */
+  min-block-size: max(
+    var(--mar-ui-compact-control-size, 24px),
+    calc(var(--mar-ui-button-icon-size) + 2 * var(--mar-ui-button-padding-block) + 2px)
+  );
+  vertical-align: middle;
 }
 
 .mar-ui-button--primary {
@@ -269,12 +282,13 @@ function handleClick(event: MouseEvent): void {
 }
 
 @media (max-width: 767px) {
-  .mar-ui-button__icon {
-    font-size: var(--mar-ui-action-icon-size, 18px);
+  .mar-ui-button {
+    --mar-ui-button-icon-size: var(--mar-ui-action-icon-size, 18px);
   }
 }
 
 .mar-ui-button__icon {
+  font-size: var(--mar-ui-button-icon-size);
   flex: 0 0 1em;
   inline-size: 1em;
   display: inline-grid;

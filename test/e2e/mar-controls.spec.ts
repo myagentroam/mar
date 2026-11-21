@@ -1,12 +1,50 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/mar-ui/components/button/MarButton.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/mar-controls.html');
 });
 test.afterAll(async () => {
   await fixture?.close();
+});
+
+test('Standard actions with and without icons align outside a dialog, including while busy', async ({
+  page
+}, testInfo) => {
+  for (const [width, theme] of [
+    [1280, 'light'],
+    [390, 'dark']
+  ] as const) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(`${fixture.url}mar-controls.html?theme=${theme}&button-row=1`);
+    const row = page.getByRole('region', { name: 'Standard actions' });
+    const cancel = row.getByRole('button', { name: 'Cancel' });
+    const create = row.getByRole('button', { name: 'Create' });
+    await expect(create).toBeVisible();
+    // Exercise both the default density and larger root-relative button padding.
+    for (const rootFontSize of ['', '20px']) {
+      await page.evaluate((size) => (document.documentElement.style.fontSize = size), rootFontSize);
+      const initial = (await cancel.boundingBox())!;
+      for (const busy of [false, true]) {
+        if (busy) {
+          await row.getByRole('button', { name: 'Toggle busy' }).click();
+          await expect(create).toHaveAttribute('aria-busy', 'true');
+        }
+        const iconButton = (await create.boundingBox())!;
+        const textButton = (await cancel.boundingBox())!;
+        const icon = (await create.locator('[data-mar-icon]').boundingBox())!;
+        expect(iconButton.height).toBeCloseTo(textButton.height, 0);
+        expect(iconButton.y).toBeCloseTo(textButton.y, 0);
+        expect(textButton.height).toBeCloseTo(initial.height, 0);
+        expect(icon.y + icon.height / 2).toBeCloseTo(iconButton.y + iconButton.height / 2, 0);
+      }
+      await row.getByRole('button', { name: 'Toggle busy' }).click();
+      await expect(create).not.toHaveAttribute('aria-busy');
+    }
+    await row.screenshot({ path: testInfo.outputPath(`standard-actions-${width}.png`) });
+  }
 });
 
 for (const [theme, width] of [

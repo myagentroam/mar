@@ -2,6 +2,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/styles.css
+// @test-covers packages/mar-ui/components/dialog/MarDialog.vue
+// @test-covers packages/web-core/src/view/settings/ResourceManagementPanel.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/dialog-layout.html');
@@ -94,6 +96,46 @@ const viewports = [
 async function visit(page: Page, kind: string, theme = 'daylight'): Promise<void> {
   await page.goto(`${fixture.url}dialog-layout.html?kind=${kind}&theme=${theme}`);
 }
+
+test('Node registration aligns icon and text-only actions, and wraps them without overflow', async ({
+  page
+}, testInfo) => {
+  for (const [width, theme] of [
+    [1280, 'daylight'],
+    [390, 'vscode-dark-2026'],
+    [320, 'vscode-dark-2026']
+  ] as const) {
+    await page.setViewportSize({ width, height: 720 });
+    await visit(page, 'node-registration', theme);
+    if (width === 320) {
+      await page.addStyleTag({
+        content: '.mar-ui-dialog__footer { --mar-ui-font-size-meta: 18px; }'
+      });
+    }
+    await page.getByRole('button', { name: 'Register Node', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Register Node' });
+    await expectBounded(dialog);
+    const footer = dialog.locator('.mar-ui-dialog__footer');
+    const close = footer.getByRole('button', { name: 'Close', exact: true });
+    const create = footer.getByRole('button', { name: 'Create registration key' });
+    const footerBox = (await footer.boundingBox())!;
+    const closeBox = (await close.boundingBox())!;
+    const createBox = (await create.boundingBox())!;
+    expect(createBox.x + createBox.width).toBeCloseTo(footerBox.x + footerBox.width, 0);
+    expect(createBox.x).toBeGreaterThanOrEqual(footerBox.x - 1);
+    if (width === 320) {
+      expect(closeBox.x + closeBox.width).toBeCloseTo(footerBox.x + footerBox.width, 0);
+      expect(createBox.y - closeBox.y - closeBox.height).toBeCloseTo(8, 0);
+    } else {
+      expect(createBox.height).toBeCloseTo(closeBox.height, 0);
+      expect(createBox.y).toBeCloseTo(closeBox.y, 0);
+      expect(createBox.x - closeBox.x - closeBox.width).toBeCloseTo(8, 0);
+    }
+    await dialog.screenshot({ path: testInfo.outputPath(`node-registration-${width}.png`) });
+    await close.click();
+    await expect(dialog).toBeHidden();
+  }
+});
 
 for (const [kind, title] of [
   ['short', 'Content dialog'],
@@ -598,6 +640,10 @@ test('Long MessageBox confirmation scrolls its content without moving the action
     await expectBounded(dialog);
     const buttons = dialog.locator('.mar-ui-dialog__footer');
     const top = (await buttons.boundingBox())!.y;
+    const cancel = (await buttons.getByRole('button', { name: 'Cancel' }).boundingBox())!;
+    const confirm = (await buttons.getByRole('button', { name: 'Confirm' }).boundingBox())!;
+    expect(confirm.y).toBeCloseTo(cancel.y, 0);
+    expect(confirm.x - cancel.x - cancel.width).toBeCloseTo(8, 0);
     await expectScrollableBody(dialog, '.mar-ui-dialog__body');
     expect((await buttons.boundingBox())!.y).toBeCloseTo(top, 0);
     await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();

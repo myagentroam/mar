@@ -485,14 +485,12 @@ onMounted(() => {
         {{ translate('generated.systemConfigurationPage.smtpDialogHint') }}
       </p>
       <template #footer>
-        <div class="smtp-dialog-footer">
-          <MarButton :disabled="savingKey !== null" @click="smtpDialogOpen = false">
-            {{ translate('common.cancel') }}
-          </MarButton>
-          <MarButton type="primary" :loading="savingKey === 'mail-smtp'" @click="save('mail-smtp')">
-            {{ translate('generated.systemConfigurationPage.save') }}
-          </MarButton>
-        </div>
+        <MarButton :disabled="savingKey !== null" @click="smtpDialogOpen = false">
+          {{ translate('common.cancel') }}
+        </MarButton>
+        <MarButton type="primary" :loading="savingKey === 'mail-smtp'" @click="save('mail-smtp')">
+          {{ translate('generated.systemConfigurationPage.save') }}
+        </MarButton>
       </template>
     </MarDialog>
   </section>
@@ -528,10 +526,5 @@ onMounted(() => {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.5;
-}
-.smtp-dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 </style>

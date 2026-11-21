@@ -190,7 +190,7 @@ async function selectOrganization(page: Page, form: Locator, strings: Locale): P
   await page.getByRole('option', { name: strings.organizationScope, exact: true }).click();
   const organization = form.locator('.mar-ui-cascader input');
   await organization.fill('Platform');
-  await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
+  await page.getByRole('button', { name: 'Root / Platform', exact: true }).click();
 }
 
 async function selectModelProtocol(

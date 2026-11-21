@@ -164,10 +164,4 @@ const MessageBody = () => props.message;
 .mar-message-box__error {
   margin-block: 6px 0;
 }
-.mar-message-box :deep(.mar-ui-dialog__footer) {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 </style>

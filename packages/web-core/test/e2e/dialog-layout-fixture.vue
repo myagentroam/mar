@@ -13,6 +13,7 @@ import SkillDetailsDialog from '../../src/view/skill/SkillDetailsDialog.vue';
 import McpDetailsDialog from '../../src/view/skill/McpDetailsDialog.vue';
 import ThemeTokenHelp from '../../src/view/settings/ThemeTokenHelp.vue';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
+import ResourceManagementPanel from '../../src/view/settings/ResourceManagementPanel.vue';
 import FilePreviewSurface from '../../src/view/workspace/FilePreviewSurface.vue';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
@@ -109,6 +110,9 @@ const entries = Array.from({ length: 60 }, (_, i) => ({
 }));
 
 async function request<T>(path: string): Promise<T> {
+  if (path.startsWith('/api/resources?')) {
+    return { nodes: [], workspaces: [], page: 1, pageSize: 20, total: 0, hasMore: false } as T;
+  }
   if (path.includes('/effective-skills')) return { skills: entries } as T;
   if (path.includes('/mcps?')) return { installations: entries } as T;
   if (path.startsWith('/api/mcp-catalog?')) return { entries } as T;
@@ -181,6 +185,20 @@ function showMessageBox(): void {
   <WorkspaceSessionList v-if="kind === 'workspace'" v-bind="sidebarProps" />
   <ThemeTokenHelp v-else-if="kind === 'tokens'" :colors="{}" />
   <MailTemplateManagement v-else-if="kind === 'mail'" :request="request" :writable="true" />
+  <ResourceManagementPanel
+    v-else-if="kind === 'node-registration'"
+    :request="request"
+    resource-type="NODE"
+    writable
+  >
+    <template #registration-owner>
+      <MarFormItem label="Owner">
+        <MarSelect model-value="personal" aria-label="Owner">
+          <MarOption label="Personal" value="personal" />
+        </MarSelect>
+      </MarFormItem>
+    </template>
+  </ResourceManagementPanel>
   <WorkspaceFilesPanel
     v-else-if="kind === 'upload'"
     :service="files"
