@@ -10,7 +10,7 @@ const vuePlugin = vue();
 const vueTransform = vuePlugin.transform;
 const componentFixtureQuery = /[?&]unit-render(?:&|$)/u;
 const marUiComponentEntry =
-  /^@myagentroam\/mar-ui\/(alert|button|cascader|checkbox|check-tag|date-picker|descriptions|divider|dropdown|empty|form|icons|input-number|link|loading-panel|pagination|progress|radio|region-status|result|scrollbar|segmented|select|switch|table|tabs|tag|time-picker|time-select)$/u;
+  /^@myagentroam\/mar-ui\/(alert|busy-indicator|button|cascader|checkbox|check-tag|date-picker|descriptions|divider|dropdown|empty|form|icons|input-number|link|loading-panel|pagination|progress|radio|region-status|result|scrollbar|segmented|select|switch|table|tabs|tag|time-picker|time-select)$/u;
 const selectBusinessFixtures =
   /\/(EnterpriseUserManagementPage|EnvironmentSecretManager|MarAgentCompactSettings|MarAgentModelManagementPage|RemoteDesktopPage|SettingsContent|UsageStatisticsSettings)\.vue\?/u;
 // Opt in only the component fixtures that drive the real template and lifecycle.

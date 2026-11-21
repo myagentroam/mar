@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -415,7 +416,7 @@ onBeforeUnmount(() => {
     >
       <template v-if="loading" #loading
         ><span role="progressbar" :aria-label="translate('common.loading')"
-          ><i class="mar-busy-indicator mar-read-loading-indicator" aria-hidden="true" /></span
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
       ></template>
       <MarTableColumn
         prop="name"

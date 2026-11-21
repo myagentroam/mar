@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -202,7 +203,7 @@ function createNodeToken(): void {
         <MarTable :aria-busy="oauthLoading" :data="oauthBindings" row-key="providerKey">
           <template v-if="oauthLoading" #loading>
             <span role="progressbar" :aria-label="translate('common.loading')">
-              <i class="mar-busy-indicator mar-read-loading-indicator" aria-hidden="true" />
+              <MarBusyIndicator class="mar-read-loading-indicator" />
             </span>
           </template>
           <MarTableColumn

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '@myagentroam/web-core/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
@@ -403,7 +404,7 @@ onBeforeUnmount(closeDetail);
     >
       <template v-if="tableLoading" #loading
         ><span role="progressbar" :aria-label="translate('common.loading')"
-          ><i class="mar-busy-indicator mar-read-loading-indicator" aria-hidden="true" /></span
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
       ></template>
       <MarTableColumn :label="translate('generated.auditManagementPage.time')" min-width="180"
         ><template #default="{ row }">{{

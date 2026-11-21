@@ -29,6 +29,7 @@
     "./form": "./components/form/index.ts",
     "./message": "./components/message/index.ts",
     "./pagination": "./components/pagination/index.ts",
+    "./panel-resize-handle": "./components/panel-resize-handle/index.ts",
     "./popover": "./components/popover/index.ts",
     "./progress": "./components/progress/index.ts",
     "./radio": "./components/radio/index.ts",

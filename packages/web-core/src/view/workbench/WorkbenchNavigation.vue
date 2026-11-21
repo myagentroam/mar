@@ -28,7 +28,7 @@ import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
 import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
 import WorkbenchSidebarPanel from './WorkbenchSidebarPanel.vue';
-import PanelResizeHandle from './PanelResizeHandle.vue';
+import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
 import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 
@@ -450,7 +450,7 @@ function runBlankMenuCommand(command: string): void {
       </template>
     </WorkbenchSidebarPanel>
   </Transition>
-  <PanelResizeHandle
+  <MarPanelResizeHandle
     v-if="view === 'nodes' && !sidebarCollapsed && !mobileViewport"
     class="workspace-tree-resize"
     :target="treeElement"
@@ -682,6 +682,7 @@ function runBlankMenuCommand(command: string): void {
 
 .workspace-tree-resize {
   position: fixed;
+  z-index: 6;
   top: 9px;
   bottom: 9px;
   left: calc(var(--mar-workbench-sidebar-total-width) - 4px);

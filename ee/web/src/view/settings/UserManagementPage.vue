@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '@myagentroam/web-core/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -210,7 +211,7 @@ onUnmounted(() => usersPage.dispose());
     >
       <template v-if="tableLoading" #loading
         ><span role="progressbar" :aria-label="translate('common.loading')"
-          ><i class="mar-busy-indicator mar-read-loading-indicator" aria-hidden="true" /></span
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
       ></template>
       <MarTableColumn
         prop="username"

@@ -9,6 +9,31 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+// @test-covers ee/web/src/view/settings/OAuthManagementPage.vue
+// @test-covers ee/web/src/view/settings/OrganizationManagementPage.vue
+for (const [area, section, endpoint] of [
+  ['oauth', '.oauth-management', '/api/oauth-providers'],
+  ['organization', '.organization-management', '/api/organizations']
+] as const) {
+  test(`${area} cold entry loads the shared table spinner styles`, async ({ page }) => {
+    await page.goto(`${fixture.url}management-page.html?area=${area}`);
+    await expect
+      .poll(() => page.evaluate(() => window.managementPageFixture.calls()))
+      .toEqual([endpoint]);
+    const table = page.locator(section).locator('.mar-ui-table');
+    const progress = table.getByRole('progressbar', { name: 'Loading' });
+    const ring = progress.locator('.mar-busy-indicator');
+    await expect(ring).toHaveCSS('display', 'inline-block');
+    await expect(ring).toHaveCSS('border-top-width', '2px');
+    await expect(ring).toHaveCSS('animation-duration', '1.2s');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(ring).toHaveCSS('animation-name', 'none');
+    await page.evaluate(() => window.managementPageFixture.settle(0, true));
+    await expect(progress).toHaveCount(0);
+    await expect(table.getByText('No data', { exact: true })).toBeVisible();
+  });
+}
+
 test('Audit initial failure reports an error and recovers through refresh on mobile', async ({
   page
 }) => {

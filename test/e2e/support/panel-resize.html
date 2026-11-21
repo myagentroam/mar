@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <title>Panel resize fixture</title>
     <style>
+      #app {
+        --mar-ui-color-brand: #123456;
+      }
       #panel {
         height: 200px;
         background: #ddd;
@@ -21,7 +24,7 @@
     <script type="module">
       import { h, ref } from 'vue';
       import { createTooltipApp as createApp } from '/packages/web-core/test/e2e/tooltip-app.ts';
-      import PanelResizeHandle from '/packages/web-core/src/view/workbench/PanelResizeHandle.vue';
+      import { MarPanelResizeHandle } from '/packages/mar-ui/components/panel-resize-handle/index.ts';
 
       createApp({
         setup() {
@@ -58,7 +61,7 @@
               style: { width: `${width.value}px` },
               'data-width': width.value
             }),
-            h(PanelResizeHandle, {
+            h(MarPanelResizeHandle, {
               class: 'fixture-handle',
               target: panel.value,
               label: 'Resize panel',

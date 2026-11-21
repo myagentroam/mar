@@ -7,7 +7,7 @@ import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/management-composi
 import type { WorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import type { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
-import PanelResizeHandle from '../../src/view/workbench/PanelResizeHandle.vue';
+import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import WorkbenchSurface from '../../src/view/workbench/WorkbenchSurface.vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
@@ -82,7 +82,7 @@ async function renderOfflineSurface() {
 
 describe('Shared workbench shell', () => {
   it('keeps resize layout attributes on the interactive separator', async () => {
-    const html = await renderComponent(PanelResizeHandle, {
+    const html = await renderComponent(MarPanelResizeHandle, {
       target: undefined,
       label: 'Resize workspace tree',
       min: 180,

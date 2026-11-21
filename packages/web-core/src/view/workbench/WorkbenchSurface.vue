@@ -1477,8 +1477,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     transition: grid-template-columns var(--mar-motion-duration-collapse)
       var(--mar-motion-easing-collapse);
   }
-  .workspace-grid:has(.panel-resize-handle:active),
-  .workspace-grid:has(.panel-resize-handle.dragging) {
+  .workspace-grid:has(.workbench-aside-resize:active),
+  .workspace-grid:has(.workbench-aside-resize.dragging) {
     transition: none;
   }
   .workbench {
@@ -1606,9 +1606,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     inset: var(--mar-sidebar-header-height) 0 0;
     width: 100% !important;
     min-width: 0;
-  }
-  .workspace-aside :deep(.workbench-aside-resize) {
-    display: none;
   }
   .terminal-dock {
     position: relative;

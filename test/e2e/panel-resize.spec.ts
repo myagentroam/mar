@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/mar-ui/components/panel-resize-handle/MarPanelResizeHandle.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
@@ -33,6 +34,9 @@ test('Panel resize takes over an unfinished width transition without jumping', a
   const handle = page.getByRole('separator', { name: 'Resize panel' });
   await handle.hover();
   await expect(page.getByRole('tooltip')).toHaveText('Resize panel');
+  await expect
+    .poll(() => handle.evaluate((element) => getComputedStyle(element, '::before').backgroundColor))
+    .toBe('rgb(18, 52, 86)');
   const bounds = (await handle.boundingBox())!;
   expect(bounds.x).toBe(450);
   await page.mouse.move(bounds.x + 3, bounds.y + 30);

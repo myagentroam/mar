@@ -284,9 +284,7 @@ for (const scenario of [
     const entries = section.locator('.workbench-notification-list > li');
     const toolbar = content.locator(':scope > header');
     await expect(entries).toHaveCount(30);
-    await panel.evaluate(async (element) => {
-      await Promise.all(element.getAnimations().map((animation) => animation.finished));
-    });
+    await expect(page.locator('.workbench-activity-popover')).toHaveCSS('translate', '0px');
     const bounds = (await panel.boundingBox())!;
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(scenario.height - 4);
@@ -334,6 +332,9 @@ for (const theme of ['daylight', 'midnight']) {
       );
       const remove = notificationContent.locator('.workbench-notification-delete').first();
       await expect(remove).toBeVisible();
+      if (width > 767) {
+        await expect(page.locator('.workbench-activity-popover')).toHaveCSS('translate', '0px');
+      }
       await remove.evaluate(async (element) => {
         await new Promise<void>((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
@@ -784,7 +785,7 @@ for (const dismissal of ['Escape', 'the backdrop', 'browser Back'] as const) {
     await expect(dialog).toHaveAttribute('data-closing', 'true');
     await expect(dialog).toHaveCSS('animation-play-state', 'paused');
     await expect(dialog).toBeVisible();
-    await pause.evaluate((style) => style.remove());
+    await pause.evaluate((style) => style.parentNode?.removeChild(style));
     await expect(dialog).toHaveCount(0);
     await expect(trigger).toBeFocused();
     await trigger.click();
@@ -1029,7 +1030,8 @@ for (const source of ['conversation', 'attachment']) {
       const assertImageFits = async () => {
         const sizes = await image.evaluate((el) => {
           const img = el as HTMLImageElement;
-          const body = img.parentElement!;
+          // The media wrapper shrink-wraps the image; use the available dialog space instead.
+          const body = img.closest('.mar-ui-dialog__body')!;
           const css = getComputedStyle(body);
           const width =
             body.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
@@ -1061,6 +1063,10 @@ for (const source of ['conversation', 'attachment']) {
       await expect(surface).toHaveCSS('border-radius', '0px');
       expect(await handle!.evaluate((el) => el.isConnected)).toBe(true);
       await assertImageFits();
+      // Resizing an open desktop dialog registers its mobile history entry asynchronously.
+      await expect
+        .poll(() => page.evaluate(() => history.state?.__marTemporaryLayer))
+        .toEqual(expect.any(String));
       if (source === 'conversation' && shape === 'portrait') {
         await page.screenshot({ path: testInfo.outputPath('mobile-image-preview.png') });
       }

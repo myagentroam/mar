@@ -1,7 +1,5 @@
 import { defineAsyncComponent, h, nextTick } from 'vue';
 import { createTooltipApp } from '../../../packages/web-core/test/e2e/tooltip-app.js';
-import ResourceManagementPanel from '../../../packages/web-core/src/view/settings/ResourceManagementPanel.vue';
-import UsageStatisticsSettings from '../../../packages/web-core/src/view/settings/UsageStatisticsSettings.vue';
 import {
   i18n,
   localePreferenceService
@@ -11,9 +9,22 @@ import '../../../packages/web-core/src/styles.css';
 const AuditManagementPage = defineAsyncComponent(
   () => import('../../../ee/web/src/view/settings/AuditManagementPage.vue')
 );
+const OAuthManagementPage = defineAsyncComponent(
+  () => import('../../../ee/web/src/view/settings/OAuthManagementPage.vue')
+);
+const OrganizationManagementPage = defineAsyncComponent(
+  () => import('../../../ee/web/src/view/settings/OrganizationManagementPage.vue')
+);
+const ResourceManagementPanel = defineAsyncComponent(
+  () => import('../../../packages/web-core/src/view/settings/ResourceManagementPanel.vue')
+);
+const UsageStatisticsSettings = defineAsyncComponent(
+  () => import('../../../packages/web-core/src/view/settings/UsageStatisticsSettings.vue')
+);
 
-const audit = new URLSearchParams(location.search).get('area') === 'audit';
-const usage = new URLSearchParams(location.search).get('area') === 'usage';
+const area = new URLSearchParams(location.search).get('area');
+const audit = area === 'audit';
+const usage = area === 'usage';
 const tall = new URLSearchParams(location.search).has('tall');
 const many = new URLSearchParams(location.search).has('many');
 const pending: {
@@ -111,6 +122,10 @@ window.managementPageFixture = {
             page,
             nextCursor: null
           });
+      } else if (area === 'oauth') {
+        entry.resolve({ providers: [] });
+      } else if (area === 'organization') {
+        entry.resolve({ organizations: [] });
       } else {
         const keyword = url.searchParams.get('keyword') ?? '';
         const filtered = nodes.filter((node) => node.displayName.includes(keyword));
@@ -133,7 +148,9 @@ async function request<T>(path: string): Promise<T> {
   if (
     path.startsWith('/api/resources?') ||
     path.startsWith('/api/audit-events?') ||
-    path.startsWith('/api/me/usage/')
+    path.startsWith('/api/me/usage/') ||
+    path === '/api/oauth-providers' ||
+    path === '/api/organizations'
   )
     return new Promise<T>((resolve, reject) =>
       pending.push({ path, resolve: (value) => resolve(value as T), reject })
@@ -151,14 +168,23 @@ createTooltipApp({
         class: 'fixture-scroller',
         style: `display:flex;height:${tall ? 3000 : 560}px;overflow:auto`
       },
-      [
-        audit
-          ? h(AuditManagementPage, { request })
-          : usage
-            ? h(UsageStatisticsSettings, { request })
-            : h(ResourceManagementPanel, { request, resourceType: 'NODE', writable: false })
-      ]
+      [renderPage()]
     )
 })
   .use(i18n)
   .mount('#app');
+
+function renderPage() {
+  switch (area) {
+    case 'audit':
+      return h(AuditManagementPage, { request });
+    case 'usage':
+      return h(UsageStatisticsSettings, { request });
+    case 'oauth':
+      return h(OAuthManagementPage, { request, writable: false });
+    case 'organization':
+      return h(OrganizationManagementPage, { request, writable: false });
+    default:
+      return h(ResourceManagementPanel, { request, resourceType: 'NODE', writable: false });
+  }
+}
