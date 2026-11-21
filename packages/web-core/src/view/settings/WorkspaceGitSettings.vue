@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
@@ -10,6 +9,8 @@ import { onUnmounted, ref, watch } from 'vue';
 import { PersonalGitService } from '../../service/personal-git-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
+import BusyIndicator from '../common/BusyIndicator.vue';
+import MarRegionStatus from '../common/MarRegionStatus.vue';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -49,8 +50,8 @@ async function load(): Promise<void> {
     preserve.value = result.preserveGitConfig;
     includeParent.value = result.includeParentRepository;
     loaded.value = true;
-  } catch (error) {
-    if (current === generation) showMessage(errorMessage(error), 'error', error);
+  } catch {
+    // The current scope exposes an in-place retry rather than a second notification.
   } finally {
     if (current === generation) loading.value = false;
   }
@@ -79,7 +80,7 @@ async function save(): Promise<void> {
 }
 </script>
 <template>
-  <section class="workspace-git-settings" v-mar-loading:region="loading">
+  <section class="workspace-git-settings">
     <h3>{{ t('personalGit.workspaceTitle') }}</h3>
     <p v-if="!connected">{{ t('personalGit.offline') }}</p>
     <template v-else>
@@ -107,7 +108,12 @@ async function save(): Promise<void> {
       <p v-if="includeParent !== undefined" class="workspace-git-hint">
         {{ t('personalGit.includeParentHint') }}
       </p>
-      <MarButton v-if="!loaded && !loading" @click="load">{{ t('personalGit.reload') }}</MarButton>
+      <MarRegionStatus v-if="!loaded">
+        <span v-if="loading" role="progressbar" :aria-label="t('common.loading')">
+          <BusyIndicator class="mar-read-loading-indicator" />
+        </span>
+        <MarButton v-else link @click="load">{{ t('common.loadFailedRetry') }}</MarButton>
+      </MarRegionStatus>
     </template>
   </section>
 </template>

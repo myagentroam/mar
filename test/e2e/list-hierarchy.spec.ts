@@ -31,6 +31,239 @@ async function colors(page: Page) {
   });
 }
 
+test('MCP source search discards old results when switching sources', async ({ page }) => {
+  const old = Promise.withResolvers<void>();
+  const oldStarted = Promise.withResolvers<void>();
+  const newest = Promise.withResolvers<void>();
+  const source = (id: string, name: string) => ({
+    id,
+    name,
+    enabled: true,
+    builtIn: false,
+    scope: 'PERSONAL',
+    locator: 'https://example.com/registry',
+    manageable: true
+  });
+  const candidate = (id: string, displayName: string) => ({
+    id,
+    displayName,
+    serverName: id,
+    version: '1.0.0',
+    description: '',
+    runtime: { transport: 'STDIO' },
+    tlsVerified: true
+  });
+  let firstSearches = 0;
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/mcp-sources')
+      return route.fulfill({
+        json: { sources: [source('old', 'Old source'), source('new', 'New source')] }
+      });
+    if (path === '/api/mcp-sources/old/servers') {
+      if (++firstSearches === 1)
+        return route.fulfill({
+          json: { servers: [candidate('current', 'Current old candidate')] }
+        });
+      oldStarted.resolve();
+      await old.promise;
+      return route.fulfill({ json: { servers: [candidate('stale', 'Stale candidate')] } });
+    }
+    if (path === '/api/mcp-sources/new/servers') {
+      await newest.promise;
+      return route.fulfill({ json: { servers: [candidate('fresh', 'Fresh candidate')] } });
+    }
+    if (path === '/api/mcp-catalog')
+      return route.fulfill({
+        json: { entries: [], page: 1, pageSize: 20, total: 0, hasMore: false }
+      });
+    return route.fulfill({ status: 404 });
+  });
+  try {
+    await page.goto(
+      `${fixture.url}visual-alignment.html?list-hierarchy=mcp-sources&controlled-reads&locale=en-US`
+    );
+    const search = page.getByRole('button', { name: 'Search', exact: true });
+    const table = page.locator('.source-mcp-table');
+    const picker = page.locator('.source-search-bar').getByRole('combobox');
+    await search.click();
+    await expect(table.getByText('Current old candidate')).toBeVisible();
+    await picker.click();
+    await page.getByRole('option', { name: 'New source' }).click();
+    await expect(page.getByText('Current old candidate')).toHaveCount(0);
+    await picker.click();
+    await page.getByRole('option', { name: 'Old source' }).click();
+    await search.click();
+    await oldStarted.promise;
+    await expect(table.getByRole('progressbar')).toBeVisible();
+    await picker.click();
+    await page.getByRole('option', { name: 'New source' }).click();
+    await search.click();
+    await expect(table.getByRole('progressbar')).toBeVisible();
+    await expect(page.locator('.mar-ui-loading')).toHaveCount(0);
+    const oldResponse = page.waitForResponse('**/api/mcp-sources/old/servers?*');
+    old.resolve();
+    await oldResponse;
+    await expect(table.getByRole('progressbar')).toBeVisible();
+    newest.resolve();
+    await expect(table.getByText('Fresh candidate')).toBeVisible();
+    await expect(table.getByText('Stale candidate')).toHaveCount(0);
+    await expect(table.getByRole('progressbar')).toHaveCount(0);
+  } finally {
+    old.resolve();
+    newest.resolve();
+  }
+});
+
+test('MCP removal keeps its confirmed target and blocks duplicate writes without a mask', async ({
+  page
+}) => {
+  const removed = Promise.withResolvers<void>();
+  const removeStarted = Promise.withResolvers<void>();
+  let removals = 0;
+  const installation = {
+    catalogEntryId: 'local-mcp',
+    serverName: 'local-mcp',
+    displayName: 'Local MCP',
+    version: '1.0.0',
+    origin: 'NODE',
+    enabled: true,
+    status: 'CURRENT',
+    installedAt: 1
+  };
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/resources')
+      return route.fulfill({ json: { nodes: [{ id: 'node' }], workspaces: [] } });
+    if (path === '/api/nodes/node/mcps')
+      return route.fulfill({ json: { targetKind: 'NODE', installations: [installation] } });
+    if (path === '/api/nodes/node/mcps/local-mcp' && request.method() === 'DELETE') {
+      removals++;
+      removeStarted.resolve();
+      await removed.promise;
+      return route.fulfill({ json: { targetKind: 'NODE', installations: [] } });
+    }
+    if (path === '/api/mcp-catalog')
+      return route.fulfill({
+        json: { entries: [], page: 1, pageSize: 20, total: 0, hasMore: false }
+      });
+    return route.fulfill({ status: 404 });
+  });
+  try {
+    await page.goto(
+      `${fixture.url}visual-alignment.html?list-hierarchy=mcp&controlled-reads&inspect-target&locale=en-US`
+    );
+    await page.getByRole('tab', { name: 'Installed MCP Servers' }).click();
+    const table = page.locator('.mcp-config-table');
+    const remove = table.getByRole('button', { name: 'Delete', exact: true });
+    await remove.click();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(removals).toBe(0);
+    await remove.click();
+    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    await removeStarted.promise;
+    await expect(remove).toBeDisabled();
+    await expect(table.getByText('Local MCP', { exact: true })).toBeVisible();
+    await expect(page.locator('.mar-ui-loading')).toHaveCount(0);
+    removed.resolve();
+    await expect(table.getByText('No data', { exact: true })).toBeVisible();
+    expect(removals).toBe(1);
+  } finally {
+    removed.resolve();
+  }
+});
+
+test('Workspace Git retries in the same status slot without a mask', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const retryRead = Promise.withResolvers<void>();
+  let requests = 0;
+  await page.route('**/api/workspaces/workspace/git-policy?*', async (route) => {
+    if (++requests === 1) return route.fulfill({ status: 503 });
+    await retryRead.promise;
+    return route.fulfill({ json: { preserveGitConfig: true, includeParentRepository: false } });
+  });
+  try {
+    await page.goto(
+      `${fixture.url}visual-alignment.html?list-hierarchy=workspace-git&controlled-reads&locale=en-US`
+    );
+    const panel = page.locator('.workspace-git-settings');
+    const retry = panel.getByRole('button', { name: 'Failed to load. Retry' });
+    const status = panel.locator('.mar-region-status');
+    await expect(retry).toBeVisible();
+    const previous = await status.boundingBox();
+    await retry.click();
+    await expect(status.getByRole('progressbar')).toBeVisible();
+    expect((await status.boundingBox())?.y).toBe(previous?.y);
+    await expect(panel.locator('.mar-ui-loading')).toHaveCount(0);
+    retryRead.resolve();
+    await expect(panel.getByRole('checkbox').first()).toBeChecked();
+    await expect(status).toHaveCount(0);
+  } finally {
+    retryRead.resolve();
+  }
+});
+
+for (const [view, field, selector, searchPlaceholder] of [
+  ['skills', 'favorites', '.available-skill-table', 'Search skill names or descriptions'],
+  ['mcp', 'entries', '.mcp-config-table', 'Search MCP servers']
+] as const) {
+  test(`${view} catalog keeps its header through loading, failure, and empty results`, async ({
+    page
+  }, info) => {
+    const mobile = view === 'mcp';
+    await page.setViewportSize({ width: mobile ? 390 : 1280, height: 844 });
+    const first = Promise.withResolvers<void>();
+    const filtered = Promise.withResolvers<void>();
+    let reads = 0;
+    await page.route('**/api/**', async (route) => {
+      if (new URL(route.request().url()).pathname === '/api/resources')
+        return route.fulfill({ json: { nodes: [], workspaces: [] } });
+      if (++reads === 1) {
+        await first.promise;
+        return route.fulfill({ status: 503 });
+      }
+      await filtered.promise;
+      return route.fulfill({
+        json: { [field]: [], page: 1, pageSize: 20, total: 0, hasMore: false }
+      });
+    });
+    const snapshot = (name: string) =>
+      page.screenshot({ path: info.outputPath(`${view}-${name}.png`), animations: 'disabled' });
+    try {
+      await page.goto(
+        `${fixture.url}visual-alignment.html?list-hierarchy=${view}&controlled-reads&locale=en-US&theme=${mobile ? 'daylight' : 'vscode-dark-2026'}`
+      );
+      const table = page.locator(selector);
+      const ring = table.getByRole('progressbar');
+      const empty = table.getByText('No data', { exact: true });
+      const message = page.locator('.mar-message--error');
+      await expect(table.getByRole('columnheader', { name: 'Name', exact: true })).toBeVisible();
+      await expect(ring).toBeVisible();
+      await expect(empty).toHaveCount(0);
+      await expect(page.locator('.mar-ui-loading')).toHaveCount(0);
+      await snapshot('loading');
+      first.resolve();
+      await expect(empty).toBeVisible();
+      await expect(message).toHaveCount(1);
+      await expect(ring).toHaveCount(0);
+      await snapshot('failed');
+      await message.locator('.mar-message-close').click();
+      await page.getByPlaceholder(searchPlaceholder).fill('no match');
+      await expect(ring).toBeVisible();
+      await expect(empty).toHaveCount(0);
+      filtered.resolve();
+      await expect(empty).toBeVisible();
+      await expect(message).toHaveCount(0);
+      await expect(ring).toHaveCount(0);
+      await snapshot('empty');
+    } finally {
+      first.resolve();
+      filtered.resolve();
+    }
+  });
+}
+
 test('Skill and MCP configuration search fields are compact and fit narrow panels', async ({
   page
 }, testInfo) => {
@@ -57,6 +290,65 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
     }
   }
 });
+
+for (const [view, tab, tableSelector, entry] of [
+  ['skills', 'Installed Skills', '.installed-skill-table', 'Local skill'],
+  ['mcp', 'Installed MCP Servers', '.mcp-config-table', 'Local MCP']
+] as const) {
+  test(`${tab} keeps the target snapshot if catalog metadata fails`, async ({ page }) => {
+    const inspection = Promise.withResolvers<void>();
+    let targetReads = 0;
+    await page.route('**/api/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/api/resources')
+        return route.fulfill({ json: { nodes: [{ id: 'node' }], workspaces: [] } });
+      if (url.pathname.startsWith('/api/nodes/node/')) {
+        targetReads++;
+        await inspection.promise;
+        return route.fulfill({
+          json: {
+            targetKind: 'NODE',
+            compatibilityMode: 'SYMLINK',
+            skills: [{ name: 'Local skill', description: '', localStatus: 'VALID' }],
+            installations: [
+              {
+                catalogEntryId: 'local-mcp',
+                serverName: 'local-mcp',
+                displayName: 'Local MCP',
+                version: '1.0.0',
+                origin: 'NODE',
+                enabled: true,
+                status: 'CURRENT',
+                installedAt: 1
+              }
+            ]
+          }
+        });
+      }
+      if (url.searchParams.has('ids')) return route.fulfill({ status: 503 });
+      return route.fulfill({
+        json: { entries: [], favorites: [], page: 1, pageSize: 20, total: 0, hasMore: false }
+      });
+    });
+    try {
+      await page.goto(
+        `${fixture.url}visual-alignment.html?list-hierarchy=${view}&controlled-reads&inspect-target&locale=en-US`
+      );
+      await page.getByRole('tab', { name: tab }).click();
+      const table = page.locator(tableSelector);
+      await expect(table.getByRole('columnheader', { name: 'Name', exact: true })).toBeVisible();
+      await expect(table.getByRole('progressbar')).toBeVisible();
+      await expect(page.locator('.mar-ui-loading')).toHaveCount(0);
+      inspection.resolve();
+      await expect(table.getByText(entry, { exact: true })).toBeVisible();
+      await expect(table.getByRole('progressbar')).toHaveCount(0);
+      await expect(page.locator('.mar-message--error')).toHaveCount(1);
+      expect(targetReads).toBe(1);
+    } finally {
+      inspection.resolve();
+    }
+  });
+}
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Skill and MCP source management search fields stay compact in ${theme}`, async ({

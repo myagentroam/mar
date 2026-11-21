@@ -65,6 +65,55 @@ describe('Public source discovery and catalog management', () => {
     ['Skill', SkillPage, '/api/skill-sources', '/api/skill-favorites'],
     ['MCP', McpPage, '/api/mcp-sources', '/api/mcp-catalog']
   ] as const)(
+    'initializes %s source controls and host extension even if the catalog read fails',
+    async (name, component, sourcePath, catalogPath) => {
+      vi.stubGlobal('window', {
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+      });
+      vi.stubGlobal('Document', class {});
+      vi.stubGlobal('ShadowRoot', class {});
+      i18n.global.locale.value = 'en-US';
+      feedback.error.mockClear();
+      const loadExtension = vi.fn(async () => {});
+      const request = vi.fn(async (path: string) => {
+        if (path === sourcePath)
+          return {
+            sources: [
+              {
+                id: 'source',
+                name: 'Complete source',
+                locator: 'https://example.com/source',
+                scope: 'PERSONAL',
+                enabled: true,
+                kind: 'REPOSITORY',
+                manageable: true
+              }
+            ]
+          };
+        if (path === `${sourcePath}/source/skills`) return { skills: [] };
+        if (path.startsWith(`${catalogPath}?`)) throw new Error('Catalog unavailable');
+        throw new Error(`Unexpected GET ${path}`);
+      });
+      const view = renderComponent(component, { request, writable: true, loadExtension });
+      try {
+        await flushComponent();
+        expect(loadExtension).toHaveBeenCalledOnce();
+        if (name === 'Skill') expect(request).toHaveBeenCalledWith(`${sourcePath}/source/skills`);
+        const search = view
+          .findAll('MarButton')
+          .find((node) => textContent(node).trim() === 'Search');
+        expect(search?.props.disabled).toBe(false);
+        expect(feedback.error).toHaveBeenCalledExactlyOnceWith('Catalog unavailable');
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
+  it.each([
+    ['Skill', SkillPage, '/api/skill-sources', '/api/skill-favorites'],
+    ['MCP', McpPage, '/api/mcp-sources', '/api/mcp-catalog']
+  ] as const)(
     'renders %s source extensions and requires confirmation before disabling a source',
     async (_name, component, sourcePath, catalogPath) => {
       vi.stubGlobal('window', {

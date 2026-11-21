@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -33,6 +32,7 @@ import SkillDetailsDialog, { type SkillDetails } from './SkillDetailsDialog.vue'
 import { translate } from '../../service/locale-preference-service';
 
 import ManagementPagination from '../settings/ManagementPagination.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -58,8 +58,9 @@ const sourceDialog = ref(false);
 const catalogDialog = ref(false);
 const editDialog = ref(false);
 const detailsOpen = ref(false);
-const initialLoading = ref(true);
-const sourceSkillsLoading = ref(false);
+const sourceSkillsState = ref<'idle' | 'loading' | 'settled'>('idle');
+let sourceReadRevision = 0;
+const catalogLoading = computed(() => pagination.loading.value && !pagination.loadingMore.value);
 const checkingSkillIds = ref<ReadonlySet<string>>(new Set());
 const upgradingSkillId = ref<string>();
 const sourceForm = ref<FormInstance>();
@@ -145,19 +146,30 @@ onMounted(() => {
   pagination.start();
   void loadPage();
 });
-onUnmounted(() => pagination.dispose());
+onUnmounted(() => {
+  sourceReadRevision++;
+  pagination.dispose();
+});
+watch(
+  service.selectedSourceId,
+  () => {
+    sourceReadRevision++;
+    sourceSkillsState.value = 'idle';
+    catalogDialog.value = false;
+    pendingCandidate.value = undefined;
+  },
+  { flush: 'sync' }
+);
 
 async function loadPage(): Promise<void> {
-  initialLoading.value = true;
-  try {
-    await run(async () => {
-      await Promise.all([service.loadSources(), service.loadCatalog()]);
-      if (service.selectedSourceId.value !== '') await loadSourceSkills();
-      await props.loadExtension?.();
-    });
-  } finally {
-    initialLoading.value = false;
-  }
+  await Promise.all([
+    run(async () => {
+      await service.loadSources();
+      await loadSourceSkills();
+    }),
+    run(service.loadCatalog),
+    run(async () => props.loadExtension?.())
+  ]);
 }
 
 async function run(operation: () => Promise<void>, success?: string): Promise<void> {
@@ -265,34 +277,39 @@ async function savePresentation(): Promise<void> {
 
 async function selectSource(sourceId: string): Promise<void> {
   service.selectedSourceId.value = sourceId;
-  service.candidates.value = [];
   service.query.value = '';
   await run(loadSourceSkills);
 }
 
 async function loadSourceSkills(): Promise<void> {
-  sourceSkillsLoading.value = true;
-  try {
-    await service.loadCandidates();
-  } finally {
-    sourceSkillsLoading.value = false;
-  }
+  await readSourceSkills(service.loadCandidates, selectedSource.value?.kind === 'REPOSITORY');
 }
 
 async function searchSourceSkills(): Promise<void> {
-  sourceSkillsLoading.value = true;
+  if (!selectedSource.value?.enabled || service.loading.value) return;
+  await readSourceSkills(
+    service.search,
+    selectedSource.value.kind !== 'SKILLS_SH' || service.query.value.trim() !== ''
+  );
+}
+
+async function readSourceSkills(read: () => Promise<void>, shouldRead: boolean): Promise<void> {
+  const revision = ++sourceReadRevision;
+  sourceSkillsState.value = shouldRead ? 'loading' : 'idle';
+  service.candidates.value = [];
   try {
-    await service.search();
+    await read();
+  } catch (error) {
+    if (revision === sourceReadRevision) throw error;
   } finally {
-    sourceSkillsLoading.value = false;
+    if (shouldRead && revision === sourceReadRevision) sourceSkillsState.value = 'settled';
   }
 }
 
 async function mutateSource(operation: () => Promise<void>): Promise<void> {
   const previousSourceId = service.selectedSourceId.value;
   await operation();
-  if (service.selectedSourceId.value !== '' && service.selectedSourceId.value !== previousSourceId)
-    await loadSourceSkills();
+  if (service.selectedSourceId.value !== previousSourceId) await loadSourceSkills();
 }
 
 async function confirmSourceStatusChange(source: SkillSourceCard): Promise<void> {
@@ -334,14 +351,20 @@ async function confirmSourceStatusChange(source: SkillSourceCard): Promise<void>
 }
 
 async function addToCatalog(): Promise<void> {
+  const candidate = pendingCandidate.value;
+  const revision = sourceReadRevision;
+  if (!candidate || service.loading.value || !service.candidates.value.includes(candidate)) return;
   if (
     !(await catalogForm.value?.validate().catch(() => false)) ||
-    pendingCandidate.value === undefined
+    !catalogDialog.value ||
+    service.loading.value ||
+    revision !== sourceReadRevision ||
+    candidate !== pendingCandidate.value
   )
     return;
   const tags = catalogDraft.tags.map((tag) => tag.trim());
   await run(async () => {
-    await service.favorite(pendingCandidate.value!, { featured: catalogDraft.featured, tags });
+    await service.favorite(candidate, { featured: catalogDraft.featured, tags });
     catalogDialog.value = false;
   }, translate('generated.skillSourceManagementPage.skillAddedToTheCatalog'));
 }
@@ -456,7 +479,7 @@ function scopeLabel(scope: string): string {
 </script>
 
 <template>
-  <section v-mar-loading:page="initialLoading" class="mar-management-page">
+  <section class="mar-management-page">
     <div class="mar-table-actions">
       <MarButton
         type="primary"
@@ -469,9 +492,15 @@ function scopeLabel(scope: string): string {
     <MarTable
       class="clickable-rows skill-source-table"
       :data="displayedSources"
+      :aria-busy="service.sourcesLoading.value"
       row-key="id"
       @row-click="showSourceDetails"
     >
+      <template v-if="service.sourcesLoading.value" #loading>
+        <span role="progressbar" :aria-label="translate('common.loading')">
+          <BusyIndicator class="mar-read-loading-indicator" />
+        </span>
+      </template>
       <MarTableColumn
         prop="name"
         :label="translate('generated.skillSourceManagementPage.name')"
@@ -575,17 +604,20 @@ function scopeLabel(scope: string): string {
             </MarInput>
           </div>
         </div>
-        <div
-          v-mar-loading:region="sourceSkillsLoading && !initialLoading"
-          class="skill-table-section"
-        >
+        <div class="skill-table-section">
           <MarTable
-            v-if="service.candidates.value.length > 0"
+            v-if="sourceSkillsState !== 'idle'"
             class="clickable-rows source-skill-table"
             :data="service.candidates.value"
+            :aria-busy="sourceSkillsState === 'loading'"
             row-key="id"
             @row-click="showCandidateDetails"
           >
+            <template v-if="sourceSkillsState === 'loading'" #loading>
+              <span role="progressbar" :aria-label="translate('common.loading')">
+                <BusyIndicator class="mar-read-loading-indicator" />
+              </span>
+            </template>
             <MarTableColumn
               prop="name"
               :label="translate('generated.skillSourceManagementPage.name')"
@@ -632,11 +664,9 @@ function scopeLabel(scope: string): string {
           </MarTable>
           <div v-else-if="!service.loading.value" class="skill-empty">
             {{
-              selectedSource?.kind === 'SKILLS_SH'
+              selectedSource
                 ? translate('generated.skillSourceManagementPage.noPopularSkillsAreAvailableEnterA')
-                : selectedSource
-                  ? translate('generated.skillSourceManagementPage.thisSourceHasNoAvailableSkills')
-                  : translate('generated.skillSourceManagementPage.selectAnEnabledSkillSource2')
+                : translate('generated.skillSourceManagementPage.selectAnEnabledSkillSource2')
             }}
           </div>
         </div>
@@ -675,23 +705,20 @@ function scopeLabel(scope: string): string {
             </button>
           </div>
         </div>
-        <div
-          v-mar-loading:region="
-            pagination.loading.value &&
-            !initialLoading &&
-            !pagination.loadingMore.value &&
-            !pagination.failure.value
-          "
-          class="skill-table-section"
-        >
+        <div class="skill-table-section">
           <MarTable
-            v-if="filteredFavorites.length > 0"
             class="clickable-rows catalog-skill-table"
             @sort-change="pagination.sort"
             :data="filteredFavorites"
+            :aria-busy="catalogLoading"
             row-key="id"
             @row-click="showFavoriteDetails"
           >
+            <template v-if="catalogLoading" #loading>
+              <span role="progressbar" :aria-label="translate('common.loading')">
+                <BusyIndicator class="mar-read-loading-indicator" />
+              </span>
+            </template>
             <MarTableColumn
               prop="normalizedName"
               :label="translate('generated.skillSourceManagementPage.name')"
@@ -797,13 +824,6 @@ function scopeLabel(scope: string): string {
             </MarTableColumn>
           </MarTable>
 
-          <div v-else-if="!service.loading.value" class="skill-empty">
-            {{
-              service.favorites.value.length === 0
-                ? translate('generated.skillSourceManagementPage.noCatalogSkills')
-                : translate('generated.skillSourceManagementPage.noMatchingSkills')
-            }}
-          </div>
           <ManagementPagination
             :total="pagination.total.value"
             :page="pagination.page.value"

@@ -164,6 +164,13 @@ describe('management page service lifecycle', () => {
         hasMore: true
       })
       .mockRejectedValueOnce(refreshError)
+      .mockResolvedValueOnce({
+        entries: [{ id: 'first' }],
+        page: 1,
+        pageSize: 20,
+        total: 21,
+        hasMore: true
+      })
       .mockRejectedValueOnce(appendError)
       .mockResolvedValueOnce({
         entries: [{ id: 'second' }],
@@ -179,13 +186,18 @@ describe('management page service lifecycle', () => {
     await service.retry();
     expect(service.error.value).toBeUndefined();
     await expect(service.refresh()).rejects.toBe(refreshError);
-    expect(service.items.value).toEqual([{ id: 'first' }]);
+    expect(service.items.value).toEqual([]);
     expect(service.failure.value).toMatchObject({ page: 1, append: false });
     await service.loadMore();
+    expect(request).toHaveBeenCalledTimes(3);
+    await service.load();
+    expect(service.items.value).toEqual([{ id: 'first' }]);
+    await service.loadMore();
     expect(service.error.value).toBe(appendError);
+    expect(service.items.value).toEqual([{ id: 'first' }]);
     expect(service.failure.value).toMatchObject({ page: 2, append: true });
     await service.loadMore(true);
-    expect(request).toHaveBeenCalledTimes(4);
+    expect(request).toHaveBeenCalledTimes(5);
     await service.retry();
     expect(service.error.value).toBeUndefined();
     expect(service.items.value).toEqual([{ id: 'first' }, { id: 'second' }]);

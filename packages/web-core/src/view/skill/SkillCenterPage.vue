@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
-import { MarEmpty } from '@myagentroam/mar-ui/empty';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -24,6 +22,7 @@ import { skillErrorMessage } from '../../util/skill-errors.js';
 import SkillDetailsDialog, { type SkillDetails } from './SkillDetailsDialog.vue';
 import McpCenterPanel from './McpCenterPanel.vue';
 import ManagementPagination from '../settings/ManagementPagination.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { errorCode } from '../../util/api-error.js';
 
@@ -51,13 +50,13 @@ const selectedCategory = service.catalogPage.category;
 const activeConfigTab = ref<'available' | 'installed'>('available');
 const availablePagination = service.catalogPage;
 watchManagementPageFailure(availablePagination);
-const catalogReady = ref(false);
-const catalogLoadingVariant = computed(() => (catalogReady.value ? 'region' : 'page'));
+const catalogLoading = computed(
+  () => availablePagination.loading.value && !availablePagination.loadingMore.value
+);
 const detailsOpen = ref(false);
 const skillDetails = ref<SkillDetails>();
 const capabilityTab = ref<'skill' | 'mcp'>('skill');
-let targetsLoaded = false;
-let targetsLoading: Promise<void> | undefined;
+const targetsLoaded = ref(false);
 let activeInspection: { readonly key: string; readonly operation: Promise<void> } | undefined;
 const managedNodeIds = computed(
   () => new Set(service.managedTargets.value.nodes.map((node) => node.id))
@@ -82,31 +81,26 @@ const targetReady = computed(
     (targetKind.value === 'NODE' || effectiveWorkspaceId.value !== undefined)
 );
 const availableTags = service.catalogPage.tags;
-const filteredFavorites = service.favorites;
 const installedSkills = computed(() => service.target.value?.skills ?? []);
-const displayedFavorites = filteredFavorites;
+const displayedFavorites = service.favorites;
 // Installed skills are the Node's complete target snapshot, not directory pages.
 const displayedInstalledSkills = installedSkills;
 
 onMounted(() => {
   availablePagination.start();
   void run(service.loadCatalog);
+  void run(async () => {
+    await service.loadManagedTargets();
+    targetsLoaded.value = true;
+  });
 });
 onUnmounted(() => {
+  service.clearTarget();
   availablePagination.dispose();
 });
-watch(availablePagination.result, (result) => {
-  if (result !== undefined) catalogReady.value = true;
+watch([targetNodeId, effectiveWorkspaceId, targetReady], () => {
+  void run(inspectTarget);
 });
-watch(
-  [targetNodeId, targetWorkspaceId, targetKind],
-  () =>
-    void run(async () => {
-      await ensureTargets();
-      await inspectTarget();
-    }),
-  { immediate: true }
-);
 watch(targetNodes, (nodes) => {
   if (nodes.some((node) => node.id === targetNodeId.value)) return;
   const firstOnline = nodes.find((node) => node.connected && !node.disabled);
@@ -116,25 +110,6 @@ watch(targetNodes, (nodes) => {
 watch(activeConfigTab, (tab) => {
   if (tab === 'available') void run(service.loadCatalog);
 });
-async function ensureTargets(): Promise<void> {
-  if (targetsLoaded) return;
-  if (targetsLoading !== undefined) return targetsLoading;
-  targetsLoading = (async () => {
-    await service.loadManagedTargets();
-    targetsLoaded = true;
-    if (!targetNodes.value.some((node) => node.id === targetNodeId.value)) {
-      const firstOnline = targetNodes.value.find((node) => node.connected && !node.disabled);
-      targetNodeId.value = firstOnline?.id ?? targetNodes.value[0]?.id ?? '';
-      selectTargetNode();
-    }
-  })();
-  try {
-    await targetsLoading;
-  } finally {
-    targetsLoading = undefined;
-  }
-}
-
 async function run(operation: () => Promise<void>, success?: string): Promise<void> {
   try {
     await operation();
@@ -192,6 +167,7 @@ function formatUpdatedAt(timestamp: number): string {
 
 async function inspectTarget(): Promise<void> {
   if (!targetReady.value || targetNodeId.value === '') {
+    activeInspection = undefined;
     service.clearTarget();
     return;
   }
@@ -362,7 +338,7 @@ async function install(favorite: (typeof service.favorites.value)[number]): Prom
       operationStarted &&
       `${targetNodeId.value}:${effectiveWorkspaceId.value ?? ''}` === targetKey
     )
-      await inspectTarget();
+      await run(inspectTarget);
   }
 }
 
@@ -479,7 +455,7 @@ async function mutateCurrentTarget(operation: () => Promise<void>, success: stri
   } finally {
     targetMutationPending.value = false;
     if (`${targetNodeId.value}:${effectiveWorkspaceId.value ?? ''}` === targetKey)
-      await inspectTarget();
+      await run(inspectTarget);
   }
 }
 
@@ -586,7 +562,7 @@ function scopeLabel(scope: string): string {
         >
       </section>
       <MarAlert
-        v-if="targetNodes.length === 0"
+        v-if="targetsLoaded && targetNodes.length === 0"
         type="warning"
         :closable="false"
         :title="translate('generated.skillCenterPage.noManageableNodesAreAvailableForSkill')"
@@ -627,123 +603,114 @@ function scopeLabel(scope: string): string {
               </button>
             </div>
           </div>
-          <div
-            v-mar-loading:[catalogLoadingVariant]="
-              catalogReady
-                ? availablePagination.loading.value && !availablePagination.loadingMore.value
-                : service.loading.value
-            "
-            class="skill-table-section"
-          >
-            <template v-if="filteredFavorites.length > 0">
-              <MarTable
-                class="clickable-rows available-skill-table"
-                :data="displayedFavorites"
-                row-key="id"
-                @row-click="showFavoriteDetails"
-                @sort-change="availablePagination.sort"
+          <div class="skill-table-section">
+            <MarTable
+              class="clickable-rows available-skill-table"
+              :data="displayedFavorites"
+              :aria-busy="catalogLoading"
+              row-key="id"
+              @row-click="showFavoriteDetails"
+              @sort-change="availablePagination.sort"
+            >
+              <template v-if="catalogLoading" #loading>
+                <span role="progressbar" :aria-label="translate('common.loading')">
+                  <BusyIndicator class="mar-read-loading-indicator" />
+                </span>
+              </template>
+              <MarTableColumn
+                prop="normalizedName"
+                :label="translate('generated.skillSourceManagementPage.name')"
+                sortable="custom"
+                min-width="180"
+              />
+              <MarTableColumn
+                :label="translate('generated.skillDetailsDialog.availability')"
+                width="140"
+                class-name="skill-scope-column"
               >
-                <MarTableColumn
-                  prop="normalizedName"
-                  :label="translate('generated.skillSourceManagementPage.name')"
-                  sortable="custom"
-                  min-width="180"
-                />
-                <MarTableColumn
-                  :label="translate('generated.skillDetailsDialog.availability')"
-                  width="140"
-                  class-name="skill-scope-column"
-                >
-                  <template #default="{ row }">{{ scopeLabel(row.scope) }}</template>
-                </MarTableColumn>
-                <MarTableColumn
-                  prop="description"
-                  :label="translate('conversationTemplates.description')"
-                  min-width="280"
-                  show-overflow-tooltip
-                >
-                  <template #default="{ row }">
-                    {{
-                      row.description ||
-                      translate('generated.skillCenterPage.noDescriptionIsAvailableForThisSkill2')
-                    }}
-                  </template>
-                </MarTableColumn>
-                <MarTableColumn
-                  :label="translate('generated.skillDetailsDialog.tags')"
-                  min-width="150"
-                >
-                  <template #default="{ row }">
-                    <div v-if="row.featured || row.tags.length > 0" class="skill-tags">
-                      <MarTag v-if="row.featured" type="warning" effect="plain"
-                        >★ {{ translate('generated.skillCenterPage.featured2') }}</MarTag
-                      >
-                      <MarTag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
-                        tag
-                      }}</MarTag>
-                    </div>
-                  </template>
-                </MarTableColumn>
-                <MarTableColumn
-                  :label="translate('generated.skillSourceManagementPage.actions')"
-                  min-width="220"
-                >
-                  <template #default="{ row }">
-                    <div class="row-actions" @click.stop>
-                      <MarButton
-                        link
-                        :icon="marIcon('download')"
-                        :disabled="!targetReady || targetMutationPending"
-                        @click="install(row)"
-                        >{{ installLabel(row) }}</MarButton
-                      >
+                <template #default="{ row }">{{ scopeLabel(row.scope) }}</template>
+              </MarTableColumn>
+              <MarTableColumn
+                prop="description"
+                :label="translate('conversationTemplates.description')"
+                min-width="280"
+                show-overflow-tooltip
+              >
+                <template #default="{ row }">
+                  {{
+                    row.description ||
+                    translate('generated.skillCenterPage.noDescriptionIsAvailableForThisSkill2')
+                  }}
+                </template>
+              </MarTableColumn>
+              <MarTableColumn
+                :label="translate('generated.skillDetailsDialog.tags')"
+                min-width="150"
+              >
+                <template #default="{ row }">
+                  <div v-if="row.featured || row.tags.length > 0" class="skill-tags">
+                    <MarTag v-if="row.featured" type="warning" effect="plain"
+                      >★ {{ translate('generated.skillCenterPage.featured2') }}</MarTag
+                    >
+                    <MarTag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
+                      tag
+                    }}</MarTag>
+                  </div>
+                </template>
+              </MarTableColumn>
+              <MarTableColumn
+                :label="translate('generated.skillSourceManagementPage.actions')"
+                min-width="220"
+              >
+                <template #default="{ row }">
+                  <div class="row-actions" @click.stop>
+                    <MarButton
+                      link
+                      :icon="marIcon('download')"
+                      :disabled="
+                        !targetReady || targetMutationPending || service.targetLoading.value
+                      "
+                      @click="install(row)"
+                      >{{ installLabel(row) }}</MarButton
+                    >
+                    <div
+                      v-if="installingFavoriteId === row.id && showInstallProgress"
+                      class="skill-install-progress"
+                    >
+                      <span>{{
+                        translate('generated.skillCenterPage.installingAndValidatingTheSkillOnThe')
+                      }}</span>
                       <div
-                        v-if="installingFavoriteId === row.id && showInstallProgress"
-                        class="skill-install-progress"
-                      >
-                        <span>{{
+                        class="skill-install-progress__indicator"
+                        role="progressbar"
+                        :aria-label="
                           translate(
                             'generated.skillCenterPage.installingAndValidatingTheSkillOnThe'
                           )
-                        }}</span>
-                        <div
-                          class="skill-install-progress__indicator"
-                          role="progressbar"
-                          :aria-label="
-                            translate(
-                              'generated.skillCenterPage.installingAndValidatingTheSkillOnThe'
-                            )
-                          "
-                        />
-                      </div>
+                        "
+                      />
                     </div>
-                  </template>
-                </MarTableColumn>
-              </MarTable>
-              <ManagementPagination
-                :total="availablePagination.total.value"
-                :has-more="availablePagination.hasMore.value"
-                :page="availablePagination.page.value"
-                :mobile="availablePagination.mobileViewport.value"
-                :mobile-visible-count="availablePagination.mobileVisibleCount.value"
-                :loading="availablePagination.loading.value"
-                :loading-more="availablePagination.loadingMore.value"
-                @page="availablePagination.setPage"
-                :failed="availablePagination.failure.value !== undefined"
-                :incremental-failed="availablePagination.failure.value?.incremental === true"
-                :error="availablePagination.failure.value?.error"
-                :context-key="availablePagination.contextKey.value"
-                @retry="availablePagination.retry"
-                @load-more="availablePagination.loadMore"
-              />
-            </template>
-            <div v-else-if="!service.loading.value" class="skill-empty">
-              {{
-                service.favorites.value.length === 0
-                  ? translate('generated.skillCenterPage.noSkillsAreAvailableAddSkillsFrom2')
-                  : translate('generated.skillCenterPage.noMatchingSkills2')
-              }}
-            </div>
+                  </div>
+                </template>
+              </MarTableColumn>
+            </MarTable>
+            <ManagementPagination
+              v-if="availablePagination.result.value || availablePagination.loadingMore.value"
+              :total="availablePagination.total.value"
+              :has-more="availablePagination.hasMore.value"
+              :page="availablePagination.page.value"
+              :mobile="availablePagination.mobileViewport.value"
+              :mobile-visible-count="availablePagination.mobileVisibleCount.value"
+              :loading="availablePagination.loading.value"
+              :loading-more="availablePagination.loadingMore.value"
+              @page="availablePagination.setPage"
+              :failed="availablePagination.failure.value !== undefined"
+              :incremental-failed="availablePagination.failure.value?.incremental === true"
+              :error="availablePagination.failure.value?.error"
+              :context-key="availablePagination.contextKey.value"
+              @retry="availablePagination.retry"
+              @load-more="availablePagination.loadMore"
+            />
           </div>
         </MarTabPane>
 
@@ -751,110 +718,113 @@ function scopeLabel(scope: string): string {
           :label="translate('generated.skillCenterPage.installedSkills')"
           name="installed"
         >
-          <div v-mar-loading:region="service.targetLoading.value" class="skill-table-section">
-            <template v-if="(service.target.value?.skills.length ?? 0) > 0">
-              <MarTable
-                class="clickable-rows installed-skill-table"
-                :data="displayedInstalledSkills"
-                row-key="name"
-                @row-click="showInstalledDetails"
+          <div class="skill-table-section">
+            <MarTable
+              v-if="targetReady"
+              class="clickable-rows installed-skill-table"
+              :data="displayedInstalledSkills"
+              :aria-busy="service.targetLoading.value"
+              row-key="name"
+              @row-click="showInstalledDetails"
+            >
+              <template v-if="service.targetLoading.value" #loading>
+                <span role="progressbar" :aria-label="translate('common.loading')">
+                  <BusyIndicator class="mar-read-loading-indicator" />
+                </span>
+              </template>
+              <MarTableColumn
+                prop="name"
+                :label="translate('generated.skillSourceManagementPage.name')"
+                sortable
+                min-width="180"
+              />
+              <MarTableColumn
+                :label="translate('generated.skillDetailsDialog.status')"
+                min-width="160"
               >
-                <MarTableColumn
-                  prop="name"
-                  :label="translate('generated.skillSourceManagementPage.name')"
-                  sortable
-                  min-width="180"
-                />
-                <MarTableColumn
-                  :label="translate('generated.skillDetailsDialog.status')"
-                  min-width="160"
-                >
-                  <template #default="{ row }">
-                    <MarTag
-                      :type="row.localStatus === 'VALID' ? 'success' : 'warning'"
-                      effect="plain"
+                <template #default="{ row }">
+                  <MarTag
+                    :type="row.localStatus === 'VALID' ? 'success' : 'warning'"
+                    effect="plain"
+                  >
+                    {{ statusLabel(row) }}
+                  </MarTag>
+                </template>
+              </MarTableColumn>
+              <MarTableColumn
+                prop="description"
+                :label="translate('conversationTemplates.description')"
+                min-width="280"
+                show-overflow-tooltip
+              >
+                <template #default="{ row }">
+                  {{
+                    row.description ||
+                    translate('generated.skillCenterPage.noValidSkillDescriptionWasFound')
+                  }}
+                </template>
+              </MarTableColumn>
+              <MarTableColumn
+                :label="translate('generated.skillDetailsDialog.version')"
+                width="120"
+              >
+                <template #default="{ row }">{{
+                  row.install?.commitSha.slice(0, 8) ?? '—'
+                }}</template>
+              </MarTableColumn>
+              <MarTableColumn
+                :label="translate('generated.skillSourceManagementPage.actions')"
+                min-width="300"
+              >
+                <template #default="{ row }">
+                  <div class="row-actions" @click.stop>
+                    <MarButton
+                      v-if="matchingFavorite(row)"
+                      link
+                      :icon="marIcon('retry')"
+                      :disabled="
+                        !targetReady || targetMutationPending || service.targetLoading.value
+                      "
+                      @click="install(matchingFavorite(row)!)"
+                      >{{
+                        matchingFavorite(row)?.commitSha !== row.install?.commitSha
+                          ? translate('generated.skillCenterPage.update2')
+                          : translate('generated.skillCenterPage.reinstall2')
+                      }}</MarButton
                     >
-                      {{ statusLabel(row) }}
-                    </MarTag>
-                  </template>
-                </MarTableColumn>
-                <MarTableColumn
-                  prop="description"
-                  :label="translate('conversationTemplates.description')"
-                  min-width="280"
-                  show-overflow-tooltip
-                >
-                  <template #default="{ row }">
-                    {{
-                      row.description ||
-                      translate('generated.skillCenterPage.noValidSkillDescriptionWasFound')
-                    }}
-                  </template>
-                </MarTableColumn>
-                <MarTableColumn
-                  :label="translate('generated.skillDetailsDialog.version')"
-                  width="120"
-                >
-                  <template #default="{ row }">{{
-                    row.install?.commitSha.slice(0, 8) ?? '—'
-                  }}</template>
-                </MarTableColumn>
-                <MarTableColumn
-                  :label="translate('generated.skillSourceManagementPage.actions')"
-                  min-width="300"
-                >
-                  <template #default="{ row }">
-                    <div class="row-actions" @click.stop>
-                      <MarButton
-                        v-if="matchingFavorite(row)"
-                        link
-                        :icon="marIcon('retry')"
-                        :disabled="!targetReady || targetMutationPending"
-                        @click="install(matchingFavorite(row)!)"
-                        >{{
-                          matchingFavorite(row)?.commitSha !== row.install?.commitSha
-                            ? translate('generated.skillCenterPage.update2')
-                            : translate('generated.skillCenterPage.reinstall2')
-                        }}</MarButton
-                      >
-                      <MarButton
-                        link
-                        type="danger"
-                        :icon="marIcon('delete')"
-                        :disabled="!targetReady || targetMutationPending"
-                        @click="removeInstalled(row.name)"
-                        >{{ translate('generated.skillCenterPage.delete') }}</MarButton
-                      >
+                    <MarButton
+                      link
+                      type="danger"
+                      :icon="marIcon('delete')"
+                      :disabled="
+                        !targetReady || targetMutationPending || service.targetLoading.value
+                      "
+                      @click="removeInstalled(row.name)"
+                      >{{ translate('generated.skillCenterPage.delete') }}</MarButton
+                    >
+                    <div
+                      v-if="
+                        matchingFavorite(row)?.id === installingFavoriteId && showInstallProgress
+                      "
+                      class="skill-install-progress"
+                    >
+                      <span>{{
+                        translate('generated.skillCenterPage.installingAndValidatingTheSkillOnThe2')
+                      }}</span>
                       <div
-                        v-if="
-                          matchingFavorite(row)?.id === installingFavoriteId && showInstallProgress
-                        "
-                        class="skill-install-progress"
-                      >
-                        <span>{{
+                        class="skill-install-progress__indicator"
+                        role="progressbar"
+                        :aria-label="
                           translate(
                             'generated.skillCenterPage.installingAndValidatingTheSkillOnThe2'
                           )
-                        }}</span>
-                        <div
-                          class="skill-install-progress__indicator"
-                          role="progressbar"
-                          :aria-label="
-                            translate(
-                              'generated.skillCenterPage.installingAndValidatingTheSkillOnThe2'
-                            )
-                          "
-                        />
-                      </div>
+                        "
+                      />
                     </div>
-                  </template>
-                </MarTableColumn>
-              </MarTable>
-            </template>
-            <MarEmpty
-              v-else-if="service.target.value"
-              :description="translate('generated.skillCenterPage.thisTargetHasNoInstalledSkills')"
-            />
+                  </div>
+                </template>
+              </MarTableColumn>
+            </MarTable>
           </div>
         </MarTabPane>
       </MarTabs>
@@ -901,6 +871,7 @@ function scopeLabel(scope: string): string {
 }
 .skill-config-tabs :deep(.mar-ui-tab-pane) {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 .skill-filter-bar {
@@ -1000,15 +971,6 @@ function scopeLabel(scope: string): string {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
-}
-.skill-empty {
-  border: 1px dashed var(--mar-border-medium);
-  border-radius: 8px;
-  background: var(--mar-bg-subtle);
-  padding: 20px;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
-  text-align: center;
 }
 .target-panel {
   display: flex;

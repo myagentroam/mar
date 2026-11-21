@@ -43,6 +43,7 @@ export function createMcpCenterService<Scope extends string = string>(
   const installedCatalog = ref<readonly McpCatalogCard<Scope>[]>([]);
   let inspectionSequence = 0;
   const inspection = ref<McpTargetInspection>();
+  const inspecting = ref(false);
   const loading = ref(false);
   const loadedInstallations = computed(() => {
     const entries = new Map(installedCatalog.value.map((entry) => [entry.id, entry]));
@@ -77,6 +78,7 @@ export function createMcpCenterService<Scope extends string = string>(
   }
   function clearTarget(): void {
     inspectionSequence++;
+    inspecting.value = false;
     inspection.value = undefined;
     installedCatalog.value = [];
   }
@@ -92,11 +94,18 @@ export function createMcpCenterService<Scope extends string = string>(
     workspaceId: string
   ): Promise<void> {
     clearTarget();
-    const current = ++inspectionSequence;
-    await resolveInspection(
-      current,
-      await request<McpTargetInspection>(targetPath(kind, nodeId, workspaceId))
-    );
+    const current = inspectionSequence;
+    inspecting.value = true;
+    try {
+      await resolveInspection(
+        current,
+        await request<McpTargetInspection>(targetPath(kind, nodeId, workspaceId))
+      );
+    } catch (error) {
+      if (current === inspectionSequence) throw error;
+    } finally {
+      if (current === inspectionSequence) inspecting.value = false;
+    }
   }
 
   async function loadWorkspace(nodeId: string, workspaceId: string): Promise<void> {
@@ -149,6 +158,7 @@ export function createMcpCenterService<Scope extends string = string>(
     catalogPage,
     clearTarget,
     inspection,
+    inspecting,
     loadedInstallations,
     loading: computed(() => loading.value || catalogPage.loading.value),
     loadCatalog,

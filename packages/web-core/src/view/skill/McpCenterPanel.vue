@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
-import { MarEmpty } from '@myagentroam/mar-ui/empty';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -22,6 +20,7 @@ import { currentLocale, translate } from '../../service/locale-preference-servic
 import { errorCode } from '../../util/api-error.js';
 import { errorMessage as displayErrorMessage } from '../../util/workbench-presentation.js';
 import ManagementPagination from '../settings/ManagementPagination.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 
 const props = defineProps<{
   readonly scopeLabel?: (scope: string) => string;
@@ -39,15 +38,19 @@ const service = createMcpCenterService(props.request);
 const targetKind = ref<'NODE' | 'WORKSPACE'>('NODE');
 const targetNodeId = ref('');
 const targetWorkspaceId = ref('');
-const inspectionReady = ref(false);
-const pageLoading = computed(() => service.loading.value && !inspectionReady.value);
 const query = service.catalogPage.keyword;
 const selectedCategory = service.catalogPage.category;
 const activeConfigTab = ref<'available' | 'installed'>('available');
 const pagination = service.catalogPage;
+const tableLoading = computed(() =>
+  activeConfigTab.value === 'installed'
+    ? service.inspecting.value
+    : pagination.loading.value && !pagination.loadingMore.value
+);
 watchManagementPageFailure(pagination);
 const installingEntryId = ref('');
 const showInstallProgress = ref(false);
+const mutationPending = ref(false);
 const detailsOpen = ref(false);
 const details = ref<McpDetails>();
 const resources = ref<{
@@ -59,6 +62,7 @@ const resources = ref<{
   }[];
   workspaces: readonly { nodeId: string; workspaceId: string; displayName: string }[];
 }>({ nodes: [], workspaces: [] });
+const resourcesReady = ref(false);
 const targetNodes = computed(() =>
   props.nodes.filter((node) => resources.value.nodes.some((resource) => resource.id === node.id))
 );
@@ -84,6 +88,9 @@ const targetIssue = computed(() => {
   return '';
 });
 const targetReady = computed(() => targetIssue.value === '');
+const targetWriteDisabled = computed(
+  () => !targetReady.value || service.inspecting.value || mutationPending.value
+);
 const installedNames = computed(
   () => new Set(service.inspection.value?.installations.map((item) => item.serverName) ?? [])
 );
@@ -163,15 +170,15 @@ function showDetails(entry: (typeof entries.value)[number]): void {
 
 onMounted(() => {
   pagination.start();
+  void execute(service.loadCatalog);
   void initialize();
 });
-onUnmounted(() => pagination.dispose());
-watch([targetKind, targetNodeId, targetWorkspaceId], () => {
-  inspectionReady.value = false;
-  void inspect();
+onUnmounted(() => {
+  service.clearTarget();
+  pagination.dispose();
 });
-watch(service.inspection, (inspection) => {
-  if (inspection !== undefined) inspectionReady.value = true;
+watch([targetKind, targetNodeId, targetWorkspaceId], () => {
+  void inspect();
 });
 watch(targetNodes, (nodes) => {
   if (!nodes.some((node) => node.id === targetNodeId.value))
@@ -187,8 +194,8 @@ watch(activeConfigTab, (tab) => {
 
 async function initialize(): Promise<void> {
   await execute(async () => {
-    await service.loadCatalog();
     resources.value = await props.request<typeof resources.value>('/api/resources');
+    resourcesReady.value = true;
     targetNodeId.value =
       targetNodes.value.find((node) => node.connected && !node.disabled)?.id ??
       targetNodes.value[0]?.id ??
@@ -207,6 +214,8 @@ async function inspect(): Promise<void> {
 }
 
 async function install(entryId: string, enabled = true): Promise<void> {
+  if (targetWriteDisabled.value) return;
+  mutationPending.value = true;
   installingEntryId.value = entryId;
   showInstallProgress.value = false;
   const progressTimer = setTimeout(() => {
@@ -230,10 +239,15 @@ async function install(entryId: string, enabled = true): Promise<void> {
     clearTimeout(progressTimer);
     installingEntryId.value = '';
     showInstallProgress.value = false;
+    mutationPending.value = false;
   }
 }
 
 async function remove(serverName: string): Promise<void> {
+  if (targetWriteDisabled.value) return;
+  const kind = targetKind.value;
+  const nodeId = targetNodeId.value;
+  const workspaceId = targetWorkspaceId.value;
   try {
     await MarMessageBox.confirm(
       translate('generated.mcpCenterPanel.removeFromTheCurrentTarget', { value0: serverName }),
@@ -248,10 +262,22 @@ async function remove(serverName: string): Promise<void> {
   } catch {
     return;
   }
-  await execute(
-    () => service.remove(targetKind.value, targetNodeId.value, targetWorkspaceId.value, serverName),
-    translate('generated.mcpCenterPanel.mCPServerRemoved')
-  );
+  if (
+    targetWriteDisabled.value ||
+    kind !== targetKind.value ||
+    nodeId !== targetNodeId.value ||
+    (kind === 'WORKSPACE' && workspaceId !== targetWorkspaceId.value)
+  )
+    return;
+  mutationPending.value = true;
+  try {
+    await execute(
+      () => service.remove(kind, nodeId, workspaceId, serverName),
+      translate('generated.mcpCenterPanel.mCPServerRemoved')
+    );
+  } finally {
+    mutationPending.value = false;
+  }
 }
 
 async function execute(operation: () => Promise<void>, success?: string): Promise<void> {
@@ -295,7 +321,7 @@ function mcpErrorMessage(error: unknown): string {
 </script>
 
 <template>
-  <section v-mar-loading:page="pageLoading" class="mcp-panel">
+  <section class="mcp-panel">
     <section
       class="mcp-target-panel"
       :aria-label="translate('generated.mcpCenterPanel.mCPConfigurationTarget')"
@@ -347,7 +373,12 @@ function mcpErrorMessage(error: unknown): string {
         />
       </MarSelect>
     </section>
-    <MarAlert v-if="targetIssue" :title="targetIssue" type="info" :closable="false" />
+    <MarAlert
+      v-if="resourcesReady && targetIssue"
+      :title="targetIssue"
+      type="info"
+      :closable="false"
+    />
     <MarTabs v-model="activeConfigTab" class="mcp-config-tabs">
       <MarTabPane
         :label="translate('generated.mcpCenterPanel.availableMCPServers')"
@@ -382,22 +413,20 @@ function mcpErrorMessage(error: unknown): string {
         </button>
       </div>
     </div>
-    <div
-      v-mar-loading:region="
-        pagination.loading.value &&
-        !pagination.loadingMore.value &&
-        (inspectionReady || !targetReady)
-      "
-      class="mcp-table-section"
-    >
+    <div class="mcp-table-section">
       <MarTable
-        v-if="visibleEntries.length > 0"
         class="clickable-rows mcp-config-table"
         :data="displayedEntries"
+        :aria-busy="tableLoading"
         row-key="id"
         @row-click="showDetails"
         @sort-change="pagination.sort"
       >
+        <template v-if="tableLoading" #loading>
+          <span role="progressbar" :aria-label="translate('common.loading')">
+            <BusyIndicator class="mar-read-loading-indicator" />
+          </span>
+        </template>
         <MarTableColumn
           prop="displayName"
           :label="translate('generated.mcpSourceManagementPage.name')"
@@ -472,7 +501,7 @@ function mcpErrorMessage(error: unknown): string {
                 <MarButton
                   link
                   :icon="marIcon('power')"
-                  :disabled="!targetReady || !row.catalogAvailable"
+                  :disabled="targetWriteDisabled || !row.catalogAvailable"
                   @click="install(row.id, !installedByName.get(row.serverName)?.enabled)"
                   >{{
                     installedByName.get(row.serverName)?.enabled
@@ -484,7 +513,7 @@ function mcpErrorMessage(error: unknown): string {
                   v-if="row.catalogAvailable"
                   link
                   :icon="marIcon('retry')"
-                  :disabled="!targetReady"
+                  :disabled="targetWriteDisabled"
                   @click="install(row.id)"
                   >{{
                     hasTargetUpdate(row)
@@ -497,7 +526,7 @@ function mcpErrorMessage(error: unknown): string {
                   link
                   type="danger"
                   :icon="marIcon('delete')"
-                  :disabled="!targetReady"
+                  :disabled="targetWriteDisabled"
                   @click="remove(row.serverName)"
                   >{{ translate('generated.mcpCenterPanel.delete') }}</MarButton
                 >
@@ -506,7 +535,7 @@ function mcpErrorMessage(error: unknown): string {
                 <MarButton
                   link
                   :icon="marIcon('download')"
-                  :disabled="!targetReady"
+                  :disabled="targetWriteDisabled"
                   @click="install(row.id)"
                   >{{
                     installedNames.has(row.serverName)
@@ -536,14 +565,6 @@ function mcpErrorMessage(error: unknown): string {
           </template>
         </MarTableColumn>
       </MarTable>
-      <MarEmpty
-        v-else
-        :description="
-          activeConfigTab === 'installed'
-            ? translate('generated.mcpCenterPanel.thisTargetHasNoInstalledMCPServers')
-            : translate('generated.mcpCenterPanel.noMCPServersAreAvailableAddOne')
-        "
-      />
       <ManagementPagination
         v-if="activeConfigTab === 'available'"
         :total="pagination.total.value"
