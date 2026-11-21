@@ -1200,6 +1200,8 @@ test('Performance details toggle on click without a tooltip or arrow', async ({ 
   const trigger = page.locator('.web-performance-indicator');
   const panel = page.locator('.web-performance-panel');
   const popover = page.locator('.mar-ui-popover').filter({ has: panel });
+  await expect(trigger).toHaveCSS('border-top-width', '0px');
+  await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await page.clock.install();
   await trigger.hover();
   await trigger.focus();

@@ -571,7 +571,8 @@ function runBlankMenuCommand(command: string): void {
   font-size: 22px;
 }
 
-.activity-rail nav button.active:not(:disabled) {
+.activity-rail nav button.active:not(:disabled),
+.activity-rail-footer :deep(button.nav-menu-button[aria-expanded='true']:not(:disabled)) {
   background: var(--mar-fill-selection);
   color: var(--mar-color-brand-text);
 }
