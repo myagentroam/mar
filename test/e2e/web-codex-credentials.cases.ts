@@ -2283,11 +2283,14 @@ test('Enterprise model grants and organization credential ownership reuse shared
   const row = page.locator('.mar-ui-table__row').filter({ hasText: 'GPT Codex Catalog' });
   await row.getByRole('button', { name: '授权', exact: true }).click();
   const grantDialog = page.getByRole('dialog');
+  const grantAction = grantDialog.getByRole('button', { name: '授权', exact: true });
+  await expect(grantAction).toBeVisible();
+  await expect(grantAction.locator('[data-mar-icon]')).toHaveCount(0);
   await grantDialog.getByRole('combobox').first().click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
   await grantDialog.locator('.mar-ui-cascader input').fill('Platform');
-  await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
-  await grantDialog.getByRole('button', { name: '授权', exact: true }).click();
+  await page.getByRole('button', { name: 'Root / Platform', exact: true }).click();
+  await grantAction.click();
   await expect(grantDialog.getByRole('button', { name: '撤销', exact: true })).toBeVisible();
   expect(writes).toEqual([
     { resourceType: 'MODEL', modelId, targetType: 'ORGANIZATION', targetOrganizationId: 7 }
@@ -2301,10 +2304,10 @@ test('Enterprise model grants and organization credential ownership reuse shared
   await expect(credentialDialog.locator('.mar-ui-form-item__error')).toBeVisible();
   expect(loginWrites).toHaveLength(0);
   await credentialDialog.getByRole('textbox').first().fill('Organization Codex');
-  await credentialDialog.getByRole('combobox').click();
+  await credentialDialog.getByRole('combobox', { name: '凭据作用域', exact: true }).click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
   await credentialDialog.locator('.mar-ui-cascader input').fill('Platform');
-  await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
+  await page.getByRole('button', { name: 'Root / Platform', exact: true }).click();
   await credentialDialog.getByRole('button', { name: '开始设备登录', exact: true }).click();
   await expect.poll(() => loginWrites.length).toBe(1);
   expect(loginWrites).toEqual([

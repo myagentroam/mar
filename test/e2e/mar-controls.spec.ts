@@ -34,6 +34,7 @@ test('Button-shaped links match native button geometry without a global box-sizi
 test('Standard actions with and without icons align outside a dialog, including while busy', async ({
   page
 }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const [width, theme] of [
     [1280, 'light'],
     [390, 'dark']
@@ -43,19 +44,47 @@ test('Standard actions with and without icons align outside a dialog, including 
     const row = page.getByRole('region', { name: 'Standard actions' });
     const cancel = row.getByRole('button', { name: 'Cancel' });
     const create = row.getByRole('button', { name: 'Create' });
+    const open = row.getByRole('link', { name: 'Open', exact: true });
+    const refresh = row.getByRole('button', { name: 'Refresh' });
+    const iconLink = row.getByRole('link', { name: 'Open destination' });
     await expect(create).toBeVisible();
     // Exercise both the default density and larger root-relative button padding.
     for (const rootFontSize of ['', '20px']) {
       await page.evaluate((size) => (document.documentElement.style.fontSize = size), rootFontSize);
       const initial = (await cancel.boundingBox())!;
+      const labelSize = await create.evaluate((button) =>
+        parseFloat(getComputedStyle(button).fontSize)
+      );
+      expect((await open.locator('[data-mar-icon]').boundingBox())!.height).toBeCloseTo(
+        labelSize,
+        1
+      );
       for (const busy of [false, true]) {
         if (busy) {
           await row.getByRole('button', { name: 'Toggle busy' }).click();
           await expect(create).toHaveAttribute('aria-busy', 'true');
+          await expect(iconLink).not.toHaveAttribute('href');
+        }
+        for (const action of [refresh, iconLink]) {
+          await expect(action.locator('[data-mar-icon]')).toHaveCSS(
+            'height',
+            `${width < 768 ? 18 : labelSize}px`
+          );
         }
         const iconButton = (await create.boundingBox())!;
         const textButton = (await cancel.boundingBox())!;
         const icon = (await create.locator('[data-mar-icon]').boundingBox())!;
+        expect(icon.height, `${width}px viewport, busy: ${busy}`).toBeCloseTo(labelSize, 1);
+        expect(icon.width).toBeCloseTo(labelSize, 1);
+        if (busy) {
+          const spinner = (await cancel.locator('[data-mar-icon="loading-action"]').boundingBox())!;
+          expect(spinner.height).toBeCloseTo(labelSize, 1);
+          expect(spinner.y + spinner.height / 2).toBeCloseTo(
+            textButton.y + textButton.height / 2,
+            0
+          );
+        }
+        expect(iconButton.height).toBeCloseTo(initial.height, 0);
         expect(iconButton.height).toBeCloseTo(textButton.height, 0);
         expect(iconButton.y).toBeCloseTo(textButton.y, 0);
         expect(textButton.height).toBeCloseTo(initial.height, 0);

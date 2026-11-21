@@ -145,11 +145,6 @@ function handleClick(event: MouseEvent): void {
 .mar-ui-button:where(
   :has(> .mar-ui-button__label):not(.mar-ui-button--inline, .mar-icon-action, .mar-text-action)
 ) {
-  /* Reserve the same single-line space even if there is no icon. Longer labels can still wrap. */
-  min-block-size: max(
-    var(--mar-ui-compact-control-size, 24px),
-    calc(var(--mar-ui-button-icon-size) + 2 * var(--mar-ui-button-padding-block) + 2px)
-  );
   vertical-align: middle;
 }
 
@@ -294,8 +289,13 @@ function handleClick(event: MouseEvent): void {
 }
 
 @media (max-width: 767px) {
-  .mar-ui-button {
+  .mar-ui-button:not(:has(> .mar-ui-button__label)) {
     --mar-ui-button-icon-size: var(--mar-ui-action-icon-size, 18px);
+  }
+
+  /* Labeled actions keep their glyph and spinner aligned with the label, not the tool icon scale. */
+  .mar-ui-button:where(:has(> .mar-ui-button__label)) > .mar-ui-button__icon > :deep(.mar-icon) {
+    font-size: inherit;
   }
 }
 

@@ -750,11 +750,11 @@ for (const theme of ['dark', 'light']) {
       if (mobile) {
         await expect(attachment).toHaveCSS('width', '16px');
         await expect(attachment).toHaveCSS('height', '16px');
-        for (const graphic of [copy, edit.locator('.mar-icon')]) {
-          await expect(graphic).toHaveCSS('width', '18px');
-          await expect(graphic).toHaveCSS('height', '18px');
-        }
-        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '18px');
+        await expect(copy).toHaveCSS('width', '18px');
+        await expect(copy).toHaveCSS('height', '18px');
+        await expect(edit.locator('.mar-icon')).toHaveCSS('width', '11px');
+        await expect(edit.locator('.mar-icon')).toHaveCSS('height', '11px');
+        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '11px');
         await expect(edit).toHaveCSS('font-size', '11px');
         await expect(page.locator('.composer-access-select .mar-icon')).not.toHaveCSS(
           'width',

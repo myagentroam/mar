@@ -97,7 +97,7 @@ async function visit(page: Page, kind: string, theme = 'daylight'): Promise<void
   await page.goto(`${fixture.url}dialog-layout.html?kind=${kind}&theme=${theme}`);
 }
 
-test('Node registration aligns icon and text-only actions, and wraps them without overflow', async ({
+test('Node registration uses text-only footer actions and wraps them without overflow', async ({
   page
 }, testInfo) => {
   for (const [width, theme] of [
@@ -107,17 +107,32 @@ test('Node registration aligns icon and text-only actions, and wraps them withou
   ] as const) {
     await page.setViewportSize({ width, height: 720 });
     await visit(page, 'node-registration', theme);
+    const register = page.getByRole('button', { name: 'Register Node', exact: true });
+    const toolbar = page.locator('.mar-table-actions').filter({ has: register });
+    await expect(register).toBeVisible();
+    const registerBox = (await register.boundingBox())!;
+    for (const name of ['Refresh', 'Register Node', 'Push all']) {
+      const action = toolbar.getByRole('button', { name, exact: true });
+      const fontSize = await action.evaluate((button) => getComputedStyle(button).fontSize);
+      await expect(action.locator('[data-mar-icon]')).toHaveCSS('height', fontSize);
+      const box = (await action.boundingBox())!;
+      expect(box.height).toBeCloseTo(registerBox.height, 0);
+      if (width !== 320) expect(box.y).toBeCloseTo(registerBox.y, 0);
+    }
+    await toolbar.screenshot({ path: testInfo.outputPath(`node-actions-${width}.png`) });
     if (width === 320) {
       await page.addStyleTag({
         content: '.mar-ui-dialog__footer { --mar-ui-font-size-meta: 18px; }'
       });
     }
-    await page.getByRole('button', { name: 'Register Node', exact: true }).click();
+    await register.click();
     const dialog = page.getByRole('dialog', { name: 'Register Node' });
     await expectBounded(dialog);
     const footer = dialog.locator('.mar-ui-dialog__footer');
     const close = footer.getByRole('button', { name: 'Close', exact: true });
     const create = footer.getByRole('button', { name: 'Create registration key' });
+    await expect(close.locator('[data-mar-icon]')).toHaveCount(0);
+    await expect(create.locator('[data-mar-icon]')).toHaveCount(0);
     const footerBox = (await footer.boundingBox())!;
     const closeBox = (await close.boundingBox())!;
     const createBox = (await create.boundingBox())!;

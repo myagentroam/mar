@@ -521,7 +521,9 @@ describe('Enterprise management components', () => {
       expect(cascader.props).toHaveProperty('filterable');
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 3);
-      await trigger(button(view, 'Grant'), 'onClick');
+      const submit = button(view, 'Grant');
+      expect(submit.props['icon']).toBeUndefined();
+      await trigger(submit, 'onClick');
       expect(request).toHaveBeenCalledWith('/api/resource-grants', {
         method: 'POST',
         body: JSON.stringify({
@@ -566,7 +568,9 @@ describe('Enterprise management components', () => {
       const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 3);
-      await trigger(button(view, 'Grant'), 'onClick');
+      const submit = button(view, 'Grant');
+      expect(submit.props['icon']).toBeUndefined();
+      await trigger(submit, 'onClick');
       expect(request).toHaveBeenCalledWith('/api/resource-grants', {
         method: 'POST',
         body: JSON.stringify({

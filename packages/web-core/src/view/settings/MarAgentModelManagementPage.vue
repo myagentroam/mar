@@ -2223,7 +2223,6 @@ onBeforeUnmount(() => {
         }}</MarButton>
         <MarButton
           type="primary"
-          :icon="marIcon('connection')"
           :disabled="!modelTestNodeId"
           :loading="testingIds.has(modelTestModel.id)"
           @click="test(modelTestModel)"
