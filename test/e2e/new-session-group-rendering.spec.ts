@@ -395,6 +395,10 @@ for (const width of [1280, 390]) {
     page
   }) => {
     const { main } = await openWorkspace(page, true, true);
+    // Let the initial Main directory settle before simulating a newly discovered session.
+    await expect(page.locator('.conversation-sidebar .sidebar-empty')).toHaveText(
+      /^(No main sessions|暂无主会话)$/u
+    );
     await emitMockWorkspaceSnapshot(page, 'sessions', { sessions: [main], sessionGroup: 'MAIN' });
     await page
       .locator('.session-row')

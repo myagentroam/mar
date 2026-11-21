@@ -133,7 +133,7 @@ for (const { theme, width } of [
       'Normal'
     ]);
     const { primary, secondary, meta, fontSize } = await sessionListColors(list);
-    expect(meta).toBe(theme === 'daylight' ? 'rgb(90, 104, 122)' : 'rgb(166, 174, 185)');
+    expect(meta).toBe(theme === 'daylight' ? 'rgb(90, 104, 122)' : 'rgb(160, 160, 160)');
     expect(primary).not.toBe(secondary);
     expect(secondary).not.toBe(meta);
     const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
@@ -1691,7 +1691,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const button of await picker.locator('.workspace-picker-toolbar-actions button').all()) {
         const bounds = (await button.boundingBox())!;
         expect(bounds.width).toBeGreaterThanOrEqual(28);
-        expect(bounds.height).toBeGreaterThanOrEqual(28);
+        expect(bounds.height).toBe(width < 768 ? 24 : 26);
         await expect(button.locator('svg')).toHaveCount(1);
       }
       const rowColors = await picker.evaluate((element) => {

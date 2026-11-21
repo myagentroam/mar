@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import './file-tooltip-trigger.css';
+import '../../styles/code-syntax-theme.css';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
@@ -1003,7 +1004,7 @@ defineExpose({
           @pointerup="onMinimapPointerUp"
           @pointercancel="onMinimapPointerUp"
         >
-          <div class="diff-minimap-content" aria-hidden="true">
+          <div class="diff-minimap-content mar-code-syntax" aria-hidden="true">
             <span
               v-for="(row, index) in minimapRows"
               :key="index"

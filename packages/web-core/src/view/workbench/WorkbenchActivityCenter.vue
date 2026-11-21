@@ -297,10 +297,10 @@ onBeforeUnmount(() => {
 .activity-center-trigger.active {
   --activity-marker-surface: var(--mar-fill-selection);
   background: var(--mar-fill-selection);
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 .activity-center-trigger:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-text-muted);
   outline-offset: -2px;
 }
 .activity-entry-count {

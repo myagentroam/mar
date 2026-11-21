@@ -1,4 +1,4 @@
-/* Shared syntax palette for the file editor and static Markdown code, not editor surfaces. */
+/* Shared syntax for the editor, conversation code blocks, and workbench code previews. */
 .mar-code-syntax {
   --mar-editor-keyword: #0000ff;
   --mar-editor-control-keyword: #af00db;
@@ -17,18 +17,84 @@
 }
 
 html[data-theme='vscode-dark-2026'] .mar-code-syntax {
-  --mar-editor-keyword: #569cd6;
-  --mar-editor-control-keyword: #c586c0;
-  --mar-editor-variable: #9cdcfe;
-  --mar-editor-property: #9cdcfe;
-  --mar-editor-function: #dcdcaa;
-  --mar-editor-type: #4ec9b0;
-  --mar-editor-string: #ce9178;
-  --mar-editor-number: #b5cea8;
-  --mar-editor-comment: #6a9955;
-  --mar-editor-regexp: #d16969;
-  --mar-editor-operator: #d4d4d4;
-  --mar-editor-invalid: #f44747;
-  --mar-editor-heading: #569cd6;
-  --mar-editor-link: #4daafc;
+  --mar-editor-keyword: #9bbcf2;
+  --mar-editor-control-keyword: #c7a8df;
+  --mar-editor-variable: #c5d2df;
+  --mar-editor-property: #9ec3d9;
+  --mar-editor-function: #dcc08d;
+  --mar-editor-type: #8bc6b4;
+  --mar-editor-string: #d0a98b;
+  --mar-editor-number: #b4cb9e;
+  --mar-editor-comment: var(--mar-text-muted);
+  --mar-editor-regexp: #dd9c9e;
+  --mar-editor-operator: var(--mar-text-primary);
+  --mar-editor-invalid: var(--mar-color-danger-text);
+  --mar-editor-heading: #9bbcf2;
+  --mar-editor-link: var(--mar-control-link-text);
+}
+
+html[data-theme='vscode-dark-2026'] .mar-code-syntax.hljs {
+  color: var(--mar-editor-operator);
+  background: var(--mar-fill-subtle);
+}
+html[data-theme='vscode-dark-2026'] :where(.mar-code-syntax) :is(.hljs-comment, .hljs-punctuation) {
+  color: var(--mar-editor-comment);
+}
+html[data-theme='vscode-dark-2026']
+  :where(.mar-code-syntax)
+  :is(
+    .hljs-attr,
+    .hljs-attribute,
+    .hljs-meta,
+    .hljs-selector-attr,
+    .hljs-selector-class,
+    .hljs-selector-id,
+    .hljs-selector-pseudo
+  ) {
+  color: var(--mar-editor-property);
+}
+html[data-theme='vscode-dark-2026']
+  :where(.mar-code-syntax)
+  :is(.hljs-variable, .hljs-template-variable) {
+  color: var(--mar-editor-variable);
+}
+html[data-theme='vscode-dark-2026']
+  :where(.mar-code-syntax)
+  :is(.hljs-doctag, .hljs-keyword, .hljs-meta .hljs-keyword, .hljs-template-tag) {
+  color: var(--mar-editor-keyword);
+}
+html[data-theme='vscode-dark-2026']
+  :where(.mar-code-syntax)
+  :is(.hljs-type, .hljs-built_in, .hljs-title.class_) {
+  color: var(--mar-editor-type);
+}
+html[data-theme='vscode-dark-2026']
+  :where(.mar-code-syntax)
+  :is(.hljs-literal, .hljs-number, .hljs-symbol) {
+  color: var(--mar-editor-number);
+}
+html[data-theme='vscode-dark-2026']
+  :where(.mar-code-syntax)
+  :is(.hljs-name, .hljs-quote, .hljs-selector-tag, .hljs-title.function_) {
+  color: var(--mar-editor-function);
+}
+html[data-theme='vscode-dark-2026'] :where(.mar-code-syntax) .hljs-string {
+  color: var(--mar-editor-string);
+}
+html[data-theme='vscode-dark-2026'] :where(.mar-code-syntax) .hljs-regexp {
+  color: var(--mar-editor-regexp);
+}
+html[data-theme='vscode-dark-2026'] :where(.mar-code-syntax) .hljs-section {
+  color: var(--mar-editor-control-keyword);
+}
+html[data-theme='vscode-dark-2026']
+  :where(.mar-code-syntax)
+  .hljs-title:not(:where(.class_, .function_)) {
+  color: var(--mar-editor-control-keyword);
+}
+html[data-theme='vscode-dark-2026'] :where(.mar-code-syntax) .hljs-emphasis {
+  font-style: italic;
+}
+html[data-theme='vscode-dark-2026'] :where(.mar-code-syntax) .hljs-strong {
+  font-weight: 600;
 }

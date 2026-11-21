@@ -2054,39 +2054,36 @@ test('uses the bright daylight palette with accessible interactive and text colo
     expect(contrast(daylight[foreground!]!, daylight[background!]!)).toBeGreaterThanOrEqual(4.5);
   }
 });
-test('uses the dark palette with distinct surfaces and readable button text', async ({ page }) => {
+test('uses neutral near-black surfaces with readable text, feedback, and controls', async ({
+  page
+}) => {
   await page.goto(fixture.url + 'conversation-style.html?theme=vscode-dark-2026');
   const dark = await paletteColors(page);
-  expect(dark['--mar-bg-page']).toBe('#14181e');
-  expect(dark['--mar-bg-panel']).toBe('#1c222b');
-  expect(dark['--mar-bg-chrome']).toBe('#181e26');
+  expect(dark['--mar-bg-page']).toBe('#181818');
+  expect(dark['--mar-bg-panel']).toBe('#1b1b1b');
+  expect(dark['--mar-bg-chrome']).toBe('#181818');
   for (const [role, color] of Object.entries({
-    canvas: '#14181e',
-    surface: '#181e26',
-    process: '#111720',
-    border: '#313d50',
-    'process-border': '#202a39',
-    code: '#111720'
+    canvas: '#131313',
+    surface: '#1f1f1f',
+    process: '#181818',
+    border: '#383838',
+    'process-border': '#2c2c2c',
+    code: '#191919'
   })) {
     expect(dark[`--mar-conversation-${role}`]).toBe(color);
   }
-  expect(dark['--mar-control-bg-color-overlay']).toBe('#1a2230');
-  expect(dark['--mar-bg-tab-inactive']).toBe('#181e26');
-  expect(dark['--mar-border-default']).toBe('#374255');
-  expect(dark['--mar-border-subtle']).toBe('#2f3949');
-  expect(dark['--mar-color-brand']).toBe('#1f73cf');
-  expect(dark['--mar-color-brand-hover']).toBe('#1a65b8');
-  expect(dark['--mar-color-brand-selected']).toBe('#162c44');
-  expect(dark['--mar-color-on-accent']).toBe('#ffffff');
-  expect(
-    contrast(dark['--mar-color-brand-text']!, dark['--mar-color-brand-selected']!)
-  ).toBeGreaterThanOrEqual(4.5);
-  expect(dark['--mar-color-accent']).toBe('#5edcec');
-  expect(dark['--mar-control-color-success']).toBe('#62d6a4');
-  expect(dark['--mar-text-primary']).toBe('#e2e8f0');
-  expect(dark['--mar-text-secondary']).toBe('#c3cad4');
-  expect(dark['--mar-text-muted']).toBe('#a6aeb9');
-  expect(dark['--mar-text-disabled']).toBe('#8799b1');
+  expect(dark['--mar-control-bg-color-overlay']).toBe('#242424');
+  expect(dark['--mar-fill-selection']).toBe('#303030');
+  for (const [token, color] of Object.entries(dark)) {
+    if (
+      !/^--mar-(?:bg-|fill-|border-|text-|table-|control-(?:fill|border)-|scrollbar-|shadow-|overlay-)/u.test(
+        token
+      )
+    )
+      continue;
+    if (token === '--mar-overlay-surface') continue; // Derived from the tested overlay fill.
+    expect(color, token).toMatch(/^#([\da-f]{2})\1\1(?:[\da-f]{2})?$/u);
+  }
   for (const surface of [
     '--mar-bg-page',
     '--mar-bg-chrome',
@@ -2118,8 +2115,18 @@ test('uses the dark palette with distinct surfaces and readable button text', as
   ]) {
     expect(contrast(dark['--mar-color-on-accent']!, dark[brandState]!)).toBeGreaterThanOrEqual(4.5);
   }
-  expect(dark['--mar-shadow-medium']).toBe('#00000047');
-  expect(dark['--mar-overlay-scrim']).toBe('#0000007a');
+  for (const [text, surface] of [
+    ['brand-text', 'brand-selected'],
+    ['success-text', 'success-bg'],
+    ['warning-text', 'warning-bg'],
+    ['danger-text', 'danger-bg'],
+    ['accent', 'accent-bg']
+  ] as const) {
+    expect(
+      contrast(dark[`--mar-color-${text}`]!, dark[`--mar-color-${surface}`]!),
+      text
+    ).toBeGreaterThanOrEqual(4.5);
+  }
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
@@ -2139,7 +2146,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     expect(selected).not.toBe(colors['--mar-color-brand-selected']);
     for (const text of ['--mar-text-primary', '--mar-text-secondary'])
       expect(contrast(colors[text]!, selected)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(colors['--mar-color-brand-text']!, selected)).toBeGreaterThanOrEqual(3);
     for (const background of ['--mar-bg-panel', '--mar-bg-chrome'])
       expect(contrast(selected, colors[background]!)).toBeGreaterThan(
         contrast(hover, colors[background]!)

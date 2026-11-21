@@ -134,6 +134,7 @@ onBeforeUnmount(pause);
 }
 .mar-ui-message__close {
   align-self: start;
+  font-size: inherit;
   min-inline-size: 1.5em;
   inline-size: 1.5em;
   min-block-size: 1.5em;

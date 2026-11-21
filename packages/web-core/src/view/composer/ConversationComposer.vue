@@ -371,9 +371,9 @@ const emit = defineEmits<{
   margin: 0 0 -1px 0.55rem;
   overflow: hidden;
   border: 1px solid var(--mar-border-medium);
-  border-bottom-color: var(--mar-bg-panel);
+  border-bottom-color: light-dark(var(--mar-bg-panel), var(--mar-conversation-surface));
   border-radius: var(--mar-radius-control) var(--mar-radius-control) 0 0;
-  background: var(--mar-bg-panel);
+  background: light-dark(var(--mar-bg-panel), var(--mar-conversation-surface));
   color: var(--mar-color-brand-text);
   padding: 0.08rem 0.5rem 0.08rem 0.42rem;
   pointer-events: none;
@@ -386,7 +386,7 @@ const emit = defineEmits<{
 
 .composer:focus-within .composer-working {
   border-color: var(--mar-color-brand);
-  border-bottom-color: var(--mar-bg-panel);
+  border-bottom-color: light-dark(var(--mar-bg-panel), var(--mar-conversation-surface));
 }
 
 .composer-working > .composer-busy-indicator {
@@ -401,7 +401,7 @@ const emit = defineEmits<{
   overflow: hidden;
   border: 1px solid var(--mar-border-medium);
   border-radius: var(--mar-radius-surface);
-  background: var(--mar-bg-panel);
+  background: light-dark(var(--mar-bg-panel), var(--mar-conversation-surface));
   box-shadow: none;
 }
 

@@ -1,5 +1,5 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
-import { h, ref } from 'vue';
+import { computed, h, ref } from 'vue';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -132,6 +132,7 @@ const app = createApp({
       };
       const restoringPath = ref<string>();
       const changesRefreshing = ref(false);
+      let finishChangesRefresh: (() => void) | undefined;
       const watchRetryFixture = new URL(location.href).searchParams.has('watch-retry');
       const watchStatus = ref<'failed' | 'loading' | 'ready'>(
         watchRetryFixture ? 'failed' : 'ready'
@@ -144,6 +145,9 @@ const app = createApp({
           onRetryWatch: () => (watchStatus.value = 'loading')
         });
       const service = {
+        changes: computed(() =>
+          watchStatus.value === 'ready' ? { branch: 'develop' } : undefined
+        ),
         repositories: ref([
           {
             repositoryPath: '',
@@ -192,8 +196,11 @@ const app = createApp({
         changesError: ref(false),
         changesFailureCause: ref(undefined),
         restoringPath,
-        loadChanges: async () => {
+        loadChanges: () => {
+          const refresh = Promise.withResolvers<void>();
+          finishChangesRefresh = refresh.resolve;
           changesRefreshing.value = true;
+          return refresh.promise;
         },
         retryChanges: async () => undefined,
         restoreChange: async () => undefined
@@ -224,6 +231,8 @@ const app = createApp({
                   onClick: () => {
                     changesRefreshing.value = false;
                     service.repositories.value = [...service.repositories.value];
+                    finishChangesRefresh?.();
+                    finishChangesRefresh = undefined;
                   }
                 },
                 () => 'Finish Changes refresh'

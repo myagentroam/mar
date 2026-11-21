@@ -457,7 +457,7 @@ function activate(tab: WorkspaceTab): void {
             <MarDropdownItem
               v-for="tab in tabs"
               :key="tab.id"
-              :class="{ active: activeTabId === tab.id }"
+              :aria-current="activeTabId === tab.id ? 'true' : undefined"
               :command="tab.id"
             >
               <span>{{ tab.label }}</span>
@@ -654,10 +654,6 @@ function activate(tab: WorkspaceTab): void {
   font-size: var(--mar-font-size-meta);
 }
 
-:global(.workspace-tab-menu-list .mar-ui-dropdown-item.active) {
-  color: var(--mar-color-brand);
-}
-
 .workspace-tab {
   position: relative;
   display: flex;
@@ -742,7 +738,7 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab > button:first-child:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-text-muted);
   outline-offset: -2px;
 }
 

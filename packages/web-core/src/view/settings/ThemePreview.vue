@@ -172,9 +172,9 @@ const { t } = useI18n();
   margin-left: 0.7rem;
   margin-bottom: 0.5rem;
   padding: 0.4rem 0.5rem;
-  background: color-mix(in srgb, var(--mar-color-brand) 6%, var(--mar-conversation-surface));
+  background: var(--mar-conversation-surface);
   color: var(--mar-text-primary);
-  border: 1px solid color-mix(in srgb, var(--mar-color-brand) 8%, var(--mar-conversation-border));
+  border: 1px solid var(--mar-conversation-border);
   border-radius: var(--mar-radius-surface);
 }
 .assistant-message {

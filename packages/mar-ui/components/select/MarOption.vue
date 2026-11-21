@@ -74,6 +74,8 @@ if (unregister) onBeforeUnmount(unregister);
   gap: 0.375rem;
   min-height: var(--mar-ui-compact-control-size);
   padding-inline: var(--mar-ui-compact-option-padding-inline);
+  color: var(--mar-ui-text-primary);
+  font-weight: 400;
   cursor: pointer;
 }
 .mar-ui-option[hidden] {
@@ -97,11 +99,10 @@ if (unregister) onBeforeUnmount(unregister);
     white-space: var(--mar-ui-select-active-label-space, nowrap);
   }
 }
-.mar-ui-option[aria-selected='true']:not([aria-disabled='true']) {
-  color: var(--mar-ui-color-brand);
-  font-weight: 600;
+.mar-ui-option[aria-selected='true'] {
+  background: var(--mar-ui-fill-selection);
 }
-.mar-ui-option:not([aria-disabled='true']):hover {
+.mar-ui-option:not([aria-disabled='true'], [aria-selected='true']):hover {
   background: var(--mar-ui-fill-row-hover);
 }
 .mar-ui-option--active:not([aria-disabled='true']) {

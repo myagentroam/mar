@@ -14,6 +14,19 @@ const componentAliases = {
   '--mar-ui-message-surface': '--mar-control-bg-color-overlay'
 };
 
+function colorContrast(color: string, background: string): number {
+  const luminance = (value: string): number => {
+    const hex = resolvedColorToHex(value);
+    const channels = [1, 3, 5].map((offset) => {
+      const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+  };
+  const values = [luminance(color), luminance(background)].sort((a, b) => b - a);
+  return (values[0]! + 0.05) / (values[1]! + 0.05);
+}
+
 async function useThemeMenu(page: Page, option: Locator, action: string): Promise<void> {
   await option.getByRole('button', { name: /^More actions for / }).click();
   await page.getByRole('menuitem', { name: action, exact: true }).click();
@@ -646,7 +659,7 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     { themeId: 'daylight', snapshot: JSON.stringify(dark), expected: '#f7f9fd' },
     { themeId: null, snapshot: JSON.stringify(light) }
   ];
-  for (const { themeId, snapshot, expected = '#14181e' } of cases) {
+  for (const { themeId, snapshot, expected = '#181818' } of cases) {
     await page.evaluate(
       ({ themeId, snapshot }) => {
         if (themeId) localStorage.setItem('mar.theme', themeId);
@@ -658,6 +671,10 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     );
     await page.goto(consoleUrl);
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', expected);
+    await expect(page.locator('.mar-bootstrap__trace')).toHaveCSS(
+      'color',
+      themeId === 'daylight' ? 'rgb(10, 111, 216)' : 'rgb(105, 169, 240)'
+    );
     expect(await page.locator('html').evaluate((root) => root.classList.contains('dark'))).toBe(
       themeId !== 'daylight'
     );
@@ -755,18 +772,6 @@ for (const scheme of ['Dark', 'Light']) {
           root.setProperty('--mar-control-color-warning', dark ? '#ffeda8' : '#2b1900');
           root.setProperty('--mar-control-color-danger', dark ? '#ffd2dd' : '#300511');
         }, scheme === 'Dark');
-      const contrast = (color: string, background: string): number => {
-        const luminance = (value: string): number => {
-          const hex = resolvedColorToHex(value);
-          const channels = [1, 3, 5].map((offset) => {
-            const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-          });
-          return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-        };
-        const values = [luminance(color), luminance(background)].sort((a, b) => a - b);
-        return (values[1]! + 0.05) / (values[0]! + 0.05);
-      };
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         for (const type of ['warning', 'danger']) {
@@ -794,18 +799,18 @@ for (const scheme of ['Dark', 'Light']) {
           const normal = await appearance(action);
           const inactive = await appearance(disabled);
           expect(normal.color).toBe(normal.semanticColor);
-          expect(contrast(normal.color, normal.background)).toBeGreaterThanOrEqual(4.5);
+          expect(colorContrast(normal.color, normal.background)).toBeGreaterThanOrEqual(4.5);
           await action.hover();
           const hover = await appearance(action);
           expect(hover.color).toBe(hover.semanticColor);
-          expect(contrast(hover.color, hover.background)).toBeGreaterThanOrEqual(4.5);
+          expect(colorContrast(hover.color, hover.background)).toBeGreaterThanOrEqual(4.5);
           expect(resolvedColorToHex(hover.color)).not.toBe(resolvedColorToHex(inactive.color));
           await expect(action.locator('svg')).toHaveCSS('color', hover.color);
           await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
           await page.mouse.down();
           try {
             const active = await appearance(action);
-            expect(contrast(active.color, active.background)).toBeGreaterThanOrEqual(4.5);
+            expect(colorContrast(active.color, active.background)).toBeGreaterThanOrEqual(4.5);
             await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
           } finally {
             await page.mouse.up();
@@ -1351,9 +1356,27 @@ for (const scheme of ['Light', 'Dark']) {
           await expect(selected).toHaveCSS('color', palette.text);
           await expect(selected).toHaveCSS('font-weight', '400');
           await expect(selected).toHaveCSS('background-color', palette.selected);
+          await expect(select).toHaveAttribute(
+            'aria-activedescendant',
+            (await selected.getAttribute('id'))!
+          );
+          await expect(selected).toHaveCSS('outline-style', 'solid');
+          if (!custom) {
+            const { outlineColor, backgroundColor } = await selected.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return { outlineColor: style.outlineColor, backgroundColor: style.backgroundColor };
+            });
+            expect(colorContrast(outlineColor, backgroundColor)).toBeGreaterThanOrEqual(3);
+          }
           await other.hover();
           await expect(other).toHaveCSS('color', palette.text);
           await expect(other).toHaveCSS('background-color', palette.hover);
+          if (!custom) {
+            const surface = await dropdown.evaluate(
+              (element) => getComputedStyle(element).backgroundColor
+            );
+            expect(resolvedColorToHex(palette.hover)).not.toBe(resolvedColorToHex(surface));
+          }
           await selected.hover();
           await expect(selected).toHaveCSS('background-color', palette.selected);
           await disabled.hover({ force: true });
@@ -1391,6 +1414,51 @@ for (const scheme of ['Light', 'Dark']) {
           'box-shadow',
           `${palette.disabledBorder} 0px 0px 0px 1px inset`
         );
+      }
+    }
+  });
+
+  test(`Filled primary, warning and danger actions preserve text contrast in ${scheme}`, async ({
+    page
+  }) => {
+    if (scheme === 'Light')
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const controls = page.getByRole('region', { name: 'Real theme controls' });
+    for (const name of ['Sample primary', 'Sample filled warning', 'Sample filled danger']) {
+      const button = controls.getByRole('button', { name, exact: true });
+      const appearance = () =>
+        button.evaluate((element) => {
+          const { color, backgroundColor } = getComputedStyle(element);
+          return { color, backgroundColor };
+        });
+      await page.mouse.move(0, 0);
+      const normal = await appearance();
+      expect(
+        colorContrast(normal.color, normal.backgroundColor),
+        `${name}, rest`
+      ).toBeGreaterThanOrEqual(4.5);
+      await button.hover();
+      const hover = await appearance();
+      expect(hover.backgroundColor).not.toBe(normal.backgroundColor);
+      expect(
+        colorContrast(hover.color, hover.backgroundColor),
+        `${name}, hover`
+      ).toBeGreaterThanOrEqual(4.5);
+      await page.mouse.down();
+      try {
+        const active = await appearance();
+        expect(active.backgroundColor).not.toBe(hover.backgroundColor);
+        expect(
+          colorContrast(active.color, active.backgroundColor),
+          `${name}, press`
+        ).toBeGreaterThanOrEqual(4.5);
+      } finally {
+        await page.mouse.up();
       }
     }
   });
@@ -1579,7 +1647,7 @@ for (const scheme of ['Light', 'Dark']) {
       const branchName = branch.locator('.workspace-branch-name');
       const gitIcon = branch.getByRole('img', { name: 'Git' });
       const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
-      const colors = scheme === 'Light' ? ['#52627a', '#cbd6e4'] : ['#c3cad4', '#414e62'];
+      const colors = scheme === 'Light' ? ['#52627a', '#cbd6e4'] : ['#b6b6b6', '#474747'];
       async function expectColors(expected: string[]): Promise<void> {
         await expect(branch).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(async () => {
@@ -2063,7 +2131,7 @@ test('expanded and compact previews share the applied palette without changing g
   await expect(preview.locator('.preview-button.primary')).toHaveCSS('border-radius', '6px');
   await expect(preview.locator('.preview-toolbar')).toHaveCSS(
     'background-color',
-    'rgb(28, 34, 43)'
+    'rgb(27, 27, 27)'
   );
   await expect(preview.locator('.diff-add')).toHaveCSS('color', 'rgb(18, 52, 86)');
   const compactFont = await preview.evaluate((element) =>
@@ -2307,8 +2375,8 @@ for (const scheme of ['Light', 'Dark']) {
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
       const typography = page.getByRole('region', { name: 'Real conversation typography' });
-      const conversationText = scheme === 'Dark' ? 'rgb(226, 232, 240)' : 'rgb(23, 32, 51)';
-      const conversationSecondary = scheme === 'Dark' ? 'rgb(195, 202, 212)' : 'rgb(82, 98, 122)';
+      const conversationText = scheme === 'Dark' ? 'rgb(216, 216, 216)' : 'rgb(23, 32, 51)';
+      const conversationSecondary = scheme === 'Dark' ? 'rgb(182, 182, 182)' : 'rgb(82, 98, 122)';
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
@@ -2331,7 +2399,7 @@ for (const scheme of ['Light', 'Dark']) {
       await page.setViewportSize({ width: 1440, height: 900 });
       // Resizing and screenshots can leave the pointer over a control; inspect its neutral state.
       await page.mouse.move(-10, -10);
-      const panel = scheme === 'Dark' ? 'rgb(28, 34, 43)' : 'rgb(255, 255, 255)';
+      const panel = scheme === 'Dark' ? 'rgb(27, 27, 27)' : 'rgb(255, 255, 255)';
       await expect(controls.locator('.mar-ui-input')).toHaveCSS('background-color', panel);
       const select = controls.locator('.mar-ui-select__field');
       await expect(select).toHaveCSS('background-color', panel);
@@ -2355,14 +2423,14 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(9, 105, 232)'
+        scheme === 'Dark' ? 'rgb(40, 114, 200)' : 'rgb(9, 105, 232)'
       );
       const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
       await primary.scrollIntoViewIfNeeded();
       const primaryBounds = await primary.boundingBox();
       await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
       await primary.hover();
-      const hoverColor = scheme === 'Dark' ? 'rgb(26, 101, 184)' : 'rgb(5, 84, 184)';
+      const hoverColor = scheme === 'Dark' ? 'rgb(43, 116, 201)' : 'rgb(5, 84, 184)';
       await expect(primary).toHaveCSS('background-color', hoverColor);
       await expect(primary).toHaveCSS('border-top-color', hoverColor);
       await expect(primary).toHaveCSS('color', 'rgb(255, 255, 255)');
@@ -2375,20 +2443,20 @@ for (const scheme of ['Light', 'Dark']) {
             .getByRole('button', { name: 'Sample disabled primary', exact: true })
             .evaluate((element) => getComputedStyle(element).color)
         )
-      ).toBe(scheme === 'Dark' ? '#ffffff80' : '#ffffff');
+      ).toBe(scheme === 'Dark' ? '#777777' : '#ffffff');
       await expect(controls.getByRole('columnheader')).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(37, 45, 56)' : 'rgb(237, 243, 250)'
+        scheme === 'Dark' ? 'rgb(34, 34, 34)' : 'rgb(237, 243, 250)'
       );
       await controls.locator('tbody tr').first().hover();
       await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(229, 237, 246)'
+        scheme === 'Dark' ? 'rgb(40, 40, 40)' : 'rgb(229, 237, 246)'
       );
       await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
-        scheme === 'Dark' ? 'rgb(74, 163, 255)' : 'rgb(4, 74, 159)'
+        scheme === 'Dark' ? 'rgb(142, 190, 246)' : 'rgb(4, 74, 159)'
       );
       const neutral = controls.getByRole('button', { name: 'Sample neutral action', exact: true });
       const disabledNeutral = controls.getByRole('button', {
@@ -2403,7 +2471,7 @@ for (const scheme of ['Light', 'Dark']) {
         (element) => getComputedStyle(element).color
       );
       expect(neutralColor).not.toBe(dangerColor);
-      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(7, 95, 199)');
+      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(105, 169, 240)' : 'rgb(7, 95, 199)');
       await expect(disabledNeutral).toBeDisabled();
       for (const action of [neutral, disabledNeutral, danger]) {
         await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -2447,6 +2515,8 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-color-on-accent': '#fedcba',
         '--mar-color-brand-hover': '#234567',
         '--mar-text-primary': '#d5c4af',
+        '--mar-text-disabled': '#969696',
+        '--mar-control-color-primary-light-5': '#434343',
         '--mar-control-link-text': '#abcdef',
         '--mar-control-link-hover': '#bcdefa',
         '--mar-color-brand-disabled': '#cdefab'
@@ -2500,9 +2570,12 @@ for (const scheme of ['Light', 'Dark']) {
         resolvedColorToHex(
           await disabledPrimary.evaluate((element) => getComputedStyle(element).color)
         );
-      await expect.poll(disabledColor).toBe(scheme === 'Dark' ? '#fedcba80' : '#fedcba');
+      const disabledForeground = scheme === 'Dark' ? '#969696' : '#fedcba';
+      await expect.poll(disabledColor).toBe(disabledForeground);
+      await expect(disabledPrimary).toHaveCSS('background-color', 'rgb(67, 67, 67)');
       await disabledPrimary.hover();
-      await expect.poll(disabledColor).toBe(scheme === 'Dark' ? '#fedcba80' : '#fedcba');
+      await expect.poll(disabledColor).toBe(disabledForeground);
+      await expect(disabledPrimary).toHaveCSS('background-color', 'rgb(67, 67, 67)');
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
         'rgb(171, 205, 239)'

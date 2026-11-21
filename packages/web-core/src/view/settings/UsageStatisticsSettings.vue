@@ -987,7 +987,7 @@ p {
   stroke: var(--mar-border-default);
 }
 .input-bar {
-  fill: var(--mar-control-color-primary-light-5);
+  fill: var(--mar-color-accent);
 }
 .output-bar {
   fill: var(--mar-color-brand);
@@ -1010,7 +1010,7 @@ p {
   margin-left: 0.6rem;
 }
 .input-key {
-  background: var(--mar-control-color-primary-light-5);
+  background: var(--mar-color-accent);
 }
 .output-key {
   background: var(--mar-color-brand);

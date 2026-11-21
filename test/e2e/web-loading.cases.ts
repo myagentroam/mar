@@ -273,6 +273,7 @@ for (const mobile of [false, true]) {
       await retry.click();
       await expect(retry).toBeFocused();
       await expect(retry).toHaveAttribute('aria-disabled', 'true');
+      await expect(retry).toHaveAttribute('aria-busy', 'true');
       await expect(retry).toHaveText('');
       await expect(retry).toHaveAccessibleName('正在加载');
       await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toHaveCount(1);
@@ -288,11 +289,11 @@ for (const mobile of [false, true]) {
       ).toBeCloseTo(0.875);
       await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toHaveCSS(
         'color',
-        'rgb(48, 147, 255)'
+        'rgb(105, 169, 240)'
       );
       if (mobile && !search)
         await page.screenshot({ path: testInfo.outputPath('mobile-pagination-loading.png') });
-      await expect(list.locator('.mar-list-append-state [aria-busy="true"]')).toHaveCount(0);
+      await expect(list.locator('.mar-list-append-state').getByRole('status')).toHaveCount(0);
       await expect(list.locator('.session-row')).toHaveCount(30);
       retryResponse.release();
       await expect(list.locator('.session-row')).toHaveCount(60);

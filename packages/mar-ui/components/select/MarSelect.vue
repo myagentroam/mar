@@ -678,7 +678,11 @@ watch(controlDisabled, (disabled) => {
 }
 .mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible)
   + .mar-ui-popup:not([data-pointer-driven]) {
-  --mar-ui-select-option-focus: 2px solid var(--mar-ui-color-brand);
+  --mar-ui-select-option-focus: 2px solid
+    light-dark(
+      var(--mar-ui-color-brand),
+      color-mix(in srgb, var(--mar-ui-color-brand), var(--mar-ui-text-primary) 24%)
+    );
 }
 .mar-ui-select__field:focus-within + .mar-ui-popup:not([data-pointer-driven]) {
   --mar-ui-select-active-label-space: normal;

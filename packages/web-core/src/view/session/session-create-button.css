@@ -10,16 +10,6 @@
 }
 
 html.console-ui[data-theme='vscode-dark-2026'] .mar-ui-button.mar-soft-button:not(:disabled) {
-  --mar-ui-button-bg: color-mix(in srgb, var(--mar-fill-row-hover) 44%, var(--mar-fill-selection));
-  --mar-ui-button-border: color-mix(
-    in srgb,
-    var(--mar-border-medium) 82%,
-    var(--mar-text-secondary)
-  );
-  --mar-ui-button-hover-border: color-mix(
-    in srgb,
-    var(--mar-border-medium) 72%,
-    var(--mar-text-secondary)
-  );
-  --mar-ui-button-active-border: var(--mar-ui-button-border);
+  --mar-ui-button-bg: var(--mar-fill-soft);
+  --mar-ui-button-hover-bg: var(--mar-fill-hover);
 }

@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#14181e" />
+    <meta name="theme-color" content="#181818" />
     <script>
       {
         const root = document.documentElement;
@@ -37,7 +37,7 @@
         }
         if (background) root.style.setProperty('--mar-bootstrap-bg', background);
         document.querySelector('meta[name="theme-color"]').content =
-          background ?? (scheme === 'daylight' ? '#f7f9fd' : '#14181e');
+          background ?? (scheme === 'daylight' ? '#f7f9fd' : '#181818');
       }
     </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -86,11 +86,11 @@
       }
 
       html[data-theme='vscode-dark-2026'] .mar-bootstrap {
-        background: var(--mar-bootstrap-bg, var(--mar-bg-page, #14181e));
+        background: var(--mar-bootstrap-bg, var(--mar-bg-page, #181818));
       }
 
       html[data-theme='vscode-dark-2026'] .mar-bootstrap__trace {
-        color: var(--mar-color-brand-text, #3093ff);
+        color: var(--mar-color-brand-text, #69a9f0);
       }
 
       @media (prefers-reduced-motion: reduce) {

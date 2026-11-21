@@ -562,8 +562,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       element.append(probe);
       probe.style.backgroundColor = 'var(--mar-bg-panel)';
       const panel = getComputedStyle(probe).backgroundColor;
-      probe.style.backgroundColor =
-        style.colorScheme === 'dark' ? 'var(--mar-border-medium)' : 'var(--mar-border-subtle)';
+      probe.style.backgroundColor = 'var(--mar-conversation-canvas)';
+      const canvas = getComputedStyle(probe).backgroundColor;
+      probe.style.backgroundColor = 'var(--mar-workbench-divider)';
       const divider = getComputedStyle(probe).backgroundColor;
       probe.style.backgroundColor = 'var(--mar-border-subtle)';
       const secondaryDivider = getComputedStyle(probe).backgroundColor;
@@ -572,6 +573,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       return {
         body: style.backgroundColor,
         panel,
+        canvas,
         divider,
         secondaryDivider,
         frame: {
@@ -595,10 +597,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       left: '60px'
     });
     if (theme === 'vscode-dark-2026') {
-      expect(colors.body).toBe('rgb(20, 24, 30)');
-      expect(colors.panel).toBe('rgb(28, 34, 43)');
+      expect(colors.body).toBe('rgb(24, 24, 24)');
+      expect(colors.panel).toBe('rgb(27, 27, 27)');
+      expect(colors.canvas).toBe('rgb(19, 19, 19)');
       expect(colors.secondaryDivider).not.toBe(colors.divider);
     }
+    expect(colors.canvas).not.toBe(colors.panel);
     for (const selector of ['.workbench-brand', '.activity-rail']) {
       await expect(page.locator(selector)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(page.locator(selector)).toHaveCSS('border-right-width', '0px');
@@ -614,11 +618,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       '.workspace-tree',
       '.workbench-header',
       '.conversation-sidebar',
-      '.conversation-panel',
       '.workbench-aside'
     ]) {
       await expect(page.locator(selector)).toHaveCSS('background-color', colors.panel);
     }
+    await expect(page.locator('.conversation-panel')).toHaveCSS('background-color', colors.canvas);
     for (const selector of ['.workspace-tree', '.conversation-sidebar']) {
       await expect(page.locator(selector)).toHaveCSS('border-right-color', colors.divider);
     }
