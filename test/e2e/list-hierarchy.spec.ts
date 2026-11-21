@@ -377,6 +377,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const source = toolbar.locator('.mar-ui-select');
         const button = group.getByRole('button', { name: /^(Search|搜索)$/u });
         await expect(button).toBeEnabled();
+        const filterSize = await source
+          .getByRole('combobox')
+          .evaluate((control) => getComputedStyle(control).fontSize);
+        await expect(group.getByRole('textbox')).toHaveCSS('font-size', filterSize);
         const frame = (await toolbar.boundingBox())!;
         const search = (await group.boundingBox())!;
         const select = (await source.boundingBox())!;
@@ -396,6 +400,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const filters = page.locator('.catalog-filter-bar, .mcp-toolbar');
         const catalogSearch = filters.locator('.mar-ui-input');
         await expect(catalogSearch.getByRole('textbox')).toBeVisible();
+        await expect(catalogSearch.getByRole('textbox')).toHaveCSS('font-size', filterSize);
+        if (view === 'mcp-sources') {
+          await expect(filters.getByRole('combobox')).toHaveCSS('font-size', filterSize);
+        }
         const filtersBounds = (await filters.boundingBox())!;
         const field = (await catalogSearch.boundingBox())!;
         expect(field.width).toBeCloseTo(width === 1620 ? 320 : filtersBounds.width, 0);
@@ -488,26 +496,33 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             : '.skill-source-table, .mcp-source-table';
           const labels = page
             .locator(table)
-            .locator('.mar-ui-table__cell-inner')
+            .locator('.mar-ui-table__value')
             .filter({ hasText: /^(Enterprise|Organization|Personal)$/u });
           await expect(labels).toHaveCount(3);
           for (const label of await labels.all()) {
             await label.scrollIntoViewIfNeeded();
             await expect(label).toBeInViewport();
             const metrics = await label.evaluate((element) => {
+              const textNodes = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
               const range = document.createRange();
-              range.selectNodeContents(element);
+              const lines = new Set<number>();
+              for (let text = textNodes.nextNode(); text; text = textNodes.nextNode()) {
+                if (!text.textContent?.trim()) continue;
+                range.selectNodeContents(text);
+                for (const rect of range.getClientRects()) {
+                  if (rect.width > 0) lines.add(rect.top);
+                }
+              }
               const bounds = element.getBoundingClientRect();
               return {
-                textHeight: range.getBoundingClientRect().height,
-                lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+                textLines: lines.size,
                 fits: element.scrollWidth <= element.clientWidth,
                 left: bounds.left,
                 right: bounds.right,
                 viewportWidth: innerWidth
               };
             });
-            expect(metrics.textHeight).toBeLessThanOrEqual(metrics.lineHeight + 1);
+            expect(metrics.textLines).toBe(1);
             expect(metrics.fits).toBe(true);
             expect(metrics.left).toBeGreaterThanOrEqual(0);
             expect(metrics.right).toBeLessThanOrEqual(metrics.viewportWidth);

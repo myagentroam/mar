@@ -111,7 +111,14 @@ const entries = Array.from({ length: 60 }, (_, i) => ({
 
 async function request<T>(path: string): Promise<T> {
   if (path.startsWith('/api/resources?')) {
-    return { nodes: [], workspaces: [], page: 1, pageSize: 20, total: 0, hasMore: false } as T;
+    return {
+      nodes,
+      workspaces: [],
+      page: 1,
+      pageSize: 20,
+      total: nodes.length,
+      hasMore: false
+    } as T;
   }
   if (path.includes('/effective-skills')) return { skills: entries } as T;
   if (path.includes('/mcps?')) return { installations: entries } as T;

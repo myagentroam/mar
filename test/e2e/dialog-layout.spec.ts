@@ -3,6 +3,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/styles.css
 // @test-covers packages/mar-ui/components/dialog/MarDialog.vue
+// @test-covers packages/mar-ui/components/table/MarTable.vue
 // @test-covers packages/web-core/src/view/settings/ResourceManagementPanel.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
@@ -96,6 +97,81 @@ const viewports = [
 async function visit(page: Page, kind: string, theme = 'daylight'): Promise<void> {
   await page.goto(`${fixture.url}dialog-layout.html?kind=${kind}&theme=${theme}`);
 }
+
+test('Node management aligns filter typography and keeps rows compact without shrinking actions', async ({
+  page
+}, testInfo) => {
+  for (const [width, theme] of [
+    [1280, 'daylight'],
+    [390, 'vscode-dark-2026']
+  ] as const) {
+    await page.setViewportSize({ width, height: 720 });
+    await visit(page, 'node-registration', theme);
+    const keyword = page.getByPlaceholder('Name or ID');
+    const status = page.getByRole('combobox', { name: 'Status:', exact: true });
+    await expect(keyword).toBeVisible();
+    const selectSize = await status.evaluate((control) => getComputedStyle(control).fontSize);
+    const typography = await keyword.evaluate((input) => {
+      const text = getComputedStyle(input);
+      const placeholder = getComputedStyle(input, '::placeholder');
+      return {
+        textSize: text.fontSize,
+        placeholderSize: placeholder.fontSize,
+        textWeight: text.fontWeight,
+        placeholderWeight: placeholder.fontWeight,
+        differentColors: placeholder.color !== text.color
+      };
+    });
+    expect.soft(typography).toEqual({
+      textSize: selectSize,
+      placeholderSize: selectSize,
+      textWeight: '400',
+      placeholderWeight: '400',
+      differentColors: true
+    });
+
+    const table = page.getByRole('table');
+    const row = table.getByRole('row').filter({ has: page.getByText('Online', { exact: true }) });
+    const nameHeader = table.getByRole('columnheader', { name: 'Node Name' });
+    const sort = nameHeader.getByRole('button');
+    const edit = row.getByRole('button', { name: 'Edit', exact: true });
+    await expect(row).toBeVisible();
+    const compact = await status.evaluate((control) => control.getBoundingClientRect().height);
+    // The ownership heading can wrap to two lines at both widths.
+    expect.soft((await nameHeader.boundingBox())!.height).toBeLessThanOrEqual(compact + 25);
+    expect.soft((await row.boundingBox())!.height).toBeLessThanOrEqual(compact + 14);
+    expect((await sort.boundingBox())!.height).toBeGreaterThanOrEqual(24);
+    expect((await edit.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
+    const bodySize = await table.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue('--mar-ui-font-size-body').trim()
+    );
+    await expect(row.getByRole('cell', { name: 'Node', exact: true })).toHaveCSS(
+      'font-size',
+      bodySize
+    );
+    await page.screenshot({ path: testInfo.outputPath(`node-management-density-${width}.png`) });
+
+    await edit.click();
+    if (width === 390) {
+      // Clicking the action column scrolls the table viewport, not the whole page.
+      const { tableOffset, pageOffset } = await table.evaluate((element) => ({
+        tableOffset: element.parentElement!.scrollLeft,
+        pageOffset: window.scrollX
+      }));
+      expect(tableOffset).toBeGreaterThan(0);
+      expect(pageOffset).toBe(0);
+    }
+    const editor = page
+      .getByRole('dialog', { name: 'Edit Node' })
+      .getByRole('textbox', { name: 'Node Name', exact: true });
+    await expect(editor).toHaveValue('Node');
+    const resolvedEditSize = await editor.evaluate(
+      (input) => getComputedStyle(input, '::placeholder').fontSize
+    );
+    await expect(editor).toHaveCSS('font-size', resolvedEditSize);
+    expect(parseFloat(resolvedEditSize)).toBeGreaterThan(parseFloat(selectSize));
+  }
+});
 
 test('Node registration uses text-only footer actions and wraps them without overflow', async ({
   page
