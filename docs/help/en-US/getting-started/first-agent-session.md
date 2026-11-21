@@ -1,6 +1,6 @@
 ---
 title: Start Your First Agent Session
-lastUpdated: 2026-09-25
+lastUpdated: 2026-11-21
 ---
 
 # Start Your First Agent Session
@@ -17,7 +17,7 @@ Use an already registered Workspace to send the first MyAgentRoam-managed Agent 
 
 1. Select a Workspace whose Node reports at least one available Agent.
 2. Select **New Session**.
-3. In Composer, choose the Agent and one of the offered model, reasoning, and permission combinations.
+3. Under **What should we do?**, select the Agent name in **Start a new session with …** to switch Agents. Choose the model, reasoning level, and permissions in Composer.
 4. Enter a small, verifiable request such as “Inspect the project structure and identify the entry file without changing files.”
 5. Send it. Observe the `Working` state, response, and tool cards until the session returns to `Idle`.
 

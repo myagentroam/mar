@@ -737,11 +737,13 @@ test('New sessions open Composer directly and submit settings with the first mes
     '**/api/workspaces/workspace-1/queue?nodeId=node-1&sessionId=session-created',
     (route) => json(route, { queue: { version: 0, paused: false, items: [] } })
   );
-  await page.route('**/api/agent-runs/*/images/0?nodeId=node-1', (route) =>
-    route.fulfill({
-      contentType: 'image/svg+xml',
-      body: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="160"></svg>'
-    })
+  await page.route(
+    /\/api\/agent-runs\/historical-image-run\/images\/0\?nodeId=node-1(?:&|$)/,
+    (route) =>
+      route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="160"></svg>'
+      })
   );
 
   await page.goto('/console');
@@ -759,16 +761,13 @@ test('New sessions open Composer directly and submit settings with the first mes
   await expect(page.getByText('Runner 默认', { exact: true })).toHaveCount(0);
   const draftComposer = page.getByRole('textbox', { name: '输入消息' });
   const modelAndEffort = page.locator('.composer-model-effort-select');
+  const agent = page.getByRole('button', { name: /切换 Agent/ });
   await expect(modelAndEffort).toContainText('GPT-5.6 Sol Medium');
   await expect(page.locator('.composer-model-effort-select')).toBeVisible();
-  await expect(page.locator('.composer-runner-select')).toBeVisible();
-  await expect(page.locator('.composer-runner-select .mar-ui-select__field')).toHaveClass(
-    /mar-ui-select__field--small/u
-  );
-  await expect(page.locator('.composer-runner-select .mar-ui-select__field')).toHaveCSS(
-    'box-shadow',
-    'none'
-  );
+  await expect(agent).toBeVisible();
+  await expect(agent).toHaveAttribute('aria-haspopup', 'menu');
+  await expect(agent.locator('.mar-runner-brand-icon')).toBeVisible();
+  await expect(page.locator('.composer-runner-select')).toHaveCount(0);
   await expect(page.locator('.composer-model-effort-select .mar-ui-select__field')).toHaveCSS(
     'box-shadow',
     'none'
@@ -796,22 +795,19 @@ test('New sessions open Composer directly and submit settings with the first mes
   expect(controlLayout.display).toBe('flex');
   expect(controlLayout.flexWrap).toBe('wrap');
   expect(controlLayout.overflow).toBe(false);
-  expect(controlLayout.controls).toHaveLength(4);
+  expect(controlLayout.controls).toHaveLength(3);
   expect(controlLayout.controls.every((control) => control.flexGrow === '0')).toBe(true);
   expect(controlLayout.controls.every((control) => control.width < controlLayout.width)).toBe(true);
   expect(
     await modelAndEffort.locator('.mar-ui-select__label').evaluate((element) => element.clientWidth)
   ).toBeGreaterThan(100);
-  expect(
-    await page
-      .locator('.composer-runner-select .mar-ui-select__label')
-      .evaluate((element) => element.clientWidth)
-  ).toBeGreaterThan(30);
-  expect(
-    await page
-      .locator('.composer-access-select .mar-ui-select__label')
-      .evaluate((element) => element.clientWidth)
-  ).toBeGreaterThan(50);
+  await expect
+    .poll(() =>
+      page
+        .locator('.composer-access-select .mar-ui-select__label')
+        .evaluate((element) => element.scrollWidth - element.clientWidth)
+    )
+    .toBeLessThanOrEqual(0);
   const access = page.getByRole('combobox', { name: '权限' });
   await expect(page.locator('.composer-access-select')).toContainText('按需确认');
   await expect(page.locator('.composer-access-select')).toBeVisible();
@@ -822,19 +818,19 @@ test('New sessions open Composer directly and submit settings with the first mes
   await expect(page.getByRole('button', { name: '新建会话', exact: true })).toHaveClass(
     /new-session-button/
   );
-  await page.locator('.composer-runner-select').click();
-  const runnerMenu = page.locator('.mar-ui-popup.composer-runner-popper');
+  await agent.click();
+  const runnerMenu = page.getByRole('menu', { name: 'Agent', exact: true });
   await expect(runnerMenu).toBeVisible();
-  await expect(runnerMenu.locator('[role="option"]', { hasText: 'Codex' })).toHaveCSS(
-    'height',
-    '26px'
+  await expect(runnerMenu.getByRole('menuitem', { name: 'Codex' })).toHaveAttribute(
+    'aria-current',
+    'true'
   );
   await expect(runnerMenu.evaluate((node) => node.matches(':popover-open'))).resolves.toBe(true);
-  await runnerMenu.getByText('Claude Code', { exact: true }).click();
-  await expect(page.locator('.composer-runner-select')).toContainText('Claude Code');
-  await page.locator('.composer-runner-select').click();
-  await runnerMenu.getByText('Codex', { exact: true }).click();
-  await expect(page.locator('.composer-runner-select')).toContainText('Codex');
+  await runnerMenu.getByRole('menuitem', { name: 'Claude Code' }).click();
+  await expect(agent).toContainText('Claude Code');
+  await agent.click();
+  await runnerMenu.getByRole('menuitem', { name: 'Codex' }).click();
+  await expect(agent).toContainText('Codex');
   await modelAndEffort.click();
   const modelAndEffortMenu = page.locator('.mar-ui-popup.composer-model-effort-popper');
   await expect(modelAndEffortMenu).toBeVisible();
@@ -858,7 +854,15 @@ test('New sessions open Composer directly and submit settings with the first mes
     hasText: 'High'
   });
   await expect(selectedHigh).toBeVisible();
-  await expect(selectedHigh).toHaveCSS('background-color', 'rgb(237, 241, 245)');
+  const selectionColor = await modelAndEffortMenu.evaluate((menu) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--mar-fill-selection)';
+    menu.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expect(selectedHigh).toHaveCSS('background-color', selectionColor);
   await expect(selectedHigh).toHaveCSS('font-weight', '400');
   await expect(
     modelAndEffortMenu.locator('.composer-model-effort-option-selected', {
@@ -880,21 +884,21 @@ test('New sessions open Composer directly and submit settings with the first mes
   );
   await expect(page.getByRole('textbox', { name: '输入消息' })).toHaveAttribute(
     'placeholder',
-    '输入 / 调用命令、# 使用快捷提示词、用 @ 提及工作区文件或文件夹，或添加附件，向 Codex 提问…'
+    '输入 / 调用命令、# 使用快捷提示词、用 @ 提及工作区文件、文件夹或会话，或添加附件，向 Codex 提问…'
   );
   await expect(page.getByRole('button', { name: '添加附件' })).toContainText('');
   await expect(page.getByRole('button', { name: '添加附件' })).toHaveCSS('cursor', 'pointer');
   const composerToolbarAlignment = await page.locator('.composer-toolbar').evaluate((toolbar) => {
     const attachment = toolbar.querySelector<HTMLButtonElement>('.composer-attachment-button');
-    const runner = toolbar.querySelector<HTMLElement>(
-      '.composer-runner-select .mar-ui-select__field'
+    const model = toolbar.querySelector<HTMLElement>(
+      '.composer-model-effort-select .mar-ui-select__field'
     );
-    if (attachment === null || runner === null) throw new Error('composer controls are missing');
+    if (attachment === null || model === null) throw new Error('composer controls are missing');
     const attachmentRect = attachment.getBoundingClientRect();
-    const runnerRect = runner.getBoundingClientRect();
+    const modelRect = model.getBoundingClientRect();
     return {
-      topDifference: Math.abs(attachmentRect.top - runnerRect.top),
-      heightDifference: Math.abs(attachmentRect.height - runnerRect.height)
+      topDifference: Math.abs(attachmentRect.top - modelRect.top),
+      heightDifference: Math.abs(attachmentRect.height - modelRect.height)
     };
   });
   expect(composerToolbarAlignment.topDifference).toBeLessThanOrEqual(1);
@@ -1003,6 +1007,9 @@ test('New sessions open Composer directly and submit settings with the first mes
     .locator('.conversation-user-image-button');
   const historicalImage = historicalImageButton.locator('.conversation-user-image');
   await expect(historicalImage).toHaveCount(1, { timeout: 15_000 });
+  await expect
+    .poll(() => historicalImage.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(80);
   const historicalImageLayout = await historicalImageButton.evaluate((button) => {
     const image = button.querySelector('img');
     if (image === null) throw new Error('historical image is missing');
@@ -1032,27 +1039,17 @@ test('New sessions open Composer directly and submit settings with the first mes
   await page.keyboard.press('Escape');
   await expect(imagePreview).not.toBeVisible();
 
-  expect(writes).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        url: expect.stringContaining('/api/agent-sessions'),
-        body: expect.stringContaining('"title":"分析这张图片"')
-      }),
-      expect.objectContaining({
-        body: expect.stringContaining('"model":"gpt-5.6-terra"')
-      }),
-      expect.objectContaining({
-        body: expect.stringContaining('"effort":"high"')
-      }),
-      expect.objectContaining({
-        body: expect.stringContaining('"access":"full-access"')
-      }),
-      expect.objectContaining({
-        url: expect.stringContaining('/agent-sessions/start'),
-        body: expect.stringContaining('attachmentIds')
-      })
-    ])
-  );
+  const start = writes.find((entry) => entry.url.endsWith('/api/agent-sessions/start'));
+  const startBody = JSON.parse(start?.body ?? '{}');
+  expect(startBody).toMatchObject({
+    title: '分析这张图片',
+    runner: 'codex',
+    modelId: 'gpt-5.6-terra',
+    effort: 'medium',
+    access: 'full-access',
+    deferredCommands: [{ commandId: 'plan', input: '/plan' }]
+  });
+  expect(startBody.attachmentIds).toHaveLength(3);
 
   await draftComposer.click();
   await draftComposer.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
@@ -1103,10 +1100,11 @@ test('Runner menus show only Runners supported by the current Node Profile', asy
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(page.getByRole('textbox', { name: '输入消息' })).toBeEnabled();
-  await expect(page.locator('.composer-runner-select')).toContainText('Claude Code');
-  await page.locator('.composer-runner-select').click();
+  const agent = page.getByRole('button', { name: /切换 Agent/ });
+  await expect(agent).toContainText('Claude Code');
+  await agent.click();
 
-  const options = page.locator('.mar-ui-popup.composer-runner-popper [role="option"]');
+  const options = page.getByRole('menu', { name: 'Agent', exact: true }).getByRole('menuitem');
   await expect(options).toHaveCount(1);
   await expect(options).toContainText(['Claude Code']);
   await expect(options).not.toContainText('Codex');
@@ -1179,7 +1177,8 @@ test('New sessions restore Node-saved Composer defaults per Runner and persist n
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
 
-  await expect(page.locator('.composer-runner-select')).toContainText('Codex');
+  const agent = page.getByRole('button', { name: /切换 Agent/ });
+  await expect(agent).toContainText('Codex');
   await expect(page.locator('.composer-model-effort-select')).toContainText('GPT-5.6 Terra High');
   await expect(page.locator('.composer-access-select')).toContainText('工作区写入');
   await expect(page.locator('.conversation-title-row .mar-runner-brand-icon')).toHaveAttribute(
@@ -1187,10 +1186,10 @@ test('New sessions restore Node-saved Composer defaults per Runner and persist n
     'codex'
   );
 
-  await page.locator('.composer-runner-select').click();
+  await agent.click();
   await page
-    .locator('.mar-ui-popup.composer-runner-popper')
-    .getByText('Claude Code', { exact: true })
+    .getByRole('menu', { name: 'Agent', exact: true })
+    .getByRole('menuitem', { name: 'Claude Code' })
     .click();
   await expect(page.locator('.composer-model-effort-select')).toContainText('Claude Sonnet High');
   await expect(page.locator('.composer-access-select')).toContainText('跳过权限确认');

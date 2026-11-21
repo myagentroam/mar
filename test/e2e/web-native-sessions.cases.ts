@@ -172,11 +172,13 @@ test('New MAR Agent first messages appear on the session home and clearing searc
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await expect(page.locator('.session-list .session-link')).toHaveCount(20);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(page.locator('.composer-runner-select')).toContainText('MAR Agent');
+  await expect(page.getByRole('button', { name: /切换 Agent/ })).toContainText('MAR Agent');
   await page.getByRole('textbox', { name: '输入消息' }).fill('回显会话');
   await page.getByRole('button', { name: '发送' }).click();
   await expect.poll(() => published).toBe(true);
-  await expect(page.locator('.conversation-header').getByRole('heading')).toHaveText('回显会话');
+  await expect(page.locator('.conversation-header').getByRole('heading')).toHaveText('回显会话', {
+    useInnerText: true
+  });
   await emitMockWorkspaceSnapshot(page, 'sessions', {
     sessions: [created, ...older.slice(0, 19)],
     nextCursor: 'more'

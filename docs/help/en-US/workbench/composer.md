@@ -1,11 +1,13 @@
 ---
 title: Messages and Composer
-lastUpdated: 2026-11-16
+lastUpdated: 2026-11-21
 ---
 
 # Messages and Composer
 
 Composer combines the message editor, Agent configuration, attachments, context status, queue, and send/stop actions.
+
+For a new Workspace session, choose the Agent in the welcome prompt. Choose the model, reasoning level, and permissions in Composer.
 
 Press `Enter` to send and `Shift+Enter` for a newline on desktop. During a managed run, ordinary messages are queued. `Ctrl+Enter` adds information with priority. Node decides delivery from its actual state: when MAR Agent can accept a native addition, the message appears immediately and takes effect after the complete response and tool batch without interrupting generation. Managed waits may return early without stopping background tasks; other tools still finish normally. Other Agents or incompatible configuration changes keep the stop-then-send flow. The body is marked as information received while working; when idle it sends normally. The wrapper is hidden from messages, while attachments and references keep their existing behavior. On mobile, Enter always inserts a newline and the send button submits. When you switch models, the reasoning level changes to the target model's default; you can still select another level exposed by that model.
 

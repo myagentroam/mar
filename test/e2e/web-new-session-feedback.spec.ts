@@ -45,7 +45,7 @@ for (const { width, theme, lateSuccess } of [
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.setViewportSize({ width, height: 844 });
-    if (width === 390) await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.addInitScript((value) => localStorage.setItem('mar.theme', value), theme);
     await mockConsoleApi(
       page,
@@ -139,6 +139,7 @@ for (const { width, theme, lateSuccess } of [
     if (theme === 'daylight') await expect(page.locator('html')).not.toHaveClass(/dark/u);
     else await expect(page.locator('html')).toHaveClass(/dark/u);
     const input = page.getByRole('textbox', { name: '输入消息' });
+    const agent = page.getByRole('button', { name: /切换 Agent/ });
     const send = page.locator('.composer-send-button');
     const shell = page.locator('.composer-shell');
     await input.fill('First message feedback');
@@ -149,7 +150,7 @@ for (const { width, theme, lateSuccess } of [
       const count = requests.length;
       await send.click();
       await expect.poll(() => requests.length).toBe(count + 1);
-      await expect(input).toBeEditable();
+      await expect(input).not.toBeEditable();
       await expect(input).toHaveValue('First message feedback');
       await expect(send).toBeVisible();
       await expect(send).toBeDisabled();
@@ -160,8 +161,8 @@ for (const { width, theme, lateSuccess } of [
           'animation-name',
           'none'
         );
-      await expect(page.locator('.composer-runner-select')).toBeVisible();
-      await expect(page.locator('.composer-runner-select').getByRole('combobox')).toBeDisabled();
+      await expect(agent).toBeVisible();
+      await expect(agent).toBeDisabled();
       await expect(page.locator('.composer-working')).toHaveCount(0);
       await expect(page.locator('.conversation-message')).toHaveCount(0);
       await expect(shell).toHaveCSS('background-color', background);
@@ -172,11 +173,8 @@ for (const { width, theme, lateSuccess } of [
       await page.screenshot({
         path: testInfo.outputPath(`sending-${success ? 'retry' : 'first'}.png`)
       });
-      if (width === 390) {
-        await input.press('Enter');
-        await expect(input).toHaveValue('First message feedback\n');
-        await input.fill('First message feedback');
-      } else await input.press('Enter');
+      await input.press('Enter');
+      await expect(input).toHaveValue('First message feedback');
       expect(requests).toHaveLength(count + 1);
       let requestIndex = count;
       if (success) {
@@ -185,7 +183,7 @@ for (const { width, theme, lateSuccess } of [
         });
         await expect(input).toBeEditable();
         await expect(send).toBeEnabled();
-        await expect(page.locator('.composer-runner-select').getByRole('combobox')).toBeDisabled();
+        await expect(agent).toBeDisabled();
         await send.click();
         await expect.poll(() => requests.length).toBe(count + 2);
         expect(bodies[count + 1]).toEqual(bodies[count]);
@@ -214,7 +212,9 @@ for (const { width, theme, lateSuccess } of [
         const failure = page.locator('.mar-message').filter({ hasText: '无法发送消息' });
         await expect(failure).toBeVisible();
         await expect(failure).toContainText('RUNNER_UNAVAILABLE');
+        await expect(input).toBeEditable();
         await expect(input).toHaveValue('First message feedback');
+        await expect(agent).toBeEnabled();
         await expect(send).toBeEnabled();
       }
     }

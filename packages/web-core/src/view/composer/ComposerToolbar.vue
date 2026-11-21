@@ -451,6 +451,15 @@ function selectFiles(event: Event): void {
   .composer-hint:not(.is-submitting) {
     display: none;
   }
+
+  /* The busy send button already shows progress; keep the live status without reflow. */
+  .composer-hint.is-submitting {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
 }
 
 .composer-context-button {

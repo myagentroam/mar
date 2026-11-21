@@ -193,10 +193,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           await expect(heading).toHaveText(
             locale === 'zh-CN'
               ? mode === 'workspace'
-                ? '想从哪里开始？'
+                ? '我们要做什么？'
                 : '有什么可以帮你？'
               : mode === 'workspace'
-                ? 'Where to start?'
+                ? 'What should we do?'
                 : 'How can I help?'
           );
           await expect(welcome.locator('p')).not.toBeEmpty();

@@ -425,7 +425,9 @@ onBeforeUnmount(() => {
         </div>
         <section v-if="showEmptyPrompt" class="conversation-empty">
           <h2>{{ translate(`conversationEmpty.${emptyPrompt}.title`) }}</h2>
-          <p>{{ translate(`conversationEmpty.${emptyPrompt}.description`) }}</p>
+          <slot name="empty-description">
+            <p>{{ translate(`conversationEmpty.${emptyPrompt}.description`) }}</p>
+          </slot>
         </section>
         <slot />
       </div>
