@@ -11,12 +11,9 @@ const originalLocale = localePreferenceService().locale.value;
 afterEach(() => localePreferenceService().setLocale(originalLocale));
 
 describe('Shared notification center', () => {
-  it.each([
-    { locale: 'en-US', title: 'System notifications' },
-    { locale: 'zh-CN', title: '系统通知' }
-  ] as const)(
-    'renders the plain system notification title, action and unsupported status: $locale',
-    async ({ locale, title }) => {
+  it.each(['en-US', 'zh-CN'] as const)(
+    'renders the desktop notification action and unsupported status without repeating the page title: %s',
+    async (locale) => {
       localePreferenceService().setLocale(locale);
       const service = createWorkbenchNotificationService(ref('user'));
       const app = createSSRApp({
@@ -25,7 +22,7 @@ describe('Shared notification center', () => {
       app.use(i18n);
       app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
-      expect(html.match(/<h3\b[^>]*>([^<]*)</u)?.[1]).toBe(title);
+      expect(html).not.toMatch(/<h3\b/u);
       expect(html).toContain(
         commonMessages[locale].workbenchNotificationCenter.systemNotifications.enable
       );

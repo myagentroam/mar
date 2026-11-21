@@ -87,10 +87,11 @@ export class UsageStatisticsService {
 
   private get preserveRecords(): boolean {
     return (
-      this.state.page > 1 ||
-      this.interacting ||
-      this.state.recordsStale ||
-      this.pagination.failure.value !== undefined
+      this.recordsQuery !== undefined &&
+      (this.state.page > 1 ||
+        this.interacting ||
+        this.state.recordsStale ||
+        this.pagination.failure.value !== undefined)
     );
   }
 
@@ -131,7 +132,12 @@ export class UsageStatisticsService {
       this.state.failed = true;
       this.state.refreshFailed = automatic;
       this.failures++;
-      if (!automatic) this.reportError(error);
+      if (!automatic) {
+        this.recordsQuery = undefined;
+        this.pagination.invalidate(true);
+        this.state.recordsStale = false;
+        this.reportError(error);
+      }
       return false;
     } finally {
       if (generation === this.generation) {

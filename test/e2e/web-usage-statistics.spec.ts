@@ -169,6 +169,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const pendingInitialRead = new Promise<void>((resolve) => {
       finishInitialRead = resolve;
     });
+    const nextMobilePage = Promise.withResolvers<void>();
+    let filteredMobileAppend: PromiseWithResolvers<void> | undefined;
     let finishPageRead!: () => void;
     const pendingPageRead = new Promise<void>((resolve) => {
       finishPageRead = resolve;
@@ -187,6 +189,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         );
       if (url.pathname.endsWith('/records')) {
         const number = Number(url.searchParams.get('page') ?? 1);
+        if (mobile && number === 2) await (filteredMobileAppend ?? nextMobilePage).promise;
         if (number === 4) await pendingPageRead;
         return json(route, {
           records: Array.from({ length: number === 4 ? 1 : 20 }, (_, index) =>
@@ -229,37 +232,32 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.getByRole('button', { name: labels.title, exact: true }).click();
     const panel = page.getByTestId('usage-statistics');
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
-    await expect(panel).toHaveAttribute('aria-busy', 'true');
-    const loadingMask = panel.locator(':scope > .mar-ui-loading');
-    const expectLoadingInViewport = async () => {
-      const area = await page.locator('.settings-content').boundingBox();
-      const mask = await loadingMask.boundingBox();
-      const spinner = await loadingMask.locator('.mar-ui-loading__indicator').boundingBox();
-      expect(area).not.toBeNull();
-      expect(mask).not.toBeNull();
-      expect(spinner).not.toBeNull();
-      for (const key of ['x', 'y', 'width', 'height'] as const)
-        expect(Math.abs(mask![key] - area![key])).toBeLessThanOrEqual(1);
-      expect(
-        Math.abs(spinner!.y + spinner!.height / 2 - (area!.y + area!.height / 2))
-      ).toBeLessThanOrEqual(2);
-    };
-    await expect(loadingMask).toBeVisible();
-    await expect(loadingMask).toHaveText('');
+    const recordsTable = panel.locator('.records');
+    const tableLoading = recordsTable.locator('tbody').getByRole('progressbar');
+    const loadingMask = panel.locator('.mar-ui-loading');
+    await expect(recordsTable).toHaveAttribute('aria-busy', 'true');
+    await expect(tableLoading).toBeVisible();
+    await expect(tableLoading).toHaveText('');
+    await expect(loadingMask).toHaveCount(0);
+    const bodyViewport = await recordsTable.locator('.mar-ui-table__viewport').boundingBox();
+    const spinner = await tableLoading.boundingBox();
+    expect(bodyViewport).not.toBeNull();
+    expect(spinner).not.toBeNull();
+    expect(
+      Math.abs(spinner!.x + spinner!.width / 2 - (bodyViewport!.x + bodyViewport!.width / 2))
+    ).toBeLessThanOrEqual(2);
     await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     await expect(panel.getByText('Loading usage…', { exact: true })).toHaveCount(0);
     await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     await page.clock.runFor(250);
-    await expectLoadingInViewport();
+    await tableLoading.scrollIntoViewIfNeeded();
     await page.screenshot({
       animations: 'disabled',
       path: testInfo.outputPath('usage-initial-loading.png')
     });
     finishInitialRead();
-    await expect(panel).toHaveAttribute('aria-busy', 'false');
-    // The paused refresh clock also controls MAR loading transitions.
-    await page.clock.runFor(500);
-    await expect(loadingMask).toBeHidden();
+    await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
+    await expect(tableLoading).toHaveCount(0);
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
     await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     const refreshButton = panel.getByRole('button', { name: labels.refresh, exact: true });
@@ -555,6 +553,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
           .scrollIntoViewIfNeeded();
         await expect(pager).not.toBeInViewport();
         await pager.scrollIntoViewIfNeeded();
+        if (expected === 40) nextMobilePage.resolve();
         await expect(rows).toHaveCount(expected);
       }
       await panel
@@ -562,7 +561,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         .scrollIntoViewIfNeeded();
       await expect(pager).not.toBeInViewport();
       await pager.scrollIntoViewIfNeeded();
-      await expect(panel).toHaveAttribute('aria-busy', 'false');
+      await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
       await expect(loadingMask).toBeHidden();
       await expect(pager.getByRole('status', { name: '正在加载', exact: true })).toBeVisible();
       await expect(pager.getByRole('button')).toHaveCount(0);
@@ -586,14 +585,14 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(pager.locator('.mar-ui-pagination__page')).toHaveCount(4);
       const refreshedStatus = await panel.locator('header').getByRole('status').innerText();
       await pager.locator('.mar-ui-pagination__page').filter({ hasText: /^4$/u }).click();
-      await expect(panel).toHaveAttribute('aria-busy', 'false');
+      await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
       await expect(loadingMask).toBeHidden();
       await expect(panel.locator('header').getByRole('status')).toHaveText(refreshedStatus);
       await expect(panel.getByRole('button', { name: labels.next, exact: true })).toBeDisabled();
       await expect(rows).toHaveCount(20);
       finishPageRead();
       await expect(rows).toHaveCount(1);
-      await expect(panel).toHaveAttribute('aria-busy', 'false');
+      await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
       await page.clock.runFor(500);
       await expect(loadingMask).toBeHidden();
       await expect(pager.locator('[aria-current="page"]')).toContainText('4');
@@ -633,17 +632,30 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await panel.getByRole('button', { name: labels.next, exact: true }).click();
     }
     // Change the initial 24-hour filter before selecting it again.
+    if (mobile) filteredMobileAppend = Promise.withResolvers<void>();
     for (const [label, duration, overviewReads] of [
       [labels.week, 7 * 86400000, 3],
       [labels.day, 86400000, 4]
     ] as const) {
+      const before = requests.length;
       await panel.getByRole('combobox', { name: labels.range, exact: true }).press('Enter');
       await page.getByRole('option', { name: label, exact: true }).click();
       await expect
         .poll(() => requests.filter((url) => url.pathname.endsWith('/overview')).length)
         .toBe(overviewReads);
-      await expect(panel).toHaveAttribute('aria-busy', 'false');
+      await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
       const query = requests.filter((url) => url.pathname.endsWith('/overview')).at(-1)!;
+      expect(
+        requests
+          .slice(before)
+          .some(
+            (url) =>
+              url.pathname.endsWith('/records') &&
+              url.searchParams.get('from') === query.searchParams.get('from') &&
+              url.searchParams.get('to') === query.searchParams.get('to') &&
+              url.searchParams.get('page') === '1'
+          )
+      ).toBe(true);
       expect(Number(query.searchParams.get('to')) - Number(query.searchParams.get('from'))).toBe(
         duration
       );
@@ -654,6 +666,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     );
     if (!mobile) await expect(pager.locator('[aria-current="page"]')).toContainText('1');
     else await expect(rows).toHaveCount(20);
+    filteredMobileAppend?.resolve();
     failure = true;
     await refreshButton.focus();
     await page.keyboard.press('Enter');
@@ -661,7 +674,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       .getByRole('alert')
       .filter({ hasText: 'Usage is temporarily unavailable.' });
     await expect(failureNotice).toBeVisible();
-    await expect(rows).toHaveCount(20);
+    await expect(rows).toHaveCount(0);
+    await expect(recordsTable.locator('.mar-ui-table__empty')).toBeVisible();
     await failureNotice
       .getByRole('button', { name: locale === 'en-US' ? 'Close' : '关闭', exact: true })
       .click();
@@ -669,7 +683,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     failure = false;
     await refreshButton.click();
     await expect(panel.locator('.overview-cell')).toHaveCount(2);
-    await expect(panel).toHaveAttribute('aria-busy', 'false');
+    await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
     await panel.getByRole('combobox', { name: labels.range, exact: true }).press('Enter');
     await page.getByRole('option', { name: labels.custom, exact: true }).click();
     await expect(panel.locator('.custom-range')).toBeVisible();
@@ -733,7 +747,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       })
       .toBe(true);
 
-    await expect(panel).toHaveAttribute('aria-busy', 'false');
+    await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
     const customQuery = requests.filter((url) => url.pathname.endsWith('/overview')).at(-1)!;
     await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     const reads = (kind: string) =>
@@ -751,7 +765,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     );
 
     await panel.getByRole('button', { name: labels.update, exact: true }).click();
-    await expect(panel).toHaveAttribute('aria-busy', 'false');
+    await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
     await page.clock.runFor(500);
     await expect(panel.locator('.record-detail')).toHaveCount(0);
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toHaveCount(0);

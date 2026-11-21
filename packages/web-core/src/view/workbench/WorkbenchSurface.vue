@@ -1049,6 +1049,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :section="page.application.settingsSection"
           :sessions="page.identity.adminSessions"
           :sessions-refreshing="page.identity.adminSessionsRefreshing"
+          :sessions-manual-refresh="page.identity.adminSessionsManualRefresh"
+          :sessions-read-state="page.identity.adminSessionsReadState"
+          :session-revoking="page.identity.adminSessionRevoking"
           :password-validation-error="page.identity.passwordValidationError"
           :registration-token="page.settings.registrationToken"
           :registration-loading="page.settings.registrationLoading"
@@ -1101,6 +1104,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       :title="treePopup.title"
       :tree="treePopupContent.tree"
       :status="treePopupContent.status"
+      :can-retry="
+        !workspaceOffline &&
+        page.application.workspaceWatchTopicStatus.sessionNavigation === 'failed'
+      "
       :main-session-id="
         page.selection.draftSessionOpen ? undefined : page.selection.selectedSessionId
       "

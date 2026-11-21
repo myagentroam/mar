@@ -122,6 +122,7 @@ export interface WorkbenchNotificationService {
   takeWebUpdatePreview(id: string): boolean;
   readonly systemNotifications: ReturnType<typeof createWorkbenchSystemNotificationService>;
   readonly recentRuns: Readonly<Ref<RecentRun[]>>;
+  readonly snapshotState: Readonly<Ref<'loading' | 'ready' | 'failed'>>;
   hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean;
   hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean;
   workspaceTabSession(nodeId: string, workspaceId: string): string | undefined;
@@ -156,6 +157,7 @@ export type WorkbenchNotificationView = Pick<
   | 'webUpdatePreviewId'
   | 'takeWebUpdatePreview'
   | 'recentRuns'
+  | 'snapshotState'
   | 'hasUnreadSession'
   | 'load'
   | 'markAllRead'
@@ -234,6 +236,7 @@ export function createWorkbenchNotificationService(
     notificationRevision.value += 1;
   }
   const recentRuns = ref<RecentRun[]>([]);
+  const snapshotState = ref<'loading' | 'ready' | 'failed'>(options.request ? 'loading' : 'ready');
   const unreadCount = computed(
     () =>
       notifications.value.filter(
@@ -491,12 +494,14 @@ export function createWorkbenchNotificationService(
       } catch (error) {
         if (generation !== loadGeneration) return;
         if (refreshRequested) continue;
+        if (snapshotState.value !== 'ready') snapshotState.value = 'failed';
         throw error;
       } finally {
         if (snapshotReadProjections === readProjections) snapshotReadProjections = undefined;
       }
       if (generation !== loadGeneration) return;
       applyServerSnapshot(result, readProjections);
+      snapshotState.value = 'ready';
       applicationBadge.reconcile();
       if (!refreshRequested) confirmPendingCreatedNotifications();
     }
@@ -506,6 +511,7 @@ export function createWorkbenchNotificationService(
     if (options.request === undefined) return;
     refreshRequested = true;
     if (refreshPromise === undefined) {
+      if (snapshotState.value !== 'ready') snapshotState.value = 'loading';
       const generation = loadGeneration;
       const operation = drainRefreshes(generation);
       const tracked = operation.finally(() => {
@@ -1060,6 +1066,7 @@ export function createWorkbenchNotificationService(
     handledCreatedNotificationIds.clear();
     notifications.value = [];
     recentRuns.value = [];
+    snapshotState.value = options.request ? 'loading' : 'ready';
     if (sweepTimer !== undefined) clearInterval(sweepTimer);
     sweepTimer = undefined;
   }
@@ -1071,6 +1078,7 @@ export function createWorkbenchNotificationService(
     },
     notifications,
     recentRuns,
+    snapshotState,
     unreadCount,
     notificationRevision,
     previewNotificationId,
@@ -1325,6 +1333,7 @@ export interface WorkbenchNotificationsView {
   webUpdatePreviewId: Readonly<Ref<string | undefined>>;
   takeWebUpdatePreview: (id: string) => boolean;
   recentRuns: Readonly<Ref<RecentRun[], RecentRun[]>>;
+  snapshotState: WorkbenchNotificationService['snapshotState'];
   load: () => Promise<void>;
   markAllRead: () => void;
   remove: (id: string) => void;

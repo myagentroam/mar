@@ -28,6 +28,8 @@ import { PersonalGitService } from '../../service/personal-git-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import LoadingPanel from '../common/LoadingPanel.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
+import MarRegionStatus from '../common/MarRegionStatus.vue';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -37,7 +39,9 @@ const summary = ref<PersonalGitSummary>({ credentials: [] });
 const loading = ref(true);
 const ready = ref(false);
 const failed = ref(false);
+const retrying = ref(false);
 const saving = ref(false);
+const removingId = ref<string>();
 const dialogOpen = ref(false);
 const editing = ref<GitCredentialSummary>();
 const detailOpen = ref(false);
@@ -85,18 +89,20 @@ function apply(value: PersonalGitSummary): void {
   summary.value = value;
   ready.value = true;
 }
-async function load(): Promise<void> {
+async function load(retry = false): Promise<void> {
+  if (retry && loading.value) return;
+  retrying.value = retry;
   loading.value = true;
   failed.value = false;
   try {
     apply(await service.read());
-  } catch (error) {
-    if (alive) {
-      failed.value = true;
-      showMessage(errorMessage(error), 'error', error);
-    }
+  } catch {
+    if (alive) failed.value = true;
   } finally {
-    if (alive) loading.value = false;
+    if (alive) {
+      loading.value = false;
+      retrying.value = false;
+    }
   }
 }
 function openCredential(value?: GitCredentialSummary): void {
@@ -201,6 +207,7 @@ function credentialFieldError(field: string): Error | undefined {
   return message === undefined ? undefined : new Error(t(`personalGit.${message}`));
 }
 async function saveCredential(): Promise<void> {
+  if (saving.value || removingId.value !== undefined) return;
   if (!(await credentialForm.value?.validate().catch(() => false))) return;
   const parsed = (
     editing.value === undefined ? gitCredentialInputSchema : gitCredentialUpdateSchema
@@ -223,6 +230,7 @@ async function saveCredential(): Promise<void> {
   }
 }
 async function removeCredential(value: GitCredentialSummary): Promise<void> {
+  if (saving.value || removingId.value !== undefined) return;
   try {
     await MarMessageBox.confirm(
       t('personalGit.removeConfirm', { name: value.name }),
@@ -232,34 +240,51 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
   } catch {
     return;
   }
-  saving.value = true;
+  if (saving.value || removingId.value !== undefined) return;
+  removingId.value = value.id;
   try {
     apply(await service.removeCredential(value.id));
     if (detail.value?.id === value.id) closeCredentialDetail();
   } catch (error) {
     if (alive) showMessage(errorMessage(error), 'error', error);
   } finally {
-    if (alive) saving.value = false;
+    if (alive) removingId.value = undefined;
   }
 }
 </script>
 
 <template>
-  <LoadingPanel class="personal-git-settings" :loading="loading && !ready" variant="page">
+  <LoadingPanel
+    class="personal-git-settings"
+    :loading="loading && !ready && !retrying"
+    variant="page"
+  >
     <div class="mar-management-page">
       <header>
         <div>
           <h2>{{ t('personalGit.title') }}</h2>
         </div>
       </header>
-      <MarButton v-if="failed" @click="load">{{ t('personalGit.reload') }}</MarButton>
+      <MarRegionStatus v-if="failed || retrying" class="git-read-status">
+        <span v-if="!retrying" role="status">{{ t('personalGit.loadFailed') }}</span>
+        <MarButton
+          link
+          :aria-disabled="retrying || undefined"
+          :aria-busy="retrying || undefined"
+          :aria-label="retrying ? t('common.loading') : undefined"
+          @click="load(true)"
+        >
+          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <template v-else>{{ t('common.retry') }}</template>
+        </MarButton>
+      </MarRegionStatus>
       <template v-else>
         <p class="git-page-hint">{{ t('personalGit.summary') }}</p>
         <div class="mar-table-actions">
           <MarButton
             type="primary"
             :icon="marIcon('plus')"
-            :disabled="loading || saving"
+            :disabled="loading || saving || removingId !== undefined"
             @click="openCredential()"
             >{{ t('personalGit.add') }}</MarButton
           >
@@ -292,7 +317,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
                 <MarButton
                   link
                   :icon="marIcon('edit')"
-                  :disabled="saving"
+                  :disabled="saving || removingId !== undefined"
                   @click.stop="openCredential(row)"
                   >{{ t('personalGit.edit') }}</MarButton
                 >
@@ -300,7 +325,8 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
                   link
                   type="danger"
                   :icon="marIcon('delete')"
-                  :disabled="saving"
+                  :disabled="saving || removingId !== undefined"
+                  :loading="removingId === row.id"
                   @click.stop="removeCredential(row)"
                   >{{ t('personalGit.remove') }}</MarButton
                 >
@@ -476,6 +502,9 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 </template>
 
 <style scoped>
+.git-read-status {
+  padding-block: 0.5rem;
+}
 .personal-git-settings .mar-management-page {
   padding: var(--mar-settings-page-padding, 0.875rem 1rem);
 }

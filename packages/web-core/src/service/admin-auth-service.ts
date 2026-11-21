@@ -60,6 +60,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
   const restoring = ref(false);
   const accountKey = ref('');
   const sessionsRefreshing = ref(false);
+  const sessionsManualRefresh = ref(false);
+  const sessionsReadState = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+  const sessionRevoking = ref<string>();
 
   async function syncBrowserLocale(
     serverLocale: AppLocale | undefined,
@@ -85,6 +88,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     identityGeneration += 1;
     refreshGeneration += 1;
     sessionsRefreshing.value = false;
+    sessionsManualRefresh.value = false;
+    sessionsReadState.value = 'idle';
+    sessionRevoking.value = undefined;
     options.invalidateRequests();
     return identityGeneration;
   }
@@ -188,25 +194,33 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     }
   }
 
-  async function refreshSessions(): Promise<void> {
+  async function refreshSessions(manual = false): Promise<void> {
     const identity = identityGeneration;
     const generation = ++sessionRefreshGeneration;
     const isCurrent = () =>
       identity === identityGeneration && generation === sessionRefreshGeneration;
     if (!options.admin.value.authenticated || options.admin.value.mustChangePassword) {
       sessionsRefreshing.value = false;
+      sessionsManualRefresh.value = false;
+      sessionsReadState.value = 'idle';
       options.sessions.value = [];
       return;
     }
     sessionsRefreshing.value = true;
+    sessionsManualRefresh.value = manual;
+    if (!manual && sessionsReadState.value !== 'ready') sessionsReadState.value = 'loading';
     try {
       const result = await options.request<{ sessions: readonly UserSessionSummary[] }>(
         '/api/auth/sessions'
       );
-      if (isCurrent()) options.sessions.value = result.sessions;
+      if (isCurrent()) {
+        options.sessions.value = result.sessions;
+        sessionsReadState.value = 'ready';
+      }
     } catch (error) {
       if (!isCurrent()) return;
       options.sessions.value = [];
+      sessionsReadState.value = 'failed';
       options.notice(
         translate('generated.adminAuthService.unableToLoadSignInSessions', {
           value0: options.errorMessage(error)
@@ -215,20 +229,24 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
         error
       );
     } finally {
-      if (isCurrent()) sessionsRefreshing.value = false;
+      if (isCurrent()) {
+        sessionsRefreshing.value = false;
+        sessionsManualRefresh.value = false;
+      }
     }
   }
 
   async function logoutSession(session: UserSessionSummary): Promise<void> {
+    if (sessionRevoking.value !== undefined || sessionsRefreshing.value || options.loading.value)
+      return;
     const generation = identityGeneration;
-    options.loading.value = true;
+    sessionRevoking.value = session.id;
     try {
       await options.request(`/api/auth/sessions/${encodeURIComponent(session.id)}`, {
         method: 'DELETE'
       });
       if (generation !== identityGeneration) return;
       if (session.current) returnToLogin();
-      else await refreshSessions();
     } catch (error) {
       if (generation !== identityGeneration) return;
       options.notice(
@@ -238,9 +256,11 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
         'error',
         error
       );
+      return;
     } finally {
-      if (generation === identityGeneration) options.loading.value = false;
+      if (generation === identityGeneration) sessionRevoking.value = undefined;
     }
+    if (generation === identityGeneration && !session.current) await refreshSessions();
   }
 
   async function login(credentials: {
@@ -392,6 +412,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       authenticationRestoring: restoring,
       adminSessions: options.sessions,
       adminSessionsRefreshing: sessionsRefreshing,
+      adminSessionsManualRefresh: sessionsManualRefresh,
+      adminSessionsReadState: sessionsReadState,
+      adminSessionRevoking: sessionRevoking,
       changePassword,
       csrfToken: options.csrfToken,
       formatSessionTime,
@@ -405,7 +428,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       newPassword: options.password,
       passwordValidationError: options.passwordError,
       refreshAdmin: refresh,
-      refreshAdminSessions: refreshSessions,
+      refreshAdminSessions: () => refreshSessions(true),
       renewCsrfToken: options.renewCsrfToken,
       request: options.request
     }),
@@ -440,6 +463,9 @@ export interface WorkbenchIdentityView {
   authenticationUnknown: boolean;
   authenticationRestoring: boolean;
   adminSessionsRefreshing: boolean;
+  adminSessionsManualRefresh: boolean;
+  adminSessionsReadState: 'idle' | 'loading' | 'ready' | 'failed';
+  adminSessionRevoking: string | undefined;
   adminSessions: readonly {
     readonly id: string;
     readonly createdAt: number;

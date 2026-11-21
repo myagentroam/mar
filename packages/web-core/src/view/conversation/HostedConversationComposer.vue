@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { createUuid } from '../../util/uuid.js';
 // Owns the current hosted Composer draft; quote callbacks bind its watch and reuse the existing submission snapshot.
@@ -53,6 +54,10 @@ const props = defineProps<{
   readonly entry?: ReturnType<typeof createHostedConversationEntryService>;
   readonly reloadTemplates?: (visible: boolean) => void;
   readonly reloadModels?: (visible: boolean) => void;
+  readonly draftTemplatesLoading?: boolean;
+  readonly draftTemplatesFailed?: boolean;
+  readonly draftModelsLoading?: boolean;
+  readonly draftModelsFailed?: boolean;
 }>();
 const emit = defineEmits<{
   started: [];
@@ -70,6 +75,12 @@ const existingTemplates = ref<readonly ConversationTemplateSummary[]>([]);
 let disposed = false;
 const templatesLoading = ref(false);
 const templatesFailed = ref(false);
+const menuTemplatesLoading = computed(() =>
+  props.draft ? props.draftTemplatesLoading && !draftTemplates.value.length : templatesLoading.value
+);
+const menuTemplatesFailed = computed(() =>
+  props.draft ? props.draftTemplatesFailed : templatesFailed.value
+);
 const templateMenuOpen = ref(false);
 let messageIntent:
   | {
@@ -809,21 +820,28 @@ onBeforeUnmount(() => {
             :disabled="templateSelectionDisabled"
             :aria-label="translate('hostedConversations.chooseTemplate')"
             :aria-description="menuTemplateLabel"
+            :aria-busy="draft && draftTemplatesLoading ? true : undefined"
           >
-            <MarIcon name="document" aria-hidden="true" />
+            <MarIcon
+              :name="
+                draft && menuTemplatesLoading && !templateMenuOpen ? 'loading-action' : 'document'
+              "
+              aria-hidden="true"
+            />
             <span>{{ menuTemplateLabel }}</span>
             <MarIcon name="chevron-down" aria-hidden="true" />
           </button>
           <template #dropdown>
             <MarDropdownMenu>
-              <MarDropdownItem v-if="templatesLoading" disabled>
+              <MarDropdownItem v-if="menuTemplatesLoading" disabled>
+                <MarIcon v-if="draft" name="loading-action" aria-hidden="true" />
                 {{ translate('common.loading') }}
               </MarDropdownItem>
-              <MarDropdownItem v-else-if="templatesFailed" disabled>
+              <MarDropdownItem v-else-if="menuTemplatesFailed" disabled>
                 {{ translate('hostedConversations.templateOptionsFailed') }}
               </MarDropdownItem>
               <MarDropdownItem
-                v-for="template in templatesLoading || templatesFailed ? [] : menuTemplates"
+                v-for="template in menuTemplatesLoading || menuTemplatesFailed ? [] : menuTemplates"
                 :key="template.id"
                 :command="template.id"
                 :disabled="!template.available || (!draft && template.id === menuTemplateId)"
@@ -832,7 +850,7 @@ onBeforeUnmount(() => {
                 {{ template.name }}
               </MarDropdownItem>
               <MarDropdownItem
-                v-if="!templatesLoading && !templatesFailed && menuTemplates.length === 0"
+                v-if="!menuTemplatesLoading && !menuTemplatesFailed && menuTemplates.length === 0"
                 disabled
               >
                 {{
@@ -868,9 +886,13 @@ onBeforeUnmount(() => {
               :disabled="modelSelectionDisabled"
               :aria-label="translate('hostedConversations.model')"
               :aria-description="selectedModelLabel"
+              :aria-busy="draft && draftModelsLoading ? true : undefined"
             >
               <span>{{ selectedModelLabel }}</span>
-              <MarIcon name="chevron-down" aria-hidden="true" />
+              <MarIcon
+                :name="draft && draftModelsLoading ? 'loading-action' : 'chevron-down'"
+                aria-hidden="true"
+              />
             </button>
             <template #dropdown>
               <MarDropdownMenu>
@@ -886,6 +908,13 @@ onBeforeUnmount(() => {
             </template>
           </MarDropdown>
         </div>
+        <MarButton
+          v-if="draft && draftModelsFailed && draftTemplateId"
+          link
+          @click="reloadModels?.(true)"
+        >
+          {{ translate('hostedConversations.modelOptionsRetry') }}
+        </MarButton>
         <span v-if="modelUnavailable" class="hosted-model-unavailable" aria-live="polite">
           {{ translate('hostedConversations.modelUnavailable') }}
         </span>

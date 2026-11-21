@@ -9,6 +9,108 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const width of [1280, 390]) {
+  const theme = width < 768 ? 'daylight' : 'vscode-dark-2026';
+  test(`Directory navigation and refresh own separate feedback at ${width}px`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize({ width, height: 860 });
+    let request = Promise.withResolvers<void>();
+    await page.route('**/api/workspace-directories?**', async (route) => {
+      await request.promise;
+      const subdirectory = route.request().url().includes('projects');
+      return route.fulfill({
+        json: {
+          directory: {
+            currentPath: subdirectory ? '/workspace/projects' : '/workspace',
+            homePath: '/workspace',
+            parentPath: subdirectory ? '/workspace' : null,
+            browseRoots: ['/workspace'],
+            selectable: true,
+            entries: subdirectory
+              ? []
+              : [{ name: 'projects', path: '/workspace/projects', selectable: true }],
+            truncated: false
+          }
+        }
+      });
+    });
+    await page.route('**/api/**/html-preview**', (route) =>
+      route.fulfill({ json: { url: '/fixture-preview.html' } })
+    );
+    await page.goto(
+      `${fixture.url}inspector-read-state.html?theme=${theme}&refresh-controls&empty-directory`
+    );
+    await page.getByRole('button', { name: 'Open directory picker' }).click();
+    const dialog = page.getByRole('dialog');
+    const pending = dialog.getByRole('progressbar');
+    const refresh = dialog.getByRole('button', { name: 'Refresh directory' });
+    await expect(pending).toBeVisible();
+    await page.screenshot({
+      path: info.outputPath('directory-loading.png'),
+      animations: 'disabled'
+    });
+    request.resolve();
+    await expect(refresh).toBeEnabled();
+    request = Promise.withResolvers<void>();
+    await dialog.getByRole('button', { name: 'Open projects' }).click();
+    await expect(pending).toBeVisible();
+    await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
+    await page.screenshot({
+      path: info.outputPath('directory-navigating.png'),
+      animations: 'disabled'
+    });
+    request.resolve();
+    await expect(refresh).toBeEnabled();
+    request = Promise.withResolvers<void>();
+    await refresh.click();
+    await expect(refresh).toHaveAttribute('aria-busy', 'true');
+    await expect(pending).toHaveCount(0);
+    await page.screenshot({
+      path: info.outputPath('directory-refreshing.png'),
+      animations: 'disabled'
+    });
+    request.resolve();
+    await expect(refresh).toBeEnabled();
+  });
+
+  test(`Share records distinguish first read, failure and empty at ${width}px`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize({ width, height: 860 });
+    const first = Promise.withResolvers<void>();
+    const retry = Promise.withResolvers<void>();
+    let reads = 0;
+    await page.route('**/api/agent-sessions/session/shares?**', async (route) => {
+      if (++reads === 1) {
+        await first.promise;
+        return route.fulfill({ status: 503, json: { error: 'UNAVAILABLE' } });
+      }
+      await retry.promise;
+      return route.fulfill({ json: { shares: [] } });
+    });
+    await page.goto(`${fixture.url}inspector-read-state.html?theme=${theme}&refresh-controls`);
+    await page.getByRole('button', { name: 'Open share dialog' }).click();
+    const dialog = page.getByRole('dialog');
+    const empty = dialog.getByText('No shared links yet.');
+    const progress = dialog.getByRole('progressbar');
+    await expect(progress).toBeVisible();
+    await expect(empty).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath('share-loading.png'), animations: 'disabled' });
+    first.resolve();
+    const retryButton = dialog.getByRole('button', { name: /Retry/ });
+    await expect(retryButton).toBeVisible();
+    await expect(empty).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath('share-failed.png'), animations: 'disabled' });
+    await retryButton.click();
+    await expect(progress).toBeVisible();
+    await page.screenshot({ path: info.outputPath('share-retrying.png'), animations: 'disabled' });
+    retry.resolve();
+    await expect(empty).toBeVisible();
+    await page.screenshot({ path: info.outputPath('share-empty.png'), animations: 'disabled' });
+  });
+}
+
 async function expectReadableState(button: Locator) {
   await expect(button).toBeVisible();
   const layout = await button.evaluate((element) => {

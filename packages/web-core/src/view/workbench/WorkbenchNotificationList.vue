@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarIcon from '../common/MarIcon.vue';
 import { computed } from 'vue';
@@ -75,12 +76,28 @@ const hasMarkableUnread = computed(() =>
       </MarButton>
     </header>
     <div class="workbench-notification-section">
-      <p
+      <div
         v-if="visibleNotifications.length === 0 && transferTasks.length === 0"
         class="workbench-notification-empty"
       >
-        {{ translate('generated.workbenchNotificationCenter.noNotifications') }}
-      </p>
+        <span
+          v-if="previewId === undefined && service.snapshotState.value === 'loading'"
+          role="progressbar"
+          :aria-label="translate('common.loading')"
+        >
+          <BusyIndicator class="mar-read-loading-indicator" />
+        </span>
+        <MarButton
+          v-else-if="previewId === undefined && service.snapshotState.value === 'failed'"
+          link
+          @click="service.load().catch(() => undefined)"
+        >
+          {{ translate('common.loadFailedRetry') }}
+        </MarButton>
+        <template v-else>{{
+          translate('generated.workbenchNotificationCenter.noNotifications')
+        }}</template>
+      </div>
       <template v-for="group in notificationGroups" :key="group.kind">
         <section
           v-if="group.kind === 'transfers' && transferTasks.length"

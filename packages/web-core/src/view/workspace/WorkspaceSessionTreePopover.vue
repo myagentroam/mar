@@ -14,6 +14,7 @@ const props = defineProps<{
   title: string;
   tree: NavigationSnapshot['tree'] | undefined;
   status: 'idle' | 'loading' | 'ready' | 'failed';
+  canRetry?: boolean;
   mainSessionId?: string | undefined;
   asideSessionIds: readonly string[];
   activeAsideId?: string | undefined;
@@ -98,6 +99,7 @@ onBeforeUnmount(() => {
           :interactive="visible"
           :tree="tree"
           :status="status"
+          :can-retry="canRetry"
           :main-session-id="mainSessionId"
           :aside-session-ids="asideSessionIds"
           :active-aside-id="activeAsideId"

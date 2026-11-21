@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { translate } from '../../service/locale-preference-service.js';
 import SessionGroupTabs from '../common/SessionGroupTabs.vue';
@@ -8,6 +10,7 @@ import { recentRunTimeReference } from '../../util/notification-presentation.js'
 defineProps<{
   readonly sessionGroup: import('@myagentroam/protocol').SessionGroup;
   readonly runs: readonly RecentRun[];
+  readonly snapshotState?: 'loading' | 'ready' | 'failed';
   readonly hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
   readonly mobileMode: boolean;
   readonly runTime: (run: RecentRun) => string;
@@ -15,6 +18,7 @@ defineProps<{
 const emit = defineEmits<{
   openRecentRun: [run: RecentRun];
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
+  retry: [];
 }>();
 const RUN_STATUS_KEYS = {
   STARTING: 'workbenchNotificationCenter.runStatus.STARTING',
@@ -53,9 +57,19 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
       :model-value="sessionGroup"
       @update:model-value="emit('selectGroup', $event)"
     />
-    <p v-if="runs.length === 0" class="recent-sessions-empty">
-      {{ translate('workbenchNotificationCenter.noRecentSessions') }}
-    </p>
+    <div v-if="runs.length === 0" class="recent-sessions-empty">
+      <span
+        v-if="snapshotState === 'loading'"
+        role="progressbar"
+        :aria-label="translate('common.loading')"
+      >
+        <BusyIndicator class="mar-read-loading-indicator" />
+      </span>
+      <MarButton v-else-if="snapshotState === 'failed'" link @click="emit('retry')">
+        {{ translate('common.loadFailedRetry') }}
+      </MarButton>
+      <template v-else>{{ translate('workbenchNotificationCenter.noRecentSessions') }}</template>
+    </div>
     <ul v-else class="recent-sessions-list">
       <li v-for="run in runs" :key="`${run.nodeId}:${run.runId}`">
         <button

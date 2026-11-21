@@ -28,7 +28,7 @@ import { errorMessage } from '../../util/error-presentation.js';
 import { absoluteMessageTime } from '../../util/time-presentation.js';
 import { cacheHitRate } from '../../util/usage-statistics-presentation.js';
 import ManagementPagination from './ManagementPagination.vue';
-import LoadingPanel from '../common/LoadingPanel.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
@@ -37,7 +37,6 @@ const service = new UsageStatisticsService(props.request, (error) =>
   showMessage(errorMessage(error), 'error', error)
 );
 const state = service.state;
-const pageLoading = computed(() => state.loading && !state.overview);
 const pagination = service.pagination;
 watchManagementPageFailure(pagination);
 watch(pagination.mobileViewport, () => void refresh(true));
@@ -287,12 +286,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <LoadingPanel
-    :loading="pageLoading"
-    variant="page"
-    class="usage settings-panel"
-    data-testid="usage-statistics"
-  >
+  <section class="usage settings-panel" data-testid="usage-statistics">
     <div class="usage-content">
       <header>
         <div>
@@ -310,8 +304,7 @@ onUnmounted(() => {
             circle
             size="small"
             :icon="marIcon('refresh')"
-            :loading="state.loading && !pageLoading"
-            :disabled="pageLoading"
+            :disabled="state.loading"
             :aria-label="t('usageStatistics.refresh')"
             @click="refresh()"
           />
@@ -661,6 +654,8 @@ onUnmounted(() => {
             </ol>
           </section>
         </div>
+      </template>
+      <template v-if="state.overview || state.failed || state.loading">
         <div class="section-heading">
           <h3>{{ t('usageStatistics.records') }}</h3>
           <span>{{ t('usageStatistics.recordsHint') }}</span>
@@ -675,12 +670,16 @@ onUnmounted(() => {
           :data="state.records"
           :row-key="recordKey"
           :expand-row-keys="expandedRecords"
-          :empty-text="t('usageStatistics.empty')"
           class="records"
-          :aria-busy="state.loadingPage"
+          :aria-busy="state.loading"
           @sort-change="sortChanged"
           @expand-change="expandChanged"
         >
+          <template v-if="state.loading" #loading>
+            <span role="progressbar" :aria-label="t('common.loading')">
+              <BusyIndicator class="mar-read-loading-indicator" />
+            </span>
+          </template>
           <MarTableColumn type="expand"
             ><template #default="{ row }"
               ><dl class="record-detail">
@@ -816,9 +815,8 @@ onUnmounted(() => {
           @retry="service.retryPage()"
         />
       </template>
-      <p v-else-if="state.failed">{{ t('usageStatistics.retry') }}</p>
     </div>
-  </LoadingPanel>
+  </section>
 </template>
 
 <style scoped>
@@ -842,6 +840,10 @@ onUnmounted(() => {
 
 .usage {
   width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
   box-sizing: border-box;
   color: var(--mar-text-primary);
 }

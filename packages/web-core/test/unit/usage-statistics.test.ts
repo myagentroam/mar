@@ -207,7 +207,7 @@ describe('usage statistics service', () => {
     expect(service.pagination.failure.value).toBeUndefined();
   });
 
-  it('rejects an unsafe total without truncating it or replacing existing records', async () => {
+  it('rejects an unsafe total without exposing unvalidated records', async () => {
     let unsafe = false;
     const error = vi.fn();
     const request = vi.fn(async (path: string): Promise<unknown> => {
@@ -221,10 +221,13 @@ describe('usage statistics service', () => {
     });
     const service = new UsageStatisticsService(request as Requester, error);
     await service.load(query());
-    unsafe = true;
-    expect(await service.load(query(), { reset: false })).toBe(false);
     expect(service.state.records.map((item) => item.recordId)).toEqual(['original']);
     expect(service.state.total).toBe('1');
+    unsafe = true;
+    expect(await service.load(query(), { reset: false })).toBe(false);
+    expect(service.state.records).toEqual([]);
+    expect(service.state.total).toBe('0');
+    expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'USAGE_PAGE_RESPONSE_INVALID' })
     );
@@ -704,7 +707,7 @@ describe('usage statistics settings contract', () => {
     ['model', 'model-a'],
     ['mode', 'work'],
     ['purpose', 'compact']
-  ])('shows page loading when changing %s after the initial read', async (field, value) => {
+  ])('shows table loading when changing %s after the initial read', async (field, value) => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
     });
@@ -728,12 +731,11 @@ describe('usage statistics settings contract', () => {
       }
     );
     const view = renderComponent(InteractiveUsageStatisticsSettings, { request });
-    const panel = () =>
-      view.findAll('section').find((node) => node.props['data-testid'] === 'usage-statistics')!;
+    const table = () => view.findAll('MarTable').find((node) => node.props.class === 'records')!;
     const refreshButton = () => view.findAll('MarButton').find((node) => node.props['onClick'])!;
     try {
       await flushComponent();
-      expect(panel().props['aria-busy']).toBe(false);
+      expect(table().props['aria-busy']).toBe(false);
       requestMock.mockImplementation((path: string) =>
         path.includes('/overview') ? pendingOverview.promise : pendingRecords.promise
       );
@@ -755,36 +757,44 @@ describe('usage statistics settings contract', () => {
       changeFilter();
       await flushComponent();
       expect(service.state.loading).toBe(true);
-      expect(panel().props['aria-busy']).toBe(true);
-      expect(refreshButton().props['loading']).toBe(false);
+      expect(table().props['aria-busy']).toBe(true);
+      expect(refreshButton().props['loading']).not.toBe(true);
       expect(refreshButton().props['disabled']).toBe(true);
       pendingOverview.resolve(overview());
       await flushComponent();
-      expect(panel().props['aria-busy']).toBe(true);
-      pendingRecords.resolve({ records: [], total: '0', page: 1, nextCursor: null });
+      expect(table().props['aria-busy']).toBe(true);
+      pendingRecords.resolve({
+        records: [record('retained')],
+        total: '1',
+        page: 1,
+        nextCursor: null
+      });
       await flushComponent();
-      expect(panel().props['aria-busy']).toBe(false);
+      expect(table().props['aria-busy']).toBe(false);
 
       const failedRead = deferred<PersonalUsageOverview>();
       requestMock.mockImplementation(() => failedRead.promise);
       (refreshButton().props['onClick'] as () => void)();
       await flushComponent();
       expect(service.state.overview).toBeDefined();
-      expect(panel().props['aria-busy']).toBe(false);
-      expect(refreshButton().props['loading']).toBe(true);
+      expect(table().props['aria-busy']).toBe(true);
+      expect(table().props.data).toHaveLength(1);
+      expect(refreshButton().props['loading']).not.toBe(true);
+      expect(refreshButton().props['disabled']).toBe(true);
       failedRead.reject(new Error('Usage unavailable'));
       await flushComponent();
-      expect(panel().props['aria-busy']).toBe(false);
-      expect(refreshButton().props['loading']).toBe(false);
+      expect(table().props['aria-busy']).toBe(false);
+      expect(table().props.data).toEqual([]);
+      expect(refreshButton().props['disabled']).toBe(false);
 
       const failedFilter = deferred<PersonalUsageOverview>();
       requestMock.mockImplementation(() => failedFilter.promise);
       changeFilter();
       await flushComponent();
-      expect(panel().props['aria-busy']).toBe(true);
+      expect(table().props['aria-busy']).toBe(true);
       failedFilter.reject(new Error('Usage unavailable'));
       await flushComponent();
-      expect(panel().props['aria-busy']).toBe(false);
+      expect(table().props['aria-busy']).toBe(false);
       expect(refreshButton().props['disabled']).toBe(false);
     } finally {
       view.unmount();

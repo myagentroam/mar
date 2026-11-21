@@ -86,6 +86,66 @@ const template = {
   updatedAt: 1
 };
 const alternate = { ...template, id: 'template-2', name: 'Second template' };
+test('Draft template and model reads display local failure and loading states', async ({
+  page
+}, info) => {
+  await page.setViewportSize({ width: 390, height: 860 });
+  const catalog = Promise.withResolvers<void>();
+  const model = Promise.withResolvers<void>();
+  const modelRetry = Promise.withResolvers<void>();
+  let templates = 0;
+  let models = 0;
+  await page.route('**/api/conversation-templates', async (route) => {
+    if (++templates === 1) {
+      await catalog.promise;
+      return route.fulfill({ status: 503, json: { error: 'CATALOG_UNAVAILABLE' } });
+    }
+    return route.fulfill({ json: { templates: [template] } });
+  });
+  await page.route('**/conversation-templates/*/model-options', async (route) => {
+    if (++models === 1) {
+      await model.promise;
+      return route.fulfill({ status: 503, json: { error: 'MODELS_UNAVAILABLE' } });
+    }
+    await modelRetry.promise;
+    return route.fulfill({ json: { models: [], defaultModelId: null } });
+  });
+  const capture = (name: string) =>
+    page.screenshot({ path: info.outputPath(`hosted-${name}.png`), animations: 'disabled' });
+  await page.goto(`${fixture.url}hosted-entry.html?theme=daylight`);
+  const trigger = page.locator('.hosted-template-trigger');
+  await expect(trigger.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+  await expect(page.locator('.hosted-entry-page .mar-ui-loading')).toHaveCount(0);
+  await capture('templates-loading');
+  await trigger.click();
+  catalog.resolve();
+  await expect(page.getByText(/Unable to load templates/)).toBeVisible();
+  await expect(page.getByText(/No conversation templates/)).toHaveCount(0);
+  await capture('templates-failed');
+  await page.keyboard.press('Escape');
+  await trigger.click();
+  await expect.poll(() => models).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(
+    page.locator('.hosted-model-trigger [data-mar-icon="loading-action"]')
+  ).toBeVisible();
+  await capture('models-loading');
+  model.resolve();
+  const retry = page.getByRole('button', { name: 'Could not load models. Retry' });
+  await expect(retry).toBeVisible();
+  await capture('models-failed');
+  await retry.click();
+  await expect.poll(() => models).toBe(2);
+  await expect(
+    page.locator('.hosted-model-trigger [data-mar-icon="loading-action"]')
+  ).toBeVisible();
+  await capture('models-retrying');
+  modelRetry.resolve();
+  await expect(page.locator('.hosted-model-trigger [data-mar-icon="loading-action"]')).toHaveCount(
+    0
+  );
+});
+
 const models = ['model-1', 'model-2'].map((id) => ({
   id,
   name: id === 'model-1' ? 'Model One' : 'Model Two',
@@ -153,9 +213,13 @@ async function openEntry(page: Page, templateName = template.name, theme = 'vsco
 
 async function refreshCatalog(page: Page, f: Awaited<ReturnType<typeof openEntry>>) {
   const reads = f.catalogReads();
-  await page.locator('.hosted-template-trigger').click();
+  const modelReads = f.modelReads();
+  const trigger = page.locator('.hosted-template-trigger');
+  await trigger.click();
   await expect.poll(f.catalogReads).toBe(reads + 1);
-  await expect(page.locator('.hosted-entry-page')).toHaveAttribute('aria-busy', 'false');
+  await expect(trigger).not.toHaveAttribute('aria-busy', 'true');
+  if (!f.state.failCatalog) await expect.poll(f.modelReads).toBe(modelReads + 1);
+  await expect(f.modelControl).not.toHaveAttribute('aria-busy', 'true');
 }
 
 async function sendDraft(page: Page, f: Awaited<ReturnType<typeof openEntry>>) {

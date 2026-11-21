@@ -9,6 +9,7 @@ import type {
 } from '../../service/session-navigation-projection.js';
 import MarIcon from '../common/MarIcon.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
+import MarRegionStatus from '../common/MarRegionStatus.vue';
 import SessionNavigationMenu from '../common/SessionNavigationMenu.vue';
 import {
   formatRelativeSessionActivity,
@@ -23,6 +24,7 @@ const props = defineProps<{
   readonly interactive: boolean;
   readonly tree: NavigationSnapshot['tree'] | undefined;
   readonly status: 'idle' | 'loading' | 'ready' | 'failed';
+  readonly canRetry?: boolean | undefined;
   readonly mainSessionId?: string | undefined;
   readonly asideSessionIds: readonly string[];
   readonly activeAsideId?: string | undefined;
@@ -147,18 +149,26 @@ function openContext(event: MouseEvent): void {
 
 <template>
   <div class="session-tree" :aria-busy="tree === undefined && status !== 'failed'">
-    <div
-      v-if="tree === undefined && status !== 'failed'"
-      class="session-tree-loading"
+    <MarRegionStatus
+      v-if="tree === undefined || status === 'failed' || (status === 'ready' && tree === null)"
+      class="session-tree-status"
+      :class="{ 'session-tree-loading': tree === undefined && status !== 'failed' }"
       role="status"
-      :aria-label="translate('common.loading')"
+      :aria-label="
+        tree === undefined && status !== 'failed' ? translate('common.loading') : undefined
+      "
     >
-      <BusyIndicator class="mar-read-loading-indicator" />
-    </div>
-    <p v-if="status === 'failed' || (status === 'ready' && tree === null)" role="status">
-      {{ translate('sessionGroups.treeUnavailable') }}
-      <MarButton link @click="emit('retry')">{{ translate('sessionGroups.retry') }}</MarButton>
-    </p>
+      <BusyIndicator
+        v-if="tree === undefined && status !== 'failed'"
+        class="mar-read-loading-indicator"
+      />
+      <template v-else>
+        <span>{{ translate('sessionGroups.treeUnavailable') }}</span>
+        <MarButton v-if="status === 'failed' && canRetry" link @click="emit('retry')">{{
+          translate('sessionGroups.retry')
+        }}</MarButton>
+      </template>
+    </MarRegionStatus>
     <div
       v-if="tree?.parent"
       class="session-tree-parent"
@@ -337,10 +347,7 @@ function openContext(event: MouseEvent): void {
 </template>
 
 <style scoped>
-.session-tree-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.session-tree-status {
   min-block-size: 5rem;
 }
 

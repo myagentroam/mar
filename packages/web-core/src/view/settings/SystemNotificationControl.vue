@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 
@@ -9,6 +9,16 @@ const props = defineProps<{
   readonly service: WorkbenchNotificationService['systemNotifications'];
 }>();
 const hasStateTag = computed(() => ['enabled', 'disabled'].includes(props.service.status.value));
+const enablingPush = ref(false);
+async function enablePush(): Promise<void> {
+  if (enablingPush.value) return;
+  enablingPush.value = true;
+  try {
+    await props.service.enablePush();
+  } finally {
+    enablingPush.value = false;
+  }
+}
 const blocked = computed(
   () =>
     !props.service.enabled.value &&
@@ -29,7 +39,7 @@ const blocked = computed(
         <MarButton
           :icon="service.enabled.value ? 'power' : 'notification'"
           :loading="service.requesting.value"
-          :disabled="blocked"
+          :disabled="blocked || enablingPush"
           @click="service.setEnabled(!service.enabled.value)"
         >
           {{
@@ -61,10 +71,11 @@ const blocked = computed(
           v-if="
             service.mode === 'mobile-push' &&
             service.enabled.value &&
-            ['actionRequired', 'unavailable'].includes(service.pushStatus.value)
+            (enablingPush || ['actionRequired', 'unavailable'].includes(service.pushStatus.value))
           "
           icon="notification"
-          @click="service.enablePush()"
+          :loading="enablingPush"
+          @click="enablePush"
           >{{ translate('workbenchNotificationCenter.webPush.enable') }}</MarButton
         >
       </div>

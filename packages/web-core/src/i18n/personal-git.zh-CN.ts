@@ -47,6 +47,7 @@ export const personalGitZhCN = {
   cancel: '取消',
   close: '关闭',
   reload: '重新加载',
+  loadFailed: '无法读取 Git 配置。',
   saved: 'Git 配置已保存。',
   invalid: '请检查凭据字段。',
   nameInvalid: '请输入凭据名称。',

@@ -27,7 +27,9 @@ describe('Initial Web authentication recovery', () => {
       passwordError: { value: '' } as never,
       csrfToken: { value: '' } as never,
       loading: { value: false } as never,
-      request: vi.fn().mockResolvedValue({ authenticated: true, mustChangePassword: false }),
+      request: vi
+        .fn()
+        .mockResolvedValue({ authenticated: true, mustChangePassword: false, userId: 1 }),
       renewCsrfToken: vi.fn(),
       invalidateRequests: vi.fn(),
       onAuthenticated: async () => {
@@ -65,7 +67,7 @@ describe('Initial Web authentication recovery', () => {
     let finishSave: (() => void) | undefined;
     const request = vi.fn(async (path: string) => {
       if (path === '/api/auth/me')
-        return { authenticated: true, mustChangePassword: false, locale: 'zh-CN' };
+        return { authenticated: true, mustChangePassword: false, userId: 1, locale: 'zh-CN' };
       if (failToSave) throw new Error('NETWORK_ERROR');
       if (waitForSave) await new Promise<void>((resolve) => (finishSave = resolve));
       return undefined;

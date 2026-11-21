@@ -142,16 +142,24 @@ test('preserves Node sibling order for 100 returned rows, including an active id
   expect(titles.at(-1)).toBe('Idle 095');
 });
 
-test('retries a failed tree read, reaches ready, and closes on Escape', async ({ page }) => {
+test('retries a failed tree read, reaches ready, and closes on Escape', async ({ page }, info) => {
   const { dialog, tree } = await openTree(page, 'dark', 390);
   await setFixtureState(page, 'fail');
   const error = tree.getByRole('status');
   await expect(error).toBeVisible();
   const retry = error.getByRole('button');
   await expect(retry).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath('session-tree-failed.png'),
+    animations: 'disabled'
+  });
   await retry.click();
   await expect(page.getByTestId('retry-count')).toHaveText('1');
   await expect(tree).toHaveAttribute('aria-busy', 'true');
+  await page.screenshot({
+    path: info.outputPath('session-tree-retrying.png'),
+    animations: 'disabled'
+  });
   await expect(tree.locator('.session-tree-loading .mar-busy-indicator')).toBeVisible();
   await setFixtureState(page, 'ready');
   await expect(tree.locator('.session-tree-row')).toHaveCount(100);

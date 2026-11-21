@@ -149,6 +149,7 @@ const FixtureApp = defineComponent({
                 title: 'View session tree',
                 tree: tree.value,
                 status: status.value,
+                canRetry: status.value === 'failed',
                 mainSessionId: 'running-older',
                 asideSessionIds: [],
                 onClose: (restoreFocus: boolean) => {

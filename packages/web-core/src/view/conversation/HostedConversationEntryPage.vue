@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { HostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
 import type { createHostedConversationWorkspaceService } from '../../service/hosted-conversation-workspace-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -21,46 +20,46 @@ const emit = defineEmits<{
 }>();
 
 const service = props.entry;
-const loading = ref(false);
-const loaded = ref(false);
+const templatesLoading = ref(false);
+const templateReadFailed = ref(false);
+const modelsLoading = ref(false);
+const modelsFailed = ref(false);
 let loadSequence = 0;
 let modelLoadSequence = 0;
 
 async function load(): Promise<void> {
+  if (templatesLoading.value) return;
   const sequence = ++loadSequence;
-  loading.value = true;
+  templatesLoading.value = true;
+  templateReadFailed.value = false;
   try {
     await service.loadTemplates();
-    if (sequence !== loadSequence) return;
-    loaded.value = true;
-    await loadModels();
   } catch (error) {
     if (sequence !== loadSequence) return;
-    showMessage(
-      error instanceof Error ? errorMessage(error) : translate('hostedConversations.loadFailed'),
-      'error',
-      error
-    );
+    if (service.templates.value.length > 0) showMessage(errorMessage(error), 'error', error);
+    else templateReadFailed.value = true;
+    return;
   } finally {
-    if (sequence === loadSequence) loading.value = false;
+    if (sequence === loadSequence) templatesLoading.value = false;
   }
+  if (sequence === loadSequence) void loadModels();
 }
 
 async function loadModels(): Promise<void> {
   const sequence = ++modelLoadSequence;
+  modelsLoading.value = service.selectedTemplateId.value !== undefined;
+  modelsFailed.value = false;
   try {
     await service.loadModelOptions();
-  } catch (error) {
+  } catch {
     if (sequence !== modelLoadSequence) return;
-    showMessage(
-      error instanceof Error ? errorMessage(error) : translate('hostedConversations.loadFailed'),
-      'error',
-      error
-    );
+    modelsFailed.value = true;
+  } finally {
+    if (sequence === modelLoadSequence) modelsLoading.value = false;
   }
 }
 function refreshTemplatesOnOpen(visible: boolean): void {
-  if (visible && !loading.value) void load();
+  if (visible) void load();
 }
 
 function refreshModelsOnOpen(visible: boolean): void {
@@ -71,10 +70,14 @@ onMounted(() => {
   if (service.templates.value.length === 0) void load();
   else if (!service.modelOptionsLoaded.value) void loadModels();
 });
+onBeforeUnmount(() => {
+  loadSequence++;
+  modelLoadSequence++;
+});
 </script>
 
 <template>
-  <section v-mar-loading:page="loading && !loaded" class="hosted-entry-page" :aria-busy="loading">
+  <section class="hosted-entry-page">
     <div class="conversation-create-panel">
       <div class="conversation-create-heading">
         <h2>{{ translate('conversationEmpty.hosted.title') }}</h2>
@@ -90,6 +93,10 @@ onMounted(() => {
         :entry="service"
         :reload-templates="refreshTemplatesOnOpen"
         :reload-models="refreshModelsOnOpen"
+        :draft-templates-loading="templatesLoading"
+        :draft-templates-failed="templateReadFailed"
+        :draft-models-loading="modelsLoading"
+        :draft-models-failed="modelsFailed"
         @started="emit('started')"
       />
     </div>
