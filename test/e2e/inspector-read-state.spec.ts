@@ -295,7 +295,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const checkbox = await searchPanel.getByRole('checkbox').boundingBox();
           const searchInput = await searchPanel.locator('.mar-ui-input').boundingBox();
           expect(checkbox!.x - searchBounds!.x).toBeGreaterThanOrEqual(6);
-          expect(checkbox!.y - searchBounds!.y).toBeGreaterThanOrEqual(6);
+          expect(searchInput!.y - searchBounds!.y).toBeGreaterThanOrEqual(6);
+          expect(checkbox!.y).toBeGreaterThan(searchInput!.y + searchInput!.height);
           expect(Math.abs(checkbox!.x - searchInput!.x)).toBeLessThanOrEqual(1);
           const filesBounds = await files.locator('.file-explorer').boundingBox();
           const filter = files.locator('.file-display-filter input');

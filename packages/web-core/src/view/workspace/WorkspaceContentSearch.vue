@@ -65,32 +65,34 @@ defineExpose({
 
 <template>
   <section class="content-search">
-    <div class="content-search-options">
-      <MarCheckbox v-model="contentUseRegex" size="small">{{
-        translate('generated.workspaceInspector.useRegularExpression')
-      }}</MarCheckbox>
+    <div class="content-search-toolbar">
+      <form @submit.prevent="searchContent">
+        <MarInput
+          ref="contentSearchInput"
+          v-model="contentQuery"
+          :aria-label="translate('generated.workspaceInspector.searchFileContents')"
+          maxlength="256"
+          :placeholder="translate('generated.workspaceInspector.searchFileContents2')"
+          :prefix-icon="marIcon('search')"
+          size="small"
+        />
+        <button
+          v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
+          class="content-search-button file-explorer-utility-button mar-icon-action"
+          :disabled="contentSearchLoading"
+          :aria-label="translate('generated.workspaceInspector.runContentSearch')"
+          :aria-busy="contentSearchLoading || undefined"
+          type="submit"
+        >
+          <MarIcon :name="contentSearchLoading ? 'loading-action' : 'refresh'" />
+        </button>
+      </form>
+      <div class="content-search-options">
+        <MarCheckbox v-model="contentUseRegex" size="small">{{
+          translate('generated.workspaceInspector.useRegularExpression')
+        }}</MarCheckbox>
+      </div>
     </div>
-    <form class="explorer-toolbar content-search-toolbar" @submit.prevent="searchContent">
-      <MarInput
-        ref="contentSearchInput"
-        v-model="contentQuery"
-        :aria-label="translate('generated.workspaceInspector.searchFileContents')"
-        maxlength="256"
-        :placeholder="translate('generated.workspaceInspector.searchFileContents2')"
-        :prefix-icon="marIcon('search')"
-        size="small"
-      />
-      <button
-        v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
-        class="content-search-button file-explorer-utility-button mar-icon-action"
-        :disabled="contentSearchLoading"
-        :aria-label="translate('generated.workspaceInspector.runContentSearch')"
-        :aria-busy="contentSearchLoading || undefined"
-        type="submit"
-      >
-        <MarIcon :name="contentSearchLoading ? 'loading-action' : 'refresh'" />
-      </button>
-    </form>
     <MarButton
       v-if="contentSearchError !== undefined"
       v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
@@ -193,12 +195,17 @@ button.watch-status[aria-disabled='true'] {
 
 .content-search-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  margin-top: 0.2rem;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--mar-border-subtle);
+  padding: 0.375rem;
 }
 
-.content-search-options {
-  padding: 0.375rem 0.375rem 0;
+.content-search-toolbar form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0;
 }
 
 .content-search-warning {
@@ -283,16 +290,6 @@ button.watch-status[aria-disabled='true'] {
   grid-column: 1 / -1;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
-}
-
-.explorer-toolbar {
-  display: flex;
-  justify-content: flex-start;
-  gap: 0.25rem;
-  align-items: center;
-  margin: 0.3rem 0 0;
-  border-bottom: 1px solid var(--mar-border-subtle);
-  padding: 0 0.375rem 0.375rem;
 }
 
 button.file-explorer-utility-button {

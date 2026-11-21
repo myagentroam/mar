@@ -448,10 +448,10 @@ defineExpose({ release, toggle: toggleTerminal });
     ref="terminalRoot"
     class="admin-terminal"
     :class="{ 'is-embedded': embedded }"
-    :aria-label="translate('common.adminTerminal')"
+    :aria-label="contextLabel"
   >
     <header class="admin-terminal-header">
-      <h2>{{ contextLabel }}</h2>
+      <h2 v-if="!embedded">{{ contextLabel }}</h2>
       <div
         v-if="hasOpened"
         v-show="expanded || terminals.length === 0"
@@ -496,7 +496,7 @@ defineExpose({ release, toggle: toggleTerminal });
           <MarIcon name="plus" />
         </button>
       </div>
-      <div v-if="profiles.length > 1 || !mobileMode" class="admin-terminal-actions">
+      <div v-if="profiles.length > 1 || (!mobileMode && !embedded)" class="admin-terminal-actions">
         <label v-if="profiles.length > 1" class="terminal-profile">
           {{ translate('generated.terminalDock.terminalProfile') }}
           <MarSelect
