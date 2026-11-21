@@ -1,7 +1,5 @@
 .mar-detail-descriptions {
-  --mar-ui-descriptions-label-width: 132px;
   --mar-ui-descriptions-label-share: 30%;
-  width: 100%;
 }
 .mar-detail-descriptions .mar-ui-descriptions__content {
   min-width: 0;
@@ -17,11 +15,4 @@
 .mar-detail-descriptions pre {
   margin: 0;
   white-space: pre-wrap;
-}
-
-@media (max-width: 767px) {
-  .mar-detail-descriptions {
-    --mar-ui-descriptions-label-width: 92px;
-    --mar-ui-descriptions-label-share: 28%;
-  }
 }
