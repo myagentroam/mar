@@ -461,6 +461,15 @@ for (const width of [1440, 390]) {
     const close = dialog.locator('.mar-ui-dialog__close');
     await expect(close).toHaveCSS('width', '32px');
     await expect(close).toHaveCSS('height', '32px');
+    const title = dialog.locator('.mar-ui-dialog__title');
+    await expect(title).toHaveText(name);
+    const titleBounds = (await title.boundingBox())!;
+    const iconBounds = (await close.locator('[data-mar-icon="close"]').boundingBox())!;
+    expect(titleBounds.y + titleBounds.height / 2).toBeCloseTo(
+      iconBounds.y + iconBounds.height / 2,
+      0
+    );
+    expect(titleBounds.x + titleBounds.width).toBeLessThan((await close.boundingBox())!.x);
     await close.hover();
     await expect(close).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await page.mouse.move(0, 0);

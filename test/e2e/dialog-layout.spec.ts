@@ -616,6 +616,15 @@ for (const kind of ['short', 'centered', 'fullscreen', 'file', 'image']) {
       await expectBounded(dialog);
       const bounds = (await dialog.boundingBox())!;
       if (['short', 'centered'].includes(kind)) expect(bounds.height).toBeLessThan(220);
+      if (kind === 'short') {
+        const title = (await dialog
+          .getByRole('heading', { name: 'Content dialog' })
+          .boundingBox())!;
+        const icon = (await dialog
+          .locator('.mar-ui-dialog__close [data-mar-icon="close"]')
+          .boundingBox())!;
+        expect(title.y + title.height / 2).toBeCloseTo(icon.y + icon.height / 2, 0);
+      }
       if (kind === 'centered')
         expect(bounds.y + bounds.height / 2).toBeCloseTo(viewport.height / 2, 0);
       if (kind === 'fullscreen') expect(bounds.height).toBe(viewport.height);
