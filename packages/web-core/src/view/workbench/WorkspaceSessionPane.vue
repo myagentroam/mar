@@ -202,7 +202,7 @@ onBeforeUnmount(() => {
               >
                 <MarButton
                   text
-                  class="draft-agent-trigger mar-text-action"
+                  class="draft-agent-trigger mar-icon-action"
                   :icon="DraftAgentIcon"
                   :loading="controller.runnerProfilesLoading.value"
                   :aria-label="
@@ -212,15 +212,19 @@ onBeforeUnmount(() => {
                   "
                 >
                   <span class="draft-agent-label">
-                    {{ configuration.runnerLabel }}
+                    <span>{{ configuration.runnerLabel }}</span>
                     <MarIcon name="chevron-down" />
                   </span>
                 </MarButton>
                 <template #dropdown>
-                  <MarDropdownMenu :aria-label="translate('common.runner')">
+                  <MarDropdownMenu
+                    class="draft-agent-menu"
+                    :aria-label="translate('common.runner')"
+                  >
                     <MarDropdownItem
                       v-for="option in controller.runnerOptions.value"
                       :key="option.value"
+                      class="draft-agent-option"
                       :command="option.value"
                       :aria-current="option.value === configuration.runner ? 'true' : undefined"
                     >
@@ -230,8 +234,7 @@ onBeforeUnmount(() => {
                         :src="runnerBrandIcon(option.value)"
                         alt=""
                       />
-                      <span class="draft-agent-option-label">{{ option.label }}</span>
-                      <MarIcon v-if="option.value === configuration.runner" name="check" />
+                      <span>{{ option.label }}</span>
                     </MarDropdownItem>
                   </MarDropdownMenu>
                 </template>
@@ -473,28 +476,33 @@ onBeforeUnmount(() => {
 
 .draft-agent-dropdown {
   max-width: 100%;
-  vertical-align: middle;
 }
 
-.draft-agent-trigger.mar-text-action {
-  padding-inline: 0.5rem;
+.draft-agent-trigger.mar-icon-action {
+  align-items: baseline;
+  padding-inline: 0.35rem;
   color: var(--mar-text-primary);
-  font-weight: 600;
+  font: inherit;
 }
 
-.draft-agent-trigger[aria-expanded='true'] {
-  background: var(--mar-action-hover-bg);
+.draft-agent-trigger :deep(.mar-ui-button__icon) {
+  align-self: center;
 }
 
 .draft-agent-label {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.375rem;
 }
 
-.draft-agent-option-label {
-  flex: 1;
-  min-width: 0;
+.draft-agent-label :deep(.mar-icon) {
+  align-self: center;
+  color: var(--mar-text-secondary);
+}
+
+.draft-agent-menu .draft-agent-option[aria-current='true']:enabled {
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
 }
 
 @media (max-width: 767px) {

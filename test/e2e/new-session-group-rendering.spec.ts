@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import {
   emitMockWorkspaceSnapshot,
@@ -185,19 +185,37 @@ test('A failed manifest read has one error and no unknown-capability placeholder
 });
 
 test('Workspace welcome does not advertise an Agent before profiles arrive', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 820 });
   await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   const profiles = Promise.withResolvers<void>();
   const welcome = page.locator('.conversation-empty');
+  const composerGap = async (description: Locator) => {
+    const subtitle = (await description.boundingBox())!;
+    const composer = (await page.locator('.composer-shell').boundingBox())!;
+    return composer.y - (subtitle.y + subtitle.height);
+  };
+  let loadingGap: number;
   try {
     await openWorkspace(page, true, false, { pendingProfiles: profiles.promise });
     await expect(welcome.getByRole('heading')).toHaveText('What should we do?');
     await expect(welcome.getByRole('button', { name: /Switch Agent/ })).toHaveCount(0);
+    loadingGap = await composerGap(welcome.locator('p'));
   } finally {
     profiles.resolve();
   }
   await expect(
     welcome.getByRole('button', { name: 'Switch Agent (current: Codex)' })
   ).toBeEnabled();
+  const description = welcome.locator('.draft-session-description');
+  expect(await composerGap(description)).toBeCloseTo(loadingGap, 0);
+  const textBaselineDifference = await description.evaluate((line) => {
+    const range = document.createRange();
+    range.selectNodeContents(line.firstChild!);
+    const subtitleTop = range.getBoundingClientRect().top;
+    range.selectNodeContents(line.querySelector('.draft-agent-label > span')!);
+    return Math.abs(subtitleTop - range.getBoundingClientRect().top);
+  });
+  expect(textBaselineDifference).toBeLessThanOrEqual(1);
 });
 
 for (const viewport of [1600, 390]) {
@@ -217,10 +235,9 @@ for (const viewport of [1600, 390]) {
       const model = toolbar.getByRole('combobox', { name: '模型与思考强度' });
       const input = page.locator('.composer-input');
       await expect(welcome.getByRole('heading')).toHaveText('我们要做什么？');
-      await expect(welcome.locator('.draft-session-description')).toHaveText(
-        '使用 Codex 创建新会话',
-        { useInnerText: true }
-      );
+      const description = welcome.locator('.draft-session-description');
+      await expect(description).toHaveText('使用 Codex 创建新会话', { useInnerText: true });
+      await expect(agent).toHaveCSS('font-weight', '400');
       const agentIcon = agent.locator('img');
       await expect(agentIcon).toBeVisible();
       await expect(agent).toHaveAttribute('aria-haspopup', 'menu');
@@ -234,6 +251,26 @@ for (const viewport of [1600, 390]) {
       });
 
       if (viewport >= 768) {
+        const descriptionBox = (await description.boundingBox())!;
+        const composerBox = (await page.locator('.composer-shell').boundingBox())!;
+        const gap = composerBox.y - (descriptionBox.y + descriptionBox.height);
+        expect(gap).toBeGreaterThan(0);
+        expect(gap).toBeLessThanOrEqual(20);
+        const hover = await agent.evaluate((button) => {
+          const marker = document.createElement('span');
+          marker.style.backgroundColor = 'var(--mar-fill-row-hover)';
+          button.append(marker);
+          const color = getComputedStyle(marker).backgroundColor;
+          marker.remove();
+          return color;
+        });
+        await expect(agent).not.toHaveCSS('background-color', hover);
+        await agent.hover();
+        await expect(agent).toHaveCSS('background-color', hover);
+        await page.screenshot({
+          path: testInfo.outputPath(`workspace-agent-hover-${viewport}.png`),
+          animations: 'disabled'
+        });
         await agent.focus();
         await agent.press('ArrowDown');
       } else {
@@ -242,6 +279,16 @@ for (const viewport of [1600, 390]) {
       const options = welcome.getByRole('menu', { name: 'Agent' });
       const codex = options.getByRole('menuitem', { name: 'Codex' });
       await expect(codex).toHaveAttribute('aria-current', 'true');
+      await expect(options.locator('[data-mar-icon="check"]')).toHaveCount(0);
+      const selectedColor = await codex.evaluate((item) => {
+        const marker = document.createElement('span');
+        marker.style.backgroundColor = 'var(--mar-fill-selection)';
+        item.append(marker);
+        const color = getComputedStyle(marker).backgroundColor;
+        marker.remove();
+        return color;
+      });
+      await expect(codex).toHaveCSS('background-color', selectedColor);
       const claude = options.getByRole('menuitem', { name: 'Claude Code' });
       await expect(claude.locator('img')).toBeVisible();
       await page.screenshot({

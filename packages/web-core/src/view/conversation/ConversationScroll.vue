@@ -328,7 +328,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="region" class="conversation-scroll-region" :class="{ 'is-empty': showEmptyPrompt }">
+  <div
+    ref="region"
+    class="conversation-scroll-region"
+    :class="{
+      'is-empty': showEmptyPrompt,
+      'is-workspace-welcome': showEmptyPrompt && emptyPrompt === 'workspace'
+    }"
+  >
     <div
       ref="element"
       class="conversation-scroll"
@@ -538,6 +545,10 @@ onBeforeUnmount(() => {
     background: transparent;
   }
 
+  .conversation-scroll-region.is-workspace-welcome .conversation-scroll {
+    padding-block-end: 0;
+  }
+
   .conversation-scroll-region.is-empty .conversation-scroll-content.is-empty {
     min-height: 0;
   }
@@ -545,6 +556,11 @@ onBeforeUnmount(() => {
   .conversation-scroll-region.is-empty .conversation-empty {
     flex: none;
     padding: 0.5rem 1rem 1rem;
+  }
+
+  .conversation-scroll-region.is-workspace-welcome .conversation-empty {
+    gap: 0.5rem;
+    padding-block-end: 0.625rem;
   }
 }
 
