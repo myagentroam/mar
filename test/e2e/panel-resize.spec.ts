@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/panel-resize-handle/MarPanelResizeHandle.vue
@@ -10,24 +10,26 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+function pauseExpansion(page: Page): Promise<number> {
+  return page.getByRole('button', { name: 'Expand' }).evaluate(async (button: HTMLElement) => {
+    const panel = document.querySelector('#panel')!;
+    // Establish the initial layout and pause in the same task as the state change.
+    panel.getBoundingClientRect();
+    button.click();
+    await Promise.resolve();
+    const transition = panel
+      .getAnimations()
+      .find((animation) => animation instanceof CSSTransition);
+    if (!transition) throw new Error('Expected an active width transition');
+    transition.pause();
+    transition.currentTime = 30;
+    return panel.getBoundingClientRect().width;
+  });
+}
+
 test('Panel resize takes over an unfinished width transition without jumping', async ({ page }) => {
   await page.goto(`${fixture.url}panel-resize.html`);
-  const intermediateWidth = await page
-    .getByRole('button', { name: 'Expand' })
-    .evaluate(async (button: HTMLElement) => {
-      const panel = document.querySelector('#panel')!;
-      // Establish the initial layout and pause in the same task as the state change.
-      panel.getBoundingClientRect();
-      button.click();
-      await Promise.resolve();
-      const transition = panel
-        .getAnimations()
-        .find((animation) => animation instanceof CSSTransition);
-      if (!transition) throw new Error('Expected an active width transition');
-      transition.pause();
-      transition.currentTime = 30;
-      return panel.getBoundingClientRect().width;
-    });
+  const intermediateWidth = await pauseExpansion(page);
   expect(intermediateWidth).toBeGreaterThan(100);
   expect(intermediateWidth).toBeLessThan(300);
 
@@ -53,6 +55,23 @@ test('Panel resize takes over an unfinished width transition without jumping', a
   await page.mouse.up();
   await page.mouse.move(bounds.x + 53, bounds.y + 30);
   await expect(page.locator('#panel')).toHaveAttribute('data-width', '180');
+});
+
+test('Panel resize leaves a width transition alone during Tab navigation', async ({ page }) => {
+  await page.goto(`${fixture.url}panel-resize.html`);
+  const handle = page.getByRole('separator', { name: 'Resize panel' });
+  const panel = page.locator('#panel');
+  await handle.focus();
+  const intermediateWidth = await pauseExpansion(page);
+  expect(intermediateWidth).toBeLessThan(300);
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.getByRole('button', { name: 'Constrain width' })).toBeFocused();
+  expect((await panel.boundingBox())?.width).toBe(intermediateWidth);
+
+  await handle.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(panel).toHaveAttribute('data-width', '310');
 });
 
 test('Panel resize supports bounded keyboard adjustment and cancels a drag on mode change', async ({

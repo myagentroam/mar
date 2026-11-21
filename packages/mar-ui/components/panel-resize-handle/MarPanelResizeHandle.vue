@@ -71,14 +71,14 @@ function cancel(): void {
 }
 
 function keydown(event: KeyboardEvent): void {
+  const { key } = event;
+  if (key !== 'Home' && key !== 'End' && key !== 'ArrowLeft' && key !== 'ArrowRight') return;
   const width = settledWidth();
   if (width === undefined) return;
   let next: number;
-  if (event.key === 'Home') next = props.min;
-  else if (event.key === 'End') next = props.max;
-  else if (event.key === 'ArrowLeft') next = width - props.direction * 10;
-  else if (event.key === 'ArrowRight') next = width + props.direction * 10;
-  else return;
+  if (key === 'Home') next = props.min;
+  else if (key === 'End') next = props.max;
+  else next = width + (key === 'ArrowLeft' ? -1 : 1) * props.direction * 10;
   event.preventDefault();
   resize(next);
 }
