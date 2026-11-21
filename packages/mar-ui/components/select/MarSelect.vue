@@ -132,6 +132,19 @@ function revealCollapsedTags() {
     showCollapsedTags(summaryButton.value, summarySurface.value, { placement: 'top', offset: 0 });
 }
 
+let dismissOnSummaryClick = false;
+function onSummaryPointerDown(event: PointerEvent) {
+  // Read the input type and open state before the click can move focus.
+  dismissOnSummaryClick = event.pointerType === 'touch' && collapsedTagsOpen.value;
+}
+
+function onSummaryClick(event: MouseEvent) {
+  const dismiss = dismissOnSummaryClick && event.detail > 0;
+  dismissOnSummaryClick = false;
+  if (dismiss) closeCollapsedTags();
+  else revealCollapsedTags();
+}
+
 function onSummaryFocus(event: FocusEvent) {
   if ((event.currentTarget as HTMLElement).matches(':focus-visible')) revealCollapsedTags();
 }
@@ -536,7 +549,8 @@ watch(controlDisabled, (disabled) => {
               class="mar-ui-select__action"
               :aria-describedby="`${id}-summary`"
               :aria-expanded="collapsedTagsOpen"
-              @click="revealCollapsedTags"
+              @pointerdown="onSummaryPointerDown"
+              @click="onSummaryClick"
               @focus="onSummaryFocus"
               @blur="closeCollapsedTags"
             >

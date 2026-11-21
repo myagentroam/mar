@@ -16,7 +16,29 @@ const dropdown = inject(dropdownContext);
 const tooltip = inject(marUiTooltipDirectiveKey, undefined);
 const vOverflowTooltip = tooltip ?? {};
 const label = useTemplateRef<HTMLElement>('label');
-const overflowText = () => readOverflowText(label.value);
+
+function collectClippedText(element: HTMLElement, clipped: string[]) {
+  for (const part of element.children) {
+    if (!(part instanceof HTMLElement)) continue;
+    const { overflowX, textOverflow } = getComputedStyle(part);
+    const text =
+      textOverflow === 'ellipsis' && (overflowX === 'hidden' || overflowX === 'clip')
+        ? readOverflowText(part)
+        : undefined;
+    if (text) clipped.push(text);
+    else collectClippedText(part, clipped);
+  }
+}
+
+function overflowText() {
+  const element = label.value;
+  if (!element?.childElementCount) return readOverflowText(element);
+
+  // Composite labels have no box; the slotted parts own their truncation.
+  const clipped: string[] = [];
+  collectClippedText(element, clipped);
+  return clipped.join('\n') || undefined;
+}
 
 function activate(event: MouseEvent) {
   if (props.disabled) return;

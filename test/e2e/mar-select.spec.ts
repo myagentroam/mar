@@ -229,6 +229,10 @@ test('the collapsed tag preview is readable on hover and dismisses with Escape',
   await summary.press('Escape');
   await expect(preview).toBeHidden();
   await expect(summary).toBeFocused();
+  await summary.hover();
+  await expect(preview).toBeVisible();
+  await summary.click();
+  await expect(preview).toBeVisible();
 });
 
 test('collapsed tags remain readable and the grouped list stays reachable on touch', async ({
@@ -259,6 +263,11 @@ test('collapsed tags remain readable and the grouped list stays reachable on tou
     const preview = page.locator('.mar-ui-select__summary-content');
     await expect(preview).toBeInViewport({ ratio: 1 });
     await expect(preview).toHaveText(/Release\s+Topic/u);
+    await summary.tap();
+    await expect(preview).toBeHidden();
+    await expect(summary).toHaveAttribute('aria-expanded', 'false');
+    await summary.tap();
+    await expect(preview).toBeVisible();
     await branches.tap();
     await expect(preview).toBeHidden();
     const list = page.getByRole('listbox', { name: 'Git branches' });

@@ -17,6 +17,8 @@ if (theme === 'daylight' || theme === 'vscode-dark-2026') themePreferenceService
 const boundaryLayout = parameters.get('layout') === 'boundary';
 const dynamicLayout = boundaryLayout || parameters.get('layout') === 'dynamic';
 const inHeader = parameters.get('placement') === 'header';
+const longMenuLabel = parameters.get('long-menu-label');
+const longMenuNode = parameters.get('long-menu-node');
 const hasStatus = ref(!dynamicLayout);
 localePreferenceService().setLocale(locale === 'en-US' ? 'en-US' : 'zh-CN');
 const tabs = [
@@ -32,7 +34,7 @@ const tabs = [
     id: 'node-1:workspace-2',
     nodeId: 'node-1',
     workspaceId: 'workspace-2',
-    label: 'Workspace two',
+    label: longMenuLabel ?? 'Workspace two',
     lastActiveAt: 2,
     pinned: dynamicLayout
   }
@@ -94,10 +96,12 @@ function renderWorkspaceTabs() {
     placement: inHeader ? 'header' : 'body',
     tabs,
     activeTabId: activeTabId.value,
-    nodeLabel: () =>
-      dynamicLayout
-        ? 'Medium Node display'
-        : 'A very long Node name that must truncate before status indicators',
+    nodeLabel: (tab: WorkspaceTab) =>
+      longMenuNode && tab.workspaceId !== 'workspace-3'
+        ? longMenuNode
+        : dynamicLayout
+          ? 'Medium Node display'
+          : 'A very long Node name that must truncate before status indicators',
     directAvailable: () => connected.value,
     directDescription: () => 'Peer-to-peer connection available (Private network IPv4 UDP)',
     hasActiveRun: (_nodeId: string, workspaceId: string) =>
