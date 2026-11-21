@@ -2050,45 +2050,47 @@ onBeforeUnmount(() => {
           <MarSwitch v-model="draft.enabled" />
         </MarFormItem>
         <MarFormItem :label="translate('marAgentModels.capabilities')">
-          <MarCheckbox
-            :model-value="draft.inputCapabilities.includes('IMAGE')"
-            @change="
-              (value: boolean | string | number) =>
-                (draft.inputCapabilities = Boolean(value) ? ['TEXT', 'IMAGE'] : ['TEXT'])
-            "
-            >{{ translate('marAgentModels.image') }}</MarCheckbox
-          >
-          <MarCheckbox v-model="draft.conversationModel">{{
-            translate('marAgentModels.conversationModel')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.subagentModel">{{
-            translate('marAgentModels.subagentModel')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.unifiedCompact">{{
-            translate('marAgentModels.unifiedCompact')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.titleGeneration">{{
-            translate('marAgentModels.titleGeneration')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.codeMode">{{
-            translate('marAgentModels.codeMode')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.gcEnabled">{{
-            translate('marAgentModels.gcEnabled')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.useResourceUrl">{{
-            translate('marAgentModels.useResourceUrl')
-          }}</MarCheckbox>
-          <MarCheckbox
-            v-model="draft.hostedWebSearch"
-            :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
-            >{{ translate('marAgentModels.webSearch') }}</MarCheckbox
-          >
-          <MarCheckbox
-            v-model="draft.responsesPreviousResponseId"
-            :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
-            >{{ translate('marAgentModels.responsesContinuation') }}</MarCheckbox
-          >
+          <div class="model-capabilities">
+            <MarCheckbox
+              :model-value="draft.inputCapabilities.includes('IMAGE')"
+              @change="
+                (value: boolean | string | number) =>
+                  (draft.inputCapabilities = Boolean(value) ? ['TEXT', 'IMAGE'] : ['TEXT'])
+              "
+              >{{ translate('marAgentModels.image') }}</MarCheckbox
+            >
+            <MarCheckbox v-model="draft.conversationModel">{{
+              translate('marAgentModels.conversationModel')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.subagentModel">{{
+              translate('marAgentModels.subagentModel')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.unifiedCompact">{{
+              translate('marAgentModels.unifiedCompact')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.titleGeneration">{{
+              translate('marAgentModels.titleGeneration')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.codeMode">{{
+              translate('marAgentModels.codeMode')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.gcEnabled">{{
+              translate('marAgentModels.gcEnabled')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.useResourceUrl">{{
+              translate('marAgentModels.useResourceUrl')
+            }}</MarCheckbox>
+            <MarCheckbox
+              v-model="draft.hostedWebSearch"
+              :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
+              >{{ translate('marAgentModels.webSearch') }}</MarCheckbox
+            >
+            <MarCheckbox
+              v-model="draft.responsesPreviousResponseId"
+              :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
+              >{{ translate('marAgentModels.responsesContinuation') }}</MarCheckbox
+            >
+          </div>
         </MarFormItem>
         <MarFormItem :label="translate('marAgentModels.reasoningEfforts')">
           <MarCheckboxGroup
@@ -3001,6 +3003,11 @@ onBeforeUnmount(() => {
 .model-enabled {
   padding-block: 4px;
   border-block: 1px solid var(--mar-border-subtle);
+}
+.model-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1rem;
 }
 .order-handle {
   display: inline-flex;
