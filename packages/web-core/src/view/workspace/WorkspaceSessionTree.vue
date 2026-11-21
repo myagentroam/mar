@@ -386,6 +386,7 @@ function openContext(event: MouseEvent): void {
 
 .session-tree-retry {
   position: relative;
+  flex-shrink: 0;
 }
 
 .session-tree-retry .mar-read-loading-indicator {

@@ -81,7 +81,7 @@ onBeforeUnmount(() => {
     :show-arrow="false"
     popper-class="session-tree-popover mar-content-popover"
     :popper-style="visible ? undefined : { pointerEvents: 'none' }"
-    width="min(480px, calc(100vw - 24px))"
+    width="min(480px, calc(100% - 24px))"
     @after-leave="!visible && emit('after-leave')"
   >
     <section
@@ -113,9 +113,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-:global(.session-tree-popover) {
-  max-width: calc(100vw - 24px);
-  box-sizing: border-box;
+@media (width < 768px) {
+  :global(.mar-ui-popup.session-tree-popover) {
+    inset-inline: 0;
+    margin-inline: auto;
+  }
 }
 .session-tree-header {
   min-width: 0;
