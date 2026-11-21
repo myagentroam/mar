@@ -16,7 +16,7 @@ import marZhCn from '@myagentroam/mar-ui/locale/zh-cn';
 import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import { localePreferenceService } from './service/locale-preference-service.js';
 import { consoleKeyboardShortcutService } from './service/console-keyboard-shortcut-service.js';
-import SharedTooltipHost from './view/common/SharedTooltipHost.vue';
+import SharedTooltipHost from './view/overlays/SharedTooltipHost.vue';
 const SessionSharePage = defineAsyncComponent(
   () => import('./view/conversation/SessionSharePage.vue')
 );

@@ -1,5 +1,5 @@
 import { showMessage } from './message-feedback-service.js';
-import { marIcon } from '../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { getCurrentScope, onScopeDispose, ref } from 'vue';
 import { MarMessageBox } from './message-box-service.js';
 import type { ResourceRow } from '../model/resource-management.js';

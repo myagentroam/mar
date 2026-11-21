@@ -8,7 +8,7 @@ import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
 import { useI18n } from 'vue-i18n';
 import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{
   readonly diagnostics: ReturnType<typeof createWebPerformanceDiagnostics>;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { translate } from '../../service/locale-preference-service.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { RunnerCommandState } from '../../model/workbench.js';
 import type { ComposerSkillToken } from '../../model/workbench.js';
@@ -174,7 +174,7 @@ const emit = defineEmits<{
         class="composer-working"
         :class="{ 'is-active': working && !connectionLabel }"
       >
-        <BusyIndicator
+        <MarBusyIndicator
           v-if="connectionLabel ? connectionBusy : working && workingBusy"
           class="composer-busy-indicator"
         />

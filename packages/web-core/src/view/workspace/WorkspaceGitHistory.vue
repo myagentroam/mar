@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
+import './git-inline-loading.css';
+import './file-tooltip-trigger.css';
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import type { MessageType } from '../../model/message-feedback.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import MarIcon from '../common/MarIcon.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import type { HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
@@ -336,7 +339,7 @@ onBeforeUnmount(() => {
         :aria-description="
           !historyLoading ? errorMessage(service.historyFailureCause.value) : undefined
         "
-        class="history-load-more"
+        class="history-load-more mar-region-retry-action"
         :aria-disabled="historyLoading"
         :aria-busy="historyLoading || undefined"
         :aria-label="historyLoading ? translate('generated.workspaceInspector.loading') : undefined"
@@ -636,12 +639,12 @@ button.file-explorer-utility-button:disabled {
 }
 
 button.history-refresh {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   width: 24px;
   min-width: 24px;
   height: 24px;
   min-height: 24px;
-  font-size: var(--mar-action-icon-size);
+  font-size: var(--mar-ui-action-icon-size);
 }
 
 .history-list,

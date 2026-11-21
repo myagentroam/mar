@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '@myagentroam/mar-ui/disclosure.css';
 import { MarCheckbox, MarCheckboxGroup } from '@myagentroam/mar-ui/checkbox';
 import { MarRadio, MarRadioGroup } from '@myagentroam/mar-ui/radio';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -6,7 +7,7 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import './conversation-detail.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import ConversationQuoteMenu from './ConversationQuoteMenu.vue';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { toolPresentation, toolPresentationStatus } from '../../util/tool-presentation.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -22,7 +23,7 @@ import {
   watch,
   type ComponentPublicInstance
 } from 'vue';
-import AgentMarkdown from '../common/AgentMarkdown.vue';
+import AgentMarkdown from './AgentMarkdown.vue';
 import {
   CONVERSATION_MARKDOWN_CACHE_KEY,
   createConversationMarkdownCache

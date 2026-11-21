@@ -2,7 +2,7 @@ import { createApp, h, ref } from 'vue';
 import '../../src/styles.css';
 import ConversationImageThumbnail from '../../src/view/conversation/ConversationImageThumbnail.vue';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
-import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
+import AgentMarkdown from '../../src/view/conversation/AgentMarkdown.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import { createConversationImageService } from '../../src/service/conversation-image-service.js';

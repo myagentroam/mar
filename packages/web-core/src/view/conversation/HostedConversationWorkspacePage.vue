@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
+import '../session/session-create-button.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -14,10 +16,10 @@ import {
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import WorkbenchSidebarPanel from '../workbench/WorkbenchSidebarPanel.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import type {
   ConversationFileProjection,
   HostedConversationSnapshot,
@@ -49,13 +51,13 @@ import { errorCode } from '../../util/api-error.js';
 import type { ConversationItem, ConversationTurn } from '../../model/workbench.js';
 import { conversationItemText } from '../../util/conversation-presentation.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
-import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
-import '../common/session-list-title.css';
+import { vSessionReorderMotion } from '../session/session-reorder-motion.js';
+import '../session/session-list-title.css';
 import { errorMessage, filePreviewErrorSummary } from '../../util/error-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
 import { hostedConversationTitle } from '../../util/hosted-conversation-presentation.js';
 import ConversationScroll from './ConversationScroll.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import ConversationTimeline from './ConversationTimeline.vue';
 import ToolChangeReviewWindow from '../workspace/ToolChangeReviewWindow.vue';
 import { createToolChangeReviewService } from '../../service/tool-change-review-service.js';
@@ -1068,7 +1070,7 @@ onBeforeUnmount(() => {
           role="status"
           :aria-label="translate('common.loading')"
         >
-          <BusyIndicator class="mar-read-loading-indicator" />
+          <MarBusyIndicator class="mar-read-loading-indicator" />
         </MarRegionStatus>
         <p
           v-if="
@@ -1210,7 +1212,7 @@ onBeforeUnmount(() => {
             v-if="workspace.loadingMoreConversations.value && !retryingDirectory"
             role="status"
             :aria-label="translate('common.loading')"
-            ><BusyIndicator class="mar-read-loading-indicator"
+            ><MarBusyIndicator class="mar-read-loading-indicator"
           /></span>
           <MarButton
             v-if="
@@ -1226,7 +1228,7 @@ onBeforeUnmount(() => {
             "
             @click="retryDirectoryAppend"
           >
-            <BusyIndicator
+            <MarBusyIndicator
               v-if="workspace.loadingMoreConversations.value"
               class="mar-read-loading-indicator"
             />
@@ -1731,7 +1733,7 @@ onBeforeUnmount(() => {
 }
 
 .history-more-button {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;

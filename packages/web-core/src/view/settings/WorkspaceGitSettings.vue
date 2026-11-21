@@ -1,16 +1,17 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { onUnmounted, ref, watch } from 'vue';
 
 import { PersonalGitService } from '../../service/personal-git-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -119,6 +120,7 @@ async function save(): Promise<void> {
       </p>
       <MarRegionStatus v-if="!loaded">
         <MarButton
+          class="mar-region-retry-action"
           v-if="retrying || !loading"
           link
           :aria-disabled="retrying || undefined"
@@ -126,11 +128,11 @@ async function save(): Promise<void> {
           :aria-label="retrying ? t('common.loading') : undefined"
           @click="retry"
         >
-          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
           <template v-else>{{ t('common.loadFailedRetry') }}</template>
         </MarButton>
         <span v-else role="progressbar" :aria-label="t('common.loading')">
-          <BusyIndicator class="mar-read-loading-indicator" />
+          <MarBusyIndicator class="mar-read-loading-indicator" />
         </span>
       </MarRegionStatus>
     </template>

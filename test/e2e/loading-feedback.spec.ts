@@ -43,7 +43,7 @@ async function expectNeutralRetry(button: Locator) {
   await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
 }
 
-test('Library loading has one compact ring for each variant without mounting BusyIndicator', async ({
+test('Library loading has one compact ring for each variant without mounting MarBusyIndicator', async ({
   page
 }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -73,7 +73,7 @@ test('Library loading has one compact ring for each variant without mounting Bus
     expect(style.width).toBeCloseTo(size);
     expect(style.height).toBeCloseTo(size);
     expect(style.border).toBe('2px');
-    expect(style.animation).toBe('mar-ui-loading-spin');
+    expect(style.animation).toBe('mar-loading-ring-spin');
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const id of ['library-loading', 'library-region']) {

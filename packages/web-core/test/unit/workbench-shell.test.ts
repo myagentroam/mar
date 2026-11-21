@@ -438,6 +438,7 @@ describe('Shared workbench shell', () => {
       const loadingHtml = await renderComponent(WorkspaceSessionList, {
         ...props,
         searchQuery: query,
+        searchReady: true,
         [state]: true
       });
       const loadingButton = findSearchButton(loadingHtml);
@@ -445,6 +446,16 @@ describe('Shared workbench shell', () => {
       expect(loadingButton[1]).toMatch(/\sdisabled(?:[\s=>])/u);
       expect(loadingButton[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="loading-action")/u);
     }
+    const firstSearch = await renderComponent(WorkspaceSessionList, {
+      ...props,
+      searchQuery: query,
+      searchReady: false,
+      searching: true
+    });
+    expect(findSearchButton(firstSearch)[1]).not.toContain('aria-busy');
+    expect(firstSearch).toMatch(
+      /<div\b(?=[^>]*watch-status)(?=[^>]*role="status")[^>]*><i\b[^>]*mar-read-loading-indicator/u
+    );
   });
 
   it.each([

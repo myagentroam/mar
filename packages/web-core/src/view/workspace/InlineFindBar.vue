@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '../../util/mar-icons.js';
-import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '@myagentroam/mar-ui/icons';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';

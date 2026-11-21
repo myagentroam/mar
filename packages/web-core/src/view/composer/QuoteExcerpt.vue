@@ -8,7 +8,7 @@ import {
   composerReferencePreview
 } from '../../util/composer-reference.js';
 import { translate } from '../../service/locale-preference-service.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{
   readonly reference: Extract<ComposerReference, { type: 'quote' }>;

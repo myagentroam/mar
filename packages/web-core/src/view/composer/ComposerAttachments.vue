@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
@@ -163,7 +163,7 @@ const emit = defineEmits<{
 }
 
 .composer-attachment-remove {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   --mar-action-hover-color: var(--mar-color-danger-text);
   display: inline-grid;
   width: 24px;

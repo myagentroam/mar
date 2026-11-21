@@ -4,7 +4,7 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ModelPage from '../../src/view/settings/MarAgentModelManagementPage.vue';
 import ImagePage from '../../src/view/settings/ImageGenerationManagement.vue';
-import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
+import ChatGPTManageUsageButton from '../../src/view/settings/ChatGPTManageUsageButton.vue';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import { codexUsageTokenCountLabel } from '../../src/util/workbench-presentation.js';

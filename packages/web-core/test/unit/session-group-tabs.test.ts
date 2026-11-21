@@ -2,8 +2,8 @@ import { createSSRApp, defineComponent, h, nextTick, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionGroup } from '@myagentroam/protocol';
-import SessionGroupTabs from '../../src/view/common/SessionGroupTabs.vue';
-import InteractiveSessionGroupTabs from '../../src/view/common/SessionGroupTabs.vue?unit-render';
+import SessionGroupTabs from '../../src/view/session/SessionGroupTabs.vue';
+import InteractiveSessionGroupTabs from '../../src/view/session/SessionGroupTabs.vue?unit-render';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { mountSessionGroupTestComponent } from './support/session-group-tabs-renderer.js';
 

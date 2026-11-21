@@ -10,9 +10,9 @@ import { composerReferenceKey } from '../../util/composer-reference.js';
 import { serializeComposerMessage } from '../../service/composer-skill-token-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import ComposerSendButton from '../composer/ComposerSendButton.vue';
 import '../composer/composer-toolbar.css';
 import type { ConversationTemplateSummary, HostedConversationUpload } from '@myagentroam/protocol';

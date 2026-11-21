@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import MarIcon from '../common/MarIcon.vue';
+import '../../styles/workbench-tab-header.css';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { fileKeys } from '../../service/console-shortcut-keys.js';
 import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';

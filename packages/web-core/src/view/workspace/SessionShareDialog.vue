@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import BusyIndicator from '../common/BusyIndicator.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import '../../styles/region-retry-action.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarLink } from '@myagentroam/mar-ui/link';
@@ -14,8 +15,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onMounted, ref } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import type { SessionShareTarget } from '@myagentroam/protocol';
@@ -192,6 +192,7 @@ async function copyRecord(id: string): Promise<void> {
     <MarRegionStatus v-if="shares.length > 0 && readState !== 'ready'">
       <MarButton
         v-if="retrying || readState === 'failed'"
+        class="mar-region-retry-action"
         link
         :disabled="busy"
         :aria-disabled="retrying || undefined"
@@ -199,11 +200,11 @@ async function copyRecord(id: string): Promise<void> {
         :aria-label="retrying ? translate('common.loading') : undefined"
         @click="retry"
       >
-        <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+        <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
       </MarButton>
       <span v-else role="progressbar" :aria-label="translate('common.loading')">
-        <BusyIndicator class="mar-read-loading-indicator" />
+        <MarBusyIndicator class="mar-read-loading-indicator" />
       </span>
     </MarRegionStatus>
     <MarTable
@@ -221,11 +222,11 @@ async function copyRecord(id: string): Promise<void> {
           :aria-label="retrying ? translate('common.loading') : undefined"
           @click="retry"
         >
-          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
           <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </MarButton>
         <span v-else role="progressbar" :aria-label="translate('common.loading')">
-          <BusyIndicator class="mar-read-loading-indicator" />
+          <MarBusyIndicator class="mar-read-loading-indicator" />
         </span>
       </template>
       <MarTableColumn :label="translate('sessionShare.link')" min-width="230" show-overflow-tooltip>

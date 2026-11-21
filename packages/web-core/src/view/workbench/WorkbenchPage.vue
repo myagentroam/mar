@@ -13,7 +13,7 @@ import PasswordGate from '../../view/PasswordGate.vue';
 import ImagePreviewDialogs from '../../view/conversation/ImagePreviewDialogs.vue';
 import type { WorkbenchShellView, WorkbenchSurfaceView } from '../workbench-contract.js';
 import FilePreviewLoading from '../workspace/FilePreviewLoading.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import WorkbenchSurface from './WorkbenchSurface.vue';
 import { useI18n } from 'vue-i18n';
 
@@ -99,7 +99,7 @@ function closeStandaloneFileWindow(): void {
       aria-busy="true"
       :aria-label="t('common.loading')"
     >
-      <BusyIndicator />
+      <MarBusyIndicator />
     </div>
     <AuthenticationUnavailable
       v-else-if="page.identity.authenticationUnknown"

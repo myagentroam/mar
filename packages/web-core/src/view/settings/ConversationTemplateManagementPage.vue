@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -18,8 +18,7 @@ import {
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';
@@ -762,7 +761,7 @@ onMounted(() => {
     >
       <template v-if="tableLoading" #loading
         ><span role="progressbar" :aria-label="translate('common.loading')"
-          ><BusyIndicator class="mar-read-loading-indicator" /></span
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
       ></template>
       <MarTableColumn
         prop="name"

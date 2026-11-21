@@ -2,7 +2,7 @@ import { createApp, h, withDirectives } from 'vue';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import '../../src/styles.css';
 
-// Mount both loading variants without importing or mounting BusyIndicator.
+// Mount both loading variants without importing or mounting MarBusyIndicator.
 createApp({
   render: () => [
     withDirectives(

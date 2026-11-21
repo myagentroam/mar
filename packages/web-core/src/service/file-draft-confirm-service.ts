@@ -1,4 +1,4 @@
-import { marIcon } from '../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from './message-box-service.js';
 import { translate } from './locale-preference-service.js';
 

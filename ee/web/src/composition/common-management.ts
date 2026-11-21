@@ -1,4 +1,4 @@
-import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
 import { translate } from '@myagentroam/web-core/locale';
 import { defineAsyncComponent, h, type Component } from 'vue';
 import type { ManagementPageDefinition } from '../service/management-composition.js';
@@ -10,7 +10,11 @@ import logoUrl from '@myagentroam/web-core/assets/logo-icon.png';
 
 const loadingComponent = {
   render: () =>
-    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+    h(MarLoadingPanel, {
+      loading: true,
+      variant: 'page',
+      'aria-label': translate('common.loading')
+    })
 };
 
 export function createCommonManagementPages(

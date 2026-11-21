@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '@myagentroam/web-core/management-detail.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -13,8 +14,7 @@ import {
 import { watchManagementPageFailure } from '@myagentroam/web-core/management-page';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import MarIcon from '@myagentroam/web-core/MarIcon.vue';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';

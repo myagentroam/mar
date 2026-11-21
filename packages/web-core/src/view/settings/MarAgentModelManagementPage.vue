@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import BusyIndicator from '../common/BusyIndicator.vue';
+import '../../styles/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
@@ -23,8 +24,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';
@@ -72,7 +72,7 @@ import { codexUsageTokenCountLabel, errorMessage } from '../../util/workbench-pr
 import ImageGenerationManagement from './ImageGenerationManagement.vue';
 import MarAgentCompactSettings from './MarAgentCompactSettings.vue';
 import PromptCompletionSettings from './PromptCompletionSettings.vue';
-import ChatGPTManageUsageButton from '../common/ChatGPTManageUsageButton.vue';
+import ChatGPTManageUsageButton from './ChatGPTManageUsageButton.vue';
 
 type ProtocolChoice = ReturnType<typeof modelProtocolChoice>;
 type TransportChoice = 'WEBSOCKET' | 'HTTP_2' | 'HTTP_1_1';
@@ -1563,7 +1563,7 @@ onBeforeUnmount(() => {
         >
           <template v-if="loading" #loading
             ><span role="progressbar" :aria-label="translate('common.loading')"
-              ><BusyIndicator class="mar-read-loading-indicator" /></span
+              ><MarBusyIndicator class="mar-read-loading-indicator" /></span
           ></template>
           <MarTableColumn v-if="sorting" :label="translate('marAgentModels.order')" width="92">
             <template #default="{ row, $index }">
@@ -1698,7 +1698,7 @@ onBeforeUnmount(() => {
         >
           <template v-if="credentialLoading" #loading
             ><span role="progressbar" :aria-label="translate('common.loading')"
-              ><BusyIndicator class="mar-read-loading-indicator" /></span
+              ><MarBusyIndicator class="mar-read-loading-indicator" /></span
           ></template>
           <MarTableColumn
             prop="name"
@@ -1843,7 +1843,7 @@ onBeforeUnmount(() => {
         <MarTable :data="personalModels" :aria-busy="personalOrderLoading">
           <template v-if="personalOrderLoading" #loading
             ><span role="progressbar" :aria-label="translate('common.loading')"
-              ><BusyIndicator class="mar-read-loading-indicator" /></span
+              ><MarBusyIndicator class="mar-read-loading-indicator" /></span
           ></template>
           <MarTableColumn
             v-if="personalSorting"

@@ -1779,7 +1779,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(strokeWidth).toBeGreaterThan(0);
       expect(strokeWidth).toBeLessThan(2);
       await expect(processIndicator).toHaveCSS('animation-duration', '1.2s');
-      await expect(processIndicator).toHaveCSS('animation-name', 'mar-busy-indicator-spin');
+      await expect(processIndicator).toHaveCSS('animation-name', 'mar-loading-ring-spin');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(processIndicator).toHaveCSS('animation-name', 'none');
       await page

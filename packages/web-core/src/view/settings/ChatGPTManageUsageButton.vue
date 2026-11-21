@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { translate } from '../../service/locale-preference-service.js';
 </script>
 

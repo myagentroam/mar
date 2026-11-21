@@ -2,7 +2,7 @@
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
-import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
+import ChatGPTManageUsageButton from '../../src/view/settings/ChatGPTManageUsageButton.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { onMounted, provide, ref, useTemplateRef } from 'vue';
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
@@ -20,8 +20,9 @@ import { marIcon } from '@myagentroam/mar-ui/icons';
 import en from '@myagentroam/mar-ui/locale/en';
 import zhCn from '@myagentroam/mar-ui/locale/zh-cn';
 import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
-import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
-import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
+import AgentMarkdown from '../../src/view/conversation/AgentMarkdown.vue';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 import { MarMessageBox } from '../../src/service/message-box-service.js';
 const value = ref('');
@@ -37,6 +38,10 @@ const marInput = ref('');
 const marInputDisabled = ref(false);
 const marLocale = ref(en);
 provide(marUiLocaleKey, marLocale);
+function useChineseControls(): void {
+  marLocale.value = zhCn;
+  localePreferenceService().setLocale('zh-CN');
+}
 const marChoice = ref(false);
 const longChoice = ref(36);
 const showMarCommands = ref(true);
@@ -134,7 +139,7 @@ function saveFeedbackDialog(): void {
   </section>
   <section class="mar-control-visual-sample" aria-label="MAR localized controls">
     <MarSelect aria-label="Empty choice" />
-    <MarButton @click="marLocale = zhCn">Switch controls to Chinese</MarButton>
+    <MarButton @click="useChineseControls">Switch controls to Chinese</MarButton>
   </section>
   <section class="mar-control-visual-sample" aria-label="MAR scrolling choices">
     <label id="long-choice-label" for="long-choice">Long choice</label>
@@ -381,7 +386,7 @@ function saveFeedbackDialog(): void {
   </section>
   <section aria-label="Loading directive sample">
     <button type="button" @click="sampleLoading = !sampleLoading">Toggle sample loading</button>
-    <LoadingPanel :loading="sampleLoading" variant="region">Content</LoadingPanel>
+    <MarLoadingPanel :loading="sampleLoading" variant="region">Content</MarLoadingPanel>
   </section>
 </template>
 

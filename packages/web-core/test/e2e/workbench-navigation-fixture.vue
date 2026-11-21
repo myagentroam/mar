@@ -8,7 +8,7 @@ import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
-import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
+import AgentMarkdown from '../../src/view/conversation/AgentMarkdown.vue';
 
 const mobile = new URLSearchParams(location.search).has('mobile');
 const wideContent = new URLSearchParams(location.search).has('wide-content');

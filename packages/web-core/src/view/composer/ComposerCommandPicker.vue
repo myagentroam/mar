@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '@myagentroam/mar-ui/surface-chrome.css';
 import { nextTick, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { QuickPrompt, RunnerCommand } from '../../model/workbench.js';

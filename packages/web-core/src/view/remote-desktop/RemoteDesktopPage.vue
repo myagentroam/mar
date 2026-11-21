@@ -15,7 +15,7 @@ import { remoteDesktopEncodings } from '../../service/remote-desktop-encodings.j
 import { createRemoteDesktopStatistics } from '../../service/remote-desktop-statistics.js';
 import { ApiError } from '../../util/api-error.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{ readonly nodeId: string }>();
 type Mode = 'VIEW' | 'CONTROL';

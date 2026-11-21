@@ -16,7 +16,7 @@ import {
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
@@ -32,7 +32,7 @@ import SkillDetailsDialog, { type SkillDetails } from './SkillDetailsDialog.vue'
 import { translate } from '../../service/locale-preference-service';
 
 import ManagementPagination from '../settings/ManagementPagination.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -498,7 +498,7 @@ function scopeLabel(scope: string): string {
     >
       <template v-if="service.sourcesLoading.value" #loading>
         <span role="progressbar" :aria-label="translate('common.loading')">
-          <BusyIndicator class="mar-read-loading-indicator" />
+          <MarBusyIndicator class="mar-read-loading-indicator" />
         </span>
       </template>
       <MarTableColumn
@@ -615,7 +615,7 @@ function scopeLabel(scope: string): string {
           >
             <template v-if="sourceSkillsState === 'loading'" #loading>
               <span role="progressbar" :aria-label="translate('common.loading')">
-                <BusyIndicator class="mar-read-loading-indicator" />
+                <MarBusyIndicator class="mar-read-loading-indicator" />
               </span>
             </template>
             <MarTableColumn
@@ -716,7 +716,7 @@ function scopeLabel(scope: string): string {
           >
             <template v-if="catalogLoading" #loading>
               <span role="progressbar" :aria-label="translate('common.loading')">
-                <BusyIndicator class="mar-read-loading-indicator" />
+                <MarBusyIndicator class="mar-read-loading-indicator" />
               </span>
             </template>
             <MarTableColumn

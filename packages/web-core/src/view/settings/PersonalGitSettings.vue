@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -13,7 +14,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import {
@@ -27,9 +28,9 @@ import {
 import { PersonalGitService } from '../../service/personal-git-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import LoadingPanel from '../common/LoadingPanel.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -254,7 +255,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 </script>
 
 <template>
-  <LoadingPanel
+  <MarLoadingPanel
     class="personal-git-settings"
     :loading="loading && !ready && !retrying"
     variant="page"
@@ -268,13 +269,14 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       <MarRegionStatus v-if="failed || retrying" class="git-read-status">
         <span v-if="!retrying" role="status">{{ t('personalGit.loadFailed') }}</span>
         <MarButton
+          class="mar-region-retry-action"
           link
           :aria-disabled="retrying || undefined"
           :aria-busy="retrying || undefined"
           :aria-label="retrying ? t('common.loading') : undefined"
           @click="load(true)"
         >
-          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
           <template v-else>{{ t('common.retry') }}</template>
         </MarButton>
       </MarRegionStatus>
@@ -498,7 +500,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
         }}</MarButton></template
       >
     </MarDialog>
-  </LoadingPanel>
+  </MarLoadingPanel>
 </template>
 
 <style scoped>

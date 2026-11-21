@@ -520,6 +520,11 @@ test('MAR controls follow the provider locale for their built-in text', async ({
   await section.getByRole('button', { name: 'Switch controls to Chinese' }).click();
   await select.press('Enter');
   await expect(page.getByText('无数据', { exact: true })).toBeVisible();
+  await select.press('Escape');
+  await page.getByTestId('show-info-feedback').click();
+  await expect(
+    page.locator('.mar-feedback-stack').getByRole('button', { name: '关闭' })
+  ).toBeVisible();
 });
 
 test('console bootstrap keeps the saved custom page color before and after theme initialization', async ({

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../button/native-actions.css';
 import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from 'vue';
 import { useMarUiLocale } from '../../locale/index.js';
 import { MarButton } from '../button/index.js';

@@ -1,14 +1,15 @@
 <script setup lang="ts">
+import '@myagentroam/mar-ui/icon.css';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { computed, inject, onBeforeUnmount, onMounted, onUpdated, ref } from 'vue';
-import { marIconSvg } from '../../util/icon-shapes.js';
+import { marIconSvg } from '@myagentroam/mar-ui/icon-shapes';
 import DOMPurify from 'dompurify';
 
 import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
-import './code-syntax-theme.css';
+import '../../styles/code-syntax-theme.css';
 import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';

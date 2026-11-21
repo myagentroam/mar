@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '@myagentroam/web-core/management-detail.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -11,7 +12,7 @@ import {
 } from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import { marIcon } from '@myagentroam/web-core/icons';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MOBILE_WORKBENCH_VIEWPORT_QUERY } from '@myagentroam/web-core/mobile-workbench';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';

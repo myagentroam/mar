@@ -1,5 +1,5 @@
 import { createApp, type Component, type VNode } from 'vue';
-import MarMessageBoxView from '../view/common/MarMessageBoxView.vue';
+import MarMessageBoxView from '../view/overlays/MarMessageBoxView.vue';
 
 export interface MarMessageBoxOptions {
   type?: 'info' | 'success' | 'warning' | 'error';

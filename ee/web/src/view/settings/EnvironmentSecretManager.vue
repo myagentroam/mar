@@ -2,7 +2,7 @@
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarFormItem, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, ref } from 'vue';
 import type { EnvironmentSecretInput as CoreInput } from '@myagentroam/web-core/environment-secrets';
 import CoreManager from '@myagentroam/web-core/EnvironmentSecretManager.vue';

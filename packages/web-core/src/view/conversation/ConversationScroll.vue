@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { translate } from '../../service/locale-preference-service.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import {
   computed,
   nextTick,
@@ -358,7 +358,7 @@ onBeforeUnmount(() => {
           aria-live="polite"
           :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
         >
-          <BusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
+          <MarBusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
         </div>
         <MarButton
           v-if="initialLoadFailed || reloading"
@@ -378,7 +378,7 @@ onBeforeUnmount(() => {
           "
           @click="reload"
         >
-          <BusyIndicator
+          <MarBusyIndicator
             v-if="loadingInitial || reloading"
             class="history-busy-indicator mar-read-loading-indicator"
           />
@@ -396,7 +396,7 @@ onBeforeUnmount(() => {
             role="status"
             :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
           >
-            <BusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
+            <MarBusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
           </div>
           <MarButton
             v-if="olderAction === 'retry' || (olderError && !loadingOlder)"
@@ -416,7 +416,7 @@ onBeforeUnmount(() => {
             data-history-action="retry"
             @click="loadOlder"
           >
-            <BusyIndicator
+            <MarBusyIndicator
               v-if="loadingOlder || olderAction !== undefined"
               class="history-busy-indicator mar-read-loading-indicator"
             />

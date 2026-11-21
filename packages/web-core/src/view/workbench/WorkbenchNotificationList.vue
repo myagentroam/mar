@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import BusyIndicator from '../common/BusyIndicator.vue';
+import '../session/session-markers.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, ref } from 'vue';
 import { formatDateTime as notificationTime } from '../../util/time-presentation.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -108,7 +109,7 @@ async function retrySnapshot(): Promise<void> {
           :aria-label="retrying ? translate('common.loading') : undefined"
           @click="retrySnapshot"
         >
-          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
           <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </MarButton>
         <span
@@ -116,7 +117,7 @@ async function retrySnapshot(): Promise<void> {
           role="progressbar"
           :aria-label="translate('common.loading')"
         >
-          <BusyIndicator class="mar-read-loading-indicator" />
+          <MarBusyIndicator class="mar-read-loading-indicator" />
         </span>
         <template v-else>{{
           translate('generated.workbenchNotificationCenter.noNotifications')
@@ -371,7 +372,7 @@ async function retrySnapshot(): Promise<void> {
   font-variant-numeric: tabular-nums;
 }
 .workbench-notification-content .workbench-notification-delete {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: grid;
   min-width: 24px;
   min-height: 24px;

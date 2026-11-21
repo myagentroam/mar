@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarAlert } from '@myagentroam/mar-ui/alert';
-import MarIcon from '@myagentroam/web-core/MarIcon.vue';
-import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
 
 import { defineAsyncComponent, h } from 'vue';
 import CoreSurface from '@myagentroam/web-core/WorkbenchSurface.vue';
@@ -12,7 +12,11 @@ import { translate } from '@/service/locale-preference-service';
 
 const loadingComponent = {
   render: () =>
-    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+    h(MarLoadingPanel, {
+      loading: true,
+      variant: 'page',
+      'aria-label': translate('common.loading')
+    })
 };
 
 const SettingsContent = defineAsyncComponent({

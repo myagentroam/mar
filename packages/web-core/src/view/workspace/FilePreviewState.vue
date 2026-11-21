@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { translate } from '../../service/locale-preference-service.js';
 
 const props = defineProps<{
@@ -24,7 +24,7 @@ const emit = defineEmits<{ retry: [] }>();
         :aria-label="retrying ? translate('generated.filePreviewDialog.loadingPreview') : undefined"
         @click="!props.retrying && emit('retry')"
       >
-        <BusyIndicator v-if="retrying" class="preview-retry-spinner" />
+        <MarBusyIndicator v-if="retrying" class="preview-retry-spinner" />
         <template v-else>{{ translate('common.retry') }}</template>
       </MarButton></slot
     >

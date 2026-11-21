@@ -21,7 +21,7 @@ import ConversationTimeline from '../../src/view/conversation/ConversationTimeli
 import ConversationToolDetail from '../../src/view/conversation/tool-detail/ConversationToolDetail.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import ConversationRecordIcon from '../../src/view/conversation/ConversationRecordIcon.vue';
-import MarIcon from '../../src/view/common/MarIcon.vue';
+import MarIcon from '../../../mar-ui/icons/MarIcon.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import MessageAttachmentFiles from '../../src/view/composer/MessageAttachmentFiles.vue';
@@ -30,7 +30,7 @@ import { conversationItemLabel } from '../../src/util/conversation-presentation.
 import { conversationUiEnUS, conversationUiZhCN } from '../../src/i18n/conversation-ui.js';
 
 // Node SSR cannot execute DOMPurify; this isolates Timeline branching from Markdown rendering.
-vi.mock('../../src/view/common/AgentMarkdown.vue', () => ({
+vi.mock('../../src/view/conversation/AgentMarkdown.vue', () => ({
   default: {
     name: 'AgentMarkdownStub',
     props: { content: { type: String, required: true }, cacheIdentity: Array },

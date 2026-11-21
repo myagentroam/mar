@@ -6,7 +6,7 @@ import {
   composerReferenceKey
 } from '../../util/composer-reference.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import QuoteExcerpt from './QuoteExcerpt.vue';
 defineProps<{ readonly references: readonly ComposerReference[] }>();
 </script>

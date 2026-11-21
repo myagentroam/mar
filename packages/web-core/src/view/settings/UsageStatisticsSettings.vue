@@ -10,9 +10,9 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import MarSegmented from '../common/MarSegmented.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarSegmented } from '@myagentroam/mar-ui/segmented';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarTooltip } from '@myagentroam/mar-ui/tooltip';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -28,7 +28,7 @@ import { errorMessage } from '../../util/error-presentation.js';
 import { absoluteMessageTime } from '../../util/time-presentation.js';
 import { cacheHitRate } from '../../util/usage-statistics-presentation.js';
 import ManagementPagination from './ManagementPagination.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
@@ -680,7 +680,7 @@ onUnmounted(() => {
         >
           <template v-if="recordsLoading" #loading>
             <span role="progressbar" :aria-label="t('common.loading')">
-              <BusyIndicator class="mar-read-loading-indicator" />
+              <MarBusyIndicator class="mar-read-loading-indicator" />
             </span>
           </template>
           <MarTableColumn type="expand"

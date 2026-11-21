@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -8,9 +9,9 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import MarIcon from '../common/MarIcon.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -1315,7 +1316,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-more-button {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import '../session/runner-brand-icon.css';
+import '../session/session-markers.css';
+import '../session/session-create-button.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -11,18 +14,18 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import SessionGroupTabs from '../common/SessionGroupTabs.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import SessionGroupTabs from '../session/SessionGroupTabs.vue';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { Session, Workspace } from '../../model/workbench.js';
 import { createEffectiveWorkspaceSkillService } from '../../service/effective-workspace-skill-service.js';
 import { createMcpCenterService } from '../../service/mcp-center-service.js';
 import { translate } from '../../service/locale-preference-service.js';
-import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
-import '../common/session-list-title.css';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import { vSessionReorderMotion } from '../session/session-reorder-motion.js';
+import '../session/session-list-title.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import WorkspaceSessionActionsMenu from './WorkspaceSessionActionsMenu.vue';
 
 const props = defineProps<{
@@ -457,7 +460,7 @@ function submitSessionSearch(): void {
       role="status"
       :aria-label="translate('workspaceWatch.loadingSessions')"
     >
-      <BusyIndicator class="mar-read-loading-indicator" />
+      <MarBusyIndicator class="mar-read-loading-indicator" />
     </div>
     <p
       v-else-if="watchStatus === 'failed'"
@@ -618,7 +621,7 @@ function submitSessionSearch(): void {
           v-if="loadingMore && !retryingAppend"
           role="status"
           :aria-label="translate('generated.workspaceSessionList.loading')"
-          ><BusyIndicator class="mar-read-loading-indicator"
+          ><MarBusyIndicator class="mar-read-loading-indicator"
         /></span>
         <MarButton
           v-if="retryingAppend || (loadMoreError !== undefined && !loadingMore)"
@@ -628,7 +631,7 @@ function submitSessionSearch(): void {
           :aria-label="loadingMore ? translate('common.loading') : undefined"
           @click="retryAppend"
         >
-          <BusyIndicator v-if="loadingMore" class="mar-read-loading-indicator" />
+          <MarBusyIndicator v-if="loadingMore" class="mar-read-loading-indicator" />
           <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </MarButton>
       </li>
@@ -981,7 +984,7 @@ function submitSessionSearch(): void {
 }
 
 .session-more-button {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;

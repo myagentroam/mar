@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
-import SessionGroupTabs from '../common/SessionGroupTabs.vue';
+import SessionGroupTabs from '../session/SessionGroupTabs.vue';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
 import { recentRunTimeReference } from '../../util/notification-presentation.js';
 
@@ -80,7 +81,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
         :aria-label="retrying ? translate('common.loading') : undefined"
         @click="retry"
       >
-        <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+        <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
       </MarButton>
       <span
@@ -88,7 +89,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
         role="progressbar"
         :aria-label="translate('common.loading')"
       >
-        <BusyIndicator class="mar-read-loading-indicator" />
+        <MarBusyIndicator class="mar-read-loading-indicator" />
       </span>
       <template v-else>{{ translate('workbenchNotificationCenter.noRecentSessions') }}</template>
     </div>

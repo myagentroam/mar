@@ -354,7 +354,7 @@ function activate(name: Name): void {
 }
 
 .mar-tab-scroll {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   flex: 0 0 20px;
   width: 20px;
   min-width: 20px;
@@ -468,7 +468,7 @@ function activate(name: Name): void {
 }
 
 .mar-tab-close {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: grid;
   flex: none;
   width: 24px;

@@ -22,6 +22,7 @@
     "./input": "./components/input/index.ts",
     "./input-number": "./components/input-number/index.ts",
     "./loading": "./components/loading/index.ts",
+    "./loading-panel": "./components/loading/loading-panel.ts",
     "./link": "./components/link/index.ts",
     "./select": "./components/select/index.ts",
     "./dropdown": "./components/dropdown/index.ts",
@@ -42,11 +43,18 @@
     "./time-select": "./components/time-select/index.ts",
     "./tooltip": "./components/tooltip/index.ts",
     "./icons": "./icons/index.ts",
+    "./icon.css": "./icons/icon.css",
     "./icon-shapes": "./icons/icon-shapes.ts",
     "./icon-shapes.NOTICE.txt": "./icons/icon-shapes.NOTICE.txt",
     "./locale/en": "./locale/en.ts",
     "./locale/zh-cn": "./locale/zh-cn.ts",
-    "./locale": "./locale/index.ts"
+    "./locale": "./locale/index.ts",
+    "./busy-indicator": "./components/loading/MarBusyIndicator.vue",
+    "./region-status": "./components/region-status/index.ts",
+    "./native-actions.css": "./components/button/native-actions.css",
+    "./disclosure.css": "./components/disclosure/disclosure.css",
+    "./region-status.css": "./components/region-status/region-status.css",
+    "./surface-chrome.css": "./components/popup/surface-chrome.css"
   },
   "dependencies": {
     "async-validator": "4.2.5",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, ref, watch } from 'vue';
 import { conversationThumbnailUrl } from '../../util/conversation-image-url.js';
 

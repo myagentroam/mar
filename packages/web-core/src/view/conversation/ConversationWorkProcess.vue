@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
-import MarIcon from '../common/MarIcon.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import ConversationProcessDuration from './ConversationProcessDuration.vue';
 import SessionPerformanceInfo from './SessionPerformanceInfo.vue';
 import { translate } from '../../service/locale-preference-service.js';
@@ -84,7 +84,10 @@ watch(open, async () => {
           class="process-meta process-activity"
           :class="{ 'is-active': block.active && synchronized }"
         >
-          <BusyIndicator v-if="block.active && synchronized" class="process-activity-indicator" />
+          <MarBusyIndicator
+            v-if="block.active && synchronized"
+            class="process-activity-indicator"
+          />
           <span class="process-activity-label">{{ statusLabel }}</span>
         </span>
         <ConversationProcessDuration :block="block" :synchronized="synchronized" />

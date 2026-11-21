@@ -13,8 +13,7 @@ import {
 } from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import MarIcon from '@myagentroam/web-core/MarIcon.vue';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue';
 import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import type { MarAgentModelSummary as ModelSummary } from '@myagentroam/protocol';

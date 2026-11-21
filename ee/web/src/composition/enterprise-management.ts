@@ -1,4 +1,4 @@
-import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
 import { translate } from '@myagentroam/web-core/locale';
 import { defineAsyncComponent, h } from 'vue';
 import type { AdminState } from '../service/admin-auth-service.js';
@@ -11,7 +11,11 @@ import { createCommonManagementPages } from './common-management.js';
 
 const loadingComponent = {
   render: () =>
-    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+    h(MarLoadingPanel, {
+      loading: true,
+      variant: 'page',
+      'aria-label': translate('common.loading')
+    })
 };
 
 function organizationManagementVisible(admin: AdminState): boolean {

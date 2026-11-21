@@ -13,8 +13,7 @@ import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-servi
 
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { MarMessageBox } from '../../service/message-box-service.js';

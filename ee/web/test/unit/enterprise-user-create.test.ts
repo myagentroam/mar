@@ -18,10 +18,11 @@ vi.mock(
   '../../src/view/settings/EnterpriseUserManagementPage.vue',
   async () => import('../../src/view/settings/EnterpriseUserManagementPage.vue?unit-render')
 );
-vi.mock(
-  '@myagentroam/web-core/LoadingPanel.vue',
-  async () => import('../../../../packages/web-core/src/view/common/LoadingPanel.vue?unit-render')
-);
+vi.mock('@myagentroam/mar-ui/loading-panel', async () => ({
+  MarLoadingPanel: (
+    await import('../../../../packages/mar-ui/components/loading/MarLoadingPanel.vue?unit-render')
+  ).default
+}));
 vi.mock('../../../../packages/web-core/src/service/message-feedback-service.js', () => ({
   showMessage: vi.fn()
 }));

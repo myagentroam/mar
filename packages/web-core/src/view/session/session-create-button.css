@@ -1,0 +1,25 @@
+.mar-ui-button.mar-soft-button {
+  --mar-ui-button-fg: var(--mar-text-primary);
+  --mar-ui-button-bg: var(--mar-fill-row-hover);
+  --mar-ui-button-border: var(--mar-border-default);
+  --mar-ui-button-hover-bg: var(--mar-fill-selection);
+  --mar-ui-button-disabled-bg: var(--mar-fill-subtle);
+  justify-content: flex-start;
+  border-radius: var(--mar-radius-control);
+  padding-inline: var(--mar-compact-option-padding-inline);
+}
+
+html.console-ui[data-theme='vscode-dark-2026'] .mar-ui-button.mar-soft-button:not(:disabled) {
+  --mar-ui-button-bg: color-mix(in srgb, var(--mar-fill-row-hover) 44%, var(--mar-fill-selection));
+  --mar-ui-button-border: color-mix(
+    in srgb,
+    var(--mar-border-medium) 82%,
+    var(--mar-text-secondary)
+  );
+  --mar-ui-button-hover-border: color-mix(
+    in srgb,
+    var(--mar-border-medium) 72%,
+    var(--mar-text-secondary)
+  );
+  --mar-ui-button-active-border: var(--mar-ui-button-border);
+}

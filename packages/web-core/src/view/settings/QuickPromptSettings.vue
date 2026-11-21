@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -9,15 +10,15 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import LoadingPanel from '../common/LoadingPanel.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 
 const props = defineProps<{
   readonly prompts: readonly QuickPrompt[];
@@ -145,7 +146,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 </script>
 
 <template>
-  <LoadingPanel
+  <MarLoadingPanel
     :loading="loading && !ready && !retrying"
     variant="page"
     class="quick-prompts settings-panel"
@@ -165,13 +166,14 @@ async function remove(prompt: QuickPrompt): Promise<void> {
       <MarRegionStatus v-if="retrying || (!loading && failed)" class="prompt-status">
         <span v-if="!retrying" role="status">{{ translate('quickPrompts.readFailed') }}</span>
         <MarButton
+          class="mar-region-retry-action"
           link
           :aria-disabled="retrying || undefined"
           :aria-busy="retrying || undefined"
           :aria-label="retrying ? translate('common.loading') : undefined"
           @click="retry"
         >
-          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
           <template v-else>{{ translate('common.retry') }}</template>
         </MarButton>
       </MarRegionStatus>
@@ -238,7 +240,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
         }}</MarButton>
       </template>
     </MarDialog>
-  </LoadingPanel>
+  </MarLoadingPanel>
 </template>
 
 <style scoped>

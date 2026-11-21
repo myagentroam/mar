@@ -2,7 +2,7 @@
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const contentId = useId();
 const viewport = ref<HTMLElement>();
@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .detail-preview-toggle {
-  --mar-action-icon-size: 1em;
+  --mar-ui-action-icon-size: 1em;
   --mar-ui-button-hover-fg: var(--mar-text-primary);
   --mar-ui-button-active-fg: var(--mar-text-primary);
   margin: 0.375rem 0 0;

@@ -116,7 +116,7 @@
   }
 
   .mar-composer-action .mar-icon {
-    font-size: var(--mar-action-icon-size, 18px);
+    font-size: var(--mar-ui-action-icon-size, 18px);
   }
 
   .mar-composer-toolbar.is-mobile .mar-composer-mobile-status {

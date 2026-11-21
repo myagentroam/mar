@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
+import '../session/session-markers.css';
 import { MarDropdown } from '@myagentroam/mar-ui/dropdown';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -7,10 +9,10 @@ import type {
   NavigationSession,
   NavigationSnapshot
 } from '../../service/session-navigation-projection.js';
-import MarIcon from '../common/MarIcon.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
-import SessionNavigationMenu from '../common/SessionNavigationMenu.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
+import SessionNavigationMenu from '../session/SessionNavigationMenu.vue';
 import {
   formatRelativeSessionActivity,
   isKnownSessionActivityAt
@@ -179,19 +181,19 @@ function openContext(event: MouseEvent): void {
       role="status"
       :aria-label="showTreeLoading ? translate('common.loading') : undefined"
     >
-      <BusyIndicator v-if="showTreeLoading" class="mar-read-loading-indicator" />
+      <MarBusyIndicator v-if="showTreeLoading" class="mar-read-loading-indicator" />
       <template v-else>
         <span class="session-tree-failure">{{ translate('sessionGroups.treeUnavailable') }}</span>
         <MarButton
           v-if="retrying || (status === 'failed' && canRetry)"
-          class="session-tree-retry"
+          class="session-tree-retry mar-region-retry-action"
           link
           :aria-busy="retrying || undefined"
           :aria-disabled="retrying || undefined"
           :aria-label="retrying ? translate('common.loading') : undefined"
           @click="retryRead"
         >
-          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
           <span class="session-tree-retry-label">{{ translate('sessionGroups.retry') }}</span>
         </MarButton>
       </template>

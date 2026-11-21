@@ -17,7 +17,7 @@ import {
 import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import type { Session } from '../../model/workbench.js';

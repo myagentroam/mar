@@ -14,7 +14,7 @@ import {
 } from '@myagentroam/web-core/MobileDialogReturnService';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import { marIcon } from '@myagentroam/web-core/icons';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
+import '../../styles/workbench-tab-header.css';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import PanelResizeHandle from './PanelResizeHandle.vue';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';
 import {
   consoleKeyboardShortcutService,

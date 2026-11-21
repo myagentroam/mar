@@ -1,6 +1,6 @@
 import { createApp, h } from 'vue';
 import RemoteDesktopPage from '../../src/view/remote-desktop/RemoteDesktopPage.vue';
-import SharedTooltipHost from '../../src/view/common/SharedTooltipHost.vue';
+import SharedTooltipHost from '../../src/view/overlays/SharedTooltipHost.vue';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import { tooltipPlugin } from '../../src/directive/tooltip.js';
 import { createThemePreferenceService } from '../../src/service/theme-preference-service.js';

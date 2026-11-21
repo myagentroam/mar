@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import BusyIndicator from '../common/BusyIndicator.vue';
+import '../../styles/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -16,8 +17,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { onMounted, reactive, ref, computed } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { imageGenerationUrlSchema } from '@myagentroam/protocol';
@@ -275,7 +275,7 @@ onMounted(load);
     >
       <template v-if="tableLoading" #loading
         ><span role="progressbar" :aria-label="translate('common.loading')"
-          ><BusyIndicator class="mar-read-loading-indicator" /></span
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
       ></template>
       <MarTableColumn width="92" :label="translate('marAgentModels.imageGenerationPriority')">
         <template #default="{ row, $index }">

@@ -4,7 +4,7 @@ import type { ConversationFileProjection } from '@myagentroam/protocol';
 import type { HostedConversationFileTreeNode } from '../../service/hosted-conversation-file-tree-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const props = withDefaults(
   defineProps<{
@@ -210,7 +210,7 @@ function disableLeavingBranch(branch: Element): void {
 }
 
 .file-delete {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: inline-grid;
   width: 26px;
   height: 26px;

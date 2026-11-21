@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './file-tooltip-trigger.css';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
@@ -6,7 +7,7 @@ import { selectedTextOffsets, unifiedDiffLines } from '../../util/quote-selectio
 import { showMessage } from '../../service/message-feedback-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import DOMPurify from 'dompurify';

@@ -150,6 +150,11 @@ test('retries a failed tree read, reaches ready, and closes on Escape', async ({
   await expect(error).toBeVisible();
   const retry = error.getByRole('button');
   await expect(retry).toBeVisible();
+  await expect(retry).toHaveCSS(
+    'font-size',
+    await error.evaluate((element) => getComputedStyle(element).fontSize)
+  );
+  await expect(retry).toHaveCSS('border-top-width', '0px');
   await page.screenshot({
     path: info.outputPath('session-tree-failed.png'),
     animations: 'disabled'

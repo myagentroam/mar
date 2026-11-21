@@ -1,6 +1,6 @@
 import { createUuid } from '../util/uuid.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
-import { marIcon } from '../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
 import { MarMessageBox } from './message-box-service.js';

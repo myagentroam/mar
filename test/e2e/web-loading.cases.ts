@@ -206,7 +206,7 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     });
     expect(actual.color).toBe(actual.expected);
     expect(actual.width / actual.rootSize).toBeCloseTo(1.25);
-    expect(actual.animation).toBe('mar-busy-indicator-spin');
+    expect(actual.animation).toBe('mar-loading-ring-spin');
     await page.screenshot({ path: testInfo.outputPath(`page-loading-${theme}.png`) });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(ring).toHaveCSS('animation-name', 'none');

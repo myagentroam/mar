@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { MarTabs, MarTabPane } from '@myagentroam/mar-ui/tabs';
 import type { SessionGroup } from '@myagentroam/protocol';

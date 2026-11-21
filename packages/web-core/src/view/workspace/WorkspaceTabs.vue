@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { WorkspaceTab } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -814,7 +815,7 @@ function activate(tab: WorkspaceTab): void {
 
 .workspace-tab .tab-close,
 .workspace-tab .tab-pin {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   position: absolute;
   right: 3px;
   display: inline-grid;

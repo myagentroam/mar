@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
 import './file-preview.css';
-import { marIcon } from '../../util/mar-icons.js';
-import MarIcon from '../common/MarIcon.vue';
+import { marIcon } from '@myagentroam/mar-ui/icons';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';

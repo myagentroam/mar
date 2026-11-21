@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import AuthEntryPanel from './common/AuthEntryPanel.vue';
+import AuthEntryPanel from './auth/AuthEntryPanel.vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarInput } from '@myagentroam/mar-ui/input';
 

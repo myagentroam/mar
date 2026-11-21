@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { showMessage } from '../../src/service/message-feedback-service.js';
-import SharedTooltipHost from '../../src/view/common/SharedTooltipHost.vue';
+import SharedTooltipHost from '../../src/view/overlays/SharedTooltipHost.vue';
 import { ref } from 'vue';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarInput } from '@myagentroam/mar-ui/input';

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import {
   visibleWorkspaceFileTreeRows,
@@ -717,7 +717,7 @@ defineExpose({ reveal });
 }
 
 .file-tree-more {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: inline-flex;
   width: 22px;
   height: 20px;
@@ -788,7 +788,7 @@ defineExpose({ reveal });
 }
 
 .file-tree-load-more {
-  --mar-action-icon-size: 1em;
+  --mar-ui-action-icon-size: 1em;
   font-size: var(--mar-font-size-meta);
   padding: 0 6px 0 calc(4px + 0.8rem + 18px + var(--tree-depth) * 8px);
 }

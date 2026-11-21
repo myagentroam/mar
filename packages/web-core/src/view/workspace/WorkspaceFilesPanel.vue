@@ -1,14 +1,17 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
+import './git-inline-loading.css';
+import '@myagentroam/mar-ui/region-status.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { createUuid } from '../../util/uuid.js';
 import { computed, ref, watch } from 'vue';
-import MarIcon from '../common/MarIcon.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import WorkspaceFileTree from './WorkspaceFileTree.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { errorMessage } from '../../util/error-presentation.js';
 import { fileSizeLabel, workspaceAbsolutePath } from '../../util/file-presentation.js';
 import { MarMessageBox } from '../../service/message-box-service.js';
@@ -390,7 +393,7 @@ defineExpose({
             ? errorMessage(fileTree.refreshError.value.cause)
             : undefined
         "
-        class="files-read-retry"
+        class="files-read-retry mar-region-retry-action"
         :class="{ failed: !readBusy }"
         link
         :aria-disabled="readBusy"

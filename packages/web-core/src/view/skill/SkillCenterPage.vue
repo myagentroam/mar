@@ -10,7 +10,7 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -22,7 +22,7 @@ import { skillErrorMessage } from '../../util/skill-errors.js';
 import SkillDetailsDialog, { type SkillDetails } from './SkillDetailsDialog.vue';
 import McpCenterPanel from './McpCenterPanel.vue';
 import ManagementPagination from '../settings/ManagementPagination.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { translate } from '../../service/locale-preference-service.js';
 import { errorCode } from '../../util/api-error.js';
 
@@ -614,7 +614,7 @@ function scopeLabel(scope: string): string {
             >
               <template v-if="catalogLoading" #loading>
                 <span role="progressbar" :aria-label="translate('common.loading')">
-                  <BusyIndicator class="mar-read-loading-indicator" />
+                  <MarBusyIndicator class="mar-read-loading-indicator" />
                 </span>
               </template>
               <MarTableColumn
@@ -729,7 +729,7 @@ function scopeLabel(scope: string): string {
             >
               <template v-if="service.targetLoading.value" #loading>
                 <span role="progressbar" :aria-label="translate('common.loading')">
-                  <BusyIndicator class="mar-read-loading-indicator" />
+                  <MarBusyIndicator class="mar-read-loading-indicator" />
                 </span>
               </template>
               <MarTableColumn

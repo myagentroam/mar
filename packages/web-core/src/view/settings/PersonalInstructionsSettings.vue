@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import BusyIndicator from '../common/BusyIndicator.vue';
+import '../session/runner-brand-icon.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
@@ -282,7 +283,7 @@ async function clear(): Promise<void> {
         :aria-label="retrying ? translate('common.loading') : undefined"
         @click="load(true)"
       >
-        <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+        <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
         <template v-else>{{ translate('common.retry') }}</template>
       </MarButton>
     </div>

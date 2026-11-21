@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { translate } from '../../service/locale-preference-service.js';
 
 withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page' | 'region' }>(), {
@@ -17,7 +17,7 @@ withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page'
     aria-busy="true"
     :aria-label="translate('generated.filePreviewDialog.loadingPreview')"
   >
-    <BusyIndicator />
+    <MarBusyIndicator />
   </div>
 </template>
 

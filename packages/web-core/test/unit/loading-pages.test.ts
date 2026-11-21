@@ -1,8 +1,8 @@
 import { createSSRApp, h, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
-import BusyIndicator from '../../src/view/common/BusyIndicator.vue';
+import MarLoadingPanel from '../../../mar-ui/components/loading/MarLoadingPanel.vue';
+import MarBusyIndicator from '../../../mar-ui/components/loading/MarBusyIndicator.vue';
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
 import McpCenterPanel from '../../src/view/skill/McpCenterPanel.vue?unit-render';
 import SkillCenterPage from '../../src/view/skill/SkillCenterPage.vue?unit-render';
@@ -40,7 +40,7 @@ describe('shared loading presentation', () => {
     async (variant) => {
       for (const loading of [true, false]) {
         const html = await render(
-          LoadingPanel,
+          MarLoadingPanel,
           { variant, loading, 'aria-label': 'Retained content' },
           'Draft value'
         );
@@ -53,7 +53,7 @@ describe('shared loading presentation', () => {
   );
 
   it('keeps the shared ring decorative rather than creating an interactive or duplicate status', async () => {
-    const html = await render(BusyIndicator, {});
+    const html = await render(MarBusyIndicator, {});
     expect(html).toContain('class="mar-busy-indicator"');
     expect(html).toContain('aria-hidden="true"');
     expect(html).not.toMatch(/\b(?:tabindex|role)=/u);

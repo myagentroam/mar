@@ -494,6 +494,14 @@ for (const width of [1280, 390]) {
       first.resolve();
       const button = panel.getByRole('button', { name: 'Retry', exact: true });
       await expect(button).toBeVisible();
+      if (target.section !== 'personal-instructions') {
+        const statusText = panel.getByRole('status').filter({ visible: true });
+        await expect(button).toHaveCSS(
+          'font-size',
+          await statusText.evaluate((element) => getComputedStyle(element).fontSize)
+        );
+        await expect(button).toHaveCSS('border-top-width', '0px');
+      }
       await expect(page.locator('.mar-message--error')).toHaveCount(0);
       await capture(page, info, `${target.section}-failed`);
       await button.focus();

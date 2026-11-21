@@ -11,8 +11,8 @@ vi.mock('dompurify', () => ({
 }));
 
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
-import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
-import AgentMarkdownInteractive from '../../src/view/common/AgentMarkdown.vue?unit-render';
+import AgentMarkdown from '../../src/view/conversation/AgentMarkdown.vue';
+import AgentMarkdownInteractive from '../../src/view/conversation/AgentMarkdown.vue?unit-render';
 import { TOOLTIP_SERVICE_KEY, TooltipService } from '../../src/service/tooltip-service.js';
 import {
   CONVERSATION_MARKDOWN_CACHE_KEY,

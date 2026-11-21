@@ -16,7 +16,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import {
@@ -34,8 +34,8 @@ import { translate } from '../../service/locale-preference-service';
 import { errorMessage } from '../../util/workbench-presentation';
 import { createManagementPageService } from '../../service/management-page-service';
 import ManagementPagination from './ManagementPagination.vue';
-import LoadingPanel from '../common/LoadingPanel.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -335,7 +335,7 @@ function message(error: unknown): string {
 </script>
 
 <template>
-  <LoadingPanel
+  <MarLoadingPanel
     :loading="operationLoading && !tableLoading"
     variant="region"
     class="secret-manager"
@@ -375,7 +375,7 @@ function message(error: unknown): string {
     >
       <template v-if="tableLoading" #loading
         ><span role="progressbar" :aria-label="translate('common.loading')"
-          ><BusyIndicator class="mar-read-loading-indicator" /></span
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
       ></template>
       <MarTableColumn
         prop="name"
@@ -562,7 +562,7 @@ function message(error: unknown): string {
         }}</MarButton></template
       >
     </MarDialog>
-  </LoadingPanel>
+  </MarLoadingPanel>
 </template>
 
 <style scoped>

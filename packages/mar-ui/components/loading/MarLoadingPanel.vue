@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { vMarLoading } from './index.js';
 defineProps<{ readonly loading: boolean; readonly variant: 'page' | 'region' }>();
 </script>
 

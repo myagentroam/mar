@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { translate } from '../../service/locale-preference-service';
 
 defineProps<{

@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
+import './git-inline-loading.css';
+import '@myagentroam/mar-ui/region-status.css';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
-import MarIcon from '../common/MarIcon.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import type { PublicError } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
@@ -238,6 +241,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       :placement="changesReady ? 'top' : 'center'"
     >
       <MarButton
+        class="mar-region-retry-action"
         v-if="showRetryControl"
         v-tooltip="
           !changesLoading && service.changesError.value
@@ -704,10 +708,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .repository-title-row .changes-refresh-button {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   flex: 0 0 auto;
   margin-left: auto;
-  font-size: var(--mar-action-icon-size);
+  font-size: var(--mar-ui-action-icon-size);
 }
 
 .repository-tags-row {
@@ -958,11 +962,11 @@ button.file-explorer-utility-button:disabled {
 }
 
 .change-list .change-restore {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   min-width: 20px;
   min-height: 18px;
   padding: 0.1rem;
-  font-size: var(--mar-action-icon-size);
+  font-size: var(--mar-ui-action-icon-size);
 }
 
 :deep(.change-list .change-restore.mar-ui-button) {

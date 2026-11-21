@@ -7,8 +7,8 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
-import MarIcon from '../common/MarIcon.vue';
-import LoadingPanel from '../common/LoadingPanel.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
 
 import {
   computed,
@@ -35,7 +35,7 @@ import WorkspaceSessionActionsMenu from '../workspace/WorkspaceSessionActionsMen
 import SessionPromptDialog from '../workspace/SessionPromptDialog.vue';
 import SessionScheduleDialog from '../workspace/SessionScheduleDialog.vue';
 import SessionShareDialog from '../workspace/SessionShareDialog.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
 import WorkspaceTabs from '../../view/workspace/WorkspaceTabs.vue';
 import WorkspaceRegistrationPicker from '../workspace/WorkspaceRegistrationPicker.vue';
@@ -52,7 +52,11 @@ import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.j
 
 const loadingComponent = {
   render: () =>
-    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+    h(MarLoadingPanel, {
+      loading: true,
+      variant: 'page',
+      'aria-label': translate('common.loading')
+    })
 };
 
 const SettingsContent = defineAsyncComponent({
@@ -527,7 +531,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         role="progressbar"
         :aria-label="translate('generated.workbenchSurface.restoringWorkspace')"
       >
-        <BusyIndicator />
+        <MarBusyIndicator />
       </div>
       <section
         v-else-if="
@@ -621,7 +625,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             role="status"
             :aria-label="translate('common.loading')"
           >
-            <BusyIndicator />
+            <MarBusyIndicator />
           </div>
           <div
             v-else
@@ -640,7 +644,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
               :aria-label="workspaceRecoveryRetrying ? translate('common.loading') : undefined"
               @click="retryWorkspaceRecovery"
             >
-              <BusyIndicator v-if="workspaceRecoveryRetrying" class="mar-read-loading-indicator" />
+              <MarBusyIndicator
+                v-if="workspaceRecoveryRetrying"
+                class="mar-read-loading-indicator"
+              />
               <span class="workspace-recovery-retry-label">{{
                 translate('common.loadFailedRetry')
               }}</span>

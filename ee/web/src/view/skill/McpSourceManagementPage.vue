@@ -2,7 +2,7 @@
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarFormItem, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed } from 'vue';
 import CorePage from '@myagentroam/web-core/McpSourceManagementPage.vue';
 import { createCatalogOwnershipService } from '@/service/catalog-ownership-service';

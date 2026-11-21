@@ -1,5 +1,5 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
-import { marIcon } from '../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { MarMessageBox } from './message-box-service.js';
 import { ref, readonly, type Ref } from 'vue';

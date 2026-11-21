@@ -1,9 +1,9 @@
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import MarIcon from '../../src/view/common/MarIcon.vue';
-import { iconShapes, marIconSvg, type MarIconName } from '../../src/util/icon-shapes.js';
-import { marIcon } from '../../src/util/mar-icons.js';
+import MarIcon from '../../../mar-ui/icons/MarIcon.vue';
+import { iconShapes, marIconSvg, type MarIconName } from '@myagentroam/mar-ui/icon-shapes';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import ConversationRecordIcon from '../../src/view/conversation/ConversationRecordIcon.vue';
 
 describe('shared MAR icons', () => {

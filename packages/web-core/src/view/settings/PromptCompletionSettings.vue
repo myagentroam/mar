@@ -6,7 +6,7 @@ import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import {
   resolveMarAgentDefaultReasoningEffort,

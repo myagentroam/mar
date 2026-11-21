@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import './file-tooltip-trigger.css';
 import './file-preview.css';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { translate } from '../../service/locale-preference-service.js';

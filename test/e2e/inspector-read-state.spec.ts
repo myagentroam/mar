@@ -126,6 +126,42 @@ for (const width of [1280, 390]) {
   });
 }
 
+test('Share record retry keeps the region typography when a record is already visible', async ({
+  page
+}) => {
+  await page.route('**/api/agent-sessions/session/shares?**', (route) =>
+    route.fulfill({ status: 503, json: { error: 'UNAVAILABLE' } })
+  );
+  await page.route('**/api/agent-sessions/session/shares', (route) =>
+    route.fulfill({
+      json: {
+        share: {
+          id: 'share',
+          sessionId: 'session',
+          nodeId: 'node',
+          workspaceId: 'workspace',
+          createdAt: Date.now(),
+          expiresAt: null
+        },
+        password: '123456'
+      }
+    })
+  );
+  await page.goto(`${fixture.url}inspector-read-state.html?theme=daylight&refresh-controls`);
+  await page.getByRole('button', { name: 'Open share dialog' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: /Retry/ })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Create share' }).click();
+  await expect(dialog.getByRole('link').filter({ hasText: '/share/share' })).toBeVisible();
+  const region = dialog.locator('.mar-region-status');
+  const retry = region.getByRole('button', { name: /Retry/ });
+  await expect(retry).toHaveCSS(
+    'font-size',
+    await region.evaluate((element) => getComputedStyle(element).fontSize)
+  );
+  await expect(retry).toHaveCSS('border-top-width', '0px');
+});
+
 async function expectReadableState(button: Locator) {
   await expect(button).toBeVisible();
   const layout = await button.evaluate((element) => {

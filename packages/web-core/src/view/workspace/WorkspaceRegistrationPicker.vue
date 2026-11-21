@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import BusyIndicator from '../common/BusyIndicator.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -12,8 +12,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import { computed, reactive, ref, useId, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
@@ -290,7 +289,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
 
       <MarRegionStatus v-if="loadingDirectory && !manualDirectoryRefresh">
         <span role="progressbar" :aria-label="translate('common.loading')">
-          <BusyIndicator class="mar-read-loading-indicator" />
+          <MarBusyIndicator class="mar-read-loading-indicator" />
         </span>
       </MarRegionStatus>
       <ul v-if="directory !== undefined" class="workspace-directory-list">

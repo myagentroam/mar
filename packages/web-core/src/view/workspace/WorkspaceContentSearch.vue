@@ -1,16 +1,19 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
+import './git-inline-loading.css';
+import '@myagentroam/mar-ui/region-status.css';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, nextTick, ref } from 'vue';
-import MarIcon from '../common/MarIcon.vue';
-import MarRegionStatus from '../common/MarRegionStatus.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import FileTypeIcon from './FileTypeIcon.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { createWorkspaceContentSearchService } from '../../service/workspace-content-search-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { changeFileName } from '../../util/workspace-git.js';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{
   service: ReturnType<typeof createWorkspaceContentSearchService>;
@@ -120,7 +123,7 @@ defineExpose({
         v-if="contentSearchError !== undefined"
         v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
         :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
-        class="watch-status"
+        class="watch-status mar-region-retry-action"
         link
         :class="{ failed: !contentSearchLoading }"
         :aria-disabled="contentSearchLoading"

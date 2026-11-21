@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
 import { MarPopover } from '@myagentroam/mar-ui/popover';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { SessionGroup } from '@myagentroam/protocol';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import WorkbenchActivityPanel from './WorkbenchActivityPanel.vue';
 import WorkbenchNotificationList from './WorkbenchNotificationList.vue';
 import type {

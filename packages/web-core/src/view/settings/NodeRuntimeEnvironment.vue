@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed } from 'vue';
 import { translate } from '../../service/locale-preference-service';
 import type { ComputerUseCapability } from '@myagentroam/protocol';

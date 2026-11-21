@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarScrollbar } from '@myagentroam/mar-ui/scrollbar';
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import ComposerSendButton from './ComposerSendButton.vue';
 import './composer-toolbar.css';
 import { translate } from '../../service/locale-preference-service.js';

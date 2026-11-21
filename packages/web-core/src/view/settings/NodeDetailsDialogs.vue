@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/management-detail.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarProgress } from '@myagentroam/mar-ui/progress';
@@ -11,7 +12,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 
 import { ref, watch } from 'vue';
