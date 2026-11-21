@@ -180,7 +180,10 @@ test('Workspace Git retries in the same status slot without a mask', async ({ pa
   let requests = 0;
   await page.route('**/api/workspaces/workspace/git-policy?*', async (route) => {
     if (++requests === 1) return route.fulfill({ status: 503 });
-    await retryRead.promise;
+    if (requests === 2) {
+      await retryRead.promise;
+      return route.fulfill({ status: 503 });
+    }
     return route.fulfill({ json: { preserveGitConfig: true, includeParentRepository: false } });
   });
   try {
@@ -192,11 +195,19 @@ test('Workspace Git retries in the same status slot without a mask', async ({ pa
     const status = panel.locator('.mar-region-status');
     await expect(retry).toBeVisible();
     const previous = await status.boundingBox();
+    await retry.focus();
     await retry.click();
-    await expect(status.getByRole('progressbar')).toBeVisible();
+    const busyRetry = status.getByRole('button', { name: /^Loading…?$/ });
+    await expect(busyRetry).toBeFocused();
+    await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+    await expect(busyRetry.locator('.mar-read-loading-indicator')).toBeVisible();
+    await page.keyboard.press('Enter');
+    expect(requests).toBe(2);
     expect((await status.boundingBox())?.y).toBe(previous?.y);
     await expect(panel.locator('.mar-ui-loading')).toHaveCount(0);
     retryRead.resolve();
+    await expect(retry).toBeFocused();
+    await retry.click();
     await expect(panel.getByRole('checkbox').first()).toBeChecked();
     await expect(status).toHaveCount(0);
   } finally {

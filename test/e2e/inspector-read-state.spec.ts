@@ -80,13 +80,18 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 860 });
     const first = Promise.withResolvers<void>();
     const retry = Promise.withResolvers<void>();
+    const recovery = Promise.withResolvers<void>();
     let reads = 0;
     await page.route('**/api/agent-sessions/session/shares?**', async (route) => {
       if (++reads === 1) {
         await first.promise;
         return route.fulfill({ status: 503, json: { error: 'UNAVAILABLE' } });
       }
-      await retry.promise;
+      if (reads === 2) {
+        await retry.promise;
+        return route.fulfill({ status: 503, json: { error: 'UNAVAILABLE' } });
+      }
+      await recovery.promise;
       return route.fulfill({ json: { shares: [] } });
     });
     await page.goto(`${fixture.url}inspector-read-state.html?theme=${theme}&refresh-controls`);
@@ -102,10 +107,20 @@ for (const width of [1280, 390]) {
     await expect(retryButton).toBeVisible();
     await expect(empty).toHaveCount(0);
     await page.screenshot({ path: info.outputPath('share-failed.png'), animations: 'disabled' });
+    await retryButton.focus();
     await retryButton.click();
-    await expect(progress).toBeVisible();
+    const busyRetry = dialog.getByRole('button', { name: /^Loading…?$/ });
+    await expect(busyRetry).toBeFocused();
+    await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+    await expect(busyRetry.locator('.mar-read-loading-indicator')).toBeVisible();
+    await expect(progress).toHaveCount(0);
+    await page.keyboard.press('Enter');
+    expect(reads).toBe(2);
     await page.screenshot({ path: info.outputPath('share-retrying.png'), animations: 'disabled' });
     retry.resolve();
+    await expect(retryButton).toBeFocused();
+    await retryButton.click();
+    recovery.resolve();
     await expect(empty).toBeVisible();
     await page.screenshot({ path: info.outputPath('share-empty.png'), animations: 'disabled' });
   });

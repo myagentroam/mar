@@ -92,13 +92,13 @@ function runTime(run: RecentRun): string {
           <WorkbenchRecentSessionList
             :runs="visibleRuns"
             :snapshot-state="service.snapshotState.value"
+            :retry-snapshot="service.load"
             :has-unread-session="service.hasUnreadSession"
             :session-group="sessionGroup"
             :mobile-mode="mobileMode"
             :run-time="runTime"
             @select-group="emit('update:sessionGroup', $event)"
             @open-recent-run="emit('openRecentRun', $event)"
-            @retry="service.load().catch(() => undefined)"
           />
         </template>
       </MarTabPane>

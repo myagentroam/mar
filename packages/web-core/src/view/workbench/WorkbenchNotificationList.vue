@@ -2,7 +2,7 @@
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarIcon from '../common/MarIcon.vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { formatDateTime as notificationTime } from '../../util/time-presentation.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
@@ -54,6 +54,24 @@ const hasMarkableUnread = computed(() =>
     (item) => item.kind !== 'web-update' && !item.read && item.expiresAt > Date.now()
   )
 );
+const retrying = ref(false);
+const showSnapshotStatus = computed(
+  () =>
+    props.previewId === undefined &&
+    (retrying.value || props.service.snapshotState.value !== 'ready')
+);
+
+async function retrySnapshot(): Promise<void> {
+  if (retrying.value || props.service.snapshotState.value !== 'failed') return;
+  retrying.value = true;
+  try {
+    await props.service.load();
+  } catch {
+    // The snapshot state owns the in-place failure feedback.
+  } finally {
+    retrying.value = false;
+  }
+}
 </script>
 
 <template>
@@ -77,23 +95,29 @@ const hasMarkableUnread = computed(() =>
     </header>
     <div class="workbench-notification-section">
       <div
-        v-if="visibleNotifications.length === 0 && transferTasks.length === 0"
+        v-if="
+          showSnapshotStatus || (visibleNotifications.length === 0 && transferTasks.length === 0)
+        "
         class="workbench-notification-empty"
       >
+        <MarButton
+          v-if="showSnapshotStatus && (retrying || service.snapshotState.value === 'failed')"
+          link
+          :aria-disabled="retrying || undefined"
+          :aria-busy="retrying || undefined"
+          :aria-label="retrying ? translate('common.loading') : undefined"
+          @click="retrySnapshot"
+        >
+          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+        </MarButton>
         <span
-          v-if="previewId === undefined && service.snapshotState.value === 'loading'"
+          v-else-if="showSnapshotStatus"
           role="progressbar"
           :aria-label="translate('common.loading')"
         >
           <BusyIndicator class="mar-read-loading-indicator" />
         </span>
-        <MarButton
-          v-else-if="previewId === undefined && service.snapshotState.value === 'failed'"
-          link
-          @click="service.load().catch(() => undefined)"
-        >
-          {{ translate('common.loadFailedRetry') }}
-        </MarButton>
         <template v-else>{{
           translate('generated.workbenchNotificationCenter.noNotifications')
         }}</template>

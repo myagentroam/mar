@@ -31,6 +31,7 @@ const emit = defineEmits<{ close: [] }>();
 const service = createSessionShareManagementService(props.target, props.request);
 const { shares, created, busy } = service;
 const readState = ref<'loading' | 'ready' | 'failed'>('loading');
+const retrying = ref(false);
 const creating = ref(false);
 const removingId = ref<string>();
 const form = ref<FormInstance>();
@@ -108,6 +109,15 @@ async function load(): Promise<void> {
     readState.value = 'failed';
   }
 }
+async function retry(): Promise<void> {
+  if (busy.value || retrying.value || readState.value !== 'failed') return;
+  retrying.value = true;
+  try {
+    await load();
+  } finally {
+    retrying.value = false;
+  }
+}
 onMounted(() => void load());
 async function copyRecord(id: string): Promise<void> {
   try {
@@ -180,16 +190,21 @@ async function copyRecord(id: string): Promise<void> {
     </section>
     <h3>{{ translate('sessionShare.records') }}</h3>
     <MarRegionStatus v-if="shares.length > 0 && readState !== 'ready'">
-      <span
-        v-if="readState === 'loading'"
-        role="progressbar"
-        :aria-label="translate('common.loading')"
+      <MarButton
+        v-if="retrying || readState === 'failed'"
+        link
+        :disabled="busy"
+        :aria-disabled="retrying || undefined"
+        :aria-busy="retrying || undefined"
+        :aria-label="retrying ? translate('common.loading') : undefined"
+        @click="retry"
       >
+        <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </MarButton>
+      <span v-else role="progressbar" :aria-label="translate('common.loading')">
         <BusyIndicator class="mar-read-loading-indicator" />
       </span>
-      <MarButton v-else link :disabled="busy" @click="load">{{
-        translate('common.loadFailedRetry')
-      }}</MarButton>
     </MarRegionStatus>
     <MarTable
       :data="shares"
@@ -197,16 +212,21 @@ async function copyRecord(id: string): Promise<void> {
       :aria-busy="readState === 'loading'"
     >
       <template v-if="readState !== 'ready'" #empty>
-        <span
-          v-if="readState === 'loading'"
-          role="progressbar"
-          :aria-label="translate('common.loading')"
+        <MarButton
+          v-if="retrying || readState === 'failed'"
+          link
+          :disabled="busy"
+          :aria-disabled="retrying || undefined"
+          :aria-busy="retrying || undefined"
+          :aria-label="retrying ? translate('common.loading') : undefined"
+          @click="retry"
         >
+          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+        </MarButton>
+        <span v-else role="progressbar" :aria-label="translate('common.loading')">
           <BusyIndicator class="mar-read-loading-indicator" />
         </span>
-        <MarButton v-else link :disabled="busy" @click="load">{{
-          translate('common.loadFailedRetry')
-        }}</MarButton>
       </template>
       <MarTableColumn :label="translate('sessionShare.link')" min-width="230" show-overflow-tooltip>
         <template #default="{ row }">

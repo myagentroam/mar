@@ -38,6 +38,9 @@ const service = new UsageStatisticsService(props.request, (error) =>
 );
 const state = service.state;
 const pagination = service.pagination;
+const recordsLoading = computed(
+  () => state.loading || (state.loadingPage && !pagination.loadingMore.value)
+);
 watchManagementPageFailure(pagination);
 watch(pagination.mobileViewport, () => void refresh(true));
 const form = ref<FormInstance>();
@@ -671,11 +674,11 @@ onUnmounted(() => {
           :row-key="recordKey"
           :expand-row-keys="expandedRecords"
           class="records"
-          :aria-busy="state.loading"
+          :aria-busy="recordsLoading"
           @sort-change="sortChanged"
           @expand-change="expandChanged"
         >
-          <template v-if="state.loading" #loading>
+          <template v-if="recordsLoading" #loading>
             <span role="progressbar" :aria-label="t('common.loading')">
               <BusyIndicator class="mar-read-loading-indicator" />
             </span>

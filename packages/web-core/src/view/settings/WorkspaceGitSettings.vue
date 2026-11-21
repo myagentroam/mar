@@ -24,6 +24,7 @@ const service = new PersonalGitService(props.request);
 const preserve = ref(false);
 const includeParent = ref<boolean>();
 const loading = ref(false);
+const retrying = ref(false);
 const saving = ref(false);
 const loaded = ref(false);
 let generation = 0;
@@ -35,15 +36,20 @@ watch(
   () => void load(),
   { immediate: true }
 );
-async function load(): Promise<void> {
+function retry(): void {
+  if (!loading.value && !loaded.value) void load(true);
+}
+async function load(retry = false): Promise<void> {
   const current = ++generation;
   preserve.value = props.initialValue ?? false;
   includeParent.value = undefined;
   loaded.value = false;
   loading.value = false;
+  retrying.value = false;
   saving.value = false;
   if (!props.connected) return;
   loading.value = true;
+  retrying.value = retry;
   try {
     const result = await service.workspacePolicy(props.nodeId, props.workspaceId);
     if (current !== generation) return;
@@ -53,7 +59,10 @@ async function load(): Promise<void> {
   } catch {
     // The current scope exposes an in-place retry rather than a second notification.
   } finally {
-    if (current === generation) loading.value = false;
+    if (current === generation) {
+      loading.value = false;
+      retrying.value = false;
+    }
   }
 }
 async function save(): Promise<void> {
@@ -109,10 +118,20 @@ async function save(): Promise<void> {
         {{ t('personalGit.includeParentHint') }}
       </p>
       <MarRegionStatus v-if="!loaded">
-        <span v-if="loading" role="progressbar" :aria-label="t('common.loading')">
+        <MarButton
+          v-if="retrying || !loading"
+          link
+          :aria-disabled="retrying || undefined"
+          :aria-busy="retrying || undefined"
+          :aria-label="retrying ? t('common.loading') : undefined"
+          @click="retry"
+        >
+          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <template v-else>{{ t('common.loadFailedRetry') }}</template>
+        </MarButton>
+        <span v-else role="progressbar" :aria-label="t('common.loading')">
           <BusyIndicator class="mar-read-loading-indicator" />
         </span>
-        <MarButton v-else link @click="load">{{ t('common.loadFailedRetry') }}</MarButton>
       </MarRegionStatus>
     </template>
   </section>

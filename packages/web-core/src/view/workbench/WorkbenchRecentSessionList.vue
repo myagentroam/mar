@@ -2,15 +2,17 @@
 import { MarButton } from '@myagentroam/mar-ui/button';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { MarTag } from '@myagentroam/mar-ui/tag';
+import { ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import SessionGroupTabs from '../common/SessionGroupTabs.vue';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
 import { recentRunTimeReference } from '../../util/notification-presentation.js';
 
-defineProps<{
+const props = defineProps<{
   readonly sessionGroup: import('@myagentroam/protocol').SessionGroup;
   readonly runs: readonly RecentRun[];
   readonly snapshotState?: 'loading' | 'ready' | 'failed';
+  readonly retrySnapshot?: () => Promise<void>;
   readonly hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
   readonly mobileMode: boolean;
   readonly runTime: (run: RecentRun) => string;
@@ -18,8 +20,20 @@ defineProps<{
 const emit = defineEmits<{
   openRecentRun: [run: RecentRun];
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
-  retry: [];
 }>();
+const retrying = ref(false);
+
+async function retry(): Promise<void> {
+  if (retrying.value || props.snapshotState !== 'failed' || !props.retrySnapshot) return;
+  retrying.value = true;
+  try {
+    await props.retrySnapshot();
+  } catch {
+    // The snapshot state owns the in-place failure feedback.
+  } finally {
+    retrying.value = false;
+  }
+}
 const RUN_STATUS_KEYS = {
   STARTING: 'workbenchNotificationCenter.runStatus.STARTING',
   RUNNING: 'workbenchNotificationCenter.runStatus.RUNNING',
@@ -58,16 +72,24 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
       @update:model-value="emit('selectGroup', $event)"
     />
     <div v-if="runs.length === 0" class="recent-sessions-empty">
+      <MarButton
+        v-if="retrying || snapshotState === 'failed'"
+        link
+        :aria-disabled="retrying || undefined"
+        :aria-busy="retrying || undefined"
+        :aria-label="retrying ? translate('common.loading') : undefined"
+        @click="retry"
+      >
+        <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </MarButton>
       <span
-        v-if="snapshotState === 'loading'"
+        v-else-if="snapshotState === 'loading'"
         role="progressbar"
         :aria-label="translate('common.loading')"
       >
         <BusyIndicator class="mar-read-loading-indicator" />
       </span>
-      <MarButton v-else-if="snapshotState === 'failed'" link @click="emit('retry')">
-        {{ translate('common.loadFailedRetry') }}
-      </MarButton>
       <template v-else>{{ translate('workbenchNotificationCenter.noRecentSessions') }}</template>
     </div>
     <ul v-else class="recent-sessions-list">

@@ -562,6 +562,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(pager).not.toBeInViewport();
       await pager.scrollIntoViewIfNeeded();
       await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
+      await expect(tableLoading).toHaveCount(0);
       await expect(loadingMask).toBeHidden();
       await expect(pager.getByRole('status', { name: '正在加载', exact: true })).toBeVisible();
       await expect(pager.getByRole('button')).toHaveCount(0);
@@ -585,7 +586,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(pager.locator('.mar-ui-pagination__page')).toHaveCount(4);
       const refreshedStatus = await panel.locator('header').getByRole('status').innerText();
       await pager.locator('.mar-ui-pagination__page').filter({ hasText: /^4$/u }).click();
-      await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
+      await expect(recordsTable).toHaveAttribute('aria-busy', 'true');
+      await expect(tableLoading).toBeVisible();
       await expect(loadingMask).toBeHidden();
       await expect(panel.locator('header').getByRole('status')).toHaveText(refreshedStatus);
       await expect(panel.getByRole('button', { name: labels.next, exact: true })).toBeDisabled();
@@ -593,6 +595,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       finishPageRead();
       await expect(rows).toHaveCount(1);
       await expect(recordsTable).toHaveAttribute('aria-busy', 'false');
+      await expect(tableLoading).toHaveCount(0);
       await page.clock.runFor(500);
       await expect(loadingMask).toBeHidden();
       await expect(pager.locator('[aria-current="page"]')).toContainText('4');

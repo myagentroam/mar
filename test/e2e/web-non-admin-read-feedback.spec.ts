@@ -190,8 +190,12 @@ for (const width of [1280, 390]) {
     await expect(panel.getByText('No recent sessions')).toHaveCount(0);
     await capture(page, info, 'activity-failed');
     failed = false;
+    await button.focus();
     await button.click();
-    await expect(panel.getByRole('progressbar')).toBeVisible();
+    const busyRetry = panel.getByRole('button', { name: /^Loading…?$/ });
+    await expect(busyRetry).toBeFocused();
+    await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+    await expect(busyRetry.locator('.mar-read-loading-indicator')).toBeVisible();
     await capture(page, info, 'activity-retrying');
     retry.resolve();
     await expect(panel.getByText('No recent sessions')).toBeVisible();
@@ -199,6 +203,76 @@ for (const width of [1280, 390]) {
     await panel.getByRole('tab', { name: 'Notifications' }).click();
     await expect(panel.getByText('No notifications')).toBeVisible();
     await capture(page, info, 'notifications-empty');
+  });
+
+  test(`Notification snapshot feedback stays visible with pending uploads at ${width}px`, async ({
+    page
+  }) => {
+    await setup(page, width);
+    await page.addInitScript(() => {
+      sessionStorage.setItem(
+        'mar.account.v1.1.mar.workspace-upload-tasks',
+        JSON.stringify([
+          {
+            id: 'pending-upload',
+            nodeId: 'node',
+            workspaceId: 'workspace',
+            directory: '.',
+            name: 'pending-upload.txt',
+            size: 10,
+            receivedBytes: 2,
+            overwrite: false
+          }
+        ])
+      );
+    });
+    const first = Promise.withResolvers<void>();
+    const retry = Promise.withResolvers<void>();
+    let failRead = true;
+    await page.route('**/api/notifications', async (route) => {
+      if (failRead) {
+        await first.promise;
+        return json(
+          route,
+          { error: { code: 'TEMPORARY_FAILURE', message: 'Snapshot unavailable.' } },
+          503
+        );
+      }
+      await retry.promise;
+      return json(route, { notifications: [], recentRuns: [] });
+    });
+    try {
+      await page.goto(`${consoleUrl}console?view=settings&settings=account`);
+      await page.locator('.activity-center-trigger').filter({ visible: true }).click();
+      const panel = page.locator('.workbench-activity-panel');
+      await panel.getByRole('tab', { name: 'Notifications' }).click();
+      const upload = panel.getByText('pending-upload.txt', { exact: true });
+      const spinner = panel.getByRole('progressbar', { name: /^Loading…?$/ });
+      const empty = panel.getByText('No notifications');
+      await expect(upload).toBeVisible();
+      await expect(spinner).toBeVisible();
+      await expect(empty).toHaveCount(0);
+      first.resolve();
+      const button = panel.getByRole('button', { name: 'Failed to load. Retry' });
+      await expect(button).toBeVisible();
+      await expect(upload).toBeVisible();
+      failRead = false;
+      await button.focus();
+      await button.click();
+      const busyRetry = panel.getByRole('button', { name: /^Loading…?$/ });
+      await expect(busyRetry).toBeFocused();
+      await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+      await expect(busyRetry.locator('.mar-read-loading-indicator')).toBeVisible();
+      await expect(spinner).toHaveCount(0);
+      await expect(upload).toBeVisible();
+      retry.resolve();
+      await expect(busyRetry).toHaveCount(0);
+      await expect(upload).toBeVisible();
+      await expect(empty).toHaveCount(0);
+    } finally {
+      first.resolve();
+      retry.resolve();
+    }
   });
 
   test(`OAuth table owns read feedback with and without rows at ${width}px`, async ({
