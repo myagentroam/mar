@@ -17,6 +17,7 @@ afterEach(() => {
 
 function gitServiceFixture() {
   return {
+    changes: ref<unknown>({}),
     repositories: ref([
       {
         repositoryPath: '',
@@ -162,6 +163,7 @@ it.each(['http', 'watch'] as const)(
   async (source) => {
     const service = gitServiceFixture();
     const repositories = service.repositories.value;
+    service.changes.value = undefined;
     service.repositories.value = [];
     const props = shallowReactive({
       service,
@@ -173,13 +175,15 @@ it.each(['http', 'watch'] as const)(
     const view = renderComponent(WorkspaceGitChanges, props);
     try {
       await nextTick();
-      const statuses = () => view.findAll('div').filter((node) => node.props.role === 'status');
+      const statuses = () => view.findAll('p').filter((node) => node.props.role === 'status');
       expect(statuses()).toHaveLength(1);
-      expect(statuses()[0]?.props.class).toBe('changes-read-state');
+      expect(String(statuses()[0]?.parent?.props.class)).toContain('mar-region-status--center');
       expect(view.findAll('p').some((node) => node.props.class === 'empty')).toBe(false);
       service.repositories.value = repositories;
+      service.changes.value = {};
+      service.changesRefreshing.value = false;
+      props.watchStatus = 'ready';
       await nextTick();
-      expect(statuses()).toHaveLength(0);
       const refresh = view
         .findAll('button')
         .find(
@@ -187,6 +191,28 @@ it.each(['http', 'watch'] as const)(
             node.props['aria-label'] ===
             i18n.global.t('generated.workspaceInspector.refreshGitChanges')
         )!;
+      let finishRefresh!: () => void;
+      service.loadChanges.mockImplementation(async () => {
+        service.changesRefreshing.value = true;
+        await new Promise<void>((resolve) => (finishRefresh = resolve));
+        service.changesRefreshing.value = false;
+        service.changesError.value = false;
+      });
+      service.changesError.value = true;
+      await nextTick();
+      expect(
+        view
+          .findAll('button')
+          .some((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')))
+      ).toBe(false);
+      const refreshing = trigger(refresh, 'onClick');
+      await nextTick();
+      expect(statuses()).toHaveLength(0);
+      expect(
+        view
+          .findAll('button')
+          .some((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')))
+      ).toBe(false);
       expect(refresh.props.disabled).toBe(true);
       expect(refresh.props['aria-busy']).toBe(true);
       let ancestor = refresh.parent;
@@ -202,8 +228,8 @@ it.each(['http', 'watch'] as const)(
       expect(
         view.findAll('svg').filter((node) => node.props['data-mar-icon'] === 'loading-action')
       ).toHaveLength(1);
-      service.changesRefreshing.value = false;
-      props.watchStatus = 'ready';
+      finishRefresh();
+      await refreshing;
       await nextTick();
       expect(statuses()).toHaveLength(0);
       expect(refresh.props.disabled).toBe(false);
@@ -218,6 +244,8 @@ it.each(['http', 'watch'] as const)(
   'retries a failed %s read in place without duplicating busy indicators',
   async (source) => {
     const service = gitServiceFixture();
+    service.changes.value = undefined;
+    service.repositories.value = [];
     service.changesError.value = source === 'http';
     const retryWatch = vi.fn();
     const props = shallowReactive({
@@ -232,14 +260,14 @@ it.each(['http', 'watch'] as const)(
       const retry = view
         .findAll('MarButton')
         .find((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')))!;
-      expect(retry.parent?.props.class).toBe('changes-read-state');
+      expect(String(retry.parent?.props.class)).toContain('changes-read-state');
       await trigger(retry, 'onClick');
       expect(source === 'http' ? service.retryChanges : retryWatch).toHaveBeenCalledTimes(1);
       if (source === 'http') service.changesRefreshing.value = true;
       else props.watchStatus = 'loading';
       await nextTick();
       expect(view.findAll('MarButton').includes(retry)).toBe(true);
-      expect(textContent(retry)).toContain(i18n.global.t('common.loadFailedRetry'));
+      expect(textContent(retry)).toContain(i18n.global.t('generated.workspaceInspector.loading'));
       expect(retry.props['aria-busy']).toBe(true);
       expect(
         view.findAll('svg').filter((node) => node.props['data-mar-icon'] === 'loading-action')
@@ -261,7 +289,7 @@ it.each(['http', 'watch'] as const)(
       expect(
         view
           .findAll('MarButton')
-          .filter((node) => node.parent?.props.class === 'changes-read-state')
+          .filter((node) => String(node.parent?.props.class).includes('changes-read-state'))
       ).toHaveLength(0);
     } finally {
       view.unmount();
@@ -322,6 +350,7 @@ describe.each(['zh-CN', 'en-US'] as const)('Git changes in %s', (locale) => {
   it('renders Git worktree status in the selected locale', async () => {
     localePreferenceService().setLocale(locale);
     const service = {
+      changes: ref({}),
       repositories: ref([
         {
           repositoryPath: '',

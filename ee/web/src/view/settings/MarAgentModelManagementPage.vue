@@ -6,7 +6,7 @@ import { MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onMounted, ref } from 'vue';
 import type { MarAgentModelSummary } from '@myagentroam/protocol';
 import type { NodeSummary } from '@/model/workbench';

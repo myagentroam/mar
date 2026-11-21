@@ -44,7 +44,13 @@ export function createModelManagementCollectionService(
       }));
       ready.value = true;
     } catch (error) {
-      if (!disposed && current === sequence) throw error;
+      if (!disposed && current === sequence) {
+        if (showLoading) {
+          models.value = [];
+          ready.value = false;
+        }
+        throw error;
+      }
     } finally {
       if (current === sequence) loading.value = false;
     }

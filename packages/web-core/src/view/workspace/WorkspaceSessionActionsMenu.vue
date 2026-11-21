@@ -2,8 +2,8 @@
 import { MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import type { Session } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
-import MarIcon from '../common/MarIcon.vue';
-import SessionNavigationMenu from '../common/SessionNavigationMenu.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import SessionNavigationMenu from '../session/SessionNavigationMenu.vue';
 
 const props = defineProps<{
   session: Session;

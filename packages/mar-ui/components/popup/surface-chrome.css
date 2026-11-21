@@ -1,0 +1,7 @@
+/* Compact floating surface chrome; placement and sizing belong to its consumer. */
+:is(.mar-ui-popup, .mar-compact-overlay) {
+  border: 1px solid var(--mar-ui-overlay-border);
+  border-radius: var(--mar-ui-popup-radius, var(--mar-ui-radius-control));
+  background: var(--mar-ui-overlay-surface);
+  box-shadow: var(--mar-ui-overlay-shadow);
+}

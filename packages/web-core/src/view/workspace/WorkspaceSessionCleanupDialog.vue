@@ -10,7 +10,7 @@ import {
 import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 import { computed, reactive, ref } from 'vue';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';

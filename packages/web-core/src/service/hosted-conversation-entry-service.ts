@@ -52,6 +52,7 @@ interface FirstMessageSubmission {
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 type PreferenceStorage = Pick<Storage, 'getItem' | 'setItem'>;
+type ModelOptionsReadState = 'idle' | 'loading' | 'refreshing' | 'failed';
 
 const TEMPLATE_PREFERENCE_STORAGE_KEY = 'mar.hosted-conversations.last-template-id.v1';
 
@@ -59,7 +60,8 @@ export interface HostedConversationEntryService {
   readonly templates: Ref<readonly ConversationTemplateSummary[]>;
   readonly selectedTemplateId: Ref<string | undefined>;
   readonly models: Ref<HostedConversationModelOptions['models']>;
-  readonly modelOptionsLoaded: Ref<boolean>;
+  readonly modelOptionsLoaded: Readonly<Ref<boolean>>;
+  readonly modelOptionsReadState: Readonly<Ref<ModelOptionsReadState>>;
   readonly selectedModelId: Ref<string | undefined>;
   readonly prompt: Ref<string>;
   readonly attachments: Ref<HostedAttachment[]>;
@@ -100,12 +102,14 @@ export function createHostedConversationEntryService(
   let modelLoadSequence = 0;
   const models = shallowRef<HostedConversationModelOptions['models']>([]);
   const modelOptionsLoaded = ref(false);
+  const modelOptionsReadState = ref<ModelOptionsReadState>('idle');
   const selectedModelId = ref<string>();
 
   function resetModelOptions(): void {
     modelLoadSequence += 1;
     models.value = [];
     modelOptionsLoaded.value = false;
+    modelOptionsReadState.value = 'idle';
     selectedModelId.value = undefined;
   }
   const prompt = ref('');
@@ -362,15 +366,18 @@ export function createHostedConversationEntryService(
       return;
     }
     const sequence = ++modelLoadSequence;
-    modelOptionsLoaded.value = false;
+    // Refresh usable options in place, but show progress on first load and explicit retry.
+    modelOptionsReadState.value =
+      modelOptionsLoaded.value &&
+      (modelOptionsReadState.value === 'idle' || modelOptionsReadState.value === 'refreshing')
+        ? 'refreshing'
+        : 'loading';
     try {
-      const result = hostedConversationModelOptionsSchema.safeParse(
+      const response = hostedConversationModelOptionsSchema.parse(
         await request<unknown>(
           `/api/nodes/${encodeURIComponent(template.nodeId)}/conversation-templates/${encodeURIComponent(templateId)}/model-options`
         )
       );
-      if (!result.success) throw new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');
-      const response = result.data;
       if (sequence !== modelLoadSequence || selectedTemplateId.value !== templateId) return;
       const currentModelId = selectedModelId.value;
       const nextModelId = response.models.some((model) => model.id === currentModelId)
@@ -380,8 +387,10 @@ export function createHostedConversationEntryService(
       models.value = response.models;
       selectedModelId.value = nextModelId;
       modelOptionsLoaded.value = true;
-    } catch (error) {
-      if (sequence === modelLoadSequence && selectedTemplateId.value === templateId) throw error;
+      modelOptionsReadState.value = 'idle';
+    } catch {
+      if (sequence === modelLoadSequence && selectedTemplateId.value === templateId)
+        modelOptionsReadState.value = 'failed';
     }
   }
 
@@ -440,6 +449,7 @@ export function createHostedConversationEntryService(
     selectedTemplateId,
     models,
     modelOptionsLoaded,
+    modelOptionsReadState,
     selectedModelId,
     prompt,
     attachments,

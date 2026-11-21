@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
 import { translate } from '../../service/locale-preference-service.js';
 import type { NavigationSummary } from '../../service/session-navigation-projection.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 defineProps<{
   sessionId: string;
@@ -53,7 +54,7 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
 .tree-icon {
   position: relative;
   display: inline-flex;
-  font-size: var(--mar-action-icon-size, 18px);
+  font-size: var(--mar-ui-action-icon-size, 18px);
 }
 .tree-active-indicator {
   --mar-icon-status-size: 4px;

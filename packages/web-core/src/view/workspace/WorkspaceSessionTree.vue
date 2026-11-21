@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
+import '../session/session-markers.css';
 import { MarDropdown } from '@myagentroam/mar-ui/dropdown';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -7,9 +9,10 @@ import type {
   NavigationSession,
   NavigationSnapshot
 } from '../../service/session-navigation-projection.js';
-import MarIcon from '../common/MarIcon.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
-import SessionNavigationMenu from '../common/SessionNavigationMenu.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
+import SessionNavigationMenu from '../session/SessionNavigationMenu.vue';
 import {
   formatRelativeSessionActivity,
   isKnownSessionActivityAt
@@ -23,6 +26,7 @@ const props = defineProps<{
   readonly interactive: boolean;
   readonly tree: NavigationSnapshot['tree'] | undefined;
   readonly status: 'idle' | 'loading' | 'ready' | 'failed';
+  readonly canRetry?: boolean | undefined;
   readonly mainSessionId?: string | undefined;
   readonly asideSessionIds: readonly string[];
   readonly activeAsideId?: string | undefined;
@@ -32,6 +36,24 @@ const emit = defineEmits<{
   retry: [];
   menu: [open: boolean];
 }>();
+const retrying = ref(false);
+const showTreeLoading = computed(
+  () => !retrying.value && props.tree === undefined && props.status !== 'failed'
+);
+watch(
+  () => props.status,
+  (status) => {
+    if (status !== 'loading') retrying.value = false;
+  }
+);
+function retryRead(): void {
+  if (!props.interactive || !props.canRetry || props.status !== 'failed' || retrying.value) return;
+  retrying.value = true;
+  emit('retry');
+  void nextTick(() => {
+    if (props.status !== 'loading') retrying.value = false;
+  });
+}
 const parentMenu = ref<{ handleClose: () => void }>();
 const nodeMenus = ref<Array<{ handleClose: () => void }>>([]);
 const hoveredSessionId = ref<string>();
@@ -147,18 +169,35 @@ function openContext(event: MouseEvent): void {
 
 <template>
   <div class="session-tree" :aria-busy="tree === undefined && status !== 'failed'">
-    <div
-      v-if="tree === undefined && status !== 'failed'"
-      class="session-tree-loading"
+    <MarRegionStatus
+      v-if="
+        retrying ||
+        tree === undefined ||
+        status === 'failed' ||
+        (status === 'ready' && tree === null)
+      "
+      class="session-tree-status"
+      :class="{ 'session-tree-loading': showTreeLoading, 'is-retrying': retrying }"
       role="status"
-      :aria-label="translate('common.loading')"
+      :aria-label="showTreeLoading ? translate('common.loading') : undefined"
     >
-      <BusyIndicator class="mar-read-loading-indicator" />
-    </div>
-    <p v-if="status === 'failed' || (status === 'ready' && tree === null)" role="status">
-      {{ translate('sessionGroups.treeUnavailable') }}
-      <MarButton link @click="emit('retry')">{{ translate('sessionGroups.retry') }}</MarButton>
-    </p>
+      <MarBusyIndicator v-if="showTreeLoading" class="mar-read-loading-indicator" />
+      <template v-else>
+        <span class="session-tree-failure">{{ translate('sessionGroups.treeUnavailable') }}</span>
+        <MarButton
+          v-if="retrying || (status === 'failed' && canRetry)"
+          class="session-tree-retry mar-region-retry-action"
+          link
+          :aria-busy="retrying || undefined"
+          :aria-disabled="retrying || undefined"
+          :aria-label="retrying ? translate('common.loading') : undefined"
+          @click="retryRead"
+        >
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <span class="session-tree-retry-label">{{ translate('sessionGroups.retry') }}</span>
+        </MarButton>
+      </template>
+    </MarRegionStatus>
     <div
       v-if="tree?.parent"
       class="session-tree-parent"
@@ -337,11 +376,23 @@ function openContext(event: MouseEvent): void {
 </template>
 
 <style scoped>
-.session-tree-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.session-tree-status {
   min-block-size: 5rem;
+}
+
+.session-tree-status.is-retrying :is(.session-tree-failure, .session-tree-retry-label) {
+  visibility: hidden;
+}
+
+.session-tree-retry {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.session-tree-retry .mar-read-loading-indicator {
+  position: absolute;
+  inset: 0;
+  margin: auto;
 }
 
 .session-tree-parent {

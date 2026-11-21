@@ -92,6 +92,7 @@ describe('submission and authoritative reread loading', () => {
       writable: true,
       ...(scope === 'NODE' ? { nodeId: 'node' } : {})
     });
+    const table = () => view.findAll('MarTable')[0]!;
     try {
       await flushComponent();
       await trigger(
@@ -106,13 +107,7 @@ describe('submission and authoritative reread loading', () => {
       expect(button(view, 'Save').props.loading).toBe(true);
       expect(button(view, 'Cancel').props.disabled).toBe(true);
       expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
-      expect(
-        view
-          .findAll('section')
-          .find((node) => String(node.props.class).includes('page-loading-panel'))!.props[
-          'aria-busy'
-        ]
-      ).toBe(false);
+      expect(table().props['aria-busy']).toBe(false);
       const close = vi.fn();
       (view.findAll('MarDialog')[0]!.props['before-close'] as (done: () => void) => void)(close);
       expect(close).not.toHaveBeenCalled();
@@ -130,13 +125,7 @@ describe('submission and authoritative reread loading', () => {
         await flushComponent();
         expect(view.findAll('MarForm')).toHaveLength(0);
         expect(request).toHaveBeenCalledTimes(3);
-        expect(
-          view
-            .findAll('section')
-            .find((node) => String(node.props.class).includes('page-loading-panel'))!.props[
-            'aria-busy'
-          ]
-        ).toBe(true);
+        expect(table().props['aria-busy']).toBe(true);
         expect(
           button(view, translate('generated.environmentSecretManager.addSecret')).props.disabled
         ).toBe(true);
@@ -144,6 +133,7 @@ describe('submission and authoritative reread loading', () => {
         else read.resolve(result);
         await submission;
         await flushComponent();
+        expect(table().props['aria-busy']).toBe(false);
         expect(
           button(view, translate('generated.environmentSecretManager.addSecret')).props.disabled
         ).toBe(false);
@@ -184,7 +174,9 @@ describe('submission and authoritative reread loading', () => {
         await flushComponent();
         const refresh = clickPending(view, refreshLabel);
         await flushComponent();
-        expect(button(view, refreshLabel).props.loading).toBe(true);
+        expect(button(view, refreshLabel).props.loading).not.toBe(true);
+        expect(button(view, refreshLabel).props.disabled).toBe(true);
+        expect(table().props['aria-busy']).toBe(true);
         expect(textContent(table())).toContain('Team');
 
         const deletion = clickPending(
@@ -229,7 +221,8 @@ describe('submission and authoritative reread loading', () => {
           );
         }
         expect(table().props['aria-busy']).toBe(false);
-        expect(button(view, refreshLabel).props.loading).toBe(false);
+        expect(button(view, refreshLabel).props.loading).not.toBe(true);
+        expect(button(view, refreshLabel).props.disabled).not.toBe(true);
       } finally {
         write.resolve({});
         oldRead.resolve(previous);
@@ -401,7 +394,7 @@ describe('submission and authoritative reread loading', () => {
   });
 
   it.each([true, false])(
-    'uses the OAuth refresh button without duplicating a table mask (success=%s)',
+    'keeps OAuth refresh feedback in the table while preserving existing rows (success=%s)',
     async (success) => {
       const read = deferred();
       const result = { bindings: [{ providerKey: 'fixture', name: 'Fixture', bound: false }] };
@@ -415,6 +408,7 @@ describe('submission and authoritative reread loading', () => {
         newPassword: '',
         passwordValidationError: '',
         registrationToken: undefined,
+        registrationLoading: false,
         loading: false,
         changePassword: async () => true,
         formatSessionTime: String,
@@ -430,10 +424,14 @@ describe('submission and authoritative reread loading', () => {
       try {
         await flushComponent();
         const label = translate('generated.settingsContent.refresh');
+        const table = () =>
+          view.findAll('MarTable').find((node) => node.props['row-key'] === 'providerKey')!;
         const refresh = clickPending(view, label);
         await flushComponent();
-        expect(button(view, label).props.loading).toBe(true);
+        expect(button(view, label).props.loading).not.toBe(true);
         expect(button(view, label).props.disabled).toBe(true);
+        expect(table().props['aria-busy']).toBe(true);
+        expect(table().props.data).toEqual(result.bindings);
         expect(button(view, translate('generated.settingsContent.bind')).props.disabled).toBe(true);
         await clickPending(view, label);
         expect(request).toHaveBeenCalledTimes(2);
@@ -441,15 +439,15 @@ describe('submission and authoritative reread loading', () => {
         else read.reject(new Error('Read failed'));
         await refresh;
         await flushComponent();
-        expect(button(view, label).props.loading).toBe(false);
+        expect(button(view, label).props.loading).not.toBe(true);
         expect(button(view, label).props.disabled).toBe(false);
-        expect(button(view, translate('generated.settingsContent.bind')).props.disabled).toBe(
-          false
-        );
-        expect(
-          view.findAll('MarTable').find((node) => node.props['row-key'] === 'providerKey')!.props
-            .data
-        ).toEqual(result.bindings);
+        const bind = view
+          .findAll('MarButton')
+          .find((node) => textContent(node).trim() === translate('generated.settingsContent.bind'));
+        if (success) expect(bind?.props.disabled).toBe(false);
+        else expect(bind).toBeUndefined();
+        expect(table().props['aria-busy']).toBe(false);
+        expect(table().props.data).toEqual(success ? result.bindings : []);
         expect(
           vi.mocked(showMessage).mock.calls.filter(([, type]) => type === 'error')
         ).toHaveLength(success ? 0 : 1);
@@ -479,6 +477,7 @@ describe('submission and authoritative reread loading', () => {
         newPassword: '',
         passwordValidationError: '',
         registrationToken: undefined,
+        registrationLoading: false,
         loading: false,
         changePassword: async () => true,
         formatSessionTime: String,
@@ -503,7 +502,7 @@ describe('submission and authoritative reread loading', () => {
         write.resolve({});
         await flushComponent();
         expect(request).toHaveBeenCalledTimes(4);
-        expect(button(view, refreshLabel).props.loading).toBe(false);
+        expect(button(view, refreshLabel).props.loading).not.toBe(true);
         const table = () =>
           view.findAll('MarTable').find((node) => node.props['row-key'] === 'providerKey')!;
         expect(table().props['aria-busy']).toBe(true);

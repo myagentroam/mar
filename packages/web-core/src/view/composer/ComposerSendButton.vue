@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 // Owns the mobile send gesture and its compatibility-click guard.
 const props = defineProps<{

@@ -1,6 +1,7 @@
 @import './styles/theme.css';
 @import './styles/mar-ui-theme.css';
-@import './styles/mar-controls.css';
+@import '@myagentroam/mar-ui/native-actions.css';
+@import './styles/product-primitives.css';
 
 /* Global document foundations and cross-page layouts. */
 

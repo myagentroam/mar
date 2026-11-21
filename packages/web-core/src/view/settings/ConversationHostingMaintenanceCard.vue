@@ -4,8 +4,7 @@ import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';

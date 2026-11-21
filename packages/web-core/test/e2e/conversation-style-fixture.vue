@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import MarIcon from '../../src/view/common/MarIcon.vue';
+import MarIcon from '../../../mar-ui/icons/MarIcon.vue';
 import { unicodeLongFilePath } from '../support/unicode-layout-fixtures.js';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';

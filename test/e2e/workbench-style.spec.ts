@@ -798,7 +798,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&list-state=main`);
       // Give the standalone sidebar a bounded pane like the product grid.
       await page.addStyleTag({
-        content: '[aria-label="Session fixture"] > .conversation-sidebar { height: 360px; }'
+        content: `
+          [aria-label="Session fixture"] > .conversation-sidebar,
+          [aria-label="Workspace tree fixture"] { height: 360px; }
+        `
       });
       const sessions = page.getByRole('region', { name: 'Session fixture' });
       const state = sessions.getByRole('combobox', { name: 'Set fixture list state' });
@@ -812,9 +815,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await sessions.getByRole('textbox', { name: 'Set fixture search' }).fill('unmatched');
       await expect(empty).toContainText('No matching');
       await expect(empty).toHaveCSS('text-align', 'center');
+      await state.selectOption('searching');
+      await expect(sessions.locator('.watch-status.is-centered .mar-busy-indicator')).toBeVisible();
+      await expect(sessions.locator('button [data-mar-icon="loading-action"]')).toHaveCount(0);
+      await expect(empty).toHaveCount(0);
+      await state.selectOption('search-failed');
+      await expect(sessions.locator('.watch-status')).toHaveCount(0);
+      await expect(empty).toHaveCount(0);
       await state.selectOption('loading');
       const loading = sessions.locator('.watch-status:not(.failed)');
       await expect(loading).toBeVisible();
+      await sessions
+        .locator('.conversation-sidebar')
+        .screenshot({ path: testInfo.outputPath('sessions-initial.png') });
       const centerOffset = await loading.evaluate((status) => {
         const sidebar = status.closest<HTMLElement>('.conversation-sidebar')!;
         const controls = status.previousElementSibling!;
@@ -834,19 +847,49 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(empty).toHaveCount(0);
       await state.selectOption('failed');
       await expect(sessions.locator('.watch-status.failed')).toBeVisible();
-      await expect(sessions.locator('.watch-status.failed')).not.toHaveCSS('text-align', 'center');
+      await expect(sessions.locator('.watch-status.failed')).toHaveCSS('text-align', 'center');
+      await expect(sessions.locator('.watch-status.failed')).toHaveClass(/is-centered/);
+      await sessions
+        .locator('.conversation-sidebar')
+        .screenshot({ path: testInfo.outputPath('sessions-failed.png') });
       await expect(empty).toHaveCount(0);
 
       const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
+      await state.selectOption('main');
       await tree.locator('.workspace-tree-filter input').fill('unmatched');
       await expect(tree.locator('.tree-filter-empty')).toBeVisible();
       await expect(tree.locator('.tree-filter-empty')).toHaveCSS('text-align', 'center');
       await tree.screenshot({ path: testInfo.outputPath('tree-filter-empty.png') });
-      await state.selectOption('no-nodes');
-      await expect(tree.locator('.tree-empty')).toBeVisible();
-      await expect(tree.locator('.tree-empty')).toHaveCSS('text-align', 'center');
+      const treeStatus = tree.getByRole('status');
+      for (const [fixtureState, text] of [
+        ['loading', 'Loading Nodes…'],
+        ['failed', 'Node list unavailable'],
+        ['no-nodes', 'No nodes']
+      ]) {
+        await state.selectOption(fixtureState);
+        await expect(treeStatus).toHaveText(text);
+        await expect(tree.locator('.tree-filter-empty')).toHaveCount(0);
+        await expect(treeStatus.locator('[data-mar-icon="loading-action"]')).toHaveCount(
+          fixtureState === 'loading' ? 1 : 0
+        );
+        const position = await treeStatus.evaluate((element) => {
+          const panel = element.parentElement!.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const content = range.getBoundingClientRect();
+          return {
+            top: content.top - panel.top,
+            centerOffset: content.x + content.width / 2 - (panel.x + panel.width / 2)
+          };
+        });
+        expect(position.top).toBeGreaterThanOrEqual(0);
+        expect(position.top).toBeLessThan(24);
+        expect(Math.abs(position.centerOffset)).toBeLessThanOrEqual(2);
+        await tree.screenshot({ path: testInfo.outputPath(`tree-${fixtureState}.png`) });
+      }
       await tree.screenshot({ path: testInfo.outputPath('tree-empty.png') });
       await state.selectOption('unselected');
+      await expect(treeStatus).toHaveCount(0);
       await tree.locator('.workspace-tree-filter input').fill('');
       await expect(tree.getByRole('button', { name: 'Node', exact: true })).toBeVisible();
       await expect(tree.locator('.tree-foot')).toBeVisible();
@@ -1445,12 +1488,38 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const content = (await panel.locator('.workspace-recovery-state').boundingBox())!;
       expect(Math.abs(content.x + content.width / 2 - outer.x - outer.width / 2)).toBeLessThan(2);
       expect(Math.abs(content.y + content.height / 2 - outer.y - outer.height / 2)).toBeLessThan(2);
+      const retryBounds = await retry.boundingBox();
+      expect(retryBounds).not.toBeNull();
       await page.screenshot({ path: testInfo.outputPath('workspace-recovery.png') });
       await retry.click();
-      await expect(retry).toHaveCount(0);
-      await expect(panel.locator('.mar-page-loading-state[role="status"]')).toBeVisible();
+      const busyRetry = panel.getByRole('button', { name: 'Loading', exact: true });
+      const ring = busyRetry.locator('.mar-read-loading-indicator');
+      await expect(busyRetry).toBeFocused();
+      await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+      await expect(ring).toBeVisible();
+      await expect.poll(() => busyRetry.boundingBox()).toEqual(retryBounds);
+      const ringBounds = (await ring.boundingBox())!;
+      expect(
+        Math.abs(ringBounds.x + ringBounds.width / 2 - (retryBounds!.x + retryBounds!.width / 2))
+      ).toBeLessThan(1);
+      expect(
+        Math.abs(ringBounds.y + ringBounds.height / 2 - (retryBounds!.y + retryBounds!.height / 2))
+      ).toBeLessThan(1);
+      await expect(failure).toBeHidden();
       await expect(panel.locator('.mar-busy-indicator')).toHaveCount(1);
-      await expect(panel.locator('.workspace-recovery-state')).toHaveCount(0);
+      await expect(panel.locator('.mar-page-loading-state')).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath('workspace-recovery-retrying.png') });
+      await page.keyboard.press('Enter');
+      expect(
+        await page.evaluate(() =>
+          (
+            window as Window & { failWorkspaceRecoveryRead: () => number }
+          ).failWorkspaceRecoveryRead()
+        )
+      ).toBe(1);
+      await expect(failure).toBeVisible();
+      await expect(retry).toBeFocused();
+      await expect(retry).not.toHaveAttribute('aria-busy', 'true');
     });
 
     test(`Offline Workspace uses a static disconnected icon in ${theme} at ${width}px`, async ({
@@ -1808,7 +1877,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Files Watch and refresh share one visible loading feedback in ${theme}`, async ({
     page
-  }) => {
+  }, testInfo) => {
     let reads = 0;
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
@@ -1820,7 +1889,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     });
     await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&overlapping-watch=1`);
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
-    const watchStatus = inspector.locator('button.watch-status');
+    const watchStatus = inspector.locator('.watch-status [role="status"]');
     await expect(watchStatus).toContainText('Loading…');
     await expect(watchStatus).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(watchStatus).toHaveCSS('border-top-width', '0px');
@@ -1832,6 +1901,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         inspector.locator('.workbench-aside').boundingBox()
       ]);
       expect(statusBox!.width).toBeLessThan(inspectorBox!.width / 2);
+      await inspector
+        .locator('.workbench-aside')
+        .screenshot({ path: testInfo.outputPath(`files-initial-${width}.png`) });
     }
     await page.setViewportSize({ width: 1280, height: 844 });
     await inspector.getByRole('button', { name: 'Refresh files', exact: true }).click();
@@ -1849,7 +1921,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(inspector.locator('.watch-status')).toHaveCount(1);
   });
 
-  test(`Files retry uses a muted busy state and retains focus in ${theme}`, async ({ page }) => {
+  test(`Files retry uses a muted busy state and retains focus in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     let reads = 0;
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
@@ -1869,16 +1944,24 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&file-root=1`);
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
     await inspector.getByRole('button', { name: 'Refresh files', exact: true }).click();
-    const retry = inspector.locator('button.watch-status');
+    const retry = inspector.locator('button.files-read-retry');
     await expect(retry).toHaveClass(/failed/);
     await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(retry).toHaveCSS('border-top-width', '0px');
     await expect(retry).toHaveCSS('cursor', 'pointer');
+    await inspector
+      .locator('.workbench-aside')
+      .screenshot({ path: testInfo.outputPath('files-failed.png') });
     await retry.focus();
     await retry.press('Enter');
     await expect(retry).toBeFocused();
     await expect(retry).toHaveAttribute('aria-busy', 'true');
     await expect(retry).not.toHaveClass(/failed/);
+    const filesLoadingIcon = retry.locator('[data-mar-icon="loading-action"]');
+    const filesFeedbackFontSize = await retry.evaluate((el) => getComputedStyle(el).fontSize);
+    await expect(filesLoadingIcon).toHaveCSS('width', filesFeedbackFontSize);
+    await expect(filesLoadingIcon).toHaveCSS('height', filesFeedbackFontSize);
+    await expect(retry.locator('.mar-inline-loading')).toHaveCSS('column-gap', '4px');
     const mutedColor = await page.locator('body').evaluate((body) => {
       const probe = document.createElement('span');
       probe.style.color = 'var(--mar-text-secondary)';
@@ -1890,20 +1973,34 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       return value;
     });
     await expect(retry).toHaveCSS('color', mutedColor);
+    await inspector
+      .locator('.workbench-aside')
+      .screenshot({ path: testInfo.outputPath('files-retrying.png') });
     release?.();
+    await expect(retry).toHaveCount(0);
+    await inspector.locator('.file-display-filter input').fill('unmatched-file');
+    await expect(inspector.locator('.file-tree-empty')).toBeVisible();
+    await inspector
+      .locator('.workbench-aside')
+      .screenshot({ path: testInfo.outputPath('files-empty.png') });
     await expect(retry).toHaveCount(0);
   });
 
-  test(`Git History auto-append and in-place failures in ${theme}`, async ({ page }) => {
+  test(`Git History auto-append and in-place failures in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     let historyReads = 0;
     let fileReads = 0;
     let releaseHistory: (() => void) | undefined;
+    let releaseAppend!: () => void;
     let releaseFiles: (() => void) | undefined;
     const historyGate = new Promise<void>((resolve) => {
       releaseHistory = resolve;
     });
     const filesGate = new Promise<void>((resolve) => {
       releaseFiles = resolve;
+    });
+    const appendGate = new Promise<void>((resolve) => {
+      releaseAppend = resolve;
     });
     const commit = (hash: string) => ({
       hash,
@@ -1918,6 +2015,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith('/git/history')) {
         historyReads += 1;
+        if (historyReads === 3) await appendGate;
         if (historyReads === 1 || historyReads === 3)
           await route.fulfill({
             status: 503,
@@ -1960,7 +2058,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(retry).toHaveAttribute('aria-busy', 'true');
     releaseHistory?.();
     await expect(inspector.locator('.history-list')).toContainText('subject first');
+    await expect(inspector.locator(':scope .git-history > [role="status"]')).toHaveText('Loading…');
+    await inspector
+      .locator('.workbench-aside')
+      .screenshot({ path: testInfo.outputPath('history-append-loading.png') });
+    releaseAppend();
     await expect(retry).toBeVisible();
+    await inspector
+      .locator('.workbench-aside')
+      .screenshot({ path: testInfo.outputPath('history-append-failed.png') });
     await page.waitForTimeout(150);
     expect(historyReads).toBe(3);
     await retry.click();
@@ -1972,6 +2078,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await retry.click();
     await expect(retry).toBeFocused();
     await expect(retry).toHaveAttribute('aria-busy', 'true');
+    await expect(retry.locator('[data-mar-icon="loading-action"]')).toHaveCSS(
+      'width',
+      await retry.evaluate((el) => getComputedStyle(el).fontSize)
+    );
+    await inspector
+      .locator('.workbench-aside')
+      .screenshot({ path: testInfo.outputPath('history-commit-retrying.png') });
     releaseFiles?.();
     await expect(inspector.locator('.history-files')).toContainText('src');
     await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
@@ -1985,72 +2098,116 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     expect(fileReads).toBe(2);
   });
 
-  test(`History refresh failure does not mislabel pending commit files in ${theme}`, async ({
-    page
-  }) => {
-    let historyReads = 0;
-    let filesStarted = false;
-    let releaseFiles: (() => void) | undefined;
-    const filesGate = new Promise<void>((resolve) => {
-      releaseFiles = resolve;
-    });
-    await page.route('**/api/workspaces/workspace/**', async (route) => {
-      const path = new URL(route.request().url()).pathname;
-      if (path.endsWith('/git/history')) {
-        if (++historyReads === 1)
+  for (const operation of ['refresh', 'branch'] as const) {
+    test(`History ${operation} failure preserves pending commit files in ${theme}`, async ({
+      page
+    }) => {
+      let historyReads = 0;
+      let filesStarted = false;
+      let releaseHistory!: () => void;
+      const historyGate = new Promise<void>((resolve) => {
+        releaseHistory = resolve;
+      });
+      let releaseFiles: (() => void) | undefined;
+      const filesGate = new Promise<void>((resolve) => {
+        releaseFiles = resolve;
+      });
+      await page.route('**/api/workspaces/workspace/**', async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith('/git/history')) {
+          if (++historyReads !== 2)
+            await route.fulfill({
+              json: {
+                commits: [
+                  {
+                    hash: historyReads === 1 ? 'old' : 'new',
+                    parents: [],
+                    subject: historyReads === 1 ? 'old subject' : 'new subject',
+                    authorName: 'Author',
+                    authorEmail: 'a@example.test',
+                    committedAt: 1,
+                    refs: []
+                  }
+                ],
+                nextCursor: null
+              }
+            });
+          else {
+            await historyGate;
+            await route.fulfill({
+              status: 503,
+              json: { error: { code: 'NODE_OFFLINE', message: 'Offline' } }
+            });
+          }
+        } else if (path.includes('/git/commits/') && path.endsWith('/files')) {
+          filesStarted = true;
+          await filesGate;
+          await route.fulfill({
+            json: { files: [{ path: 'still-readable.txt', change: 'MODIFIED' }] }
+          });
+        } else if (path.endsWith('/git/refs'))
           await route.fulfill({
             json: {
-              commits: [
+              refs: [
                 {
-                  hash: 'old',
-                  parents: [],
-                  subject: 'old subject',
-                  authorName: 'Author',
-                  authorEmail: 'a@example.test',
-                  committedAt: 1,
-                  refs: []
+                  name: 'refs/heads/next',
+                  kind: 'LOCAL',
+                  displayName: 'next',
+                  hash: 'a'.repeat(40),
+                  current: false
                 }
-              ],
-              nextCursor: null
+              ]
             }
           });
-        else
-          await route.fulfill({
-            status: 503,
-            json: { error: { code: 'NODE_OFFLINE', message: 'Offline' } }
-          });
-      } else if (path.includes('/git/commits/') && path.endsWith('/files')) {
-        filesStarted = true;
-        await filesGate;
-        await route.fulfill({
-          json: { files: [{ path: 'still-readable.txt', change: 'MODIFIED' }] }
-        });
-      } else if (path.endsWith('/git/refs')) await route.fulfill({ json: { refs: [] } });
-      else if (path.endsWith('/git/fetch')) await route.fulfill({ json: { fetchFailed: false } });
-      else if (path.endsWith('/changes')) await route.fulfill({ json: { changes: [] } });
-      else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+        else if (path.endsWith('/git/fetch')) await route.fulfill({ json: { fetchFailed: false } });
+        else if (path.endsWith('/changes')) await route.fulfill({ json: { changes: [] } });
+        else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+      });
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
+      const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+      await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
+      await inspector.locator('.history-commit-row').filter({ hasText: 'old subject' }).click();
+      await expect.poll(() => filesStarted).toBe(true);
+      const files = inspector.locator('.history-files');
+      await expect(files.getByRole('status')).toContainText('Loading…');
+      if (operation === 'refresh') {
+        const refresh = inspector.getByRole('button', { name: 'Refresh Git history', exact: true });
+        await refresh.click();
+        await expect(refresh).toHaveAttribute('aria-busy', 'true');
+      } else {
+        await inspector.getByRole('combobox', { name: 'Select Git branch' }).click();
+        await page.getByRole('option', { name: 'next', exact: true }).click();
+        await expect(inspector.locator('.git-history > .mar-region-status')).toHaveText('Loading…');
+        await expect(inspector.locator('.git-history > .mar-region-status')).not.toHaveClass(
+          /mar-region-status--center/
+        );
+      }
+      await expect(files.getByRole('status')).toBeVisible();
+      releaseHistory();
+      await expect(inspector.locator('.history-load-more')).toContainText('Failed to load. Retry');
+      await expect(files.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
+      await expect(files.getByRole('status')).toContainText('Loading…');
+      releaseFiles?.();
+      await expect(files.getByRole('button', { name: 'still-readable.txt' })).toBeVisible();
+      await expect(files.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
+      await inspector.getByRole('button', { name: 'Failed to load. Retry', exact: true }).click();
+      await expect(inspector.locator('.history-commit-row')).toContainText('new subject');
+      await expect(files).toHaveCount(0);
+      expect(historyReads).toBe(3);
     });
-    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
-    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
-    await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
-    await inspector.locator('.history-commit-row').filter({ hasText: 'old subject' }).click();
-    await expect.poll(() => filesStarted).toBe(true);
-    const files = inspector.locator('.history-files');
-    await expect(files.getByRole('status')).toContainText('Loading…');
-    await inspector.getByRole('button', { name: 'Refresh Git history', exact: true }).click();
-    await expect(inspector.locator('.history-load-more')).toContainText('Failed to load. Retry');
-    await expect(files.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
-    await expect(files.getByRole('status')).toContainText('Loading…');
-    releaseFiles?.();
-    await expect(files).toContainText('still-readable.txt');
-    await expect(files.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
-  });
+  }
 
-  test(`Content search failures retry without duplicate notices in ${theme}`, async ({ page }) => {
+  test(`Content search failures retry without duplicate notices in ${theme}`, async ({
+    page
+  }, testInfo) => {
     let searches = 0;
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
+    });
+    let releaseInitial!: () => void;
+    const initialGate = new Promise<void>((resolve) => {
+      releaseInitial = resolve;
     });
     await page.route('**/api/workspaces/workspace/**', async (route) => {
       if (!route.request().url().includes('/content/search')) {
@@ -2063,13 +2220,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           }
         });
       } else {
+        if (searches === 1) await initialGate;
         if (searches === 3) await gate;
         await route.fulfill({
           json: {
             search: {
-              matches: [
-                { path: 'src/main.ts', line: 2, column: 7, preview: 'const needle = true;' }
-              ],
+              matches:
+                searches === 4
+                  ? []
+                  : [{ path: 'src/main.ts', line: 2, column: 7, preview: 'const needle = true;' }],
               truncated: false
             }
           }
@@ -2078,6 +2237,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     });
     await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    async function captureSearchState(name: string): Promise<void> {
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await inspector
+          .locator('.workbench-aside')
+          .screenshot({ path: testInfo.outputPath(`search-${name}-${width}.png`) });
+      }
+      await page.setViewportSize({ width: 1280, height: 844 });
+    }
     await inspector
       .locator('.workbench-aside-tabs button')
       .filter({ hasText: /^Search$/ })
@@ -2085,6 +2253,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const input = inspector.getByRole('textbox', { name: 'Search file contents', exact: true });
     await input.fill('needle');
     await input.press('Enter');
+    const first = inspector.locator('.content-search-state.mar-region-status--center');
+    await expect(first).toHaveText('Loading…');
+    await expect(inspector.locator('[data-mar-icon="loading-action"]')).toHaveCount(1);
+    await captureSearchState('initial');
+    releaseInitial();
     await expect(inspector.locator('.content-search-results button')).toHaveCount(1);
     await input.press('Enter');
     const retry = inspector.locator('button.watch-status');
@@ -2096,13 +2269,28 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
     await expect(inspector.locator('.content-search-results button')).toHaveCount(1);
     await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
+    await expect(inspector.locator('.content-search-state')).toHaveCSS('padding-top', '8px');
+    await captureSearchState('failed');
     await retry.click();
     await expect(retry).toBeFocused();
     await expect(retry).toHaveAttribute('aria-busy', 'true');
     await expect(retry).not.toHaveClass(/failed/);
+    await expect(inspector.locator('[data-mar-icon="loading-action"]')).toHaveCount(1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const searchFeedbackFontSize = await retry.evaluate((el) => getComputedStyle(el).fontSize);
+    await expect(retry.locator('[data-mar-icon="loading-action"]')).toHaveCSS(
+      'width',
+      searchFeedbackFontSize
+    );
+    await expect(inspector.locator('.content-search-state')).toHaveCSS('padding-top', '8px');
+    await captureSearchState('retrying');
     release?.();
     await expect(retry).toHaveCount(0);
     await expect(inspector.locator('.content-search-results button')).toHaveCount(1);
     expect(searches).toBe(3);
+    await input.fill('not-found');
+    await input.press('Enter');
+    await expect(inspector.locator('.file-search-empty')).toBeVisible();
+    await captureSearchState('empty');
   });
 }

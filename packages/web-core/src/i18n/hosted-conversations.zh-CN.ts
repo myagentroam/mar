@@ -124,6 +124,7 @@ export const hostedConversationsZhCN = {
     removeAttachment: '移除附件“{name}”',
     model: '模型',
     modelUnavailable: '当前模板没有可用模型，无法发送消息。',
+    modelOptionsRetry: '模型加载失败，点击重试',
     loadedTemplateNamed: '已加载对话模板“{name}”',
     send: '发送',
     stop: '停止',

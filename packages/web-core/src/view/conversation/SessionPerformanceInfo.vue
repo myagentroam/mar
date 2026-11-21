@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import type { RunPerformance } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { sessionPerformanceDetails } from '../../util/session-performance-presentation.js';
 
 const props = defineProps<{ readonly performance: RunPerformance | undefined }>();
@@ -23,7 +23,7 @@ const details = computed(() => sessionPerformanceDetails(props.performance));
 
 <style scoped>
 .session-performance-info {
-  --mar-action-icon-size: calc(var(--mar-font-size-body) - 1px);
+  --mar-ui-action-icon-size: calc(var(--mar-font-size-body) - 1px);
   display: inline-flex;
   flex: none;
   width: 20px;
@@ -37,7 +37,7 @@ const details = computed(() => sessionPerformanceDetails(props.performance));
 }
 
 .session-performance-info .mar-icon {
-  width: var(--mar-action-icon-size);
-  height: var(--mar-action-icon-size);
+  width: var(--mar-ui-action-icon-size);
+  height: var(--mar-ui-action-icon-size);
 }
 </style>

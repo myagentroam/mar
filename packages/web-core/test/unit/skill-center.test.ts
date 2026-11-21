@@ -77,6 +77,22 @@ describe('public Skill catalog client', () => {
     expect(service.target.value).toBeUndefined();
     expect(service.targetLoading.value).toBe(false);
   });
+
+  it('keeps inspected skills when optional catalog metadata cannot be read', async () => {
+    const target = {
+      targetKind: 'NODE',
+      compatibilityMode: 'SYMLINK',
+      skills: [{ name: 'local-skill', description: 'Local skill', localStatus: 'VALID' }]
+    } as const;
+    const service = createSkillCenterService(async <T>(path: string) => {
+      if (path.startsWith('/api/skill-favorites')) throw new Error('Catalog unavailable');
+      return target as T;
+    });
+    await expect(service.inspectTarget('node-a')).rejects.toThrow('Catalog unavailable');
+    expect(service.target.value).toEqual(target);
+    expect(service.installedFavorites.value).toEqual([]);
+    expect(service.targetLoading.value).toBe(false);
+  });
 });
 
 describe('Skill catalog and installation lifecycle', () => {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import './file-tooltip-trigger.css';
 import './file-preview.css';
-import MarIcon from '../common/MarIcon.vue';
-import { computed, onBeforeUnmount, ref, useSlots } from 'vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';
@@ -25,6 +26,30 @@ const props = withDefaults(
 const pathLabel = computed(() => (props.path === props.fileName ? undefined : props.path));
 const emit = defineEmits<{ retry: [] }>();
 const root = ref<HTMLElement>();
+const retrying = ref(false);
+watch(
+  () => props.path,
+  () => {
+    retrying.value = false;
+  }
+);
+watch(
+  () => props.loading,
+  (loading) => {
+    if (loading || !retrying.value) return;
+    const active = document.activeElement;
+    if (!props.loadError && active?.closest('.file-preview-state') && root.value?.contains(active))
+      root.value.focus({ preventScroll: true });
+    retrying.value = false;
+  }
+);
+async function retryRead(): Promise<void> {
+  if (props.loading || retrying.value) return;
+  retrying.value = true;
+  emit('retry');
+  await nextTick();
+  if (!props.loading) retrying.value = false;
+}
 const mobileActionsExpanded = ref(true);
 const slots = useSlots();
 const focus = createMobileSurfaceFocusService({
@@ -68,12 +93,13 @@ defineExpose({ root });
       </div>
     </header>
     <div class="workspace-file-page-frame-content">
-      <FilePreviewLoading v-if="props.loading" overlay />
+      <FilePreviewLoading v-if="props.loading && !retrying" overlay />
       <FilePreviewState
-        v-if="!props.loading && props.loadError"
-        :message="props.loadError"
+        v-if="retrying || (!props.loading && props.loadError)"
+        :message="props.loadError ?? ''"
+        :retrying="retrying"
         retryable
-        @retry="emit('retry')"
+        @retry="retryRead"
       />
       <slot v-else-if="!props.loadError" />
     </div>

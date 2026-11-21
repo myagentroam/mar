@@ -1,0 +1,66 @@
+.mar-activity-count-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: var(--mar-radius-marker);
+  background: var(--mar-color-brand);
+  color: var(--mar-color-on-accent);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.mar-unread-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--mar-text-secondary) 45%, var(--mar-bg-panel));
+  border-radius: var(--mar-radius-marker);
+  background: color-mix(in srgb, var(--mar-text-secondary) 14%, var(--mar-bg-panel));
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  padding: 0 0.0625rem;
+}
+
+.mar-icon-status-badge,
+.mar-session-activity i {
+  width: var(--mar-icon-status-size, 6px);
+  height: var(--mar-icon-status-size, 6px);
+  border-radius: 50%;
+}
+.mar-icon-status-badge {
+  position: absolute;
+  background: var(--mar-control-color-success);
+  box-shadow: 0 0 0 1.5px var(--mar-icon-status-surface);
+  pointer-events: none;
+}
+
+.mar-session-activity {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 0.5rem;
+  height: 0.5rem;
+}
+.mar-session-activity i {
+  display: inline-block;
+  background: var(--mar-text-secondary);
+}
+
+.mar-session-activity.running i {
+  background: var(--mar-control-color-success);
+}
+.mar-session-activity.node-offline i {
+  background: var(--mar-text-disabled);
+}

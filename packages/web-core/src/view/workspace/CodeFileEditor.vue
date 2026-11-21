@@ -10,7 +10,7 @@ import { keymap, Decoration, EditorView } from '@codemirror/view';
 import { closeSearchPanel, openSearchPanel, searchPanelOpen } from '@codemirror/search';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
-import '../common/code-syntax-theme.css';
+import '../../styles/code-syntax-theme.css';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { FileReference } from '@myagentroam/code-navigation';
 import { translate } from '../../service/locale-preference-service.js';

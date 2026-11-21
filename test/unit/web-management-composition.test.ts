@@ -12,7 +12,9 @@ import { createEnterpriseManagementComposition } from '../../ee/web/src/composit
 import type { AdminState } from '../../ee/web/src/service/admin-auth-service.js';
 
 // This suite exercises catalogue composition, not the Vue loading presentation.
-vi.mock('../../packages/web-core/src/view/common/LoadingPanel.vue', () => ({ default: {} }));
+vi.mock('../../packages/mar-ui/components/loading/MarLoadingPanel.vue', () => ({
+  default: {}
+}));
 vi.mock('../../ee/web/src/view/settings/OrganizationManagementPage.vue', () => ({
   __esModule: true,
   default: { render: () => 'organization-management-probe' }

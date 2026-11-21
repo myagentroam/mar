@@ -12,7 +12,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect
 import type { ComposerQuoteDraft } from '@myagentroam/protocol';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { translate } from '../../service/locale-preference-service.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{
   readonly root: HTMLElement | undefined;
@@ -305,7 +305,7 @@ onBeforeUnmount(() => {
   gap: 0.25rem;
 }
 .quote-actions .mar-ui-button {
-  --mar-action-icon-size: 1em;
+  --mar-ui-action-icon-size: 1em;
   margin: 0;
   justify-content: flex-start;
   border-radius: var(--mar-radius-surface);

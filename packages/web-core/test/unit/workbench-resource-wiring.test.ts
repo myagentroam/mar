@@ -79,6 +79,7 @@ describe('Workbench default resource details wiring', () => {
       hosted: {},
       uploads: {},
       interactions: {},
+      registration: { openNodeRegistrationFromTree: vi.fn() },
       resources: {
         workspaceTreeService: {},
         nodes: [{ id: 'node', label: 'Initial snapshot', connected: true }],

@@ -1,8 +1,10 @@
 export const conversationUiZhCN = {
   conversationEmpty: {
     workspace: {
-      title: '想从哪里开始？',
-      description: '描述任务、提出问题，或添加文件，开始与 Agent 协作。'
+      title: '我们要做什么？',
+      description: '描述任务、提出问题，或添加文件，开始与 Agent 协作。',
+      createWithAgent: '使用 {agent} 创建新会话',
+      changeAgent: '切换 Agent（当前：{agent}）'
     },
     hosted: {
       title: '有什么可以帮你？',

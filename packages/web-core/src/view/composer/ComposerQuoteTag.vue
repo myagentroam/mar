@@ -6,7 +6,7 @@ import { vClickOutside } from '@myagentroam/mar-ui/click-outside';
 import type { ComposerReference } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
 import { composerReferenceLabel } from '../../util/composer-reference.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import QuoteExcerpt from './QuoteExcerpt.vue';
 
 const props = defineProps<{

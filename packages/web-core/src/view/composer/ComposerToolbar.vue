@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarScrollbar } from '@myagentroam/mar-ui/scrollbar';
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import ComposerSendButton from './ComposerSendButton.vue';
 import './composer-toolbar.css';
 import { translate } from '../../service/locale-preference-service.js';
@@ -450,6 +450,15 @@ function selectFiles(event: Event): void {
 @container (max-width: 680px) {
   .composer-hint:not(.is-submitting) {
     display: none;
+  }
+
+  /* The busy send button already shows progress; keep the live status without reflow. */
+  .composer-hint.is-submitting {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }
 

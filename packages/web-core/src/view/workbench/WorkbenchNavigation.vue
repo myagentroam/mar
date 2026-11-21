@@ -6,7 +6,7 @@ import {
   MarDropdownMenu,
   type MarDropdownInstance
 } from '@myagentroam/mar-ui/dropdown';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import logoIcon from '../../assets/logo-icon.png';
@@ -22,13 +22,13 @@ import type {
 } from '../../service/workbench-notification-service.js';
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import WorkbenchActivityCenter from './WorkbenchActivityCenter.vue';
 import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
 import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
 import WorkbenchSidebarPanel from './WorkbenchSidebarPanel.vue';
-import PanelResizeHandle from './PanelResizeHandle.vue';
+import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
 import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 
@@ -450,7 +450,7 @@ function runBlankMenuCommand(command: string): void {
       </template>
     </WorkbenchSidebarPanel>
   </Transition>
-  <PanelResizeHandle
+  <MarPanelResizeHandle
     v-if="view === 'nodes' && !sidebarCollapsed && !mobileViewport"
     class="workspace-tree-resize"
     :target="treeElement"
@@ -571,7 +571,8 @@ function runBlankMenuCommand(command: string): void {
   font-size: 22px;
 }
 
-.activity-rail nav button.active:not(:disabled) {
+.activity-rail nav button.active:not(:disabled),
+.activity-rail-footer :deep(button.nav-menu-button[aria-expanded='true']:not(:disabled)) {
   background: var(--mar-fill-selection);
   color: var(--mar-color-brand-text);
 }
@@ -681,6 +682,7 @@ function runBlankMenuCommand(command: string): void {
 
 .workspace-tree-resize {
   position: fixed;
+  z-index: 6;
   top: 9px;
   bottom: 9px;
   left: calc(var(--mar-workbench-sidebar-total-width) - 4px);

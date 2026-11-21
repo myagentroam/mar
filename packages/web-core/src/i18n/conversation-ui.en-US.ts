@@ -1,8 +1,10 @@
 export const conversationUiEnUS = {
   conversationEmpty: {
     workspace: {
-      title: 'Where to start?',
-      description: 'Describe a task, ask a question, or add files to get started.'
+      title: 'What should we do?',
+      description: 'Describe a task, ask a question, or add files to get started.',
+      createWithAgent: 'Start a new session with {agent}',
+      changeAgent: 'Switch Agent (current: {agent})'
     },
     hosted: {
       title: 'How can I help?',

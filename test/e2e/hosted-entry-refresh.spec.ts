@@ -1,8 +1,22 @@
 import { expect, test, type Page } from '@playwright/test';
-import { hostedConversationSnapshotSchema } from '../../packages/protocol/src/index.js';
+import {
+  hostedConversationSnapshotSchema,
+  type HostedConversationSnapshot
+} from '../../packages/protocol/src/index.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
+
+async function expectHostedReadRing(ring: ReturnType<Page['locator']>) {
+  await expect(ring).toBeVisible();
+  const [width, height] = await ring.evaluate((element) => {
+    const { width, height } = getComputedStyle(element);
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return [parseFloat(width) / rem, parseFloat(height) / rem];
+  });
+  expect(width).toBeCloseTo(0.875);
+  expect(height).toBeCloseTo(0.875);
+}
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
 });
@@ -14,7 +28,9 @@ for (const [width, theme] of [
   [1280, 'daylight'],
   [390, 'vscode-dark-2026']
 ] as const) {
-  test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({ page }) => {
+  test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
+    page
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 850 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     let releaseDirectory!: () => void;
@@ -31,13 +47,14 @@ for (const [width, theme] of [
       return route.abort('failed');
     });
     const list = page.locator('#hosted-pane-history .history-list');
-    const ring = list.locator('.mar-ui-loading__indicator');
+    const ring = list.locator('.mar-read-loading-indicator');
     try {
       await page.goto(
         `${fixture.url}hosted-entry.html?workspace-page=1&history-open=1&theme=${theme}`
       );
       await expect(list).toHaveAttribute('aria-busy', 'true');
-      await expect(ring).toBeVisible();
+      await expectHostedReadRing(ring);
+      await expect(list.locator('.mar-ui-loading__indicator')).toHaveCount(0);
       const listBounds = (await list.boundingBox())!;
       const ringBounds = (await ring.boundingBox())!;
       expect(listBounds.height).toBeGreaterThan(200);
@@ -50,11 +67,13 @@ for (const [width, theme] of [
       await expect(page.getByRole('textbox', { name: 'Search chat titles' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'New chat', exact: true })).toBeEnabled();
       await expect(list.getByText('No conversations yet.')).toHaveCount(0);
+      await list.screenshot({ path: testInfo.outputPath('hosted-directory-loading.png') });
     } finally {
       releaseDirectory();
     }
     await expect(ring).toHaveCount(0);
     await expect(list.getByText('No conversations yet.')).toBeVisible();
+    await list.screenshot({ path: testInfo.outputPath('hosted-directory-empty.png') });
   });
 }
 
@@ -70,6 +89,66 @@ const template = {
   updatedAt: 1
 };
 const alternate = { ...template, id: 'template-2', name: 'Second template' };
+test('Draft template and model reads display local failure and loading states', async ({
+  page
+}, info) => {
+  await page.setViewportSize({ width: 390, height: 860 });
+  const catalog = Promise.withResolvers<void>();
+  const model = Promise.withResolvers<void>();
+  const modelRetry = Promise.withResolvers<void>();
+  let templates = 0;
+  let models = 0;
+  await page.route('**/api/conversation-templates', async (route) => {
+    if (++templates === 1) {
+      await catalog.promise;
+      return route.fulfill({ status: 503, json: { error: 'CATALOG_UNAVAILABLE' } });
+    }
+    return route.fulfill({ json: { templates: [template] } });
+  });
+  await page.route('**/conversation-templates/*/model-options', async (route) => {
+    if (++models === 1) {
+      await model.promise;
+      return route.fulfill({ status: 503, json: { error: 'MODELS_UNAVAILABLE' } });
+    }
+    await modelRetry.promise;
+    return route.fulfill({ json: { models: [], defaultModelId: null } });
+  });
+  const capture = (name: string) =>
+    page.screenshot({ path: info.outputPath(`hosted-${name}.png`), animations: 'disabled' });
+  await page.goto(`${fixture.url}hosted-entry.html?theme=daylight`);
+  const trigger = page.locator('.hosted-template-trigger');
+  await expect(trigger.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+  await expect(page.locator('.hosted-entry-page .mar-ui-loading')).toHaveCount(0);
+  await capture('templates-loading');
+  await trigger.click();
+  catalog.resolve();
+  await expect(page.getByText(/Unable to load templates/)).toBeVisible();
+  await expect(page.getByText(/No conversation templates/)).toHaveCount(0);
+  await capture('templates-failed');
+  await page.keyboard.press('Escape');
+  await trigger.click();
+  await expect.poll(() => models).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(
+    page.locator('.hosted-model-trigger [data-mar-icon="loading-action"]')
+  ).toBeVisible();
+  await capture('models-loading');
+  model.resolve();
+  const retry = page.getByRole('button', { name: 'Could not load models. Retry' });
+  await expect(retry).toBeVisible();
+  await capture('models-failed');
+  await retry.click();
+  await expect.poll(() => models).toBe(2);
+  await expect(
+    page.locator('.hosted-model-trigger [data-mar-icon="loading-action"]')
+  ).toBeVisible();
+  await capture('models-retrying');
+  modelRetry.resolve();
+  await expect(page.locator('.hosted-model-trigger [data-mar-icon="loading-action"]')).toHaveCount(
+    0
+  );
+});
+
 const models = ['model-1', 'model-2'].map((id) => ({
   id,
   name: id === 'model-1' ? 'Model One' : 'Model Two',
@@ -137,9 +216,13 @@ async function openEntry(page: Page, templateName = template.name, theme = 'vsco
 
 async function refreshCatalog(page: Page, f: Awaited<ReturnType<typeof openEntry>>) {
   const reads = f.catalogReads();
-  await page.locator('.hosted-template-trigger').click();
+  const modelReads = f.modelReads();
+  const trigger = page.locator('.hosted-template-trigger');
+  await trigger.click();
   await expect.poll(f.catalogReads).toBe(reads + 1);
-  await expect(page.locator('.hosted-entry-page')).toHaveAttribute('aria-busy', 'false');
+  await expect(trigger).not.toHaveAttribute('aria-busy', 'true');
+  if (!f.state.failCatalog) await expect.poll(f.modelReads).toBe(modelReads + 1);
+  await expect(f.modelControl).not.toHaveAttribute('aria-busy', 'true');
 }
 
 async function sendDraft(page: Page, f: Awaited<ReturnType<typeof openEntry>>) {
@@ -151,7 +234,44 @@ async function sendDraft(page: Page, f: Awaited<ReturnType<typeof openEntry>>) {
   await expect(page.locator('.hosted-send-button')).toBeEnabled();
 }
 
-async function openHostedSend(page: Page) {
+function hostedHistoryTurn(
+  sessionId: string,
+  message: string
+): HostedConversationSnapshot['turns'][number] {
+  return {
+    id: 'turn-1',
+    sessionId,
+    runId: null,
+    userItemId: 'user-1',
+    status: 'SUCCEEDED',
+    model: null,
+    effort: null,
+    access: null,
+    startedAt: 1,
+    completedAt: 1,
+    items: [
+      {
+        id: 'user-1',
+        sessionId,
+        turnId: 'turn-1',
+        runId: null,
+        parentItemId: null,
+        sourceSequence: null,
+        revision: 1,
+        status: 'COMPLETED',
+        startedAt: 1,
+        completedAt: 1,
+        kind: 'user_message',
+        payload: { clientMessageId: null, text: message, delivery: 'ACCEPTED' }
+      }
+    ]
+  };
+}
+
+async function openHostedSend(
+  page: Page,
+  { theme = 'vscode-dark-2026', historyMessage }: { theme?: string; historyMessage?: string } = {}
+) {
   const snapshot = hostedConversationSnapshotSchema.parse({
     conversation: {
       id: 'conversation-1',
@@ -171,7 +291,7 @@ async function openHostedSend(page: Page) {
     },
     template,
     run: null,
-    turns: [],
+    turns: historyMessage ? [hostedHistoryTurn('session-1', historyMessage)] : [],
     historyNextCursor: null,
     files: [],
     models,
@@ -218,7 +338,9 @@ async function openHostedSend(page: Page) {
     return route.fulfill({ json: { conversation: snapshot.conversation, run } });
   });
 
-  await page.goto(`${fixture.url}hosted-entry.html?existing=1&workspace-page=1&watch-events=1`);
+  await page.goto(
+    `${fixture.url}hosted-entry.html?existing=1&workspace-page=1&watch-events=1&theme=${theme}`
+  );
   const composer = page.locator('form.composer-host');
   const input = composer.locator('textarea');
   const send = composer.locator('.hosted-send-button');
@@ -293,6 +415,184 @@ async function openHostedSend(page: Page) {
     }
   };
 }
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Hosted draft keeps its canvas and controls steady after history in ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    const refreshStarted = Promise.withResolvers<void>();
+    const refresh = Promise.withResolvers<void>();
+    const switchModels = Promise.withResolvers<void>();
+    let catalogReads = 0;
+    let firstTemplateModelReads = 0;
+    await page.route('**/api/conversation-templates', (route) =>
+      route.fulfill({
+        json: { templates: ++catalogReads === 1 ? [template] : [template, alternate] }
+      })
+    );
+    await page.route('**/conversation-templates/*/model-options', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith(`/${alternate.id}/model-options`)) {
+        await switchModels.promise;
+        return route.fulfill({ json: { models: [models[1]], defaultModelId: 'model-2' } });
+      }
+      if (++firstTemplateModelReads > 1) {
+        refreshStarted.resolve();
+        await refresh.promise;
+      }
+      return route.fulfill({ json: { models: [models[0]], defaultModelId: 'model-1' } });
+    });
+
+    const historyMessage = 'Previously sent message';
+    await openHostedSend(page, { theme, historyMessage });
+    const main = page.locator('#hosted-pane-conversation');
+    const history = main.locator('.conversation-scroll');
+    await expect(history.getByText(historyMessage)).toBeVisible();
+    const historyCanvas = await history.evaluate(
+      (element) => getComputedStyle(element).backgroundColor
+    );
+    const newChat = page.getByRole('button', { name: 'New chat', exact: true });
+    const draft = main.locator('.hosted-entry-page');
+    const input = draft.locator('textarea');
+    const templateControl = draft.locator('.hosted-template-trigger');
+    const modelControl = draft.locator('.hosted-model-slot .hosted-model-trigger');
+
+    await newChat.click();
+    await expect(modelControl).toHaveText('Model One');
+    await input.fill('Keep this draft while switching templates');
+    await page.getByRole('button', { name: /Existing conversation/ }).click();
+    await expect(history.getByText(historyMessage)).toBeVisible();
+    await newChat.click();
+    await expect(modelControl).toHaveText('Model One');
+    const draftCanvas = await draft.evaluate((element) => {
+      for (let parent: Element | null = element; parent; parent = parent.parentElement) {
+        const color = getComputedStyle(parent).backgroundColor;
+        if (color !== 'rgba(0, 0, 0, 0)') return color;
+      }
+    });
+    expect.soft(draftCanvas).toBe(historyCanvas);
+
+    try {
+      await templateControl.click();
+      await refreshStarted.promise;
+      const alternateItem = page.getByRole('menuitem', { name: alternate.name, exact: true });
+      await expect(alternateItem).toBeVisible();
+      await expect.soft(modelControl).toBeEnabled({ timeout: 1000 });
+      await expect
+        .soft(modelControl.locator('[data-mar-icon="chevron-down"]'))
+        .toBeVisible({ timeout: 1000 });
+      await expect(modelControl).toHaveText('Model One');
+
+      await alternateItem.click();
+      await expect(templateControl).toHaveText(alternate.name);
+      await expect(modelControl).toBeDisabled();
+      await expect(modelControl.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+      switchModels.resolve();
+      await expect(modelControl).toHaveText('Model Two');
+      const refreshed = page.waitForResponse('**/conversation-templates/template-1/model-options');
+      refresh.resolve();
+      await refreshed;
+      await expect(modelControl).toHaveText('Model Two');
+      await expect(modelControl).toBeEnabled();
+
+      await templateControl.click();
+      await page.getByRole('menuitem', { name: template.name, exact: true }).click();
+      await expect(templateControl).toHaveText(template.name);
+      await expect(modelControl).toHaveText('Model One');
+      await expect(input).toHaveValue('Keep this draft while switching templates');
+      await expect(history).toHaveCount(0);
+    } finally {
+      refresh.resolve();
+      switchModels.resolve();
+    }
+  });
+}
+
+test('A model refresh failure remains retryable after returning from history', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  const refreshStarted = Promise.withResolvers<void>();
+  const refresh = Promise.withResolvers<void>();
+  let modelReads = 0;
+  await page.route('**/api/conversation-templates', (route) =>
+    route.fulfill({ json: { templates: [template] } })
+  );
+  await page.route('**/conversation-templates/*/model-options', async (route) => {
+    if (++modelReads === 2) {
+      refreshStarted.resolve();
+      await refresh.promise;
+      return route.fulfill({ status: 503, json: { error: 'MODELS_UNAVAILABLE' } });
+    }
+    return route.fulfill({ json: { models, defaultModelId: 'model-1' } });
+  });
+  await openHostedSend(page);
+  const newChat = page.getByRole('button', { name: 'New chat', exact: true });
+  const draft = page.locator('.hosted-entry-page');
+  const model = draft.locator('.hosted-model-slot .hosted-model-trigger');
+  const retry = draft.getByRole('button', { name: 'Could not load models. Retry' });
+
+  try {
+    await newChat.click();
+    await expect(model).toHaveText('Model One');
+    await draft.locator('.hosted-template-trigger').click();
+    await refreshStarted.promise;
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /Existing conversation/ }).click();
+    await expect(draft).toHaveCount(0);
+    await newChat.click();
+    await expect(model).toBeEnabled();
+    refresh.resolve();
+    await expect(retry).toBeVisible();
+    await expect(model).toHaveText('Model One');
+    await retry.click();
+    await expect.poll(() => modelReads).toBe(3);
+    await expect(model.locator('[data-mar-icon="chevron-down"]')).toBeVisible();
+    await expect(retry).toHaveCount(0);
+  } finally {
+    refresh.resolve();
+  }
+});
+
+test('A late catalog refresh loads the replacement template models after returning from history', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  const refreshStarted = Promise.withResolvers<void>();
+  const refresh = Promise.withResolvers<void>();
+  let catalogReads = 0;
+  await page.route('**/api/conversation-templates', async (route) => {
+    if (++catalogReads === 1) return route.fulfill({ json: { templates: [template] } });
+    refreshStarted.resolve();
+    await refresh.promise;
+    return route.fulfill({ json: { templates: [alternate] } });
+  });
+  await page.route('**/conversation-templates/*/model-options', (route) => {
+    const index = route.request().url().endsWith(`/${alternate.id}/model-options`) ? 1 : 0;
+    return route.fulfill({ json: { models: [models[index]], defaultModelId: models[index]!.id } });
+  });
+  await openHostedSend(page);
+  const newChat = page.getByRole('button', { name: 'New chat', exact: true });
+  const draft = page.locator('.hosted-entry-page');
+  const templateControl = draft.locator('.hosted-template-trigger');
+  const model = draft.locator('.hosted-model-slot .hosted-model-trigger');
+  try {
+    await newChat.click();
+    await expect(model).toHaveText('Model One');
+    await templateControl.click();
+    await refreshStarted.promise;
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /Existing conversation/ }).click();
+    await expect(draft).toHaveCount(0);
+    await newChat.click();
+    await expect(model).toHaveText('Model One');
+    refresh.resolve();
+    await expect(templateControl).toHaveText(alternate.name);
+    await expect(model).toHaveText('Model Two');
+    await expect(model).toBeEnabled();
+  } finally {
+    refresh.resolve();
+  }
+});
 
 test('Hosted send displays only request feedback before Watch, including after HTTP settlement', async ({
   page
@@ -442,7 +742,7 @@ for (const [width, theme, cached] of [
 ] as const) {
   test(`Hosted Watch centers the first load and retries inline at ${width} in ${theme}`, async ({
     page
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     const conversation = {
       id: 'conversation-1',
@@ -477,36 +777,7 @@ for (const [width, theme, cached] of [
     const recovered = hostedConversationSnapshotSchema.parse({
       ...snapshot,
       historyNextCursor: 'older-page',
-      turns: [
-        {
-          id: 'turn-1',
-          sessionId: conversation.sessionId,
-          runId: null,
-          userItemId: 'user-1',
-          status: 'SUCCEEDED',
-          model: null,
-          effort: null,
-          access: null,
-          startedAt: 1,
-          completedAt: 1,
-          items: [
-            {
-              id: 'user-1',
-              sessionId: conversation.sessionId,
-              turnId: 'turn-1',
-              runId: null,
-              parentItemId: null,
-              sourceSequence: null,
-              revision: 1,
-              status: 'COMPLETED',
-              startedAt: 1,
-              completedAt: 1,
-              kind: 'user_message',
-              payload: { clientMessageId: null, text: message, delivery: 'ACCEPTED' }
-            }
-          ]
-        }
-      ]
+      turns: [hostedHistoryTurn(conversation.sessionId, message)]
     });
     let initialRequests = 0;
     let releaseInitial!: () => void;
@@ -567,7 +838,7 @@ for (const [width, theme, cached] of [
       );
       const loading = scroll.getByRole('status', { name: 'Loading conversation history…' });
       const indicator = loading.locator('.mar-busy-indicator');
-      await expect(indicator).toBeVisible();
+      await expectHostedReadRing(indicator);
       const viewport = (await scroll.boundingBox())!;
       const spinner = (await indicator.boundingBox())!;
       expect(
@@ -583,11 +854,35 @@ for (const [width, theme, cached] of [
     await expect(retry).toHaveText('Failed to load. Retry');
     await expect(retry).toHaveAttribute('aria-description', /hosted-watch-request/);
     await expect(page.locator('.mar-message')).toHaveCount(0);
+    async function expectRetryCentered() {
+      await expect
+        .poll(() =>
+          retry.evaluate((button) => {
+            const { x, y, width, height } = button.getBoundingClientRect();
+            const viewport = button.closest('.conversation-scroll')!.getBoundingClientRect();
+            return Math.max(
+              Math.abs(x + width / 2 - (viewport.x + viewport.width / 2)),
+              Math.abs(y + height / 2 - (viewport.y + viewport.height / 2))
+            );
+          })
+        )
+        .toBeLessThan(2);
+    }
+    await expectRetryCentered();
+    await page.screenshot({
+      path: testInfo.outputPath(`hosted-watch-failed-${width}-${theme}.png`),
+      animations: 'disabled'
+    });
     try {
       await retry.click();
       await expect(retry).toHaveAttribute('aria-busy', 'true');
       await expect(retry).toBeDisabled();
       await expect(retry.locator('.mar-busy-indicator')).toBeVisible();
+      await expectRetryCentered();
+      await page.screenshot({
+        path: testInfo.outputPath(`hosted-watch-retrying-${width}-${theme}.png`),
+        animations: 'disabled'
+      });
       expect(initialRequests).toBe(2);
     } finally {
       releaseRetry();
@@ -767,6 +1062,7 @@ for (const width of [1280, 390]) {
       );
       await expect(page.locator('.mar-message-box')).toContainText('apply to the next run');
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(page.locator('.mar-message-box')).toBeHidden();
       expect(writes).toEqual([]);
       await expect(textarea).toHaveValue('Keep this unsent draft');
       await selector.click();

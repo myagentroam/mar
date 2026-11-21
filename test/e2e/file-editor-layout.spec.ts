@@ -590,7 +590,7 @@ test('Fallback draft selection and Diff find remain scoped to the visible previe
   await expect(page.locator('.inline-find-bar')).toHaveCount(0);
 });
 
-test('Git Diff retry uses a neutral action in both themes and viewports', async ({ page }) => {
+test('Git Diff retry uses a borderless link in both themes and viewports', async ({ page }) => {
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 844 });
     for (const theme of ['light', 'dark']) {
@@ -599,29 +599,20 @@ test('Git Diff retry uses a neutral action in both themes and viewports', async 
       );
       await page.mouse.move(0, 0);
       const retry = page.locator('.file-preview-state').getByRole('button', { name: 'Retry' });
-      await expect(retry).not.toHaveClass(
-        /mar-ui-button--inline|mar-ui-button--ghost|mar-ui-button--(?:primary|danger)/
-      );
-      await expect(retry).toHaveCSS('border-top-width', '1px');
-      await expect(retry).toHaveCSS('border-top-style', 'solid');
-      const color = await retry.evaluate((element) => {
+      await expect(retry).toHaveClass(/mar-ui-button--inline/);
+      await expect(retry).not.toHaveClass(/mar-ui-button--(?:primary|danger)/);
+      await expect(retry).toHaveCSS('border-top-width', '0px');
+      await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const mutedColor = await retry.evaluate((element) => {
         const probe = document.createElement('span');
         probe.style.color = 'var(--mar-text-secondary)';
         element.append(probe);
-        const action = getComputedStyle(probe).color;
-        probe.style.color = 'var(--mar-ui-button-bg)';
-        const background = getComputedStyle(probe).color;
-        probe.style.color = 'var(--mar-ui-button-border)';
-        const border = getComputedStyle(probe).color;
-        probe.style.color = 'var(--mar-text-secondary)';
-        const message = getComputedStyle(probe).color;
+        const color = getComputedStyle(probe).color;
         probe.remove();
-        return { action, background, border, message };
+        return color;
       });
-      await expect(retry).toHaveCSS('color', color.action);
-      await expect(retry).toHaveCSS('background-color', color.background);
-      await expect(retry).toHaveCSS('border-top-color', color.border);
-      await expect(page.locator('.file-preview-state p')).toHaveCSS('color', color.message);
+      await expect(retry).toHaveCSS('color', mutedColor);
+      await expect(page.locator('.file-preview-state p')).toHaveCSS('color', mutedColor);
       await retry.click();
       await expect(page.locator('html')).toHaveAttribute('data-diff-retries', '1');
       await expect(page.locator('.file-preview-state p')).toBeVisible();

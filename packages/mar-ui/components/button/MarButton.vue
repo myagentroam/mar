@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './native-actions.css';
 import { computed, useTemplateRef, type Component, type PropType } from 'vue';
 import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
@@ -75,6 +76,40 @@ function handleClick(event: MouseEvent): void {
 </template>
 
 <style scoped>
+.mar-ui-button:is(.mar-icon-action, .mar-text-action) {
+  --mar-ui-button-bg: transparent;
+  --mar-ui-button-border: transparent;
+  --mar-ui-button-hover-bg: var(--mar-action-hover-bg);
+  --mar-ui-button-hover-border: transparent;
+  --mar-ui-button-active-bg: var(--mar-action-hover-bg);
+  --mar-ui-button-active-border: transparent;
+  --mar-ui-button-disabled-bg: transparent;
+  --mar-ui-button-disabled-border: transparent;
+  --mar-ui-button-fg: var(--mar-ui-text-secondary);
+  --mar-ui-button-hover-fg: var(--mar-action-hover-color, var(--mar-ui-text-primary));
+  border-radius: var(--mar-ui-radius-control);
+}
+
+.mar-ui-button.mar-icon-action:is(
+    :focus-visible,
+    .is-active,
+    [aria-expanded='true']:not(:where(.mar-icon-action--panel-toggle))
+  ):not(:disabled, [aria-disabled='true']) {
+  background: var(--mar-action-hover-bg);
+  color: var(--mar-ui-button-hover-fg);
+}
+
+.mar-ui-button:is(.mar-icon-action, .mar-text-action):not(
+    :disabled,
+    .is-disabled,
+    [aria-disabled='true']
+  ) {
+  --mar-ui-button-hover-bg: var(--mar-action-hover-bg);
+  --mar-ui-button-active-bg: var(--mar-action-hover-bg);
+  --mar-ui-button-hover-fg: var(--mar-action-hover-color, var(--mar-ui-text-primary));
+  --mar-ui-button-active-fg: var(--mar-ui-button-hover-fg);
+}
+
 .mar-ui-button {
   --mar-ui-button-fg: var(--mar-ui-text-secondary);
   --mar-ui-button-bg: var(--mar-ui-bg-panel);
@@ -242,6 +277,12 @@ function handleClick(event: MouseEvent): void {
 
 .mar-ui-button[aria-busy='true'] {
   cursor: progress;
+}
+
+@media (max-width: 767px) {
+  .mar-ui-button__icon {
+    font-size: var(--mar-ui-action-icon-size, 18px);
+  }
 }
 
 .mar-ui-button__icon {

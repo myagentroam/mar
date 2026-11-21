@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import '@myagentroam/web-core/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
@@ -13,8 +15,7 @@ import {
 import { watchManagementPageFailure } from '@myagentroam/web-core/management-page';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import MarIcon from '@myagentroam/web-core/MarIcon.vue';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import {
@@ -85,7 +86,6 @@ const range = ref<[Date, Date] | null>(
 );
 const selected = ref<AuditEventDetail>();
 const detailLoading = ref(false);
-const refreshLoading = ref(false);
 let detailGeneration = 0;
 watch(range, (value) => {
   const [from, to] = value ?? defaultRange;
@@ -175,6 +175,7 @@ const query = computed(() => {
   return value;
 });
 const pagination = createManagementPageService<AuditEvent>({
+  clearOnLoadFailure: true,
   context: () => query.value.toString(),
   key: (event) => event.id,
   read: async (page) => {
@@ -187,9 +188,9 @@ const pagination = createManagementPageService<AuditEvent>({
   }
 });
 watchManagementPageFailure(pagination);
+const tableLoading = computed(() => pagination.loading.value && !pagination.loadingMore.value);
 const events = pagination.items;
 const loading = pagination.loading;
-const pageReady = computed(() => pagination.result.value !== undefined);
 const exportUrl = computed(() => {
   const value = new URLSearchParams(query.value);
   value.delete('limit');
@@ -351,14 +352,6 @@ function closeDetail(): void {
 function load(): Promise<void> {
   return pagination.load(true);
 }
-async function refresh(): Promise<void> {
-  refreshLoading.value = true;
-  try {
-    await load();
-  } finally {
-    refreshLoading.value = false;
-  }
-}
 onMounted(() => {
   pagination.start();
   void load();
@@ -368,10 +361,7 @@ onBeforeUnmount(closeDetail);
 </script>
 
 <template>
-  <section
-    v-mar-loading:page="loading && !pageReady && !pagination.failure.value"
-    class="mar-management-page audit-management"
-  >
+  <section class="mar-management-page audit-management">
     <div class="mar-filter-row">
       <div
         class="mar-filter-field audit-range-filter"
@@ -398,29 +388,24 @@ onBeforeUnmount(closeDetail);
       </div>
     </div>
     <div class="mar-table-actions">
-      <MarButton
-        :icon="marIcon('refresh')"
-        :loading="refreshLoading && pageReady"
-        @click="refresh"
-        >{{ translate('generated.auditManagementPage.refresh') }}</MarButton
-      >
+      <MarButton :icon="marIcon('refresh')" :disabled="tableLoading" @click="load">{{
+        translate('generated.auditManagementPage.refresh')
+      }}</MarButton>
       <MarButton tag="a" :icon="marIcon('download')" :href="exportUrl">{{
         translate('generated.auditManagementPage.exportCSV')
       }}</MarButton>
     </div>
     <MarTable
-      v-mar-loading:region="
-        loading &&
-        pageReady &&
-        !pagination.loadingMore.value &&
-        !refreshLoading &&
-        !pagination.failure.value
-      "
+      :aria-busy="tableLoading"
       class="clickable-rows"
       :data="events"
       row-key="id"
       @row-click="openDetail"
     >
+      <template v-if="tableLoading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
+      ></template>
       <MarTableColumn :label="translate('generated.auditManagementPage.time')" min-width="180"
         ><template #default="{ row }">{{
           auditTimestamp(row.occurredAt)

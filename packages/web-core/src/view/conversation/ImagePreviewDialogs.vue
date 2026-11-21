@@ -5,7 +5,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { ComposerAttachment } from '../../model/workbench.js';

@@ -1,0 +1,10 @@
+.mar-inline-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: top;
+}
+
+.mar-inline-loading > .mar-icon {
+  font-size: inherit;
+}

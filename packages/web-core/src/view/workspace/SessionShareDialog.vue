@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarLink } from '@myagentroam/mar-ui/link';
@@ -12,8 +15,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onMounted, ref } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import type { SessionShareTarget } from '@myagentroam/protocol';
@@ -28,6 +30,10 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>();
 const service = createSessionShareManagementService(props.target, props.request);
 const { shares, created, busy } = service;
+const readState = ref<'loading' | 'ready' | 'failed'>('loading');
+const retrying = ref(false);
+const creating = ref(false);
+const removingId = ref<string>();
 const form = ref<FormInstance>();
 const values = ref({ expiresAt: null as Date | null });
 const rules: FormRules = {
@@ -55,10 +61,14 @@ const shareText = computed(() =>
 );
 async function create(): Promise<void> {
   if (!(await form.value?.validate().catch(() => false))) return;
+  if (busy.value || readState.value === 'loading') return;
+  creating.value = true;
   try {
     await service.create(values.value.expiresAt?.toISOString() ?? null);
   } catch (error) {
     showMessage(errorMessage(error), 'error', error);
+  } finally {
+    creating.value = false;
   }
 }
 async function remove(id: string): Promise<void> {
@@ -71,11 +81,15 @@ async function remove(id: string): Promise<void> {
   } catch {
     return;
   }
+  if (busy.value || readState.value === 'loading') return;
+  removingId.value = id;
   try {
     await service.remove(id);
     showMessage(translate('sessionShare.deleted'), 'success');
   } catch (error) {
     showMessage(errorMessage(error), 'error', error);
+  } finally {
+    removingId.value = undefined;
   }
 }
 async function copy(value: string): Promise<void> {
@@ -86,9 +100,25 @@ async function copy(value: string): Promise<void> {
     showMessage(errorMessage(error), 'error', error);
   }
 }
-onMounted(
-  () => void service.load().catch((error) => showMessage(errorMessage(error), 'error', error))
-);
+async function load(): Promise<void> {
+  readState.value = 'loading';
+  try {
+    await service.load();
+    readState.value = 'ready';
+  } catch {
+    readState.value = 'failed';
+  }
+}
+async function retry(): Promise<void> {
+  if (busy.value || retrying.value || readState.value !== 'failed') return;
+  retrying.value = true;
+  try {
+    await load();
+  } finally {
+    retrying.value = false;
+  }
+}
+onMounted(() => void load());
 async function copyRecord(id: string): Promise<void> {
   try {
     let password = await service.copyPassword(id);
@@ -144,9 +174,13 @@ async function copyRecord(id: string): Promise<void> {
           ><template #next-year><MarIcon name="chevrons-right" /></template
         ></MarDatePicker>
       </MarFormItem>
-      <MarButton type="primary" native-type="submit" :loading="busy">{{
-        translate('sessionShare.create')
-      }}</MarButton>
+      <MarButton
+        type="primary"
+        native-type="submit"
+        :disabled="busy || readState === 'loading'"
+        :loading="creating"
+        >{{ translate('sessionShare.create') }}</MarButton
+      >
     </MarForm>
     <section v-if="created" class="created-share" aria-live="polite">
       <p class="share-text">{{ shareText }}</p>
@@ -155,7 +189,46 @@ async function copyRecord(id: string): Promise<void> {
       }}</MarButton>
     </section>
     <h3>{{ translate('sessionShare.records') }}</h3>
-    <MarTable :data="shares" :empty-text="translate('sessionShare.noRecords')">
+    <MarRegionStatus v-if="shares.length > 0 && readState !== 'ready'">
+      <MarButton
+        v-if="retrying || readState === 'failed'"
+        class="mar-region-retry-action"
+        link
+        :disabled="busy"
+        :aria-disabled="retrying || undefined"
+        :aria-busy="retrying || undefined"
+        :aria-label="retrying ? translate('common.loading') : undefined"
+        @click="retry"
+      >
+        <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </MarButton>
+      <span v-else role="progressbar" :aria-label="translate('common.loading')">
+        <MarBusyIndicator class="mar-read-loading-indicator" />
+      </span>
+    </MarRegionStatus>
+    <MarTable
+      :data="shares"
+      :empty-text="translate('sessionShare.noRecords')"
+      :aria-busy="readState === 'loading'"
+    >
+      <template v-if="readState !== 'ready'" #empty>
+        <MarButton
+          v-if="retrying || readState === 'failed'"
+          link
+          :disabled="busy"
+          :aria-disabled="retrying || undefined"
+          :aria-busy="retrying || undefined"
+          :aria-label="retrying ? translate('common.loading') : undefined"
+          @click="retry"
+        >
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+        </MarButton>
+        <span v-else role="progressbar" :aria-label="translate('common.loading')">
+          <MarBusyIndicator class="mar-read-loading-indicator" />
+        </span>
+      </template>
       <MarTableColumn :label="translate('sessionShare.link')" min-width="230" show-overflow-tooltip>
         <template #default="{ row }">
           <MarLink class="share-record-link" :href="link(row.id)" target="_blank" rel="noopener">
@@ -206,7 +279,8 @@ async function copyRecord(id: string): Promise<void> {
             link
             type="danger"
             :icon="marIcon('delete')"
-            :disabled="busy"
+            :disabled="busy || readState === 'loading'"
+            :loading="removingId === row.id"
             @click="remove(row.id)"
             >{{ translate('sessionShare.delete') }}</MarButton
           >

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
+import '../session/session-create-button.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -14,9 +16,10 @@ import {
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import WorkbenchSidebarPanel from '../workbench/WorkbenchSidebarPanel.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import type {
   ConversationFileProjection,
   HostedConversationSnapshot,
@@ -48,13 +51,13 @@ import { errorCode } from '../../util/api-error.js';
 import type { ConversationItem, ConversationTurn } from '../../model/workbench.js';
 import { conversationItemText } from '../../util/conversation-presentation.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
-import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
-import '../common/session-list-title.css';
+import { vSessionReorderMotion } from '../session/session-reorder-motion.js';
+import '../session/session-list-title.css';
 import { errorMessage, filePreviewErrorSummary } from '../../util/error-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
 import { hostedConversationTitle } from '../../util/hosted-conversation-presentation.js';
 import ConversationScroll from './ConversationScroll.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import ConversationTimeline from './ConversationTimeline.vue';
 import ToolChangeReviewWindow from '../workspace/ToolChangeReviewWindow.vue';
 import { createToolChangeReviewService } from '../../service/tool-change-review-service.js';
@@ -237,6 +240,9 @@ const filteredConversations = computed(() => {
     hostedConversationTitle(conversation).toLocaleLowerCase().includes(query)
   );
 });
+const directoryFirstRead = computed(
+  () => props.workspace.loadingConversations.value && !props.workspace.conversationsLoaded.value
+);
 const historyReorderSnapshot = computed(() => ({
   context: filter.value.trim().toLocaleLowerCase(),
   ready:
@@ -1053,14 +1059,25 @@ onBeforeUnmount(() => {
       </div>
       <div
         ref="historyList"
-        v-mar-loading:region="
-          workspace.loadingConversations.value && !workspace.conversationsLoaded.value
-        "
         v-session-reorder-motion="historyReorderSnapshot"
         class="history-list"
+        :class="{ 'is-first-read': directoryFirstRead }"
+        :aria-busy="directoryFirstRead || undefined"
       >
+        <MarRegionStatus
+          v-if="directoryFirstRead"
+          placement="center"
+          role="status"
+          :aria-label="translate('common.loading')"
+        >
+          <MarBusyIndicator class="mar-read-loading-indicator" />
+        </MarRegionStatus>
         <p
-          v-if="!loadingDirectory && filteredConversations.length === 0"
+          v-if="
+            workspace.conversationsLoaded.value &&
+            !loadingDirectory &&
+            filteredConversations.length === 0
+          "
           class="history-empty-text"
         >
           {{
@@ -1195,7 +1212,7 @@ onBeforeUnmount(() => {
             v-if="workspace.loadingMoreConversations.value && !retryingDirectory"
             role="status"
             :aria-label="translate('common.loading')"
-            ><BusyIndicator class="mar-read-loading-indicator"
+            ><MarBusyIndicator class="mar-read-loading-indicator"
           /></span>
           <MarButton
             v-if="
@@ -1211,7 +1228,7 @@ onBeforeUnmount(() => {
             "
             @click="retryDirectoryAppend"
           >
-            <BusyIndicator
+            <MarBusyIndicator
               v-if="workspace.loadingMoreConversations.value"
               class="mar-read-loading-indicator"
             />
@@ -1498,13 +1515,13 @@ onBeforeUnmount(() => {
 .hosted-conversation-files {
   min-width: 0;
   min-height: 0;
-  background: var(--mar-bg-panel);
 }
 
 .hosted-conversation-history,
 .hosted-conversation-files {
   display: flex;
   flex-direction: column;
+  background: var(--mar-bg-panel);
 }
 
 .hosted-conversation-history[hidden],
@@ -1613,6 +1630,11 @@ onBeforeUnmount(() => {
   padding: 8px;
 }
 
+.history-list.is-first-read {
+  display: flex;
+  flex-direction: column;
+}
+
 .history-filter-note {
   margin: 0;
   padding: 0.5rem;
@@ -1622,7 +1644,7 @@ onBeforeUnmount(() => {
 
 .history-empty-text {
   margin: 0;
-  padding: 34px 12px;
+  padding: 8px 12px;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.6;
@@ -1711,7 +1733,7 @@ onBeforeUnmount(() => {
 }
 
 .history-more-button {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;
@@ -1737,6 +1759,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--mar-conversation-canvas);
 }
 
 .conversation-draft {
@@ -1744,7 +1767,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
-  background: var(--mar-bg-panel);
 }
 
 .readonly-alert,
@@ -1763,7 +1785,7 @@ onBeforeUnmount(() => {
 }
 
 .hosted-timeline-scroll :deep(.conversation-history-control),
-.hosted-timeline-scroll :deep(.conversation-reload),
+.hosted-timeline-scroll :deep(.conversation-reload:not(.is-centered)),
 .hosted-timeline-scroll :deep(.conversation-loading-initial:not(.is-centered)) {
   margin-block-start: 0.75rem;
 }

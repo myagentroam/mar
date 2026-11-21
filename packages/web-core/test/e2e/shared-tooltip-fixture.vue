@@ -4,7 +4,7 @@ import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { getCurrentInstance, onBeforeUnmount, ref } from 'vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
-import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
+import AgentMarkdown from '../../src/view/conversation/AgentMarkdown.vue';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
 import { registerComposerShortcuts } from '../../src/service/composer-shortcut-service.js';
 import { createMobileSurfaceFocusService } from '../../src/service/mobile-surface-focus-service.js';

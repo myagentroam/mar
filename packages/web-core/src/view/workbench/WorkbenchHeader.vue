@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
 type ManagementSection = string;

@@ -3,7 +3,7 @@ import { renderToString } from 'vue/server-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
-import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
+import MarLoadingPanel from '../../../mar-ui/components/loading/MarLoadingPanel.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
 import type { SettingsSection } from '../../src/model/settings.js';
@@ -190,7 +190,7 @@ describe('Shared personal settings components', () => {
       const app = createSSRApp({
         render: () =>
           h(
-            LoadingPanel,
+            MarLoadingPanel,
             {
               loading,
               variant: 'region',

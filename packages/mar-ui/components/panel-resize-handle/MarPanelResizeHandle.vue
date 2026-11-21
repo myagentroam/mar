@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { inject, onBeforeUnmount, ref, watch } from 'vue';
+import { marUiTooltipDirectiveKey } from '../tooltip/tooltip-directive.js';
 
+// Owns the pointer and keyboard gesture; consumers own panel sizing and layout policy.
 const props = defineProps<{
   target: HTMLElement | undefined;
   label: string;
@@ -11,6 +13,7 @@ const props = defineProps<{
   gestureKey?: string | number | boolean;
 }>();
 const emit = defineEmits<{ resize: [width: number] }>();
+const vTooltip = inject(marUiTooltipDirectiveKey, {});
 const dragging = ref(false);
 const handle = ref<HTMLElement>();
 const currentWidth = ref<number>();
@@ -68,14 +71,14 @@ function cancel(): void {
 }
 
 function keydown(event: KeyboardEvent): void {
+  const { key } = event;
+  if (key !== 'Home' && key !== 'End' && key !== 'ArrowLeft' && key !== 'ArrowRight') return;
   const width = settledWidth();
   if (width === undefined) return;
   let next: number;
-  if (event.key === 'Home') next = props.min;
-  else if (event.key === 'End') next = props.max;
-  else if (event.key === 'ArrowLeft') next = width - props.direction * 10;
-  else if (event.key === 'ArrowRight') next = width + props.direction * 10;
-  else return;
+  if (key === 'Home') next = props.min;
+  else if (key === 'End') next = props.max;
+  else next = width + (key === 'ArrowLeft' ? -1 : 1) * props.direction * 10;
   event.preventDefault();
   resize(next);
 }
@@ -88,7 +91,7 @@ onBeforeUnmount(cancel);
   <div
     ref="handle"
     v-tooltip="label"
-    class="panel-resize-handle"
+    class="mar-panel-resize-handle"
     :class="{ dragging }"
     role="separator"
     tabindex="0"
@@ -108,9 +111,8 @@ onBeforeUnmount(cancel);
 </template>
 
 <style scoped>
-.panel-resize-handle {
+.mar-panel-resize-handle {
   position: absolute;
-  z-index: 6;
   top: 0;
   bottom: 0;
   width: 7px;
@@ -118,26 +120,21 @@ onBeforeUnmount(cancel);
   touch-action: none;
   user-select: none;
 }
-.panel-resize-handle::before {
+.mar-panel-resize-handle::before {
   position: absolute;
   inset: 0 3px;
   background: transparent;
   content: '';
 }
-.panel-resize-handle:hover::before,
-.panel-resize-handle:focus-visible::before,
-.panel-resize-handle.dragging::before {
-  background: var(--mar-color-brand);
+.mar-panel-resize-handle:hover::before,
+.mar-panel-resize-handle:focus-visible::before,
+.mar-panel-resize-handle.dragging::before {
+  background: var(--mar-ui-color-brand);
 }
-.panel-resize-handle.dragging::after {
+.mar-panel-resize-handle.dragging::after {
   position: fixed;
   inset: 0;
   content: '';
   cursor: col-resize;
-}
-@media (max-width: 767px) {
-  .panel-resize-handle {
-    display: none;
-  }
 }
 </style>

@@ -1,13 +1,19 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarTag } from '@myagentroam/mar-ui/tag';
+import { ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
-import SessionGroupTabs from '../common/SessionGroupTabs.vue';
+import SessionGroupTabs from '../session/SessionGroupTabs.vue';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
 import { recentRunTimeReference } from '../../util/notification-presentation.js';
 
-defineProps<{
+const props = defineProps<{
   readonly sessionGroup: import('@myagentroam/protocol').SessionGroup;
   readonly runs: readonly RecentRun[];
+  readonly snapshotState?: 'loading' | 'ready' | 'failed';
+  readonly retrySnapshot?: () => Promise<void>;
   readonly hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
   readonly mobileMode: boolean;
   readonly runTime: (run: RecentRun) => string;
@@ -16,6 +22,19 @@ const emit = defineEmits<{
   openRecentRun: [run: RecentRun];
   selectGroup: [group: import('@myagentroam/protocol').SessionGroup];
 }>();
+const retrying = ref(false);
+
+async function retry(): Promise<void> {
+  if (retrying.value || props.snapshotState !== 'failed' || !props.retrySnapshot) return;
+  retrying.value = true;
+  try {
+    await props.retrySnapshot();
+  } catch {
+    // The snapshot state owns the in-place failure feedback.
+  } finally {
+    retrying.value = false;
+  }
+}
 const RUN_STATUS_KEYS = {
   STARTING: 'workbenchNotificationCenter.runStatus.STARTING',
   RUNNING: 'workbenchNotificationCenter.runStatus.RUNNING',
@@ -53,9 +72,27 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
       :model-value="sessionGroup"
       @update:model-value="emit('selectGroup', $event)"
     />
-    <p v-if="runs.length === 0" class="recent-sessions-empty">
-      {{ translate('workbenchNotificationCenter.noRecentSessions') }}
-    </p>
+    <div v-if="runs.length === 0" class="recent-sessions-empty">
+      <MarButton
+        v-if="retrying || snapshotState === 'failed'"
+        link
+        :aria-disabled="retrying || undefined"
+        :aria-busy="retrying || undefined"
+        :aria-label="retrying ? translate('common.loading') : undefined"
+        @click="retry"
+      >
+        <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </MarButton>
+      <span
+        v-else-if="snapshotState === 'loading'"
+        role="progressbar"
+        :aria-label="translate('common.loading')"
+      >
+        <MarBusyIndicator class="mar-read-loading-indicator" />
+      </span>
+      <template v-else>{{ translate('workbenchNotificationCenter.noRecentSessions') }}</template>
+    </div>
     <ul v-else class="recent-sessions-list">
       <li v-for="run in runs" :key="`${run.nodeId}:${run.runId}`">
         <button

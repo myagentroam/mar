@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/management-detail.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTag } from '@myagentroam/mar-ui/tag';

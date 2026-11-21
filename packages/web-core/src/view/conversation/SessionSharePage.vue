@@ -22,9 +22,9 @@ import {
 import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import SessionShareConversation from './SessionShareConversation.vue';
-import AuthEntryPanel from '../common/AuthEntryPanel.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
-import MarIcon from '../common/MarIcon.vue';
+import AuthEntryPanel from '../auth/AuthEntryPanel.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 const StandaloneFilePreviewPage = defineAsyncComponent(
   () => import('../workspace/StandaloneFilePreviewPage.vue')
 );
@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
       aria-busy="true"
       :aria-label="translate('sessionShare.loading')"
     >
-      <BusyIndicator />
+      <MarBusyIndicator />
     </div>
     <AuthEntryPanel
       v-else

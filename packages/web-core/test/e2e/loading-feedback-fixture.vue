@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import BusyIndicator from '../../src/view/common/BusyIndicator.vue';
+import MarBusyIndicator from '../../../mar-ui/components/loading/MarBusyIndicator.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ManagementPagination from '../../src/view/settings/ManagementPagination.vue';
 import FilePreviewLoading from '../../src/view/workspace/FilePreviewLoading.vue';
@@ -286,7 +286,7 @@ const moreRoot = ref<WorkspaceFileTreeNode>({
     >
       Finish directory load
     </button>
-    <p class="runtime-status">Running <BusyIndicator data-testid="runtime-indicator" /></p>
+    <p class="runtime-status">Running <MarBusyIndicator data-testid="runtime-indicator" /></p>
     <section data-testid="file-tree-more" class="tree-surface" :data-request-count="moreRequests">
       <WorkspaceFileTree
         :root="moreRoot"

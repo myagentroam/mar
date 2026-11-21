@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
+import '../../styles/workbench-tab-header.css';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import PanelResizeHandle from './PanelResizeHandle.vue';
-import MarIcon from '../common/MarIcon.vue';
+import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';
 import {
   consoleKeyboardShortcutService,
@@ -224,7 +226,7 @@ onBeforeUnmount(() => {
     :style="{ width: `${width}px` }"
     @load.capture="bindBrowserFrame"
   >
-    <PanelResizeHandle
+    <MarPanelResizeHandle
       class="workbench-aside-resize"
       :target="element"
       :label="resizeLabel"
@@ -356,7 +358,13 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 .workbench-aside-resize {
+  z-index: 6;
   inset-inline-start: -4px;
+}
+@media (max-width: 767px) {
+  .workbench-aside-resize {
+    display: none;
+  }
 }
 .workbench-aside-label {
   flex: 1;

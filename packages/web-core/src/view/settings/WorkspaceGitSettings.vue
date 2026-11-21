@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import '../../styles/region-retry-action.css';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { onUnmounted, ref, watch } from 'vue';
 
 import { PersonalGitService } from '../../service/personal-git-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -23,6 +25,7 @@ const service = new PersonalGitService(props.request);
 const preserve = ref(false);
 const includeParent = ref<boolean>();
 const loading = ref(false);
+const retrying = ref(false);
 const saving = ref(false);
 const loaded = ref(false);
 let generation = 0;
@@ -34,25 +37,33 @@ watch(
   () => void load(),
   { immediate: true }
 );
-async function load(): Promise<void> {
+function retry(): void {
+  if (!loading.value && !loaded.value) void load(true);
+}
+async function load(retry = false): Promise<void> {
   const current = ++generation;
   preserve.value = props.initialValue ?? false;
   includeParent.value = undefined;
   loaded.value = false;
   loading.value = false;
+  retrying.value = false;
   saving.value = false;
   if (!props.connected) return;
   loading.value = true;
+  retrying.value = retry;
   try {
     const result = await service.workspacePolicy(props.nodeId, props.workspaceId);
     if (current !== generation) return;
     preserve.value = result.preserveGitConfig;
     includeParent.value = result.includeParentRepository;
     loaded.value = true;
-  } catch (error) {
-    if (current === generation) showMessage(errorMessage(error), 'error', error);
+  } catch {
+    // The current scope exposes an in-place retry rather than a second notification.
   } finally {
-    if (current === generation) loading.value = false;
+    if (current === generation) {
+      loading.value = false;
+      retrying.value = false;
+    }
   }
 }
 async function save(): Promise<void> {
@@ -79,7 +90,7 @@ async function save(): Promise<void> {
 }
 </script>
 <template>
-  <section class="workspace-git-settings" v-mar-loading:region="loading">
+  <section class="workspace-git-settings">
     <h3>{{ t('personalGit.workspaceTitle') }}</h3>
     <p v-if="!connected">{{ t('personalGit.offline') }}</p>
     <template v-else>
@@ -107,7 +118,23 @@ async function save(): Promise<void> {
       <p v-if="includeParent !== undefined" class="workspace-git-hint">
         {{ t('personalGit.includeParentHint') }}
       </p>
-      <MarButton v-if="!loaded && !loading" @click="load">{{ t('personalGit.reload') }}</MarButton>
+      <MarRegionStatus v-if="!loaded">
+        <MarButton
+          class="mar-region-retry-action"
+          v-if="retrying || !loading"
+          link
+          :aria-disabled="retrying || undefined"
+          :aria-busy="retrying || undefined"
+          :aria-label="retrying ? t('common.loading') : undefined"
+          @click="retry"
+        >
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <template v-else>{{ t('common.loadFailedRetry') }}</template>
+        </MarButton>
+        <span v-else role="progressbar" :aria-label="t('common.loading')">
+          <MarBusyIndicator class="mar-read-loading-indicator" />
+        </span>
+      </MarRegionStatus>
     </template>
   </section>
 </template>

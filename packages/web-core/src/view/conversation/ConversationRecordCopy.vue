@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import type { ConversationItem } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{ record: ConversationItem | readonly ConversationItem[] }>();
 const emit = defineEmits<{ copy: [text: string, onSuccess: () => void] }>();

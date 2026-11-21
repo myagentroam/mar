@@ -2,7 +2,7 @@
 import type { SessionGroup } from '@myagentroam/protocol';
 import { computed } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
-import MarSegmented from './MarSegmented.vue';
+import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 
 defineProps<{
   modelValue: SessionGroup;

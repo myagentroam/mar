@@ -42,6 +42,54 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
       expect(await colors(work)).toEqual(selected);
     });
   }
+
+  test(`Expanded diagnostics match the recent sessions rail highlight: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+
+    const rail = page.locator('.activity-rail');
+    const recent = rail.locator('.activity-center-trigger');
+    const diagnostics = rail.getByRole('button', { name: 'Web performance diagnostics' });
+    const panel = page.getByRole('region', { name: 'Web performance diagnostics' });
+    const highlight = (button: Locator) =>
+      button.evaluate((element) => {
+        const { backgroundColor, borderRadius, color } = getComputedStyle(element);
+        const { x, width, height } = element.getBoundingClientRect();
+        return { backgroundColor, borderRadius, color, x, width, height };
+      });
+
+    await recent.click();
+    await expect(recent).toHaveAttribute('aria-expanded', 'true');
+    const expanded = await highlight(recent);
+    await recent.click();
+    await expect(recent).toHaveAttribute('aria-expanded', 'false');
+
+    const collapsed = await highlight(diagnostics);
+    await diagnostics.click();
+    await expect(panel).toBeVisible();
+    expect(await highlight(diagnostics)).toEqual(expanded);
+    await page.mouse.move(1200, 760);
+    expect(await highlight(diagnostics)).toEqual(expanded);
+    await expect(diagnostics).toHaveCSS('outline-style', 'none');
+    await page.screenshot({ path: testInfo.outputPath('diagnostics-rail-expanded.png') });
+
+    await page.mouse.click(1200, 760);
+    await expect(diagnostics).toHaveAttribute('aria-expanded', 'false');
+    expect(await highlight(diagnostics)).toEqual(collapsed);
+
+    await diagnostics.press('Enter');
+    await expect(panel).toBeVisible();
+    expect(await highlight(diagnostics)).toEqual(expanded);
+    await expect(diagnostics).toHaveCSS('outline-style', 'solid');
+    await expect(diagnostics).toHaveCSS('outline-offset', '-2px');
+    await diagnostics.press('Escape');
+    await expect(panel).toBeHidden();
+    await expect(diagnostics).toBeFocused();
+    expect(await highlight(diagnostics)).toEqual(collapsed);
+  });
 }
 
 async function sidebarGeometry(sidebar: Locator) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import MarIcon from '../common/MarIcon.vue';
+import '@myagentroam/mar-ui/surface-chrome.css';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { translate } from '../../service/locale-preference-service.js';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { ComposerReferenceCandidate } from '../../service/composer-reference-service.js';

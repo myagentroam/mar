@@ -8,6 +8,7 @@ import { localePreferenceService, translate } from '../../src/service/locale-pre
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegistrationPicker.vue';
 import WorkspaceHtmlBrowser from '../../src/view/workspace/WorkspaceHtmlBrowser.vue';
+import SessionShareDialog from '../../src/view/workspace/SessionShareDialog.vue';
 
 const http = createScopedHttpService({
   csrfToken: () => 'fixture',
@@ -45,6 +46,15 @@ const registration = createWorkspaceRegistrationService({
   errorMessage: String
 });
 const directoryPickerOpen = ref(false);
+const shareOpen = ref(false);
+const emptyDirectory = new URL(location.href).searchParams.has('empty-directory');
+function openDirectoryPicker(): void {
+  directoryPickerOpen.value = true;
+  if (emptyDirectory) {
+    registration.directory.value = undefined;
+    void registration.load();
+  }
+}
 registration.directory.value = {
   currentPath: '/workspace',
   homePath: '/workspace',
@@ -64,6 +74,8 @@ registration.directory.value = {
         web-version="fixture"
         :sessions="auth.view.adminSessions"
         :sessions-refreshing="auth.view.adminSessionsRefreshing"
+        :sessions-manual-refresh="auth.view.adminSessionsManualRefresh"
+        :sessions-read-state="auth.view.adminSessionsReadState"
         new-password=""
         password-validation-error=""
         :registration-token="undefined"
@@ -76,11 +88,11 @@ registration.directory.value = {
         :quick-prompts-loading="false"
         :quick-prompts-failed="false"
         :refresh-quick-prompts="async () => {}"
-        @refresh-sessions="auth.refreshSessions"
+        @refresh-sessions="auth.view.refreshAdminSessions"
       />
     </section>
     <section data-testid="directory-refresh">
-      <button type="button" @click="directoryPickerOpen = true">Open directory picker</button>
+      <button type="button" @click="openDirectoryPicker">Open directory picker</button>
       <WorkspaceRegistrationPicker
         v-if="directoryPickerOpen"
         :open="directoryPickerOpen"
@@ -95,6 +107,13 @@ registration.directory.value = {
         @close="directoryPickerOpen = false"
       />
     </section>
+    <button type="button" @click="shareOpen = true">Open share dialog</button>
+    <SessionShareDialog
+      v-if="shareOpen"
+      :target="{ nodeId: 'node', workspaceId: 'workspace', sessionId: 'session' }"
+      :request="http.request"
+      @close="shareOpen = false"
+    />
     <section data-testid="html-refresh">
       <WorkspaceHtmlBrowser
         node-id="node"

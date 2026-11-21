@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import '@myagentroam/web-core/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -14,10 +15,9 @@ import {
 import { watchManagementPageFailure } from '@myagentroam/web-core/management-page';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import MarIcon from '@myagentroam/web-core/MarIcon.vue';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@myagentroam/web-core/workbench-presentation';
@@ -51,10 +51,7 @@ const usersPage = createUserManagementService<ManagedUser>({
   query: () => ({ sortBy: sortBy.value, sortOrder: sortOrder.value })
 });
 watchManagementPageFailure(usersPage);
-const pageReady = ref(false);
-watch(usersPage.result, (result) => {
-  if (result !== undefined) pageReady.value = true;
-});
+const tableLoading = computed(() => usersPage.loading.value && !usersPage.loadingMore.value);
 const canCreate = () => form.value.username.trim().length > 0;
 const formatTime = (value: number) => managementDateTime(value);
 function openUserDetail(user: ManagedUser): void {
@@ -195,28 +192,28 @@ onMounted(() => {
 onUnmounted(() => usersPage.dispose());
 </script>
 <template>
-  <section
-    v-mar-loading:page="usersPage.loading.value && !pageReady && !usersPage.failure.value"
-    class="mar-management-page"
-  >
+  <section class="mar-management-page">
     <div class="mar-table-actions">
+      <MarButton :icon="marIcon('refresh')" :disabled="tableLoading" @click="load">{{
+        translate('generated.organizationUserManagementPage.refresh')
+      }}</MarButton>
       <MarButton type="primary" @click="createOpen = true">{{
         translate('generated.userManagementPage.createUser')
       }}</MarButton>
     </div>
     <MarTable
-      v-mar-loading:region="
-        usersPage.loading.value &&
-        pageReady &&
-        !usersPage.loadingMore.value &&
-        !usersPage.failure.value
-      "
+      :aria-busy="tableLoading"
       class="clickable-rows"
       :data="usersPage.items.value"
       row-key="id"
       @row-click="openUserDetail"
       @sort-change="changeSort"
-      ><MarTableColumn
+    >
+      <template v-if="tableLoading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
+      ></template>
+      <MarTableColumn
         prop="username"
         :label="translate('generated.userManagementPage.username')"
         sortable="custom"

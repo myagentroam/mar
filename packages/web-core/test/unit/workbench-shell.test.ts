@@ -7,7 +7,7 @@ import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/management-composi
 import type { WorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import type { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
-import PanelResizeHandle from '../../src/view/workbench/PanelResizeHandle.vue';
+import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import WorkbenchSurface from '../../src/view/workbench/WorkbenchSurface.vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
@@ -82,7 +82,7 @@ async function renderOfflineSurface() {
 
 describe('Shared workbench shell', () => {
   it('keeps resize layout attributes on the interactive separator', async () => {
-    const html = await renderComponent(PanelResizeHandle, {
+    const html = await renderComponent(MarPanelResizeHandle, {
       target: undefined,
       label: 'Resize workspace tree',
       min: 180,
@@ -438,6 +438,7 @@ describe('Shared workbench shell', () => {
       const loadingHtml = await renderComponent(WorkspaceSessionList, {
         ...props,
         searchQuery: query,
+        searchReady: true,
         [state]: true
       });
       const loadingButton = findSearchButton(loadingHtml);
@@ -445,6 +446,16 @@ describe('Shared workbench shell', () => {
       expect(loadingButton[1]).toMatch(/\sdisabled(?:[\s=>])/u);
       expect(loadingButton[2]).toMatch(/<svg\b(?=[^>]*data-mar-icon="loading-action")/u);
     }
+    const firstSearch = await renderComponent(WorkspaceSessionList, {
+      ...props,
+      searchQuery: query,
+      searchReady: false,
+      searching: true
+    });
+    expect(findSearchButton(firstSearch)[1]).not.toContain('aria-busy');
+    expect(firstSearch).toMatch(
+      /<div\b(?=[^>]*watch-status)(?=[^>]*role="status")[^>]*><i\b[^>]*mar-read-loading-indicator/u
+    );
   });
 
   it.each([

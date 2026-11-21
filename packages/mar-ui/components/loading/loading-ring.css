@@ -1,0 +1,13 @@
+.mar-ui-loading__indicator,
+.mar-busy-indicator {
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+}
+
+@keyframes mar-loading-ring-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}

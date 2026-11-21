@@ -1,0 +1,9 @@
+.mar-tab-header {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  min-height: 32px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--mar-border-subtle);
+  background: transparent;
+}

@@ -10,7 +10,7 @@ const vuePlugin = vue();
 const vueTransform = vuePlugin.transform;
 const componentFixtureQuery = /[?&]unit-render(?:&|$)/u;
 const marUiComponentEntry =
-  /^@myagentroam\/mar-ui\/(alert|button|cascader|checkbox|check-tag|date-picker|descriptions|divider|dropdown|empty|form|icons|input-number|link|pagination|progress|radio|result|scrollbar|segmented|select|switch|table|tabs|tag|time-picker|time-select)$/u;
+  /^@myagentroam\/mar-ui\/(alert|busy-indicator|button|cascader|checkbox|check-tag|date-picker|descriptions|divider|dropdown|empty|form|icons|input-number|link|loading-panel|pagination|progress|radio|region-status|result|scrollbar|segmented|select|switch|table|tabs|tag|time-picker|time-select)$/u;
 const selectBusinessFixtures =
   /\/(EnterpriseUserManagementPage|EnvironmentSecretManager|MarAgentCompactSettings|MarAgentModelManagementPage|RemoteDesktopPage|SettingsContent|UsageStatisticsSettings)\.vue\?/u;
 // Opt in only the component fixtures that drive the real template and lifecycle.
@@ -24,7 +24,11 @@ const componentFixtures: Plugin = {
         '@myagentroam/mar-ui/dialog': 'mar-dialog-stub.ts',
         '@myagentroam/mar-ui/loading': 'mar-loading-stub.ts'
       } as const;
-      const stub = stubs[source as keyof typeof stubs];
+      const stub =
+        source === './index.js' &&
+        /\/mar-ui\/components\/loading\/MarLoadingPanel\.vue\?/u.test(importer)
+          ? 'mar-loading-stub.ts'
+          : stubs[source as keyof typeof stubs];
       if (stub) return fileURLToPath(new URL('./test/unit/support/' + stub, import.meta.url));
     }
     if (

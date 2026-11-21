@@ -5,6 +5,7 @@ import SkillCenterPage from '../../src/view/skill/SkillCenterPage.vue';
 import SkillSourceManagementPage from '../../src/view/skill/SkillSourceManagementPage.vue';
 import McpSourceManagementPage from '../../src/view/skill/McpSourceManagementPage.vue';
 import McpCenterPanel from '../../src/view/skill/McpCenterPanel.vue';
+import WorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue';
 import MarAgentModelManagementPage from '../../src/view/settings/MarAgentModelManagementPage.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
 import WorkbenchRecentSessionList from '../../src/view/workbench/WorkbenchRecentSessionList.vue';
@@ -13,6 +14,19 @@ import type { Session } from '../../src/model/workbench.js';
 
 const view = new URLSearchParams(location.search).get('list-hierarchy');
 const scopeColumns = new URLSearchParams(location.search).has('scope-columns');
+const controlledReads = new URLSearchParams(location.search).has('controlled-reads');
+const targetNodes = new URLSearchParams(location.search).has('inspect-target')
+  ? [
+      {
+        id: 'node',
+        displayName: 'Fixture node',
+        registeredAddress: '',
+        connected: true,
+        disabled: false,
+        nodeAppVersion: '1.0.0'
+      }
+    ]
+  : [];
 const scopeLabels: Readonly<Record<string, string>> = {
   ENTERPRISE: 'Enterprise',
   ORGANIZATION: 'Organization',
@@ -99,7 +113,12 @@ const catalog: CodexModelCatalog = {
     }
   ]
 };
-async function request<T>(path: string): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (controlledReads) {
+    const response = await fetch(path, init);
+    if (!response.ok) throw new Error(`Read failed: ${response.status}`);
+    return (await response.json()) as T;
+  }
   const pathname = new URL(path, location.origin).pathname;
   if (pathname === '/api/resources') return { nodes: [], workspaces: [] } as T;
   if (pathname === '/api/skill-sources' || pathname === '/api/mcp-sources')
@@ -131,20 +150,28 @@ async function request<T>(path: string): Promise<T> {
 <template>
   <main class="list-hierarchy-fixture">
     <output data-testid="opened">{{ opened }}</output>
-    <SkillCenterPage v-if="view === 'skills'" :request="request" :nodes="[]" />
+    <SkillCenterPage v-if="view === 'skills'" :request="request" :nodes="targetNodes" />
     <SkillSourceManagementPage
       v-if="view === 'sources'"
       :request="request"
-      :writable="false"
+      :writable="controlledReads"
       v-bind="scopeColumns ? { scopeLabel } : {}"
     />
     <McpSourceManagementPage
       v-if="view === 'mcp-sources'"
       :request="request"
-      :writable="false"
+      :writable="controlledReads"
       :scope-label="scopeLabel"
     />
-    <McpCenterPanel v-if="view === 'mcp'" :request="request" :nodes="[]" />
+    <McpCenterPanel v-if="view === 'mcp'" :request="request" :nodes="targetNodes" />
+    <WorkspaceGitSettings
+      v-if="view === 'workspace-git'"
+      :request="request"
+      node-id="node"
+      workspace-id="workspace"
+      connected
+      writable
+    />
     <MarAgentModelManagementPage
       v-if="view === 'models'"
       :request="request"

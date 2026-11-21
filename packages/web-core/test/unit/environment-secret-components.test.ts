@@ -26,53 +26,56 @@ afterEach(() => {
 
 describe('Public environment secret management', () => {
   it.each([
-    { scope: 'PERSONAL', nodeId: undefined, variant: 'page' },
-    { scope: 'NODE', nodeId: 'node-fixture', variant: 'region' }
-  ])(
-    'uses $variant for the first $scope read and only the button for refresh',
-    async ({ scope, nodeId, variant }) => {
-      vi.stubGlobal('window', {
-        location: { search: '', href: 'http://fixture/console' },
-        history: { replaceState: vi.fn() },
-        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
-      });
-      const first = Promise.withResolvers<unknown>();
-      const next = Promise.withResolvers<unknown>();
-      const result = { secrets: [], page: 1, pageSize: 20, total: 0, hasMore: false };
-      const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValue(next.promise);
-      const view = renderComponent(SecretManager, { request, scopes: [scope], nodeId });
-      const panel = () =>
-        view.findAll('section').find((node) => 'data-loading-variant' in node.props)?.props;
-      const refresh = () =>
-        view
-          .findAll('MarButton')
-          .find(
-            (node) =>
-              textContent(node).trim() ===
-              i18n.global.t('generated.environmentSecretManager.refresh')
-          )!;
-      try {
-        await flushComponent();
-        expect(panel()).toMatchObject({ 'data-loading-variant': variant, 'aria-busy': true });
-        first.resolve(result);
-        await flushComponent();
-        expect(panel()?.['aria-busy']).toBe(false);
+    { scope: 'PERSONAL', nodeId: undefined },
+    { scope: 'NODE', nodeId: 'node-fixture' }
+  ])('loads the table for the first $scope read and manual refresh', async ({ scope, nodeId }) => {
+    vi.stubGlobal('window', {
+      location: { search: '', href: 'http://fixture/console' },
+      history: { replaceState: vi.fn() },
+      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const first = Promise.withResolvers<unknown>();
+    const next = Promise.withResolvers<unknown>();
+    const result = { secrets: [], page: 1, pageSize: 20, total: 0, hasMore: false };
+    const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValue(next.promise);
+    const view = renderComponent(SecretManager, { request, scopes: [scope], nodeId });
+    const table = () => view.findAll('MarTable')[0]!.props;
+    const refresh = () =>
+      view
+        .findAll('MarButton')
+        .find(
+          (node) =>
+            textContent(node).trim() === i18n.global.t('generated.environmentSecretManager.refresh')
+        )!;
+    try {
+      await flushComponent();
+      expect(table()['aria-busy']).toBe(true);
+      expect(view.findAll('span').filter((node) => node.props.role === 'progressbar')).toHaveLength(
+        1
+      );
+      first.resolve(result);
+      await flushComponent();
+      expect(table()['aria-busy']).toBe(false);
 
-        const refreshing = trigger(refresh(), 'onClick');
-        await flushComponent();
-        expect(request).toHaveBeenCalledTimes(2);
-        expect(refresh().props['loading']).toBe(true);
-        expect(panel()?.['aria-busy']).toBe(false);
-        next.resolve(result);
-        await refreshing;
-        expect(refresh().props['loading']).toBe(false);
-      } finally {
-        view.unmount();
-      }
+      const refreshing = trigger(refresh(), 'onClick');
+      await flushComponent();
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(refresh().props['disabled']).toBe(true);
+      expect(refresh().props['loading']).not.toBe(true);
+      expect(table()['aria-busy']).toBe(true);
+      expect(view.findAll('span').filter((node) => node.props.role === 'progressbar')).toHaveLength(
+        1
+      );
+      next.resolve(result);
+      await refreshing;
+      expect(refresh().props['disabled']).toBe(false);
+      expect(table()['aria-busy']).toBe(false);
+    } finally {
+      view.unmount();
     }
-  );
+  });
 
-  it('keeps filter reads regional after the first page has loaded empty', async () => {
+  it('loads the table for filter reads after the first page has loaded empty', async () => {
     vi.stubGlobal('window', {
       location: { search: '', href: 'http://fixture/console' },
       history: { replaceState: vi.fn() },
@@ -82,17 +85,19 @@ describe('Public environment secret management', () => {
     const filtered = Promise.withResolvers<unknown>();
     const request = vi.fn().mockResolvedValueOnce(result).mockReturnValue(filtered.promise);
     const view = renderComponent(SecretManager, { request, scopes: ['PERSONAL'] });
-    const panel = () =>
-      view.findAll('section').find((node) => 'data-loading-variant' in node.props)?.props;
+    const table = () => view.findAll('MarTable')[0]!.props;
     try {
       await flushComponent();
-      expect(panel()?.['aria-busy']).toBe(false);
+      expect(table()['aria-busy']).toBe(false);
       await trigger(view.findAll('MarInput')[0]!, 'onUpdate:modelValue', 'FILTER');
       expect(request).toHaveBeenLastCalledWith(expect.stringContaining('keyword=FILTER'));
-      expect(panel()).toMatchObject({ 'data-loading-variant': 'region', 'aria-busy': true });
+      expect(table()['aria-busy']).toBe(true);
+      expect(view.findAll('span').filter((node) => node.props.role === 'progressbar')).toHaveLength(
+        1
+      );
       filtered.resolve(result);
       await flushComponent();
-      expect(panel()?.['aria-busy']).toBe(false);
+      expect(table()['aria-busy']).toBe(false);
     } finally {
       view.unmount();
     }

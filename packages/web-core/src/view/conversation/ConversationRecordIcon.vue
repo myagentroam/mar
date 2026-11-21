@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { ToolPresentation } from '@myagentroam/protocol';
-import MarIcon from '../common/MarIcon.vue';
-import type { MarIconName } from '../../util/icon-shapes.js';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import type { MarIconName } from '@myagentroam/mar-ui/icon-shapes';
 
 const props = defineProps<{
   kind:

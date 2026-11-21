@@ -136,6 +136,7 @@ export const hostedConversationsEnUS = {
     removeAttachment: 'Remove attachment “{name}”',
     model: 'Model',
     modelUnavailable: 'The current template has no available models; sending is disabled.',
+    modelOptionsRetry: 'Could not load models. Retry',
     loadedTemplateNamed: 'Loaded conversation template “{name}”',
     send: 'Send',
     stop: 'Stop',

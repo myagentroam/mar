@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import '../../styles/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -16,8 +17,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { onMounted, reactive, ref, computed } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { imageGenerationUrlSchema } from '@myagentroam/protocol';
@@ -39,7 +39,7 @@ const codexCredentials = computed(() =>
 );
 const busy = ref(false);
 const ready = ref(false);
-const refreshing = ref(false);
+const tableLoading = ref(false);
 const dialog = ref(false);
 const detailOpen = ref(false);
 const selectedDetail = ref<ImageGenerationModel>();
@@ -125,19 +125,24 @@ const rules = computed<FormRules>(() => ({
     }
   ]
 }));
-async function load(showRefresh = false) {
-  if (sorting.value) return;
-  if (showRefresh) refreshing.value = true;
+async function load() {
+  if (busy.value || sorting.value) return;
+  tableLoading.value = true;
   busy.value = true;
   try {
     models.value = await service.imageGenerationConfiguration();
     ready.value = true;
+    tableLoading.value = false;
     credentials.value = await service.listCredentials();
   } catch (error) {
+    if (tableLoading.value) {
+      models.value = [];
+      ready.value = false;
+    }
     showMessage(errorMessage(error), 'error', error);
   } finally {
     busy.value = false;
-    if (showRefresh) refreshing.value = false;
+    tableLoading.value = false;
   }
 }
 function edit(model?: ImageGenerationModel) {
@@ -224,16 +229,12 @@ onMounted(load);
 </script>
 
 <template>
-  <section v-mar-loading:page="busy && !ready" class="image-generation-management">
+  <section class="image-generation-management">
     <p class="selection-rule">{{ translate('marAgentModels.imageGenerationPriorityHint') }}</p>
     <div class="mar-table-actions">
-      <MarButton
-        :icon="marIcon('refresh')"
-        :loading="refreshing && ready"
-        :disabled="busy || sorting"
-        @click="load(true)"
-        >{{ translate('marAgentModels.refresh') }}</MarButton
-      >
+      <MarButton :icon="marIcon('refresh')" :disabled="busy || sorting" @click="load">{{
+        translate('marAgentModels.refresh')
+      }}</MarButton>
       <MarButton
         v-if="writable && !sorting"
         :icon="marIcon('queue')"
@@ -268,9 +269,14 @@ onMounted(load);
     <MarTable
       :class="{ 'clickable-rows': !sorting }"
       :data="models"
+      :aria-busy="tableLoading"
       row-key="id"
       @row-click="openDetails"
     >
+      <template v-if="tableLoading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
+      ></template>
       <MarTableColumn width="92" :label="translate('marAgentModels.imageGenerationPriority')">
         <template #default="{ row, $index }">
           <div

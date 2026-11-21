@@ -77,6 +77,37 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await expect(
         reasoningEfforts.getByRole('checkbox', { name: 'medium', exact: true })
       ).toBeChecked();
+      const capabilities = dialog.getByRole('group', {
+        name: locale === 'zh-CN' ? '能力' : 'Capabilities',
+        exact: true
+      });
+      await expect(capabilities.getByRole('checkbox')).toHaveCount(10);
+      const layout = await capabilities.evaluate((group) => {
+        const bounds = group.getBoundingClientRect();
+        const boxes = Array.from(group.querySelectorAll('.mar-ui-checkbox'), (option) =>
+          option.getBoundingClientRect()
+        );
+        const sameRowGaps = boxes.slice(1).flatMap((current, index) => {
+          const previous = boxes[index]!;
+          return Math.abs(current.top - previous.top) < 1 ? [current.left - previous.right] : [];
+        });
+        return {
+          minGap: Math.min(...sameRowGaps),
+          hasNeighbors: sameRowGaps.length > 0,
+          wraps: boxes.some((box) => box.top > boxes[0]!.bottom - 1),
+          fits: boxes.every((box) => box.left >= bounds.left && box.right <= bounds.right + 1)
+        };
+      });
+      expect(layout.fits).toBe(true);
+      expect(layout.hasNeighbors).toBe(true);
+      expect(layout.minGap).toBeGreaterThanOrEqual(12);
+      if (mobile) expect(layout.wraps).toBe(true);
+      const imageInputLabel = locale === 'zh-CN' ? '图片输入' : 'Image input';
+      const imageInput = capabilities.getByRole('checkbox', { name: imageInputLabel, exact: true });
+      await expect(imageInput).not.toBeChecked();
+      await capabilities.getByText(imageInputLabel, { exact: true }).click();
+      await expect(imageInput).toBeChecked();
+      await capabilities.screenshot({ path: testInfo.outputPath('model-capabilities.png') });
       const identityFields = dialog.locator('.model-grid').filter({
         hasText: locale === 'zh-CN' ? '协议' : 'Protocol'
       });
@@ -123,6 +154,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await expect(dialog).toBeHidden();
       expect(writes).toHaveLength(1);
       expect(writes[0]?.socks5Url).toBe(proxy);
+      expect(writes[0]?.inputCapabilities).toEqual(['TEXT', 'IMAGE']);
       await page.getByRole('button', { name: copy, exact: true }).click();
       await expect(input).toHaveValue(proxy);
       await input.fill('');

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import MarIcon from '../../src/view/common/MarIcon.vue';
+import MarIcon from '../../../mar-ui/icons/MarIcon.vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';

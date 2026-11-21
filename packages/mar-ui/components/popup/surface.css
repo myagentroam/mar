@@ -1,8 +1,10 @@
+@import './surface-chrome.css';
+
 .mar-ui-popup {
   --mar-ui-popup-radius: var(--mar-ui-radius-control);
   --mar-ui-popup-width-limit: min(
     var(--mar-ui-popup-max-width, 100vw),
-    var(--mar-ui-popup-width-cap, 100vw)
+    var(--mar-ui-popup-width-cap, var(--mar-ui-popup-default-width-cap, 100vw))
   );
   --mar-ui-popup-height: min(
     var(--mar-ui-popup-max-height, 100dvh),
@@ -18,13 +20,14 @@
   max-height: var(--mar-ui-popup-height);
   margin: 0;
   overflow: visible;
-  border: 1px solid var(--mar-ui-overlay-border);
-  border-radius: var(--mar-ui-popup-radius);
-  background: var(--mar-ui-overlay-surface);
-  box-shadow: var(--mar-ui-overlay-shadow);
   color: var(--mar-ui-text-primary);
   font: inherit;
   font-size: var(--mar-ui-font-size-body);
+}
+
+.mar-ui-select__popup,
+.mar-ui-dropdown__popup {
+  --mar-ui-popup-default-width-cap: max(24rem, var(--mar-ui-popup-min-width, 0px));
 }
 
 .mar-ui-popup__content {

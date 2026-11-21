@@ -9,6 +9,159 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const width of [1280, 390]) {
+  const theme = width < 768 ? 'daylight' : 'vscode-dark-2026';
+  test(`Directory navigation and refresh own separate feedback at ${width}px`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize({ width, height: 860 });
+    let request = Promise.withResolvers<void>();
+    await page.route('**/api/workspace-directories?**', async (route) => {
+      await request.promise;
+      const subdirectory = route.request().url().includes('projects');
+      return route.fulfill({
+        json: {
+          directory: {
+            currentPath: subdirectory ? '/workspace/projects' : '/workspace',
+            homePath: '/workspace',
+            parentPath: subdirectory ? '/workspace' : null,
+            browseRoots: ['/workspace'],
+            selectable: true,
+            entries: subdirectory
+              ? []
+              : [{ name: 'projects', path: '/workspace/projects', selectable: true }],
+            truncated: false
+          }
+        }
+      });
+    });
+    await page.route('**/api/**/html-preview**', (route) =>
+      route.fulfill({ json: { url: '/fixture-preview.html' } })
+    );
+    await page.goto(
+      `${fixture.url}inspector-read-state.html?theme=${theme}&refresh-controls&empty-directory`
+    );
+    await page.getByRole('button', { name: 'Open directory picker' }).click();
+    const dialog = page.getByRole('dialog');
+    const pending = dialog.getByRole('progressbar');
+    const refresh = dialog.getByRole('button', { name: 'Refresh directory' });
+    await expect(pending).toBeVisible();
+    await page.screenshot({
+      path: info.outputPath('directory-loading.png'),
+      animations: 'disabled'
+    });
+    request.resolve();
+    await expect(refresh).toBeEnabled();
+    request = Promise.withResolvers<void>();
+    await dialog.getByRole('button', { name: 'Open projects' }).click();
+    await expect(pending).toBeVisible();
+    await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
+    await page.screenshot({
+      path: info.outputPath('directory-navigating.png'),
+      animations: 'disabled'
+    });
+    request.resolve();
+    await expect(refresh).toBeEnabled();
+    request = Promise.withResolvers<void>();
+    await refresh.click();
+    await expect(refresh).toHaveAttribute('aria-busy', 'true');
+    await expect(pending).toHaveCount(0);
+    await page.screenshot({
+      path: info.outputPath('directory-refreshing.png'),
+      animations: 'disabled'
+    });
+    request.resolve();
+    await expect(refresh).toBeEnabled();
+  });
+
+  test(`Share records distinguish first read, failure and empty at ${width}px`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize({ width, height: 860 });
+    const first = Promise.withResolvers<void>();
+    const retry = Promise.withResolvers<void>();
+    const recovery = Promise.withResolvers<void>();
+    let reads = 0;
+    await page.route('**/api/agent-sessions/session/shares?**', async (route) => {
+      if (++reads === 1) {
+        await first.promise;
+        return route.fulfill({ status: 503, json: { error: 'UNAVAILABLE' } });
+      }
+      if (reads === 2) {
+        await retry.promise;
+        return route.fulfill({ status: 503, json: { error: 'UNAVAILABLE' } });
+      }
+      await recovery.promise;
+      return route.fulfill({ json: { shares: [] } });
+    });
+    await page.goto(`${fixture.url}inspector-read-state.html?theme=${theme}&refresh-controls`);
+    await page.getByRole('button', { name: 'Open share dialog' }).click();
+    const dialog = page.getByRole('dialog');
+    const empty = dialog.getByText('No shared links yet.');
+    const progress = dialog.getByRole('progressbar');
+    await expect(progress).toBeVisible();
+    await expect(empty).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath('share-loading.png'), animations: 'disabled' });
+    first.resolve();
+    const retryButton = dialog.getByRole('button', { name: /Retry/ });
+    await expect(retryButton).toBeVisible();
+    await expect(empty).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath('share-failed.png'), animations: 'disabled' });
+    await retryButton.focus();
+    await retryButton.click();
+    const busyRetry = dialog.getByRole('button', { name: /^Loading…?$/ });
+    await expect(busyRetry).toBeFocused();
+    await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+    await expect(busyRetry.locator('.mar-read-loading-indicator')).toBeVisible();
+    await expect(progress).toHaveCount(0);
+    await page.keyboard.press('Enter');
+    expect(reads).toBe(2);
+    await page.screenshot({ path: info.outputPath('share-retrying.png'), animations: 'disabled' });
+    retry.resolve();
+    await expect(retryButton).toBeFocused();
+    await retryButton.click();
+    recovery.resolve();
+    await expect(empty).toBeVisible();
+    await page.screenshot({ path: info.outputPath('share-empty.png'), animations: 'disabled' });
+  });
+}
+
+test('Share record retry keeps the region typography when a record is already visible', async ({
+  page
+}) => {
+  await page.route('**/api/agent-sessions/session/shares?**', (route) =>
+    route.fulfill({ status: 503, json: { error: 'UNAVAILABLE' } })
+  );
+  await page.route('**/api/agent-sessions/session/shares', (route) =>
+    route.fulfill({
+      json: {
+        share: {
+          id: 'share',
+          sessionId: 'session',
+          nodeId: 'node',
+          workspaceId: 'workspace',
+          createdAt: Date.now(),
+          expiresAt: null
+        },
+        password: '123456'
+      }
+    })
+  );
+  await page.goto(`${fixture.url}inspector-read-state.html?theme=daylight&refresh-controls`);
+  await page.getByRole('button', { name: 'Open share dialog' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: /Retry/ })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Create share' }).click();
+  await expect(dialog.getByRole('link').filter({ hasText: '/share/share' })).toBeVisible();
+  const region = dialog.locator('.mar-region-status');
+  const retry = region.getByRole('button', { name: /Retry/ });
+  await expect(retry).toHaveCSS(
+    'font-size',
+    await region.evaluate((element) => getComputedStyle(element).fontSize)
+  );
+  await expect(retry).toHaveCSS('border-top-width', '0px');
+});
+
 async function expectReadableState(button: Locator) {
   await expect(button).toBeVisible();
   const layout = await button.evaluate((element) => {
@@ -198,7 +351,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           if (action.panel === 'Search') {
             await expect(panel.locator('.mar-ui-input [data-mar-icon="search"]')).toBeVisible();
             await panel.getByRole('textbox').fill('workspace');
+            await expect(panel.locator('.file-search-empty')).toBeVisible();
           }
+          if (action.panel === 'Git History')
+            await expect(panel.locator('.mar-region-status')).toHaveText('No Git commit history.');
           for (failed of [false, true]) {
             pending = new Promise<void>((resolve) => {
               release = resolve;
@@ -412,12 +568,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           await expect(retries).toHaveCount(0);
 
           await page.getByRole('button', { name: 'Fail Files Watch', exact: true }).click();
-          const watchRetry = files.locator('button.watch-status');
+          const watchRetry = files.locator('button.files-read-retry');
           await expectReadableState(watchRetry);
           await watchRetry.click();
           await expect(watchRetry).toHaveCount(0);
           await page.getByRole('button', { name: 'Fail Files refresh', exact: true }).click();
-          const refreshRetry = files.locator('button.watch-status');
+          const refreshRetry = files.locator('button.files-read-retry');
           await expectReadableState(refreshRetry);
           await refreshRetry.click();
           await expect(refreshRetry).toHaveCount(0);

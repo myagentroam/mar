@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import { marIcon } from '@myagentroam/web-core/icons';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { SettingsSection, UserSessionSummary, QuickPrompt } from '@/model/workbench';
 import {
   organizationPath,
@@ -72,8 +72,8 @@ interface OAuthBinding {
 }
 const oauthBindings = ref<readonly OAuthBinding[]>([]);
 const oauthLoading = ref(false);
-const oauthRefreshing = ref(false);
 let oauthLoadSequence = 0;
+let oauthActive = false;
 watch(
   () => [props.section, props.edition] as const,
   async ([section, edition]) => {
@@ -90,38 +90,46 @@ watch(
 );
 watch(
   () => [props.section, props.edition] as const,
-  async ([section, edition]) => {
-    if (section !== 'account' || edition !== 'ENTERPRISE') return;
-    await loadOAuthBindings();
+  ([section, edition]) => {
+    oauthActive = section === 'account' && edition === 'ENTERPRISE';
+    if (oauthActive) void loadOAuthBindings();
+    else {
+      oauthLoadSequence++;
+      oauthLoading.value = false;
+      oauthBindings.value = [];
+    }
   },
   { immediate: true }
 );
-async function loadOAuthBindings(refresh = false): Promise<void> {
+onBeforeUnmount(() => {
+  oauthActive = false;
+  oauthLoadSequence++;
+});
+async function loadOAuthBindings(): Promise<void> {
+  if (!oauthActive) return;
   const sequence = ++oauthLoadSequence;
   oauthLoading.value = true;
-  oauthRefreshing.value = refresh;
   try {
     const bindings = (
       await props.request<{ bindings: readonly OAuthBinding[] }>('/api/oauth-bindings')
     ).bindings;
     if (sequence === oauthLoadSequence) oauthBindings.value = bindings;
   } catch (error) {
-    if (sequence === oauthLoadSequence)
+    if (sequence === oauthLoadSequence) {
+      oauthBindings.value = [];
       showMessage(
         oauthErrorMessage(error, translate('generated.settingsContent.unableToLoadOAuthBindings')),
         'error',
         error
       );
-  } finally {
-    if (sequence === oauthLoadSequence) {
-      oauthLoading.value = false;
-      oauthRefreshing.value = false;
     }
+  } finally {
+    if (sequence === oauthLoadSequence) oauthLoading.value = false;
   }
 }
 async function refreshOAuthBindings(): Promise<void> {
   if (oauthLoading.value) return;
-  await loadOAuthBindings(true);
+  await loadOAuthBindings();
 }
 async function bindOAuth(provider: OAuthBinding): Promise<void> {
   try {
@@ -186,19 +194,18 @@ function createNodeToken(): void {
             v-tooltip="translate('generated.settingsContent.refresh')"
             class="mar-icon-action"
             :icon="marIcon('refresh')"
-            :loading="oauthRefreshing"
             :disabled="oauthLoading"
             :aria-label="translate('generated.settingsContent.refresh')"
             text
             @click="refreshOAuthBindings"
           />
         </div>
-        <MarTable
-          v-mar-loading:region="oauthLoading && !oauthRefreshing"
-          :aria-busy="oauthLoading"
-          :data="oauthBindings"
-          row-key="providerKey"
-        >
+        <MarTable :aria-busy="oauthLoading" :data="oauthBindings" row-key="providerKey">
+          <template v-if="oauthLoading" #loading>
+            <span role="progressbar" :aria-label="translate('common.loading')">
+              <MarBusyIndicator class="mar-read-loading-indicator" />
+            </span>
+          </template>
           <MarTableColumn
             prop="name"
             :label="translate('generated.settingsContent.identityProvider')"

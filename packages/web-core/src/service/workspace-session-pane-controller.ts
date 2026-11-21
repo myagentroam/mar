@@ -50,7 +50,7 @@ import {
 } from '../util/conversation-domain.js';
 import { showMessage } from './message-feedback-service.js';
 import { translate } from './locale-preference-service.js';
-import { marIcon } from '../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import type { ConversationItem, ConversationTurn, Session } from '../model/workbench.js';
 import { createWorkspaceSessionPaneState } from './workspace-session-pane-state.js';
 import {

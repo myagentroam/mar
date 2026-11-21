@@ -3,7 +3,7 @@ import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, ref } from 'vue';
 import type { NodeSummary } from '@myagentroam/web-core/node-model';
 import CorePanel from '@myagentroam/web-core/ResourceManagementPanel.vue';

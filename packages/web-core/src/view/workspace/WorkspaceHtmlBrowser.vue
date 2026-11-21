@@ -7,7 +7,7 @@ import { WORKBENCH_HTTP_KEY } from '../../service/workbench-http-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { filePreviewErrorMessage } from '../../util/error-presentation.js';
 import HtmlPreviewFrame from './HtmlPreviewFrame.vue';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{
   nodeId: string;

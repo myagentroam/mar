@@ -1,12 +1,14 @@
 <script setup lang="ts">
+import '../session/runner-brand-icon.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
@@ -32,7 +34,8 @@ const props = defineProps<{
 const form = ref<FormInstance>();
 const activeScope = ref<Scope>('COMMON');
 const loading = ref(true);
-const saving = ref(false);
+const operation = ref<'save' | 'clear'>();
+const retrying = ref(false);
 const failed = ref(false);
 const instructions = ref<Instructions>({
   common: '',
@@ -133,7 +136,9 @@ function validateContent(): void {
   void form.value?.validateField('content').catch(() => undefined);
 }
 
-async function load(): Promise<void> {
+async function load(retry = false): Promise<void> {
+  if (retry && loading.value) return;
+  retrying.value = retry;
   loading.value = true;
   failed.value = false;
   try {
@@ -141,20 +146,20 @@ async function load(): Promise<void> {
       await props.request<{ instructions: Instructions }>('/api/personal-instructions')
     ).instructions;
     formState.value.content = instructions.value[activeItem.value.property];
-  } catch (error) {
+  } catch {
     failed.value = true;
-    showMessage(translate('personalInstructions.loadFailed'), 'error', error);
   } finally {
     loading.value = false;
+    retrying.value = false;
   }
 }
 
 async function save(): Promise<void> {
-  if (saving.value) return;
+  if (operation.value !== undefined) return;
   const scope = activeScope.value;
   const property = activeItem.value.property;
   const content = formState.value.content;
-  saving.value = true;
+  operation.value = 'save';
   try {
     const valid = await form.value?.validate().catch(() => false);
     if (!valid) return;
@@ -171,7 +176,7 @@ async function save(): Promise<void> {
       error
     );
   } finally {
-    saving.value = false;
+    operation.value = undefined;
   }
 }
 
@@ -189,17 +194,22 @@ function mergeSubmittedScope(
 }
 
 async function clear(): Promise<void> {
-  if (saving.value) return;
+  if (operation.value !== undefined) return;
   const scope = activeScope.value;
   const property = activeItem.value.property;
   const content = formState.value.content;
-  saving.value = true;
   try {
     await MarMessageBox.confirm(
       translate('personalInstructions.clearConfirmation'),
       translate('personalInstructions.clear'),
       { icon: marIcon('warning'), type: 'warning' }
     );
+  } catch {
+    return;
+  }
+  if (operation.value !== undefined) return;
+  operation.value = 'clear';
+  try {
     const response = await props.request<{ instructions: Instructions }>(
       `/api/personal-instructions/${scope}`,
       { method: 'DELETE' }
@@ -215,14 +225,14 @@ async function clear(): Promise<void> {
         error
       );
   } finally {
-    saving.value = false;
+    operation.value = undefined;
   }
 }
 </script>
 
 <template>
   <section
-    v-mar-loading:page="loading"
+    v-mar-loading:page="loading && !retrying"
     class="personal-instructions settings-panel"
     :aria-busy="loading"
   >
@@ -258,15 +268,25 @@ async function clear(): Promise<void> {
         <span>{{ translate(item.label) }}</span>
       </MarCheckTag>
     </div>
-    <p
-      v-if="!loading && failed"
+    <div
+      v-if="failed || retrying"
       id="personal-instructions-panel"
       role="tabpanel"
       :aria-labelledby="`instruction-scope-${activeScope}`"
       class="instruction-state"
     >
-      {{ translate('personalInstructions.loadFailed') }}
-    </p>
+      <span v-if="!retrying" role="status">{{ translate('personalInstructions.loadFailed') }}</span>
+      <MarButton
+        link
+        :aria-disabled="retrying || undefined"
+        :aria-busy="retrying || undefined"
+        :aria-label="retrying ? translate('common.loading') : undefined"
+        @click="load(true)"
+      >
+        <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+        <template v-else>{{ translate('common.retry') }}</template>
+      </MarButton>
+    </div>
     <MarForm
       v-else
       id="personal-instructions-panel"
@@ -294,10 +314,21 @@ async function clear(): Promise<void> {
         ></textarea>
       </MarFormItem>
       <div class="instruction-actions">
-        <MarButton icon="delete" :disabled="loading" :loading="saving" @click="clear">
+        <MarButton
+          icon="delete"
+          :disabled="loading || operation !== undefined"
+          :loading="operation === 'clear'"
+          @click="clear"
+        >
           {{ translate('personalInstructions.clear') }}
         </MarButton>
-        <MarButton icon="check" type="primary" :disabled="loading" :loading="saving" @click="save">
+        <MarButton
+          icon="check"
+          type="primary"
+          :disabled="loading || operation !== undefined"
+          :loading="operation === 'save'"
+          @click="save"
+        >
           {{ translate('common.save') }}
         </MarButton>
       </div>
@@ -414,6 +445,10 @@ h2 {
 }
 .instruction-state {
   flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }

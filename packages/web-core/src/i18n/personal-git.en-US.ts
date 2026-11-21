@@ -48,6 +48,7 @@ export const personalGitEnUS = {
   cancel: 'Cancel',
   close: 'Close',
   reload: 'Reload',
+  loadFailed: 'Unable to load Git configuration.',
   saved: 'Git configuration saved.',
   invalid: 'Check the credential fields.',
   nameInvalid: 'Enter a credential name.',

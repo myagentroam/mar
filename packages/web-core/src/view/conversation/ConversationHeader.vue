@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import '../session/runner-brand-icon.css';
 import { MarDropdown } from '@myagentroam/mar-ui/dropdown';
 import { computed, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerId, Session } from '../../model/workbench.js';
 import { sessionIsDraft } from '../../util/session-presentation.js';
-import MarIcon from '../common/MarIcon.vue';
-import SessionNavigationMenu from '../common/SessionNavigationMenu.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import SessionNavigationMenu from '../session/SessionNavigationMenu.vue';
 
 const props = defineProps<{
   readonly session: Session | undefined;
@@ -199,7 +200,7 @@ const asideLabel = computed(() =>
 }
 
 .conversation-header-tool .mar-icon {
-  font-size: var(--mar-action-icon-size, 18px);
+  font-size: var(--mar-ui-action-icon-size, 18px);
 }
 
 .conversation-header-tool-mobile-only {

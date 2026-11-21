@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { MarTabs, MarTabPane } from '@myagentroam/mar-ui/tabs';
 import type { SessionGroup } from '@myagentroam/protocol';
@@ -91,6 +92,8 @@ function runTime(run: RecentRun): string {
           </p>
           <WorkbenchRecentSessionList
             :runs="visibleRuns"
+            :snapshot-state="service.snapshotState.value"
+            :retry-snapshot="service.load"
             :has-unread-session="service.hasUnreadSession"
             :session-group="sessionGroup"
             :mobile-mode="mobileMode"

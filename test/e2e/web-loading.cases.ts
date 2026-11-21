@@ -14,7 +14,7 @@ function gate() {
   return { promise, release };
 }
 
-async function expectCenteredInNodeSidebar(state: Locator): Promise<void> {
+async function expectTopCenteredInNodeSidebar(state: Locator): Promise<void> {
   await expect
     .poll(() =>
       state.evaluate((element) => {
@@ -23,14 +23,15 @@ async function expectCenteredInNodeSidebar(state: Locator): Promise<void> {
         const panel = sidebar.getBoundingClientRect();
         const range = document.createRange();
         range.selectNodeContents(element);
-        const text = range.getBoundingClientRect();
-        return Math.max(
-          Math.abs(text.x + text.width / 2 - (panel.x + panel.width / 2)),
-          Math.abs(text.y + text.height / 2 - (panel.y + panel.height / 2))
+        const content = range.getBoundingClientRect();
+        return (
+          content.top >= panel.top &&
+          content.top - panel.top < 24 &&
+          Math.abs(content.x + content.width / 2 - (panel.x + panel.width / 2)) <= 3
         );
       })
     )
-    .toBeLessThanOrEqual(3);
+    .toBe(true);
 }
 
 async function openWorkspace(page: Page, mobile: boolean): Promise<void> {
@@ -96,9 +97,10 @@ for (const { theme, mobile } of [
         await page.getByRole('button', { name: '进入控制台' }).click();
         const work = page.getByRole('button', { name: '工作', exact: true });
         const ring = page.getByRole('progressbar', { name: '正在恢复工作台' });
-        const readingNodes = page.getByText('正在读取节点…', { exact: true });
-        const unavailableNodes = page.getByText('节点列表暂不可用', { exact: true });
-        const noNodes = page.getByText('尚无节点', { exact: true });
+        const treeStatus = page.locator('.workspace-tree').getByRole('status');
+        const readingNodes = treeStatus.filter({ hasText: /^正在读取节点…$/ });
+        const unavailableNodes = treeStatus.filter({ hasText: /^节点列表暂不可用$/ });
+        const noNodes = treeStatus.filter({ hasText: /^尚无节点$/ });
         await expect(work).toBeVisible();
         await expect(ring).toBeVisible();
         if (mobile) {
@@ -107,7 +109,8 @@ for (const { theme, mobile } of [
           await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
         } else {
           await expect(readingNodes).toBeVisible();
-          await expectCenteredInNodeSidebar(readingNodes);
+          await expect(readingNodes.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+          await expectTopCenteredInNodeSidebar(readingNodes);
         }
         await expect(noNodes).toBeHidden();
         await expect(page.getByRole('button', { name: '收起侧栏' })).toHaveCount(0);
@@ -128,7 +131,7 @@ for (const { theme, mobile } of [
           await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
         } else {
           await expect(unavailableNodes).toBeVisible();
-          await expectCenteredInNodeSidebar(unavailableNodes);
+          await expectTopCenteredInNodeSidebar(unavailableNodes);
         }
         await expect(noNodes).toBeHidden();
         await expect(retry).not.toHaveClass(/mar-ui-button--inline|mar-ui-button--primary/);
@@ -159,7 +162,7 @@ for (const { theme, mobile } of [
         }
         await expect(noNodes).toBeVisible();
         await expect(noNodes).toBeInViewport({ ratio: 1 });
-        await expectCenteredInNodeSidebar(noNodes);
+        await expectTopCenteredInNodeSidebar(noNodes);
         await page.screenshot({ path: testInfo.outputPath('work-startup-empty.png') });
         expect(reads).toBe(3);
       } finally {
@@ -203,7 +206,7 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     });
     expect(actual.color).toBe(actual.expected);
     expect(actual.width / actual.rootSize).toBeCloseTo(1.25);
-    expect(actual.animation).toBe('mar-busy-indicator-spin');
+    expect(actual.animation).toBe('mar-loading-ring-spin');
     await page.screenshot({ path: testInfo.outputPath(`page-loading-${theme}.png`) });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(ring).toHaveCSS('animation-name', 'none');

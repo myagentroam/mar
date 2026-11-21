@@ -120,10 +120,14 @@ test('the teleported tree follows a custom floating surface and outline', async 
   expect(resolvedColorToHex(await background(menu))).toBe('#253649');
   await expect(menu).toHaveCSS('border-top-color', 'rgb(107, 129, 153)');
   await expect(menu).toHaveCSS('box-shadow', /0px 4px 12px/u);
-  await expect(menu.locator('.mar-ui-dropdown-item--divided')).toHaveCSS(
-    'border-top-color',
-    'rgb(47, 57, 73)'
-  );
+  const divider = menu.locator('.mar-ui-dropdown-item--divided');
+  await expect(divider).toHaveCount(1);
+  expect(
+    await divider.evaluate((element) => {
+      const line = getComputedStyle(element, '::before');
+      return { color: line.backgroundColor, height: line.height };
+    })
+  ).toEqual({ color: 'rgb(47, 57, 73)', height: '1px' });
 });
 
 test('preserves Node sibling order for 100 returned rows, including an active idle branch', async ({
@@ -142,17 +146,54 @@ test('preserves Node sibling order for 100 returned rows, including an active id
   expect(titles.at(-1)).toBe('Idle 095');
 });
 
-test('retries a failed tree read, reaches ready, and closes on Escape', async ({ page }) => {
+test('retries a failed tree read, reaches ready, and closes on Escape', async ({ page }, info) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const { dialog, tree } = await openTree(page, 'dark', 390);
   await setFixtureState(page, 'fail');
   const error = tree.getByRole('status');
   await expect(error).toBeVisible();
   const retry = error.getByRole('button');
   await expect(retry).toBeVisible();
+  await expect(retry).toHaveCSS(
+    'font-size',
+    await error.evaluate((element) => getComputedStyle(element).fontSize)
+  );
+  await expect(retry).toHaveCSS('border-top-width', '0px');
+  await page.screenshot({
+    path: info.outputPath('session-tree-failed.png'),
+    animations: 'disabled'
+  });
+  const retryBounds = await retry.boundingBox();
+  expect(retryBounds).not.toBeNull();
   await retry.click();
   await expect(page.getByTestId('retry-count')).toHaveText('1');
   await expect(tree).toHaveAttribute('aria-busy', 'true');
-  await expect(tree.locator('.session-tree-loading .mar-busy-indicator')).toBeVisible();
+  const busyRetry = tree.getByRole('button', { name: 'Loading', exact: true });
+  const ring = busyRetry.locator('.mar-read-loading-indicator');
+  await expect(busyRetry).toBeFocused();
+  await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+  await expect(ring).toBeVisible();
+  await expect.poll(() => busyRetry.boundingBox()).toEqual(retryBounds);
+  const ringBounds = (await ring.boundingBox())!;
+  expect(
+    Math.abs(ringBounds.x + ringBounds.width / 2 - (retryBounds!.x + retryBounds!.width / 2))
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(ringBounds.y + ringBounds.height / 2 - (retryBounds!.y + retryBounds!.height / 2))
+  ).toBeLessThan(1);
+  await expect(error.getByText('Session tree synchronization is unavailable.')).toBeHidden();
+  await expect(tree.locator('.mar-busy-indicator')).toHaveCount(1);
+  await page.screenshot({
+    path: info.outputPath('session-tree-retrying.png'),
+    animations: 'disabled'
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('retry-count')).toHaveText('1');
+  await setFixtureState(page, 'fail');
+  await expect(retry).toBeFocused();
+  await expect(retry).not.toHaveAttribute('aria-busy', 'true');
+  await retry.click();
+  await expect(page.getByTestId('retry-count')).toHaveText('2');
   await setFixtureState(page, 'ready');
   await expect(tree.locator('.session-tree-row')).toHaveCount(100);
 
@@ -160,6 +201,32 @@ test('retries a failed tree read, reaches ready, and closes on Escape', async ({
   await expect(dialog).toBeHidden();
   await expect(page.getByTestId('close-restored-focus')).toHaveText('true');
   await expect(page.getByTestId('tree-anchor')).toBeFocused();
+});
+
+test('keeps the Retry label on one line at 320px with enlarged text', async ({ page }, info) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const { tree } = await openTree(page, 'dark', 320);
+  await page.locator('html').evaluate((element) => {
+    element.style.setProperty('--mar-font-size-meta', '24px');
+  });
+  await setFixtureState(page, 'fail');
+  const retry = tree.getByRole('button', { name: 'Retry', exact: true });
+  await expect(retry).toHaveCSS('font-size', '24px');
+  const label = retry.getByText('Retry', { exact: true });
+  expect(
+    await label.evaluate((element) => {
+      const text = document.createRange();
+      text.selectNodeContents(element);
+      return new Set(Array.from(text.getClientRects(), ({ top }) => top)).size;
+    })
+  ).toBe(1);
+  await page.screenshot({ path: info.outputPath('session-tree-narrow-retry.png') });
+  const bounds = await retry.boundingBox();
+  expect(bounds).not.toBeNull();
+  await retry.click();
+  const busy = tree.getByRole('button', { name: 'Loading', exact: true });
+  await expect(busy).toBeFocused();
+  await expect.poll(() => busy.boundingBox()).toEqual(bounds);
 });
 
 test('keeps mobile popovers inside equal viewport gutters', async ({ page }, testInfo) => {
@@ -186,6 +253,12 @@ test('keeps mobile popovers inside equal viewport gutters', async ({ page }, tes
         animations: 'disabled'
       });
   }
+  await page.setViewportSize({ width: 1280, height: 850 });
+  const anchor = page.getByTestId('tree-anchor');
+  const popover = page.locator('.session-tree-popover');
+  const anchorBounds = await anchor.boundingBox();
+  expect(anchorBounds).not.toBeNull();
+  await expect.poll(async () => (await popover.boundingBox())?.x).toBe(anchorBounds?.x);
 });
 
 test('reveals row actions on hover, focus, and while its menu is open', async ({ page }) => {

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import '../../styles/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
@@ -22,8 +24,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { MarMessageBox } from '../../service/message-box-service.js';
@@ -71,7 +72,7 @@ import { codexUsageTokenCountLabel, errorMessage } from '../../util/workbench-pr
 import ImageGenerationManagement from './ImageGenerationManagement.vue';
 import MarAgentCompactSettings from './MarAgentCompactSettings.vue';
 import PromptCompletionSettings from './PromptCompletionSettings.vue';
-import ChatGPTManageUsageButton from '../common/ChatGPTManageUsageButton.vue';
+import ChatGPTManageUsageButton from './ChatGPTManageUsageButton.vue';
 
 type ProtocolChoice = ReturnType<typeof modelProtocolChoice>;
 type TransportChoice = 'WEBSOCKET' | 'HTTP_2' | 'HTTP_1_1';
@@ -182,25 +183,16 @@ const userModels = createModelManagementCollectionService(
   '/api/mar-agent/models',
   () => true
 );
-const { models, loading, ready: modelsReady, savingOrder } = managedModels;
+const { models, loading, savingOrder } = managedModels;
 const {
   models: personalModels,
   loading: personalOrderLoading,
-  ready: personalOrderReady,
   savingOrder: savingPersonalOrder
 } = userModels;
 const credentials = ref<readonly CodexCredentialSummary[]>([]);
 const credentialLoading = ref(false);
 const credentialsLoaded = ref(false);
-const initialLoading = computed(() =>
-  activeTab.value === 'models'
-    ? loading.value && !modelsReady.value
-    : activeTab.value === 'modelOrder'
-      ? personalOrderLoading.value && !personalOrderReady.value
-      : activeTab.value === 'codexCredentials'
-        ? credentialLoading.value && !credentialsLoaded.value
-        : false
-);
+let credentialLoadSequence = 0;
 const saving = ref(false);
 const {
   sorting,
@@ -621,14 +613,22 @@ async function loadPersonalModels(showLoading = true) {
 }
 
 async function loadCredentials(showLoading = true): Promise<void> {
+  const current = ++credentialLoadSequence;
   if (showLoading) credentialLoading.value = true;
   try {
-    credentials.value = await credentialService.listCredentials();
+    const next = await credentialService.listCredentials();
+    if (current !== credentialLoadSequence) return;
+    credentials.value = next;
     credentialsLoaded.value = true;
   } catch (error) {
+    if (current !== credentialLoadSequence) return;
+    if (showLoading) {
+      credentials.value = [];
+      credentialsLoaded.value = false;
+    }
     showCodexRequestError(error, 'marAgentModels.codexLoadFailed');
   } finally {
-    if (showLoading) credentialLoading.value = false;
+    if (current === credentialLoadSequence) credentialLoading.value = false;
   }
 }
 
@@ -1501,6 +1501,7 @@ onMounted(() => {
   void (canManageModels.value ? load() : loadPersonalModels());
 });
 onBeforeUnmount(() => {
+  credentialLoadSequence += 1;
   modelDialogSequence += 1;
   modelTransportTest.dispose();
   credentialDetailSequence += 1;
@@ -1517,10 +1518,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section
-    v-mar-loading:page="initialLoading"
-    class="mar-management-page mar-agent-model-management"
-  >
+  <section class="mar-management-page mar-agent-model-management">
     <MarTabs v-model="activeTab" class="management-tabs">
       <MarTabPane
         v-if="canManageModels"
@@ -1528,13 +1526,9 @@ onBeforeUnmount(() => {
         name="models"
       >
         <div class="mar-table-actions">
-          <MarButton
-            :icon="marIcon('refresh')"
-            :loading="loading && modelsReady"
-            :disabled="sorting"
-            @click="load()"
-            >{{ translate('marAgentModels.refresh') }}</MarButton
-          >
+          <MarButton :icon="marIcon('refresh')" :disabled="loading || sorting" @click="load()">{{
+            translate('marAgentModels.refresh')
+          }}</MarButton>
           <MarButton v-if="writable && !sorting" :icon="marIcon('queue')" @click="startSorting">{{
             translate('marAgentModels.adjustOrder')
           }}</MarButton>
@@ -1564,8 +1558,13 @@ onBeforeUnmount(() => {
         <MarTable
           :class="{ 'clickable-rows': !sorting }"
           :data="models"
+          :aria-busy="loading"
           @row-click="openModelDetails"
         >
+          <template v-if="loading" #loading
+            ><span role="progressbar" :aria-label="translate('common.loading')"
+              ><MarBusyIndicator class="mar-read-loading-indicator" /></span
+          ></template>
           <MarTableColumn v-if="sorting" :label="translate('marAgentModels.order')" width="92">
             <template #default="{ row, $index }">
               <div
@@ -1679,7 +1678,7 @@ onBeforeUnmount(() => {
         <div class="mar-table-actions">
           <MarButton
             :icon="marIcon('refresh')"
-            :loading="credentialLoading && credentialsLoaded"
+            :disabled="credentialLoading"
             @click="loadCredentials()"
             >{{ translate('marAgentModels.refresh') }}</MarButton
           >
@@ -1691,7 +1690,16 @@ onBeforeUnmount(() => {
             >{{ translate('marAgentModels.codexAddCredential') }}</MarButton
           >
         </div>
-        <MarTable class="clickable-rows" :data="credentials" @row-click="openCredentialDetails">
+        <MarTable
+          class="clickable-rows"
+          :data="credentials"
+          :aria-busy="credentialLoading"
+          @row-click="openCredentialDetails"
+        >
+          <template v-if="credentialLoading" #loading
+            ><span role="progressbar" :aria-label="translate('common.loading')"
+              ><MarBusyIndicator class="mar-read-loading-indicator" /></span
+          ></template>
           <MarTableColumn
             prop="name"
             :label="translate('marAgentModels.credentialName')"
@@ -1806,8 +1814,7 @@ onBeforeUnmount(() => {
         <div class="mar-table-actions">
           <MarButton
             :icon="marIcon('refresh')"
-            :loading="personalOrderLoading && personalOrderReady"
-            :disabled="personalSorting"
+            :disabled="personalOrderLoading || personalSorting"
             @click="loadPersonalModels()"
             >{{ translate('marAgentModels.refresh') }}</MarButton
           >
@@ -1833,7 +1840,11 @@ onBeforeUnmount(() => {
             >{{ translate('marAgentModels.cancel') }}</MarButton
           >
         </div>
-        <MarTable :data="personalModels">
+        <MarTable :data="personalModels" :aria-busy="personalOrderLoading">
+          <template v-if="personalOrderLoading" #loading
+            ><span role="progressbar" :aria-label="translate('common.loading')"
+              ><MarBusyIndicator class="mar-read-loading-indicator" /></span
+          ></template>
           <MarTableColumn
             v-if="personalSorting"
             :label="translate('marAgentModels.order')"
@@ -2039,45 +2050,47 @@ onBeforeUnmount(() => {
           <MarSwitch v-model="draft.enabled" />
         </MarFormItem>
         <MarFormItem :label="translate('marAgentModels.capabilities')">
-          <MarCheckbox
-            :model-value="draft.inputCapabilities.includes('IMAGE')"
-            @change="
-              (value: boolean | string | number) =>
-                (draft.inputCapabilities = Boolean(value) ? ['TEXT', 'IMAGE'] : ['TEXT'])
-            "
-            >{{ translate('marAgentModels.image') }}</MarCheckbox
-          >
-          <MarCheckbox v-model="draft.conversationModel">{{
-            translate('marAgentModels.conversationModel')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.subagentModel">{{
-            translate('marAgentModels.subagentModel')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.unifiedCompact">{{
-            translate('marAgentModels.unifiedCompact')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.titleGeneration">{{
-            translate('marAgentModels.titleGeneration')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.codeMode">{{
-            translate('marAgentModels.codeMode')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.gcEnabled">{{
-            translate('marAgentModels.gcEnabled')
-          }}</MarCheckbox>
-          <MarCheckbox v-model="draft.useResourceUrl">{{
-            translate('marAgentModels.useResourceUrl')
-          }}</MarCheckbox>
-          <MarCheckbox
-            v-model="draft.hostedWebSearch"
-            :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
-            >{{ translate('marAgentModels.webSearch') }}</MarCheckbox
-          >
-          <MarCheckbox
-            v-model="draft.responsesPreviousResponseId"
-            :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
-            >{{ translate('marAgentModels.responsesContinuation') }}</MarCheckbox
-          >
+          <div class="model-capabilities">
+            <MarCheckbox
+              :model-value="draft.inputCapabilities.includes('IMAGE')"
+              @change="
+                (value: boolean | string | number) =>
+                  (draft.inputCapabilities = Boolean(value) ? ['TEXT', 'IMAGE'] : ['TEXT'])
+              "
+              >{{ translate('marAgentModels.image') }}</MarCheckbox
+            >
+            <MarCheckbox v-model="draft.conversationModel">{{
+              translate('marAgentModels.conversationModel')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.subagentModel">{{
+              translate('marAgentModels.subagentModel')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.unifiedCompact">{{
+              translate('marAgentModels.unifiedCompact')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.titleGeneration">{{
+              translate('marAgentModels.titleGeneration')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.codeMode">{{
+              translate('marAgentModels.codeMode')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.gcEnabled">{{
+              translate('marAgentModels.gcEnabled')
+            }}</MarCheckbox>
+            <MarCheckbox v-model="draft.useResourceUrl">{{
+              translate('marAgentModels.useResourceUrl')
+            }}</MarCheckbox>
+            <MarCheckbox
+              v-model="draft.hostedWebSearch"
+              :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
+              >{{ translate('marAgentModels.webSearch') }}</MarCheckbox
+            >
+            <MarCheckbox
+              v-model="draft.responsesPreviousResponseId"
+              :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
+              >{{ translate('marAgentModels.responsesContinuation') }}</MarCheckbox
+            >
+          </div>
         </MarFormItem>
         <MarFormItem :label="translate('marAgentModels.reasoningEfforts')">
           <MarCheckboxGroup
@@ -2990,6 +3003,11 @@ onBeforeUnmount(() => {
 .model-enabled {
   padding-block: 4px;
   border-block: 1px solid var(--mar-border-subtle);
+}
+.model-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1rem;
 }
 .order-handle {
   display: inline-flex;

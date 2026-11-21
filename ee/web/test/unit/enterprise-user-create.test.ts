@@ -18,10 +18,11 @@ vi.mock(
   '../../src/view/settings/EnterpriseUserManagementPage.vue',
   async () => import('../../src/view/settings/EnterpriseUserManagementPage.vue?unit-render')
 );
-vi.mock(
-  '@myagentroam/web-core/LoadingPanel.vue',
-  async () => import('../../../../packages/web-core/src/view/common/LoadingPanel.vue?unit-render')
-);
+vi.mock('@myagentroam/mar-ui/loading-panel', async () => ({
+  MarLoadingPanel: (
+    await import('../../../../packages/mar-ui/components/loading/MarLoadingPanel.vue?unit-render')
+  ).default
+}));
 vi.mock('../../../../packages/web-core/src/service/message-feedback-service.js', () => ({
   showMessage: vi.fn()
 }));
@@ -368,6 +369,39 @@ describe('Registered enterprise users creation lifecycle', () => {
 });
 
 describe('Registered enterprise users edit lifecycle', () => {
+  it('ignores an older organization read after a completed write refreshes the list', async () => {
+    const fixture = await mount(undefined, undefined, async () => {});
+    const oldOrganizations = deferred<never>();
+    fixture.request.mockImplementationOnce(() => oldOrganizations.promise);
+    const refresh = trigger(fixture.action('Refresh'), 'onClick');
+    await flushComponent();
+    expect(fixture.view.findAll('MarTable')[0]?.props['aria-busy']).toBe(true);
+
+    await fixture.edit(0);
+    await fixture.save();
+    expect(fixture.reads()).toHaveLength(2);
+    expect(fixture.view.findAll('MarTable')[0]?.props['aria-busy']).toBe(false);
+    expect(fixture.action('Refresh').props.disabled).toBe(false);
+
+    oldOrganizations.reject(new Error('superseded organization read'));
+    await refresh;
+    expect(fixture.reads()).toHaveLength(2);
+    expect(showMessage).toHaveBeenCalledExactlyOnceWith(expect.any(String), 'success');
+  });
+
+  it('reports only the list failure when both user and organization reads fail', async () => {
+    const fixture = await mount(undefined, undefined, async () => {});
+    const organizationError = new Error('Organization read failed');
+    const userError = new Error('User read failed');
+    fixture.request.mockRejectedValueOnce(organizationError).mockRejectedValueOnce(userError);
+
+    await trigger(fixture.action('Refresh'), 'onClick');
+
+    expect(fixture.view.findAll('MarTable')[0]?.props.data).toEqual([]);
+    expect(fixture.action('Refresh').props.disabled).toBe(false);
+    expect(showMessage).toHaveBeenCalledExactlyOnceWith(userError.message, 'error', userError);
+  });
+
   it('does not send a PATCH after validation finishes in a different edit opening', async () => {
     const pending = deferred<boolean>();
     const validate = vi.fn(() => pending.promise);

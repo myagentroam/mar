@@ -10,9 +10,9 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
-import MarSegmented from '../common/MarSegmented.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarSegmented } from '@myagentroam/mar-ui/segmented';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarTooltip } from '@myagentroam/mar-ui/tooltip';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -28,7 +28,7 @@ import { errorMessage } from '../../util/error-presentation.js';
 import { absoluteMessageTime } from '../../util/time-presentation.js';
 import { cacheHitRate } from '../../util/usage-statistics-presentation.js';
 import ManagementPagination from './ManagementPagination.vue';
-import LoadingPanel from '../common/LoadingPanel.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
@@ -37,8 +37,10 @@ const service = new UsageStatisticsService(props.request, (error) =>
   showMessage(errorMessage(error), 'error', error)
 );
 const state = service.state;
-const pageLoading = computed(() => state.loading && !state.overview);
 const pagination = service.pagination;
+const recordsLoading = computed(
+  () => state.loading || (state.loadingPage && !pagination.loadingMore.value)
+);
 watchManagementPageFailure(pagination);
 watch(pagination.mobileViewport, () => void refresh(true));
 const form = ref<FormInstance>();
@@ -287,12 +289,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <LoadingPanel
-    :loading="pageLoading"
-    variant="page"
-    class="usage settings-panel"
-    data-testid="usage-statistics"
-  >
+  <section class="usage settings-panel" data-testid="usage-statistics">
     <div class="usage-content">
       <header>
         <div>
@@ -310,8 +307,7 @@ onUnmounted(() => {
             circle
             size="small"
             :icon="marIcon('refresh')"
-            :loading="state.loading && !pageLoading"
-            :disabled="pageLoading"
+            :disabled="state.loading"
             :aria-label="t('usageStatistics.refresh')"
             @click="refresh()"
           />
@@ -661,6 +657,8 @@ onUnmounted(() => {
             </ol>
           </section>
         </div>
+      </template>
+      <template v-if="state.overview || state.failed || state.loading">
         <div class="section-heading">
           <h3>{{ t('usageStatistics.records') }}</h3>
           <span>{{ t('usageStatistics.recordsHint') }}</span>
@@ -675,12 +673,16 @@ onUnmounted(() => {
           :data="state.records"
           :row-key="recordKey"
           :expand-row-keys="expandedRecords"
-          :empty-text="t('usageStatistics.empty')"
           class="records"
-          :aria-busy="state.loadingPage"
+          :aria-busy="recordsLoading"
           @sort-change="sortChanged"
           @expand-change="expandChanged"
         >
+          <template v-if="recordsLoading" #loading>
+            <span role="progressbar" :aria-label="t('common.loading')">
+              <MarBusyIndicator class="mar-read-loading-indicator" />
+            </span>
+          </template>
           <MarTableColumn type="expand"
             ><template #default="{ row }"
               ><dl class="record-detail">
@@ -816,9 +818,8 @@ onUnmounted(() => {
           @retry="service.retryPage()"
         />
       </template>
-      <p v-else-if="state.failed">{{ t('usageStatistics.retry') }}</p>
     </div>
-  </LoadingPanel>
+  </section>
 </template>
 
 <style scoped>
@@ -842,6 +843,10 @@ onUnmounted(() => {
 
 .usage {
   width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
   box-sizing: border-box;
   color: var(--mar-text-primary);
 }

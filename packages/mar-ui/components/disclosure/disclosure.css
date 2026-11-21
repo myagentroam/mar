@@ -1,0 +1,22 @@
+.mar-disclosure-summary {
+  list-style: none;
+}
+
+.mar-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.mar-disclosure-icon {
+  margin-inline-end: 0.5em;
+  transition: transform var(--mar-ui-motion-duration-fast);
+}
+
+details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-disclosure-icon {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mar-disclosure-icon {
+    transition: none;
+  }
+}

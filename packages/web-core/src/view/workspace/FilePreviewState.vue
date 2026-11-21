@@ -1,17 +1,31 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { translate } from '../../service/locale-preference-service.js';
 
-defineProps<{ readonly message: string; readonly retryable?: boolean }>();
+const props = defineProps<{
+  readonly message: string;
+  readonly retryable?: boolean;
+  readonly retrying?: boolean;
+}>();
 const emit = defineEmits<{ retry: [] }>();
 </script>
 
 <template>
-  <section class="file-preview-state" role="status">
-    <p>{{ message }}</p>
+  <section class="file-preview-state">
+    <p v-if="!retrying" role="status">{{ message }}</p>
     <slot name="actions"
-      ><MarButton v-if="retryable" size="small" @click="emit('retry')">
-        {{ translate('common.retry') }}
+      ><MarButton
+        v-if="retryable"
+        link
+        size="small"
+        :aria-disabled="retrying || undefined"
+        :aria-busy="retrying || undefined"
+        :aria-label="retrying ? translate('generated.filePreviewDialog.loadingPreview') : undefined"
+        @click="!props.retrying && emit('retry')"
+      >
+        <MarBusyIndicator v-if="retrying" class="preview-retry-spinner" />
+        <template v-else>{{ translate('common.retry') }}</template>
       </MarButton></slot
     >
   </section>
@@ -44,5 +58,15 @@ const emit = defineEmits<{ retry: [] }>();
 
 .file-preview-state :deep(.mar-ui-button) {
   flex-shrink: 0;
+}
+
+.file-preview-state :deep(.mar-ui-button--inline) {
+  border-width: 0;
+}
+
+.preview-retry-spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--mar-color-brand-text);
 }
 </style>

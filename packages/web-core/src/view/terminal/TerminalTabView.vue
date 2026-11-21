@@ -6,7 +6,7 @@ import {
   type MarDropdownInstance
 } from '@myagentroam/mar-ui/dropdown';
 import type { MessageType } from '../../model/message-feedback.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { translate } from '../../service/locale-preference-service.js';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';

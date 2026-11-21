@@ -11,7 +11,12 @@ import {
 } from '../../src/service/theme-preference-service';
 
 function sharedStyles(): string {
-  return ['styles.css', 'styles/theme.css', 'styles/mar-ui-theme.css', 'styles/mar-controls.css']
+  return [
+    'styles.css',
+    'styles/theme.css',
+    'styles/mar-ui-theme.css',
+    'styles/product-primitives.css'
+  ]
     .map((path) => readFileSync(new URL(`../../src/${path}`, import.meta.url), 'utf8'))
     .join('\n');
 }

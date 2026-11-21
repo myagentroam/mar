@@ -1,0 +1,11 @@
+.mar-icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: -0.125em;
+}
+
+@media (max-width: 767px) {
+  :where(button, [role='button'], a[href]) .mar-icon {
+    font-size: var(--mar-ui-action-icon-size, 18px);
+  }
+}

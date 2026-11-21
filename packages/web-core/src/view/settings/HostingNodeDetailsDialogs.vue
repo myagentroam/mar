@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed } from 'vue';
 import type { ConversationHostingCapability } from '@myagentroam/protocol';
 import type { ComputerUseCapability } from '@myagentroam/protocol';

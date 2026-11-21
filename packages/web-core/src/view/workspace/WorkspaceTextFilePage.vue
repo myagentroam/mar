@@ -15,9 +15,9 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-service.js';
 import { fileKeys, workspaceKeys } from '../../service/console-shortcut-keys.js';
 
-import { marIcon } from '../../util/mar-icons.js';
-import MarIcon from '../common/MarIcon.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import { marIcon } from '@myagentroam/mar-ui/icons';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { confirmDiscardFileDraft } from '../../service/file-draft-confirm-service.js';
 import {

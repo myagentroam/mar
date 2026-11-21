@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../session/session-markers.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -8,8 +9,9 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -493,13 +495,23 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 </script>
 
 <template>
-  <p v-if="startupStatus === 'loading'" class="tree-empty">
-    {{ translate('generated.workspaceTree.readingNodes') }}
-  </p>
-  <p v-else-if="startupStatus === 'failed'" class="tree-empty">
-    {{ translate('generated.workspaceTree.nodeListUnavailable') }}
-  </p>
-  <template v-else-if="nodes.length">
+  <MarRegionStatus
+    v-if="startupStatus === 'loading' || startupStatus === 'failed' || !nodes.length"
+    class="tree-status"
+    role="status"
+  >
+    <MarIcon v-if="startupStatus === 'loading'" name="loading-action" />
+    <span>{{
+      translate(
+        startupStatus === 'loading'
+          ? 'generated.workspaceTree.readingNodes'
+          : startupStatus === 'failed'
+            ? 'generated.workspaceTree.nodeListUnavailable'
+            : 'generated.workspaceTree.noNodes'
+      )
+    }}</span>
+  </MarRegionStatus>
+  <template v-else>
     <div class="workspace-tree-filter">
       <MarInput
         v-model="filterQuery"
@@ -948,7 +960,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
       {{ translate('generated.workspaceTree.selectAWorkspaceToContinueInThe') }}
     </p>
   </template>
-  <p v-else class="tree-empty">{{ translate('generated.workspaceTree.noNodes') }}</p>
   <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
@@ -1305,7 +1316,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-more-button {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   display: inline-grid;
   width: 24px;
   height: 24px;
@@ -1437,7 +1448,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   padding-right: 3px;
 }
 
-.tree-empty,
 .tree-foot,
 .tree-filter-empty {
   color: var(--mar-text-secondary);
@@ -1445,14 +1455,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   line-height: 1.5;
 }
 
-.tree-empty {
-  display: grid;
-  align-content: center;
-  box-sizing: border-box;
-  min-height: 100%;
-  margin: 0;
+.tree-status {
   padding: 12px 16px;
-  text-align: center;
 }
 
 .tree-filter-empty {

@@ -12,7 +12,7 @@ import {
   type CSSProperties
 } from 'vue';
 
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import type { PromptCompletionResponse } from '@myagentroam/protocol';
 import {
   PromptCompletionService,
@@ -464,7 +464,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="enabled" class="completion-actions" :data-state="state.kind">
       <span class="completion-status" role="status">
-        <BusyIndicator v-if="state.kind === 'pending'" />
+        <MarBusyIndicator v-if="state.kind === 'pending'" />
         <span v-else class="completion-indicator" aria-hidden="true" />
         {{
           translate(

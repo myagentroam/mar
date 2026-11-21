@@ -1,5 +1,5 @@
 import { createCatalogPageService, readCatalogReferences } from './catalog-page-service.js';
-import { computed, ref, type Ref } from 'vue';
+import { computed, ref, watch, type Ref } from 'vue';
 
 export interface SkillSourceCard<Scope extends string = string> {
   readonly id: string;
@@ -112,13 +112,24 @@ export function createSkillCenterService<Scope extends string = string, Context 
     readonly SkillFavoriteCard<Scope>[]
   >;
   const selectedSourceId = ref('');
+  const sourcesLoading = ref(false);
   const query = ref('');
   const loading = ref(false);
   let loadingRequests = 0;
   const targetLoading = ref(false);
   const target = ref<SkillTargetInspectionCard>();
+  let targetKey: string | undefined;
   const managedTargets = ref<SkillManagedTargetResources>({ nodes: [], workspaces: [] });
   let searchSequence = 0;
+  watch(
+    selectedSourceId,
+    () => {
+      searchSequence++;
+      candidates.value = [];
+      candidateFavorites.value = [];
+    },
+    { flush: 'sync' }
+  );
   let targetSequence = 0;
   const favoriteIds = computed(
     () =>
@@ -154,27 +165,30 @@ export function createSkillCenterService<Scope extends string = string, Context 
   async function loadCatalog(): Promise<void> {
     await withLoading(async () => {
       await catalogPage.refresh();
-      if (candidates.value.length)
-        candidateFavorites.value = await readCatalogReferences<SkillFavoriteCard<Scope>>(
+      const currentCandidates = candidates.value;
+      if (currentCandidates.length) {
+        const references = await readCatalogReferences<SkillFavoriteCard<Scope>>(
           request,
           '/api/skill-favorites',
           'favorites',
           [],
-          candidates.value.map((candidate) => candidate.name)
+          currentCandidates.map((candidate) => candidate.name)
         );
+        if (currentCandidates === candidates.value) candidateFavorites.value = references;
+      }
     });
   }
   async function loadSources(): Promise<void> {
     beginLoading();
-    const previousSourceId = selectedSourceId.value;
+    sourcesLoading.value = true;
     try {
       sources.value = (
         await request<{ sources: readonly SkillSourceCard<Scope>[] }>('/api/skill-sources')
       ).sources;
       if (!sources.value.some((source) => source.id === selectedSourceId.value && source.enabled))
         selectedSourceId.value = defaultSourceId(sources.value);
-      if (selectedSourceId.value !== previousSourceId) candidates.value = [];
     } finally {
+      sourcesLoading.value = false;
       endLoading();
     }
   }
@@ -328,8 +342,14 @@ export function createSkillCenterService<Scope extends string = string, Context 
   }
 
   async function inspectTarget(nodeId: string, workspaceId?: string): Promise<void> {
+    const key = JSON.stringify([nodeId, workspaceId]);
+    if (key !== targetKey) {
+      clearTarget();
+      targetKey = key;
+    }
     const sequence = ++targetSequence;
     targetLoading.value = true;
+    let targetRead = false;
     try {
       const result = await request<SkillTargetInspectionCard>(
         workspaceId === undefined
@@ -337,6 +357,7 @@ export function createSkillCenterService<Scope extends string = string, Context 
           : `/api/workspaces/${encodeURIComponent(workspaceId)}/skills?nodeId=${encodeURIComponent(nodeId)}`
       );
       if (sequence !== targetSequence) return;
+      targetRead = true;
       target.value = result;
       installedFavorites.value = [];
       const references = await readCatalogReferences<SkillFavoriteCard<Scope>>(
@@ -346,12 +367,13 @@ export function createSkillCenterService<Scope extends string = string, Context 
         result.skills.flatMap((skill) => (skill.install ? [skill.install.favoriteId] : [])),
         result.skills.map((skill) => skill.name)
       );
-      if (sequence === targetSequence) {
-        target.value = result;
-        installedFavorites.value = references;
-      }
+      if (sequence === targetSequence) installedFavorites.value = references;
     } catch (error) {
       if (sequence !== targetSequence) return;
+      if (!targetRead) {
+        target.value = undefined;
+        installedFavorites.value = [];
+      }
       throw error;
     } finally {
       if (sequence === targetSequence) targetLoading.value = false;
@@ -360,6 +382,7 @@ export function createSkillCenterService<Scope extends string = string, Context 
 
   function clearTarget(): void {
     targetSequence += 1;
+    targetKey = undefined;
     target.value = undefined;
     installedFavorites.value = [];
     targetLoading.value = false;
@@ -415,6 +438,7 @@ export function createSkillCenterService<Scope extends string = string, Context 
 
   return {
     sources,
+    sourcesLoading,
     candidates,
     favorites,
     installedFavorites,

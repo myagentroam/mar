@@ -122,7 +122,6 @@ export { default as ConversationHeader } from './view/conversation/ConversationH
 export { default as ConversationScroll } from './view/conversation/ConversationScroll.vue';
 export { default as ConversationTimeline } from './view/conversation/ConversationTimeline.vue';
 export { default as ImagePreviewDialogs } from './view/conversation/ImagePreviewDialogs.vue';
-export { default as AgentMarkdown } from './view/common/AgentMarkdown.vue';
 export * from './service/conversation-scroll-service.js';
 export * from './service/conversation-image-service.js';
 export * from './util/conversation-presentation.js';
@@ -171,7 +170,6 @@ export * from './service/workbench-new-session-controller.js';
 export * from './service/runner-usage-service.js';
 export * from './model/runner-usage.js';
 export * from './util/session-list.js';
-export { default as MarIcon } from './view/common/MarIcon.vue';
 export { default as WorkbenchHeader } from './view/workbench/WorkbenchHeader.vue';
 export { default as WorkbenchNavigation } from './view/workbench/WorkbenchNavigation.vue';
 export { default as WebPerformanceIndicator } from './view/workbench/WebPerformanceIndicator.vue';

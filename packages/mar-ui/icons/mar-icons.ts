@@ -1,3 +1,4 @@
+import './icon.css';
 import { defineComponent, h, markRaw, type Component, type PropType } from 'vue';
 import { iconShapes, type MarIconName } from './icon-shapes.js';
 

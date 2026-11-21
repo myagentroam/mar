@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import '@myagentroam/web-core/management-detail.css';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
@@ -18,8 +19,7 @@ import {
 import { watchManagementPageFailure } from '@myagentroam/web-core/management-page';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
-import MarIcon from '@myagentroam/web-core/MarIcon.vue';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
@@ -138,14 +138,10 @@ const usersPage = createUserManagementService<EnterpriseUser>({
   })
 });
 watchManagementPageFailure(usersPage);
-const loading = computed(() => organizationsLoading.value || usersPage.loading.value);
-const organizationsReady = ref(false);
-const usersReady = ref(false);
-const pageReady = computed(() => organizationsReady.value && usersReady.value);
-const refreshLoading = ref(false);
-watch(usersPage.result, (result) => {
-  if (result !== undefined) usersReady.value = true;
-});
+const tableLoading = computed(
+  () => organizationsLoading.value || (usersPage.loading.value && !usersPage.loadingMore.value)
+);
+let loadSequence = 0;
 watch([keyword, roleFilter, organizationFilter, enabledFilter], () => {
   replaceManagementUrlValues('users', {
     keyword: keyword.value,
@@ -219,14 +215,24 @@ function openUserDetail(user: EnterpriseUser): void {
 }
 const organizationOptions = computed(() => organizationCascaderOptions(organizations.value));
 async function load(): Promise<void> {
+  if (disposed) return;
+  const current = ++loadSequence;
   organizationsLoading.value = true;
+  let organizationFailure: { error: unknown } | undefined;
   try {
     const organizationResult = await props.request<{
       organizations: readonly OrganizationSummary[];
     }>('/api/organizations');
-    organizations.value = organizationResult.organizations;
-    organizationsReady.value = true;
+    if (current === loadSequence) organizations.value = organizationResult.organizations;
   } catch (error) {
+    organizationFailure = { error };
+  } finally {
+    if (current === loadSequence) organizationsLoading.value = false;
+  }
+  if (current !== loadSequence) return;
+  await usersPage.load(true);
+  if (current === loadSequence && organizationFailure && !usersPage.failure.value) {
+    const { error } = organizationFailure;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -234,17 +240,6 @@ async function load(): Promise<void> {
       'error',
       error
     );
-  } finally {
-    organizationsLoading.value = false;
-  }
-  await usersPage.load(true);
-}
-async function refresh(): Promise<void> {
-  refreshLoading.value = true;
-  try {
-    await load();
-  } finally {
-    refreshLoading.value = false;
   }
 }
 function changeSort(input: { readonly prop?: string; readonly order?: string | null }): void {
@@ -437,16 +432,14 @@ onMounted(() => {
 });
 onUnmounted(() => {
   disposed = true;
+  loadSequence += 1;
   userGeneration += 1;
   usersPage.dispose();
 });
 </script>
 
 <template>
-  <section
-    v-mar-loading:page="loading && !pageReady && !usersPage.failure.value"
-    class="mar-management-page"
-  >
+  <section class="mar-management-page">
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.user') }}</span
@@ -496,12 +489,9 @@ onUnmounted(() => {
       ></label>
     </div>
     <div class="mar-table-actions">
-      <MarButton
-        :icon="marIcon('refresh')"
-        :loading="refreshLoading && pageReady"
-        @click="refresh"
-        >{{ translate('generated.organizationUserManagementPage.refresh') }}</MarButton
-      >
+      <MarButton :icon="marIcon('refresh')" :disabled="tableLoading" @click="load">{{
+        translate('generated.organizationUserManagementPage.refresh')
+      }}</MarButton>
       <MarButton
         type="primary"
         :icon="marIcon('plus')"
@@ -512,19 +502,17 @@ onUnmounted(() => {
       >
     </div>
     <MarTable
-      v-mar-loading:region="
-        usersPage.loading.value &&
-        pageReady &&
-        !usersPage.loadingMore.value &&
-        !refreshLoading &&
-        !usersPage.failure.value
-      "
+      :aria-busy="tableLoading"
       class="clickable-rows"
       :data="usersPage.items.value"
       row-key="id"
       @row-click="openUserDetail"
       @sort-change="changeSort"
     >
+      <template v-if="tableLoading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><MarBusyIndicator class="mar-read-loading-indicator" /></span
+      ></template>
       <MarTableColumn
         prop="username"
         :label="translate('generated.organizationUserManagementPage.user2')"

@@ -85,6 +85,21 @@ async function request<T>(path: string): Promise<T> {
 }
 const notifications = createWorkbenchNotificationService(ref('settings-layout-fixture'));
 notifications.systemNotifications.start();
+const pushFixture = new URL(location.href).searchParams.has('push-retry');
+const pushStatus = ref<'unavailable' | 'ready'>('unavailable');
+const systemNotifications = pushFixture
+  ? {
+      ...notifications.systemNotifications,
+      enabled: ref(true),
+      mode: 'mobile-push' as const,
+      status: ref('enabled' as const),
+      pushStatus,
+      async enablePush() {
+        const response = await fetch('/fixture-push-subscription');
+        if (response.ok) pushStatus.value = 'ready';
+      }
+    }
+  : notifications.systemNotifications;
 const diagnostics = createWebPerformanceDiagnostics();
 onBeforeUnmount(() => {
   navigation.dispose();
@@ -171,7 +186,7 @@ onBeforeUnmount(() => {
         :quick-prompts-loading="false"
         :quick-prompts-failed="false"
         :refresh-quick-prompts="async () => {}"
-        :system-notifications="notifications.systemNotifications"
+        :system-notifications="systemNotifications"
       />
     </section>
   </main>

@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, proxyRefs, ref } from 'vue';
+import { computed, h, onBeforeUnmount, onMounted, proxyRefs, ref } from 'vue';
+import { I18nT } from 'vue-i18n';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import '../session/runner-brand-icon.css';
 import type { ComposerAttachment, WorkspaceQueueItem } from '../../model/workbench.js';
 import type { NavigationSummary } from '../../service/session-navigation-projection.js';
 import type { WorkspaceSessionPaneView } from '../../service/workspace-session-pane-controller.js';
@@ -64,6 +69,16 @@ const composer = ref<{
   replaceRange(start: number, end: number, text: string): boolean;
 }>();
 const composerToolbar = ref<{ openModelMenu(): boolean }>();
+const hasDraftAgent = computed(() =>
+  props.controller.runnerOptions.value.some((option) => option.value === configuration.runner)
+);
+const DraftAgentIcon = () =>
+  h('img', {
+    class: 'mar-runner-brand-icon',
+    'data-runner': configuration.runner,
+    src: runnerBrandIcon(configuration.runner),
+    alt: ''
+  });
 
 let unregisterComposerShortcut: (() => void) | undefined;
 let unregisterComposerActions: (() => void) | undefined;
@@ -160,7 +175,7 @@ onBeforeUnmount(() => {
         :older-error="olderHistoryError"
         :has-turns="state.conversation.turns.value.length > 0"
         :following="state.scroll.following.value"
-        :empty-prompt="controller.draftOpen.value ? 'workspace' : undefined"
+        :empty-prompt="presentation.composerDraftOpen ? 'workspace' : undefined"
         @scroll-element="state.scroll.setElement($event)"
         @scroll="interactions.onComposerScroll"
         @scroll-intent="state.scroll.stopFollowing"
@@ -168,6 +183,62 @@ onBeforeUnmount(() => {
         @latest="state.scroll.jumpToLatest"
         @reload="emit('reload')"
       >
+        <template v-if="presentation.canUseComposer && hasDraftAgent" #empty-description>
+          <I18nT
+            class="draft-session-description"
+            tag="div"
+            keypath="conversationEmpty.workspace.createWithAgent"
+            scope="global"
+          >
+            <template #agent>
+              <MarDropdown
+                class="draft-agent-dropdown"
+                :disabled="
+                  controller.runnerProfilesLoading.value || presentation.sessionControlsBusy
+                "
+                @command="
+                  $event !== configuration.runner && controller.composer.selectRunner($event)
+                "
+              >
+                <MarButton
+                  text
+                  class="draft-agent-trigger mar-text-action"
+                  :icon="DraftAgentIcon"
+                  :loading="controller.runnerProfilesLoading.value"
+                  :aria-label="
+                    translate('conversationEmpty.workspace.changeAgent', {
+                      agent: configuration.runnerLabel
+                    })
+                  "
+                >
+                  <span class="draft-agent-label">
+                    {{ configuration.runnerLabel }}
+                    <MarIcon name="chevron-down" />
+                  </span>
+                </MarButton>
+                <template #dropdown>
+                  <MarDropdownMenu :aria-label="translate('common.runner')">
+                    <MarDropdownItem
+                      v-for="option in controller.runnerOptions.value"
+                      :key="option.value"
+                      :command="option.value"
+                      :aria-current="option.value === configuration.runner ? 'true' : undefined"
+                    >
+                      <img
+                        class="mar-runner-brand-icon"
+                        :data-runner="option.value"
+                        :src="runnerBrandIcon(option.value)"
+                        alt=""
+                      />
+                      <span class="draft-agent-option-label">{{ option.label }}</span>
+                      <MarIcon v-if="option.value === configuration.runner" name="check" />
+                    </MarDropdownItem>
+                  </MarDropdownMenu>
+                </template>
+              </MarDropdown>
+            </template>
+          </I18nT>
+        </template>
         <ConversationTimeline
           :quote-target="controller.quoteTarget"
           :runs="controller.conversationRuns.value"
@@ -285,7 +356,7 @@ onBeforeUnmount(() => {
             :submitting="submitting"
             v-if="presentation.canUseComposer"
             ref="composerToolbar"
-            :draft-session-open="presentation.composerDraftOpen"
+            :draft-session-open="false"
             :runner="configuration.runner"
             :runner-options="controller.runnerOptions.value"
             :runner-loading="controller.runnerProfilesLoading.value"
@@ -322,7 +393,6 @@ onBeforeUnmount(() => {
             :attachments-pending="presentation.composerAttachmentsPending"
             :effort-label="controller.effortLabel"
             @files="state.attachments.add"
-            @update-runner="controller.composer.selectRunner"
             @update-model-effort="selectComposerModelEffort"
             @update-access="controller.selectAccess"
             @compact="controller.context.compactCurrentContext"
@@ -392,5 +462,44 @@ onBeforeUnmount(() => {
   min-height: 0;
   flex-direction: column;
   background: var(--mar-conversation-canvas);
+}
+
+.draft-session-description {
+  max-width: 100%;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
+  line-height: 1.6;
+}
+
+.draft-agent-dropdown {
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.draft-agent-trigger.mar-text-action {
+  padding-inline: 0.5rem;
+  color: var(--mar-text-primary);
+  font-weight: 600;
+}
+
+.draft-agent-trigger[aria-expanded='true'] {
+  background: var(--mar-action-hover-bg);
+}
+
+.draft-agent-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.draft-agent-option-label {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .draft-agent-trigger {
+    min-block-size: 36px;
+  }
 }
 </style>

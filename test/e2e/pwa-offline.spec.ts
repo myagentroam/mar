@@ -180,6 +180,17 @@ test('final PWA artifact cold-starts Console offline without caching docs or non
     await expect(unavailableTitle).toBeVisible();
     const retryButton = coldPage.getByRole('button', { name: 'Retry connection' });
     await expect(retryButton).toBeVisible();
+    await expect(retryButton).toHaveCSS('align-items', 'center');
+    const primaryBackground = await retryButton.evaluate((button) => {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = 'var(--mar-ui-color-brand)';
+      button.append(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    });
+    expect(primaryBackground).not.toBe('rgba(0, 0, 0, 0)');
+    await expect(retryButton).toHaveCSS('background-color', primaryBackground);
     await expect(coldPage.locator('[aria-busy="true"]')).toHaveCount(0);
     await expect(coldPage.locator('form')).toHaveCount(0);
     const helpLink = coldPage.getByRole('link', { name: 'Open documentation' });

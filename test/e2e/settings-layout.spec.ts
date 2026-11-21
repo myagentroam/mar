@@ -199,6 +199,37 @@ test.describe('System notification settings on a touch device', () => {
     userAgent: 'Mozilla/5.0 (Linux; Android 15)'
   });
 
+  test('Offline Push retry keeps the busy state on its own action', async ({ page }, info) => {
+    const pending = Promise.withResolvers<void>();
+    let requests = 0;
+    await page.route('**/fixture-push-subscription', async (route) => {
+      requests++;
+      await pending.promise;
+      await route.fulfill({ status: 204 });
+    });
+    await page.goto(
+      `${fixture.url}settings-layout.html?section=notifications&locale=en-US&theme=daylight&push-retry`
+    );
+    const content = page.locator('.settings-content');
+    const enable = content.getByRole('button', { name: 'Enable / retry offline Push' });
+    const disable = content.getByRole('button', { name: 'Disable offline Push' });
+    await expect(enable).toBeVisible();
+    await page.screenshot({
+      path: info.outputPath('push-unavailable.png'),
+      animations: 'disabled'
+    });
+    await enable.click();
+    await expect(enable).toHaveAttribute('aria-busy', 'true');
+    await expect(disable).toBeDisabled();
+    await expect(disable).not.toHaveAttribute('aria-busy', 'true');
+    await expect.poll(() => requests).toBe(1);
+    await page.screenshot({ path: info.outputPath('push-enabling.png'), animations: 'disabled' });
+    pending.resolve();
+    await expect(content.getByText(/Offline Push is ready/)).toBeVisible();
+    await expect(disable).toBeEnabled();
+    await page.screenshot({ path: info.outputPath('push-ready.png'), animations: 'disabled' });
+  });
+
   test('keeps the offline Push status and touch action readable', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(Notification, 'permission', { get: () => 'granted' });

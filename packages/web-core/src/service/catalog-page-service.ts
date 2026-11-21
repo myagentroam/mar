@@ -26,7 +26,8 @@ export function createCatalogPageService<T extends { readonly id: string }>(
       return parseManagementPage<T>(await request<unknown>(`${path}?${query}`), field);
     },
     key: (item) => item.id,
-    context
+    context,
+    clearOnLoadFailure: true
   });
   const error = computed(() => paging.failure.value?.error);
   const tags = computed(() => paging.result.value?.facets?.tags ?? []);

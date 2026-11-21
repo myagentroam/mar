@@ -25,9 +25,19 @@ async function openWorkspace(
   page: Page,
   grouping = true,
   marOnly = false,
-  options: { manifestFailure?: boolean } = {}
+  options: {
+    manifestFailure?: boolean;
+    pendingProfiles?: Promise<void>;
+    createdRunner?: 'codex' | 'claude-code';
+  } = {}
 ) {
   await mockConsoleApi(page, 'MANAGED', ['turn.start'], [], 'DIRECTORY');
+  const pendingProfiles = options.pendingProfiles;
+  if (pendingProfiles)
+    await page.route('**/api/runner-profiles?*', async (route) => {
+      await pendingProfiles;
+      await route.fallback();
+    });
   if (marOnly)
     await page.route('**/api/runner-profiles?*', (route) =>
       route.fulfill({
@@ -60,7 +70,7 @@ async function openWorkspace(
     nodeId: 'node-1',
     workspaceId: 'workspace-1',
     customTitle: 'Created main',
-    runner: 'codex',
+    runner: options.createdRunner ?? 'codex',
     nativeControl: 'MAR_MANAGED',
     externalSessionId: 'native-main',
     activity: 'IDLE',
@@ -173,6 +183,116 @@ test('A failed manifest read has one error and no unknown-capability placeholder
   await expect(input).toHaveAttribute('placeholder', /^(Type \/|输入 \/)/);
   await expect(page.locator('.readonly-banner')).toHaveCount(0);
 });
+
+test('Workspace welcome does not advertise an Agent before profiles arrive', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
+  const profiles = Promise.withResolvers<void>();
+  const welcome = page.locator('.conversation-empty');
+  try {
+    await openWorkspace(page, true, false, { pendingProfiles: profiles.promise });
+    await expect(welcome.getByRole('heading')).toHaveText('What should we do?');
+    await expect(welcome.getByRole('button', { name: /Switch Agent/ })).toHaveCount(0);
+  } finally {
+    profiles.resolve();
+  }
+  await expect(
+    welcome.getByRole('button', { name: 'Switch Agent (current: Codex)' })
+  ).toBeEnabled();
+});
+
+for (const viewport of [1600, 390]) {
+  test.describe(`Workspace draft at ${viewport}px`, () => {
+    test.use({ hasTouch: viewport < 768 });
+    // @test-covers packages/web-core/src/view/workbench/WorkspaceSessionPane.vue
+    // @test-covers packages/web-core/src/view/composer/ComposerToolbar.vue
+    test('chooses its Agent from the welcome prompt', async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 1600, height: 820 });
+      await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'zh-CN'));
+      await openWorkspace(page, true, false, { createdRunner: 'claude-code' });
+      await page.setViewportSize({ width: viewport, height: 820 });
+
+      const welcome = page.locator('.conversation-empty');
+      const agent = welcome.getByRole('button', { name: /切换 Agent/ });
+      const toolbar = page.locator('.composer-toolbar');
+      const model = toolbar.getByRole('combobox', { name: '模型与思考强度' });
+      const input = page.locator('.composer-input');
+      await expect(welcome.getByRole('heading')).toHaveText('我们要做什么？');
+      await expect(welcome.locator('.draft-session-description')).toHaveText(
+        '使用 Codex 创建新会话',
+        { useInnerText: true }
+      );
+      const agentIcon = agent.locator('img');
+      await expect(agentIcon).toBeVisible();
+      await expect(agent).toHaveAttribute('aria-haspopup', 'menu');
+      await expect(welcome.getByRole('combobox')).toHaveCount(0);
+      await expect(toolbar.getByRole('combobox', { name: 'Agent' })).toHaveCount(0);
+      await expect(model).toContainText('GPT-5.6');
+      await welcome.getByRole('heading').click();
+      await page.screenshot({
+        path: testInfo.outputPath(`workspace-draft-${viewport}.png`),
+        animations: 'disabled'
+      });
+
+      if (viewport >= 768) {
+        await agent.focus();
+        await agent.press('ArrowDown');
+      } else {
+        await agent.tap();
+      }
+      const options = welcome.getByRole('menu', { name: 'Agent' });
+      const codex = options.getByRole('menuitem', { name: 'Codex' });
+      await expect(codex).toHaveAttribute('aria-current', 'true');
+      const claude = options.getByRole('menuitem', { name: 'Claude Code' });
+      await expect(claude.locator('img')).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(`workspace-agent-menu-${viewport}.png`),
+        animations: 'disabled'
+      });
+      const claudeIcon = await claude.locator('img').getAttribute('src');
+      if (viewport >= 768) {
+        await expect(codex).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(agent).toBeFocused();
+      }
+      await input.click();
+      await expect(options).toBeHidden();
+      await input.fill('Keep this draft');
+      if (viewport >= 768) {
+        await agent.press('Enter');
+        await expect(codex).toBeFocused();
+        await page.keyboard.press('ArrowDown');
+        await expect(claude).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(agent).toBeFocused();
+      } else {
+        await agent.tap();
+        await claude.tap();
+      }
+      await expect(options).toBeHidden();
+      await expect(welcome.locator('.draft-session-description')).toHaveText(
+        '使用 Claude Code 创建新会话',
+        { useInnerText: true }
+      );
+      await expect(agentIcon).toHaveAttribute('src', claudeIcon!);
+      await expect(model).toContainText('Claude Sonnet');
+      await expect(input).toHaveValue('Keep this draft');
+      if (viewport >= 768) {
+        await input.press('Alt+m');
+        await expect(model).toHaveAttribute('aria-expanded', 'true');
+        await page.keyboard.press('Escape');
+        await expect(model).toHaveAttribute('aria-expanded', 'false');
+      }
+      const startRequest = page.waitForRequest('**/api/agent-sessions/start');
+      await page.locator('.composer-send-button').click();
+      expect((await startRequest).postDataJSON()).toMatchObject({
+        runner: 'claude-code',
+        modelId: 'sonnet',
+        content: 'Keep this draft'
+      });
+      await expect(welcome).toBeHidden();
+    });
+  });
+}
 
 for (const entry of ['button', 'shortcut'] as const) {
   test(`explicit New via ${entry} restores Main and keeps the first sent session reachable`, async ({

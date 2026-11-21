@@ -9,6 +9,31 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+// @test-covers ee/web/src/view/settings/OAuthManagementPage.vue
+// @test-covers ee/web/src/view/settings/OrganizationManagementPage.vue
+for (const [area, section, endpoint] of [
+  ['oauth', '.oauth-management', '/api/oauth-providers'],
+  ['organization', '.organization-management', '/api/organizations']
+] as const) {
+  test(`${area} cold entry loads the shared table spinner styles`, async ({ page }) => {
+    await page.goto(`${fixture.url}management-page.html?area=${area}`);
+    await expect
+      .poll(() => page.evaluate(() => window.managementPageFixture.calls()))
+      .toEqual([endpoint]);
+    const table = page.locator(section).locator('.mar-ui-table');
+    const progress = table.getByRole('progressbar', { name: 'Loading' });
+    const ring = progress.locator('.mar-busy-indicator');
+    await expect(ring).toHaveCSS('display', 'inline-block');
+    await expect(ring).toHaveCSS('border-top-width', '2px');
+    await expect(ring).toHaveCSS('animation-duration', '1.2s');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(ring).toHaveCSS('animation-name', 'none');
+    await page.evaluate(() => window.managementPageFixture.settle(0, true));
+    await expect(progress).toHaveCount(0);
+    await expect(table.getByText('No data', { exact: true })).toBeVisible();
+  });
+}
+
 test('Audit initial failure reports an error and recovers through refresh on mobile', async ({
   page
 }) => {
@@ -16,12 +41,28 @@ test('Audit initial failure reports an error and recovers through refresh on mob
   await page.goto(`${fixture.url}management-page.html?area=audit`);
   const section = page.locator('.audit-management');
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(1);
+  const table = section.locator('.mar-ui-table');
+  const refresh = section.getByRole('button', { name: 'Refresh', exact: true });
+  const indicator = table.getByRole('progressbar', { name: 'Loading' });
+  await expect(indicator).toBeVisible();
+  await expect(table.getByText('No data', { exact: true })).toHaveCount(0);
+  await expect(refresh).toBeDisabled();
+  await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
   await page.evaluate(() => window.managementPageFixture.settle(0, false));
-  await expect(page.locator('.mar-message--error')).toContainText('List request failed');
+  const errors = page.locator('.mar-message--error');
+  await expect(errors).toHaveCount(1);
+  await expect(errors).toContainText('List request failed');
+  await expect(table.getByText('No data', { exact: true })).toBeVisible();
+  await expect(indicator).toHaveCount(0);
   await expect(section.locator('.management-mobile-status button')).toHaveCount(0);
-  await section.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await refresh.click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
+  await expect(indicator).toBeVisible();
+  await expect(table.getByText('No data', { exact: true })).toHaveCount(0);
   await page.evaluate(() => window.managementPageFixture.settle(1, true));
+  await expect(table.getByText('No data', { exact: true })).toBeVisible();
+  await expect(indicator).toHaveCount(0);
+  await expect(page.locator('.mar-message--success')).toHaveCount(0);
   await expect(section.locator('.management-mobile-status button')).toHaveCount(0);
 });
 
@@ -33,14 +74,14 @@ test('Audit desktop page changes show one table loading indicator', async ({ pag
   await page.evaluate(() => window.managementPageFixture.settle(0, true));
   await section.locator('.mar-ui-pagination__page').filter({ hasText: /^2$/ }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
-  await expect(section.locator('.mar-ui-table .mar-ui-loading')).toBeVisible();
+  await expect(section.locator('.mar-ui-table').getByRole('progressbar')).toBeVisible();
   await expect(section.locator(':scope > .mar-ui-loading')).toBeHidden();
   await expect(section.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveAttribute(
     'aria-busy',
     'true'
   );
   await page.evaluate(() => window.managementPageFixture.settle(1, true));
-  await expect(section.locator('.mar-ui-table .mar-ui-loading')).toBeHidden();
+  await expect(section.locator('.mar-ui-table').getByRole('progressbar')).toHaveCount(0);
   await expect(section.locator('[aria-current="page"]')).toHaveText('2');
   await section.locator('.mar-ui-pagination__previous').click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(3);
@@ -52,6 +93,31 @@ test('Audit desktop page changes show one table loading indicator', async ({ pag
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(4);
   await page.evaluate(() => window.managementPageFixture.settle(3, true));
   await expect(section.locator('[aria-current="page"]')).toHaveText('1');
+});
+
+test('Audit retains rows during a full refresh but clears them after a failed read', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}management-page.html?area=audit&pages=1`);
+  const section = page.locator('.audit-management');
+  const table = section.locator('.mar-ui-table');
+  const rows = table.locator('tbody tr.mar-ui-table__row');
+  const refresh = section.getByRole('button', { name: 'Refresh', exact: true });
+  const indicator = table.getByRole('progressbar', { name: 'Loading' });
+  await expect(indicator).toBeVisible();
+  await page.evaluate(() => window.managementPageFixture.settle(0, true));
+  await expect(rows).toHaveCount(20);
+  await refresh.click();
+  await expect(indicator).toBeVisible();
+  await expect(rows).toHaveCount(20);
+  await expect(refresh).toBeDisabled();
+  await page.evaluate(() => window.managementPageFixture.settle(1, false));
+  await expect(rows).toHaveCount(0);
+  await expect(table.getByText('No data', { exact: true })).toBeVisible();
+  await expect(page.locator('.mar-message--error')).toHaveCount(1);
+  await expect(indicator).toHaveCount(0);
+  await expect(refresh).toBeEnabled();
 });
 
 test('Usage details retain rows and retry a failed automatic page in place', async ({ page }) => {
@@ -161,6 +227,9 @@ test('Resource append failure stops, refresh uses one indicator, and a new conte
   const section = page.locator('.resource-management-panel');
   const rows = section.locator('tbody tr.mar-ui-table__row');
   const boundary = section.locator('.management-mobile-status');
+  const table = section.locator('.mar-ui-table');
+  const indicator = table.getByRole('progressbar', { name: 'Loading' });
+  const refresh = section.getByRole('button', { name: 'Refresh', exact: true });
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(1);
   await page.evaluate(() => window.managementPageFixture.settle(0, true));
   await expect(rows).toHaveCount(20);
@@ -169,19 +238,22 @@ test('Resource append failure stops, refresh uses one indicator, and a new conte
   await page.evaluate(() => window.managementPageFixture.settle(1, false));
   await expect(boundary.getByRole('button', { name: 'Failed to load. Retry' })).toBeVisible();
   await expect(rows).toHaveCount(20);
-  await section.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await refresh.click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(3);
   await expect(boundary.locator('button')).toHaveCount(0);
-  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).toHaveAttribute(
-    'aria-busy',
-    'true'
-  );
+  await expect(refresh).toBeDisabled();
+  await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
+  await expect(indicator).toBeVisible();
+  await expect(rows).toHaveCount(20);
   await expect(section.locator('.mar-ui-loading')).toBeHidden();
   await page.evaluate(() => window.managementPageFixture.settle(2, true));
   await expect(rows).toHaveCount(20);
   const input = section.locator('.mar-resource-filters input').first();
   await input.fill('Node');
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(4);
+  await expect(indicator).toBeVisible();
+  await expect(rows).toHaveCount(0);
+  await expect(table.getByText('No data', { exact: true })).toHaveCount(0);
   await page.evaluate(() => window.managementPageFixture.settle(3, true));
   await boundary.scrollIntoViewIfNeeded();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(5);

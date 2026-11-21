@@ -1,15 +1,19 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
+import './git-inline-loading.css';
+import '@myagentroam/mar-ui/region-status.css';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { nextTick, ref } from 'vue';
-import MarIcon from '../common/MarIcon.vue';
+import { computed, nextTick, ref } from 'vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import FileTypeIcon from './FileTypeIcon.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { createWorkspaceContentSearchService } from '../../service/workspace-content-search-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { changeFileName } from '../../util/workspace-git.js';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{
   service: ReturnType<typeof createWorkspaceContentSearchService>;
@@ -30,9 +34,26 @@ const contentMatches = contentSearch.matches;
 const contentSearchLoading = contentSearch.loading;
 const contentSearchError = contentSearch.error;
 const contentSearchTruncated = contentSearch.truncated;
+const buttonLoading = computed(
+  () =>
+    contentSearchLoading.value &&
+    contentSearch.rereading.value &&
+    contentSearchError.value === undefined
+);
+const newQueryState = computed(
+  () =>
+    !contentSearch.rereading.value &&
+    (contentSearchLoading.value || contentSearchError.value !== undefined)
+);
 
 async function searchContent(): Promise<void> {
-  if (!props.enabled || props.nodeId === undefined || props.workspaceId === undefined) return;
+  if (
+    !props.enabled ||
+    contentSearchLoading.value ||
+    props.nodeId === undefined ||
+    props.workspaceId === undefined
+  )
+    return;
   await contentSearch.search({
     nodeId: props.nodeId,
     workspaceId: props.workspaceId,
@@ -81,10 +102,10 @@ defineExpose({
           class="content-search-button file-explorer-utility-button mar-icon-action"
           :disabled="contentSearchLoading"
           :aria-label="translate('generated.workspaceInspector.runContentSearch')"
-          :aria-busy="contentSearchLoading || undefined"
+          :aria-busy="buttonLoading || undefined"
           type="submit"
         >
-          <MarIcon :name="contentSearchLoading ? 'loading-action' : 'refresh'" />
+          <MarIcon :name="buttonLoading ? 'loading-action' : 'refresh'" />
         </button>
       </form>
       <div class="content-search-options">
@@ -93,30 +114,40 @@ defineExpose({
         }}</MarCheckbox>
       </div>
     </div>
-    <MarButton
-      v-if="contentSearchError !== undefined"
-      v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
-      :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
-      class="watch-status"
-      link
-      :class="{ failed: !contentSearchLoading }"
-      :aria-disabled="contentSearchLoading"
-      :aria-busy="contentSearchLoading || undefined"
-      @click="contentSearch.retry()"
+    <MarRegionStatus
+      v-if="contentSearchError !== undefined || (contentSearchLoading && !buttonLoading)"
+      class="content-search-state"
+      :placement="newQueryState ? 'center' : 'top'"
     >
-      <template v-if="contentSearchLoading"
-        ><MarIcon name="loading-action" />
-        {{ translate('generated.workspaceInspector.loading') }}</template
-      ><template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </MarButton>
-    <p v-else-if="contentSearchLoading" class="watch-status" role="status">
-      <MarIcon name="loading-action" />
-      {{ translate('generated.workspaceInspector.loading') }}
-    </p>
-    <p v-if="contentSearchTruncated" class="content-search-warning">
+      <MarButton
+        v-if="contentSearchError !== undefined"
+        v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
+        :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
+        class="watch-status mar-region-retry-action"
+        link
+        :class="{ failed: !contentSearchLoading }"
+        :aria-disabled="contentSearchLoading"
+        :aria-busy="contentSearchLoading || undefined"
+        :aria-label="
+          contentSearchLoading ? translate('generated.workspaceInspector.loading') : undefined
+        "
+        @click="contentSearch.retry()"
+      >
+        <span v-if="contentSearchLoading" class="mar-inline-loading">
+          <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+        </span>
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </MarButton>
+      <p v-else class="mar-region-status" role="status">
+        <MarIcon name="loading-action" />
+        {{ translate('generated.workspaceInspector.loading') }}
+      </p>
+    </MarRegionStatus>
+    <p v-if="contentSearchTruncated && !newQueryState" class="content-search-warning">
       {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
     </p>
     <ul
+      v-show="!newQueryState"
       class="content-search-results"
       :aria-label="translate('generated.workspaceInspector.contentSearchResults')"
     >
@@ -150,10 +181,10 @@ defineExpose({
         v-if="
           contentAppliedQuery !== '' &&
           contentMatches.length === 0 &&
-          !contentSearchLoading &&
+          !contentSearchTruncated &&
           contentSearchError === undefined
         "
-        class="file-search-empty"
+        class="file-search-empty mar-region-status"
       >
         {{ translate('generated.workspaceInspector.noMatchingContent') }}
       </li>
@@ -162,28 +193,13 @@ defineExpose({
 </template>
 
 <style scoped>
-.watch-status {
-  margin: 0.2rem 0.55rem;
-  font-size: var(--mar-font-size-meta);
+.content-search-state,
+.file-search-empty {
+  padding-inline: 8px;
 }
 
-.watch-status:not(button) {
-  color: var(--mar-text-secondary);
-}
-
-button.watch-status {
-  align-self: flex-start;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-button.watch-status[aria-disabled='true'] {
-  color: var(--mar-text-disabled);
-  cursor: default;
+.content-search-state:not(.mar-region-status--center) {
+  padding-block-start: 8px;
 }
 
 .content-search {

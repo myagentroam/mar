@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/region-retry-action.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -9,13 +10,15 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import LoadingPanel from '../common/LoadingPanel.vue';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 
 const props = defineProps<{
   readonly prompts: readonly QuickPrompt[];
@@ -30,6 +33,7 @@ const dialogOpen = ref(false);
 const editorGeneration = ref(0);
 const saving = ref(false);
 const ready = ref(false);
+const retrying = ref(false);
 const draft = ref({ phrase: '', prompt: '' });
 const isNew = computed(() => editing.value === undefined);
 const rules: FormRules = {
@@ -55,6 +59,16 @@ async function loadInitial(): Promise<void> {
   await props.refresh();
   await nextTick();
   if (!props.failed) ready.value = true;
+}
+
+async function retry(): Promise<void> {
+  if (retrying.value || props.loading) return;
+  retrying.value = true;
+  try {
+    await loadInitial();
+  } finally {
+    retrying.value = false;
+  }
 }
 
 function openCreate(): void {
@@ -132,7 +146,11 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 </script>
 
 <template>
-  <LoadingPanel :loading="loading && !ready" variant="page" class="quick-prompts settings-panel">
+  <MarLoadingPanel
+    :loading="loading && !ready && !retrying"
+    variant="page"
+    class="quick-prompts settings-panel"
+  >
     <div class="quick-prompts-content">
       <header>
         <div>
@@ -145,13 +163,24 @@ async function remove(prompt: QuickPrompt): Promise<void> {
           {{ translate('quickPrompts.add') }}
         </MarButton>
       </div>
-      <p v-if="!loading && failed" class="prompt-state">
-        {{ translate('quickPrompts.loadFailed') }}
-      </p>
-      <div v-else-if="!loading && prompts.length === 0" class="prompt-empty">
-        <p>{{ translate('quickPrompts.empty') }}</p>
-      </div>
-      <div v-else-if="prompts.length > 0" class="prompt-list">
+      <MarRegionStatus v-if="retrying || (!loading && failed)" class="prompt-status">
+        <span v-if="!retrying" role="status">{{ translate('quickPrompts.readFailed') }}</span>
+        <MarButton
+          class="mar-region-retry-action"
+          link
+          :aria-disabled="retrying || undefined"
+          :aria-busy="retrying || undefined"
+          :aria-label="retrying ? translate('common.loading') : undefined"
+          @click="retry"
+        >
+          <MarBusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <template v-else>{{ translate('common.retry') }}</template>
+        </MarButton>
+      </MarRegionStatus>
+      <MarRegionStatus v-else-if="ready && !loading && prompts.length === 0" class="prompt-status">
+        {{ translate('quickPrompts.empty') }}
+      </MarRegionStatus>
+      <div v-if="prompts.length > 0" class="prompt-list">
         <article v-for="prompt in prompts" :key="prompt.id" class="prompt-item">
           <div class="prompt-heading">
             <code>#{{ prompt.phrase }}</code>
@@ -211,7 +240,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
         }}</MarButton>
       </template>
     </MarDialog>
-  </LoadingPanel>
+  </MarLoadingPanel>
 </template>
 
 <style scoped>
@@ -234,16 +263,15 @@ async function remove(prompt: QuickPrompt): Promise<void> {
   line-height: 1.4;
 }
 
-.quick-prompts header p,
-.prompt-state {
+.quick-prompts header p {
   margin: 0.35rem 0 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
 }
 
-.prompt-state {
-  padding: 0.25rem 0;
+.prompt-status {
+  padding-block: 0.5rem;
 }
 
 .prompt-list-toolbar {
@@ -251,16 +279,6 @@ async function remove(prompt: QuickPrompt): Promise<void> {
   align-items: center;
   min-height: 32px;
   margin-bottom: 0.7rem;
-}
-
-.prompt-empty {
-  padding: 0.75rem 0;
-  color: var(--mar-text-secondary);
-}
-
-.prompt-empty p {
-  margin: 0;
-  font-size: var(--mar-font-size-body);
 }
 
 .prompt-list {

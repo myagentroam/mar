@@ -2,7 +2,7 @@
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { vClickOutside } from '@myagentroam/mar-ui/click-outside';
 import { createSessionShareConversationService } from '../../service/session-share-conversation-service.js';

@@ -1041,6 +1041,87 @@ test('Workspace header tabs scroll horizontally without vertical overflow or cli
   }
 });
 
+test('Workspace dropdown reveals only the clipped part of a composite menu item', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  const longName = `Workspace two — ${'long workspace name '.repeat(12).trimEnd()}`;
+  const query = new URLSearchParams({
+    locale: 'en-US',
+    placement: 'header',
+    layout: 'dynamic',
+    'long-menu-label': longName
+  });
+  await page.goto(`${fixture.url}workspace-tabs.html?${query}`);
+  const trigger = page.getByRole('button', { name: 'All open workspaces', exact: true });
+  await trigger.click();
+  const menu = page.getByRole('menu');
+  const longItem = menu.getByRole('menuitem', { name: /^Workspace two/u });
+  const shortItem = menu.getByRole('menuitem', { name: /^Workspace three/u });
+  const tooltip = page.getByRole('tooltip');
+  await expect(longItem).toHaveAccessibleName(`${longName} Medium Node display`);
+  await expect
+    .poll(() =>
+      longItem
+        .getByText(longName, { exact: true })
+        .evaluate((label) => label.scrollWidth > label.clientWidth)
+    )
+    .toBe(true);
+  await longItem.hover();
+  await expect(tooltip).toHaveText(longName);
+  await shortItem.hover();
+  await expect(tooltip).toBeHidden();
+
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Escape');
+  await trigger.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await expect(longItem).toBeFocused();
+  await expect(tooltip).toHaveText(longName);
+  await longItem.press('Enter');
+  await expect(menu).toBeHidden();
+  await expect(tooltip).toBeHidden();
+  await expect(page.getByRole('tab', { name: longName, exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+});
+
+test('Workspace dropdown reveals nested clipped node labels', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  const nodeName = `Node — ${'long node name '.repeat(20).trimEnd()}`;
+  const query = new URLSearchParams({
+    locale: 'en-US',
+    placement: 'header',
+    layout: 'dynamic',
+    'long-menu-node': nodeName
+  });
+  await page.goto(`${fixture.url}workspace-tabs.html?${query}`);
+  const trigger = page.getByRole('button', { name: 'All open workspaces', exact: true });
+  const menu = page.getByRole('menu');
+  const tooltip = page.getByRole('tooltip');
+  await trigger.press('ArrowDown');
+
+  for (const name of ['Workspace one', 'Workspace two']) {
+    const item = menu.getByRole('menuitem', { name: `${name} ${nodeName}`, exact: true });
+    await expect(item).toBeFocused();
+    await expect
+      .poll(() =>
+        item
+          .getByText(nodeName, { exact: true })
+          .evaluate((label) => label.scrollWidth > label.clientWidth)
+      )
+      .toBe(true);
+    await expect(tooltip).toHaveText(nodeName);
+    await expect(item).not.toHaveAttribute('aria-describedby');
+    await page.keyboard.press('ArrowDown');
+  }
+
+  const direct = menu.getByRole('menuitem', { name: /^Workspace one/u });
+  await direct.getByText(nodeName, { exact: true }).hover();
+  await expect(tooltip).toHaveText('Peer-to-peer connection available (Private network IPv4 UDP)');
+});
+
 test('Workspace Tab context menu fits its short commands without an anchor arrow', async ({
   page
 }, testInfo) => {
@@ -1200,6 +1281,8 @@ test('Performance details toggle on click without a tooltip or arrow', async ({ 
   const trigger = page.locator('.web-performance-indicator');
   const panel = page.locator('.web-performance-panel');
   const popover = page.locator('.mar-ui-popover').filter({ has: panel });
+  await expect(trigger).toHaveCSS('border-top-width', '0px');
+  await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await page.clock.install();
   await trigger.hover();
   await trigger.focus();

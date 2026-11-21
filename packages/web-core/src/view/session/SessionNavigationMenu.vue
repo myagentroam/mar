@@ -2,7 +2,7 @@
 import { MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { translate } from '../../service/locale-preference-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
-import MarIcon from './MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{
   sessionId: string;

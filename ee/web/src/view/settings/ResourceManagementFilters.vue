@@ -2,7 +2,7 @@
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
-import { marIcon } from '@myagentroam/web-core/icons';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import type { OrganizationCascaderOption } from '@/service/enterprise-management-service';
 import { translate } from '@/service/locale-preference-service';
 

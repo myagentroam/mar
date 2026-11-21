@@ -2,7 +2,7 @@
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import type { MessageType } from '../../model/message-feedback.js';
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import {
   computed,
   defineAsyncComponent,
@@ -683,7 +683,7 @@ defineExpose({ release, toggle: toggleTerminal });
 }
 
 .terminal-tab-close {
-  --mar-action-icon-size: 14px;
+  --mar-ui-action-icon-size: 14px;
   position: absolute;
   display: grid;
   right: 3px;

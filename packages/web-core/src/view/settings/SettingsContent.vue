@@ -5,13 +5,16 @@ import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { useMarUiLocale } from '@myagentroam/mar-ui/locale';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
@@ -60,6 +63,7 @@ import type { PwaApplicationState } from '../../service/pwa-application-service.
 import type { QuickPrompt } from '../../model/workbench.js';
 
 const documentationAvailable = useDocumentationAvailability();
+const uiLocale = useMarUiLocale();
 
 const props = defineProps<{
   readonly section: SettingsSection;
@@ -68,6 +72,9 @@ const props = defineProps<{
   readonly checkingForUpdates?: boolean;
   readonly sessions: readonly UserSessionSummary[];
   readonly sessionsRefreshing?: boolean;
+  readonly sessionsManualRefresh?: boolean;
+  readonly sessionsReadState?: 'idle' | 'loading' | 'ready' | 'failed';
+  readonly sessionRevoking?: string | undefined;
   readonly newPassword: string;
   readonly passwordValidationError: string;
   readonly registrationToken: string | undefined;
@@ -253,17 +260,31 @@ async function confirmLogout(): Promise<void> {
             v-tooltip="translate('generated.settingsContent.refreshSignInSessions')"
             class="mar-icon-action"
             :icon="marIcon('refresh')"
-            :loading="sessionsRefreshing"
-            :aria-busy="sessionsRefreshing || undefined"
+            :loading="sessionsManualRefresh"
+            :disabled="sessionsRefreshing || sessionRevoking !== undefined"
             :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
             text
             @click="emit('refreshSessions')"
           />
         </div>
-        <p v-if="sessions.length === 0">
-          {{ translate('generated.settingsContent.noActiveSignInSessions') }}
-        </p>
-        <ul v-else>
+        <MarRegionStatus
+          v-if="
+            !sessionsManualRefresh &&
+            (sessionsRefreshing || sessionsReadState === 'idle' || sessionsReadState === 'loading')
+          "
+        >
+          <span role="progressbar" :aria-label="translate('common.loading')">
+            <MarBusyIndicator class="mar-read-loading-indicator" />
+          </span>
+        </MarRegionStatus>
+        <MarRegionStatus v-else-if="sessions.length === 0">
+          {{
+            sessionsReadState === 'failed'
+              ? uiLocale.noData
+              : translate('generated.settingsContent.noActiveSignInSessions')
+          }}
+        </MarRegionStatus>
+        <ul v-if="sessions.length > 0">
           <li v-for="session in sessions" :key="session.id">
             <strong>{{
               session.current
@@ -281,6 +302,8 @@ async function confirmLogout(): Promise<void> {
               link
               type="danger"
               :icon="marIcon('delete')"
+              :loading="sessionRevoking === session.id"
+              :disabled="sessionRevoking !== undefined || sessionsRefreshing || loading"
               @click="confirmLogoutSession(session)"
             >
               {{ translate('generated.settingsContent.signOut') }}
@@ -293,9 +316,14 @@ async function confirmLogout(): Promise<void> {
         <MarButton type="primary" :icon="marIcon('key')" @click="passwordDialogOpen = true">{{
           translate('generated.settingsContent.changePassword')
         }}</MarButton>
-        <MarButton :loading="loading" plain :icon="marIcon('power')" @click="confirmLogout">{{
-          translate('generated.settingsContent.signOut2')
-        }}</MarButton>
+        <MarButton
+          :loading="loading"
+          :disabled="sessionRevoking !== undefined"
+          plain
+          :icon="marIcon('power')"
+          @click="confirmLogout"
+          >{{ translate('generated.settingsContent.signOut2') }}</MarButton
+        >
       </div>
       <MarDialog
         @vue:mounted="mountMobileDialogReturn"

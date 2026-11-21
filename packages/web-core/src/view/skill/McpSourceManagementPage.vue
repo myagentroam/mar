@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -17,10 +16,10 @@ import {
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { MarMessageBox } from '../../service/message-box-service.js';
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
 import { translate } from '../../service/locale-preference-service';
 import { errorCode } from '../../util/api-error';
@@ -30,6 +29,7 @@ import {
   readCatalogReferences
 } from '../../service/catalog-page-service';
 import ManagementPagination from '../settings/ManagementPagination.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 
 interface Source {
   readonly id: string;
@@ -97,7 +97,10 @@ const sourceId = ref('');
 const query = ref('');
 const activeMcpTab = ref<'source' | 'catalog'>('source');
 const loading = ref(false);
-const sourcesReady = ref(false);
+const sourcesLoading = ref(false);
+const catalogLoading = computed(() => pagination.loading.value && !pagination.loadingMore.value);
+const discoveryState = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+let discoveryRevision = 0;
 const sourceDialog = ref(false);
 const catalogDialog = ref(false);
 const editDialog = ref(false);
@@ -168,48 +171,82 @@ onMounted(() => {
   pagination.start();
   void initialize();
 });
-onUnmounted(() => pagination.dispose());
+onUnmounted(() => {
+  discoveryRevision++;
+  pagination.dispose();
+});
+watch(
+  sourceId,
+  () => {
+    discoveryRevision++;
+    candidates.value = [];
+    candidateCatalog.value = [];
+    discoveryState.value = 'idle';
+    catalogDialog.value = false;
+    candidate.value = undefined;
+  },
+  { flush: 'sync' }
+);
 
 async function initialize(): Promise<void> {
-  await run(async () => {
-    await loadSources();
-    await loadCatalog();
-    await props.loadExtension?.();
-  });
+  await run(loadSources);
+  await run(loadCatalog);
+  await run(async () => props.loadExtension?.());
 }
 async function loadCatalog(): Promise<void> {
   await pagination.refresh();
-  if (candidates.value.length)
-    candidateCatalog.value = await readCatalogReferences<CatalogEntry>(
+  const currentCandidates = candidates.value;
+  if (currentCandidates.length) {
+    const references = await readCatalogReferences<CatalogEntry>(
       props.request,
       '/api/mcp-catalog',
       'entries',
       [],
-      candidates.value.map((entry) => entry.serverName)
+      currentCandidates.map((entry) => entry.serverName)
     );
+    if (currentCandidates === candidates.value) candidateCatalog.value = references;
+  }
 }
 async function loadSources(): Promise<void> {
-  sources.value = (await props.request<{ sources: Source[] }>('/api/mcp-sources')).sources;
-  sourcesReady.value = true;
-  if (!sources.value.some((source) => source.id === sourceId.value && source.enabled))
-    sourceId.value = sources.value.find((source) => source.enabled)?.id ?? '';
+  sourcesLoading.value = true;
+  try {
+    sources.value = (await props.request<{ sources: Source[] }>('/api/mcp-sources')).sources;
+    if (!sources.value.some((source) => source.id === sourceId.value && source.enabled))
+      sourceId.value = sources.value.find((source) => source.enabled)?.id ?? '';
+  } finally {
+    sourcesLoading.value = false;
+  }
 }
 async function discover(): Promise<void> {
-  if (!sourceId.value) return;
-  await run(async () => {
-    candidates.value = (
+  const source = sourceId.value;
+  if (!source || loading.value || discoveryState.value === 'loading') return;
+  const revision = ++discoveryRevision;
+  discoveryState.value = 'loading';
+  candidates.value = [];
+  candidateCatalog.value = [];
+  try {
+    const rows = (
       await props.request<{ servers: Candidate[] }>(
-        `/api/mcp-sources/${encodeURIComponent(sourceId.value)}/servers?${new URLSearchParams({ query: query.value })}`
+        `/api/mcp-sources/${encodeURIComponent(source)}/servers?${new URLSearchParams({ query: query.value })}`
       )
     ).servers;
-    candidateCatalog.value = await readCatalogReferences<CatalogEntry>(
+    if (revision !== discoveryRevision) return;
+    const references = await readCatalogReferences<CatalogEntry>(
       props.request,
       '/api/mcp-catalog',
       'entries',
       [],
-      candidates.value.map((entry) => entry.serverName)
+      rows.map((entry) => entry.serverName)
     );
-  });
+    if (revision !== discoveryRevision) return;
+    candidates.value = rows;
+    candidateCatalog.value = references;
+    discoveryState.value = 'ready';
+  } catch (error) {
+    if (revision !== discoveryRevision) return;
+    discoveryState.value = 'failed';
+    showOperationError(error);
+  }
 }
 function openSourceDialog(): void {
   Object.assign(sourceDraft, {
@@ -290,6 +327,7 @@ async function removeSource(source: Source): Promise<void> {
   }, translate('generated.mcpSourceManagementPage.mCPSourceDeleted'));
 }
 function openCatalog(item: Candidate): void {
+  if (!candidates.value.includes(item)) return;
   candidate.value = item;
   Object.assign(catalogDraft, {
     featured: false,
@@ -299,10 +337,20 @@ function openCatalog(item: Candidate): void {
   catalogDialog.value = true;
 }
 async function addCatalog(): Promise<void> {
-  if (!candidate.value) return;
+  const item = candidate.value;
+  const source = sourceId.value;
+  const revision = discoveryRevision;
+  if (!item || !source || loading.value || !candidates.value.includes(item)) return;
   if ((await catalogForm.value?.validate().catch(() => false)) !== true) return;
+  if (
+    !catalogDialog.value ||
+    loading.value ||
+    revision !== discoveryRevision ||
+    item !== candidate.value
+  )
+    return;
   await run(async () => {
-    const input = { sourceId: sourceId.value, candidate: candidate.value, ...catalogDraft };
+    const input = { sourceId: source, candidate: item, ...catalogDraft };
     if (props.submitCatalog !== undefined) await props.submitCatalog(input);
     else
       await props.request('/api/mcp-catalog', {
@@ -310,7 +358,7 @@ async function addCatalog(): Promise<void> {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ...input, scope: 'PERSONAL' })
       });
-    catalogDialog.value = false;
+    if (candidate.value === item) catalogDialog.value = false;
     await loadCatalog();
   }, translate('generated.mcpSourceManagementPage.addedToMCPCenter'));
 }
@@ -461,7 +509,7 @@ function scopeLabel(scope: string): string {
 </script>
 
 <template>
-  <main v-mar-loading:page="loading && !sourcesReady" class="mar-management-page mcp-source-page">
+  <main class="mar-management-page mcp-source-page">
     <div class="mar-table-actions">
       <MarButton
         type="primary"
@@ -474,9 +522,15 @@ function scopeLabel(scope: string): string {
     <MarTable
       class="clickable-rows mcp-source-table"
       :data="displayedSources"
+      :aria-busy="sourcesLoading"
       row-key="id"
       @row-click="showSourceDetails"
     >
+      <template v-if="sourcesLoading" #loading>
+        <span role="progressbar" :aria-label="translate('common.loading')">
+          <MarBusyIndicator class="mar-read-loading-indicator" />
+        </span>
+      </template>
       <MarTableColumn
         prop="name"
         :label="translate('generated.mcpSourceManagementPage.name')"
@@ -561,7 +615,7 @@ function scopeLabel(scope: string): string {
               <template #append
                 ><MarButton
                   :icon="marIcon('search')"
-                  :disabled="!sourceId || loading"
+                  :disabled="!sourceId || loading || discoveryState === 'loading'"
                   @click="discover"
                   >{{ translate('generated.mcpSourceManagementPage.search') }}</MarButton
                 ></template
@@ -571,12 +625,18 @@ function scopeLabel(scope: string): string {
         </div>
         <div class="mcp-table-section">
           <MarTable
-            v-if="candidates.length > 0"
+            v-if="discoveryState !== 'idle'"
             class="clickable-rows source-mcp-table"
             :data="candidates"
+            :aria-busy="discoveryState === 'loading'"
             row-key="id"
             @row-click="showDetails"
           >
+            <template v-if="discoveryState === 'loading'" #loading>
+              <span role="progressbar" :aria-label="translate('common.loading')">
+                <MarBusyIndicator class="mar-read-loading-indicator" />
+              </span>
+            </template>
             <MarTableColumn
               prop="displayName"
               :label="translate('generated.mcpSourceManagementPage.name')"
@@ -662,23 +722,20 @@ function scopeLabel(scope: string): string {
             <MarOption v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
           </MarSelect>
         </div>
-        <div
-          v-mar-loading:region="
-            sourcesReady &&
-            pagination.loading.value &&
-            !pagination.loadingMore.value &&
-            !pagination.failure.value
-          "
-          class="mcp-table-section"
-        >
+        <div class="mcp-table-section">
           <MarTable
-            v-if="catalog.length > 0"
             class="clickable-rows catalog-mcp-table"
             @sort-change="pagination.sort"
             :data="catalog"
+            :aria-busy="catalogLoading"
             row-key="id"
             @row-click="showDetails"
           >
+            <template v-if="catalogLoading" #loading>
+              <span role="progressbar" :aria-label="translate('common.loading')">
+                <MarBusyIndicator class="mar-read-loading-indicator" />
+              </span>
+            </template>
             <MarTableColumn
               prop="displayName"
               :label="translate('generated.mcpSourceManagementPage.name')"
@@ -773,9 +830,6 @@ function scopeLabel(scope: string): string {
             </MarTableColumn>
           </MarTable>
 
-          <div v-else class="mcp-empty">
-            {{ translate('generated.mcpSourceManagementPage.noCatalogMCPServers') }}
-          </div>
           <ManagementPagination
             :total="pagination.total.value"
             :page="pagination.page.value"

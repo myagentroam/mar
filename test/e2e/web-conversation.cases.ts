@@ -1673,7 +1673,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   ).toBe('none');
   await expect(page.locator('.composer-working > i')).toHaveCSS(
     'animation-name',
-    /mar-busy-indicator-spin/u
+    /mar-loading-ring-spin/u
   );
   await expect(page.locator('.composer-working > i')).toHaveCSS('width', '10px');
   const stroke = await page
@@ -1685,7 +1685,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   const indicator = heading.locator('.process-activity-indicator');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(indicator).toBeVisible();
-  await expect(indicator).toHaveCSS('animation-name', /mar-busy-indicator-spin/u);
+  await expect(indicator).toHaveCSS('animation-name', /mar-loading-ring-spin/u);
   await expect(indicator).toHaveAttribute('aria-hidden', 'true');
   await expect(heading.locator('.process-activity-label')).toHaveCSS('font-weight', '600');
   expect(
@@ -3712,7 +3712,7 @@ for (const mobile of [false, true]) {
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await expect(history.locator('.mar-busy-indicator')).toHaveCSS(
         'animation-name',
-        'mar-busy-indicator-spin'
+        'mar-loading-ring-spin'
       );
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(history.locator('.mar-busy-indicator')).toHaveCSS('animation-name', 'none');

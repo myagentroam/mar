@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './file-tooltip-trigger.css';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
@@ -6,7 +7,7 @@ import { selectedTextOffsets, unifiedDiffLines } from '../../util/quote-selectio
 import { showMessage } from '../../service/message-feedback-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
-import MarIcon from '../common/MarIcon.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import DOMPurify from 'dompurify';
@@ -716,6 +717,12 @@ defineExpose({
     :file-name="path.split('/').at(-1) ?? path"
     :path="path"
     :loading="props.loading"
+    :load-error="
+      props.loadFailed
+        ? (props.loadErrorMessage ?? translate('generated.gitDiffViewer.gitDiffLoadFailed'))
+        : undefined
+    "
+    @retry="emit('retry')"
     :source-label="
       translate(props.source === 'TOOL_CHANGE' ? 'presentation.thisChange' : 'common.gitDiff')
     "
@@ -932,17 +939,9 @@ defineExpose({
       @click="focus"
       @contextmenu="openPreviewMenu"
     >
-      <template v-if="!props.loading">
+      <template v-if="!props.loading && !props.loadFailed">
         <FilePreviewState
-          v-if="props.loadFailed"
-          retryable
-          :message="
-            props.loadErrorMessage ?? translate('generated.gitDiffViewer.gitDiffLoadFailed')
-          "
-          @retry="emit('retry')"
-        />
-        <FilePreviewState
-          v-else-if="value?.binary === true"
+          v-if="value?.binary === true"
           :message="translate('generated.gitDiffViewer.binaryFilesDoNotSupportDiff')"
         >
           <template #actions>

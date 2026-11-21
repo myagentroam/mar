@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { translate } from '../../service/locale-preference-service.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import {
   computed,
   nextTick,
@@ -358,11 +358,12 @@ onBeforeUnmount(() => {
           aria-live="polite"
           :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
         >
-          <BusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
+          <MarBusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
         </div>
         <MarButton
           v-if="initialLoadFailed || reloading"
           class="conversation-load-older conversation-reload"
+          :class="{ 'is-centered': !hasTurns }"
           v-tooltip="!loadingInitial && !reloading ? initialError : ''"
           :aria-description="!loadingInitial && !reloading ? initialError : undefined"
           link
@@ -377,7 +378,7 @@ onBeforeUnmount(() => {
           "
           @click="reload"
         >
-          <BusyIndicator
+          <MarBusyIndicator
             v-if="loadingInitial || reloading"
             class="history-busy-indicator mar-read-loading-indicator"
           />
@@ -395,7 +396,7 @@ onBeforeUnmount(() => {
             role="status"
             :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
           >
-            <BusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
+            <MarBusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
           </div>
           <MarButton
             v-if="olderAction === 'retry' || (olderError && !loadingOlder)"
@@ -415,7 +416,7 @@ onBeforeUnmount(() => {
             data-history-action="retry"
             @click="loadOlder"
           >
-            <BusyIndicator
+            <MarBusyIndicator
               v-if="loadingOlder || olderAction !== undefined"
               class="history-busy-indicator mar-read-loading-indicator"
             />
@@ -424,7 +425,9 @@ onBeforeUnmount(() => {
         </div>
         <section v-if="showEmptyPrompt" class="conversation-empty">
           <h2>{{ translate(`conversationEmpty.${emptyPrompt}.title`) }}</h2>
-          <p>{{ translate(`conversationEmpty.${emptyPrompt}.description`) }}</p>
+          <slot name="empty-description">
+            <p>{{ translate(`conversationEmpty.${emptyPrompt}.description`) }}</p>
+          </slot>
         </section>
         <slot />
       </div>
@@ -574,11 +577,21 @@ onBeforeUnmount(() => {
   margin: 0 auto 0.8rem;
 }
 
+.conversation-loading-initial.is-centered,
+.conversation-reload.is-centered {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  max-width: calc(100% - 16px);
+  margin: 0;
+  transform: translate(-50%, -50%);
+}
+
 .conversation-loading-initial.is-centered {
   position: absolute;
   inset: 0;
   width: auto;
-  margin: 0;
+  max-width: none;
+  transform: none;
   pointer-events: none;
 }
 

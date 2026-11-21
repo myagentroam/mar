@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
-import { marIcon } from '../../util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';

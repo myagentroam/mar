@@ -7,8 +7,8 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
-import MarIcon from '../common/MarIcon.vue';
-import LoadingPanel from '../common/LoadingPanel.vue';
+import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarLoadingPanel } from '@myagentroam/mar-ui/loading-panel';
 
 import {
   computed,
@@ -35,7 +35,7 @@ import WorkspaceSessionActionsMenu from '../workspace/WorkspaceSessionActionsMen
 import SessionPromptDialog from '../workspace/SessionPromptDialog.vue';
 import SessionScheduleDialog from '../workspace/SessionScheduleDialog.vue';
 import SessionShareDialog from '../workspace/SessionShareDialog.vue';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
 import WorkspaceTabs from '../../view/workspace/WorkspaceTabs.vue';
 import WorkspaceRegistrationPicker from '../workspace/WorkspaceRegistrationPicker.vue';
@@ -52,7 +52,11 @@ import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.j
 
 const loadingComponent = {
   render: () =>
-    h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
+    h(MarLoadingPanel, {
+      loading: true,
+      variant: 'page',
+      'aria-label': translate('common.loading')
+    })
 };
 
 const SettingsContent = defineAsyncComponent({
@@ -135,6 +139,26 @@ const workspaceOffline = computed(
     props.page.application.networkUnavailable ||
     props.page.resources.workspaceHost?.connected === false
 );
+const workspaceRecoveryRetrying = ref(false);
+watch(
+  [
+    () => props.page.application.view,
+    () => props.page.selection.workspaceTarget,
+    () => props.page.selection.workspaceSelectionLoading,
+    workspaceOffline
+  ],
+  ([view, target, loading, offline], [, previousTarget]) => {
+    if (view !== 'nodes' || target !== previousTarget || !loading || offline)
+      workspaceRecoveryRetrying.value = false;
+  }
+);
+async function retryWorkspaceRecovery(): Promise<void> {
+  if (workspaceRecoveryRetrying.value || props.page.selection.workspaceSelectionLoading) return;
+  workspaceRecoveryRetrying.value = true;
+  props.page.selection.retryWorkspaceSelection();
+  await nextTick();
+  if (!props.page.selection.workspaceSelectionLoading) workspaceRecoveryRetrying.value = false;
+}
 function workspaceTabHasActiveRun(nodeId: string, workspaceId: string): boolean {
   return (
     !props.page.application.networkUnavailable &&
@@ -507,7 +531,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         role="progressbar"
         :aria-label="translate('generated.workbenchSurface.restoringWorkspace')"
       >
-        <BusyIndicator />
+        <MarBusyIndicator />
       </div>
       <section
         v-else-if="
@@ -596,19 +620,37 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           class="welcome-panel compact-welcome workspace-selection-panel workspace-recovery-panel"
         >
           <div
-            v-if="page.selection.workspaceSelectionLoading"
+            v-if="page.selection.workspaceSelectionLoading && !workspaceRecoveryRetrying"
             class="mar-page-loading-state"
             role="status"
             :aria-label="translate('common.loading')"
           >
-            <BusyIndicator />
+            <MarBusyIndicator />
           </div>
-          <div v-else class="workspace-recovery-state">
-            <p role="status">
+          <div
+            v-else
+            class="workspace-recovery-state"
+            :class="{ 'is-retrying': workspaceRecoveryRetrying }"
+          >
+            <p role="status" :aria-hidden="workspaceRecoveryRetrying || undefined">
               {{ translate('generated.workbenchSurface.workspaceMetadataUnavailable') }}
             </p>
-            <MarButton link size="small" @click="page.selection.retryWorkspaceSelection">
-              {{ translate('common.loadFailedRetry') }}
+            <MarButton
+              class="workspace-recovery-retry"
+              link
+              size="small"
+              :aria-busy="workspaceRecoveryRetrying || undefined"
+              :aria-disabled="workspaceRecoveryRetrying || undefined"
+              :aria-label="workspaceRecoveryRetrying ? translate('common.loading') : undefined"
+              @click="retryWorkspaceRecovery"
+            >
+              <MarBusyIndicator
+                v-if="workspaceRecoveryRetrying"
+                class="mar-read-loading-indicator"
+              />
+              <span class="workspace-recovery-retry-label">{{
+                translate('common.loadFailedRetry')
+              }}</span>
             </MarButton>
           </div>
         </section>
@@ -661,6 +703,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :search-supported="page.sessionList.workspaceSessionSearchEnabled"
             :search-query="page.sessionList.workspaceSessionSearchQuery"
             :searching="page.sessionList.searchingWorkspaceSessions"
+            :search-ready="page.sessionList.workspaceSessionSearchReady"
             :refreshing="page.sessionList.refreshingWorkspaceSessions"
             :workspace-manageable="page.resources.selectedWorkspace.manageable !== false"
             :request="page.identity.request"
@@ -1048,6 +1091,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :section="page.application.settingsSection"
           :sessions="page.identity.adminSessions"
           :sessions-refreshing="page.identity.adminSessionsRefreshing"
+          :sessions-manual-refresh="page.identity.adminSessionsManualRefresh"
+          :sessions-read-state="page.identity.adminSessionsReadState"
+          :session-revoking="page.identity.adminSessionRevoking"
           :password-validation-error="page.identity.passwordValidationError"
           :registration-token="page.settings.registrationToken"
           :registration-loading="page.settings.registrationLoading"
@@ -1100,6 +1146,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       :title="treePopup.title"
       :tree="treePopupContent.tree"
       :status="treePopupContent.status"
+      :can-retry="
+        !workspaceOffline &&
+        page.application.workspaceWatchTopicStatus.sessionNavigation === 'failed'
+      "
       :main-session-id="
         page.selection.draftSessionOpen ? undefined : page.selection.selectedSessionId
       "
@@ -1192,6 +1242,20 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 
 .workspace-recovery-state > p {
   margin: 0;
+}
+
+.workspace-recovery-state.is-retrying :is(p, .workspace-recovery-retry-label) {
+  visibility: hidden;
+}
+
+.workspace-recovery-retry {
+  position: relative;
+}
+
+.workspace-recovery-retry .mar-read-loading-indicator {
+  position: absolute;
+  inset: 0;
+  margin: auto;
 }
 
 .workspace-selection-hint {
@@ -1413,8 +1477,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     transition: grid-template-columns var(--mar-motion-duration-collapse)
       var(--mar-motion-easing-collapse);
   }
-  .workspace-grid:has(.panel-resize-handle:active),
-  .workspace-grid:has(.panel-resize-handle.dragging) {
+  .workspace-grid:has(.workbench-aside-resize:active),
+  .workspace-grid:has(.workbench-aside-resize.dragging) {
     transition: none;
   }
   .workbench {
@@ -1542,9 +1606,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     inset: var(--mar-sidebar-header-height) 0 0;
     width: 100% !important;
     min-width: 0;
-  }
-  .workspace-aside :deep(.workbench-aside-resize) {
-    display: none;
   }
   .terminal-dock {
     position: relative;

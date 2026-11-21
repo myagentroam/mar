@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { translate } from '../../src/service/locale-preference-service.js';
 import { MarMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
 import { createSSRApp, defineComponent, h, ref, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
@@ -798,6 +799,51 @@ describe('Enterprise management components', () => {
         method: 'POST',
         body: '{"enabled":false}'
       });
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it('acknowledges an OAuth save before its separate table read and reports a read failure once', async () => {
+    let rejectRead!: (error: Error) => void;
+    const pendingRead = new Promise<never>((_, reject) => {
+      rejectRead = reject;
+    });
+    const failure = new Error('Provider list unavailable');
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ providers: [] })
+      .mockResolvedValueOnce({})
+      .mockReturnValueOnce(pendingRead);
+    feedback.success.mockClear();
+    feedback.error.mockClear();
+    const view = renderComponent(
+      OAuthManagementPage,
+      { request, writable: true },
+      {},
+      { validate: async () => true }
+    );
+    try {
+      await flushComponent();
+      await trigger(button(view, 'Add provider'), 'onClick');
+      const saving = trigger(button(view, 'Save and disable'), 'onClick');
+      await flushComponent();
+      const successBeforeReadSettled = feedback.success.mock.calls.slice();
+      const tableBusy = view.findAll('MarTable')[0]!.props['aria-busy'];
+
+      rejectRead(failure);
+      await saving;
+
+      expect(request).toHaveBeenCalledTimes(3);
+      expect(tableBusy).toBe(true);
+      expect(successBeforeReadSettled).toEqual([
+        [translate('generated.oAuthManagementPage.oAuthProviderSavedTestItBeforeEnabling')]
+      ]);
+      expect(feedback.success).toHaveBeenCalledOnce();
+      expect(feedback.error).toHaveBeenCalledOnce();
+      const table = view.findAll('MarTable')[0]!;
+      expect(table.props['aria-busy']).toBe(false);
+      expect(table.props.data).toEqual([]);
     } finally {
       view.unmount();
     }

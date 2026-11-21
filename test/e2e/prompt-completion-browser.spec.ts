@@ -171,7 +171,7 @@ for (const mode of ['workspace'] as const) {
         const bar = page.locator('.completion-actions');
         await expect(page.locator('.completion-hint')).toBeHidden();
         await expect.poll(async () => (await bar.boundingBox())!.height).toBeLessThanOrEqual(28);
-        await expect(indicator).toHaveCSS('animation-name', /^mar-busy-indicator-spin/);
+        await expect(indicator).toHaveCSS('animation-name', /^mar-loading-ring-spin/);
         await page.emulateMedia({ reducedMotion: 'reduce' });
         await expect(indicator).toHaveCSS('animation-name', 'none');
         await resolveRequest(page, 0, 'Check the recent changes.');

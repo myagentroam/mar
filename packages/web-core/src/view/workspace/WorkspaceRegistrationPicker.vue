@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -10,8 +12,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
+import { MarIcon, marIcon } from '@myagentroam/mar-ui/icons';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import { computed, reactive, ref, useId, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
@@ -53,6 +54,14 @@ const emit = defineEmits<{
   register: [];
 }>();
 const registrationForm = ref<FormInstance>();
+const manualDirectoryRefresh = ref(false);
+function refreshDirectory(path: string): void {
+  manualDirectoryRefresh.value = true;
+  emit('navigate', path);
+}
+watch([() => props.loadingDirectory, () => props.open], ([loading, open]) => {
+  if (!loading || !open) manualDirectoryRefresh.value = false;
+});
 const registrationFormId = useId();
 const registrationFormValue = computed(() => ({ path: props.selectedPath }));
 const registrationRules: FormRules<{ path: string }> = {
@@ -239,12 +248,11 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
             class="mar-icon-action"
             :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
             :icon="marIcon('refresh')"
-            :loading="loadingDirectory"
-            :aria-busy="loadingDirectory || undefined"
+            :loading="loadingDirectory && manualDirectoryRefresh"
             :disabled="loadingDirectory"
             native-type="button"
             text
-            @click="emit('navigate', directory.currentPath)"
+            @click="refreshDirectory(directory.currentPath)"
           />
           <MarButton
             :icon="marIcon('folder-add')"
@@ -279,6 +287,11 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         <template #prefix><MarIcon name="search" /></template>
       </MarInput>
 
+      <MarRegionStatus v-if="loadingDirectory && !manualDirectoryRefresh">
+        <span role="progressbar" :aria-label="translate('common.loading')">
+          <MarBusyIndicator class="mar-read-loading-indicator" />
+        </span>
+      </MarRegionStatus>
       <ul v-if="directory !== undefined" class="workspace-directory-list">
         <li v-if="pendingDirectoryName" class="workspace-directory-row selected">
           <div class="workspace-directory-entry">
@@ -334,6 +347,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         </li>
         <li
           v-if="
+            !loadingDirectory &&
             displayFilter.trim().length > 0 &&
             filteredEntries.length === 0 &&
             pendingDirectoryName.length === 0
@@ -343,10 +357,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           {{ translate('workspaceDisplayFilter.empty') }}
         </li>
       </ul>
-      <p v-else-if="loadingDirectory" class="workspace-picker-empty">
-        {{ translate('generated.workspaceRegistrationPicker.loadingAllowedRoots') }}
-      </p>
-      <p v-else class="workspace-picker-empty">
+      <p v-else-if="!loadingDirectory" class="workspace-picker-empty">
         {{ translate('generated.workspaceRegistrationPicker.selectADirectoryToRegister') }}
       </p>
       <p v-if="directory?.truncated" class="workspace-picker-empty">

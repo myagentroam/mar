@@ -4,7 +4,7 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { MANAGEMENT_PAGE_SIZE } from '../../service/management-pagination-service.js';
-import BusyIndicator from '../common/BusyIndicator.vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { errorMessage } from '../../util/error-presentation.js';
 
 const props = withDefaults(
@@ -109,7 +109,7 @@ onUnmounted(() => observer?.disconnect());
         :aria-busy="loading || undefined"
         @click="!loading && emit('retry')"
       >
-        <BusyIndicator v-if="loading" class="mar-read-loading-indicator" />
+        <MarBusyIndicator v-if="loading" class="mar-read-loading-indicator" />
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
       </MarButton>
       <span
@@ -118,7 +118,7 @@ onUnmounted(() => observer?.disconnect());
         role="status"
         :aria-label="translate('common.loading')"
       >
-        <BusyIndicator class="mar-read-loading-indicator" />
+        <MarBusyIndicator class="mar-read-loading-indicator" />
       </span>
     </div>
   </div>

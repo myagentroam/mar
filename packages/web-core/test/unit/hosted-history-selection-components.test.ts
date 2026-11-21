@@ -6,7 +6,7 @@ import { createHostedConversationSelectionService } from '../../src/service/host
 import { createHostedConversationWatchCoordinator } from '../../src/service/hosted-conversation-watch-coordinator.js';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
-import { marIcon } from '../../src/util/mar-icons.js';
+import { marIcon } from '@myagentroam/mar-ui/icons';
 import {
   flushComponent,
   renderComponent,

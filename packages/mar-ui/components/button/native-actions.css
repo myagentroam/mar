@@ -1,0 +1,43 @@
+.mar-icon-button {
+  width: 25px;
+  padding: 2px;
+  text-align: center;
+}
+.mar-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mar-icon-action,
+.mar-text-action {
+  --mar-action-hover-bg: var(--mar-ui-fill-row-hover);
+  border-radius: var(--mar-ui-radius-control);
+  background: transparent;
+  color: var(--mar-ui-text-secondary);
+}
+
+.mar-icon-action {
+  border: 0;
+  cursor: pointer;
+}
+
+.mar-icon-action--inline,
+.mar-text-action {
+  --mar-action-hover-bg: transparent;
+}
+
+:is(.mar-icon-action, .mar-text-action):is(
+    :hover,
+    :active,
+    :focus-visible,
+    .is-active,
+    [aria-expanded='true']:not(:where(.mar-icon-action--panel-toggle))
+  ):not(:disabled, .is-disabled, [aria-disabled='true']) {
+  background: var(--mar-action-hover-bg);
+  color: var(--mar-action-hover-color, var(--mar-ui-text-primary));
+}
+
+:is(.mar-icon-action, .mar-text-action):focus-visible {
+  outline: 2px solid var(--mar-ui-color-brand);
+  outline-offset: 2px;
+}
