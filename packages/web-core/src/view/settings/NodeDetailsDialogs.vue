@@ -460,7 +460,7 @@ function usagePercentageLabel(value: number): string {
 }
 
 .runner-usage-window strong {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
   font-variant-numeric: tabular-nums;
 }

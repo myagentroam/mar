@@ -120,11 +120,8 @@ function activate(event: MouseEvent) {
   color: var(--mar-ui-text-primary);
 }
 .mar-ui-dropdown-item:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
-}
-.mar-ui-dropdown-item[aria-current='true']:focus-visible {
-  outline-color: var(--mar-ui-text-muted);
 }
 .mar-ui-dropdown-item:disabled {
   color: var(--mar-ui-text-disabled);

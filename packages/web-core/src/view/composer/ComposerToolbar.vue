@@ -484,8 +484,8 @@ function selectFiles(event: Event): void {
   height: 0.9rem;
   border-radius: 50%;
   background: conic-gradient(
-    var(--mar-color-brand) var(--context-usage),
-    var(--mar-border-medium) 0
+    var(--mar-text-secondary) var(--context-usage),
+    color-mix(in srgb, var(--mar-text-secondary) 30%, transparent) 0
   );
   position: relative;
 }
@@ -689,7 +689,7 @@ function selectFiles(event: Event): void {
 :is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
   :deep(.mar-ui-select__field:not([data-disabled]):is(:focus-within, [data-expanded])) {
   background: var(--mar-fill-soft);
-  box-shadow: 0 0 0 1px var(--mar-color-brand) inset;
+  box-shadow: 0 0 0 1px var(--mar-control-focus) inset;
 }
 
 :is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)

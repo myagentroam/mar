@@ -362,7 +362,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(.agent-markdown-image:focus-visible) {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 
@@ -437,7 +437,7 @@ function onLinkClick(event: MouseEvent): void {
 
 .agent-markdown :deep(.task-list-item input) {
   margin: 0 0.36rem 0 0;
-  accent-color: var(--mar-color-brand);
+  accent-color: var(--mar-control-primary-bg);
   pointer-events: none;
 }
 
@@ -538,7 +538,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(a) {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-control-link-text);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -548,7 +548,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(a:focus-visible) {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 .agent-markdown :deep(.task-list-item label) {

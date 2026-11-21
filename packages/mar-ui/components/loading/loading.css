@@ -11,17 +11,13 @@
   display: grid;
   place-items: center;
   background: var(--mar-ui-loading-mask);
-  color: var(--mar-ui-color-brand);
+  color: var(--mar-ui-text-secondary);
 }
 
 .mar-ui-loading__indicator {
   inline-size: 1rem;
   block-size: 1rem;
   animation: mar-loading-ring-spin 0.85s linear infinite;
-}
-
-.mar-ui-loading[data-variant='page'] {
-  color: var(--mar-ui-loading-page-color, var(--mar-ui-color-brand));
 }
 
 .mar-ui-loading[data-variant='page'] .mar-ui-loading__indicator {

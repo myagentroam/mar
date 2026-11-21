@@ -30,7 +30,8 @@ for (const scheme of ['Light', 'Dark']) {
         if (custom)
           await page.locator('html').evaluate((element) => {
             for (const [token, value] of Object.entries({
-              '--mar-color-brand': '#bf6ac9',
+              '--mar-conversation-activity-fg': '#bf6ac9',
+              '--mar-control-focus': '#8899aa',
               '--mar-text-primary': '#dae5cf',
               '--mar-text-secondary': '#b6c3af',
               '--mar-text-disabled': '#8293a4',
@@ -50,7 +51,7 @@ for (const scheme of ['Light', 'Dark']) {
             active: color('--mar-text-primary'),
             hover: color('--mar-fill-row-hover'),
             disabled: color('--mar-text-disabled'),
-            focus: color('--mar-color-brand')
+            focus: color('--mar-control-focus')
           };
           probe.remove();
           return colors;

@@ -620,9 +620,9 @@ defineExpose({ reveal });
 }
 
 .workspace-file-tree.is-root-drop-target {
-  outline: 2px dashed var(--mar-color-brand);
+  outline: 2px dashed var(--mar-control-focus);
   outline-offset: -3px;
-  background: var(--mar-color-brand-subtle);
+  background: var(--mar-fill-soft);
 }
 
 .file-tree-virtual-space,
@@ -707,8 +707,8 @@ defineExpose({ reveal });
 }
 
 .file-tree-row-shell.drop-target {
-  background-color: var(--mar-color-brand-subtle);
-  outline: 1px solid var(--mar-color-brand);
+  background-color: var(--mar-fill-soft);
+  outline: 1px solid var(--mar-control-focus);
   outline-offset: -1px;
 }
 

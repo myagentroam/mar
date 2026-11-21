@@ -1082,9 +1082,8 @@ for (const mobile of [false, true]) {
           bounds!.x + bounds!.width + (mobile ? 9 : 0)
         );
       } else await expect(trigger.locator('.activity-entry-running')).toHaveCount(0);
-      await expect(trigger).toHaveAttribute(
-        'aria-description',
-        `Running ${count}, 0 unread notifications`
+      await expect(trigger).toHaveAccessibleDescription(
+        `Active tasks: ${count}, 0 unread notifications`
       );
       await trigger.click();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');

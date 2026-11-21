@@ -136,8 +136,8 @@ function submit(): void {
 
 .auth-form :deep(.mar-ui-input:focus-within) {
   background: var(--mar-bg-panel);
-  border-color: var(--mar-color-brand-border);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
+  border-color: var(--mar-control-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-control-focus) 14%, transparent);
 }
 
 .auth-form > button[type='submit'] {

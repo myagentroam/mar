@@ -44,7 +44,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             inactive: resolve('--mar-bg-tab-inactive'),
             hover: resolve('--mar-fill-row-hover'),
             border: resolve('--mar-border-default'),
-            focus: resolve('--mar-color-brand')
+            focus: resolve('--mar-control-focus')
           };
           probe.remove();
           return result;
@@ -420,7 +420,7 @@ for (const width of [1280, 390]) {
       }
       await page.locator('html').evaluate((element) => {
         element.style.setProperty('--mar-text-primary', '#d6dfc9');
-        element.style.setProperty('--mar-color-brand-text', '#af79d0');
+        element.style.setProperty('--mar-control-focus', '#af79d0');
       });
       for (const [close, inline] of [
         [page.locator('.workspace-file-tab-close').first(), true],

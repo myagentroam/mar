@@ -289,7 +289,7 @@ function onFocusOut(event: FocusEvent) {
   border-color: var(--mar-ui-input-border-hover);
 }
 .mar-ui-time-picker__field:is(:focus-within, [data-expanded='true']) {
-  border-color: var(--mar-ui-color-brand);
+  border-color: var(--mar-ui-control-focus);
 }
 .mar-ui-time-picker__field[data-invalid='true'] {
   border-color: var(--mar-ui-control-color-danger);
@@ -318,7 +318,7 @@ button {
   cursor: pointer;
 }
 button:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
 }
 .mar-ui-time-picker__popup {
   inline-size: 10rem;

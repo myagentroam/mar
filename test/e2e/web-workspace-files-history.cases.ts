@@ -1366,7 +1366,7 @@ test('Recent sessions show their own count, status tags and cumulative duration'
   const activity = page.getByRole('button', { name: '会话与通知', exact: true });
   await expect(activity.locator('.activity-entry-running')).toBeVisible();
   await expect(activity.locator('.activity-entry-count')).toHaveCount(0);
-  await expect(activity).toHaveAttribute('aria-description', '运行中 1, 0 条未读通知');
+  await expect(activity).toHaveAccessibleDescription('活动任务：1, 0 条未读通知');
   const recentSessionsIcon = page
     .getByRole('button', { name: '会话与通知', exact: true })
     .locator('svg');
@@ -1480,7 +1480,7 @@ for (const mobile of [false, true]) {
       const trigger = page.getByRole('button', { name: '会话与通知', exact: true });
       await expect(trigger.locator('.activity-entry-running')).toBeVisible();
       await expect(trigger.locator('.activity-entry-count')).toHaveCount(0);
-      await expect(trigger).toHaveAttribute('aria-description', '运行中 1, 0 条未读通知');
+      await expect(trigger).toHaveAccessibleDescription('活动任务：1, 0 条未读通知');
       await trigger.click();
       const panel = page.getByRole('region', { name: '最近会话', exact: true });
       const tasks = panel.locator('.recent-sessions-list > li');
@@ -1577,9 +1577,8 @@ for (const mobile of [false, true]) {
         await expect(tasks).toHaveCount(1);
         await expect(tasks.first().locator('.mar-ui-tag')).toHaveText(label);
         const active = status === 'STARTING' || status === 'CANCELLING';
-        await expect(trigger).toHaveAttribute(
-          'aria-description',
-          `运行中 ${active ? 1 : 0}, 0 条未读通知`
+        await expect(trigger).toHaveAccessibleDescription(
+          `活动任务：${active ? 1 : 0}, 0 条未读通知`
         );
         await expect(trigger.locator('.activity-entry-running')).toHaveCount(active ? 1 : 0);
         await expect(trigger.locator('.activity-entry-count')).toHaveCount(0);

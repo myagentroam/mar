@@ -51,11 +51,9 @@ function runDisplayStatus(run: RecentRun): RecentRun['status'] {
     : run.status;
 }
 
-function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info' {
-  const status = runDisplayStatus(run);
-  if (status === 'SUCCEEDED') return 'info';
+function runStatusType(status: RecentRun['status']): 'success' | 'danger' | 'warning' | 'info' {
+  if (status === 'RUNNING') return 'success';
   if (status === 'FAILED') return 'danger';
-  if (status === 'STARTING' || status === 'RUNNING') return 'success';
   if (status === 'CANCELLING' || status === 'INTERRUPTED') return 'warning';
   return 'info';
 }
@@ -118,7 +116,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
               >{{ translate('sessionGroups.unread') }}</span
             >
           </span>
-          <MarTag :type="runStatusType(run)">{{
+          <MarTag :type="runStatusType(runDisplayStatus(run))">{{
             translate(RUN_STATUS_KEYS[runDisplayStatus(run)])
           }}</MarTag>
           <small v-tooltip="run.userMessage">{{ run.userMessage }}</small>
@@ -178,7 +176,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
   background: var(--mar-fill-row-hover);
 }
 .recent-sessions-list button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 .recent-session-heading {
@@ -223,8 +221,5 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
   justify-self: start;
   align-self: center;
   color: var(--mar-text-secondary);
-}
-.recent-sessions-list .mar-ui-tag[data-type='success'] {
-  --mar-ui-tag-text-color: var(--mar-color-success-text);
 }
 </style>

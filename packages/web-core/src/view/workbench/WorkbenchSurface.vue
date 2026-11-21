@@ -159,12 +159,13 @@ async function retryWorkspaceRecovery(): Promise<void> {
   await nextTick();
   if (!props.page.selection.workspaceSelectionLoading) workspaceRecoveryRetrying.value = false;
 }
-function workspaceTabHasActiveRun(nodeId: string, workspaceId: string): boolean {
-  return (
-    !props.page.application.networkUnavailable &&
-    props.page.resources.nodes.some((node) => node.id === nodeId && node.connected) &&
-    props.page.notifications.hasActiveWorkspaceRun(nodeId, workspaceId)
-  );
+function workspaceTabRunActivity(nodeId: string, workspaceId: string) {
+  if (
+    props.page.application.networkUnavailable ||
+    !props.page.resources.nodes.some((node) => node.id === nodeId && node.connected)
+  )
+    return undefined;
+  return props.page.notifications.workspaceRunActivity(nodeId, workspaceId);
 }
 const workspaceFilesRestriction = computed(() => {
   const host = props.page.resources.workspaceHost;
@@ -508,7 +509,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :node-label="page.selection.workspaceTabNodeLabel"
           :direct-available="page.resources.workspaceDirectAvailable"
           :direct-description="page.resources.workspaceDirectDescription"
-          :has-active-run="workspaceTabHasActiveRun"
+          :run-activity="workspaceTabRunActivity"
           :has-unread="page.notifications.hasUnreadWorkspace"
           @activate="page.selection.activateWorkspaceTab"
           @close="page.selection.closeWorkspaceTab"
@@ -578,7 +579,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :node-label="page.selection.workspaceTabNodeLabel"
           :direct-available="page.resources.workspaceDirectAvailable"
           :direct-description="page.resources.workspaceDirectDescription"
-          :has-active-run="workspaceTabHasActiveRun"
+          :run-activity="workspaceTabRunActivity"
           :has-unread="page.notifications.hasUnreadWorkspace"
           @activate="page.selection.activateWorkspaceTab"
           @close="page.selection.closeWorkspaceTab"

@@ -173,7 +173,7 @@ function preventWheelStep(event: WheelEvent) {
   border-color: var(--mar-ui-input-border-hover);
 }
 .mar-ui-input-number:focus-within {
-  border-color: var(--mar-ui-color-brand);
+  border-color: var(--mar-ui-control-focus);
 }
 .mar-ui-input-number[data-invalid='true'] {
   border-color: var(--mar-ui-control-color-danger);

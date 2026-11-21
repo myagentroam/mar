@@ -24,7 +24,7 @@ async function colors(page: Page) {
       link: color('--mar-control-link-text'),
       selected: color('--mar-fill-selection'),
       hover: color('--mar-fill-row-hover'),
-      match: color('--mar-color-brand-text')
+      match: color('--mar-text-primary')
     };
     probe.remove();
     return result;
@@ -634,17 +634,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(title).toHaveCSS('font-weight', '400');
         await expect(title).toHaveCSS('color', (await colors(page)).primary);
       }
-      await expect(
-        page.locator('.recent-sessions-list .mar-ui-tag[data-type="success"]')
-      ).toHaveCount(1);
-      await expect(page.locator('.recent-sessions-list .mar-ui-tag[data-type="info"]')).toHaveCount(
-        1
-      );
       const statuses = page.locator('.recent-sessions-list .mar-ui-tag');
+      await expect(statuses).toHaveCount(2);
       const recentPalette = await colors(page);
-      await expect(statuses.first()).toHaveAttribute('data-type', 'success');
+      await expect(statuses.first()).toHaveText('Running');
       await expect(statuses.first()).toHaveCSS('color', recentPalette.success);
       await expect(statuses.last()).toHaveAttribute('data-type', 'info');
+      await expect(statuses.last()).toHaveCSS('color', recentPalette.secondary);
       await page.locator('.recent-sessions-list button').last().click();
       await expect(page.getByTestId('opened')).toHaveText('Review second');
     }
@@ -685,7 +681,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   });
 
   for (const width of [1280, 390]) {
-    test(`Composer selectors separate neutral hover from brand focus in ${theme} at ${width}px`, async ({
+    test(`Composer selectors separate neutral hover from keyboard focus in ${theme} at ${width}px`, async ({
       page
     }, testInfo) => {
       await page.setViewportSize({ width, height: 844 });
@@ -696,7 +692,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         if (custom)
           await page.locator('html').evaluate((element) => {
             for (const [token, value] of Object.entries({
-              '--mar-color-brand': '#bf6ac9',
+              '--mar-conversation-activity-fg': '#bf6ac9',
+              '--mar-control-focus': '#8899aa',
               '--mar-text-primary': '#dae5cf',
               '--mar-fill-row-hover': '#334455',
               '--mar-fill-selection': '#445566',
@@ -708,7 +705,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const borders = await page.locator('html').evaluate((element) => {
           const probe = document.createElement('span');
           element.append(probe);
-          probe.style.color = 'var(--mar-color-brand)';
+          probe.style.color = 'var(--mar-control-focus)';
           const focus = getComputedStyle(probe).color;
           probe.style.color = 'var(--mar-border-medium)';
           const hover = getComputedStyle(probe).color;

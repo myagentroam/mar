@@ -108,7 +108,7 @@ for (const viewport of [
           const indicator = await spinner.evaluate((element) => {
             const style = getComputedStyle(element);
             const probe = document.createElement('span');
-            probe.style.color = 'var(--mar-color-brand-text)';
+            probe.style.color = 'var(--mar-text-secondary)';
             element.append(probe);
             const color = getComputedStyle(probe).color;
             probe.remove();

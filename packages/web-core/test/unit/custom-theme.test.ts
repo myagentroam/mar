@@ -17,7 +17,10 @@ const darkPalette = {
   '--mar-bg-panel': '#1e2836',
   '--mar-fill-selection': '#293545',
   '--mar-bg-chrome': '#18263b',
-  '--mar-color-brand': '#3071d1',
+  '--mar-conversation-activity-fg': '#3071d1',
+  '--mar-control-primary-bg': '#dedede',
+  '--mar-control-primary-fg': '#181818',
+  '--mar-control-focus': '#a0a0a0',
   '--mar-text-primary': '#e7eaf0',
   '--mar-text-muted': '#a6aeb9'
 };
@@ -26,7 +29,7 @@ const lightPalette = {
   '--mar-bg-panel': '#ffffff',
   '--mar-fill-selection': '#dfe5ed',
   '--mar-bg-chrome': '#f5f6f8',
-  '--mar-color-brand': '#0a6fd8',
+  '--mar-conversation-activity-fg': '#0a6fd8',
   '--mar-text-primary': '#1c2733'
 };
 const createThemePreferenceService = () =>
@@ -70,7 +73,11 @@ describe('Custom theme validation', () => {
     });
     const colors = analyzeCustomTheme(input).colors;
     expect(colors['--mar-fill-selection']).toBe('#dfe5ed');
-    expect(colors['--mar-color-brand-selected']).toBe('#dce8f7');
+    expect(colors).not.toHaveProperty('--mar-color-brand-selected');
+    expect(analyzeCustomTheme(input).warnings).toContainEqual({
+      code: 'unknown',
+      field: '--mar-color-brand-selected'
+    });
     expect(analyzeCustomTheme(createThemeSource('Navigation palette', colors)).colors).toEqual(
       colors
     );
@@ -80,6 +87,38 @@ describe('Custom theme validation', () => {
         darkPalette['--mar-fill-selection']
       );
     }
+  });
+
+  it('keeps conversation activity and primary colors independent of removed theme keys', () => {
+    const service = createThemePreferenceService();
+    const removed = { '--mar-color-brand': '#a623ad', '--mar-color-on-accent': '#e9ecaa' };
+    const old = source(removed);
+    const analysis = analyzeCustomTheme(old);
+    expect(analysis.colors).toEqual({});
+    for (const field of Object.keys(removed))
+      expect(analysis.warnings).toContainEqual({ code: 'unknown', field });
+    expect(service.resolveColors(old)).toMatchObject({
+      '--mar-conversation-activity-fg': darkPalette['--mar-conversation-activity-fg'],
+      '--mar-control-primary-bg': darkPalette['--mar-control-primary-bg'],
+      '--mar-control-primary-fg': darkPalette['--mar-control-primary-fg'],
+      '--mar-control-focus': darkPalette['--mar-control-focus']
+    });
+    const activity = source({ ...removed, '--mar-conversation-activity-fg': '#a623ad' });
+    expect(service.resolveColors(activity)).toMatchObject({
+      '--mar-conversation-activity-fg': '#a623ad',
+      '--mar-control-primary-bg': darkPalette['--mar-control-primary-bg'],
+      '--mar-control-primary-fg': darkPalette['--mar-control-primary-fg'],
+      '--mar-control-focus': darkPalette['--mar-control-focus']
+    });
+    const override = source({
+      '--mar-control-primary-bg': '#cedecc',
+      '--mar-control-focus': '#9b9b9b'
+    });
+    expect(service.resolveColors(override)).toMatchObject({
+      '--mar-conversation-activity-fg': darkPalette['--mar-conversation-activity-fg'],
+      '--mar-control-primary-bg': '#cedecc',
+      '--mar-control-focus': '#9b9b9b'
+    });
   });
 
   it('resolves chrome independently and defaults missing or invalid chrome colors', () => {
@@ -144,7 +183,12 @@ describe('Custom theme validation', () => {
     ['--mar-color-warning-text', '--mar-color-warning-bg'],
     ['--mar-color-danger-text', '--mar-color-danger-bg'],
     ['--mar-color-accent', '--mar-color-accent-bg'],
-    ['--mar-color-on-accent', '--mar-color-brand-hover'],
+    ['--mar-control-primary-fg', '--mar-control-primary-bg'],
+    ['--mar-control-primary-fg', '--mar-control-primary-hover'],
+    ['--mar-control-primary-fg', '--mar-control-primary-active'],
+    ['--mar-conversation-activity-fg', '--mar-conversation-process'],
+    ['--mar-conversation-activity-fg', '--mar-bg-panel'],
+    ['--mar-conversation-activity-fg', '--mar-conversation-surface'],
     ['--mar-text-primary', '--mar-fill-row-hover'],
     ['--mar-text-secondary', '--mar-fill-row-hover'],
     ['--mar-text-muted', '--mar-fill-row-hover'],
@@ -202,7 +246,7 @@ describe('Custom theme validation', () => {
       source({
         '--mar-bg-panel': '#1234',
         '--mar-text-primary': '#abcdef88',
-        '--mar-color-brand': '#abc',
+        '--mar-conversation-activity-fg': '#abc',
         '--el-color-primary': '#123456',
         '--mar-terminal-background': '#fff',
         '--mar-font-size-body': '100px',
@@ -217,7 +261,7 @@ describe('Custom theme validation', () => {
     expect(result.colors).toEqual({
       '--mar-bg-panel': '#1234',
       '--mar-text-primary': '#abcdef88',
-      '--mar-color-brand': '#abc'
+      '--mar-conversation-activity-fg': '#abc'
     });
     expect(
       result.warnings.filter((item) => item.code === 'unknown').map((item) => item.field)
@@ -378,10 +422,12 @@ describe('Canonical theme tokens', () => {
     expect(analysis.colors).toEqual({});
     expect(analysis.warnings).toContainEqual({ code: 'unknown', field: '--el-color-primary' });
     for (const colors of [
-      { '--el-color-primary': '#123456', '--mar-color-brand': '#abcdef' },
-      { '--mar-color-brand': '#abcdef', '--el-color-primary': '#123456' }
+      { '--el-color-primary': '#123456', '--mar-conversation-activity-fg': '#abcdef' },
+      { '--mar-conversation-activity-fg': '#abcdef', '--el-color-primary': '#123456' }
     ]) {
-      expect(analyzeCustomTheme(source(colors)).colors).toEqual({ '--mar-color-brand': '#abcdef' });
+      expect(analyzeCustomTheme(source(colors)).colors).toEqual({
+        '--mar-conversation-activity-fg': '#abcdef'
+      });
     }
     expect(
       analyzeCustomTheme(source({ '--el-color-primary': 'url(https://invalid.test)' })).colors
@@ -390,11 +436,15 @@ describe('Canonical theme tokens', () => {
     const legacy = source({ '--el-color-primary': '#123456' });
     const item = service.saveCustomTheme(legacy);
     service.setTheme(item.id);
-    expect(styles.get('--mar-color-brand')).toBe(darkPalette['--mar-color-brand']);
+    expect(styles.get('--mar-conversation-activity-fg')).toBe(
+      darkPalette['--mar-conversation-activity-fg']
+    );
     expect(styles.has('--el-color-primary')).toBe(false);
     expect(item.source).toBe(legacy);
     const copy = JSON.parse(service.duplicateSource(legacy, 'Copy'));
-    expect(copy.colors['--mar-color-brand']).toBe(darkPalette['--mar-color-brand']);
+    expect(copy.colors['--mar-conversation-activity-fg']).toBe(
+      darkPalette['--mar-conversation-activity-fg']
+    );
     expect(copy.colors).not.toHaveProperty('--el-color-primary');
   });
 });

@@ -106,9 +106,9 @@ async function onChange(event: Event) {
   background: currentColor;
 }
 .mar-ui-switch > input:checked + .mar-ui-switch__track {
-  border-color: var(--mar-ui-color-brand);
-  background: var(--mar-ui-color-brand);
-  color: var(--mar-ui-color-on-accent);
+  border-color: var(--mar-ui-control-primary-bg);
+  background: var(--mar-ui-control-primary-bg);
+  color: var(--mar-ui-control-primary-fg);
 }
 .mar-ui-switch > input:checked + .mar-ui-switch__track .mar-ui-switch__thumb {
   inset-inline-start: calc(
@@ -116,7 +116,7 @@ async function onChange(event: Event) {
   );
 }
 .mar-ui-switch > input:focus-visible + .mar-ui-switch__track {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: 2px;
 }
 .mar-ui-switch > input:disabled {

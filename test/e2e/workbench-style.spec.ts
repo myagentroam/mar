@@ -408,7 +408,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(query).toHaveValue('kept search draft');
       await inspector.getByRole('tab', { name: 'Git Changes', exact: true }).click();
       await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
-      await expect(inspector.locator('.git-history .mar-empty')).toBeVisible();
+      await expect(inspector.getByText('No Git commit history.', { exact: true })).toBeVisible();
       await expect(inspector.locator('.git-history .git-fetch-notice')).toHaveCount(0);
       await expect(inspector.locator('.history-filter').first()).toContainText('my-agent-roam');
       const historyFilters = inspector.locator('.history-filter .mar-ui-select__field');
@@ -1347,7 +1347,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const resolved = {
           primary: color('--mar-text-primary'),
           hover: color('--mar-fill-row-hover'),
-          focus: color('--mar-color-brand'),
+          focus: color('--mar-control-focus'),
           match: getComputedStyle(element.querySelector('mark')!).backgroundColor
         };
         probe.remove();

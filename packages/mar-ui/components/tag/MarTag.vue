@@ -10,9 +10,9 @@ withDefaults(defineProps<TagProps>(), { type: 'primary', effect: 'light' });
 
 <style scoped>
 .mar-ui-tag {
-  --tag-fg: var(--mar-ui-control-link-text);
-  --tag-tint: var(--mar-ui-color-brand);
-  --tag-fill: color-mix(in srgb, var(--tag-tint) 10%, transparent);
+  --tag-fg: var(--mar-ui-text-primary);
+  --tag-tint: var(--mar-ui-text-secondary);
+  --tag-fill: var(--mar-ui-fill-soft);
   display: inline-flex;
   box-sizing: border-box;
   max-inline-size: 100%;

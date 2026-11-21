@@ -2,7 +2,7 @@ export const notificationsEnUS = {
   activityCenter: {
     title: 'Sessions & notifications',
     shortcut: 'Sessions & notifications (Ctrl/Cmd+Shift+E)',
-    runningCount: 'Running {count}',
+    activeTaskCount: 'Active tasks: {count}',
     unreadCount: '{count} unread notifications'
   },
   workbenchNotificationCenter: {

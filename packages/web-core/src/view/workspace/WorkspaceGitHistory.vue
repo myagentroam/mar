@@ -718,7 +718,7 @@ button.history-refresh {
 }
 
 .history-graph-color-0 {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .history-graph-color-1 {
@@ -810,8 +810,8 @@ button.history-refresh {
   max-width: 92px;
   overflow: hidden;
   border-radius: 8px;
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-soft);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-nano);
   padding: 1px 5px;
   text-overflow: ellipsis;

@@ -911,7 +911,7 @@ function scopeLabel(scope: string): string {
   font-weight: 400;
 }
 .skill-category-strip button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 1px;
 }
 .skill-tags {
@@ -937,7 +937,7 @@ function scopeLabel(scope: string): string {
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: var(--mar-color-brand);
+  background: var(--mar-text-secondary);
   content: '';
   animation: skill-install-progress 1.4s ease-in-out infinite;
 }

@@ -1320,7 +1320,7 @@ defineExpose({
 }
 
 .file-navigation-group.is-definition .file-navigation-option {
-  border-inline-start: 2px solid var(--mar-color-brand);
+  border-inline-start: 2px solid var(--mar-border-medium);
 }
 
 .file-navigation-group.is-reference .file-navigation-option {

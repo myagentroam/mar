@@ -22,6 +22,8 @@ const captureRenderAnchor = createConversationScrollService().captureRenderAncho
 const following = ref(false);
 const input = ref('Review the result');
 const sidebarCollapsed = ref(false);
+const reconnecting = new URL(location.href).searchParams.has('reconnecting');
+const processStopping = new URL(location.href).searchParams.has('process-stopping');
 const themes = themePreferenceService();
 const previewColors = themes.resolveColors(
   themes.builtinSource(themes.baseTheme.value, 'Fixture preview')
@@ -678,6 +680,7 @@ function announceFixtureUpdate() {
         groupId: 'process',
         entries: [],
         active: true,
+        status: processStopping ? 'stopping' : 'running',
         partial: false,
         sealed: false
       }"
@@ -809,7 +812,7 @@ function announceFixtureUpdate() {
         :has-turns="true"
         :following="following"
       >
-        <p>Latest message</p>
+        <p class="scroll-sample-message">Latest message</p>
         <template #status
           ><SessionPerformanceInfo
             :performance="{ runId: 'run', latencyMs: 420, tokensPerSecond: 42 }"
@@ -822,6 +825,8 @@ function announceFixtureUpdate() {
       placeholder="Message"
       :working="true"
       working-label="Working"
+      :connection-label="reconnecting ? 'Reconnecting' : undefined"
+      :connection-busy="reconnecting"
       :readonly="false"
       :drop-target="false"
       :mobile-viewport="false"
@@ -842,5 +847,8 @@ function announceFixtureUpdate() {
   display: flex;
   height: 220px;
   position: relative;
+}
+.scroll-sample-message {
+  min-height: 260px;
 }
 </style>

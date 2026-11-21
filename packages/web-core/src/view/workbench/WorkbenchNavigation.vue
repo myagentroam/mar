@@ -493,7 +493,7 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .brand-home-link:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 

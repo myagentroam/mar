@@ -862,7 +862,7 @@ function rawContentUrl(
 <style scoped>
 .standalone-file-preview {
   /* Rendered previews keep their light appearance independently of the console. */
-  --mar-color-brand-text: #0969da;
+  --mar-text-secondary: #57606a;
   --mar-color-danger-text: #cf222e;
   --mar-scrollbar-thumb: #afb8c1;
   display: flex;

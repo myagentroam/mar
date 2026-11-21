@@ -2,7 +2,7 @@ export const notificationsZhCN = {
   activityCenter: {
     title: '会话与通知',
     shortcut: '会话与通知（Ctrl/Cmd+Shift+E）',
-    runningCount: '运行中 {count}',
+    activeTaskCount: '活动任务：{count}',
     unreadCount: '{count} 条未读通知'
   },
   workbenchNotificationCenter: {

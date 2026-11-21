@@ -629,21 +629,13 @@ onBeforeUnmount(() => {
   --mar-editor-cursor: #000000;
   --mar-editor-selection: color-mix(
     in srgb,
-    var(--mar-color-brand) 40%,
-    var(--mar-editor-background)
+    var(--mar-text-primary) 18%,
+    var(--mar-fill-selection)
   );
-  --mar-editor-selection-match: color-mix(
-    in srgb,
-    var(--mar-color-brand) 10%,
-    var(--mar-editor-background)
-  );
-  --mar-editor-selection-match-border: color-mix(
-    in srgb,
-    var(--mar-color-brand) 30%,
-    var(--mar-editor-background)
-  );
+  --mar-editor-selection-match: var(--mar-fill-row-hover);
+  --mar-editor-selection-match-border: var(--mar-border-default);
   --mar-editor-selection-match-main: var(--mar-editor-selection);
-  --mar-editor-selection-match-main-border: var(--mar-color-brand);
+  --mar-editor-selection-match-main-border: var(--mar-text-muted);
   --mar-editor-selection-match-main-foreground: var(--mar-editor-foreground);
   --mar-editor-active-line: rgb(31 31 31 / 3%);
   --mar-editor-active-line-indicator: #91a3b7;
@@ -668,9 +660,7 @@ onBeforeUnmount(() => {
     var(--mar-text-primary) 12%,
     var(--mar-fill-selection)
   );
-  --mar-editor-selection-match: var(--mar-fill-row-hover);
   --mar-editor-selection-match-border: var(--mar-border-medium);
-  --mar-editor-selection-match-main-border: var(--mar-text-muted);
   --mar-editor-active-line: color-mix(in srgb, var(--mar-text-primary) 4%, transparent);
   --mar-editor-active-line-indicator: var(--mar-text-muted);
   --mar-editor-gutter-background: var(--mar-bg-page);
@@ -707,8 +697,8 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor :deep(.cm-line.cm-code-navigation-destination) {
-  background: color-mix(in srgb, var(--mar-color-brand) 15%, transparent);
-  box-shadow: inset 2px 0 0 var(--mar-color-brand);
+  background: color-mix(in srgb, var(--mar-control-focus) 15%, transparent);
+  box-shadow: inset 2px 0 0 var(--mar-control-focus);
 }
 
 .code-file-editor :deep(.cm-scroller) {
@@ -754,7 +744,7 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor :deep(.cm-textfield:focus) {
-  border-color: var(--mar-color-brand);
+  border-color: var(--mar-control-focus);
 }
 
 .code-file-editor :deep(.cm-button) {
@@ -768,7 +758,7 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor :deep(.cm-button:hover) {
-  border-color: var(--mar-color-brand);
+  border-color: var(--mar-control-focus);
 }
 
 .code-file-editor :deep(.cm-panel.cm-search [name='close']) {

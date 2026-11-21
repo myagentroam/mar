@@ -957,7 +957,11 @@ describe('Conversation work process blocks', () => {
     expect(processBlock(blocks, 'last').status).toBe('stopped');
   });
 
-  it('shows stopping rather than executing while cancellation is pending', () => {
+  it.each([
+    ['STARTING', 'executing'],
+    ['RUNNING', 'executing'],
+    ['CANCELLING', 'stopping']
+  ] as const)('keeps the current process active for %s', (status, label) => {
     const blocks = conversationWorkProcessBlocks(
       [
         turn([
@@ -968,9 +972,9 @@ describe('Conversation work process blocks', () => {
           })
         ])
       ],
-      [{ id: runId, status: 'CANCELLING' }]
+      [{ id: runId, status }]
     );
-    expect(blocks[0]).toMatchObject({ active: true, status: 'stopping' });
+    expect(blocks[0]).toMatchObject({ active: true, status: label });
   });
 
   it('does not call a final failed process complete merely because an error seals it', () => {

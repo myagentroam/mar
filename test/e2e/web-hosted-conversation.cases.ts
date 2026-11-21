@@ -659,15 +659,17 @@ test('Returning to a selected hosted conversation reconciles only its unread not
 
 test('Hosted process activity stops on disconnect and resumes after synchronization', async ({
   page
-}) => {
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
     json(route, { models: snapshot.models, defaultModelId: 'model-1' })
   );
+  const startedAt = Date.now();
   const activeSnapshot = {
     ...snapshot,
     historyNextCursor: null,
-    run: { id: 'run-1', status: 'RUNNING', startedAt: Date.now(), completedAt: null },
+    run: { id: 'run-1', status: 'RUNNING', startedAt, completedAt: null },
     turns: [
       {
         ...snapshot.turns[0],
@@ -677,6 +679,8 @@ test('Hosted process activity stops on disconnect and resumes after synchronizat
           {
             ...snapshot.turns[0].items[0],
             kind: 'reasoning',
+            startedAt,
+            completedAt: startedAt,
             processGroup: { id: 'active-hosted-process', isStart: true },
             payload: {
               representation: 'summary',
@@ -700,7 +704,18 @@ test('Hosted process activity stops on disconnect and resumes after synchronizat
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '对话', exact: true }).click();
   const indicator = page.locator('.process-activity-indicator');
+  const composerStatus = page.locator('.composer-working');
   await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveCSS('color', 'rgb(105, 169, 240)');
+  await expect(composerStatus).toHaveCSS('color', 'rgb(105, 169, 240)');
+  await page.screenshot({
+    path: testInfo.outputPath('dark-conversation-activity.png'),
+    animations: 'disabled'
+  });
+  await page.locator('html').evaluate((root) => {
+    root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
+  });
+  await expect(indicator).toHaveCSS('color', 'rgb(255, 0, 255)');
   await page.clock.pauseAt(new Date());
   await page.evaluate(() => {
     const socket = (
@@ -714,9 +729,15 @@ test('Hosted process activity stops on disconnect and resumes after synchronizat
     socket.close();
   });
   await expect(indicator).toHaveCount(0);
-  await expect(page.locator('.composer-working.is-active')).toHaveCount(0);
+  await expect(composerStatus.getByRole('status')).toHaveText('正在重新连接');
+  await expect(composerStatus).toHaveCSS('color', 'rgb(255, 0, 255)');
+  await expect(composerStatus.locator('.composer-busy-indicator')).toHaveCSS(
+    'color',
+    'rgb(255, 0, 255)'
+  );
   await page.clock.resume();
   await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveCSS('color', 'rgb(255, 0, 255)');
 });
 
 test('Hosted conversation cards share visual hierarchy across themes and viewport sizes', async ({

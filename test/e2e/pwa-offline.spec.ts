@@ -183,7 +183,7 @@ test('final PWA artifact cold-starts Console offline without caching docs or non
     await expect(retryButton).toHaveCSS('align-items', 'center');
     const primaryBackground = await retryButton.evaluate((button) => {
       const probe = document.createElement('span');
-      probe.style.backgroundColor = 'var(--mar-ui-color-brand)';
+      probe.style.backgroundColor = 'var(--mar-ui-control-primary-bg)';
       button.append(probe);
       const color = getComputedStyle(probe).backgroundColor;
       probe.remove();

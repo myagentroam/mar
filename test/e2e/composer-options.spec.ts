@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 
 // @test-covers packages/web-core/src/view/composer/ComposerToolbar.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -159,6 +160,76 @@ for (const width of [1280, 390]) {
   }
 }
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Composer send, context meter and sending feedback use neutral tokens in ${theme}`, async ({
+    page
+  }, info) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const url = `${fixture.url}composer-options.html?short&compact-names&theme=${theme}${width < 768 ? '&mobile' : ''}`;
+      await page.goto(`${url}&running`);
+      const toolbar = page.locator('.composer-toolbar');
+      const send = toolbar.locator('.composer-send-button');
+      const stop = toolbar.locator('.composer-stop-button');
+      const context = toolbar.getByRole('button', { name: '42% used' }).locator('i');
+      await expect(send).toBeEnabled();
+      const tokens = await page.locator('html').evaluate((root) => {
+        const style = getComputedStyle(root);
+        return Object.fromEntries(
+          [
+            'control-primary-bg',
+            'control-primary-fg',
+            'control-primary-hover',
+            'control-primary-active',
+            'text-secondary',
+            'color-danger-text'
+          ].map((token) => [token, style.getPropertyValue(`--mar-${token}`).trim()])
+        );
+      });
+      await toolbar.screenshot({ path: info.outputPath(`composer-${theme}-${width}.png`) });
+      await page
+        .locator('html')
+        .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff'));
+      const color = (locator: Locator, property: 'color' | 'backgroundColor') =>
+        locator
+          .evaluate((element, property) => getComputedStyle(element)[property], property)
+          .then(resolvedColorToHex);
+      await expect.poll(() => color(send, 'backgroundColor')).toBe(tokens['control-primary-bg']);
+      await expect.poll(() => color(send, 'color')).toBe(tokens['control-primary-fg']);
+      await expect.poll(() => color(stop, 'color')).toBe(tokens['color-danger-text']);
+      const ring = await context.evaluate((element) => {
+        const stop = getComputedStyle(element).backgroundImage.match(/rgb\([^)]+\)(?= 42%)/u);
+        return stop?.[0] ?? '';
+      });
+      expect(resolvedColorToHex(ring)).toBe(tokens['text-secondary']);
+      if (width >= 768) {
+        await send.hover();
+        await expect
+          .poll(() => color(send, 'backgroundColor'))
+          .toBe(tokens['control-primary-hover']);
+        await page.mouse.down();
+        try {
+          await expect
+            .poll(() => color(send, 'backgroundColor'))
+            .toBe(tokens['control-primary-active']);
+        } finally {
+          await page.mouse.move(0, 0);
+          await page.mouse.up();
+        }
+      }
+      await page.goto(`${url}&submitting`);
+      await page
+        .locator('html')
+        .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff'));
+      await expect(send).toBeDisabled();
+      await expect(send).toHaveAttribute('aria-busy', 'true');
+      await expect
+        .poll(() => color(send.locator('[data-mar-icon="loading-action"]'), 'color'))
+        .toBe(tokens['text-secondary']);
+    }
+  });
+}
+
 for (const [width, height, theme, top] of [
   [1280, 844, 'daylight', false],
   [390, 844, 'vscode-dark-2026', false],
@@ -178,7 +249,7 @@ for (const [width, height, theme, top] of [
       const menuBounds = (await menu.boundingBox())!;
       const edges = await menu.evaluate((element) => {
         const style = getComputedStyle(element);
-        return [parseFloat(style.borderLeftWidth), parseFloat(style.borderRightWidth)];
+        return [parseFloat(style.borderLeftWidth), parseFloat(style.borderRightWidth)] as const;
       });
       if (kind === 'model-effort') {
         const modelGroup = menu.getByRole('group', { name: 'Model' });
@@ -202,7 +273,10 @@ for (const [width, height, theme, top] of [
               const list = option.parentElement!;
               const listRect = list.getBoundingClientRect();
               const row = option.getBoundingClientRect();
-              return [row.left - listRect.left, listRect.left + list.clientWidth - row.right];
+              return [
+                row.left - listRect.left,
+                listRect.left + list.clientWidth - row.right
+              ] as const;
             });
           expect(insets[0]).toBeCloseTo(0, 0);
           expect(Math.abs(insets[1])).toBeLessThan(1); // clientWidth is rounded to whole pixels.

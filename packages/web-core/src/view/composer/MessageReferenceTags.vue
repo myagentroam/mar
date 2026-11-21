@@ -53,10 +53,10 @@ defineProps<{ readonly references: readonly ComposerReference[] }>();
   gap: 0.3rem;
   max-width: min(18rem, 100%);
   min-width: 0;
-  border: 1px solid var(--mar-color-brand);
+  border: 1px solid var(--mar-border-default);
   border-radius: 999px;
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-soft);
+  color: var(--mar-text-primary);
   padding: 0.2rem 0.5rem;
   font-size: var(--mar-font-size-meta);
 }

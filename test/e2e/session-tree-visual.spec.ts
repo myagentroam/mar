@@ -25,6 +25,42 @@ test('session tree active indicator stays static with normal motion preferences'
   await expect(indicator).toHaveCount(0);
 });
 
+test('session tree entry stays green for running and sleeping descendants', async ({ page }) => {
+  for (const sleepingOnly of [false, true]) {
+    await page.goto(
+      `${fixture.url}session-tree.html?locale=en-US&theme=dark&activity=1${sleepingOnly ? '&sleeping-only' : ''}`
+    );
+    const trigger = page.getByRole('button', { name: 'View session tree' });
+    await page.locator('html').evaluate((root) => {
+      root.style.setProperty('--mar-control-color-success', '#228b4f');
+      root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
+    });
+    await expect(trigger).toHaveAccessibleDescription(/2.*active/i);
+    await expect(trigger.locator('.tree-active-indicator')).toHaveCSS(
+      'background-color',
+      'rgb(34, 139, 79)'
+    );
+  }
+});
+
+test('session tree entry retains its green dot while the tree loads or is unavailable', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US&theme=dark&activity=1&delayed=1`);
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  const indicator = trigger.locator('.tree-active-indicator');
+  await trigger.click();
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  await expect(tree.locator('.session-tree')).toHaveAttribute('aria-busy', 'true');
+  await expect(indicator).toHaveCSS('background-color', 'rgb(116, 198, 157)');
+  await expect(indicator).toHaveCSS('opacity', '1');
+  await page.keyboard.press('Escape');
+  await page.getByTestId('reject-snapshot').click();
+  await expect(trigger).toHaveAccessibleDescription('Child session activity is unavailable');
+  await expect(indicator).toHaveCSS('background-color', 'rgb(116, 198, 157)');
+  await expect(indicator).toHaveCSS('opacity', '1');
+});
+
 for (const width of [390, 1280]) {
   test(`active indicator slightly overlaps the tree icon at ${width}px`, async ({
     page
@@ -76,10 +112,14 @@ for (const width of [390, 1280]) {
 
 test('tree uses the Watch snapshot order and closes on Escape and outside click', async ({
   page
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 850 });
-  await page.goto(`${fixture.url}session-tree.html?locale=en-US&mixed=1`);
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US&theme=dark&activity=1&mixed=1`);
   const trigger = page.getByRole('button', { name: 'View session tree' });
+  await expect(trigger.locator('.tree-active-indicator')).toHaveCSS(
+    'background-color',
+    'rgb(116, 198, 157)'
+  );
   await trigger.click();
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree).toBeVisible();
@@ -96,9 +136,19 @@ test('tree uses the Watch snapshot order and closes on Escape and outside click'
   ]);
   await expect(tree.locator('.mar-session-activity.running')).toHaveCount(2);
   await expect(tree.locator('.mar-session-activity.tree-sleeping')).toHaveCount(1);
+  for (const dot of await tree.locator('.mar-session-activity.running i').all())
+    await expect(dot).toHaveCSS('background-color', 'rgb(116, 198, 157)');
+  await expect(tree.locator('.mar-session-activity.tree-sleeping i')).toHaveCSS(
+    'background-color',
+    'rgb(220, 180, 111)'
+  );
   await expect(tree.locator('.session-tree-time')).toHaveText(Array(6).fill('—'));
   await expect(tree.getByRole('button', { name: 'Running branch, Running' })).toBeVisible();
   await expect(tree.getByRole('button', { name: 'Sleeping branch, Sleeping' })).toBeVisible();
+  await tree.screenshot({
+    path: testInfo.outputPath('session-tree-dark.png'),
+    animations: 'disabled'
+  });
   await page.keyboard.press('Escape');
   await expect(tree).toHaveCount(0);
   await expect(trigger).toBeFocused();

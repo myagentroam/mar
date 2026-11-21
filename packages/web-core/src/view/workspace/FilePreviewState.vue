@@ -66,6 +66,6 @@ const emit = defineEmits<{ retry: [] }>();
 .preview-retry-spinner {
   width: 1.25rem;
   height: 1.25rem;
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-secondary);
 }
 </style>

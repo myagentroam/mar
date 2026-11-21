@@ -13,7 +13,6 @@ export const THEME_TOKEN_GROUPS = [
 export const THEME_TOKEN_HELP = {
   '--mar-table-header-bg': { group: 'surfaces', description: 'table-header-bg' },
   '--mar-table-row-hover-bg': { group: 'surfaces', description: 'table-row-hover-bg' },
-  '--mar-color-brand-disabled': { group: 'interaction', description: 'color-brand-disabled' },
   '--mar-control-link-text': { group: 'controls', description: 'control-link-text' },
   '--mar-control-link-hover': { group: 'controls', description: 'control-link-hover' },
 
@@ -45,33 +44,17 @@ export const THEME_TOKEN_HELP = {
     description: 'conversation-process-border'
   },
   '--mar-conversation-code': { group: 'conversation', description: 'conversation-code' },
+  '--mar-conversation-activity-fg': {
+    group: 'conversation',
+    description: 'conversation-activity-fg'
+  },
   '--mar-scrollbar-thumb': { group: 'borders', description: 'scrollbar-thumb' },
   '--mar-scrollbar-thumb-hover': { group: 'borders', description: 'scrollbar-thumb-hover' },
-  '--mar-color-brand': { group: 'interaction', description: 'color-brand' },
-  '--mar-control-color-primary-light-3': {
-    group: 'controls',
-    description: 'control-color-primary-light-3'
-  },
-  '--mar-control-color-primary-light-5': {
-    group: 'controls',
-    description: 'control-color-primary-light-5'
-  },
-  '--mar-control-color-primary-light-7': {
-    group: 'controls',
-    description: 'control-color-primary-light-7'
-  },
-  '--mar-control-color-primary-light-8': {
-    group: 'controls',
-    description: 'control-color-primary-light-8'
-  },
-  '--mar-control-color-primary-light-9': {
-    group: 'controls',
-    description: 'control-color-primary-light-9'
-  },
-  '--mar-control-color-primary-dark-2': {
-    group: 'controls',
-    description: 'control-color-primary-dark-2'
-  },
+  '--mar-control-primary-bg': { group: 'controls', description: 'control-primary-bg' },
+  '--mar-control-primary-fg': { group: 'controls', description: 'control-primary-fg' },
+  '--mar-control-primary-hover': { group: 'controls', description: 'control-primary-hover' },
+  '--mar-control-primary-active': { group: 'controls', description: 'control-primary-active' },
+  '--mar-control-focus': { group: 'controls', description: 'control-focus' },
   '--mar-control-color-success': { group: 'controls', description: 'control-color-success' },
   '--mar-control-color-warning': { group: 'controls', description: 'control-color-warning' },
   '--mar-control-color-danger': { group: 'controls', description: 'control-color-danger' },
@@ -102,12 +85,6 @@ export const THEME_TOKEN_HELP = {
     group: 'controls',
     description: 'control-border-color-darker'
   },
-  '--mar-color-brand-text': { group: 'interaction', description: 'color-brand-text' },
-  '--mar-color-on-accent': { group: 'interaction', description: 'color-on-accent' },
-  '--mar-color-brand-hover': { group: 'interaction', description: 'color-brand-hover' },
-  '--mar-color-brand-subtle': { group: 'interaction', description: 'color-brand-subtle' },
-  '--mar-color-brand-selected': { group: 'interaction', description: 'color-brand-selected' },
-  '--mar-color-brand-border': { group: 'interaction', description: 'color-brand-border' },
   '--mar-color-success-text': { group: 'status', description: 'color-success-text' },
   '--mar-color-success-bg': { group: 'status', description: 'color-success-bg' },
   '--mar-color-warning-text': { group: 'status', description: 'color-warning-text' },

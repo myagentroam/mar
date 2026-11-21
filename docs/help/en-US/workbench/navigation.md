@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-20
+lastUpdated: 2026-11-22
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -33,11 +33,13 @@ Use `Ctrl+W` or `Alt+W` to close the active normal tab and `Ctrl+Shift+W` or `Al
 
 An offline or disabled Node keeps its registered resources visible but blocks live operations. Existing tabs still activate immediately; reconnect or enable the host before using files, sessions, or terminals. Closing a Workspace tab changes only the browser layout; it does not unregister the Workspace or stop Node work.
 
+A green dot next to a Node means it is available. In workspace tabs and session lists, a green dot means a task is running; the dot is neutral when tasks are only starting or stopping. A green dot on the session tree button means it has a running or sleeping descendant. In the open tree, amber marks sleeping sessions.
+
 On mobile, use **Work** in the top bar to open the same resource tree. Selecting a Workspace closes the drawer and returns to the Agent conversation. Use **Chat** to enter Conversation mode; selecting it again while active opens the chat-history drawer. The top-level navigation contains Work, Chat, Admin, and Settings. Admin no longer has a separate Skill Center entry. Skill Configuration, Skill Sources, and Environment Secrets appear consecutively, while MCP Sources remains a separate Admin section; Skill Configuration switches between Skill and MCP in the page.
 
 Settings contains Account Security, Appearance, System Notifications, Quick Prompts, Personal Instructions, Keyboard Shortcuts, and About. Personal Instructions provides additional guidance for later Agent runs by the current account and saves Common, MAR Agent, Codex, Claude Code, and OpenCode values separately; the MAR Agent label remains `MAR Agent` in every interface language; each run combines Common with the current Agent's instructions without modifying Node or Workspace `AGENTS.md` or `CLAUDE.md`. Appearance defaults to the dark color theme. Under **Settings → Appearance → Icon theme**, MAR File Icons is the only option. File icons are independent of interface colors, and appearance preferences stay in the current browser. About shows the current Web version, links to the documentation center, and groups major open-source components across Web, Server, Node/MAR Agent, bundled tools, icons, and the optional Computer Use Runtime. This is a selection, not a complete dependency inventory. "View Web third-party notices" covers Web only; consult the corresponding Server, Node, and optional runtime distributions for their license and notice files. The `@myagentroam/binaries` package used by Node contains tool materials under `vendor/ripgrep/` and `vendor/ctags/`. External Agents, SDKs, and separately installed tools remain subject to their own terms. Runtime status and License management remain under Admin > System Information.
 
-The **Sessions & notifications** icon after Chat opens one panel with separate recent-session and notification tabs. The upper-right number counts unread notifications; the lower-right green dot indicates running workspace sessions. There is no separate top-right bell. See [Reading conversations](conversation.md) for retention and ordering.
+The **Sessions & notifications** icon after Chat opens one panel with separate recent-session and notification tabs. The upper-right number counts unread notifications; the lower-right dot indicates active workspace sessions. There is no separate top-right bell. See [Reading conversations](conversation.md) for status colors, retention, and ordering.
 
 Click or tap the icon, or press `Ctrl/Cmd+Shift+E`, to open the custom Recent Sessions / Notifications panel. Click or tap the icon again, use the same shortcut, click outside, or press `Esc` to close. Hovering does not open or close it on desktop or mobile, and moving away leaves it open. Each opening starts on Notifications when unread notifications exist, or Recent Sessions otherwise; tab selection then stays under your control. No extra text tooltip covers the panel.
 
@@ -60,6 +62,8 @@ After updating, an old file icon choice falls back to MAR File Icons. Your inter
 JSON uses `version: 1`, `name`, and `colors`, not `base`. The colors object maps tokens to values, for example `--mar-bg-panel` to `#ffffff`. Colors accept `#RGB`, `#RGBA`, `#RRGGBB`, and `#RRGGBBAA`. Missing or invalid colors always use the corresponding default dark colors; saving does not expand the original JSON. Use the question mark beside Theme JSON to open **Theme color reference**, with grouped swatches, short descriptions, search and variable-name copying. Light and dark themes share the same `--mar-*` variables; component-library variables are mapped internally. Only currently registered `--mar-*` color keys take effect. `--el-*` and removed keys are unknown and ignored when applied; legacy themes are not supported. Duplicating a theme materializes its complete effective palette without depending on the source theme.
 
 Readable text has three levels: primary (`--mar-text-primary`), secondary (`--mar-text-secondary`), and muted (`--mar-text-muted`). For example, the resource tree, workspace session list, and hosted conversation list use primary for selected names, secondary for unselected names, and muted for timestamps and supporting notes. Disabled control text is configured separately.
+
+`--mar-conversation-activity-fg` sets the color of the current conversation phase ring and the status strip above the composer. Primary buttons and the send button use `--mar-control-primary-bg`, `--mar-control-primary-hover`, and `--mar-control-primary-active` with `--mar-control-primary-fg`. Keyboard focus uses `--mar-control-focus`. To keep an older theme’s button colors, enter the corresponding values in these fields.
 
 Only **invalid JSON syntax** blocks saving or exporting. Missing names, unknown fields or tokens, invalid colors, and low contrast produce advisory warnings. Saved and exported JSON retains unknown and invalid content, but it is ignored when applied. An old `base` field is also retained with an unknown-field warning; it no longer changes the dark fallback rule. Arbitrary CSS, URLs, and scripts are not executed. Contrast checks cover only explicit opaque color pairs, not a complete accessibility audit.
 

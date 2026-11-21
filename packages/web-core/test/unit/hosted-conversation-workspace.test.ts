@@ -1117,7 +1117,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       version: 2,
       updatedAt: 2
     });
-    expect(workspace.conversationIsRunning(workspace.conversations.value[0]!)).toBe(true);
+    expect(workspace.conversationHasActiveRun(workspace.conversations.value[0]!)).toBe(true);
     workspace.projectActivityMessage({
       type: 'hosted-conversation.activity',
       nodeId: 'node-1',
@@ -1132,7 +1132,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       activity: { status: 'IDLE', version: 3, updatedAt: 4 }
     });
     expect(workspace.conversations.value[0]?.activity.status).toBe('IDLE');
-    expect(workspace.conversationIsRunning(workspace.conversations.value[0]!)).toBe(false);
+    expect(workspace.conversationHasActiveRun(workspace.conversations.value[0]!)).toBe(false);
   });
 
   it('Overwrite legacy old Node runtime version before request start with new directory response', async () => {

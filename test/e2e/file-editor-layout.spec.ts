@@ -211,16 +211,12 @@ for (const theme of ['light', 'dark']) {
     const selection = page.locator('.cm-selectionBackground').first();
     const before = await selection.evaluate((element) => getComputedStyle(element).backgroundColor);
     await page.locator('html').evaluate((element) => {
-      element.style.setProperty('--mar-color-brand', '#805ad5');
+      element.style.setProperty('--mar-conversation-activity-fg', '#805ad5');
     });
-    if (theme === 'dark') {
-      expect(await selection.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
-        before
-      );
-      await page.locator('html').evaluate((element) => {
-        element.style.setProperty('--mar-fill-selection', '#424242');
-      });
-    }
+    await expect(selection).toHaveCSS('background-color', before);
+    await page.locator('html').evaluate((element) => {
+      element.style.setProperty('--mar-fill-selection', '#424242');
+    });
     await expect
       .poll(() => selection.evaluate((element) => getComputedStyle(element).backgroundColor))
       .not.toBe(before);
@@ -341,7 +337,7 @@ for (const theme of ['light', 'dark']) {
               hoverBorder: color('--mar-border-medium'),
               hoverText: color('--mar-text-primary'),
               pressedBackground: color('--mar-fill-selection'),
-              focus: color('--mar-color-brand'),
+              focus: color('--mar-control-focus'),
               disabledBorder: color('--mar-border-subtle')
             };
             probe.remove();

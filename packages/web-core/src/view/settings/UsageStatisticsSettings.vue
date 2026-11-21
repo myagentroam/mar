@@ -968,7 +968,7 @@ p {
   cursor: pointer;
 }
 .usage-count:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 .bucket-hit-area {
@@ -990,7 +990,7 @@ p {
   fill: var(--mar-color-accent);
 }
 .output-bar {
-  fill: var(--mar-color-brand);
+  fill: var(--mar-text-secondary);
 }
 .cache-bar {
   fill: var(--mar-control-color-success);
@@ -1013,7 +1013,7 @@ p {
   background: var(--mar-color-accent);
 }
 .output-key {
-  background: var(--mar-color-brand);
+  background: var(--mar-text-secondary);
 }
 .cache-key {
   background: var(--mar-control-color-success);
@@ -1063,7 +1063,7 @@ li strong {
 .bar-track span {
   display: block;
   height: 100%;
-  background: var(--mar-color-brand);
+  background: var(--mar-text-secondary);
 }
 .records {
   width: 100%;

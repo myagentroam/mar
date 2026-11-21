@@ -1,6 +1,6 @@
 ---
 title: Continue on Mobile
-lastUpdated: 2026-11-19
+lastUpdated: 2026-11-22
 ---
 
 # Continue on Mobile
@@ -9,7 +9,7 @@ Mobile Workbench keeps the current Agent conversation as the main Work surface. 
 
 In a work conversation, the title is on the left. The menu (which opens the session list), session tree, and auxiliary workspace icons appear in that order on the right when available. Tap the split-pane icon on the far right to reopen the auxiliary workspace at its last active tab. Choose Files, Search, Git, or Terminal there.
 
-The **Sessions & notifications** icon opens one custom panel with separate **Recent Sessions** and **Notifications** tabs; there is no separate bell. Its upper-right number counts unread notifications, and its lower-right green dot indicates running workspace sessions. Each opening starts on Notifications when unread notifications exist, or Recent Sessions otherwise. Click or tap the icon, or use `Ctrl/Cmd+Shift+E`, to toggle it; click outside or press Escape to close. Hovering does not open or close it.
+The **Sessions & notifications** icon opens one custom panel with separate **Recent Sessions** and **Notifications** tabs; there is no separate bell. Its upper-right number counts unread notifications, and its lower-right dot indicates active workspace sessions. See [Reading conversations](conversation.md) for status colors. Each opening starts on Notifications when unread notifications exist, or Recent Sessions otherwise. Click or tap the icon, or use `Ctrl/Cmd+Shift+E`, to toggle it; click outside or press Escape to close. Hovering does not open or close it.
 
 Other top-bar menus, such as Work, Admin, and Settings, have no additional X close button; use the scrim, Escape, or the active top-bar entry to dismiss them. Browser Back, including the browser's edge-swipe back gesture, closes the menu before leaving the current work surface. Switching menu entries replaces the current panel rather than stacking panels; switching to Work or Chat closes existing menus. **Mark all as read** remains available when there are unread notifications. Opening the list alone does not mark all notifications read. Brief previews of new notifications do not automatically open the full panel or mark notifications read.
 

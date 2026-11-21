@@ -1,4 +1,5 @@
 import { devices, expect, test } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -894,7 +895,7 @@ for (const theme of ['daylight', 'dark']) {
     const expandedShadow = await hosted.evaluate((element) => {
       const probe = document.createElement('span');
       element.append(probe);
-      probe.style.boxShadow = '0 0 0 1px var(--mar-color-brand) inset';
+      probe.style.boxShadow = '0 0 0 1px var(--mar-control-focus) inset';
       const value = getComputedStyle(probe).boxShadow;
       probe.remove();
       return value;
@@ -1542,10 +1543,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       document.documentElement.style.setProperty('--mar-radius-surface', '13px');
       document.documentElement.style.setProperty('--mar-radius-marker', '2px');
     });
-    await expect(page.locator('.workbench-activity-popover')).toHaveCSS(
-      'background-color',
-      'rgb(30, 45, 60)'
-    );
+    await expect
+      .poll(async () =>
+        resolvedColorToHex(
+          await popover.evaluate((element) => getComputedStyle(element).backgroundColor)
+        )
+      )
+      .toBe('#1e2d3c');
     await expect(page.locator('.workbench-activity-popover')).toHaveCSS('border-radius', '13px');
     await expect(panel).toHaveCSS('border-radius', '13px');
     await expect(panel).toHaveCSS('overflow', 'clip');

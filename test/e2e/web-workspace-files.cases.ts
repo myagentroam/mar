@@ -750,6 +750,9 @@ test('File navigation uses rounded selection and the editor fills its surface wi
     undefined,
     '0.9.12'
   );
+  await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+    json(route, { preparation: { state: 'UNAVAILABLE' } })
+  );
   await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) =>
     json(route, {
       file: {
@@ -808,11 +811,11 @@ test('File navigation uses rounded selection and the editor fills its surface wi
     'border-radius',
     '6px'
   );
-  const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
+  const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览', exact: true });
   const editor = preview.locator('.cm-content');
   await expect(editor).toBeVisible();
   await expect(editor).toContainText('export const answer = 42;');
-  for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'vscode-dark-2026']) {
     await page.evaluate(
       (value) => document.documentElement.setAttribute('data-theme', value),
       theme
@@ -844,12 +847,17 @@ test('File navigation uses rounded selection and the editor fills its surface wi
     const before = await selection.evaluate((element) => getComputedStyle(element).backgroundColor);
     expect(before).not.toBe('rgb(168, 82, 0)');
     await page.evaluate(() =>
-      document.documentElement.style.setProperty('--mar-color-brand', '#805ad5')
+      document.documentElement.style.setProperty('--mar-conversation-activity-fg', '#805ad5')
     );
-    await expect
-      .poll(() => selection.evaluate((element) => getComputedStyle(element).backgroundColor))
-      .not.toBe(before);
-    await page.evaluate(() => document.documentElement.style.removeProperty('--mar-color-brand'));
+    await expect(selection).toHaveCSS('background-color', before);
+    await page.evaluate(() =>
+      document.documentElement.style.setProperty('--mar-fill-selection', '#765432')
+    );
+    await expect(selection).not.toHaveCSS('background-color', before);
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty('--mar-conversation-activity-fg');
+      document.documentElement.style.removeProperty('--mar-fill-selection');
+    });
   }
   for (const width of [1365, 390]) {
     await page.setViewportSize({ width, height: 844 });

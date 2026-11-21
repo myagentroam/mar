@@ -463,7 +463,7 @@ const ColumnView = () => renderTable();
   overflow: auto;
 }
 .mar-ui-table__viewport:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__grid) {
@@ -549,7 +549,7 @@ const ColumnView = () => renderTable();
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__sort:focus-visible),
 .mar-ui-table__viewport :deep(.mar-ui-table__disclosure:focus-visible) {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: 2px;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__sort-indicators) {

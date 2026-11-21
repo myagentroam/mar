@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { useI18n } from 'vue-i18n';
 import { themeColorScheme } from '../../util/custom-theme.js';
 defineProps<{ name: string; colors: Record<string, string>; expanded?: boolean }>();
@@ -43,9 +45,7 @@ const { t } = useI18n();
               <code class="diff-remove">- value: 1;</code><code class="diff-add">+ value: 2;</code>
             </div>
           </div>
-          <div class="process">
-            <span class="status-dot"></span>{{ t('customThemes.previewProcess') }}
-          </div>
+          <div class="process"><MarBusyIndicator />{{ t('customThemes.previewProcess') }}</div>
         </div>
       </div>
     </div>
@@ -65,15 +65,15 @@ const { t } = useI18n();
         />
       </label>
       <div class="control-actions">
-        <button type="button" class="preview-button primary">
+        <MarButton type="primary" class="preview-button primary">
           {{ t('customThemes.previewAction') }}
-        </button>
-        <button type="button" class="preview-button secondary">
+        </MarButton>
+        <MarButton class="preview-button secondary">
           {{ t('customThemes.previewSecondary') }}
-        </button>
-        <button type="button" class="preview-button" disabled>
+        </MarButton>
+        <MarButton class="preview-button" disabled>
           {{ t('customThemes.previewDisabled') }}
-        </button>
+        </MarButton>
       </div>
       <p class="caption">{{ t('customThemes.previewStateHint') }}</p>
     </div>
@@ -197,7 +197,8 @@ const { t } = useI18n();
   overflow-wrap: anywhere;
 }
 .syntax-keyword {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
+  font-weight: 600;
 }
 .syntax-value {
   color: var(--mar-color-accent);
@@ -224,9 +225,12 @@ const { t } = useI18n();
   margin-top: 0.5rem;
   padding: 0.35rem 0.5rem;
   background: var(--mar-conversation-process);
-  color: var(--mar-text-secondary);
   border: 1px solid var(--mar-conversation-process-border);
   border-radius: var(--mar-radius-surface);
+}
+.process > .mar-busy-indicator {
+  color: var(--mar-conversation-activity-fg);
+  animation: none;
 }
 .preview-controls {
   padding: 0.65rem;
@@ -239,6 +243,9 @@ const { t } = useI18n();
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+.control-actions > .preview-button {
+  margin-inline-start: 0;
 }
 .status {
   padding: 0.2rem 0.45rem;
@@ -283,48 +290,9 @@ input:hover {
 input::placeholder {
   color: var(--mar-text-secondary);
 }
-.preview-button {
-  font: inherit;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--mar-input-border);
-  border-radius: var(--mar-radius-control);
-  background: var(--mar-bg-panel);
-  color: var(--mar-text-secondary);
-  cursor: pointer;
-}
-.preview-button:hover:not(:disabled) {
-  color: var(--mar-text-primary);
-  background: var(--mar-fill-row-hover);
-  border-color: var(--mar-border-medium);
-}
-.preview-button:not(.primary):active:not(:disabled) {
-  color: var(--mar-text-primary);
-  background: var(--mar-fill-selection);
-  border-color: var(--mar-border-medium);
-}
-.preview-button.primary {
-  color: var(--mar-color-on-accent);
-  background: var(--mar-color-brand);
-  border-color: var(--mar-color-brand);
-}
-.preview-button.primary:hover {
-  color: var(--mar-color-on-accent);
-  background: var(--mar-color-brand-hover);
-  border-color: var(--mar-color-brand-hover);
-}
-.preview-button.primary:active {
-  background: var(--mar-control-color-primary-dark-2);
-  border-color: var(--mar-control-color-primary-dark-2);
-}
-.preview-button:disabled {
-  background: var(--mar-control-fill-color-light);
-  color: var(--mar-text-disabled);
-  border-color: var(--mar-border-subtle);
-  cursor: not-allowed;
-}
-button:focus-visible,
+.file:focus-visible,
 input:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 1px;
 }
 .preview-controls > .caption {

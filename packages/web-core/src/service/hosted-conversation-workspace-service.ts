@@ -125,7 +125,7 @@ export function createHostedConversationWorkspaceService(
     loadConversations,
     loadMoreConversations,
     projectActivityMessage,
-    conversationIsRunning,
+    conversationHasActiveRun,
     upsertConversation
   } = directory;
 
@@ -922,7 +922,7 @@ export function createHostedConversationWorkspaceService(
     loadConversations,
     loadMoreConversations,
     projectActivityMessage,
-    conversationIsRunning,
+    conversationHasActiveRun,
     rememberConversation: upsertConversation,
     selectConversation,
     clearSelectedConversation,

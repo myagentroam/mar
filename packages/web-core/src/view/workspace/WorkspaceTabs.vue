@@ -4,6 +4,7 @@ import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { WorkspaceTab } from '../../model/workbench.js';
+import type { WorkspaceRunActivity } from '../../service/workbench-notification-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
@@ -16,7 +17,7 @@ const props = defineProps<{
   readonly nodeLabel: (tab: WorkspaceTab) => string;
   readonly directAvailable: (nodeId: string) => boolean;
   readonly directDescription: (nodeId: string) => string | undefined;
-  readonly hasActiveRun: (nodeId: string, workspaceId: string) => boolean;
+  readonly runActivity: (nodeId: string, workspaceId: string) => WorkspaceRunActivity | undefined;
   readonly hasUnread: (nodeId: string, workspaceId: string) => boolean;
 }>();
 
@@ -42,6 +43,22 @@ const contextTabIndex = computed(() =>
   props.tabs.findIndex((tab) => tab.id === contextMenu.value?.tabId)
 );
 const contextTabPinned = computed(() => props.tabs[contextTabIndex.value]?.pinned === true);
+const runActivityByTab = computed(
+  () =>
+    new Map(
+      props.tabs.map((tab) => {
+        const activity = props.runActivity(tab.nodeId, tab.workspaceId);
+        const running = activity === 'running';
+        return [
+          tab.id,
+          activity && {
+            running,
+            label: translate(running ? 'workspaceTabs.running' : 'workspaceTabs.transitioning')
+          }
+        ];
+      })
+    )
+);
 let pointerId: number | undefined;
 let pointerStartX = 0;
 let pointerStartY = 0;
@@ -377,6 +394,7 @@ function activate(tab: WorkspaceTab): void {
         <button
           v-tooltip="tab.label"
           :aria-label="tab.label"
+          :aria-description="runActivityByTab.get(tab.id)?.label"
           role="tab"
           :aria-selected="activeTabId === tab.id"
           type="button"
@@ -396,12 +414,12 @@ function activate(tab: WorkspaceTab): void {
               </span>
               <span v-else class="workspace-tab-node">{{ nodeLabel(tab) }}</span>
               <span
-                v-tooltip="translate('generated.sessionPresentation.running')"
-                v-if="hasActiveRun(tab.nodeId, tab.workspaceId)"
-                class="workspace-tab-running mar-session-activity running"
-                role="img"
-                :aria-label="translate('workspaceTabs.running')"
-                ><i aria-hidden="true"
+                v-if="runActivityByTab.get(tab.id)"
+                v-tooltip="runActivityByTab.get(tab.id)?.label"
+                class="workspace-tab-running mar-session-activity"
+                :class="{ running: runActivityByTab.get(tab.id)?.running }"
+                aria-hidden="true"
+                ><i
               /></span>
               <span
                 v-tooltip="translate('workspaceTabs.unreadDescription')"
@@ -457,6 +475,7 @@ function activate(tab: WorkspaceTab): void {
             <MarDropdownItem
               v-for="tab in tabs"
               :key="tab.id"
+              :aria-description="runActivityByTab.get(tab.id)?.label"
               :aria-current="activeTabId === tab.id ? 'true' : undefined"
               :command="tab.id"
             >
@@ -473,12 +492,12 @@ function activate(tab: WorkspaceTab): void {
                 </span>
                 <span v-else class="workspace-tab-node">{{ nodeLabel(tab) }}</span>
                 <span
-                  v-tooltip="translate('generated.sessionPresentation.running')"
-                  v-if="hasActiveRun(tab.nodeId, tab.workspaceId)"
-                  class="workspace-tab-running mar-session-activity running"
-                  role="img"
-                  :aria-label="translate('workspaceTabs.running')"
-                  ><i aria-hidden="true"
+                  v-if="runActivityByTab.get(tab.id)"
+                  v-tooltip="runActivityByTab.get(tab.id)?.label"
+                  class="workspace-tab-running mar-session-activity"
+                  :class="{ running: runActivityByTab.get(tab.id)?.running }"
+                  aria-hidden="true"
+                  ><i
                 /></span>
                 <span
                   v-tooltip="translate('workspaceTabs.unreadDescription')"
@@ -675,7 +694,7 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab.drag-over {
-  box-shadow: inset 2px 0 0 var(--mar-color-brand);
+  box-shadow: inset 2px 0 0 var(--mar-control-focus);
 }
 
 .workspace-tab.sticky-pinned {

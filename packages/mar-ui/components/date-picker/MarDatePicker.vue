@@ -409,7 +409,7 @@ function onFocusOut(event: FocusEvent) {
   border-color: var(--mar-ui-input-border-hover);
 }
 .mar-ui-date-picker__field:is(:focus-within, [data-expanded='true']) {
-  border-color: var(--mar-ui-color-brand);
+  border-color: var(--mar-ui-control-focus);
 }
 .mar-ui-date-picker__field[data-invalid='true'] {
   border-color: var(--mar-ui-control-color-danger);
@@ -508,7 +508,7 @@ input:disabled {
 }
 button:focus-visible,
 .mar-ui-date-picker__footer input:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 </style>

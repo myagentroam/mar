@@ -2173,9 +2173,9 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-file-change-status--renamed,
 .conversation-file-change-status--copied {
-  border-color: var(--mar-color-brand-border);
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
+  border-color: var(--mar-border-medium);
+  background: var(--mar-fill-soft);
+  color: var(--mar-text-primary);
 }
 
 .conversation-file-change-button {
@@ -2226,11 +2226,11 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-file-change-button:hover {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .conversation-file-change-button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 
@@ -2390,7 +2390,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-item summary:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   /* Keep the ring inside the rounded row while the details animation clips overflow. */
   outline-offset: -2px;
 }

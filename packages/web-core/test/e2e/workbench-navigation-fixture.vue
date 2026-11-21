@@ -82,7 +82,7 @@ const response = wideContent
       :node-label="() => 'Development node'"
       :direct-available="() => false"
       :direct-description="() => undefined"
-      :has-active-run="(_nodeId, id) => id === 'workbench'"
+      :run-activity="(_nodeId, id) => (id === 'workbench' ? 'running' : undefined)"
       :has-unread="(_nodeId, id) => id === 'docs'"
       @activate="activeTab = $event.id"
       @close="tabs = tabs.filter((tab) => tab.id !== $event.id)"

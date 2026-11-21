@@ -117,9 +117,7 @@ test('Touch highlights stay transparent on menus, scrims and preview overlays', 
 });
 
 for (const theme of ['daylight', 'midnight']) {
-  test(`Read-all is neutral while expanded navigation stays branded in ${theme}`, async ({
-    page
-  }, testInfo) => {
+  test(`Read-all and expanded navigation stay neutral in ${theme}`, async ({ page }, testInfo) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
@@ -133,8 +131,7 @@ for (const theme of ['daylight', 'midnight']) {
         const result = {
           normal: color('--mar-text-secondary'),
           hover: color('--mar-text-primary'),
-          brand: color('--mar-color-brand-text'),
-          focus: color('--mar-color-brand')
+          focus: color('--mar-control-focus')
         };
         probe.style.fontSize = 'var(--mar-font-size-meta)';
         const meta = getComputedStyle(probe).fontSize;
@@ -150,7 +147,7 @@ for (const theme of ['daylight', 'midnight']) {
       await expect(panel).toBeVisible();
       await expect(panel.getByRole('tab').nth(1)).toHaveAttribute('aria-selected', 'true');
       await expect(activity).toHaveAttribute('aria-expanded', 'true');
-      await expect(activity).toHaveCSS('color', colors.brand);
+      await expect(activity).toHaveCSS('color', colors.hover);
       const markAll = page.getByRole('button', { name: 'Mark all as read', exact: true });
       await page.mouse.move(0, 0);
       await expect(markAll).toHaveCSS('color', colors.normal);
@@ -215,8 +212,8 @@ for (const theme of ['daylight', 'midnight']) {
             await page.locator('html').evaluate((element) => {
               element.style.setProperty('--mar-text-primary', '#d6dfc9');
               element.style.setProperty('--mar-text-secondary', '#8295a4');
-              element.style.setProperty('--mar-color-brand', '#9672d1');
-              element.style.setProperty('--mar-color-brand-text', '#af79d0');
+              element.style.setProperty('--mar-conversation-activity-fg', '#9672d1');
+              element.style.setProperty('--mar-control-focus', '#af79d0');
               element.style.setProperty('--mar-fill-row-hover', '#25334280');
             });
           const colors = await help.evaluate((element) => {
@@ -230,7 +227,7 @@ for (const theme of ['daylight', 'midnight']) {
               normal: color('--mar-text-secondary'),
               hover: color('--mar-text-primary'),
               hoverBackground: color('--mar-fill-row-hover'),
-              focus: color('--mar-color-brand')
+              focus: color('--mar-control-focus')
             };
             probe.remove();
             return result;
@@ -350,7 +347,7 @@ for (const theme of ['daylight', 'midnight']) {
       const tokens = await remove.evaluate((element) => {
         const probe = document.createElement('span');
         probe.style.cssText =
-          'position:absolute;color:var(--mar-text-primary);background:var(--mar-fill-row-hover);border-color:var(--mar-color-brand)';
+          'position:absolute;color:var(--mar-text-primary);background:var(--mar-fill-row-hover);border-color:var(--mar-control-focus)';
         element.append(probe);
         const style = getComputedStyle(probe);
         const colors = {

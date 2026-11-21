@@ -35,7 +35,6 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
       <span
         v-if="summary?.hasActiveDescendants"
         class="tree-active-indicator mar-icon-status-badge"
-        :class="{ paused: status !== 'ready' }"
         aria-hidden="true"
       />
     </span>
@@ -61,9 +60,6 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
   --mar-icon-status-surface: var(--mar-conversation-canvas);
   inset-block-end: 0;
   inset-inline-end: 0;
-}
-.tree-active-indicator.paused {
-  opacity: 0.6;
 }
 
 @media (max-width: 767px) {

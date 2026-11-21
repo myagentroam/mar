@@ -112,7 +112,7 @@ function handleClick(event: MouseEvent): void {
   --mar-ui-button-icon-size: 1em;
   --mar-ui-button-padding-block: 0.125rem;
   --mar-ui-button-fg: var(--mar-ui-text-secondary);
-  --mar-ui-button-bg: var(--mar-ui-bg-panel);
+  --mar-ui-button-bg: var(--mar-ui-fill-soft);
   --mar-ui-button-border: var(--mar-ui-border-default);
   --mar-ui-button-hover-bg: var(--mar-ui-fill-row-hover);
   --mar-ui-button-hover-border: var(--mar-ui-border-medium);
@@ -149,17 +149,15 @@ function handleClick(event: MouseEvent): void {
 }
 
 .mar-ui-button--primary {
-  --mar-ui-button-fg: var(--mar-ui-color-on-accent);
-  --mar-ui-button-bg: var(--mar-ui-color-brand);
-  --mar-ui-button-border: var(--mar-ui-color-brand);
-  --mar-ui-button-hover-bg: var(--mar-ui-color-brand-hover);
-  --mar-ui-button-hover-border: var(--mar-ui-color-brand-hover);
-  --mar-ui-button-hover-fg: var(--mar-ui-color-on-accent);
-  --mar-ui-button-active-bg: var(--mar-ui-control-color-primary-dark-2);
+  --mar-ui-button-fg: var(--mar-ui-control-primary-fg);
+  --mar-ui-button-bg: var(--mar-ui-control-primary-bg);
+  --mar-ui-button-border: var(--mar-ui-button-bg);
+  --mar-ui-button-hover-bg: var(--mar-ui-control-primary-hover);
+  --mar-ui-button-hover-border: var(--mar-ui-button-hover-bg);
+  --mar-ui-button-hover-fg: var(--mar-ui-button-fg);
+  --mar-ui-button-active-bg: var(--mar-ui-control-primary-active);
   --mar-ui-button-active-border: var(--mar-ui-button-active-bg);
-  --mar-ui-button-disabled-fg: var(--mar-ui-control-disabled-on-accent);
-  --mar-ui-button-disabled-bg: var(--mar-ui-control-color-primary-light-5);
-  --mar-ui-button-disabled-border: var(--mar-ui-button-disabled-bg);
+  --mar-ui-button-disabled-bg: var(--mar-ui-fill-soft);
 }
 
 .mar-ui-button--ghost,
@@ -181,7 +179,6 @@ function handleClick(event: MouseEvent): void {
 .mar-ui-button--primary:is(.mar-ui-button--ghost, .mar-ui-button--inline, .mar-ui-button--plain) {
   --mar-ui-button-fg: var(--mar-ui-control-link-text);
   --mar-ui-button-hover-fg: var(--mar-ui-control-link-hover);
-  --mar-ui-button-disabled-fg: var(--mar-ui-color-brand-disabled);
   --mar-ui-button-active-bg: var(--mar-ui-button-hover-bg);
   --mar-ui-button-active-border: var(--mar-ui-button-hover-border);
 }
@@ -189,13 +186,10 @@ function handleClick(event: MouseEvent): void {
   --mar-ui-button-hover-bg: var(--mar-ui-fill-row-hover);
 }
 .mar-ui-button--primary.mar-ui-button--plain {
-  --mar-ui-button-bg: color-mix(in srgb, var(--mar-ui-color-brand) 10%, var(--mar-ui-bg-panel));
-  --mar-ui-button-hover-bg: color-mix(
-    in srgb,
-    var(--mar-ui-color-brand) 20%,
-    var(--mar-ui-bg-panel)
-  );
-  --mar-ui-button-border: var(--mar-ui-control-color-primary-light-5);
+  --mar-ui-button-bg: var(--mar-ui-fill-soft);
+  --mar-ui-button-hover-bg: var(--mar-ui-fill-row-hover);
+  --mar-ui-button-hover-border: var(--mar-ui-border-medium);
+  --mar-ui-button-border: var(--mar-ui-border-default);
   --mar-ui-button-disabled-bg: var(--mar-ui-bg-panel);
 }
 
@@ -206,7 +200,7 @@ function handleClick(event: MouseEvent): void {
   --mar-ui-button-tone: var(--mar-ui-control-color-warning);
 }
 .mar-ui-button:is(.mar-ui-button--danger, .mar-ui-button--warning) {
-  --mar-ui-button-fg: light-dark(var(--mar-ui-color-on-accent), var(--mar-ui-button-tone));
+  --mar-ui-button-fg: light-dark(white, var(--mar-ui-button-tone));
   --mar-ui-button-bg: light-dark(
     var(--mar-ui-button-tone),
     color-mix(in srgb, var(--mar-ui-button-tone) 16%, var(--mar-ui-bg-panel))
@@ -273,7 +267,7 @@ function handleClick(event: MouseEvent): void {
 }
 
 .mar-ui-button:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: 2px;
 }
 

@@ -635,7 +635,7 @@ function mcpErrorMessage(error: unknown): string {
   font-weight: 400;
 }
 .mcp-category-strip button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 1px;
 }
 .mcp-config-tabs {
@@ -707,7 +707,7 @@ function mcpErrorMessage(error: unknown): string {
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: var(--mar-color-brand);
+  background: var(--mar-text-secondary);
   content: '';
   animation: mcp-install-progress 1.4s ease-in-out infinite;
 }

@@ -21,6 +21,7 @@ import '../../src/styles.css';
 
 const query = new URLSearchParams(location.search);
 const rootOnly = query.get('rootOnly') === '1';
+const sleepingOnly = query.has('sleeping-only');
 localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
 themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'vscode-dark-2026' : 'daylight');
 const session = {
@@ -83,7 +84,7 @@ function makeTree(): NonNullable<NavigationSnapshot['tree']> {
               'great-grandchild',
               'grandchild',
               'Review child compatibility',
-              query.has('activity') ? 'RUNNING' : 'IDLE',
+              query.has('activity') ? (sleepingOnly ? 'SLEEPING' : 'RUNNING') : 'IDLE',
               now - 20_000
             ),
             makeNode(
@@ -166,8 +167,8 @@ createTooltipApp(
                         anchorSessionId: session.id,
                         descendantCount: 3,
                         activeCount: 2,
-                        runningCount: 1,
-                        sleepingCount: 1,
+                        runningCount: sleepingOnly ? 0 : 1,
+                        sleepingCount: sleepingOnly ? 2 : 1,
                         hasActiveDescendants: true
                       }
                     : undefined,

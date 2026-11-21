@@ -375,9 +375,16 @@ test('tree and node icon badges retain surface isolation on desktop and mobile',
         expect(geometry.animation).toBe('none');
         colors.push(geometry.color);
       }
-      expect(colors[0]).toBe(colors[1]);
-      expect(colors[1]).toBe(colors[2]);
-      onlineColor = colors[1]!;
+      const successColor = await page.evaluate(() => {
+        const probe = document.createElement('span');
+        document.body.append(probe);
+        probe.style.color = 'var(--mar-control-color-success)';
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      expect(colors).toEqual([successColor, successColor, successColor]);
+      onlineColor = successColor;
       if (width >= 768) {
         await treeButton.hover();
         const treeHover = await treeDot.evaluate((element) => ({
@@ -1942,33 +1949,26 @@ test('Workspace tab direct Link icon preserves hover and compact status layout',
           theme
         );
         const badge = first.locator('.workspace-tab-unread');
-        await expect(badge).toHaveCSS('font-size', '11px');
+        await expect(badge).toHaveCSS('font-size', width === 1440 ? '10px' : '9px');
         await expect(badge).toHaveCSS('font-weight', '500');
-        await expect(badge).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(badge).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(badge).toHaveCSS('border-top-width', '1px');
         await expect(badge).toHaveCSS('border-radius', '4px');
         await expect(first.locator('.workspace-tab-meta')).toHaveCSS('font-size', '11px');
         await expect(icon).toHaveCSS('font-size', '11px');
         const runningDot = first.locator('.workspace-tab-running i');
-        await expect(runningDot).toHaveCSS('width', '5px');
-        await expect(runningDot).toHaveCSS('height', '5px');
-        await expect(runningDot).toHaveCSS('box-shadow', /0px 0px 0px 1\.5px.*0px 0px 4px 0px/);
-        await page.emulateMedia({ reducedMotion: 'no-preference' });
-        await expect(runningDot).toHaveCSS('animation-name', 'mar-run-glow');
-        await expect(runningDot).toHaveCSS('transform', 'none');
-        const breathing = await runningDot.evaluate((element) => {
-          const animation = element.getAnimations()[0]!;
-          animation.pause();
-          animation.currentTime = 0;
-          const dim = Number(getComputedStyle(element).opacity);
-          animation.currentTime = Number(animation.effect!.getTiming().duration) / 2;
-          const bright = Number(getComputedStyle(element).opacity);
-          animation.play();
-          return { dim, bright };
-        });
-        expect(breathing.bright).toBeGreaterThan(breathing.dim);
-        await page.emulateMedia({ reducedMotion: 'reduce' });
-        await expect(runningDot).toHaveCSS('animation-name', 'none');
-        await expect(runningDot).toHaveCSS('opacity', '1');
+        await expect(runningDot).toHaveCSS('width', '6px');
+        await expect(runningDot).toHaveCSS('height', '6px');
+        await expect(runningDot).toHaveCSS('box-shadow', 'none');
+        await expect(runningDot).toHaveCSS(
+          'background-color',
+          theme === 'daylight' ? 'rgb(6, 117, 81)' : 'rgb(116, 198, 157)'
+        );
+        for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+          await page.emulateMedia({ reducedMotion });
+          await expect(runningDot).toHaveCSS('animation-name', 'none');
+          await expect(runningDot).toHaveCSS('opacity', '1');
+        }
         await first.screenshot({
           path: test.info().outputPath(`workspace-tab-unread-${locale}-${width}-${theme}.png`)
         });
@@ -2060,16 +2060,22 @@ for (const language of [
     open: '进入控制台',
     work: '工作',
     menu: '全部已打开工作区',
+    browseNext: '向右浏览工作区标签',
     unread: '未读',
-    running: '运行中'
+    running: '运行中',
+    workspaceRunning: '工作区有正在运行的任务',
+    workspaceTransitioning: '工作区有正在启动或停止的任务'
   },
   {
     locale: 'en-US',
     open: 'Open console',
     work: 'Work',
     menu: 'All open workspaces',
+    browseNext: 'Browse next workspace tabs',
     unread: 'Unread',
-    running: 'Running'
+    running: 'Running',
+    workspaceRunning: 'Workspace has a running task',
+    workspaceTransitioning: 'Workspace has tasks starting or stopping'
   }
 ] as const) {
   test(
@@ -2183,6 +2189,7 @@ for (const language of [
       recentRuns = [run('first-task', 'RUNNING'), run('second-task', 'CANCELLING')];
       await invalidate({ type: 'recent-run.updated', run: recentRuns[0] });
       await expect(first.getByRole('tab')).toHaveAttribute('aria-selected', 'false');
+      await expect(first.getByRole('tab')).toHaveAccessibleDescription(language.workspaceRunning);
       await expect(first.locator('.workspace-tab-running')).toBeVisible();
       await expect(first.locator('.workspace-tab-unread')).toHaveText(language.unread);
       await expect(second.locator('.workspace-tab-running, .workspace-tab-unread')).toHaveCount(0);
@@ -2193,34 +2200,37 @@ for (const language of [
       expect(notifications.find((value) => value.id === 'first')?.read).toBe(true);
       expect(notifications.find((value) => value.id === 'second')?.read).toBe(false);
       await expect(first.locator('.workspace-tab-unread')).toBeVisible();
-      const runningDots = [
-        first.locator('.workspace-tab-running'),
-        page.locator('.session-list .mar-session-activity').first(),
-        page.locator('.conversation-header .mar-session-activity')
-      ];
-      const runningColor = await runningDots[0]!
-        .locator('i')
-        .evaluate((element) => getComputedStyle(element).backgroundColor);
-      const expectRunningIndicator = async (dot: Locator) => {
+      await expect(page.locator('.conversation-header .mar-session-activity')).toHaveCount(0);
+      const palette = await page.locator('html').evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        try {
+          probe.style.color = 'var(--mar-control-color-success)';
+          const running = getComputedStyle(probe).color;
+          probe.style.color = 'var(--mar-text-secondary)';
+          return { running, transitioning: getComputedStyle(probe).color };
+        } finally {
+          probe.remove();
+        }
+      });
+      const expectActivityIndicator = async (dot: Locator, label: string, color: string) => {
         await expect(dot).toBeVisible();
         await expect(dot).not.toHaveAttribute('tabindex', '0');
-        await expect(dot.locator('i')).toHaveCSS('animation-name', 'mar-run-glow');
-        await expect(dot.locator('i')).toHaveCSS('animation-duration', '1.8s');
-        await expect(dot.locator('i')).toHaveCSS('animation-timing-function', 'ease-in-out');
-        await expect(dot.locator('i')).toHaveCSS('animation-iteration-count', 'infinite');
-        await expect(dot.locator('i')).toHaveCSS('background-color', runningColor);
-        await expect(dot).toHaveAttribute('title', language.running);
+        await expect(dot.locator('i')).toHaveCSS('animation-name', 'none');
+        await expect(dot.locator('i')).toHaveCSS('box-shadow', 'none');
+        await expect(dot.locator('i')).toHaveCSS('background-color', color);
+        await expect(dot).not.toHaveAttribute('title');
         await dot.hover();
-        const tooltip = page
-          .getByRole('tooltip')
-          .filter({ hasText: new RegExp('^' + language.running + '$') });
-        await expect(tooltip).toHaveCount(0);
+        await expect(page.getByRole('tooltip')).toHaveText(label);
         await page.mouse.move(0, 0);
       };
       await page.emulateMedia({ reducedMotion: 'no-preference' });
-      for (const dot of runningDots) await expectRunningIndicator(dot);
+      const workspaceDot = first.locator('.workspace-tab-running');
+      const sessionDot = page.locator('.session-list .mar-session-activity').first();
+      await expectActivityIndicator(workspaceDot, language.workspaceRunning, palette.running);
+      await expectActivityIndicator(sessionDot, language.running, palette.running);
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      for (const dot of runningDots)
+      for (const dot of [workspaceDot, sessionDot])
         await expect(dot.locator('i')).toHaveCSS('animation-name', 'none');
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       notifications = notifications.map((value) => ({ ...value, read: true }));
@@ -2242,7 +2252,10 @@ for (const language of [
       await expect(first.locator('.workspace-tab-running')).toBeVisible();
       recentRuns = [run('first-task', 'SUCCEEDED'), run('second-task', 'CANCELLING')];
       await invalidate({ type: 'recent-run.updated', run: recentRuns[0] });
-      await expect(first.locator('.workspace-tab-running')).toBeVisible();
+      await expect(first.getByRole('tab')).toHaveAccessibleDescription(
+        language.workspaceTransitioning
+      );
+      await expect(workspaceDot.locator('i')).toHaveCSS('background-color', palette.transitioning);
       recentRuns = [];
       await invalidate({ type: 'recent-run.removed', nodeId: 'node-1', runId: 'second-task' });
       await expect(first.locator('.workspace-tab-running')).toHaveCount(0);
@@ -2255,21 +2268,37 @@ for (const language of [
       await invalidate({ type: 'recent-run.updated', run: recentRuns[0] });
       await expect(first.locator('.workspace-tab-unread')).toBeVisible();
       await page.setViewportSize({ width: 1024, height: 900 });
+      // Wait for the resize-driven scroll to finish before hovering; scrolling dismisses tooltips.
+      await expect(
+        page.getByRole('button', { name: language.browseNext, exact: true })
+      ).toBeDisabled();
       await page.getByRole('button', { name: language.menu, exact: true }).click();
       const menuItem = page
         .locator('.workspace-tab-menu-list [role="menuitem"]')
         .filter({ hasText: 'project-1' });
       await expect(menuItem.locator('.workspace-tab-unread')).toHaveText(language.unread);
-      await expect(menuItem.locator('.workspace-tab-running')).toBeVisible();
-      await expectRunningIndicator(menuItem.locator('.workspace-tab-running'));
+      await expect(menuItem).toHaveAccessibleDescription(language.workspaceTransitioning);
+      await expectActivityIndicator(
+        menuItem.locator('.workspace-tab-running'),
+        language.workspaceTransitioning,
+        palette.transitioning
+      );
       await page.keyboard.press('Escape');
+      await expect(menuItem).toBeHidden();
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(page.locator('.workspace-tab-strip-header')).toHaveCount(0);
       await expect(page.locator('.workspace-tab-strip-body')).toHaveCount(1);
       await first.scrollIntoViewIfNeeded();
       await expect(first.locator('.workspace-tab-unread')).toBeVisible();
       await expect(first.locator('.workspace-tab-running')).toHaveCSS('flex-shrink', '0');
-      await expectRunningIndicator(first.locator('.workspace-tab-running'));
+      await expect(first.getByRole('tab')).toHaveAccessibleDescription(
+        language.workspaceTransitioning
+      );
+      await expectActivityIndicator(
+        workspaceDot,
+        language.workspaceTransitioning,
+        palette.transitioning
+      );
       const bounds = await first.locator('.workspace-tab-unread').boundingBox();
       const tabBounds = await first.boundingBox();
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(tabBounds!.x + tabBounds!.width);

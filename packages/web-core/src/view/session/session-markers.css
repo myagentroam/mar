@@ -8,8 +8,8 @@
   box-sizing: border-box;
   padding: 0 4px;
   border-radius: var(--mar-radius-marker);
-  background: var(--mar-color-brand);
-  color: var(--mar-color-on-accent);
+  background: var(--mar-text-secondary);
+  color: var(--mar-bg-panel);
   font-size: var(--mar-font-size-nano);
   font-weight: 500;
   font-variant-numeric: tabular-nums;

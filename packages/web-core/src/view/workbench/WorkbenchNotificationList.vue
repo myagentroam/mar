@@ -299,7 +299,7 @@ async function retrySnapshot(): Promise<void> {
   border-top: 1px solid var(--mar-border-subtle);
 }
 .workbench-notification-upload > .mar-icon {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-secondary);
 }
 .workbench-notification-upload-actions {
   display: flex;
@@ -335,7 +335,7 @@ async function retrySnapshot(): Promise<void> {
 .workbench-notification-upload progress {
   width: 100%;
   height: 5px;
-  accent-color: var(--mar-color-brand);
+  accent-color: var(--mar-control-primary-bg);
 }
 .workbench-notification-list > li.unread {
   border-left: 2px solid var(--mar-border-strong);
