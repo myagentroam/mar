@@ -623,11 +623,16 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           >
             <BusyIndicator />
           </div>
-          <div v-else class="workspace-recovery-state">
-            <p v-if="!workspaceRecoveryRetrying" role="status">
+          <div
+            v-else
+            class="workspace-recovery-state"
+            :class="{ 'is-retrying': workspaceRecoveryRetrying }"
+          >
+            <p role="status" :aria-hidden="workspaceRecoveryRetrying || undefined">
               {{ translate('generated.workbenchSurface.workspaceMetadataUnavailable') }}
             </p>
             <MarButton
+              class="workspace-recovery-retry"
               link
               size="small"
               :aria-busy="workspaceRecoveryRetrying || undefined"
@@ -636,7 +641,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
               @click="retryWorkspaceRecovery"
             >
               <BusyIndicator v-if="workspaceRecoveryRetrying" class="mar-read-loading-indicator" />
-              <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+              <span class="workspace-recovery-retry-label">{{
+                translate('common.loadFailedRetry')
+              }}</span>
             </MarButton>
           </div>
         </section>
@@ -1228,6 +1235,20 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 
 .workspace-recovery-state > p {
   margin: 0;
+}
+
+.workspace-recovery-state.is-retrying :is(p, .workspace-recovery-retry-label) {
+  visibility: hidden;
+}
+
+.workspace-recovery-retry {
+  position: relative;
+}
+
+.workspace-recovery-retry .mar-read-loading-indicator {
+  position: absolute;
+  inset: 0;
+  margin: auto;
 }
 
 .workspace-selection-hint {

@@ -880,11 +880,17 @@ describe('Workbench surface composition behavior', () => {
         expect(busyRetry?.props['aria-disabled']).toBe(true);
         await trigger(busyRetry!, 'onClick');
         expect(retry).toHaveBeenCalledTimes(1);
-        expect(textContent(view.root)).not.toContain(
-          translate('generated.workbenchSurface.workspaceMetadataUnavailable')
-        );
+        const status = view
+          .findAll('p')
+          .find((node) =>
+            textContent(node).includes(
+              translate('generated.workbenchSurface.workspaceMetadataUnavailable')
+            )
+          );
+        expect(status?.props['aria-hidden']).toBe(true);
         page.selection.workspaceSelectionLoading = false;
         await flushComponent();
+        expect(status?.props['aria-hidden']).toBeUndefined();
         expect(textContent(view.root)).toContain(translate('common.loadFailedRetry'));
         page.resources.workspaceHost = { connected: false };
         await flushComponent();

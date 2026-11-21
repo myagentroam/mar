@@ -143,6 +143,7 @@ test('preserves Node sibling order for 100 returned rows, including an active id
 });
 
 test('retries a failed tree read, reaches ready, and closes on Escape', async ({ page }, info) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const { dialog, tree } = await openTree(page, 'dark', 390);
   await setFixtureState(page, 'fail');
   const error = tree.getByRole('status');
@@ -153,13 +154,25 @@ test('retries a failed tree read, reaches ready, and closes on Escape', async ({
     path: info.outputPath('session-tree-failed.png'),
     animations: 'disabled'
   });
+  const retryBounds = await retry.boundingBox();
+  expect(retryBounds).not.toBeNull();
   await retry.click();
   await expect(page.getByTestId('retry-count')).toHaveText('1');
   await expect(tree).toHaveAttribute('aria-busy', 'true');
   const busyRetry = tree.getByRole('button', { name: 'Loading', exact: true });
+  const ring = busyRetry.locator('.mar-read-loading-indicator');
   await expect(busyRetry).toBeFocused();
   await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
-  await expect(busyRetry.locator('.mar-read-loading-indicator')).toBeVisible();
+  await expect(ring).toBeVisible();
+  await expect.poll(() => busyRetry.boundingBox()).toEqual(retryBounds);
+  const ringBounds = (await ring.boundingBox())!;
+  expect(
+    Math.abs(ringBounds.x + ringBounds.width / 2 - (retryBounds!.x + retryBounds!.width / 2))
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(ringBounds.y + ringBounds.height / 2 - (retryBounds!.y + retryBounds!.height / 2))
+  ).toBeLessThan(1);
+  await expect(error.getByText('Session tree synchronization is unavailable.')).toBeHidden();
   await expect(tree.locator('.mar-busy-indicator')).toHaveCount(1);
   await page.screenshot({
     path: info.outputPath('session-tree-retrying.png'),

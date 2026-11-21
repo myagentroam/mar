@@ -175,15 +175,16 @@ function openContext(event: MouseEvent): void {
         (status === 'ready' && tree === null)
       "
       class="session-tree-status"
-      :class="{ 'session-tree-loading': showTreeLoading }"
+      :class="{ 'session-tree-loading': showTreeLoading, 'is-retrying': retrying }"
       role="status"
       :aria-label="showTreeLoading ? translate('common.loading') : undefined"
     >
       <BusyIndicator v-if="showTreeLoading" class="mar-read-loading-indicator" />
       <template v-else>
-        <span v-if="!retrying">{{ translate('sessionGroups.treeUnavailable') }}</span>
+        <span class="session-tree-failure">{{ translate('sessionGroups.treeUnavailable') }}</span>
         <MarButton
           v-if="retrying || (status === 'failed' && canRetry)"
+          class="session-tree-retry"
           link
           :aria-busy="retrying || undefined"
           :aria-disabled="retrying || undefined"
@@ -191,7 +192,7 @@ function openContext(event: MouseEvent): void {
           @click="retryRead"
         >
           <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
-          <template v-else>{{ translate('sessionGroups.retry') }}</template>
+          <span class="session-tree-retry-label">{{ translate('sessionGroups.retry') }}</span>
         </MarButton>
       </template>
     </MarRegionStatus>
@@ -375,6 +376,20 @@ function openContext(event: MouseEvent): void {
 <style scoped>
 .session-tree-status {
   min-block-size: 5rem;
+}
+
+.session-tree-status.is-retrying :is(.session-tree-failure, .session-tree-retry-label) {
+  visibility: hidden;
+}
+
+.session-tree-retry {
+  position: relative;
+}
+
+.session-tree-retry .mar-read-loading-indicator {
+  position: absolute;
+  inset: 0;
+  margin: auto;
 }
 
 .session-tree-parent {
