@@ -9,6 +9,7 @@
 >
 import {
   computed,
+  inject,
   nextTick,
   provide,
   ref,
@@ -23,6 +24,7 @@ import { useMarUiLocale } from '../../locale/index.js';
 import { useMarFormControl } from '../form/form-context.js';
 import { usePopup } from '../popup/use-popup.js';
 import '../popup/surface.css';
+import { marUiTooltipDirectiveKey, readOverflowText } from '../tooltip/tooltip-directive.js';
 import MarOption from './MarOption.vue';
 import { optionContext, type Choice, type OptionValue } from './option-context.js';
 import type { MarSelection, MarSelectProps } from './select-types.js';
@@ -53,11 +55,16 @@ const emit = defineEmits<{
   blur: [event: FocusEvent];
 }>();
 const locale = useMarUiLocale();
+const vOverflowTooltip = inject(marUiTooltipDirectiveKey, {});
 const id = useId();
 const createId = `${id}-create`;
 const field = useTemplateRef<HTMLElement>('field');
 const trigger = useTemplateRef<HTMLElement>('trigger');
 const list = useTemplateRef<HTMLElement>('list');
+const label = useTemplateRef<HTMLElement>('label');
+const tagLabels = useTemplateRef<HTMLElement[]>('tagLabels');
+const overflowText = () =>
+  readOverflowText(label.value ?? (compactTags.value ? (tagLabels.value?.[0] ?? null) : null));
 const choices = shallowReactive(new Set<Choice>());
 const active = shallowRef<Choice>();
 const activeValue = computed(() => active.value?.value);
@@ -82,6 +89,8 @@ const selected = computed(() =>
 );
 const singleLabel = computed(() => selected.value[0]?.label);
 const hasSingleValue = computed(() => singleLabel.value !== undefined && singleLabel.value !== '');
+const compactTags = computed(() => props.multiple && props.collapseTags && !props.filterable);
+const hasTags = computed(() => props.multiple && selected.value.length > 0);
 const displayedTags = computed(() =>
   props.collapseTags ? selected.value.slice(0, 1) : selected.value
 );
@@ -105,18 +114,59 @@ const canCreate = computed(
 );
 const visibleItems = computed(() => [...choices].filter(visible));
 const available = computed(() => visibleItems.value.filter((item) => !disabled(item)));
-const collapsedTagsOpen = ref(false);
+const summaryButton = useTemplateRef<HTMLButtonElement>('summaryButton');
+const summarySurface = useTemplateRef<HTMLElement>('summarySurface');
+const {
+  open: collapsedTagsOpen,
+  show: showCollapsedTags,
+  close: closeCollapsedTags
+} = usePopup(() => {});
 const { open, show, close } = usePopup(() => {
   active.value = undefined;
   pointerDriven.value = false;
   query.value = '';
 });
 
+function revealCollapsedTags() {
+  if (summaryButton.value && summarySurface.value)
+    showCollapsedTags(summaryButton.value, summarySurface.value, { placement: 'top', offset: 0 });
+}
+
+function onSummaryFocus(event: FocusEvent) {
+  if ((event.currentTarget as HTMLElement).matches(':focus-visible')) revealCollapsedTags();
+}
+
+watch(summaryButton, (button) => {
+  if (!button) closeCollapsedTags();
+});
+
+watch(
+  collapsedTagsOpen,
+  (visible, _, onCleanup) => {
+    const document = summaryButton.value?.ownerDocument;
+    if (!visible || !document) return;
+    // Hover does not move focus to the preview; Escape must still dismiss it.
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closeCollapsedTags();
+    };
+    document.addEventListener('keydown', onEscape, true);
+    onCleanup(() => document.removeEventListener('keydown', onEscape, true));
+  },
+  { flush: 'sync' }
+);
+
 function controlAttrs(attrs: Record<string, unknown>) {
+  const description = describedBy(attrs['aria-describedby']);
   return {
     ...attrs,
     'aria-invalid': ariaInvalid(attrs['aria-invalid']),
-    'aria-describedby': describedBy(attrs['aria-describedby']),
+    'aria-describedby':
+      compactTags.value && hasTags.value
+        ? [description, `${id}-tag-0`].filter(Boolean).join(' ')
+        : description,
     class: 'mar-ui-select__trigger',
     style: undefined,
     id: controlId.value ?? `${id}-trigger`,
@@ -264,9 +314,9 @@ function expand(key?: string) {
     (!current && (key || !props.filterable || props.defaultFirstOption))
       ? items.at(key === 'ArrowUp' || key === 'End' ? -1 : 0)
       : current;
-  collapsedTagsOpen.value = false;
+  closeCollapsedTags();
   show(field.value, list.value);
-  if (open.value) revealActive();
+  if (open.value) void nextTick(revealActive);
 }
 
 function toggleMenu() {
@@ -280,7 +330,7 @@ function setActiveValue(value: OptionValue) {
   if (!item) return;
   pointerDriven.value = false;
   active.value = item;
-  revealActive();
+  void nextTick(revealActive);
 }
 
 defineExpose({ focus, toggleMenu, expanded: open, activeValue, setActiveValue });
@@ -300,7 +350,7 @@ function move(key: string) {
             : 0
           : (index + (key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
   active.value = items[next];
-  revealActive();
+  void nextTick(revealActive);
 }
 
 function onKey(event: KeyboardEvent) {
@@ -398,7 +448,8 @@ watch(controlDisabled, (disabled) => {
       class="mar-ui-select__field"
       :class="{
         'mar-ui-select__field--small': size === 'small',
-        'mar-ui-select__field--multiple': multiple && selected.length > 0,
+        'mar-ui-select__field--tags': hasTags,
+        'mar-ui-select__field--compact-tags': compactTags,
         'mar-ui-select__field--filterable': filterable
       }"
       :data-disabled="controlDisabled || undefined"
@@ -437,13 +488,16 @@ watch(controlDisabled, (disabled) => {
         <button
           v-else
           v-bind="controlAttrs($attrs)"
+          v-overflow-tooltip="overflowText"
           ref="trigger"
           type="button"
+          :class="{ 'mar-ui-select__trigger--with-tags': hasTags }"
           @click="toggleMenu"
           @keydown="onKey"
         >
           <span
-            v-if="!multiple || selected.length === 0"
+            v-if="!hasTags"
+            ref="label"
             class="mar-ui-select__label"
             :class="{ 'mar-ui-select__label--placeholder': !hasSingleValue }"
             >{{ hasSingleValue ? singleLabel : (placeholder ?? locale.select) }}</span
@@ -455,7 +509,9 @@ watch(controlDisabled, (disabled) => {
             :key="optionKey(item.value)"
             class="mar-ui-select__tag"
           >
-            <span :id="`${id}-tag-${index}`" class="mar-ui-select__label">{{ item.label }}</span>
+            <span :id="`${id}-tag-${index}`" ref="tagLabels" class="mar-ui-select__label">{{
+              item.label
+            }}</span>
             <button
               v-if="!controlDisabled && !item.disabled"
               type="button"
@@ -464,57 +520,69 @@ watch(controlDisabled, (disabled) => {
               @mousedown.prevent
               @click="remove(item.value)"
             >
-              <MarIconGraphic name="close" />
+              <MarIconGraphic name="close" class="mar-ui-select__tag-remove-icon" />
             </button>
           </span>
-          <span v-if="hiddenTags.length" class="mar-ui-select__tag mar-ui-select__summary">
+          <div
+            v-if="hiddenTags.length"
+            class="mar-ui-select__tag mar-ui-select__summary"
+            @pointerenter="$event.pointerType === 'mouse' && revealCollapsedTags()"
+            @pointerleave="$event.pointerType === 'mouse' && closeCollapsedTags()"
+          >
             <button
               v-if="collapseTagsTooltip"
+              ref="summaryButton"
               type="button"
               class="mar-ui-select__action"
               :aria-describedby="`${id}-summary`"
               :aria-expanded="collapsedTagsOpen"
-              @click="collapsedTagsOpen = !collapsedTagsOpen"
-              @blur="collapsedTagsOpen = false"
-              @keydown.esc="collapsedTagsOpen = false"
+              @click="revealCollapsedTags"
+              @focus="onSummaryFocus"
+              @blur="closeCollapsedTags"
             >
               +{{ hiddenTags.length }}
             </button>
             <span v-else>+{{ hiddenTags.length }}</span>
-            <span
+            <div
               v-if="collapseTagsTooltip"
               :id="`${id}-summary`"
-              class="mar-ui-select__summary-content"
+              ref="summarySurface"
+              class="mar-ui-popup mar-ui-select__summary-content"
+              popover="manual"
             >
-              <span v-for="item in hiddenTags" :key="optionKey(item.value)"
-                >{{ item.label }}{{ ' ' }}</span
-              >
-            </span>
-          </span>
+              <div class="mar-ui-popup__content">
+                <span v-for="item in hiddenTags" :key="optionKey(item.value)"
+                  >{{ item.label }}{{ ' ' }}</span
+                >
+              </div>
+            </div>
+          </div>
           <span :id="`${id}-clear-label`" hidden>{{ locale.clear }}</span>
         </template>
       </div>
-      <button
-        v-if="canClear"
-        type="button"
-        class="mar-ui-select__action mar-ui-select__clear"
-        :aria-label="locale.clear"
-        @mousedown.prevent
-        @click="clear"
-      >
-        <component :is="resolveMarIcon(clearIcon ?? 'clear-input')" aria-hidden="true" />
-      </button>
-      <MarIconGraphic
-        v-else-if="loading && !open"
-        name="loading-content"
-        class="mar-ui-select__icon mar-ui-select__loading"
-      />
-      <component
-        v-else
-        :is="resolveMarIcon(suffixIcon ?? 'chevron-down')"
-        class="mar-ui-select__icon"
-        aria-hidden="true"
-      />
+      <span class="mar-ui-select__suffix">
+        <button
+          v-if="canClear"
+          type="button"
+          class="mar-ui-select__action mar-ui-select__clear"
+          :aria-label="locale.clear"
+          @mousedown.prevent
+          @click="clear"
+        >
+          <component :is="resolveMarIcon(clearIcon ?? 'clear-input')" aria-hidden="true" />
+        </button>
+        <MarIconGraphic
+          v-if="loading && !open"
+          name="loading-content"
+          class="mar-ui-select__icon mar-ui-select__loading"
+        />
+        <component
+          v-else
+          :is="resolveMarIcon(suffixIcon ?? 'chevron-down')"
+          class="mar-ui-select__icon"
+          aria-hidden="true"
+        />
+      </span>
     </div>
     <div
       :id="id"
@@ -555,8 +623,9 @@ watch(controlDisabled, (disabled) => {
   width: 100%;
 }
 .mar-ui-select__popup {
+  --mar-ui-popup-min-width: var(--mar-ui-popup-anchor-width, 0px);
   width: max-content;
-  min-width: min(var(--mar-ui-popup-anchor-width, 0px), var(--mar-ui-popup-width-limit));
+  min-width: min(var(--mar-ui-popup-min-width), var(--mar-ui-popup-width-limit));
   padding-inline: 0;
 }
 .mar-ui-select__field {
@@ -603,16 +672,23 @@ watch(controlDisabled, (disabled) => {
   + .mar-ui-popup:not([data-pointer-driven]) {
   --mar-ui-select-option-focus: 2px solid var(--mar-ui-color-brand);
 }
+.mar-ui-select__field:focus-within + .mar-ui-popup:not([data-pointer-driven]) {
+  --mar-ui-select-active-label-space: normal;
+}
 .mar-ui-select__selection {
+  position: relative;
   display: flex;
   align-items: center;
   flex: 1;
   gap: 0.25rem;
   min-width: 0;
 }
-.mar-ui-select__field--multiple .mar-ui-select__selection {
+.mar-ui-select__field--tags .mar-ui-select__selection {
   flex-wrap: wrap;
   padding-block: 0.125rem;
+}
+.mar-ui-select__field--compact-tags .mar-ui-select__selection {
+  flex-wrap: nowrap;
 }
 .mar-ui-select__trigger,
 .mar-ui-select__action {
@@ -627,7 +703,6 @@ watch(controlDisabled, (disabled) => {
 .mar-ui-select__trigger {
   display: block;
   flex: 1 1 1em;
-  order: 1;
   min-width: 0;
   min-height: var(--mar-ui-select-height);
   outline: none;
@@ -639,11 +714,20 @@ input.mar-ui-select__trigger {
   color: inherit;
   cursor: inherit;
 }
-.mar-ui-select__field--multiple .mar-ui-select__trigger {
+.mar-ui-select__field--tags input.mar-ui-select__trigger {
+  order: 1;
+  flex-basis: 5ch;
   min-height: calc(var(--mar-ui-select-height) - 0.25rem);
 }
-.mar-ui-select__field--multiple input.mar-ui-select__trigger {
-  flex-basis: 5ch;
+.mar-ui-select__trigger--with-tags {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-height: 0;
+}
+.mar-ui-select__field:not(.mar-ui-select__field--filterable)
+  .mar-ui-select__tag:not(.mar-ui-select__summary) {
+  pointer-events: none;
 }
 .mar-ui-select__label {
   display: block;
@@ -668,9 +752,35 @@ input.mar-ui-select__trigger {
 .mar-ui-select__action:focus-visible {
   outline: 2px solid var(--mar-ui-color-brand);
 }
+.mar-ui-select__suffix {
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+.mar-ui-select__suffix > * {
+  grid-area: 1 / 1;
+}
+.mar-ui-select__suffix:has(.mar-ui-select__clear) > .mar-ui-select__icon {
+  visibility: hidden;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mar-ui-select__field:not(:hover, :focus-within) .mar-ui-select__clear {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .mar-ui-select__field:not(:hover, :focus-within)
+    .mar-ui-select__suffix:has(.mar-ui-select__clear)
+    > .mar-ui-select__icon {
+    visibility: visible;
+  }
+}
 .mar-ui-select__clear {
   min-width: 1.25rem;
   min-height: var(--mar-ui-select-height);
+}
+.mar-ui-select__clear:hover,
+.mar-ui-select__tag-remove:hover {
+  color: var(--mar-ui-text-primary);
 }
 .mar-ui-select__icon {
   flex: none;
@@ -682,42 +792,48 @@ input.mar-ui-select__trigger {
   color: var(--mar-ui-text-secondary);
 }
 .mar-ui-select__tag {
+  position: relative;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+  min-width: 0;
   max-width: 100%;
-  padding: 0.125rem 0.375rem;
+  min-height: calc(var(--mar-ui-select-height) - 0.5rem);
+  padding-inline: 0.375rem;
   border-radius: var(--mar-ui-radius-control);
-  background: var(--mar-ui-fill-soft);
+  background: color-mix(in srgb, var(--mar-ui-bg-panel), var(--mar-ui-text-secondary) 12%);
   font-size: var(--mar-ui-font-size-meta);
+  line-height: 1.2;
 }
 .mar-ui-select__tag-remove {
   min-height: 1rem;
   min-width: 1rem;
+  border-radius: 50%;
+  pointer-events: auto;
+}
+.mar-ui-select__tag-remove-icon {
+  width: 0.75rem;
+  height: 0.75rem;
 }
 .mar-ui-select__summary {
-  position: relative;
+  flex: none;
+  color: var(--mar-ui-text-secondary);
+  white-space: nowrap;
 }
 .mar-ui-select__summary-content {
-  position: absolute;
-  z-index: 1;
-  inset-block-end: 100%;
-  inset-inline-end: 0;
-  display: none;
-  width: max-content;
-  max-width: min(16rem, 70vw);
-  padding: 0.375rem;
-  border: 1px solid var(--mar-ui-overlay-border);
-  border-radius: var(--mar-ui-radius-control);
-  background: var(--mar-ui-overlay-surface);
-  box-shadow: var(--mar-ui-overlay-shadow);
-  color: var(--mar-ui-text-primary);
+  --mar-ui-popup-width: max-content;
+  --mar-ui-popup-width-cap: 16rem;
+  --mar-ui-popup-padding: 0.375rem;
+  font-size: var(--mar-ui-font-size-meta);
+  white-space: normal;
   overflow-wrap: anywhere;
 }
-.mar-ui-select__summary:is(:hover, :has(:focus-visible, [aria-expanded='true']))
-  .mar-ui-select__summary-content {
-  display: grid;
-  gap: 0.125rem;
+.mar-ui-select__summary-content::before {
+  display: none;
+}
+.mar-ui-select__summary-content .mar-ui-popup__content > span {
+  display: block;
 }
 .mar-ui-select__loading {
   animation: mar-ui-select-loading 0.9s linear infinite;

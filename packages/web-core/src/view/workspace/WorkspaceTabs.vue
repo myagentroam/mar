@@ -642,14 +642,14 @@ function activate(tab: WorkspaceTab): void {
   gap: 1px;
 }
 
-:global(.workspace-tab-menu-list .mar-ui-dropdown-item > span),
-:global(.workspace-tab-menu-list .mar-ui-dropdown-item > small) {
+:global(.workspace-tab-menu-list .mar-ui-dropdown-item__label > span),
+:global(.workspace-tab-menu-list .mar-ui-dropdown-item__label > small) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:global(.workspace-tab-menu-list .mar-ui-dropdown-item > small) {
+:global(.workspace-tab-menu-list .mar-ui-dropdown-item__label > small) {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }

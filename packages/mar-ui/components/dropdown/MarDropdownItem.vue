@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { inject, type Component } from 'vue';
+import { inject, useTemplateRef, type Component } from 'vue';
 import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
+import { marUiTooltipDirectiveKey, readOverflowText } from '../tooltip/tooltip-directive.js';
 import { dropdownContext, type DropdownCommand } from './dropdown-context.js';
 
 const props = defineProps<{
@@ -12,6 +13,10 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ click: [event: MouseEvent] }>();
 const dropdown = inject(dropdownContext);
+const tooltip = inject(marUiTooltipDirectiveKey, undefined);
+const vOverflowTooltip = tooltip ?? {};
+const label = useTemplateRef<HTMLElement>('label');
+const overflowText = () => readOverflowText(label.value);
 
 function activate(event: MouseEvent) {
   if (props.disabled) return;
@@ -22,6 +27,7 @@ function activate(event: MouseEvent) {
 
 <template>
   <button
+    v-overflow-tooltip="overflowText"
     type="button"
     role="menuitem"
     tabindex="-1"
@@ -32,7 +38,12 @@ function activate(event: MouseEvent) {
     @click="activate"
   >
     <component :is="resolveMarIcon(icon)" v-if="icon" aria-hidden="true" />
-    <slot />
+    <span
+      ref="label"
+      class="mar-ui-dropdown-item__label"
+      :class="{ 'mar-ui-dropdown-item__label--hint': tooltip }"
+      ><slot
+    /></span>
   </button>
 </template>
 
@@ -51,6 +62,19 @@ function activate(event: MouseEvent) {
   text-align: start;
   overflow-wrap: anywhere;
   cursor: pointer;
+}
+.mar-ui-dropdown-item__label {
+  min-width: 0;
+}
+.mar-ui-dropdown-item__label:has(> *) {
+  display: contents;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mar-ui-dropdown-item__label--hint:not(:has(> *)) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 .mar-ui-dropdown-item--divided {
   position: relative;

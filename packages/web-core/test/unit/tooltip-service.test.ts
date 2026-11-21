@@ -174,6 +174,30 @@ afterEach(() => {
 });
 
 describe('TooltipService', () => {
+  it('reads overflow only for the current target and does not repeat its accessible name', () => {
+    const { document, service } = createCoordinator();
+    const first = new FakeElement();
+    const second = new FakeElement();
+    const read = vi.fn<() => string | undefined>().mockReturnValue('Full label');
+    const readOther = vi.fn();
+    first.setAttribute('aria-describedby', 'existing');
+    service.update(first as unknown as Element, read);
+    service.update(second as unknown as Element, readOther);
+    expect(read).not.toHaveBeenCalled();
+
+    pointerOver(document, first);
+    read.mockReturnValue(undefined);
+    vi.advanceTimersByTime(tooltipDelays.show);
+    expect(service.active.value).toBeUndefined();
+
+    read.mockReturnValue('Full label');
+    pointerOver(document, first);
+    vi.advanceTimersByTime(tooltipDelays.show);
+    expect(service.active.value?.content).toBe('Full label');
+    expect(first.getAttribute('aria-describedby')).toBe('existing');
+    expect(readOther).not.toHaveBeenCalled();
+  });
+
   it('waits before showing and lets the most recently entered target win', () => {
     const { document, service } = createCoordinator();
     const first = new FakeElement();

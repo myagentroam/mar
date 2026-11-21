@@ -1,5 +1,5 @@
 import { shallowRef, type InjectionKey } from 'vue';
-import type { TooltipPlacement } from '@myagentroam/mar-ui/tooltip';
+import type { ReadOverflowText, TooltipPlacement, TooltipText } from '@myagentroam/mar-ui/tooltip';
 
 export interface TooltipOptions {
   readonly content: string;
@@ -9,7 +9,7 @@ export interface TooltipOptions {
   readonly touch?: boolean;
 }
 
-export type TooltipValue = string | TooltipOptions | null | undefined;
+export type TooltipValue = TooltipText | TooltipOptions | null;
 
 interface ActiveTooltip extends TooltipOptions {
   readonly target: Element;
@@ -24,7 +24,7 @@ const targetSwitchDelay = 100;
 // Registered targets carry no reactive effects or listeners; the Host owns only rendering.
 export class TooltipService {
   readonly active = shallowRef<ActiveTooltip>();
-  private readonly targets = new WeakMap<Element, TooltipOptions>();
+  private readonly targets = new WeakMap<Element, TooltipOptions | ReadOverflowText>();
   private pending: Element | undefined;
   private showTimer: ReturnType<typeof setTimeout> | undefined;
   private hideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -39,24 +39,25 @@ export class TooltipService {
 
   update(target: Element, value: TooltipValue): void {
     const options = typeof value === 'string' ? { content: value } : value;
-    if (!options?.content || options.disabled) {
+    if (typeof options !== 'function' && (!options?.content || options.disabled)) {
       this.remove(target);
       return;
     }
     this.targets.set(target, options);
     const active = this.active.value;
     if (active?.target === target) {
-      if (!this.available(target)) {
+      const resolved = this.getOptions(target);
+      if (!resolved || !this.available(target)) {
         if (this.pending) this.clearActive();
         else this.close();
         return;
       }
       if (
-        active.content !== options.content ||
-        active.placement !== options.placement ||
-        active.popperClass !== options.popperClass
+        active.content !== resolved.content ||
+        active.placement !== resolved.placement ||
+        active.popperClass !== resolved.popperClass
       )
-        this.active.value = { ...options, target };
+        this.active.value = { ...resolved, target };
       this.describe(target);
     }
   }
@@ -145,7 +146,16 @@ export class TooltipService {
     );
   }
 
+  private getOptions(target: Element): TooltipOptions | undefined {
+    const options = this.targets.get(target);
+    if (typeof options !== 'function') return options;
+    const content = options();
+    return content ? { content } : undefined;
+  }
+
   private describe(target: Element): void {
+    // The overflow label is already the accessible name, not a separate description.
+    if (typeof this.targets.get(target) === 'function') return;
     const ids = new Set(
       (target.getAttribute('aria-describedby') ?? '').split(/\s+/u).filter(Boolean)
     );
@@ -165,7 +175,7 @@ export class TooltipService {
       if (input === 'pointer') this.pointerWithin = true;
       return;
     }
-    if (!this.available(target)) {
+    if (!this.available(target) || !this.getOptions(target)) {
       this.close();
       return;
     }
@@ -175,7 +185,7 @@ export class TooltipService {
     this.observeTargets();
     this.showTimer = setTimeout(
       () => {
-        const options = this.targets.get(target);
+        const options = this.getOptions(target);
         if (this.pending !== target || !options || !this.available(target)) {
           this.close();
           return;
@@ -261,7 +271,8 @@ export class TooltipService {
       return;
     const target = this.find(event.target);
     // Only explicit detail entries opt in. Never consume the underlying action or long press.
-    if (target && this.targets.get(target)?.touch) this.request(target, 'touch');
+    const options = target && this.targets.get(target);
+    if (target && typeof options !== 'function' && options?.touch) this.request(target, 'touch');
   };
 
   private onFocusIn = (event: FocusEvent): void => {
@@ -293,7 +304,14 @@ export class TooltipService {
       this.dismissedEscapes.set(event, 'menu');
       return;
     }
-    if (!target || !active.target.contains(target)) {
+    // A listbox option belongs to the focused combobox even though focus stays outside the list.
+    const listbox = active.target.closest('[role="listbox"]');
+    const ownsListbox = Boolean(
+      listbox?.id &&
+      target?.matches('[role="combobox"][aria-expanded="true"]') &&
+      target.getAttribute('aria-controls') === listbox.id
+    );
+    if (!target || (!active.target.contains(target) && !ownsListbox)) {
       // A hovered hint must not forward Escape into an unrelated focused run/composer.
       if (target?.closest('dialog:modal')) event.preventDefault();
       event.stopImmediatePropagation();

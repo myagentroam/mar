@@ -10,14 +10,23 @@
     <script type="module">
       import { createApp, h, nextTick, ref } from 'vue';
       import {
+        MarDropdown,
+        MarDropdownItem,
+        MarDropdownMenu
+      } from '/packages/mar-ui/components/dropdown/index.ts';
+      import {
         MarOption,
         MarOptionGroup,
         MarSelect
       } from '/packages/mar-ui/components/select/index.ts';
+      import { tooltipPlugin } from '/packages/web-core/src/directive/tooltip.ts';
+      import SharedTooltipHost from '/packages/web-core/src/view/overlays/SharedTooltipHost.vue';
       import '/packages/web-core/src/styles.css';
 
       const tags = ref(['pinned']);
       const branches = ref(['main', 'release', 'topic']);
+      const longBranch = 'feature/very-long-branch-name-'.repeat(6) + 'end';
+      const command = ref('');
       const state = ref(false);
       const stateSelect = ref();
       const loading = ref(true);
@@ -58,10 +67,16 @@
                 multiple: true,
                 collapseTags: true,
                 collapseTagsTooltip: true,
+                clearable: true,
+                style: 'width: 220px',
                 size: 'small'
               },
               () => [
-                group('Local', [option('Main', 'main'), option('Release', 'release')]),
+                group('Local', [
+                  option('Main', 'main'),
+                  option('Release', 'release'),
+                  option(longBranch, 'long')
+                ]),
                 group('Remote', [option('Topic', 'topic')])
               ]
             ),
@@ -96,9 +111,25 @@
                 }
               },
               'Open at zero'
-            )
+            ),
+            h(
+              MarDropdown,
+              { onCommand: (value) => (command.value = value) },
+              {
+                default: () => h('button', { type: 'button' }, 'Open commands'),
+                dropdown: () =>
+                  h(MarDropdownMenu, {}, () => [
+                    h(MarDropdownItem, { command: 'short' }, () => 'Short action'),
+                    h(MarDropdownItem, { command: 'long', icon: 'copy' }, () => longBranch)
+                  ])
+              }
+            ),
+            output('command', command.value),
+            h(SharedTooltipHost)
           ])
-      }).mount('#app');
+      })
+        .use(tooltipPlugin)
+        .mount('#app');
     </script>
   </body>
 </html>

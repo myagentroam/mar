@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, useId } from 'vue';
+import { computed, inject, onBeforeUnmount, useId, useTemplateRef } from 'vue';
 import { MarIconGraphic } from '../../icons/mar-icons.js';
+import { marUiTooltipDirectiveKey, readOverflowText } from '../tooltip/tooltip-directive.js';
 import { optionContext, optionGroupId, type Choice, type OptionValue } from './option-context.js';
 
 const props = defineProps<{
@@ -26,6 +27,10 @@ const choice: Choice = {
   }
 };
 const select = inject(optionContext);
+const tooltip = inject(marUiTooltipDirectiveKey, undefined);
+const vOverflowTooltip = tooltip ?? {};
+const content = useTemplateRef<HTMLElement>('content');
+const overflowText = () => readOverflowText(content.value);
 const selected = computed(() => select?.selected(choice) ?? false);
 const unregister = select?.register(choice);
 if (unregister) onBeforeUnmount(unregister);
@@ -33,6 +38,7 @@ if (unregister) onBeforeUnmount(unregister);
 
 <template>
   <div
+    v-overflow-tooltip="!$slots.default ? overflowText : undefined"
     :id="choice.id"
     :hidden="select && !select.visible(choice)"
     class="mar-ui-option"
@@ -46,7 +52,11 @@ if (unregister) onBeforeUnmount(unregister);
     @mousedown.prevent
     @click.prevent="select?.choose(choice)"
   >
-    <div class="mar-ui-option__content">
+    <div
+      ref="content"
+      class="mar-ui-option__content"
+      :class="{ 'mar-ui-option__content--hint': tooltip && !$slots.default }"
+    >
       <slot>{{ choice.label }}</slot>
     </div>
     <MarIconGraphic
@@ -77,10 +87,21 @@ if (unregister) onBeforeUnmount(unregister);
 .mar-ui-option__check {
   flex: none;
 }
-.mar-ui-option[aria-selected='true'] {
-  background: var(--mar-ui-fill-selection);
+@media (hover: hover) and (pointer: fine) {
+  .mar-ui-option__content--hint {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mar-ui-option--active .mar-ui-option__content--hint {
+    white-space: var(--mar-ui-select-active-label-space, nowrap);
+  }
 }
-.mar-ui-option:not([aria-selected='true'], [aria-disabled='true']):hover {
+.mar-ui-option[aria-selected='true']:not([aria-disabled='true']) {
+  color: var(--mar-ui-color-brand);
+  font-weight: 600;
+}
+.mar-ui-option:not([aria-disabled='true']):hover {
   background: var(--mar-ui-fill-row-hover);
 }
 .mar-ui-option--active:not([aria-disabled='true']) {
