@@ -197,7 +197,9 @@ for (const crossNode of [false, true]) {
       await expect(changes).toContainText('b-only.txt');
       const fetchNotice = page.locator('.git-fetch-notice');
       await expect(fetchNotice).toHaveText('Could not update remotes; showing local records');
-      await expect(fetchNotice.locator('svg')).toHaveCount(0);
+      await expect(fetchNotice).toHaveAttribute('role', 'alert');
+      await expect(fetchNotice).toHaveAttribute('data-type', 'warning');
+      await expect(fetchNotice.locator('[data-mar-icon="warning"]')).toHaveCount(1);
       await expect(fetchNotice).toHaveCSS(
         'font-size',
         await changes
@@ -212,6 +214,8 @@ for (const crossNode of [false, true]) {
       await page.getByRole('tab', { name: 'Git History', exact: true }).click();
       await expect(page.locator('.history-list')).toContainText('fixture');
       await expect(fetchNotice).toBeVisible();
+      await expect(fetchNotice).toHaveAttribute('role', 'alert');
+      await expect(fetchNotice.locator('[data-mar-icon="warning"]')).toHaveCount(1);
       await page.screenshot({
         path: testInfo.outputPath('history-fetch-failed.png'),
         animations: 'disabled'

@@ -56,6 +56,7 @@ const props = defineProps<{
   readonly searchSupported: boolean;
   readonly searchQuery: string;
   readonly searching: boolean;
+  readonly searchReady?: boolean;
   readonly refreshing: boolean;
   readonly workspaceManageable: boolean;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -185,6 +186,10 @@ const hoveredSessionId = ref<string>();
 const focusedSessionId = ref<string>();
 const openSessionActionsId = ref<string>();
 const searchInput = ref(props.searchQuery);
+const searchInitialLoading = computed(() => props.searching && !props.searchReady);
+const searchActionLoading = computed(
+  () => !searchInitialLoading.value && (props.refreshing || props.searching)
+);
 watch(
   () => props.searchQuery,
   (query) => (searchInput.value = query)
@@ -321,6 +326,7 @@ function showTree(sessionId: string): void {
 }
 
 function submitSessionSearch(): void {
+  if (!props.nodeReady || props.searching || props.refreshing) return;
   if (searchInput.value.trim() !== '') {
     emit('search', searchInput.value);
     return;
@@ -388,11 +394,11 @@ function submitSessionSearch(): void {
               : 'generated.workspaceSessionList.refreshWorkspaceSessions'
           )
         "
-        :aria-busy="searching || refreshing || undefined"
+        :aria-busy="searchActionLoading || undefined"
         :disabled="!nodeReady || searching || refreshing"
         type="submit"
       >
-        <MarIcon name="loading-action" v-if="searching || refreshing" />
+        <MarIcon name="loading-action" v-if="searchActionLoading" />
         <MarIcon name="refresh" v-else />
       </button>
     </form>
@@ -445,7 +451,7 @@ function submitSessionSearch(): void {
       @update:model-value="emit('selectGroup', $event)"
     />
     <div
-      v-if="watchStatus === 'loading'"
+      v-if="searchInitialLoading || (watchStatus === 'loading' && !searchActionLoading)"
       class="watch-status"
       :class="{ 'is-centered': !hasListContent }"
       role="status"
@@ -453,7 +459,12 @@ function submitSessionSearch(): void {
     >
       <BusyIndicator class="mar-read-loading-indicator" />
     </div>
-    <p v-else-if="watchStatus === 'failed'" class="watch-status failed">
+    <p
+      v-else-if="watchStatus === 'failed'"
+      class="watch-status failed"
+      :class="{ 'is-centered': !hasListContent }"
+      role="status"
+    >
       {{ translate('workspaceWatch.sessionsFailed') }}
     </p>
     <ul
@@ -623,7 +634,12 @@ function submitSessionSearch(): void {
       </li>
     </ul>
     <p
-      v-else-if="watchStatus !== 'loading' && watchStatus !== 'failed'"
+      v-else-if="
+        watchStatus !== 'loading' &&
+        watchStatus !== 'failed' &&
+        !searchInitialLoading &&
+        (!searchQuery || searchReady)
+      "
       class="mar-empty sidebar-empty"
     >
       {{
@@ -782,13 +798,6 @@ function submitSessionSearch(): void {
   margin: 0.25rem 0.45rem;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
-}
-
-.watch-status.failed {
-  color: var(--mar-control-color-warning);
-}
-
-.watch-status:not(.failed) {
   text-align: center;
 }
 
@@ -796,7 +805,7 @@ function submitSessionSearch(): void {
   display: grid;
   flex: 1 1 auto;
   margin: 0;
-  place-items: center;
+  place-items: safe center;
 }
 
 .session-heading-meta {

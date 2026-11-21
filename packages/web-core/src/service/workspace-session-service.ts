@@ -109,6 +109,7 @@ export function createWorkspaceSessionService(options: {
   const searchResults = ref<Session[]>([]);
   const searchNextCursor = ref<string | null>(null);
   const searching = ref(false);
+  const searchReady = ref(false);
   const loadingMoreSearchResults = ref(false);
   const loadMoreSearchResultsError = ref<unknown>();
   const synchronizationGenerations = new Map<string, number>();
@@ -409,6 +410,7 @@ export function createWorkspaceSessionService(options: {
     if (!sameQuery) {
       searchResults.value = [];
       searchNextCursor.value = null;
+      searchReady.value = false;
     }
     loadingMoreSearchResults.value = false;
     loadMoreSearchResultsError.value = undefined;
@@ -428,6 +430,7 @@ export function createWorkspaceSessionService(options: {
         return;
       searchResults.value = result.sessions;
       searchNextCursor.value = result.nextCursor;
+      searchReady.value = true;
       if (result.runningCounts !== undefined) runningCounts.value = result.runningCounts;
     } catch (error) {
       if (generation === searchGeneration)
@@ -444,6 +447,7 @@ export function createWorkspaceSessionService(options: {
     searchResults.value = [];
     searchNextCursor.value = null;
     searching.value = false;
+    searchReady.value = false;
     loadingMoreSearchResults.value = false;
     loadMoreSearchResultsError.value = undefined;
   }
@@ -639,6 +643,7 @@ export function createWorkspaceSessionService(options: {
     searchResults,
     searchNextCursor,
     searching,
+    searchReady,
     loadingMoreSearchResults,
     loadMoreSearchResultsError,
     preserveRunning,
@@ -666,6 +671,7 @@ export interface WorkbenchSessionListView {
   refreshWorkspaceSessions: () => Promise<void>;
   refreshingWorkspaceSessions: boolean;
   searchingWorkspaceSessions: boolean;
+  workspaceSessionSearchReady: boolean;
   searchWorkspaceSessions: (query: string) => Promise<void>;
   workspaceSessionSearchEnabled: boolean;
   workspaceSessionSearchQuery: string;

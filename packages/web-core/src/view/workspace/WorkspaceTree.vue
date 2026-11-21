@@ -9,6 +9,7 @@ import {
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import MarIcon from '../common/MarIcon.vue';
+import MarRegionStatus from '../common/MarRegionStatus.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
@@ -493,13 +494,23 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 </script>
 
 <template>
-  <p v-if="startupStatus === 'loading'" class="tree-empty">
-    {{ translate('generated.workspaceTree.readingNodes') }}
-  </p>
-  <p v-else-if="startupStatus === 'failed'" class="tree-empty">
-    {{ translate('generated.workspaceTree.nodeListUnavailable') }}
-  </p>
-  <template v-else-if="nodes.length">
+  <MarRegionStatus
+    v-if="startupStatus === 'loading' || startupStatus === 'failed' || !nodes.length"
+    class="tree-status"
+    role="status"
+  >
+    <MarIcon v-if="startupStatus === 'loading'" name="loading-action" />
+    <span>{{
+      translate(
+        startupStatus === 'loading'
+          ? 'generated.workspaceTree.readingNodes'
+          : startupStatus === 'failed'
+            ? 'generated.workspaceTree.nodeListUnavailable'
+            : 'generated.workspaceTree.noNodes'
+      )
+    }}</span>
+  </MarRegionStatus>
+  <template v-else>
     <div class="workspace-tree-filter">
       <MarInput
         v-model="filterQuery"
@@ -948,7 +959,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
       {{ translate('generated.workspaceTree.selectAWorkspaceToContinueInThe') }}
     </p>
   </template>
-  <p v-else class="tree-empty">{{ translate('generated.workspaceTree.noNodes') }}</p>
   <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
@@ -1437,7 +1447,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   padding-right: 3px;
 }
 
-.tree-empty,
 .tree-foot,
 .tree-filter-empty {
   color: var(--mar-text-secondary);
@@ -1445,14 +1454,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   line-height: 1.5;
 }
 
-.tree-empty {
-  display: grid;
-  align-content: center;
-  box-sizing: border-box;
-  min-height: 100%;
-  margin: 0;
+.tree-status {
   padding: 12px 16px;
-  text-align: center;
 }
 
 .tree-filter-empty {

@@ -3,6 +3,17 @@ import { hostedConversationSnapshotSchema } from '../../packages/protocol/src/in
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
+
+async function expectHostedReadRing(ring: ReturnType<Page['locator']>) {
+  await expect(ring).toBeVisible();
+  const [width, height] = await ring.evaluate((element) => {
+    const { width, height } = getComputedStyle(element);
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return [parseFloat(width) / rem, parseFloat(height) / rem];
+  });
+  expect(width).toBeCloseTo(0.875);
+  expect(height).toBeCloseTo(0.875);
+}
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
 });
@@ -14,7 +25,9 @@ for (const [width, theme] of [
   [1280, 'daylight'],
   [390, 'vscode-dark-2026']
 ] as const) {
-  test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({ page }) => {
+  test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
+    page
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 850 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     let releaseDirectory!: () => void;
@@ -31,13 +44,14 @@ for (const [width, theme] of [
       return route.abort('failed');
     });
     const list = page.locator('#hosted-pane-history .history-list');
-    const ring = list.locator('.mar-ui-loading__indicator');
+    const ring = list.locator('.mar-read-loading-indicator');
     try {
       await page.goto(
         `${fixture.url}hosted-entry.html?workspace-page=1&history-open=1&theme=${theme}`
       );
       await expect(list).toHaveAttribute('aria-busy', 'true');
-      await expect(ring).toBeVisible();
+      await expectHostedReadRing(ring);
+      await expect(list.locator('.mar-ui-loading__indicator')).toHaveCount(0);
       const listBounds = (await list.boundingBox())!;
       const ringBounds = (await ring.boundingBox())!;
       expect(listBounds.height).toBeGreaterThan(200);
@@ -50,11 +64,13 @@ for (const [width, theme] of [
       await expect(page.getByRole('textbox', { name: 'Search chat titles' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'New chat', exact: true })).toBeEnabled();
       await expect(list.getByText('No conversations yet.')).toHaveCount(0);
+      await list.screenshot({ path: testInfo.outputPath('hosted-directory-loading.png') });
     } finally {
       releaseDirectory();
     }
     await expect(ring).toHaveCount(0);
     await expect(list.getByText('No conversations yet.')).toBeVisible();
+    await list.screenshot({ path: testInfo.outputPath('hosted-directory-empty.png') });
   });
 }
 
@@ -442,7 +458,7 @@ for (const [width, theme, cached] of [
 ] as const) {
   test(`Hosted Watch centers the first load and retries inline at ${width} in ${theme}`, async ({
     page
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     const conversation = {
       id: 'conversation-1',
@@ -567,7 +583,7 @@ for (const [width, theme, cached] of [
       );
       const loading = scroll.getByRole('status', { name: 'Loading conversation history…' });
       const indicator = loading.locator('.mar-busy-indicator');
-      await expect(indicator).toBeVisible();
+      await expectHostedReadRing(indicator);
       const viewport = (await scroll.boundingBox())!;
       const spinner = (await indicator.boundingBox())!;
       expect(
@@ -583,11 +599,54 @@ for (const [width, theme, cached] of [
     await expect(retry).toHaveText('Failed to load. Retry');
     await expect(retry).toHaveAttribute('aria-description', /hosted-watch-request/);
     await expect(page.locator('.mar-message')).toHaveCount(0);
+    const retryViewportBounds = (await scroll.boundingBox())!;
+    const failedBounds = (await retry.boundingBox())!;
+    await page.screenshot({
+      path: testInfo.outputPath(`hosted-watch-failed-${width}-${theme}.png`),
+      animations: 'disabled'
+    });
+    expect(
+      Math.abs(
+        failedBounds.x +
+          failedBounds.width / 2 -
+          retryViewportBounds.x -
+          retryViewportBounds.width / 2
+      )
+    ).toBeLessThan(2);
+    expect(
+      Math.abs(
+        failedBounds.y +
+          failedBounds.height / 2 -
+          retryViewportBounds.y -
+          retryViewportBounds.height / 2
+      )
+    ).toBeLessThan(2);
     try {
       await retry.click();
       await expect(retry).toHaveAttribute('aria-busy', 'true');
       await expect(retry).toBeDisabled();
       await expect(retry.locator('.mar-busy-indicator')).toBeVisible();
+      const retryingBounds = (await retry.boundingBox())!;
+      expect(
+        Math.abs(
+          retryingBounds.x +
+            retryingBounds.width / 2 -
+            retryViewportBounds.x -
+            retryViewportBounds.width / 2
+        )
+      ).toBeLessThan(2);
+      expect(
+        Math.abs(
+          retryingBounds.y +
+            retryingBounds.height / 2 -
+            retryViewportBounds.y -
+            retryViewportBounds.height / 2
+        )
+      ).toBeLessThan(2);
+      await page.screenshot({
+        path: testInfo.outputPath(`hosted-watch-retrying-${width}-${theme}.png`),
+        animations: 'disabled'
+      });
       expect(initialRequests).toBe(2);
     } finally {
       releaseRetry();

@@ -43,17 +43,13 @@ async function expectNeutralRetry(button: Locator) {
   await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
 }
 
-test('Library loading has a single animated ring without mounting BusyIndicator', async ({
+test('Library loading has one compact ring for each variant without mounting BusyIndicator', async ({
   page
-}) => {
+}, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(`${fixture.url}library-loading.html`);
   await expect(page.locator('.mar-busy-indicator')).toHaveCount(0);
-  await expect(page.locator('#library-loading')).toHaveAttribute('aria-busy', 'true');
-  const spinner = page.locator('#library-loading .mar-ui-loading__indicator');
-  await expect(spinner).toHaveCount(1);
-  await expect(spinner).toBeVisible();
-  const ring = async () =>
+  const ring = async (spinner: Locator) =>
     spinner.evaluate((element) => {
       const style = getComputedStyle(element);
       const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize);
@@ -64,14 +60,27 @@ test('Library loading has a single animated ring without mounting BusyIndicator'
         animation: style.animationName
       };
     });
-  expect(await ring()).toEqual({
-    width: 1.25,
-    height: 1.25,
-    border: '2px',
-    animation: 'mar-ui-loading-spin'
-  });
+  for (const [id, variant, size] of [
+    ['library-loading', 'page', 1.25],
+    ['library-region', 'region', 1]
+  ] as const) {
+    const target = page.locator(`#${id}`);
+    await expect(target).toHaveAttribute('aria-busy', 'true');
+    const spinner = target.locator(`[data-variant="${variant}"] .mar-ui-loading__indicator`);
+    await expect(spinner).toHaveCount(1);
+    await expect(spinner).toBeVisible();
+    const style = await ring(spinner);
+    expect(style.width).toBeCloseTo(size);
+    expect(style.height).toBeCloseTo(size);
+    expect(style.border).toBe('2px');
+    expect(style.animation).toBe('mar-ui-loading-spin');
+  }
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect.poll(async () => (await ring()).animation).toBe('none');
+  for (const id of ['library-loading', 'library-region']) {
+    const spinner = page.locator(`#${id} .mar-ui-loading__indicator`);
+    await expect(spinner).toHaveCSS('animation-name', 'none');
+  }
+  await page.locator('#app').screenshot({ path: testInfo.outputPath('loading-variants.png') });
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {

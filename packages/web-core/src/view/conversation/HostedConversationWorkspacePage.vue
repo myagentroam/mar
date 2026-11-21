@@ -15,6 +15,7 @@ import { createMobileSurfaceFocusService } from '../../service/mobile-surface-fo
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
+import MarRegionStatus from '../common/MarRegionStatus.vue';
 import WorkbenchSidebarPanel from '../workbench/WorkbenchSidebarPanel.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import type {
@@ -237,6 +238,9 @@ const filteredConversations = computed(() => {
     hostedConversationTitle(conversation).toLocaleLowerCase().includes(query)
   );
 });
+const directoryFirstRead = computed(
+  () => props.workspace.loadingConversations.value && !props.workspace.conversationsLoaded.value
+);
 const historyReorderSnapshot = computed(() => ({
   context: filter.value.trim().toLocaleLowerCase(),
   ready:
@@ -1053,14 +1057,25 @@ onBeforeUnmount(() => {
       </div>
       <div
         ref="historyList"
-        v-mar-loading:region="
-          workspace.loadingConversations.value && !workspace.conversationsLoaded.value
-        "
         v-session-reorder-motion="historyReorderSnapshot"
         class="history-list"
+        :class="{ 'is-first-read': directoryFirstRead }"
+        :aria-busy="directoryFirstRead || undefined"
       >
+        <MarRegionStatus
+          v-if="directoryFirstRead"
+          placement="center"
+          role="status"
+          :aria-label="translate('common.loading')"
+        >
+          <BusyIndicator class="mar-read-loading-indicator" />
+        </MarRegionStatus>
         <p
-          v-if="!loadingDirectory && filteredConversations.length === 0"
+          v-if="
+            workspace.conversationsLoaded.value &&
+            !loadingDirectory &&
+            filteredConversations.length === 0
+          "
           class="history-empty-text"
         >
           {{
@@ -1613,6 +1628,11 @@ onBeforeUnmount(() => {
   padding: 8px;
 }
 
+.history-list.is-first-read {
+  display: flex;
+  flex-direction: column;
+}
+
 .history-filter-note {
   margin: 0;
   padding: 0.5rem;
@@ -1622,7 +1642,7 @@ onBeforeUnmount(() => {
 
 .history-empty-text {
   margin: 0;
-  padding: 34px 12px;
+  padding: 8px 12px;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.6;
@@ -1763,7 +1783,7 @@ onBeforeUnmount(() => {
 }
 
 .hosted-timeline-scroll :deep(.conversation-history-control),
-.hosted-timeline-scroll :deep(.conversation-reload),
+.hosted-timeline-scroll :deep(.conversation-reload:not(.is-centered)),
 .hosted-timeline-scroll :deep(.conversation-loading-initial:not(.is-centered)) {
   margin-block-start: 0.75rem;
 }

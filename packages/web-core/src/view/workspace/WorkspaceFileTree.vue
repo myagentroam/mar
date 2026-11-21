@@ -642,6 +642,7 @@ defineExpose({ reveal });
   color: var(--mar-text-secondary);
   padding: 0.45rem 0.65rem;
   font-size: var(--mar-font-size-meta);
+  text-align: center;
 }
 
 .file-tree-row,

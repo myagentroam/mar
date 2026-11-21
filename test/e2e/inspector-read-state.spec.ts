@@ -198,7 +198,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           if (action.panel === 'Search') {
             await expect(panel.locator('.mar-ui-input [data-mar-icon="search"]')).toBeVisible();
             await panel.getByRole('textbox').fill('workspace');
+            await expect(panel.locator('.file-search-empty')).toBeVisible();
           }
+          if (action.panel === 'Git History')
+            await expect(panel.locator('.mar-region-status')).toHaveText('No Git commit history.');
           for (failed of [false, true]) {
             pending = new Promise<void>((resolve) => {
               release = resolve;
@@ -412,12 +415,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           await expect(retries).toHaveCount(0);
 
           await page.getByRole('button', { name: 'Fail Files Watch', exact: true }).click();
-          const watchRetry = files.locator('button.watch-status');
+          const watchRetry = files.locator('button.files-read-retry');
           await expectReadableState(watchRetry);
           await watchRetry.click();
           await expect(watchRetry).toHaveCount(0);
           await page.getByRole('button', { name: 'Fail Files refresh', exact: true }).click();
-          const refreshRetry = files.locator('button.watch-status');
+          const refreshRetry = files.locator('button.files-read-retry');
           await expectReadableState(refreshRetry);
           await refreshRetry.click();
           await expect(refreshRetry).toHaveCount(0);

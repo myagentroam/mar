@@ -14,11 +14,10 @@
 
 .mar-ui-loading__indicator {
   box-sizing: border-box;
-  inline-size: 42px;
-  block-size: 42px;
+  inline-size: 1rem;
+  block-size: 1rem;
   border: 2px solid currentColor;
   border-inline-end-color: transparent;
-  border-block-end-color: transparent;
   border-radius: 50%;
   animation: mar-ui-loading-spin 0.85s linear infinite;
 }
@@ -30,7 +29,6 @@
 .mar-ui-loading[data-variant='page'] .mar-ui-loading__indicator {
   inline-size: 1.25rem;
   block-size: 1.25rem;
-  border-block-end-color: currentColor;
 }
 
 @keyframes mar-ui-loading-spin {

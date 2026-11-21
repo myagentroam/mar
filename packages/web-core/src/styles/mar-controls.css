@@ -17,6 +17,46 @@
   line-height: 1.6;
 }
 
+.mar-region-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.mar-region-status--center {
+  flex: 1 1 0;
+  min-height: 0;
+  align-items: safe center;
+  overflow: auto;
+}
+
+.mar-region-status > .mar-icon {
+  flex: none;
+}
+
+.mar-region-status > .mar-ui-button.mar-ui-button--inline {
+  border-width: 0;
+  font-size: inherit;
+}
+
+.mar-inline-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: top;
+}
+
+.mar-inline-loading > .mar-icon {
+  font-size: inherit;
+}
+
 .mar-icon-button {
   width: 25px;
   padding: 2px;

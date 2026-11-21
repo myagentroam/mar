@@ -363,6 +363,7 @@ onBeforeUnmount(() => {
         <MarButton
           v-if="initialLoadFailed || reloading"
           class="conversation-load-older conversation-reload"
+          :class="{ 'is-centered': !hasTurns }"
           v-tooltip="!loadingInitial && !reloading ? initialError : ''"
           :aria-description="!loadingInitial && !reloading ? initialError : undefined"
           link
@@ -574,11 +575,21 @@ onBeforeUnmount(() => {
   margin: 0 auto 0.8rem;
 }
 
+.conversation-loading-initial.is-centered,
+.conversation-reload.is-centered {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  max-width: calc(100% - 16px);
+  margin: 0;
+  transform: translate(-50%, -50%);
+}
+
 .conversation-loading-initial.is-centered {
   position: absolute;
   inset: 0;
   width: auto;
-  margin: 0;
+  max-width: none;
+  transform: none;
   pointer-events: none;
 }
 

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
 import type { MessageType } from '../../model/message-feedback.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import MarIcon from '../common/MarIcon.vue';
+import MarRegionStatus from '../common/MarRegionStatus.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import type { HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
@@ -28,12 +30,32 @@ const {
   historyCommits,
   historyNextCursor,
   historyLoading,
+  historyLoaded,
+  historyReadPlacement,
   historyError,
   historyFiles,
   historyFilesLoading,
   historyFilesErrors,
   loadHistory
 } = props.service;
+const refreshBusy = computed(
+  () => historyLoading.value && historyReadPlacement.value === 'refresh'
+);
+const readPlacement = computed(() => historyError.value?.placement ?? historyReadPlacement.value);
+const showFetchNotice = computed(
+  () =>
+    props.service.historyFetchFailed.value &&
+    historyLoaded.value &&
+    props.service.historySource.value.repositoryPath === props.service.historyRepositoryPath.value
+);
+const showReadState = computed(
+  () => !!historyError.value || (historyLoading.value && !refreshBusy.value)
+);
+const topOrCenterState = computed(() => showReadState.value && readPlacement.value !== 'append');
+function retryHistory(): void {
+  if (historyLoading.value || !historyError.value) return;
+  void loadHistory(historyError.value.resetPage, historyError.value.fetch, 'retry');
+}
 const historyBoundary = ref<HTMLElement>();
 const historyContainer = ref<HTMLElement>();
 watchEffect(
@@ -288,20 +310,51 @@ onBeforeUnmount(() => {
         class="history-refresh file-explorer-utility-button mar-icon-action"
         :disabled="historyLoading"
         :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
-        :aria-busy="historyLoading || undefined"
+        :aria-busy="refreshBusy || undefined"
         type="button"
-        @click="loadHistory(true, true)"
+        @click="loadHistory(true, true, 'refresh')"
       >
-        <MarIcon :name="historyLoading ? 'loading-action' : 'refresh'" />
+        <MarIcon :name="refreshBusy ? 'loading-action' : 'refresh'" />
       </button>
     </div>
-    <p v-if="service.historyFetchFailed.value" class="git-fetch-notice" role="status">
-      {{ translate('gitSync.fetchFailed') }}
-    </p>
-    <p v-if="!historyLoading && !historyError && historyCommits.length === 0" class="mar-empty">
+    <MarAlert
+      v-if="showFetchNotice"
+      class="git-fetch-notice"
+      type="warning"
+      show-icon
+      :closable="false"
+      :description="translate('gitSync.fetchFailed')"
+    />
+    <MarRegionStatus
+      v-if="topOrCenterState"
+      :placement="readPlacement === 'center' ? 'center' : 'top'"
+    >
+      <MarButton
+        v-if="historyError"
+        link
+        v-tooltip="!historyLoading ? errorMessage(service.historyFailureCause.value) : ''"
+        :aria-description="
+          !historyLoading ? errorMessage(service.historyFailureCause.value) : undefined
+        "
+        class="history-load-more"
+        :aria-disabled="historyLoading"
+        :aria-busy="historyLoading || undefined"
+        :aria-label="historyLoading ? translate('generated.workspaceInspector.loading') : undefined"
+        @click="retryHistory"
+      >
+        <span v-if="historyLoading" class="mar-inline-loading">
+          <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+        </span>
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </MarButton>
+      <div v-else class="history-load-more" role="status">
+        <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+      </div>
+    </MarRegionStatus>
+    <MarRegionStatus v-if="historyLoaded && !showReadState && historyCommits.length === 0">
       {{ translate('generated.workspaceInspector.noGitCommitHistory') }}
-    </p>
-    <ul v-else class="history-list">
+    </MarRegionStatus>
+    <ul v-show="historyCommits.length > 0" class="history-list">
       <li v-for="{ commit, graph } in historyGraphRows" :key="commit.hash" class="history-commit">
         <button
           v-tooltip="
@@ -398,14 +451,20 @@ onBeforeUnmount(() => {
                 "
                 :aria-disabled="historyFilesLoading.includes(commit.hash)"
                 :aria-busy="historyFilesLoading.includes(commit.hash) || undefined"
+                :aria-label="
+                  historyFilesLoading.includes(commit.hash)
+                    ? translate('generated.workspaceInspector.loading')
+                    : undefined
+                "
                 @click="
                   !historyFilesLoading.includes(commit.hash) && service.loadHistoryFiles(commit)
                 "
               >
-                <template v-if="historyFilesLoading.includes(commit.hash)"
-                  ><MarIcon name="loading-action" />
-                  {{ translate('generated.workspaceInspector.loading') }}</template
-                >
+                <span v-if="historyFilesLoading.includes(commit.hash)" class="mar-inline-loading">
+                  <MarIcon name="loading-action" />{{
+                    translate('generated.workspaceInspector.loading')
+                  }}
+                </span>
                 <template v-else>{{ translate('common.loadFailedRetry') }}</template>
               </MarButton>
             </li>
@@ -478,7 +537,7 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
     <MarButton
-      v-if="historyError"
+      v-if="historyError && readPlacement === 'append'"
       link
       v-tooltip="!historyLoading ? errorMessage(service.historyFailureCause.value) : ''"
       :aria-description="
@@ -487,19 +546,23 @@ onBeforeUnmount(() => {
       class="history-load-more"
       :aria-disabled="historyLoading"
       :aria-busy="historyLoading || undefined"
-      @click="!historyLoading && loadHistory(historyError.resetPage, historyError.fetch)"
+      :aria-label="historyLoading ? translate('generated.workspaceInspector.loading') : undefined"
+      @click="retryHistory"
     >
-      <template v-if="historyLoading"
-        ><MarIcon name="loading-action" />
-        {{ translate('generated.workspaceInspector.loading') }}</template
-      >
+      <span v-if="historyLoading" class="mar-inline-loading">
+        <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+      </span>
       <template v-else>{{ translate('common.loadFailedRetry') }}</template>
     </MarButton>
-    <div v-else-if="historyLoading" class="history-load-more" role="status">
+    <div
+      v-else-if="historyLoading && readPlacement === 'append'"
+      class="history-load-more"
+      role="status"
+    >
       <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
     </div>
     <div
-      v-if="historyNextCursor !== null && !historyError"
+      v-if="historyNextCursor !== null && !historyError && !historyLoading"
       ref="historyBoundary"
       class="history-boundary"
       aria-hidden="true"
@@ -512,9 +575,8 @@ onBeforeUnmount(() => {
   min-height: 1px;
 }
 .git-fetch-notice {
-  margin: 0;
-  padding: 0.2rem 2px 0.25rem;
-  color: var(--mar-color-warning-text);
+  flex: none;
+  padding: 6px 8px;
   font-size: var(--mar-font-size-meta);
 }
 
@@ -549,7 +611,9 @@ button.file-explorer-utility-button:disabled {
 
 <style scoped>
 .git-history {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   gap: 8px;
   min-width: 0;
   min-height: 0;
@@ -846,8 +910,10 @@ button.history-refresh {
 }
 
 .history-load-more {
-  --mar-action-icon-size: 1em;
-  justify-self: center;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--mar-font-size-meta);
   line-height: 20px;
   text-decoration: none;

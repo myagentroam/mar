@@ -651,6 +651,7 @@ if (composerFixture) {
       <WorkspaceTree
         :visible="true"
         :nodes="listState === 'no-nodes' ? [] : [node]"
+        :startup-status="listState === 'loading' || listState === 'failed' ? listState : 'ready'"
         :expanded-node-ids="['node']"
         :workspace-target="
           listState === 'unselected'
@@ -675,7 +676,17 @@ if (composerFixture) {
       </button>
       <select v-if="listStateFixture" v-model="listState" aria-label="Set fixture list state">
         <option
-          v-for="state in ['ready', 'main', 'child', 'loading', 'failed', 'no-nodes', 'unselected']"
+          v-for="state in [
+            'ready',
+            'main',
+            'child',
+            'loading',
+            'failed',
+            'searching',
+            'search-failed',
+            'no-nodes',
+            'unselected'
+          ]"
           :key="state"
         >
           {{ state }}
@@ -694,6 +705,8 @@ if (composerFixture) {
         "
         :selected-session-id="selectedSession"
         :search-query="search"
+        :searching="listState === 'searching'"
+        :search-ready="listState !== 'searching' && listState !== 'search-failed'"
         @open="selectedSession = $event"
         @refresh="action = 'refresh'"
         @search="action = 'search:' + $event"

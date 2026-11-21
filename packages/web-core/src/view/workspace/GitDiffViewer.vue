@@ -716,6 +716,12 @@ defineExpose({
     :file-name="path.split('/').at(-1) ?? path"
     :path="path"
     :loading="props.loading"
+    :load-error="
+      props.loadFailed
+        ? (props.loadErrorMessage ?? translate('generated.gitDiffViewer.gitDiffLoadFailed'))
+        : undefined
+    "
+    @retry="emit('retry')"
     :source-label="
       translate(props.source === 'TOOL_CHANGE' ? 'presentation.thisChange' : 'common.gitDiff')
     "
@@ -932,17 +938,9 @@ defineExpose({
       @click="focus"
       @contextmenu="openPreviewMenu"
     >
-      <template v-if="!props.loading">
+      <template v-if="!props.loading && !props.loadFailed">
         <FilePreviewState
-          v-if="props.loadFailed"
-          retryable
-          :message="
-            props.loadErrorMessage ?? translate('generated.gitDiffViewer.gitDiffLoadFailed')
-          "
-          @retry="emit('retry')"
-        />
-        <FilePreviewState
-          v-else-if="value?.binary === true"
+          v-if="value?.binary === true"
           :message="translate('generated.gitDiffViewer.binaryFilesDoNotSupportDiff')"
         >
           <template #actions>

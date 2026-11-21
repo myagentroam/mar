@@ -210,7 +210,8 @@ it.each([
       ...target.value,
       path: 'other.bin',
       repositoryPath: '/workspace',
-      worktreePath: '/workspace'
+      worktreePath: '/workspace',
+      quotePane: 'aside' as const
     };
     const historyIntent = {
       kind: 'HISTORY_DIFF' as const,
@@ -219,7 +220,8 @@ it.each([
       repositoryPath: '/workspace',
       worktreePath: '',
       commit: 'a'.repeat(40),
-      refs: ['main']
+      refs: ['main'],
+      quotePane: 'main' as const
     };
 
     try {

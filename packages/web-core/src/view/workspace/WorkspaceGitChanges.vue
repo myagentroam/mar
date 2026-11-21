@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
+import MarRegionStatus from '../common/MarRegionStatus.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import type { PublicError } from '@myagentroam/protocol';
@@ -51,8 +53,9 @@ const {
 // Read state belongs to the Git/Watch services; this view owns only the local render window
 // and its scroll observer. Appending already-read entries does not create a request busy state.
 const changesLoading = computed(() => changesRefreshing.value || props.watchStatus === 'loading');
+const changesReady = computed(() => props.service.changes.value !== undefined);
 const changesReadFailed = computed(
-  () => props.service.changesError.value || props.watchStatus === 'failed'
+  () => props.watchStatus === 'failed' || (!changesReady.value && props.service.changesError.value)
 );
 // This owns the retry control's lifetime, not the authoritative request busy state.
 const keepRetryControl = ref(false);
@@ -65,9 +68,19 @@ watch([changesLoading, changesReadFailed], ([loading, failed]) => {
 watch([() => props.target?.nodeId, () => props.target?.workspaceId], () => {
   keepRetryControl.value = false;
 });
-const hasRefreshButton = computed(() =>
-  visibleChangeRepositories.value.some((repository) => repository.source === 'ROOT')
+const manualRefresh = ref(false);
+const refreshBusy = computed(
+  () => changesReady.value && changesRefreshing.value && manualRefresh.value
 );
+async function refreshChanges(): Promise<void> {
+  if (changesLoading.value) return;
+  manualRefresh.value = true;
+  try {
+    await loadChanges(true);
+  } finally {
+    manualRefresh.value = false;
+  }
+}
 function retryRead(): void {
   if (changesLoading.value) return;
   keepRetryControl.value = true;
@@ -219,8 +232,13 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 <template>
   <section class="current-changes">
-    <div v-if="showRetryControl" class="changes-read-state">
+    <MarRegionStatus
+      v-if="!refreshBusy && (showRetryControl || changesLoading)"
+      class="changes-read-state"
+      :placement="changesReady ? 'top' : 'center'"
+    >
       <MarButton
+        v-if="showRetryControl"
         v-tooltip="
           !changesLoading && service.changesError.value
             ? errorMessage(service.changesFailureCause.value)
@@ -234,18 +252,26 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
         "
         :aria-disabled="changesLoading"
         :aria-busy="changesLoading || undefined"
+        :aria-label="changesLoading ? translate('generated.workspaceInspector.loading') : undefined"
         @click="retryRead"
       >
-        <MarIcon v-if="changesLoading" name="loading-action" />
-        {{ translate('common.loadFailedRetry') }}
+        <span v-if="changesLoading" class="mar-inline-loading">
+          <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+        </span>
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
       </MarButton>
-    </div>
-    <div v-else-if="changesLoading && !hasRefreshButton" class="changes-read-state" role="status">
-      <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
-    </div>
-    <p v-if="service.changesFetchFailed.value" class="git-fetch-notice" role="status">
-      {{ translate('gitSync.fetchFailed') }}
-    </p>
+      <p v-else class="mar-region-status" role="status">
+        <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
+      </p>
+    </MarRegionStatus>
+    <MarAlert
+      v-if="changesReady && service.changesFetchFailed.value"
+      class="git-fetch-notice"
+      type="warning"
+      show-icon
+      :closable="false"
+      :description="translate('gitSync.fetchFailed')"
+    />
     <div v-if="visibleGitWorktrees.length > 0" class="git-worktrees">
       <div class="git-worktree-heading">
         <strong>{{ translate('gitWorktrees.title') }}</strong>
@@ -298,12 +324,20 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
     >
       {{ gitGroupErrorMessage(error) }}
     </p>
-    <p
-      v-if="visibleChangeRepositories.length === 0 && !changesLoading && !changesReadFailed"
-      class="mar-empty"
+    <MarRegionStatus
+      v-if="
+        changesReady &&
+        visibleChangeRepositories.length === 0 &&
+        !changesLoading &&
+        !changesReadFailed &&
+        changeDiscoveryErrors.length === 0 &&
+        visibleGitWorktrees.length === 0 &&
+        !gitWorktreesTruncated
+      "
+      class="changes-empty"
     >
       {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
-    </p>
+    </MarRegionStatus>
     <ul
       v-else-if="visibleChangeRepositories.length > 0"
       ref="changeListElement"
@@ -332,13 +366,11 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 class="changes-refresh-button file-explorer-utility-button mar-icon-action"
                 :disabled="changesLoading"
                 :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
-                :aria-busy="changesLoading || undefined"
+                :aria-busy="refreshBusy || undefined"
                 type="button"
-                @click="loadChanges(true)"
+                @click="refreshChanges"
               >
-                <MarIcon
-                  :name="changesLoading && !showRetryControl ? 'loading-action' : 'refresh'"
-                />
+                <MarIcon :name="refreshBusy ? 'loading-action' : 'refresh'" />
               </button>
             </div>
             <div class="repository-tags-row">
@@ -487,9 +519,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 <style scoped>
 .git-fetch-notice {
-  margin: 0;
-  padding: 0.2rem 2px 0.25rem;
-  color: var(--mar-color-warning-text);
+  margin: 0 6px 4px;
+  inline-size: auto;
+  flex: none;
+  padding: 6px 8px;
   font-size: var(--mar-font-size-meta);
 }
 
@@ -585,13 +618,9 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   list-style: none;
 }
 
-.changes-read-state {
-  --mar-action-icon-size: 1em;
-  flex: 0 0 auto;
+.changes-read-state,
+.changes-empty {
   padding: 0.2rem 2px;
-  font-size: var(--mar-font-size-meta);
-  line-height: 20px;
-  text-align: center;
 }
 
 .changes-read-state button {

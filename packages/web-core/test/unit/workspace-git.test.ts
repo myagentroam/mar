@@ -1413,7 +1413,11 @@ describe('Workspace Git service', () => {
     });
     await service.loadHistory(true);
     await service.loadHistory(false);
-    expect(service.historyError.value).toEqual({ resetPage: false, fetch: false });
+    expect(service.historyError.value).toEqual({
+      resetPage: false,
+      fetch: false,
+      placement: 'append'
+    });
     expect(service.historyCommits.value).toEqual([first]);
     expect(service.historyNextCursor.value).toBe('cursor-1');
     await service.loadHistory(false);

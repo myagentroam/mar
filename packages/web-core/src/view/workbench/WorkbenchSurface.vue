@@ -661,6 +661,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :search-supported="page.sessionList.workspaceSessionSearchEnabled"
             :search-query="page.sessionList.workspaceSessionSearchQuery"
             :searching="page.sessionList.searchingWorkspaceSessions"
+            :search-ready="page.sessionList.workspaceSessionSearchReady"
             :refreshing="page.sessionList.refreshingWorkspaceSessions"
             :workspace-manageable="page.resources.selectedWorkspace.manageable !== false"
             :request="page.identity.request"

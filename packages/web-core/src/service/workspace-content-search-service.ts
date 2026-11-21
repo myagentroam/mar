@@ -49,6 +49,7 @@ export function createWorkspaceContentSearchService(options: {
   const appliedQuery = ref('');
   const appliedUseRegex = ref(false);
   const loading = ref(false);
+  const rereading = ref(false);
   const error = shallowRef<unknown>();
   let failedInput: Parameters<typeof search>[0] | undefined;
   let generation = 0;
@@ -66,6 +67,7 @@ export function createWorkspaceContentSearchService(options: {
     const request = ++generation;
     // Capture both applied conditions before awaiting any response.
     const { nodeId, workspaceId, query, useRegex } = input;
+    rereading.value = appliedQuery.value === query && appliedUseRegex.value === useRegex;
     loading.value = true;
     if (!retrying) error.value = undefined;
     try {
@@ -99,6 +101,7 @@ export function createWorkspaceContentSearchService(options: {
 
   function reset(): void {
     cancelPending();
+    rereading.value = false;
     matches.value = [];
     truncated.value = false;
     appliedQuery.value = '';
@@ -131,6 +134,7 @@ export function createWorkspaceContentSearchService(options: {
     appliedQuery: readonly(appliedQuery),
     appliedUseRegex: readonly(appliedUseRegex),
     loading: readonly(loading),
+    rereading: readonly(rereading),
     error: readonly(error),
     search,
     cancelPending,

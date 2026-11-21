@@ -4,8 +4,9 @@ import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { createUuid } from '../../util/uuid.js';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import MarIcon from '../common/MarIcon.vue';
+import MarRegionStatus from '../common/MarRegionStatus.vue';
 import WorkspaceFileTree from './WorkspaceFileTree.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { errorMessage } from '../../util/error-presentation.js';
@@ -52,6 +53,38 @@ const emit = defineEmits<{
 const filesController = props.service;
 const fileTree = filesController.tree;
 const filesBusy = filesController.refreshing;
+const rootReady = computed(() => fileTree.root.value.loaded);
+const retryingWatch = ref(false);
+watch(
+  () => props.watchStatus,
+  (status) => {
+    if (status !== 'loading') retryingWatch.value = false;
+  },
+  { flush: 'sync' }
+);
+const buttonLoading = computed(
+  () => filesBusy.value && rootReady.value && !fileTree.refreshError.value
+);
+const readBusy = computed(() => filesBusy.value || props.watchStatus === 'loading');
+const showReadState = computed(
+  () =>
+    !!fileTree.refreshError.value ||
+    (!buttonLoading.value &&
+      (props.watchStatus === 'loading' ||
+        props.watchStatus === 'failed' ||
+        (!rootReady.value && filesBusy.value)))
+);
+const showRetry = computed(
+  () => !!fileTree.refreshError.value || props.watchStatus === 'failed' || retryingWatch.value
+);
+function retryRead(): void {
+  if (readBusy.value) return;
+  if (fileTree.refreshError.value) emit('refresh');
+  else if (props.watchStatus === 'failed') {
+    retryingWatch.value = true;
+    emit('retryWatch');
+  }
+}
 const preparingUploads = filesController.preparing;
 const fileDisplayFilter = ref('');
 const uploadInput = ref<HTMLInputElement>();
@@ -321,11 +354,11 @@ defineExpose({
         class="file-explorer-utility-button mar-icon-action"
         :disabled="filesBusy"
         :aria-label="translate('generated.workspaceInspector.refreshFiles')"
-        :aria-busy="filesBusy || undefined"
+        :aria-busy="buttonLoading || undefined"
         type="button"
         @click="emit('refresh')"
       >
-        <MarIcon :name="filesBusy ? 'loading-action' : 'refresh'" />
+        <MarIcon :name="buttonLoading ? 'loading-action' : 'refresh'" />
       </button>
       <button
         v-tooltip="translate('generated.workspaceInspector.uploadFiles2')"
@@ -340,48 +373,43 @@ defineExpose({
         <MarIcon name="document-add" v-else />
       </button>
     </div>
-    <MarButton
-      v-if="
-        (watchStatus === 'loading' || watchStatus === 'failed') &&
-        !filesBusy &&
-        !fileTree.refreshError.value
-      "
+    <MarRegionStatus
+      v-if="showReadState"
       class="watch-status"
-      link
-      :class="{ failed: watchStatus === 'failed' }"
-      :aria-disabled="watchStatus === 'loading'"
-      :aria-busy="watchStatus === 'loading' || undefined"
-      @click="watchStatus === 'failed' && emit('retryWatch')"
+      :placement="rootReady ? 'top' : 'center'"
     >
-      <template v-if="watchStatus === 'loading'"
-        ><MarIcon name="loading-action" />
-        {{ translate('generated.workspaceInspector.loading') }}</template
+      <MarButton
+        v-if="showRetry"
+        v-tooltip="
+          !readBusy && fileTree.refreshError.value
+            ? errorMessage(fileTree.refreshError.value.cause)
+            : ''
+        "
+        :aria-description="
+          !readBusy && fileTree.refreshError.value
+            ? errorMessage(fileTree.refreshError.value.cause)
+            : undefined
+        "
+        class="files-read-retry"
+        :class="{ failed: !readBusy }"
+        link
+        :aria-disabled="readBusy"
+        :aria-busy="readBusy || undefined"
+        :aria-label="readBusy ? translate('generated.workspaceInspector.loading') : undefined"
+        @click="retryRead"
       >
-      <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </MarButton>
-    <MarButton
-      v-if="fileTree.refreshError.value"
-      v-tooltip="!filesBusy ? errorMessage(fileTree.refreshError.value.cause) : ''"
-      :aria-description="!filesBusy ? errorMessage(fileTree.refreshError.value.cause) : undefined"
-      class="watch-status"
-      link
-      :class="{ failed: !filesBusy }"
-      :aria-disabled="filesBusy"
-      :aria-busy="filesBusy || undefined"
-      @click="!filesBusy && emit('refresh')"
-    >
-      <template v-if="filesBusy"
-        ><MarIcon name="loading-action" />
-        {{ translate('generated.workspaceInspector.loading') }}</template
-      >
-      <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </MarButton>
-    <p v-else-if="filesBusy" class="watch-status" role="status">
-      <MarIcon name="loading-action" />
-      {{ translate('generated.workspaceInspector.loading') }}
-    </p>
+        <span v-if="readBusy" class="mar-inline-loading">
+          <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+        </span>
+        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+      </MarButton>
+      <p v-else class="mar-region-status" role="status">
+        <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+      </p>
+    </MarRegionStatus>
     <WorkspaceFileTree
       v-if="visible"
+      v-show="rootReady || !showReadState"
       ref="fileTreeView"
       :root="fileTree.root.value"
       :root-path="workspacePath"
@@ -463,26 +491,10 @@ defineExpose({
 
 <style scoped>
 .watch-status {
-  margin: 0.2rem 0.55rem;
-  font-size: var(--mar-font-size-meta);
+  padding-inline: 8px;
 }
 
-.watch-status:not(button) {
-  color: var(--mar-text-secondary);
-}
-
-button.watch-status {
-  align-self: flex-start;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-button.watch-status[aria-disabled='true'] {
-  color: var(--mar-text-disabled);
+.watch-status [role='status'] {
   cursor: default;
 }
 
