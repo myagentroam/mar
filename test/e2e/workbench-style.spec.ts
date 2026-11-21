@@ -1490,10 +1490,23 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(Math.abs(content.y + content.height / 2 - outer.y - outer.height / 2)).toBeLessThan(2);
       await page.screenshot({ path: testInfo.outputPath('workspace-recovery.png') });
       await retry.click();
-      await expect(retry).toHaveCount(0);
-      await expect(panel.locator('.mar-page-loading-state[role="status"]')).toBeVisible();
+      const busyRetry = panel.getByRole('button', { name: 'Loading', exact: true });
+      await expect(busyRetry).toBeFocused();
+      await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+      await expect(busyRetry.locator('.mar-read-loading-indicator')).toBeVisible();
       await expect(panel.locator('.mar-busy-indicator')).toHaveCount(1);
-      await expect(panel.locator('.workspace-recovery-state')).toHaveCount(0);
+      await expect(panel.locator('.mar-page-loading-state')).toHaveCount(0);
+      await page.keyboard.press('Enter');
+      expect(
+        await page.evaluate(() =>
+          (
+            window as Window & { failWorkspaceRecoveryRead: () => number }
+          ).failWorkspaceRecoveryRead()
+        )
+      ).toBe(1);
+      await expect(failure).toBeVisible();
+      await expect(retry).toBeFocused();
+      await expect(retry).not.toHaveAttribute('aria-busy', 'true');
     });
 
     test(`Offline Workspace uses a static disconnected icon in ${theme} at ${width}px`, async ({

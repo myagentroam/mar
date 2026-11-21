@@ -55,6 +55,7 @@ const submittedIntents = ref<string[]>([]);
 const fixtureInput = ref(gestureFixture ? 'Follow up on mobile layout.' : '');
 const offlineFixture = new URL(location.href).searchParams.has('offline');
 const workspaceRecoveryFixture = new URL(location.href).searchParams.has('workspace-recovery');
+let workspaceRecoveryRetries = 0;
 const networkOfflineFixture = new URL(location.href).searchParams.has('network-offline');
 const restrictionFixture = new URL(location.href).searchParams.has('restriction');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
@@ -435,6 +436,7 @@ const surfacePage = shallowReactive({
   selectedWorkspace: undefined,
   workspaceSelectionLoading: false,
   retryWorkspaceSelection() {
+    workspaceRecoveryRetries += 1;
     surfacePage.workspaceSelectionLoading = true;
   },
   workspaceTabs: [],
@@ -452,6 +454,13 @@ const surfacePage = shallowReactive({
 });
 if (workspaceRecoveryFixture || networkOfflineFixture || restrictionFixture)
   surfacePage.workspaceHost = { connected: true };
+if (workspaceRecoveryFixture)
+  Object.assign(window, {
+    failWorkspaceRecoveryRead: () => {
+      surfacePage.workspaceSelectionLoading = false;
+      return workspaceRecoveryRetries;
+    }
+  });
 if (networkOfflineFixture)
   Object.assign(window, {
     restoreWorkspaceConnection: () => {

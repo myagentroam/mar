@@ -34,6 +34,24 @@ const emit = defineEmits<{
   retry: [];
   menu: [open: boolean];
 }>();
+const retrying = ref(false);
+const showTreeLoading = computed(
+  () => !retrying.value && props.tree === undefined && props.status !== 'failed'
+);
+watch(
+  () => props.status,
+  (status) => {
+    if (status !== 'loading') retrying.value = false;
+  }
+);
+function retryRead(): void {
+  if (!props.interactive || !props.canRetry || props.status !== 'failed' || retrying.value) return;
+  retrying.value = true;
+  emit('retry');
+  void nextTick(() => {
+    if (props.status !== 'loading') retrying.value = false;
+  });
+}
 const parentMenu = ref<{ handleClose: () => void }>();
 const nodeMenus = ref<Array<{ handleClose: () => void }>>([]);
 const hoveredSessionId = ref<string>();
@@ -150,23 +168,31 @@ function openContext(event: MouseEvent): void {
 <template>
   <div class="session-tree" :aria-busy="tree === undefined && status !== 'failed'">
     <MarRegionStatus
-      v-if="tree === undefined || status === 'failed' || (status === 'ready' && tree === null)"
-      class="session-tree-status"
-      :class="{ 'session-tree-loading': tree === undefined && status !== 'failed' }"
-      role="status"
-      :aria-label="
-        tree === undefined && status !== 'failed' ? translate('common.loading') : undefined
+      v-if="
+        retrying ||
+        tree === undefined ||
+        status === 'failed' ||
+        (status === 'ready' && tree === null)
       "
+      class="session-tree-status"
+      :class="{ 'session-tree-loading': showTreeLoading }"
+      role="status"
+      :aria-label="showTreeLoading ? translate('common.loading') : undefined"
     >
-      <BusyIndicator
-        v-if="tree === undefined && status !== 'failed'"
-        class="mar-read-loading-indicator"
-      />
+      <BusyIndicator v-if="showTreeLoading" class="mar-read-loading-indicator" />
       <template v-else>
-        <span>{{ translate('sessionGroups.treeUnavailable') }}</span>
-        <MarButton v-if="status === 'failed' && canRetry" link @click="emit('retry')">{{
-          translate('sessionGroups.retry')
-        }}</MarButton>
+        <span v-if="!retrying">{{ translate('sessionGroups.treeUnavailable') }}</span>
+        <MarButton
+          v-if="retrying || (status === 'failed' && canRetry)"
+          link
+          :aria-busy="retrying || undefined"
+          :aria-disabled="retrying || undefined"
+          :aria-label="retrying ? translate('common.loading') : undefined"
+          @click="retryRead"
+        >
+          <BusyIndicator v-if="retrying" class="mar-read-loading-indicator" />
+          <template v-else>{{ translate('sessionGroups.retry') }}</template>
+        </MarButton>
       </template>
     </MarRegionStatus>
     <div

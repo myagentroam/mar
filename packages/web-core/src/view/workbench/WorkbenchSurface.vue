@@ -135,6 +135,26 @@ const workspaceOffline = computed(
     props.page.application.networkUnavailable ||
     props.page.resources.workspaceHost?.connected === false
 );
+const workspaceRecoveryRetrying = ref(false);
+watch(
+  [
+    () => props.page.application.view,
+    () => props.page.selection.workspaceTarget,
+    () => props.page.selection.workspaceSelectionLoading,
+    workspaceOffline
+  ],
+  ([view, target, loading, offline], [, previousTarget]) => {
+    if (view !== 'nodes' || target !== previousTarget || !loading || offline)
+      workspaceRecoveryRetrying.value = false;
+  }
+);
+async function retryWorkspaceRecovery(): Promise<void> {
+  if (workspaceRecoveryRetrying.value || props.page.selection.workspaceSelectionLoading) return;
+  workspaceRecoveryRetrying.value = true;
+  props.page.selection.retryWorkspaceSelection();
+  await nextTick();
+  if (!props.page.selection.workspaceSelectionLoading) workspaceRecoveryRetrying.value = false;
+}
 function workspaceTabHasActiveRun(nodeId: string, workspaceId: string): boolean {
   return (
     !props.page.application.networkUnavailable &&
@@ -596,7 +616,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           class="welcome-panel compact-welcome workspace-selection-panel workspace-recovery-panel"
         >
           <div
-            v-if="page.selection.workspaceSelectionLoading"
+            v-if="page.selection.workspaceSelectionLoading && !workspaceRecoveryRetrying"
             class="mar-page-loading-state"
             role="status"
             :aria-label="translate('common.loading')"
@@ -604,11 +624,19 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             <BusyIndicator />
           </div>
           <div v-else class="workspace-recovery-state">
-            <p role="status">
+            <p v-if="!workspaceRecoveryRetrying" role="status">
               {{ translate('generated.workbenchSurface.workspaceMetadataUnavailable') }}
             </p>
-            <MarButton link size="small" @click="page.selection.retryWorkspaceSelection">
-              {{ translate('common.loadFailedRetry') }}
+            <MarButton
+              link
+              size="small"
+              :aria-busy="workspaceRecoveryRetrying || undefined"
+              :aria-disabled="workspaceRecoveryRetrying || undefined"
+              :aria-label="workspaceRecoveryRetrying ? translate('common.loading') : undefined"
+              @click="retryWorkspaceRecovery"
+            >
+              <BusyIndicator v-if="workspaceRecoveryRetrying" class="mar-read-loading-indicator" />
+              <template v-else>{{ translate('common.loadFailedRetry') }}</template>
             </MarButton>
           </div>
         </section>

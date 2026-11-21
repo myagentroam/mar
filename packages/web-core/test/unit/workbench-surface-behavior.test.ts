@@ -875,8 +875,11 @@ describe('Workbench surface composition behavior', () => {
           .find((node) => textContent(node).includes(translate('common.loadFailedRetry')))!;
         await trigger(button, 'onClick');
         expect(retry).toHaveBeenCalledTimes(1);
-        expect(view.findAll('MarButton')).toHaveLength(0);
-        expect(view.findAll('div').some((node) => node.props['role'] === 'status')).toBe(true);
+        const busyRetry = view.findAll('MarButton')[0];
+        expect(busyRetry?.props['aria-busy']).toBe(true);
+        expect(busyRetry?.props['aria-disabled']).toBe(true);
+        await trigger(busyRetry!, 'onClick');
+        expect(retry).toHaveBeenCalledTimes(1);
         expect(textContent(view.root)).not.toContain(
           translate('generated.workbenchSurface.workspaceMetadataUnavailable')
         );

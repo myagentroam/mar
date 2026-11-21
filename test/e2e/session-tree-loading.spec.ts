@@ -156,11 +156,22 @@ test('retries a failed tree read, reaches ready, and closes on Escape', async ({
   await retry.click();
   await expect(page.getByTestId('retry-count')).toHaveText('1');
   await expect(tree).toHaveAttribute('aria-busy', 'true');
+  const busyRetry = tree.getByRole('button', { name: 'Loading', exact: true });
+  await expect(busyRetry).toBeFocused();
+  await expect(busyRetry).toHaveAttribute('aria-busy', 'true');
+  await expect(busyRetry.locator('.mar-read-loading-indicator')).toBeVisible();
+  await expect(tree.locator('.mar-busy-indicator')).toHaveCount(1);
   await page.screenshot({
     path: info.outputPath('session-tree-retrying.png'),
     animations: 'disabled'
   });
-  await expect(tree.locator('.session-tree-loading .mar-busy-indicator')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('retry-count')).toHaveText('1');
+  await setFixtureState(page, 'fail');
+  await expect(retry).toBeFocused();
+  await expect(retry).not.toHaveAttribute('aria-busy', 'true');
+  await retry.click();
+  await expect(page.getByTestId('retry-count')).toHaveText('2');
   await setFixtureState(page, 'ready');
   await expect(tree.locator('.session-tree-row')).toHaveCount(100);
 
