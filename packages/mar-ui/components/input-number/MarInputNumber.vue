@@ -163,7 +163,7 @@ function preventWheelStep(event: WheelEvent) {
   box-sizing: border-box;
   inline-size: 150px;
   max-inline-size: 100%;
-  min-block-size: 32px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   border: 1px solid var(--mar-ui-input-border);
   border-radius: var(--mar-ui-radius-control);
   background: var(--mar-ui-bg-panel);
@@ -184,11 +184,12 @@ input {
   appearance: textfield;
   border: 0;
   outline: 0;
-  padding-inline: 0.5rem;
+  padding: 0 0.5rem;
   color: var(--mar-ui-text-primary);
   background: transparent;
   font: inherit;
   font-size: var(--mar-ui-font-size-input);
+  line-height: 1.4;
   text-align: center;
 }
 input::-webkit-inner-spin-button,

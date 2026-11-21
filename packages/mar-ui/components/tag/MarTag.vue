@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { TagProps } from './tag-types.js';
 
-withDefaults(defineProps<TagProps>(), { type: 'primary', effect: 'light', size: 'default' });
+withDefaults(defineProps<TagProps>(), { type: 'primary', effect: 'light' });
 </script>
 
 <template>
-  <span class="mar-ui-tag" :data-type="type" :data-effect="effect" :data-size="size"><slot /></span>
+  <span class="mar-ui-tag" :data-type="type" :data-effect="effect"><slot /></span>
 </template>
 
 <style scoped>
@@ -18,8 +18,8 @@ withDefaults(defineProps<TagProps>(), { type: 'primary', effect: 'light', size: 
   max-inline-size: 100%;
   flex: none;
   align-items: center;
-  min-block-size: 24px;
-  padding-inline: 0.5rem;
+  min-block-size: 20px;
+  padding-inline: 0.375rem;
   border: 1px solid
     var(--mar-ui-tag-border-color, color-mix(in srgb, var(--tag-tint) 20%, var(--mar-ui-bg-panel)));
   border-radius: var(--mar-ui-radius-control);
@@ -52,9 +52,5 @@ withDefaults(defineProps<TagProps>(), { type: 'primary', effect: 'light', size: 
 }
 [data-effect='plain'] {
   background: var(--mar-ui-bg-panel);
-}
-[data-size='small'] {
-  min-block-size: 20px;
-  padding-inline: 0.375rem;
 }
 </style>

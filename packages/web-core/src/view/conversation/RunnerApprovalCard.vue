@@ -23,19 +23,13 @@ const emit = defineEmits<{ decide: [decision: 'APPROVED' | 'REJECTED'] }>();
     <div v-if="decidable" class="approval-actions">
       <MarButton
         type="primary"
-        size="small"
         :icon="marIcon('check')"
         :disabled="disabled"
         @click="emit('decide', 'APPROVED')"
       >
         {{ translate('generated.conversationApprovals.allow') }}
       </MarButton>
-      <MarButton
-        size="small"
-        :icon="marIcon('close')"
-        :disabled="disabled"
-        @click="emit('decide', 'REJECTED')"
-      >
+      <MarButton :icon="marIcon('close')" :disabled="disabled" @click="emit('decide', 'REJECTED')">
         {{ translate('generated.conversationApprovals.deny') }}
       </MarButton>
     </div>

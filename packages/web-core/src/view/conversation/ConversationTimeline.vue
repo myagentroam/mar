@@ -1306,7 +1306,6 @@ function stepDuration(item: ConversationItem): string | undefined {
                     ? translate('generated.conversationTimeline.orEnterAnotherAnswer')
                     : translate('generated.conversationTimeline.enterAnAnswer')
                 "
-                size="small"
                 @update:model-value="emit('setAnswer', displayItem.item.id, question.id, $event)"
               />
               <MarInput
@@ -1320,7 +1319,6 @@ function stepDuration(item: ConversationItem): string | undefined {
                   props.userInputSubmitted(displayItem.item.id)
                 "
                 :placeholder="translate('generated.conversationTimeline.orEnterAnotherAnswer2')"
-                size="small"
                 @update:model-value="
                   emit(
                     'setAnswer',
@@ -1334,7 +1332,6 @@ function stepDuration(item: ConversationItem): string | undefined {
             <div class="conversation-card-actions">
               <MarButton
                 type="primary"
-                size="small"
                 :disabled="
                   loading ||
                   displayItem.item.status !== 'PENDING' ||
@@ -1524,7 +1521,6 @@ function stepDuration(item: ConversationItem): string | undefined {
               >
                 <MarButton
                   type="primary"
-                  size="small"
                   :disabled="loading"
                   @click="emit('implementPlan', displayItem.item)"
                   >{{ planContinuation.continuation?.label }}</MarButton

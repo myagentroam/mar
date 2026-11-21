@@ -26,6 +26,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const header = page.locator('.workspace-file-tab-header');
         const tabs = header.getByRole('tablist');
         const active = tabs.getByRole('tab').first();
+        const navigationSize = await header.evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--mar-ui-font-size-navigation').trim()
+        );
+        await expect(active).toHaveCSS('font-size', navigationSize);
+        await expect(active).toHaveCSS('font-weight', '400');
         const colors = await header.evaluate((element) => {
           const probe = document.createElement('span');
           element.append(probe);

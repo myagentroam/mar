@@ -1044,7 +1044,6 @@ onBeforeUnmount(() => {
             :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
             :aria-busy="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
             :icon="marIcon('refresh')"
-            size="small"
             text
             @click="refreshDirectory"
           />

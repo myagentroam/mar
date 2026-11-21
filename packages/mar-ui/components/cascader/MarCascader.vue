@@ -298,7 +298,7 @@ function onFocusOut(event: FocusEvent) {
 .mar-ui-cascader__field {
   display: flex;
   align-items: center;
-  min-block-size: 32px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   box-sizing: border-box;
   border: 1px solid var(--mar-ui-input-border);
   border-radius: var(--mar-ui-radius-control);
@@ -317,7 +317,8 @@ input {
   flex: 1;
   inline-size: 0;
   min-inline-size: 0;
-  padding-inline: 0.75rem 0.125rem;
+  padding-block: 0;
+  padding-inline: 0.5rem 0.125rem;
   border: 0;
   outline: 0;
   background: transparent;

@@ -15,7 +15,6 @@ const props = defineProps<{
   closeClass?: string | undefined;
   idPrefix: string;
   appearance: 'default' | 'workbench';
-  size: 'default' | 'small';
   activationMode: 'manual' | 'automatic';
   withPanels: boolean;
 }>();
@@ -195,7 +194,6 @@ function activate(name: Name): void {
     class="mar-ui-tabs__header"
     :class="{
       'mar-tab': workbench,
-      'is-small': workbench && size === 'small',
       'mar-ui-tabs__header--workbench-panels': workbench && withPanels,
       'can-scroll-previous': canScrollPrevious,
       'can-scroll-next': canScrollNext
@@ -216,7 +214,7 @@ function activate(name: Name): void {
     <div
       ref="root"
       :id="`${idPrefix}-tablist`"
-      :class="workbench ? ['mar-tab-strip', { 'is-small': size === 'small' }] : 'mar-ui-tabs__list'"
+      :class="workbench ? 'mar-tab-strip' : 'mar-ui-tabs__list'"
       role="tablist"
       :aria-label="label"
       @scroll.passive="updateOverflow"
@@ -340,7 +338,6 @@ function activate(name: Name): void {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  height: 100%;
 }
 
 .mar-ui-tabs__header--workbench-panels {
@@ -349,10 +346,6 @@ function activate(name: Name): void {
   align-items: stretch;
   border-bottom: 1px solid var(--mar-ui-border-subtle);
 }
-.mar-tab.is-small {
-  height: auto;
-}
-
 .mar-tab-scroll {
   --mar-ui-action-icon-size: 14px;
   flex: 0 0 20px;
@@ -369,32 +362,23 @@ function activate(name: Name): void {
   display: flex;
   flex: 1;
   min-width: 0;
-  height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
   gap: 0;
   padding: 3px 4px 0;
+  font-weight: var(--mar-tab-font-weight, 500);
 }
 
 .mar-tab-strip::-webkit-scrollbar {
   display: none;
 }
 
-.mar-tab-strip.is-small {
-  --mar-tab-strip-item-height: 28px;
-  --mar-tab-strip-close-size: 24px;
-  --mar-tab-font-size: var(--mar-ui-font-size-meta);
-  height: auto;
-  padding-block: 3px 0;
-  font-weight: 500;
-}
-
 .mar-tab-strip-item {
   display: inline-flex;
   flex-shrink: 0;
   min-width: 0;
-  height: var(--mar-tab-strip-item-height, auto);
+  height: var(--mar-tab-strip-item-height, 28px);
   max-width: min(15rem, 100%);
   box-sizing: border-box;
   align-items: center;
@@ -425,13 +409,10 @@ function activate(name: Name): void {
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: var(--mar-tab-font-size, var(--mar-ui-font-size-navigation));
+  font-size: var(--mar-tab-font-size, var(--mar-ui-font-size-meta));
   overflow: hidden;
   cursor: pointer;
   padding: 0 0.5rem;
-}
-
-.mar-tab-strip.is-small .mar-tab-strip-tab {
   gap: 0.35rem;
   justify-content: center;
 }
@@ -535,16 +516,15 @@ function activate(name: Name): void {
     --mar-tab-fade-end: calc(100% - 12px);
   }
   .mar-tab-strip-item {
-    height: var(--mar-tab-strip-item-height, 36px);
-    min-height: var(--mar-tab-strip-item-height, 36px);
+    min-height: var(--mar-tab-strip-item-height, 28px);
   }
   :is(.mar-tab-label, :slotted(.mar-tab-label)) {
     max-width: 120px;
   }
   .mar-tab-strip-close {
-    width: var(--mar-tab-strip-close-size, 36px);
-    min-width: var(--mar-tab-strip-close-size, 36px);
-    height: var(--mar-tab-strip-close-size, 36px);
+    width: var(--mar-tab-strip-close-size, 24px);
+    min-width: var(--mar-tab-strip-close-size, 24px);
+    height: var(--mar-tab-strip-close-size, 24px);
   }
 }
 </style>

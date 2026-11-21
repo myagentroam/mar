@@ -492,7 +492,6 @@ onBeforeUnmount(() => {
           data-completion-action
           class="mar-text-action"
           link
-          size="small"
           :disabled="blocked"
           :aria-label="buttonLabel"
           @click="activate"
@@ -503,7 +502,6 @@ onBeforeUnmount(() => {
           data-completion-cancel
           class="mar-text-action"
           link
-          size="small"
           :aria-label="translate('promptCompletion.cancel')"
           @click="activate"
         >

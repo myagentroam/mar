@@ -134,7 +134,10 @@ for (const [width, theme] of [
     await page.evaluate(() => window.auditDetailFixture.settle(0, true));
 
     const dialog = page.getByRole('dialog');
-    const metadata = dialog.locator('pre').filter({ hasText: '"workspaceName"' });
+    const metadataRow = dialog.locator('.mar-ui-descriptions__item').filter({
+      has: page.locator('pre').filter({ hasText: '"workspaceName"' })
+    });
+    const metadata = metadataRow.locator('pre');
     await expect(metadata).toContainText(`FixtureWorkspace${'LongIdentifier'.repeat(6)}`);
     await expect(metadata).toHaveCSS('border-top-width', '0px');
     await expect(metadata).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -142,10 +145,10 @@ for (const [width, theme] of [
     expect(await metadata.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true
     );
-    await expect(dialog.getByText('Metadata', { exact: true })).toHaveCSS(
-      'border-inline-end-width',
-      '1px'
-    );
+    const metadataLabel = metadataRow.locator('dt');
+    await expect(metadataLabel).toHaveText('Metadata');
+    await expect(metadataLabel).toHaveCSS('border-inline-end-width', '0px');
+    await expect(metadataRow).toHaveCSS('border-block-start-width', '1px');
     await expect(dialog.getByText('Payload audit-A request 0')).toHaveCSS(
       'border-top-width',
       '1px'

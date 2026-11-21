@@ -89,7 +89,7 @@ for (const [view, name, title, desktopWidth, actionCount] of [
     await row.getByText(name, { exact: true }).click();
     await expect(detail).toContainText(name);
     const descriptions = detail.locator('.mar-ui-descriptions');
-    async function expectDescriptionSurfaces() {
+    async function expectDescriptionLayout(stacked: boolean) {
       const palette = await descriptions.evaluate((element) => {
         const probe = document.createElement('span');
         element.append(probe);
@@ -98,25 +98,37 @@ for (const [view, name, title, desktopWidth, actionCount] of [
           return getComputedStyle(probe).color;
         };
         const colors = {
-          label: color('--mar-ui-bg-subtle'),
-          value: color('--mar-ui-bg-panel'),
+          label: color('--mar-ui-text-secondary'),
+          value: color('--mar-ui-text-primary'),
           line: color('--mar-ui-border-subtle')
         };
         probe.remove();
         return colors;
       });
-      await expect(descriptions).toHaveCSS('background-color', palette.line);
+      await expect(descriptions).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(descriptions).toHaveCSS('border-block-start-width', '0px');
       const label = descriptions.locator('dt').first();
-      await expect(label).toHaveCSS('background-color', palette.label);
-      await expect(label).toHaveCSS('border-inline-end-width', '1px');
-      await expect(label).toHaveCSS('border-inline-end-color', palette.line);
-      await expect(descriptions.locator('dd').first()).toHaveCSS('background-color', palette.value);
+      const value = descriptions.locator('dd').first();
+      await expect(label).toHaveCSS('color', palette.label);
+      await expect(value).toHaveCSS('color', palette.value);
+      await expect(label).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(value).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(label).toHaveCSS('border-inline-end-width', '0px');
       const rows = descriptions.locator('.mar-ui-descriptions__item');
-      const first = (await rows.first().boundingBox())!;
-      const second = (await rows.nth(1).boundingBox())!;
-      expect(second.y - first.y - first.height).toBeCloseTo(1, 1);
+      await expect(rows.first()).toHaveCSS('border-block-start-width', '0px');
+      await expect(rows.nth(1)).toHaveCSS('border-block-start-width', '1px');
+      await expect(rows.nth(1)).toHaveCSS('border-block-start-color', palette.line);
+      const labelBox = (await label.boundingBox())!;
+      const valueBox = (await value.boundingBox())!;
+      if (stacked) {
+        expect(valueBox.x).toBeCloseTo(labelBox.x, 1);
+        expect(valueBox.y).toBeGreaterThanOrEqual(labelBox.y + labelBox.height);
+      } else {
+        expect(valueBox.x).toBeGreaterThan(labelBox.x + labelBox.width);
+        expect(valueBox.y).toBeCloseTo(labelBox.y, 1);
+      }
     }
-    await expectDescriptionSurfaces();
+    await expectDescriptionLayout(true);
     if (view === 'organizations') {
       await descriptions.screenshot({
         path: testInfo.outputPath('organization-details-mobile.png')
@@ -125,11 +137,12 @@ for (const [view, name, title, desktopWidth, actionCount] of [
 
     await page.setViewportSize({ width: 1280, height: 844 });
     await expect.poll(() => actionCell.evaluate((cell) => cell.clientWidth)).toBe(desktopWidth);
+    await expectDescriptionLayout(false);
     if (view === 'organizations') {
       await page
         .locator('html')
         .evaluate((root) => root.setAttribute('data-theme', 'vscode-dark-2026'));
-      await expectDescriptionSurfaces();
+      await expectDescriptionLayout(false);
       await descriptions.screenshot({
         path: testInfo.outputPath('organization-details-desktop.png')
       });

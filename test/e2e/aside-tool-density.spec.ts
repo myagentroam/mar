@@ -65,7 +65,7 @@ for (const width of [1440, 390]) {
       await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
       for (const [label, selector] of [
         ['文件', '.explorer-toolbar'],
-        ['搜索', '.content-search-options'],
+        ['搜索', '.content-search-toolbar'],
         ['Git 变更', '.change-repository-heading'],
         ['Git 历史', '.history-toolbar']
       ] as const) {

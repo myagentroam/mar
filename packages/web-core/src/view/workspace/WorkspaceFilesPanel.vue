@@ -347,7 +347,6 @@ defineExpose({
         :aria-label="translate('workspaceDisplayFilter.label')"
         clearable
         :placeholder="translate('workspaceDisplayFilter.placeholder')"
-        size="small"
         :clear-icon="marIcon('clear-input')"
       >
         <template #prefix><MarIcon name="search" /></template>
@@ -462,7 +461,6 @@ defineExpose({
             v-if="entry.status === 'EXISTS_FILE'"
             v-model="entry.overwrite"
             :aria-label="translate('generated.workspaceInspector.existingFileHandling')"
-            size="small"
           >
             <MarOption :value="false" :label="translate('generated.workspaceInspector.skip')" />
             <MarOption :value="true" :label="translate('generated.workspaceInspector.overwrite')" />

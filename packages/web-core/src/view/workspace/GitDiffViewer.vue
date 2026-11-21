@@ -759,7 +759,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousFile')"
           circle
-          size="small"
           :disabled="props.paths.length < 2 || props.loading"
           :aria-label="translate('generated.gitDiffViewer.previousFile')"
           @click="emit('moveFile', -1)"
@@ -769,7 +768,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousChange')"
           circle
-          size="small"
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.previousChange')"
           @click="moveDiff(-1)"
@@ -779,7 +777,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextChange')"
           circle
-          size="small"
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.nextChange')"
           @click="moveDiff(1)"
@@ -789,7 +786,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextFile')"
           circle
-          size="small"
           :disabled="props.paths.length < 2 || props.loading"
           :aria-label="translate('generated.gitDiffViewer.nextFile')"
           @click="emit('moveFile', 1)"
@@ -801,7 +797,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('fileEditor.openSourceShortcut')"
           circle
-          size="small"
           :aria-label="translate('fileEditor.openSource')"
           @click="toggleEdit"
           ><MarIcon name="source-code"
@@ -811,7 +806,6 @@ defineExpose({
           v-tooltip="translate('inlineFind.label')"
           v-if="findAvailable"
           circle
-          size="small"
           :aria-label="translate('inlineFind.label')"
           @click="openInternalFind"
           ><MarIcon name="search"
@@ -821,7 +815,6 @@ defineExpose({
           v-tooltip="translate('generated.gitDiffViewer.downloadDiff')"
           :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
           circle
-          size="small"
           @click="emit('download')"
         >
           <MarIcon name="download" />
@@ -832,7 +825,6 @@ defineExpose({
           v-if="!embedded"
           :aria-label="translate('generated.gitDiffViewer.closeDiffPreview2')"
           circle
-          size="small"
           @click="emit('close')"
         >
           <MarIcon name="close" />
@@ -848,7 +840,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('fileEditor.openSourceShortcut')"
           circle
-          size="small"
           :aria-label="translate('fileEditor.openSource')"
           @click="toggleEdit"
           ><MarIcon name="source-code"
@@ -859,7 +850,6 @@ defineExpose({
           :disabled="paths.length < 2 || loading"
           :aria-label="translate('generated.gitDiffViewer.previousFile')"
           circle
-          size="small"
           @click="emit('moveFile', -1)"
         >
           <MarIcon name="chevron-left" />
@@ -876,7 +866,6 @@ defineExpose({
           :disabled="paths.length < 2 || loading"
           :aria-label="translate('generated.gitDiffViewer.nextFile')"
           circle
-          size="small"
           @click="emit('moveFile', 1)"
         >
           <MarIcon name="chevron-right" />
@@ -888,7 +877,6 @@ defineExpose({
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.previousChange')"
           circle
-          size="small"
           @click="moveDiff(-1)"
         >
           <MarIcon name="chevron-up" />
@@ -905,7 +893,6 @@ defineExpose({
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.nextChange')"
           circle
-          size="small"
           @click="moveDiff(1)"
         >
           <MarIcon name="chevron-down" />
@@ -916,7 +903,6 @@ defineExpose({
           v-if="!embedded"
           :aria-label="translate('generated.gitDiffViewer.closeDiffPreview')"
           circle
-          size="small"
           @click="emit('close')"
         >
           <MarIcon name="close" />
@@ -954,7 +940,6 @@ defineExpose({
               }"
               class="mar-tooltip-control"
               ><MarButton
-                size="small"
                 :disabled="!previewEnabled"
                 :aria-description="
                   previewEnabled
@@ -1001,7 +986,7 @@ defineExpose({
           :message="translate('generated.gitDiffViewer.gitDiffHasNoDisplayableTextContent')"
         >
           <template v-if="previewEnabled" #actions
-            ><MarButton size="small" @click="emit('preview')">{{
+            ><MarButton @click="emit('preview')">{{
               translate('generated.gitDiffViewer.openFilePreview')
             }}</MarButton></template
           >

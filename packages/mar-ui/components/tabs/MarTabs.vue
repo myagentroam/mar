@@ -11,7 +11,6 @@ type Props = {
   tabClass?: string | undefined;
   closeClass?: string | undefined;
   appearance?: 'default' | 'workbench';
-  size?: 'default' | 'small';
   activationMode?: 'manual' | 'automatic';
 } & (
   | { mode?: 'panels'; tabs?: never; modelValue: Name; idPrefix?: never }
@@ -77,7 +76,6 @@ function activate(name: Name): void {
       :tab-class="tabClass"
       :close-class="closeClass"
       :appearance="appearance ?? 'default'"
-      :size="size ?? 'default'"
       :activation-mode="activationMode ?? (mode === 'strip' ? 'manual' : 'automatic')"
       :with-panels="mode !== 'strip'"
       @activate="activate"

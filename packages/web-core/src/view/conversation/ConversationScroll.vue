@@ -328,7 +328,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="region" class="conversation-scroll-region" :class="{ 'is-empty': showEmptyPrompt }">
+  <div
+    ref="region"
+    class="conversation-scroll-region"
+    :class="{
+      'is-empty': showEmptyPrompt,
+      'is-workspace-welcome': showEmptyPrompt && emptyPrompt === 'workspace'
+    }"
+  >
     <div
       ref="element"
       class="conversation-scroll"
@@ -367,7 +374,6 @@ onBeforeUnmount(() => {
           v-tooltip="!loadingInitial && !reloading ? initialError : ''"
           :aria-description="!loadingInitial && !reloading ? initialError : undefined"
           link
-          size="small"
           native-type="button"
           :aria-disabled="loadingInitial || reloading"
           :aria-busy="loadingInitial || reloading"
@@ -404,7 +410,6 @@ onBeforeUnmount(() => {
             v-tooltip="!loadingOlder && olderAction === undefined ? olderError : ''"
             :aria-description="!loadingOlder && olderAction === undefined ? olderError : undefined"
             link
-            size="small"
             native-type="button"
             :aria-disabled="loadingOlder"
             :aria-busy="loadingOlder"
@@ -437,7 +442,6 @@ onBeforeUnmount(() => {
         v-if="showLatest"
         class="conversation-latest"
         icon="to-bottom"
-        size="small"
         round
         native-type="button"
         @click="emit('latest')"
@@ -541,6 +545,10 @@ onBeforeUnmount(() => {
     background: transparent;
   }
 
+  .conversation-scroll-region.is-workspace-welcome .conversation-scroll {
+    padding-block-end: 0;
+  }
+
   .conversation-scroll-region.is-empty .conversation-scroll-content.is-empty {
     min-height: 0;
   }
@@ -548,6 +556,11 @@ onBeforeUnmount(() => {
   .conversation-scroll-region.is-empty .conversation-empty {
     flex: none;
     padding: 0.5rem 1rem 1rem;
+  }
+
+  .conversation-scroll-region.is-workspace-welcome .conversation-empty {
+    gap: 0.5rem;
+    padding-block-end: 0.625rem;
   }
 }
 

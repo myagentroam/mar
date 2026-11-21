@@ -251,7 +251,6 @@ onBeforeUnmount(() => {
         mode="strip"
         appearance="workbench"
         class="workbench-aside-tabs"
-        size="small"
         :tabs="tabItems"
         :id-prefix="tabPrefix"
         :model-value="activeId"

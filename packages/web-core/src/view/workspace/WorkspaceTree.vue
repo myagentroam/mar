@@ -518,7 +518,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
         clearable
         :aria-label="translate('generated.workspaceTree.filterNodeWorkspaces')"
         :placeholder="translate('generated.workspaceTree.filterNodeWorkspaces')"
-        size="small"
         prefix-icon="search"
         :clear-icon="marIcon('clear-input')"
       />

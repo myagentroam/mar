@@ -13,7 +13,6 @@ const props = defineProps({
   nativeType: { type: String as PropType<'button' | 'submit'>, default: 'button' },
   tag: { type: String as PropType<'button' | 'a'>, default: 'button' },
   href: String,
-  size: String as PropType<'small' | 'default'>,
   text: Boolean,
   link: Boolean,
   plain: Boolean,
@@ -55,7 +54,6 @@ function handleClick(event: MouseEvent): void {
         'mar-ui-button--plain': plain,
         'mar-ui-button--circle': circle,
         'mar-ui-button--round': round,
-        'mar-ui-button--small': size === 'small',
         'mar-ui-button--loading-in-label': loading && !icon && $slots.default
       }
     ]"
@@ -127,14 +125,14 @@ function handleClick(event: MouseEvent): void {
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
-  min-block-size: 32px;
-  padding: 0.25rem 0.875rem;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  padding: 0.125rem 0.625rem;
   border: 1px solid var(--mar-ui-button-border);
   border-radius: var(--mar-ui-radius-control);
   background: var(--mar-ui-button-bg);
   color: var(--mar-ui-button-fg);
   font: inherit;
-  font-size: var(--mar-ui-font-size-body);
+  font-size: var(--mar-ui-font-size-meta);
   font-weight: 500;
   line-height: 1.35;
   cursor: pointer;
@@ -228,15 +226,6 @@ function handleClick(event: MouseEvent): void {
   ) {
   --mar-ui-button-border: transparent;
   --mar-ui-button-hover-border: transparent;
-}
-.mar-ui-button--small {
-  min-block-size: 24px;
-  padding: 0.125rem 0.625rem;
-  font-size: var(--mar-ui-font-size-meta);
-}
-.mar-ui-button--small.mar-ui-button--inline {
-  min-block-size: auto;
-  padding: 0;
 }
 .mar-ui-button:is(.mar-ui-button--circle, .mar-ui-button--round) {
   border-radius: 999px;

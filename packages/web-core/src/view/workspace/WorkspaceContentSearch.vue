@@ -95,7 +95,6 @@ defineExpose({
           maxlength="256"
           :placeholder="translate('generated.workspaceInspector.searchFileContents2')"
           :prefix-icon="marIcon('search')"
-          size="small"
         />
         <button
           v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
@@ -109,7 +108,7 @@ defineExpose({
         </button>
       </form>
       <div class="content-search-options">
-        <MarCheckbox v-model="contentUseRegex" size="small">{{
+        <MarCheckbox v-model="contentUseRegex">{{
           translate('generated.workspaceInspector.useRegularExpression')
         }}</MarCheckbox>
       </div>

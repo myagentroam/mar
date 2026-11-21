@@ -377,7 +377,6 @@ function submitSessionSearch(): void {
         :aria-label="translate('workspaceSessions.searchLabel')"
         :prefix-icon="marIcon('search')"
         clearable
-        size="small"
         @clear="emit('search', '')"
         :clear-icon="marIcon('clear-input')"
       />

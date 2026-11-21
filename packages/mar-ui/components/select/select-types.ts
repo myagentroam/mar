@@ -26,7 +26,6 @@ export interface MarSelectProps<
   collapseTags?: boolean;
   collapseTagsTooltip?: boolean;
   options?: readonly { readonly value: Value; readonly label: string | number }[];
-  size?: 'small' | 'default';
   loading?: boolean;
   popperClass?: string;
 }

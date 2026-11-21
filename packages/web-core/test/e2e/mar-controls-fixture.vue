@@ -79,6 +79,11 @@ const organizations = [
         <MarDescriptionsItem label="Long value"
           >SomePathWithoutSpaces/Segment/AnotherSegment</MarDescriptionsItem
         >
+        <MarDescriptionsItem label="Status">Enabled</MarDescriptionsItem>
+      </MarDescriptions>
+      <MarDescriptions :column="1" data-testid="unruled-details">
+        <MarDescriptionsItem label="Source">Local</MarDescriptionsItem>
+        <MarDescriptionsItem label="Mode">Read only</MarDescriptionsItem>
       </MarDescriptions>
     </section>
     <section aria-label="Interaction controls">

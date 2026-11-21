@@ -502,7 +502,6 @@ defineExpose({ release, toggle: toggleTerminal });
           <MarSelect
             v-model="selectedProfileId"
             :aria-label="translate('generated.terminalDock.terminalProfile2')"
-            size="small"
             :disabled="!canUseTerminal || creating"
           >
             <MarOption
@@ -520,7 +519,6 @@ defineExpose({ release, toggle: toggleTerminal });
               : translate('generated.terminalDock.expandTerminal2')
           "
           v-if="!mobileMode && !embedded"
-          size="small"
           :aria-label="
             expanded
               ? translate('generated.terminalDock.collapseTerminal')

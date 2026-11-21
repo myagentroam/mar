@@ -401,7 +401,7 @@ const app = createApp({
               })
             ]
           ),
-          h(MarButton, { icon: marIcon('edit'), size: 'small' }, () => 'Edit'),
+          h(MarButton, { icon: marIcon('edit') }, () => 'Edit'),
           h('span', { 'data-testid': 'status-icon', style: { fontSize: '11px' } }, [
             h(MarIcon, { name: 'clock' })
           ]),

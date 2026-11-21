@@ -99,12 +99,23 @@ for (const viewport of [
     await expect(statistics).toContainText(' -');
     await expect(statistics).not.toContainText('—');
     const screen = page.getByTestId('desktop-screen');
+    const quality = page.getByTestId('desktop-quality');
+    const compactHeight = viewport.width === 390 ? '24px' : '26px';
+    await expect(screen).toHaveCSS('height', compactHeight);
+    await expect(quality).toHaveCSS('height', compactHeight);
+    // Let click timestamps advance beyond the listeners attached during the paused mount.
+    await page.clock.runFor(1);
     await screen.click();
-    await expect(page.getByRole('option')).toHaveCount(1);
-    await expect(page.getByRole('option')).toHaveText(
+    const screens = page.getByRole('listbox', {
+      name: (await screen.getAttribute('aria-label'))!,
+      exact: true
+    });
+    await expect(screens.getByRole('option')).toHaveCount(1);
+    await expect(screens.getByRole('option')).toHaveText(
       viewport.width === 390 ? 'Display1（主屏）' : 'Display1 (primary)'
     );
     await screen.click();
+    await expect(screens).toBeHidden();
     await page.clock.runFor(1000);
     await expect(statistics).toContainText('24 ms');
     if (viewport.width === 1280) {

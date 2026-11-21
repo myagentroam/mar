@@ -112,7 +112,6 @@ onBeforeUnmount(props.diagnostics.dispose);
           <MarButton
             v-tooltip="t('performanceDiagnostics.copy')"
             class="mar-icon-action panel-copy"
-            size="small"
             text
             icon="copy"
             :aria-label="t('performanceDiagnostics.copy')"

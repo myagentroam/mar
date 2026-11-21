@@ -278,10 +278,10 @@ function onFocusOut(event: FocusEvent) {
   align-items: center;
   gap: 0.375rem;
   box-sizing: border-box;
-  min-block-size: 32px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   border: 1px solid var(--mar-ui-input-border);
   border-radius: var(--mar-ui-radius-control);
-  padding-inline: 0.625rem;
+  padding-inline: 0.5rem;
   background: var(--mar-ui-bg-panel);
   color: var(--mar-ui-text-secondary);
 }

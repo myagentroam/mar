@@ -67,7 +67,7 @@ async function onChange(event: Event) {
   place-items: center;
   flex: none;
   inline-size: 40px;
-  block-size: 32px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   vertical-align: middle;
 }
 .mar-ui-switch > input {

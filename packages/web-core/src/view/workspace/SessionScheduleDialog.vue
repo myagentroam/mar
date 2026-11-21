@@ -631,14 +631,12 @@ function occurrenceStatus(status: string): string {
           </p>
           <div v-if="canResolveProposals">
             <MarButton
-              size="small"
               :disabled="saving"
               :loading="pendingAction === `reject:${proposal.id}`"
               @click="resolveProposal(proposal.id, false)"
               >{{ translate('generated.scheduledSession.reject') }}</MarButton
             >
             <MarButton
-              size="small"
               type="primary"
               :disabled="saving"
               :loading="pendingAction === `accept:${proposal.id}`"

@@ -20,11 +20,25 @@ for (const [theme, width] of [
     await page.goto(`${fixture.url}mar-controls.html?theme=${theme}`);
     await expect(page.getByRole('alert')).toContainText('Changes are saved as a draft.');
     await expect(page.getByText('SomePathWithoutSpaces/Segment/AnotherSegment')).toBeVisible();
-    const details = page.locator('.mar-ui-descriptions');
-    const columns = await details.evaluate(
-      (node) => getComputedStyle(node).gridTemplateColumns.split(' ').length
-    );
-    expect(columns).toBe(width === 390 ? 1 : 2);
+    const details = page.locator('dl').filter({ hasText: 'Test fixture' });
+    const first = details.locator('.mar-ui-descriptions__item').nth(0);
+    const second = details.locator('.mar-ui-descriptions__item').nth(1);
+    const third = details.locator('.mar-ui-descriptions__item').nth(2);
+    const firstBox = (await first.boundingBox())!;
+    const secondBox = (await second.boundingBox())!;
+    await expect(first).toHaveCSS('border-block-start-width', '0px');
+    await expect(third).toHaveCSS('border-block-start-width', '1px');
+    const unruled = page.getByTestId('unruled-details').locator('.mar-ui-descriptions__item');
+    await expect(unruled.last()).toHaveCSS('border-block-start-width', '0px');
+    if (width === 390) {
+      expect(secondBox.x).toBeCloseTo(firstBox.x, 1);
+      expect(secondBox.y).toBeGreaterThan(firstBox.y);
+      await expect(second).toHaveCSS('border-block-start-width', '1px');
+    } else {
+      expect(secondBox.x).toBeGreaterThan(firstBox.x);
+      expect(secondBox.y).toBeCloseTo(firstBox.y, 1);
+      await expect(second).toHaveCSS('border-block-start-width', '0px');
+    }
     await page.getByRole('checkbox', { name: 'Read' }).check();
     await expect(page.getByRole('checkbox', { name: 'Write' })).toBeDisabled();
     await expect(page.getByLabel('Permissions value')).toHaveText('read');
@@ -53,6 +67,24 @@ for (const [theme, width] of [
     await page.screenshot({ path: testInfo.outputPath(`${theme}-${width}.png`) });
   });
 }
+
+test('MAR descriptions stack and wrap inside a narrow container on desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 930 });
+  await page.goto(`${fixture.url}mar-controls.html?theme=light`);
+  const details = page.locator('dl').filter({ hasText: 'Test fixture' });
+  await details.evaluate((element) => element.style.setProperty('inline-size', '260px'));
+  const rows = details.locator('.mar-ui-descriptions__item');
+  const first = await rows.first().boundingBox();
+  const second = await rows.nth(1).boundingBox();
+  expect(second!.x).toBeCloseTo(first!.x, 1);
+  expect(second!.y).toBeGreaterThan(first!.y);
+  await expect(rows.nth(1)).toHaveCSS('border-block-start-width', '1px');
+  const label = await rows.nth(1).locator('dt').boundingBox();
+  const value = rows.nth(1).locator('dd');
+  const valueBox = await value.boundingBox();
+  expect(valueBox!.y).toBeGreaterThanOrEqual(label!.y + label!.height);
+  expect(await value.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
 
 test('Dropdown grows toward the free space when a label expands near the right edge', async ({
   page
@@ -359,10 +391,11 @@ test('Audit requests one complete range after keyboard selection and dismissal',
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${fixture.url}management-page.html?area=audit`);
+  const audit = page.locator('.audit-management');
+  await expect(audit.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible();
   const calls = () => page.evaluate(() => window.managementPageFixture.calls());
   await expect.poll(async () => (await calls()).length).toBe(1);
   await page.evaluate(() => window.managementPageFixture.settle(0, true));
-  const audit = page.locator('.audit-management');
   const input = audit.locator('.audit-range-picker input').first();
   await input.press('ArrowDown');
   const calendar = audit.getByRole('dialog', { name: 'Calendar' });

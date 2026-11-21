@@ -18,7 +18,6 @@ const emit = defineEmits<{ retry: [] }>();
       ><MarButton
         v-if="retryable"
         link
-        size="small"
         :aria-disabled="retrying || undefined"
         :aria-busy="retrying || undefined"
         :aria-label="retrying ? translate('generated.filePreviewDialog.loadingPreview') : undefined"
