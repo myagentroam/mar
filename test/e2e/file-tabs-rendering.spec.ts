@@ -1239,19 +1239,27 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
     await expect(tabs).toHaveCount(12);
     await captureScreenshot(page, 'file-preview-overlay-390x844.png');
 
+    const background = page.locator('#file-tabs-background-action');
+    await background.evaluate((button) => button.focus());
+    await expect(background).not.toBeFocused();
     await tabs.first().focus();
-    for (let index = 0; index < 30; index += 1) {
-      await page.keyboard.press('Tab');
-      expect(await surface.evaluate((element) => element.contains(document.activeElement))).toBe(
-        true
-      );
+    for (const key of ['Tab', 'Shift+Tab']) {
+      let contentStops = 0;
+      for (let index = 0; index < 30; index += 1) {
+        await page.keyboard.press(key);
+        // Native modality can include the dialog itself or a browser-chrome stop, but not background controls.
+        const focus = await dialog.evaluate((element) => {
+          const active = document.activeElement;
+          if (active === document.body) return 'browser';
+          if (active === element) return 'dialog';
+          return element.contains(active) ? 'content' : 'outside';
+        });
+        expect(focus).not.toBe('outside');
+        if (focus === 'content') contentStops++;
+      }
+      expect(contentStops).toBeGreaterThan(1);
     }
-    for (let index = 0; index < 30; index += 1) {
-      await page.keyboard.press('Shift+Tab');
-      expect(await surface.evaluate((element) => element.contains(document.activeElement))).toBe(
-        true
-      );
-    }
+    await tabs.first().focus();
 
     await page.evaluate(() => {
       document.documentElement.dataset.fileTabsCloseAllowed = 'false';

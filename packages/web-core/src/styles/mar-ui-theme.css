@@ -33,9 +33,11 @@
   --mar-ui-font-size-body: var(--mar-font-size-body);
   --mar-ui-font-size-input: var(--mar-font-size-input);
   --mar-ui-font-size-meta: var(--mar-font-size-meta);
+  --mar-ui-font-size-navigation: var(--mar-font-size-navigation);
   --mar-ui-motion-duration-fast: var(--mar-motion-duration-fast);
   --mar-ui-radius-surface: var(--mar-radius-surface);
   --mar-ui-radius-control: var(--mar-radius-control);
+  --mar-ui-radius-selection: var(--mar-radius-selection);
   --mar-ui-input-border: var(--mar-input-border);
   --mar-ui-input-border-hover: var(--mar-input-border-hover);
   --mar-ui-loading-mask: var(--mar-overlay-scrim);

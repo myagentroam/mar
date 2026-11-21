@@ -1,83 +1,91 @@
 <script setup lang="ts" generic="Name extends TabName">
-import { Fragment, isVNode, nextTick, provide, useId, type VNode } from 'vue';
+import { Fragment, isVNode, provide, useId, type VNode } from 'vue';
 import MarTabPane from './MarTabPane.vue';
-import { tabsKey, type TabName } from './tabs-context.js';
+import MarTabsHeader from './MarTabsHeader.vue';
+import { tabsKey } from './tabs-context.js';
+import type { MarTabsTab, TabName } from './tab-types.js';
 
-const props = defineProps<{ modelValue: Name }>();
-const emit = defineEmits<{ 'update:modelValue': [name: Name]; 'tab-change': [name: Name] }>();
+type Props = {
+  label?: string | undefined;
+  itemClass?: string | undefined;
+  tabClass?: string | undefined;
+  closeClass?: string | undefined;
+  appearance?: 'default' | 'workbench';
+  size?: 'default' | 'small';
+  activationMode?: 'manual' | 'automatic';
+} & (
+  | { mode?: 'panels'; tabs?: never; modelValue: Name; idPrefix?: never }
+  | {
+      mode: 'strip';
+      tabs: readonly MarTabsTab<Name>[];
+      modelValue: Name | undefined;
+      idPrefix: string;
+    }
+);
+
+// Owns the pane declaration and model bindings; the header owns focus and scrolling.
+const props = defineProps<Props>();
+const emit = defineEmits<{
+  'update:modelValue': [name: Name];
+  'tab-change': [name: Name];
+  'tab-activate': [name: Name];
+  'tab-close': [name: Name];
+}>();
 const id = useId();
 provide(tabsKey, { id, active: () => props.modelValue });
 
 // Read the declared order at render time so conditional panes never change position.
-function panes(nodes: VNode[]): { name: Name; label: string }[] {
+function panes(nodes: VNode[]): MarTabsTab<Name>[] {
   return nodes.flatMap((node) => {
     if (node.type === Fragment && Array.isArray(node.children))
       return panes(node.children.filter(isVNode));
     if (node.type !== MarTabPane || !node.props) return [];
-    return [{ name: node.props.name as Name, label: String(node.props.label ?? '') }];
+    return [
+      {
+        name: node.props.name as Name,
+        label: String(node.props.label ?? ''),
+        description: node.props.description
+      }
+    ];
   });
 }
 
-function activate(name: Name, event: MouseEvent) {
-  const button = event.currentTarget as HTMLButtonElement;
-  if (name !== props.modelValue) {
+function activate(name: Name): void {
+  const changed = name !== props.modelValue;
+  emit('tab-activate', name);
+  if (changed) {
     emit('update:modelValue', name);
     emit('tab-change', name);
   }
-  void nextTick(() => button.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
-}
-
-function navigate(event: KeyboardEvent, index: number, count: number) {
-  const target =
-    event.key === 'ArrowLeft'
-      ? (index + count - 1) % count
-      : event.key === 'ArrowRight'
-        ? (index + 1) % count
-        : event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? count - 1
-            : undefined;
-  if (target === undefined) return;
-  const button = (event.currentTarget as HTMLElement).parentElement?.querySelectorAll('button')[
-    target
-  ];
-  if (!button) return;
-  event.preventDefault();
-  button.focus({ preventScroll: true });
-  button.click();
 }
 </script>
 
 <template>
-  <div class="mar-ui-tabs">
-    <div
-      v-for="items in [panes($slots.default?.() ?? [])]"
-      :key="id"
-      class="mar-ui-tabs__header"
-      role="tablist"
+  <div
+    class="mar-ui-tabs"
+    :class="{
+      'mar-ui-tabs--strip': mode === 'strip',
+      'mar-ui-tabs--workbench': appearance === 'workbench'
+    }"
+  >
+    <MarTabsHeader
+      :tabs="mode === 'strip' ? tabs : panes($slots.default?.() ?? [])"
+      :model-value="modelValue"
+      :id-prefix="mode === 'strip' ? idPrefix : id"
+      :label="label"
+      :item-class="itemClass"
+      :tab-class="tabClass"
+      :close-class="closeClass"
+      :appearance="appearance ?? 'default'"
+      :size="size ?? 'default'"
+      :activation-mode="activationMode ?? (mode === 'strip' ? 'manual' : 'automatic')"
+      :with-panels="mode !== 'strip'"
+      @activate="activate"
+      @close="emit('tab-close', $event)"
     >
-      <button
-        v-for="(pane, index) in items"
-        :key="pane.name"
-        :id="`${id}-tab-${pane.name}`"
-        type="button"
-        role="tab"
-        :aria-selected="pane.name === modelValue"
-        :aria-controls="`${id}-panel-${pane.name}`"
-        :tabindex="
-          pane.name === modelValue ||
-          (index === 0 && !items.some((item) => item.name === modelValue))
-            ? 0
-            : -1
-        "
-        @click="activate(pane.name, $event)"
-        @keydown="navigate($event, index, items.length)"
-      >
-        {{ pane.label }}
-      </button>
-    </div>
-    <div class="mar-ui-tabs__content"><slot /></div>
+      <template v-if="$slots.label" #label="scope"><slot name="label" v-bind="scope" /></template>
+    </MarTabsHeader>
+    <div v-if="mode !== 'strip'" class="mar-ui-tabs__content"><slot /></div>
   </div>
 </template>
 
@@ -85,38 +93,22 @@ function navigate(event: KeyboardEvent, index: number, count: number) {
 .mar-ui-tabs {
   min-inline-size: 0;
 }
-.mar-ui-tabs__header {
+.mar-ui-tabs--strip {
   display: flex;
-  margin-block-end: 0.875rem;
-  overflow-x: auto;
-  border-block-end: 1px solid var(--mar-ui-border-subtle);
+  flex: 1;
+  min-block-size: 0;
 }
-button {
-  flex: none;
-  min-block-size: 28px;
-  padding-inline: var(--mar-ui-compact-option-padding-inline);
-  border: 1px solid var(--mar-ui-border-default);
-  border-block-end: 0;
-  border-radius: var(--mar-ui-radius-control) var(--mar-ui-radius-control) 0 0;
-  background: var(--mar-ui-bg-tab-inactive, var(--mar-ui-bg-subtle));
-  color: var(--mar-ui-text-secondary);
-  font: inherit;
-  font-size: var(--mar-ui-font-size-body);
-  cursor: pointer;
+.mar-ui-tabs--strip > :first-child {
+  flex: 1;
+  min-inline-size: 0;
 }
-button + button {
-  margin-inline-start: -1px;
+.mar-ui-tabs--workbench:not(.mar-ui-tabs--strip) {
+  display: flex;
+  flex: 1;
+  min-block-size: 0;
+  flex-direction: column;
 }
-button:hover {
-  background: var(--mar-ui-fill-row-hover);
-  color: var(--mar-ui-text-primary);
-}
-button[aria-selected='true'] {
-  background: var(--mar-ui-fill-selection);
-  color: var(--mar-ui-text-primary);
-}
-button:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
-  outline-offset: -2px;
+.mar-ui-tabs--workbench > .mar-ui-tabs__content {
+  display: contents;
 }
 </style>

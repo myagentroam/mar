@@ -683,10 +683,21 @@ defineExpose({ release, toggle: toggleTerminal });
 }
 
 .terminal-tab-close {
+  --mar-action-icon-size: 14px;
   position: absolute;
+  display: grid;
   right: 3px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   align-self: center;
+  place-items: center;
   margin: 2px 0;
+  font-size: var(--mar-font-size-navigation);
+}
+
+.terminal-tab-close:focus-visible {
+  outline-offset: 1px;
 }
 
 .terminal-profile {

@@ -25,6 +25,7 @@ export default {
     previousYear: '上一年',
     nextYear: '下一年'
   },
+  tabs: { scrollPrevious: '向左浏览标签', scrollNext: '向右浏览标签' },
   table: { expand: '展开行', collapse: '收起行' },
   pagination: {
     label: '分页',

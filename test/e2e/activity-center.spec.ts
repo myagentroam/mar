@@ -278,7 +278,7 @@ test('Activity entry distinguishes all four states and caps unread counts', asyn
 
 for (const width of [1280, 390]) {
   for (const theme of ['daylight', 'vscode-dark-2026']) {
-    test(`Activity tabs share MarTab styling and preserve keyboard activation at ${width}px ${theme}`, async ({
+    test(`Activity tabs share MarTabs workbench styling and preserve keyboard activation at ${width}px ${theme}`, async ({
       page
     }, testInfo) => {
       await page.setViewportSize({ width, height: 850 });
@@ -286,7 +286,7 @@ for (const width of [1280, 390]) {
       const trigger = page.locator('.activity-center-trigger');
       await trigger.click();
       const panel = page.locator('.workbench-activity-panel:visible');
-      const tabs = panel.locator('.activity-tabs');
+      const tabs = panel.locator('.activity-tabs .mar-ui-tabs__header');
       const recent = tabs.getByRole('tab', { name: 'Recent Sessions', exact: true });
       const notifications = tabs.getByRole('tab', { name: 'Notifications', exact: true });
       await expect(notifications).toHaveAttribute('aria-selected', 'true');
@@ -403,9 +403,13 @@ for (const width of [1280, 390]) {
         expect(tabHeight).toBeCloseTo(entryHeight, 2);
         await expect(tabBadge).toBeInViewport({ ratio: 1 });
         expect(
-          await panel.locator('.activity-tabs').evaluate((tabs) => tabs.scrollWidth)
+          await panel
+            .locator('.activity-tabs .mar-ui-tabs__header')
+            .evaluate((tabs) => tabs.scrollWidth)
         ).toBeLessThanOrEqual(
-          await panel.locator('.activity-tabs').evaluate((tabs) => tabs.clientWidth)
+          await panel
+            .locator('.activity-tabs .mar-ui-tabs__header')
+            .evaluate((tabs) => tabs.clientWidth)
         );
       }
     });
@@ -482,7 +486,9 @@ for (const width of [1280, 390]) {
       await expect(panel).toBeInViewport({ ratio: 1 });
       const box = await panel.boundingBox();
       expect(box!.width).toBeGreaterThanOrEqual(240);
-      expect((await panel.locator('.activity-tabs').boundingBox())!.height).toBeLessThan(60);
+      expect(
+        (await panel.locator('.activity-tabs .mar-ui-tabs__header').boundingBox())!.height
+      ).toBeLessThan(60);
       expect(box!.x).toBeGreaterThanOrEqual(0);
       expect(box!.x + box!.width).toBeLessThanOrEqual(width);
       expect(box!.y + box!.height).toBeLessThanOrEqual(850);

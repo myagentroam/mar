@@ -1,4 +1,4 @@
 import type { InjectionKey } from 'vue';
-export type TabName = string | number;
+import type { TabName } from './tab-types.js';
 export const tabsKey: InjectionKey<{ id: string; active(): TabName | undefined }> =
   Symbol('mar-ui-tabs');

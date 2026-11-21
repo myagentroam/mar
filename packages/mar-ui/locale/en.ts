@@ -25,6 +25,7 @@ export default {
     previousYear: 'Previous year',
     nextYear: 'Next year'
   },
+  tabs: { scrollPrevious: 'Browse previous tabs', scrollNext: 'Browse next tabs' },
   table: { expand: 'Expand row', collapse: 'Collapse row' },
   pagination: {
     label: 'Pagination',
