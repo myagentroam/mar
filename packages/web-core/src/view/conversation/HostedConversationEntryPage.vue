@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { HostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
 import type { createHostedConversationWorkspaceService } from '../../service/hosted-conversation-workspace-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -22,14 +22,12 @@ const emit = defineEmits<{
 const service = props.entry;
 const templatesLoading = ref(false);
 const templateReadFailed = ref(false);
-const modelsLoading = ref(false);
-const modelsFailed = ref(false);
 let loadSequence = 0;
-let modelLoadSequence = 0;
 
 async function load(): Promise<void> {
   if (templatesLoading.value) return;
   const sequence = ++loadSequence;
+  const templateId = service.selectedTemplateId.value;
   templatesLoading.value = true;
   templateReadFailed.value = false;
   try {
@@ -42,37 +40,38 @@ async function load(): Promise<void> {
   } finally {
     if (sequence === loadSequence) templatesLoading.value = false;
   }
-  if (sequence === loadSequence) void loadModels();
+  if (
+    sequence === loadSequence &&
+    templateId !== undefined &&
+    service.selectedTemplateId.value === templateId
+  )
+    void service.loadModelOptions();
 }
 
-async function loadModels(): Promise<void> {
-  const sequence = ++modelLoadSequence;
-  modelsLoading.value = service.selectedTemplateId.value !== undefined;
-  modelsFailed.value = false;
-  try {
-    await service.loadModelOptions();
-  } catch {
-    if (sequence !== modelLoadSequence) return;
-    modelsFailed.value = true;
-  } finally {
-    if (sequence === modelLoadSequence) modelsLoading.value = false;
-  }
-}
 function refreshTemplatesOnOpen(visible: boolean): void {
   if (visible) void load();
 }
 
 function refreshModelsOnOpen(visible: boolean): void {
-  if (visible) void loadModels();
+  if (visible) void service.loadModelOptions();
 }
 
+function loadModelsForSelection(): void {
+  if (
+    service.selectedTemplateId.value !== undefined &&
+    !service.modelOptionsLoaded.value &&
+    service.modelOptionsReadState.value === 'idle'
+  )
+    void service.loadModelOptions();
+}
+
+watch(service.selectedTemplateId, loadModelsForSelection);
 onMounted(() => {
   if (service.templates.value.length === 0) void load();
-  else if (!service.modelOptionsLoaded.value) void loadModels();
+  else loadModelsForSelection();
 });
 onBeforeUnmount(() => {
   loadSequence++;
-  modelLoadSequence++;
 });
 </script>
 
@@ -95,8 +94,8 @@ onBeforeUnmount(() => {
         :reload-models="refreshModelsOnOpen"
         :draft-templates-loading="templatesLoading"
         :draft-templates-failed="templateReadFailed"
-        :draft-models-loading="modelsLoading"
-        :draft-models-failed="modelsFailed"
+        :draft-models-loading="service.modelOptionsReadState.value === 'loading'"
+        :draft-models-failed="service.modelOptionsReadState.value === 'failed'"
         @started="emit('started')"
       />
     </div>

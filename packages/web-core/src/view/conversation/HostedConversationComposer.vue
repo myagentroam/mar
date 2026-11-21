@@ -76,7 +76,9 @@ let disposed = false;
 const templatesLoading = ref(false);
 const templatesFailed = ref(false);
 const menuTemplatesLoading = computed(() =>
-  props.draft ? props.draftTemplatesLoading && !draftTemplates.value.length : templatesLoading.value
+  props.draft
+    ? props.draftTemplatesLoading && draftTemplates.value.length === 0
+    : templatesLoading.value && existingTemplates.value.length === 0
 );
 const menuTemplatesFailed = computed(() =>
   props.draft ? props.draftTemplatesFailed : templatesFailed.value

@@ -1515,13 +1515,13 @@ onBeforeUnmount(() => {
 .hosted-conversation-files {
   min-width: 0;
   min-height: 0;
-  background: var(--mar-bg-panel);
 }
 
 .hosted-conversation-history,
 .hosted-conversation-files {
   display: flex;
   flex-direction: column;
+  background: var(--mar-bg-panel);
 }
 
 .hosted-conversation-history[hidden],
@@ -1759,6 +1759,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--mar-conversation-canvas);
 }
 
 .conversation-draft {
@@ -1766,7 +1767,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
-  background: var(--mar-bg-panel);
 }
 
 .readonly-alert,
