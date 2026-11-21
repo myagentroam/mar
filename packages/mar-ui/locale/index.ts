@@ -28,6 +28,7 @@ export interface MarUiLocale {
     readonly previousYear: string;
     readonly nextYear: string;
   };
+  readonly tabs: { readonly scrollPrevious: string; readonly scrollNext: string };
   readonly table: {
     readonly expand: string;
     readonly collapse: string;

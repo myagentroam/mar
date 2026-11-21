@@ -83,7 +83,6 @@ export const commonMessages = {
     composerReference: composerEnUS.composerReference,
     composerSend: composerEnUS.composerSend,
     workspaceTabs: workbenchShellEnUS.workspaceTabs,
-    marTab: workbenchShellEnUS.marTab,
     settings: { ...fileNavigationEnUS.settings, ...personalSettingsEnUS.settings },
     workspaceDisplayFilter: {
       ...fileNavigationEnUS.workspaceDisplayFilter,
@@ -211,7 +210,6 @@ export const commonMessages = {
     composerReference: composerZhCN.composerReference,
     composerSend: composerZhCN.composerSend,
     workspaceTabs: workbenchShellZhCN.workspaceTabs,
-    marTab: workbenchShellZhCN.marTab,
     settings: { ...fileNavigationZhCN.settings, ...personalSettingsZhCN.settings },
     workspaceDisplayFilter: {
       ...fileNavigationZhCN.workspaceDisplayFilter,

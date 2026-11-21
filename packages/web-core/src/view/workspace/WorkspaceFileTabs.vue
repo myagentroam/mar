@@ -2,8 +2,7 @@
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { fileKeys } from '../../service/console-shortcut-keys.js';
-import MarTab from '../common/MarTab.vue';
-import { tabStripIdentity } from '../../util/tab-strip-identity.js';
+import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';
 import {
   consoleKeyboardShortcutService,
   type ConsoleShortcutBinding
@@ -299,25 +298,28 @@ defineExpose({
       :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
     >
       <header class="workspace-file-tab-header mar-tab-header">
-        <MarTab
+        <!-- @vue-generic {number} -->
+        <MarTabs
+          mode="strip"
+          appearance="workbench"
           class="workspace-file-tab-list"
           :id-prefix="tabPrefix"
-          :items="
+          :tabs="
             props.tabs.map((tab) => ({
-              id: tab.id,
+              name: tab.id,
               label: tab.fileName,
               description: tab.path,
               closeLabel: translate('generated.filePreviewDialog.closePreview'),
               closeDisabled: closing
             }))
           "
-          :active-id="activeTab?.id"
+          :model-value="activeTab?.id"
           :label="translate('generated.filePreviewDialog.filePreviewTabs')"
           item-class="workspace-file-tab"
           tab-class="workspace-file-tab-activate"
           close-class="workspace-file-tab-close"
-          @activate="(id) => typeof id === 'number' && activate(id)"
-          @close="(id) => typeof id === 'number' && requestClose(id)"
+          @tab-activate="activate"
+          @tab-close="requestClose"
         />
         <button
           v-tooltip="translate('filePreviewDialog.closeFileWindow')"

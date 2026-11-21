@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import MarTab from '../common/MarTab.vue';
 import PanelResizeHandle from './PanelResizeHandle.vue';
 import MarIcon from '../common/MarIcon.vue';
-import { tabStripIdentity } from '../../util/tab-strip-identity.js';
+import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';
 import {
   consoleKeyboardShortcutService,
   type ConsoleShortcutBinding
@@ -48,7 +47,15 @@ const emit = defineEmits<{
 }>();
 const element = ref<HTMLElement>();
 const tabPrefix = `aside-${useId()}`;
-const entries = computed(() => [
+type AsideTab = {
+  id: string;
+  label: string;
+  active: boolean;
+  target: AsideTarget;
+  closeLabel?: string;
+  separatorBefore?: boolean;
+};
+const entries = computed<AsideTab[]>(() => [
   ...props.tools
     .filter((tool) => props.state.tools.includes(tool.id))
     .map((tool) => ({
@@ -83,6 +90,14 @@ const entries = computed(() => [
       ]
     : [])
 ]);
+const tabItems = computed(() =>
+  entries.value.map(({ id, label, closeLabel, separatorBefore }) => ({
+    name: id,
+    label,
+    closeLabel,
+    separatorBefore
+  }))
+);
 const activeId = computed(() => {
   const target = props.state.active;
   return target?.kind === 'tool'
@@ -230,26 +245,28 @@ onBeforeUnmount(() => {
       >
         <MarIcon name="chevron-left" />
       </button>
-      <MarTab
+      <MarTabs
+        mode="strip"
+        appearance="workbench"
         class="workbench-aside-tabs"
         size="small"
-        :items="entries"
+        :tabs="tabItems"
         :id-prefix="tabPrefix"
-        :active-id="activeId"
+        :model-value="activeId"
         :label="tabLabel"
-        @activate="activate"
-        @close="close"
+        @tab-activate="activate"
+        @tab-close="close"
       >
-        <template #label="{ item }">
-          <span class="workbench-aside-label mar-tab-label">{{ item.label }}</span>
+        <template #label="{ tab }">
+          <span class="workbench-aside-label mar-tab-label">{{ tab.label }}</span>
           <span
-            v-if="entries.find((entry) => entry.id === item.id)?.active"
+            v-if="entries.find((entry) => entry.id === tab.name)?.active"
             class="workbench-aside-activity mar-session-activity running"
             aria-hidden="true"
             ><i />
           </span>
         </template>
-      </MarTab>
+      </MarTabs>
     </header>
     <div class="workbench-aside-content">
       <div

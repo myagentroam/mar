@@ -41,6 +41,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const option = inspector.locator('.content-search-options');
     const label = option.getByText('Use regular expression', { exact: true });
     const input = inspector.locator('.content-search-toolbar .mar-ui-input');
+    const search = inspector.getByRole('button', { name: 'Run content search', exact: true });
     await expect(checkbox).not.toBeChecked();
     await expect(checkbox).toHaveCSS('appearance', 'none');
     await expect(checkbox).toHaveCSS(
@@ -57,10 +58,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(checkbox).toBeChecked();
     await expect(option.locator('svg')).toBeVisible();
     await option.screenshot({ path: testInfo.outputPath('regex-checked.png') });
+    await input.getByRole('textbox').press('Tab');
+    await expect(search).toBeFocused();
     await page.keyboard.press('Tab');
-    await page.keyboard.press('Shift+Tab');
     await expect(checkbox).toBeFocused();
     await expect(checkbox).toHaveCSS('outline-style', 'solid');
+    const form = inspector.locator('.content-search form');
+    await form.evaluate((element) => {
+      element.addEventListener('submit', () => element.setAttribute('data-submitted', 'true'), {
+        once: true
+      });
+    });
+    await page.keyboard.press('Enter');
+    expect(await form.getAttribute('data-submitted')).toBeNull();
+    await expect(checkbox).toBeChecked();
     await page.keyboard.press('Space');
     await expect(checkbox).not.toBeChecked();
     await page.emulateMedia({ forcedColors: 'active' });
@@ -469,6 +480,9 @@ for (const width of [1280, 390]) {
     const terminal = page.getByRole('region', { name: 'Terminal fixture' });
     const add = terminal.getByRole('button', { name: 'New terminal', exact: true });
     await expect(terminal.getByRole('tab', { name: 'Terminal 1', exact: true })).toBeVisible();
+    await expect(terminal.getByRole('heading', { name: 'Terminal', exact: true })).toHaveCount(0);
+    await expect(terminal.getByRole('region', { name: 'Terminal', exact: true })).toBeVisible();
+    await expect(terminal.getByRole('tablist', { name: 'Terminal list' })).toBeVisible();
     for (const count of [1, 2]) {
       await terminal.getByRole('button', { name: 'Close terminal 1', exact: true }).click();
       await expect(terminal.getByRole('tab')).toHaveCount(0);
@@ -1663,6 +1677,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect((await strip.boundingBox())!.height).toBeGreaterThan(24);
       await expect(strip).toHaveCSS('overflow-x', 'auto');
       const terminal = page.getByRole('region', { name: 'Terminal fixture' });
+      await expect(terminal.getByRole('heading', { name: 'Terminal', exact: true })).toBeVisible();
       await terminal.getByRole('button', { name: 'Expand terminal', exact: true }).click();
       await terminal.locator('.terminal-tab-add').click();
       await expect(terminal.getByRole('tab', { name: 'Terminal 1', exact: true })).toHaveAttribute(

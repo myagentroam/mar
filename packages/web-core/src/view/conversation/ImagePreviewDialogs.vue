@@ -139,8 +139,6 @@ watch(
 :global(.attachment-preview-dialog .mar-ui-dialog__close) {
   width: 32px;
   height: 32px;
-  top: calc(0.5rem + env(safe-area-inset-top, 0px));
-  right: calc(0.5rem + env(safe-area-inset-right, 0px));
 }
 :global(.attachment-preview-dialog .mar-ui-dialog__title) {
   display: block;

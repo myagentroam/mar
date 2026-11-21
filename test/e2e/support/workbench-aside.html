@@ -11,10 +11,17 @@
       import { computed, defineComponent, h, onMounted, ref } from 'vue';
       import { createTooltipApp as createApp } from '/packages/web-core/test/e2e/tooltip-app.ts';
       import '/packages/web-core/src/styles.css';
+      import { marUiLocaleKey } from '/packages/mar-ui/locale/index.ts';
+      import en from '/packages/mar-ui/locale/en.ts';
+      import zhCn from '/packages/mar-ui/locale/zh-cn.ts';
+      import { localePreferenceService } from '/packages/web-core/src/service/locale-preference-service.ts';
       import WorkbenchAside from '/packages/web-core/src/view/workbench/WorkbenchAside.vue';
       import WorkspaceHtmlBrowser from '/packages/web-core/src/view/workspace/WorkspaceHtmlBrowser.vue';
-      import MarTab from '/packages/web-core/src/view/common/MarTab.vue';
-      import { tabStripIdentity } from '/packages/web-core/src/util/tab-strip-identity.ts';
+      import {
+        MarTabs,
+        MarTabPane,
+        tabStripIdentity
+      } from '/packages/mar-ui/components/tabs/index.ts';
       import { createWorkbenchAsideService } from '/packages/web-core/src/service/workbench-aside-service.ts';
       import { consoleKeyboardShortcutService } from '/packages/web-core/src/service/console-keyboard-shortcut-service.ts';
       import { workspaceKeys } from '/packages/web-core/src/service/console-shortcut-keys.ts';
@@ -92,12 +99,13 @@
               [
                 `Tool ${props.tool}`,
                 h('input', { 'aria-label': 'Inspector draft' }),
-                h(MarTab, {
-                  idPrefix: `nested-${props.tool}`,
-                  label: 'Nested tabs',
-                  items: [{ id: 'content', label: 'Content' }],
-                  activeId: 'content'
-                })
+                h(
+                  MarTabs,
+                  { label: 'Nested tabs', appearance: 'workbench', modelValue: 'content' },
+                  {
+                    default: () => h(MarTabPane, { name: 'content', label: 'Content' })
+                  }
+                )
               ]
             );
         }
@@ -122,11 +130,14 @@
       createApp({
         setup() {
           const state = computed(() => aside.current(workspace));
-          const genericActive = ref('a');
+          const genericActive = ref(
+            new URLSearchParams(location.search).has('unselected') ? undefined : 'a'
+          );
+          const changes = ref(0);
           const genericItems = [
-            { id: 'a', label: 'One', closeLabel: 'Close One' },
-            { id: 'b', label: 'Disabled', disabled: true },
-            { id: 'c', label: 'Last', closeLabel: 'Close Last' }
+            { name: 'a', label: 'One', closeLabel: 'Close One' },
+            { name: 'b', label: 'Disabled', disabled: true },
+            { name: 'c', label: 'Last', closeLabel: 'Close Last' }
           ];
           const closed = ref('');
           const activations = ref(0);
@@ -209,35 +220,50 @@
               }
             ),
             h('div', { style: { width: '160px' } }, [
-              h(MarTab, {
-                items: genericItems,
+              h(MarTabs, {
+                mode: 'strip',
+                appearance: 'workbench',
+                tabs: genericItems,
                 idPrefix: 'generic-tabs',
-                activeId: genericActive.value,
+                modelValue: genericActive.value,
                 label: 'Generic tabs',
-                onActivate: (id) => {
+                onTabActivate: (id) => {
                   genericActive.value = id;
                   activations.value++;
                 },
-                onClose: (id) => (closed.value = id)
+                onTabChange: () => changes.value++,
+                onTabClose: (id) => (closed.value = id)
               }),
               ...genericItems.map((item) =>
                 h(
                   'div',
                   {
-                    id: tabStripIdentity('generic-tabs', item.id).panel,
+                    id: tabStripIdentity('generic-tabs', item.name).panel,
                     role: 'tabpanel',
-                    'aria-labelledby': tabStripIdentity('generic-tabs', item.id).tab,
-                    style: { display: genericActive.value === item.id ? '' : 'none' }
+                    'aria-labelledby': tabStripIdentity('generic-tabs', item.name).tab,
+                    style: { display: genericActive.value === item.name ? '' : 'none' }
                   },
                   item.label
                 )
               )
             ]),
+            new URLSearchParams(location.search).has('external-selection') &&
+              h(
+                'button',
+                { onClick: () => (genericActive.value = 'a') },
+                'Select first externally'
+              ),
             h('output', { id: 'closed' }, closed.value),
-            h('output', { id: 'activations' }, activations.value)
+            h('output', { id: 'activations' }, activations.value),
+            h('output', { id: 'changes' }, changes.value)
           ];
         }
-      }).mount('#app');
+      })
+        .provide(
+          marUiLocaleKey,
+          computed(() => (localePreferenceService().locale.value === 'zh-CN' ? zhCn : en))
+        )
+        .mount('#app');
     </script>
   </body>
 </html>

@@ -1,3 +1,4 @@
+import { marUiTooltipDirectiveKey } from '@myagentroam/mar-ui/tooltip';
 import type { ObjectDirective, Plugin } from 'vue';
 import {
   TOOLTIP_SERVICE_KEY,
@@ -15,6 +16,7 @@ export const tooltipPlugin: Plugin = {
     };
     app.provide(TOOLTIP_SERVICE_KEY, service);
     app.directive('tooltip', directive);
+    app.provide(marUiTooltipDirectiveKey, directive);
     app.onUnmount(service.close);
   }
 };

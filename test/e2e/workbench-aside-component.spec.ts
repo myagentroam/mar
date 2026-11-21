@@ -562,7 +562,9 @@ for (const [language, theme, width] of [
       await expect(files).toHaveAttribute('aria-selected', 'true');
       await expect(files.locator('..')).toHaveCSS('background-color', colors.selectedTab);
       await expect(session.locator('..')).toHaveCSS('background-color', colors.inactiveTab);
-      const nestedTab = aside.locator('#nested-files-tablist .mar-tab-strip-item');
+      const nestedTab = aside
+        .getByTestId('tool-files')
+        .locator('[role="tablist"][aria-label="Nested tabs"] .mar-tab-strip-item');
       await expect(nestedTab).toHaveCount(1);
       await expect(nestedTab).toHaveCSS('border-top-color', colors.tabBorder);
       await page.locator('.workbench-aside').screenshot({
@@ -577,7 +579,7 @@ for (const [language, theme, width] of [
 }
 
 for (const width of [1280, 390]) {
-  test(`MarTab overflow stays compact and navigable at ${width}px`, async ({
+  test(`MarTabs strip overflow stays compact and navigable at ${width}px`, async ({
     browser,
     browserName
   }) => {
@@ -604,7 +606,7 @@ for (const width of [1280, 390]) {
           `${fixture.url}workbench-aside.html?active-child&long-title=en&theme=${theme}${width < 768 ? '&mobile' : ''}${theme === 'custom' ? '&ui-locale=zh-CN' : ''}`
         );
         const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
-        const host = page.locator('.workbench-aside-tabs');
+        const host = page.locator('.workbench-aside-tabs .mar-ui-tabs__header');
         const selected = tabs.getByRole('tab', { name: /A long readable/ });
         await expect(selected).toHaveAttribute('aria-selected', 'true');
         await expect(tabs).toHaveCSS('scrollbar-width', 'none');
@@ -769,7 +771,9 @@ test('Aside uses shared tabs for tool, session and stable Terminal surfaces', as
   }
 });
 
-test('MarTab skips disabled tabs and exposes close intent independently', async ({ page }) => {
+test('MarTabs strip skips disabled tabs and exposes close intent independently', async ({
+  page
+}) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
   try {
     await page.goto(`${fixture.url}workbench-aside.html`);
@@ -794,6 +798,59 @@ test('MarTab skips disabled tabs and exposes close intent independently', async 
     await tabs.getByRole('button', { name: 'Close Last' }).click();
     await expect(page.locator('#closed')).toHaveText('c');
     await expect(tabs.getByRole('tab', { name: 'One' })).toHaveAttribute('aria-selected', 'true');
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('MarTabs strip links external panels and distinguishes activation from selection', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+  try {
+    await page.goto(`${fixture.url}workbench-aside.html?unselected`);
+    const strip = page.getByRole('tablist', { name: 'Generic tabs' });
+    const one = strip.getByRole('tab', { name: 'One' });
+    await expect(one).toHaveAttribute('tabindex', '0');
+    await expect(strip.getByRole('tab', { selected: true })).toHaveCount(0);
+    await expect(page.getByRole('tabpanel', { name: 'One' })).toHaveCount(0);
+    await one.click();
+    const panel = page.getByRole('tabpanel', { name: 'One' });
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveAttribute('id', (await one.getAttribute('aria-controls'))!);
+    await expect(panel).toHaveAttribute('aria-labelledby', (await one.getAttribute('id'))!);
+    expect(
+      await strip.evaluate((node) => node.closest('.mar-ui-tabs')?.nextElementSibling?.role)
+    ).toBe('tabpanel');
+    await one.click();
+    await expect(page.locator('#activations')).toHaveText('2');
+    await expect(page.locator('#changes')).toHaveText('1');
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('MarTabs strip keeps the focused tab visible during external selection', async ({ page }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+  try {
+    await page.goto(`${fixture.url}workbench-aside.html?external-selection`);
+    const strip = page.getByRole('tablist', { name: 'Generic tabs' });
+    const first = strip.getByRole('tab', { name: 'One' });
+    const last = strip.getByRole('tab', { name: 'Last' });
+    await first.focus();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await expect(last).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+
+    const external = page.getByRole('button', { name: 'Select first externally' });
+    await external.evaluate((el: HTMLButtonElement) => el.click()); // Select without moving focus.
+    await expect(first).toHaveAttribute('aria-selected', 'true');
+    await expect(last).toBeFocused();
+    await expect(last).toBeInViewport({ ratio: 0.99 });
+
+    await external.focus();
+    await expect(first).toHaveAttribute('tabindex', '0');
   } finally {
     await fixture.close();
   }

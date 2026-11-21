@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useId } from 'vue';
-import MarTab from '../common/MarTab.vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
+import { MarTabs, MarTabPane } from '@myagentroam/mar-ui/tabs';
 import type { SessionGroup } from '@myagentroam/protocol';
 import type {
   WorkbenchNotification,
@@ -15,7 +15,6 @@ import {
   recentRunTimeReference
 } from '../../util/notification-presentation.js';
 import { formatDateTime } from '../../util/time-presentation.js';
-import { tabStripIdentity } from '../../util/tab-strip-identity.js';
 import WorkbenchRecentSessionList from './WorkbenchRecentSessionList.vue';
 import WorkbenchNotificationList from './WorkbenchNotificationList.vue';
 
@@ -36,15 +35,6 @@ const emit = defineEmits<{
   cancelUpload: [task: WorkspaceUploadTask];
   removeUpload: [task: WorkspaceUploadTask];
 }>();
-const tabPrefix = `activity-${useId()}`;
-const tabs = computed(() => [
-  { id: 'recent-sessions', label: translate('workbenchNotificationCenter.recentSessions') },
-  {
-    id: 'notifications',
-    label: translate('generated.workbenchNotificationCenter.notifications'),
-    description: translate('activityCenter.unreadCount', { count: props.service.unreadCount.value })
-  }
-]);
 const visibleRuns = computed(() =>
   props.service.recentRuns.value.filter(
     (run) => (run.sessionGroup ?? 'MAIN') === props.sessionGroup
@@ -65,9 +55,6 @@ function runTime(run: RecentRun): string {
     startedAt: formatDateTime(run.startedAt)
   });
 }
-function activate(id: string | number): void {
-  if (id === 'recent-sessions' || id === 'notifications') emit('update:page', id);
-}
 </script>
 
 <template>
@@ -76,67 +63,61 @@ function activate(id: string | number): void {
     :class="{ 'mobile-mode': mobileMode }"
     :aria-label="translate('activityCenter.title')"
   >
-    <MarTab
-      class="activity-tabs mar-tab-header"
+    <MarTabs
+      class="activity-tabs"
+      appearance="workbench"
       size="small"
-      activation-mode="automatic"
-      :items="tabs"
-      :active-id="page"
-      :id-prefix="tabPrefix"
+      :model-value="page"
       :label="translate('activityCenter.title')"
-      @activate="activate"
+      @update:model-value="emit('update:page', $event)"
     >
-      <template #label="{ item }">
-        <span class="mar-tab-label">{{ item.label }}</span>
+      <template #label="{ tab }">
+        <span class="mar-tab-label">{{ tab.label }}</span>
         <span
-          v-if="item.id === 'notifications' && service.unreadCount.value > 0"
+          v-if="tab.name === 'notifications' && service.unreadCount.value > 0"
           class="activity-unread-count mar-activity-count-badge"
           aria-hidden="true"
           >{{ service.unreadCount.value > 99 ? '99+' : service.unreadCount.value }}</span
         >
       </template>
-    </MarTab>
-    <div
-      v-show="page === 'recent-sessions'"
-      class="activity-tabpanel activity-recent-content"
-      role="tabpanel"
-      :id="tabStripIdentity(tabPrefix, 'recent-sessions').panel"
-      :aria-labelledby="tabStripIdentity(tabPrefix, 'recent-sessions').tab"
-      :aria-label="translate('workbenchNotificationCenter.recentSessions')"
-    >
-      <template v-if="page === 'recent-sessions'">
-        <p class="activity-running-count">
-          {{ translate('activityCenter.runningCount', { count: activeCount }) }}
-        </p>
-        <WorkbenchRecentSessionList
-          :runs="visibleRuns"
-          :has-unread-session="service.hasUnreadSession"
-          :session-group="sessionGroup"
-          :mobile-mode="mobileMode"
-          :run-time="runTime"
-          @select-group="emit('update:sessionGroup', $event)"
-          @open-recent-run="emit('openRecentRun', $event)"
+      <MarTabPane
+        name="recent-sessions"
+        :label="translate('workbenchNotificationCenter.recentSessions')"
+        class="activity-tabpanel activity-recent-content"
+      >
+        <template v-if="page === 'recent-sessions'">
+          <p class="activity-running-count">
+            {{ translate('activityCenter.runningCount', { count: activeCount }) }}
+          </p>
+          <WorkbenchRecentSessionList
+            :runs="visibleRuns"
+            :has-unread-session="service.hasUnreadSession"
+            :session-group="sessionGroup"
+            :mobile-mode="mobileMode"
+            :run-time="runTime"
+            @select-group="emit('update:sessionGroup', $event)"
+            @open-recent-run="emit('openRecentRun', $event)"
+          />
+        </template>
+      </MarTabPane>
+      <MarTabPane
+        name="notifications"
+        :label="translate('generated.workbenchNotificationCenter.notifications')"
+        :description="translate('activityCenter.unreadCount', { count: service.unreadCount.value })"
+        class="activity-tabpanel activity-notification-content"
+      >
+        <WorkbenchNotificationList
+          v-if="page === 'notifications'"
+          :service="service"
+          :uploads="uploads"
+          :status-label="statusLabel"
+          @open-notification="emit('openNotification', $event)"
+          @retry-upload="emit('retryUpload', $event)"
+          @cancel-upload="emit('cancelUpload', $event)"
+          @remove-upload="emit('removeUpload', $event)"
         />
-      </template>
-    </div>
-    <div
-      v-show="page === 'notifications'"
-      class="activity-tabpanel activity-notification-content"
-      role="tabpanel"
-      :id="tabStripIdentity(tabPrefix, 'notifications').panel"
-      :aria-labelledby="tabStripIdentity(tabPrefix, 'notifications').tab"
-    >
-      <WorkbenchNotificationList
-        v-if="page === 'notifications'"
-        :service="service"
-        :uploads="uploads"
-        :status-label="statusLabel"
-        @open-notification="emit('openNotification', $event)"
-        @retry-upload="emit('retryUpload', $event)"
-        @cancel-upload="emit('cancelUpload', $event)"
-        @remove-upload="emit('removeUpload', $event)"
-      />
-    </div>
+      </MarTabPane>
+    </MarTabs>
   </section>
 </template>
 
@@ -156,9 +137,6 @@ function activate(id: string | number): void {
 .workbench-activity-panel:not(.mobile-mode) {
   border-radius: inherit;
   overflow: clip;
-}
-.activity-tabs {
-  flex: none;
 }
 .activity-tabpanel {
   display: flex;

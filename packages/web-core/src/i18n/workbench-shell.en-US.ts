@@ -1,8 +1,4 @@
 export const workbenchShellEnUS = {
-  marTab: {
-    scrollPrevious: 'Browse previous tabs',
-    scrollNext: 'Browse next tabs'
-  },
   generated: {
     workbenchAside: {
       tabs: 'Workspace tools and sessions',

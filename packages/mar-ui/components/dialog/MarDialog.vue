@@ -385,7 +385,7 @@ defineExpose({ handleClose, panel });
 }
 .mar-ui-dialog__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   flex: none;
@@ -403,6 +403,7 @@ defineExpose({ handleClose, panel });
   font-weight: 500;
 }
 .mar-ui-dialog__close {
+  align-self: flex-start;
   flex: none;
   min-inline-size: 32px;
   aspect-ratio: 1;

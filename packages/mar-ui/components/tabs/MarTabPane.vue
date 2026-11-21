@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { inject } from 'vue';
-import { tabsKey, type TabName } from './tabs-context.js';
-defineProps<{ name: TabName; label: string }>();
+import { tabsKey } from './tabs-context.js';
+import { tabStripIdentity, type TabName } from './tab-types.js';
+
+defineProps<{ name: TabName; label: string; description?: string | undefined }>();
 const tabs = inject(tabsKey, undefined);
 </script>
 
@@ -9,8 +11,8 @@ const tabs = inject(tabsKey, undefined);
   <div
     class="mar-ui-tab-pane"
     role="tabpanel"
-    :id="`${tabs?.id}-panel-${name}`"
-    :aria-labelledby="`${tabs?.id}-tab-${name}`"
+    :id="tabs && tabStripIdentity(tabs.id, name).panel"
+    :aria-labelledby="tabs && tabStripIdentity(tabs.id, name).tab"
     :hidden="tabs?.active() !== name"
   >
     <slot />
