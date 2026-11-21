@@ -67,7 +67,6 @@ function runTime(run: RecentRun): string {
     <MarTabs
       class="activity-tabs"
       appearance="workbench"
-      size="small"
       :model-value="page"
       :label="translate('activityCenter.title')"
       @update:model-value="emit('update:page', $event)"

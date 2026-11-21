@@ -543,7 +543,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           <p role="status">
             {{ translate('generated.workbenchSurface.nodeListUnavailable') }}
           </p>
-          <MarButton ref="startupRetry" size="small" @click="retryWorkspaceStartup">
+          <MarButton ref="startupRetry" @click="retryWorkspaceStartup">
             {{ translate('common.retry') }}
           </MarButton>
         </div>
@@ -638,7 +638,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             <MarButton
               class="workspace-recovery-retry"
               link
-              size="small"
               :aria-busy="workspaceRecoveryRetrying || undefined"
               :aria-disabled="workspaceRecoveryRetrying || undefined"
               :aria-label="workspaceRecoveryRetrying ? translate('common.loading') : undefined"

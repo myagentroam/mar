@@ -118,7 +118,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
               >{{ translate('sessionGroups.unread') }}</span
             >
           </span>
-          <MarTag size="small" :type="runStatusType(run)">{{
+          <MarTag :type="runStatusType(run)">{{
             translate(RUN_STATUS_KEYS[runDisplayStatus(run)])
           }}</MarTag>
           <small v-tooltip="run.userMessage">{{ run.userMessage }}</small>

@@ -458,7 +458,7 @@ test('Account security shows at most five redacted login sessions', async ({ pag
   const updatePassword = page.getByRole('button', { name: '修改密码' });
   await expect(updatePassword).toBeEnabled();
   const logout = page.getByRole('button', { name: '退出登录' });
-  await expect(logout).not.toHaveClass(/mar-ui-button--small/);
+  await expect(logout).toHaveCSS('min-block-size', '26px');
   await expect(page.locator('.account-actions')).toHaveCSS('border-top-width', '1px');
   await updatePassword.click();
   await expect(page.getByRole('dialog', { name: '修改密码' })).toBeVisible();

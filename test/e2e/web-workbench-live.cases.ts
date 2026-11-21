@@ -646,7 +646,10 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
   );
 
   await page.goto('/console');
-  await page.getByRole('button', { name: '进入控制台' }).click();
+  const enterConsole = page.getByRole('button', { name: '进入控制台' });
+  await expect(page.locator('.auth-form .mar-ui-input').first()).toHaveCSS('height', '34px');
+  await expect(enterConsole).toHaveCSS('height', '34px');
+  await enterConsole.click();
   const notificationButton = page.getByRole('button', { name: '会话与通知', exact: true });
   await expect(notificationButton.locator('.activity-entry-count')).toHaveText('1');
   const badgePosition = await notificationButton.evaluate((button) => {
@@ -911,12 +914,6 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#dce3ea');
   await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#e7ecf2');
   await expect(page.getByRole('button', { name: '进入控制台' })).toHaveClass(/mar-ui-button/);
-  await expect(page.getByRole('button', { name: '进入控制台' })).not.toHaveClass(
-    /mar-ui-button--small/
-  );
-  await expect(page.locator('.auth-form .mar-ui-input').first()).not.toHaveClass(
-    /mar-ui-input--small/
-  );
   await expect(page.locator('.gate-panel')).toHaveCSS('border-radius', '8px');
   await expect(page.locator('.gate-panel')).toHaveCSS('box-shadow', 'none');
   await expect(page.locator('.auth-form .mar-ui-input').first()).toHaveCSS('min-height', '34px');

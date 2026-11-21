@@ -200,7 +200,6 @@ function selectFiles(event: Event): void {
           :aria-label="translate('common.runner')"
           class="composer-runner-select"
           popper-class="composer-mini-popper composer-runner-popper"
-          size="small"
           :disabled="runnerLoading || runnerDisabled"
           :loading="runnerLoading"
           @change="emit('updateRunner', $event)"
@@ -233,7 +232,6 @@ function selectFiles(event: Event): void {
                 ? 'composer-mini-popper composer-model-effort-popper'
                 : 'composer-mini-popper composer-model-effort-popper composer-model-menu-single-column'
             "
-            size="small"
             @change="emit('updateModelEffort', String($event))"
             @keydown.capture="onModelMenuKeydown"
           >
@@ -275,7 +273,6 @@ function selectFiles(event: Event): void {
           :aria-label="translate('generated.composerToolbar.access')"
           class="composer-access-select"
           popper-class="composer-mini-popper composer-access-popper"
-          size="small"
           @change="emit('updateAccess', String($event))"
         >
           <MarOption

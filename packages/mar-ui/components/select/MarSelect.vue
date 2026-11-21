@@ -460,7 +460,6 @@ watch(controlDisabled, (disabled) => {
       ref="field"
       class="mar-ui-select__field"
       :class="{
-        'mar-ui-select__field--small': size === 'small',
         'mar-ui-select__field--tags': hasTags,
         'mar-ui-select__field--compact-tags': compactTags,
         'mar-ui-select__field--filterable': filterable
@@ -574,7 +573,7 @@ watch(controlDisabled, (disabled) => {
           <span :id="`${id}-clear-label`" hidden>{{ locale.clear }}</span>
         </template>
       </div>
-      <span class="mar-ui-select__suffix">
+      <span class="mar-ui-select__suffix" :data-clearable="clearable || undefined">
         <button
           v-if="canClear"
           type="button"
@@ -643,8 +642,8 @@ watch(controlDisabled, (disabled) => {
   padding-inline: 0;
 }
 .mar-ui-select__field {
-  --mar-ui-select-height: 32px;
-  --mar-ui-select-padding: 0.75rem;
+  --mar-ui-select-height: var(--mar-ui-compact-control-size, 24px);
+  --mar-ui-select-padding: 0.5rem;
   display: flex;
   align-items: center;
   gap: 0.375rem;
@@ -654,17 +653,12 @@ watch(controlDisabled, (disabled) => {
   background: var(--mar-ui-bg-panel);
   box-shadow: 0 0 0 1px var(--mar-ui-input-border) inset;
   color: var(--mar-ui-text-primary);
-  font-size: var(--mar-ui-font-size-body);
+  font-size: var(--mar-ui-font-size-meta);
   font-weight: 400;
   text-align: start;
   cursor: pointer;
 }
-.mar-ui-select__field--small {
-  --mar-ui-select-height: var(--mar-ui-compact-control-size);
-  --mar-ui-select-padding: 0.5rem;
-  font-size: var(--mar-ui-font-size-meta);
-}
-.mar-ui-select__field--filterable:not(.mar-ui-select__field--small) {
+.mar-ui-select__field--filterable {
   font-size: var(--mar-ui-font-size-input);
 }
 .mar-ui-select__field:hover {
@@ -771,6 +765,9 @@ input.mar-ui-select__trigger {
   flex: none;
   place-items: center;
 }
+.mar-ui-select__suffix[data-clearable] {
+  min-inline-size: 24px;
+}
 .mar-ui-select__suffix > * {
   grid-area: 1 / 1;
 }
@@ -789,7 +786,7 @@ input.mar-ui-select__trigger {
   }
 }
 .mar-ui-select__clear {
-  min-width: 1.25rem;
+  justify-self: stretch;
   min-height: var(--mar-ui-select-height);
 }
 .mar-ui-select__clear:hover,

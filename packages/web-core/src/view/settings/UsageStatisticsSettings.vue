@@ -305,7 +305,6 @@ onUnmounted(() => {
             class="mar-icon-action"
             text
             circle
-            size="small"
             :icon="marIcon('refresh')"
             :disabled="state.loading"
             :aria-label="t('usageStatistics.refresh')"

@@ -131,7 +131,6 @@ defineExpose({
         :icon="marIcon('download')"
         :aria-label="translate('generated.filePreviewDialog.downloadFile')"
         circle
-        size="small"
         @click="emit('download')"
       />
       <MarButton
@@ -140,7 +139,6 @@ defineExpose({
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview')"
         circle
-        size="small"
         @click="emit('close')"
       >
         <MarIcon name="close" />
@@ -154,7 +152,6 @@ defineExpose({
         :icon="marIcon('download')"
         :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
         circle
-        size="small"
         @click="emit('download')"
       />
       <MarButton
@@ -163,7 +160,6 @@ defineExpose({
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview2')"
         circle
-        size="small"
         @click="emit('close')"
       >
         <MarIcon name="close" />
@@ -176,7 +172,7 @@ defineExpose({
           :message="translate('generated.filePreviewDialog.previewFailedDownloadInstead')"
         >
           <template #actions
-            ><MarButton size="small" :loading="downloading" @click="emit('download')">{{
+            ><MarButton :loading="downloading" @click="emit('download')">{{
               translate('generated.filePreviewDialog.downloadFile')
             }}</MarButton></template
           >
@@ -250,7 +246,7 @@ defineExpose({
           :message="translate('generated.filePreviewDialog.thisFileTypeCannotBePreviewedIn')"
         >
           <template #actions
-            ><MarButton size="small" :loading="downloading" @click="emit('download')">{{
+            ><MarButton :loading="downloading" @click="emit('download')">{{
               translate('generated.filePreviewDialog.downloadFile')
             }}</MarButton></template
           >

@@ -399,7 +399,7 @@ function onFocusOut(event: FocusEvent) {
 .mar-ui-date-picker__field {
   display: flex;
   align-items: center;
-  min-block-size: 32px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   box-sizing: border-box;
   border: 1px solid var(--mar-ui-input-border);
   border-radius: var(--mar-ui-radius-control);
@@ -451,7 +451,7 @@ function onFocusOut(event: FocusEvent) {
   .mar-ui-date-picker__field[data-range='true'] {
     display: grid;
     grid-template-columns: 2rem minmax(0, 1fr) auto;
-    grid-template-rows: repeat(2, minmax(30px, auto));
+    grid-template-rows: repeat(2, minmax(var(--mar-ui-compact-control-size, 24px), auto));
   }
   [data-range='true'] .mar-ui-date-picker__input {
     inline-size: 100%;

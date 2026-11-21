@@ -92,6 +92,39 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}custom-theme.html`);
 });
 
+for (const [width, height] of [
+  [1280, 26],
+  [390, 24]
+] as const) {
+  test(`standard single-line controls align at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const fields = page.getByRole('region', { name: 'Standard field boundaries' });
+    for (const control of [
+      fields
+        .locator('.mar-ui-input')
+        .filter({ has: page.getByRole('textbox', { name: 'Text field', exact: true }) }),
+      fields.locator('.mar-ui-input-number'),
+      fields
+        .locator('.mar-ui-select__field')
+        .filter({ has: page.getByRole('combobox', { name: 'Select field', exact: true }) }),
+      fields
+        .locator('.mar-ui-select__field')
+        .filter({ has: page.getByRole('combobox', { name: 'Time select field', exact: true }) }),
+      fields.locator('.mar-ui-cascader__field'),
+      fields
+        .locator('.mar-ui-date-picker__field')
+        .filter({ has: page.getByPlaceholder('Single date field') }),
+      fields.locator('.mar-ui-time-picker__field'),
+      page.getByRole('button', { name: 'Sample primary', exact: true })
+    ]) {
+      await expect(control).toHaveCSS('height', `${height}px`);
+    }
+    const textarea = fields.getByRole('textbox', { name: 'Textarea field' });
+    expect((await textarea.boundingBox())!.height).toBeGreaterThan(height);
+    await fields.screenshot({ path: testInfo.outputPath('compact-fields.png') });
+  });
+}
+
 test('MAR input keeps its label and icons across focused and disabled states', async ({
   page
 }, testInfo) => {

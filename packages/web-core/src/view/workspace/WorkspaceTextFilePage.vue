@@ -805,7 +805,6 @@ defineExpose({
         v-tooltip="translate('inlineFind.label')"
         v-if="props.kind === 'text'"
         circle
-        size="small"
         :aria-label="translate('inlineFind.label')"
         @click="openFind"
       >
@@ -817,7 +816,6 @@ defineExpose({
           v-tooltip="translate('fileEditor.symbols')"
           data-file-symbol-toggle
           circle
-          size="small"
           :aria-label="translate('fileEditor.symbols')"
           @click="symbolsOpen ? closeSymbols() : openSymbols()"
         >
@@ -828,7 +826,6 @@ defineExpose({
           v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
           v-if="canWrite"
           circle
-          size="small"
           :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
           @click="editing = !editing"
         >
@@ -840,7 +837,6 @@ defineExpose({
           v-tooltip="translate('common.save')"
           v-if="editing"
           circle
-          size="small"
           :disabled="!dirty"
           :loading="saving"
           :icon="marIcon('document-save')"
@@ -853,7 +849,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate(dirty ? 'htmlPreview.savedVersion' : 'htmlPreview.open')"
           circle
-          size="small"
           :aria-label="translate('htmlPreview.open')"
           @click="emit('open-html-preview')"
           ><MarIcon name="view"
@@ -864,7 +859,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.open')"
           circle
-          size="small"
           :aria-label="translate('markdownPreview.open')"
           @click="emit('open-markdown-preview')"
           ><MarIcon name="view"
@@ -873,7 +867,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.settings')"
           circle
-          size="small"
           :aria-label="translate('markdownPreview.settings')"
           @click="openSettings"
           ><MarIcon name="settings"
@@ -888,7 +881,6 @@ defineExpose({
         :icon="marIcon('download')"
         :aria-label="translate('generated.filePreviewDialog.downloadFile')"
         circle
-        size="small"
         @click="emit('download')"
       />
       <MarButton
@@ -897,7 +889,6 @@ defineExpose({
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview')"
         circle
-        size="small"
         @click="requestClose"
       >
         <MarIcon name="close" />
@@ -910,7 +901,6 @@ defineExpose({
         v-if="props.kind === 'text'"
         data-file-symbol-toggle
         circle
-        size="small"
         :aria-label="translate('inlineFind.label')"
         @click="openFind"
         ><MarIcon name="search"
@@ -920,7 +910,6 @@ defineExpose({
         v-tooltip="translate('fileEditor.symbols')"
         v-if="codeEditorEnabled"
         circle
-        size="small"
         :aria-label="translate('fileEditor.symbols')"
         @click="symbolsOpen ? closeSymbols() : openSymbols()"
         ><MarIcon name="symbols"
@@ -930,7 +919,6 @@ defineExpose({
         v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
         v-if="canWrite"
         circle
-        size="small"
         :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
         @click="editing = !editing"
         ><MarIcon name="lock" v-if="editing" /> <MarIcon name="edit" v-else
@@ -940,7 +928,6 @@ defineExpose({
         v-tooltip="translate('common.save')"
         v-if="editing"
         circle
-        size="small"
         :disabled="!dirty"
         :loading="saving"
         :icon="marIcon('document-save')"
@@ -952,7 +939,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate(dirty ? 'htmlPreview.savedVersion' : 'htmlPreview.open')"
           circle
-          size="small"
           :aria-label="translate('htmlPreview.open')"
           @click="emit('open-html-preview')"
           ><MarIcon name="view"
@@ -963,7 +949,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.open')"
           circle
-          size="small"
           :aria-label="translate('markdownPreview.open')"
           @click="emit('open-markdown-preview')"
           ><MarIcon name="view"
@@ -972,7 +957,6 @@ defineExpose({
           class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.settings')"
           circle
-          size="small"
           :aria-label="translate('markdownPreview.settings')"
           @click="openSettings"
           ><MarIcon name="settings"
@@ -985,7 +969,6 @@ defineExpose({
         :icon="marIcon('download')"
         :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
         circle
-        size="small"
         @click="emit('download')"
       />
       <MarButton
@@ -994,7 +977,6 @@ defineExpose({
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview2')"
         circle
-        size="small"
         @click="requestClose"
       >
         <MarIcon name="close" />

@@ -479,7 +479,7 @@ test('Enterprise administrators choose child organizations for skill sources and
 
 test('Skill source management discovers external entries and adds them to the personal catalog', async ({
   page
-}) => {
+}, testInfo) => {
   const writes: {
     readonly url: string;
     readonly csrf: string | undefined;
@@ -640,20 +640,28 @@ test('Skill source management discovers external entries and adds them to the pe
   const sourceSearchBounds = await sourceSearchBar.evaluate((element) => {
     const select = element.querySelector('.mar-ui-select')?.getBoundingClientRect();
     const input = element.querySelector('.mar-ui-input')?.getBoundingClientRect();
-    return { selectTop: select?.top, inputTop: input?.top };
+    return {
+      selectTop: select?.top,
+      inputTop: input?.top,
+      selectHeight: select?.height,
+      inputHeight: input?.height
+    };
   });
   expect(
     Math.abs(sourceSearchBounds.selectTop! - sourceSearchBounds.inputTop!)
   ).toBeLessThanOrEqual(1);
+  expect(sourceSearchBounds.selectHeight).toBe(26);
+  expect(sourceSearchBounds.inputHeight).toBe(sourceSearchBounds.selectHeight);
+  await sourceSearchBar.screenshot({ path: testInfo.outputPath('skill-source-search.png') });
   const sourceRow = page
     .locator('.skill-source-table .mar-ui-table__row')
     .filter({ hasText: 'skills.sh' });
   await sourceRow.click();
-  await expect(page.getByRole('dialog', { name: 'skills.sh' })).toBeVisible();
-  await page
-    .getByRole('dialog', { name: 'skills.sh' })
-    .getByRole('button', { name: '关闭', exact: true })
-    .click();
+  const sourceDetails = page
+    .getByRole('dialog', { name: '技能详情', exact: true })
+    .filter({ has: page.getByText('skills.sh', { exact: true }) });
+  await expect(sourceDetails).toBeVisible();
+  await sourceDetails.getByRole('button', { name: '关闭', exact: true }).click();
   await sourceRow.getByRole('button', { name: '停用', exact: true }).click();
   const skillSourceConfirmation = page
     .getByRole('dialog')
@@ -676,14 +684,18 @@ test('Skill source management discovers external entries and adds them to the pe
   expect(new URL(sourceRequestUrls[0]!).searchParams.get('query')).toBe('code review');
   expect(new URL(sourceRequestUrls[0]!).searchParams.get('limit')).toBe('40');
   await expect(candidate.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
-  await expect(candidate.locator('.row-actions [data-mar-icon]')).toBeVisible();
+  await expect(
+    candidate.getByRole('button', { name: '加入可用目录' }).locator('[data-mar-icon="plus"]')
+  ).toBeVisible();
   await candidate.click();
-  const candidateDetails = page.getByRole('dialog', { name: 'code-review' });
+  const candidateDetails = page
+    .getByRole('dialog', { name: '技能详情', exact: true })
+    .filter({ has: page.getByText('code-review', { exact: true }) });
   await expect(candidateDetails).toContainText('安装热度');
   await candidateDetails.getByRole('button', { name: '关闭', exact: true }).click();
   await candidate.getByRole('button', { name: '加入可用目录' }).click();
   const dialog = page.getByRole('dialog', { name: '加入可用目录' });
-  await expect(dialog.getByText('仅自己')).toBeVisible();
+  await expect(dialog.getByRole('combobox', { name: '可用范围' })).toHaveText('仅自己');
   await dialog.getByRole('switch').click();
   const tagInput = dialog.getByRole('combobox', { name: 'Tag 标签' });
   await tagInput.click();
@@ -883,7 +895,7 @@ for (const scope of ['PERSONAL', 'ORGANIZATION'] as const) {
 
 test('MCP source tables open source, discovery, and catalog details through clickable rows', async ({
   page
-}) => {
+}, testInfo) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.route('**/api/resources', (route) => json(route, { nodes: [], workspaces: [] }));
   await page.route('**/api/mcp-sources', (route) =>
@@ -995,21 +1007,29 @@ test('MCP source tables open source, discovery, and catalog details through clic
   const mcpSourceSearchBounds = await mcpSourceSearchBar.evaluate((element) => {
     const select = element.querySelector('.mar-ui-select')?.getBoundingClientRect();
     const input = element.querySelector('.mar-ui-input')?.getBoundingClientRect();
-    return { selectTop: select?.top, inputTop: input?.top };
+    return {
+      selectTop: select?.top,
+      inputTop: input?.top,
+      selectHeight: select?.height,
+      inputHeight: input?.height
+    };
   });
   expect(
     Math.abs(mcpSourceSearchBounds.selectTop! - mcpSourceSearchBounds.inputTop!)
   ).toBeLessThanOrEqual(1);
+  expect(mcpSourceSearchBounds.selectHeight).toBe(26);
+  expect(mcpSourceSearchBounds.inputHeight).toBe(mcpSourceSearchBounds.selectHeight);
+  await mcpSourceSearchBar.screenshot({ path: testInfo.outputPath('mcp-source-search.png') });
 
   const sourceRow = page
     .locator('.mcp-source-table .mar-ui-table__row')
     .filter({ hasText: 'Acme Registry' });
   await sourceRow.click();
-  await expect(page.getByRole('dialog', { name: 'Acme Registry' })).toBeVisible();
-  await page
-    .getByRole('dialog', { name: 'Acme Registry' })
-    .getByRole('button', { name: '关闭', exact: true })
-    .click();
+  const sourceDetails = page
+    .getByRole('dialog', { name: 'MCP 详情', exact: true })
+    .filter({ has: page.getByText('Acme Registry', { exact: true }) });
+  await expect(sourceDetails).toBeVisible();
+  await sourceDetails.getByRole('button', { name: '关闭', exact: true }).click();
   await sourceRow.getByRole('button', { name: '停用', exact: true }).click();
   const mcpSourceConfirmation = page
     .getByRole('dialog')
@@ -1028,13 +1048,15 @@ test('MCP source tables open source, discovery, and catalog details through clic
   await expect(page.locator('.source-mcp-table')).toContainText('说明');
   await expect(candidateRow).toContainText('Search MCP server');
   await expect(candidateRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
-  await expect(candidateRow.locator('.row-actions [data-mar-icon]')).toBeVisible();
+  await expect(
+    candidateRow.getByRole('button', { name: '加入可用目录' }).locator('[data-mar-icon="plus"]')
+  ).toBeVisible();
   await candidateRow.click();
-  await expect(page.getByRole('dialog', { name: 'Acme Search' })).toBeVisible();
-  await page
-    .getByRole('dialog', { name: 'Acme Search' })
-    .getByRole('button', { name: '关闭', exact: true })
-    .click();
+  const candidateDetails = page
+    .getByRole('dialog', { name: 'MCP 详情', exact: true })
+    .filter({ has: page.getByText('Acme Search', { exact: true }) });
+  await expect(candidateDetails).toBeVisible();
+  await candidateDetails.getByRole('button', { name: '关闭', exact: true }).click();
 
   await page.getByRole('tab', { name: '已加入的 MCP' }).click();
   const catalogRow = page
@@ -1062,5 +1084,9 @@ test('MCP source tables open source, discovery, and catalog details through clic
   releaseSecondCheckUpdate();
   await expect(catalogRow.getByRole('button', { name: '更新到 1.1.0' })).toBeVisible();
   await catalogRow.click();
-  await expect(page.getByRole('dialog', { name: 'Acme Existing' })).toBeVisible();
+  await expect(
+    page
+      .getByRole('dialog', { name: 'MCP 详情', exact: true })
+      .filter({ has: page.getByText('Acme Existing', { exact: true }) })
+  ).toBeVisible();
 });

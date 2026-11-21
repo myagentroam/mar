@@ -12,7 +12,6 @@ const props = withDefaults(
     disabled?: boolean | undefined;
     value?: CheckboxValue;
     label?: CheckboxValue;
-    size?: 'small' | 'default';
   }>(),
   { disabled: undefined }
 );
@@ -43,7 +42,7 @@ async function change(event: Event) {
 </script>
 
 <template>
-  <span class="mar-ui-checkbox" :data-size="size" :class="$attrs.class" :style="$attrs.style">
+  <span class="mar-ui-checkbox" :class="$attrs.class" :style="$attrs.style">
     <span class="mar-ui-checkbox__box">
       <input
         v-bind="{ ...$attrs, class: undefined, style: undefined }"
@@ -70,14 +69,10 @@ async function change(event: Event) {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  min-block-size: 32px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   color: var(--mar-ui-text-primary);
-  font-size: var(--mar-ui-font-size-body);
-  vertical-align: middle;
-}
-.mar-ui-checkbox[data-size='small'] {
-  min-block-size: var(--mar-ui-compact-control-size);
   font-size: var(--mar-ui-font-size-meta);
+  vertical-align: middle;
 }
 .mar-ui-checkbox__box {
   display: inline-grid;

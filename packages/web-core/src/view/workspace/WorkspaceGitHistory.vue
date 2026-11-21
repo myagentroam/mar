@@ -269,7 +269,6 @@ onBeforeUnmount(() => {
         class="history-filter"
         :aria-label="translate('generated.workspaceInspector.selectGitRepository')"
         :placeholder="translate('generated.workspaceInspector.selectAGitRepository')"
-        size="small"
         @change="changeHistoryRepository"
       >
         <MarOption
@@ -288,7 +287,6 @@ onBeforeUnmount(() => {
         collapse-tags
         collapse-tags-tooltip
         clearable
-        size="small"
         @change="resetHistory"
       >
         <MarOptionGroup :label="translate('generated.workspaceInspector.localBranches')">
@@ -485,7 +483,6 @@ onBeforeUnmount(() => {
               <span v-tooltip="row.path" v-if="row.kind === 'DIRECTORY'" class="mar-tooltip-control"
                 ><MarButton
                   text
-                  size="small"
                   class="history-directory"
                   :style="{ paddingLeft: historyTreeIndent(row.depth) }"
                   :aria-expanded="
@@ -513,7 +510,6 @@ onBeforeUnmount(() => {
                 "
                 v-else
                 text
-                size="small"
                 :style="{ paddingLeft: historyTreeIndent(row.depth) }"
                 @click.stop="emit('open', commit, row.file, $event.ctrlKey || $event.metaKey)"
               >

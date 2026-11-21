@@ -90,6 +90,8 @@ test('data options preserve falsy values when loading, choosing and clearing', a
   await page.goto(`${fixture.url}mar-select.html`);
   const state = page.getByRole('combobox', { name: 'Record state' });
   const list = page.getByRole('listbox', { name: 'Record state' });
+  const select = page.locator('.mar-ui-select').filter({ has: state });
+  const clear = select.getByRole('button', { name: 'Clear', exact: true });
   await expect(state).toHaveText('No');
   await state.click();
   await expect(state).toHaveAttribute('aria-busy', 'true');
@@ -100,11 +102,12 @@ test('data options preserve falsy values when loading, choosing and clearing', a
   await expect(list.getByRole('option', { name: 'No' })).toHaveAttribute('aria-selected', 'true');
   await state.press('Enter');
   await expect(state).toHaveText('0');
-  await page
-    .locator('.mar-ui-select')
-    .filter({ has: state })
-    .getByRole('button', { name: 'Clear', exact: true })
-    .click();
+  const suffix = select.locator('.mar-ui-select__suffix');
+  const beforeClear = (await suffix.boundingBox())!.width;
+  expect((await clear.boundingBox())!.width).toBeGreaterThanOrEqual(24);
+  await clear.click();
+  await expect(clear).toHaveCount(0);
+  expect((await suffix.boundingBox())!.width).toBeCloseTo(beforeClear, 1);
   await expect(page.getByTestId('events')).toHaveText(
     '["update:0","change:0","update:undefined","change:undefined","clear"]'
   );
@@ -173,6 +176,7 @@ test('Select and Dropdown limit long menus and show hints only for clipped label
   expect((await list.boundingBox())!.width).toBeGreaterThan(220);
   const long = list.getByRole('option', { name: /^feature\//u });
   const short = list.getByRole('option', { name: 'Main' });
+  await expect(short).toHaveAttribute('aria-selected', 'true');
   await expect(short).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await long.hover();
   await expect(tooltip).toHaveText((await long.innerText()).trim());

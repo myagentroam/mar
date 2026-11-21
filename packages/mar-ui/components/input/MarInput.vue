@@ -21,7 +21,6 @@ const props = withDefaults(
     id?: string;
     modelValue?: string | number | null | undefined;
     type?: 'text' | 'password' | 'email' | 'number' | 'textarea';
-    size?: 'default' | 'small' | 'large';
     disabled?: boolean | undefined;
     validateEvent?: boolean;
     readonly?: boolean;
@@ -210,7 +209,7 @@ watchPostEffect((onCleanup) => {
 });
 
 watch(
-  [textarea, text, () => props.autosize, () => props.rows, () => props.size],
+  [textarea, text, () => props.autosize, () => props.rows],
   ([target, , autosize]) => {
     if (target && autosize) sizeTextarea(target, typeof autosize === 'object' ? autosize : {});
   },
@@ -232,8 +231,6 @@ defineExpose({
     :class="[
       $attrs.class,
       {
-        'mar-ui-input--small': size === 'small',
-        'mar-ui-input--large': size === 'large',
         'mar-ui-input--textarea': isTextarea,
         'mar-ui-input--over-limit': wordLimit !== undefined && text.length > wordLimit
       }
@@ -352,19 +349,13 @@ defineExpose({
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 32px;
+  min-height: var(--mar-ui-compact-control-size, 24px);
   border-radius: var(--mar-ui-radius-control);
   background: var(--mar-ui-bg-panel);
   box-shadow: 0 0 0 1px var(--mar-ui-input-border) inset;
   color: var(--mar-ui-text-secondary);
   font-size: var(--mar-ui-font-size-input);
   font-weight: 400;
-}
-.mar-ui-input--small {
-  min-height: var(--mar-ui-compact-control-size, 24px);
-}
-.mar-ui-input--large {
-  min-height: 40px;
 }
 .mar-ui-input:has(> .mar-ui-input__body:hover) {
   box-shadow: 0 0 0 1px var(--mar-ui-input-border-hover) inset;
@@ -387,9 +378,6 @@ defineExpose({
   align-items: center;
   gap: 0.375rem;
   min-width: 0;
-  padding-inline: 11px;
-}
-.mar-ui-input--small .mar-ui-input__body {
   padding-inline: 7px;
 }
 .mar-ui-input--textarea .mar-ui-input__body {
@@ -498,14 +486,12 @@ defineExpose({
   --mar-ui-button-bg: transparent;
   --mar-ui-button-disabled-bg: transparent;
   min-block-size: 0;
+  padding-block: 0;
   border: 0;
   border-radius: inherit;
 }
 .mar-ui-input__addon > :deep(.mar-ui-button:focus-visible) {
   outline-offset: -2px;
-}
-.mar-ui-input--small .mar-ui-input__addon > :deep(.mar-ui-button) {
-  padding-block: 0;
 }
 @media (hover: none) {
   .mar-ui-input__clear {

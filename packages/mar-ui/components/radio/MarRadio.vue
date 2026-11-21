@@ -50,7 +50,7 @@ async function change(event: Event) {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  min-block-size: 32px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   color: var(--mar-ui-text-primary);
   font-size: var(--mar-ui-font-size-body);
 }
@@ -84,8 +84,8 @@ input:focus-visible {
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  min-block-size: 32px;
-  padding-inline: 0.75rem;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  padding-inline: 0.5rem;
   border: 1px solid var(--mar-ui-input-border);
   background: var(--mar-ui-bg-panel);
 }

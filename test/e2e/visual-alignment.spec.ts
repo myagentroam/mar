@@ -345,7 +345,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const hint = element.querySelector('.node-feature-hint')!;
           const rowBounds = row.getBoundingClientRect();
           const hintBounds = hint.getBoundingClientRect();
-          const cell = element.closest('td')!;
+          const cell = element.closest('dd')!;
           const style = getComputedStyle(hint);
           const probe = document.createElement('span');
           probe.style.color = 'var(--mar-text-secondary)';

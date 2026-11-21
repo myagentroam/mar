@@ -367,7 +367,6 @@ onBeforeUnmount(() => {
           v-tooltip="!loadingInitial && !reloading ? initialError : ''"
           :aria-description="!loadingInitial && !reloading ? initialError : undefined"
           link
-          size="small"
           native-type="button"
           :aria-disabled="loadingInitial || reloading"
           :aria-busy="loadingInitial || reloading"
@@ -404,7 +403,6 @@ onBeforeUnmount(() => {
             v-tooltip="!loadingOlder && olderAction === undefined ? olderError : ''"
             :aria-description="!loadingOlder && olderAction === undefined ? olderError : undefined"
             link
-            size="small"
             native-type="button"
             :aria-disabled="loadingOlder"
             :aria-busy="loadingOlder"
@@ -437,7 +435,6 @@ onBeforeUnmount(() => {
         v-if="showLatest"
         class="conversation-latest"
         icon="to-bottom"
-        size="small"
         round
         native-type="button"
         @click="emit('latest')"

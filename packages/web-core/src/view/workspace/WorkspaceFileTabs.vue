@@ -375,6 +375,8 @@ defineExpose({
 }
 
 .workspace-file-tab-header {
+  --mar-tab-font-size: var(--mar-ui-font-size-navigation);
+  --mar-tab-font-weight: 400;
   position: relative;
   z-index: 1;
   height: 32px;
@@ -420,6 +422,8 @@ defineExpose({
 
 @media (max-width: 767px) {
   .workspace-file-tab-header {
+    --mar-tab-strip-item-height: 36px;
+    --mar-tab-strip-close-size: 36px;
     height: 40px;
     min-height: 40px;
     flex: 0 0 40px;

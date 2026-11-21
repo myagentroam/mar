@@ -333,7 +333,7 @@ test.describe('HTML Browser content', () => {
           ).toEqual({ overflow: false, ellipsis: false });
           for (const label of ['Reload', 'Open source', 'Open in browser']) {
             const button = panel.getByRole('button', { name: label, exact: true });
-            await expect(button).toHaveClass(/mar-ui-button--small/);
+            await expect(button).toHaveCSS('min-block-size', width < 768 ? '24px' : '26px');
             await expect(button.locator('svg')).toHaveCount(1);
             await expect(button).toHaveText('');
           }

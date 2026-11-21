@@ -281,7 +281,6 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         :aria-label="translate('workspaceDisplayFilter.label')"
         clearable
         :placeholder="translate('workspaceDisplayFilter.placeholder')"
-        size="small"
         :clear-icon="marIcon('clear-input')"
       >
         <template #prefix><MarIcon name="search" /></template>

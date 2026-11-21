@@ -46,7 +46,6 @@ onBeforeUnmount(preview.release);
           class="mar-icon-action"
           text
           circle
-          size="small"
           v-tooltip="translate('htmlPreview.reload')"
           :aria-label="translate('htmlPreview.reload')"
           :disabled="state.loading"
@@ -58,7 +57,6 @@ onBeforeUnmount(preview.release);
           class="mar-icon-action"
           text
           circle
-          size="small"
           v-tooltip="translate('htmlPreview.source')"
           :aria-label="translate('htmlPreview.source')"
           @click="emit('source', path)"
@@ -68,7 +66,6 @@ onBeforeUnmount(preview.release);
           class="mar-icon-action"
           text
           circle
-          size="small"
           v-tooltip="translate('htmlPreview.external')"
           :aria-label="translate('htmlPreview.external')"
           @click="emit('external', path)"

@@ -295,22 +295,16 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             {{ worktreeReference(worktree) }}
           </code>
           <span class="git-worktree-statuses">
-            <MarTag
-              v-if="worktree.current"
-              class="repository-current"
-              type="info"
-              effect="plain"
-              size="small"
-            >
+            <MarTag v-if="worktree.current" class="repository-current" type="info" effect="plain">
               {{ translate('gitWorktrees.current') }}
             </MarTag>
-            <MarTag :type="worktreeStatusType(worktree.status)" effect="plain" size="small">
+            <MarTag :type="worktreeStatusType(worktree.status)" effect="plain">
               {{ worktreeStatusLabel(worktree.status) }}
             </MarTag>
-            <MarTag v-if="worktree.locked" type="warning" effect="plain" size="small">
+            <MarTag v-if="worktree.locked" type="warning" effect="plain">
               {{ translate('gitWorktrees.locked') }}
             </MarTag>
-            <MarTag v-if="worktree.prunable" type="info" effect="plain" size="small">
+            <MarTag v-if="worktree.prunable" type="info" effect="plain">
               {{ translate('gitWorktrees.prunable') }}
             </MarTag>
           </span>
@@ -378,7 +372,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               </button>
             </div>
             <div class="repository-tags-row">
-              <MarTag class="repository-kind" type="info" effect="plain" size="small">
+              <MarTag class="repository-kind" type="info" effect="plain">
                 {{ repositoryKindLabel(repository.source) }}
               </MarTag>
               <MarTag
@@ -386,7 +380,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 class="repository-current"
                 type="info"
                 effect="plain"
-                size="small"
               >
                 {{ translate('gitWorktrees.current') }}
               </MarTag>
@@ -394,14 +387,13 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 v-if="repository.status"
                 :type="worktreeStatusType(repository.status)"
                 effect="plain"
-                size="small"
               >
                 {{ worktreeStatusLabel(repository.status) }}
               </MarTag>
-              <MarTag v-if="repository.locked" type="warning" effect="plain" size="small">
+              <MarTag v-if="repository.locked" type="warning" effect="plain">
                 {{ translate('gitWorktrees.locked') }}
               </MarTag>
-              <MarTag v-if="repository.prunable" type="info" effect="plain" size="small">
+              <MarTag v-if="repository.prunable" type="info" effect="plain">
                 {{ translate('gitWorktrees.prunable') }}
               </MarTag>
               <MarTag
@@ -411,7 +403,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 "
                 class="repository-sync-tag"
                 effect="plain"
-                size="small"
                 v-tooltip="translate('gitSync.description', repository.tracking)"
                 :aria-label="translate('gitSync.description', repository.tracking)"
               >
@@ -506,7 +497,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                     value0: workspaceChangePath(entry)
                   })
             "
-            size="small"
             @click="restoreChange(entry)"
           />
         </li>

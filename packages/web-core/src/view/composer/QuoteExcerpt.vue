@@ -30,7 +30,6 @@ const long = computed(() => preview.value.length > 400 || preview.value.split('\
     <MarButton
       v-if="collapsible && long"
       link
-      size="small"
       :aria-expanded="expanded"
       @click="expanded = !expanded"
     >

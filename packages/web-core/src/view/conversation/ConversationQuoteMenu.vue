@@ -260,7 +260,7 @@ onBeforeUnmount(() => {
       :inert="mode !== 'bubble'"
       @pointerdown.prevent
     >
-      <MarButton text size="small" icon="quote" @click="quote">
+      <MarButton text icon="quote" @click="quote">
         {{ translate('composer.quote') }}
       </MarButton>
     </div>

@@ -115,7 +115,6 @@ function caption(template: string, value: number): string {
           v-else-if="section === 'prev' || section === 'next'"
           class="mar-ui-pagination__button"
           :class="section === 'prev' ? 'mar-ui-pagination__previous' : 'mar-ui-pagination__next'"
-          size="small"
           :text="!background"
           :icon="section === 'prev' ? prevIcon : nextIcon"
           :aria-label="section === 'prev' ? locale.pagination.previous : locale.pagination.next"
@@ -129,7 +128,6 @@ function caption(template: string, value: number): string {
             <MarButton
               v-if="typeof item === 'number'"
               class="mar-ui-pagination__button mar-ui-pagination__page"
-              size="small"
               :text="!background"
               :type="item === page ? 'primary' : 'default'"
               :aria-current="item === page ? 'page' : undefined"
@@ -142,7 +140,6 @@ function caption(template: string, value: number): string {
             <MarButton
               v-else
               class="mar-ui-pagination__button mar-ui-pagination__jump"
-              size="small"
               :text="!background"
               :aria-disabled="disabled || undefined"
               :tabindex="disabled ? -1 : undefined"

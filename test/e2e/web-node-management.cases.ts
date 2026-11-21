@@ -689,7 +689,7 @@ test('Node and workspace management show resource names and use default controls
     .getByRole('button', { name: '删除', exact: true });
   await expect(deleteButtons).not.toHaveCount(0);
   for (const button of await deleteButtons.all()) {
-    await expect(button).not.toHaveClass(/mar-ui-button--small/);
+    await expect(button).toHaveCSS('height', '26px');
     await expect(button).toBeDisabled();
   }
   expect(deletes).toEqual([]);
@@ -1683,7 +1683,7 @@ test('Enterprise management exposes role-based sections and disables writes when
     page
       .locator('.mar-ui-input')
       .filter({ has: page.getByPlaceholder('请输入用户、邮箱或显示名称') })
-  ).not.toHaveClass(/mar-ui-input--small/);
+  ).toHaveCSS('min-height', '26px');
   await expect(page.getByPlaceholder('请选择组织')).toBeVisible();
   await expect(page.getByRole('button', { name: '重置密码' })).toBeDisabled();
   await expect(page.getByRole('button', { name: '删除', exact: true })).toBeDisabled();
