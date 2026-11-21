@@ -92,6 +92,7 @@ describe('submission and authoritative reread loading', () => {
       writable: true,
       ...(scope === 'NODE' ? { nodeId: 'node' } : {})
     });
+    const table = () => view.findAll('MarTable')[0]!;
     try {
       await flushComponent();
       await trigger(
@@ -106,13 +107,7 @@ describe('submission and authoritative reread loading', () => {
       expect(button(view, 'Save').props.loading).toBe(true);
       expect(button(view, 'Cancel').props.disabled).toBe(true);
       expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
-      expect(
-        view
-          .findAll('section')
-          .find((node) => String(node.props.class).includes('page-loading-panel'))!.props[
-          'aria-busy'
-        ]
-      ).toBe(false);
+      expect(table().props['aria-busy']).toBe(false);
       const close = vi.fn();
       (view.findAll('MarDialog')[0]!.props['before-close'] as (done: () => void) => void)(close);
       expect(close).not.toHaveBeenCalled();
@@ -130,13 +125,7 @@ describe('submission and authoritative reread loading', () => {
         await flushComponent();
         expect(view.findAll('MarForm')).toHaveLength(0);
         expect(request).toHaveBeenCalledTimes(3);
-        expect(
-          view
-            .findAll('section')
-            .find((node) => String(node.props.class).includes('page-loading-panel'))!.props[
-            'aria-busy'
-          ]
-        ).toBe(true);
+        expect(table().props['aria-busy']).toBe(true);
         expect(
           button(view, translate('generated.environmentSecretManager.addSecret')).props.disabled
         ).toBe(true);
@@ -144,6 +133,7 @@ describe('submission and authoritative reread loading', () => {
         else read.resolve(result);
         await submission;
         await flushComponent();
+        expect(table().props['aria-busy']).toBe(false);
         expect(
           button(view, translate('generated.environmentSecretManager.addSecret')).props.disabled
         ).toBe(false);
@@ -184,7 +174,9 @@ describe('submission and authoritative reread loading', () => {
         await flushComponent();
         const refresh = clickPending(view, refreshLabel);
         await flushComponent();
-        expect(button(view, refreshLabel).props.loading).toBe(true);
+        expect(button(view, refreshLabel).props.loading).not.toBe(true);
+        expect(button(view, refreshLabel).props.disabled).toBe(true);
+        expect(table().props['aria-busy']).toBe(true);
         expect(textContent(table())).toContain('Team');
 
         const deletion = clickPending(
@@ -229,7 +221,8 @@ describe('submission and authoritative reread loading', () => {
           );
         }
         expect(table().props['aria-busy']).toBe(false);
-        expect(button(view, refreshLabel).props.loading).toBe(false);
+        expect(button(view, refreshLabel).props.loading).not.toBe(true);
+        expect(button(view, refreshLabel).props.disabled).not.toBe(true);
       } finally {
         write.resolve({});
         oldRead.resolve(previous);

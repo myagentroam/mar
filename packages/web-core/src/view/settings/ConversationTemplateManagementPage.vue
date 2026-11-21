@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -74,11 +74,13 @@ const service = createConversationTemplateService(props.request);
 const sortBy = ref<string>();
 const sortOrder = ref<string>();
 const pagination = createManagementPageService<AdminConversationTemplateSummary>({
+  clearOnLoadFailure: true,
   read: (page) => service.listAdminPage(page, sortBy.value, sortOrder.value),
   key: (template) => template.id,
   context: () => JSON.stringify([sortBy.value, sortOrder.value])
 });
 watchManagementPageFailure(pagination);
+const tableLoading = computed(() => pagination.loading.value && !pagination.loadingMore.value);
 const templates = pagination.items;
 const models = ref<readonly ConversationTemplateModelOption[]>([]);
 const workspaces = ref<readonly Workspace[]>([]);
@@ -86,8 +88,6 @@ const mcpOptions = ref<readonly ConversationTemplateMcpOption[]>([]);
 const detailWorkspaces = ref<readonly Workspace[]>([]);
 const operationLoading = ref(false);
 const loading = computed(() => operationLoading.value || pagination.loading.value);
-const pageReady = ref(false);
-const refreshLoading = ref(false);
 const modelLoading = ref(false);
 const mcpLoading = ref(false);
 const saving = ref(false);
@@ -119,9 +119,6 @@ const eligibleNodes = computed(() =>
 );
 const availableModels = computed(() => models.value);
 const displayedTemplates = templates;
-watch(pagination.result, (result) => {
-  if (result !== undefined) pageReady.value = true;
-});
 const modelSelectionAvailable = computed(
   () =>
     !modelLoading.value &&
@@ -196,16 +193,8 @@ function endLoading(): void {
   operationLoading.value = loadingOperations > 0;
 }
 
-async function load(_showLoading = true): Promise<void> {
+async function load(): Promise<void> {
   await pagination.load(true);
-}
-async function refresh(): Promise<void> {
-  refreshLoading.value = true;
-  try {
-    await load();
-  } finally {
-    refreshLoading.value = false;
-  }
 }
 function sortTemplates(input: { prop?: string; order?: string | null }): void {
   sortBy.value = input.order ? input.prop : undefined;
@@ -499,7 +488,7 @@ async function save(): Promise<void> {
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
     editDialogOpen.value = false;
     showMessage(translate('conversationTemplates.saved'), 'success');
-    await load(false);
+    await load();
   } catch (error) {
     if (disposed || !sameConversationTemplateRequestContext(editRequestContext, context)) return;
     showMessage(templateError(error, 'conversationTemplates.saveFailed'), 'error', error);
@@ -572,7 +561,7 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
         'error'
       );
     else showMessage(translate('conversationTemplates.publishStillRunning'), 'info');
-    await load(false);
+    await load();
     if (disposed || detail.value?.template.id !== row.id) return;
     const context = detailRequestContext;
     const current = await service.detail(row.id);
@@ -659,7 +648,7 @@ async function confirmedMutation(
     await action();
     if (disposed) return;
     showMessage(translate(successKey), 'success');
-    await load(false);
+    await load();
   } catch (error) {
     if (!disposed && error !== 'cancel')
       showMessage(templateError(error, fallbackKey), 'error', error);
@@ -741,18 +730,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <section
-    v-mar-loading:page="pagination.loading.value && !pageReady && !pagination.failure.value"
-    class="mar-management-page conversation-template-management"
-    :aria-busy="pagination.loading.value && !pageReady"
-  >
+  <section class="mar-management-page conversation-template-management">
     <div class="mar-table-actions">
-      <MarButton
-        :icon="marIcon('refresh')"
-        :loading="refreshLoading && pageReady"
-        @click="refresh"
-        >{{ translate('conversationTemplates.refresh') }}</MarButton
-      >
+      <MarButton :icon="marIcon('refresh')" :disabled="tableLoading" @click="load()">{{
+        translate('conversationTemplates.refresh')
+      }}</MarButton>
       <MarButton
         v-if="writable"
         type="primary"
@@ -771,19 +753,17 @@ onMounted(() => {
       ><template #icon><MarIcon name="warning" /></template
     ></MarAlert>
     <MarTable
-      v-mar-loading:region="
-        pagination.loading.value &&
-        pageReady &&
-        !pagination.loadingMore.value &&
-        !refreshLoading &&
-        !pagination.failure.value
-      "
+      :aria-busy="tableLoading"
       class="clickable-rows"
       :data="displayedTemplates"
       row-key="id"
       @row-click="openDetail"
       @sort-change="sortTemplates"
     >
+      <template v-if="tableLoading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><BusyIndicator class="mar-read-loading-indicator" /></span
+      ></template>
       <MarTableColumn
         prop="name"
         sortable="custom"

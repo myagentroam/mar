@@ -140,6 +140,55 @@ describe('model management collection', () => {
     expect(collection.savingOrder.value).toBe(false);
   });
 
+  it('keeps the last list on a failed background read but clears it on a failed visible refresh', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        models: [{ id: 'model-1', reasoningEfforts: ['low'], defaultReasoningEffort: 'low' }]
+      })
+      .mockRejectedValue(new Error('request failed'));
+    const collection = createModelManagementCollectionService(
+      request,
+      '/api/mar-agent/models',
+      () => true
+    );
+    await collection.load();
+    await expect(collection.load(false)).rejects.toThrow('request failed');
+    expect(collection.models.value.map((model) => model.id)).toEqual(['model-1']);
+    await expect(collection.load()).rejects.toThrow('request failed');
+    expect(collection.models.value).toEqual([]);
+    expect(collection.loading.value).toBe(false);
+  });
+
+  it('keeps the last list when a background read supersedes a visible refresh and fails', async () => {
+    const visible = deferred<unknown>();
+    const background = deferred<unknown>();
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        models: [{ id: 'model-1', reasoningEfforts: ['low'], defaultReasoningEffort: 'low' }]
+      })
+      .mockReturnValueOnce(visible.promise)
+      .mockReturnValueOnce(background.promise);
+    const collection = createModelManagementCollectionService(
+      request,
+      '/api/admin/mar-agent/models',
+      () => true
+    );
+    await collection.load();
+
+    const refresh = collection.load();
+    const reread = collection.load(false);
+    background.reject(new Error('post-write read failed'));
+    await expect(reread).rejects.toThrow('post-write read failed');
+    visible.resolve({ models: [] });
+    await refresh;
+
+    expect(collection.models.value.map((model) => model.id)).toEqual(['model-1']);
+    expect(collection.ready.value).toBe(true);
+    expect(collection.loading.value).toBe(false);
+  });
+
   it('keeps the order submission busy until refresh completes and reports refresh failure separately', async () => {
     const refresh = deferred<unknown>();
     const request = vi.fn().mockResolvedValueOnce({}).mockReturnValueOnce(refresh.promise);

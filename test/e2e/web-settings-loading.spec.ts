@@ -34,13 +34,15 @@ for (const viewport of [
       createLabel: 'Add Environment Secret',
       url: '/console?view=management&management=secrets',
       selector: '.secret-manager',
+      tableLoading: true,
       api: '**/api/environment-secrets**',
       response: { secrets: [], page: 1, pageSize: 20, total: 0, hasMore: false }
     }
   ]) {
     test(
       entry.name +
-        ' loading fills content and dialogs cover navigation at ' +
+        ('tableLoading' in entry ? ' loads in the table' : ' loading fills content') +
+        ' and dialogs cover navigation at ' +
         viewport.width +
         'px',
       async ({ page }) => {
@@ -70,57 +72,68 @@ for (const viewport of [
         await page.getByRole('button', { name: entry.label, exact: true }).click();
         const panel = page.locator(entry.selector);
         const mask = panel.locator(':scope > .mar-ui-loading');
-        await expect(mask).toBeVisible();
-        const available = await panel.evaluate((element) => {
-          const parent = element.parentElement!;
-          const box = parent.getBoundingClientRect();
-          const style = getComputedStyle(parent);
-          const left = parseFloat(style.paddingLeft);
-          const right = parseFloat(style.paddingRight);
-          const top = parseFloat(style.paddingTop);
-          const bottom = parseFloat(style.paddingBottom);
-          return {
-            x: box.x + left,
-            y: box.y + top,
-            width: box.width - left - right,
-            height: box.height - top - bottom
-          };
-        });
-        const box = await mask.boundingBox();
-        expect(box).not.toBeNull();
-        for (const key of ['x', 'y', 'width', 'height'] as const)
-          expect(Math.abs(box![key] - available[key])).toBeLessThanOrEqual(1);
-        const spinner = mask.locator('.mar-ui-loading__indicator');
-        await expect(spinner).toBeVisible();
-        await expect(mask).toHaveAttribute('data-variant', 'page');
-        const indicator = await spinner.evaluate((element) => {
-          const style = getComputedStyle(element);
-          const probe = document.createElement('span');
-          probe.style.color = 'var(--mar-color-brand-text)';
-          element.append(probe);
-          const color = getComputedStyle(probe).color;
-          probe.remove();
-          const size = 1.25 * parseFloat(getComputedStyle(document.documentElement).fontSize);
-          return {
-            width: parseFloat(style.width),
-            height: parseFloat(style.height),
-            border: style.borderTopStyle,
-            animation: style.animationName,
-            actualColor: style.borderTopColor,
-            color,
-            size
-          };
-        });
-        expect(indicator.width).toBeCloseTo(indicator.size);
-        expect(indicator.height).toBeCloseTo(indicator.size);
-        expect(indicator.border).toBe('solid');
-        expect(indicator.animation).not.toBe('none');
-        expect(indicator.actualColor).toBe(indicator.color);
-        const spinnerBox = await spinner.boundingBox();
-        expect(spinnerBox).not.toBeNull();
-        expect(
-          Math.abs(spinnerBox!.y + spinnerBox!.height / 2 - (available.y + available.height / 2))
-        ).toBeLessThanOrEqual(2);
+        const progress = panel.getByRole('progressbar', { name: 'Loading' });
+        if ('tableLoading' in entry) {
+          const table = panel.locator('.mar-ui-table');
+          await expect(mask).toHaveCount(0);
+          await expect(table).toHaveAttribute('aria-busy', 'true');
+          await expect(table.getByRole('columnheader').first()).toBeVisible();
+          await expect(table.getByRole('progressbar', { name: 'Loading' })).toBeVisible();
+          await expect(progress).toHaveCount(1);
+          await expect(table.getByText('No data', { exact: true })).toBeHidden();
+        } else {
+          await expect(mask).toBeVisible();
+          const available = await panel.evaluate((element) => {
+            const parent = element.parentElement!;
+            const box = parent.getBoundingClientRect();
+            const style = getComputedStyle(parent);
+            const left = parseFloat(style.paddingLeft);
+            const right = parseFloat(style.paddingRight);
+            const top = parseFloat(style.paddingTop);
+            const bottom = parseFloat(style.paddingBottom);
+            return {
+              x: box.x + left,
+              y: box.y + top,
+              width: box.width - left - right,
+              height: box.height - top - bottom
+            };
+          });
+          const box = await mask.boundingBox();
+          expect(box).not.toBeNull();
+          for (const key of ['x', 'y', 'width', 'height'] as const)
+            expect(Math.abs(box![key] - available[key])).toBeLessThanOrEqual(1);
+          const spinner = mask.locator('.mar-ui-loading__indicator');
+          await expect(spinner).toBeVisible();
+          await expect(mask).toHaveAttribute('data-variant', 'page');
+          const indicator = await spinner.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const probe = document.createElement('span');
+            probe.style.color = 'var(--mar-color-brand-text)';
+            element.append(probe);
+            const color = getComputedStyle(probe).color;
+            probe.remove();
+            const size = 1.25 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+            return {
+              width: parseFloat(style.width),
+              height: parseFloat(style.height),
+              border: style.borderTopStyle,
+              animation: style.animationName,
+              actualColor: style.borderTopColor,
+              color,
+              size
+            };
+          });
+          expect(indicator.width).toBeCloseTo(indicator.size);
+          expect(indicator.height).toBeCloseTo(indicator.size);
+          expect(indicator.border).toBe('solid');
+          expect(indicator.animation).not.toBe('none');
+          expect(indicator.actualColor).toBe(indicator.color);
+          const spinnerBox = await spinner.boundingBox();
+          expect(spinnerBox).not.toBeNull();
+          expect(
+            Math.abs(spinnerBox!.y + spinnerBox!.height / 2 - (available.y + available.height / 2))
+          ).toBeLessThanOrEqual(2);
+        }
         const navigationButton = page.getByRole('button', { name: entry.navigation, exact: true });
         await expect
           .poll(() =>
@@ -134,6 +147,10 @@ for (const viewport of [
           .toBe(true);
         finish();
         await expect(mask).toBeHidden();
+        if ('tableLoading' in entry) {
+          await expect(progress).toBeHidden();
+          await expect(panel.getByText('No data', { exact: true })).toBeVisible();
+        }
         await expect(panel).toBeVisible();
         const navigation = await navigationButton.boundingBox();
         expect(navigation).not.toBeNull();

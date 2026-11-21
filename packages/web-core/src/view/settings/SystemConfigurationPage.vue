@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
@@ -174,6 +174,7 @@ async function load(): Promise<void> {
     await service.load();
     initialized.value = true;
   } catch (error) {
+    initialized.value = false;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -260,13 +261,20 @@ onMounted(() => {
 });
 </script>
 <template>
-  <section v-mar-loading:page="loading && !initialized" class="mar-management-page">
+  <section class="mar-management-page">
     <div class="mar-table-actions">
-      <MarButton :icon="marIcon('refresh')" :loading="loading && initialized" @click="load">{{
-        translate('generated.systemConfigurationPage.refresh')
-      }}</MarButton>
+      <MarButton
+        :icon="marIcon('refresh')"
+        :disabled="loading || savingKey !== null"
+        @click="load"
+        >{{ translate('generated.systemConfigurationPage.refresh') }}</MarButton
+      >
     </div>
-    <MarTable :data="rows" row-key="key">
+    <MarTable :data="initialized ? rows : []" row-key="key" :aria-busy="loading">
+      <template v-if="loading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><BusyIndicator class="mar-read-loading-indicator" /></span
+      ></template>
       <MarTableColumn
         prop="name"
         :label="translate('generated.systemConfigurationPage.setting')"

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -39,8 +38,6 @@ const props = defineProps<{
 const organizations = ref<readonly Organization[]>([]);
 const loading = ref(false);
 const saving = ref(false);
-const ready = ref(false);
-const refreshLoading = ref(false);
 let organizationLoadSequence = 0;
 const organizationOpen = ref(false);
 const editingOrganizationId = ref<number>();
@@ -119,19 +116,18 @@ function editOrganization(organization: Organization): void {
   };
   organizationOpen.value = true;
 }
-async function load(refresh = false): Promise<void> {
+async function load(preserveOnFailure = false): Promise<void> {
   const sequence = ++organizationLoadSequence;
   loading.value = true;
-  refreshLoading.value = refresh;
   try {
     const result = await props.request<{ organizations: readonly Organization[] }>(
       '/api/organizations'
     );
     if (sequence !== organizationLoadSequence) return;
     organizations.value = result.organizations;
-    ready.value = true;
   } catch (error) {
     if (sequence !== organizationLoadSequence) return;
+    if (!preserveOnFailure) organizations.value = [];
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -142,7 +138,6 @@ async function load(refresh = false): Promise<void> {
   } finally {
     if (sequence === organizationLoadSequence) {
       loading.value = false;
-      refreshLoading.value = false;
     }
   }
 }
@@ -177,7 +172,7 @@ async function saveOrganization(): Promise<void> {
   } finally {
     saving.value = false;
   }
-  await load();
+  await load(true);
 }
 function requestOrganizationClose(done: () => void): void {
   if (!saving.value) done();
@@ -200,7 +195,7 @@ async function removeOrganization(organization: Organization): Promise<void> {
       }
     );
     await props.request(`/api/organizations/${organization.id}`, { method: 'DELETE' });
-    await load();
+    await load(true);
   } catch (error) {
     if (error !== 'cancel') showMessage(errorMessage(error), 'error', error);
   }
@@ -209,14 +204,14 @@ onMounted(() => {
   viewport.addEventListener('change', updateMobileViewport);
   void load();
 });
-onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
+onUnmounted(() => {
+  organizationLoadSequence += 1;
+  viewport.removeEventListener('change', updateMobileViewport);
+});
 </script>
 
 <template>
-  <section
-    v-mar-loading:page="loading && !ready"
-    class="mar-management-page organization-management"
-  >
+  <section class="mar-management-page organization-management">
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.organization') }}</span
@@ -230,15 +225,11 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       /></label>
     </div>
     <div class="mar-table-actions">
-      <MarButton
-        :icon="marIcon('refresh')"
-        :loading="refreshLoading && ready"
-        @click="load(true)"
-        >{{ translate('generated.organizationUserManagementPage.refresh') }}</MarButton
-      >
+      <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="load()">{{
+        translate('generated.organizationUserManagementPage.refresh')
+      }}</MarButton>
     </div>
     <MarTable
-      v-mar-loading:region="loading && ready && !refreshLoading"
       :aria-busy="loading"
       class="organization-tree-table clickable-rows"
       :data="organizationTree"
@@ -247,6 +238,10 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       :tree-props="{ children: 'children' }"
       @row-click="openOrganizationDetail"
     >
+      <template v-if="loading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><i class="mar-busy-indicator mar-read-loading-indicator" aria-hidden="true" /></span
+      ></template>
       <MarTableColumn
         prop="name"
         :label="translate('generated.organizationUserManagementPage.organizationName')"

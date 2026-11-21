@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
@@ -182,25 +183,16 @@ const userModels = createModelManagementCollectionService(
   '/api/mar-agent/models',
   () => true
 );
-const { models, loading, ready: modelsReady, savingOrder } = managedModels;
+const { models, loading, savingOrder } = managedModels;
 const {
   models: personalModels,
   loading: personalOrderLoading,
-  ready: personalOrderReady,
   savingOrder: savingPersonalOrder
 } = userModels;
 const credentials = ref<readonly CodexCredentialSummary[]>([]);
 const credentialLoading = ref(false);
 const credentialsLoaded = ref(false);
-const initialLoading = computed(() =>
-  activeTab.value === 'models'
-    ? loading.value && !modelsReady.value
-    : activeTab.value === 'modelOrder'
-      ? personalOrderLoading.value && !personalOrderReady.value
-      : activeTab.value === 'codexCredentials'
-        ? credentialLoading.value && !credentialsLoaded.value
-        : false
-);
+let credentialLoadSequence = 0;
 const saving = ref(false);
 const {
   sorting,
@@ -621,14 +613,22 @@ async function loadPersonalModels(showLoading = true) {
 }
 
 async function loadCredentials(showLoading = true): Promise<void> {
+  const current = ++credentialLoadSequence;
   if (showLoading) credentialLoading.value = true;
   try {
-    credentials.value = await credentialService.listCredentials();
+    const next = await credentialService.listCredentials();
+    if (current !== credentialLoadSequence) return;
+    credentials.value = next;
     credentialsLoaded.value = true;
   } catch (error) {
+    if (current !== credentialLoadSequence) return;
+    if (showLoading) {
+      credentials.value = [];
+      credentialsLoaded.value = false;
+    }
     showCodexRequestError(error, 'marAgentModels.codexLoadFailed');
   } finally {
-    if (showLoading) credentialLoading.value = false;
+    if (current === credentialLoadSequence) credentialLoading.value = false;
   }
 }
 
@@ -1501,6 +1501,7 @@ onMounted(() => {
   void (canManageModels.value ? load() : loadPersonalModels());
 });
 onBeforeUnmount(() => {
+  credentialLoadSequence += 1;
   modelDialogSequence += 1;
   modelTransportTest.dispose();
   credentialDetailSequence += 1;
@@ -1517,10 +1518,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section
-    v-mar-loading:page="initialLoading"
-    class="mar-management-page mar-agent-model-management"
-  >
+  <section class="mar-management-page mar-agent-model-management">
     <MarTabs v-model="activeTab" class="management-tabs">
       <MarTabPane
         v-if="canManageModels"
@@ -1528,13 +1526,9 @@ onBeforeUnmount(() => {
         name="models"
       >
         <div class="mar-table-actions">
-          <MarButton
-            :icon="marIcon('refresh')"
-            :loading="loading && modelsReady"
-            :disabled="sorting"
-            @click="load()"
-            >{{ translate('marAgentModels.refresh') }}</MarButton
-          >
+          <MarButton :icon="marIcon('refresh')" :disabled="loading || sorting" @click="load()">{{
+            translate('marAgentModels.refresh')
+          }}</MarButton>
           <MarButton v-if="writable && !sorting" :icon="marIcon('queue')" @click="startSorting">{{
             translate('marAgentModels.adjustOrder')
           }}</MarButton>
@@ -1564,8 +1558,13 @@ onBeforeUnmount(() => {
         <MarTable
           :class="{ 'clickable-rows': !sorting }"
           :data="models"
+          :aria-busy="loading"
           @row-click="openModelDetails"
         >
+          <template v-if="loading" #loading
+            ><span role="progressbar" :aria-label="translate('common.loading')"
+              ><BusyIndicator class="mar-read-loading-indicator" /></span
+          ></template>
           <MarTableColumn v-if="sorting" :label="translate('marAgentModels.order')" width="92">
             <template #default="{ row, $index }">
               <div
@@ -1679,7 +1678,7 @@ onBeforeUnmount(() => {
         <div class="mar-table-actions">
           <MarButton
             :icon="marIcon('refresh')"
-            :loading="credentialLoading && credentialsLoaded"
+            :disabled="credentialLoading"
             @click="loadCredentials()"
             >{{ translate('marAgentModels.refresh') }}</MarButton
           >
@@ -1691,7 +1690,16 @@ onBeforeUnmount(() => {
             >{{ translate('marAgentModels.codexAddCredential') }}</MarButton
           >
         </div>
-        <MarTable class="clickable-rows" :data="credentials" @row-click="openCredentialDetails">
+        <MarTable
+          class="clickable-rows"
+          :data="credentials"
+          :aria-busy="credentialLoading"
+          @row-click="openCredentialDetails"
+        >
+          <template v-if="credentialLoading" #loading
+            ><span role="progressbar" :aria-label="translate('common.loading')"
+              ><BusyIndicator class="mar-read-loading-indicator" /></span
+          ></template>
           <MarTableColumn
             prop="name"
             :label="translate('marAgentModels.credentialName')"
@@ -1806,8 +1814,7 @@ onBeforeUnmount(() => {
         <div class="mar-table-actions">
           <MarButton
             :icon="marIcon('refresh')"
-            :loading="personalOrderLoading && personalOrderReady"
-            :disabled="personalSorting"
+            :disabled="personalOrderLoading || personalSorting"
             @click="loadPersonalModels()"
             >{{ translate('marAgentModels.refresh') }}</MarButton
           >
@@ -1833,7 +1840,11 @@ onBeforeUnmount(() => {
             >{{ translate('marAgentModels.cancel') }}</MarButton
           >
         </div>
-        <MarTable :data="personalModels">
+        <MarTable :data="personalModels" :aria-busy="personalOrderLoading">
+          <template v-if="personalOrderLoading" #loading
+            ><span role="progressbar" :aria-label="translate('common.loading')"
+              ><BusyIndicator class="mar-read-loading-indicator" /></span
+          ></template>
           <MarTableColumn
             v-if="personalSorting"
             :label="translate('marAgentModels.order')"

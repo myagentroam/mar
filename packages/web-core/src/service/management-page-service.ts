@@ -42,6 +42,8 @@ export function createManagementPageService<T>(input: {
   readonly key: (item: T) => string | number;
   readonly context: () => string;
   readonly reloadOnViewportChange?: boolean;
+  /** Reset stale rows after a failed full read, without affecting pagination failures. */
+  readonly clearOnLoadFailure?: boolean;
 }) {
   const viewport = createManagementPaginationService();
   const items = shallowRef<readonly T[]>([]);
@@ -95,8 +97,11 @@ export function createManagementPageService<T>(input: {
   async function request(
     nextPage: number,
     append: boolean,
-    retrying = false,
-    incremental = append
+    {
+      retrying = false,
+      incremental = append,
+      clearOnFailure = false
+    }: { retrying?: boolean; incremental?: boolean; clearOnFailure?: boolean } = {}
   ): Promise<void> {
     if (disposed) return;
     const key = input.context();
@@ -134,6 +139,7 @@ export function createManagementPageService<T>(input: {
       failure.value = undefined;
     } catch (error) {
       if (current === generation && key === input.context() && !disposed) {
+        if (clearOnFailure && !(error instanceof AuthenticationContextChangedError)) clear();
         failure.value =
           error instanceof AuthenticationContextChangedError
             ? undefined
@@ -148,7 +154,9 @@ export function createManagementPageService<T>(input: {
   }
 
   function load(reset = false): Promise<void> {
-    return request(reset || viewport.mobileViewport.value ? 1 : page.value, false);
+    return request(reset || viewport.mobileViewport.value ? 1 : page.value, false, {
+      clearOnFailure: input.clearOnLoadFailure === true
+    });
   }
   function setPage(nextPage: number): Promise<void> {
     if (nextPage === page.value || !Number.isSafeInteger(nextPage) || nextPage < 1)
@@ -162,7 +170,10 @@ export function createManagementPageService<T>(input: {
   }
   function retry(): Promise<void> {
     if (loading.value || failure.value === undefined) return Promise.resolve();
-    return request(failure.value.page, failure.value.append, true, failure.value.incremental);
+    return request(failure.value.page, failure.value.append, {
+      retrying: true,
+      incremental: failure.value.incremental
+    });
   }
   const stop = watch(viewport.mobileViewport, () => {
     if (input.reloadOnViewportChange !== false) void load(true);

@@ -49,7 +49,15 @@ window.managementPageFixture = {
       const page = Number(url.searchParams.get('page') ?? '1');
       if (audit) {
         const total = new URLSearchParams(location.search).has('pages') ? 45 : 0;
-        entry.resolve({ events: [], page, pageSize: 20, total, hasMore: page * 20 < total });
+        const start = (page - 1) * 20;
+        const events = Array.from({ length: Math.max(0, Math.min(20, total - start)) }, (_, i) => ({
+          id: `event-${start + i}`,
+          occurredAt: Date.now(),
+          eventType: 'USER_LOGIN',
+          actorUsername: 'Fixture user',
+          result: 'SUCCESS'
+        }));
+        entry.resolve({ events, page, pageSize: 20, total, hasMore: page * 20 < total });
       } else if (usage) {
         const totals = {
           inputTokens: '10',

@@ -119,6 +119,36 @@ describe('management page response parser', () => {
 });
 
 describe('management page service lifecycle', () => {
+  it('keeps rows during a refresh and clears them only after a failed full read', async () => {
+    const pending = deferred<ManagementPage<Item>>();
+    const failure = new Error('list unavailable');
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(page([{ id: 'loaded' }], 1, 30, true))
+      .mockRejectedValueOnce(new Error('append unavailable'))
+      .mockReturnValueOnce(pending.promise);
+    const service = createManagementPageService<Item>({
+      read,
+      key: (item) => item.id,
+      context: () => 'fixture',
+      clearOnLoadFailure: true
+    });
+    await service.load();
+    await service.loadMore();
+    expect(service.items.value).toEqual([{ id: 'loaded' }]);
+    expect(service.failure.value?.incremental).toBe(true);
+
+    const refresh = service.load(true);
+    expect(service.items.value).toEqual([{ id: 'loaded' }]);
+    expect(service.failure.value).toBeUndefined();
+    pending.reject(failure);
+    await refresh;
+    expect(service.items.value).toEqual([]);
+    expect(service.hasMore.value).toBe(false);
+    expect(service.failure.value).toMatchObject({ error: failure, incremental: false });
+    service.dispose();
+  });
+
   it('exposes catalog initial, refresh and append failures through the same page owner', async () => {
     const initialError = new Error('initial');
     const refreshError = new Error('refresh');

@@ -35,6 +35,7 @@ import { errorMessage } from '../../util/workbench-presentation';
 import { createManagementPageService } from '../../service/management-page-service';
 import ManagementPagination from './ManagementPagination.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
+import BusyIndicator from '../common/BusyIndicator.vue';
 
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -58,8 +59,9 @@ const service = createEnvironmentSecretService<Secret, EnvironmentSecretInput<st
 );
 const secrets = shallowRef<readonly Secret[]>([]);
 const operationLoading = ref(false);
+const targetLoading = ref(false);
+let targetLoadSequence = 0;
 const saving = ref(false);
-const refreshLoading = ref(false);
 const dialogOpen = ref(false);
 const editorDialog = ref<InstanceType<typeof MarDialog>>();
 const editing = shallowRef<Secret>();
@@ -115,6 +117,7 @@ const targetScoped = computed(() => props.nodeId !== undefined || props.workspac
 const sortBy = ref<string>();
 const sortOrder = ref<string>();
 const pagination = createManagementPageService<Secret>({
+  clearOnLoadFailure: true,
   read: (page) =>
     service.listPage(page, {
       keyword: keyword.value,
@@ -134,21 +137,16 @@ const pagination = createManagementPageService<Secret>({
     ])
 });
 watchManagementPageFailure(pagination);
-const pageReady = ref(false);
-watch(pagination.result, (result) => {
-  if (result !== undefined) pageReady.value = true;
-});
-const loadingVariant = computed(() => (targetScoped.value || pageReady.value ? 'region' : 'page'));
 const loading = computed(
-  () => saving.value || operationLoading.value || (!targetScoped.value && pagination.loading.value)
-);
-const panelLoading = computed(
   () =>
-    (operationLoading.value && !refreshLoading.value) ||
-    (!targetScoped.value &&
-      pagination.loading.value &&
-      !pagination.loadingMore.value &&
-      !refreshLoading.value)
+    saving.value ||
+    operationLoading.value ||
+    (targetScoped.value ? targetLoading.value : pagination.loading.value)
+);
+const tableLoading = computed(() =>
+  targetScoped.value
+    ? targetLoading.value
+    : pagination.loading.value && !pagination.loadingMore.value
 );
 const displayedSecrets = computed(() =>
   targetScoped.value ? visibleSecrets.value : pagination.items.value
@@ -163,27 +161,23 @@ function sortSecrets(input: { prop?: string; order?: string | null }): void {
 }
 
 async function load(): Promise<void> {
+  const current = ++targetLoadSequence;
   if (!targetScoped.value) {
+    targetLoading.value = false;
     await pagination.load(true);
     return;
   }
-  operationLoading.value = true;
+  targetLoading.value = true;
   try {
     const result = await service.list(props.nodeId, props.workspaceId);
-    secrets.value = result.secrets;
+    if (current === targetLoadSequence) secrets.value = result.secrets;
   } catch (caught) {
-    showMessage(message(caught), 'error', caught);
+    if (current === targetLoadSequence) {
+      secrets.value = [];
+      showMessage(message(caught), 'error', caught);
+    }
   } finally {
-    operationLoading.value = false;
-  }
-}
-async function refresh(): Promise<void> {
-  if (loading.value) return;
-  refreshLoading.value = true;
-  try {
-    await load();
-  } finally {
-    refreshLoading.value = false;
+    if (current === targetLoadSequence) targetLoading.value = false;
   }
 }
 
@@ -307,6 +301,7 @@ function clearForm(): void {
 watch(
   () => [props.nodeId, props.workspaceId] as const,
   () => {
+    secrets.value = [];
     dialogOpen.value = false;
     secretDetailsOpen.value = false;
     secretDetails.value = undefined;
@@ -329,7 +324,10 @@ onMounted(() => {
   pagination.start();
   void load();
 });
-onUnmounted(() => pagination.dispose());
+onUnmounted(() => {
+  targetLoadSequence += 1;
+  pagination.dispose();
+});
 
 function message(error: unknown): string {
   return errorMessage(error);
@@ -338,8 +336,8 @@ function message(error: unknown): string {
 
 <template>
   <LoadingPanel
-    :loading="panelLoading"
-    :variant="loadingVariant"
+    :loading="operationLoading && !tableLoading"
+    variant="region"
     class="secret-manager"
     :aria-label="translate('generated.environmentSecretManager.environmentSecrets')"
   >
@@ -354,13 +352,9 @@ function message(error: unknown): string {
       /></label>
     </div>
     <div class="secret-toolbar">
-      <MarButton
-        :icon="marIcon('refresh')"
-        :loading="refreshLoading"
-        :disabled="loading"
-        @click="refresh"
-        >{{ translate('generated.environmentSecretManager.refresh') }}</MarButton
-      >
+      <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="load">{{
+        translate('generated.environmentSecretManager.refresh')
+      }}</MarButton>
       <MarButton
         v-if="writable !== false"
         type="primary"
@@ -372,12 +366,17 @@ function message(error: unknown): string {
     </div>
     <MarTable
       :data="displayedSecrets"
+      :aria-busy="tableLoading"
       class="clickable-rows secret-table"
       :aria-label="translate('generated.environmentSecretManager.environmentSecretList')"
       row-key="id"
       @row-click="openSecretDetails"
       @sort-change="sortSecrets"
     >
+      <template v-if="tableLoading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><BusyIndicator class="mar-read-loading-indicator" /></span
+      ></template>
       <MarTableColumn
         prop="name"
         :label="translate('generated.environmentSecretManager.name')"

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -16,7 +15,7 @@ import {
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
   newOAuthProviderDraft,
@@ -39,8 +38,8 @@ const props = defineProps<{
 }>();
 const providers = ref<readonly OAuthProvider[]>([]);
 const loading = ref(false);
-const ready = ref(false);
-const refreshLoading = ref(false);
+let loadSequence = 0;
+let disposed = false;
 const saving = ref(false);
 const open = ref(false);
 const editing = ref(false);
@@ -204,13 +203,17 @@ const filteredProviders = computed(() => {
 });
 // OAuth providers are a complete configuration snapshot; local search never slices the collection.
 async function load(): Promise<void> {
+  if (disposed) return;
+  const current = ++loadSequence;
   loading.value = true;
   try {
-    providers.value = (
-      await props.request<{ providers: readonly OAuthProvider[] }>('/api/oauth-providers')
-    ).providers;
-    ready.value = true;
+    const result = await props.request<{ providers: readonly OAuthProvider[] }>(
+      '/api/oauth-providers'
+    );
+    if (current === loadSequence) providers.value = result.providers;
   } catch (error) {
+    if (current !== loadSequence) return;
+    providers.value = [];
     showMessage(
       oauthErrorMessage(
         error,
@@ -220,15 +223,7 @@ async function load(): Promise<void> {
       error
     );
   } finally {
-    loading.value = false;
-  }
-}
-async function refresh(): Promise<void> {
-  refreshLoading.value = true;
-  try {
-    await load();
-  } finally {
-    refreshLoading.value = false;
+    if (current === loadSequence) loading.value = false;
   }
 }
 function create(): void {
@@ -274,11 +269,6 @@ async function save(): Promise<void> {
       { method: editing.value ? 'PUT' : 'POST', body: JSON.stringify(payload) }
     );
     open.value = false;
-    await load();
-    showMessage(
-      translate('generated.oAuthManagementPage.oAuthProviderSavedTestItBeforeEnabling'),
-      'success'
-    );
   } catch (error) {
     showMessage(
       oauthErrorMessage(
@@ -288,17 +278,21 @@ async function save(): Promise<void> {
       'error',
       error
     );
+    return;
   } finally {
     saving.value = false;
   }
+  showMessage(
+    translate('generated.oAuthManagementPage.oAuthProviderSavedTestItBeforeEnabling'),
+    'success'
+  );
+  await load();
 }
 async function test(provider: OAuthProvider): Promise<void> {
   try {
     await props.request(`/api/oauth-providers/${encodeURIComponent(provider.providerKey)}/test`, {
       method: 'POST'
     });
-    await load();
-    showMessage(translate('generated.oAuthManagementPage.configurationTestPassed'), 'success');
   } catch (error) {
     showMessage(
       oauthErrorMessage(
@@ -308,7 +302,10 @@ async function test(provider: OAuthProvider): Promise<void> {
       'error',
       error
     );
+    return;
   }
+  showMessage(translate('generated.oAuthManagementPage.configurationTestPassed'), 'success');
+  await load();
 }
 async function confirmProviderStatusChange(provider: OAuthProvider): Promise<void> {
   try {
@@ -384,9 +381,13 @@ async function remove(provider: OAuthProvider): Promise<void> {
 onMounted(() => {
   void load();
 });
+onBeforeUnmount(() => {
+  disposed = true;
+  loadSequence += 1;
+});
 </script>
 <template>
-  <section v-mar-loading:page="loading && !ready" class="mar-management-page oauth-management">
+  <section class="mar-management-page oauth-management">
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.oAuthManagementPage.provider') }}</span
@@ -398,7 +399,7 @@ onMounted(() => {
       /></label>
     </div>
     <div class="mar-table-actions">
-      <MarButton :icon="marIcon('refresh')" :loading="refreshLoading && ready" @click="refresh">{{
+      <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="load">{{
         translate('generated.oAuthManagementPage.refresh')
       }}</MarButton>
       <MarButton type="primary" :icon="marIcon('plus')" :disabled="!writable" @click="create">{{
@@ -406,12 +407,17 @@ onMounted(() => {
       }}</MarButton>
     </div>
     <MarTable
-      v-mar-loading:region="loading && ready && !refreshLoading"
+      :aria-busy="loading"
       :data="filteredProviders"
       class="clickable-rows oauth-provider-table"
       row-key="providerKey"
       @row-click="openProviderDetails"
-      ><MarTableColumn
+    >
+      <template v-if="loading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><i class="mar-busy-indicator mar-read-loading-indicator" aria-hidden="true" /></span
+      ></template>
+      <MarTableColumn
         prop="name"
         :label="translate('generated.oAuthManagementPage.provider2')"
       /><MarTableColumn

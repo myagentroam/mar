@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="Ownership = unknown">
-import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import BusyIndicator from '../common/BusyIndicator.vue';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarLink } from '@myagentroam/mar-ui/link';
@@ -195,6 +195,7 @@ const registrationRules = computed<FormRules>(() => ({
 const sortBy = ref<string>();
 const sortOrder = ref<string>();
 const pagination = createManagementPageService<Row>({
+  clearOnLoadFailure: true,
   read: readResources,
   key: (row) => row.key,
   context: () =>
@@ -209,22 +210,13 @@ const pagination = createManagementPageService<Row>({
     ])
 });
 watchManagementPageFailure(pagination);
+const tableLoading = computed(() => pagination.loading.value && !pagination.loadingMore.value);
 const resources = pagination.items;
 const loading = pagination.loading;
-const pageReady = ref(false);
 const refreshLoading = ref(false);
 const displayedResources = resources;
 const clock = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | undefined;
-watch(pagination.result, (result) => {
-  if (result !== undefined) pageReady.value = true;
-});
-watch(
-  () => [props.resourcePath, props.resourceType, props.queryExtension],
-  () => {
-    pageReady.value = false;
-  }
-);
 watch(
   () => paginationContext(),
   () => {
@@ -824,10 +816,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <section
-    v-mar-loading:page="loading && !pageReady && !pagination.failure.value"
-    class="mar-management-page resource-management-panel"
-  >
+  <section class="mar-management-page resource-management-panel">
     <slot
       name="filters"
       :keyword="keyword"
@@ -844,7 +833,7 @@ onUnmounted(() => {
     <div class="mar-table-actions">
       <MarButton
         :icon="marIcon('refresh')"
-        :loading="refreshLoading && pageReady"
+        :disabled="refreshLoading || tableLoading"
         @click="refresh"
         >{{ translate('generated.resourceSharingPage.refresh') }}</MarButton
       >
@@ -866,19 +855,18 @@ onUnmounted(() => {
       >
     </div>
     <MarTable
-      v-mar-loading:region="
-        pagination.loading.value &&
-        pageReady &&
-        !pagination.loadingMore.value &&
-        !refreshLoading &&
-        !pagination.failure.value
-      "
+      :aria-busy="tableLoading"
       class="clickable-rows"
       :data="displayedResources"
       row-key="key"
       @row-click="openDetails"
       @sort-change="sortResources"
-      ><MarTableColumn
+    >
+      <template v-if="tableLoading" #loading
+        ><span role="progressbar" :aria-label="translate('common.loading')"
+          ><BusyIndicator class="mar-read-loading-indicator" /></span
+      ></template>
+      <MarTableColumn
         prop="label"
         :label="
           resourceType === 'NODE'

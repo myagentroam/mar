@@ -29,6 +29,7 @@ export function createUserManagementService<T extends { readonly id: number }>(i
       );
     },
     key: (user) => user.id,
-    context
+    context,
+    clearOnLoadFailure: true
   });
 }
