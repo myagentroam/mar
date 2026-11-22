@@ -1326,9 +1326,9 @@ test('Performance diagnostics copy uses a compact independent hover surface', as
       }
     });
   });
-  for (const [theme, locale, copyName] of [
-    ['vscode-dark-2026', 'zh-CN', '复制详细诊断信息'],
-    ['daylight', 'en-US', 'Copy detailed diagnostics']
+  for (const [theme, locale, copyName, hoverOverlay] of [
+    ['vscode-dark-2026', 'zh-CN', '复制详细诊断信息', 'rgba(255, 255, 255, 0.1)'],
+    ['daylight', 'en-US', 'Copy detailed diagnostics', 'rgba(0, 0, 0, 0.1)']
   ] as const) {
     await page.goto(
       `${fixture.url}visual-alignment.html?performance=1&theme=${theme}&locale=${locale}`
@@ -1337,6 +1337,16 @@ test('Performance diagnostics copy uses a compact independent hover surface', as
     const panel = page.locator('.web-performance-panel');
     const copy = panel.getByRole('button', { name: copyName, exact: true });
     const icon = copy.locator('[data-mar-icon="copy"]');
+    // An editable row fill may match the popup background and must not drive icon feedback.
+    await page.evaluate(() => {
+      const root = document.documentElement;
+      root.style.setProperty(
+        '--mar-fill-row-hover',
+        getComputedStyle(root).getPropertyValue('--mar-control-bg-color-overlay').trim()
+      );
+    });
+    await trigger.hover();
+    await expect(trigger).toHaveCSS('background-color', hoverOverlay);
     await trigger.click();
     await expect(copy).toBeVisible();
     const box = (await copy.boundingBox())!;
@@ -1350,7 +1360,7 @@ test('Performance diagnostics copy uses a compact independent hover surface', as
     const transparent = 'rgba(0, 0, 0, 0)';
     await expect(copy).toHaveCSS('background-color', transparent);
     await copy.hover();
-    await expect(copy).not.toHaveCSS('background-color', transparent);
+    await expect(copy).toHaveCSS('background-color', hoverOverlay);
     await expect(icon).not.toHaveCSS('color', idleColor);
     await expect(icon).toHaveCSS('color', await copy.evaluate((el) => getComputedStyle(el).color));
     await expect(page.getByRole('tooltip')).toHaveText(copyName);

@@ -1110,6 +1110,32 @@ for (const mobile of [false, true]) {
   });
 }
 
+test('Activity rail keeps separate hover surfaces for icon actions and navigation', async ({
+  page
+}) => {
+  for (const [theme, hoverOverlay, rowHover] of [
+    ['dark', 'rgba(255, 255, 255, 0.1)', 'rgb(46, 46, 46)'],
+    ['light', 'rgba(0, 0, 0, 0.1)', 'rgb(235, 235, 235)']
+  ] as const) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${fixture.url}icon-system.html?navigation=1&theme=${theme}`);
+    const rail = page.locator('.activity-rail');
+    const diagnostics = rail.getByRole('button', { name: 'Web performance diagnostics' });
+    const work = rail.getByRole('button', { name: 'Work', exact: true });
+    await diagnostics.hover();
+    await expect(diagnostics).toHaveCSS('background-color', hoverOverlay);
+    await expect(diagnostics).toHaveAttribute('aria-expanded', 'false');
+    await work.hover();
+    await expect(work).toHaveCSS('background-color', rowHover);
+
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(`${fixture.url}icon-system.html?navigation=1&theme=${theme}&mobile=1`);
+    const help = rail.getByRole('link', { name: 'Help', exact: true });
+    await help.hover();
+    await expect(help).toHaveCSS('background-color', hoverOverlay);
+  }
+});
+
 for (const { theme, locale } of [
   { theme: 'dark', locale: 'zh-CN' },
   { theme: 'light', locale: 'en-US' }

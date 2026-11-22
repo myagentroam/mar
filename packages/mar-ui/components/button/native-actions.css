@@ -10,13 +10,13 @@
 
 .mar-icon-action,
 .mar-text-action {
-  --mar-action-hover-bg: var(--mar-ui-fill-row-hover);
   border-radius: var(--mar-ui-radius-control);
   background: transparent;
   color: var(--mar-ui-text-secondary);
 }
 
 .mar-icon-action {
+  --mar-action-hover-bg: var(--mar-ui-action-hover-overlay);
   border: 0;
   cursor: pointer;
 }

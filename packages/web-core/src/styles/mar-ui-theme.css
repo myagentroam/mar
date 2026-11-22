@@ -33,6 +33,7 @@
   --mar-ui-control-link-text: var(--mar-control-link-text);
   --mar-ui-control-link-hover: var(--mar-control-link-hover);
   --mar-ui-fill-row-hover: var(--mar-fill-row-hover);
+  --mar-ui-action-hover-overlay: var(--mar-action-hover-overlay);
   --mar-ui-fill-selection: var(--mar-fill-selection);
   --mar-ui-fill-soft: var(--mar-fill-soft);
   --mar-ui-font-size-body: var(--mar-font-size-body);
