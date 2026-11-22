@@ -55,7 +55,6 @@ interface WorkbenchLiveConnectionOptions {
 }
 
 const PING_INTERVAL_MS = 10_000;
-const payloadEncoder = new TextEncoder();
 
 export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptions) {
   const sequences = new Map<string, number>();
@@ -270,7 +269,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
         options.onInvalidMessage();
       } finally {
         options.diagnostics?.observeFrame({
-          payloadBytes: payloadEncoder.encode(text).byteLength,
+          contentLength: text.length,
           durationMs: performance.now() - startedAt,
           message
         });

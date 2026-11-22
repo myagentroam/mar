@@ -4,7 +4,6 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { formatDateTime } from '../../util/time-presentation.js';
-import { fileSizeLabel } from '../../util/file-presentation.js';
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
 import { useI18n } from 'vue-i18n';
@@ -43,6 +42,25 @@ const connectionLabel = computed(() =>
 
 function decimal(value: number): string {
   return new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(value);
+}
+
+function contentLengthLabel(value: number): string {
+  const units = ['', 'K', 'M', 'G'] as const;
+  let scaled = Math.max(0, value);
+  let unitIndex = 0;
+  while (scaled >= 1_000 && unitIndex < units.length - 1) {
+    scaled /= 1_000;
+    unitIndex += 1;
+  }
+  if (unitIndex < units.length - 1 && Math.round(scaled * 10) >= 10_000) {
+    scaled /= 1_000;
+    unitIndex += 1;
+  }
+  const formatted = new Intl.NumberFormat(locale.value, {
+    minimumFractionDigits: unitIndex === 0 ? 0 : 1,
+    maximumFractionDigits: 1
+  }).format(scaled);
+  return unitIndex === 0 ? formatted : `${formatted} ${units[unitIndex]}`;
 }
 
 function memoryLabel(): string {
@@ -133,7 +151,7 @@ onBeforeUnmount(props.diagnostics.dispose);
             t('performanceDiagnostics.rateValue', {
               current: snapshot.messagesPerSecond,
               peak: snapshot.peakMessagesPerSecond,
-              payloadRate: `${fileSizeLabel(snapshot.payloadBytesPerSecond)}/s`
+              contentLength: contentLengthLabel(snapshot.contentLengthPerSecond)
             })
           }}
         </dd>
