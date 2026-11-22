@@ -177,7 +177,7 @@ input {
   color: var(--mar-ui-text-primary);
   background: transparent;
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.4;
   text-align: center;
 }

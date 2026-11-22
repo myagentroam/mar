@@ -84,7 +84,7 @@ for (const [width, theme, createColors] of [
       const newChat = page.getByRole('button', { name: 'New chat', exact: true });
       await expect(newChat).toBeEnabled();
       await expect(newChat).not.toHaveClass(/\bmar-ui-button--primary\b/);
-      await expect(newChat).toHaveCSS('height', width < 768 ? '24px' : '26px');
+      await expect(newChat).toHaveCSS('height', '26px');
       await expect(newChat).toHaveCSS('border-top-width', '1px');
       const colors = await newChat.evaluate((button) => {
         const style = getComputedStyle(button);

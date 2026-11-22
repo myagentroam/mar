@@ -825,7 +825,7 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
   await verifyConversationThemes(page, testInfo, 'hosted-mobile');
   await page.getByRole('button', { name: '对话', exact: true }).click();
   await expect(newChat).toBeVisible();
-  await expect(newChat).toHaveCSS('height', '24px');
+  await expect(newChat).toHaveCSS('height', '26px');
   await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');

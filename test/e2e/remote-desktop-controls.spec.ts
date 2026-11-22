@@ -100,7 +100,7 @@ for (const viewport of [
     await expect(statistics).not.toContainText('—');
     const screen = page.getByTestId('desktop-screen');
     const quality = page.getByTestId('desktop-quality');
-    const compactHeight = viewport.width === 390 ? '24px' : '26px';
+    const compactHeight = '26px';
     await expect(screen).toHaveCSS('height', compactHeight);
     await expect(quality).toHaveCSS('height', compactHeight);
     // Let click timestamps advance beyond the listeners attached during the paused mount.

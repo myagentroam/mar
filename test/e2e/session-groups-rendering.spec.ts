@@ -102,7 +102,7 @@ test('Session rows keep their desktop and mobile density', async ({ page }, test
     });
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 850 });
-    await expect(groups).toHaveCSS('height', '24px');
+    await expect(groups).toHaveCSS('height', '26px');
     await expect(row).toHaveCSS('height', '32px');
     const mobileBounds = (await row.boundingBox())!;
     const nextMobileBounds = (await nextRow.boundingBox())!;
@@ -220,7 +220,7 @@ for (const [width, theme, locale] of [
         const text = (await option.locator('span').boundingBox())!;
         expect(bounds.height).toBeLessThanOrEqual(28);
         expect(text.x + text.width / 2).toBeCloseTo(bounds.x + bounds.width / 2, 0);
-        await expect(option).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
+        await expect(option).toHaveCSS('font-size', '12px');
         await expect(option).toHaveCSS('font-weight', '400');
       }
       const dots = page.locator('.mar-session-activity.running i');

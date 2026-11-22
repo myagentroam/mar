@@ -113,7 +113,7 @@ test('Node management aligns filter typography and keeps rows compact without sh
     const status = page.getByRole('combobox', { name: 'Status:', exact: true });
     await expect(keyword).toBeVisible();
     const selectSize = await status.evaluate((control) => getComputedStyle(control).fontSize);
-    expect(selectSize).toBe(width >= 768 ? '12px' : '11px');
+    expect(selectSize).toBe('12px');
     const typography = await keyword.evaluate((input) => {
       const text = getComputedStyle(input);
       const placeholder = getComputedStyle(input, '::placeholder');
@@ -200,7 +200,7 @@ test('Node registration uses text-only footer actions and wraps them without ove
     await toolbar.screenshot({ path: testInfo.outputPath(`node-actions-${width}.png`) });
     if (width === 320) {
       await page.addStyleTag({
-        content: '.mar-ui-dialog__footer { --mar-ui-font-size-meta: 18px; }'
+        content: '.mar-ui-dialog__footer { --mar-ui-font-size-control: 18px; }'
       });
     }
     await register.click();

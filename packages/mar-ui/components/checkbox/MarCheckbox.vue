@@ -71,7 +71,7 @@ async function change(event: Event) {
   gap: 0.5rem;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   color: var(--mar-ui-text-primary);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   vertical-align: middle;
 }
 .mar-ui-checkbox__box {

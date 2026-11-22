@@ -107,11 +107,9 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}custom-theme.html`);
 });
 
-for (const [width, height] of [
-  [1280, 26],
-  [390, 24]
-] as const) {
+for (const width of [1280, 390]) {
   test(`standard single-line controls align at ${width}px`, async ({ page }, testInfo) => {
+    const height = 26;
     await page.setViewportSize({ width, height: 900 });
     const fields = page.getByRole('region', { name: 'Standard field boundaries' });
     for (const control of [
@@ -2840,6 +2838,8 @@ for (const scheme of ['Light', 'Dark']) {
           '--mar-sidebar-header-height': mobile ? '46px' : '44px',
           '--mar-brand-logo-size': mobile ? '32px' : '35px',
           '--mar-font-size-body': mobile ? '13px' : '14px',
+          '--mar-font-size-control': '12px',
+          '--mar-compact-control-size': '26px',
           '--mar-utility-control-size': mobile ? '28px' : '24px',
           '--mar-session-row-min-height': '32px',
           '--mar-workbench-sidebar-width': mobile ? '222px' : width <= 860 ? '220px' : '244px'

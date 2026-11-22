@@ -337,7 +337,7 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
   const newSession = page.locator('.new-session-button');
   await expect(newSession).not.toHaveClass(/\bmar-ui-button--primary\b/);
   await expect(newSession).toHaveCSS('border-top-width', '1px');
-  await expect(newSession).toHaveCSS('height', '24px');
+  await expect(newSession).toHaveCSS('height', '26px');
   const composer = page.getByRole('textbox', { name: '输入消息' });
   await newSession.click();
   await expect(page.locator('.new-session-button')).toBeHidden();

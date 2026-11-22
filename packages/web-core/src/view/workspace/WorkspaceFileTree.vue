@@ -584,12 +584,12 @@ defineExpose({ reveal });
                     }}</MarDropdownItem
                   >
                   <MarDropdownItem command="COPY_PATH"
-                    ><MarIcon name="path-relative" />{{
+                    ><MarIcon name="path-relative" :size="14" />{{
                       translate('generated.workspaceFileTree.copyRelativePath')
                     }}</MarDropdownItem
                   >
                   <MarDropdownItem command="COPY_ABSOLUTE_PATH" :disabled="!rootPath"
-                    ><MarIcon name="path-absolute" />{{
+                    ><MarIcon name="path-absolute" :size="14" />{{
                       translate('generated.workspaceFileTree.copyAbsolutePath')
                     }}</MarDropdownItem
                   >

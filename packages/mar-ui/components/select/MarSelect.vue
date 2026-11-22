@@ -651,7 +651,7 @@ watch(controlDisabled, (disabled) => {
   gap: 0.375rem;
   min-height: var(--mar-ui-select-height);
   padding-inline: var(--mar-ui-select-padding);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   font-weight: 400;
   text-align: start;
 }
@@ -797,7 +797,7 @@ input.mar-ui-select__trigger {
   padding-inline: 0.375rem;
   border-radius: var(--mar-ui-radius-control);
   background: color-mix(in srgb, var(--mar-ui-bg-panel), var(--mar-ui-text-secondary) 12%);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.2;
 }
 .mar-ui-select__tag-remove {
@@ -819,7 +819,7 @@ input.mar-ui-select__trigger {
   --mar-ui-popup-width: max-content;
   --mar-ui-popup-width-cap: 16rem;
   --mar-ui-popup-padding: 0.375rem;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -840,7 +840,7 @@ input.mar-ui-select__trigger {
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   padding: 4px var(--mar-ui-compact-option-padding-inline);
   color: var(--mar-ui-text-secondary);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.45;
   text-align: center;
 }

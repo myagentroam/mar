@@ -128,7 +128,7 @@ test.describe('390px touch viewport', () => {
     const draft = page.getByRole('switch', { name: 'Draft setting' });
     await draft.tap();
     await expect(draft).toBeChecked();
-    await expect(draft).toHaveCSS('height', '24px');
+    await expect(draft).toHaveCSS('height', '26px');
     const track = page.locator('#draft + .mar-ui-switch__track');
     await expect(track).toHaveCSS('height', '24px');
     await expect(track).toHaveCSS('width', '40px');

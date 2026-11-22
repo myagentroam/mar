@@ -135,7 +135,7 @@ function handleClick(event: MouseEvent): void {
   background: var(--mar-ui-button-bg);
   color: var(--mar-ui-button-fg);
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   font-weight: 500;
   line-height: 1.35;
   cursor: pointer;

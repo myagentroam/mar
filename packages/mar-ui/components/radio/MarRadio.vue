@@ -52,7 +52,7 @@ async function change(event: Event) {
   gap: 0.5rem;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   color: var(--mar-ui-text-primary);
-  font-size: var(--mar-ui-font-size-body);
+  font-size: var(--mar-ui-font-size-control);
 }
 input {
   inline-size: 14px;
@@ -64,6 +64,9 @@ input {
 label,
 input {
   cursor: pointer;
+}
+label {
+  font-size: inherit;
 }
 input:disabled,
 input:disabled + label {

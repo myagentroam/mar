@@ -55,7 +55,7 @@ for (const width of [1280, 390, 320]) {
     const [start, end] = [range.getByRole('textbox').nth(0), range.getByRole('textbox').nth(1)];
     await expect(start).toHaveValue('2026-10-11 09:30:00');
     await expect(end).toHaveValue('2026-11-14 18:15:00');
-    const filterSize = width >= 768 ? '12px' : '11px';
+    const filterSize = '12px';
     for (const input of [start, end]) {
       await expect(input).toHaveCSS('font-size', filterSize);
       expect(

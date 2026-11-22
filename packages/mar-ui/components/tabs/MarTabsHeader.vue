@@ -308,7 +308,7 @@ function activate(name: Name): void {
   background: var(--mar-ui-bg-tab-inactive, var(--mar-ui-bg-subtle));
   color: var(--mar-ui-text-secondary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.35;
   cursor: pointer;
 }
@@ -410,7 +410,7 @@ function activate(name: Name): void {
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: var(--mar-tab-font-size, var(--mar-ui-font-size-meta));
+  font-size: var(--mar-tab-font-size, var(--mar-ui-font-size-control));
   overflow: hidden;
   cursor: pointer;
   padding: 0 0.5rem;

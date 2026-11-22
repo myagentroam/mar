@@ -1999,17 +1999,6 @@ onBeforeUnmount(() => {
   .hosted-timeline-scroll :deep(.conversation-scroll) {
     padding-block-start: 50px;
   }
-
-  .history-search-row {
-    grid-template-columns: minmax(0, 1fr) 36px;
-  }
-
-  .history-refresh-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

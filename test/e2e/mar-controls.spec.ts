@@ -108,8 +108,9 @@ for (const [theme, width] of [
     await page.goto(`${fixture.url}mar-controls.html?theme=${theme}&inputs`);
     await page.evaluate(() => document.documentElement.classList.add('console-ui'));
     const input = page.getByRole('textbox', { name: 'Name', exact: true });
-    const inputSize = width >= 768 ? '12px' : '11px';
+    const inputSize = '12px';
     await expect(input).toHaveCSS('font-size', inputSize);
+    await expect(page.locator('.mar-ui-input').filter({ has: input })).toHaveCSS('height', '26px');
     expect(await input.evaluate((field) => getComputedStyle(field, '::placeholder').fontSize)).toBe(
       inputSize
     );
@@ -123,6 +124,7 @@ for (const [theme, width] of [
       return size;
     });
     await expect(notes).toHaveCSS('font-size', notesSize);
+    await expect(page.getByText('0 / 80')).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
   });
 
   test(`MAR controls render and keep interactive state at ${width}px in ${theme}`, async ({
@@ -183,14 +185,12 @@ for (const [theme, width] of [
     await checkbox.check();
     await expect(page.getByRole('checkbox', { name: 'Write' })).toBeDisabled();
     await expect(page.getByLabel('Permissions value')).toHaveText('read');
+    await expect(page.getByText('Requests', { exact: true })).toHaveCSS('font-size', '12px');
     await page.getByRole('radio', { name: 'Requests' }).check();
     await expect(page.getByLabel('Metric value')).toHaveText('b');
     const quantity = page.getByRole('spinbutton', { name: 'Quantity' });
-    await expect(quantity).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
-    await expect(page.getByRole('textbox', { name: 'Expires at' })).toHaveCSS(
-      'font-size',
-      width >= 768 ? '12px' : '11px'
-    );
+    await expect(quantity).toHaveCSS('font-size', '12px');
+    await expect(page.getByRole('textbox', { name: 'Expires at' })).toHaveCSS('font-size', '12px');
     await quantity.press('ArrowUp');
     await expect(quantity).toHaveValue('3');
     await expect(page.getByRole('button', { name: /increase/i })).toBeDisabled();
@@ -200,6 +200,8 @@ for (const [theme, width] of [
     const period = page.getByRole('radiogroup', { name: 'Period' });
     const day = period.getByRole('radio', { name: 'Day' });
     const week = period.getByRole('radio', { name: 'Week' });
+    await expect(period).toHaveCSS('height', '26px');
+    await expect(period).toHaveCSS('font-size', '12px');
     await expect(day).toBeChecked();
     await expect(period.locator('.mar-segmented-indicator')).toBeVisible();
     await day.press('ArrowRight');
@@ -241,7 +243,7 @@ test('Dropdown grows toward the free space when a label expands near the right e
   await page.getByRole('button', { name: 'Commands' }).click();
   const menu = page.getByRole('menu', { name: 'Commands' });
   const rename = menu.getByRole('menuitem').last();
-  await expect(rename).toHaveCSS('font-size', '11px');
+  await expect(rename).toHaveCSS('font-size', '12px');
   const initial = (await menu.boundingBox())!;
   const rowHeight = (await rename.boundingBox())!.height;
   const compact = await rename.evaluate((item) => {
@@ -386,8 +388,8 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   const days = calendar.locator('.mar-ui-calendar-month__days button');
   // The calendar grid retains its reading size; only the footer controls are compact.
   await expect(days.nth(3)).toHaveCSS('font-size', '14px');
-  await expect(calendar.getByLabel('Start time', { exact: true })).toHaveCSS('font-size', '11px');
-  await expect(calendar.getByRole('button', { name: 'Confirm' })).toHaveCSS('font-size', '11px');
+  await expect(calendar.getByLabel('Start time', { exact: true })).toHaveCSS('font-size', '12px');
+  await expect(calendar.getByRole('button', { name: 'Confirm' })).toHaveCSS('font-size', '12px');
   await days.nth(3).click();
   await expect(page.getByLabel('Range changes')).toHaveText('0');
   await days.nth(6).click();
@@ -407,14 +409,14 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   await expect(page.getByLabel('Range value')).toBeEmpty();
   await expect(page.getByLabel('Range changes')).toHaveText('2');
   const timeInput = page.getByRole('textbox', { name: 'Time', exact: true });
-  await expect(timeInput).toHaveCSS('font-size', '11px');
+  await expect(timeInput).toHaveCSS('font-size', '12px');
   await timeInput.click();
   const timePanel = page.getByRole('dialog', { name: 'Time' });
-  await expect(timePanel.getByRole('button', { name: 'Cancel' })).toHaveCSS('font-size', '11px');
+  await expect(timePanel.getByRole('button', { name: 'Cancel' })).toHaveCSS('font-size', '12px');
   const ten = timePanel
     .getByRole('group', { name: 'Hours' })
     .getByRole('button', { name: '10', exact: true });
-  await expect(ten).toHaveCSS('font-size', '11px');
+  await expect(ten).toHaveCSS('font-size', '12px');
   await ten.click();
   await timePanel
     .getByRole('group', { name: 'Minutes' })
@@ -442,7 +444,7 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   await expect(page.getByLabel('Time changes')).toHaveText('2');
   await page.getByRole('combobox', { name: 'Minutes' }).click();
   const minute = page.getByRole('option', { name: '00:15' });
-  await expect(minute).toHaveCSS('font-size', '11px');
+  await expect(minute).toHaveCSS('font-size', '12px');
   await minute.click();
   await expect(page.getByLabel('Minute value')).toHaveText('00:15');
   await page.locator('.mar-ui-time-select').getByRole('button', { name: 'Clear' }).click();
@@ -635,7 +637,7 @@ test('MAR number reports edits immediately but change only on commit', async ({ 
 
 for (const [width, theme, font, control] of [
   [1280, 'light', '12px', '26px'],
-  [390, 'dark', '11px', '24px']
+  [390, 'dark', '12px', '26px']
 ] as const) {
   test(`Remote select uses a compact status row at ${width}px`, async ({ page }, testInfo) => {
     const response = Promise.withResolvers<void>();

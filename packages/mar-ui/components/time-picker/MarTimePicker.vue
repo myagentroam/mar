@@ -294,7 +294,7 @@ input {
   color: var(--mar-ui-text-primary);
   background: transparent;
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
 }
 input:disabled {
   color: var(--mar-ui-text-disabled);
@@ -313,7 +313,7 @@ button:focus-visible {
 }
 .mar-ui-time-picker__popup {
   inline-size: 10rem;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
 }
 .mar-ui-time-picker__columns {
   display: flex;

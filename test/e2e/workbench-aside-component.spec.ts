@@ -420,7 +420,7 @@ test.describe('HTML Browser content', () => {
           ).toEqual({ overflow: false, ellipsis: false });
           for (const label of ['Back', 'Forward', 'Reload', 'Open source', 'Open in browser']) {
             const button = panel.getByRole('button', { name: label, exact: true });
-            await expect(button).toHaveCSS('min-block-size', width < 768 ? '24px' : '26px');
+            await expect(button).toHaveCSS('min-block-size', '26px');
             await expect(button.locator('svg')).toHaveCount(1);
             await expect(button).toHaveText('');
           }
@@ -505,7 +505,7 @@ for (const [language, theme, width] of [
       const session = tabs.getByRole('tab', {
         name: language === 'zh' ? /需要保持可读/ : /A long readable/
       });
-      await expect(session).toHaveCSS('font-size', width < 768 ? '11px' : '12px');
+      await expect(session).toHaveCSS('font-size', '12px');
       await expect(session).toHaveCSS('font-weight', '500');
       const geometry = await session.evaluate((element) => {
         const item = element.closest('.mar-tab-strip-item')!;
@@ -1006,8 +1006,8 @@ test('Aside tool tabs keep balanced label spacing on touch screens', async ({ br
           expect(headerGeometry.button.width).toBe(30);
           expect(headerGeometry.tabsLeft).toBe(headerGeometry.button.right);
           expect(headerGeometry.icon.right).toBeLessThanOrEqual(headerGeometry.button.right);
-          await expect(tabs.getByRole('tab').first()).toHaveCSS('font-size', '11px');
-          await expect(tabs.getByRole('tab').last()).toHaveCSS('font-size', '11px');
+          await expect(tabs.getByRole('tab').first()).toHaveCSS('font-size', '12px');
+          await expect(tabs.getByRole('tab').last()).toHaveCSS('font-size', '12px');
           const spacing = await tabs.getByRole('tab').evaluateAll((elements) =>
             elements.flatMap((element) => {
               const item = element.closest('.mar-tab-strip-item')!;

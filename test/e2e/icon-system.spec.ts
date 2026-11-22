@@ -308,8 +308,8 @@ for (const theme of ['dark', 'light']) {
       await expect(refreshGlyph).toHaveCSS('width', '14px');
       await expect(refreshGlyph).toHaveCSS('height', '14px');
       const refreshBounds = (await refresh.boundingBox())!;
-      expect(refreshBounds.width).toBeCloseTo(width >= 768 ? 26 : 24, 2);
-      expect(refreshBounds.height).toBeCloseTo(width >= 768 ? 26 : 24, 2);
+      expect(refreshBounds.width).toBeCloseTo(26, 2);
+      expect(refreshBounds.height).toBeCloseTo(26, 2);
       const refreshGlyphBounds = (await refreshGlyph.boundingBox())!;
       expect(refreshGlyphBounds.x + refreshGlyphBounds.width / 2).toBeCloseTo(
         refreshBounds.x + refreshBounds.width / 2,
@@ -753,10 +753,10 @@ for (const theme of ['dark', 'light']) {
         await expect(attachment).toHaveCSS('height', '16px');
         await expect(copy).toHaveCSS('width', '18px');
         await expect(copy).toHaveCSS('height', '18px');
-        await expect(edit.locator('.mar-icon')).toHaveCSS('width', '11px');
-        await expect(edit.locator('.mar-icon')).toHaveCSS('height', '11px');
-        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '11px');
-        await expect(edit).toHaveCSS('font-size', '11px');
+        await expect(edit.locator('.mar-icon')).toHaveCSS('width', '12px');
+        await expect(edit.locator('.mar-icon')).toHaveCSS('height', '12px');
+        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '12px');
+        await expect(edit).toHaveCSS('font-size', '12px');
         await expect(page.locator('.composer-access-select .mar-icon')).not.toHaveCSS(
           'width',
           '18px'
@@ -1857,7 +1857,7 @@ for (const theme of ['dark', 'light'])
       expect(gap).toBeGreaterThanOrEqual(5);
       expect(centerOffset).toBeCloseTo(0, 0);
       await expect(create).toHaveCSS('border-top-width', '1px');
-      await expect(create).toHaveCSS('height', mobile ? '24px' : '26px');
+      await expect(create).toHaveCSS('height', '26px');
       const layout = await create.evaluate((button) => {
         const row = button.parentElement!;
         const more = row.querySelector('.workspace-more-button')!.getBoundingClientRect();
@@ -1876,8 +1876,8 @@ for (const theme of ['dark', 'light'])
       expect(layout.gap).toBeGreaterThan(0);
       const [fill, foreground, border, hover, active] =
         theme === 'dark'
-          ? (['#323232', '#eaeaea', '#6e6e6e', '#3b3b3b', '#444444'] as const)
-          : (['#deeaff', '#17243a', '#7185a0', '#d4e0f5', '#cad6eb'] as const);
+          ? (['#323232', '#eaeaea', '#3d3d3d', '#3b3b3b', '#444444'] as const)
+          : (['#deeaff', '#17243a', '#b9cadf', '#d4e0f5', '#cad6eb'] as const);
       const expectCreateColors = async (background: string) => {
         const colors = await create.evaluate((button) => {
           const style = getComputedStyle(button);
@@ -1925,7 +1925,7 @@ for (const theme of ['dark', 'light'])
       const menu = page.locator('.workspace-tool-menu:visible');
       await expect(menu.getByRole('menuitem', { name: 'Loaded skills' })).toBeVisible();
       for (const item of await menu.getByRole('menuitem').all()) {
-        await expect(item).toHaveCSS('font-size', mobile ? '11px' : '12px');
+        await expect(item).toHaveCSS('font-size', '12px');
       }
       await expect(menu).toHaveAttribute('data-arrow', '');
       await expect(menu).toHaveCSS('opacity', '1');

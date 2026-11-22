@@ -355,7 +355,7 @@ defineExpose({
   width: 100%;
   min-width: 0;
   min-height: var(--mar-ui-compact-control-size, 24px);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   font-weight: 400;
 }
 .mar-ui-input--textarea {

@@ -126,9 +126,32 @@ for (const { theme, width } of [
   }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(
-      `${fixture.url}workbench-style.html?session-markers&theme=${theme}&locale=en-US`
+      `${fixture.url}workbench-style.html?session-markers&unread=1&theme=${theme}&locale=en-US`
     );
-    const list = page.getByRole('region', { name: 'Session fixture' }).locator('.session-list');
+    const sidebar = page
+      .getByRole('region', { name: 'Session fixture' })
+      .locator('.conversation-sidebar');
+    const search = sidebar.locator('.session-search .mar-ui-input');
+    const create = sidebar.locator('.new-session-button');
+    const groups = sidebar.getByRole('radiogroup');
+    for (const control of [
+      search,
+      create,
+      groups,
+      sidebar.locator('.session-search-button'),
+      sidebar.locator('.workspace-more-button')
+    ]) {
+      await expect(control).toHaveCSS('height', '26px');
+    }
+    for (const label of [search.getByRole('textbox'), create, groups]) {
+      await expect(label).toHaveCSS('font-size', '12px');
+    }
+    const options = groups.getByRole('radio');
+    await expect(options).toHaveCount(2);
+    for (const option of await options.all()) {
+      await expect(option).toHaveCSS('height', '20px');
+    }
+    const list = sidebar.locator('.session-list');
     await expect(list.locator('strong')).toHaveText([
       'Scheduled',
       'Pinned',
@@ -221,6 +244,7 @@ for (const { theme, width } of [
     if (width >= 768)
       await tree.screenshot({ path: testInfo.outputPath('resource-tree-colors.png') });
     await list.screenshot({ path: testInfo.outputPath('session-list-markers.png') });
+    await sidebar.screenshot({ path: testInfo.outputPath('workspace-sessions-compact.png') });
   });
 }
 
@@ -303,7 +327,10 @@ for (const [theme, width] of [
     const historyFilter = page.locator('.history-search-row .mar-ui-input');
     await historyFilter.screenshot({ path: testInfo.outputPath('hosted-history-filter.png') });
     const textbox = historyFilter.getByRole('textbox');
-    const font = width >= 768 ? '12px' : '11px';
+    const font = '12px';
+    await expect(historyFilter).toHaveCSS('height', '26px');
+    await expect(page.locator('.history-refresh-button')).toHaveCSS('height', '26px');
+    await expect(page.locator('.history-create-button')).toHaveCSS('height', '26px');
     await expect(textbox).toHaveCSS('font-size', font);
     expect(await textbox.evaluate((el) => getComputedStyle(el, '::placeholder').fontSize)).toBe(
       font
@@ -330,6 +357,9 @@ for (const [theme, width] of [
       await page.mouse.move(0, 0);
     }
     await list.screenshot({ path: testInfo.outputPath('hosted-history-colors.png') });
+    await page.locator('.hosted-conversation-history').screenshot({
+      path: testInfo.outputPath('hosted-history-compact.png')
+    });
   });
 }
 
@@ -406,7 +436,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         });
       await page.mouse.move(0, 0);
       const normal = await appearance(standard);
-      expect(normal.font).toBe(width >= 768 ? '12px' : '11px');
+      expect(normal.font).toBe('12px');
       expect(normal.placeholderFont).toBe(normal.font);
       expect(normal.shadow).not.toBe('none');
       await standard.hover();
@@ -1465,7 +1495,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const tabs = strip.getByRole('tab');
         await expect(tabs).toHaveCount(4);
         // Aside uses the shared compact Tab token, including its mobile size.
-        await expect(tabs.first()).toHaveCSS('font-size', viewportWidth >= 768 ? '12px' : '11px');
+        await expect(tabs.first()).toHaveCSS('font-size', '12px');
         for (const width of viewportWidth >= 768 ? [341, 275] : [366, 320]) {
           await inspector.evaluate((element, width) => {
             (element as HTMLElement).style.width = `${width}px`;
@@ -1774,7 +1804,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const button of await picker.locator('.workspace-picker-toolbar-actions button').all()) {
         const bounds = (await button.boundingBox())!;
         expect(bounds.width).toBeGreaterThanOrEqual(28);
-        expect(bounds.height).toBeCloseTo(width < 768 ? 24 : 26, 2);
+        expect(bounds.height).toBeCloseTo(26, 2);
         await expect(button.locator('svg')).toHaveCount(1);
       }
       const rowColors = await picker.evaluate((element) => {

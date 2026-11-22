@@ -35,7 +35,7 @@ test('Table updates conditional status slots without replacing the data', async 
 
 for (const [width, compact, headerFont, bodyFont] of [
   [1280, 26, '12px', '13px'],
-  [390, 24, '11px', '12px']
+  [390, 26, '11px', '12px']
 ] as const) {
   test(`Table keeps a compact header and readable rows at ${width}px`, async ({
     page
@@ -386,13 +386,14 @@ for (const moveFocus of [false, true]) {
 
 for (const [width, font, height] of [
   [1280, '12px', 52],
-  [390, '11px', 48]
+  [390, '11px', 52]
 ] as const) {
   test(`Table empty text uses compact typography at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 850 });
     const table = page.getByRole('table', { name: 'Empty table' });
     const text = table.getByText('Nothing here', { exact: true });
     await expect(text).toHaveCSS('font-size', font);
+    await expect(page.locator('.mar-ui-pagination__total')).toHaveCSS('font-size', font);
     const row = table
       .getByRole('row')
       .filter({ has: page.getByText('Nothing here', { exact: true }) });
