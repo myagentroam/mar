@@ -135,6 +135,7 @@ export const iconShapes = {
   'zoom-in':
     '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.2 15.2 5.3 5.3M10.5 7.5v6m-3-3h6" />',
   'zoom-out': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.2 15.2 5.3 5.3M7.5 10.5h6" />',
+  pan: '<path d="M12 3v18M3 12h18M9 6l3-3 3 3m-6 12 3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3" />',
   'rotate-left': '<path d="M5.5 6.5A8 8 0 1 1 4 12M5.5 3v3.5H9" />',
   'rotate-right':
     '<path d="M5.5 6.5A8 8 0 1 1 4 12M5.5 3v3.5H9" transform="translate(24 0) scale(-1 1)"/>',

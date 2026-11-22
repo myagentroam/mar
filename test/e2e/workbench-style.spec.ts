@@ -2179,6 +2179,53 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(branchRefs).toHaveText(['main', 'origin/feature']);
     await expect(branchRefs.nth(0)).toHaveCSS('color', blue);
     await expect(branchRefs.nth(1)).toHaveCSS('color', blue);
+    const refAppearance = () =>
+      branchRefs.first().evaluate((element) => {
+        const style = getComputedStyle(element);
+        const row = element.closest('.history-commit-row')!;
+        const ancestry: string[] = [];
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          ancestry.unshift(getComputedStyle(parent).backgroundColor);
+        }
+        const canvas = document.createElement('canvas').getContext('2d')!;
+        const luminance = (...layers: string[]) => {
+          canvas.clearRect(0, 0, 1, 1);
+          for (const layer of layers) {
+            canvas.fillStyle = layer;
+            canvas.fillRect(0, 0, 1, 1);
+          }
+          const [r, g, b] = canvas.getImageData(0, 0, 1, 1).data;
+          const linear = (channel: number) => {
+            const v = channel / 255;
+            return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          };
+          return 0.2126 * linear(r!) + 0.7152 * linear(g!) + 0.0722 * linear(b!);
+        };
+        const contrast = (a: number, b: number) =>
+          (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+        const surface = luminance(...ancestry);
+        const fill = luminance(...ancestry, style.backgroundColor);
+        const hasOutline =
+          style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) > 0;
+        const outline = luminance(...ancestry, style.backgroundColor, style.outlineColor);
+        return {
+          background: style.backgroundColor,
+          outline: style.outlineColor,
+          rowBackground: getComputedStyle(row).backgroundColor,
+          textContrast: contrast(luminance(style.color), fill),
+          fillContrast: contrast(fill, surface),
+          boundaryContrast: hasOutline ? contrast(outline, surface) : 1
+        };
+      });
+    const normalRef = await refAppearance();
+    expect(normalRef.fillContrast).toBeGreaterThan(1.06);
+    expect(normalRef.textContrast).toBeGreaterThanOrEqual(4.5);
+    expect(normalRef.boundaryContrast).toBeGreaterThanOrEqual(1.5);
+    await merge.hover();
+    const hoveredRef = await refAppearance();
+    expect(hoveredRef.rowBackground).not.toBe(normalRef.rowBackground);
+    expect(hoveredRef.textContrast).toBeGreaterThanOrEqual(4.5);
+    expect(hoveredRef.boundaryContrast).toBeGreaterThanOrEqual(1.5);
     const lanes = await merge
       .locator('path.history-graph-edge')
       .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
@@ -2190,6 +2237,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(modified).toHaveCSS('color', warning);
     await page.mouse.move(0, 0);
     await history.screenshot({ path: testInfo.outputPath('git-branches-and-files.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(branchRefs.nth(1)).toBeVisible();
+    const mobileRef = await refAppearance();
+    expect(mobileRef.textContrast).toBeGreaterThanOrEqual(4.5);
+    expect(mobileRef.boundaryContrast).toBeGreaterThanOrEqual(1.5);
+    await history.screenshot({ path: testInfo.outputPath('git-branch-labels-mobile.png') });
     await page.locator('html').evaluate((root) => {
       root.style.setProperty('--mar-color-git-graph-main', '#9454c0');
       root.style.setProperty('--mar-color-success-text', '#aabbcc');
@@ -2197,6 +2250,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(mainLane).toHaveCSS('stroke', 'rgb(148, 84, 192)');
     await expect(branchRefs.nth(0)).toHaveCSS('color', 'rgb(148, 84, 192)');
     await expect(branchRefs.nth(1)).toHaveCSS('color', 'rgb(148, 84, 192)');
+    const customRef = await refAppearance();
+    expect(customRef.background).not.toBe(mobileRef.background);
+    expect(customRef.outline).not.toBe(mobileRef.outline);
     await expect(green).toHaveCSS('stroke', greenStroke);
     await expect(history.locator('.history-file-status[data-file-change="ADDED"]')).toHaveCSS(
       'color',

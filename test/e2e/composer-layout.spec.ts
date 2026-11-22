@@ -210,8 +210,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const composerHost = (await page.locator('.composer-host').boundingBox())!;
           const composer = (await page.locator('.composer').boundingBox())!;
           if (width < 768) {
-            const centerY = (title.y + description.y + description.height) / 2;
-            expect(Math.abs(centerY - (region.y + region.height / 2))).toBeLessThan(3);
+            const gap = composerHost.y - (description.y + description.height);
+            expect(gap).toBeGreaterThan(0);
+            expect(gap).toBeLessThanOrEqual(24);
             expect(composer.y + composer.height).toBe(844);
           } else {
             const header = (await page.locator('header').boundingBox())!;

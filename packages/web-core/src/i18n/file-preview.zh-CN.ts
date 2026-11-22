@@ -1,6 +1,7 @@
 export const filePreviewZhCN = {
   filePreview: { loadFailed: '无法读取此文件，请重试。' },
   imageViewport: {
+    actions: '图片操作',
     zoomIn: '放大',
     zoomOut: '缩小',
     fit: '适应窗口',

@@ -41,6 +41,90 @@ test('A long Diff filename truncates without hiding the mode on mobile', async (
   expect(modeBox.x + modeBox.width).toBeLessThan(390);
 });
 
+for (const width of [320, 390, 1280]) {
+  test(`File image controls share the existing file actions at ${width}px`, async ({
+    page
+  }, info) => {
+    const mobile = width < 768;
+    await page.setViewportSize({ width, height: mobile ? 844 : 900 });
+    await page.goto(`${fixture.url}file-editor-layout.html?image=landscape`);
+    const surface = page.locator('.file-preview-surface');
+    const actions = surface.locator(
+      mobile ? '.workspace-file-mobile-actions' : '.file-preview-desktop-actions'
+    );
+    const zoom = actions.getByRole('button', { name: 'Zoom in', exact: true });
+    const pan = actions.getByRole('button', { name: 'Pan image', exact: true });
+    const download = actions.getByRole('button', { name: /Download/ });
+    await expect(zoom).toBeVisible();
+    await expect(download).toBeVisible();
+    await expect(pan).toBeDisabled();
+    await expect(pan.locator('[data-mar-icon="pan"]')).toBeVisible();
+    await zoom.click();
+    await expect(pan).toBeEnabled();
+    if (width !== 320) {
+      await page.mouse.move(0, 0);
+      await page.screenshot({
+        path: info.outputPath('file-image-actions.png'),
+        animations: 'disabled'
+      });
+    }
+    const controls = await actions
+      .getByRole('group', { name: 'Image controls' })
+      .evaluate((group) =>
+        Array.from(group.querySelectorAll('button[id], :scope > button')).map((button) =>
+          button.getBoundingClientRect()
+        )
+      );
+    expect(controls).toHaveLength(4);
+    const gaps = controls.slice(1).map((box, i) => box.left - controls[i]!.right);
+    expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(1);
+    if (mobile) {
+      const toolbarBox = (await actions.boundingBox())!;
+      const viewport = (await surface.locator('.mar-image-preview-viewport').boundingBox())!;
+      expect(toolbarBox.x).toBeGreaterThan(0);
+      expect(toolbarBox.y).toBeGreaterThanOrEqual(viewport.y + viewport.height - 1);
+    }
+    await pan.click();
+    const menu = page.getByRole('menu', { name: 'Pan image', exact: true });
+    await menu.getByRole('menuitem', { name: 'Pan left', exact: true }).click();
+    await expect(menu).not.toBeVisible();
+    if (mobile) {
+      const toggle = actions.locator('.workspace-file-mobile-actions-toggle');
+      await toggle.click();
+      await expect(zoom).toHaveCount(0);
+      await expect(download).toHaveCount(0);
+      await toggle.click();
+      await expect(zoom).toBeVisible();
+    }
+  });
+}
+
+test('File image pan menu closes when its toolbar is hidden at a breakpoint', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${fixture.url}file-editor-layout.html?image=landscape`);
+  const menu = page.getByRole('menu', { name: 'Pan image', exact: true });
+  const mobilePan = page.locator('.workspace-file-mobile-actions [aria-haspopup="menu"]');
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await mobilePan.click();
+  await expect(menu).toBeVisible();
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(menu).not.toBeVisible();
+  await expect(mobilePan).toHaveAttribute('aria-expanded', 'false');
+  const desktopPan = page.getByRole('button', { name: 'Pan image', exact: true });
+  await desktopPan.click();
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).not.toBeVisible();
+  await expect(desktopPan).toBeFocused();
+  await desktopPan.click();
+  await expect(menu).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(menu).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pan image', exact: true })).toBeEnabled();
+});
+
 test('File image wheel zoom follows the cursor and dragging stays within the preview', async ({
   page
 }) => {

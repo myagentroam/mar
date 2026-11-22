@@ -8,6 +8,7 @@ import { translate } from '../../service/locale-preference-service.js';
 import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
 import { type FilePreviewKind } from '../../util/file-preview.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
+import ImagePreviewControls from '../common/ImagePreviewControls.vue';
 import ImagePreviewViewport from '../common/ImagePreviewViewport.vue';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 import PdfFilePreview from './PdfFilePreview.vue';
@@ -55,6 +56,8 @@ const emit = defineEmits<{
 }>();
 
 const root = ref<{ readonly root: HTMLElement | undefined }>();
+const imageViewport = ref<InstanceType<typeof ImagePreviewViewport>>();
+const imageControls = computed(() => imageViewport.value?.controls);
 const rendererError = ref(false);
 const rendererLoading = ref(false);
 const hasRenderableContent = computed(
@@ -115,7 +118,7 @@ defineExpose({
     @retry="emit('reload')"
     :fullscreen="fullscreen"
     :contained="contained"
-    mobile-actions-layout="compact"
+    :mobile-actions-layout="kind === 'image' ? 'image' : 'compact'"
     tabindex="-1"
     :aria-hidden="active === false || undefined"
     :inert="active === false"
@@ -123,6 +126,13 @@ defineExpose({
   >
     <template v-if="file.size !== undefined" #metadata>
       {{ fileSizeLabel(file.size) }}
+    </template>
+    <template v-if="imageControls" #leading-actions>
+      <ImagePreviewControls
+        class="file-image-controls"
+        :controls="imageControls"
+        placement="bottom"
+      />
     </template>
     <template #secondary-actions>
       <MarButton
@@ -146,6 +156,11 @@ defineExpose({
       </MarButton>
     </template>
     <template #mobile-actions>
+      <ImagePreviewControls
+        v-if="imageControls"
+        class="file-image-controls"
+        :controls="imageControls"
+      />
       <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
@@ -180,7 +195,9 @@ defineExpose({
         </FilePreviewState>
         <ImagePreviewViewport
           v-else-if="kind === 'image' && contentUrl"
+          ref="imageViewport"
           :key="contentUrl"
+          external-controls
           image-class="file-binary-preview"
           :src="contentUrl"
           :alt="file.path"
@@ -272,6 +289,11 @@ defineExpose({
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+.file-image-controls {
+  border-inline-end: 1px solid var(--mar-border-subtle);
+  padding-inline-end: var(--image-action-gap, 0.375rem);
 }
 
 .file-audio-preview {

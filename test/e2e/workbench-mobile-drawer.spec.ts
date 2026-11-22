@@ -1111,7 +1111,7 @@ for (const source of ['conversation', 'attachment']) {
           const img = el as HTMLImageElement;
           const body = img.closest('.mar-ui-dialog__body')!;
           const controlsHeight = body.querySelector<HTMLElement>(
-            '.mar-image-preview-controls'
+            '.mar-image-preview-actions'
           )!.offsetHeight;
           const css = getComputedStyle(body);
           const width =

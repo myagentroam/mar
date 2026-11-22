@@ -287,6 +287,73 @@ const models = ['model-1', 'model-2'].map((id) => ({
   sortOrder: 0
 }));
 
+test.describe('Mobile hosted draft', () => {
+  test.use({
+    hasTouch: true,
+    isMobile: async ({ browserName }, use) => use(browserName !== 'firefox'),
+    deviceScaleFactor: 3
+  });
+
+  // @test-covers packages/web-core/src/view/conversation/HostedConversationEntryPage.vue
+  test('shows the new conversation guidance just above the bottom composer', async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 860 });
+    await page.route('**/api/hosted-conversations?limit=*', (route) =>
+      route.fulfill({ json: { items: [], nextCursor: null } })
+    );
+    await page.route('**/api/conversation-templates', (route) =>
+      route.fulfill({ json: { templates: [{ ...template, name: 'Daily work' }] } })
+    );
+    await page.route('**/conversation-templates/*/model-options', (route) =>
+      route.fulfill({ json: { models, defaultModelId: 'model-1' } })
+    );
+    await page.goto(`${fixture.url}hosted-entry.html?workspace-page=1&theme=daylight`);
+
+    const draft = page.locator('.hosted-entry-page');
+    const heading = draft.getByRole('heading', { name: 'How can I help?' });
+    const hint = draft.getByText(
+      'Choose a template, then send a message or attachment to start the conversation.'
+    );
+    await expect(heading).toBeVisible();
+    await expect(hint).toBeVisible();
+    await expect(draft.locator('.hosted-template-trigger')).toHaveText('Daily work');
+    await expect(draft.locator('.hosted-model-trigger')).toHaveText('Model One');
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 860 });
+      const hintBox = (await hint.boundingBox())!;
+      const composer = (await draft.locator('.composer').boundingBox())!;
+      expect(hintBox.x).toBeGreaterThanOrEqual(0);
+      expect(hintBox.x + hintBox.width).toBeLessThanOrEqual(width);
+      const gap = composer.y - (hintBox.y + hintBox.height);
+      expect(gap).toBeGreaterThan(0);
+      expect(gap).toBeLessThanOrEqual(24);
+      expect(composer.y + composer.height).toBe(860);
+    }
+    await page.screenshot({
+      path: testInfo.outputPath('mobile-hosted-welcome.png'),
+      animations: 'disabled'
+    });
+
+    await page.setViewportSize({ width: 320, height: 240 });
+    const guidance = draft.locator('.conversation-create-heading');
+    const guidanceBox = (await guidance.boundingBox())!;
+    const composer = (await draft.locator('.composer').boundingBox())!;
+    expect(guidanceBox.y + guidanceBox.height).toBeLessThanOrEqual(composer.y);
+    await hint.scrollIntoViewIfNeeded();
+    const hintBox = (await hint.boundingBox())!;
+    expect(hintBox.y).toBeGreaterThanOrEqual(guidanceBox.y);
+    expect(hintBox.y + hintBox.height).toBeLessThanOrEqual(guidanceBox.y + guidanceBox.height + 1);
+    await heading.scrollIntoViewIfNeeded();
+    const headingBox = (await heading.boundingBox())!;
+    expect(headingBox.y).toBeGreaterThanOrEqual(guidanceBox.y);
+    expect(headingBox.y + headingBox.height).toBeLessThanOrEqual(
+      guidanceBox.y + guidanceBox.height
+    );
+    expect(composer.y + composer.height).toBe(240);
+  });
+});
+
 async function openEntry(
   page: Page,
   templateName = template.name,

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" class="console-ui">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Console focus styles fixture</title>
+    <style>
+      .styled-action:focus {
+        outline: 2px dashed currentColor;
+      }
+    </style>
+    <link rel="stylesheet" href="/packages/web-core/src/styles.css" />
+  </head>
+  <body>
+    <svg width="100" height="100">
+      <g tabindex="0" role="img" aria-label="Graphic">
+        <rect width="60" height="80" fill="currentColor" />
+      </g>
+    </svg>
+    <button>Native action</button>
+    <input aria-label="Text field" />
+    <button class="styled-action">Styled action</button>
+  </body>
+</html>

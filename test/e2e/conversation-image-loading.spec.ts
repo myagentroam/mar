@@ -160,10 +160,8 @@ test.afterEach(() => finishTransfer());
 async function expectImageFits(image: Locator): Promise<void> {
   const metrics = await image.evaluate((element: HTMLImageElement) => {
     const area = element.closest('.decoded-preview-image')!;
-    const actionSpace =
-      area.querySelector<HTMLElement>('.decoded-preview-actions')?.offsetHeight ?? 0;
     const controlsHeight = area.querySelector<HTMLElement>(
-      '.mar-image-preview-controls'
+      '.mar-image-preview-actions'
     )!.offsetHeight;
     const bounds = element.getBoundingClientRect();
     return {
@@ -172,7 +170,7 @@ async function expectImageFits(image: Locator): Promise<void> {
       naturalWidth: element.naturalWidth,
       naturalHeight: element.naturalHeight,
       availableWidth: area.clientWidth,
-      availableHeight: area.clientHeight - actionSpace - controlsHeight,
+      availableHeight: area.clientHeight - controlsHeight,
       areaHeight: area.clientHeight,
       centerOffset:
         bounds.x + bounds.width / 2 - (area.getBoundingClientRect().x + area.clientWidth / 2),
@@ -193,16 +191,20 @@ async function expectImageFits(image: Locator): Promise<void> {
 }
 
 async function expectOriginalActionPosition(action: Locator): Promise<void> {
-  const { gap, leftOffset } = await action.evaluate((button: HTMLElement) => {
-    const image = button.closest('.decoded-preview-media')!.querySelector('img')!;
-    const imageBox = image.getBoundingClientRect();
+  const { gap, centerOffset, rowOffset } = await action.evaluate((button: HTMLElement) => {
+    const row = button.closest('.mar-image-preview-actions')!;
+    const rowBox = row.getBoundingClientRect();
+    const imageBox = row.parentElement!.querySelector('img')!.getBoundingClientRect();
     const actionBox = button.getBoundingClientRect();
+    const zoomBox = row.querySelector('.mar-image-preview-controls')!.getBoundingClientRect();
     return {
       gap: actionBox.top - imageBox.bottom,
-      leftOffset: actionBox.left - imageBox.left
+      centerOffset: rowBox.x + rowBox.width / 2 - (imageBox.x + imageBox.width / 2),
+      rowOffset: actionBox.y + actionBox.height / 2 - (zoomBox.y + zoomBox.height / 2)
     };
   });
-  expect(Math.abs(leftOffset)).toBeLessThan(1);
+  expect(Math.abs(centerOffset)).toBeLessThan(1);
+  expect(Math.abs(rowOffset)).toBeLessThan(1);
   expect(gap).toBeGreaterThanOrEqual(0);
   expect(gap).toBeLessThanOrEqual(8);
 }
@@ -256,6 +258,12 @@ for (const viewport of [
     await expect(original).toBeVisible();
     await expect(original).toHaveText('View original');
     await expect(original.locator('[data-mar-icon="image"]')).toBeVisible();
+    await expect(
+      dialog
+        .getByRole('button', { name: 'Pan image', exact: true })
+        .locator('[data-mar-icon="pan"]')
+    ).toBeVisible();
+    await expectOriginalActionPosition(original);
     const bounds = await image.boundingBox();
     expect(bounds!.width).toBeLessThan(viewport.width);
     expect(bounds!.height).toBeLessThan(viewport.height);
@@ -464,7 +472,12 @@ for (const width of [1440, 390]) {
     await expect(original).not.toHaveClass(
       /mar-ui-button--ghost|mar-ui-button--inline|mar-ui-button--(?:primary|danger)/
     );
-    await expect(original).toHaveCSS('height', '26px');
+    const controlHeight = width === 390 ? '36px' : '26px';
+    await expect(original).toHaveCSS('height', controlHeight);
+    await expect(dialog.getByRole('button', { name: '放大', exact: true })).toHaveCSS(
+      'height',
+      controlHeight
+    );
     await expect(original).toHaveCSS('border-top-style', 'solid');
     await expect(original).toHaveCSS('border-top-width', '1px');
     await expect(original).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');

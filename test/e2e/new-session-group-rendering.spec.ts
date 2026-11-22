@@ -219,12 +219,19 @@ test('Workspace welcome does not advertise an Agent before profiles arrive', asy
 });
 
 test.describe('Mobile workspace welcome', () => {
-  test.use({ hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  test.use({
+    hasTouch: true,
+    isMobile: async ({ browserName }, use) => use(browserName !== 'firefox'),
+    deviceScaleFactor: 3
+  });
 
   // @test-covers packages/web-core/src/view/workbench/WorkspaceSessionPane.vue
   test('aligns the MAR Agent icon with the name and arrow', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1600, height: 900 });
-    await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
+    await page.addInitScript(() => {
+      localStorage.setItem('mar.locale.v2', 'en-US');
+      localStorage.setItem('mar.theme', 'daylight');
+    });
     await openWorkspace(page, true, true);
 
     const welcome = page.locator('.conversation-empty');
@@ -237,6 +244,11 @@ test.describe('Mobile workspace welcome', () => {
     for (const width of [320, 390]) {
       await test.step(`${width}px touch viewport`, async () => {
         await page.setViewportSize({ width, height: 860 });
+        const description = (await welcome.locator('.draft-session-description').boundingBox())!;
+        const composer = (await page.locator('.composer-shell').boundingBox())!;
+        const gap = composer.y - (description.y + description.height);
+        expect(gap).toBeGreaterThan(0);
+        expect(gap).toBeLessThanOrEqual(24);
         const alignment = await agent.evaluate((button) => {
           const centerY = (element: Element) => {
             const { top, height } = element.getBoundingClientRect();
@@ -323,7 +335,7 @@ for (const viewport of [1600, 390]) {
         expect(gap).toBeLessThanOrEqual(20);
         const hover = await agent.evaluate((button) => {
           const marker = document.createElement('span');
-          marker.style.backgroundColor = 'var(--mar-fill-row-hover)';
+          marker.style.backgroundColor = 'var(--mar-ui-action-hover-overlay)';
           button.append(marker);
           const color = getComputedStyle(marker).backgroundColor;
           marker.remove();
@@ -344,6 +356,11 @@ for (const viewport of [1600, 390]) {
       const options = welcome.getByRole('menu', { name: 'Agent' });
       const codex = options.getByRole('menuitem', { name: 'Codex' });
       await expect(codex).toHaveAttribute('aria-current', 'true');
+      if (viewport < 768) {
+        const triggerBox = (await agent.boundingBox())!;
+        const menuBox = (await options.boundingBox())!;
+        expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(triggerBox.y);
+      }
       await expect(options.locator('[data-mar-icon="check"]')).toHaveCount(0);
       const selectedColor = await codex.evaluate((item) => {
         const marker = document.createElement('span');
