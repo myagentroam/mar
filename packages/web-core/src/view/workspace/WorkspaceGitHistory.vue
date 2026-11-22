@@ -5,12 +5,17 @@ import './file-tooltip-trigger.css';
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
+import {
+  MarDropdown,
+  MarDropdownItem,
+  MarDropdownMenu,
+  type MarDropdownInstance
+} from '@myagentroam/mar-ui/dropdown';
 import type { MessageType } from '../../model/message-feedback.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { MarRegionStatus } from '@myagentroam/mar-ui/region-status';
-import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
-import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
+import { computed, nextTick, ref, shallowRef, watch, watchEffect } from 'vue';
 import type { HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
 import type { WorkspaceGitService } from '../../service/workspace-git-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -88,10 +93,10 @@ const historyRepositoryPath = ref(props.service.historyRepositoryPath.value);
 const selectedHistoryRefs = ref([...props.service.selectedHistoryRefs.value]);
 const expandedHistoryCommits = ref<string[]>([]);
 const expandedHistoryDirectories = ref<Record<string, readonly string[]>>({});
-const historyContextMenu = ref<{
-  readonly commit: HistoryCommit;
-  readonly x: number;
-  readonly y: number;
+const historyMenu = ref<MarDropdownInstance>();
+const historyMenuTarget = shallowRef<{
+  readonly hash: string;
+  readonly anchor: { readonly contextElement: HTMLElement; getBoundingClientRect(): DOMRect };
 }>();
 watch(props.service.historyRepositoryPath, (path) => {
   historyRepositoryPath.value = path;
@@ -146,33 +151,32 @@ function historyTime(value: number): string {
   return Number.isFinite(value) ? managementDateTime(value) : '-';
 }
 
-function openHistoryContextMenu(commit: HistoryCommit, event: MouseEvent): void {
+function openHistoryContextMenu(hash: string, event: MouseEvent): void {
   event.preventDefault();
-  const width = 176;
-  const height = 38;
-  historyContextMenu.value = {
-    commit,
-    x: Math.max(6, Math.min(event.clientX, window.innerWidth - width - 6)),
-    y: Math.max(6, Math.min(event.clientY, window.innerHeight - height - 6))
+  const row = event.currentTarget as HTMLElement;
+  const rect = new DOMRect(event.clientX, event.clientY);
+  closeHistoryContextMenu();
+  const target = {
+    hash,
+    anchor: { contextElement: row, getBoundingClientRect: () => rect }
   };
+  historyMenuTarget.value = target;
+  row.focus({ preventScroll: true });
+  void nextTick(() => {
+    if (historyMenuTarget.value === target) historyMenu.value?.handleOpen();
+  });
 }
 
 function closeHistoryContextMenu(): void {
-  historyContextMenu.value = undefined;
-}
-
-function closeHistoryContextMenuOnPointerDown(event: PointerEvent): void {
-  if (event.target instanceof Element && event.target.closest('.history-context-menu') !== null)
-    return;
-  closeHistoryContextMenu();
+  historyMenu.value?.handleClose();
+  historyMenuTarget.value = undefined;
 }
 
 async function copyHistoryCommitId(): Promise<void> {
-  const commit = historyContextMenu.value?.commit;
-  if (commit === undefined) return;
-  closeHistoryContextMenu();
+  const hash = historyMenuTarget.value?.hash;
+  if (hash === undefined) return;
   try {
-    await navigator.clipboard.writeText(commit.hash);
+    await navigator.clipboard.writeText(hash);
     emit('notice', translate('generated.workspaceInspector.commitIdCopied'), 'info');
   } catch (error) {
     emit('notice', errorMessage(error), 'error', error);
@@ -235,34 +239,10 @@ function toggleHistoryDirectory(commitHash: string, path: string): void {
       : [...expanded, path]
   };
 }
-
-let unregisterMenuShortcut: (() => void) | undefined;
-onMounted(() => {
-  unregisterMenuShortcut = consoleKeyboardShortcutService.register({
-    command: 'gitHistory.dismissMenu',
-    scope: 'overlay',
-    priority: 150,
-    keys: [{ key: 'Escape' }],
-    when: () => historyContextMenu.value !== undefined,
-    execute: () => {
-      closeHistoryContextMenu();
-      return 'HANDLED';
-    }
-  });
-  window.addEventListener('pointerdown', closeHistoryContextMenuOnPointerDown);
-  window.addEventListener('resize', closeHistoryContextMenu);
-  window.addEventListener('scroll', closeHistoryContextMenu, true);
-});
-onBeforeUnmount(() => {
-  unregisterMenuShortcut?.();
-  window.removeEventListener('pointerdown', closeHistoryContextMenuOnPointerDown);
-  window.removeEventListener('resize', closeHistoryContextMenu);
-  window.removeEventListener('scroll', closeHistoryContextMenu, true);
-});
 </script>
 
 <template>
-  <section ref="historyContainer" class="git-history">
+  <section ref="historyContainer" class="git-history" @scroll="closeHistoryContextMenu">
     <div class="history-toolbar">
       <MarSelect
         v-model="historyRepositorySelection"
@@ -365,7 +345,7 @@ onBeforeUnmount(() => {
           class="history-commit-row"
           type="button"
           @click="toggleHistoryCommit(commit)"
-          @contextmenu="openHistoryContextMenu(commit, $event)"
+          @contextmenu="openHistoryContextMenu(commit.hash, $event)"
         >
           <svg
             class="history-graph"
@@ -522,19 +502,25 @@ onBeforeUnmount(() => {
         </div>
       </li>
     </ul>
-    <Teleport to="body">
-      <div
-        v-if="historyContextMenu !== undefined"
-        class="history-context-menu"
-        :style="{ left: `${historyContextMenu.x}px`, top: `${historyContextMenu.y}px` }"
-        role="menu"
-      >
-        <button type="button" role="menuitem" @click="copyHistoryCommitId">
-          <MarIcon name="paste" />
-          {{ translate('generated.workspaceInspector.copyCommitId') }}
-        </button>
-      </div>
-    </Teleport>
+    <MarDropdown
+      v-if="historyMenuTarget"
+      ref="historyMenu"
+      trigger="contextmenu"
+      virtual-triggering
+      :virtual-ref="historyMenuTarget.anchor"
+      placement="bottom-start"
+      :offset="2"
+      @command="copyHistoryCommitId"
+      @visible-change="!$event && (historyMenuTarget = undefined)"
+    >
+      <template #dropdown>
+        <MarDropdownMenu :aria-label="translate('generated.workspaceInspector.gitHistory')">
+          <MarDropdownItem command="copy" icon="copy">{{
+            translate('generated.workspaceInspector.copyCommitId')
+          }}</MarDropdownItem>
+        </MarDropdownMenu>
+      </template>
+    </MarDropdown>
     <MarButton
       v-if="historyError && readPlacement === 'append'"
       link
@@ -739,45 +725,6 @@ button.history-refresh {
 
 .history-graph-color-5 {
   color: var(--mar-color-danger-text);
-}
-
-.history-context-menu {
-  position: fixed;
-  z-index: 5000;
-  min-width: 176px;
-  overflow: hidden;
-  border: 1px solid var(--mar-border-subtle);
-  border-radius: 5px;
-  background: var(--mar-bg-panel);
-  box-shadow: var(--mar-control-shadow-light);
-  padding: 4px;
-}
-
-.history-context-menu button {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 28px;
-  gap: 7px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--mar-text-primary);
-  font: inherit;
-  font-size: var(--mar-font-size-meta);
-  padding: 4px 8px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.history-context-menu button:hover,
-.history-context-menu button:focus-visible {
-  background: var(--mar-overlay-row-hover, var(--mar-fill-hover));
-}
-
-.history-context-menu button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: -2px;
 }
 
 .history-commit-row:hover {

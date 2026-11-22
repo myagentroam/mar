@@ -9,6 +9,109 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const [locale, theme, width, historyLabel, filesLabel, copyLabel, copiedLabel] of [
+  ['en-US', 'daylight', 1280, 'Git History', 'Files', 'Copy commit ID', 'Commit ID copied.'],
+  ['zh-CN', 'vscode-dark-2026', 390, 'Git 历史', '文件', '复制 Commit ID', '已复制 Commit ID。']
+] as const) {
+  test.describe(`Git History menu in ${locale}`, () => {
+    test.use({ locale, viewport: { width, height: 900 } });
+
+    test('uses the standard context menu to copy the targeted commit and report the result', async ({
+      page
+    }) => {
+      const commits = ['a', 'b'].map((char, index) => ({
+        hash: char.repeat(40),
+        parents: [],
+        subject: index ? 'Second commit' : 'First commit',
+        authorName: 'Example',
+        authorEmail: 'example@example.com',
+        committedAt: 2 - index,
+        refs: []
+      }));
+      const copied: string[] = [];
+      let rejectCopy = false;
+      await page.exposeFunction('copyCommitInFixture', (hash: string) => {
+        copied.push(hash);
+        return !rejectCopy;
+      });
+      await page.addInitScript(() => {
+        const { copyCommitInFixture } = window as Window & {
+          copyCommitInFixture(hash: string): Promise<boolean>;
+        };
+        const clipboardDenied = new Error('Clipboard access denied');
+        window.addEventListener('fixture-history-notice', (event) => {
+          if ((event as CustomEvent).detail === clipboardDenied)
+            document.documentElement.dataset['clipboardCauseForwarded'] = 'true';
+        });
+        Object.defineProperty(navigator, 'clipboard', {
+          value: {
+            async writeText(hash: string) {
+              if (!(await copyCommitInFixture(hash))) throw clipboardDenied;
+            }
+          }
+        });
+      });
+      await page.route('**/api/workspaces/workspace/**', async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        const json = path.endsWith('/git/history')
+          ? { commits, nextCursor: null }
+          : path.endsWith('/git/refs')
+            ? { refs: [] }
+            : { entries: [], nextCursor: null };
+        await route.fulfill({ json });
+      });
+      await page.goto(
+        `${fixture.url}workbench-style.html?git-previews=1&theme=${theme}&locale=${locale}`
+      );
+      const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+      const historyTab = inspector.getByRole('tab', { name: historyLabel, exact: true });
+      const filesTab = inspector.getByRole('tab', { name: filesLabel, exact: true });
+      await historyTab.click();
+      const firstRow = inspector.getByRole('button', { name: /First commit/ });
+      const secondRow = inspector.getByRole('button', { name: /Second commit/ });
+      const menu = page.locator('.mar-ui-dropdown__popup:popover-open');
+      const copy = menu.getByRole('menuitem', { name: copyLabel });
+      const feedback = page.getByLabel('File operation feedback');
+
+      await firstRow.click({ button: 'right' });
+      await expect(copy).toBeFocused();
+      await expect(menu).toHaveAccessibleName(historyLabel);
+      await expect(menu).not.toHaveAttribute('data-arrow', '');
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+      await expect(firstRow).toBeFocused();
+      expect(copied).toEqual([]);
+
+      await firstRow.click({ button: 'right' });
+      await secondRow.click({ button: 'right', position: { x: 8, y: 18 } });
+      await expect(menu).toHaveCount(1);
+      await copy.press('Enter');
+      await expect(menu).toHaveCount(0);
+      await expect(feedback).toHaveText(copiedLabel);
+      await expect(feedback).toHaveAttribute('data-type', 'info');
+      expect(copied).toEqual([commits[1]!.hash]);
+
+      rejectCopy = true;
+      await firstRow.click({ button: 'right' });
+      await copy.click();
+      await expect(menu).toHaveCount(0);
+      await expect(feedback).toHaveText('Clipboard access denied');
+      await expect(feedback).toHaveAttribute('data-type', 'error');
+      await expect(page.locator('html')).toHaveAttribute('data-clipboard-cause-forwarded', 'true');
+      expect(copied).toEqual([commits[1]!.hash, commits[0]!.hash]);
+
+      await firstRow.click({ button: 'right' });
+      await expect(copy).toBeFocused();
+      // Switch without a pointer or focus change so outside dismissal cannot hide an unmount leak.
+      await filesTab.evaluate((tab: HTMLButtonElement) => tab.click());
+      await expect(menu).toHaveCount(0);
+      await historyTab.click();
+      await expect(firstRow).toBeVisible();
+      await expect(menu).toHaveCount(0);
+    });
+  });
+}
+
 for (const width of [1280, 390]) {
   test.describe(`Git preview at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, isMobile: width < 768, hasTouch: width < 768 });
@@ -245,8 +348,8 @@ for (const width of [1280, 390]) {
         .click();
       const failure = page
         .getByRole('dialog', { name: 'deleted.svg file preview', exact: true })
-        .getByRole('status');
-      await expect(failure).toContainText('Unable to preview this file.');
+        .locator('.file-preview-state');
+      await expect(failure.getByRole('status')).toContainText('Unable to preview this file.');
       await expect(
         failure.getByRole('button', { name: 'Download file', exact: true })
       ).toBeVisible();

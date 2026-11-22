@@ -125,6 +125,10 @@ const gitPreviewFixture = new URL(location.href).searchParams.has('git-previews'
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
 const fileRootPath = ref<string | undefined>('/home/example/my-agent-roam');
 const fileFeedback = ref({ message: '', type: '' });
+function reportHistoryNotice(message: string, type: string, cause?: unknown): void {
+  fileFeedback.value = { message, type };
+  window.dispatchEvent(new CustomEvent('fixture-history-notice', { detail: cause }));
+}
 const inspectorFixture =
   fileRootFixture ||
   overlappingWatchFixture ||
@@ -806,6 +810,7 @@ if (composerFixture) {
             v-else-if="inspectorFixture && tool === 'history' && visible"
             :service="toolGit"
             @open="openFixtureHistory"
+            @notice="reportHistoryNotice"
           />
           <p v-else-if="!inspectorFixture">
             {{ translate('generated.workspaceInspector.filesUnsupported') }}
