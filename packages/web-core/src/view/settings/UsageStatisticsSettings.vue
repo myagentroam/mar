@@ -660,7 +660,6 @@ onUnmounted(() => {
       <template v-if="state.overview || state.failed || state.loading">
         <div class="section-heading">
           <h3>{{ t('usageStatistics.records') }}</h3>
-          <span>{{ t('usageStatistics.recordsHint') }}</span>
         </div>
         <div v-if="state.recordsStale" class="records-update">
           <span class="metadata">{{ t('usageStatistics.recordsSnapshot') }}</span>

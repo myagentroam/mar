@@ -40,7 +40,6 @@ export const personalSettingsEnUS = {
     runners: 'By Runner',
     models: 'By model',
     records: 'Usage records',
-    recordsHint: 'Newest completed requests first. Column sorting applies to this page only.',
     requestedModel: 'Requested model',
     actualModel: 'Returned model',
     sessionId: 'Session ID',

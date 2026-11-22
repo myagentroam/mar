@@ -40,7 +40,6 @@ export const personalSettingsZhCN = {
     runners: '按 Runner',
     models: '按模型',
     records: '用量明细',
-    recordsHint: '按结束时间倒序分页；列排序仅作用于当前页。',
     requestedModel: '请求模型',
     actualModel: '实际返回模型',
     sessionId: '会话 ID',
