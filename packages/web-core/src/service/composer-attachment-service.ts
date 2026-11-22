@@ -26,6 +26,7 @@ const CHUNK_BYTES = 512 * 1024;
  */
 export function createComposerAttachmentService(options: {
   readonly context: () => DraftTarget | undefined;
+  readonly onAdded?: (target: AttachmentTarget) => void;
   readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly resourceUrl?: (path: string) => string;
@@ -117,6 +118,7 @@ export function createComposerAttachmentService(options: {
       };
       owners.set(attachment.id, { ...context });
       attachments.value = [...attachments.value, attachment];
+      options.onAdded?.(context);
       void upload(attachment);
     }
   }

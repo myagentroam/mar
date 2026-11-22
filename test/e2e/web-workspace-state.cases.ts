@@ -3325,6 +3325,89 @@ test('Reload restores Workspace Tabs and valid sessions, and defaults to a new d
     await expect(page.getByText('恢复内容 session-1', { exact: true })).toBeVisible();
   });
 
+  await test.step('An attachment-only draft survives a pending restore and starts a new session', async () => {
+    let attachmentId: string | undefined;
+    let finishUpload!: () => void;
+    const pendingUpload = new Promise<void>((resolve) => (finishUpload = resolve));
+    await page.route('**/api/workspaces/workspace-1/uploads', (route) => {
+      const input = route.request().postDataJSON() as {
+        composerAttachmentId: string;
+        size: number;
+      };
+      attachmentId = input.composerAttachmentId;
+      return json(route, {
+        upload: { uploadId: 'draft-upload', receivedBytes: input.size, size: input.size }
+      });
+    });
+    await page.route(
+      '**/api/workspaces/workspace-1/uploads/draft-upload/complete',
+      async (route) => {
+        await pendingUpload;
+        await json(route, { upload: { receivedBytes: 5 } });
+      }
+    );
+    const created = {
+      ...sessions[0]!,
+      id: 'attachment-session',
+      externalSessionId: 'attachment-session',
+      customTitle: 'Attachment draft'
+    };
+    await page.route('**/api/agent-sessions/start', (route) =>
+      json(route, {
+        session: created,
+        run: {
+          id: 'attachment-run',
+          sessionId: created.id,
+          workspaceId: created.workspaceId,
+          status: 'COMPLETED',
+          startedAt: 1,
+          completedAt: 2
+        },
+        delivery: 'STARTED'
+      })
+    );
+    await page.route('**/api/agent-sessions/attachment-session/watch*', (route) =>
+      fulfillMockSessionWatch(
+        page,
+        route,
+        created,
+        sessionWatchSnapshot(created, 'Attachment sent')
+      )
+    );
+    const send = page.getByRole('button', { name: '发送', exact: true });
+    try {
+      await useDraftDuringRestore(async () => {
+        await page.locator('.conversation-panel .attachment-file-input').setInputFiles({
+          name: 'draft.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from('draft')
+        });
+        await expect(page.locator('.conversation-panel .attachment-list')).toContainText(
+          'draft.txt'
+        );
+        await expect(composer).toHaveValue('');
+      });
+      await expect(send).toBeDisabled();
+    } finally {
+      finishUpload();
+    }
+    await expect(send).toBeEnabled();
+    const [submission] = await Promise.all([
+      page.waitForRequest((request) =>
+        /\/api\/agent-sessions\/(?:start|[^/]+\/messages)$/.test(new URL(request.url()).pathname)
+      ),
+      send.click()
+    ]);
+    expect(new URL(submission.url()).pathname).toBe('/api/agent-sessions/start');
+    expect(submission.postDataJSON()).toMatchObject({
+      workspaceId: 'workspace-1',
+      attachmentIds: [attachmentId]
+    });
+    await expect(page.getByText('Attachment sent', { exact: true })).toBeVisible();
+    await page.locator('.session-link').filter({ hasText: '持久化会话 1' }).click();
+    await expect(page.getByText('恢复内容 session-1', { exact: true })).toBeVisible();
+  });
+
   await test.step('Explicit New Session takes priority over a pending restore', async () => {
     await useDraftDuringRestore(async () => {
       await page.getByRole('button', { name: '新建会话', exact: true }).click();

@@ -448,8 +448,20 @@ export function createWorkbenchPageController<
     apply: applyWebUpdate
   } = webUpdates;
 
+  let mainDraftAttachmentRevision = 0;
   const composerAttachmentService = createComposerAttachmentService({
     context: () => draftTarget.value,
+    onAdded: ({ nodeId, workspaceId, pane }) => {
+      const draft = draftTarget.value;
+      if (
+        pane === 'main' &&
+        draft?.kind === 'workspace' &&
+        draft.nodeId === nodeId &&
+        draft.workspaceId === workspaceId
+      ) {
+        mainDraftAttachmentRevision += 1;
+      }
+    },
     notice,
     request,
     csrfToken,
@@ -1716,7 +1728,9 @@ export function createWorkbenchPageController<
     openDraft: () => showDraftSessionComposer(),
     notice: (error) => notice(message(error), 'error', error),
     currentSelectionRevision: () =>
-      currentDetailRequest() + workbenchWorkspaceSelectionService.currentSelectionRevision(),
+      currentDetailRequest() +
+      workbenchWorkspaceSelectionService.currentSelectionRevision() +
+      mainDraftAttachmentRevision,
     rememberSession: workspaceTabService.rememberSession
   });
 
