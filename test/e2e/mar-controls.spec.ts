@@ -541,3 +541,52 @@ test('MAR number reports edits immediately but change only on commit', async ({ 
   await quantity.press('Enter');
   await expect(changes).toHaveText('2->3,3->null');
 });
+
+for (const [width, theme, font, control] of [
+  [1280, 'light', '12px', '26px'],
+  [390, 'dark', '11px', '24px']
+] as const) {
+  test(`Remote select uses a compact status row at ${width}px`, async ({ page }, testInfo) => {
+    const response = Promise.withResolvers<void>();
+    await page.setViewportSize({ width, height: 850 });
+    await page.route('**/fixture-remote-options', async (route) => {
+      await response.promise;
+      await route.fulfill({ json: [] });
+    });
+    try {
+      await page.goto(`${fixture.url}mar-controls.html?remote-select&theme=${theme}`);
+      await page.getByRole('combobox', { name: 'Remote options' }).click();
+      const list = page.getByRole('listbox');
+      const status = list.locator('.mar-ui-select__empty');
+      await expect(list).toHaveAttribute('aria-busy', 'true');
+      await expect(status).toHaveCSS('height', control);
+      await expect(status.locator('[data-mar-icon="loading-content"]')).toHaveCSS('height', font);
+      await expect(list.getByText('No data', { exact: true })).toHaveCount(0);
+      response.resolve();
+      await expect(list).not.toHaveAttribute('aria-busy');
+      const empty = list.getByText('No data', { exact: true });
+      await expect(empty).toHaveCSS('font-size', font);
+      await expect(empty).toHaveCSS('height', control);
+      await list.screenshot({ path: testInfo.outputPath('remote-select-empty.png') });
+    } finally {
+      response.resolve();
+    }
+  });
+
+  test(`Cascader uses a compact no-results row at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto(`${fixture.url}mar-controls.html?theme=${theme}`);
+    const owner = page.getByRole('combobox', { name: 'Owner' });
+    await owner.fill('Unmatched organization');
+    const popup = page.getByRole('dialog', { name: 'Select' });
+    const empty = popup.getByText('No data', { exact: true });
+    await expect(empty).toHaveCSS('font-size', font);
+    await expect(empty).toHaveCSS('height', control);
+    const emptyWidth = (await popup.boundingBox())!.width;
+    await popup.screenshot({ path: testInfo.outputPath('cascader-empty.png') });
+    await owner.fill('Release');
+    await expect(popup.getByRole('button', { name: 'Platform / Release' })).toBeVisible();
+    await expect(empty).toHaveCount(0);
+    expect((await popup.boundingBox())!.width).toBeCloseTo(emptyWidth, 1);
+  });
+}

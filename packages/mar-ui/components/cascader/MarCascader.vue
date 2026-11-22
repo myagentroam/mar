@@ -353,10 +353,13 @@ input:disabled {
   display: flex;
   overflow: auto;
 }
+.mar-ui-cascader__column,
+.mar-ui-cascader__empty {
+  min-inline-size: min(10rem, 35vw);
+}
 .mar-ui-cascader__column {
   display: grid;
   align-content: start;
-  min-inline-size: min(10rem, 35vw);
   max-block-size: 14rem;
   overflow: auto;
 }
@@ -416,8 +419,15 @@ input:disabled {
   box-shadow: inset 0 0 0 3px var(--mar-ui-overlay-surface);
 }
 .mar-ui-cascader__empty {
-  padding: 0.625rem 1rem;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  padding: 4px var(--mar-ui-compact-option-padding-inline);
   margin: 0;
   color: var(--mar-ui-text-secondary);
+  font-size: var(--mar-ui-font-size-meta);
+  line-height: 1.45;
+  text-align: center;
 }
 </style>

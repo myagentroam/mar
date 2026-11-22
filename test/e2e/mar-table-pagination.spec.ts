@@ -363,3 +363,20 @@ for (const moveFocus of [false, true]) {
     await expect(page.getByRole('status', { name: 'Requests' })).toHaveText('4');
   });
 }
+
+for (const [width, font, height] of [
+  [1280, '12px', 52],
+  [390, '11px', 48]
+] as const) {
+  test(`Table empty text uses compact typography at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    const table = page.getByRole('table', { name: 'Empty table' });
+    const text = table.getByText('Nothing here', { exact: true });
+    await expect(text).toHaveCSS('font-size', font);
+    const row = table
+      .getByRole('row')
+      .filter({ has: page.getByText('Nothing here', { exact: true }) });
+    expect((await row.boundingBox())!.height).toBeCloseTo(height, 1);
+    await table.screenshot({ path: testInfo.outputPath('compact-empty-table.png') });
+  });
+}

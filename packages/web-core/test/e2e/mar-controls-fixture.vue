@@ -14,6 +14,7 @@ import en from '@myagentroam/mar-ui/locale/en';
 import zhCn from '@myagentroam/mar-ui/locale/zh-cn';
 import { MarRadioButton, MarRadioGroup } from '@myagentroam/mar-ui/radio';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
+import { MarSelect } from '@myagentroam/mar-ui/select';
 import { MarTabs, MarTabPane } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTimePicker } from '@myagentroam/mar-ui/time-picker';
@@ -38,6 +39,14 @@ const timeChanges = ref(0);
 const expiration = ref<Date | null>(null);
 const showCommandMenu = new URLSearchParams(location.search).has('command-menu');
 const showButtonRow = new URLSearchParams(location.search).has('button-row');
+const showRemoteSelect = new URLSearchParams(location.search).has('remote-select');
+const remoteLoading = ref(showRemoteSelect);
+const remoteOptions = ref<{ value: string; label: string }[]>([]);
+if (showRemoteSelect) {
+  void fetch('/fixture-remote-options')
+    .then(async (response) => (remoteOptions.value = await response.json()))
+    .finally(() => (remoteLoading.value = false));
+}
 const actionsBusy = ref(false);
 const organizations = [
   {
@@ -54,6 +63,13 @@ const organizations = [
 <template>
   <article>
     <h1>MAR controls</h1>
+    <MarSelect
+      v-if="showRemoteSelect"
+      aria-label="Remote options"
+      filterable
+      :options="remoteOptions"
+      :loading="remoteLoading"
+    />
     <section v-if="showButtonRow" aria-label="Standard actions">
       <div>
         <MarButton :loading="actionsBusy">Cancel</MarButton>

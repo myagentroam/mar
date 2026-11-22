@@ -850,8 +850,15 @@ input.mar-ui-select__trigger {
   animation: mar-ui-select-loading 0.9s linear infinite;
 }
 .mar-ui-select__empty {
-  padding: 0.375rem 0.75rem;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  padding: 4px var(--mar-ui-compact-option-padding-inline);
   color: var(--mar-ui-text-secondary);
+  font-size: var(--mar-ui-font-size-meta);
+  line-height: 1.45;
   text-align: center;
 }
 @keyframes mar-ui-select-loading {

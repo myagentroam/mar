@@ -277,8 +277,10 @@ for (const [view, field, selector, searchPlaceholder] of [
       const ring = table.getByRole('progressbar');
       const empty = table.getByText('No data', { exact: true });
       const message = page.locator('.mar-message--error');
+      const statusRow = table.locator('tbody tr');
       await expect(table.getByRole('columnheader', { name: 'Name', exact: true })).toBeVisible();
       await expect(ring).toBeVisible();
+      const loadingHeight = (await statusRow.boundingBox())!.height;
       await expect(empty).toHaveCount(0);
       await expect(page.locator('.mar-ui-loading')).toHaveCount(0);
       await snapshot('loading');
@@ -293,6 +295,8 @@ for (const [view, field, selector, searchPlaceholder] of [
       await expect(empty).toHaveCount(0);
       filtered.resolve();
       await expect(empty).toBeVisible();
+      await expect(empty).toHaveCSS('font-size', mobile ? '11px' : '12px');
+      expect((await statusRow.boundingBox())!.height).toBeCloseTo(loadingHeight, 1);
       await expect(message).toHaveCount(0);
       await expect(ring).toHaveCount(0);
       await snapshot('empty');

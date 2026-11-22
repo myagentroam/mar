@@ -336,16 +336,20 @@ function renderTable(): VNode {
   const rows = flatten(sortRows(props.data, currentSort, sort.value?.order ?? null));
   const rowNodes: VNode[] = [];
   if (slots.loading || rows.length === 0) {
+    const statusContent = slots.loading?.() ?? slots.empty?.();
     rowNodes.push(
       h('tr', { class: slots.loading ? 'mar-ui-table__loading' : 'mar-ui-table__empty' }, [
         h('td', { colspan: Math.max(1, columns.length) }, [
           h(
             'div',
             {
-              class: 'mar-ui-table__empty-content',
+              class: {
+                'mar-ui-table__empty-content': true,
+                'mar-ui-table__empty-content--text': statusContent === undefined
+              },
               style: { inlineSize: viewportWidth.value > 0 ? `${viewportWidth.value}px` : '100%' }
             },
-            slots.loading?.() ?? slots.empty?.() ?? props.emptyText ?? locale.value.noData
+            statusContent ?? props.emptyText ?? locale.value.noData
           )
         ])
       ])
@@ -516,7 +520,7 @@ const ColumnView = () => renderTable();
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__empty > td),
 .mar-ui-table__viewport :deep(.mar-ui-table__loading > td) {
-  block-size: 60px;
+  block-size: calc(2 * var(--mar-ui-compact-control-size, 24px));
   padding: 0;
   text-align: center;
   color: var(--mar-ui-text-secondary);
@@ -529,6 +533,9 @@ const ColumnView = () => renderTable();
   max-inline-size: 100%;
   padding-inline: 12px;
   overflow-wrap: anywhere;
+}
+.mar-ui-table__viewport :deep(.mar-ui-table__empty-content--text) {
+  font-size: var(--mar-ui-font-size-meta);
 }
 @media (hover: hover) {
   .mar-ui-table__viewport :deep(.mar-ui-table__row:hover > td) {
