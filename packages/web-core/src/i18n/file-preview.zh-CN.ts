@@ -125,9 +125,6 @@ export const filePreviewZhCN = {
     savedVersion: '预览显示已保存的版本。',
     saving: '请等待文件保存完成后再预览。',
     open: '运行 HTML 预览',
-    trustedWarning:
-      '受信任代码：此 HTML 与控制台共用主机名，可能使用当前登录权限并将文件发送到外部站点。',
-    isolatedWarning: '此 HTML 可以运行 JavaScript、读取所在目录及下级文件，并向外部站点发送内容。',
     unavailable: '无法启动 HTML 预览，请检查文件访问权限与预览域名配置。'
   },
   inlineFind: {

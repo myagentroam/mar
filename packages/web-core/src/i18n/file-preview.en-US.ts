@@ -130,10 +130,6 @@ export const filePreviewEnUS = {
     external: 'Open in browser',
     savedVersion: 'Preview shows the saved version.',
     saving: 'Wait for file saving to finish before previewing.',
-    trustedWarning:
-      'Trusted code: this HTML shares the Console hostname, may access your signed-in permissions, and may send files to external sites.',
-    isolatedWarning:
-      'This HTML can run JavaScript, read files in its directory and subdirectories, and send them to external sites.',
     unavailable: 'Unable to start the HTML preview. Check file access and the preview origin.'
   },
   inlineFind: {

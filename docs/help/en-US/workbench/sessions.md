@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-11-19
+lastUpdated: 2026-11-22
 ---
 
 # Create and Manage Sessions
@@ -67,7 +67,7 @@ Choose **Share conversation** from a regular work session's More menu. Expiratio
 
 The header shows the session title and Workspace name. Visitors enter the password to open a standalone chat without a Console account. Access credentials, the anonymous visitor identity, and the name requested before the first message are saved in that browser and restored after refresh or reopening. The Participants panel lists the sharer first, followed by participants viewing any share link for the same session. Anonymous identity and name are shared across links in the same browser. Use the edit button beside your own visitor name to change it across open share pages. Canceling leaves the name unchanged and does not send a message. Visitor names match message authors and are never merged or hidden by Console sign-in; unnamed visitors appear anonymously. The fixed sharer entry shows the account nickname, falling back to the username. The sharer’s green dot appears only while they have a share page open and disappears when their last page closes. Display names do not grant authorization.
 
-Visitors see the original session's entire history and future messages. They use its Agent and settings as the sharer, including messages, attachments, file and skill references, queuing, insertion, and interruption. Concurrent control uses the same shared state and mutual exclusion as opening the session in multiple browsers. The share page hides the model, reasoning effort, access mode, and context usage and its tooltip. There is no input prediction or Workspace management area. File links still open readonly previews, including separate file windows and Markdown or HTML rendering. Readonly viewing does not change executable HTML behavior or its existing warnings.
+Visitors see the original session's entire history and future messages. They use its Agent and settings as the sharer, including messages, attachments, file and skill references, queuing, insertion, and interruption. Concurrent control uses the same shared state and mutual exclusion as opening the session in multiple browsers. The share page hides the model, reasoning effort, access mode, and context usage and its tooltip. There is no input prediction or Workspace management area. File links still open read-only previews, including separate file windows and Markdown or HTML rendering. Read-only mode does not prevent HTML scripts from running. Only preview trusted files; see [HTML preview risks](files.md#steps).
 
 **Give the link and password only to people you trust.** Signing out as the sharer does not revoke a link; delete its record to stop access. Deletion or expiration immediately disables that link's chat pages and rejects further reads and messages, without stopping already accepted tasks or retracting content visitors have read. Other links and the original Console remain available.
 

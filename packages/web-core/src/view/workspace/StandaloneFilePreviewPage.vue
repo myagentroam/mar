@@ -135,10 +135,6 @@ const error = computed(() =>
       ? ''
       : translate(errorKey.value)
 );
-const htmlTrusted = computed(
-  () =>
-    htmlState.value.url !== undefined && new URL(htmlState.value.url).hostname === location.hostname
-);
 const preference = markdownPreviewPreferenceService().preference;
 const watermarkStyle = computed(() => ({
   backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(
@@ -766,11 +762,9 @@ function rawContentUrl(
     <template v-else-if="htmlPreviewMode">
       <header class="standalone-markdown-header html-preview-header">
         <code v-tooltip="query.get('path') ?? ''">{{ query.get('path') }}</code>
-        <small v-if="htmlState.url">{{
-          translate(htmlTrusted ? 'htmlPreview.trustedWarning' : 'htmlPreview.isolatedWarning')
-        }}</small>
       </header>
       <HtmlPreviewFrame
+        class="standalone-html-preview-body"
         :url="htmlState.url"
         :loading="loading || htmlState.loading"
         :title="query.get('path') ?? ''"
@@ -862,6 +856,7 @@ function rawContentUrl(
 <style scoped>
 .standalone-file-preview {
   /* Rendered previews keep their light appearance independently of the console. */
+  --mar-bg-page: #fff;
   --mar-text-secondary: #57606a;
   --mar-color-danger-text: #cf222e;
   --mar-scrollbar-thumb: #afb8c1;
@@ -873,7 +868,7 @@ function rawContentUrl(
   justify-content: flex-start;
   overflow: auto;
   padding: 0;
-  background: #fff;
+  background: var(--mar-bg-page);
   color: #1f2328;
   color-scheme: light;
 }
@@ -896,10 +891,6 @@ function rawContentUrl(
   flex: 1;
   flex-direction: column;
   align-self: stretch;
-}
-
-.standalone-preview-body :deep(.file-preview-loading.is-overlay) {
-  background: #fff;
 }
 
 .standalone-markdown-header {
@@ -929,10 +920,8 @@ function rawContentUrl(
   width: 100%;
   box-sizing: border-box;
 }
-.html-preview-header small {
-  flex: 1;
-  text-align: right;
-  white-space: normal;
+.standalone-html-preview-body {
+  align-self: stretch;
 }
 .markdown-preview-page {
   position: relative;
