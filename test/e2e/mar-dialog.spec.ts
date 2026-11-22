@@ -245,8 +245,8 @@ for (const width of [390, 1280]) {
     await opener.click();
     const dialog = page.getByRole('dialog', { name: 'Edit record' });
     const close = dialog.getByRole('button', { name: 'Close this dialog' });
-    await expect(close).toHaveCSS('width', '32px');
-    await expect(close).toHaveCSS('height', '32px');
+    await expect(close).toHaveCSS('width', '28px');
+    await expect(close).toHaveCSS('height', '28px');
     await expect(close).toHaveCSS('padding', '0px');
     await expect(close).toBeInViewport();
     const icon = close.locator('[data-mar-icon="close"]');

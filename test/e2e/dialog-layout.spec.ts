@@ -597,7 +597,8 @@ for (const { width, height } of [
       const path = (await row.locator('code').boundingBox())!;
       expect(node.x).toBeGreaterThanOrEqual(name.x + name.width);
       expect(node.y).toBeLessThan(name.y + name.height);
-      expect(path.y).toBeGreaterThanOrEqual(name.y + name.height);
+      // Firefox can round touching edges differently in separate bounding boxes.
+      expect(Math.max(0, name.y + name.height - path.y)).toBeCloseTo(0, 3);
       expect(await row.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThanOrEqual(48);
     }
     expect(await results.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(

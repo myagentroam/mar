@@ -407,7 +407,7 @@ defineExpose({ handleClose, panel });
   --mar-ui-button-icon-size: var(--mar-ui-action-icon-size, 18px);
   align-self: flex-start;
   flex: none;
-  min-inline-size: 32px;
+  min-inline-size: 28px;
   aspect-ratio: 1;
   padding: 0;
 }
