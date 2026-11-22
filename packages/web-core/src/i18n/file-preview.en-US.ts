@@ -123,6 +123,8 @@ export const filePreviewEnUS = {
     open: 'Run HTML preview',
     browser: 'Browser',
     preview: 'Preview',
+    back: 'Back',
+    forward: 'Forward',
     reload: 'Reload',
     source: 'Open source',
     external: 'Open in browser',

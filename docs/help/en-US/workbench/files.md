@@ -1,6 +1,6 @@
 ---
 title: Browse, Search, and Manage Files
-lastUpdated: 2026-11-18
+lastUpdated: 2026-11-22
 ---
 
 # Browse, Search, and Manage Files
@@ -25,6 +25,8 @@ The Workspace must be online and readable. Creating, renaming, moving, or deleti
 10. HTML/HTM files still open as source by default. Use **Preview** in the file menu, the source preview button, or `Ctrl/Cmd+Shift+V` to show the saved version in the Aside browser; this does not save drafts. The source window is temporarily hidden while its tabs and drafts remain available via **Open source**. Wait for any save to finish before previewing. A Workspace HTML link in a conversation opens in the browser; Ctrl/Cmd-click opens a rendered page in a new window. Ctrl/Cmd-click in Files still opens the source window. The first preview opens a closable Browser tab alongside sessions to the right of the fixed tools; no Browser tab appears before that. It shows one file at a time, replacing the previous page. The header keeps the file name, with icons to reload, open source, or open in an external browser. Close the tab with × without discarding source drafts; reopen the source from Files. Preview from a companion source window remains a separate page. HTML can run scripts, load resources in its directory and descendants, and send files externally. Preview trusted files only. An administrator can configure a separate HTTP or HTTPS preview origin; otherwise the Console origin is used and **HTML runs with your signed-in permissions, without isolation from the workbench**. A separate origin requires DNS, TLS when using HTTPS, and a reverse proxy to the Server preview route. Cross-origin content cannot deliver keyboard events to the Console; focus the preview header before using close shortcuts.
 
 To get the latest saved HTML in the Aside browser, open the same preview again (for example, by clicking its conversation link again) or select **Reload** in the toolbar. The current page stays visible until the replacement loads.
+
+After following a link or opening an image in the preview, use **Back** and **Forward** in the toolbar to move through its history. If the workbench moves to a different browser history entry, reload the preview to use these buttons again. Reloading or opening another HTML file starts a new preview history. These buttons are unavailable for cross-origin previews or in browsers that do not support navigation within the preview frame.
 
 Standalone rendered Markdown/HTML pages retain the browser's native context menu instead of the custom menu used by ordinary file pages.
 

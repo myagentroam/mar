@@ -117,6 +117,8 @@ export const filePreviewZhCN = {
   htmlPreview: {
     browser: '浏览器',
     preview: '预览',
+    back: '后退',
+    forward: '前进',
     reload: '重新加载',
     source: '打开源码',
     external: '在浏览器中打开',
