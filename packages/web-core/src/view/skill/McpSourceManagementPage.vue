@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './skill-management-filters.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -591,9 +592,10 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.mcpSourceManagementPage.sourceMCPServers')"
         name="source"
       >
-        <div class="source-search-bar mar-management-filter">
+        <div class="mar-management-filter">
           <MarSelect
             v-model="sourceId"
+            class="mar-management-filter__source"
             :aria-label="translate('generated.mcpSourceManagementPage.selectAnEnabledMCPSource')"
             :placeholder="translate('generated.mcpSourceManagementPage.selectAnEnabledMCPSource')"
             ><MarOption
@@ -602,26 +604,25 @@ function scopeLabel(scope: string): string {
               :label="displaySourceName(source)"
               :value="source.id"
           /></MarSelect>
-          <div class="toolbar">
-            <MarInput
-              v-model="query"
-              clearable
-              :placeholder="
-                translate('generated.mcpSourceManagementPage.enterAnMCPServerNameOrDescription')
-              "
-              @keyup.enter="discover"
-              :clear-icon="marIcon('clear-input')"
-            >
-              <template #append
-                ><MarButton
-                  :icon="marIcon('search')"
-                  :disabled="!sourceId || loading || discoveryState === 'loading'"
-                  @click="discover"
-                  >{{ translate('generated.mcpSourceManagementPage.search') }}</MarButton
-                ></template
+          <MarInput
+            v-model="query"
+            class="mar-management-filter__query"
+            clearable
+            :placeholder="
+              translate('generated.mcpSourceManagementPage.enterAnMCPServerNameOrDescription')
+            "
+            @keyup.enter="discover"
+            :clear-icon="marIcon('clear-input')"
+          >
+            <template #append>
+              <MarButton
+                :icon="marIcon('search')"
+                :disabled="!sourceId || loading || discoveryState === 'loading'"
+                @click="discover"
+                >{{ translate('generated.mcpSourceManagementPage.search') }}</MarButton
               >
-            </MarInput>
-          </div>
+            </template>
+          </MarInput>
         </div>
         <div class="mcp-table-section">
           <MarTable
@@ -706,15 +707,17 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.mcpSourceManagementPage.catalogMCPServers')"
         name="catalog"
       >
-        <div class="mcp-toolbar mar-management-filter">
+        <div class="mar-management-filter">
           <MarInput
             v-model="pagination.keyword.value"
+            class="mar-management-filter__query"
             clearable
             :placeholder="translate('generated.mcpCenterPanel.searchMCPServers')"
             :clear-icon="marIcon('clear-input')"
           />
           <MarSelect
             v-model="pagination.category.value"
+            class="mar-management-filter__category"
             clearable
             :aria-label="translate('generated.mcpCenterPanel.mCPCategories')"
             :placeholder="translate('generated.mcpCenterPanel.mCPCategories')"
@@ -1004,33 +1007,6 @@ p {
   gap: 14px;
   min-width: 0;
 }
-.source-search-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-.source-search-bar :deep(.mar-ui-select) {
-  width: min(320px, 100%);
-  min-width: 200px;
-}
-.toolbar {
-  flex: 0 1 360px;
-  min-width: 0;
-}
-.mcp-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-.mcp-toolbar > :deep(.mar-ui-input) {
-  width: min(320px, 100%);
-}
-.mcp-toolbar > :deep(.mar-ui-select) {
-  width: min(200px, 100%);
-}
 .mcp-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1056,20 +1032,5 @@ p {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   text-align: center;
-}
-@media (max-width: 720px) {
-  .source-search-bar,
-  .mcp-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .source-search-bar :deep(.mar-ui-select),
-  .mcp-toolbar > :deep(.mar-ui-input),
-  .mcp-toolbar > :deep(.mar-ui-select) {
-    width: 100%;
-  }
-  .source-search-bar .toolbar {
-    flex-basis: auto;
-  }
 }
 </style>

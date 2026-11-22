@@ -1,12 +1,57 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/web-core/src/view/settings/UsageStatisticsSettings.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
 });
 test.afterAll(async () => {
   await fixture?.close();
+});
+
+test('Usage filters stay compact on desktop and wrap without overflow in narrow panels', async ({
+  page
+}, testInfo) => {
+  for (const width of [1600, 1280, 700, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${fixture.url}icon-system.html?usage=1&locale=zh-CN&theme=vscode-dark-2026`);
+    const panel = page.getByTestId('usage-statistics');
+    if (width === 1280) {
+      await page.addStyleTag({
+        content: '[data-testid="usage-statistics"] { max-inline-size: 500px; }'
+      });
+    }
+    const form = panel.locator('.filters');
+    const controls = form.locator('.mar-ui-select').filter({ has: page.getByRole('combobox') });
+    await expect(controls).toHaveCount(4);
+    const formBounds = (await form.boundingBox())!;
+    const [range, runner, model, mode] = await Promise.all(
+      (await controls.all()).map(async (control) => (await control.boundingBox())!)
+    );
+    const rem = await page.evaluate(() =>
+      parseFloat(getComputedStyle(document.documentElement).fontSize)
+    );
+    for (const control of [range, runner, model, mode]) {
+      expect(control.x).toBeGreaterThanOrEqual(formBounds.x);
+      expect(control.x + control.width).toBeLessThanOrEqual(formBounds.x + formBounds.width + 1);
+    }
+    if (width === 1600) {
+      expect(range.width).toBeCloseTo(10 * rem, 0);
+      expect(runner.width).toBeCloseTo(range.width, 0);
+      expect(model.width).toBeCloseTo(14 * rem, 0);
+      expect(mode.width).toBeCloseTo(8 * rem, 0);
+      expect(mode.y).toBeCloseTo(range.y, 0);
+    } else {
+      expect(range.width).toBeLessThanOrEqual(12 * rem + 1);
+      expect(runner.y).toBeCloseTo(range.y, 0);
+      expect(model.y).toBeGreaterThan(range.y + range.height);
+      expect(model.x).toBeCloseTo(range.x, 0);
+      expect(mode.x).toBeCloseTo(runner.x, 0);
+      expect(mode.y).toBeCloseTo(model.y, 0);
+    }
+    await form.screenshot({ path: testInfo.outputPath(`usage-filters-${width}.png`) });
+  }
 });
 
 for (const locale of ['en-US', 'zh-CN']) {
@@ -17,7 +62,8 @@ for (const locale of ['en-US', 'zh-CN']) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${fixture.url}icon-system.html?usage=1&locale=${locale}`);
       const panel = page.getByTestId('usage-statistics');
-      await expect(panel).toHaveAttribute('aria-busy', 'false');
+      const records = panel.locator('.records');
+      await expect(records).toHaveAttribute('aria-busy', 'false');
       await panel
         .getByRole('combobox', {
           name: locale === 'en-US' ? 'Time range' : '时间范围',
@@ -64,7 +110,7 @@ for (const locale of ['en-US', 'zh-CN']) {
         if (!valid) await expect(panel.getByRole('alert')).toBeVisible();
         else {
           await expect(panel.getByRole('alert')).toHaveCount(0);
-          await expect(panel).toHaveAttribute('aria-busy', 'false');
+          await expect(records).toHaveAttribute('aria-busy', 'false');
         }
       }
     });

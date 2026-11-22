@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './skill-management-filters.css';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
@@ -390,9 +391,10 @@ function mcpErrorMessage(error: unknown): string {
         name="installed"
       />
     </MarTabs>
-    <div class="mcp-filter-bar mar-management-filter">
+    <div class="mar-management-filter mar-management-filter--stacked">
       <MarInput
         v-model="query"
+        class="mar-management-filter__query"
         clearable
         :placeholder="translate('generated.mcpCenterPanel.searchMCPServers')"
         :clear-icon="marIcon('clear-input')"
@@ -599,13 +601,6 @@ function mcpErrorMessage(error: unknown): string {
   gap: 12px;
   overflow: auto;
   padding-right: 4px;
-}
-.mcp-filter-bar {
-  display: grid;
-  gap: 10px;
-}
-.mcp-filter-bar > :deep(.mar-ui-input) {
-  width: min(320px, 100%);
 }
 .mcp-category-strip {
   display: flex;
