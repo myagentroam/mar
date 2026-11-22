@@ -811,7 +811,7 @@ test('Personalized prompts put the common option first and select it by default'
 
   const scopes = page.locator('.instruction-scopes [role="tab"]');
   await expect(scopes).toHaveText(['公共', 'MAR Agent', 'Codex', 'Claude Code', 'OpenCode']);
-  await expect(scopes.first()).toHaveClass(/is-checked/);
+  await expect(scopes.first()).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: '个性化提示词' })).toHaveValue('公共规则');
 });
 

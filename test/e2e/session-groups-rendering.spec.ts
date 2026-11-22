@@ -56,6 +56,9 @@ test('Session rows keep their desktop and mobile density', async ({ page }, test
     await page.setViewportSize({ width: 1280, height: 850 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${fixture.url}session-groups.html?locale=en-US&theme=vscode-dark-2026`);
+    const groups = page.locator('.conversation-sidebar').getByRole('radiogroup');
+    await expect(groups).toHaveCSS('height', '32px');
+    await expect(groups.getByRole('radio').first()).toHaveCSS('height', '26px');
     const row = page.locator('.conversation-sidebar .session-row').first();
     await row.locator('..').evaluate((item) => item.after(item.cloneNode(true)));
     const nextRow = page.locator('.conversation-sidebar .session-row').nth(1);
@@ -100,6 +103,8 @@ test('Session rows keep their desktop and mobile density', async ({ page }, test
     });
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 850 });
+    await expect(groups).toHaveCSS('height', '30px');
+    await expect(groups.getByRole('radio').first()).toHaveCSS('height', '24px');
     await expect(row).toHaveCSS('height', '32px');
     const mobileBounds = (await row.boundingBox())!;
     const nextMobileBounds = (await nextRow.boundingBox())!;

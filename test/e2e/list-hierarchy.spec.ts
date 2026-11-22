@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/mar-ui/components/check-tag/MarCheckTag.vue
+// @test-covers packages/mar-ui/components/segmented/MarSegmented.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
@@ -30,6 +32,32 @@ async function colors(page: Page) {
     return result;
   });
 }
+
+test('Catalog category tags distinguish selection in forced colors', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.goto(`${fixture.url}visual-alignment.html?list-hierarchy=skills&scope-columns`);
+  const filters = page.locator('.skill-filter-bar');
+  const all = filters.getByRole('button', { name: 'All', exact: true });
+  const engineering = filters.getByRole('button', { name: 'Engineering', exact: true });
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
+  const fill = (tag: typeof all) =>
+    tag.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const selected = await fill(all);
+  const inactive = await fill(engineering);
+  expect(selected).not.toBe(inactive);
+  await all.focus();
+  await page.keyboard.press('Tab');
+  await expect(engineering).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(engineering).toHaveAttribute('aria-pressed', 'true');
+  await expect(engineering).toHaveCSS('background-color', selected);
+  await expect(all).toHaveCSS('background-color', inactive);
+  // The catalog replaces its facets when the filter changes. Check focus on the new button.
+  await all.focus();
+  await page.keyboard.press('Tab');
+  await expect(engineering).toBeFocused();
+  await expect(engineering).toHaveCSS('outline-style', 'solid');
+});
 
 test('MCP source search discards old results when switching sources', async ({ page }) => {
   const old = Promise.withResolvers<void>();
@@ -281,7 +309,7 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
   for (const width of [1920, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(
-      `${fixture.url}visual-alignment.html?list-hierarchy=skills&theme=vscode-dark-2026`
+      `${fixture.url}visual-alignment.html?list-hierarchy=skills&scope-columns&theme=vscode-dark-2026`
     );
     for (const [tab, placeholder] of [
       ['Skill', 'Search skill names or descriptions'],
@@ -294,10 +322,43 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
       const field = filters.locator('.mar-ui-input');
       const bounds = (await filters.boundingBox())!;
       const search = (await field.boundingBox())!;
+      const target = page.locator('.target-panel:visible, .mcp-target-panel:visible');
+      const segmented = target.getByRole('radiogroup');
+      const select = target.getByRole('combobox').first();
+      const selectBounds = (await select.boundingBox())!;
+      expect((await segmented.boundingBox())!.height).toBeCloseTo(selectBounds.height, 0);
+      const size = await select.evaluate((element) => getComputedStyle(element).fontSize);
+      await expect(segmented).toHaveCSS('font-size', size);
+      await expect(input).toHaveCSS('font-size', size);
+      expect(
+        await input.evaluate((element) => getComputedStyle(element, '::placeholder').fontSize)
+      ).toBe(size);
+      await expect(input).toHaveCSS('font-weight', '400');
+      const selectedRadio = segmented.getByRole('radio', { checked: true });
+      await expect(selectedRadio).toHaveCount(1);
+
+      const all = filters.getByRole('button', { name: 'All', exact: true });
+      const engineering = filters.getByRole('button', { name: 'Engineering', exact: true });
+      await expect(all).toHaveAttribute('aria-pressed', 'true');
+      await expect(engineering).toHaveAttribute('aria-pressed', 'false');
+      expect((await all.boundingBox())!.height).toBeCloseTo(selectBounds.height, 0);
+      await expect(all).toHaveCSS('font-size', size);
+      const table = page.locator('table:visible');
+      const row = table.locator('tbody tr').first();
+      await expect(row).toBeVisible();
+      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-start', '2px');
+      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-end', '2px');
+      await expect(table).toHaveCSS('font-size', width >= 768 ? '14px' : '13px');
+      await engineering.press('Enter');
+      await expect(engineering).toHaveAttribute('aria-pressed', 'true');
+      await expect(all).toHaveAttribute('aria-pressed', 'false');
+      await all.click();
+      await expect(all).toHaveAttribute('aria-pressed', 'true');
       expect(search.x).toBeCloseTo(bounds.x, 0);
       expect(search.width).toBeCloseTo(Math.min(320, bounds.width), 0);
       expect(search.x + search.width).toBeLessThanOrEqual(width);
       await filters.screenshot({ path: testInfo.outputPath(`${tab}-filters-${width}.png`) });
+      await page.screenshot({ path: testInfo.outputPath(`${tab}-configuration-${width}.png`) });
     }
   }
 });
@@ -663,7 +724,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const before = await engineering.boundingBox();
         await expect(engineering).toHaveCSS('font-weight', '400');
         await engineering.click();
-        await expect(engineering).toHaveClass(/selected/);
+        await expect(engineering).toHaveAttribute('aria-pressed', 'true');
         await expect(engineering).toHaveCSS('font-weight', '400');
         await expect(engineering).toHaveCSS('color', palette.primary);
         await expect(engineering).toHaveCSS('background-color', palette.selected);
@@ -675,7 +736,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(writing).toHaveCSS('background-color', palette.hover);
         await expect(writing).toHaveCSS('font-weight', '400');
         await writing.press('Enter');
-        await expect(writing).toHaveClass(/selected/);
+        await expect(writing).toHaveAttribute('aria-pressed', 'true');
+        await expect(engineering).toHaveAttribute('aria-pressed', 'false');
       }
     }
   });

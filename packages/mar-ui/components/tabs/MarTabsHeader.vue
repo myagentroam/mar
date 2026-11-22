@@ -300,15 +300,16 @@ function activate(name: Name): void {
   margin-inline-start: -1px;
 }
 .mar-ui-tabs__list [role='tab'] {
-  min-block-size: 28px;
-  padding-inline: var(--mar-ui-compact-option-padding-inline);
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  padding: 0 var(--mar-ui-compact-option-padding-inline);
   border: 1px solid var(--mar-ui-border-default);
   border-block-end: 0;
   border-radius: var(--mar-ui-radius-control) var(--mar-ui-radius-control) 0 0;
   background: var(--mar-ui-bg-tab-inactive, var(--mar-ui-bg-subtle));
   color: var(--mar-ui-text-secondary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-body);
+  font-size: var(--mar-ui-font-size-meta);
+  line-height: 1.35;
   cursor: pointer;
 }
 .mar-ui-tabs__list [role='tab']:hover:enabled {

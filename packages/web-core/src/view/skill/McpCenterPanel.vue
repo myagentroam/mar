@@ -2,6 +2,7 @@
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
@@ -379,7 +380,7 @@ function mcpErrorMessage(error: unknown): string {
       type="info"
       :closable="false"
     />
-    <MarTabs v-model="activeConfigTab" class="mcp-config-tabs">
+    <MarTabs v-model="activeConfigTab">
       <MarTabPane
         :label="translate('generated.mcpCenterPanel.availableMCPServers')"
         name="available"
@@ -389,7 +390,7 @@ function mcpErrorMessage(error: unknown): string {
         name="installed"
       />
     </MarTabs>
-    <div class="mcp-filter-bar">
+    <div class="mcp-filter-bar mar-management-filter">
       <MarInput
         v-model="query"
         clearable
@@ -398,19 +399,20 @@ function mcpErrorMessage(error: unknown): string {
       />
       <div
         class="mcp-category-strip"
+        role="group"
         :aria-label="translate('generated.mcpCenterPanel.mCPCategories')"
       >
-        <button :class="{ selected: selectedCategory === '' }" @click="selectedCategory = ''">
+        <MarCheckTag :checked="selectedCategory === ''" @click="selectedCategory = ''">
           {{ translate('generated.mcpCenterPanel.all') }}
-        </button>
-        <button
+        </MarCheckTag>
+        <MarCheckTag
           v-for="tag in availableTags"
           :key="tag"
-          :class="{ selected: selectedCategory === tag }"
+          :checked="selectedCategory === tag"
           @click="selectedCategory = tag"
         >
           {{ tag }}
-        </button>
+        </MarCheckTag>
       </div>
     </div>
     <div class="mcp-table-section">
@@ -612,34 +614,8 @@ function mcpErrorMessage(error: unknown): string {
   padding: 1px 0 3px;
   scrollbar-width: thin;
 }
-.mcp-category-strip button {
+.mcp-category-strip > * {
   flex: none;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: 999px;
-  background: var(--mar-bg-panel);
-  color: var(--mar-text-secondary);
-  padding: 5px 12px;
-  font: inherit;
-  font-size: var(--mar-font-size-body);
-  cursor: pointer;
-}
-.mcp-category-strip button:hover {
-  border-color: var(--mar-border-strong);
-  background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
-}
-.mcp-category-strip button.selected {
-  border-color: var(--mar-border-medium);
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-  font-weight: 400;
-}
-.mcp-category-strip button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 1px;
-}
-.mcp-config-tabs {
-  min-height: 40px;
 }
 .mcp-target-panel {
   display: flex;
@@ -730,9 +706,6 @@ function mcpErrorMessage(error: unknown): string {
 @media (max-width: 720px) {
   .mcp-target-panel .mar-ui-select {
     width: 100%;
-  }
-  .mcp-target-panel :deep(.mar-ui-button) {
-    min-height: 36px;
   }
 }
 </style>

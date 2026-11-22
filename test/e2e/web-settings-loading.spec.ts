@@ -150,6 +150,12 @@ for (const viewport of [
         if ('tableLoading' in entry) {
           await expect(progress).toBeHidden();
           await expect(panel.getByText('No data', { exact: true })).toBeVisible();
+          const filterSize = viewport.width < 768 ? '11px' : '12px';
+          const filter = panel.getByPlaceholder('Search names', { exact: true });
+          await expect(filter).toHaveCSS('font-size', filterSize);
+          expect(
+            await filter.evaluate((element) => getComputedStyle(element, '::placeholder').fontSize)
+          ).toBe(filterSize);
         }
         await expect(panel).toBeVisible();
         const navigation = await navigationButton.boundingBox();
@@ -157,6 +163,12 @@ for (const viewport of [
         await panel.getByRole('button', { name: entry.createLabel, exact: true }).click();
         const dialog = page.getByRole('dialog', { name: entry.createLabel, exact: true });
         await expect(dialog).toBeVisible();
+        if ('tableLoading' in entry) {
+          await expect(dialog.getByPlaceholder('Enter a secret value', { exact: true })).toHaveCSS(
+            'font-size',
+            '14px'
+          );
+        }
         await expect
           .poll(() =>
             dialog.evaluate(

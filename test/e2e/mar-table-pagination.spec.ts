@@ -199,6 +199,14 @@ test('Pagination keeps confirmed page, supports jumps and emits once when the ra
 }) => {
   const pager = page.getByRole('navigation', { name: 'Pagination' });
   const requestLog = page.getByRole('status', { name: 'Requests' });
+  const compactSize = await pager.evaluate((element) =>
+    parseFloat(getComputedStyle(element).getPropertyValue('--mar-ui-compact-control-size'))
+  );
+  for (const button of await pager.getByRole('button').all()) {
+    const box = (await button.boundingBox())!;
+    expect(box.height).toBeCloseTo(compactSize, 0);
+    expect(box.width).toBeGreaterThanOrEqual(compactSize);
+  }
   await expect(pager.getByRole('button', { name: 'Go to previous page' })).toBeDisabled();
   await pager.getByRole('button', { name: 'Jump forward 3 pages' }).press('Space');
   await expect(requestLog).toHaveText('4');

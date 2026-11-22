@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
@@ -687,22 +688,23 @@ function scopeLabel(scope: string): string {
           />
           <div
             class="skill-category-strip"
+            role="group"
             :aria-label="translate('generated.skillSourceManagementPage.catalogSkillCategories')"
           >
-            <button
-              :class="{ selected: selectedCatalogCategory === '' }"
+            <MarCheckTag
+              :checked="selectedCatalogCategory === ''"
               @click="selectedCatalogCategory = ''"
             >
               {{ translate('generated.skillSourceManagementPage.all') }}
-            </button>
-            <button
+            </MarCheckTag>
+            <MarCheckTag
               v-for="tag in catalogTags"
               :key="tag"
-              :class="{ selected: selectedCatalogCategory === tag }"
+              :checked="selectedCatalogCategory === tag"
               @click="selectedCatalogCategory = tag"
             >
               {{ tag }}
-            </button>
+            </MarCheckTag>
           </div>
         </div>
         <div class="skill-table-section">
@@ -1060,31 +1062,8 @@ function scopeLabel(scope: string): string {
   padding: 1px 0 3px;
   scrollbar-width: thin;
 }
-.skill-category-strip button {
+.skill-category-strip > * {
   flex: none;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: 999px;
-  background: var(--mar-bg-panel);
-  color: var(--mar-text-secondary);
-  padding: 5px 12px;
-  font: inherit;
-  font-size: var(--mar-font-size-body);
-  cursor: pointer;
-}
-.skill-category-strip button:hover {
-  border-color: var(--mar-border-strong);
-  background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
-}
-.skill-category-strip button.selected {
-  border-color: var(--mar-border-medium);
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-  font-weight: 400;
-}
-.skill-category-strip button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 1px;
 }
 .form-hint {
   margin: -8px 0 14px;
@@ -1135,10 +1114,6 @@ function scopeLabel(scope: string): string {
   }
   .source-search-bar .toolbar {
     flex-basis: auto;
-  }
-  .toolbar :deep(.mar-ui-button),
-  .section-heading :deep(.mar-ui-button) {
-    min-height: 36px;
   }
 }
 </style>

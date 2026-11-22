@@ -1071,8 +1071,5 @@ p {
   .source-search-bar .toolbar {
     flex-basis: auto;
   }
-  .toolbar :deep(.mar-ui-button) {
-    min-height: 36px;
-  }
 }
 </style>

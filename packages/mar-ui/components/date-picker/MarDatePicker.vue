@@ -424,7 +424,7 @@ function onFocusOut(event: FocusEvent) {
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-input);
+  font-size: var(--mar-ui-date-picker-field-font-size, var(--mar-ui-font-size-input));
 }
 [data-range='true'] .mar-ui-date-picker__input {
   text-align: center;
