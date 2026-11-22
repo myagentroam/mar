@@ -844,7 +844,6 @@ onMounted(() => {
   min-height: 28px !important;
   resize: none;
   color: var(--mar-text-primary);
-  background: var(--mar-bg-panel);
   font-size: var(--mar-font-size-meta);
   padding: 4px 6px;
   line-height: 1.55;

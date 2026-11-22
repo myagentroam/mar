@@ -26,6 +26,8 @@ async function palette(page: Page) {
     const colors = {
       primary: resolve('--mar-text-primary'),
       secondary: resolve('--mar-text-secondary'),
+      inputBorder: resolve('--mar-input-border'),
+      inputBorderHover: resolve('--mar-input-border-hover'),
       focus: resolve('--mar-control-focus'),
       hover: resolve('--mar-fill-row-hover'),
       selected: resolve('--mar-fill-selection')
@@ -585,6 +587,27 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             await expect(input).toHaveCSS('font-size', typography.size);
             await expect(input).toHaveCSS('font-family', typography.family);
             await expect(input).toHaveCSS('font-weight', typography.weight);
+            if (kind === 'queue') {
+              const editor = queue.locator('.composer-queue-input');
+              await expect(input).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+              await page.mouse.move(0, 0);
+              await input.blur();
+              await expect(editor).toHaveCSS(
+                'box-shadow',
+                `${colors.inputBorder} 0px 0px 0px 1px inset`
+              );
+              if (width >= 768) {
+                await input.hover();
+                await expect(editor).toHaveCSS(
+                  'box-shadow',
+                  `${colors.inputBorderHover} 0px 0px 0px 1px inset`
+                );
+              }
+              await input.focus();
+              await expect(editor).toHaveCSS('box-shadow', `${colors.focus} 0px 0px 0px 1px inset`);
+              if (!custom && width === 1280)
+                await editor.screenshot({ path: testInfo.outputPath('queue-editor-focused.png') });
+            }
             await input.fill(`Updated ${kind} content`);
             await queue
               .locator(
