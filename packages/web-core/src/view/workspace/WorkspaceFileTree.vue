@@ -24,6 +24,7 @@ const props = defineProps<{
   readonly mutationsEnabled: boolean;
   readonly localFileManagerEnabled?: boolean;
   readonly mobileViewport: boolean;
+  readonly hideRows?: boolean;
 }>();
 const locale = localePreferenceService().locale;
 const emit = defineEmits<{
@@ -53,6 +54,7 @@ const emit = defineEmits<{
   invalidDrop: [];
 }>();
 const container = ref<HTMLElement>();
+const readState = ref<HTMLElement>();
 const focusedPath = ref('.');
 const draggingPath = ref<string>();
 const movingNode = ref<WorkspaceFileTreeNode>();
@@ -78,7 +80,8 @@ const windowedRows = computed(() => {
   return { ...window, rows: rows.value.slice(window.start, window.end) };
 });
 watchEffect(() => {
-  if (props.disabled || props.filter.trim() !== '' || viewportHeight.value <= 0) return;
+  if (props.disabled || props.hideRows || props.filter.trim() !== '' || viewportHeight.value <= 0)
+    return;
   const start = Math.floor(scrollTop.value / rowHeight.value);
   const end = Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value);
   const boundary = rows.value
@@ -149,20 +152,28 @@ async function reveal(path: string, needed: () => boolean = () => true): Promise
 function revealRow(path: string): void {
   const index = rows.value.findIndex((row) => !row.loadMore && row.node.path === path);
   const element = container.value;
-  if (index < 0 || element === undefined) return;
-  const top = Number.parseFloat(getComputedStyle(element).paddingTop) + index * rowHeight.value;
+  if (index < 0 || element === undefined || props.hideRows) return;
+  const top = rowsStart(element) + index * rowHeight.value;
   const bottom = top + rowHeight.value;
   if (top < element.scrollTop) element.scrollTop = top;
   else if (bottom > element.scrollTop + element.clientHeight)
     element.scrollTop = bottom - element.clientHeight;
-  scrollTop.value = element.scrollTop;
+  updateViewport();
+}
+
+function rowsStart(element: HTMLElement): number {
+  return (
+    Number.parseFloat(getComputedStyle(element).paddingTop) + (readState.value?.offsetHeight ?? 0)
+  );
 }
 
 function updateViewport(): void {
   const element = container.value;
   if (element === undefined) return;
-  scrollTop.value = element.scrollTop;
-  viewportHeight.value = element.clientHeight;
+  // Virtual rows, reveal and paging use coordinates relative to the start of the tree rows.
+  const offset = element.scrollTop - rowsStart(element);
+  scrollTop.value = Math.max(0, offset);
+  viewportHeight.value = Math.max(0, element.clientHeight + Math.min(0, offset));
   const configuredRowHeight = Number.parseFloat(
     getComputedStyle(element).getPropertyValue('--mar-compact-row-size')
   );
@@ -177,6 +188,7 @@ onMounted(() => {
   if (props.selectedPath !== undefined) void reveal(props.selectedPath);
   resizeObserver = new ResizeObserver(updateViewport);
   if (container.value !== undefined) resizeObserver.observe(container.value);
+  if (readState.value !== undefined) resizeObserver.observe(readState.value);
   unregisterMenuShortcut = consoleKeyboardShortcutService.register({
     command: 'workspaceFileTree.dismissMenu',
     scope: 'overlay',
@@ -220,6 +232,11 @@ watch(
 function drop(event: DragEvent, node?: WorkspaceFileTreeNode): void {
   cancelDirectoryHoverExpansion();
   draggingPath.value = undefined;
+  if (!acceptsTreeDrop(event)) {
+    movingNode.value = undefined;
+    return;
+  }
+  event.preventDefault();
   if (movingNode.value !== undefined) {
     const source = movingNode.value;
     movingNode.value = undefined;
@@ -275,7 +292,22 @@ function scheduleDirectoryHoverExpansion(node: WorkspaceFileTreeNode): void {
   }, DIRECTORY_HOVER_EXPANSION_DELAY_MS);
 }
 
-function enterRootDropTarget(): void {
+function acceptsTreeDrop(event: DragEvent): boolean {
+  return (
+    !props.hideRows && !(event.target instanceof Node && readState.value?.contains(event.target))
+  );
+}
+
+function allowRootDrop(event: DragEvent): void {
+  if (acceptsTreeDrop(event)) event.preventDefault();
+}
+
+function enterRootDropTarget(event: DragEvent): void {
+  if (!acceptsTreeDrop(event)) {
+    leaveRootDropTarget();
+    return;
+  }
+  event.preventDefault();
   cancelDirectoryHoverExpansion();
   draggingPath.value = '.';
 }
@@ -398,16 +430,23 @@ defineExpose({ reveal });
   <div
     ref="container"
     class="workspace-file-tree"
-    :class="{ 'is-root-drop-target': draggingPath === '.' }"
-    role="tree"
-    :aria-label="translate('generated.workspaceFileTree.fileTree')"
-    @dragenter.prevent="enterRootDropTarget"
+    :class="{ 'is-root-drop-target': !hideRows && draggingPath === '.' }"
+    @dragenter="enterRootDropTarget"
     @dragleave.self="leaveRootDropTarget"
-    @dragover.prevent
-    @drop.prevent="drop($event)"
+    @dragover="allowRootDrop"
+    @drop="drop($event)"
     @scroll="updateViewport"
   >
-    <div class="file-tree-virtual-space" :style="{ height: `${windowedRows.totalHeight}px` }">
+    <div ref="readState" class="file-tree-read-state" :class="{ 'is-centered': hideRows }">
+      <slot name="read-state" />
+    </div>
+    <div
+      v-show="!hideRows"
+      class="file-tree-virtual-space"
+      :style="{ height: `${windowedRows.totalHeight}px` }"
+      role="tree"
+      :aria-label="translate('generated.workspaceFileTree.fileTree')"
+    >
       <div
         class="file-tree-virtual-window"
         :style="{ transform: `translateY(${windowedRows.offset}px)` }"
@@ -445,7 +484,7 @@ defineExpose({ reveal });
             @dragenter.stop.prevent="enterDropTarget($event, row.node)"
             @dragleave.stop="leaveDropTarget($event, row.node.path)"
             @dragover.stop.prevent
-            @drop.stop.prevent="drop($event, row.node)"
+            @drop.stop="drop($event, row.node)"
             @mouseenter="hoveredActionNodePath = row.node.path"
             @mouseleave="hoveredActionNodePath = undefined"
             @focusin="focusedActionNodePath = row.node.path"
@@ -602,7 +641,7 @@ defineExpose({ reveal });
         </template>
       </div>
     </div>
-    <p v-if="!hasFilteredResult" class="file-tree-empty">
+    <p v-if="!hideRows && !hasFilteredResult" class="file-tree-empty">
       {{ translate('workspaceDisplayFilter.empty') }}
     </p>
   </div>
@@ -610,6 +649,8 @@ defineExpose({ reveal });
 
 <style scoped>
 .workspace-file-tree {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
   overflow-x: hidden;
@@ -617,6 +658,17 @@ defineExpose({ reveal });
   overscroll-behavior: contain;
   padding: 4px 0.375rem 8px;
   outline: none;
+}
+
+.file-tree-read-state {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+}
+
+.file-tree-read-state.is-centered {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .workspace-file-tree.is-root-drop-target {
@@ -628,6 +680,7 @@ defineExpose({ reveal });
 .file-tree-virtual-space,
 .file-tree-virtual-window {
   position: relative;
+  flex: none;
   width: 100%;
   min-width: 0;
 }

@@ -14,6 +14,7 @@ import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tre
 import '../../src/styles.css';
 
 const parameters = new URL(location.href).searchParams;
+const scrollFeedback = parameters.has('scroll-feedback');
 localePreferenceService().setLocale(parameters.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
 themePreferenceService().setTheme(
   parameters.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
@@ -56,8 +57,11 @@ nested.failedAppend = true;
 source.children = [treeNode('src/existing.ts', 'FILE'), nested];
 source.failedAppend = false;
 files.tree.root.value.loaded = true;
-files.tree.root.value.children = [source];
+files.tree.root.value.children = scrollFeedback
+  ? Array.from({ length: 60 }, (_, index) => treeNode(`file-${index}.ts`, 'FILE'))
+  : [source];
 const watchStatus = ref<'ready' | 'failed'>('ready');
+const changesWatchStatus = ref<'ready' | 'loading'>('ready');
 const search = createWorkspaceContentSearchService({ http, onFailure: noop });
 void search.search({ ...target, query: 'workspace', useRegex: false });
 function gitService() {
@@ -72,8 +76,8 @@ function gitService() {
   });
 }
 const git = gitService();
-void git.loadChanges(false);
-void git.loadHistory(true, false);
+void git.loadChanges(scrollFeedback);
+void git.loadHistory(true, scrollFeedback);
 const commitFiles = gitService();
 commitFiles.restore({
   changes: {},
@@ -117,9 +121,19 @@ createTooltipApp({
         })
       ),
       panel('Search', h(WorkspaceContentSearch, { service: search, enabled: true, ...target })),
-      panel('Git Changes', h(WorkspaceGitChanges, { service: git, target })),
+      panel(
+        'Git Changes',
+        h(WorkspaceGitChanges, { service: git, target, watchStatus: changesWatchStatus.value })
+      ),
       panel('Git History', h(WorkspaceGitHistory, { service: git })),
       panel('Commit files', h(WorkspaceGitHistory, { service: commitFiles })),
+      scrollFeedback
+        ? h(
+            'button',
+            { onClick: () => (changesWatchStatus.value = 'loading') },
+            'Load Git Changes Watch'
+          )
+        : null,
       h(
         'button',
         {

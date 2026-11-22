@@ -93,7 +93,7 @@ function retryRead(): void {
 }
 const CHANGE_RENDER_BATCH = 200;
 const changeRenderLimit = ref(CHANGE_RENDER_BATCH);
-const changeListElement = ref<HTMLElement>();
+const changesContainer = ref<HTMLElement>();
 const loadMoreElements = ref<HTMLElement[]>([]);
 const renderedChangeRepositories = computed(() =>
   limitChangeRepositories(visibleChangeRepositories.value, changeRenderLimit.value)
@@ -122,7 +122,7 @@ watch(visibleChangeRepositories, () => {
 watchEffect(
   (onCleanup) => {
     const element = loadMoreElements.value[0];
-    const root = changeListElement.value;
+    const root = changesContainer.value;
     const limit = changeRenderLimit.value;
     if (!element || !root || typeof IntersectionObserver === 'undefined') return;
     let active = true;
@@ -235,7 +235,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 </script>
 
 <template>
-  <section class="current-changes">
+  <section ref="changesContainer" class="current-changes">
     <MarRegionStatus
       v-if="!refreshBusy && (showRetryControl || changesLoading)"
       class="changes-read-state"
@@ -337,11 +337,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
     >
       {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
     </MarRegionStatus>
-    <ul
-      v-else-if="visibleChangeRepositories.length > 0"
-      ref="changeListElement"
-      class="change-list"
-    >
+    <ul v-else-if="visibleChangeRepositories.length > 0" class="change-list">
       <template v-for="repository in renderedChangeRepositories" :key="repositoryKey(repository)">
         <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
           <div class="repository-heading-content">
@@ -611,6 +607,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .change-list {
+  flex: none;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -808,19 +805,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .current-changes {
   margin-top: 0.2rem;
-  padding-top: 0;
-}
-
-.current-changes {
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-}
-
-.current-changes .change-list {
-  min-height: 0;
-  flex: 1 1 auto;
   overflow: auto;
   overscroll-behavior: contain;
 }

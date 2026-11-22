@@ -9,8 +9,129 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+async function expectStatusToScrollWithRows(status: Locator, firstRow: Locator) {
+  await expect(status).toBeVisible();
+  const rowTop = (await firstRow.boundingBox())!.y;
+  const statusBefore = (await status.boundingBox())!;
+  expect(statusBefore.y + statusBefore.height).toBeLessThanOrEqual(rowTop);
+  await firstRow.evaluate((row) => {
+    let scroll = row.parentElement;
+    while (scroll && getComputedStyle(scroll).overflowY !== 'auto') scroll = scroll.parentElement;
+    if (!scroll) throw new Error('Missing list scroll container');
+    scroll.scrollTop = 110;
+  });
+  await expect.poll(async () => (await status.boundingBox())?.y).toBeCloseTo(statusBefore.y - 110);
+}
+
 for (const width of [1280, 390]) {
   const theme = width < 768 ? 'daylight' : 'vscode-dark-2026';
+  test(`Inspector feedback scrolls with the content it describes at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 860 });
+    const changes = Array.from({ length: 205 }, (_, index) => ({
+      path: `file-${index}.ts`,
+      state: 'UNSTAGED',
+      change: 'MODIFIED',
+      diffAvailable: true
+    }));
+    await page.route('**/api/**', (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/changes'))
+        return route.fulfill({
+          json: {
+            changes,
+            repositories: [
+              {
+                repositoryPath: '',
+                repositoryName: 'root',
+                source: 'ROOT',
+                status: 'DIRTY',
+                changes
+              }
+            ]
+          }
+        });
+      if (path.endsWith('/git/fetch'))
+        return route.fulfill({ json: { fetchFailed: true, updated: false } });
+      if (path.endsWith('/git/history'))
+        return route.fulfill({
+          json: {
+            commits: changes.slice(0, 60).map(({ path }, index) => ({
+              hash: `commit-${index}`,
+              subject: path,
+              parents: [],
+              authorName: 'Developer',
+              authorEmail: 'dev@example.test',
+              committedAt: 1,
+              refs: []
+            })),
+            nextCursor: null
+          }
+        });
+      if (path.endsWith('/content/search'))
+        return route.fulfill({
+          json: {
+            search: {
+              matches: changes.slice(0, 60).map(({ path }) => ({
+                path,
+                line: 1,
+                column: 1,
+                preview: 'workspace'
+              })),
+              truncated: true
+            }
+          }
+        });
+      return route.fulfill({ json: { refs: [] } });
+    });
+    await page.goto(`${fixture.url}inspector-read-state.html?theme=${theme}&scroll-feedback`);
+
+    const gitChanges = page.getByTestId('Git Changes');
+    const changeRow = gitChanges.locator('.change-entry').first();
+    const changeWarning = gitChanges.getByRole('alert');
+    await expectStatusToScrollWithRows(changeWarning, changeRow);
+    await page.getByRole('button', { name: 'Load Git Changes Watch' }).click();
+    const changeScroller = gitChanges.locator('.current-changes');
+    await changeScroller.evaluate((element) => (element.scrollTop = 0));
+    await expectStatusToScrollWithRows(gitChanges.locator('.changes-read-state'), changeRow);
+    await expect(gitChanges.locator('.change-entry')).toHaveCount(200);
+    await changeScroller.evaluate((element) => (element.scrollTop = element.scrollHeight));
+    await expect(gitChanges.locator('.change-entry')).toHaveCount(205);
+
+    const history = page.getByTestId('Git History');
+    await expectStatusToScrollWithRows(
+      history.getByRole('alert'),
+      history.locator('.history-commit-row').first()
+    );
+
+    const search = page.getByTestId('Search');
+    await expectStatusToScrollWithRows(
+      search.locator('.content-search-warning'),
+      search.locator('.content-search-results button').first()
+    );
+
+    await page.getByRole('button', { name: 'Fail Files Watch' }).click();
+    const files = page.getByTestId('Files');
+    const retry = files.locator('.files-read-retry');
+    const handledDragEvents = await retry.evaluate((element) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File(['data'], 'notes.txt'));
+      return ['dragenter', 'dragover', 'drop'].filter((type) => {
+        const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer });
+        element.dispatchEvent(event);
+        return event.defaultPrevented;
+      });
+    });
+    expect(handledDragEvents).toEqual([]);
+    await expectStatusToScrollWithRows(retry, files.getByRole('treeitem').first());
+    await files.scrollIntoViewIfNeeded();
+    await files.locator('.workspace-file-tree').evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(files.getByRole('treeitem', { name: 'file-59.ts' })).toBeInViewport();
+  });
+
   test(`Directory navigation and refresh own separate feedback at ${width}px`, async ({
     page
   }, info) => {
@@ -242,7 +363,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const action of [
         { panel: 'sign-in-refresh', selector: '.admin-sessions-heading button' },
         { panel: 'directory-refresh', selector: '.workspace-picker-toolbar-actions button' },
-        { panel: 'html-refresh', selector: '.html-browser-actions button' }
+        { panel: 'html-refresh', selector: '.html-browser-actions button[aria-label="Reload"]' }
       ]) {
         const panel = page.getByTestId(action.panel);
         const directoryPicker = action.panel === 'directory-refresh';

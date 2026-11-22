@@ -270,15 +270,15 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-show="active" class="admin-terminal-body" :class="{ 'fills-available': fillAvailable }">
+    <div v-if="reconnectStatus" class="admin-terminal-status" role="status">
+      {{ reconnectStatus }}
+    </div>
     <div
       ref="host"
       class="xterm-host"
       :aria-label="translate('generated.terminalTabView.terminalOutput')"
       tabindex="0"
     />
-    <div v-if="reconnectStatus" class="admin-terminal-status" role="status">
-      {{ reconnectStatus }}
-    </div>
     <MarDropdown
       v-if="contextMenu !== undefined"
       ref="menu"
@@ -308,12 +308,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .admin-terminal-body {
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   block-size: 229px;
   border-top: 1px solid var(--mar-border-subtle);
   overflow: hidden;
   background: var(--mar-terminal-background);
   padding: 4px;
-  position: relative;
 }
 
 .admin-terminal-body.fills-available {
@@ -325,24 +326,19 @@ onBeforeUnmount(() => {
 }
 
 .admin-terminal-status {
-  position: absolute;
-  inset-inline-start: 50%;
-  inset-block-start: 12px;
-  z-index: 2;
-  transform: translateX(-50%);
-  border: 1px solid var(--mar-overlay-border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--mar-terminal-surface) 90%, transparent);
+  flex: none;
+  border-bottom: 1px solid var(--mar-border-subtle);
   color: var(--mar-terminal-foreground);
   padding: 5px 10px;
   font-size: var(--mar-font-size-meta);
-  pointer-events: none;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .xterm-host {
-  display: block;
+  flex: 1 1 0;
+  min-height: 0;
   width: 100%;
-  height: 100%;
   background: var(--mar-terminal-background);
 }
 

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type WebSocketRoute } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
@@ -140,7 +140,7 @@ test('Desktop Git Changes contains both axes without disabling ordinary scrollin
   await resources.getByRole('button', { name: 'project' }).click();
   await page.getByRole('tab', { name: /Git Changes|Git 变更/i }).click();
 
-  const list = page.locator('.workspace-aside .change-list');
+  const list = page.locator('.workspace-aside .current-changes');
   await expect(list.getByText('change-00.ts', { exact: true })).toBeVisible();
   const header = page.locator('.workbench-header');
   const frame = await header.boundingBox();
@@ -167,6 +167,10 @@ test('Desktop Terminal contains gestures around its virtual scrollback', async (
   await page.route('**/api/auth/me', (route) =>
     json(route, { authenticated: true, userId: 1, username: 'admin', isAdmin: true })
   );
+  const connections: WebSocketRoute[] = [];
+  await page.routeWebSocket('**/api/terminals/terminal-1/connect?*', (socket) => {
+    connections.push(socket);
+  });
   await page.goto(`${fixture.url}new-session-group.html`);
   const resources = page.locator('.workspace-tree');
   await resources.getByRole('button', { name: /node-1/ }).click();
@@ -176,4 +180,26 @@ test('Desktop Terminal contains gestures around its virtual scrollback', async (
   await expect(body.locator('.xterm')).toBeVisible();
   await expect(body).toHaveCSS('overscroll-behavior', 'contain');
   await expect(page.locator('html')).toHaveCSS('overscroll-behavior', 'auto');
+
+  const host = body.locator('.xterm-host');
+  const status = body.getByRole('status');
+  const attached = JSON.stringify({ type: 'attach', terminalId: 'terminal-1' });
+  await expect.poll(() => connections.length).toBe(1);
+  connections[0]!.send(attached);
+  const original = (await host.boundingBox())!;
+  await connections[0]!.close({ code: 1011 });
+  await expect(status).toBeVisible();
+  await expect
+    .poll(async () => {
+      const banner = (await status.boundingBox())!;
+      return (await host.boundingBox())!.y - (banner.y + banner.height);
+    })
+    .toBeGreaterThanOrEqual(0);
+  expect((await host.boundingBox())!.height).toBeLessThan(original.height);
+  await expect.poll(() => connections.length).toBe(2);
+  connections[1]!.send(attached);
+  await expect(status).toHaveCount(0);
+  const restored = (await host.boundingBox())!;
+  expect(restored.y).toBeCloseTo(original.y);
+  expect(restored.height).toBeCloseTo(original.height);
 });

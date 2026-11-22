@@ -58,11 +58,12 @@ test('File tree updates rendered rows, permissions and locale while keeping its 
   try {
     await page.goto(`${fixture.url}file-tree.html`);
     const tree = page.getByRole('tree');
+    const scroll = page.locator('.workspace-file-tree');
     const row = page.locator('[data-file-path="notes.txt"]');
     await expect(row).toBeVisible();
     expect(await tree.getByRole('treeitem').count()).toBeLessThan(42);
     expect(
-      await tree.evaluate((element) => element.scrollWidth - element.clientWidth)
+      await scroll.evaluate((element) => element.scrollWidth - element.clientWidth)
     ).toBeLessThanOrEqual(1);
     const rootName = await page.locator('[data-file-path="."] .tree-name').boundingBox();
     const childName = await row.locator('.tree-name').boundingBox();
@@ -96,13 +97,13 @@ test('File tree updates rendered rows, permissions and locale while keeping its 
     await expect(actions).not.toHaveAttribute('aria-label', englishLabel!);
     await expect(actions).toHaveAttribute('aria-label', /Renamed.ts/);
     await page.getByRole('button', { name: 'Toggle loading' }).click();
-    await tree.evaluate((element) => {
+    await scroll.evaluate((element) => {
       element.scrollTop = element.scrollHeight;
     });
     await expect(tree.locator('.file-tree-load-more [role="status"]')).toBeVisible();
     await page.getByRole('button', { name: 'Toggle loading' }).click();
     await expect(tree.locator('.file-tree-load-more [role="status"]')).toHaveCount(0);
-    await tree.evaluate((element) => {
+    await scroll.evaluate((element) => {
       element.scrollTop = 0;
     });
     await page.getByRole('button', { name: 'Toggle mutations' }).click();
