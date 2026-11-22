@@ -9,6 +9,7 @@ import {
   useAttrs,
   useId,
   watch,
+  type FunctionalComponent,
   type VNode
 } from 'vue';
 import { MarIcon } from '../../icons/index.js';
@@ -326,7 +327,11 @@ function header(column: TableColumn, index: number): VNode {
   );
 }
 
-function renderTable(): VNode {
+// Forward conditional slots explicitly: slot presence is not reactive in the child render.
+const ColumnView: FunctionalComponent<{
+  loading: typeof slots.loading;
+  empty: typeof slots.empty;
+}> = ({ loading, empty }) => {
   const columns = readColumns(slots.default?.() ?? []);
   const limit = columns.reduce((sum, col) => sum + col.baseWidth, 0);
   const flex = columns.reduce((sum, col) => sum + (col.flexible ? col.baseWidth : 0), 0);
@@ -335,10 +340,10 @@ function renderTable(): VNode {
   const currentSort = columns.find((column) => column.key === sort.value?.key);
   const rows = flatten(sortRows(props.data, currentSort, sort.value?.order ?? null));
   const rowNodes: VNode[] = [];
-  if (slots.loading || rows.length === 0) {
-    const statusContent = slots.loading?.() ?? slots.empty?.();
+  if (loading || rows.length === 0) {
+    const statusContent = loading?.() ?? empty?.();
     rowNodes.push(
-      h('tr', { class: slots.loading ? 'mar-ui-table__loading' : 'mar-ui-table__empty' }, [
+      h('tr', { class: loading ? 'mar-ui-table__loading' : 'mar-ui-table__empty' }, [
         h('td', { colspan: Math.max(1, columns.length) }, [
           h(
             'div',
@@ -412,9 +417,8 @@ function renderTable(): VNode {
       h('tbody', {}, rowNodes)
     ]
   );
-}
-
-const ColumnView = () => renderTable();
+};
+ColumnView.props = ['loading', 'empty'];
 </script>
 
 <template>
@@ -437,7 +441,7 @@ const ColumnView = () => renderTable();
       @focusout="hint.onFocusOut"
       @scroll="hint.reset"
     >
-      <ColumnView />
+      <ColumnView :loading="slots.loading" :empty="slots.empty" />
     </div>
     <div
       :id="hint.id"

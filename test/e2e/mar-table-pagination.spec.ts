@@ -13,6 +13,26 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}mar-table-pagination.html`);
 });
 
+test('Table updates conditional status slots without replacing the data', async ({ page }) => {
+  const table = page.getByRole('table', { name: 'Empty table' });
+  const empty = table.getByText('Nothing here', { exact: true });
+  const loading = table.getByRole('progressbar', { name: 'Loading records' });
+  const retry = table.getByRole('button', { name: 'Retry loading records' });
+  await expect(empty).toBeVisible();
+
+  await page.getByRole('button', { name: 'Show table loading' }).click();
+  await expect(loading).toBeVisible();
+  await expect(empty).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Show custom empty state' }).click();
+  await expect(retry).toBeVisible();
+  await expect(loading).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Show default empty state' }).click();
+  await expect(empty).toBeVisible();
+  await expect(retry).toHaveCount(0);
+});
+
 for (const [width, compact, headerFont, bodyFont] of [
   [1280, 26, '12px', '14px'],
   [390, 24, '11px', '13px']

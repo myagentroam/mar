@@ -26,6 +26,7 @@ async function colors(page: Page) {
       link: color('--mar-control-link-text'),
       selected: color('--mar-fill-selection'),
       hover: color('--mar-fill-row-hover'),
+      overlayHover: color('--mar-overlay-row-hover, var(--mar-fill-row-hover)'),
       match: color('--mar-text-primary')
     };
     probe.remove();
@@ -808,7 +809,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             exact: true
           });
           await other.hover();
-          await expect(other).toHaveCSS('background-color', palette.hover);
+          await expect(other).toHaveCSS('background-color', palette.overlayHover);
           if (!custom)
             await dropdown.screenshot({ path: testInfo.outputPath(`${kind}-${width}.png`) });
           await input.press('Escape');

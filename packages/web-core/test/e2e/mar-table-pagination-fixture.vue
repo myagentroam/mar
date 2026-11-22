@@ -24,6 +24,8 @@ const organizationTree = [
   }
 ];
 const trees = ref(organizationTree);
+const emptyRows: { name: string }[] = [];
+const tableStatus = ref<'default' | 'loading' | 'custom'>('default');
 const treeProps = { children: 'children' };
 const expanded = ref<string[]>([]);
 const extra = ref(false);
@@ -99,7 +101,16 @@ function filterOrganizations(): void {
     >
       <MarTableColumn label="Organization" prop="name" />
     </MarTable>
-    <MarTable aria-label="Empty table" :data="[]" empty-text="Nothing here">
+    <button type="button" @click="tableStatus = 'loading'">Show table loading</button>
+    <button type="button" @click="tableStatus = 'custom'">Show custom empty state</button>
+    <button type="button" @click="tableStatus = 'default'">Show default empty state</button>
+    <MarTable aria-label="Empty table" :data="emptyRows" empty-text="Nothing here">
+      <template v-if="tableStatus === 'loading'" #loading>
+        <span role="progressbar" aria-label="Loading records">Loading…</span>
+      </template>
+      <template v-if="tableStatus === 'custom'" #empty>
+        <button type="button">Retry loading records</button>
+      </template>
       <MarTableColumn label="Name" prop="name" />
     </MarTable>
     <MarTable aria-label="Narrow columns" class="narrow-columns" :data="rows">
