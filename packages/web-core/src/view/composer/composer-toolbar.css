@@ -1,5 +1,8 @@
 .mar-composer-toolbar {
   --composer-action-size: 24px;
+  --composer-dropdown-trigger-padding: 0.35rem;
+  --composer-dropdown-trigger-gap: 0.375rem;
+  --composer-dropdown-trigger-icon-size: 1rem;
   --composer-toolbar-row-height: var(--mar-compact-control-size);
   --composer-toolbar-padding-block: 4px;
   position: relative;
@@ -14,6 +17,81 @@
   border-top: 1px solid var(--mar-border-subtle);
   padding: var(--composer-toolbar-padding-block) 0.75rem var(--composer-toolbar-padding-block)
     0.25rem;
+}
+
+/* Match the Composer dropdown triggers without replacing the Select or Dropdown interaction. */
+.mar-composer-toolbar
+  :is(
+    button.mar-composer-dropdown-trigger,
+    .mar-composer-dropdown-trigger > .mar-ui-select__field
+  ) {
+  --mar-ui-select-height: var(--mar-compact-control-size);
+  gap: var(--composer-dropdown-trigger-gap);
+  border-radius: var(--mar-radius-control);
+  padding-inline: var(--composer-dropdown-trigger-padding);
+  background: transparent;
+  box-shadow: none;
+  color: var(--mar-text-primary);
+}
+
+.mar-composer-toolbar
+  .mar-composer-dropdown-trigger
+  > .mar-ui-select__field:not([data-disabled])
+  .mar-ui-select__label {
+  color: inherit;
+}
+
+.mar-composer-toolbar
+  :is(button.mar-composer-dropdown-trigger, .mar-composer-dropdown-trigger > .mar-ui-select__field)
+  :is([data-mar-icon='chevron-down'], [data-mar-icon='loading-action']) {
+  width: var(--composer-dropdown-trigger-icon-size);
+  height: var(--composer-dropdown-trigger-icon-size);
+}
+
+.mar-composer-toolbar
+  :is(
+    button.mar-composer-dropdown-trigger,
+    .mar-composer-dropdown-trigger > .mar-ui-select__field
+  ):not(:disabled, [data-disabled])
+  [data-mar-icon='chevron-down'] {
+  color: var(--mar-text-secondary);
+}
+
+.mar-composer-toolbar
+  :is(
+    button.mar-composer-dropdown-trigger,
+    .mar-composer-dropdown-trigger > .mar-ui-select__field
+  ):is(:disabled, [data-disabled]) {
+  color: var(--mar-text-disabled);
+  cursor: not-allowed;
+}
+
+@media (any-hover: hover) {
+  .mar-composer-toolbar
+    :is(
+      button.mar-composer-dropdown-trigger,
+      .mar-composer-dropdown-trigger > .mar-ui-select__field
+    ):hover:not(:disabled, [data-disabled]) {
+    background: var(--mar-action-hover-overlay);
+  }
+}
+
+.mar-composer-toolbar
+  :is(
+    button.mar-composer-dropdown-trigger[aria-expanded='true'],
+    .mar-composer-dropdown-trigger > .mar-ui-select__field[data-expanded]
+  ) {
+  background: var(--mar-action-hover-overlay);
+}
+
+.mar-composer-toolbar
+  :is(
+    button.mar-composer-dropdown-trigger:focus-visible,
+    .mar-composer-dropdown-trigger
+      > .mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible)
+  ) {
+  outline: 2px solid var(--mar-control-focus);
+  outline-offset: -2px;
 }
 
 .mar-composer-attachment {

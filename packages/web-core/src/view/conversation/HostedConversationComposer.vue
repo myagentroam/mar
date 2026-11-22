@@ -817,7 +817,7 @@ onBeforeUnmount(() => {
         >
           <button
             v-tooltip="{ content: menuTemplateLabel, disabled: templateMenuOpen }"
-            class="hosted-template-trigger hosted-model-trigger"
+            class="hosted-template-trigger mar-composer-dropdown-trigger"
             type="button"
             :disabled="templateSelectionDisabled"
             :aria-label="translate('hostedConversations.chooseTemplate')"
@@ -883,7 +883,7 @@ onBeforeUnmount(() => {
             @command="updateModel(String($event))"
           >
             <button
-              class="hosted-model-trigger"
+              class="hosted-model-trigger mar-composer-dropdown-trigger"
               type="button"
               :disabled="modelSelectionDisabled"
               :aria-label="translate('hostedConversations.model')"
@@ -902,9 +902,9 @@ onBeforeUnmount(() => {
                   v-for="model in models"
                   :key="model.id"
                   :command="model.id"
-                  :class="{ 'is-selected': model.id === selectedModelId }"
+                  :aria-current="model.id === selectedModelId ? 'true' : undefined"
                 >
-                  {{ model.name }}
+                  <span>{{ model.name }}</span>
                 </MarDropdownItem>
               </MarDropdownMenu>
             </template>
@@ -1068,6 +1068,7 @@ onBeforeUnmount(() => {
   max-width: 100%;
 }
 
+.hosted-template-trigger,
 .hosted-model-trigger,
 .hosted-template-name {
   display: inline-flex;
@@ -1077,23 +1078,18 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.35rem;
   box-sizing: border-box;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  padding: 0 0.55rem;
-  background: var(--mar-bg-panel);
-  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1;
 }
 
+.hosted-template-trigger,
 .hosted-model-trigger {
-  border-radius: 6px;
-  padding-right: 0.35rem;
-  background: transparent;
-  color: var(--mar-text-primary);
+  border: 0;
+  padding-block: 0;
   cursor: pointer;
 }
 
+.hosted-template-trigger > span,
 .hosted-model-trigger > span,
 .hosted-template-name > span {
   min-width: 0;
@@ -1102,9 +1098,8 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.hosted-model-trigger > .mar-icon,
+.hosted-template-trigger:enabled > .mar-icon[data-mar-icon='document'],
 .hosted-template-name > .mar-icon {
-  flex: none;
   color: var(--mar-text-secondary);
 }
 
@@ -1114,27 +1109,6 @@ onBeforeUnmount(() => {
   height: 14px;
 }
 
-.hosted-model-trigger:hover:not(:disabled) {
-  background: var(--mar-fill-soft);
-  box-shadow: 0 0 0 1px var(--mar-border-medium) inset;
-}
-
-.hosted-model-trigger[aria-expanded='true']:not(:disabled) {
-  background: var(--mar-fill-soft);
-  box-shadow: 0 0 0 1px var(--mar-control-focus) inset;
-}
-
-.hosted-model-trigger:focus-visible {
-  background: var(--mar-fill-soft);
-  outline: 1px solid var(--mar-control-focus);
-  outline-offset: -1px;
-}
-
-.hosted-model-trigger:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
 .hosted-template-menu,
 .hosted-template-name {
   max-width: min(22rem, 42%);
@@ -1142,6 +1116,7 @@ onBeforeUnmount(() => {
 
 .hosted-template-name {
   overflow: hidden;
+  padding-inline: 0.55rem;
   white-space: nowrap;
   background: transparent;
   color: var(--mar-text-primary);
@@ -1189,8 +1164,7 @@ onBeforeUnmount(() => {
     grid-row: 1;
   }
 
-  .hosted-model-menu,
-  .hosted-model-trigger {
+  .hosted-model-menu {
     width: 100%;
   }
 

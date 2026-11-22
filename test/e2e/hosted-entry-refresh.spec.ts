@@ -6,6 +6,7 @@ import {
 } from '../../packages/protocol/src/index.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/web-core/src/view/conversation/HostedConversationComposer.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 
 async function expectHostedReadRing(ring: ReturnType<Page['locator']>) {
@@ -243,7 +244,12 @@ const models = ['model-1', 'model-2'].map((id) => ({
   sortOrder: 0
 }));
 
-async function openEntry(page: Page, templateName = template.name, theme = 'vscode-dark-2026') {
+async function openEntry(
+  page: Page,
+  templateName = template.name,
+  theme = 'vscode-dark-2026',
+  availableModels = models
+) {
   const state = { failCatalog: false, modelAvailable: true, alternateAvailable: false };
   const creations: Array<{ templateId: string; modelId: string; clientRequestId: string }> = [];
   let catalogReads = 0;
@@ -264,7 +270,10 @@ async function openEntry(page: Page, templateName = template.name, theme = 'vsco
   await page.route('**/conversation-templates/*/model-options', async (route) => {
     modelReads += 1;
     await route.fulfill({
-      json: { models: state.modelAvailable ? models : [models[0]], defaultModelId: 'model-1' }
+      json: {
+        models: state.modelAvailable ? availableModels : [availableModels[0]],
+        defaultModelId: 'model-1'
+      }
     });
   });
   await page.route('**/api/nodes/node-1/hosted-conversations', async (route) => {
@@ -274,10 +283,10 @@ async function openEntry(page: Page, templateName = template.name, theme = 'vsco
   });
   await page.goto(`${fixture.url}hosted-entry.html?theme=${theme}`);
   const modelControl = page.locator('.hosted-model-slot .hosted-model-trigger');
-  await expect(modelControl).toHaveText('Model One');
+  await expect(modelControl).toHaveText(availableModels[0].name);
   await modelControl.click();
-  await page.getByRole('menuitem', { name: 'Model Two', exact: true }).click();
-  await expect(modelControl).toHaveText('Model Two');
+  await page.getByRole('menuitem', { name: availableModels[1].name, exact: true }).click();
+  await expect(modelControl).toHaveText(availableModels[1].name);
   return {
     state,
     creations,
@@ -1036,28 +1045,111 @@ for (const [width, theme, cached] of [
 
 for (const [width, theme] of [
   [1280, 'daylight'],
+  [1280, 'vscode-dark-2026'],
   [390, 'vscode-dark-2026']
 ] as const) {
-  test(`Template and model controls share selector states at ${width} in ${theme}`, async ({
+  test(`Hosted model and template share neutral dropdown triggers at ${width} in ${theme}`, async ({
     page
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
-    const { modelControl } = await openEntry(page, template.name, theme);
+    const availableModels =
+      width < 768
+        ? [
+            models[0],
+            { ...models[1], name: 'Model Two — Extended configuration for research and analysis' }
+          ]
+        : models;
+    const currentModelName = availableModels[1].name;
+    const { modelControl } = await openEntry(page, template.name, theme, availableModels);
     const templateControl = page.locator('.hosted-template-trigger');
     await page.mouse.move(0, 0);
-    await expect(templateControl).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await expect(modelControl).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await templateControl.hover();
-    const templateHover = await templateControl.evaluate((element) => ({
-      background: getComputedStyle(element).backgroundColor,
-      shadow: getComputedStyle(element).boxShadow
-    }));
-    await modelControl.hover();
-    await expect(modelControl).toHaveCSS('background-color', templateHover.background);
-    await expect(modelControl).toHaveCSS('box-shadow', templateHover.shadow);
+    const colors = await modelControl.evaluate((element) => {
+      const probe = document.createElement('span');
+      element.append(probe);
+      const color = (token: string) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const values = {
+        hover: color('--mar-action-hover-overlay'),
+        focus: color('--mar-control-focus'),
+        label: color('--mar-text-primary'),
+        arrow: color('--mar-text-secondary'),
+        selected: color('--mar-fill-selection')
+      };
+      probe.remove();
+      return values;
+    });
+    for (const trigger of [templateControl, modelControl]) {
+      await page.mouse.move(0, 0);
+      await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(trigger).toHaveCSS('color', colors.label);
+      await expect(trigger.locator('[data-mar-icon="chevron-down"]')).toHaveCSS(
+        'color',
+        colors.arrow
+      );
+      await trigger.hover();
+      await expect(trigger).toHaveCSS('background-color', colors.hover);
+      await expect(trigger).toHaveCSS('box-shadow', 'none');
+    }
+    await modelControl.click();
+    await page.mouse.move(0, 0);
+    await expect(modelControl).toHaveAttribute('aria-expanded', 'true');
+    await expect(modelControl).toHaveCSS('background-color', colors.hover);
+    const current = page.getByRole('menuitem', { name: currentModelName, exact: true });
+    await expect(current).toHaveAttribute('aria-current', 'true');
+    await expect(current).toHaveCSS('background-color', colors.selected);
+    if (width < 768) {
+      const triggerLabel = modelControl.locator(':scope > span');
+      expect(await triggerLabel.evaluate((label) => label.scrollWidth > label.clientWidth)).toBe(
+        true
+      );
+      expect(
+        await current.getByText(currentModelName, { exact: true }).evaluate((label) => {
+          const menu = label.closest('[role="menu"]')!.getBoundingClientRect();
+          const rect = label.getBoundingClientRect();
+          return (
+            label.scrollWidth <= label.clientWidth &&
+            rect.left >= menu.left &&
+            rect.right <= menu.right &&
+            menu.right <= innerWidth
+          );
+        })
+      ).toBe(true);
+    }
+    await page.screenshot({
+      path: testInfo.outputPath('hosted-model-expanded.png'),
+      animations: 'disabled'
+    });
+    await page.keyboard.press('Escape');
+    await expect(modelControl).toHaveAttribute('aria-expanded', 'false');
+    await expect(modelControl).toBeFocused();
+    await expect(modelControl).toHaveText(currentModelName);
     await templateControl.click();
+    await page.mouse.move(0, 0);
     await expect(templateControl).toHaveAttribute('aria-expanded', 'true');
-    await expect(templateControl).not.toHaveCSS('box-shadow', templateHover.shadow);
+    await expect(templateControl).toHaveCSS('background-color', colors.hover);
+    await expect(templateControl).toHaveCSS('box-shadow', 'none');
+    await expect(page.getByRole('menuitem', { name: template.name, exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(templateControl).toHaveAttribute('aria-expanded', 'false');
+    await expect(templateControl).toBeFocused();
+    // Escape returns focus after a pointer click without necessarily switching input modality.
+    await page.keyboard.press('Shift+Tab');
+    for (const trigger of [templateControl, modelControl]) {
+      await page.keyboard.press('Tab');
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(trigger).toHaveCSS('outline-style', 'solid');
+      await expect(trigger).toHaveCSS('outline-color', colors.focus);
+      await page.keyboard.press('Enter');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      await page.keyboard.press('Escape');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveCSS('outline-color', colors.focus);
+    }
+    await expect(modelControl).toHaveText(currentModelName);
   });
 }
 
@@ -1315,10 +1407,10 @@ for (const width of [1280, 390]) {
       await expect(draftTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('height', '14px');
       await expect(draftTemplate.locator('[data-mar-icon="chevron-down"]')).toBeVisible();
       await expect(draftTemplate).toHaveAccessibleName('Load template');
+      await expect(draftTemplate).toBeEnabled();
       const draftStyle = await draftTemplate.evaluate((element) => {
         const style = getComputedStyle(element);
         return {
-          color: style.color,
           background: style.backgroundColor,
           fontSize: style.fontSize,
           height: element.getBoundingClientRect().height
@@ -1335,9 +1427,7 @@ for (const width of [1280, 390]) {
           await expect(icon).toHaveCSS('height', '16px');
         }
         const templateBox = (await templateControl.boundingBox())!;
-        const model = (await toolbar
-          .locator('.hosted-model-trigger:not(.hosted-template-trigger)')
-          .boundingBox())!;
+        const model = (await toolbar.locator('.hosted-model-trigger').boundingBox())!;
         const send = (await toolbar.locator('.hosted-send-button').boundingBox())!;
         expect(attachment.x + attachment.width).toBeLessThanOrEqual(templateBox.x);
         expect(templateBox.x + templateBox.width).toBeLessThanOrEqual(model.x);
@@ -1371,7 +1461,15 @@ for (const width of [1280, 390]) {
       await expect(savedTemplate).toBeDisabled();
       await expect(savedTemplate).toHaveAccessibleName('Load template');
       await expect(savedTemplate).toHaveAccessibleDescription(name);
-      await expect(savedTemplate).toHaveCSS('color', draftStyle.color);
+      const disabledColor = await savedTemplate.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mar-text-disabled)';
+        element.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(savedTemplate).toHaveCSS('color', disabledColor);
       await expect(savedTemplate).toHaveCSS('background-color', draftStyle.background);
       await expect(savedTemplate).toHaveCSS('font-size', draftStyle.fontSize);
       expect((await savedTemplate.boundingBox())!.height).toBe(draftStyle.height);
@@ -1379,12 +1477,20 @@ for (const width of [1280, 390]) {
       await expect(savedTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('width', '14px');
       await expect(savedTemplate.locator('[data-mar-icon="document"]')).toHaveCSS('height', '14px');
       await expect(savedTemplate.locator('[data-mar-icon="chevron-down"]')).toBeVisible();
+      for (const iconName of ['document', 'chevron-down']) {
+        await expect(savedTemplate.locator(`[data-mar-icon="${iconName}"]`)).toHaveCSS(
+          'color',
+          disabledColor
+        );
+      }
       await assertToolbar('.hosted-template-trigger');
       await page
         .locator('.composer-host > .composer')
         .screenshot({ path: testInfo.outputPath('existing.png') });
       await savedTemplate.hover();
       await expect(page.locator('.mar-tooltip:visible')).toContainText(name);
+      await expect(savedTemplate).toHaveCSS('background-color', draftStyle.background);
+      await expect(savedTemplate).toHaveCSS('box-shadow', 'none');
       const savedBox = (await savedTemplate.boundingBox())!;
       await page.mouse.click(savedBox.x + savedBox.width / 2, savedBox.y + savedBox.height / 2);
       await expect(page.getByRole('menu')).toHaveCount(0);
