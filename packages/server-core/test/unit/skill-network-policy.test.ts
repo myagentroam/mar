@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
-import { createServer as createHttpsServer } from 'node:https';
+import https from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { describe, expect, it, vi } from 'vitest';
-import type { Pool } from 'mysql2/promise';
-import { SkillNetworkPolicy } from '../../src/skill-network-policy.js';
+import { SkillDiscoveryService } from '../../src/skill-discovery-service.js';
+import { publicHttpsFetch } from '../../src/skill-network-policy.js';
 
 const { lookup } = vi.hoisted(() => ({ lookup: vi.fn() }));
 vi.mock('node:dns/promises', () => ({ lookup }));
@@ -15,9 +15,17 @@ async function startLocalHttpsServer() {
     readFile(new URL('localhost-test-cert.pem', fixtureDirectory))
   ]);
   const requests: string[] = [];
-  const server = createHttpsServer({ key, cert }, (request, response) => {
+  const server = https.createServer({ key, cert }, (request, response) => {
     requests.push(request.url ?? '');
-    response.writeHead(200, { 'content-type': 'text/plain' }).end('local response');
+    if (request.url === '/redirect') {
+      response.writeHead(302, { location: '/not-followed' }).end();
+      return;
+    }
+    response
+      .writeHead(200, { 'content-type': 'application/json' })
+      .end(
+        JSON.stringify({ skills: [{ name: 'demo', skillId: 'demo', source: 'example/skills' }] })
+      );
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -26,7 +34,7 @@ async function startLocalHttpsServer() {
   const address = server.address() as AddressInfo;
   return {
     requests,
-    url: `https://127.0.0.1:${address.port}/skill`,
+    origin: `https://127.0.0.1:${address.port}`,
     async close() {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error === undefined ? resolve() : reject(error)));
@@ -36,46 +44,65 @@ async function startLocalHttpsServer() {
   };
 }
 
-describe('Server Skill TLS policy', () => {
-  it('keeps certificate verification enabled by default and explicitly persists the high-risk opt-out', async () => {
-    const execute = vi
-      .fn()
-      .mockResolvedValueOnce([[], []])
-      .mockResolvedValueOnce([{ affectedRows: 1 }, []])
-      .mockResolvedValueOnce([[{ setting_value: 'true' }], []]);
-    const policy = new SkillNetworkPolicy({ raw: { execute } } as unknown as { raw: Pool });
-
-    await expect(policy.disabled()).resolves.toBe(false);
-    await policy.setDisabled(true);
-    await expect(policy.disabled()).resolves.toBe(true);
-    expect(execute.mock.calls[1]?.[1]).toEqual([
-      'skill_tls_verification_disabled',
-      'true',
-      expect.any(Number)
-    ]);
-  });
-
-  it('requests a loopback HTTPS URL without pre-resolving and retains the TLS opt-out', async () => {
+describe('Server catalog HTTPS policy', () => {
+  it('uses the unverified transport for both default skills.sh discovery calls without pre-resolving', async () => {
     const server = await startLocalHttpsServer();
-    lookup.mockReset().mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
-    const execute = vi
-      .fn()
-      .mockResolvedValueOnce([[{ setting_value: 'false' }], []])
-      .mockResolvedValueOnce([{ affectedRows: 1 }, []]);
-    const policy = new SkillNetworkPolicy({ raw: { execute } } as unknown as { raw: Pool });
-    try {
-      await expect(policy.fetch(server.url)).rejects.toThrow();
-      await policy.setDisabled(true);
-      const response = await policy.fetch(server.url);
-      expect(response.status).toBe(200);
-      await expect(response.text()).resolves.toBe('local response');
-      await expect(policy.fetch(server.url.replace('https:', 'http:'))).rejects.toThrow(
-        'SKILL_SOURCE_TLS_FAILED'
+    const request = https.request;
+    const routed = vi.spyOn(https, 'request').mockImplementation((url, options, callback) => {
+      const upstream = new URL(String(url));
+      expect(upstream.origin).toBe('https://skills.sh');
+      return request(
+        new URL(upstream.pathname + upstream.search, server.origin),
+        options,
+        callback
       );
-      expect(server.requests).toEqual(['/skill']);
+    });
+    lookup.mockReset().mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
+    try {
+      const source = {
+        id: 'skills-sh',
+        kind: 'SKILLS_SH',
+        locator: 'skills.sh',
+        enabled: true
+      } as const;
+      const discovery = new SkillDiscoveryService();
+      const candidates = [expect.objectContaining({ id: 'example/skills/demo' })];
+      await expect(discovery.search(source, '', 10)).resolves.toEqual(candidates);
+      await expect(discovery.search(source, 'demo', 10)).resolves.toEqual(candidates);
+      expect(server.requests).toEqual(['/api/skills/hot/0', '/api/search?q=demo&limit=10']);
       expect(lookup).not.toHaveBeenCalled();
     } finally {
+      routed.mockRestore();
       await server.close();
+    }
+  });
+
+  it('accepts untrusted certificates on arbitrary registry HTTPS URLs without following redirects', async () => {
+    const server = await startLocalHttpsServer();
+    try {
+      const registryPath = '/custom/v0.1/servers?version=latest';
+      const response = await publicHttpsFetch(server.origin + registryPath);
+      expect(response.status).toBe(200);
+      const redirect = await publicHttpsFetch(server.origin + '/redirect');
+      expect(redirect.status).toBe(302);
+      expect(redirect.headers.get('location')).toBe('/not-followed');
+      expect(server.requests).toEqual([registryPath, '/redirect']);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('still rejects non-HTTPS URLs before connecting', async () => {
+    const request = vi.spyOn(https, 'request').mockImplementation(() => {
+      throw new Error('Unexpected outbound request');
+    });
+    try {
+      await expect(publicHttpsFetch('http://example.test/registry')).rejects.toThrow(
+        'SKILL_SOURCE_TLS_FAILED'
+      );
+      expect(request).not.toHaveBeenCalled();
+    } finally {
+      request.mockRestore();
     }
   });
 });

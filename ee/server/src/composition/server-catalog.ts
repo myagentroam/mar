@@ -3,7 +3,7 @@ import { GitSkillRepository } from '../skill/git-skill-repository.js';
 import { SkillDiscoveryService } from '../skill/skill-discovery-service.js';
 import { SkillFavoriteService } from '../skill/skill-favorite-service.js';
 import { SkillArtifactService } from '../skill/skill-artifact-service.js';
-import { publicHttpsFetch, SkillNetworkPolicy } from '../skill/skill-network-policy.js';
+import { publicHttpsFetch } from '../skill/skill-network-policy.js';
 import { McpService } from '../mcp/mcp-service.js';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { createEnterpriseServerProduct } from './enterprise-product.js';
@@ -22,9 +22,8 @@ export function composeServerCatalog(input: {
 }) {
   const { database, authorization, now, cacheDirectory } = input;
   const skillSources = new SkillSourceService(database, authorization, now);
-  const skillNetwork = new SkillNetworkPolicy(database);
   const skillRepository = new GitSkillRepository();
-  const skillDiscovery = new SkillDiscoveryService(skillNetwork.fetch, skillRepository);
+  const skillDiscovery = new SkillDiscoveryService(undefined, skillRepository);
   const skillFavorites = new SkillFavoriteService(
     database,
     authorization,
@@ -37,5 +36,5 @@ export function composeServerCatalog(input: {
   );
   const skillArtifacts = new SkillArtifactService(cacheDirectory, now);
   const mcps = new McpService(database, authorization, publicHttpsFetch, now);
-  return { skillSources, skillNetwork, skillDiscovery, skillFavorites, skillArtifacts, mcps };
+  return { skillSources, skillDiscovery, skillFavorites, skillArtifacts, mcps };
 }

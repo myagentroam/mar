@@ -55,9 +55,9 @@ describe('Server License management gate', () => {
       app.patch('/api/system-settings/:settingKey', write);
       const response = await app.inject({
         method: 'PATCH',
-        url: '/api/system-settings/skill-tls',
+        url: '/api/system-settings/html-preview-origin',
         headers: managementHeaders(),
-        payload: { verificationDisabled: false }
+        payload: { origin: 'https://preview.example.test' }
       });
       expect(response.statusCode).toBe(status);
       expect(write).toHaveBeenCalledTimes(status === 200 ? 1 : 0);

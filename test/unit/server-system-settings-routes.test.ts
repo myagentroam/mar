@@ -4,7 +4,6 @@ import { hashOpaque } from '../../ee/server/src/database.js';
 import type { AuditService } from '../../ee/server/src/audit/audit-service.js';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import { registerSystemSettingsRoutes } from '../../ee/server/src/route/system-settings-routes.js';
-import type { SkillNetworkPolicy } from '../../ee/server/src/skill/skill-network-policy.js';
 
 const csrfToken = 'csrf-token';
 const headers = {
@@ -27,7 +26,6 @@ describe('Server system settings routes', () => {
       app,
       database: fixture.database,
       audits: fixture.audits,
-      network: fixture.network,
       htmlPreviewOrigin: fixture.htmlPreviewOrigin,
       resourceInput,
       publicOrigin: 'https://console.example.test'
@@ -72,7 +70,6 @@ describe('Server system settings routes', () => {
       app,
       database: fixture.database,
       audits: fixture.audits,
-      network: fixture.network,
       htmlPreviewOrigin: fixture.htmlPreviewOrigin,
       webPush,
       publicOrigin: 'https://console.example.test'
@@ -133,7 +130,6 @@ describe('Server system settings routes', () => {
       app,
       database: fixture.database,
       audits: fixture.audits,
-      network: fixture.network,
       htmlPreviewOrigin: fixture.htmlPreviewOrigin,
       publicOrigin: 'https://console.example.test'
     });
@@ -146,11 +142,9 @@ describe('Server system settings routes', () => {
     expect(snapshot.statusCode).toBe(200);
     expect(snapshot.json()).toEqual({
       auditRetentionDays: 180,
-      htmlPreviewOrigin: '',
-      skillTlsVerificationDisabled: false
+      htmlPreviewOrigin: ''
     });
     expect(fixture.audits.readRetentionDays).toHaveBeenCalledWith(1);
-    expect(fixture.network.disabled).toHaveBeenCalledOnce();
 
     const auditUpdated = await app.inject({
       method: 'PATCH',
@@ -161,24 +155,20 @@ describe('Server system settings routes', () => {
     expect(auditUpdated.statusCode).toBe(200);
     expect(auditUpdated.json()).toEqual({
       auditRetentionDays: 365,
-      htmlPreviewOrigin: '',
-      skillTlsVerificationDisabled: false
+      htmlPreviewOrigin: ''
     });
     expect(fixture.audits.setRetentionDays).toHaveBeenCalledWith(1, 365);
 
-    const tlsUpdated = await app.inject({
+    const retiredSetting = await app.inject({
       method: 'PATCH',
       url: '/api/system-settings/skill-tls',
       headers,
       payload: { verificationDisabled: true }
     });
-    expect(tlsUpdated.statusCode).toBe(200);
-    expect(tlsUpdated.json()).toEqual({
-      auditRetentionDays: 365,
-      htmlPreviewOrigin: '',
-      skillTlsVerificationDisabled: true
+    expect(retiredSetting.statusCode).toBe(404);
+    expect(retiredSetting.json()).toMatchObject({
+      error: { code: 'SYSTEM_SETTING_NOT_FOUND' }
     });
-    expect(fixture.network.setDisabled).toHaveBeenCalledWith(true);
     await app.close();
   });
 
@@ -189,7 +179,6 @@ describe('Server system settings routes', () => {
       app,
       database: fixture.database,
       audits: fixture.audits,
-      network: fixture.network,
       htmlPreviewOrigin: fixture.htmlPreviewOrigin,
       publicOrigin: 'https://console.example.test'
     });
@@ -250,7 +239,6 @@ describe('Server system settings routes', () => {
 function routeFixture(session = { isAdmin: true }) {
   const settings = {
     auditRetentionDays: 180,
-    skillTlsVerificationDisabled: false,
     htmlPreviewOrigin: ''
   };
   const database = {
@@ -272,20 +260,11 @@ function routeFixture(session = { isAdmin: true }) {
     readRetentionDays: ReturnType<typeof vi.fn>;
     setRetentionDays: ReturnType<typeof vi.fn>;
   };
-  const network = {
-    disabled: vi.fn(async () => settings.skillTlsVerificationDisabled),
-    setDisabled: vi.fn(async (disabled: boolean) => {
-      settings.skillTlsVerificationDisabled = disabled;
-    })
-  } as unknown as SkillNetworkPolicy & {
-    disabled: ReturnType<typeof vi.fn>;
-    setDisabled: ReturnType<typeof vi.fn>;
-  };
   const htmlPreviewOrigin = {
     read: vi.fn(async () => settings.htmlPreviewOrigin),
     write: vi.fn(async (value: string) => {
       settings.htmlPreviewOrigin = value;
     })
   };
-  return { database, audits, network, htmlPreviewOrigin, session };
+  return { database, audits, htmlPreviewOrigin, session };
 }

@@ -289,7 +289,7 @@ export async function composeServerApplication(
     });
     const oauth = new OAuthService(database, authorization, licenses, fetch, now);
     const audits = new AuditService(database, authorization, now);
-    const { skillSources, skillNetwork, skillDiscovery, skillFavorites, skillArtifacts, mcps } =
+    const { skillSources, skillDiscovery, skillFavorites, skillArtifacts, mcps } =
       composeServerCatalog({
         database,
         authorization,
@@ -693,7 +693,6 @@ export async function composeServerApplication(
         resourceInput: new MarAgentResourceInputService(database),
         database,
         audits,
-        network: skillNetwork,
         smtp,
         webPush: webPushConfiguration,
         htmlPreviewOrigin,

@@ -5,7 +5,6 @@ import { isAllowedOrigin } from './auth.js';
 import { protectedManagementAdmin, validCsrf, type SessionLookup } from './session.js';
 import { sendError } from './http-errors.js';
 import { databaseError } from './domain-errors.js';
-import type { SkillNetworkPolicy } from './skill-network-policy.js';
 import type { HtmlPreviewOrigin } from './html-preview-origin.js';
 import type { MailSmtpService } from './mail-smtp-service.js';
 import type { WebPushConfiguration } from './web-push-configuration.js';
@@ -20,7 +19,6 @@ export interface SystemSettingExtension {
 export function registerSystemSettingsRoutes(input: {
   readonly app: FastifyInstance;
   readonly database: SessionLookup & Partial<AuditObserver>;
-  readonly network: Pick<SkillNetworkPolicy, 'disabled' | 'setDisabled'>;
   readonly htmlPreviewOrigin: Pick<HtmlPreviewOrigin, 'read' | 'write'>;
   readonly smtp?: Pick<MailSmtpService, 'read' | 'write'>;
   readonly webPush?: Pick<WebPushConfiguration, 'read' | 'setEnabled'>;
@@ -28,7 +26,7 @@ export function registerSystemSettingsRoutes(input: {
   readonly extensions?: readonly SystemSettingExtension[];
   readonly resourceInput?: Pick<MarAgentResourceInputService, 'read' | 'write'>;
 }): void {
-  const { app, database, network, publicOrigin } = input;
+  const { app, database, publicOrigin } = input;
   const settings: readonly SystemSettingExtension[] = [
     ...(input.extensions ?? []),
     ...(input.resourceInput === undefined
@@ -98,21 +96,6 @@ export function registerSystemSettingsRoutes(input: {
         )
           throw new Error('SYSTEM_SETTING_INPUT_INVALID');
         await input.htmlPreviewOrigin.write(raw.origin);
-      }
-    },
-    {
-      key: 'skill-tls',
-      field: 'skillTlsVerificationDisabled',
-      read: () => network.disabled(),
-      write: async (_userId, raw) => {
-        if (
-          raw === null ||
-          typeof raw !== 'object' ||
-          !('verificationDisabled' in raw) ||
-          typeof raw.verificationDisabled !== 'boolean'
-        )
-          throw new Error('SYSTEM_SETTING_INPUT_INVALID');
-        await network.setDisabled(raw.verificationDisabled);
       }
     }
   ];

@@ -503,7 +503,7 @@ export async function mockConsoleApi(
     return write(route, writes, {});
   });
   await routing.route('**/api/system-settings', (route) =>
-    json(route, { auditRetentionDays: 180, skillTlsVerificationDisabled: false })
+    json(route, { auditRetentionDays: 180 })
   );
   await routing.route('**/api/workbench-capabilities', (route) =>
     json(route, { serverVersion: '0.9.6' })
