@@ -271,16 +271,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   });
 }
 
-for (const [width, theme] of [
-  [1280, 'vscode-dark-2026'],
-  [390, 'daylight']
+for (const [width, theme, hoverColor] of [
+  [1280, 'vscode-dark-2026', 'rgba(255, 255, 255, 0.1)'],
+  [1280, 'daylight', 'rgba(0, 95, 214, 0.08)'],
+  [390, 'daylight', 'rgba(0, 95, 214, 0.08)']
 ] as const) {
-  test(`Permission trigger matches the model trigger (${width}, ${theme})`, async ({ page }) => {
+  test(`Permission trigger matches the model trigger (${width}, ${theme})`, async ({
+    page
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(
       `${fixture.url}composer-options.html?short&compact-names&existing-session&theme=${theme}${width < 768 ? '&mobile' : ''}`
     );
     const model = page.locator('.composer-model-effort-select .mar-ui-select__field');
+    const modelControl = model.getByRole('combobox');
     const access = page.locator('.composer-access-select .mar-ui-select__field');
     const control = access.getByRole('combobox', { name: 'Access' });
     const arrowStyle = (field: Locator) =>
@@ -305,13 +309,22 @@ for (const [width, theme] of [
     await expect(access).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(access).toHaveCSS('box-shadow', 'none');
     await model.hover();
-    const hoverColor = await model.evaluate((field) => getComputedStyle(field).backgroundColor);
+    await expect(model).toHaveCSS('background-color', hoverColor);
+    await page
+      .locator('.composer-toolbar')
+      .screenshot({ path: testInfo.outputPath('model-hover.png') });
+    await modelControl.click();
+    await page.mouse.move(0, 0);
+    await expect(modelControl).toHaveAttribute('aria-expanded', 'true');
+    await expect(model).toHaveCSS('background-color', hoverColor);
+    await modelControl.press('Escape');
+    await expect(modelControl).toHaveAttribute('aria-expanded', 'false');
     await access.hover();
     await expect(access).toHaveCSS('background-color', hoverColor);
     await expect(access).toHaveCSS('box-shadow', 'none');
     await page.mouse.move(0, 0);
 
-    await model.getByRole('combobox').press('Tab');
+    await modelControl.press('Tab');
     await expect(control).toBeFocused();
     await expect(access).toHaveCSS('outline-style', 'solid');
     await expect(access).toHaveCSS('outline-width', '2px');

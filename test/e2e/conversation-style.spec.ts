@@ -2067,6 +2067,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await title.hover();
       await expect(title).toHaveCSS('color', tokens.primary);
       await expect(title).toHaveCSS('background-color', tokens.utilityHover);
+      await title.click();
+      await page.mouse.move(0, 0);
+      await expect(title).toHaveAttribute('aria-expanded', 'true');
+      await expect(title).toHaveCSS(
+        'background-color',
+        theme === 'daylight' ? 'rgba(0, 95, 214, 0.08)' : 'rgba(255, 255, 255, 0.1)'
+      );
+      await header.screenshot({ path: testInfo.outputPath(`title-expanded-${width}.png`) });
+      await page.keyboard.press('Escape');
+      await expect(title).toHaveAttribute('aria-expanded', 'false');
       await title.focus();
       await page.keyboard.press('Tab');
       await page.keyboard.press('Shift+Tab');

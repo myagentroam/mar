@@ -1115,7 +1115,7 @@ test('Activity rail keeps separate hover surfaces for icon actions and navigatio
 }) => {
   for (const [theme, hoverOverlay, rowHover] of [
     ['dark', 'rgba(255, 255, 255, 0.1)', 'rgb(46, 46, 46)'],
-    ['light', 'rgba(0, 0, 0, 0.1)', 'rgb(232, 241, 255)']
+    ['light', 'rgba(0, 95, 214, 0.08)', 'rgb(232, 241, 255)']
   ] as const) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`${fixture.url}icon-system.html?navigation=1&theme=${theme}`);
