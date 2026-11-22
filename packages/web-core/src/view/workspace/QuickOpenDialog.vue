@@ -278,6 +278,39 @@ function choose(entry = entries.value[activeIndex.value], external = false): voi
   void props.openWorkspace(entry.nodeId, entry.workspaceId);
 }
 
+function entryName(entry: QuickOpenCandidate): string {
+  switch (entry.kind) {
+    case 'WORKSPACE':
+      return entry.workspaceLabel;
+    case 'SESSION':
+      return entry.title;
+    case 'FILE':
+      return entry.name;
+    case 'SYMBOL':
+      return entry.symbol;
+  }
+}
+
+function entryContext(entry: QuickOpenCandidate): string | undefined {
+  if (entry.kind === 'WORKSPACE') return entry.nodeLabel;
+  if (entry.kind === 'SESSION') return entry.runner;
+  if (entry.kind === 'SYMBOL') return entry.detail;
+}
+
+function overflowedEntryText(index: number): string | undefined {
+  const labels = results.value?.children[index]?.querySelectorAll<HTMLElement>(
+    '.entry-name, .entry-context, .entry-path'
+  );
+  if (!labels) return undefined;
+  return (
+    [...labels]
+      .filter((label) => label.clientWidth > 0 && label.scrollWidth > label.clientWidth)
+      .map((label) => label.textContent?.trim())
+      .filter(Boolean)
+      .join('\n') || undefined
+  );
+}
+
 function highlightedPath(
   path: string
 ): readonly { readonly text: string; readonly matched: boolean }[] {
@@ -390,36 +423,27 @@ function onKeydown(event: KeyboardEvent): void {
         role="option"
         :aria-selected="index === activeIndex"
       >
-        <button type="button" @click="choose(entry, $event.ctrlKey || $event.metaKey)">
-          <FileTypeIcon
-            :name="
-              entry.kind === 'WORKSPACE'
-                ? entry.workspaceLabel
-                : entry.kind === 'FILE'
-                  ? entry.name
-                  : entry.kind === 'SESSION'
-                    ? entry.title
-                    : entry.path
-            "
-          />
+        <button
+          type="button"
+          v-tooltip="() => overflowedEntryText(index)"
+          @click="choose(entry, $event.ctrlKey || $event.metaKey)"
+        >
+          <FileTypeIcon :name="entry.kind === 'SYMBOL' ? entry.path : entryName(entry)" />
           <span class="entry-main">
-            <span class="entry-name">
-              <span
-                v-for="(fragment, fragmentIndex) in highlightedPath(
-                  entry.kind === 'FILE'
-                    ? entry.name
-                    : entry.kind === 'SYMBOL'
-                      ? entry.symbol
-                      : entry.kind === 'SESSION'
-                        ? entry.title
-                        : entry.workspaceLabel
-                )"
-                :key="fragmentIndex"
-                :class="{ 'quick-open-match': fragment.matched }"
-                >{{ fragment.text }}</span
-              >
+            <span class="entry-heading">
+              <span class="entry-name">
+                <span
+                  v-for="(fragment, fragmentIndex) in highlightedPath(entryName(entry))"
+                  :key="fragmentIndex"
+                  :class="{ 'quick-open-match': fragment.matched }"
+                  >{{ fragment.text }}</span
+                >
+              </span>
+              <small v-if="entryContext(entry)" class="entry-context">{{
+                entryContext(entry)
+              }}</small>
             </span>
-            <code v-if="entry.kind !== 'SESSION'"
+            <code v-if="entry.kind !== 'SESSION'" class="entry-path"
               ><span
                 v-for="(fragment, fragmentIndex) in highlightedPath(entry.path)"
                 :key="fragmentIndex"
@@ -430,32 +454,19 @@ function onKeydown(event: KeyboardEvent): void {
               ></code
             >
           </span>
-          <span
-            class="entry-kind"
-            :class="{
-              'entry-kind-workspace': entry.kind === 'WORKSPACE',
-              'entry-kind-session': entry.kind === 'SESSION',
-              'entry-kind-file': entry.kind === 'FILE',
-              'entry-kind-definition': entry.kind === 'SYMBOL' && entry.source === 'DEFINITION',
-              'entry-kind-reference': entry.kind === 'SYMBOL' && entry.source === 'REFERENCE'
-            }"
-            >{{
-              translate(
-                entry.kind === 'SYMBOL'
-                  ? entry.source === 'DEFINITION'
-                    ? 'generated.quickOpenDialog.definition'
-                    : 'generated.quickOpenDialog.reference'
-                  : entry.kind === 'FILE'
-                    ? 'generated.quickOpenDialog.file'
-                    : entry.kind === 'SESSION'
-                      ? 'generated.quickOpenDialog.session'
-                      : 'generated.quickOpenDialog.workspace'
-              )
-            }}</span
-          >
-          <small v-if="entry.kind === 'WORKSPACE'">{{ entry.nodeLabel }}</small>
-          <small v-else-if="entry.kind === 'SESSION'">{{ entry.runner }}</small>
-          <small v-else-if="entry.kind === 'SYMBOL' && entry.detail">{{ entry.detail }}</small>
+          <span class="entry-kind">{{
+            translate(
+              entry.kind === 'SYMBOL'
+                ? entry.source === 'DEFINITION'
+                  ? 'generated.quickOpenDialog.definition'
+                  : 'generated.quickOpenDialog.reference'
+                : entry.kind === 'FILE'
+                  ? 'generated.quickOpenDialog.file'
+                  : entry.kind === 'SESSION'
+                    ? 'generated.quickOpenDialog.session'
+                    : 'generated.quickOpenDialog.workspace'
+            )
+          }}</span>
         </button>
       </li>
     </ul>
@@ -569,9 +580,10 @@ function onKeydown(event: KeyboardEvent): void {
 }
 .quick-open-results {
   display: grid;
+  align-content: start;
   flex: 0 1 auto;
-  min-height: min(5rem, 20dvh);
-  gap: 0.15rem;
+  min-height: 0;
+  gap: 0.125rem;
   max-height: min(48vh, 360px);
   margin: 0.4rem 0 0;
   padding: 0;
@@ -591,12 +603,15 @@ function onKeydown(event: KeyboardEvent): void {
   width: 100%;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.5rem;
   border: 0;
-  border-radius: 6px;
-  padding: 0.55rem 0.65rem;
+  border-radius: var(--mar-radius-selection);
+  padding: 0.25rem 0.5rem;
   background: transparent;
   color: var(--mar-text-secondary);
+  font: inherit;
+  font-size: var(--mar-font-size-body);
+  line-height: 1.35;
   cursor: pointer;
   text-align: left;
 }
@@ -607,10 +622,17 @@ function onKeydown(event: KeyboardEvent): void {
 .entry-main {
   min-width: 0;
   display: grid;
-  gap: 0.15rem;
 }
-.quick-open-results .entry-name,
-.quick-open-results code {
+.entry-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.entry-name,
+.entry-context,
+.entry-path {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -618,42 +640,18 @@ function onKeydown(event: KeyboardEvent): void {
 .entry-name {
   font-weight: 400;
 }
-.quick-open-results code,
-.quick-open-results small {
-  color: var(--mar-text-secondary);
-}
-.quick-open-results small {
-  grid-column: 2;
-}
+.entry-context,
+.entry-path,
 .entry-kind {
-  border: 1px solid var(--mar-border-subtle);
-  border-radius: 4px;
-  padding: 0.1rem 0.45rem;
-  background: var(--mar-bg-subtle);
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
-  font-weight: 600;
-  line-height: 1.25;
 }
-.entry-kind-workspace {
-  border-color: var(--mar-border-medium);
-  background: var(--mar-fill-soft);
-  color: var(--mar-text-primary);
+.entry-context {
+  flex: 0 0 auto;
+  max-width: 40%;
 }
-.entry-kind-definition {
-  border-color: color-mix(in srgb, var(--mar-color-success-text) 35%, transparent);
-  background: var(--mar-color-success-bg);
-  color: var(--mar-color-success-text);
-}
-.entry-kind-reference {
-  border-color: color-mix(in srgb, var(--mar-color-warning-text) 35%, transparent);
-  background: var(--mar-color-warning-bg);
-  color: var(--mar-color-warning-text);
-}
-.entry-kind-file {
-  border-color: var(--mar-border-medium);
-  background: var(--mar-fill-muted);
-  color: var(--mar-text-secondary);
+.entry-path {
+  font-family: var(--mar-font-mono);
 }
 .quick-open-match {
   color: var(--mar-text-primary);

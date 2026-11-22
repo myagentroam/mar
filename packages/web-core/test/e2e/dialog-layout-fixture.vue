@@ -25,6 +25,7 @@ import { createScopedHttpService } from '../../src/service/scoped-http-service.j
 import { MarMessageBox } from '../../src/service/message-box-service.js';
 
 const kind = new URLSearchParams(location.search).get('kind') ?? 'workspace';
+const quickCompact = new URLSearchParams(location.search).has('quick-compact');
 const open = ref(false);
 const fileSurface = ref<InstanceType<typeof FilePreviewSurface>>();
 async function dismissFile(): Promise<void> {
@@ -258,19 +259,28 @@ function showMessageBox(): void {
     :workspace-id="undefined"
     :files-ready="false"
     :symbols-ready="false"
-    :nodes="nodes"
+    :nodes="
+      quickCompact
+        ? nodes.flatMap((node) => [
+            { ...node, displayName: 'build-linux' },
+            { ...node, id: 'node-2', displayName: 'dev-linux' }
+          ])
+        : nodes
+    "
     :sessions="[]"
     :session-title="() => ''"
     :open-session="async () => undefined"
     :open-workspace="async () => true"
     :workspace-tabs="
-      entries.map((entry) => ({
-        id: entry.id,
-        nodeId: 'node',
-        workspaceId: entry.id,
-        label: entry.name,
-        lastActiveAt: 0
-      }))
+      quickCompact
+        ? []
+        : entries.map((entry) => ({
+            id: entry.id,
+            nodeId: 'node',
+            workspaceId: entry.id,
+            label: entry.name,
+            lastActiveAt: 0
+          }))
     "
     @close="open = false"
   />

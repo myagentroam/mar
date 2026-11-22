@@ -5,6 +5,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 // @test-covers packages/mar-ui/components/dialog/MarDialog.vue
 // @test-covers packages/mar-ui/components/table/MarTable.vue
 // @test-covers packages/web-core/src/view/settings/ResourceManagementPanel.vue
+// @test-covers packages/web-core/src/view/workspace/QuickOpenDialog.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/dialog-layout.html');
@@ -554,6 +555,76 @@ test('Quick Open keeps keyboard results visible when failed-source details expan
   await expectSingleScrollRegion(dialog);
 });
 
+for (const { width, height } of [
+  { width: 1280, height: 800 },
+  { width: 390, height: 844 }
+]) {
+  test(`Quick Open keeps workspace name and Node on one row at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    const workspaces = [
+      ['Release Check', '/work/projects/shared-console'],
+      ['Workbench', '/work/projects/shared-console'],
+      ['Personal', '/work/projects/personal'],
+      ['Design System', '/work/projects/design-system/packages/components/storybook'],
+      ['Documentation and Release Verification Workspace', '/work/projects/documentation'],
+      ['API Console', '/work/projects/api-console'],
+      ['Release Notes', '/work/projects/release-notes'],
+      ['Sandbox', '/work/projects/sandbox']
+    ].map(([displayName, path], index) => ({ id: `workspace-${index}`, displayName, path }));
+    await page.setViewportSize({ width, height });
+    await page.route('**/api/workspaces?*', (route) => {
+      const nodeId = new URL(route.request().url()).searchParams.get('nodeId');
+      return route.fulfill({
+        json: { workspaces: nodeId === 'node' ? workspaces.slice(0, 1) : workspaces.slice(1) }
+      });
+    });
+    await page.goto(`${fixture.url}dialog-layout.html?kind=quick&quick-compact&locale=zh-CN`);
+    await page.getByRole('button', { name: 'Open content' }).click();
+    const dialog = page.getByRole('dialog', { name: '快速打开' });
+    const results = dialog.getByRole('listbox');
+    const rows = results.getByRole('option');
+    await expect(rows).toHaveCount(workspaces.length);
+    const panel = dialog.locator('.mar-ui-dialog');
+    await expectBounded(panel);
+    await panel.screenshot({ path: testInfo.outputPath(`quick-open-${width}.png`) });
+
+    for (const [index, row] of (await rows.all()).entries()) {
+      const name = (await row.locator('.entry-name').boundingBox())!;
+      const node = (await row
+        .getByText(index === 0 ? 'build-linux' : 'dev-linux', { exact: true })
+        .boundingBox())!;
+      const path = (await row.locator('code').boundingBox())!;
+      expect(node.x).toBeGreaterThanOrEqual(name.x + name.width);
+      expect(node.y).toBeLessThan(name.y + name.height);
+      expect(path.y).toBeGreaterThanOrEqual(name.y + name.height);
+      expect(await row.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThanOrEqual(48);
+    }
+    expect(await results.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(
+      await results.evaluate((el) => el.clientWidth)
+    );
+    if (width === 390) {
+      const name = 'Documentation and Release Verification Workspace';
+      const row = rows.getByRole('button', { name: new RegExp(name, 'u') });
+      const tooltip = page.getByRole('tooltip');
+      await row.hover();
+      await expect(tooltip).toHaveText(name);
+      const input = dialog.getByRole('textbox', { name: '快速打开' });
+      await input.press('Escape');
+      await expect(tooltip).toHaveCount(0);
+      await expect(input).toBeFocused();
+      await page.mouse.move(0, 0);
+      await row.focus();
+      await expect(tooltip).toHaveText(name);
+      await row.press('Escape');
+      await expect(tooltip).toHaveCount(0);
+      await expect(row).toBeFocused();
+      await row.press('Escape');
+      await expect(dialog).toHaveCount(0);
+    }
+  });
+}
+
 test('Quick Open keeps a single candidate compact alongside source errors', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.route('**/api/workspaces?*', async (route) => {
@@ -571,8 +642,14 @@ test('Quick Open keeps a single candidate compact alongside source errors', asyn
   await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   await input.fill('Skill 60');
   const results = dialog.locator('.quick-open-results');
-  await expect(results.locator('li')).toHaveCount(1);
-  await expect.poll(() => results.evaluate((el) => el.clientHeight)).toBeLessThan(160);
+  await expect(results.getByRole('option')).toHaveCount(1);
+  await expect
+    .poll(() =>
+      results.evaluate((list) =>
+        Math.abs(list.clientHeight - list.firstElementChild!.getBoundingClientRect().height)
+      )
+    )
+    .toBeLessThanOrEqual(1);
   await expectBounded(dialog);
   await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeInViewport();
   await input.press('Escape');
