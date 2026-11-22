@@ -152,6 +152,15 @@ for (const theme of ['light', 'dark']) {
     await page.goto(`${fixture.url}file-editor-layout.html?text=code&draft=1&theme=${theme}`);
     const content = page.locator('.cm-content');
     await expect(content).toBeVisible();
+    const gutters = page.locator('.cm-gutters');
+    await expect(gutters).toHaveCSS(
+      'background-color',
+      theme === 'dark' ? 'rgb(26, 26, 26)' : 'rgb(248, 251, 255)'
+    );
+    await expect(gutters).toHaveCSS(
+      'border-right-color',
+      theme === 'dark' ? 'rgb(52, 52, 52)' : 'rgb(214, 225, 239)'
+    );
     await page.getByRole('button', { name: 'Edit file', exact: true }).click();
     await content.fill('const example = 1;\nconsole.log(example);\nexample;');
     for (const width of [1280, 390]) {
@@ -334,6 +343,7 @@ for (const theme of ['light', 'dark']) {
               background: color('--mar-bg-panel'),
               border: color('--mar-border-default'),
               hoverBackground: color('--mar-fill-hover'),
+              iconHoverBackground: color('--mar-action-hover-overlay'),
               hoverBorder: color('--mar-border-medium'),
               hoverText: color('--mar-text-primary'),
               pressedBackground: color('--mar-fill-selection'),
@@ -424,20 +434,12 @@ for (const theme of ['light', 'dark']) {
             await expect(search.getByRole('button', { name: 'Previous match' })).toBeDisabled();
             await search.getByPlaceholder('Find', { exact: true }).fill('new');
             await expect(search.getByRole('button', { name: 'Next match' })).toBeEnabled();
-            const rowHoverBackground = await search.evaluate((element) => {
-              const probe = document.createElement('span');
-              probe.style.color = 'var(--mar-fill-row-hover)';
-              element.append(probe);
-              const color = getComputedStyle(probe).color;
-              probe.remove();
-              return color;
-            });
             const searchButtons = await search.locator('.mar-ui-button:enabled').all();
             for (const [index, button] of searchButtons.entries()) {
               if (width >= 768) {
                 await button.hover();
                 await expect(button).toHaveCSS('color', tokens.hoverText);
-                await expect(button).toHaveCSS('background-color', rowHoverBackground);
+                await expect(button).toHaveCSS('background-color', tokens.iconHoverBackground);
                 await expect(button).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
               }
               await search.getByRole('textbox').focus();

@@ -1063,7 +1063,7 @@ li strong {
 .bar-track span {
   display: block;
   height: 100%;
-  background: var(--mar-text-secondary);
+  background: var(--mar-conversation-activity-fg);
 }
 .records {
   width: 100%;

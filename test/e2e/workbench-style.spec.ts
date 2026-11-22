@@ -58,7 +58,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(checkbox).toBeChecked();
     await expect(checkbox).toHaveCSS(
       'background-color',
-      theme === 'daylight' ? 'rgb(37, 99, 201)' : 'rgb(222, 222, 222)'
+      theme === 'daylight' ? 'rgb(0, 87, 219)' : 'rgb(222, 222, 222)'
     );
     await expect(option.locator('svg')).toBeVisible();
     await option.screenshot({ path: testInfo.outputPath('regex-checked.png') });
@@ -137,7 +137,7 @@ for (const { theme, width } of [
       'Normal'
     ]);
     const { primary, secondary, meta, fontSize } = await sessionListColors(list);
-    expect(meta).toBe(theme === 'daylight' ? 'rgb(101, 101, 101)' : 'rgb(160, 160, 160)');
+    expect(meta).toBe(theme === 'daylight' ? 'rgb(82, 100, 124)' : 'rgb(160, 160, 160)');
     expect(primary).not.toBe(secondary);
     expect(secondary).not.toBe(meta);
     const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
@@ -191,11 +191,19 @@ for (const { theme, width } of [
     if (width >= 768) {
       await scheduled.hover();
       await expect(scheduled.locator('strong')).toHaveCSS('color', secondary);
+      await expect(scheduled.locator('..')).toHaveCSS(
+        'background-color',
+        theme === 'daylight' ? 'rgb(232, 241, 255)' : 'rgb(46, 46, 46)'
+      );
     }
     for (const active of [scheduled, pinned]) {
       await active.click();
       await page.mouse.move(0, 0);
       await expect(active).toHaveAttribute('aria-current', 'page');
+      await expect(active.locator('..')).toHaveCSS(
+        'background-color',
+        theme === 'daylight' ? 'rgb(220, 233, 255)' : 'rgb(55, 55, 55)'
+      );
       await expect(active.locator('strong')).toHaveCSS('color', primary);
       await expect(active.locator('.session-relative-time')).toHaveCSS('color', meta);
       await expect(active.locator('strong')).toHaveCSS('font-weight', '400');
@@ -1818,7 +1826,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await add.hover();
       const hoverBackground = await add.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+        probe.style.backgroundColor = 'var(--mar-action-hover-overlay)';
         element.append(probe);
         const color = getComputedStyle(probe).backgroundColor;
         probe.remove();

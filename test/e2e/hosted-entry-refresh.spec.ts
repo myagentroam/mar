@@ -26,7 +26,7 @@ test.afterAll(async () => {
 });
 
 for (const [width, theme, primaryBackground, primaryForeground] of [
-  [1280, 'daylight', 'rgb(37, 99, 201)', 'rgb(255, 255, 255)'],
+  [1280, 'daylight', 'rgb(0, 87, 219)', 'rgb(255, 255, 255)'],
   [390, 'vscode-dark-2026', 'rgb(222, 222, 222)', 'rgb(24, 24, 24)']
 ] as const) {
   test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
@@ -676,8 +676,11 @@ test('Hosted send displays only request feedback before Watch, including after H
   try {
     await f.input.fill(f.prompt);
     await f.input.blur();
-    await expect(f.send).toHaveCSS('background-color', 'rgb(222, 222, 222)');
-    await expect(f.send).toHaveCSS('color', 'rgb(24, 24, 24)');
+    await expect(f.send).toHaveCSS('background-color', 'rgb(77, 163, 255)');
+    const sendForeground = (await page.evaluate(() => CSS.supports('color: contrast-color(red)')))
+      ? 'rgb(0, 0, 0)'
+      : 'rgb(30, 30, 30)';
+    await expect(f.send).toHaveCSS('color', sendForeground);
     await page.screenshot({ path: testInfo.outputPath('chat-ready-dark.png') });
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(1);

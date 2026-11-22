@@ -404,7 +404,7 @@ for (const [width, theme] of [
     await expect(surface).toHaveCSS('border-top-width', '1px');
     await expect(surface).toHaveCSS(
       'border-top-color',
-      theme === 'daylight' ? 'rgb(201, 201, 201)' : 'rgb(71, 71, 71)'
+      theme === 'daylight' ? 'rgb(185, 202, 223)' : 'rgb(71, 71, 71)'
     );
     await expect(surface).toHaveCSS('box-shadow', /0px 4px 12px/u);
     const models = menu.getByRole('group', { name: 'Model' });

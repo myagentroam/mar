@@ -54,7 +54,7 @@ async function expectUnmaskedLoading(
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS(
     'border-top-color',
-    theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(201, 201, 201)'
+    theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(185, 202, 223)'
   );
   await expect(popover).toHaveCSS('box-shadow', /0px 10px 24px/u);
   const loadingSurface = await popover.evaluate((element) => {
