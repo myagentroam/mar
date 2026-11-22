@@ -307,8 +307,8 @@ onBeforeUnmount(() => {
 }
 .activity-entry-count {
   position: absolute;
-  top: calc(50% - 18px);
-  right: calc(50% - 18px);
+  top: max(4px, calc(50% - 18px));
+  right: max(4px, calc(50% - 18px));
   box-shadow: 0 0 0 1.5px var(--activity-marker-surface);
   pointer-events: none;
 }

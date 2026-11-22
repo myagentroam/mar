@@ -4,6 +4,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/styles/mar-ui-theme.css
 // @test-covers packages/web-core/src/view/workbench/WorkbenchActivityCenter.vue
+// @test-covers packages/web-core/src/view/session/session-markers.css
 
 test.use({ hasTouch: true });
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -350,10 +351,11 @@ for (const width of [1280, 390]) {
       });
     });
 
-    test(`Activity notification badges share dimensions at ${width}px ${theme}`, async ({
+    test(`Activity notification badges share compact dimensions at ${width}px ${theme}`, async ({
       page
-    }) => {
+    }, testInfo) => {
       await page.setViewportSize({ width, height: 850 });
+      let entryAnchor: { top: number; right: number } | undefined;
       for (const [query, count] of [
         ['one-notification=1', '1'],
         ['', '30'],
@@ -365,6 +367,28 @@ for (const width of [1280, 390]) {
         const trigger = page.locator('.activity-center-trigger');
         const entryBadge = trigger.locator('.activity-entry-count');
         await expect(entryBadge).toHaveText(count);
+        const anchor = await entryBadge.evaluate((element) => {
+          const triggerBox = element.parentElement!.getBoundingClientRect();
+          const badgeBox = element.getBoundingClientRect();
+          return {
+            top: badgeBox.top - triggerBox.top,
+            right: triggerBox.right - badgeBox.right
+          };
+        });
+        entryAnchor ??= anchor;
+        expect(anchor.top).toBeCloseTo(entryAnchor.top, 1);
+        expect(anchor.right).toBeCloseTo(entryAnchor.right, 1);
+        // Leave room for the 2px inset focus ring and the badge's 1.5px isolation halo.
+        expect(anchor.top).toBeGreaterThanOrEqual(3.5);
+        expect(anchor.right).toBeGreaterThanOrEqual(3.5);
+        if (count === '99+') {
+          await trigger.focus();
+          await page.keyboard.press('Tab');
+          await page.keyboard.press('Shift+Tab');
+          await expect(trigger).toBeFocused();
+          await expect(trigger).toHaveCSS('outline-style', 'solid');
+          await trigger.screenshot({ path: testInfo.outputPath('activity-trigger-99-focus.png') });
+        }
         await trigger.click();
         const panel = page.locator('.workbench-activity-panel:visible');
         const tabBadge = panel.locator('.activity-unread-count');
@@ -372,9 +396,12 @@ for (const width of [1280, 390]) {
         const badgeStyles = (element: Element) => {
           const style = getComputedStyle(element);
           const box = element.getBoundingClientRect();
+          const text = document.createRange();
+          text.selectNodeContents(element);
           return {
             width: box.width,
             height: box.height,
+            textWidth: text.getBoundingClientRect().width,
             padding: style.padding,
             boxSizing: style.boxSizing,
             borderRadius: style.borderRadius,
@@ -389,16 +416,22 @@ for (const width of [1280, 390]) {
         const {
           width: tabWidth,
           height: tabHeight,
+          textWidth: tabTextWidth,
           ...tabStyles
         } = await tabBadge.evaluate(badgeStyles);
         const {
           width: entryWidth,
           height: entryHeight,
+          textWidth: entryTextWidth,
           ...entryStyles
         } = await entryBadge.evaluate(badgeStyles);
         expect(tabStyles).toEqual(entryStyles);
-        expect(tabHeight).toBeCloseTo(16, 2);
-        expect(tabWidth).toBeGreaterThanOrEqual(16);
+        expect(tabHeight).toBeCloseTo(14, 2);
+        expect(tabStyles.padding).toBe('0px 3px');
+        if (count === '1') expect(tabWidth).toBeCloseTo(14, 2);
+        if (count === '99+') expect(tabWidth).toBeGreaterThan(14);
+        expect(tabWidth).toBeCloseTo(Math.max(14, tabTextWidth + 6), 1);
+        expect(entryWidth).toBeCloseTo(Math.max(14, entryTextWidth + 6), 1);
         expect(tabWidth).toBeCloseTo(entryWidth, 2);
         expect(tabHeight).toBeCloseTo(entryHeight, 2);
         await expect(tabBadge).toBeInViewport({ ratio: 1 });
@@ -411,6 +444,12 @@ for (const width of [1280, 390]) {
             .locator('.activity-tabs .mar-ui-tabs__header')
             .evaluate((tabs) => tabs.clientWidth)
         );
+        if (count === '1') {
+          await trigger.screenshot({ path: testInfo.outputPath('activity-trigger.png') });
+          await panel
+            .getByRole('tablist')
+            .screenshot({ path: testInfo.outputPath('activity-tabs.png') });
+        }
       }
     });
 
