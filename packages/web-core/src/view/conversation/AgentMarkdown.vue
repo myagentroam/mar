@@ -386,16 +386,29 @@ function onLinkClick(event: MouseEvent): void {
   margin: 0 0 0.65rem;
 }
 
-.agent-markdown :deep(h1),
-.agent-markdown :deep(h2),
-.agent-markdown :deep(h3),
-.agent-markdown :deep(h4),
-.agent-markdown :deep(h5),
-.agent-markdown :deep(h6) {
-  margin: 1.1rem 0 0.5rem;
+.agent-markdown :deep(> p),
+.agent-markdown :deep(> :is(ul, ol, blockquote):not(:has(:is(table, pre)))) {
+  max-inline-size: 76ch;
+}
+
+.agent-markdown :deep(> p:has(+ :is(ul, ol))) {
+  margin-block-end: 0.35rem;
+}
+
+.agent-markdown :deep(strong) {
+  font-weight: 700;
+  font-synthesis: weight;
+}
+
+.agent-markdown :deep(:is(h1, h2, h3, h4, h5, h6)) {
+  margin: 1.35rem 0 0.4rem;
   color: var(--mar-text-primary);
-  font-weight: 650;
+  font-weight: 700;
   line-height: 1.45;
+}
+
+.agent-markdown :deep(:is(h1, h2, h3, h4, h5, h6) + :is(table, .agent-markdown-code, ol, ul)) {
+  margin-top: 0.4rem;
 }
 
 .agent-markdown :deep(h1) {
@@ -426,6 +439,10 @@ function onLinkClick(event: MouseEvent): void {
   margin-top: 0.2rem;
 }
 
+.agent-markdown :deep(li::marker) {
+  color: var(--mar-text-secondary);
+}
+
 .agent-markdown :deep(li > :last-child) {
   margin-bottom: 0;
 }
@@ -443,11 +460,9 @@ function onLinkClick(event: MouseEvent): void {
 
 .agent-markdown :deep(blockquote) {
   margin: 0.8rem 0;
-  border-left: 3px solid var(--mar-border-medium);
-  border-radius: 0 5px 5px 0;
-  background: var(--mar-fill-subtle);
-  color: var(--mar-text-primary);
-  padding: 0.6rem 0.8rem;
+  border-inline-start: 2px solid var(--mar-border-medium);
+  color: var(--mar-text-secondary);
+  padding: 0.1rem 0.75rem;
 }
 
 .agent-markdown :deep(blockquote > :first-child) {
@@ -482,7 +497,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(th) {
-  background: var(--mar-conversation-table-header);
+  background: color-mix(in srgb, var(--mar-conversation-table-header), var(--mar-link-text) 8%);
   color: var(--mar-text-primary);
   font-weight: 650;
 }
@@ -497,7 +512,7 @@ function onLinkClick(event: MouseEvent): void {
 
 .agent-markdown :deep(:not(pre) > code) {
   border-radius: 3px;
-  background: var(--mar-conversation-code);
+  background: color-mix(in srgb, var(--mar-conversation-code), var(--mar-text-primary) 8%);
   padding: 0.08rem 0.25rem;
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);
@@ -506,7 +521,9 @@ function onLinkClick(event: MouseEvent): void {
   -webkit-box-decoration-break: clone;
 }
 
-.agent-markdown :deep(a > code) {
+.agent-markdown :deep(a[href] > code) {
+  background: transparent;
+  padding: 0;
   color: inherit;
 }
 

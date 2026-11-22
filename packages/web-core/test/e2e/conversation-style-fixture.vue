@@ -56,7 +56,11 @@ const livePerformance = ref<{ runId: string; latencyMs: number; tokensPerSecond?
 const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const readFilesFixture = new URL(location.href).searchParams.has('read-files');
 const historyActionsFixture = new URL(location.href).searchParams.has('history-actions');
-const markdownBlocksFixture = new URL(location.href).searchParams.has('markdown-blocks');
+const markdownPresentationFixture = new URL(location.href).searchParams.has(
+  'markdown-presentation'
+);
+const markdownBlocksFixture =
+  markdownPresentationFixture || new URL(location.href).searchParams.has('markdown-blocks');
 const userMessageCopyFixture = new URL(location.href).searchParams.has('user-message-copy');
 const userMessageCopyImage =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMI6LkHAALqAbuJ9q1aAAAAAElFTkSuQmCC';
@@ -256,31 +260,72 @@ if (markdownBlocksFixture) {
     {
       ...turns.value[0]!,
       items: [
-        { ...items[0]!, payload: { text: '把待办任务的标题提取出来，并给出验证命令。' } },
+        {
+          ...items[0]!,
+          payload: {
+            text: markdownPresentationFixture
+              ? '提取待办任务的标题，说明改在哪，以及边界场景的预期结果。'
+              : '把待办任务的标题提取出来，并给出验证命令。'
+          }
+        },
         {
           id: 'markdown-reply',
           kind: 'assistant_message',
           status: 'COMPLETED',
           payload: {
-            text: [
-              '下面的函数保留尚未完成的任务，返回它们的标题。行内代码 `task.title` 保持原来的样式。',
-              '```typescript',
-              '// Preserve original whitespace when copying.',
-              'type Task = { title: string; completed: boolean };',
-              'const docs = "https://example.invalid/documentation/a-very-long-unbroken-path-that-stays-on-one-source-line-without-changing-the-original-copied-code";',
-              '',
-              'export function pendingTitles(tasks: Task[]): string[] {',
-              '  return tasks.filter((task) => !task.completed).map((task) => task.title);',
-              '}',
-              '```',
-              '',
-              '未声明语言的代码块使用通用标签，仍可完整复制：',
-              '```',
-              'pnpm --dir packages/web-core exec vitest run test/unit/agent-markdown.test.ts',
-              '```',
-              '',
-              'See [the documentation](https://example.invalid/docs) and [`src/tasks.ts`](src/tasks.ts#L3).'
-            ].join('\n')
+            text: markdownPresentationFixture
+              ? [
+                  '## 实现结果',
+                  '',
+                  '新增了 **待办任务筛选**：返回未完成任务的 `title`，保持原有顺序。',
+                  '',
+                  '1. 在 [`src/tasks.ts`](src/tasks.ts#L3) 中实现筛选与映射。',
+                  '2. 增加空列表和全部完成的测试。',
+                  '',
+                  '> 只读取任务列表，不修改任务状态。',
+                  '',
+                  '## 验证结果',
+                  '',
+                  '| 场景 | 输入 | 预期输出 | 验证方式 |',
+                  '| --- | --- | --- | --- |',
+                  '| 混合状态 | 2 项待办，1 项已完成 | 2 个标题，保留顺序 | 单元测试 |',
+                  '| 全部完成 | 无待办任务 | 空数组 `[]` | 单元测试 |',
+                  '| 空列表 | 无任何任务 | 空数组 `[]` | 单元测试 |',
+                  '',
+                  '## 实现片段',
+                  '',
+                  '```typescript',
+                  'type Task = { title: string; completed: boolean };',
+                  '',
+                  'export function pendingTitles(tasks: Task[]) {',
+                  '  return tasks.filter(({ completed }) => !completed)',
+                  '    .map(({ title }) => title);',
+                  '}',
+                  '```',
+                  '',
+                  '> ```sh',
+                  '> pnpm --dir packages/web-core exec vitest run test/unit/agent-markdown.test.ts',
+                  '> ```'
+                ].join('\n')
+              : [
+                  '下面的函数保留尚未完成的任务，返回它们的标题。行内代码 `task.title` 保持原来的样式。',
+                  '```typescript',
+                  '// Preserve original whitespace when copying.',
+                  'type Task = { title: string; completed: boolean };',
+                  'const docs = "https://example.invalid/documentation/a-very-long-unbroken-path-that-stays-on-one-source-line-without-changing-the-original-copied-code";',
+                  '',
+                  'export function pendingTitles(tasks: Task[]): string[] {',
+                  '  return tasks.filter((task) => !task.completed).map((task) => task.title);',
+                  '}',
+                  '```',
+                  '',
+                  '未声明语言的代码块使用通用标签，仍可完整复制：',
+                  '```',
+                  'pnpm --dir packages/web-core exec vitest run test/unit/agent-markdown.test.ts',
+                  '```',
+                  '',
+                  'See [the documentation](https://example.invalid/docs) and [`src/tasks.ts`](src/tasks.ts#L3).'
+                ].join('\n')
           }
         }
       ]
@@ -656,7 +701,10 @@ function announceFixtureUpdate() {
 </script>
 
 <template>
-  <main class="conversation-style-fixture">
+  <main
+    class="conversation-style-fixture"
+    :class="{ 'is-markdown-presentation': markdownPresentationFixture }"
+  >
     <button
       v-if="performanceFixture"
       data-testid="update-performance"
@@ -901,6 +949,9 @@ function announceFixtureUpdate() {
   max-width: 850px;
   margin: auto;
   padding: 16px;
+}
+.conversation-style-fixture.is-markdown-presentation {
+  background: var(--mar-conversation-canvas);
 }
 .scroll-sample {
   display: flex;
