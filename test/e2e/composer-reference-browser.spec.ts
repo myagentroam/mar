@@ -78,7 +78,7 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   const files = page.locator('.file-reference-picker [role=option]');
   await expect(files).toHaveCount(2);
   const reference = page.locator('.file-reference-picker');
-  await expect(reference).toHaveCSS('border-top-color', 'rgb(203, 214, 228)');
+  await expect(reference).toHaveCSS('border-top-color', 'rgb(201, 201, 201)');
   await expect(reference).toHaveCSS('box-shadow', /0px 4px 12px/u);
   expect(
     resolvedColorToHex(
@@ -94,7 +94,7 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   await placeCursor(page, 11);
   const commands = page.locator('.command-picker').filter({ hasText: 'review' });
   await expect(commands).toBeVisible();
-  await expect(commands).toHaveCSS('border-top-color', 'rgb(203, 214, 228)');
+  await expect(commands).toHaveCSS('border-top-color', 'rgb(201, 201, 201)');
   await expect(commands).toHaveCSS('box-shadow', /0px 4px 12px/u);
   expect(
     resolvedColorToHex(

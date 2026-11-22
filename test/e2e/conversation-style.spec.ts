@@ -2207,18 +2207,29 @@ test('uses the bright daylight palette with accessible interactive and text colo
 }) => {
   await page.goto(fixture.url + 'conversation-style.html?theme=daylight');
   const daylight = await paletteColors(page);
-  expect(daylight['--mar-bg-page']).toBe('#f7f9fd');
+  expect(daylight['--mar-bg-page']).toBe('#f8f8f8');
   expect(daylight['--mar-bg-panel']).toBe('#ffffff');
-  expect(daylight['--mar-bg-tab-inactive']).toBe('#f7f9fd');
-  expect(daylight['--mar-border-default']).toBe('#cbd6e4');
-  expect(daylight['--mar-conversation-activity-fg']).toBe('#075fc7');
+  expect(daylight['--mar-bg-tab-inactive']).toBe('#f8f8f8');
+  expect(daylight['--mar-border-default']).toBe('#c9c9c9');
+  expect(daylight['--mar-conversation-activity-fg']).toBe('#005fd6');
   expect(daylight).not.toHaveProperty('--mar-color-brand');
-  expect(daylight['--mar-color-accent']).toBe('#067493');
-  expect(daylight['--mar-control-color-success']).toBe('#067551');
-  expect(daylight['--mar-text-primary']).toBe('#172033');
-  expect(daylight['--mar-text-secondary']).toBe('#555555');
-  expect(daylight['--mar-text-muted']).toBe('#5a687a');
-  expect(daylight['--mar-text-disabled']).toBe('#5f6f86');
+  expect(daylight['--mar-color-accent']).toBe('#00758a');
+  expect(daylight['--mar-control-color-success']).toBe('#00843d');
+  expect(daylight['--mar-text-primary']).toBe('#202020');
+  expect(daylight['--mar-text-secondary']).toBe('#515151');
+  expect(daylight['--mar-text-muted']).toBe('#656565');
+  expect(daylight['--mar-text-disabled']).toBe('#707070');
+  expect(daylight).toMatchObject({
+    '--mar-bg-chrome': '#f1f1f1',
+    '--mar-fill-row-hover': '#ebebeb',
+    '--mar-fill-selection': '#e3e3e3',
+    '--mar-control-primary-bg': '#2563c9',
+    '--mar-control-primary-fg': '#ffffff',
+    '--mar-control-primary-hover': '#1e54b1',
+    '--mar-control-primary-active': '#194695',
+    '--mar-control-link-text': '#174e9e',
+    '--mar-control-link-hover': '#123a78'
+  });
 
   for (const role of ['primary', 'secondary']) {
     expect(
@@ -2232,10 +2243,16 @@ test('uses the bright daylight palette with accessible interactive and text colo
     '--mar-fill-row-hover',
     '--mar-fill-selection'
   ]) {
-    expect(
-      contrast(daylight['--mar-text-muted']!, daylight[surface]!),
-      surface
-    ).toBeGreaterThanOrEqual(4.5);
+    for (const foreground of [
+      '--mar-text-muted',
+      '--mar-control-link-text',
+      '--mar-control-link-hover'
+    ]) {
+      expect(
+        contrast(daylight[foreground]!, daylight[surface]!),
+        `${foreground} on ${surface}`
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   }
   for (const [foreground, background] of [
     ['--mar-color-accent', '--mar-color-accent-bg'],
@@ -2350,7 +2367,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const colors = await paletteColors(page);
     for (const fill of ['bg', 'hover', 'active']) {
       const background = colors[`--mar-control-primary-${fill}`]!;
-      expect(background).toMatch(/^#([\da-f]{2})\1\1$/u);
+      if (theme === 'vscode-dark-2026') expect(background).toMatch(/^#([\da-f]{2})\1\1$/u);
       expect(
         contrast(colors['--mar-control-primary-fg']!, background),
         fill

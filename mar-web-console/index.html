@@ -37,7 +37,7 @@
         }
         if (background) root.style.setProperty('--mar-bootstrap-bg', background);
         document.querySelector('meta[name="theme-color"]').content =
-          background ?? (scheme === 'daylight' ? '#f7f9fd' : '#1a1a1a');
+          background ?? (scheme === 'daylight' ? '#f8f8f8' : '#1a1a1a');
       }
     </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -53,7 +53,7 @@
         inset: 0;
         display: grid;
         place-items: center;
-        background: var(--mar-bootstrap-bg, var(--mar-bg-page, #f7f9fd));
+        background: var(--mar-bootstrap-bg, var(--mar-bg-page, #f8f8f8));
         opacity: 1;
         z-index: 9999;
       }
@@ -71,7 +71,7 @@
         inset: 0;
         width: 1.25rem;
         height: 1.25rem;
-        color: var(--mar-text-secondary, #555555);
+        color: var(--mar-text-secondary, #515151);
         box-sizing: border-box;
         border: 2px solid currentColor;
         border-inline-end-color: transparent;

@@ -724,7 +724,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .repository-kind,
 .repository-current {
-  --mar-ui-tag-border-color: light-dark(var(--mar-border-default), var(--mar-border-medium));
+  --mar-ui-tag-border-color: var(--mar-workbench-control-border);
 }
 
 .repository-sync-tag {

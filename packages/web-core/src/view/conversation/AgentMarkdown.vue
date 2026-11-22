@@ -464,7 +464,7 @@ function onLinkClick(event: MouseEvent): void {
   max-width: 100%;
   overflow-x: auto;
   margin: 0.8rem 0;
-  border: 1px solid light-dark(var(--mar-border-default), var(--mar-conversation-process-border));
+  border: 1px solid var(--mar-conversation-table-border);
   border-radius: 6px;
   border-spacing: 0;
   border-collapse: separate;
@@ -473,8 +473,7 @@ function onLinkClick(event: MouseEvent): void {
 .agent-markdown :deep(th),
 .agent-markdown :deep(td) {
   min-width: 5.5rem;
-  border-bottom: 1px solid
-    light-dark(var(--mar-border-default), var(--mar-conversation-process-border));
+  border-bottom: 1px solid var(--mar-conversation-table-border);
   padding: 0.45rem 0.7rem;
   text-align: left;
   vertical-align: top;
@@ -483,7 +482,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(th) {
-  background: light-dark(var(--mar-fill-muted), var(--mar-bg-chrome));
+  background: var(--mar-conversation-table-header);
   color: var(--mar-text-primary);
   font-weight: 650;
 }

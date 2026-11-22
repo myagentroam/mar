@@ -21,7 +21,7 @@ async function expectActivityElevation(popover: Locator, theme: string) {
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS(
     'border-top-color',
-    dark ? 'rgb(71, 71, 71)' : 'rgb(203, 214, 228)'
+    dark ? 'rgb(71, 71, 71)' : 'rgb(201, 201, 201)'
   );
   await expect(popover).toHaveCSS('border-top-left-radius', '12px');
   await expect(popover).toHaveCSS('box-shadow', /0px 10px 24px/u);

@@ -77,29 +77,27 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     ];
     const readColor = (shadow: string) =>
       shadow.match(/(?:rgba?\(|color\(srgb )[^)]+\)/u)?.[0] ?? '';
-    const contrast = (color: string, background = panel) =>
-      (luminance(color) + 0.05) / (luminance(background) + 0.05);
+    const contrast = (color: string, background = panel) => {
+      const [a, b] = [luminance(color), luminance(background)];
+      return (Math.max(a!, b!) + 0.05) / (Math.min(a!, b!) + 0.05);
+    };
     for (const wrapper of inputWrappers) {
       await expect(wrapper).toBeVisible();
       const { border, background } = await wrapper.evaluate((element) => {
         const style = getComputedStyle(element);
         return { border: style.boxShadow, background: style.backgroundColor };
       });
-      if (theme === 'daylight') {
-        expect(readColor(border)).toBe('rgb(203, 214, 228)');
-      } else {
-        const normalContrast = contrast(readColor(border), background);
-        expect(normalContrast).toBeGreaterThanOrEqual(3);
-        await wrapper.hover();
-        await expect
-          .poll(async () => {
-            const shadow = await wrapper.evaluate((element) => getComputedStyle(element).boxShadow);
-            const hover = readColor(shadow);
-            return hover ? contrast(hover, background) : 0;
-          })
-          .toBeGreaterThan(normalContrast);
-        await page.mouse.move(0, 0);
-      }
+      const normalContrast = contrast(readColor(border), background);
+      expect(normalContrast).toBeGreaterThanOrEqual(3);
+      await wrapper.hover();
+      await expect
+        .poll(async () => {
+          const shadow = await wrapper.evaluate((element) => getComputedStyle(element).boxShadow);
+          const hover = readColor(shadow);
+          return hover ? contrast(hover, background) : 0;
+        })
+        .toBeGreaterThan(normalContrast);
+      await page.mouse.move(0, 0);
     }
     if (theme === 'daylight') {
       expect(primary).toBe(secondary);

@@ -121,7 +121,7 @@ test('Git changes append at the repository boundary and refresh in place', async
         .filter({ hasText: /^Submodule$/ });
       await expect(submoduleTag).toHaveCSS(
         'border-top-color',
-        theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(203, 214, 228)'
+        theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(201, 201, 201)'
       );
       await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(0);
       expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
@@ -299,7 +299,7 @@ for (const theme of ['dark', 'light']) {
       await expect(restore.locator('[data-mar-icon="undo"]')).toHaveCSS('width', '14px');
       const refresh = page.getByRole('button', { name: 'Refresh Git changes', exact: true });
       const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
-      const metadataBorder = theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(203, 214, 228)';
+      const metadataBorder = theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(201, 201, 201)';
       for (const label of [/^Root$/, /^Current$/]) {
         const tag = page.locator('.repository-tags-row .mar-ui-tag').filter({ hasText: label });
         await expect(tag).toHaveCSS('border-top-color', metadataBorder);
@@ -806,16 +806,24 @@ for (const theme of ['dark', 'light']) {
       }
       await stop.click();
       await expect(page.getByTestId('stops')).toHaveText('1');
-      const readyColors = await send.evaluate((button) => {
-        const style = getComputedStyle(button);
-        const circle = getComputedStyle(button, '::before');
-        return {
-          color: style.color,
-          background: style.backgroundColor,
-          border: style.borderTopColor,
-          circleBackground: circle.backgroundColor,
-          circleBorder: circle.borderTopColor
+      const extraSendSurface = () =>
+        send.evaluate((button) => getComputedStyle(button, '::before').content);
+      await expect.poll(extraSendSurface).toBe('none');
+      const pendingColors = await send.evaluate((button) => {
+        const probe = document.createElement('span');
+        button.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(--mar-${token})`;
+          return getComputedStyle(probe).color;
         };
+        const colors = {
+          foreground: color('text-secondary'),
+          background: color('fill-soft'),
+          border: color('border-default'),
+          disabled: color('text-disabled')
+        };
+        probe.remove();
+        return colors;
       });
       await send.focus();
       await send.press('Enter');
@@ -824,16 +832,11 @@ for (const theme of ['dark', 'light']) {
       await expect(send).toHaveAttribute('aria-busy', 'true');
       const pending = send.locator('[data-mar-icon="loading-action"]');
       await expect(pending).toHaveCSS('animation-duration', '1s');
-      await expect(send).toHaveCSS('color', readyColors.color);
-      await expect(send).toHaveCSS('background-color', readyColors.background);
-      await expect(send).toHaveCSS('border-top-color', readyColors.border);
+      await expect(send).toHaveCSS('color', pendingColors.foreground);
+      await expect(send).toHaveCSS('background-color', pendingColors.background);
+      await expect(send).toHaveCSS('border-top-color', pendingColors.border);
       await expect(send).toHaveCSS('cursor', 'progress');
-      expect(
-        await send.evaluate((button) => {
-          const circle = getComputedStyle(button, '::before');
-          return { background: circle.backgroundColor, border: circle.borderTopColor };
-        })
-      ).toEqual({ background: readyColors.circleBackground, border: readyColors.circleBorder });
+      await expect.poll(extraSendSurface).toBe('none');
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('sends')).toHaveText('1');
       // Rotation changes the painted bounds, not the icon's layout size.
@@ -858,7 +861,7 @@ for (const theme of ['dark', 'light']) {
       await expect(send).not.toHaveAttribute('aria-busy', 'true');
       await expect(send.locator('[data-mar-icon="send"]')).toBeVisible();
       await expect(send).toHaveCSS('cursor', 'not-allowed');
-      await expect(send).not.toHaveCSS('color', readyColors.color);
+      await expect(send).toHaveCSS('color', pendingColors.disabled);
     }
     expect(errors).toEqual([]);
   });

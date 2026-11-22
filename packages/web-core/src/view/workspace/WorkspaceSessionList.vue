@@ -833,7 +833,7 @@ function submitSessionSearch(): void {
   align-items: center;
   gap: 0.25rem;
   padding-inline: 0.28rem;
-  border: 1px solid light-dark(var(--mar-border-default), var(--mar-border-medium));
+  border: 1px solid var(--mar-workbench-control-border);
   border-radius: var(--mar-radius-marker);
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);

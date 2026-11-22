@@ -34,7 +34,7 @@ describe('enterprise Web package boundary', () => {
           const dark = stored !== 'daylight';
           expect(attributes.get('data-theme')).toBe(dark ? 'vscode-dark-2026' : undefined);
           expect(classes.has('dark')).toBe(dark);
-          expect(themeColor.content).toBe(dark ? '#1a1a1a' : '#f7f9fd');
+          expect(themeColor.content).toBe(dark ? '#1a1a1a' : '#f8f8f8');
         }
       }
     }

@@ -56,6 +56,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await option.screenshot({ path: testInfo.outputPath('regex-unchecked.png') });
     await label.click();
     await expect(checkbox).toBeChecked();
+    await expect(checkbox).toHaveCSS(
+      'background-color',
+      theme === 'daylight' ? 'rgb(37, 99, 201)' : 'rgb(222, 222, 222)'
+    );
     await expect(option.locator('svg')).toBeVisible();
     await option.screenshot({ path: testInfo.outputPath('regex-checked.png') });
     await input.getByRole('textbox').press('Tab');
@@ -133,7 +137,7 @@ for (const { theme, width } of [
       'Normal'
     ]);
     const { primary, secondary, meta, fontSize } = await sessionListColors(list);
-    expect(meta).toBe(theme === 'daylight' ? 'rgb(90, 104, 122)' : 'rgb(160, 160, 160)');
+    expect(meta).toBe(theme === 'daylight' ? 'rgb(101, 101, 101)' : 'rgb(160, 160, 160)');
     expect(primary).not.toBe(secondary);
     expect(secondary).not.toBe(meta);
     const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
@@ -1136,10 +1140,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         width >= 768 ? '14px' : '13px'
       );
       for (const tag of await inspector.locator('.repository-tags-row .mar-ui-tag').all()) {
-        const height = await tag.evaluate((element) =>
-          Number.parseFloat(getComputedStyle(element).height)
-        );
-        expect(height).toBeCloseTo((width >= 768 ? 12 : 11) * 1.65, 1);
+        // MarTag's minimum block size takes precedence over the repository row's em height.
+        await expect(tag).toHaveCSS('height', '20px');
         await expect(tag).toHaveCSS('font-weight', '400');
         await expect(tag).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
       }
@@ -1192,14 +1194,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'font-size',
         width >= 768 ? '12px' : '11px'
       );
-      const pathToFileGap = await root.evaluate((heading) => {
+      // Keep the gap compact without assuming a specific font's inline box metrics.
+      await expect(root).toHaveCSS('padding-bottom', '0px');
+      const { rowGap, pathToFileGap } = await root.evaluate((heading) => {
         const path = heading.querySelector('.repository-physical-path')!.getBoundingClientRect();
-        const file = heading
-          .nextElementSibling!.querySelector('.change-file-name')!
-          .getBoundingClientRect();
-        return file.top - path.bottom;
+        const row = heading.nextElementSibling!;
+        const file = row.querySelector('.change-file-name')!.getBoundingClientRect();
+        return {
+          rowGap: row.getBoundingClientRect().top - path.bottom,
+          pathToFileGap: file.top - path.bottom
+        };
       });
-      expect(pathToFileGap).toBeGreaterThanOrEqual(4);
+      expect(rowGap).toBeCloseTo(0, 1);
+      expect(pathToFileGap).toBeGreaterThan(0);
       expect(pathToFileGap).toBeLessThanOrEqual(6);
       expect(
         await headings.nth(1).evaluate((heading) => parseFloat(getComputedStyle(heading).marginTop))

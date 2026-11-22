@@ -22,6 +22,13 @@
   --mar-ui-control-primary-fg: var(--mar-control-primary-fg);
   --mar-ui-control-primary-hover: var(--mar-control-primary-hover);
   --mar-ui-control-primary-active: var(--mar-control-primary-active);
+  --mar-ui-control-intent-fg: var(--mar-control-intent-fg);
+  --mar-ui-control-intent-fill-base: var(--mar-control-intent-fill-base);
+  --mar-ui-control-intent-fill-strength: var(--mar-control-intent-fill-strength);
+  --mar-ui-control-intent-hover-strength: var(--mar-control-intent-hover-strength);
+  --mar-ui-control-intent-active-strength: var(--mar-control-intent-active-strength);
+  --mar-ui-control-intent-border-strength: var(--mar-control-intent-border-strength);
+  --mar-ui-control-intent-hover-border-strength: var(--mar-control-intent-hover-border-strength);
   --mar-ui-control-focus: var(--mar-control-focus);
   --mar-ui-control-link-text: var(--mar-control-link-text);
   --mar-ui-control-link-hover: var(--mar-control-link-hover);

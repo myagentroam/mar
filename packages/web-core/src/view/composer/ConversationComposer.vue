@@ -318,7 +318,7 @@ const emit = defineEmits<{
 
 .composer {
   --composer-padding-inline: 0.8rem;
-  --composer-surface: light-dark(var(--mar-bg-panel), var(--mar-conversation-surface));
+  --composer-surface: var(--mar-surface-composer);
   position: relative;
   z-index: 3;
   background: var(--mar-conversation-canvas);

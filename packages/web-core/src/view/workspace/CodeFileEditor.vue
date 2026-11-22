@@ -624,60 +624,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .code-file-editor {
-  --mar-editor-background: #ffffff;
-  --mar-editor-foreground: #1f1f1f;
-  --mar-editor-cursor: #000000;
-  --mar-editor-selection: color-mix(
-    in srgb,
-    var(--mar-text-primary) 18%,
-    var(--mar-fill-selection)
-  );
-  --mar-editor-selection-match: var(--mar-fill-row-hover);
-  --mar-editor-selection-match-border: var(--mar-border-default);
-  --mar-editor-selection-match-main: var(--mar-editor-selection);
-  --mar-editor-selection-match-main-border: var(--mar-text-muted);
-  --mar-editor-selection-match-main-foreground: var(--mar-editor-foreground);
-  --mar-editor-active-line: rgb(31 31 31 / 3%);
-  --mar-editor-active-line-indicator: #91a3b7;
-  --mar-editor-gutter-background: #f8f8f8;
-  --mar-editor-gutter-foreground: #6e7681;
-  --mar-editor-border: #e5e5e5;
-  --mar-editor-search-match: #f8eec7;
-  --mar-editor-search-match-border: #d6bd58;
-  --mar-editor-search-match-active: #f2c94c;
-  --mar-editor-search-match-active-border: #bd8e16;
   min-height: 0;
   height: 100%;
   overflow: hidden;
-}
-
-:global(html[data-theme='vscode-dark-2026'] .code-file-editor) {
-  --mar-editor-background: var(--mar-bg-page);
-  --mar-editor-foreground: var(--mar-text-primary);
-  --mar-editor-cursor: var(--mar-text-primary);
-  --mar-editor-selection: color-mix(
-    in srgb,
-    var(--mar-text-primary) 12%,
-    var(--mar-fill-selection)
-  );
-  --mar-editor-selection-match-border: var(--mar-border-medium);
-  --mar-editor-active-line: color-mix(in srgb, var(--mar-text-primary) 4%, transparent);
-  --mar-editor-active-line-indicator: var(--mar-text-muted);
-  --mar-editor-gutter-background: var(--mar-bg-page);
-  --mar-editor-gutter-foreground: var(--mar-text-muted);
-  --mar-editor-border: var(--mar-border-subtle);
-  --mar-editor-search-match: var(--mar-color-warning-bg);
-  --mar-editor-search-match-border: color-mix(
-    in srgb,
-    var(--mar-color-warning-accent) 55%,
-    var(--mar-editor-background)
-  );
-  --mar-editor-search-match-active: color-mix(
-    in srgb,
-    var(--mar-color-warning-accent) 30%,
-    var(--mar-editor-background)
-  );
-  --mar-editor-search-match-active-border: var(--mar-color-warning-accent);
 }
 
 .code-file-editor :deep(.cm-editor) {

@@ -26,7 +26,7 @@ test.afterAll(async () => {
 });
 
 for (const [width, theme, primaryBackground, primaryForeground] of [
-  [1280, 'daylight', 'rgb(48, 48, 48)', 'rgb(255, 255, 255)'],
+  [1280, 'daylight', 'rgb(37, 99, 201)', 'rgb(255, 255, 255)'],
   [390, 'vscode-dark-2026', 'rgb(222, 222, 222)', 'rgb(24, 24, 24)']
 ] as const) {
   test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
@@ -830,7 +830,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const shell = page.locator('.composer-shell');
     const input = page.locator('.composer-input');
     const activity = page.locator('.composer-working');
-    const activityColor = theme === 'daylight' ? 'rgb(7, 95, 199)' : 'rgb(77, 163, 255)';
+    const activityColor = theme === 'daylight' ? 'rgb(0, 95, 214)' : 'rgb(77, 163, 255)';
     await expect(activity).toContainText('Syncing');
     await expect(activity).toHaveCSS('color', activityColor);
     await expect(page.locator('.composer-busy-indicator')).toHaveCSS('color', activityColor);

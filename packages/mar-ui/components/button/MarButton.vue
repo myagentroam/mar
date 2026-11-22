@@ -200,28 +200,33 @@ function handleClick(event: MouseEvent): void {
   --mar-ui-button-tone: var(--mar-ui-control-color-warning);
 }
 .mar-ui-button:is(.mar-ui-button--danger, .mar-ui-button--warning) {
-  --mar-ui-button-fg: light-dark(white, var(--mar-ui-button-tone));
-  --mar-ui-button-bg: light-dark(
-    var(--mar-ui-button-tone),
-    color-mix(in srgb, var(--mar-ui-button-tone) 8%, var(--mar-ui-bg-panel))
+  --mar-ui-button-fg: var(--mar-ui-control-intent-fg, var(--mar-ui-button-tone));
+  --mar-ui-button-bg: color-mix(
+    in srgb,
+    var(--mar-ui-button-tone) var(--mar-ui-control-intent-fill-strength),
+    var(--mar-ui-control-intent-fill-base)
   );
-  --mar-ui-button-border: light-dark(
-    var(--mar-ui-button-tone),
-    color-mix(in srgb, var(--mar-ui-button-tone) 64%, var(--mar-ui-bg-panel))
+  --mar-ui-button-border: color-mix(
+    in srgb,
+    var(--mar-ui-button-tone) var(--mar-ui-control-intent-border-strength),
+    var(--mar-ui-bg-panel)
   );
-  --mar-ui-button-hover-bg: light-dark(
-    color-mix(in srgb, var(--mar-ui-button-tone), black 10%),
-    color-mix(in srgb, var(--mar-ui-button-tone) 12%, var(--mar-ui-bg-panel))
+  --mar-ui-button-hover-bg: color-mix(
+    in srgb,
+    var(--mar-ui-button-tone) var(--mar-ui-control-intent-hover-strength),
+    var(--mar-ui-control-intent-fill-base)
   );
-  --mar-ui-button-hover-border: light-dark(
-    var(--mar-ui-button-hover-bg),
-    var(--mar-ui-button-border)
+  --mar-ui-button-hover-border: color-mix(
+    in srgb,
+    var(--mar-ui-button-tone) var(--mar-ui-control-intent-hover-border-strength),
+    var(--mar-ui-control-intent-fill-base)
+  );
+  --mar-ui-button-active-bg: color-mix(
+    in srgb,
+    var(--mar-ui-button-tone) var(--mar-ui-control-intent-active-strength),
+    var(--mar-ui-control-intent-fill-base)
   );
   --mar-ui-button-hover-fg: var(--mar-ui-button-fg);
-  --mar-ui-button-active-bg: light-dark(
-    color-mix(in srgb, var(--mar-ui-button-tone), black 18%),
-    color-mix(in srgb, var(--mar-ui-button-tone) 16%, var(--mar-ui-bg-panel))
-  );
 }
 .mar-ui-button:is(.mar-ui-button--danger, .mar-ui-button--warning):is(
     .mar-ui-button--plain,

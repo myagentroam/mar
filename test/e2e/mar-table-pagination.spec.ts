@@ -141,7 +141,7 @@ test('Table uses solid neutral sort indicators and a low-contrast dark header su
   await expect(descending).toHaveCSS('color', muted!);
 
   await page.locator('html').evaluate((root) => root.removeAttribute('data-theme'));
-  await expect(name).toHaveCSS('background-color', 'rgb(237, 243, 250)');
+  await expect(name).toHaveCSS('background-color', 'rgb(241, 241, 241)');
   await page.locator('html').evaluate((root) => {
     root.style.setProperty('--mar-table-header-bg', '#324951');
   });
