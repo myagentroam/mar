@@ -1,5 +1,18 @@
 export const filePreviewZhCN = {
   filePreview: { loadFailed: '无法读取此文件，请重试。' },
+  imageViewport: {
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    fit: '适应窗口',
+    panWithArrows: '图片视图。使用方向键平移。',
+    pan: {
+      label: '平移图片',
+      up: '向上平移',
+      down: '向下平移',
+      left: '向左平移',
+      right: '向右平移'
+    }
+  },
   common: {
     retry: '重试',
     save: '保存',

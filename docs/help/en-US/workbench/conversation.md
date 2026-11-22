@@ -1,6 +1,6 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-11-22
+lastUpdated: 2026-11-23
 ---
 
 # Conversations, Tools, and Notifications
@@ -19,7 +19,9 @@ Tall detail areas initially use a limited-height preview. Select **Show more** t
 
 Cross-session message headings distinguish parent, child, descendant, and other sessions using the saved sender name. Hover to see the source session ID. Older messages without a saved relationship retain their original source label.
 
-Images in the conversation load as thumbnails. Click one to open an aspect-ratio-preserving preview, shown only after loading and decoding finish. Detail previews fit within 2560×2560 without enlarging small images. If a preview was resized, **View original** appears at the top right. This loads the original image while still fitting it entirely within the dialog, preserving its aspect ratio without cropping or image scrollbars. Long screenshots also fit as a whole, so their text may appear small. Failed loads can be retried. This does not change uploaded files or images sent to the model.
+Images in the conversation load as thumbnails. Click one to open a preview, shown only after loading and decoding finish. Detail previews fit within 2560×2560 without enlarging small images. If a preview was resized, **View original** appears below it and loads the original image, fitted to the dialog. Long screenshots also fit as a whole at first, so their text may appear small. Failed loads can be retried. This does not change uploaded files or images sent to the model.
+
+On desktop, scroll the wheel over the image area to zoom, then hold the primary mouse button and drag to pan. On mobile, pinch with two fingers to zoom and drag with one finger to pan after zooming in. The controls below the preview also let you zoom in, zoom out, fit the image to the window, or choose a direction from the **Pan image** menu.
 
 Within the same conversation segment and aggregation phase, reasoning, ordinary tools, commands, and file changes each share a card positioned at that type's last item. Adding another item of the same type moves the whole group to that item's position, while members retain their original order. Streaming content or status updates to existing items do not move cards. Groups never span segments or user turns, and new activity after an Agent reply does not merge into cards before that reply. Image generation, plans, approvals, and questions remain separate.
 

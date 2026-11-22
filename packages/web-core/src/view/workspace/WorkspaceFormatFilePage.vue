@@ -8,6 +8,7 @@ import { translate } from '../../service/locale-preference-service.js';
 import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
 import { type FilePreviewKind } from '../../util/file-preview.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
+import ImagePreviewViewport from '../common/ImagePreviewViewport.vue';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 import PdfFilePreview from './PdfFilePreview.vue';
 import WorkspaceFilePageFrame from './WorkspaceFilePageFrame.vue';
@@ -177,9 +178,10 @@ defineExpose({
             }}</MarButton></template
           >
         </FilePreviewState>
-        <img
+        <ImagePreviewViewport
           v-else-if="kind === 'image' && contentUrl"
-          class="file-binary-preview"
+          :key="contentUrl"
+          image-class="file-binary-preview"
           :src="contentUrl"
           :alt="file.path"
           @error="rendererFailed"

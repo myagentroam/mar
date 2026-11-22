@@ -41,6 +41,57 @@ test('A long Diff filename truncates without hiding the mode on mobile', async (
   expect(modeBox.x + modeBox.width).toBeLessThan(390);
 });
 
+test('File image wheel zoom follows the cursor and dragging stays within the preview', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}file-editor-layout.html?image=landscape`);
+  const dialog = page.locator('.file-preview-surface');
+  const image = dialog.getByRole('img', { name: 'sample.svg', exact: true });
+  const fit = dialog.getByRole('button', { name: 'Fit image', exact: true });
+  await expect(fit).toBeDisabled();
+  const initial = (await image.boundingBox())!;
+  const viewportElement = image.locator('..');
+  for (const modifier of ['ctrlKey', 'metaKey'] as const) {
+    expect(
+      await viewportElement.evaluate(
+        (element, key) =>
+          element.dispatchEvent(
+            new WheelEvent('wheel', { deltaY: -450, cancelable: true, [key]: true })
+          ),
+        modifier
+      )
+    ).toBe(true);
+    await expect(fit).toBeDisabled();
+  }
+  const x = initial.x + initial.width * 0.4;
+  const y = initial.y + initial.height * 0.6;
+  await page.mouse.move(x, y);
+  await page.mouse.wheel(0, -450);
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeGreaterThan(initial.width);
+  const enlarged = (await image.boundingBox())!;
+  expect((x - enlarged.x) / enlarged.width).toBeCloseTo(0.4, 2);
+  expect((y - enlarged.y) / enlarged.height).toBeCloseTo(0.6, 2);
+
+  await page.mouse.down();
+  await page.mouse.move(x + 70, y - 40);
+  const dragged = (await image.boundingBox())!;
+  expect(dragged.x - enlarged.x).toBeCloseTo(70, 0);
+  expect(dragged.y - enlarged.y).toBeCloseTo(-40, 0);
+  await page.mouse.move(0, 0, { steps: 5 });
+  await page.mouse.up();
+  await expect(dialog).toBeVisible();
+  const viewport = (await image.locator('..').boundingBox())!;
+  const bounded = (await image.boundingBox())!;
+  expect(bounded.x + bounded.width).toBeGreaterThanOrEqual(viewport.x + viewport.width - 1);
+  expect(bounded.y + bounded.height).toBeGreaterThanOrEqual(viewport.y + viewport.height - 1);
+  await viewportElement.press('ArrowLeft');
+  await expect.poll(async () => (await image.boundingBox())!.x).toBeGreaterThan(bounded.x);
+
+  await fit.click();
+  await expect.poll(() => image.boundingBox()).toEqual(initial);
+});
+
 for (const shape of ['small', 'landscape', 'portrait']) {
   test(`File image previews fit their stable surface without upscaling: ${shape}`, async ({
     page

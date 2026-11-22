@@ -2,6 +2,7 @@
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, ref, shallowRef, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
+import ImagePreviewViewport from '../common/ImagePreviewViewport.vue';
 import FilePreviewLoading from '../workspace/FilePreviewLoading.vue';
 import {
   loadConversationImagePreview,
@@ -14,33 +15,12 @@ const props = defineProps<{
   readonly original?: boolean;
 }>();
 const emit = defineEmits<{ error: [source: string]; ready: [resized: boolean] }>();
-const image = shallowRef<HTMLImageElement>();
-const actions = shallowRef<HTMLElement>();
-const actionSpace = ref(0);
 const preview = shallowRef<LoadedImagePreview>();
 const ready = ref(false);
 const failed = ref(false);
 const generation = ref(0);
 const retry = ref(0);
 const loading = computed(() => Boolean(props.source) && !ready.value && !failed.value);
-
-watch(
-  actions,
-  (element, _, onCleanup) => {
-    if (!element) {
-      actionSpace.value = 0;
-      return;
-    }
-    const measure = () => {
-      actionSpace.value = element.offsetHeight;
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element, { box: 'border-box' });
-    onCleanup(() => observer.disconnect());
-  },
-  { flush: 'post' }
-);
 
 function reset(): void {
   retry.value += 1;
@@ -80,24 +60,23 @@ watch(
   { immediate: true, flush: 'sync' }
 );
 
-function unavailable(element: HTMLImageElement): void {
-  if (element !== image.value || failed.value) return;
+function unavailable(current: number): void {
+  if (current !== generation.value || failed.value) return;
   ready.value = false;
   failed.value = true;
   emit('error', props.source);
 }
 
-async function loaded(event: Event): Promise<void> {
-  const element = event.target as HTMLImageElement;
+async function loaded(element: HTMLImageElement): Promise<void> {
   const current = generation.value;
   try {
     await element.decode();
-    if (current === generation.value && element === image.value) {
+    if (current === generation.value && !failed.value) {
       ready.value = true;
       emit('ready', preview.value?.resized === true);
     }
   } catch {
-    if (current === generation.value) unavailable(element);
+    unavailable(current);
   }
 }
 </script>
@@ -105,26 +84,20 @@ async function loaded(event: Event): Promise<void> {
 <template>
   <div class="decoded-preview-image" :aria-busy="loading">
     <FilePreviewLoading v-if="loading" />
-    <div
+    <ImagePreviewViewport
       v-if="preview && !failed"
-      class="decoded-preview-media"
-      :style="{ '--preview-action-space': `${actionSpace}px` }"
+      :key="generation"
+      :src="preview.url"
+      :alt="name"
+      :ready="ready"
+      image-class="attachment-preview-image"
+      @load="loaded"
+      @error="unavailable(generation)"
     >
-      <img
-        v-show="ready"
-        ref="image"
-        :key="generation"
-        class="attachment-preview-image"
-        :src="preview.url"
-        :alt="name"
-        decoding="async"
-        @load="loaded"
-        @error="unavailable($event.target as HTMLImageElement)"
-      />
-      <div v-if="ready && $slots.actions" ref="actions" class="decoded-preview-actions">
+      <template v-if="$slots.actions" #actions>
         <slot name="actions" />
-      </div>
-    </div>
+      </template>
+    </ImagePreviewViewport>
     <div v-if="failed" class="image-preview-failure" role="alert">
       <span>{{ translate('generated.imagePreview.loadFailed') }}</span>
       <MarButton @click="reset">{{ translate('generated.imagePreview.retry') }}</MarButton>
@@ -145,31 +118,6 @@ async function loaded(event: Event): Promise<void> {
 }
 .decoded-preview-image > * {
   grid-area: 1 / 1;
-}
-.decoded-preview-media {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  height: 100%;
-  max-width: 100%;
-}
-.attachment-preview-image {
-  display: block;
-  flex: none;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: max(0px, calc(100% - var(--preview-action-space)));
-  object-fit: contain;
-}
-.decoded-preview-actions {
-  display: grid;
-  grid-template-columns: max-content;
-  flex: none;
-  padding-top: 6px;
-  /* Keep the image centered while letting the action use its intrinsic width. */
-  width: 0;
 }
 .image-preview-failure {
   display: flex;

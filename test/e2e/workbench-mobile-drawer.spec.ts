@@ -995,6 +995,88 @@ test('Mobile image, guarded details, prompt and alert return through only the to
   }
 });
 
+test.describe('Touch image preview', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('Pans a zoomed conversation image using taps instead of dragging', async ({ page }) => {
+    await page.goto(`${fixture.url}workbench-mobile-drawer.html?image=landscape`);
+    await page.getByRole('button', { name: 'Open image preview', exact: true }).tap();
+    const dialog = page.getByRole('dialog', { name: 'Sample image', exact: true });
+    const image = dialog.getByRole('img', { name: 'Sample image', exact: true });
+    const pan = dialog.getByRole('button', { name: 'Pan image', exact: true });
+    await expect(pan).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Zoom in', exact: true }).tap();
+    const before = (await image.boundingBox())!;
+    await pan.tap();
+    const menu = page.getByRole('menu', { name: 'Pan image', exact: true });
+    await expect(menu.getByRole('menuitem', { name: 'Pan up', exact: true })).toBeDisabled();
+    await menu.getByRole('menuitem', { name: 'Pan left', exact: true }).tap();
+    await expect(menu).not.toBeVisible();
+    await expect(dialog).toBeVisible();
+    const after = (await image.boundingBox())!;
+    const viewport = (await image.locator('..').boundingBox())!;
+    expect(after.x).toBeGreaterThan(before.x);
+    expect(after.x).toBeCloseTo(viewport.x, 0);
+    expect(after.y).toBe(before.y);
+  });
+
+  test('Pinch zooms the conversation image without zooming the page, and one finger pans it', async ({
+    page,
+    browserName
+  }) => {
+    test.skip(browserName !== 'chromium', 'Multi-touch input is dispatched through Chromium CDP.');
+    await page.goto(`${fixture.url}workbench-mobile-drawer.html?image=landscape`);
+    const opener = page.getByRole('button', { name: 'Open image preview', exact: true });
+    await opener.tap();
+    const dialog = page.getByRole('dialog', { name: 'Sample image', exact: true });
+    const image = dialog.getByRole('img', { name: 'Sample image', exact: true });
+    const fit = dialog.getByRole('button', { name: 'Fit image', exact: true });
+    await expect(fit).toBeDisabled();
+    const initial = (await image.boundingBox())!;
+    const x = Math.round(initial.x + initial.width / 2);
+    const y = Math.round(initial.y + initial.height / 2);
+    const initialPageScale = await page.evaluate(() => visualViewport?.scale);
+    const client = await page.context().newCDPSession(page);
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [
+        { x: x - 25, y, id: 0 },
+        { x: x + 25, y, id: 1 }
+      ]
+    });
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        { x: x - 75, y, id: 0 },
+        { x: x + 75, y, id: 1 }
+      ]
+    });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect
+      .poll(async () => (await image.boundingBox())!.width)
+      .toBeGreaterThan(initial.width * 2);
+    const enlarged = (await image.boundingBox())!;
+    expect(await page.evaluate(() => visualViewport?.scale)).toBe(initialPageScale);
+
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: x + 65, y }]
+    });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await expect.poll(async () => Math.round((await image.boundingBox())!.x - enlarged.x)).toBe(65);
+    await fit.tap();
+    await expect.poll(() => image.boundingBox()).toEqual(initial);
+    await dialog.getByRole('button', { name: 'Zoom in', exact: true }).tap();
+    await expect(fit).toBeEnabled();
+    await page.goBack();
+    await expect(dialog).toHaveCount(0);
+    await opener.tap();
+    await expect(fit).toBeDisabled();
+    await expect.poll(() => image.boundingBox()).toEqual(initial);
+  });
+});
+
 for (const source of ['conversation', 'attachment']) {
   for (const shape of ['small', 'landscape', 'portrait']) {
     test(`Image previews fit without upscaling ${source} ${shape} and preserve mobile return`, async ({
@@ -1009,7 +1091,7 @@ for (const source of ['conversation', 'attachment']) {
       const dialog = page.getByRole('dialog', { name: 'Sample image', exact: true });
       const surface = dialog.locator('.attachment-preview-dialog');
       await surface.evaluate((el: HTMLElement) =>
-        el.style.setProperty('--mar-control-bg-color-overlay', '#173b4a')
+        el.style.setProperty('--mar-ui-dialog-surface', '#173b4a')
       );
       await expect(surface).toHaveCSS('background-color', 'rgb(23, 59, 74)');
       const image = dialog.getByRole('img', { name: 'Sample image', exact: true });
@@ -1027,13 +1109,18 @@ for (const source of ['conversation', 'attachment']) {
       const assertImageFits = async () => {
         const sizes = await image.evaluate((el) => {
           const img = el as HTMLImageElement;
-          // The media wrapper shrink-wraps the image; use the available dialog space instead.
           const body = img.closest('.mar-ui-dialog__body')!;
+          const controlsHeight = body.querySelector<HTMLElement>(
+            '.mar-image-preview-controls'
+          )!.offsetHeight;
           const css = getComputedStyle(body);
           const width =
             body.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
           const height =
-            body.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom);
+            body.clientHeight -
+            parseFloat(css.paddingTop) -
+            parseFloat(css.paddingBottom) -
+            controlsHeight;
           const bounds = img.getBoundingClientRect();
           return {
             width,
