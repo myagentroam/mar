@@ -2126,20 +2126,25 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     page
   }, testInfo) => {
     const parents = ['main', 'green', 'cyan', 'amber', 'neutral', 'red'];
-    const commit = (hash: string, incoming: string[] = []) => ({
+    const commit = (hash: string, incoming: string[] = [], refs: string[] = []) => ({
       hash,
       parents: incoming,
       subject: hash === 'merge' ? 'Merge worktree branches' : `Update ${hash} worktree`,
       authorName: 'Author',
       authorEmail: 'a@example.test',
       committedAt: 1,
-      refs: []
+      refs
     });
     await page.route('**/api/workspaces/workspace/**', async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith('/git/history')) {
         await route.fulfill({
-          json: { commits: [commit('merge', parents), ...parents.map((hash) => commit(hash))] }
+          json: {
+            commits: [
+              commit('merge', parents, ['main']),
+              ...parents.map((hash) => commit(hash, [], hash === 'green' ? ['origin/feature'] : []))
+            ]
+          }
         });
       } else if (path.includes('/git/commits/') && path.endsWith('/files')) {
         await route.fulfill({
@@ -2167,6 +2172,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const green = merge.locator('path.history-graph-color-1');
     const greenStroke = theme === 'daylight' ? 'rgb(0, 107, 52)' : 'rgb(113, 228, 154)';
     await expect(green).toHaveCSS('stroke', greenStroke);
+    const mainLane = merge.locator('path.history-graph-color-0');
+    const branchRefs = history.locator('.history-ref');
+    const blue = theme === 'daylight' ? 'rgb(39, 103, 173)' : 'rgb(82, 155, 238)';
+    await expect(mainLane).toHaveCSS('stroke', blue);
+    await expect(branchRefs).toHaveText(['main', 'origin/feature']);
+    await expect(branchRefs.nth(0)).toHaveCSS('color', blue);
+    await expect(branchRefs.nth(1)).toHaveCSS('color', blue);
     const lanes = await merge
       .locator('path.history-graph-edge')
       .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
@@ -2179,8 +2191,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await page.mouse.move(0, 0);
     await history.screenshot({ path: testInfo.outputPath('git-branches-and-files.png') });
     await page.locator('html').evaluate((root) => {
+      root.style.setProperty('--mar-color-git-graph-main', '#9454c0');
       root.style.setProperty('--mar-color-success-text', '#aabbcc');
     });
+    await expect(mainLane).toHaveCSS('stroke', 'rgb(148, 84, 192)');
+    await expect(branchRefs.nth(0)).toHaveCSS('color', 'rgb(148, 84, 192)');
+    await expect(branchRefs.nth(1)).toHaveCSS('color', 'rgb(148, 84, 192)');
     await expect(green).toHaveCSS('stroke', greenStroke);
     await expect(history.locator('.history-file-status[data-file-change="ADDED"]')).toHaveCSS(
       'color',
