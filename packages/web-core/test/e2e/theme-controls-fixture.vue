@@ -262,24 +262,46 @@ function saveFeedbackDialog(): void {
     <MarDatePicker type="datetimerange" start-placeholder="Start date" end-placeholder="End date" />
     <MarTimeSelect aria-label="Time select field" />
     <MarTimePicker placeholder="Single time field" />
-    <MarInput aria-label="Disabled text field" disabled model-value="Value" />
+    <MarInput aria-label="Disabled text field" disabled aria-invalid="true" model-value="Value" />
+    <fieldset disabled>
+      <MarInput
+        aria-label="Text field in disabled fieldset"
+        aria-invalid="true"
+        model-value="Value"
+      />
+    </fieldset>
+    <MarInput type="textarea" aria-label="Disabled textarea field" disabled model-value="Value" />
     <MarSelect :model-value="selection" aria-label="Disabled field" disabled>
       <MarOption label="One" value="one" />
     </MarSelect>
+    <MarTimeSelect aria-label="Disabled time select field" disabled />
+    <MarInputNumber aria-label="Disabled number field" :model-value="2" disabled />
+    <MarCascader placeholder="Disabled cascader field" disabled :options="[]" />
+    <MarDatePicker placeholder="Disabled single date" type="date" disabled />
     <MarDatePicker
       type="datetimerange"
       start-placeholder="Disabled start date"
       end-placeholder="Disabled end date"
       disabled
     />
+    <MarTimePicker placeholder="Disabled time field" disabled />
+    <MarInput aria-label="Field with add-on" model-value="Value">
+      <template #append>
+        <MarButton>Field add-on</MarButton>
+      </template>
+    </MarInput>
     <MarForm
       ref="invalid-form"
       :model="{}"
       :rules="{
+        text: { required: true, message: 'Enter a value' },
         select: { required: true, message: 'Select a value' },
         range: { required: true, message: 'Select a date range' }
       }"
     >
+      <MarFormItem prop="text">
+        <MarInput aria-label="Invalid text field" />
+      </MarFormItem>
       <MarFormItem prop="select">
         <MarSelect aria-label="Invalid field">
           <MarOption label="One" value="one" />

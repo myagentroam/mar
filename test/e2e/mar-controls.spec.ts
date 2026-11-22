@@ -578,7 +578,7 @@ test('Audit requests one complete range after keyboard selection and dismissal',
   const audit = page.locator('.audit-management');
   await expect(audit.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible();
   const calls = () => page.evaluate(() => window.managementPageFixture.calls());
-  await expect.poll(async () => (await calls()).length).toBe(1);
+  await page.waitForFunction(() => window.managementPageFixture?.calls().length === 1);
   await page.evaluate(() => window.managementPageFixture.settle(0, true));
   const input = audit.locator('.audit-range-picker input').first();
   await input.press('ArrowDown');

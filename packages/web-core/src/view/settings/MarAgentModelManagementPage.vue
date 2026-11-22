@@ -3020,7 +3020,7 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 .order-handle:hover {
-  background: var(--mar-fill-hover);
+  background: var(--mar-action-hover-overlay);
   color: var(--mar-text-primary);
 }
 .order-handle.is-dragging {

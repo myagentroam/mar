@@ -28,8 +28,8 @@ test.afterAll(async () => {
 });
 
 for (const [width, theme, createColors] of [
-  [1280, 'daylight', ['#deeaff', '#17243a', '#7185a0']],
-  [390, 'vscode-dark-2026', ['#323232', '#eaeaea', '#6e6e6e']]
+  [1280, 'daylight', ['#deeaff', '#17243a', '#b9cadf']],
+  [390, 'vscode-dark-2026', ['#323232', '#eaeaea', '#3d3d3d']]
 ] as const) {
   test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
     page
@@ -125,7 +125,7 @@ test('Hosted create action stays readable with a bright custom tool hover color'
         colors: {
           '--mar-fill-row-hover': '#242424',
           '--mar-fill-selection': '#353535',
-          '--mar-fill-hover': '#dadada',
+          '--mar-fill-muted': '#dadada',
           '--mar-text-primary': '#eeeeee',
           '--mar-control-primary-bg': '#ff2090'
         }

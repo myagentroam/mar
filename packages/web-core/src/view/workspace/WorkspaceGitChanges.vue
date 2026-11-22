@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '../../styles/region-retry-action.css';
+import '../../styles/file-change-colors.css';
 import './git-inline-loading.css';
 import '@myagentroam/mar-ui/region-status.css';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -473,9 +474,12 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               </small>
             </span>
           </button>
-          <span v-tooltip="entry.change" class="change-status">{{
-            shortChange(entry.change)
-          }}</span>
+          <span
+            v-tooltip="entry.change"
+            class="change-status mar-file-change-status"
+            :data-file-change="entry.change"
+            >{{ shortChange(entry.change) }}</span
+          >
           <small v-tooltip="entry.state" class="change-status">{{ shortState(entry.state) }}</small>
           <MarButton
             v-tooltip="
@@ -633,7 +637,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 7px;
   align-items: center;
-  border-top: 1px solid var(--mar-fill-hover);
+  border-top: 1px solid var(--mar-border-subtle);
   padding: 5px 2px;
 }
 
@@ -882,9 +886,10 @@ button.file-explorer-utility-button:disabled {
   cursor: pointer;
 }
 
-.change-list .change-path:hover:not(:disabled),
 .change-list .change-path:focus-visible {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-row-hover);
+  outline: 2px solid var(--mar-control-focus);
+  outline-offset: -2px;
 }
 
 .change-list .change-path:disabled {
@@ -945,6 +950,7 @@ button.file-explorer-utility-button:disabled {
 
 .change-list .change-entry > .change-status {
   inline-size: 1ch;
+  color: var(--mar-file-change-fg, var(--mar-text-secondary));
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-meta);
   font-weight: 400;

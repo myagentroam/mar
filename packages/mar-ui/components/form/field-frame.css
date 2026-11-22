@@ -1,0 +1,79 @@
+.mar-ui-field-frame {
+  --mar-ui-field-frame-edge: var(--mar-ui-input-border);
+  border-radius: var(--mar-ui-radius-control);
+  background: var(--mar-ui-bg-panel);
+}
+
+.mar-ui-field-frame:where(:not(.mar-ui-field-frame--inset)) {
+  border: 1px solid var(--mar-ui-field-frame-edge);
+}
+
+.mar-ui-field-frame:where(.mar-ui-field-frame--inset) {
+  box-shadow: 0 0 0 1px var(--mar-ui-field-frame-edge) inset;
+}
+
+/* Input add-ons are independent controls; only the editing body drives its frame. */
+.mar-ui-field-frame:where(
+  :not(.mar-ui-input):hover,
+  .mar-ui-input:has(> .mar-ui-input__body:hover)
+) {
+  --mar-ui-field-frame-edge: var(--mar-ui-input-border-hover);
+}
+
+.mar-ui-field-frame:where(
+  :not(.mar-ui-input):focus-within,
+  .mar-ui-input:has(> .mar-ui-input__body:focus-within),
+  [data-expanded='true']
+) {
+  --mar-ui-field-frame-edge: var(--mar-ui-control-focus);
+}
+
+.mar-ui-field-frame:where([data-invalid='true']) {
+  --mar-ui-field-frame-edge: var(--mar-ui-control-color-danger);
+}
+
+.mar-ui-field-frame:where([data-invalid='true']):where(
+    :not(.mar-ui-input):has(:focus-visible),
+    :has(> .mar-ui-input__body :focus-visible)
+  ) {
+  outline: 2px solid var(--mar-ui-control-focus);
+  outline-offset: 1px;
+}
+
+/* Read the native Input state so disabled fieldsets get the same appearance as props. */
+.mar-ui-field-frame:where(
+  [data-disabled='true'],
+  :has(> .mar-ui-input__body > .mar-ui-input__field:disabled)
+) {
+  --mar-ui-field-frame-edge: var(--mar-ui-border-subtle);
+  outline: none;
+  background: var(--mar-ui-fill-soft);
+  color: var(--mar-ui-text-disabled);
+  cursor: not-allowed;
+}
+
+@media (forced-colors: active) {
+  .mar-ui-field-frame {
+    border: 1px solid CanvasText;
+  }
+
+  .mar-ui-field-frame:where([data-invalid='true']) {
+    border-style: dashed;
+  }
+
+  .mar-ui-field-frame:where(
+    :not(.mar-ui-input):focus-within,
+    :has(> .mar-ui-input__body:focus-within),
+    [data-expanded='true']
+  ) {
+    outline: 2px solid Highlight;
+  }
+
+  .mar-ui-field-frame:where(
+    [data-disabled='true'],
+    :has(> .mar-ui-input__body > .mar-ui-input__field:disabled)
+  ) {
+    border: 1px solid GrayText;
+    outline: none;
+  }
+}

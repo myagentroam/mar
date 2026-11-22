@@ -236,7 +236,7 @@ defineExpose({ root });
   --mar-ui-button-bg: var(--mar-bg-panel);
   --mar-ui-button-border: var(--mar-border-default);
   --mar-ui-button-fg: var(--mar-text-secondary);
-  --mar-ui-button-hover-bg: var(--mar-fill-hover);
+  --mar-ui-button-hover-bg: var(--mar-fill-row-hover);
   --mar-ui-button-hover-border: var(--mar-border-medium);
   --mar-ui-button-hover-fg: var(--mar-text-primary);
   --mar-ui-button-active-bg: var(--mar-fill-selection);

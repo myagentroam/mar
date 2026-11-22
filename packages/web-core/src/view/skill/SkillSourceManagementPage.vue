@@ -1026,7 +1026,7 @@ function scopeLabel(scope: string): string {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid var(--mar-fill-hover);
+  border-top: 1px solid var(--mar-border-subtle);
   padding-top: 14px;
 }
 .section-heading p {

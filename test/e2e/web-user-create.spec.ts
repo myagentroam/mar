@@ -650,7 +650,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
   }) => {
     const ui = await preparePersonalCredentials(page, locale, 'succeeds');
     await page.locator('html').evaluate((element) => {
-      element.style.setProperty('--mar-control-fill-color-light', '#dde9f6');
+      element.style.setProperty('--mar-fill-muted', '#dde9f6');
       element.style.setProperty('--mar-border-default', '#a6b7cc');
     });
     const values = ui.credentials.locator('.credential-result dd');

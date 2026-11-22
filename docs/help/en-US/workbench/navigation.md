@@ -67,6 +67,8 @@ Readable text has three levels: primary (`--mar-text-primary`), secondary (`--ma
 
 Only **invalid JSON syntax** blocks saving or exporting. Missing names, unknown fields or tokens, invalid colors, and low contrast produce advisory warnings. Saved and exported JSON retains unknown and invalid content, but it is ignored when applied. An old `base` field is also retained with an unknown-field warning; it no longer changes the dark fallback rule. Arbitrary CSS, URLs, and scripts are not executed. Contrast checks cover only explicit opaque color pairs, not a complete accessibility audit.
 
+Git History uses built-in category colors for branch lanes. Success and warning theme colors no longer recolor those lanes. The main lane remains customizable with `--mar-color-git-graph-main`, and file changes still use their corresponding status colors.
+
 Themes do not change layout, fonts, file icon themes, the fixed terminal palette, or public help. The preview is a representative color sample: it does not perform real workbench actions or cover unaffected areas such as terminals.
 
 ## System notifications

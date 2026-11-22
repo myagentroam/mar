@@ -342,7 +342,7 @@ for (const theme of ['light', 'dark']) {
             const result = {
               background: color('--mar-bg-panel'),
               border: color('--mar-border-default'),
-              hoverBackground: color('--mar-fill-hover'),
+              hoverBackground: color('--mar-fill-row-hover'),
               iconHoverBackground: color('--mar-action-hover-overlay'),
               hoverBorder: color('--mar-border-medium'),
               hoverText: color('--mar-text-primary'),

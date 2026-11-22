@@ -451,11 +451,11 @@ onBeforeUnmount(() => {
   min-height: 0;
   min-width: 0;
   background: var(--mar-bg-panel);
-  border-inline: 1px solid var(--mar-control-border-color-lighter);
+  border-inline: 1px solid var(--mar-border-subtle);
 }
 .share-heading {
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--mar-control-border-color-lighter);
+  border-bottom: 1px solid var(--mar-border-subtle);
   display: flex;
   gap: 1rem;
   align-items: center;
@@ -508,7 +508,7 @@ h1 {
   font-size: var(--mar-font-size-body);
 }
 .sharer {
-  border-bottom: 1px solid var(--mar-control-border-color-lighter);
+  border-bottom: 1px solid var(--mar-border-subtle);
   padding-bottom: 1rem;
   margin-bottom: 0.5rem;
 }

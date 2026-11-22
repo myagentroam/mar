@@ -66,7 +66,9 @@ window.managementPageFixture = {
           occurredAt: Date.now(),
           eventType: 'USER_LOGIN',
           actorUsername: 'Fixture user',
-          result: 'SUCCESS'
+          result: new URLSearchParams(location.search).has('result-colors')
+            ? (['SUCCESS', 'DENIED', 'FAILED'] as const)[i % 3]
+            : 'SUCCESS'
         }));
         entry.resolve({ events, page, pageSize: 20, total, hasMore: page * 20 < total });
       } else if (usage) {

@@ -463,7 +463,7 @@ for (const labels of [
     await checkBounds(390);
     await expect(dialog.locator('.share-note')).toHaveCount(0);
     await page.locator('html').evaluate((element) => {
-      element.style.setProperty('--mar-control-fill-color-light', '#dde9f6');
+      element.style.setProperty('--mar-fill-muted', '#dde9f6');
       element.style.setProperty('--mar-border-subtle', '#a6b7cc');
     });
     await dialog.getByRole('button', { name: labels.create, exact: true }).click();

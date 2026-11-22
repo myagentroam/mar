@@ -283,7 +283,7 @@ async function sendTest(): Promise<void> {
   color: var(--mar-text-primary);
 }
 .template-choice:hover {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-row-hover);
 }
 .template-choice.is-selected:hover {
   background: var(--mar-fill-selection);

@@ -4,6 +4,7 @@ import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
 import { useMarUiLocale } from '../../locale/index.js';
 import { useMarFormControl } from '../form/form-context.js';
+import '../form/field-frame.css';
 import { usePopup } from '../popup/use-popup.js';
 import '../popup/surface.css';
 
@@ -180,7 +181,7 @@ function onFocusOut(event: FocusEvent) {
   >
     <div
       ref="anchor"
-      class="mar-ui-time-picker__field"
+      class="mar-ui-time-picker__field mar-ui-field-frame"
       :data-disabled="field.disabled.value"
       :data-expanded="popup.open.value"
       :data-invalid="field.ariaInvalid($attrs['aria-invalid'])"
@@ -279,20 +280,10 @@ function onFocusOut(event: FocusEvent) {
   gap: 0.375rem;
   box-sizing: border-box;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
-  border: 1px solid var(--mar-ui-input-border);
-  border-radius: var(--mar-ui-radius-control);
   padding-inline: 0.5rem;
-  background: var(--mar-ui-bg-panel);
+}
+.mar-ui-time-picker__field:not([data-disabled='true']) {
   color: var(--mar-ui-text-secondary);
-}
-.mar-ui-time-picker__field:not([data-disabled='true']):hover {
-  border-color: var(--mar-ui-input-border-hover);
-}
-.mar-ui-time-picker__field:is(:focus-within, [data-expanded='true']) {
-  border-color: var(--mar-ui-control-focus);
-}
-.mar-ui-time-picker__field[data-invalid='true'] {
-  border-color: var(--mar-ui-control-color-danger);
 }
 input {
   min-inline-size: 0;

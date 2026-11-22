@@ -2011,6 +2011,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         .evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color));
       expect(new Set(taskColors).size).toBe(3);
       await expect(page.locator('.task-list-status')).toHaveText(['To-do', 'In progress', 'Done']);
+      await expect(page.locator('.task-list-status--done')).toHaveCSS(
+        'color',
+        theme === 'daylight' ? 'rgb(0, 107, 52)' : 'rgb(113, 228, 154)'
+      );
+      await expect(page.locator('.task-list-status--in-progress')).toHaveCSS(
+        'color',
+        theme === 'daylight' ? 'rgb(133, 74, 0)' : 'rgb(248, 203, 114)'
+      );
+      if (width === 1280) {
+        await page
+          .locator('details.task-list')
+          .screenshot({ path: testInfo.outputPath('task-list.png') });
+      }
       await expect(page.locator('.conversation-item-heading > span').first()).toHaveCSS(
         'color',
         tokens.secondary

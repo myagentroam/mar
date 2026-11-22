@@ -910,7 +910,7 @@ function scopeLabel(scope: string): string {
   overflow: hidden;
   block-size: 4px;
   border-radius: 2px;
-  background: var(--mar-control-fill-color-light);
+  background: var(--mar-border-subtle);
 }
 .skill-install-progress__indicator::after {
   position: absolute;
@@ -956,7 +956,7 @@ function scopeLabel(scope: string): string {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--mar-fill-hover);
+  border-bottom: 1px solid var(--mar-border-subtle);
   padding-bottom: 12px;
 }
 .target-panel > div:first-child {

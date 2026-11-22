@@ -1881,7 +1881,7 @@ onBeforeUnmount(() => {
 
 .files-drop-target:hover:not(:disabled):not(.active) {
   border-color: var(--mar-border-strong);
-  background: var(--mar-fill-hover);
+  background: var(--mar-action-hover-overlay);
   color: var(--mar-text-primary);
 }
 

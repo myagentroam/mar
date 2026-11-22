@@ -326,7 +326,7 @@ describe('Custom theme validation', () => {
         '--mar-text-secondary': 'var(--missing)',
         '--mar-text-tertiary': '#555',
         '--mar-conversation-text': '#444',
-        '--mar-fill-hover': '#12345',
+        '--mar-fill-muted': '#12345',
         '--unknown': '#fff'
       })
     );

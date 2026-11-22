@@ -1111,7 +1111,7 @@ defineExpose({
   color: var(--mar-text-secondary);
 }
 .unified-history-diff code > .is-mixed {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-muted);
   color: var(--mar-text-secondary);
 }
 .unified-diff-pane {
@@ -1237,7 +1237,7 @@ defineExpose({
 }
 .unified-diff-line-content {
   min-width: 0;
-  border-left: 1px solid var(--mar-fill-hover);
+  border-left: 1px solid var(--mar-border-subtle);
   padding: 0 1rem;
 }
 

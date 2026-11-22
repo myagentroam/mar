@@ -294,7 +294,7 @@ async function copyRecord(id: string): Promise<void> {
 .created-share {
   margin-top: 1rem;
   padding: 1rem;
-  background: var(--mar-control-fill-color-light);
+  background: var(--mar-fill-muted);
   border: 1px solid var(--mar-border-subtle);
   border-radius: 6px;
   overflow-wrap: anywhere;

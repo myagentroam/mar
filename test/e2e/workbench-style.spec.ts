@@ -1244,6 +1244,32 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'font-size',
         width >= 768 ? '12px' : '11px'
       );
+      const changeEntry = inspector.locator('.change-entry').filter({ hasText: 'main.ts' });
+      const changePath = changeEntry.locator('.change-path');
+      await expect(changeEntry.locator('.change-status[data-file-change="MODIFIED"]')).toHaveCSS(
+        'color',
+        theme === 'daylight' ? 'rgb(133, 74, 0)' : 'rgb(248, 203, 114)'
+      );
+      await expect(changeEntry.locator('small.change-status')).toHaveCSS('color', colors.secondary);
+      if (width >= 768) {
+        const rowHover = await changeEntry.evaluate((row) => {
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--mar-fill-row-hover)';
+          row.append(probe);
+          const color = getComputedStyle(probe).color;
+          probe.remove();
+          return color;
+        });
+        await changePath.hover();
+        await expect(changeEntry).toHaveCSS('background-color', rowHover);
+        await expect(changePath).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await page.mouse.move(0, 0);
+        await page.keyboard.press('Tab');
+        await changePath.focus();
+        await expect(changePath).toHaveCSS('outline-style', 'solid');
+        await expect(changePath).toHaveCSS('outline-width', '2px');
+        await changePath.blur();
+      }
       // Keep the gap compact without assuming a specific font's inline box metrics.
       await expect(root).toHaveCSS('padding-bottom', '0px');
       const { rowGap, pathToFileGap } = await root.evaluate((heading) => {
@@ -2041,6 +2067,72 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       .locator('.workbench-aside')
       .screenshot({ path: testInfo.outputPath('files-empty.png') });
     await expect(retry).toHaveCount(0);
+  });
+
+  test(`Git History classifies branches and file changes in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    const parents = ['main', 'green', 'cyan', 'amber', 'neutral', 'red'];
+    const commit = (hash: string, incoming: string[] = []) => ({
+      hash,
+      parents: incoming,
+      subject: hash === 'merge' ? 'Merge worktree branches' : `Update ${hash} worktree`,
+      authorName: 'Author',
+      authorEmail: 'a@example.test',
+      committedAt: 1,
+      refs: []
+    });
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/git/history')) {
+        await route.fulfill({
+          json: { commits: [commit('merge', parents), ...parents.map((hash) => commit(hash))] }
+        });
+      } else if (path.includes('/git/commits/') && path.endsWith('/files')) {
+        await route.fulfill({
+          json: {
+            files: [
+              { path: 'src/added.ts', change: 'ADDED' },
+              { path: 'src/modified.ts', change: 'MODIFIED' },
+              { path: 'src/removed.ts', change: 'DELETED' }
+            ]
+          }
+        });
+      } else if (path.endsWith('/git/refs')) await route.fulfill({ json: { refs: [] } });
+      else if (path.endsWith('/git/fetch')) await route.fulfill({ json: { fetchFailed: false } });
+      else if (path.endsWith('/changes')) await route.fulfill({ json: { changes: [] } });
+      else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
+    const history = inspector.locator('.git-history');
+    const merge = history
+      .locator('.history-commit-row')
+      .filter({ hasText: 'Merge worktree branches' });
+    const green = merge.locator('path.history-graph-color-1');
+    const greenStroke = theme === 'daylight' ? 'rgb(0, 107, 52)' : 'rgb(113, 228, 154)';
+    await expect(green).toHaveCSS('stroke', greenStroke);
+    const lanes = await merge
+      .locator('path.history-graph-edge')
+      .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
+    expect(new Set(lanes).size).toBe(6);
+    await merge.click();
+    await history.getByRole('button', { name: 'src', exact: true }).click();
+    const modified = history.locator('.history-file-status[data-file-change="MODIFIED"]');
+    const warning = theme === 'daylight' ? 'rgb(133, 74, 0)' : 'rgb(248, 203, 114)';
+    await expect(modified).toHaveCSS('color', warning);
+    await page.mouse.move(0, 0);
+    await history.screenshot({ path: testInfo.outputPath('git-branches-and-files.png') });
+    await page.locator('html').evaluate((root) => {
+      root.style.setProperty('--mar-color-success-text', '#aabbcc');
+    });
+    await expect(green).toHaveCSS('stroke', greenStroke);
+    await expect(history.locator('.history-file-status[data-file-change="ADDED"]')).toHaveCSS(
+      'color',
+      'rgb(170, 187, 204)'
+    );
   });
 
   test(`Git History auto-append and in-place failures in ${theme}`, async ({ page }, testInfo) => {

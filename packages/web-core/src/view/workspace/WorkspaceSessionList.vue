@@ -1056,7 +1056,7 @@ function submitSessionSearch(): void {
   justify-content: space-between;
   gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--mar-control-border-color-lighter);
+  border-bottom: 1px solid var(--mar-border-subtle);
 }
 .effective-skill-row > div {
   min-width: 0;
