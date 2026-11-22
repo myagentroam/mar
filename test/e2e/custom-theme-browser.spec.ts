@@ -1146,7 +1146,9 @@ test('custom theme status and hover contrast warnings preserve editable colors a
       '--mar-color-danger-text': '#777777',
       '--mar-color-danger-bg': '#777777',
       '--mar-control-primary-fg': '#777777',
-      '--mar-control-primary-hover': '#777777'
+      '--mar-control-primary-hover': '#777777',
+      '--mar-conversation-activity-fg': '#777777',
+      '--mar-fill-subtle': '#777777'
     }
   };
   const source = JSON.stringify(theme, null, 2);
@@ -1159,6 +1161,7 @@ test('custom theme status and hover contrast warnings preserve editable colors a
   const validation = page.locator('.validation');
   await expect(validation).toContainText('--mar-color-danger-text / --mar-color-danger-bg');
   await expect(validation).toContainText('--mar-control-primary-fg / --mar-control-primary-hover');
+  await expect(validation).toContainText('--mar-conversation-activity-fg / --mar-fill-subtle');
   await expect(validation).toContainText('saving is allowed');
   await expect(page.locator('.mar-theme-preview .danger')).toHaveCSS('color', 'rgb(119, 119, 119)');
   await expect(page.locator('.mar-theme-preview .danger')).toHaveCSS(
@@ -1177,6 +1180,7 @@ test('custom theme status and hover contrast warnings preserve editable colors a
   theme.colors['--mar-color-danger-bg'] = '#000000';
   theme.colors['--mar-control-primary-fg'] = '#ffffff';
   theme.colors['--mar-control-primary-hover'] = '#000000';
+  theme.colors['--mar-fill-subtle'] = '#ffffff';
   await editor.fill(JSON.stringify(theme));
   await expect(validation).toContainText('No detected warnings.');
 });
@@ -2361,6 +2365,11 @@ for (const locale of ['en-US', 'zh-CN']) {
       await expect(dialog.locator('.token-row')).toHaveCount(CUSTOM_THEME_TOKENS.length);
       for (const description of await dialog.locator('dd').allTextContents())
         expect(description.trim()).not.toBe('');
+      await dialog
+        .getByRole('textbox', { name: searchLabel })
+        .fill(locale === 'en-US' ? 'Usage distribution bars' : '用量分布横条');
+      await expect(dialog.locator('.token-row')).toHaveCount(1);
+      await expect(dialog.locator('code')).toHaveText('--mar-conversation-activity-fg');
       await dialog
         .getByRole('textbox', { name: searchLabel })
         .fill(locale === 'en-US' ? 'Page canvas' : '页面底层背景');

@@ -190,6 +190,7 @@ describe('Custom theme validation', () => {
     ['--mar-conversation-activity-fg', '--mar-conversation-process'],
     ['--mar-conversation-activity-fg', '--mar-bg-panel'],
     ['--mar-conversation-activity-fg', '--mar-conversation-surface'],
+    ['--mar-conversation-activity-fg', '--mar-fill-subtle'],
     ['--mar-text-primary', '--mar-fill-row-hover'],
     ['--mar-text-secondary', '--mar-fill-row-hover'],
     ['--mar-text-muted', '--mar-fill-row-hover'],
@@ -231,6 +232,18 @@ describe('Custom theme validation', () => {
       }
     }
   );
+
+  it('uses the graphic contrast threshold for usage bars on their tracks', () => {
+    const warnings = (color: string) =>
+      analyzeCustomTheme(
+        source({ '--mar-conversation-activity-fg': color, '--mar-fill-subtle': '#fff' })
+      ).warnings;
+    expect(warnings('#999')).toContainEqual({
+      code: 'contrast',
+      field: '--mar-conversation-activity-fg / --mar-fill-subtle'
+    });
+    expect(warnings('#777')).toEqual([]);
+  });
 
   it('blocks syntax errors but accepts every syntactically valid JSON value with advisory warnings', () => {
     expect(analyzeCustomTheme('{').validJson).toBe(false);

@@ -222,7 +222,7 @@ export const personalSettingsEnUS = {
       'bg-chrome': 'Workbench navigation, headers and auxiliary panel surfaces',
       'bg-subtle': 'Recessed secondary surfaces',
       'bg-tab-inactive': 'Inactive tab backgrounds',
-      'fill-subtle': 'Subtle section fills',
+      'fill-subtle': 'Subtle section fills and usage distribution tracks',
       'fill-muted': 'Muted control and container fills',
       'fill-row-hover': 'List row hover backgrounds',
       'fill-selection': 'Selected navigation, resource rows, sessions and tab backgrounds',
@@ -243,7 +243,7 @@ export const personalSettingsEnUS = {
       'conversation-process-border': 'Process block boundaries',
       'conversation-code': 'Code block backgrounds',
       'conversation-activity-fg':
-        'Conversation phase ring, composer status and send button, and unread notification badges',
+        'Conversation phase ring, composer status and send button, unread notification badges, and usage distribution bars',
       'scrollbar-thumb': 'Scrollbar handles',
       'scrollbar-thumb-hover': 'Scrollbar handles on hover',
       'control-primary-bg': 'Filled primary actions and checked controls',
@@ -361,7 +361,7 @@ export const personalSettingsEnUS = {
       unknown:
         'Unknown field or token: {field}. It is preserved, but ignored when applying the theme.',
       color: '{field}: use a hexadecimal color. This value is preserved but will not be applied.',
-      contrast: '{field}: contrast is below 4.5:1. Text may be difficult to read.'
+      contrast: '{field}: low contrast may make these colors difficult to distinguish.'
     }
   },
   quickPrompts: {

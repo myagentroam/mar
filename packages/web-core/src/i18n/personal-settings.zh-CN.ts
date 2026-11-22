@@ -219,7 +219,7 @@ export const personalSettingsZhCN = {
       'bg-chrome': '工作台导航、标题栏及辅助面板背景',
       'bg-subtle': '次级凹入区域背景',
       'bg-tab-inactive': '未选中标签页背景',
-      'fill-subtle': '分区的轻微填充色',
+      'fill-subtle': '分区的轻微填充色和用量分布轨道',
       'fill-muted': '低强调控件和容器填充',
       'fill-row-hover': '列表行悬停背景',
       'fill-selection': '导航、资源行、会话与标签页的选中背景',
@@ -239,7 +239,8 @@ export const personalSettingsZhCN = {
       'conversation-border': '消息内容边框',
       'conversation-process-border': '过程块边框',
       'conversation-code': '代码块背景',
-      'conversation-activity-fg': '对话阶段圆环、输入框上方状态、发送按钮及通知未读角标',
+      'conversation-activity-fg':
+        '对话阶段圆环、输入框上方状态、发送按钮、通知未读角标和用量分布横条',
       'scrollbar-thumb': '滚动条滑块',
       'scrollbar-thumb-hover': '滚动条悬停滑块',
       'control-primary-bg': '主要操作及勾选控件的实底填充',
@@ -353,7 +354,7 @@ export const personalSettingsZhCN = {
       colors: 'colors 建议使用颜色变量到十六进制颜色的映射对象；当前使用默认深色配色。',
       unknown: '未知字段或颜色变量：{field}。内容会保留，但应用时忽略。',
       color: '{field}：建议使用十六进制颜色；此值会保留，但不会应用。',
-      contrast: '{field}：对比度低于 4.5:1，文字可能不易辨认。'
+      contrast: '{field}：对比度偏低，这两种颜色可能不易区分。'
     }
   },
   quickPrompts: {

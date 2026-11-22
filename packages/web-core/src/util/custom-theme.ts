@@ -68,7 +68,7 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
       else colors[key] = color;
     }
   // Assess only explicit opaque pairs; inherited/translucent colors need visual inspection.
-  for (const [foreground, background] of [
+  for (const [foreground, background, minimum = 4.5] of [
     ['--mar-text-primary', '--mar-bg-page'],
     ['--mar-text-secondary', '--mar-bg-page'],
     ['--mar-text-primary', '--mar-bg-panel'],
@@ -97,6 +97,7 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     ['--mar-conversation-activity-fg', '--mar-bg-panel'],
     ['--mar-conversation-activity-fg', '--mar-conversation-surface'],
     ['--mar-conversation-activity-fg', '--mar-conversation-process'],
+    ['--mar-conversation-activity-fg', '--mar-fill-subtle', 3],
     ['--mar-color-success-text', '--mar-color-success-bg'],
     ['--mar-color-warning-text', '--mar-color-warning-bg'],
     ['--mar-color-danger-text', '--mar-color-danger-bg'],
@@ -108,7 +109,7 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     if (
       a !== undefined &&
       b !== undefined &&
-      (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < 4.5
+      (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < minimum
     ) {
       warn('contrast', `${foreground} / ${background}`);
     }
