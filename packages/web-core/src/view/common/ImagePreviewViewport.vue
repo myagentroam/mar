@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { MarButton } from '@myagentroam/mar-ui/button';
-import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
-import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, shallowRef, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
+import ImagePreviewControls, { type ImagePreviewControlState } from './ImagePreviewControls.vue';
 import {
   boundPreviewTransform,
   FITTED_IMAGE_TRANSFORM,
@@ -18,21 +16,19 @@ import {
 // Owns viewport geometry and gestures. Callers own the image source, decoding
 // policy and surrounding preview lifecycle; each source is a keyed instance.
 const props = withDefaults(
-  defineProps<{ src: string; alt: string; ready?: boolean; imageClass?: string }>(),
+  defineProps<{
+    src: string;
+    alt: string;
+    ready?: boolean;
+    imageClass?: string;
+    externalControls?: boolean;
+  }>(),
   { ready: true }
 );
 const emit = defineEmits<{ load: [image: HTMLImageElement]; error: [] }>();
 
 const center = { x: 0, y: 0 };
-const panDirections = [
-  { key: 'up', icon: 'chevron-up', x: 0, y: 1 },
-  { key: 'down', icon: 'chevron-down', x: 0, y: -1 },
-  { key: 'left', icon: 'chevron-left', x: 1, y: 0 },
-  { key: 'right', icon: 'chevron-right', x: -1, y: 0 }
-] as const;
 const viewport = shallowRef<HTMLElement>();
-const actions = shallowRef<HTMLElement>();
-const actionWidth = shallowRef(0);
 const viewportSize = shallowRef({ width: 0, height: 0 });
 const naturalSize = shallowRef({ width: 0, height: 0 });
 const transform = shallowRef<ImagePreviewTransform>(FITTED_IMAGE_TRANSFORM);
@@ -46,13 +42,27 @@ const panBounds = computed(() =>
   previewPanBounds(transform.value.scale, fitted.value, viewportSize.value)
 );
 const canPan = computed(() => panBounds.value.x > 0.5 || panBounds.value.y > 0.5);
+const controls = computed<ImagePreviewControlState | undefined>(() =>
+  readyToShow.value
+    ? {
+        canZoomOut: transform.value.scale > 1,
+        canZoomIn: transform.value.scale < MAX_IMAGE_ZOOM,
+        canPan: canPan.value,
+        zoomBy: (factor) => zoomTo(transform.value.scale * factor),
+        fit: () => {
+          transform.value = FITTED_IMAGE_TRANSFORM;
+        },
+        canPanToward,
+        panByViewportStep
+      }
+    : undefined
+);
+defineExpose({ controls });
+
 const actionStyle = computed(() => {
-  const { width, height } = viewportSize.value;
-  // At fit, keep the original action just below the image. While zoomed it
-  // stays in its own row so it cannot follow the pan or cover image content.
-  const x = Math.max(0, Math.min((width - fitted.value.width) / 2, width - actionWidth.value));
-  const y = transform.value.scale === 1 ? -(height - fitted.value.height) / 2 : 0;
-  return { insetInlineStart: `${x}px`, transform: `translateY(${y}px)` };
+  const blankHeight = viewportSize.value.height - fitted.value.height;
+  const y = transform.value.scale === 1 ? -blankHeight / 2 : 0;
+  return { transform: `translateY(${y}px)` };
 });
 
 function updateTransform(value: ImagePreviewTransform): void {
@@ -69,19 +79,6 @@ watch(
       if (!width || !height) return;
       viewportSize.value = { width, height };
       updateTransform(transform.value);
-    });
-    observer.observe(element);
-    onCleanup(() => observer.disconnect());
-  },
-  { flush: 'post' }
-);
-
-watch(
-  actions,
-  (element, _, onCleanup) => {
-    if (!element) return;
-    const observer = new ResizeObserver(([entry]) => {
-      actionWidth.value = entry!.contentRect.width;
     });
     observer.observe(element);
     onCleanup(() => observer.disconnect());
@@ -194,93 +191,45 @@ function onKeyDown(event: KeyboardEvent): void {
 
 <template>
   <div class="mar-image-preview">
-    <div class="decoded-preview-media">
-      <div
-        ref="viewport"
-        class="mar-image-preview-viewport"
-        :class="{ 'can-pan': canPan, 'is-panning': canPan && pointerCount === 1 }"
-        :tabindex="canPan ? 0 : undefined"
-        role="group"
-        :aria-label="canPan ? translate('imageViewport.panWithArrows') : undefined"
-        @wheel="onWheel"
-        @pointerdown="onPointerDown"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerEnd"
-        @pointercancel="onPointerEnd"
-        @lostpointercapture="onPointerEnd"
-        @keydown="onKeyDown"
-      >
-        <img
-          v-show="readyToShow"
-          class="mar-image-preview-image"
-          :class="imageClass"
-          :src="src"
-          :alt="alt"
-          :style="{
-            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`
-          }"
-          decoding="async"
-          draggable="false"
-          @load="imageLoaded"
-          @error="emit('error')"
-        />
-      </div>
-      <div
-        v-if="readyToShow && $slots.actions"
-        ref="actions"
-        class="decoded-preview-actions"
-        :style="actionStyle"
-      >
+    <div
+      ref="viewport"
+      class="mar-image-preview-viewport"
+      :class="{ 'can-pan': canPan, 'is-panning': canPan && pointerCount === 1 }"
+      :tabindex="canPan ? 0 : undefined"
+      role="group"
+      :aria-label="canPan ? translate('imageViewport.panWithArrows') : undefined"
+      @wheel="onWheel"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerEnd"
+      @pointercancel="onPointerEnd"
+      @lostpointercapture="onPointerEnd"
+      @keydown="onKeyDown"
+    >
+      <img
+        v-show="readyToShow"
+        class="mar-image-preview-image"
+        :class="imageClass"
+        :src="src"
+        :alt="alt"
+        :style="{
+          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`
+        }"
+        decoding="async"
+        draggable="false"
+        @load="imageLoaded"
+        @error="emit('error')"
+      />
+    </div>
+    <div
+      v-if="controls && !externalControls"
+      class="mar-image-preview-actions"
+      :style="actionStyle"
+    >
+      <div v-if="$slots.actions" class="mar-image-preview-source-actions">
         <slot name="actions" />
       </div>
-    </div>
-    <div v-if="readyToShow" class="mar-image-preview-controls">
-      <MarButton
-        v-tooltip="translate('imageViewport.zoomOut')"
-        :aria-label="translate('imageViewport.zoomOut')"
-        :icon="marIcon('zoom-out')"
-        :disabled="transform.scale === 1"
-        circle
-        @click="zoomTo(transform.scale / 1.5)"
-      />
-      <MarButton
-        v-tooltip="translate('imageViewport.fit')"
-        :aria-label="translate('imageViewport.fit')"
-        :icon="marIcon('fit')"
-        :disabled="transform.scale === 1"
-        circle
-        @click="transform = FITTED_IMAGE_TRANSFORM"
-      />
-      <MarButton
-        v-tooltip="translate('imageViewport.zoomIn')"
-        :aria-label="translate('imageViewport.zoomIn')"
-        :icon="marIcon('zoom-in')"
-        :disabled="transform.scale === MAX_IMAGE_ZOOM"
-        circle
-        @click="zoomTo(transform.scale * 1.5)"
-      />
-      <MarDropdown placement="top">
-        <MarButton
-          v-tooltip="translate('imageViewport.pan.label')"
-          :aria-label="translate('imageViewport.pan.label')"
-          :icon="marIcon('more')"
-          :disabled="!canPan"
-          circle
-        />
-        <template #dropdown>
-          <MarDropdownMenu :aria-label="translate('imageViewport.pan.label')">
-            <MarDropdownItem
-              v-for="direction in panDirections"
-              :key="direction.key"
-              :icon="direction.icon"
-              :disabled="!canPanToward(direction)"
-              @click="panByViewportStep(direction)"
-            >
-              {{ translate(`imageViewport.pan.${direction.key}`) }}
-            </MarDropdownItem>
-          </MarDropdownMenu>
-        </template>
-      </MarDropdown>
+      <ImagePreviewControls :controls="controls" />
     </div>
   </div>
 </template>
@@ -294,13 +243,6 @@ function onKeyDown(event: KeyboardEvent): void {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-
-.decoded-preview-media {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .mar-image-preview-viewport {
@@ -335,19 +277,33 @@ function onKeyDown(event: KeyboardEvent): void {
   max-height: 100%;
 }
 
-.decoded-preview-actions {
+.mar-image-preview-actions {
+  --image-action-gap: 0.375rem;
   position: relative;
-  width: max-content;
-  max-width: 100%;
-  padding-top: 6px;
-}
-
-.mar-image-preview-controls {
   display: flex;
   flex: none;
   flex-wrap: wrap;
+  align-items: center;
+  align-self: center;
   justify-content: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0;
+  gap: var(--image-action-gap);
+  max-inline-size: 100%;
+  padding-block-start: var(--image-action-gap);
+}
+
+.mar-image-preview-source-actions {
+  padding-inline-end: var(--image-action-gap);
+  border-inline-end: 1px solid var(--mar-border-subtle);
+}
+
+.mar-image-preview-actions :deep(.image-preview-control) {
+  border-radius: var(--mar-radius-control);
+}
+
+@media (max-width: 767px) {
+  .mar-image-preview-actions :deep(.mar-ui-button) {
+    min-block-size: 36px;
+    min-inline-size: 36px;
+  }
 }
 </style>

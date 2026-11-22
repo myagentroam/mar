@@ -38,7 +38,7 @@ Legacy text previews recognize BOM-marked UTF-16 and automatically try GB18030 f
 
 In ordinary Work mode, chat file and image links support absolute paths readable by the Node service account, including session image directories outside the Workspace. Relative paths still resolve within the current Workspace. Absolute paths are for read-only preview and download; they do not expand the file tree, search, or write scope and do not apply to hosted conversations. **Users with Workspace access can read other host files available to the Node service account by their absolute paths; Workspaces and allowed roots are not file confidentiality boundaries.** When sharing a Node, isolate sensitive data through the service account and operating-system file permissions.
 
-Image files open fitted to the window without changing their aspect ratio. On desktop, use the wheel to zoom over the image area and hold the primary mouse button to drag after zooming in. On mobile, pinch with two fingers to zoom and drag with one finger. The controls below the preview also let you zoom in, zoom out, fit the image to the window, or choose a direction from the **Pan image** menu.
+Image files open fitted to the window without changing their aspect ratio. On desktop, use the wheel to zoom over the image area and hold the primary mouse button to drag after zooming in. On mobile, pinch with two fingers to zoom and drag with one finger. The file toolbar (in the desktop header or at the bottom right on mobile) also lets you zoom in, zoom out, fit the image, or use the four-way arrow to choose a pan direction.
 
 **Success:** The preview title matches the selected tree path, and refreshing the tree shows the real file-system state.
 

@@ -1,6 +1,7 @@
 export const filePreviewEnUS = {
   filePreview: { loadFailed: 'Unable to load the file.' },
   imageViewport: {
+    actions: 'Image controls',
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     fit: 'Fit image',

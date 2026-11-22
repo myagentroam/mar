@@ -35,7 +35,8 @@ for (const scheme of ['Light', 'Dark']) {
               '--mar-text-primary': '#dae5cf',
               '--mar-text-secondary': '#b6c3af',
               '--mar-text-disabled': '#8293a4',
-              '--mar-fill-row-hover': '#334455'
+              '--mar-fill-row-hover': '#334455',
+              '--mar-overlay-row-hover': '#394b5c'
             }))
               element.style.setProperty(token, value);
           });
@@ -49,7 +50,7 @@ for (const scheme of ['Light', 'Dark']) {
           const colors = {
             normal: color('--mar-text-secondary'),
             active: color('--mar-text-primary'),
-            hover: color('--mar-fill-row-hover'),
+            hover: color('--mar-overlay-row-hover, var(--mar-fill-row-hover)'),
             disabled: color('--mar-text-disabled'),
             focus: color('--mar-control-focus')
           };
