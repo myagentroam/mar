@@ -109,6 +109,8 @@ const items: ConversationItem[] = [
         {
           path: 'src/a.ts',
           change: 'MODIFIED',
+          additions: 8,
+          deletions: 2,
           ...(touchDetails ? { diff: { status: 'unavailable', reason: 'binary' } } : {})
         },
         { path: 'src/b.ts', change: 'ADDED' }

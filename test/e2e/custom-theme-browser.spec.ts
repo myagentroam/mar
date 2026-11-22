@@ -1983,6 +1983,27 @@ for (const [scheme, width] of [
       await expect(fields.getByText('Select a date range', { exact: true })).toBeVisible();
     };
     await check();
+    if (scheme === 'Dark') {
+      const [border, hover, panel, conversationSurface] = await fields.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const colors = [
+          '--mar-input-border',
+          '--mar-input-border-hover',
+          '--mar-bg-panel',
+          '--mar-conversation-surface'
+        ].map((token) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        });
+        probe.remove();
+        return colors;
+      });
+      expect(resolvedColorToHex(border!)).toBe('#6a6a6a');
+      expect(resolvedColorToHex(hover!)).toBe('#717171');
+      for (const surface of [panel!, conversationSurface!])
+        expect(colorContrast(border!, surface)).toBeGreaterThanOrEqual(3);
+    }
     await page.mouse.move(0, 0);
     await fields.screenshot({
       path: testInfo.outputPath(`standard-fields-${scheme.toLowerCase()}.png`)

@@ -25,9 +25,9 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-for (const [width, theme] of [
-  [1280, 'daylight'],
-  [390, 'vscode-dark-2026']
+for (const [width, theme, primaryBackground, primaryForeground] of [
+  [1280, 'daylight', 'rgb(48, 48, 48)', 'rgb(255, 255, 255)'],
+  [390, 'vscode-dark-2026', 'rgb(222, 222, 222)', 'rgb(24, 24, 24)']
 ] as const) {
   test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
     page
@@ -65,8 +65,26 @@ for (const [width, theme] of [
       expect(
         Math.abs(ringBounds.y + ringBounds.height / 2 - listBounds.y - listBounds.height / 2)
       ).toBeLessThan(1);
-      await expect(page.getByRole('textbox', { name: 'Search chat titles' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'New chat', exact: true })).toBeEnabled();
+      const search = page.getByRole('textbox', { name: 'Search chat titles' });
+      await expect(search).toBeVisible();
+      await search.focus();
+      const searchControl = page.locator('.history-search-row .mar-ui-input');
+      const focusColor = await searchControl.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mar-ui-control-focus)';
+        element.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(searchControl).toHaveCSS('box-shadow', `${focusColor} 0px 0px 0px 1px inset`);
+      await search.blur();
+      const newChat = page.getByRole('button', { name: 'New chat', exact: true });
+      await expect(newChat).toBeEnabled();
+      await expect(newChat).toHaveClass(/\bmar-ui-button--primary\b/);
+      await expect(newChat).toHaveCSS('height', width < 768 ? '24px' : '26px');
+      await expect(newChat).toHaveCSS('background-color', primaryBackground);
+      await expect(newChat).toHaveCSS('color', primaryForeground);
       await expect(list.getByText('No conversations yet.')).toHaveCount(0);
       await list.screenshot({ path: testInfo.outputPath('hosted-directory-loading.png') });
     } finally {

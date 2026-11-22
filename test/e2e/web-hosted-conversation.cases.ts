@@ -757,6 +757,9 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
     });
   });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
+    json(route, { models: snapshot.models, defaultModelId: 'model-1' })
+  );
   const visualTurn = snapshot.turns[0];
   const visualMessage = visualTurn.items.find((item) => item.kind === 'assistant_message')!;
   const visualSnapshot = {
@@ -799,6 +802,10 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '对话', exact: true }).click();
+  const newChat = page.locator('.history-create-button');
+  await expect(newChat).toBeVisible();
+  await expect(newChat).toHaveClass(/\bmar-ui-button--primary\b/);
+  await expect(newChat).toHaveCSS('height', '26px');
   await verifyConversationThemes(page, testInfo, 'hosted-desktop');
   const codeCopy = page.locator('.agent-markdown-code-copy').first();
   await codeCopy.click();
@@ -815,7 +822,9 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
   await expect(messageCopy).toHaveAttribute('aria-label', /复制.*消息/u, { timeout: 2000 });
   await page.setViewportSize({ width: 390, height: 844 });
   await verifyConversationThemes(page, testInfo, 'hosted-mobile');
-  await expect(page.locator('.history-create-button')).toHaveCSS('height', '32px');
+  await page.getByRole('button', { name: '对话', exact: true }).click();
+  await expect(newChat).toBeVisible();
+  await expect(newChat).toHaveCSS('height', '24px');
   await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');

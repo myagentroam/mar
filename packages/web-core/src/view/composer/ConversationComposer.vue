@@ -382,7 +382,7 @@ const emit = defineEmits<{
 }
 
 .composer:focus-within .composer-working {
-  border-color: var(--mar-control-focus);
+  border-color: var(--mar-conversation-activity-fg);
   border-bottom-color: var(--composer-surface);
 }
 
@@ -403,8 +403,8 @@ const emit = defineEmits<{
 }
 
 .composer-shell:focus-within {
-  border-color: var(--mar-control-focus);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-control-focus) 14%, transparent);
+  border-color: var(--mar-conversation-activity-fg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-conversation-activity-fg) 14%, transparent);
 }
 
 .composer-shell.composer-drop-target {

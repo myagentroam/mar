@@ -334,9 +334,11 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
     expect(Math.abs(bounds.headerRight - bounds.padding - bounds.toolsRight)).toBeLessThan(1);
   }
   await page.getByRole('button', { name: '打开会话列表' }).click();
-  await expect(page.locator('.new-session-button')).toHaveCSS('height', '32px');
+  const newSession = page.locator('.new-session-button');
+  await expect(newSession).toHaveClass(/\bmar-ui-button--primary\b/);
+  await expect(newSession).toHaveCSS('height', '24px');
   const composer = page.getByRole('textbox', { name: '输入消息' });
-  await page.locator('.new-session-button').click();
+  await newSession.click();
   await expect(page.locator('.new-session-button')).toBeHidden();
   await expect(composer).toBeFocused();
   await composer.fill('Mobile draft');

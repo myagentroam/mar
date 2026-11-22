@@ -406,6 +406,7 @@ function submitSessionSearch(): void {
     <div class="new-session-form">
       <MarButton
         class="new-session-button"
+        type="primary"
         icon="session-add"
         :disabled="!nodeReady"
         @click="emit('create')"
@@ -519,7 +520,7 @@ function submitSessionSearch(): void {
                   :data-runner="session.runner"
                   alt=""
                   aria-hidden="true"
-                  class="mar-runner-brand-icon session-title-runner-icon"
+                  class="mar-runner-brand-icon"
                 />
                 <MarIcon
                   v-if="session.schedule?.enabled === true"

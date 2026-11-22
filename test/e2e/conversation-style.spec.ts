@@ -1751,6 +1751,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       root.style.setProperty('--mar-control-focus', '#888888');
     });
     const status = page.locator('.composer-working');
+    const shell = page.locator('.composer-shell');
+    const input = page.locator('.composer-input');
     await expect(status.getByRole('status')).toHaveText('Reconnecting');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
     await expect(status.locator('.composer-busy-indicator')).toHaveCSS('color', 'rgb(255, 0, 255)');
@@ -1758,9 +1760,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       'color',
       'rgb(255, 0, 255)'
     );
-    await page.locator('.composer-input').focus();
-    await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    const idleBorder = await shell.evaluate((element) => getComputedStyle(element).borderTopColor);
+    await input.focus();
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+    await expect(shell).toHaveCSS('box-shadow', 'color(srgb 1 0 1 / 0.14) 0px 0px 0px 2px');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
+    await input.blur();
+    await expect(shell).toHaveCSS('border-top-color', idleBorder);
+    await expect(shell).toHaveCSS('box-shadow', 'none');
+    await expect(status).toHaveCSS('border-top-color', idleBorder);
   });
 
   test(`A stopping process keeps the conversation activity color in ${theme}`, async ({ page }) => {
@@ -1774,6 +1783,94 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       'color',
       'rgb(255, 0, 255)'
     );
+  });
+
+  test(`Idle Composer uses the activity color only while focused in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&empty-layout`);
+      const shell = page.locator('.composer-shell');
+      const input = page.locator('.composer-input');
+      await expect(input).toBeEditable();
+      await expect(page.locator('.composer-working')).toHaveCount(0);
+      const colors = await shell.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mar-conversation-activity-fg)';
+        element.append(probe);
+        const activity = getComputedStyle(probe).color;
+        probe.remove();
+        return { activity, idle: getComputedStyle(element).borderTopColor };
+      });
+      expect(colors.idle).not.toBe(colors.activity);
+      await input.focus();
+      await expect(shell).toHaveCSS('border-top-color', colors.activity);
+      await page
+        .locator('.composer')
+        .screenshot({ path: testInfo.outputPath(`composer-focus-${width}.png`), caret: 'hide' });
+      await input.blur();
+      await expect(shell).toHaveCSS('border-top-color', colors.idle);
+    }
+  });
+
+  test(`File change rows keep neutral default, hover and press feedback in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}conversation-style.html?theme=${theme}`);
+    await page.locator('.conversation-file-change-details > summary').click();
+    const list = page.locator('.conversation-file-change-list');
+    const row = list.locator('li').first();
+    const button = row.locator('.conversation-file-change-button');
+    const colors = await row.evaluate((element) => {
+      const probe = document.createElement('span');
+      element.append(probe);
+      const color = (token: string) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const values = {
+        primary: color('--mar-text-primary'),
+        secondary: color('--mar-text-secondary'),
+        hover: color('--mar-fill-row-hover'),
+        pressed: color('--mar-fill-selection')
+      };
+      probe.remove();
+      return values;
+    });
+    const expectTextHierarchy = async () => {
+      await expect(row.locator('.conversation-file-change-name')).toHaveCSS(
+        'color',
+        colors.primary
+      );
+      await expect(row.locator('.conversation-file-change-path')).toHaveCSS(
+        'color',
+        colors.secondary
+      );
+    };
+    await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expectTextHierarchy();
+    await list.screenshot({ path: testInfo.outputPath('file-change-default.png') });
+    await button.hover();
+    await expect(row).toHaveCSS('background-color', colors.hover);
+    await expectTextHierarchy();
+    await list.screenshot({ path: testInfo.outputPath('file-change-hover.png') });
+    await page.mouse.down();
+    try {
+      await expect(row).toHaveCSS('background-color', colors.pressed);
+    } finally {
+      await page.mouse.move(0, 0);
+      await page.mouse.up();
+    }
+    await row.locator('.conversation-file-change-stats').hover();
+    await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await button.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(button).toBeFocused();
+    await expect(button).toHaveCSS('outline-style', 'solid');
   });
 
   test(`Conversation metadata, status and Composer remain readable in ${theme}`, async ({

@@ -1055,7 +1055,12 @@ onBeforeUnmount(() => {
             @click="refreshDirectory"
           />
         </div>
-        <MarButton class="history-create-button" icon="session-add" @click="beginNewConversation">
+        <MarButton
+          class="history-create-button"
+          type="primary"
+          icon="session-add"
+          @click="beginNewConversation"
+        >
           {{ translate('hostedConversations.create') }}
         </MarButton>
       </div>
