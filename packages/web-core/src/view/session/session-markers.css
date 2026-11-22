@@ -3,17 +3,17 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  min-width: 16px;
-  height: 16px;
+  min-width: 14px;
+  height: 14px;
   box-sizing: border-box;
-  padding: 0 4px;
+  padding: 0 3px;
   border-radius: var(--mar-radius-marker);
   background: var(--mar-text-secondary);
   color: var(--mar-bg-panel);
   font-size: var(--mar-font-size-nano);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  line-height: 16px;
+  line-height: 1;
   white-space: nowrap;
 }
 

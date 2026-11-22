@@ -268,6 +268,7 @@ export const personalSettingsZhCN = {
       'color-danger-bg': '错误提示背景',
       'color-accent': '次级强调与高亮色',
       'color-accent-bg': '次级强调背景',
+      'color-git-graph-main': 'Git 历史图主轨和上游同步计数',
       'color-diff-add-text': '差异中的新增行文字',
       'color-diff-del-text': '差异中的删除行文字',
       'shadow-soft': '轻阴影颜色，不影响尺寸',

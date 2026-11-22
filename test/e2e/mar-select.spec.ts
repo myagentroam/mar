@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -7,6 +8,32 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => {
   await fixture?.close();
+});
+
+test('Dark Select hover is distinct from its popup and does not replace selection', async ({
+  page
+}, testInfo) => {
+  await page.goto(`${fixture.url}mar-select.html`);
+  await page.locator('html').evaluate((element) => (element.dataset.theme = 'vscode-dark-2026'));
+  await page.getByRole('button', { name: 'Open at zero' }).click();
+  const list = page.getByRole('listbox', { name: 'Record state' });
+  const selected = list.getByRole('option', { selected: true });
+  const option = list.getByRole('option', { selected: false }).first();
+  const background = (element: Element) => getComputedStyle(element).backgroundColor;
+  const swatch = await selected.evaluate(background);
+  const surface = resolvedColorToHex(await list.evaluate(background));
+  await option.hover();
+  const hover = resolvedColorToHex(await option.evaluate(background));
+  expect(hover).toMatch(/^#([\da-f]{2})\1\1$/u);
+  expect(
+    parseInt(hover.slice(1, 3), 16) - parseInt(surface.slice(1, 3), 16)
+  ).toBeGreaterThanOrEqual(20);
+  expect(hover).not.toBe(resolvedColorToHex(swatch));
+  await expect(selected).toHaveCSS('background-color', swatch);
+  await selected.hover();
+  await expect(selected).toHaveCSS('background-color', swatch);
+  await option.hover();
+  await list.screenshot({ path: testInfo.outputPath('select-dark-hover.png') });
 });
 
 test('a filterable multiple select creates tags without crossing the selection limit', async ({
@@ -176,8 +203,16 @@ test('Select and Dropdown limit long menus and show hints only for clipped label
   expect((await list.boundingBox())!.width).toBeGreaterThan(220);
   const long = list.getByRole('option', { name: /^feature\//u });
   const short = list.getByRole('option', { name: 'Main' });
+  const selectedBackground = await list.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--mar-ui-fill-selection)';
+    element.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
   await expect(short).toHaveAttribute('aria-selected', 'true');
-  await expect(short).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(short).toHaveCSS('background-color', selectedBackground);
   await long.hover();
   await expect(tooltip).toHaveText((await long.innerText()).trim());
   await branches.press('Escape');

@@ -376,7 +376,9 @@ h2 {
   border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-secondary);
+  font-size: inherit;
   font-weight: 500;
+  line-height: inherit;
   padding: 0 0.65rem;
   transition:
     border-color 120ms ease,

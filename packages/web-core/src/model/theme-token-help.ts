@@ -94,6 +94,7 @@ export const THEME_TOKEN_HELP = {
   '--mar-color-danger-bg': { group: 'status', description: 'color-danger-bg' },
   '--mar-color-accent': { group: 'interaction', description: 'color-accent' },
   '--mar-color-accent-bg': { group: 'interaction', description: 'color-accent-bg' },
+  '--mar-color-git-graph-main': { group: 'status', description: 'color-git-graph-main' },
   '--mar-color-diff-add-text': { group: 'status', description: 'color-diff-add-text' },
   '--mar-color-diff-del-text': { group: 'status', description: 'color-diff-del-text' },
   '--mar-shadow-soft': { group: 'overlays', description: 'shadow-soft' },

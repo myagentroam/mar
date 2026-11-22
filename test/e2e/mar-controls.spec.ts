@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/button/MarButton.vue
@@ -101,6 +102,28 @@ for (const [theme, width] of [
   ['light', 1280],
   ['dark', 390]
 ] as const) {
+  test(`MAR Input uses compact typography by default at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 930 });
+    await page.goto(`${fixture.url}mar-controls.html?theme=${theme}&inputs`);
+    await page.evaluate(() => document.documentElement.classList.add('console-ui'));
+    const input = page.getByRole('textbox', { name: 'Name', exact: true });
+    const inputSize = width >= 768 ? '12px' : '11px';
+    await expect(input).toHaveCSS('font-size', inputSize);
+    expect(await input.evaluate((field) => getComputedStyle(field, '::placeholder').fontSize)).toBe(
+      inputSize
+    );
+    const notes = page.getByRole('textbox', { name: 'Notes', exact: true });
+    const notesSize = await notes.evaluate((field) => {
+      const probe = document.createElement('span');
+      probe.style.fontSize = 'var(--mar-font-size-input)';
+      field.after(probe);
+      const size = getComputedStyle(probe).fontSize;
+      probe.remove();
+      return size;
+    });
+    await expect(notes).toHaveCSS('font-size', notesSize);
+  });
+
   test(`MAR controls render and keep interactive state at ${width}px in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -118,6 +141,11 @@ for (const [theme, width] of [
     await expect(third).toHaveCSS('border-block-start-width', '1px');
     const unruled = page.getByTestId('unruled-details').locator('.mar-ui-descriptions__item');
     await expect(unruled.last()).toHaveCSS('border-block-start-width', '0px');
+    for (const item of [first, unruled.first()]) {
+      await expect(item).toHaveCSS('padding-block-start', '4px');
+      await expect(item).toHaveCSS('padding-block-end', '4px');
+      await expect(item.locator('dd')).toHaveCSS('font-size', width >= 768 ? '14px' : '13px');
+    }
     if (width === 390) {
       expect(secondBox.x).toBeCloseTo(firstBox.x, 1);
       expect(secondBox.y).toBeGreaterThan(firstBox.y);
@@ -133,6 +161,11 @@ for (const [theme, width] of [
     await page.getByRole('radio', { name: 'Requests' }).check();
     await expect(page.getByLabel('Metric value')).toHaveText('b');
     const quantity = page.getByRole('spinbutton', { name: 'Quantity' });
+    await expect(quantity).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
+    await expect(page.getByRole('textbox', { name: 'Expires at' })).toHaveCSS(
+      'font-size',
+      width >= 768 ? '12px' : '11px'
+    );
     await quantity.press('ArrowUp');
     await expect(quantity).toHaveValue('3');
     await expect(page.getByRole('button', { name: /increase/i })).toBeDisabled();
@@ -183,6 +216,7 @@ test('Dropdown grows toward the free space when a label expands near the right e
   await page.getByRole('button', { name: 'Commands' }).click();
   const menu = page.getByRole('menu', { name: 'Commands' });
   const rename = menu.getByRole('menuitem').last();
+  await expect(rename).toHaveCSS('font-size', '11px');
   const initial = (await menu.boundingBox())!;
   const rowHeight = (await rename.boundingBox())!.height;
   const compact = await rename.evaluate((item) => {
@@ -228,6 +262,34 @@ test('Dropdown grows toward the free space when a label expands near the right e
   expect((await rename.boundingBox())!.height).toBeGreaterThan(rowHeight);
 });
 
+test('Dark Dropdown shows a distinct neutral highlight for pointer and keyboard', async ({
+  page
+}, testInfo) => {
+  await page.goto(`${fixture.url}mar-controls.html?theme=dark&command-menu`);
+  const trigger = page.getByRole('button', { name: 'Commands' });
+  await trigger.click();
+  const menu = page.getByRole('menu', { name: 'Commands' });
+  const rename = menu.getByRole('menuitem', { name: 'Rename' });
+  const surface = resolvedColorToHex(
+    await menu.evaluate((el) => getComputedStyle(el).backgroundColor)
+  );
+  await expect(rename).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await rename.hover();
+  const hover = await rename.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const hex = resolvedColorToHex(hover);
+  expect(hex).toMatch(/^#([\da-f]{2})\1\1$/u);
+  expect(parseInt(hex.slice(1, 3), 16) - parseInt(surface.slice(1, 3), 16)).toBeGreaterThanOrEqual(
+    20
+  );
+  await menu.screenshot({ path: testInfo.outputPath('dropdown-dark-hover.png') });
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Escape');
+  await trigger.press('ArrowUp');
+  await expect(rename).toBeFocused();
+  await expect(rename).toHaveCSS('background-color', hover);
+  await expect(rename).toHaveCSS('outline-style', 'solid');
+});
+
 test('Organization cascader highlights the entire row and shows the confirmed path', async ({
   page
 }) => {
@@ -243,7 +305,7 @@ test('Organization cascader highlights the entire row and shows the confirmed pa
   const row = popup.locator('.mar-ui-cascader__row').filter({ has: chooseControl });
   const hoverFill = await row.evaluate((node) => {
     const probe = document.createElement('div');
-    probe.style.backgroundColor = 'var(--mar-ui-fill-row-hover)';
+    probe.style.backgroundColor = 'var(--mar-ui-overlay-row-hover)';
     node.append(probe);
     const color = getComputedStyle(probe).backgroundColor;
     probe.remove();
@@ -297,6 +359,10 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   let calendar = page.getByRole('dialog', { name: 'Calendar' });
   await expect(calendar.locator('.mar-ui-calendar-month')).toHaveCount(1);
   const days = calendar.locator('.mar-ui-calendar-month__days button');
+  // The calendar grid retains its reading size; only the footer controls are compact.
+  await expect(days.nth(3)).toHaveCSS('font-size', '14px');
+  await expect(calendar.getByLabel('Start time', { exact: true })).toHaveCSS('font-size', '11px');
+  await expect(calendar.getByRole('button', { name: 'Confirm' })).toHaveCSS('font-size', '11px');
   await days.nth(3).click();
   await expect(page.getByLabel('Range changes')).toHaveText('0');
   await days.nth(6).click();
@@ -315,12 +381,16 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   await page.locator('.mar-ui-date-picker').first().getByRole('button', { name: 'Clear' }).click();
   await expect(page.getByLabel('Range value')).toBeEmpty();
   await expect(page.getByLabel('Range changes')).toHaveText('2');
-  await page.getByRole('textbox', { name: 'Time', exact: true }).click();
+  const timeInput = page.getByRole('textbox', { name: 'Time', exact: true });
+  await expect(timeInput).toHaveCSS('font-size', '11px');
+  await timeInput.click();
   const timePanel = page.getByRole('dialog', { name: 'Time' });
-  await timePanel
+  await expect(timePanel.getByRole('button', { name: 'Cancel' })).toHaveCSS('font-size', '11px');
+  const ten = timePanel
     .getByRole('group', { name: 'Hours' })
-    .getByRole('button', { name: '10', exact: true })
-    .click();
+    .getByRole('button', { name: '10', exact: true });
+  await expect(ten).toHaveCSS('font-size', '11px');
+  await ten.click();
   await timePanel
     .getByRole('group', { name: 'Minutes' })
     .getByRole('button', { name: '15', exact: true })
@@ -330,7 +400,6 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   await timePanel.getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByLabel('Time value')).toHaveText('10:15');
   await expect(page.getByLabel('Time changes')).toHaveText('1');
-  const timeInput = page.getByRole('textbox', { name: 'Time', exact: true });
   await timeInput.press('ArrowDown');
   const hours = timePanel.getByRole('group', { name: 'Hours' });
   await expect(hours.getByRole('button', { name: '10', exact: true })).toBeFocused();
@@ -347,7 +416,9 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   await expect(page.getByLabel('Time value')).toHaveText('13:20');
   await expect(page.getByLabel('Time changes')).toHaveText('2');
   await page.getByRole('combobox', { name: 'Minutes' }).click();
-  await page.getByRole('option', { name: '00:15' }).click();
+  const minute = page.getByRole('option', { name: '00:15' });
+  await expect(minute).toHaveCSS('font-size', '11px');
+  await minute.click();
   await expect(page.getByLabel('Minute value')).toHaveText('00:15');
   await page.locator('.mar-ui-time-select').getByRole('button', { name: 'Clear' }).click();
   await expect(page.getByLabel('Minute value')).toHaveText('undefined');
@@ -536,3 +607,57 @@ test('MAR number reports edits immediately but change only on commit', async ({ 
   await quantity.press('Enter');
   await expect(changes).toHaveText('2->3,3->null');
 });
+
+for (const [width, theme, font, control] of [
+  [1280, 'light', '12px', '26px'],
+  [390, 'dark', '11px', '24px']
+] as const) {
+  test(`Remote select uses a compact status row at ${width}px`, async ({ page }, testInfo) => {
+    const response = Promise.withResolvers<void>();
+    await page.setViewportSize({ width, height: 850 });
+    await page.route('**/fixture-remote-options', async (route) => {
+      await response.promise;
+      await route.fulfill({ json: [] });
+    });
+    try {
+      await page.goto(`${fixture.url}mar-controls.html?remote-select&theme=${theme}`);
+      const search = page.getByRole('combobox', { name: 'Remote options' });
+      await expect(search).toHaveCSS('font-size', font);
+      await search.click();
+      const list = page.getByRole('listbox');
+      const status = list.locator('.mar-ui-select__empty');
+      await expect(list).toHaveAttribute('aria-busy', 'true');
+      await expect(status).toHaveCSS('height', control);
+      await expect(status.locator('[data-mar-icon="loading-content"]')).toHaveCSS('height', font);
+      await expect(list.getByText('No data', { exact: true })).toHaveCount(0);
+      response.resolve();
+      await expect(list).not.toHaveAttribute('aria-busy');
+      const empty = list.getByText('No data', { exact: true });
+      await expect(empty).toHaveCSS('font-size', font);
+      await expect(empty).toHaveCSS('height', control);
+      await list.screenshot({ path: testInfo.outputPath('remote-select-empty.png') });
+    } finally {
+      response.resolve();
+    }
+  });
+
+  test(`Cascader uses a compact no-results row at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto(`${fixture.url}mar-controls.html?theme=${theme}`);
+    const owner = page.getByRole('combobox', { name: 'Owner' });
+    await expect(owner).toHaveCSS('font-size', font);
+    await owner.fill('Unmatched organization');
+    const popup = page.getByRole('dialog', { name: 'Select' });
+    const empty = popup.getByText('No data', { exact: true });
+    await expect(empty).toHaveCSS('font-size', font);
+    await expect(empty).toHaveCSS('height', control);
+    const emptyWidth = (await popup.boundingBox())!.width;
+    await popup.screenshot({ path: testInfo.outputPath('cascader-empty.png') });
+    await owner.fill('Release');
+    const result = popup.getByRole('button', { name: 'Platform / Release' });
+    await expect(result).toBeVisible();
+    await expect(result).toHaveCSS('font-size', font);
+    await expect(empty).toHaveCount(0);
+    expect((await popup.boundingBox())!.width).toBeCloseTo(emptyWidth, 1);
+  });
+}

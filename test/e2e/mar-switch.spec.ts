@@ -1,4 +1,4 @@
-import { devices, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 const entry = 'test/e2e/support/mar-switch.html';
@@ -13,10 +13,16 @@ test.afterAll(async () => {
 test('MAR switch uses native labels, keyboard and draft form values', async ({
   page
 }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${fixture.url}mar-switch.html`);
   const draft = page.getByRole('switch', { name: 'Draft setting' });
   const disabled = page.getByRole('switch', { name: 'Unavailable setting' });
   const changes = page.getByRole('status', { name: 'Draft changes' });
+  const track = page.locator('#draft + .mar-ui-switch__track');
+  await expect(track).toHaveCSS('width', '36px');
+  await expect(track).toHaveCSS('height', '18px');
+  await expect(track.locator('.mar-ui-switch__thumb')).toHaveCSS('height', '12px');
+  await expect(draft).toHaveCSS('height', '26px');
 
   await page.keyboard.press('Tab');
   await expect(draft).toBeFocused();
@@ -27,7 +33,7 @@ test('MAR switch uses native labels, keyboard and draft form values', async ({
   expect(
     await page.locator('form').evaluate((form: HTMLFormElement) => new FormData(form).get('draft'))
   ).toBe('on');
-  await expect(page.locator('#draft + .mar-ui-switch__track')).toHaveCSS('outline-style', 'solid');
+  await expect(track).toHaveCSS('outline-style', 'solid');
   await expect(disabled).toBeDisabled();
   await expect(disabled).toBeChecked();
   await page.locator('main').screenshot({ path: testInfo.outputPath('switch-dark-keyboard.png') });
@@ -48,7 +54,9 @@ test('MAR switch preserves confirmed state during controlled writes', async ({ p
   await expect(remote).toBeDisabled();
   await expect(remote).toHaveAttribute('aria-busy', 'true');
   await expect(remote).not.toBeChecked();
-  await expect(track.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+  const spinner = track.locator('[data-mar-icon="loading-action"]');
+  await expect(spinner).toBeVisible();
+  await expect(spinner).toHaveCSS('height', '12px');
   await page.getByRole('button', { name: 'Reject write' }).click();
   await expect(remote).toBeEnabled();
   await expect(remote).not.toBeChecked();
@@ -107,15 +115,7 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
 }
 
 test.describe('390px touch viewport', () => {
-  test.skip(
-    ({ browserName }) => browserName !== 'chromium',
-    'Playwright Firefox does not emulate mobile layout.'
-  );
-  const { userAgent, deviceScaleFactor } = devices['Pixel 7'];
   test.use({
-    userAgent,
-    deviceScaleFactor,
-    isMobile: true,
     hasTouch: true,
     viewport: { width: 390, height: 740 }
   });
@@ -129,11 +129,16 @@ test.describe('390px touch viewport', () => {
     await draft.tap();
     await expect(draft).toBeChecked();
     await expect(draft).toHaveCSS('height', '24px');
-    await expect(page.locator('#draft + .mar-ui-switch__track')).toHaveCSS('height', '24px');
+    const track = page.locator('#draft + .mar-ui-switch__track');
+    await expect(track).toHaveCSS('height', '24px');
+    await expect(track).toHaveCSS('width', '40px');
+    await expect(track.locator('.mar-ui-switch__thumb')).toHaveCSS('height', '16px');
     await page.getByRole('switch', { name: 'Controlled setting' }).tap();
-    await expect(
-      page.locator('#remote + .mar-ui-switch__track [data-mar-icon="loading-action"]')
-    ).toHaveCSS('animation-name', 'none');
+    const spinner = page.locator(
+      '#remote + .mar-ui-switch__track [data-mar-icon="loading-action"]'
+    );
+    await expect(spinner).toHaveCSS('height', '16px');
+    await expect(spinner).toHaveCSS('animation-name', 'none');
     await page
       .locator('main')
       .screenshot({ path: testInfo.outputPath('switch-light-mobile-loading.png') });

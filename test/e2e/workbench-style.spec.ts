@@ -56,6 +56,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await option.screenshot({ path: testInfo.outputPath('regex-unchecked.png') });
     await label.click();
     await expect(checkbox).toBeChecked();
+    await expect(checkbox).toHaveCSS(
+      'background-color',
+      theme === 'daylight' ? 'rgb(37, 99, 201)' : 'rgb(222, 222, 222)'
+    );
     await expect(option.locator('svg')).toBeVisible();
     await option.screenshot({ path: testInfo.outputPath('regex-checked.png') });
     await input.getByRole('textbox').press('Tab');
@@ -133,7 +137,7 @@ for (const { theme, width } of [
       'Normal'
     ]);
     const { primary, secondary, meta, fontSize } = await sessionListColors(list);
-    expect(meta).toBe(theme === 'daylight' ? 'rgb(90, 104, 122)' : 'rgb(160, 160, 160)');
+    expect(meta).toBe(theme === 'daylight' ? 'rgb(101, 101, 101)' : 'rgb(160, 160, 160)');
     expect(primary).not.toBe(secondary);
     expect(secondary).not.toBe(meta);
     const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
@@ -288,6 +292,14 @@ for (const [theme, width] of [
     await page.goto(
       `${fixture.url}hosted-entry.html?existing=1&workspace-page=1&history-open=1&theme=${theme}`
     );
+    const historyFilter = page.locator('.history-search-row .mar-ui-input');
+    await historyFilter.screenshot({ path: testInfo.outputPath('hosted-history-filter.png') });
+    const textbox = historyFilter.getByRole('textbox');
+    const font = width >= 768 ? '12px' : '11px';
+    await expect(textbox).toHaveCSS('font-size', font);
+    expect(await textbox.evaluate((el) => getComputedStyle(el, '::placeholder').fontSize)).toBe(
+      font
+    );
     const list = page.locator('.hosted-conversation-history .history-list');
     const selected = list.locator('button[aria-current="page"]');
     const idle = list.locator('.history-open:not([aria-current])');
@@ -347,9 +359,23 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           });
         else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
       });
-      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
       const inspector = page.getByRole('region', { name: 'Inspector fixture' });
       const files = inspector.locator('.file-display-filter');
+      if (theme === 'vscode-dark-2026' && width === 1280) {
+        await page.goto(
+          `${fixture.url}workbench-style.html?theme=${theme}&content-search=1&locale=zh-CN`
+        );
+        await files.screenshot({ path: testInfo.outputPath('files-filter.png') });
+        await page.locator('.workspace-tree-filter .mar-ui-input').screenshot({
+          path: testInfo.outputPath('resources-filter.png')
+        });
+        await page.locator('.session-search .mar-ui-input').screenshot({
+          path: testInfo.outputPath('sessions-filter.png')
+        });
+      }
+      await page.goto(
+        `${fixture.url}workbench-style.html?theme=${theme}&content-search=1&locale=en-US`
+      );
       await page.getByRole('button', { name: 'Open directory picker' }).click();
       const picker = page.getByRole('dialog', { name: 'Register Workspace' });
       const standard = picker.locator('.workspace-picker-filter');
@@ -365,11 +391,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             shadow: style.boxShadow,
             height: style.height,
             padding: getComputedStyle(wrapper.querySelector('.mar-ui-input__body')!).padding,
-            font: getComputedStyle(wrapper.querySelector('input')!).fontSize
+            font: getComputedStyle(wrapper.querySelector('input')!).fontSize,
+            placeholderFont: getComputedStyle(wrapper.querySelector('input')!, '::placeholder')
+              .fontSize
           };
         });
       await page.mouse.move(0, 0);
       const normal = await appearance(standard);
+      expect(normal.font).toBe(width >= 768 ? '12px' : '11px');
+      expect(normal.placeholderFont).toBe(normal.font);
       expect(normal.shadow).not.toBe('none');
       await standard.hover();
       const hover = await appearance(standard);
@@ -1136,10 +1166,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         width >= 768 ? '14px' : '13px'
       );
       for (const tag of await inspector.locator('.repository-tags-row .mar-ui-tag').all()) {
-        const height = await tag.evaluate((element) =>
-          Number.parseFloat(getComputedStyle(element).height)
-        );
-        expect(height).toBeCloseTo((width >= 768 ? 12 : 11) * 1.65, 1);
+        // MarTag's minimum block size takes precedence over the repository row's em height.
+        await expect(tag).toHaveCSS('height', '20px');
         await expect(tag).toHaveCSS('font-weight', '400');
         await expect(tag).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
       }
@@ -1152,8 +1180,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const kindBorder = getComputedStyle(probe).color;
         probe.style.color = 'var(--mar-text-secondary)';
         const secondary = getComputedStyle(probe).color;
+        probe.style.color = 'var(--mar-color-git-graph-main)';
+        const gitBlue = getComputedStyle(probe).color;
         probe.remove();
-        return { kindBorder, syncBorder, secondary };
+        return { kindBorder, syncBorder, secondary, gitBlue };
       }, theme);
       await expect(root.locator('.repository-current')).toHaveCSS('color', colors.secondary);
       for (const selector of ['.repository-kind', '.repository-current']) {
@@ -1163,8 +1193,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'border-color',
         colors.syncBorder
       );
-      await expect(root.locator('.repository-sync-tag')).toHaveText('↓ 0 ↑ 25');
       const syncTag = root.locator('.repository-sync-tag');
+      await expect(syncTag).toHaveText('↓ 0 ↑ 25');
+      await expect(syncTag).toHaveCSS('color', colors.gitBlue);
       await expect(syncTag).not.toHaveAttribute('title');
       const description = await syncTag.getAttribute('aria-label');
       expect(description).toContain('origin/develop');
@@ -1184,6 +1215,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await page.screenshot({ path: testInfo.outputPath('git-sync-tooltip.png') });
         await page.mouse.move(0, 0);
         await expect(hint).toHaveCount(0);
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty('--mar-control-primary-fg', '#c94b71');
+        });
+        await expect(syncTag).toHaveCSS('color', colors.gitBlue);
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty('--mar-color-git-graph-main', '#9454c0');
+        });
+        await expect(syncTag).toHaveCSS('color', 'rgb(148, 84, 192)');
+        await expect(root.locator('.repository-current')).toHaveCSS('color', colors.secondary);
+        await page.evaluate(() => {
+          document.documentElement.style.removeProperty('--mar-control-primary-fg');
+          document.documentElement.style.removeProperty('--mar-color-git-graph-main');
+        });
       }
       await expect(root.locator('.mar-ui-tag[data-type="warning"]')).toBeVisible();
       await expect(headings.nth(1).locator('.mar-ui-tag[data-type="success"]')).toBeVisible();
@@ -1192,14 +1236,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'font-size',
         width >= 768 ? '12px' : '11px'
       );
-      const pathToFileGap = await root.evaluate((heading) => {
+      // Keep the gap compact without assuming a specific font's inline box metrics.
+      await expect(root).toHaveCSS('padding-bottom', '0px');
+      const { rowGap, pathToFileGap } = await root.evaluate((heading) => {
         const path = heading.querySelector('.repository-physical-path')!.getBoundingClientRect();
-        const file = heading
-          .nextElementSibling!.querySelector('.change-file-name')!
-          .getBoundingClientRect();
-        return file.top - path.bottom;
+        const row = heading.nextElementSibling!;
+        const file = row.querySelector('.change-file-name')!.getBoundingClientRect();
+        return {
+          rowGap: row.getBoundingClientRect().top - path.bottom,
+          pathToFileGap: file.top - path.bottom
+        };
       });
-      expect(pathToFileGap).toBeGreaterThanOrEqual(4);
+      expect(rowGap).toBeCloseTo(0, 1);
+      expect(pathToFileGap).toBeGreaterThan(0);
       expect(pathToFileGap).toBeLessThanOrEqual(6);
       expect(
         await headings.nth(1).evaluate((heading) => parseFloat(getComputedStyle(heading).marginTop))
@@ -1691,7 +1740,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const button of await picker.locator('.workspace-picker-toolbar-actions button').all()) {
         const bounds = (await button.boundingBox())!;
         expect(bounds.width).toBeGreaterThanOrEqual(28);
-        expect(bounds.height).toBe(width < 768 ? 24 : 26);
+        expect(bounds.height).toBeCloseTo(width < 768 ? 24 : 26, 2);
         await expect(button.locator('svg')).toHaveCount(1);
       }
       const rowColors = await picker.evaluate((element) => {
@@ -2101,7 +2150,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const operation of ['refresh', 'branch'] as const) {
     test(`History ${operation} failure preserves pending commit files in ${theme}`, async ({
       page
-    }) => {
+    }, testInfo) => {
       let historyReads = 0;
       let filesStarted = false;
       let releaseHistory!: () => void;
@@ -2148,15 +2197,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         } else if (path.endsWith('/git/refs'))
           await route.fulfill({
             json: {
-              refs: [
-                {
-                  name: 'refs/heads/next',
-                  kind: 'LOCAL',
-                  displayName: 'next',
-                  hash: 'a'.repeat(40),
-                  current: false
-                }
-              ]
+              refs: ['develop', 'feature/compact-workbench-controls', 'next'].map((name) => ({
+                name: `refs/heads/${name}`,
+                kind: 'LOCAL',
+                displayName: name,
+                hash: 'a'.repeat(40),
+                current: false
+              }))
             }
           });
         else if (path.endsWith('/git/fetch')) await route.fulfill({ json: { fetchFailed: false } });
@@ -2175,8 +2222,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await refresh.click();
         await expect(refresh).toHaveAttribute('aria-busy', 'true');
       } else {
-        await inspector.getByRole('combobox', { name: 'Select Git branch' }).click();
-        await page.getByRole('option', { name: 'next', exact: true }).click();
+        const branch = inspector.getByRole('combobox', { name: 'Select Git branch' });
+        await branch.click();
+        const options = page.getByRole('listbox', { name: 'Select Git branch' });
+        const next = options.getByRole('option', { name: 'next', exact: true });
+        await options.screenshot({ path: testInfo.outputPath('git-branch-options.png') });
+        await expect(branch).toHaveCSS('font-size', '12px');
+        await expect(next).toHaveCSS('font-size', '12px');
+        await next.click();
         await expect(inspector.locator('.git-history > .mar-region-status')).toHaveText('Loading…');
         await expect(inspector.locator('.git-history > .mar-region-status')).not.toHaveClass(
           /mar-region-status--center/

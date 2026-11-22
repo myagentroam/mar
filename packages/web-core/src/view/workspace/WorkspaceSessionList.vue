@@ -406,6 +406,7 @@ function submitSessionSearch(): void {
     <div class="new-session-form">
       <MarButton
         class="new-session-button"
+        type="primary"
         icon="session-add"
         :disabled="!nodeReady"
         @click="emit('create')"
@@ -519,7 +520,7 @@ function submitSessionSearch(): void {
                   :data-runner="session.runner"
                   alt=""
                   aria-hidden="true"
-                  class="mar-runner-brand-icon session-title-runner-icon"
+                  class="mar-runner-brand-icon"
                 />
                 <MarIcon
                   v-if="session.schedule?.enabled === true"
@@ -832,7 +833,7 @@ function submitSessionSearch(): void {
   align-items: center;
   gap: 0.25rem;
   padding-inline: 0.28rem;
-  border: 1px solid light-dark(var(--mar-border-default), var(--mar-border-medium));
+  border: 1px solid var(--mar-workbench-control-border);
   border-radius: var(--mar-radius-marker);
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
@@ -899,10 +900,6 @@ function submitSessionSearch(): void {
 .new-session-form .workspace-more-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-:global(.workspace-tool-menu .mar-ui-dropdown-item) {
-  font-size: var(--mar-font-size-body);
 }
 
 .session-row {

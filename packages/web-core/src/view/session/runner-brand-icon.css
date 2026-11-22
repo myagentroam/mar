@@ -4,8 +4,3 @@
   flex: none;
   object-fit: contain;
 }
-
-html.console-ui[data-theme='vscode-dark-2026']
-  :is(.session-title-runner-icon, .conversation-title-runner-icon)[data-runner='mar-agent'] {
-  filter: grayscale(1) brightness(1.25);
-}

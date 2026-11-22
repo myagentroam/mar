@@ -1043,7 +1043,7 @@ onBeforeUnmount(() => {
 }
 
 .hosted-syncing :deep(.composer-shell.readonly) {
-  border-color: var(--mar-border-medium);
+  border-color: var(--composer-active-boundary, var(--mar-border-medium));
   background: var(--composer-surface);
 }
 

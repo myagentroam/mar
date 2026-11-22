@@ -20,12 +20,17 @@ const emit = defineEmits<{ change: [checked: boolean]; 'update:checked': [checke
 
 <style scoped>
 .mar-ui-check-tag {
-  padding: 0.375rem 0.625rem;
-  border: none;
+  box-sizing: border-box;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  padding: 0 0.625rem;
+  border: 1px solid var(--mar-ui-border-default);
   border-radius: var(--mar-ui-radius-control);
   color: var(--mar-ui-text-secondary);
-  background: var(--mar-ui-bg-subtle);
+  background: var(--mar-ui-bg-panel);
   font: inherit;
+  font-size: var(--mar-ui-font-size-meta);
+  line-height: 1.35;
+  white-space: nowrap;
   cursor: pointer;
 }
 .mar-ui-check-tag:hover {
@@ -33,11 +38,22 @@ const emit = defineEmits<{ change: [checked: boolean]; 'update:checked': [checke
   background: var(--mar-ui-fill-row-hover);
 }
 .mar-ui-check-tag[data-checked='true'] {
+  border-color: var(--mar-ui-border-medium);
   color: var(--mar-ui-text-primary);
   background: var(--mar-ui-fill-selection);
 }
 .mar-ui-check-tag:focus-visible {
   outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
+}
+@media (forced-colors: active) {
+  .mar-ui-check-tag[aria-pressed='true'] {
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+  .mar-ui-check-tag[aria-pressed='true']:focus-visible {
+    outline-color: HighlightText;
+  }
 }
 </style>

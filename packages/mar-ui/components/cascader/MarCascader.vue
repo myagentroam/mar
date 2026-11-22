@@ -324,7 +324,7 @@ input {
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-input);
+  font-size: var(--mar-ui-font-size-meta);
   text-overflow: ellipsis;
 }
 input::placeholder {
@@ -353,12 +353,16 @@ input:disabled {
   display: flex;
   overflow: auto;
 }
+.mar-ui-cascader__column,
+.mar-ui-cascader__empty {
+  min-inline-size: min(10rem, 35vw);
+}
 .mar-ui-cascader__column {
   display: grid;
   align-content: start;
-  min-inline-size: min(10rem, 35vw);
   max-block-size: 14rem;
   overflow: auto;
+  font-size: var(--mar-ui-font-size-meta);
 }
 .mar-ui-cascader__column + .mar-ui-cascader__column {
   border-inline-start: 1px solid var(--mar-ui-border-subtle);
@@ -384,7 +388,7 @@ input:disabled {
 }
 .mar-ui-cascader__column > .mar-ui-cascader__option:enabled:hover,
 .mar-ui-cascader__row:has(.mar-ui-cascader__option:enabled):hover {
-  background: var(--mar-ui-fill-row-hover);
+  background: var(--mar-ui-overlay-row-hover, var(--mar-ui-fill-row-hover));
 }
 .mar-ui-cascader__column > .mar-ui-cascader__option[aria-pressed='true'],
 .mar-ui-cascader__row:is([data-current='true'], :has(> [aria-pressed='true'])) {
@@ -416,8 +420,15 @@ input:disabled {
   box-shadow: inset 0 0 0 3px var(--mar-ui-overlay-surface);
 }
 .mar-ui-cascader__empty {
-  padding: 0.625rem 1rem;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  padding: 4px var(--mar-ui-compact-option-padding-inline);
   margin: 0;
   color: var(--mar-ui-text-secondary);
+  font-size: var(--mar-ui-font-size-meta);
+  line-height: 1.45;
+  text-align: center;
 }
 </style>

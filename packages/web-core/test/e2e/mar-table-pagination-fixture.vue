@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarPagination } from '@myagentroam/mar-ui/pagination';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 
@@ -23,6 +24,8 @@ const organizationTree = [
   }
 ];
 const trees = ref(organizationTree);
+const emptyRows: { name: string }[] = [];
+const tableStatus = ref<'default' | 'loading' | 'custom'>('default');
 const treeProps = { children: 'children' };
 const expanded = ref<string[]>([]);
 const extra = ref(false);
@@ -80,9 +83,7 @@ function filterOrganizations(): void {
       </MarTableColumn>
       <MarTableColumn label="Action" width="100">
         <template #default="{ row, $index }">
-          <button type="button" @click.stop="clicks = `action:${row.name}`">
-            Act {{ $index }}
-          </button>
+          <MarButton @click.stop="clicks = `action:${row.name}`"> Act {{ $index }} </MarButton>
         </template>
       </MarTableColumn>
     </MarTable>
@@ -100,8 +101,22 @@ function filterOrganizations(): void {
     >
       <MarTableColumn label="Organization" prop="name" />
     </MarTable>
-    <MarTable aria-label="Empty table" :data="[]" empty-text="Nothing here">
+    <button type="button" @click="tableStatus = 'loading'">Show table loading</button>
+    <button type="button" @click="tableStatus = 'custom'">Show custom empty state</button>
+    <button type="button" @click="tableStatus = 'default'">Show default empty state</button>
+    <MarTable aria-label="Empty table" :data="emptyRows" empty-text="Nothing here">
+      <template v-if="tableStatus === 'loading'" #loading>
+        <span role="progressbar" aria-label="Loading records">Loading…</span>
+      </template>
+      <template v-if="tableStatus === 'custom'" #empty>
+        <button type="button">Retry loading records</button>
+      </template>
       <MarTableColumn label="Name" prop="name" />
+    </MarTable>
+    <MarTable aria-label="Narrow columns" class="narrow-columns" :data="rows">
+      <MarTableColumn label="Configuration" prop="name" width="76" sortable />
+      <MarTableColumn label="Synchronization" prop="note" width="86" />
+      <MarTableColumn label="Action" width="100" />
     </MarTable>
 
     <MarPagination
@@ -126,5 +141,8 @@ function filterOrganizations(): void {
 main {
   max-inline-size: 620px;
   padding: 12px;
+}
+.narrow-columns {
+  max-inline-size: 262px;
 }
 </style>

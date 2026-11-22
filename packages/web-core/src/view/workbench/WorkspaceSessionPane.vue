@@ -475,6 +475,10 @@ onBeforeUnmount(() => {
 }
 
 .draft-agent-trigger.mar-icon-action {
+  /* Center the row within the touch target while keeping the label's inline baseline. */
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-content: center;
   align-items: baseline;
   padding-inline: 0.35rem;
   color: var(--mar-text-primary);

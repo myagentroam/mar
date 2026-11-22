@@ -15,7 +15,7 @@ export interface WebPerformanceSnapshot {
   readonly health: WebPerformanceHealth;
   readonly messagesPerSecond: number;
   readonly peakMessagesPerSecond: number;
-  readonly payloadUtf16CodeUnitsPerSecond: number;
+  readonly payloadBytesPerSecond: number;
   readonly categories: Readonly<Record<string, number>>;
   readonly activeRunSessions: number;
   readonly processing: {
@@ -37,8 +37,8 @@ export interface WebPerformanceSnapshot {
 }
 
 export interface WebPerformanceFrameSample {
-  /** Length of the decoded string, not a wire-byte count. */
-  readonly payloadUtf16CodeUnits: number;
+  /** UTF-8 byte length of the received JSON text. */
+  readonly payloadBytes: number;
   readonly durationMs: number;
   readonly message: unknown;
 }
@@ -80,7 +80,7 @@ export interface WebPerformanceLongTaskAttribution {
 
 export interface WebPerformanceFrameDetail {
   readonly observedAtMs: number;
-  readonly payloadUtf16CodeUnits: number;
+  readonly payloadBytes: number;
   readonly durationMs: number;
   readonly category: string;
   readonly context: WebPerformanceContext;
@@ -114,7 +114,8 @@ export interface WebPerformanceLongTaskDetail {
   readonly relatedFrames: readonly WebPerformanceFrameDetail[];
 }
 
-type StoredFrameDetail = Omit<WebPerformanceFrameDetail, 'payloadUtf16CodeUnits'> & {
+type StoredFrameDetail = Omit<WebPerformanceFrameDetail, 'payloadBytes'> & {
+  readonly payloadBytes?: number;
   readonly payloadUtf16CodeUnits?: number;
   readonly bytes?: number;
 };
@@ -140,7 +141,7 @@ export interface WebPerformanceLongAnimationFrameDetail {
 }
 
 export interface WebPerformanceDiagnosticDetail {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly generatedAt: string;
   readonly windowMs: number;
   readonly context: WebPerformanceContext;
@@ -186,7 +187,7 @@ const emptySnapshot = (): WebPerformanceSnapshot => ({
   health: 'idle',
   messagesPerSecond: 0,
   peakMessagesPerSecond: 0,
-  payloadUtf16CodeUnitsPerSecond: 0,
+  payloadBytesPerSecond: 0,
   categories: {},
   activeRunSessions: 0,
   processing: { averageMs: 0, p95Ms: 0, maxMs: 0 },
@@ -273,11 +274,10 @@ export function createWebPerformanceDiagnostics(
             : [];
           const relatedFrames = storedFrames.flatMap((frame) => {
             if (frame === null || typeof frame !== 'object') return [];
-            const { observedAtMs, durationMs, category, context, bytes } = frame;
-            // Older retained samples stored String.length under the name `bytes`.
-            const payloadUtf16CodeUnits = frame.payloadUtf16CodeUnits ?? bytes;
-            return typeof payloadUtf16CodeUnits === 'number'
-              ? [{ observedAtMs, durationMs, category, context, payloadUtf16CodeUnits }]
+            const { observedAtMs, durationMs, category, context, payloadBytes } = frame;
+            // Legacy string lengths cannot be converted to UTF-8 bytes without the original text.
+            return typeof payloadBytes === 'number'
+              ? [{ observedAtMs, durationMs, category, context, payloadBytes }]
               : [];
           });
           return { capturedAt, value: { ...value, relatedFrames } };
@@ -373,8 +373,8 @@ export function createWebPerformanceDiagnostics(
       health: health(p95Ms, at),
       messagesPerSecond: recent.length,
       peakMessagesPerSecond: Math.max(0, ...buckets.values()),
-      payloadUtf16CodeUnitsPerSecond: recent.reduce(
-        (total, frame) => total + Math.max(0, frame.payloadUtf16CodeUnits),
+      payloadBytesPerSecond: recent.reduce(
+        (total, frame) => total + Math.max(0, frame.payloadBytes),
         0
       ),
       categories,
@@ -431,7 +431,7 @@ export function createWebPerformanceDiagnostics(
     if (!enabled()) return;
     frames.push({
       observedAtMs: now(),
-      payloadUtf16CodeUnits: sample.payloadUtf16CodeUnits,
+      payloadBytes: sample.payloadBytes,
       durationMs: sample.durationMs,
       category: frameCategory(sample.message),
       context: context()
@@ -628,7 +628,7 @@ export function createWebPerformanceDiagnostics(
     }));
     const longTasks = longTaskSamples.map(longTaskDetail);
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       windowMs: FRAME_WINDOW_MS,
       context: context(),

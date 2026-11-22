@@ -2,6 +2,7 @@
 import '@myagentroam/mar-ui/disclosure.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarInput } from '@myagentroam/mar-ui/input';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -44,7 +45,7 @@ const emit = defineEmits<{
   openFile: [path: string, line: number | undefined, column: number | undefined, external: boolean];
 }>();
 const dialog = ref<InstanceType<typeof MarDialog>>();
-const input = ref<HTMLInputElement>();
+const input = ref<InstanceType<typeof MarInput>>();
 const results = ref<HTMLUListElement>();
 const tab = ref<QuickOpenTab>('ALL');
 const query = ref('');
@@ -216,13 +217,13 @@ function onVisibilityChange(): void {
 }
 let unregisterShortcuts: (() => void)[] = [];
 onMounted(() => {
-  const owner = () => input.value?.closest('[role="dialog"]') ?? undefined;
+  const owner = () => input.value?.input?.closest('[role="dialog"]') ?? undefined;
   unregisterShortcuts = [
     consoleKeyboardShortcutService.register({
       command: 'quickOpen.choose',
       scope: 'overlay',
       priority: 130,
-      owner: () => input.value,
+      owner: () => input.value?.input ?? undefined,
       keys: fileKeys.choose,
       when: () =>
         props.open &&
@@ -373,7 +374,7 @@ function onKeydown(event: KeyboardEvent): void {
         }}
       </button>
     </div>
-    <input
+    <MarInput
       ref="input"
       v-model="query"
       class="quick-open-input"
@@ -565,27 +566,6 @@ function onKeydown(event: KeyboardEvent): void {
 .quick-open-tabs button:focus-visible {
   outline: 2px solid var(--mar-control-focus);
   outline-offset: -1px;
-}
-.quick-open-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 42px;
-  border: 1px solid var(--mar-border-strong);
-  border-radius: 8px;
-  padding: 0.65rem 0.8rem;
-  background: var(--mar-bg-subtle);
-  color: var(--mar-text-primary);
-  font: inherit;
-}
-.quick-open-input::placeholder {
-  color: var(--mar-text-secondary);
-  opacity: 1;
-}
-.quick-open-input:focus {
-  border-color: var(--mar-control-focus);
-  outline: 0;
-  background: var(--mar-bg-panel);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-control-focus) 12%, transparent);
 }
 .quick-open-results {
   display: grid;

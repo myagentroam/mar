@@ -185,6 +185,7 @@ createTooltipApp(
                 title: translate('sessionGroups.tree'),
                 tree: tree.value,
                 status: status.value,
+                canRetry: status.value === 'failed',
                 mainSessionId: 'grandchild',
                 asideSessionIds: [],
                 onAfterLeave: () => {

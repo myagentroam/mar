@@ -43,6 +43,8 @@ export async function verifyConversationThemes(
     }, dark);
     const disclosureRows = page.locator('.process-heading, .conversation-item summary:visible');
     for (const row of await disclosureRows.all()) {
+      const isProcessButton = await row.evaluate((element) => element.matches('.process-heading'));
+      const hoverSurface = isProcessButton ? row.locator('..') : row;
       await page.mouse.move(0, 0);
       const before = await row.boundingBox();
       const color = await row.evaluate((element) => getComputedStyle(element).color);
@@ -51,9 +53,12 @@ export async function verifyConversationThemes(
         () => matchMedia('(hover: hover) and (pointer: fine)').matches
       );
       const hoverColor = await themeColor(page, '--mar-fill-row-hover');
-      await expect(row).toHaveCSS('background-color', canHover ? hoverColor : 'rgba(0, 0, 0, 0)');
+      await expect(hoverSurface).toHaveCSS(
+        'background-color',
+        canHover ? hoverColor : 'rgba(0, 0, 0, 0)'
+      );
       await page.mouse.down();
-      await expect(row).toHaveCSS('background-color', hoverColor);
+      await expect(hoverSurface).toHaveCSS('background-color', hoverColor);
       await page.mouse.move(0, 0);
       await page.mouse.up();
       await expect(row).toHaveCSS('color', color);
@@ -61,7 +66,7 @@ export async function verifyConversationThemes(
       expect(after!.width).toBeCloseTo(before!.width, 1);
       expect(after!.height).toBeCloseTo(before!.height, 1);
       await page.mouse.move(0, 0);
-      await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(hoverSurface).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await row.focus();
       await page.keyboard.press('Tab');
       await page.keyboard.press('Shift+Tab');
@@ -88,7 +93,8 @@ export async function verifyConversationThemes(
       await expect(process.locator(':scope > details')).not.toHaveAttribute('open', '');
       const bodyBox = await assistant.boundingBox();
       const processBox = await process.boundingBox();
-      const groupBox = await processHeading.boundingBox();
+      // The disclosure button is content-sized; its enclosing row aligns with the message body.
+      const groupBox = await processHeading.locator('..').boundingBox();
       expect(Math.abs(bodyBox!.width - groupBox!.width)).toBeLessThan(1);
       expect(Math.abs(bodyBox!.x - groupBox!.x)).toBeLessThan(1);
       const naturalHeight = await summary.evaluate((element) => {
@@ -212,10 +218,9 @@ export async function verifyConversationThemes(
     await expect(codeCopy).toHaveCSS('outline-style', 'solid');
     await expect(codeCopy).toHaveCSS('opacity', '1');
     if (page.viewportSize()!.width < 768) {
-      for (const button of [action, codeCopy]) {
-        const box = await button.boundingBox();
-        expect(box!.width).toBeGreaterThanOrEqual(36);
-        expect(box!.height).toBeGreaterThanOrEqual(36);
+      for (const dimension of ['width', 'height'] as const) {
+        await expect(action).toHaveCSS(dimension, '36px');
+        await expect(codeCopy).toHaveCSS(dimension, '28px');
       }
     }
     expect(
@@ -228,27 +233,45 @@ export async function verifyConversationThemes(
     if (await files.count()) {
       const details = files.locator(':scope > details');
       await details.locator(':scope > summary').click();
-      const list = details.locator('.conversation-file-change-list');
+      const body = details.locator(':scope > .mar-conversation-detail-body');
+      const list = body.locator('.conversation-file-change-list');
       await expect(list).toBeVisible();
       const bounds = await details.boundingBox();
+      const bodyBounds = await body.boundingBox();
       const listBounds = await list.boundingBox();
       const inset = page.viewportSize()!.width < 768 ? 8 : 12;
-      expect(listBounds!.x - bounds!.x).toBeCloseTo(inset, 1);
-      expect(bounds!.x + bounds!.width - listBounds!.x - listBounds!.width).toBeCloseTo(inset, 1);
+      expect(bounds!.x + bounds!.width - bodyBounds!.x - bodyBounds!.width).toBeCloseTo(inset, 1);
+      const typeIcon = await details
+        .locator(':scope > summary > .conversation-record-icon')
+        .boundingBox();
+      // The shared detail surface indents the list to the level after the disclosure chevron.
+      expect(Math.abs(listBounds!.x - typeIcon!.x)).toBeLessThan(1);
+      const rootFontSize = await page
+        .locator('html')
+        .evaluate((root) => Number.parseFloat(getComputedStyle(root).fontSize));
+      const listInset = 0.75 * rootFontSize;
+      expect(listBounds!.x - bodyBounds!.x).toBeCloseTo(listInset, 1);
+      expect(bodyBounds!.x + bodyBounds!.width - listBounds!.x - listBounds!.width).toBeCloseTo(
+        listInset,
+        1
+      );
       await expect
         .poll(async () => {
           const outer = await details.boundingBox();
-          const inner = await list.boundingBox();
+          const inner = await body.boundingBox();
           return outer!.y + outer!.height - inner!.y - inner!.height;
         })
-        .toBeCloseTo(8, 1);
+        .toBeCloseTo(0.5 * rootFontSize, 1);
       const row = list.locator('li').first();
-      await expect(row.locator('.conversation-file-change-stats')).toContainText('+6');
-      await expect(row.locator('.conversation-file-change-stats')).toContainText('-1');
+      const stats = row.locator('.conversation-file-change-stats');
+      await expect(stats).toContainText('+6');
+      await expect(stats).toContainText('-1');
       if (page.viewportSize()!.width < 768) {
         const rowBounds = await row.boundingBox();
         const pathBounds = await row.locator('button').boundingBox();
-        expect(pathBounds!.width).toBeGreaterThanOrEqual(rowBounds!.width - 1);
+        const statusBounds = await row.locator('.conversation-file-change-status').boundingBox();
+        expect(pathBounds!.x).toBeCloseTo(rowBounds!.x, 1);
+        expect(pathBounds!.x + pathBounds!.width).toBeLessThanOrEqual(statusBounds!.x);
         expect(pathBounds!.height).toBeLessThan(90);
       }
       await files.screenshot({

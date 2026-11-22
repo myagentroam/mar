@@ -3,6 +3,7 @@ import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palet
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/view/workspace/WorkspaceSessionTreePopover.vue
+// @test-covers packages/web-core/src/view/workspace/WorkspaceSessionTree.vue
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 
@@ -53,7 +54,7 @@ async function expectUnmaskedLoading(
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS(
     'border-top-color',
-    theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(203, 214, 228)'
+    theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(201, 201, 201)'
   );
   await expect(popover).toHaveCSS('box-shadow', /0px 10px 24px/u);
   const loadingSurface = await popover.evaluate((element) => {
@@ -100,11 +101,14 @@ test('keeps the loading ring local on a daylight mobile popover', async ({ page 
   );
 });
 
-test('the teleported tree follows a custom floating surface and outline', async ({ page }) => {
+test('the teleported tree follows a custom floating surface, row hover and outline', async ({
+  page
+}, testInfo) => {
   const { tree } = await openTree(page, 'dark', 1280);
   await page.locator('html').evaluate((element: HTMLElement) => {
     element.style.setProperty('--mar-control-bg-color-overlay', '#25364940');
     element.style.setProperty('--mar-overlay-border', '#6b8199');
+    element.style.setProperty('--mar-fill-row-hover', '#486078');
   });
   const popover = page.locator('.session-tree-popover');
   const background = (selector: typeof popover) =>
@@ -113,10 +117,17 @@ test('the teleported tree follows a custom floating surface and outline', async 
   await expect(popover).toHaveCSS('border-top-color', 'rgb(107, 129, 153)');
   await setFixtureState(page, 'ready');
   const row = tree.locator('.session-tree-row').filter({ hasText: 'Sleeping newer' });
+  const item = row.locator('.session-tree-item');
+  await page.mouse.move(0, 0);
+  await expect(item).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await row.hover();
+  expect(resolvedColorToHex(await background(item))).toBe('#48607880');
+  await popover.screenshot({ path: testInfo.outputPath('session-tree-custom-hover.png') });
   await row.locator('.session-tree-actions').click();
   const menu = page.getByRole('menu').and(page.locator('.session-tree-menu'));
   await expect(menu).toBeVisible();
+  await page.mouse.move(0, 0);
+  expect(resolvedColorToHex(await background(item))).toBe('#48607880');
   expect(resolvedColorToHex(await background(menu))).toBe('#253649');
   await expect(menu).toHaveCSS('border-top-color', 'rgb(107, 129, 153)');
   await expect(menu).toHaveCSS('box-shadow', /0px 4px 12px/u);
@@ -296,12 +307,23 @@ test('reveals row actions on hover, focus, and while its menu is open', async ({
 });
 
 test('includes the action button in the selected row surface', async ({ page }, testInfo) => {
-  const { tree } = await openTree(page, 'dark', 1280);
+  const { dialog, tree } = await openTree(page, 'dark', 1280);
   await setFixtureState(page, 'ready');
   const row = tree
     .locator('.session-tree-row')
     .filter({ has: page.locator('[aria-current="true"]') });
+  const current = row.locator('.session-tree-item');
+  const sibling = tree.locator('.session-tree-row').filter({ hasText: 'Sleeping newer' });
+  await sibling.hover();
+  const background = (locator: typeof row) =>
+    locator
+      .evaluate((element) => getComputedStyle(element).backgroundColor)
+      .then(resolvedColorToHex);
+  await expect.poll(() => background(sibling.locator('.session-tree-item'))).toBe('#2e2e2e80');
+  expect(await background(current)).toBe('#373737');
+  await dialog.screenshot({ path: testInfo.outputPath('session-tree-dark-hover.png') });
   await row.hover();
+  expect(await background(current)).toBe('#373737');
   const action = row.locator('.session-tree-actions');
   const surfaceContainsAction = await action.evaluate((element) => {
     const action = element.getBoundingClientRect();
@@ -323,11 +345,14 @@ test('includes the action button in the selected row surface', async ({ page }, 
     return false;
   });
   expect(surfaceContainsAction).toBe(true);
-  await row.hover();
   await page.screenshot({
     path: testInfo.outputPath('selected-tree-actions.png'),
     animations: 'disabled'
   });
+  await action.click();
+  await expect(page.getByRole('menu').and(page.locator('.session-tree-menu'))).toBeVisible();
+  await page.mouse.move(0, 0);
+  expect(await background(current)).toBe('#373737');
 });
 
 test('keeps parent context actions reachable with the keyboard', async ({ page }) => {

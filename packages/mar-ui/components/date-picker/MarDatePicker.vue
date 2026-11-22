@@ -424,7 +424,7 @@ function onFocusOut(event: FocusEvent) {
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-input);
+  font-size: var(--mar-ui-font-size-meta);
 }
 [data-range='true'] .mar-ui-date-picker__input {
   text-align: center;
@@ -491,6 +491,7 @@ function onFocusOut(event: FocusEvent) {
   padding-block-start: 0.625rem;
   margin-block-start: 0.5rem;
   border-block-start: 1px solid var(--mar-ui-border-subtle);
+  font-size: var(--mar-ui-font-size-meta);
 }
 .mar-ui-date-picker__footer > * {
   min-inline-size: 0;

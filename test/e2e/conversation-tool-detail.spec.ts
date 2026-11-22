@@ -422,14 +422,13 @@ for (const [width, theme] of [
     await expect(name).toHaveCSS('font-weight', '400');
     const colors = await files.evaluate((element) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--mar-text-secondary)';
       element.append(probe);
+      probe.style.color = 'var(--mar-text-secondary)';
+      const name = getComputedStyle(probe).color;
+      probe.style.color = 'var(--mar-text-muted)';
       const path = getComputedStyle(probe).color;
       probe.remove();
-      return {
-        name: getComputedStyle(element.querySelector('.mar-conversation-detail-body')!).color,
-        path
-      };
+      return { name, path };
     });
     await expect(name).toHaveCSS('color', colors.name);
     await expect(path).toHaveCSS('color', colors.path);

@@ -1677,14 +1677,22 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.locator('.mar-ui-table').getByText('成员', { exact: true })).toBeVisible();
   await expect(page.locator('.mar-management-page .mar-ui-table')).toHaveCSS('font-size', '14px');
   await expect(page.locator('.mar-row-actions').first()).toHaveCSS('white-space', 'nowrap');
-  await expect(page.getByRole('button', { name: '重置密码' })).toHaveCSS('font-size', '14px');
-  await expect(page.getByRole('combobox')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: '重置密码' })).toHaveCSS('font-size', '12px');
+  const filters = page.locator('.mar-management-page .mar-filter-row');
+  await expect(filters.getByRole('combobox')).toHaveCount(3);
   await expect(
     page
       .locator('.mar-ui-input')
       .filter({ has: page.getByPlaceholder('请输入用户、邮箱或显示名称') })
   ).toHaveCSS('min-height', '26px');
-  await expect(page.getByPlaceholder('请选择组织')).toBeVisible();
+  const organizationFilter = filters.getByPlaceholder('请选择组织');
+  await expect(organizationFilter).toBeVisible();
+  await expect(organizationFilter).toHaveCSS('font-size', '12px');
+  expect(
+    await organizationFilter.evaluate(
+      (element) => getComputedStyle(element, '::placeholder').fontSize
+    )
+  ).toBe('12px');
   await expect(page.getByRole('button', { name: '重置密码' })).toBeDisabled();
   await expect(page.getByRole('button', { name: '删除', exact: true })).toBeDisabled();
 
@@ -1692,7 +1700,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.getByPlaceholder('请输入名称或 ID')).toBeVisible();
   await expect(page.locator('.mar-resource-filters').getByRole('combobox')).toHaveCount(2);
   await expect(page.getByRole('combobox', { name: /状态/ })).toBeVisible();
-  await expect(page.getByText('暂无数据', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '无数据', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '操作审计' }).click();
   await expect(page.getByText('组织: 删除', { exact: true })).toBeVisible();
@@ -1785,7 +1793,7 @@ test('Enterprise management exposes role-based sections and disables writes when
     '邮件SMTP配置',
     'Web Push 离线推送',
     'HTML 预览域名',
-    '关闭 Skill 回源 TLS 证书校验'
+    '关闭 skills.sh 发现接口 TLS 证书校验'
   ];
   await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(frozenSettingNames.length);
   for (const name of frozenSettingNames) {

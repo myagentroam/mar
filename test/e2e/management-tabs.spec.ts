@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/tabs/MarTabs.vue
+// @test-covers packages/mar-ui/components/tabs/MarTabsHeader.vue
 // @test-covers packages/web-core/src/view/settings/MarAgentModelManagementPage.vue
 // @test-covers packages/web-core/src/view/skill/SkillCenterPage.vue
 // @test-covers packages/web-core/src/view/skill/McpCenterPanel.vue
@@ -27,6 +28,8 @@ test('Tapping a partially visible management tab reveals its full label', async 
     const list = page.getByRole('tablist');
     const tab = list.getByRole('tab', { name: 'Catalog MCP Servers' });
     await expect(tab).toBeVisible();
+    // Reserve space for adjacent toolbar content so the last tab is partially clipped.
+    await list.evaluate((element) => (element.style.maxInlineSize = '240px'));
     const clip = (await list.boundingBox())!;
     const target = (await tab.boundingBox())!;
     const right = clip.x + clip.width;
@@ -36,7 +39,13 @@ test('Tapping a partially visible management tab reveals its full label', async 
     // Locator.tap() would scroll the tab into view before dispatching the tap.
     await page.touchscreen.tap((target.x + right) / 2, target.y + target.height / 2);
     await expect(tab).toHaveAttribute('aria-selected', 'true');
-    await expect(tab).toBeInViewport({ ratio: 0.95 });
+    await expect
+      .poll(async () => {
+        const clip = (await list.boundingBox())!;
+        const target = (await tab.boundingBox())!;
+        return Math.max(clip.x - target.x, target.x + target.width - clip.x - clip.width);
+      })
+      .toBeLessThanOrEqual(1);
     await list.screenshot({ path: testInfo.outputPath('catalog-tab-revealed.png') });
   } finally {
     await page.close();
@@ -59,6 +68,8 @@ for (const [width, theme] of [
       const first = tabs.first();
       const last = tabs.last();
       await expect(first).toHaveAttribute('aria-selected', 'true');
+      const expectedHeight = width >= 768 ? 26 : 24;
+      const expectedFontSize = width >= 768 ? '12px' : '11px';
       const { selected, inactive } = await list.evaluate((list) => {
         const probe = document.createElement('span');
         list.append(probe);
@@ -76,18 +87,25 @@ for (const [width, theme] of [
             return { left, right, bottom, height };
           })
         );
-        for (const tab of bounds) expect(tab.height).toBeCloseTo(28, 0);
+        for (const tab of bounds) expect(tab.height).toBeCloseTo(expectedHeight, 0);
         for (let index = 1; index < bounds.length; index += 1) {
           expect(bounds[index]!.left - bounds[index - 1]!.right).toBeCloseTo(-1, 0);
           expect(bounds[index]!.bottom).toBeCloseTo(bounds[0]!.bottom, 0);
         }
         for (const tab of await list.getByRole('tab').all()) {
+          await expect(tab).toHaveCSS('font-size', expectedFontSize);
           await expect(tab).toHaveCSS('border-top-style', 'solid');
           await expect(tab).toHaveCSS('border-top-left-radius', '6px');
           await expect(tab).toHaveCSS('border-bottom-left-radius', '0px');
         }
       };
       await expectTabStrip();
+      if (view === 'skills') {
+        for (const tab of await page.locator('.skill-content').getByRole('tab').all()) {
+          expect((await tab.boundingBox())!.height).toBeCloseTo(expectedHeight, 0);
+          await expect(tab).toHaveCSS('font-size', expectedFontSize);
+        }
+      }
       await expect(first).toHaveCSS('background-color', selected);
       await expect(last).toHaveCSS('background-color', inactive);
       await list.screenshot({ path: testInfo.outputPath(`${view}-tablist.png`) });
@@ -108,7 +126,8 @@ for (const [width, theme] of [
         await mcpTabs.last().click();
         await expect(mcpTabs.last()).toHaveAttribute('aria-selected', 'true');
         await expect(mcpTabs.last()).toHaveCSS('border-top-style', 'solid');
-        expect((await mcpTabs.last().boundingBox())!.height).toBeCloseTo(28, 0);
+        expect((await mcpTabs.last().boundingBox())!.height).toBeCloseTo(expectedHeight, 0);
+        await expect(mcpTabs.last()).toHaveCSS('font-size', expectedFontSize);
         await expect(mcp.getByPlaceholder('Search MCP servers')).toBeVisible();
       } else {
         await expect(panel).toBeVisible();

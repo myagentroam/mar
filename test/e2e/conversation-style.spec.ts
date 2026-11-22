@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -1751,6 +1752,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       root.style.setProperty('--mar-control-focus', '#888888');
     });
     const status = page.locator('.composer-working');
+    const shell = page.locator('.composer-shell');
+    const input = page.locator('.composer-input');
     await expect(status.getByRole('status')).toHaveText('Reconnecting');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
     await expect(status.locator('.composer-busy-indicator')).toHaveCSS('color', 'rgb(255, 0, 255)');
@@ -1758,9 +1761,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       'color',
       'rgb(255, 0, 255)'
     );
-    await page.locator('.composer-input').focus();
-    await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    const idleBorder = await shell.evaluate((element) => getComputedStyle(element).borderTopColor);
+    await input.focus();
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+    await expect(shell).toHaveCSS('box-shadow', 'color(srgb 1 0 1 / 0.14) 0px 0px 0px 2px');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
+    await input.blur();
+    await expect(shell).toHaveCSS('border-top-color', idleBorder);
+    await expect(shell).toHaveCSS('box-shadow', 'none');
+    await expect(status).toHaveCSS('border-top-color', idleBorder);
   });
 
   test(`A stopping process keeps the conversation activity color in ${theme}`, async ({ page }) => {
@@ -1774,6 +1784,161 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       'color',
       'rgb(255, 0, 255)'
     );
+  });
+
+  test(`Composer focus keeps toolbar and drop feedback neutral in ${theme}`, async ({ page }) => {
+    await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-focus`);
+    await page.locator('html').evaluate((root) => {
+      root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
+      root.style.setProperty('--mar-control-focus', '#888888');
+      root.style.setProperty('--mar-border-medium', '#444444');
+    });
+    const shell = page.locator('.composer-shell');
+    const status = page.locator('.composer-working');
+    const input = page.locator('.composer-input');
+    const toolbar = page.getByRole('button', { name: 'Composer toolbar action' });
+
+    await input.focus();
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+    await toolbar.focus();
+    await expect(toolbar).toBeFocused();
+    await expect(toolbar).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(68, 68, 68)');
+    await expect(shell).toHaveCSS('box-shadow', 'none');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(68, 68, 68)');
+
+    await input.focus();
+    await shell.dispatchEvent('dragenter');
+    await expect(shell).toHaveCSS('outline-style', 'dashed');
+    await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('box-shadow', 'none');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
+    await shell.dispatchEvent('dragleave');
+    await expect(input).toBeFocused();
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+  });
+
+  test(`Read-only and submitting Composer keep a neutral focus in ${theme}`, async ({ page }) => {
+    for (const mode of ['readonly', 'loading']) {
+      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-${mode}`);
+      await page.locator('html').evaluate((root) => {
+        root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
+        root.style.setProperty('--mar-control-focus', '#888888');
+      });
+      const shell = page.locator('.composer-shell');
+      const status = page.locator('.composer-working');
+      const input = page.locator('.composer-input');
+      const idleBorder = await shell.evaluate(
+        (element) => getComputedStyle(element).borderTopColor
+      );
+      await expect(input).toHaveAttribute('readonly', '');
+      await input.focus();
+      await expect(input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+      await expect(shell).toHaveCSS(
+        'box-shadow',
+        'color(srgb 0.533333 0.533333 0.533333 / 0.14) 0px 0px 0px 2px'
+      );
+      await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+      await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
+      await input.blur();
+      await expect(shell).toHaveCSS('border-top-color', idleBorder);
+    }
+  });
+
+  test(`Idle Composer uses the activity color only while focused in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&empty-layout`);
+      const shell = page.locator('.composer-shell');
+      const input = page.locator('.composer-input');
+      await expect(input).toBeEditable();
+      await expect(page.locator('.composer-working')).toHaveCount(0);
+      const colors = await shell.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mar-conversation-activity-fg)';
+        element.append(probe);
+        const activity = getComputedStyle(probe).color;
+        probe.remove();
+        return { activity, idle: getComputedStyle(element).borderTopColor };
+      });
+      expect(colors.idle).not.toBe(colors.activity);
+      await input.focus();
+      await expect(shell).toHaveCSS('border-top-color', colors.activity);
+      await page
+        .locator('.composer')
+        .screenshot({ path: testInfo.outputPath(`composer-focus-${width}.png`), caret: 'hide' });
+      await input.blur();
+      await expect(shell).toHaveCSS('border-top-color', colors.idle);
+    }
+  });
+
+  test(`File change hover changes only the filename color in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}conversation-style.html?theme=${theme}`);
+    await page.locator('.conversation-file-change-details > summary').click();
+    const list = page.locator('.conversation-file-change-list');
+    const row = list.locator('li').first();
+    const button = row.locator('.conversation-file-change-button');
+    const colors = await row.evaluate((element) => {
+      const probe = document.createElement('span');
+      element.append(probe);
+      const color = (token: string) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const values = {
+        surface: getComputedStyle(element.closest('.mar-conversation-detail-body')!)
+          .backgroundColor,
+        primary: color('--mar-text-primary'),
+        secondary: color('--mar-text-secondary'),
+        muted: color('--mar-text-muted'),
+        added: color('--mar-color-success-text'),
+        deleted: color('--mar-color-danger-text')
+      };
+      probe.remove();
+      return values;
+    });
+    const expectAppearance = async (nameColor: string) => {
+      await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(row.locator('.conversation-file-change-name')).toHaveCSS('color', nameColor);
+      await expect(row.locator('.conversation-file-change-path')).toHaveCSS('color', colors.muted);
+      await expect(row.locator('.change-additions')).toHaveCSS('color', colors.added);
+      await expect(row.locator('.change-deletions')).toHaveCSS('color', colors.deleted);
+    };
+    const contrastOnList = (color: string) =>
+      contrast(resolvedColorToHex(color), resolvedColorToHex(colors.surface));
+    expect(contrastOnList(colors.muted)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastOnList(colors.secondary)).toBeGreaterThan(contrastOnList(colors.muted));
+    expect(contrastOnList(colors.primary)).toBeGreaterThan(contrastOnList(colors.secondary));
+    await expectAppearance(colors.secondary);
+    await list.screenshot({ path: testInfo.outputPath('file-change-default.png') });
+    await button.hover();
+    await expectAppearance(colors.primary);
+    await list.screenshot({ path: testInfo.outputPath('file-change-hover.png') });
+    await page.mouse.down();
+    try {
+      await expectAppearance(colors.primary);
+    } finally {
+      await page.mouse.move(0, 0);
+      await page.mouse.up();
+    }
+    await row.locator('.conversation-file-change-stats').hover();
+    await expectAppearance(colors.secondary);
+    await button.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(button).toBeFocused();
+    await expect(button).toHaveCSS('outline-style', 'solid');
+    await expectAppearance(colors.secondary);
   });
 
   test(`Conversation metadata, status and Composer remain readable in ${theme}`, async ({
@@ -2047,18 +2212,29 @@ test('uses the bright daylight palette with accessible interactive and text colo
 }) => {
   await page.goto(fixture.url + 'conversation-style.html?theme=daylight');
   const daylight = await paletteColors(page);
-  expect(daylight['--mar-bg-page']).toBe('#f7f9fd');
+  expect(daylight['--mar-bg-page']).toBe('#f8f8f8');
   expect(daylight['--mar-bg-panel']).toBe('#ffffff');
-  expect(daylight['--mar-bg-tab-inactive']).toBe('#f7f9fd');
-  expect(daylight['--mar-border-default']).toBe('#cbd6e4');
-  expect(daylight['--mar-conversation-activity-fg']).toBe('#075fc7');
+  expect(daylight['--mar-bg-tab-inactive']).toBe('#f8f8f8');
+  expect(daylight['--mar-border-default']).toBe('#c9c9c9');
+  expect(daylight['--mar-conversation-activity-fg']).toBe('#005fd6');
   expect(daylight).not.toHaveProperty('--mar-color-brand');
-  expect(daylight['--mar-color-accent']).toBe('#067493');
-  expect(daylight['--mar-control-color-success']).toBe('#067551');
-  expect(daylight['--mar-text-primary']).toBe('#172033');
-  expect(daylight['--mar-text-secondary']).toBe('#555555');
-  expect(daylight['--mar-text-muted']).toBe('#5a687a');
-  expect(daylight['--mar-text-disabled']).toBe('#5f6f86');
+  expect(daylight['--mar-color-accent']).toBe('#00758a');
+  expect(daylight['--mar-control-color-success']).toBe('#00843d');
+  expect(daylight['--mar-text-primary']).toBe('#202020');
+  expect(daylight['--mar-text-secondary']).toBe('#515151');
+  expect(daylight['--mar-text-muted']).toBe('#656565');
+  expect(daylight['--mar-text-disabled']).toBe('#707070');
+  expect(daylight).toMatchObject({
+    '--mar-bg-chrome': '#f1f1f1',
+    '--mar-fill-row-hover': '#ebebeb',
+    '--mar-fill-selection': '#e3e3e3',
+    '--mar-control-primary-bg': '#2563c9',
+    '--mar-control-primary-fg': '#ffffff',
+    '--mar-control-primary-hover': '#1e54b1',
+    '--mar-control-primary-active': '#194695',
+    '--mar-control-link-text': '#174e9e',
+    '--mar-control-link-hover': '#123a78'
+  });
 
   for (const role of ['primary', 'secondary']) {
     expect(
@@ -2072,10 +2248,16 @@ test('uses the bright daylight palette with accessible interactive and text colo
     '--mar-fill-row-hover',
     '--mar-fill-selection'
   ]) {
-    expect(
-      contrast(daylight['--mar-text-muted']!, daylight[surface]!),
-      surface
-    ).toBeGreaterThanOrEqual(4.5);
+    for (const foreground of [
+      '--mar-text-muted',
+      '--mar-control-link-text',
+      '--mar-control-link-hover'
+    ]) {
+      expect(
+        contrast(daylight[foreground]!, daylight[surface]!),
+        `${foreground} on ${surface}`
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   }
   for (const [foreground, background] of [
     ['--mar-color-accent', '--mar-color-accent-bg'],
@@ -2086,26 +2268,46 @@ test('uses the bright daylight palette with accessible interactive and text colo
     expect(contrast(daylight[foreground!]!, daylight[background!]!)).toBeGreaterThanOrEqual(4.5);
   }
 });
-test('uses neutral near-black surfaces with readable text, feedback, and controls', async ({
+test('uses neutral near-black surfaces with clear text and distinct semantic feedback', async ({
   page
 }) => {
   await page.goto(fixture.url + 'conversation-style.html?theme=vscode-dark-2026');
   const dark = await paletteColors(page);
-  expect(dark['--mar-bg-page']).toBe('#181818');
-  expect(dark['--mar-bg-panel']).toBe('#1b1b1b');
-  expect(dark['--mar-bg-chrome']).toBe('#181818');
+  expect(dark['--mar-bg-page']).toBe('#1a1a1a');
+  expect(dark['--mar-bg-panel']).toBe('#1e1e1e');
+  expect(dark['--mar-bg-chrome']).toBe('#1a1a1a');
   for (const [role, color] of Object.entries({
-    canvas: '#131313',
-    surface: '#1f1f1f',
-    process: '#181818',
+    canvas: '#161616',
+    surface: '#252525',
+    process: '#1a1a1a',
     border: '#383838',
     'process-border': '#2c2c2c',
-    code: '#191919'
+    code: '#1e1e1e',
+    'activity-fg': '#4da3ff'
   })) {
     expect(dark[`--mar-conversation-${role}`]).toBe(color);
   }
-  expect(dark['--mar-control-bg-color-overlay']).toBe('#242424');
-  expect(dark['--mar-fill-selection']).toBe('#303030');
+  expect(dark['--mar-control-bg-color-overlay']).toBe('#2b2b2b');
+  expect(dark['--mar-fill-selection']).toBe('#373737');
+  expect(dark['--mar-fill-row-hover']).toBe('#2e2e2e');
+  expect(dark).not.toHaveProperty('--mar-color-brand');
+  expect(dark).toMatchObject({
+    '--mar-text-primary': '#eaeaea',
+    '--mar-text-secondary': '#c2c2c2',
+    '--mar-text-muted': '#a0a0a0',
+    '--mar-control-color-success': '#35d56e',
+    '--mar-color-success-text': '#71e49a',
+    '--mar-color-success-bg': '#1a2b21',
+    '--mar-control-color-warning': '#ffc14d',
+    '--mar-color-warning-accent': '#ffc14d',
+    '--mar-color-warning-text': '#f8cb72',
+    '--mar-color-warning-bg': '#302619',
+    '--mar-control-color-danger': '#ff626b',
+    '--mar-color-danger-text': '#ff8087',
+    '--mar-color-danger-bg': '#332024',
+    '--mar-color-accent': '#59d5ea',
+    '--mar-color-accent-bg': '#192b31'
+  });
   for (const [token, color] of Object.entries(dark)) {
     if (
       !/^--mar-(?:bg-|fill-|border-|text-|table-|control-(?:fill|border)-|scrollbar-|shadow-|overlay-)/u.test(
@@ -2113,7 +2315,8 @@ test('uses neutral near-black surfaces with readable text, feedback, and control
       )
     )
       continue;
-    if (token === '--mar-overlay-surface') continue; // Derived from the tested overlay fill.
+    // Derived popup colors are verified on the rendered surface and options.
+    if (token === '--mar-overlay-surface' || token === '--mar-overlay-row-hover') continue;
     expect(color, token).toMatch(/^#([\da-f]{2})\1\1(?:[\da-f]{2})?$/u);
   }
   for (const surface of [
@@ -2150,6 +2353,18 @@ test('uses neutral near-black surfaces with readable text, feedback, and control
       text
     ).toBeGreaterThanOrEqual(4.5);
   }
+  for (const state of ['success', 'warning', 'danger']) {
+    for (const surface of [
+      '--mar-bg-panel',
+      '--mar-fill-selection',
+      '--mar-conversation-surface'
+    ]) {
+      expect(
+        contrast(dark[`--mar-control-color-${state}`]!, dark[surface]!),
+        state + ' on ' + surface
+      ).toBeGreaterThanOrEqual(3);
+    }
+  }
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
@@ -2158,7 +2373,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const colors = await paletteColors(page);
     for (const fill of ['bg', 'hover', 'active']) {
       const background = colors[`--mar-control-primary-${fill}`]!;
-      expect(background).toMatch(/^#([\da-f]{2})\1\1$/u);
+      if (theme === 'vscode-dark-2026') expect(background).toMatch(/^#([\da-f]{2})\1\1$/u);
       expect(
         contrast(colors['--mar-control-primary-fg']!, background),
         fill

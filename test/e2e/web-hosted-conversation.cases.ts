@@ -706,8 +706,8 @@ test('Hosted process activity stops on disconnect and resumes after synchronizat
   const indicator = page.locator('.process-activity-indicator');
   const composerStatus = page.locator('.composer-working');
   await expect(indicator).toBeVisible();
-  await expect(indicator).toHaveCSS('color', 'rgb(105, 169, 240)');
-  await expect(composerStatus).toHaveCSS('color', 'rgb(105, 169, 240)');
+  await expect(indicator).toHaveCSS('color', 'rgb(77, 163, 255)');
+  await expect(composerStatus).toHaveCSS('color', 'rgb(77, 163, 255)');
   await page.screenshot({
     path: testInfo.outputPath('dark-conversation-activity.png'),
     animations: 'disabled'
@@ -757,6 +757,9 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
     });
   });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
+    json(route, { models: snapshot.models, defaultModelId: 'model-1' })
+  );
   const visualTurn = snapshot.turns[0];
   const visualMessage = visualTurn.items.find((item) => item.kind === 'assistant_message')!;
   const visualSnapshot = {
@@ -799,6 +802,10 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '对话', exact: true }).click();
+  const newChat = page.locator('.history-create-button');
+  await expect(newChat).toBeVisible();
+  await expect(newChat).toHaveClass(/\bmar-ui-button--primary\b/);
+  await expect(newChat).toHaveCSS('height', '26px');
   await verifyConversationThemes(page, testInfo, 'hosted-desktop');
   const codeCopy = page.locator('.agent-markdown-code-copy').first();
   await codeCopy.click();
@@ -815,7 +822,9 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
   await expect(messageCopy).toHaveAttribute('aria-label', /复制.*消息/u, { timeout: 2000 });
   await page.setViewportSize({ width: 390, height: 844 });
   await verifyConversationThemes(page, testInfo, 'hosted-mobile');
-  await expect(page.locator('.history-create-button')).toHaveCSS('height', '32px');
+  await page.getByRole('button', { name: '对话', exact: true }).click();
+  await expect(newChat).toBeVisible();
+  await expect(newChat).toHaveCSS('height', '24px');
   await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
@@ -1531,20 +1540,27 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   );
   await page.route(
     /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/messages$/,
-    (route) =>
-      write(route, writes, {
+    async (route) => {
+      const run = {
+        id: 'run-2',
+        status: 'RUNNING',
+        startedAt: Date.UTC(2026, 8, 1, 3),
+        completedAt: null
+      };
+      await write(route, writes, {
         conversation: {
           ...conversation,
           updatedAt: Date.UTC(2026, 8, 1, 3),
           lastActivityAt: Date.UTC(2026, 8, 1, 3)
         },
-        run: {
-          id: 'run-2',
-          status: 'RUNNING',
-          startedAt: Date.UTC(2026, 8, 1, 3),
-          completedAt: null
-        }
-      })
+        run
+      });
+      await emitMockHostedConversationEvent(page, {
+        kind: 'run',
+        conversationId: conversation.id,
+        run
+      });
+    }
   );
   await page.route(
     /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/interrupt$/,
@@ -1811,20 +1827,26 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await expect(selectedHistoryMore).toHaveAttribute('aria-expanded', 'true');
   const historyMenu = page.locator('.session-action-menu:visible');
   const deleteHistory = historyMenu.getByRole('menuitem', { name: '删除' });
-  await expect(deleteHistory.locator('xpath=preceding-sibling::*[1]')).toHaveAttribute(
-    'role',
-    'separator'
-  );
-  const menuItemColor = await historyMenu
-    .getByRole('menuitem')
-    .first()
-    .evaluate((element) => {
-      element.blur();
-      return getComputedStyle(element).color;
-    });
-  await expect(deleteHistory).toHaveCSS('color', menuItemColor);
+  await expect(historyMenu.locator('.mar-ui-dropdown-item--divided')).toHaveCount(1);
+  await expect(deleteHistory).toHaveClass(/\bmar-ui-dropdown-item--divided\b/u);
+  expect(
+    await deleteHistory.evaluate((element) => {
+      const line = getComputedStyle(element, '::before');
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-ui-border-subtle)';
+      element.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return { height: line.height, usesSubtleBorder: line.backgroundColor === color };
+    })
+  ).toEqual({ height: '1px', usesSubtleBorder: true });
   await historyMenu.getByRole('menuitem').first().focus();
   await page.mouse.move(600, 5);
+  const menuItemColor = await historyMenu
+    .getByRole('menuitem')
+    .nth(1)
+    .evaluate((element) => getComputedStyle(element).color);
+  await expect(deleteHistory).toHaveCSS('color', menuItemColor);
   await expect(selectedHistoryMore).not.toBeFocused();
   expect(await selectedHistoryMore.evaluate((element) => element.matches(':hover'))).toBe(false);
   await expect(selectedHistoryMore).toHaveCSS('color', utilityHoverColor);
@@ -2169,6 +2191,12 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await deleteDialog.getByRole('button', { name: '删除文件', exact: true }).click();
   await expect(deleteDialog).toBeHidden();
   await expect(projectedFile).toHaveCount(0);
+  const deletionFeedback = page
+    .locator('.mar-feedback-stack')
+    .getByRole('status')
+    .filter({ hasText: '已删除“result.txt”。' });
+  await deletionFeedback.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(deletionFeedback).toBeHidden();
   await expect(
     page.locator('.hosted-conversation-files').getByRole('button', { name: /^drop-one\.txt/u })
   ).toBeVisible();
@@ -2479,6 +2507,12 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   const deleteConversationDialog = page.locator('.mar-message-box');
   await expect(deleteConversationDialog).toContainText('删除“审查发布变更”后无法恢复。是否继续？');
   await deleteConversationDialog.getByRole('button', { name: '删除', exact: true }).click();
+  const conversationDeletionFeedback = page
+    .locator('.mar-feedback-stack')
+    .getByRole('status')
+    .filter({ hasText: '对话已永久删除。' });
+  await conversationDeletionFeedback.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(conversationDeletionFeedback).toBeHidden();
   await expect(selectedConversationRow).toHaveCount(0);
   await expect(
     history.locator('.history-list article strong').filter({ hasText: '新建对话' })

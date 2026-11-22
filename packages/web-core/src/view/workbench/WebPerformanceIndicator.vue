@@ -4,6 +4,7 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { formatDateTime } from '../../util/time-presentation.js';
+import { fileSizeLabel } from '../../util/file-presentation.js';
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
 import { useI18n } from 'vue-i18n';
@@ -132,7 +133,7 @@ onBeforeUnmount(props.diagnostics.dispose);
             t('performanceDiagnostics.rateValue', {
               current: snapshot.messagesPerSecond,
               peak: snapshot.peakMessagesPerSecond,
-              codeUnits: decimal(snapshot.payloadUtf16CodeUnitsPerSecond)
+              payloadRate: `${fileSizeLabel(snapshot.payloadBytesPerSecond)}/s`
             })
           }}
         </dd>

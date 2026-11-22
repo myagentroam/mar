@@ -318,13 +318,25 @@ const emit = defineEmits<{
 
 .composer {
   --composer-padding-inline: 0.8rem;
-  --composer-surface: light-dark(var(--mar-bg-panel), var(--mar-conversation-surface));
+  --composer-surface: var(--mar-surface-composer);
   position: relative;
   z-index: 3;
   background: var(--mar-conversation-canvas);
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
   padding: 0.4rem var(--composer-padding-inline) 0.75rem;
+}
+
+.composer:has(:where(.composer-input:focus)) {
+  --composer-active-boundary: var(--mar-control-focus);
+}
+
+.composer:has(:where(.composer-input:focus:read-write)) {
+  --composer-active-boundary: var(--mar-conversation-activity-fg);
+}
+
+.composer:has(> .composer-drop-target) {
+  --composer-active-boundary: var(--mar-control-focus);
 }
 
 .composer :deep(button),
@@ -367,7 +379,7 @@ const emit = defineEmits<{
   gap: 0.34rem;
   margin: 0 0 -1px 0.55rem;
   overflow: hidden;
-  border: 1px solid var(--mar-border-medium);
+  border: 1px solid var(--composer-active-boundary, var(--mar-border-medium));
   border-bottom-color: var(--composer-surface);
   border-radius: var(--mar-radius-control) var(--mar-radius-control) 0 0;
   background: var(--composer-surface);
@@ -381,11 +393,6 @@ const emit = defineEmits<{
   line-height: 1;
 }
 
-.composer:focus-within .composer-working {
-  border-color: var(--mar-control-focus);
-  border-bottom-color: var(--composer-surface);
-}
-
 .composer-working > .composer-busy-indicator {
   width: 10px;
   height: 10px;
@@ -396,19 +403,17 @@ const emit = defineEmits<{
   display: grid;
   gap: 0;
   overflow: hidden;
-  border: 1px solid var(--mar-border-medium);
+  border: 1px solid var(--composer-active-boundary, var(--mar-border-medium));
   border-radius: var(--mar-radius-surface);
   background: var(--composer-surface);
   box-shadow: none;
 }
 
-.composer-shell:focus-within {
-  border-color: var(--mar-control-focus);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-control-focus) 14%, transparent);
+.composer-shell:not(.composer-drop-target):has(.composer-input:focus) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--composer-active-boundary) 14%, transparent);
 }
 
 .composer-shell.composer-drop-target {
-  border-color: var(--mar-control-focus);
   outline: 2px dashed var(--mar-control-focus);
   outline-offset: -3px;
   background: var(--mar-fill-selection);
@@ -420,7 +425,7 @@ const emit = defineEmits<{
 
 .composer-shell.readonly {
   position: relative;
-  border-color: var(--mar-border-default);
+  border-color: var(--composer-active-boundary, var(--mar-border-default));
   background: var(--mar-bg-page);
 }
 

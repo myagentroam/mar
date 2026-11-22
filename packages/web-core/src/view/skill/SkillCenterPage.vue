@@ -2,6 +2,7 @@
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
@@ -579,7 +580,7 @@ function scopeLabel(scope: string): string {
           :label="translate('generated.skillCenterPage.availableSkills')"
           name="available"
         >
-          <div class="skill-filter-bar">
+          <div class="skill-filter-bar mar-management-filter">
             <MarInput
               v-model="skillQuery"
               clearable
@@ -588,19 +589,20 @@ function scopeLabel(scope: string): string {
             />
             <div
               class="skill-category-strip"
+              role="group"
               :aria-label="translate('generated.skillCenterPage.skillCategories2')"
             >
-              <button :class="{ selected: selectedCategory === '' }" @click="selectedCategory = ''">
+              <MarCheckTag :checked="selectedCategory === ''" @click="selectedCategory = ''">
                 {{ translate('generated.skillCenterPage.all2') }}
-              </button>
-              <button
+              </MarCheckTag>
+              <MarCheckTag
                 v-for="tag in availableTags"
                 :key="tag"
-                :class="{ selected: selectedCategory === tag }"
+                :checked="selectedCategory === tag"
                 @click="selectedCategory = tag"
               >
                 {{ tag }}
-              </button>
+              </MarCheckTag>
             </div>
           </div>
           <div class="skill-table-section">
@@ -888,31 +890,8 @@ function scopeLabel(scope: string): string {
   padding: 1px 0 3px;
   scrollbar-width: thin;
 }
-.skill-category-strip button {
+.skill-category-strip > * {
   flex: none;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: 999px;
-  background: var(--mar-bg-panel);
-  color: var(--mar-text-secondary);
-  padding: 5px 12px;
-  font: inherit;
-  font-size: var(--mar-font-size-body);
-  cursor: pointer;
-}
-.skill-category-strip button:hover {
-  border-color: var(--mar-border-strong);
-  background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
-}
-.skill-category-strip button.selected {
-  border-color: var(--mar-border-medium);
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-  font-weight: 400;
-}
-.skill-category-strip button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 1px;
 }
 .skill-tags {
   display: flex;
@@ -1024,9 +1003,6 @@ function scopeLabel(scope: string): string {
   }
   .skill-filter-bar {
     grid-template-columns: 1fr;
-  }
-  .target-panel :deep(.mar-ui-button) {
-    min-height: 36px;
   }
 }
 </style>

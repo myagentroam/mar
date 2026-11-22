@@ -52,9 +52,9 @@
 }
 
 .mar-composer-stop-action {
-  border-color: var(--mar-color-danger-text);
+  border-color: var(--mar-control-color-danger);
   background: var(--mar-bg-panel);
-  color: var(--mar-color-danger-text);
+  color: var(--mar-control-color-danger);
 }
 
 @media (hover: hover) {
@@ -79,7 +79,7 @@
 }
 
 .mar-composer-stop-action:focus-visible {
-  outline-color: var(--mar-color-danger-text);
+  outline-color: var(--mar-control-color-danger);
 }
 
 .mar-composer-action:disabled {

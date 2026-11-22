@@ -78,7 +78,7 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   const files = page.locator('.file-reference-picker [role=option]');
   await expect(files).toHaveCount(2);
   const reference = page.locator('.file-reference-picker');
-  await expect(reference).toHaveCSS('border-top-color', 'rgb(203, 214, 228)');
+  await expect(reference).toHaveCSS('border-top-color', 'rgb(201, 201, 201)');
   await expect(reference).toHaveCSS('box-shadow', /0px 4px 12px/u);
   expect(
     resolvedColorToHex(
@@ -94,7 +94,7 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   await placeCursor(page, 11);
   const commands = page.locator('.command-picker').filter({ hasText: 'review' });
   await expect(commands).toBeVisible();
-  await expect(commands).toHaveCSS('border-top-color', 'rgb(203, 214, 228)');
+  await expect(commands).toHaveCSS('border-top-color', 'rgb(201, 201, 201)');
   await expect(commands).toHaveCSS('box-shadow', /0px 4px 12px/u);
   expect(
     resolvedColorToHex(
@@ -260,7 +260,7 @@ for (const [width, theme] of [
             await picker.evaluate((element) => getComputedStyle(element).backgroundColor)
           )
         )
-        .toBe(theme === 'daylight' ? '#ffffff' : '#242424');
+        .toBe(theme === 'daylight' ? '#ffffff' : '#2b2b2b');
       if (name !== 'commands')
         await expect(picker.getByRole('option')).toHaveCount(name === 'references' ? 2 : 1);
       await expect
@@ -304,7 +304,7 @@ for (const [theme, width] of [
             .trim()
         )
       )
-      .toBe(theme === 'daylight' ? '#ffffff' : '#242424');
+      .toBe(theme === 'daylight' ? '#ffffff' : '#2b2b2b');
     await page.locator('textarea.composer-input').fill('@alpha');
     const picker = page.locator('.file-reference-picker');
     await expect(picker.locator('[role=option]')).toHaveCount(2);
@@ -338,7 +338,7 @@ for (const [theme, width] of [
           await picker.evaluate((element) => getComputedStyle(element).backgroundColor)
         )
       )
-      .toBe(theme === 'daylight' ? '#ffffff' : '#242424');
+      .toBe(theme === 'daylight' ? '#ffffff' : '#2b2b2b');
     expect(await picker.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true
     );

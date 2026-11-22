@@ -17,6 +17,14 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     page.on('pageerror', (error) => errors.push(error.message));
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`${fixture.url}workbench-navigation.html?theme=${theme}`);
+    const runnerIcons = [
+      page.locator('.session-row [data-runner="mar-agent"]').first(),
+      page.locator('.conversation-header [data-runner="mar-agent"]')
+    ];
+    for (const icon of runnerIcons) {
+      await expect(icon).toBeVisible();
+      await expect(icon).toHaveCSS('filter', 'none');
+    }
     const active = page.locator('[data-tab-id="workbench"]');
     const inactive = page.locator('[data-tab-id="protocol"]');
     const button = inactive.getByRole('tab');

@@ -318,10 +318,10 @@ test('Dark theme keeps new sessions in the neutral control hierarchy', async ({ 
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
 
   const newSession = page.getByRole('button', { name: '新建会话', exact: true });
-  await expect(newSession).toHaveCSS('background-color', 'rgb(34, 34, 34)');
-  await expect(newSession).toHaveCSS('color', 'rgb(216, 216, 216)');
+  await expect(newSession).toHaveCSS('background-color', 'rgb(222, 222, 222)');
+  await expect(newSession).toHaveCSS('color', 'rgb(24, 24, 24)');
   await newSession.hover();
-  await expect(newSession).toHaveCSS('background-color', 'rgb(40, 40, 40)');
+  await expect(newSession).toHaveCSS('background-color', 'rgb(238, 238, 238)');
 });
 
 test('Composer Alt+M opens the model menu and delegates arrow keys to it', async ({ page }) => {

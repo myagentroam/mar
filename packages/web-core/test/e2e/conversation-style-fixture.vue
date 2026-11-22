@@ -23,6 +23,10 @@ const following = ref(false);
 const input = ref('Review the result');
 const sidebarCollapsed = ref(false);
 const reconnecting = new URL(location.href).searchParams.has('reconnecting');
+const composerFocusFixture = new URL(location.href).searchParams.has('composer-focus');
+const composerReadonlyFixture = new URL(location.href).searchParams.has('composer-readonly');
+const composerLoadingFixture = new URL(location.href).searchParams.has('composer-loading');
+const composerDragging = ref(false);
 const processStopping = new URL(location.href).searchParams.has('process-stopping');
 const themes = themePreferenceService();
 const previewColors = themes.resolveColors(
@@ -109,6 +113,8 @@ const items: ConversationItem[] = [
         {
           path: 'src/a.ts',
           change: 'MODIFIED',
+          additions: 8,
+          deletions: 2,
           ...(touchDetails ? { diff: { status: 'unavailable', reason: 'binary' } } : {})
         },
         { path: 'src/b.ts', change: 'ADDED' }
@@ -827,13 +833,19 @@ function announceFixtureUpdate() {
       working-label="Working"
       :connection-label="reconnecting ? 'Reconnecting' : undefined"
       :connection-busy="reconnecting"
-      :readonly="false"
-      :drop-target="false"
+      :readonly="composerReadonlyFixture"
+      :drop-target="composerDragging"
       :mobile-viewport="false"
       :command-states="[]"
-      :loading="false"
+      :loading="composerLoadingFixture"
       :skill-tokens="[]"
-    />
+      @dragenter="composerDragging = composerFocusFixture"
+      @dragleave="composerDragging = false"
+    >
+      <template v-if="composerFocusFixture" #toolbar>
+        <MarButton>Composer toolbar action</MarButton>
+      </template>
+    </ConversationComposer>
   </main>
 </template>
 

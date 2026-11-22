@@ -658,9 +658,6 @@ watch(controlDisabled, (disabled) => {
   text-align: start;
   cursor: pointer;
 }
-.mar-ui-select__field--filterable {
-  font-size: var(--mar-ui-font-size-input);
-}
 .mar-ui-select__field:hover {
   box-shadow: 0 0 0 1px var(--mar-ui-input-border-hover) inset;
 }
@@ -850,8 +847,15 @@ input.mar-ui-select__trigger {
   animation: mar-ui-select-loading 0.9s linear infinite;
 }
 .mar-ui-select__empty {
-  padding: 0.375rem 0.75rem;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  padding: 4px var(--mar-ui-compact-option-padding-inline);
   color: var(--mar-ui-text-secondary);
+  font-size: var(--mar-ui-font-size-meta);
+  line-height: 1.45;
   text-align: center;
 }
 @keyframes mar-ui-select-loading {

@@ -7,8 +7,8 @@ import '../../src/styles.css';
 // This standalone page mounts only the real resource component. Requests are
 // controlled dependencies, not a Workbench, Server or authorization fixture.
 localePreferenceService().setLocale('en-US');
-const resourceType =
-  new URLSearchParams(location.search).get('kind') === 'NODE' ? 'NODE' : 'WORKSPACE';
+const params = new URLSearchParams(location.search);
+const resourceType = params.get('kind') === 'NODE' ? 'NODE' : 'WORKSPACE';
 const nodes = ['a', 'b'].map((id) => ({
   id,
   displayName: `Node ${id}`,
@@ -60,7 +60,22 @@ async function request<T>(path: string): Promise<T> {
       hasMore: false
     } as T;
   if (path === '/api/nodes') return { nodes } as T;
-  if (path.startsWith('/api/environment-secrets?')) return { secrets: [] } as T;
+  if (path.startsWith('/api/environment-secrets?'))
+    return {
+      secrets: params.has('writable')
+        ? [
+            {
+              id: 'fixture-secret',
+              scope: 'NODE',
+              name: 'FIXTURE_VARIABLE',
+              value: 'fixture-value',
+              nodeId: 'a',
+              createdAt: 1,
+              updatedAt: 1
+            }
+          ]
+        : []
+    } as T;
   if (
     path.startsWith('/api/workspaces?') ||
     path.startsWith('/api/runner-usage/status?') ||
@@ -72,6 +87,8 @@ async function request<T>(path: string): Promise<T> {
     });
   throw new Error(`Unexpected resource fixture request: ${path}`);
 }
-createTooltipApp({ render: () => h(Panel, { request, resourceType, writable: false }) })
+createTooltipApp({
+  render: () => h(Panel, { request, resourceType, writable: params.has('writable') })
+})
   .use(i18n)
   .mount('#app');

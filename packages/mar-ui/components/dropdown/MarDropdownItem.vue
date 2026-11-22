@@ -81,6 +81,7 @@ function activate(event: MouseEvent) {
   background: transparent;
   color: var(--mar-ui-text-secondary);
   font: inherit;
+  font-size: var(--mar-ui-font-size-meta);
   text-align: start;
   overflow-wrap: anywhere;
   cursor: pointer;
@@ -112,7 +113,7 @@ function activate(event: MouseEvent) {
   content: '';
 }
 .mar-ui-dropdown-item:enabled:is(:hover, :focus-visible):not([aria-current='true']) {
-  background: var(--mar-ui-fill-row-hover);
+  background: var(--mar-ui-overlay-row-hover, var(--mar-ui-fill-row-hover));
   color: var(--mar-ui-text-primary);
 }
 .mar-ui-dropdown-item:enabled[aria-current='true'] {

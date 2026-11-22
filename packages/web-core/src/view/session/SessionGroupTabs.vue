@@ -34,7 +34,6 @@ const options = computed(
       :options="options"
       :label="translate('sessionGroups.label')"
       block
-      compact
       @update:model-value="emit('update:modelValue', $event)"
     />
   </div>

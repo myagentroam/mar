@@ -2209,12 +2209,13 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-file-change-name {
   grid-column: 2;
   grid-row: 1;
+  color: var(--mar-text-secondary);
 }
 
 .conversation-file-change-path {
   grid-column: 2;
   grid-row: 2;
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-muted);
 }
 
 .conversation-file-change-name,
@@ -2225,8 +2226,10 @@ details.conversation-record-group[open] > details:last-child {
   white-space: nowrap;
 }
 
-.conversation-file-change-button:hover {
-  color: var(--mar-text-primary);
+@media (hover: hover) and (pointer: fine) {
+  .conversation-file-change-button:hover .conversation-file-change-name {
+    color: var(--mar-text-primary);
+  }
 }
 
 .conversation-file-change-button:focus-visible {

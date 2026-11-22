@@ -540,7 +540,7 @@ test('Resumed external Claude history is not duplicated by managed projections',
   await expect(managedActivity).toHaveCount(1);
   await expect(managedActivity).toHaveAttribute('aria-label', '运行中');
   const dot = managedActivity.locator('i');
-  await expect(dot).toHaveCSS('background-color', 'rgb(116, 198, 157)');
+  await expect(dot).toHaveCSS('background-color', 'rgb(53, 213, 110)');
   await expect(dot).toHaveCSS('box-shadow', 'none');
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     await page.emulateMedia({ reducedMotion });

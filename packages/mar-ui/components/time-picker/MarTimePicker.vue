@@ -303,7 +303,7 @@ input {
   color: var(--mar-ui-text-primary);
   background: transparent;
   font: inherit;
-  font-size: var(--mar-ui-font-size-input);
+  font-size: var(--mar-ui-font-size-meta);
 }
 input:disabled {
   color: var(--mar-ui-text-disabled);
@@ -322,6 +322,7 @@ button:focus-visible {
 }
 .mar-ui-time-picker__popup {
   inline-size: 10rem;
+  font-size: var(--mar-ui-font-size-meta);
 }
 .mar-ui-time-picker__columns {
   display: flex;
@@ -337,7 +338,7 @@ button:focus-visible {
 }
 .mar-ui-time-picker__column button {
   inline-size: 100%;
-  min-block-size: 25px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   font: inherit;
 }
 .mar-ui-time-picker__column button:hover {

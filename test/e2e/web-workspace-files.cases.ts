@@ -597,9 +597,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       left: '60px'
     });
     if (theme === 'vscode-dark-2026') {
-      expect(colors.body).toBe('rgb(24, 24, 24)');
-      expect(colors.panel).toBe('rgb(27, 27, 27)');
-      expect(colors.canvas).toBe('rgb(19, 19, 19)');
+      expect(colors.body).toBe('rgb(26, 26, 26)');
+      expect(colors.panel).toBe('rgb(30, 30, 30)');
+      expect(colors.canvas).toBe('rgb(22, 22, 22)');
       expect(colors.secondaryDivider).not.toBe(colors.divider);
     }
     expect(colors.canvas).not.toBe(colors.panel);

@@ -1102,7 +1102,7 @@ for (const hasTouch of [false, true]) {
           mobile ? '4px' : '8px'
         );
         await expect(process.locator('.process-heading')).toHaveCSS('padding-top', '4px');
-        await expect(process.locator('.process-heading')).toHaveCSS(
+        await expect(process.locator('.process-heading-row')).toHaveCSS(
           'padding-left',
           mobile ? '8px' : '12px'
         );

@@ -7,8 +7,8 @@
   "start_url": "/console",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#181818",
-  "theme_color": "#181818",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
   "icons": [
     {
       "src": "/icons/app-icon-192.png?v=logo-20261011",

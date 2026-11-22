@@ -93,13 +93,14 @@ function navigateToEdge(event: KeyboardEvent): void {
   display: inline-flex;
   width: max-content;
   box-sizing: border-box;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--mar-ui-border-default);
   border-radius: var(--mar-ui-radius-control);
   background: var(--mar-ui-bg-subtle);
   color: var(--mar-ui-text-secondary);
-  font-size: var(--mar-ui-font-size-body);
+  font-size: var(--mar-ui-font-size-meta);
   line-height: 1.4;
 }
 .mar-segmented.is-block {
@@ -107,18 +108,16 @@ function navigateToEdge(event: KeyboardEvent): void {
   width: 100%;
   min-width: 0;
 }
-.mar-segmented.is-compact {
-  font-size: var(--mar-ui-font-size-meta);
-}
 .mar-segmented-option {
   position: relative;
   display: grid;
   place-items: center;
   box-sizing: border-box;
   min-width: 0;
-  min-height: 26px;
   padding-inline: var(--mar-ui-compact-option-padding-inline);
   border-radius: calc(var(--mar-ui-radius-control) - 2px);
+  color: inherit;
+  font-size: inherit;
   font-weight: 400;
   white-space: nowrap;
 }
@@ -126,7 +125,7 @@ function navigateToEdge(event: KeyboardEvent): void {
   flex: 1 1 0;
 }
 .is-compact .mar-segmented-option {
-  min-height: var(--mar-ui-compact-control-size);
+  min-block-size: var(--mar-ui-compact-control-size);
   padding-inline: 0.25rem;
 }
 .mar-segmented-option input {

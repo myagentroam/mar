@@ -74,6 +74,8 @@ for (const viewport of [
     });
     await expect(common).toHaveAttribute('aria-selected', 'true');
     await expect(common).toHaveAttribute('tabindex', '0');
+    await expect(common).toHaveCSS('font-size', viewport.width >= 768 ? '14px' : '13px');
+    await expect(common).toHaveCSS('height', '30px');
     await expect(panel.locator('[role="tab"][tabindex="0"]')).toHaveCount(1);
     await expect(common).toHaveCSS('background-color', colors.selected);
     await expect(common).toHaveCSS('color', colors.foreground);

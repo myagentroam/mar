@@ -161,7 +161,7 @@ for (const width of [1280, 390]) {
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
-  test(`Composer send, context meter and sending feedback use neutral tokens in ${theme}`, async ({
+  test(`Composer send uses Primary while the context meter and sending feedback stay neutral in ${theme}`, async ({
     page
   }, info) => {
     for (const width of [1280, 390]) {
@@ -182,7 +182,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             'control-primary-hover',
             'control-primary-active',
             'text-secondary',
-            'color-danger-text'
+            'control-color-danger'
           ].map((token) => [token, style.getPropertyValue(`--mar-${token}`).trim()])
         );
       });
@@ -196,7 +196,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           .then(resolvedColorToHex);
       await expect.poll(() => color(send, 'backgroundColor')).toBe(tokens['control-primary-bg']);
       await expect.poll(() => color(send, 'color')).toBe(tokens['control-primary-fg']);
-      await expect.poll(() => color(stop, 'color')).toBe(tokens['color-danger-text']);
+      await expect.poll(() => color(stop, 'color')).toBe(tokens['control-color-danger']);
       const ring = await context.evaluate((element) => {
         const stop = getComputedStyle(element).backgroundImage.match(/rgb\([^)]+\)(?= 42%)/u);
         return stop?.[0] ?? '';
@@ -376,7 +376,7 @@ for (const [width, theme] of [
     await expect(surface).toHaveCSS('border-top-width', '1px');
     await expect(surface).toHaveCSS(
       'border-top-color',
-      theme === 'daylight' ? 'rgb(203, 214, 228)' : 'rgb(71, 71, 71)'
+      theme === 'daylight' ? 'rgb(201, 201, 201)' : 'rgb(71, 71, 71)'
     );
     await expect(surface).toHaveCSS('box-shadow', /0px 4px 12px/u);
     const models = menu.getByRole('group', { name: 'Model' });

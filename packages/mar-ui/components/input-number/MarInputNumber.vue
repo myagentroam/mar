@@ -188,7 +188,7 @@ input {
   color: var(--mar-ui-text-primary);
   background: transparent;
   font: inherit;
-  font-size: var(--mar-ui-font-size-input);
+  font-size: var(--mar-ui-font-size-meta);
   line-height: 1.4;
   text-align: center;
 }

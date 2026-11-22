@@ -13,6 +13,81 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}mar-table-pagination.html`);
 });
 
+test('Table updates conditional status slots without replacing the data', async ({ page }) => {
+  const table = page.getByRole('table', { name: 'Empty table' });
+  const empty = table.getByText('Nothing here', { exact: true });
+  const loading = table.getByRole('progressbar', { name: 'Loading records' });
+  const retry = table.getByRole('button', { name: 'Retry loading records' });
+  await expect(empty).toBeVisible();
+
+  await page.getByRole('button', { name: 'Show table loading' }).click();
+  await expect(loading).toBeVisible();
+  await expect(empty).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Show custom empty state' }).click();
+  await expect(retry).toBeVisible();
+  await expect(loading).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Show default empty state' }).click();
+  await expect(empty).toBeVisible();
+  await expect(retry).toHaveCount(0);
+});
+
+for (const [width, compact, headerFont, bodyFont] of [
+  [1280, 26, '12px', '14px'],
+  [390, 24, '11px', '13px']
+] as const) {
+  test(`Table keeps a compact header and readable rows at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    const records = page.getByRole('table', { name: 'Records' });
+    const header = records.getByRole('columnheader', { name: 'Name', exact: true });
+    const label = records.getByRole('columnheader', { name: 'Note', exact: true });
+    const sort = header.getByRole('button');
+    for (const cell of [header, label]) {
+      await expect(cell).toHaveCSS('font-size', headerFont);
+      await expect(cell).toHaveCSS('font-weight', '500');
+      expect((await cell.boundingBox())!.height).toBeCloseTo(compact + 3, 1);
+    }
+    await expect(sort).toHaveCSS('font-size', headerFont);
+    expect((await sort.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
+
+    const organization = page.getByRole('table', { name: 'Organizations' });
+    const value = organization.getByRole('cell', { name: 'Child', exact: true });
+    await expect(value).toHaveCSS('font-size', bodyFont);
+    await expect(value).toHaveCSS('padding-inline-start', '10px');
+    expect((await value.boundingBox())!.height).toBeCloseTo(compact + 5, 1);
+    const act = records.getByRole('button', { name: 'Act 0' });
+    expect((await act.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
+    await records.locator('..').screenshot({ path: testInfo.outputPath('compact-table.png') });
+  });
+}
+
+test('Long headers in narrow columns wrap without covering adjacent columns', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 850 });
+  const table = page.getByRole('table', { name: 'Narrow columns' });
+  const sortable = table.getByRole('columnheader', { name: 'Configuration', exact: true });
+  const plain = table.getByRole('columnheader', { name: 'Synchronization', exact: true });
+  for (const header of [sortable, plain]) {
+    const fits = await header.evaluate((cell) => {
+      const content = cell.firstElementChild!;
+      return content.scrollWidth === content.clientWidth && cell.scrollWidth === cell.clientWidth;
+    });
+    expect(fits).toBe(true);
+    expect((await header.boundingBox())!.height).toBeGreaterThan(25);
+  }
+  const sort = sortable.getByRole('button');
+  await sort.press('Enter');
+  await expect(sortable).toHaveAttribute('aria-sort', 'ascending');
+  await expect(sort).toBeFocused();
+  await table
+    .locator('thead')
+    .screenshot({ path: testInfo.outputPath('wrapped-table-header.png') });
+});
+
 test('Table sorts stable rows locally, delegates custom sorting, and preserves slots', async ({
   page
 }) => {
@@ -86,7 +161,7 @@ test('Table uses solid neutral sort indicators and a low-contrast dark header su
   await expect(descending).toHaveCSS('color', muted!);
 
   await page.locator('html').evaluate((root) => root.removeAttribute('data-theme'));
-  await expect(name).toHaveCSS('background-color', 'rgb(237, 243, 250)');
+  await expect(name).toHaveCSS('background-color', 'rgb(241, 241, 241)');
   await page.locator('html').evaluate((root) => {
     root.style.setProperty('--mar-table-header-bg', '#324951');
   });
@@ -199,6 +274,14 @@ test('Pagination keeps confirmed page, supports jumps and emits once when the ra
 }) => {
   const pager = page.getByRole('navigation', { name: 'Pagination' });
   const requestLog = page.getByRole('status', { name: 'Requests' });
+  const compactSize = await pager.evaluate((element) =>
+    parseFloat(getComputedStyle(element).getPropertyValue('--mar-ui-compact-control-size'))
+  );
+  for (const button of await pager.getByRole('button').all()) {
+    const box = (await button.boundingBox())!;
+    expect(box.height).toBeCloseTo(compactSize, 0);
+    expect(box.width).toBeGreaterThanOrEqual(compactSize);
+  }
   await expect(pager.getByRole('button', { name: 'Go to previous page' })).toBeDisabled();
   await pager.getByRole('button', { name: 'Jump forward 3 pages' }).press('Space');
   await expect(requestLog).toHaveText('4');
@@ -298,5 +381,22 @@ for (const moveFocus of [false, true]) {
     await expect(moveFocus ? confirm : current).toBeFocused();
     await expect(current).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('status', { name: 'Requests' })).toHaveText('4');
+  });
+}
+
+for (const [width, font, height] of [
+  [1280, '12px', 52],
+  [390, '11px', 48]
+] as const) {
+  test(`Table empty text uses compact typography at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    const table = page.getByRole('table', { name: 'Empty table' });
+    const text = table.getByText('Nothing here', { exact: true });
+    await expect(text).toHaveCSS('font-size', font);
+    const row = table
+      .getByRole('row')
+      .filter({ has: page.getByText('Nothing here', { exact: true }) });
+    expect((await row.boundingBox())!.height).toBeCloseTo(height, 1);
+    await table.screenshot({ path: testInfo.outputPath('compact-empty-table.png') });
   });
 }

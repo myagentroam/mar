@@ -354,8 +354,11 @@ defineExpose({
   background: var(--mar-ui-bg-panel);
   box-shadow: 0 0 0 1px var(--mar-ui-input-border) inset;
   color: var(--mar-ui-text-secondary);
-  font-size: var(--mar-ui-font-size-input);
+  font-size: var(--mar-ui-font-size-meta);
   font-weight: 400;
+}
+.mar-ui-input--textarea {
+  font-size: var(--mar-ui-font-size-input);
 }
 .mar-ui-input:has(> .mar-ui-input__body:hover) {
   box-shadow: 0 0 0 1px var(--mar-ui-input-border-hover) inset;

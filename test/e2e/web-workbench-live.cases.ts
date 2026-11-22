@@ -935,10 +935,10 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     'href',
     '/favicon.ico?v=logo-20261011'
   );
-  await expect(page.locator('html')).toHaveCSS('--mar-conversation-activity-fg', '#075fc7');
-  await expect(page.locator('html')).toHaveCSS('--mar-ui-control-primary-bg', '#303030');
-  await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#cbd6e4');
-  await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#dce4ef');
+  await expect(page.locator('html')).toHaveCSS('--mar-conversation-activity-fg', '#005fd6');
+  await expect(page.locator('html')).toHaveCSS('--mar-ui-control-primary-bg', '#2563c9');
+  await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#c9c9c9');
+  await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#dddddd');
   await expect(page.getByRole('button', { name: '进入控制台' })).toHaveClass(/mar-ui-button/);
   await expect(page.locator('.gate-panel')).toHaveCSS('border-radius', '8px');
   await expect(page.locator('.gate-panel')).toHaveCSS('box-shadow', 'none');
@@ -953,7 +953,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(placeholderTab.locator('.tab-close')).toHaveCount(0);
   const workNavigation = page.getByRole('button', { name: '工作', exact: true });
   await expect(workNavigation).toHaveCSS('border-left-width', '0px');
-  await expect(workNavigation).toHaveCSS('background-color', 'rgb(223, 233, 246)');
+  await expect(workNavigation).toHaveCSS('background-color', 'rgb(227, 227, 227)');
   await page
     .locator('.workspace-tree')
     .getByRole('button', { name: /开发节点/ })
@@ -971,8 +971,8 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     const style = getComputedStyle(tab);
     return [style.backgroundColor, style.backgroundImage].join(' ');
   });
-  expect(placeholderBackground).toContain('rgb(223, 233, 246)');
-  await expect(placeholderTab).toHaveCSS('color', 'rgb(23, 32, 51)');
+  expect(placeholderBackground).toContain('rgb(227, 227, 227)');
+  await expect(placeholderTab).toHaveCSS('color', 'rgb(32, 32, 32)');
   await expect(placeholderTab).toHaveCSS('min-height', '32px');
   const placeholderGeometry = await placeholderTab.evaluate((tab) => {
     const header = tab.closest('.workbench-header')!.getBoundingClientRect();
@@ -1117,7 +1117,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(managedStatus).toHaveAttribute('aria-label', '运行中');
   await expect(managedStatus).not.toHaveAttribute('title');
   await expect(managedStatus).toHaveText('');
-  await expect(managedStatus.locator('i')).toHaveCSS('background-color', 'rgb(6, 117, 81)');
+  await expect(managedStatus.locator('i')).toHaveCSS('background-color', 'rgb(0, 132, 61)');
   const existingSession = page.locator('.session-list .session-link').first();
   const existingSessionTitle =
     (await existingSession.locator('strong').textContent())?.trim() ?? '';
@@ -1139,7 +1139,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(managedStatus).toHaveCount(1);
   await expect(conversationHeader.locator('.mar-session-activity')).toHaveCount(0);
   const composerActivity = page.locator('.composer-working');
-  await expect(composerActivity).toHaveCSS('color', 'rgb(7, 95, 199)');
+  await expect(composerActivity).toHaveCSS('color', 'rgb(0, 95, 214)');
   await expect(composerActivity.getByRole('status')).toHaveText('等待你的确认');
   await expect(composerActivity.locator('.composer-busy-indicator')).toHaveCount(0);
   await expect(composerActivity.locator('.composer-elapsed')).toHaveCount(0);

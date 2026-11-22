@@ -85,7 +85,7 @@ test('modal blocks the activity shortcut without stealing focus and restores it 
   const activity = page.locator('.activity-center-trigger').first();
   await expect(activity).toHaveAttribute('aria-expanded', 'false');
   await page.keyboard.press('Control+Shift+O');
-  const input = page.locator('.quick-open-input');
+  const input = page.locator('.quick-open-dialog').getByRole('textbox');
   await expect(input).toBeVisible();
   await input.focus();
   await page.keyboard.press('Control+Shift+E');
@@ -126,7 +126,7 @@ test('Quick Open keyboard selection navigates to a session through the shared sh
     .click();
   await expect(page.locator('.session-row').first()).toBeVisible();
   await page.keyboard.press('Control+Shift+O');
-  const input = page.locator('.quick-open-input');
+  const input = page.locator('.quick-open-dialog').getByRole('textbox');
   await expect(input).toBeFocused();
   await page.getByRole('tab', { name: '会话', exact: true }).click();
   await expect(page.locator('.quick-open-results [role="option"]').first()).toBeVisible();
@@ -1962,7 +1962,7 @@ test('Workspace tab direct Link icon preserves hover and compact status layout',
         await expect(runningDot).toHaveCSS('box-shadow', 'none');
         await expect(runningDot).toHaveCSS(
           'background-color',
-          theme === 'daylight' ? 'rgb(6, 117, 81)' : 'rgb(116, 198, 157)'
+          theme === 'daylight' ? 'rgb(0, 132, 61)' : 'rgb(53, 213, 110)'
         );
         for (const reducedMotion of ['no-preference', 'reduce'] as const) {
           await page.emulateMedia({ reducedMotion });

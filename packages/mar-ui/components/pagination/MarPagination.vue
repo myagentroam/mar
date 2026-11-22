@@ -183,8 +183,8 @@ function caption(template: string, value: number): string {
   font-size: var(--mar-ui-font-size-meta);
 }
 .mar-ui-pagination__button {
-  min-inline-size: 28px;
-  min-block-size: 28px;
+  min-inline-size: var(--mar-ui-compact-control-size, 24px);
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   padding-inline: 4px;
   font-variant-numeric: tabular-nums;
 }

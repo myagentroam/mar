@@ -267,7 +267,6 @@ void load();
 .license-code-input :deep(.mar-ui-input__field) {
   color: var(--mar-text-secondary);
   font-family: var(--mar-font-mono);
-  font-size: var(--mar-font-size-input);
   text-overflow: ellipsis;
 }
 .license-code-input :deep(.mar-ui-input__append .mar-ui-button) {
