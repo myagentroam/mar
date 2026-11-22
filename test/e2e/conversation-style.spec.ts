@@ -1541,15 +1541,125 @@ test('Touch conversation details open title actions and reveal unavailable chang
   }
 });
 
+function freezeFirstDisclosureFrame(element: Element) {
+  const animate = element.animate.bind(element);
+  element.animate = (...args) => {
+    const animation = animate(...args);
+    animation.pause();
+    animation.currentTime = 0;
+    return animation;
+  };
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Reasoning group keeps its painted hover corners on the first expansion frame in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&reasoning-preview=1`);
+    const summary = page.locator('.reasoning-group > details > summary').first();
+    const group = summary.locator('..');
+    await summary.hover();
+    const hover = await summary.evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(hover).not.toBe('rgba(0, 0, 0, 0)');
+    await group.evaluate(freezeFirstDisclosureFrame);
+
+    async function captureCorners() {
+      const box = (await summary.boundingBox())!;
+      const y = Math.ceil(box.y);
+      return Promise.all(
+        [Math.ceil(box.x), Math.floor(box.x + box.width) - 10].map((x) =>
+          page.screenshot({ clip: { x, y, width: 10, height: 8 } })
+        )
+      );
+    }
+
+    const before = await captureCorners();
+    await summary.click();
+    await expect.poll(() => group.evaluate((element) => element.getAnimations().length)).toBe(1);
+    await expect(summary).toHaveCSS('background-color', hover);
+    await summary.screenshot({ path: testInfo.outputPath('reasoning-group-first-frame.png') });
+    const during = await captureCorners();
+    expect(during[0]!.equals(before[0]!), 'left hover corner').toBe(true);
+    expect(during[1]!.equals(before[1]!), 'right hover corner').toBe(true);
+    await group.evaluate((element) => element.getAnimations()[0]!.finish());
+    await expect.poll(() => group.evaluate((element) => element.getAnimations().length)).toBe(0);
+    await expect(group.locator('.mar-conversation-detail-text')).toContainText(
+      'Second thinking line'
+    );
+  });
+}
+
+test('Standalone detail scroll height follows the expansion rather than its hidden content', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}conversation-style.html?detail-surfaces=1`);
+  const timeline = page.locator('.conversation-timeline');
+  const details = timeline.locator('[data-entry-key$=":fallback-detail"] > details');
+  await details.evaluate(freezeFirstDisclosureFrame);
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  await timeline.evaluate((element) => {
+    Object.assign(element.style, { maxHeight: '150px', overflowY: 'auto' });
+    element.scrollTop = element.scrollHeight;
+  });
+  const scrollHeight = () => timeline.evaluate((element) => element.scrollHeight);
+  const collapsed = await scrollHeight();
+  await details.locator(':scope > summary').click();
+  await expect.poll(() => details.evaluate((element) => element.getAnimations().length)).toBe(1);
+  expect(await scrollHeight()).toBe(collapsed);
+  const setProgress = (progress: number) =>
+    details.evaluate((element, ratio) => {
+      const animation = element.getAnimations()[0]!;
+      animation.currentTime = Number(animation.effect!.getComputedTiming().duration) * ratio;
+    }, progress);
+  await setProgress(0.5);
+  const intermediate = await scrollHeight();
+  expect(intermediate).toBeGreaterThan(collapsed);
+  await details.evaluate((element) => element.getAnimations()[0]!.finish());
+  await expect.poll(scrollHeight).toBeGreaterThan(intermediate);
+});
+
+test('Reasoning disclosure stays native where its body cannot be animated', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.addInitScript(() => {
+    const supports = CSS.supports.bind(CSS);
+    CSS.supports = (property: string, value?: string) =>
+      value === undefined
+        ? property !== 'selector(::details-content)' && supports(property)
+        : supports(property, value);
+  });
+  await page.goto(`${fixture.url}conversation-style.html?reasoning-preview=1`);
+  const details = page.locator('.reasoning-group > details').first();
+  const summary = details.locator(':scope > summary');
+  await details.evaluate(freezeFirstDisclosureFrame);
+
+  await summary.press('Enter');
+  await expect(details).toHaveAttribute('open', '');
+  await expect(details.locator('.mar-conversation-detail-text')).toContainText(
+    'Second thinking line'
+  );
+  expect(await details.evaluate((element) => element.getAnimations().length)).toBe(0);
+  await summary.press('Space');
+  await expect(details).not.toHaveAttribute('open');
+  await expect(details.locator('.mar-conversation-detail-body')).toHaveCount(0);
+});
+
 test('Read group keeps its rounded hover and focus ring during expansion', async ({
   page
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  // Settle the outer process before enabling motion for the nested disclosure under test.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(`${fixture.url}conversation-style.html?theme=vscode-dark-2026&group-spacing=1`);
   await page.locator('[data-process-id="spacing-process"] .process-heading').click();
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   const summary = page.locator('.conversation-record-group > summary').filter({ hasText: /^Read/ });
   await summary.hover();
+  await expect(summary).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   const hovered = await summary.evaluate((element) => {
     const style = getComputedStyle(element);
     return { background: style.backgroundColor, radius: style.borderRadius };
@@ -1569,19 +1679,18 @@ test('Read group keeps its rounded hover and focus ring during expansion', async
   await page.keyboard.press('Tab');
   await page.keyboard.press('Shift+Tab');
   await expect(summary).toBeFocused();
+  await group.evaluate(freezeFirstDisclosureFrame);
   await summary.press('Enter');
-  await expect
-    .poll(() =>
-      group.evaluate((element) => {
-        const animation = element.getAnimations()[0];
-        if (!animation) return false;
-        animation.pause();
-        animation.currentTime = 0;
-        return getComputedStyle(element).overflowY === 'hidden';
-      })
-    )
-    .toBe(true);
+  await expect.poll(() => group.evaluate((element) => element.getAnimations().length)).toBe(1);
   await summary.hover();
+  const childSummary = group.locator(':scope > details > summary').first();
+  const childReceivesPointer = () =>
+    childSummary.evaluate((element) => {
+      const { left, top, width, height } = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(left + width / 2, top + height / 2);
+      return hit !== null && element.contains(hit);
+    });
+  expect(await childReceivesPointer()).toBe(false);
   await expect(summary).toHaveCSS('background-color', hovered.background);
   await expect(summary).toHaveCSS('border-radius', hovered.radius);
   await expect(summary).toHaveCSS('outline-style', 'solid');
@@ -1589,7 +1698,8 @@ test('Read group keeps its rounded hover and focus ring during expansion', async
   await expect(summary).toHaveCSS('outline-offset', '-2px');
   await summary.screenshot({ path: testInfo.outputPath('read-group-during-expansion.png') });
   await group.evaluate((element) => element.getAnimations()[0]?.finish());
-  await expect(group.locator(':scope > details').first()).toBeVisible();
+  await childSummary.scrollIntoViewIfNeeded();
+  await expect.poll(childReceivesPointer).toBe(true);
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {

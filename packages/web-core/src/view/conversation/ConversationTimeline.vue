@@ -452,7 +452,10 @@ async function animateDisclosure(event: MouseEvent): Promise<void> {
   const startHeight = details.getBoundingClientRect().height;
   previous?.animation?.cancel();
   delete details.dataset.disclosureClosing;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (
+    matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    !CSS.supports('selector(::details-content)')
+  ) {
     if (previous) {
       event.preventDefault();
       details.open = motion.open;
@@ -477,16 +480,18 @@ async function animateDisclosure(event: MouseEvent): Promise<void> {
   }
   const style = getComputedStyle(details);
   const duration = style.getPropertyValue('--mar-motion-duration-fast').trim();
+  const summaryEnd = summary.getBoundingClientRect().bottom - details.getBoundingClientRect().top;
   const collapsedHeight =
-    summary.getBoundingClientRect().bottom -
-    details.getBoundingClientRect().top +
+    summaryEnd +
     Number.parseFloat(style.paddingBottom) +
     Number.parseFloat(style.borderBottomWidth);
+  const bodyOffset = `${summaryEnd - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.borderTopWidth)}px`;
   const endHeight = motion.open ? details.getBoundingClientRect().height : collapsedHeight;
   motion.animation = details.animate(
     {
       height: [`${startHeight}px`, `${endHeight}px`],
-      overflow: ['hidden', 'hidden'],
+      '--mar-disclosure-body-offset': [bodyOffset, bodyOffset],
+      '--mar-disclosure-body-overflow': ['clip', 'clip'],
       boxSizing: ['border-box', 'border-box']
     },
     {
@@ -2316,6 +2321,15 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item details {
   margin-top: 0;
+  /* A nested disclosure owns its own clipping, not its parent's animation values. */
+  --mar-disclosure-body-offset: initial;
+  --mar-disclosure-body-overflow: visible;
+}
+
+.conversation-item details::details-content {
+  /* Keep the summary outside the clipping region throughout the height animation. */
+  max-height: calc(100% - var(--mar-disclosure-body-offset));
+  overflow: var(--mar-disclosure-body-overflow);
 }
 
 .conversation-item summary {
@@ -2384,7 +2398,6 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item summary:focus-visible {
   outline: 2px solid var(--mar-control-focus);
-  /* Keep the ring inside the rounded row while the details animation clips overflow. */
   outline-offset: -2px;
 }
 
