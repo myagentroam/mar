@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/button/MarButton.vue
@@ -233,6 +234,34 @@ test('Dropdown grows toward the free space when a label expands near the right e
   expect((await rename.boundingBox())!.height).toBeGreaterThan(rowHeight);
 });
 
+test('Dark Dropdown shows a distinct neutral highlight for pointer and keyboard', async ({
+  page
+}, testInfo) => {
+  await page.goto(`${fixture.url}mar-controls.html?theme=dark&command-menu`);
+  const trigger = page.getByRole('button', { name: 'Commands' });
+  await trigger.click();
+  const menu = page.getByRole('menu', { name: 'Commands' });
+  const rename = menu.getByRole('menuitem', { name: 'Rename' });
+  const surface = resolvedColorToHex(
+    await menu.evaluate((el) => getComputedStyle(el).backgroundColor)
+  );
+  await expect(rename).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await rename.hover();
+  const hover = await rename.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const hex = resolvedColorToHex(hover);
+  expect(hex).toMatch(/^#([\da-f]{2})\1\1$/u);
+  expect(parseInt(hex.slice(1, 3), 16) - parseInt(surface.slice(1, 3), 16)).toBeGreaterThanOrEqual(
+    20
+  );
+  await menu.screenshot({ path: testInfo.outputPath('dropdown-dark-hover.png') });
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Escape');
+  await trigger.press('ArrowUp');
+  await expect(rename).toBeFocused();
+  await expect(rename).toHaveCSS('background-color', hover);
+  await expect(rename).toHaveCSS('outline-style', 'solid');
+});
+
 test('Organization cascader highlights the entire row and shows the confirmed path', async ({
   page
 }) => {
@@ -248,7 +277,7 @@ test('Organization cascader highlights the entire row and shows the confirmed pa
   const row = popup.locator('.mar-ui-cascader__row').filter({ has: chooseControl });
   const hoverFill = await row.evaluate((node) => {
     const probe = document.createElement('div');
-    probe.style.backgroundColor = 'var(--mar-ui-fill-row-hover)';
+    probe.style.backgroundColor = 'var(--mar-ui-overlay-row-hover)';
     node.append(probe);
     const color = getComputedStyle(probe).backgroundColor;
     probe.remove();

@@ -67,6 +67,7 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-color-danger-bg',
   '--mar-color-accent',
   '--mar-color-accent-bg',
+  '--mar-color-git-graph-main',
   '--mar-color-diff-add-text',
   '--mar-color-diff-del-text',
   '--mar-shadow-soft',

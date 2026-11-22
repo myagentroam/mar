@@ -718,7 +718,7 @@ button.history-refresh {
 }
 
 .history-graph-color-0 {
-  color: var(--mar-text-primary);
+  color: var(--mar-color-git-graph-main);
 }
 
 .history-graph-color-1 {
@@ -772,8 +772,12 @@ button.history-refresh {
 
 .history-context-menu button:hover,
 .history-context-menu button:focus-visible {
-  background: var(--mar-fill-hover);
-  outline: none;
+  background: var(--mar-overlay-row-hover, var(--mar-fill-hover));
+}
+
+.history-context-menu button:focus-visible {
+  outline: 2px solid var(--mar-control-focus);
+  outline-offset: -2px;
 }
 
 .history-commit-row:hover {

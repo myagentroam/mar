@@ -147,6 +147,38 @@ for (const language of [
     await page.getByRole('tab', { name: language.history, exact: true }).click();
     await expect(page.locator('.history-commit')).toHaveCount(2);
 
+    const graph = page.locator('.history-graph');
+    const mainNode = graph.locator('.history-graph-node.history-graph-color-0').first();
+    const mainEdge = graph.locator('.history-graph-edge.history-graph-color-0').first();
+    const branchNode = graph.locator('.history-graph-node.history-graph-color-1').first();
+    const root = page.locator('html');
+    const originalTheme = await root.getAttribute('data-theme');
+    await expect(mainEdge).toBeAttached();
+    const originalStroke = await mainEdge.evaluate((element) => getComputedStyle(element).stroke);
+    try {
+      for (const [theme, blue] of [
+        ['daylight', 'rgb(39, 103, 173)'],
+        ['vscode-dark-2026', 'rgb(82, 155, 238)']
+      ] as const) {
+        await root.evaluate((element, name) => (element.dataset.theme = name), theme);
+        await expect(mainNode).toHaveCSS('fill', blue);
+        await expect(mainEdge).toHaveCSS('stroke', blue);
+        await expect(branchNode).not.toHaveCSS('fill', blue);
+      }
+      await root.evaluate((element) =>
+        element.style.setProperty('--mar-color-git-graph-main', '#9454c0')
+      );
+      await expect(mainNode).toHaveCSS('fill', 'rgb(148, 84, 192)');
+      await expect(mainEdge).toHaveCSS('stroke', 'rgb(148, 84, 192)');
+      await expect(branchNode).not.toHaveCSS('fill', 'rgb(148, 84, 192)');
+    } finally {
+      await root.evaluate((element, name) => {
+        element.style.removeProperty('--mar-color-git-graph-main');
+        if (name === null) element.removeAttribute('data-theme');
+        else element.dataset.theme = name;
+      }, originalTheme);
+    }
+
     const measure = () =>
       page.locator('.history-list').evaluate((list) => {
         const rect = (element: Element) => {
@@ -241,6 +273,10 @@ for (const language of [
     await page.getByRole('button', { name: 'nested', exact: true }).click();
     await expect(page.getByRole('button', { name: /graph\.ts/ })).toBeVisible();
     await expect(page.locator('.history-graph-continuation line')).toHaveCount(1);
+    await expect(page.locator('.history-graph-continuation .history-graph-color-0')).toHaveCSS(
+      'stroke',
+      originalStroke
+    );
     await verify('narrow-expanded-files');
     await inspector.screenshot({ path: testInfo.outputPath('graph-narrow-expanded.png') });
     await page.getByText('Shared merge ancestor', { exact: true }).click();

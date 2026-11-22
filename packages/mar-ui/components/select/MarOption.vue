@@ -103,7 +103,7 @@ if (unregister) onBeforeUnmount(unregister);
   background: var(--mar-ui-fill-selection);
 }
 .mar-ui-option:not([aria-disabled='true'], [aria-selected='true']):hover {
-  background: var(--mar-ui-fill-row-hover);
+  background: var(--mar-ui-overlay-row-hover, var(--mar-ui-fill-row-hover));
 }
 .mar-ui-option--active:not([aria-disabled='true']) {
   outline: var(--mar-ui-select-option-focus, none);

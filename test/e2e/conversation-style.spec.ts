@@ -2315,7 +2315,8 @@ test('uses neutral near-black surfaces with clear text and distinct semantic fee
       )
     )
       continue;
-    if (token === '--mar-overlay-surface') continue; // Derived from the tested overlay fill.
+    // Derived popup colors are verified on the rendered surface and options.
+    if (token === '--mar-overlay-surface' || token === '--mar-overlay-row-hover') continue;
     expect(color, token).toMatch(/^#([\da-f]{2})\1\1(?:[\da-f]{2})?$/u);
   }
   for (const surface of [
