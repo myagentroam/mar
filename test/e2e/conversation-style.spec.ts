@@ -2218,26 +2218,46 @@ test('uses the bright daylight palette with accessible interactive and text colo
     expect(contrast(daylight[foreground!]!, daylight[background!]!)).toBeGreaterThanOrEqual(4.5);
   }
 });
-test('uses neutral near-black surfaces with readable text, feedback, and controls', async ({
+test('uses neutral near-black surfaces with clear text and distinct semantic feedback', async ({
   page
 }) => {
   await page.goto(fixture.url + 'conversation-style.html?theme=vscode-dark-2026');
   const dark = await paletteColors(page);
-  expect(dark['--mar-bg-page']).toBe('#181818');
-  expect(dark['--mar-bg-panel']).toBe('#1b1b1b');
-  expect(dark['--mar-bg-chrome']).toBe('#181818');
+  expect(dark['--mar-bg-page']).toBe('#1a1a1a');
+  expect(dark['--mar-bg-panel']).toBe('#1e1e1e');
+  expect(dark['--mar-bg-chrome']).toBe('#1a1a1a');
   for (const [role, color] of Object.entries({
-    canvas: '#131313',
-    surface: '#1f1f1f',
-    process: '#181818',
+    canvas: '#161616',
+    surface: '#252525',
+    process: '#1a1a1a',
     border: '#383838',
     'process-border': '#2c2c2c',
-    code: '#191919'
+    code: '#1e1e1e',
+    'activity-fg': '#4da3ff'
   })) {
     expect(dark[`--mar-conversation-${role}`]).toBe(color);
   }
-  expect(dark['--mar-control-bg-color-overlay']).toBe('#242424');
-  expect(dark['--mar-fill-selection']).toBe('#303030');
+  expect(dark['--mar-control-bg-color-overlay']).toBe('#2b2b2b');
+  expect(dark['--mar-fill-selection']).toBe('#373737');
+  expect(dark['--mar-fill-row-hover']).toBe('#2e2e2e');
+  expect(dark).not.toHaveProperty('--mar-color-brand');
+  expect(dark).toMatchObject({
+    '--mar-text-primary': '#eaeaea',
+    '--mar-text-secondary': '#c2c2c2',
+    '--mar-text-muted': '#a0a0a0',
+    '--mar-control-color-success': '#35d56e',
+    '--mar-color-success-text': '#71e49a',
+    '--mar-color-success-bg': '#1a2b21',
+    '--mar-control-color-warning': '#ffc14d',
+    '--mar-color-warning-accent': '#ffc14d',
+    '--mar-color-warning-text': '#f8cb72',
+    '--mar-color-warning-bg': '#302619',
+    '--mar-control-color-danger': '#ff626b',
+    '--mar-color-danger-text': '#ff8087',
+    '--mar-color-danger-bg': '#332024',
+    '--mar-color-accent': '#59d5ea',
+    '--mar-color-accent-bg': '#192b31'
+  });
   for (const [token, color] of Object.entries(dark)) {
     if (
       !/^--mar-(?:bg-|fill-|border-|text-|table-|control-(?:fill|border)-|scrollbar-|shadow-|overlay-)/u.test(
@@ -2281,6 +2301,18 @@ test('uses neutral near-black surfaces with readable text, feedback, and control
       contrast(dark[`--mar-color-${text}`]!, dark[`--mar-color-${surface}`]!),
       text
     ).toBeGreaterThanOrEqual(4.5);
+  }
+  for (const state of ['success', 'warning', 'danger']) {
+    for (const surface of [
+      '--mar-bg-panel',
+      '--mar-fill-selection',
+      '--mar-conversation-surface'
+    ]) {
+      expect(
+        contrast(dark[`--mar-control-color-${state}`]!, dark[surface]!),
+        state + ' on ' + surface
+      ).toBeGreaterThanOrEqual(3);
+    }
   }
 });
 

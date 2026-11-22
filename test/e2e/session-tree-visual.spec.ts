@@ -52,12 +52,12 @@ test('session tree entry retains its green dot while the tree loads or is unavai
   await trigger.click();
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   await expect(tree.locator('.session-tree')).toHaveAttribute('aria-busy', 'true');
-  await expect(indicator).toHaveCSS('background-color', 'rgb(116, 198, 157)');
+  await expect(indicator).toHaveCSS('background-color', 'rgb(53, 213, 110)');
   await expect(indicator).toHaveCSS('opacity', '1');
   await page.keyboard.press('Escape');
   await page.getByTestId('reject-snapshot').click();
   await expect(trigger).toHaveAccessibleDescription('Child session activity is unavailable');
-  await expect(indicator).toHaveCSS('background-color', 'rgb(116, 198, 157)');
+  await expect(indicator).toHaveCSS('background-color', 'rgb(53, 213, 110)');
   await expect(indicator).toHaveCSS('opacity', '1');
 });
 
@@ -118,7 +118,7 @@ test('tree uses the Watch snapshot order and closes on Escape and outside click'
   const trigger = page.getByRole('button', { name: 'View session tree' });
   await expect(trigger.locator('.tree-active-indicator')).toHaveCSS(
     'background-color',
-    'rgb(116, 198, 157)'
+    'rgb(53, 213, 110)'
   );
   await trigger.click();
   const tree = page.getByRole('dialog', { name: 'View session tree' });
@@ -137,10 +137,10 @@ test('tree uses the Watch snapshot order and closes on Escape and outside click'
   await expect(tree.locator('.mar-session-activity.running')).toHaveCount(2);
   await expect(tree.locator('.mar-session-activity.tree-sleeping')).toHaveCount(1);
   for (const dot of await tree.locator('.mar-session-activity.running i').all())
-    await expect(dot).toHaveCSS('background-color', 'rgb(116, 198, 157)');
+    await expect(dot).toHaveCSS('background-color', 'rgb(53, 213, 110)');
   await expect(tree.locator('.mar-session-activity.tree-sleeping i')).toHaveCSS(
     'background-color',
-    'rgb(220, 180, 111)'
+    'rgb(255, 193, 77)'
   );
   await expect(tree.locator('.session-tree-time')).toHaveText(Array(6).fill('—'));
   await expect(tree.getByRole('button', { name: 'Running branch, Running' })).toBeVisible();
@@ -257,7 +257,7 @@ test('the title menu copies the session ID and the tree menu also navigates', as
   const tree = page.getByRole('dialog', { name: 'View session tree' });
   const parent = tree.locator('.session-tree-parent');
   const descendant = tree.locator('.session-tree-row').first();
-  const treeMenu = page.locator('.session-tree-menu').getByRole('menu');
+  const treeMenu = page.getByRole('menu').and(page.locator('.session-tree-menu'));
   for (const row of [parent, descendant]) {
     await row.hover();
     await row.getByRole('button', { name: 'Session actions' }).click();

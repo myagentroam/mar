@@ -203,7 +203,7 @@ function handleClick(event: MouseEvent): void {
   --mar-ui-button-fg: light-dark(white, var(--mar-ui-button-tone));
   --mar-ui-button-bg: light-dark(
     var(--mar-ui-button-tone),
-    color-mix(in srgb, var(--mar-ui-button-tone) 16%, var(--mar-ui-bg-panel))
+    color-mix(in srgb, var(--mar-ui-button-tone) 8%, var(--mar-ui-bg-panel))
   );
   --mar-ui-button-border: light-dark(
     var(--mar-ui-button-tone),
@@ -211,7 +211,7 @@ function handleClick(event: MouseEvent): void {
   );
   --mar-ui-button-hover-bg: light-dark(
     color-mix(in srgb, var(--mar-ui-button-tone), black 10%),
-    color-mix(in srgb, var(--mar-ui-button-tone) 20%, var(--mar-ui-bg-panel))
+    color-mix(in srgb, var(--mar-ui-button-tone) 12%, var(--mar-ui-bg-panel))
   );
   --mar-ui-button-hover-border: light-dark(
     var(--mar-ui-button-hover-bg),
@@ -220,7 +220,7 @@ function handleClick(event: MouseEvent): void {
   --mar-ui-button-hover-fg: var(--mar-ui-button-fg);
   --mar-ui-button-active-bg: light-dark(
     color-mix(in srgb, var(--mar-ui-button-tone), black 18%),
-    color-mix(in srgb, var(--mar-ui-button-tone) 23%, var(--mar-ui-bg-panel))
+    color-mix(in srgb, var(--mar-ui-button-tone) 16%, var(--mar-ui-bg-panel))
   );
 }
 .mar-ui-button:is(.mar-ui-button--danger, .mar-ui-button--warning):is(

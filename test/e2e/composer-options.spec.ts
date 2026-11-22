@@ -182,7 +182,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             'control-primary-hover',
             'control-primary-active',
             'text-secondary',
-            'color-danger-text'
+            'control-color-danger'
           ].map((token) => [token, style.getPropertyValue(`--mar-${token}`).trim()])
         );
       });
@@ -196,7 +196,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           .then(resolvedColorToHex);
       await expect.poll(() => color(send, 'backgroundColor')).toBe(tokens['control-primary-bg']);
       await expect.poll(() => color(send, 'color')).toBe(tokens['control-primary-fg']);
-      await expect.poll(() => color(stop, 'color')).toBe(tokens['color-danger-text']);
+      await expect.poll(() => color(stop, 'color')).toBe(tokens['control-color-danger']);
       const ring = await context.evaluate((element) => {
         const stop = getComputedStyle(element).backgroundImage.match(/rgb\([^)]+\)(?= 42%)/u);
         return stop?.[0] ?? '';

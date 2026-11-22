@@ -14,7 +14,7 @@ test.afterAll(async () => {
 });
 
 for (const [scheme, width, background, foreground, loading] of [
-  ['Dark', 1280, 'rgb(222, 222, 222)', 'rgb(24, 24, 24)', 'rgb(182, 182, 182)'],
+  ['Dark', 1280, 'rgb(222, 222, 222)', 'rgb(24, 24, 24)', 'rgb(194, 194, 194)'],
   ['Light', 390, 'rgb(48, 48, 48)', 'rgb(255, 255, 255)', 'rgb(85, 85, 85)']
 ] as const) {
   test(`Confirmation controls and loading are independent of the running accent in ${scheme}`, async ({

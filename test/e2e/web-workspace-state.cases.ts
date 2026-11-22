@@ -1962,7 +1962,7 @@ test('Workspace tab direct Link icon preserves hover and compact status layout',
         await expect(runningDot).toHaveCSS('box-shadow', 'none');
         await expect(runningDot).toHaveCSS(
           'background-color',
-          theme === 'daylight' ? 'rgb(6, 117, 81)' : 'rgb(116, 198, 157)'
+          theme === 'daylight' ? 'rgb(6, 117, 81)' : 'rgb(53, 213, 110)'
         );
         for (const reducedMotion of ['no-preference', 'reduce'] as const) {
           await page.emulateMedia({ reducedMotion });

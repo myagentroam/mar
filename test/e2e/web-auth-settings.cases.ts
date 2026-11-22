@@ -837,11 +837,11 @@ test('Appearance changes UI and file preferences independently of the MAR icon t
   await selectAppearanceOption(page, '主题', '暗色');
   await expect(root).toHaveAttribute('data-theme', 'vscode-dark-2026');
   await expect(root).toHaveClass(/dark/);
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(24, 24, 24)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(26, 26, 26)');
 
   await page.reload();
   await expect(root).toHaveAttribute('data-theme', 'vscode-dark-2026');
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(24, 24, 24)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(26, 26, 26)');
 
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '外观', exact: true }).click();

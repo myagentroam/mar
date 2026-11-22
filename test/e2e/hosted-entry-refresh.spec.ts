@@ -111,9 +111,9 @@ const alternate = { ...template, id: 'template-2', name: 'Second template' };
 
 test('Hosted history uses green for running and neutral dots for transitions', async ({ page }) => {
   const states = [
-    { status: 'RUNNING', label: 'Running', color: 'rgb(116, 198, 157)' },
-    { status: 'STARTING', label: 'Starting', color: 'rgb(182, 182, 182)' },
-    { status: 'CANCELLING', label: 'Stopping', color: 'rgb(182, 182, 182)' },
+    { status: 'RUNNING', label: 'Running', color: 'rgb(53, 213, 110)' },
+    { status: 'STARTING', label: 'Starting', color: 'rgb(194, 194, 194)' },
+    { status: 'CANCELLING', label: 'Stopping', color: 'rgb(194, 194, 194)' },
     { status: 'IDLE', label: undefined, color: undefined }
   ] as const;
   await page.setViewportSize({ width: 1280, height: 850 });
@@ -682,7 +682,7 @@ test('Hosted send displays only request feedback before Watch, including after H
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(1);
     await expect(f.sending).toBeVisible();
-    await expect(f.sending).toHaveCSS('color', 'rgb(182, 182, 182)');
+    await expect(f.sending).toHaveCSS('color', 'rgb(194, 194, 194)');
     await expect(f.send).toBeDisabled();
     await expect(f.input).toHaveValue(f.prompt);
     await expect(f.message).toHaveCount(0);
@@ -715,8 +715,11 @@ test('Hosted send displays only request feedback before Watch, including after H
     await f.emitRun();
     await expect(f.message).toBeVisible();
     await expect(f.working).toBeVisible();
-    await expect(f.working).toHaveCSS('color', 'rgb(105, 169, 240)');
-    await expect(f.working.locator('.mar-busy-indicator')).toHaveCSS('color', 'rgb(105, 169, 240)');
+    await expect(f.working).toHaveCSS('color', 'rgb(77, 163, 255)');
+    await expect(f.working.locator('.mar-busy-indicator')).toHaveCSS('color', 'rgb(77, 163, 255)');
+    const stop = page.locator('.mar-composer-stop-action');
+    await expect(stop).toHaveCSS('color', 'rgb(255, 98, 107)');
+    await expect(stop).toHaveCSS('border-top-color', 'rgb(255, 98, 107)');
     await expect(f.elapsed).toBeVisible();
     await page.mouse.move(0, 0);
     await page.screenshot({ path: testInfo.outputPath('chat-running-dark.png') });
@@ -734,7 +737,7 @@ test('Hosted send shows Watch activity immediately and does not revive a termina
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(1);
     const ring = f.working.locator('.mar-busy-indicator');
-    const activityColor = 'rgb(105, 169, 240)';
+    const activityColor = 'rgb(77, 163, 255)';
     await f.emitRun('STARTING');
     await expect(f.working.getByRole('status')).toHaveText('Preparing');
     await expect(f.working).toHaveCSS('color', activityColor);
@@ -827,7 +830,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const shell = page.locator('.composer-shell');
     const input = page.locator('.composer-input');
     const activity = page.locator('.composer-working');
-    const activityColor = theme === 'daylight' ? 'rgb(7, 95, 199)' : 'rgb(105, 169, 240)';
+    const activityColor = theme === 'daylight' ? 'rgb(7, 95, 199)' : 'rgb(77, 163, 255)';
     await expect(activity).toContainText('Syncing');
     await expect(activity).toHaveCSS('color', activityColor);
     await expect(page.locator('.composer-busy-indicator')).toHaveCSS('color', activityColor);

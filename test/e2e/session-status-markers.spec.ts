@@ -29,13 +29,13 @@ for (const { width, locale, description, count } of [
     await expect(activity).toHaveAccessibleDescription(new RegExp(`^${count},`));
     await expect(activity.locator('.activity-entry-running')).toHaveCSS(
       'background-color',
-      'rgb(182, 182, 182)'
+      'rgb(194, 194, 194)'
     );
     const workspace = page.getByRole('tab', { name: 'Project', exact: true });
     await expect(workspace).toHaveAccessibleDescription(description);
     await expect(workspace.locator('.workspace-tab-running i')).toHaveCSS(
       'background-color',
-      'rgb(182, 182, 182)'
+      'rgb(194, 194, 194)'
     );
     await activity.click();
     await page

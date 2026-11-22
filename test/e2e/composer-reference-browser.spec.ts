@@ -260,7 +260,7 @@ for (const [width, theme] of [
             await picker.evaluate((element) => getComputedStyle(element).backgroundColor)
           )
         )
-        .toBe(theme === 'daylight' ? '#ffffff' : '#242424');
+        .toBe(theme === 'daylight' ? '#ffffff' : '#2b2b2b');
       if (name !== 'commands')
         await expect(picker.getByRole('option')).toHaveCount(name === 'references' ? 2 : 1);
       await expect
@@ -304,7 +304,7 @@ for (const [theme, width] of [
             .trim()
         )
       )
-      .toBe(theme === 'daylight' ? '#ffffff' : '#242424');
+      .toBe(theme === 'daylight' ? '#ffffff' : '#2b2b2b');
     await page.locator('textarea.composer-input').fill('@alpha');
     const picker = page.locator('.file-reference-picker');
     await expect(picker.locator('[role=option]')).toHaveCount(2);
@@ -338,7 +338,7 @@ for (const [theme, width] of [
           await picker.evaluate((element) => getComputedStyle(element).backgroundColor)
         )
       )
-      .toBe(theme === 'daylight' ? '#ffffff' : '#242424');
+      .toBe(theme === 'daylight' ? '#ffffff' : '#2b2b2b');
     expect(await picker.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true
     );

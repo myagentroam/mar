@@ -106,18 +106,18 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     } else {
       await expect(page.locator('.conversation-panel')).toHaveCSS(
         'background-color',
-        'rgb(19, 19, 19)'
+        'rgb(22, 22, 22)'
       );
       await expect(page.locator('.composer-shell')).toHaveCSS(
         'background-color',
-        'rgb(31, 31, 31)'
+        'rgb(37, 37, 37)'
       );
       const newSession = page
         .locator('.conversation-sidebar')
         .getByRole('button', { name: '新建会话', exact: true });
-      await expect(newSession).toHaveCSS('background-color', 'rgb(34, 34, 34)');
+      await expect(newSession).toHaveCSS('background-color', 'rgb(222, 222, 222)');
       await newSession.hover();
-      await expect(newSession).toHaveCSS('background-color', 'rgb(40, 40, 40)');
+      await expect(newSession).toHaveCSS('background-color', 'rgb(238, 238, 238)');
       await page.mouse.move(0, 0);
       expect(contrast(secondary)).toBeGreaterThanOrEqual(1.3);
       expect(contrast(track)).toBeGreaterThan(contrast(secondary));
@@ -127,7 +127,7 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     const fileInput = inputWrappers[2]!;
     await fileInput.getByRole('textbox').focus();
     await expect(fileInput.getByRole('textbox')).toBeFocused();
-    const focusColor = theme === 'daylight' ? 'rgb(9, 105, 232)' : 'rgb(40, 114, 200)';
+    const focusColor = theme === 'daylight' ? 'rgb(96, 96, 96)' : 'rgb(160, 160, 160)';
     await expect
       .poll(async () =>
         readColor(await fileInput.evaluate((element) => getComputedStyle(element).boxShadow))

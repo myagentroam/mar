@@ -17,7 +17,7 @@ async function expectActivityElevation(popover: Locator, theme: string) {
   const dark = theme === 'vscode-dark-2026';
   await expect(popover).toBeVisible();
   const background = await popover.evaluate((element) => getComputedStyle(element).backgroundColor);
-  expect(resolvedColorToHex(background)).toBe(dark ? '#242424' : '#ffffff');
+  expect(resolvedColorToHex(background)).toBe(dark ? '#2b2b2b' : '#ffffff');
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS(
     'border-top-color',

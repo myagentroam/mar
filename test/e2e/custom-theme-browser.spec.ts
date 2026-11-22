@@ -661,7 +661,7 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     { themeId: 'daylight', snapshot: JSON.stringify(dark), expected: '#f7f9fd' },
     { themeId: null, snapshot: JSON.stringify(light) }
   ];
-  for (const { themeId, snapshot, expected = '#181818' } of cases) {
+  for (const { themeId, snapshot, expected = '#1a1a1a' } of cases) {
     await page.evaluate(
       ({ themeId, snapshot }) => {
         if (themeId) localStorage.setItem('mar.theme', themeId);
@@ -675,7 +675,7 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', expected);
     await expect(page.locator('.mar-bootstrap__trace')).toHaveCSS(
       'color',
-      themeId === 'daylight' ? 'rgb(85, 85, 85)' : 'rgb(182, 182, 182)'
+      themeId === 'daylight' ? 'rgb(85, 85, 85)' : 'rgb(194, 194, 194)'
     );
     expect(await page.locator('html').evaluate((root) => root.classList.contains('dark'))).toBe(
       themeId !== 'daylight'
@@ -1433,8 +1433,20 @@ for (const scheme of ['Light', 'Dark']) {
         .click();
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const controls = page.getByRole('region', { name: 'Real theme controls' });
-    for (const name of ['Sample primary', 'Sample filled warning', 'Sample filled danger']) {
+    for (const [name, tone] of [
+      ['Sample primary', 'primary-fg'],
+      ['Sample filled warning', 'color-warning'],
+      ['Sample filled danger', 'color-danger']
+    ] as const) {
       const button = controls.getByRole('button', { name, exact: true });
+      const expectedText =
+        scheme === 'Light' && tone !== 'primary-fg'
+          ? '#ffffff'
+          : await button.evaluate(
+              (element, token) =>
+                getComputedStyle(element).getPropertyValue(`--mar-control-${token}`).trim(),
+              tone
+            );
       const appearance = () =>
         button.evaluate((element) => {
           const { color, backgroundColor } = getComputedStyle(element);
@@ -1442,12 +1454,14 @@ for (const scheme of ['Light', 'Dark']) {
         });
       await page.mouse.move(0, 0);
       const normal = await appearance();
+      expect(resolvedColorToHex(normal.color)).toBe(expectedText);
       expect(
         colorContrast(normal.color, normal.backgroundColor),
         `${name}, rest`
       ).toBeGreaterThanOrEqual(4.5);
       await button.hover();
       const hover = await appearance();
+      expect(resolvedColorToHex(hover.color)).toBe(expectedText);
       expect(hover.backgroundColor).not.toBe(normal.backgroundColor);
       expect(
         colorContrast(hover.color, hover.backgroundColor),
@@ -1456,6 +1470,7 @@ for (const scheme of ['Light', 'Dark']) {
       await page.mouse.down();
       try {
         const active = await appearance();
+        expect(resolvedColorToHex(active.color)).toBe(expectedText);
         expect(active.backgroundColor).not.toBe(hover.backgroundColor);
         expect(
           colorContrast(active.color, active.backgroundColor),
@@ -1650,7 +1665,7 @@ for (const scheme of ['Light', 'Dark']) {
       const branchName = branch.locator('.workspace-branch-name');
       const gitIcon = branch.getByRole('img', { name: 'Git' });
       const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
-      const colors = scheme === 'Light' ? ['#555555', '#cbd6e4'] : ['#b6b6b6', '#474747'];
+      const colors = scheme === 'Light' ? ['#555555', '#cbd6e4'] : ['#c2c2c2', '#474747'];
       async function expectColors(expected: string[]): Promise<void> {
         await expect(branch).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(async () => {
@@ -1999,10 +2014,11 @@ for (const [scheme, width] of [
         probe.remove();
         return colors;
       });
-      expect(resolvedColorToHex(border!)).toBe('#6a6a6a');
-      expect(resolvedColorToHex(hover!)).toBe('#717171');
-      for (const surface of [panel!, conversationSurface!])
-        expect(colorContrast(border!, surface)).toBeGreaterThanOrEqual(3);
+      for (const surface of [panel!, conversationSurface!]) {
+        const restingContrast = colorContrast(border!, surface);
+        expect(restingContrast).toBeGreaterThanOrEqual(3);
+        expect(colorContrast(hover!, surface)).toBeGreaterThan(restingContrast);
+      }
     }
     await page.mouse.move(0, 0);
     await fields.screenshot({
@@ -2168,7 +2184,7 @@ test('expanded and compact previews share the applied palette without changing g
   await expect(preview.locator('.preview-button.primary')).toHaveCSS('border-radius', '6px');
   await expect(preview.locator('.preview-toolbar')).toHaveCSS(
     'background-color',
-    'rgb(27, 27, 27)'
+    'rgb(30, 30, 30)'
   );
   await expect(preview.locator('.diff-add')).toHaveCSS('color', 'rgb(18, 52, 86)');
   const compactFont = await preview.evaluate((element) =>
@@ -2416,8 +2432,8 @@ for (const scheme of ['Light', 'Dark']) {
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
       const typography = page.getByRole('region', { name: 'Real conversation typography' });
-      const conversationText = scheme === 'Dark' ? 'rgb(216, 216, 216)' : 'rgb(23, 32, 51)';
-      const conversationSecondary = scheme === 'Dark' ? 'rgb(182, 182, 182)' : 'rgb(85, 85, 85)';
+      const conversationText = scheme === 'Dark' ? 'rgb(234, 234, 234)' : 'rgb(23, 32, 51)';
+      const conversationSecondary = scheme === 'Dark' ? 'rgb(194, 194, 194)' : 'rgb(85, 85, 85)';
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
@@ -2440,7 +2456,7 @@ for (const scheme of ['Light', 'Dark']) {
       await page.setViewportSize({ width: 1440, height: 900 });
       // Resizing and screenshots can leave the pointer over a control; inspect its neutral state.
       await page.mouse.move(-10, -10);
-      const panel = scheme === 'Dark' ? 'rgb(27, 27, 27)' : 'rgb(255, 255, 255)';
+      const panel = scheme === 'Dark' ? 'rgb(30, 30, 30)' : 'rgb(255, 255, 255)';
       await expect(controls.locator('.mar-ui-input')).toHaveCSS('background-color', panel);
       const select = controls.locator('.mar-ui-select__field');
       await expect(select).toHaveCSS('background-color', panel);
@@ -2493,7 +2509,7 @@ for (const scheme of ['Light', 'Dark']) {
       await controls.locator('tbody tr').first().hover();
       await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(40, 40, 40)' : 'rgb(229, 237, 246)'
+        scheme === 'Dark' ? 'rgb(46, 46, 46)' : 'rgb(229, 237, 246)'
       );
       await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
@@ -2513,7 +2529,7 @@ for (const scheme of ['Light', 'Dark']) {
         (element) => getComputedStyle(element).color
       );
       expect(neutralColor).not.toBe(dangerColor);
-      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(105, 169, 240)' : 'rgb(7, 95, 199)');
+      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(77, 163, 255)' : 'rgb(7, 95, 199)');
       await expect(disabledNeutral).toBeDisabled();
       for (const action of [neutral, disabledNeutral, danger]) {
         await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

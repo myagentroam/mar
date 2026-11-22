@@ -289,7 +289,7 @@ for (const mobile of [false, true]) {
       await page.locator('html').evaluate((root) => {
         root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
       });
-      await expect(appendRing).toHaveCSS('color', 'rgb(182, 182, 182)');
+      await expect(appendRing).toHaveCSS('color', 'rgb(194, 194, 194)');
       if (mobile && !search)
         await page.screenshot({ path: testInfo.outputPath('mobile-pagination-loading.png') });
       await expect(list.locator('.mar-list-append-state').getByRole('status')).toHaveCount(0);

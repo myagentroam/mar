@@ -706,8 +706,8 @@ test('Hosted process activity stops on disconnect and resumes after synchronizat
   const indicator = page.locator('.process-activity-indicator');
   const composerStatus = page.locator('.composer-working');
   await expect(indicator).toBeVisible();
-  await expect(indicator).toHaveCSS('color', 'rgb(105, 169, 240)');
-  await expect(composerStatus).toHaveCSS('color', 'rgb(105, 169, 240)');
+  await expect(indicator).toHaveCSS('color', 'rgb(77, 163, 255)');
+  await expect(composerStatus).toHaveCSS('color', 'rgb(77, 163, 255)');
   await page.screenshot({
     path: testInfo.outputPath('dark-conversation-activity.png'),
     animations: 'disabled'
