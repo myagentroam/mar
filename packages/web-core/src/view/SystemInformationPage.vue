@@ -75,9 +75,11 @@ const emit = defineEmits<{ extensionChanged: [] }>();
 <style scoped>
 .system-information {
   width: 100%;
-  min-height: 100%;
+  min-height: 0;
+  flex: 1;
   box-sizing: border-box;
   padding: 20px 24px;
+  overflow: auto;
   background: var(--mar-bg-panel);
 }
 .system-brand {
@@ -113,14 +115,16 @@ const emit = defineEmits<{ extensionChanged: [] }>();
 .system-status dl {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem;
+  gap: 0.75rem;
   margin: 0;
 }
 .system-status dl > div {
   display: grid;
   gap: 0.25rem;
-  border-bottom: 1px solid var(--mar-border-medium);
-  padding: 0.5rem 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--mar-border-default);
+  border-radius: var(--mar-radius-surface);
+  background: var(--mar-bg-subtle);
 }
 .system-status dt {
   color: var(--mar-text-secondary);
@@ -134,6 +138,12 @@ const emit = defineEmits<{ extensionChanged: [] }>();
   }
   .system-status dl {
     grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .system-status dl > div {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
   }
 }
 </style>
