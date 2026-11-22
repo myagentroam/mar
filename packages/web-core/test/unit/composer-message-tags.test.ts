@@ -92,7 +92,7 @@ describe('Composer product tag presentation', () => {
     expect(conversationItemCopyText('user_message', { text })).toBe(expected);
   });
 
-  it('retains resource XML and quote snapshots while removing source and steering wrappers', () => {
+  it('copies readable references and full quote snapshots without internal resource markup', () => {
     const quote = serializeComposerTag('mar_references', {
       references: [
         {
@@ -105,7 +105,13 @@ describe('Composer product tag presentation', () => {
         }
       ]
     });
-    const resources = [references, quote, attachments, skills].join('\n');
+    const otherReferences = serializeComposerTag('mar_references', {
+      references: [
+        { type: 'directory', path: 'src/components', label: 'components' },
+        { type: 'session', sessionId: 'session-one', label: 'Earlier session' }
+      ]
+    });
+    const resources = [references, otherReferences, quote, attachments, skills].join('\n');
     const source = serializeComposerTag('mar_session_origin', {
       sessionId: 'source-session',
       name: 'Reviewer'
@@ -113,8 +119,34 @@ describe('Composer product tag presentation', () => {
     const text = [source, serializeComposerTag('mar_steer', { message: 'Review' }), resources].join(
       '\n'
     );
-    expect(conversationItemCopyText('user_message', { text })).toBe(`Review\n${resources}`);
-    expect(conversationItemCopyText('user_message', { text: resources })).toBe(resources);
+    const copiedReferences =
+      'src/main.ts\nsrc/components\nEarlier session\nReply\nSnapshot <mar_restart /> & symbols';
+    expect(conversationItemCopyText('user_message', { text })).toBe(`Review\n${copiedReferences}`);
+    expect(conversationItemCopyText('user_message', { text: resources })).toBe(copiedReferences);
+  });
+
+  it.each([
+    attachments,
+    serializeComposerTag('mar_attachments', {
+      files: [{ name: 'notes.txt', mime: 'text/plain', path: '.mar/temp-files/input/notes.txt' }]
+    }),
+    serializeComposerTag('mar_attachments', {
+      files: [
+        {
+          name: 'image.png',
+          mime: 'image/png',
+          path: 'mar-attachment://ab873573-4c21-40c1-90a4-2867edf4a4e4/image.png'
+        }
+      ]
+    }),
+    skills
+  ])('does not copy hidden attachments or skill metadata (%s)', (tag) => {
+    const body = '  Review this **exactly**.\n\tSecond line  \n';
+    expect(conversationItemCopyText('user_message', { text: tag })).toBe('');
+    expect(conversationItemCopyText('user_message', { text: `${tag}\r\n${body}` })).toBe(body);
+    expect(conversationItemCopyText('user_message', { text: `${body}\n${tag}` })).toBe(body);
+    const fenced = `\`\`\`xml\n${tag}\n\`\`\``;
+    expect(conversationItemCopyText('user_message', { text: fenced })).toBe(fenced);
   });
 
   it.each([

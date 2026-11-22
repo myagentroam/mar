@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { grantClipboardPermissions } from './support/clipboard.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -6,6 +7,25 @@ test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/conversation-style.html');
 });
 test.afterAll(async () => fixture?.close());
+
+test('copying a user message with an image only copies the message text', async ({ page }) => {
+  await grantClipboardPermissions(page.context());
+  await page.goto(`${fixture.url}conversation-style.html?user-message-copy`);
+  const messages = page.locator('.conversation-timeline .user_message');
+  await expect(messages).toHaveCount(2);
+  for (const message of await messages.all()) {
+    const image = message.locator('.conversation-file-attachment img');
+    await expect(image).toBeVisible();
+    await expect(image).toHaveJSProperty('naturalWidth', 1);
+  }
+  const copy = messages.first().locator('.conversation-message-action');
+  await copy.click();
+  await expect(copy.locator('[data-mar-icon="check"]')).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    'Review the **screenshot**.'
+  );
+  await expect(messages.last().locator('.conversation-message-action')).toHaveCount(0);
+});
 
 const source = [
   '// Preserve original whitespace when copying.',
@@ -117,10 +137,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         .locator('.hljs-keyword')
         .first()
         .evaluate((element) => getComputedStyle(element).color);
-      expect(keywordColor).toBe(theme === 'daylight' ? 'rgb(0, 0, 255)' : 'rgb(86, 156, 214)');
+      expect(keywordColor).toBe(theme === 'daylight' ? 'rgb(0, 0, 255)' : 'rgb(155, 188, 242)');
       await expect(block.locator('.hljs-title.function_').first()).toHaveCSS(
         'color',
-        theme === 'daylight' ? 'rgb(121, 94, 38)' : 'rgb(220, 220, 170)'
+        theme === 'daylight' ? 'rgb(121, 94, 38)' : 'rgb(220, 192, 141)'
       );
       await expect(blocks.nth(1).locator('.agent-markdown-code-language')).toHaveText(
         width === 390 ? '代码' : 'Code'

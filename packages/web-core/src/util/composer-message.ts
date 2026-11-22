@@ -16,17 +16,18 @@ export function composerMessageInputText(payload: unknown): string {
       : '';
 }
 
-/** Copies user content and reusable resources, never provenance or execution wrappers. */
+/** Copies the body and explicit references as text, without transport metadata. */
 export function composerMessageCopyText(payload: unknown): string {
   const parts = parseComposerTags(composerMessageInputText(payload));
   const fragments = parts.map((part) => {
     if (part.kind === 'text') return part.text;
-    if (
-      part.kind === 'mar_references' ||
-      part.kind === 'mar_attachments' ||
-      part.kind === 'mar_skills'
-    )
-      return part.raw;
+    if (part.kind === 'mar_references')
+      return part.payload.references
+        .map((reference) => {
+          if (reference.type === 'quote') return `${reference.label}\n${reference.text}`;
+          return reference.type === 'session' ? reference.label : reference.path;
+        })
+        .join('\n');
     if (part.kind === 'mar_steer') return part.payload.message;
     if (part.kind === 'mar_goal_start' || part.kind === 'mar_schedule')
       return part.payload.objective;
