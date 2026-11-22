@@ -351,13 +351,13 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
       const table = page.locator('table:visible');
       const row = table.locator('tbody tr').first();
       await expect(row).toBeVisible();
-      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-start', '2px');
-      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-end', '2px');
+      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-start', '3px');
+      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-end', '3px');
       await expect(table.getByRole('columnheader').first()).toHaveCSS(
         'font-size',
         width >= 768 ? '12px' : '11px'
       );
-      await expect(table).toHaveCSS('font-size', width >= 768 ? '14px' : '13px');
+      await expect(table).toHaveCSS('font-size', width >= 768 ? '13px' : '12px');
       await engineering.press('Enter');
       await expect(engineering).toHaveAttribute('aria-pressed', 'true');
       await expect(all).toHaveAttribute('aria-pressed', 'false');

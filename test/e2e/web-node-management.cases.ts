@@ -1383,7 +1383,7 @@ test('Node environment secrets use default controls, compact layout, and plain-t
   expect(spacing).toBeLessThanOrEqual(16);
   const secretTable = details.locator('.secret-table');
   await expect(secretTable).toBeVisible();
-  await expect(secretTable.getByRole('table')).toHaveCSS('font-size', '14px');
+  await expect(secretTable.getByRole('table')).toHaveCSS('font-size', '13px');
   await expect(secretTable.locator('thead th')).toHaveText([
     '环境变量名',
     '密钥值',
@@ -1675,7 +1675,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.getByRole('button', { name: '用户管理' })).toHaveCSS('border-radius', '6px');
   await expect(page.getByRole('button', { name: '创建用户' })).toBeDisabled();
   await expect(page.locator('.mar-ui-table').getByText('成员', { exact: true })).toBeVisible();
-  await expect(page.locator('.mar-management-page .mar-ui-table')).toHaveCSS('font-size', '14px');
+  await expect(page.locator('.mar-management-page .mar-ui-table')).toHaveCSS('font-size', '13px');
   await expect(page.locator('.mar-row-actions').first()).toHaveCSS('white-space', 'nowrap');
   await expect(page.getByRole('button', { name: '重置密码' })).toHaveCSS('font-size', '12px');
   const filters = page.locator('.mar-management-page .mar-filter-row');

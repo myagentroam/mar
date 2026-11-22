@@ -102,6 +102,7 @@ test('Node management aligns filter typography and keeps rows compact without sh
   page
 }, testInfo) => {
   for (const [width, theme] of [
+    [1720, 'vscode-dark-2026'],
     [1280, 'daylight'],
     [390, 'vscode-dark-2026']
   ] as const) {
@@ -132,7 +133,8 @@ test('Node management aligns filter typography and keeps rows compact without sh
     });
 
     const table = page.getByRole('table');
-    const row = table.getByRole('row').filter({ has: page.getByText('Online', { exact: true }) });
+    const name = page.getByRole('cell', { name: 'Node', exact: true });
+    const row = table.getByRole('row').filter({ has: name });
     const nameHeader = table.getByRole('columnheader', { name: 'Node Name' });
     const sort = nameHeader.getByRole('button');
     const edit = row.getByRole('button', { name: 'Edit', exact: true });
@@ -143,13 +145,12 @@ test('Node management aligns filter typography and keeps rows compact without sh
     expect.soft((await row.boundingBox())!.height).toBeLessThanOrEqual(compact + 14);
     expect((await sort.boundingBox())!.height).toBeGreaterThanOrEqual(24);
     expect((await edit.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
-    const bodySize = await table.evaluate((element) =>
-      getComputedStyle(element).getPropertyValue('--mar-ui-font-size-body').trim()
-    );
-    await expect(row.getByRole('cell', { name: 'Node', exact: true })).toHaveCSS(
-      'font-size',
-      bodySize
-    );
+    const bodySize = width >= 768 ? '13px' : '12px';
+    const failed = table.getByRole('cell', { name: 'Upgrade Failed: NODE_UPGRADE_INSTALL_FAILED' });
+    for (const cell of [name, row.getByRole('cell', { name: 'Up to Date' }), failed]) {
+      await expect(cell).toHaveCSS('font-size', bodySize);
+    }
+    expect(await failed.evaluate((cell) => cell.scrollWidth <= cell.clientWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`node-management-density-${width}.png`) });
 
     await edit.click();

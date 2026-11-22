@@ -403,7 +403,8 @@ defineExpose({ handleClose, panel });
   font-size: var(--mar-ui-dialog-title-size, 16px);
   font-weight: 500;
 }
-.mar-ui-dialog__close {
+.mar-ui-dialog__header .mar-ui-dialog__close {
+  --mar-ui-button-icon-size: var(--mar-ui-action-icon-size, 18px);
   align-self: flex-start;
   flex: none;
   min-inline-size: 32px;

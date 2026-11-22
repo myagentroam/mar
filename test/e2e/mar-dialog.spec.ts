@@ -237,7 +237,9 @@ test('Dialog and scrim fade together before the modal releases the page', async 
 });
 
 for (const width of [390, 1280]) {
-  test(`Dialog header close uses a square icon action at ${width}px`, async ({ page }) => {
+  test(`Dialog header close uses the standard action icon in a square button at ${width}px`, async ({
+    page
+  }) => {
     await page.setViewportSize({ width, height: 700 });
     const opener = page.getByRole('button', { name: 'Open editor' });
     await opener.click();
@@ -246,6 +248,10 @@ for (const width of [390, 1280]) {
     await expect(close).toHaveCSS('width', '32px');
     await expect(close).toHaveCSS('height', '32px');
     await expect(close).toHaveCSS('padding', '0px');
+    await expect(close).toBeInViewport();
+    const icon = close.locator('[data-mar-icon="close"]');
+    await expect(icon).toHaveCSS('width', '18px');
+    await expect(icon).toHaveCSS('height', '18px');
     await close.click();
     await expect(dialog).toBeHidden();
     await expect(opener).toBeFocused();

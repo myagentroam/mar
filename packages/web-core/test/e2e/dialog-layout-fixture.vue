@@ -111,12 +111,21 @@ const entries = Array.from({ length: 60 }, (_, i) => ({
 
 async function request<T>(path: string): Promise<T> {
   if (path.startsWith('/api/resources?')) {
+    const resourceNodes = nodes.flatMap((node) => [
+      { ...node, upgradeAvailability: { state: 'CURRENT' } },
+      {
+        ...node,
+        id: 'failed-node',
+        displayName: 'Failed node',
+        metadata: { upgrade: { state: 'FAILED', errorCode: 'NODE_UPGRADE_INSTALL_FAILED' } }
+      }
+    ]);
     return {
-      nodes,
+      nodes: resourceNodes,
       workspaces: [],
       page: 1,
       pageSize: 20,
-      total: nodes.length,
+      total: resourceNodes.length,
       hasMore: false
     } as T;
   }

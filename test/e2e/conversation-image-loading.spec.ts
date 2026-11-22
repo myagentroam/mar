@@ -451,7 +451,7 @@ for (const width of [1440, 390]) {
     await expect(original).not.toHaveClass(
       /mar-ui-button--ghost|mar-ui-button--inline|mar-ui-button--(?:primary|danger)/
     );
-    await expect(original).toHaveCSS('height', '32px');
+    await expect(original).toHaveCSS('height', width === 390 ? '24px' : '26px');
     await expect(original).toHaveCSS('border-top-style', 'solid');
     await expect(original).toHaveCSS('border-top-width', '1px');
     await expect(original).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
@@ -464,14 +464,36 @@ for (const width of [1440, 390]) {
     const title = dialog.locator('.mar-ui-dialog__title');
     await expect(title).toHaveText(name);
     const titleBounds = (await title.boundingBox())!;
-    const iconBounds = (await close.locator('[data-mar-icon="close"]').boundingBox())!;
+    const icon = close.locator('[data-mar-icon="close"]');
+    const iconBounds = (await icon.boundingBox())!;
     expect(titleBounds.y + titleBounds.height / 2).toBeCloseTo(
       iconBounds.y + iconBounds.height / 2,
       0
     );
     expect(titleBounds.x + titleBounds.width).toBeLessThan((await close.boundingBox())!.x);
+    const colors = await dialog.evaluate((panel) => {
+      const surface = document.createElement('span');
+      surface.hidden = true;
+      surface.style.backgroundColor = 'var(--mar-ui-dialog-surface)';
+      const action = document.createElement('button');
+      action.hidden = true;
+      action.className = 'mar-icon-action is-active';
+      panel.append(surface, action);
+      const colors = {
+        surface: getComputedStyle(surface).backgroundColor,
+        hover: getComputedStyle(action).backgroundColor
+      };
+      surface.remove();
+      action.remove();
+      return colors;
+    });
+    await expect(dialog.locator('.mar-ui-dialog')).toHaveCSS('background-color', colors.surface);
+    await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    expect(colors.hover).not.toBe('rgba(0, 0, 0, 0)');
     await close.hover();
-    await expect(close).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(close).toHaveCSS('background-color', colors.hover);
+    await expect(icon).toHaveCSS('width', '18px');
+    await expect(icon).toHaveCSS('height', '18px');
     await page.mouse.move(0, 0);
     await dialog.screenshot({
       path: info.outputPath('original-button.png'),
