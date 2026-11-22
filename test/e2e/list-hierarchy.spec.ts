@@ -799,7 +799,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const input = select.getByRole('combobox');
           const wrapper = select.locator('.mar-ui-select__field');
           await page.getByRole('button', { name: 'Open hint dialog', exact: true }).focus();
-          if (kind === 'model-effort') {
+          if (kind !== 'runner') {
             await page.mouse.move(0, 0);
             await expect(wrapper).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
             await expect(wrapper).toHaveCSS('box-shadow', 'none');
