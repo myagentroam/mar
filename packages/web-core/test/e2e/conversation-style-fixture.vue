@@ -23,6 +23,8 @@ const following = ref(false);
 const input = ref('Review the result');
 const sidebarCollapsed = ref(false);
 const reconnecting = new URL(location.href).searchParams.has('reconnecting');
+const composerFocusFixture = new URL(location.href).searchParams.has('composer-focus');
+const composerDragging = ref(false);
 const processStopping = new URL(location.href).searchParams.has('process-stopping');
 const themes = themePreferenceService();
 const previewColors = themes.resolveColors(
@@ -830,12 +832,18 @@ function announceFixtureUpdate() {
       :connection-label="reconnecting ? 'Reconnecting' : undefined"
       :connection-busy="reconnecting"
       :readonly="false"
-      :drop-target="false"
+      :drop-target="composerDragging"
       :mobile-viewport="false"
       :command-states="[]"
       :loading="false"
       :skill-tokens="[]"
-    />
+      @dragenter="composerDragging = composerFocusFixture"
+      @dragleave="composerDragging = false"
+    >
+      <template v-if="composerFocusFixture" #toolbar>
+        <MarButton>Composer toolbar action</MarButton>
+      </template>
+    </ConversationComposer>
   </main>
 </template>
 

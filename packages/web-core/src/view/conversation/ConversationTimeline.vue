@@ -2106,18 +2106,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-file-change-list > li {
-  border-radius: var(--mar-radius-control);
   row-gap: 0.0625rem;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .conversation-file-change-list > li:has(> .conversation-file-change-button:hover) {
-    background-color: var(--mar-fill-row-hover);
-  }
-}
-
-.conversation-file-change-list > li:has(> .conversation-file-change-button:active) {
-  background-color: var(--mar-fill-selection);
 }
 
 .conversation-file-change-status {
@@ -2234,6 +2223,12 @@ details.conversation-record-group[open] > details:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .conversation-file-change-button:hover .conversation-file-change-name {
+    color: var(--mar-control-link-hover);
+  }
 }
 
 .conversation-file-change-button:focus-visible {

@@ -327,6 +327,14 @@ const emit = defineEmits<{
   padding: 0.4rem var(--composer-padding-inline) 0.75rem;
 }
 
+.composer:has(:where(.composer-input:focus)) {
+  --composer-active-boundary: var(--mar-conversation-activity-fg);
+}
+
+.composer:has(> .composer-drop-target) {
+  --composer-active-boundary: var(--mar-control-focus);
+}
+
 .composer :deep(button),
 .composer :deep(input),
 .composer :deep(select),
@@ -367,7 +375,7 @@ const emit = defineEmits<{
   gap: 0.34rem;
   margin: 0 0 -1px 0.55rem;
   overflow: hidden;
-  border: 1px solid var(--mar-border-medium);
+  border: 1px solid var(--composer-active-boundary, var(--mar-border-medium));
   border-bottom-color: var(--composer-surface);
   border-radius: var(--mar-radius-control) var(--mar-radius-control) 0 0;
   background: var(--composer-surface);
@@ -381,11 +389,6 @@ const emit = defineEmits<{
   line-height: 1;
 }
 
-.composer:focus-within .composer-working {
-  border-color: var(--mar-conversation-activity-fg);
-  border-bottom-color: var(--composer-surface);
-}
-
 .composer-working > .composer-busy-indicator {
   width: 10px;
   height: 10px;
@@ -396,19 +399,17 @@ const emit = defineEmits<{
   display: grid;
   gap: 0;
   overflow: hidden;
-  border: 1px solid var(--mar-border-medium);
+  border: 1px solid var(--composer-active-boundary, var(--mar-border-medium));
   border-radius: var(--mar-radius-surface);
   background: var(--composer-surface);
   box-shadow: none;
 }
 
-.composer-shell:focus-within {
-  border-color: var(--mar-conversation-activity-fg);
+.composer-shell:not(.composer-drop-target):has(.composer-input:focus) {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-conversation-activity-fg) 14%, transparent);
 }
 
 .composer-shell.composer-drop-target {
-  border-color: var(--mar-control-focus);
   outline: 2px dashed var(--mar-control-focus);
   outline-offset: -3px;
   background: var(--mar-fill-selection);

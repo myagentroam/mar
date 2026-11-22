@@ -1785,6 +1785,40 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     );
   });
 
+  test(`Composer focus keeps toolbar and drop feedback neutral in ${theme}`, async ({ page }) => {
+    await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-focus`);
+    await page.locator('html').evaluate((root) => {
+      root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
+      root.style.setProperty('--mar-control-focus', '#888888');
+      root.style.setProperty('--mar-border-medium', '#444444');
+    });
+    const shell = page.locator('.composer-shell');
+    const status = page.locator('.composer-working');
+    const input = page.locator('.composer-input');
+    const toolbar = page.getByRole('button', { name: 'Composer toolbar action' });
+
+    await input.focus();
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+    await toolbar.focus();
+    await expect(toolbar).toBeFocused();
+    await expect(toolbar).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(68, 68, 68)');
+    await expect(shell).toHaveCSS('box-shadow', 'none');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(68, 68, 68)');
+
+    await input.focus();
+    await shell.dispatchEvent('dragenter');
+    await expect(shell).toHaveCSS('outline-style', 'dashed');
+    await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('box-shadow', 'none');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
+    await shell.dispatchEvent('dragleave');
+    await expect(input).toBeFocused();
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+  });
+
   test(`Idle Composer uses the activity color only while focused in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -1814,7 +1848,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }
   });
 
-  test(`File change rows keep neutral default, hover and press feedback in ${theme}`, async ({
+  test(`File change hover changes only the filename color in ${theme}`, async ({
     page
   }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -1834,38 +1868,39 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const values = {
         primary: color('--mar-text-primary'),
         secondary: color('--mar-text-secondary'),
-        hover: color('--mar-fill-row-hover'),
-        pressed: color('--mar-fill-selection')
+        hover: color('--mar-control-link-hover'),
+        added: color('--mar-color-success-text'),
+        deleted: color('--mar-color-danger-text')
       };
       probe.remove();
       return values;
     });
-    const expectTextHierarchy = async () => {
-      await expect(row.locator('.conversation-file-change-name')).toHaveCSS(
-        'color',
-        colors.primary
-      );
+    const expectAppearance = async (nameColor: string) => {
+      await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(row.locator('.conversation-file-change-name')).toHaveCSS('color', nameColor);
       await expect(row.locator('.conversation-file-change-path')).toHaveCSS(
         'color',
         colors.secondary
       );
+      await expect(row.locator('.change-additions')).toHaveCSS('color', colors.added);
+      await expect(row.locator('.change-deletions')).toHaveCSS('color', colors.deleted);
     };
-    await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await expectTextHierarchy();
+    expect(colors.hover).not.toBe(colors.primary);
+    await expectAppearance(colors.primary);
     await list.screenshot({ path: testInfo.outputPath('file-change-default.png') });
     await button.hover();
-    await expect(row).toHaveCSS('background-color', colors.hover);
-    await expectTextHierarchy();
+    await expectAppearance(colors.hover);
     await list.screenshot({ path: testInfo.outputPath('file-change-hover.png') });
     await page.mouse.down();
     try {
-      await expect(row).toHaveCSS('background-color', colors.pressed);
+      await expectAppearance(colors.hover);
     } finally {
       await page.mouse.move(0, 0);
       await page.mouse.up();
     }
     await row.locator('.conversation-file-change-stats').hover();
-    await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expectAppearance(colors.primary);
     await button.focus();
     await page.keyboard.press('Tab');
     await page.keyboard.press('Shift+Tab');
