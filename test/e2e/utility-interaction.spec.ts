@@ -73,6 +73,81 @@ async function checkUtility(
   await expect(control).toHaveCSS('background-color', inline ? 'rgba(0, 0, 0, 0)' : colors.hover);
 }
 
+for (const theme of ['light', 'dark', 'custom']) {
+  test(`Queue drag shows its insertion edge and clears it after dropping or leaving in ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(
+      `${fixture.url}visual-alignment.html?utility-interaction&queue-count=3&theme=${theme === 'light' ? 'daylight' : 'vscode-dark-2026'}`
+    );
+    const colors = theme === 'custom' ? await customPalette(page) : await palette(page);
+    const rows = page.locator('.composer-queue .queue-item');
+    const marker = page.locator('.composer-queue [data-drop-edge]');
+    const events = page.getByTestId('events');
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+    const drag = (index: number, type: string) =>
+      rows.nth(index).dispatchEvent(type, { dataTransfer });
+
+    async function expectMarker(index: number, edge: 'before' | 'after') {
+      const row = rows.nth(index);
+      await expect(marker).toHaveCount(1);
+      await expect(row).toHaveAttribute('data-drop-edge', edge);
+      const line = await row.evaluate((element) => {
+        const style = getComputedStyle(element, '::after');
+        return {
+          content: style.content,
+          width: parseFloat(style.width),
+          height: style.borderTopWidth,
+          color: style.borderTopColor,
+          top: parseFloat(style.top),
+          rowHeight: element.clientHeight
+        };
+      });
+      expect(line.content).not.toBe('none');
+      expect(line.width).toBeCloseTo((await row.boundingBox())!.width, 0);
+      expect(line.height).toBe('2px');
+      expect(line.color).toBe(colors.focus);
+      expect(line.top).toBeCloseTo(edge === 'before' ? 0 : line.rowHeight - 2, 0);
+    }
+
+    await drag(2, 'dragstart');
+    await drag(0, 'dragover');
+    await expectMarker(0, 'before');
+    await rows
+      .nth(0)
+      .locator('p')
+      .dispatchEvent('dragleave', {
+        dataTransfer,
+        relatedTarget: await rows.nth(0).locator('button').first().elementHandle()
+      });
+    await expectMarker(0, 'before');
+    await drag(1, 'dragover');
+    await expectMarker(1, 'before');
+    await drag(2, 'dragover');
+    await expect(marker).toHaveCount(0);
+    await drag(0, 'dragover');
+    await expectMarker(0, 'before');
+    await drag(0, 'dragleave');
+    await expect(marker).toHaveCount(0);
+    await drag(0, 'dragover');
+    await expectMarker(0, 'before');
+    await drag(2, 'dragend');
+    await expect(marker).toHaveCount(0);
+    await drag(0, 'dragover');
+    await drag(0, 'drop');
+    await expect(marker).toHaveCount(0);
+    await expect(events).toBeEmpty();
+
+    await drag(0, 'dragstart');
+    await drag(2, 'dragover');
+    await expectMarker(2, 'after');
+    await drag(2, 'drop');
+    await expect(marker).toHaveCount(0);
+    await expect(events).toHaveText('drag:queue-one|reorder:queue-3');
+  });
+}
+
 for (const width of [1280, 390]) {
   test(`New queue items scroll only the pending work list to the end at ${width}px`, async ({
     page
