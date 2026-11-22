@@ -2128,6 +2128,8 @@ test('expanded and compact previews share the applied palette without changing g
     version: 1,
     name: 'Preview',
     colors: {
+      '--mar-link-text': '#a6d1ff',
+      '--mar-link-hover': '#c1e1ff',
       '--mar-conversation-activity-fg': '#ff00ff',
       '--mar-control-focus': '#e2d4bf',
       '--mar-fill-selection': '#38475a',
@@ -2152,6 +2154,11 @@ test('expanded and compact previews share the applied palette without changing g
   const expectPreviewText = async (sample: Locator) => {
     for (const selector of ['.user-message', '.assistant-message p', '.process'])
       await expect(sample.locator(selector)).toHaveCSS('color', 'rgb(248, 238, 221)');
+    const sampleLink = sample.getByText('Reference link', { exact: true });
+    await expect(sampleLink).toHaveCSS('color', 'rgb(166, 209, 255)');
+    await expect(sampleLink).toHaveCSS('text-decoration-line', 'underline');
+    await sampleLink.hover();
+    await expect(sampleLink).toHaveCSS('color', 'rgb(193, 225, 255)');
     const previewRing = sample.locator('.process .mar-busy-indicator');
     await expect(previewRing).toHaveCSS('color', 'rgb(255, 0, 255)');
     await expect(previewRing).toHaveCSS('animation-name', 'none');
@@ -2526,6 +2533,16 @@ for (const scheme of ['Light', 'Dark']) {
         scheme === 'Dark' ? 'rgb(240, 240, 240)' : 'rgb(18, 58, 120)'
       );
       await expect(link).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const anchor = controls.getByRole('link', { name: 'Sample anchor', exact: true });
+      await expect(anchor).toHaveCSS(
+        'color',
+        scheme === 'Dark' ? 'rgb(117, 183, 255)' : 'rgb(23, 78, 158)'
+      );
+      await anchor.hover();
+      await expect(anchor).toHaveCSS(
+        'color',
+        scheme === 'Dark' ? 'rgb(162, 206, 255)' : 'rgb(18, 58, 120)'
+      );
       const neutral = controls.getByRole('button', { name: 'Sample neutral action', exact: true });
       const disabledNeutral = controls.getByRole('button', {
         name: 'Sample disabled neutral action',
@@ -2587,7 +2604,9 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-text-disabled': '#969696',
         '--mar-fill-soft': '#434343',
         '--mar-control-link-text': '#abcdef',
-        '--mar-control-link-hover': '#bcdefa'
+        '--mar-control-link-hover': '#bcdefa',
+        '--mar-link-text': '#b4d4ff',
+        '--mar-link-hover': '#d2e8ff'
       });
       await editor.fill(JSON.stringify(theme));
       await page.getByRole('button', { name: 'Save theme', exact: true }).click();
@@ -2656,6 +2675,9 @@ for (const scheme of ['Light', 'Dark']) {
         'color',
         'rgb(188, 222, 250)'
       );
+      await expect(anchor).toHaveCSS('color', 'rgb(180, 212, 255)');
+      await anchor.hover();
+      await expect(anchor).toHaveCSS('color', 'rgb(210, 232, 255)');
       await controls.locator('tbody tr').first().hover();
       await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',

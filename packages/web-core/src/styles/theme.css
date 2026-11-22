@@ -86,6 +86,8 @@ html.console-ui,
   --mar-control-focus: #506987;
   --mar-control-link-text: #174e9e;
   --mar-control-link-hover: #123a78;
+  --mar-link-text: #174e9e;
+  --mar-link-hover: #123a78;
   --mar-control-color-success: #00843d;
   --mar-control-color-warning: #a56000;
   --mar-control-color-danger: #d12a3d;
@@ -215,6 +217,8 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-control-focus: #a0a0a0;
   --mar-control-link-text: #eaeaea;
   --mar-control-link-hover: #f0f0f0;
+  --mar-link-text: #75b7ff;
+  --mar-link-hover: #a2ceff;
   --mar-control-color-success: #35d56e;
   --mar-control-color-warning: #ffc14d;
   --mar-control-color-danger: #ff626b;

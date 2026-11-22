@@ -247,7 +247,17 @@ describe('Custom theme validation', () => {
     ['--mar-text-muted', '--mar-bg-subtle'],
     ['--mar-text-primary', '--mar-bg-page'],
     ['--mar-text-secondary', '--mar-bg-page'],
-    ['--mar-text-primary', '--mar-conversation-code']
+    ['--mar-text-primary', '--mar-conversation-code'],
+    ['--mar-link-text', '--mar-bg-panel'],
+    ['--mar-link-text', '--mar-conversation-canvas'],
+    ['--mar-link-text', '--mar-conversation-surface'],
+    ['--mar-link-text', '--mar-conversation-process'],
+    ['--mar-link-text', '--mar-conversation-code'],
+    ['--mar-link-hover', '--mar-bg-panel'],
+    ['--mar-link-hover', '--mar-conversation-canvas'],
+    ['--mar-link-hover', '--mar-conversation-surface'],
+    ['--mar-link-hover', '--mar-conversation-process'],
+    ['--mar-link-hover', '--mar-conversation-code']
   ])(
     'warns about explicit low-contrast %s on %s without rewriting colors',
     (foreground, background) => {

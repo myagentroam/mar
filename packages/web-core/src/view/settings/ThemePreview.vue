@@ -37,7 +37,10 @@ const { t } = useI18n();
           <div class="user-message">{{ t('customThemes.previewRequest') }}</div>
           <div class="assistant-message">
             <strong>{{ t('customThemes.previewHeading') }}</strong>
-            <p>{{ t('customThemes.previewText') }}</p>
+            <p>
+              {{ t('customThemes.previewText') }}
+              <span class="sample-link">{{ t('customThemes.previewLink') }}</span>
+            </p>
             <pre
               class="code"
             ><span class="syntax-keyword">const</span> value = <span class="syntax-value">42</span>;</pre>
@@ -186,6 +189,14 @@ const { t } = useI18n();
 }
 .assistant-message p {
   margin: 0.3rem 0;
+}
+.sample-link {
+  color: var(--mar-link-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sample-link:hover {
+  color: var(--mar-link-hover);
 }
 .code {
   font: inherit;

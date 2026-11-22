@@ -91,10 +91,13 @@ const webHeading = computed(() =>
   margin-top: 0.625rem;
 }
 .web-detail a {
-  color: var(--mar-control-link-text);
+  color: var(--mar-link-text);
   text-decoration: underline;
   text-underline-offset: 0.125em;
   overflow-wrap: anywhere;
+}
+.web-detail a:hover {
+  color: var(--mar-link-hover);
 }
 .web-detail a:focus-visible {
   outline: 1px solid var(--mar-control-focus);

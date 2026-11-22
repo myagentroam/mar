@@ -210,8 +210,10 @@ export const personalSettingsZhCN = {
     tokenDescriptions: {
       'table-header-bg': '表格表头背景',
       'table-row-hover-bg': '表格行悬停背景',
-      'control-link-text': '链接与主要文字操作',
-      'control-link-hover': '链接与主要文字操作的悬停色',
+      'control-link-text': '主要文字操作',
+      'control-link-hover': '主要文字操作的悬停色',
+      'link-text': '用于跳转或打开资源的链接',
+      'link-hover': '用于跳转或打开资源的链接悬停色',
 
       'bg-page': '页面底层背景',
       'bg-panel': '面板、对话框和主要内容容器背景',
@@ -322,6 +324,7 @@ export const personalSettingsZhCN = {
     previewChat: '对话',
     previewChanges: '变更',
     previewRequest: '这是一条示例消息。',
+    previewLink: '参考链接',
     previewProcess: '示例状态：运行中',
     previewSuccess: '成功',
     previewWarning: '警告',

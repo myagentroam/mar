@@ -213,8 +213,10 @@ export const personalSettingsEnUS = {
     tokenDescriptions: {
       'table-header-bg': 'Table header backgrounds',
       'table-row-hover-bg': 'Table row hover backgrounds',
-      'control-link-text': 'Links and primary text actions',
-      'control-link-hover': 'Links and primary text actions on hover',
+      'control-link-text': 'Primary text actions',
+      'control-link-hover': 'Primary text actions on hover',
+      'link-text': 'Links that navigate or open a resource',
+      'link-hover': 'Links that navigate or open a resource on hover',
 
       'bg-page': 'Page canvas',
       'bg-panel': 'Main panels, dialogs and content surfaces',
@@ -328,6 +330,7 @@ export const personalSettingsEnUS = {
     previewChat: 'Conversation',
     previewChanges: 'Changes',
     previewRequest: 'This is a sample message.',
+    previewLink: 'Reference link',
     previewProcess: 'Sample status: running',
     previewSuccess: 'Success',
     previewWarning: 'Warning',

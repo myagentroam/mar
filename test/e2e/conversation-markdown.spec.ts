@@ -62,6 +62,24 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(user.locator('.conversation-item-heading')).toHaveCount(0);
       await expect(user.locator('.conversation-message')).toContainText('待办任务');
       await expect(user.locator('.conversation-message-action')).toHaveCount(1);
+      const reply = timeline.locator('.assistant_message .agent-markdown');
+      const webLink = reply.getByRole('link', { name: 'the documentation' });
+      const fileLink = reply.getByRole('link', { name: 'src/tasks.ts' });
+      const linkColor = theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)';
+      await expect(webLink).toHaveAttribute('href', 'https://example.invalid/docs');
+      await expect(fileLink).toHaveAttribute('data-workspace-file', 'src/tasks.ts');
+      for (const link of [webLink, fileLink]) {
+        await expect(link).toHaveCSS('color', linkColor);
+        await expect(link).toHaveCSS('text-decoration-line', 'underline');
+      }
+      await expect(fileLink.locator('code')).toHaveCSS('color', linkColor);
+      await webLink.focus();
+      await expect(webLink).toHaveCSS('outline-style', 'solid');
+      await webLink.hover();
+      await expect(webLink).toHaveCSS(
+        'color',
+        theme === 'daylight' ? 'rgb(18, 58, 120)' : 'rgb(162, 206, 255)'
+      );
       const blocks = timeline.locator('[data-code-block]');
       await expect(blocks).toHaveCount(2);
       const block = blocks.first();

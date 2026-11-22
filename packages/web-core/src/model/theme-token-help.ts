@@ -15,6 +15,8 @@ export const THEME_TOKEN_HELP = {
   '--mar-table-row-hover-bg': { group: 'surfaces', description: 'table-row-hover-bg' },
   '--mar-control-link-text': { group: 'controls', description: 'control-link-text' },
   '--mar-control-link-hover': { group: 'controls', description: 'control-link-hover' },
+  '--mar-link-text': { group: 'text', description: 'link-text' },
+  '--mar-link-hover': { group: 'text', description: 'link-hover' },
 
   '--mar-bg-page': { group: 'surfaces', description: 'bg-page' },
   '--mar-bg-panel': { group: 'surfaces', description: 'bg-panel' },

@@ -13,6 +13,8 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-table-row-hover-bg',
   '--mar-control-link-text',
   '--mar-control-link-hover',
+  '--mar-link-text',
+  '--mar-link-hover',
 
   '--mar-bg-panel',
   '--mar-bg-chrome',
