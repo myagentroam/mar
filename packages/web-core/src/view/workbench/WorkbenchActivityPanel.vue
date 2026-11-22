@@ -95,7 +95,6 @@ function runTime(run: RecentRun): string {
             :retry-snapshot="service.load"
             :has-unread-session="service.hasUnreadSession"
             :session-group="sessionGroup"
-            :mobile-mode="mobileMode"
             :run-time="runTime"
             @select-group="emit('update:sessionGroup', $event)"
             @open-recent-run="emit('openRecentRun', $event)"
