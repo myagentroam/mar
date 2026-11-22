@@ -1902,6 +1902,9 @@ for (const theme of ['dark', 'light'])
       await more.click();
       const menu = page.locator('.workspace-tool-menu:visible');
       await expect(menu.getByRole('menuitem', { name: 'Loaded skills' })).toBeVisible();
+      for (const item of await menu.getByRole('menuitem').all()) {
+        await expect(item).toHaveCSS('font-size', mobile ? '11px' : '12px');
+      }
       await expect(menu).toHaveAttribute('data-arrow', '');
       await expect(menu).toHaveCSS('opacity', '1');
       const menuBounds = (await menu.boundingBox())!;

@@ -902,10 +902,6 @@ function submitSessionSearch(): void {
   opacity: 0.55;
 }
 
-:global(.workspace-tool-menu .mar-ui-dropdown-item) {
-  font-size: var(--mar-font-size-body);
-}
-
 .session-row {
   display: flex;
   min-width: 0;
