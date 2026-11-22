@@ -218,6 +218,71 @@ test('Workspace welcome does not advertise an Agent before profiles arrive', asy
   expect(textBaselineDifference).toBeLessThanOrEqual(1);
 });
 
+test.describe('Mobile workspace welcome', () => {
+  test.use({ hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+
+  // @test-covers packages/web-core/src/view/workbench/WorkspaceSessionPane.vue
+  test('aligns the MAR Agent icon with the name and arrow', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
+    await openWorkspace(page, true, true);
+
+    const welcome = page.locator('.conversation-empty');
+    const agent = welcome.getByRole('button', { name: 'Switch Agent (current: MAR Agent)' });
+    await expect(agent).toBeVisible();
+    const icon = agent.locator('img');
+    await expect(icon).toBeVisible();
+    await icon.evaluate((image: HTMLImageElement) => image.decode());
+
+    for (const width of [320, 390]) {
+      await test.step(`${width}px touch viewport`, async () => {
+        await page.setViewportSize({ width, height: 860 });
+        const alignment = await agent.evaluate((button) => {
+          const centerY = (element: Element) => {
+            const { top, height } = element.getBoundingClientRect();
+            return top + height / 2;
+          };
+          const icon = button.querySelector('img')!;
+          const name = button.querySelector('.draft-agent-label > span')!;
+          const arrow = button.querySelector('[data-mar-icon="chevron-down"]')!;
+          const description = button.closest('.draft-session-description')!;
+          const text = document.createRange();
+          text.selectNodeContents(description.firstChild!);
+          const subtitleTop = Array.from(text.getClientRects()).at(-1)!.top;
+          text.selectNodeContents(name);
+          const buttonBox = button.getBoundingClientRect();
+          const descriptionBox = description.getBoundingClientRect();
+          return {
+            iconToName: Math.abs(centerY(icon) - centerY(name)),
+            arrowToName: Math.abs(centerY(arrow) - centerY(name)),
+            subtitleToName: Math.abs(subtitleTop - text.getBoundingClientRect().top),
+            horizontalOverflow: Math.max(
+              descriptionBox.left - buttonBox.left,
+              buttonBox.right - descriptionBox.right,
+              0
+            ),
+            buttonHeight: buttonBox.height
+          };
+        });
+        expect(alignment.iconToName).toBeLessThanOrEqual(1);
+        expect(alignment.arrowToName).toBeLessThanOrEqual(1);
+        // On the narrowest viewport the localized subtitle can wrap before the button.
+        if (width === 390) expect(alignment.subtitleToName).toBeLessThanOrEqual(1);
+        expect(alignment.horizontalOverflow).toBeLessThanOrEqual(1);
+        expect(alignment.buttonHeight).toBeGreaterThanOrEqual(36);
+        await agent.tap();
+        await expect(welcome.getByRole('menuitem', { name: 'MAR Agent' })).toBeVisible();
+        await agent.tap();
+        await expect(agent).toHaveAttribute('aria-expanded', 'false');
+      });
+    }
+    await page.screenshot({
+      path: testInfo.outputPath('mobile-workspace-welcome.png'),
+      animations: 'disabled'
+    });
+  });
+});
+
 for (const viewport of [1600, 390]) {
   test.describe(`Workspace draft at ${viewport}px`, () => {
     test.use({ hasTouch: viewport < 768 });
