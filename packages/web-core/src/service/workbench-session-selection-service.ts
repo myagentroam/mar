@@ -55,7 +55,7 @@ export interface WorkbenchSessionSelectionOptions {
     sessionId: string
   ) => void | Promise<void>;
   readonly saveCurrent: () => void;
-  readonly selectWorkspace: (target: WorkspaceTarget, openDraft?: boolean) => Promise<boolean>;
+  readonly selectWorkspace: (target: WorkspaceTarget, restoreSession?: boolean) => Promise<boolean>;
   readonly pane: {
     readonly open: (sessionId: string, options?: WorkspacePaneOpenOptions) => Promise<void>;
     readonly openTab: (

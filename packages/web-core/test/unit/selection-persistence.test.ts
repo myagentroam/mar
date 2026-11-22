@@ -23,6 +23,7 @@ function setup(sessionId: string | undefined = 'saved') {
   const selectedNodeId = ref<string>();
   const selectedWorkspaceId = ref<string>();
   const selectedSessionId = { value: undefined as string | undefined };
+  const draftInput = ref('');
   const sessions = { value: [{ id: 'first', workspaceId: 'w', externalSessionId: 'first' }] };
   const lookupSession = vi.fn(async () => ({
     id: 'saved',
@@ -33,7 +34,6 @@ function setup(sessionId: string | undefined = 'saved') {
     selectedSessionId.value = id;
   });
   const openDraft = vi.fn();
-  const synchronizeSessions = vi.fn(async () => sessions.value);
   const notice = vi.fn();
   const nodes = ref([{ id: 'n', connected: true }]);
   let revision = 0;
@@ -47,12 +47,9 @@ function setup(sessionId: string | undefined = 'saved') {
     sessions: sessions as never,
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId: selectedSessionId as never,
-    setSelectedSessionId: (id) => {
-      selectedSessionId.value = id;
-    },
+    draftInput,
     isWorkbenchActive: () => true,
     activateWorkspace,
-    synchronizeSessions: synchronizeSessions as never,
     openSession,
     lookupSession: lookupSession as never,
     openDraft,
@@ -65,11 +62,11 @@ function setup(sessionId: string | undefined = 'saved') {
     stored,
     sessions,
     selectedSessionId,
+    draftInput,
     selectedWorkspaceId,
     lookupSession,
     openSession,
     openDraft,
-    synchronizeSessions,
     notice,
     activateWorkspace,
     nodes,
@@ -112,55 +109,34 @@ describe('Workbench Selection Restoration', () => {
   });
 
   it.each(['SESSION_NOT_FOUND', 'FORBIDDEN'])(
-    'Fallback to first session after confirming %s',
+    'Shows the draft after confirming %s',
     async (code) => {
       const f = setup();
       f.lookupSession.mockRejectedValue(new ApiError(code, 'Unavailable'));
       await f.service.restore();
-      expect(f.openSession).toHaveBeenCalledWith('first');
+      expect(f.openSession).not.toHaveBeenCalled();
+      expect(f.openDraft).toHaveBeenCalledOnce();
+      expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).not.toHaveProperty(
+        'sessionId'
+      );
     }
   );
 
-  it('Resume the first session when the session is not saved', async () => {
+  it('Shows the draft instead of selecting a listed session when no session was saved', async () => {
     const f = setup('');
     await f.service.restore();
-    expect(f.openSession).toHaveBeenCalledWith('first');
+    expect(f.lookupSession).not.toHaveBeenCalled();
+    expect(f.openSession).not.toHaveBeenCalled();
+    expect(f.openDraft).toHaveBeenCalledOnce();
   });
 
-  it('Falls back to the first session when the target belongs to another Workspace', async () => {
+  it('Shows the draft when the target belongs to another Workspace', async () => {
     const f = setup();
     f.lookupSession.mockResolvedValue({
       id: 'saved',
       workspaceId: 'other',
       externalSessionId: 'saved'
     });
-    await f.service.restore();
-    expect(f.openSession).toHaveBeenCalledWith('first');
-  });
-
-  it('Opens a new session only after confirming the target is invalid and the list is empty', async () => {
-    const f = setup();
-    f.sessions.value = [];
-    f.lookupSession.mockRejectedValue(new ApiError('SESSION_NOT_FOUND', 'Missing'));
-    await f.service.restore();
-    expect(f.openSession).not.toHaveBeenCalled();
-    expect(f.openDraft).toHaveBeenCalledOnce();
-  });
-
-  it('Falls back to the first item from the current authoritative list, not the stale cached first item', async () => {
-    const f = setup();
-    f.lookupSession.mockRejectedValue(new ApiError('SESSION_NOT_FOUND', 'Missing'));
-    f.synchronizeSessions.mockResolvedValue([
-      { id: 'authoritative-first', workspaceId: 'w', externalSessionId: 'native-first' }
-    ]);
-    await f.service.restore();
-    expect(f.openSession).toHaveBeenCalledWith('authoritative-first');
-  });
-
-  it('Does not restore a stale cached session when the authoritative list is empty', async () => {
-    const f = setup();
-    f.lookupSession.mockRejectedValue(new ApiError('SESSION_NOT_FOUND', 'Missing'));
-    f.synchronizeSessions.mockResolvedValue([]);
     await f.service.restore();
     expect(f.openSession).not.toHaveBeenCalled();
     expect(f.openDraft).toHaveBeenCalledOnce();
@@ -198,11 +174,17 @@ describe('Workbench Selection Restoration', () => {
     await f.service.restore();
     expect(f.openDraft).not.toHaveBeenCalled();
     expect(f.openSession).not.toHaveBeenCalled();
+    expect(f.selectedSessionId.value).toBeUndefined();
     expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).toEqual({
       workspace: { nodeId: 'n', workspaceId: 'w' },
       sessionId: 'saved'
     });
     expect(f.notice).toHaveBeenCalledOnce();
+    f.service.persist();
+    expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).toEqual(f.stored);
+    f.draftInput.value = 'My new draft';
+    f.service.persist();
+    expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).not.toHaveProperty('sessionId');
   });
 
   it.each(['saved', ''])(
@@ -213,7 +195,6 @@ describe('Workbench Selection Restoration', () => {
       await f.service.restore();
       expect(f.activateWorkspace).toHaveBeenCalledOnce();
       expect(f.lookupSession).not.toHaveBeenCalled();
-      expect(f.synchronizeSessions).not.toHaveBeenCalled();
       expect(f.openSession).not.toHaveBeenCalled();
       expect(f.openDraft).not.toHaveBeenCalled();
       expect(f.notice).not.toHaveBeenCalled();
@@ -221,7 +202,8 @@ describe('Workbench Selection Restoration', () => {
 
       f.nodes.value = [{ id: 'n', connected: true }];
       await f.service.restoreSession('w', sessionId || undefined);
-      expect(f.openSession).toHaveBeenCalledWith(sessionId || 'first');
+      if (sessionId) expect(f.openSession).toHaveBeenCalledWith(sessionId);
+      else expect(f.openDraft).toHaveBeenCalledOnce();
       expect(f.notice).not.toHaveBeenCalled();
     }
   );
@@ -233,7 +215,7 @@ describe('Workbench Selection Restoration', () => {
       throw new ApiError('NODE_OFFLINE', 'The Node is offline.');
     });
     await f.service.restore();
-    expect(f.selectedSessionId.value).toBe('saved');
+    expect(f.selectedSessionId.value).toBeUndefined();
     expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).toEqual(f.stored);
     expect(f.openDraft).not.toHaveBeenCalled();
     expect(f.notice).not.toHaveBeenCalled();
@@ -245,7 +227,7 @@ describe('Workbench Selection Restoration', () => {
     f.lookupSession.mockRejectedValue(error);
     await f.service.restore();
     expect(f.notice).toHaveBeenCalledWith(error);
-    expect(f.selectedSessionId.value).toBe('saved');
+    expect(f.selectedSessionId.value).toBeUndefined();
   });
 
   it('does not apply an offline restoration for a different Workspace to the current selection', async () => {
@@ -254,13 +236,13 @@ describe('Workbench Selection Restoration', () => {
     f.selectedSessionId.value = 'user-choice';
     f.nodes.value = [{ id: 'n', connected: false }];
     await f.service.restoreSession('other-workspace', 'stale-session');
+    f.service.persist();
     expect(f.selectedSessionId.value).toBe('user-choice');
     expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).toEqual({
       workspace: { nodeId: 'n', workspaceId: 'w' },
       sessionId: 'user-choice'
     });
     expect(f.lookupSession).not.toHaveBeenCalled();
-    expect(f.synchronizeSessions).not.toHaveBeenCalled();
     expect(f.openSession).not.toHaveBeenCalled();
     expect(f.openDraft).not.toHaveBeenCalled();
     expect(f.notice).not.toHaveBeenCalled();
@@ -294,19 +276,6 @@ describe('Workbench Selection Restoration', () => {
     await f.service.restore();
     expect(f.openSession).not.toHaveBeenCalled();
     expect(f.openDraft).not.toHaveBeenCalled();
-  });
-
-  it('A list-read failure after an invalid session does not incorrectly fall back to a new draft', async () => {
-    const f = setup();
-    f.lookupSession.mockRejectedValue(new ApiError('SESSION_NOT_FOUND', 'Missing'));
-    f.synchronizeSessions.mockRejectedValue(new TypeError('Network unavailable'));
-    await f.service.restore();
-    f.service.persist();
-    expect(f.openDraft).not.toHaveBeenCalled();
-    expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).toEqual({
-      workspace: { nodeId: 'n', workspaceId: 'w' },
-      sessionId: 'saved'
-    });
   });
 
   it('Preserves the previous selection when Node has not loaded the Workspace successfully', async () => {

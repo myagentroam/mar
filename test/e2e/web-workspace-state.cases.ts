@@ -3108,7 +3108,7 @@ test('Work resource trees do not substitute Workspace-management permission for 
   await expect(page.getByRole('menuitem', { name: '移除工作区' })).toHaveClass(/is-disabled/);
 });
 
-test('Reload restores Workspace Tabs and sessions, falls back to the first valid item, and creates only for empty lists', async ({
+test('Reload restores Workspace Tabs and valid sessions, and defaults to a new draft otherwise', async ({
   page
 }, testInfo) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -3259,6 +3259,8 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
   try {
     await page.getByRole('tab', { name: /^project\b/ }).click();
     await expect.poll(() => heldRequests).toBe(1);
+    await expect(page.locator('.conversation-panel textarea')).toBeEditable();
+    await expect(page.locator('.conversation-panel textarea')).not.toBeFocused();
     await page.getByRole('tab', { name: /^another-project\b/ }).click();
     await expect(page.getByText('恢复内容 session-2', { exact: true })).toBeVisible();
     await expect
@@ -3278,6 +3280,58 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
   }
   await expect(page.getByText('恢复内容 session-1', { exact: true })).toBeVisible();
 
+  const composer = page.locator('.conversation-panel textarea');
+  async function useDraftDuringRestore(useDraft: () => Promise<void>) {
+    let releaseLookup!: () => void;
+    const delayedLookup = new Promise<void>((resolve) => {
+      releaseLookup = resolve;
+    });
+    await page.route(
+      '**/api/agent-sessions/session-1?nodeId=node-1',
+      async (route) => {
+        await delayedLookup;
+        await json(route, { session: sessions[0] });
+      },
+      { times: 1 }
+    );
+    try {
+      const lookup = page.waitForRequest('**/api/agent-sessions/session-1?nodeId=node-1');
+      const response = page.waitForResponse('**/api/agent-sessions/session-1?nodeId=node-1');
+      await page.reload();
+      await lookup;
+      await useDraft();
+      releaseLookup();
+      await response;
+    } finally {
+      releaseLookup();
+    }
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
+              .sessionId
+        )
+      )
+      .toBeUndefined();
+    await expect(page.locator('.session-link.selected')).toHaveCount(0);
+  }
+
+  await test.step('Editing the draft takes priority over a pending restore', async () => {
+    await useDraftDuringRestore(() => composer.fill('Start here, not in history'));
+    await expect(composer).toHaveValue('Start here, not in history');
+    await composer.clear();
+    await page.locator('.session-link').filter({ hasText: '持久化会话 1' }).click();
+    await expect(page.getByText('恢复内容 session-1', { exact: true })).toBeVisible();
+  });
+
+  await test.step('Explicit New Session takes priority over a pending restore', async () => {
+    await useDraftDuringRestore(async () => {
+      await page.getByRole('button', { name: '新建会话', exact: true }).click();
+      await expect(composer).toBeFocused();
+    });
+  });
+
   await page.evaluate(() =>
     localStorage.setItem(
       'mar.account.v1.1.mar.workbench.selection.v1',
@@ -3288,13 +3342,30 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
     )
   );
   await page.reload();
-  await expect(page.getByText('恢复内容 session-1', { exact: true })).toBeVisible();
-  await expect(page.locator('.session-link.selected')).toContainText('持久化会话 1');
+  await expect(composer).toBeEditable();
+  await expect(page.locator('.session-link').filter({ hasText: '持久化会话 1' })).toBeVisible();
+  await expect(page.locator('.session-link.selected')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
+            .sessionId
+      )
+    )
+    .toBeUndefined();
+
+  await composer.fill('Unsent workspace draft');
+  await page.reload();
+  await expect(composer).toHaveValue('Unsent workspace draft');
+  await expect(page.locator('.session-link').filter({ hasText: '持久化会话 1' })).toBeVisible();
+  await expect(page.locator('.session-link.selected')).toHaveCount(0);
 
   empty = true;
   await page.reload();
   await expect(page.locator('.workspace-tab')).toHaveCount(2);
   await expect(page.locator('.session-link')).toHaveCount(0);
+  await expect(composer).toHaveValue('Unsent workspace draft');
   await expect
     .poll(() =>
       page.evaluate(
@@ -3421,6 +3492,8 @@ test('Refreshing online Node capabilities does not briefly show unknown-capabili
 test('Node reconnection and page realtime recovery resynchronize Node facts and Workbench capabilities', async ({
   page
 }) => {
+  // Leave room for the desktop Aside's wider Terminal mode before testing reconnection.
+  await page.setViewportSize({ width: 1440, height: 900 });
   const writes: {
     readonly url: string;
     readonly csrf: string | undefined;

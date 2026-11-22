@@ -1422,13 +1422,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Content search uses neutral row feedback without losing match emphasis in ${theme}`, async ({
     page
   }, testInfo) => {
+    const directory = 'src/a-very-long-parent-directory/with-another-nested-folder';
+    const path = `${directory}/main.ts`;
+    const longFileName = `${'long-file-name-'.repeat(12)}main.ts`;
+    const longPath = `${directory}/${longFileName}`;
     await page.route('**/api/workspaces/workspace/**', (route) =>
       route.fulfill({
         json: route.request().url().includes('/content/search')
           ? {
               search: {
                 matches: [
-                  { path: 'src/main.ts', line: 2, column: 7, preview: 'const needle = true;' }
+                  { path, line: 2, column: 7, preview: 'const needle = true;' },
+                  { path: longPath, line: 3, column: 7, preview: 'const needle = false;' }
                 ],
                 truncated: false
               }
@@ -1447,10 +1452,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const input = inspector.getByRole('textbox', { name: 'Search file contents', exact: true });
       await input.fill('needle');
       await input.press('Enter');
-      const result = inspector.locator('.content-search-results button');
-      await expect(result).toHaveCount(1);
+      const result = inspector.getByRole('button', { name: path, exact: true });
+      const fileName = result.getByText('main.ts', { exact: true });
+      const folder = result.getByText(directory, { exact: true });
+      const line = result.locator('small');
+      const preview = result.locator('code');
+      await expect(fileName).toBeVisible();
+      await expect(folder).toBeVisible();
+      await expect(line).toHaveText('Line 2');
+      await expect(inspector.getByRole('alert')).toHaveCount(0);
       await expect(result.locator('mark')).toHaveText('needle');
-      const colors = await result.evaluate((element) => {
+      const style = await result.evaluate((element) => {
         const probe = document.createElement('span');
         element.append(probe);
         const color = (token: string) => {
@@ -1461,20 +1473,31 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           primary: color('--mar-text-primary'),
           hover: color('--mar-fill-row-hover'),
           focus: color('--mar-control-focus'),
-          match: getComputedStyle(element.querySelector('mark')!).backgroundColor
+          match: getComputedStyle(element.querySelector('mark')!).backgroundColor,
+          meta: getComputedStyle(probe).getPropertyValue('--mar-font-size-meta').trim(),
+          nano: getComputedStyle(probe).getPropertyValue('--mar-font-size-nano').trim()
         };
         probe.remove();
         return resolved;
       });
+      await expect(fileName).toHaveCSS('font-size', style.meta);
+      await expect(fileName).toHaveCSS('font-weight', '400');
+      await expect(preview).toHaveCSS('font-size', style.meta);
+      await expect(folder).toHaveCSS('font-size', style.nano);
+      await expect(line).toHaveCSS('font-size', style.nano);
+      expect((await preview.boundingBox())!.x).toBeCloseTo((await fileName.boundingBox())!.x);
+      const longResult = inspector.getByRole('button', { name: longPath, exact: true });
+      const longResultFolder = longResult.getByText(directory, { exact: true });
+      expect((await longResultFolder.boundingBox())!.width).toBeGreaterThan(24);
       await result.hover();
-      await expect(result).toHaveCSS('background-color', colors.hover);
-      await expect(result).toHaveCSS('color', colors.primary);
-      await expect(result.locator('mark')).toHaveCSS('background-color', colors.match);
+      await expect(result).toHaveCSS('background-color', style.hover);
+      await expect(result).toHaveCSS('color', style.primary);
+      await expect(result.locator('mark')).toHaveCSS('background-color', style.match);
       await result.focus();
       await page.keyboard.press('Shift+Tab');
       await page.keyboard.press('Tab');
       await expect(result).toBeFocused();
-      await expect(result).toHaveCSS('outline-color', colors.focus);
+      await expect(result).toHaveCSS('outline-color', style.focus);
       await expect(result).toHaveCSS('outline-style', 'solid');
       await page.screenshot({ path: testInfo.outputPath(`content-search-${width}.png`) });
     }

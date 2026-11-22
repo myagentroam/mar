@@ -112,8 +112,9 @@ onBeforeUnmount(() => {
     class="conversation-panel"
     :aria-label="translate('generated.workbenchSurface.agentConversation')"
   >
-    <template v-if="presentation.composerSessionOpen">
+    <template v-if="presentation.sessionPaneOpen">
       <ConversationHeader
+        v-if="presentation.composerSessionOpen"
         :session="configuration.selectedSession"
         :runner="configuration.activeRunner"
         :files-ready="controller.filesReady.value"
@@ -274,6 +275,7 @@ onBeforeUnmount(() => {
         />
       </ConversationScroll>
       <ConversationComposer
+        v-if="presentation.composerSessionOpen"
         ref="composer"
         v-model:input="state.draft.input.value"
         :placeholder="

@@ -79,7 +79,6 @@ async function retrySnapshot(): Promise<void> {
 <template>
   <section
     class="workbench-notification-content"
-    :class="{ 'is-preview': previewId !== undefined }"
     :aria-label="translate('generated.workbenchNotificationCenter.notifications')"
   >
     <header v-if="previewId === undefined" class="workbench-notification-toolbar">
@@ -179,11 +178,7 @@ async function retrySnapshot(): Promise<void> {
             </div>
           </div>
         </section>
-        <ul
-          v-else-if="group.items.length"
-          class="workbench-notification-list"
-          :class="{ 'mar-activity-list': previewId === undefined }"
-        >
+        <ul v-else-if="group.items.length" class="workbench-notification-list mar-activity-list">
           <li
             v-for="notification in group.items"
             :key="notification.id"
@@ -213,8 +208,7 @@ async function retrySnapshot(): Promise<void> {
             </button>
             <button
               v-if="notification.kind !== 'web-update'"
-              class="mar-icon-button mar-icon-action workbench-notification-delete"
-              :class="{ 'mar-icon-action--inline': previewId === undefined }"
+              class="mar-icon-button mar-icon-action mar-icon-action--inline workbench-notification-delete"
               :aria-label="
                 translate('generated.workbenchNotificationCenter.deleteNotification', {
                   value0: notification.title
@@ -342,9 +336,6 @@ async function retrySnapshot(): Promise<void> {
   width: 100%;
   height: 5px;
   accent-color: var(--mar-control-primary-bg);
-}
-.workbench-notification-content.is-preview .workbench-notification-list > li.unread {
-  border-left: 2px solid var(--mar-border-strong);
 }
 .workbench-notification-list > li > button:first-child {
   display: grid;

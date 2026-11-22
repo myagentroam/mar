@@ -27,6 +27,9 @@ interface WorkbenchNewSessionControllerOptions {
 }
 
 export function createWorkbenchNewSessionController(options: WorkbenchNewSessionControllerOptions) {
+  const isDraft = () =>
+    options.draftSessionOpen.value && options.selectedSessionId.value === undefined;
+
   function ensureDraftRunnerSupported(profiles = options.runnerProfiles.value): void {
     const supportedRunner = profiles.find((profile) => profile.capabilities.includes('turn.start'));
     if (
@@ -63,23 +66,29 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
     return draft;
   }
 
+  function showDraft(): void {
+    if (isDraft()) return;
+    options.saveCurrent();
+    options.stopSelectedSessionWatch();
+    ensureDraftRunnerSupported();
+    options.applyRunnerDefaults(options.newSessionRunner.value);
+    options.setDraftOpen(true);
+    options.setSelectedSessionId(undefined);
+    options.prepareDraft();
+  }
+
   function openNewSessionComposer(): void {
     options.closeMobileWorkspaceSurface();
-    if (!options.draftSessionOpen.value) {
-      options.saveCurrent();
-      options.stopSelectedSessionWatch();
-      ensureDraftRunnerSupported();
-      options.applyRunnerDefaults(options.newSessionRunner.value);
-      options.setDraftOpen(true);
-      options.setSelectedSessionId(undefined);
-      options.prepareDraft();
-    }
+    // Explicit New replaces any pending restore, even when the draft is already visible.
+    if (isDraft()) options.prepareDraft();
+    else showDraft();
     void nextTick(options.focusDraft);
   }
 
   return {
     createDraftSession,
     ensureDraftRunnerSupported,
+    showDraft,
     openNewSessionComposer
   };
 }

@@ -170,11 +170,7 @@ const emit = defineEmits<{
     :style="mobileViewport ? { height: `${mobileComposerHeight}px` } : undefined"
     @submit.prevent="emit('submit')"
   >
-    <div
-      ref="composerElement"
-      class="composer"
-      :class="{ 'is-submitting': submitting && !loading && !readonly }"
-    >
+    <div ref="composerElement" class="composer">
       <span v-if="working || connectionLabel" class="composer-working">
         <MarBusyIndicator
           v-if="connectionLabel ? connectionBusy : working && workingBusy"
@@ -333,17 +329,12 @@ const emit = defineEmits<{
   padding: 0.4rem var(--composer-padding-inline) 0.75rem;
 }
 
-.composer:has(:where(.composer-input:focus)) {
-  --composer-active-boundary: var(--mar-control-focus);
-}
-
-.composer:has(:where(.composer-input:focus:read-write)),
-.composer:where(.is-submitting):has(:where(.composer-input:focus)) {
-  --composer-active-boundary: var(--mar-conversation-activity-fg);
-}
-
 .composer:has(> .composer-drop-target) {
   --composer-active-boundary: var(--mar-control-focus);
+}
+
+.composer:has(.composer-input:focus) {
+  --composer-active-boundary: var(--mar-conversation-activity-fg);
 }
 
 .composer :deep(button),

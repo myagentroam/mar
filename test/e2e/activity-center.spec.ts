@@ -262,15 +262,42 @@ test.describe('Activity list feedback with a mouse', () => {
   test.use({ hasTouch: false });
 
   for (const theme of ['daylight', 'vscode-dark-2026']) {
-    test(`Single notification preview does not use list hover in ${theme}`, async ({ page }) => {
+    test(`Single notification preview matches its row in the notification list in ${theme}`, async ({
+      page
+    }) => {
       await page.setViewportSize({ width: 1280, height: 850 });
-      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      await page.goto(
+        `${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}&preview=run`
+      );
       await page.getByRole('button', { name: 'Preview notification' }).click();
-      const row = page.locator('.activity-preview:visible li.unread');
-      await row.hover();
-      await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(row).toHaveCSS('border-left-width', '2px');
-      await expect(row.locator('.notification-unread-label')).toBeVisible();
+      const title = 'Workspace: Background session';
+      const deleteLabel = `Delete notification ${title}`;
+      const previewRow = page.locator('.activity-preview:visible li').filter({ hasText: title });
+      const previewRemove = previewRow.getByRole('button', {
+        name: deleteLabel,
+        exact: true
+      });
+      const defaultBackground = 'rgba(0, 0, 0, 0)';
+      await expect(previewRow).toHaveCSS('background-color', defaultBackground);
+      await expect(previewRow).toHaveCSS('border-inline-start-width', '0px');
+      await expect(previewRow.locator('.notification-unread-label')).toBeVisible();
+      await expect(previewRemove).toBeVisible();
+      await previewRemove.hover();
+      await expect(previewRow).not.toHaveCSS('background-color', defaultBackground);
+      await expect(previewRemove).toHaveCSS('background-color', defaultBackground);
+      const hoverBackground = await previewRow.evaluate(
+        (element) => getComputedStyle(element).backgroundColor
+      );
+
+      await page.locator('.activity-center-trigger').click();
+      const listRow = page
+        .locator('.workbench-activity-panel:visible li')
+        .filter({ hasText: title });
+      const listRemove = listRow.getByRole('button', { name: deleteLabel, exact: true });
+      await expect(listRow).toHaveCSS('border-inline-start-width', '0px');
+      await listRemove.hover();
+      await expect(listRow).toHaveCSS('background-color', hoverBackground);
+      await expect(listRemove).toHaveCSS('background-color', defaultBackground);
     });
 
     test(`Unread and read rows share the notification surface and hover feedback in ${theme}`, async ({
@@ -750,7 +777,7 @@ for (const width of [1280, 390]) {
       const popover = page.locator('.workbench-activity-popover:visible');
       await expectActivityElevation(popover, theme);
       await expect(preview.locator('li.unread')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(preview.locator('li.unread')).toHaveCSS('border-left-width', '2px');
+      await expect(preview.locator('li.unread')).toHaveCSS('border-inline-start-width', '0px');
       const radius = await popover.evaluate(
         (element) => getComputedStyle(element).borderTopLeftRadius
       );

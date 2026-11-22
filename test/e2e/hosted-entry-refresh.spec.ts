@@ -932,22 +932,35 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const input = page.locator('.composer-input');
     const activity = page.locator('.composer-working');
     const activityColor = theme === 'daylight' ? 'rgb(0, 95, 214)' : 'rgb(77, 163, 255)';
-    await expect(activity).toContainText('Syncing');
-    await expect(activity).toHaveCSS('color', activityColor);
-    await expect(page.locator('.composer-busy-indicator')).toHaveCSS('color', activityColor);
-    await expect(page.locator('.hosted-syncing')).toHaveCount(1);
-    await expect(input).toHaveAttribute('readonly', '');
-    const background = await shell.evaluate((element) => getComputedStyle(element).backgroundColor);
-    const border = await shell.evaluate((element) => getComputedStyle(element).borderColor);
-    await page.locator('.composer').screenshot({
-      path: testInfo.outputPath('composer-syncing.png'),
-      animations: 'disabled'
-    });
-    releaseWatch();
+    let before: { backgroundColor: string; borderColor: string };
+    try {
+      await expect(activity).toContainText('Syncing');
+      await expect(activity).toHaveCSS('color', activityColor);
+      await expect(page.locator('.composer-busy-indicator')).toHaveCSS('color', activityColor);
+      await expect(page.locator('.hosted-syncing')).toHaveCount(1);
+      await expect(input).toHaveAttribute('readonly', '');
+      before = await shell.evaluate((element) => {
+        const { backgroundColor, borderColor } = getComputedStyle(element);
+        return { backgroundColor, borderColor };
+      });
+      await input.focus();
+      await expect(input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', activityColor);
+      await expect(activity).toHaveCSS('border-top-color', activityColor);
+      await page.locator('.composer').screenshot({
+        path: testInfo.outputPath('composer-syncing.png'),
+        animations: 'disabled'
+      });
+    } finally {
+      releaseWatch();
+    }
     await expect(page.locator('.hosted-syncing')).toHaveCount(0);
     await expect(input).not.toHaveAttribute('readonly', '');
-    await expect(shell).toHaveCSS('background-color', background);
-    await expect(shell).toHaveCSS('border-color', border);
+    await expect(input).toBeFocused();
+    await expect(shell).toHaveCSS('border-top-color', activityColor);
+    await input.blur();
+    await expect(shell).toHaveCSS('background-color', before.backgroundColor);
+    await expect(shell).toHaveCSS('border-color', before.borderColor);
   });
 }
 

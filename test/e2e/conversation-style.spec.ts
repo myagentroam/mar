@@ -1279,7 +1279,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const thinkingPreview = `Inspecting ../workspace ${'workspace '.repeat(20)}https://example.com/search?q=one,two&next=2 changes`;
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&reasoning-preview=1`);
+      await page.goto(
+        `${fixture.url}conversation-style.html?theme=${theme}&reasoning-preview=1&reply-spacing=1`
+      );
       const process = page.locator('[data-process-id="preview-process"]');
       const preview = process.locator('.process-summary');
       const heading = process.locator('.process-heading');
@@ -1343,18 +1345,40 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await heading.click();
       await page.getByTestId('finish-reasoning-process').click();
       await expect(heading).toHaveAttribute('aria-expanded', 'true');
+      await expect(heading.locator('.process-activity-label')).toHaveText('Completed');
       await expect(preview).toHaveCount(0);
       await expect(process.locator('.reasoning-subtitle').first()).toHaveText(thinkingPreview);
-      await expect(page.getByText('Finished reviewing files.', { exact: true })).toBeVisible();
-      const followingGap = await process.evaluate(
-        (element) =>
-          element.nextElementSibling!.getBoundingClientRect().top -
-          element.getBoundingClientRect().bottom
-      );
-      expect(followingGap).toBeCloseTo(gap, 1);
+      const summaryReply = page.getByText('Finished reviewing files.', { exact: true });
+      await expect(summaryReply).toBeVisible();
+      await expect(
+        page.locator('[data-process-id="follow-up-process"] .process-heading')
+      ).toBeVisible();
+      const replyGaps = () =>
+        summaryReply.evaluate((element) => {
+          const block = element.closest('.conversation-turn')!;
+          return {
+            before:
+              block.getBoundingClientRect().top -
+              block.previousElementSibling!.getBoundingClientRect().bottom,
+            after:
+              block.nextElementSibling!.getBoundingClientRect().top -
+              block.getBoundingClientRect().bottom
+          };
+        });
+      const expandedGaps = await replyGaps();
+      expect(expandedGaps.before).toBeCloseTo(recordGap, 1);
+      expect(expandedGaps.after).toBeGreaterThan(expandedGaps.before);
+      expect(expandedGaps.after).toBeLessThan(gap);
       await heading.click();
       await expect(heading).toHaveAttribute('aria-expanded', 'false');
       await expect(preview).toHaveCount(0);
+      const collapsedGaps = await replyGaps();
+      expect(collapsedGaps.before).toBeCloseTo(recordGap, 1);
+      expect(collapsedGaps.after).toBeCloseTo(expandedGaps.after, 1);
+      await page.locator('.conversation-timeline').screenshot({
+        path: testInfo.outputPath(`reply-spacing-${width}.png`),
+        animations: 'disabled'
+      });
       await heading.click();
       await expect(preview).toHaveCount(0);
       const completedSummary = process.locator('.reasoning-group').last();
@@ -1896,7 +1920,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     );
   });
 
-  test(`Composer focus keeps toolbar and drop feedback neutral in ${theme}`, async ({ page }) => {
+  test(`Composer keeps toolbar and drop cues separate from editor focus in ${theme}`, async ({
+    page
+  }) => {
     await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-focus`);
     await page.locator('html').evaluate((root) => {
       root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
@@ -1917,7 +1943,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(shell).toHaveCSS('box-shadow', 'none');
     await expect(status).toHaveCSS('border-top-color', 'rgb(68, 68, 68)');
 
-    await input.focus();
     await shell.dispatchEvent('dragenter');
     await expect(shell).toHaveCSS('outline-style', 'dashed');
     await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
@@ -1925,12 +1950,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(shell).toHaveCSS('box-shadow', 'none');
     await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
+    await input.focus();
+    await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+    await expect(shell).toHaveCSS('box-shadow', 'none');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
     await shell.dispatchEvent('dragleave');
     await expect(input).toBeFocused();
     await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
   });
 
-  test(`Read-only and loading Composer keep a neutral focus in ${theme}`, async ({ page }) => {
+  test(`Read-only and synchronizing Composer keep the activity focus in ${theme}`, async ({
+    page
+  }) => {
     for (const mode of ['readonly', 'loading']) {
       await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-${mode}`);
       await page.locator('html').evaluate((root) => {
@@ -1944,17 +1976,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         (element) => getComputedStyle(element).borderTopColor
       );
       await expect(input).toHaveAttribute('readonly', '');
+      await expect(status.getByRole('status')).toHaveText(
+        mode === 'loading' ? 'Synchronizing conversation' : 'Working'
+      );
       await input.focus();
       await expect(input).toBeFocused();
-      await expect(shell).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
-      await expect(shell).toHaveCSS(
-        'box-shadow',
-        'color(srgb 0.533333 0.533333 0.533333 / 0.14) 0px 0px 0px 2px'
-      );
-      await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+      await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+      await expect(shell).toHaveCSS('box-shadow', 'color(srgb 1 0 1 / 0.14) 0px 0px 0px 2px');
+      await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
       await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
       await input.blur();
       await expect(shell).toHaveCSS('border-top-color', idleBorder);
+      await expect(shell).toHaveCSS('box-shadow', 'none');
     }
   });
 

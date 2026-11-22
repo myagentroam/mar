@@ -2,6 +2,7 @@
 import '../../styles/region-retry-action.css';
 import './git-inline-loading.css';
 import '@myagentroam/mar-ui/region-status.css';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -12,7 +13,7 @@ import FileTypeIcon from './FileTypeIcon.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { createWorkspaceContentSearchService } from '../../service/workspace-content-search-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
-import { changeFileName } from '../../util/workspace-git.js';
+import { changeDirectory, changeFileName } from '../../util/workspace-git.js';
 import { marIcon } from '@myagentroam/mar-ui/icons';
 
 const props = defineProps<{
@@ -143,9 +144,16 @@ defineExpose({
           {{ translate('generated.workspaceInspector.loading') }}
         </p>
       </MarRegionStatus>
-      <p v-if="contentSearchTruncated && !newQueryState" class="content-search-warning">
-        {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
-      </p>
+      <MarAlert
+        v-if="contentSearchTruncated && !newQueryState"
+        class="content-search-warning"
+        type="warning"
+        show-icon
+        :closable="false"
+        :description="
+          translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope')
+        "
+      />
       <ul
         v-show="!newQueryState"
         class="content-search-results"
@@ -160,11 +168,14 @@ defineExpose({
               emit('open', match.path, match.line, match.column, $event.ctrlKey || $event.metaKey)
             "
           >
-            <span class="content-search-name"
-              ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
-                match.path
-              }}</strong></span
-            ><small>{{
+            <FileTypeIcon :name="changeFileName(match.path)" />
+            <span class="content-search-path">
+              <span class="content-search-file">{{ changeFileName(match.path) }}</span>
+              <span v-if="changeDirectory(match.path)" class="content-search-directory">{{
+                changeDirectory(match.path)
+              }}</span>
+            </span>
+            <small>{{
               translate('generated.workspaceInspector.line', { value0: match.line })
             }}</small>
             <code
@@ -226,8 +237,10 @@ defineExpose({
 }
 
 .content-search-warning {
-  margin: 0.35rem 0 0;
-  color: var(--mar-color-warning-text);
+  margin: 0.375rem 0.375rem 0;
+  inline-size: auto;
+  flex: none;
+  padding: 0.375rem 0.5rem;
   font-size: var(--mar-font-size-meta);
 }
 
@@ -241,25 +254,25 @@ defineExpose({
 }
 
 .content-search-results {
-  margin: 0.45rem 0 0;
+  margin: 0.25rem 0 0;
   padding: 0;
   list-style: none;
-}
-
-.content-search-results > li + li {
-  margin-top: 2px;
 }
 
 .content-search-results button {
   display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  gap: 0.18rem 0.5rem;
+  grid-template-columns: auto minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 0.125rem 0.375rem;
   border: 0;
   border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-primary);
-  padding: 0.35rem 0.25rem;
+  font: inherit;
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.25;
+  padding: 0.25rem 0.375rem;
   text-align: left;
   cursor: pointer;
 }
@@ -274,28 +287,23 @@ defineExpose({
   outline-offset: -2px;
 }
 
-.content-search-results strong,
+.content-search-file,
+.content-search-directory,
 .content-search-results code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.content-search-results strong {
-  font-size: var(--mar-font-size-body);
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.content-search-name {
+.content-search-path {
   display: flex;
   min-width: 0;
-  align-items: center;
-  gap: 0.35rem;
+  align-items: baseline;
+  gap: 0.375rem;
 }
 
-.content-search-name strong {
-  min-width: 0;
+.content-search-file:not(:only-child) {
+  max-width: 60%;
 }
 
 .content-search-results mark {
@@ -304,15 +312,19 @@ defineExpose({
   color: var(--mar-text-primary);
 }
 
+.content-search-directory,
 .content-search-results small {
   color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
+  font-size: var(--mar-font-size-nano);
+}
+
+.content-search-directory {
+  flex: 1 1 0;
 }
 
 .content-search-results code {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
 }
 
 button.file-explorer-utility-button {

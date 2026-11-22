@@ -50,7 +50,7 @@ export function createWorkbenchTargetNavigation(input: {
   readonly selectView: (view: WorkbenchView) => void;
   readonly applyWebUpdate: () => Promise<void>;
   readonly closeMobileSidebar: () => void;
-  readonly selectWorkspace: (target: WorkspaceTarget, openDraft?: boolean) => Promise<boolean>;
+  readonly selectWorkspace: (target: WorkspaceTarget, restoreSession?: boolean) => Promise<boolean>;
   readonly syncWorkspaceSessions: (workspaceId: string) => Promise<void>;
   readonly openHostedConversationTarget: (nodeId: string, conversationId: string) => Promise<void>;
   readonly discovery: Pick<

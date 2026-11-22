@@ -65,20 +65,24 @@ const notification = {
 const params = new URL(location.href).searchParams;
 const startedAt = Date.now() - 138_000;
 let notificationsRead = params.has('read');
+let runPreview: typeof notification | undefined;
 const service = createWorkbenchNotificationService(ref('fixture-user'), {
   request: async <T,>(path: string, init?: RequestInit) => {
     if (path === '/api/notifications/read-all' && init?.method === 'POST') notificationsRead = true;
     return {
-      notifications: Array.from(
-        {
-          length: params.has('many-notifications') ? 120 : params.has('one-notification') ? 1 : 30
-        },
-        (_, index) => ({
-          ...notification,
-          id: `notification-${index}`,
-          read: notificationsRead
-        })
-      ),
+      notifications: [
+        ...(runPreview ? [{ ...runPreview, read: notificationsRead }] : []),
+        ...Array.from(
+          {
+            length: params.has('many-notifications') ? 120 : params.has('one-notification') ? 1 : 30
+          },
+          (_, index) => ({
+            ...notification,
+            id: `notification-${index}`,
+            read: notificationsRead
+          })
+        )
+      ],
       recentRuns: Array.from({ length: 30 }, (_, index) => ({
         nodeId: 'node',
         runId: `run-${index}`,
@@ -223,6 +227,11 @@ function selectView(view: WorkbenchView): void {
   syncRoute();
 }
 function preview(): void {
+  if (params.get('preview') === 'run') {
+    runPreview = { ...notification, id: 'run-preview', title: 'Workspace: Background session' };
+    service.projectServerMessage({ type: 'notification.created', notification: runPreview });
+    return;
+  }
   service.notify({
     id: 'preview',
     kind: 'web-update',
