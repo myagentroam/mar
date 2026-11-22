@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -1894,9 +1895,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         return getComputedStyle(probe).color;
       };
       const values = {
+        surface: getComputedStyle(element.closest('.mar-conversation-detail-body')!)
+          .backgroundColor,
         primary: color('--mar-text-primary'),
         secondary: color('--mar-text-secondary'),
-        hover: color('--mar-control-link-hover'),
+        muted: color('--mar-text-muted'),
         added: color('--mar-color-success-text'),
         deleted: color('--mar-color-danger-text')
       };
@@ -1907,33 +1910,35 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(row.locator('.conversation-file-change-name')).toHaveCSS('color', nameColor);
-      await expect(row.locator('.conversation-file-change-path')).toHaveCSS(
-        'color',
-        colors.secondary
-      );
+      await expect(row.locator('.conversation-file-change-path')).toHaveCSS('color', colors.muted);
       await expect(row.locator('.change-additions')).toHaveCSS('color', colors.added);
       await expect(row.locator('.change-deletions')).toHaveCSS('color', colors.deleted);
     };
-    expect(colors.hover).not.toBe(colors.primary);
-    await expectAppearance(colors.primary);
+    const contrastOnList = (color: string) =>
+      contrast(resolvedColorToHex(color), resolvedColorToHex(colors.surface));
+    expect(contrastOnList(colors.muted)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastOnList(colors.secondary)).toBeGreaterThan(contrastOnList(colors.muted));
+    expect(contrastOnList(colors.primary)).toBeGreaterThan(contrastOnList(colors.secondary));
+    await expectAppearance(colors.secondary);
     await list.screenshot({ path: testInfo.outputPath('file-change-default.png') });
     await button.hover();
-    await expectAppearance(colors.hover);
+    await expectAppearance(colors.primary);
     await list.screenshot({ path: testInfo.outputPath('file-change-hover.png') });
     await page.mouse.down();
     try {
-      await expectAppearance(colors.hover);
+      await expectAppearance(colors.primary);
     } finally {
       await page.mouse.move(0, 0);
       await page.mouse.up();
     }
     await row.locator('.conversation-file-change-stats').hover();
-    await expectAppearance(colors.primary);
+    await expectAppearance(colors.secondary);
     await button.focus();
     await page.keyboard.press('Tab');
     await page.keyboard.press('Shift+Tab');
     await expect(button).toBeFocused();
     await expect(button).toHaveCSS('outline-style', 'solid');
+    await expectAppearance(colors.secondary);
   });
 
   test(`Conversation metadata, status and Composer remain readable in ${theme}`, async ({
