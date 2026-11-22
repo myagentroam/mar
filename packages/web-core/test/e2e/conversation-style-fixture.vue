@@ -43,6 +43,7 @@ const notifications = createWorkbenchNotificationService(ref('fixture'), {
 const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const detailSurfaceFixture = new URL(location.href).searchParams.has('detail-surfaces');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
+const replySpacingFixture = new URL(location.href).searchParams.has('reply-spacing');
 const performanceFixture = new URL(location.href).searchParams.has('live-performance');
 const clockIsolationFixture = new URL(location.href).searchParams.has('clock-isolation');
 let clockPayloadReads = 0;
@@ -614,6 +615,17 @@ function publishSummary() {
 
 function finishPreview() {
   previewRunStatus.value = 'SUCCEEDED';
+  const nextStep: ConversationItem[] = replySpacingFixture
+    ? [
+        {
+          id: 'follow-up',
+          kind: 'command_execution',
+          status: 'COMPLETED',
+          processGroup: { id: 'follow-up-process', isStart: true },
+          payload: { command: 'echo follow-up' }
+        }
+      ]
+    : [];
   turns.value = turns.value.map((turn) => ({
     ...turn,
     status: 'SUCCEEDED',
@@ -624,7 +636,8 @@ function finishPreview() {
         kind: 'assistant_message',
         status: 'COMPLETED',
         payload: { text: 'Finished reviewing files.' }
-      }
+      },
+      ...nextStep
     ]
   }));
 }

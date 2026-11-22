@@ -1279,7 +1279,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const thinkingPreview = `Inspecting ../workspace ${'workspace '.repeat(20)}https://example.com/search?q=one,two&next=2 changes`;
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&reasoning-preview=1`);
+      await page.goto(
+        `${fixture.url}conversation-style.html?theme=${theme}&reasoning-preview=1&reply-spacing=1`
+      );
       const process = page.locator('[data-process-id="preview-process"]');
       const preview = process.locator('.process-summary');
       const heading = process.locator('.process-heading');
@@ -1343,18 +1345,40 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await heading.click();
       await page.getByTestId('finish-reasoning-process').click();
       await expect(heading).toHaveAttribute('aria-expanded', 'true');
+      await expect(heading.locator('.process-activity-label')).toHaveText('Completed');
       await expect(preview).toHaveCount(0);
       await expect(process.locator('.reasoning-subtitle').first()).toHaveText(thinkingPreview);
-      await expect(page.getByText('Finished reviewing files.', { exact: true })).toBeVisible();
-      const followingGap = await process.evaluate(
-        (element) =>
-          element.nextElementSibling!.getBoundingClientRect().top -
-          element.getBoundingClientRect().bottom
-      );
-      expect(followingGap).toBeCloseTo(gap, 1);
+      const summaryReply = page.getByText('Finished reviewing files.', { exact: true });
+      await expect(summaryReply).toBeVisible();
+      await expect(
+        page.locator('[data-process-id="follow-up-process"] .process-heading')
+      ).toBeVisible();
+      const replyGaps = () =>
+        summaryReply.evaluate((element) => {
+          const block = element.closest('.conversation-turn')!;
+          return {
+            before:
+              block.getBoundingClientRect().top -
+              block.previousElementSibling!.getBoundingClientRect().bottom,
+            after:
+              block.nextElementSibling!.getBoundingClientRect().top -
+              block.getBoundingClientRect().bottom
+          };
+        });
+      const expandedGaps = await replyGaps();
+      expect(expandedGaps.before).toBeCloseTo(recordGap, 1);
+      expect(expandedGaps.after).toBeGreaterThan(expandedGaps.before);
+      expect(expandedGaps.after).toBeLessThan(gap);
       await heading.click();
       await expect(heading).toHaveAttribute('aria-expanded', 'false');
       await expect(preview).toHaveCount(0);
+      const collapsedGaps = await replyGaps();
+      expect(collapsedGaps.before).toBeCloseTo(recordGap, 1);
+      expect(collapsedGaps.after).toBeCloseTo(expandedGaps.after, 1);
+      await page.locator('.conversation-timeline').screenshot({
+        path: testInfo.outputPath(`reply-spacing-${width}.png`),
+        animations: 'disabled'
+      });
       await heading.click();
       await expect(preview).toHaveCount(0);
       const completedSummary = process.locator('.reasoning-group').last();
