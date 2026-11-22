@@ -162,6 +162,9 @@ async function expectImageFits(image: Locator): Promise<void> {
     const area = element.closest('.decoded-preview-image')!;
     const actionSpace =
       area.querySelector<HTMLElement>('.decoded-preview-actions')?.offsetHeight ?? 0;
+    const controlsHeight = area.querySelector<HTMLElement>(
+      '.mar-image-preview-controls'
+    )!.offsetHeight;
     const bounds = element.getBoundingClientRect();
     return {
       width: bounds.width,
@@ -169,7 +172,7 @@ async function expectImageFits(image: Locator): Promise<void> {
       naturalWidth: element.naturalWidth,
       naturalHeight: element.naturalHeight,
       availableWidth: area.clientWidth,
-      availableHeight: area.clientHeight - actionSpace,
+      availableHeight: area.clientHeight - actionSpace - controlsHeight,
       areaHeight: area.clientHeight,
       centerOffset:
         bounds.x + bounds.width / 2 - (area.getBoundingClientRect().x + area.clientWidth / 2),
@@ -300,14 +303,24 @@ for (const [name, width, height] of [
       await expectImageFits(image);
       await expectOriginalActionPosition(original);
       if (name === 'portrait' && viewport.width === 1440) {
-        await original.evaluate((button) => button.style.setProperty('block-size', '48px'));
-        await expect(() => expectImageFits(image)).toPass({ timeout: 3000 });
-        await expectOriginalActionPosition(original);
-        await original.evaluate((button) => button.style.removeProperty('block-size'));
-        await expect(() => expectImageFits(image)).toPass({ timeout: 3000 });
+        for (const blockSize of ['48px', '']) {
+          await original.evaluate(
+            (button, size) => button.style.setProperty('block-size', size),
+            blockSize
+          );
+          // The image responds to layout first; the action follows on the resize observation.
+          await expect(async () => {
+            await expectImageFits(image);
+            await expectOriginalActionPosition(original);
+          }).toPass({ timeout: 3000 });
+        }
       }
+      const fit = dialog.getByRole('button', { name: 'Fit image', exact: true });
+      await dialog.getByRole('button', { name: 'Zoom in', exact: true }).click();
+      await expect(fit).toBeEnabled();
       await original.click();
       await expect(image).toBeVisible();
+      await expect(fit).toBeDisabled();
       await expect
         .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalHeight))
         .toBe(height);
@@ -451,7 +464,7 @@ for (const width of [1440, 390]) {
     await expect(original).not.toHaveClass(
       /mar-ui-button--ghost|mar-ui-button--inline|mar-ui-button--(?:primary|danger)/
     );
-    await expect(original).toHaveCSS('height', width === 390 ? '24px' : '26px');
+    await expect(original).toHaveCSS('height', '26px');
     await expect(original).toHaveCSS('border-top-style', 'solid');
     await expect(original).toHaveCSS('border-top-width', '1px');
     await expect(original).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');

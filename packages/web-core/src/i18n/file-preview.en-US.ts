@@ -1,5 +1,18 @@
 export const filePreviewEnUS = {
   filePreview: { loadFailed: 'Unable to load the file.' },
+  imageViewport: {
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    fit: 'Fit image',
+    panWithArrows: 'Image view. Use arrow keys to pan.',
+    pan: {
+      label: 'Pan image',
+      up: 'Pan up',
+      down: 'Pan down',
+      left: 'Pan left',
+      right: 'Pan right'
+    }
+  },
   common: {
     retry: 'Retry',
     save: 'Save',

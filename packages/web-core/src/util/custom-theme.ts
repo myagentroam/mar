@@ -127,6 +127,7 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     ['--mar-color-warning-text', '--mar-color-warning-bg'],
     ['--mar-color-danger-text', '--mar-color-danger-bg'],
     ['--mar-color-git-graph-main', '--mar-bg-panel'],
+    ['--mar-color-git-graph-main', '--mar-fill-soft'],
     ['--mar-color-accent', '--mar-color-accent-bg']
   ] as const) {
     const a = colors[foreground] ? luminance(colors[foreground]!) : undefined;

@@ -1,4 +1,5 @@
 import { expect, type Page, type TestInfo } from '@playwright/test';
+import { resolvedColorToHex } from '../../../packages/web-core/src/util/theme-palette.js';
 
 async function themeColor(page: Page, token: string): Promise<string> {
   return page.evaluate((name) => {
@@ -207,10 +208,8 @@ export async function verifyConversationThemes(
     await expect(code).toBeVisible();
     {
       await expect(code).toHaveCSS('color', await themeColor(page, '--mar-text-primary'));
-      await expect(code).toHaveCSS(
-        'background-color',
-        await themeColor(page, '--mar-conversation-code')
-      );
+      const fill = await code.evaluate((element) => getComputedStyle(element).backgroundColor);
+      expect(resolvedColorToHex(fill)).toBe(dark ? '#2e2e2e' : '#e1e6ee');
     }
     const codeCopy = assistant.locator('[data-code-copy]').first();
     await page.keyboard.press('Tab');

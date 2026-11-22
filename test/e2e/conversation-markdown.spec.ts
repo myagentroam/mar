@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { grantClipboardPermissions } from './support/clipboard.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
@@ -7,6 +8,136 @@ test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/conversation-style.html');
 });
 test.afterAll(async () => fixture?.close());
+
+function luminance(color: string) {
+  const [r, g, b] = resolvedColorToHex(color)
+    .slice(1)
+    .match(/../gu)!
+    .map((hex) => {
+      const channel = parseInt(hex, 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+function contrast(first: string, second: string) {
+  const values = [luminance(first), luminance(second)];
+  return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
+}
+
+for (const [name, theme, width] of [
+  ['light', 'daylight', 1280],
+  ['dark', 'vscode-dark-2026', 1280],
+  ['mobile', 'daylight', 390]
+] as const) {
+  test(`Conversation Markdown reading hierarchy: ${name}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${fixture.url}conversation-style.html?markdown-presentation&theme=${theme}`);
+    await page.evaluate(() => document.fonts.ready);
+    const timeline = page.locator('.conversation-timeline');
+    const reply = timeline.locator('.assistant_message .agent-markdown');
+    const file = reply.getByRole('link', { name: 'src/tasks.ts' });
+    await expect(file).toHaveAttribute('data-workspace-file', 'src/tasks.ts');
+    await expect(file).toHaveCSS('text-decoration-line', 'underline');
+    const emphasis = reply.locator(':scope > p > strong');
+    await expect(emphasis).toHaveText('待办任务筛选');
+    await expect(emphasis).toHaveCSS('font-weight', '700');
+    await expect(emphasis).toHaveCSS('font-synthesis-weight', 'auto');
+    const inlineCode = reply.locator('p > code').filter({ hasText: /^title$/u });
+    const inline = await inlineCode.evaluate((element) => {
+      const code = getComputedStyle(element);
+      return {
+        text: code.color,
+        fill: code.backgroundColor,
+        prose: getComputedStyle(element.parentElement!).color,
+        canvas: getComputedStyle(element.closest('main')!).backgroundColor
+      };
+    });
+    expect(inline.text).toBe(inline.prose);
+    expect(contrast(inline.text, inline.fill)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(inline.fill, inline.canvas)).toBeGreaterThanOrEqual(1.15);
+
+    const heading = reply.getByRole('heading', { name: '验证结果' });
+    const spacing = await heading.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        before: bounds.top - element.previousElementSibling!.getBoundingClientRect().bottom,
+        after: element.nextElementSibling!.getBoundingClientRect().top - bounds.bottom
+      };
+    });
+    expect(spacing.before).toBeGreaterThan(spacing.after);
+    await expect(file.locator('code')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const quote = reply.locator(':scope > blockquote').filter({ hasText: '只读取任务列表' });
+    await expect(quote).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+
+    const table = reply.getByRole('table');
+    const styles = await table.evaluate((element) => {
+      const head = getComputedStyle(element.querySelector('th')!);
+      const canvas = getComputedStyle(element.closest('main')!).backgroundColor;
+      return {
+        canvas,
+        quote: getComputedStyle(element.parentElement!.querySelector('blockquote')!).color,
+        heading: head.color,
+        tint: head.backgroundColor,
+        body: getComputedStyle(element.querySelector('td')!).backgroundColor,
+        scrolls: element.scrollWidth > element.clientWidth,
+        pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth
+      };
+    });
+    expect(styles.tint).not.toBe(styles.body);
+    for (const [foreground, background] of [
+      [styles.heading, styles.tint],
+      [styles.quote, styles.canvas]
+    ] as const) {
+      expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(styles.pageFits).toBe(true);
+    if (name === 'mobile') expect(styles.scrolls).toBe(true);
+
+    const widths = await reply.evaluate((element) => {
+      const widthOf = (child: Element | null) => child?.getBoundingClientRect().width;
+      return {
+        reply: element.getBoundingClientRect().width,
+        prose: widthOf(element.querySelector(':scope > p'))!,
+        code: widthOf(element.querySelector(':scope > [data-code-block]')),
+        codeQuote: widthOf(element.querySelector(':scope > blockquote:has([data-code-block])'))
+      };
+    });
+    expect(widths.prose).toBeLessThanOrEqual(widths.reply);
+    if (name !== 'mobile') expect(widths.prose).toBeLessThan(widths.reply);
+    expect(widths.code).toBeCloseTo(widths.reply, 0);
+    expect(widths.codeQuote).toBeCloseTo(widths.reply, 0);
+    await timeline.screenshot({ path: testInfo.outputPath(`markdown-${name}.png`) });
+  });
+}
+
+test('Conversation Markdown table and inline code follow the applied custom theme', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-style.html?markdown-presentation&theme=daylight`);
+  const header = page.getByRole('columnheader', { name: '场景' });
+  await expect(header).toBeVisible();
+  const previous = await header.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await page.evaluate(async (origin) => {
+    const { themePreferenceService } = await import(
+      `${origin}/packages/web-core/src/service/theme-preference-service.ts`
+    );
+    const theme = themePreferenceService();
+    const source = JSON.parse(theme.builtinSource('daylight', 'Plum'));
+    source.colors['--mar-link-text'] = '#982b67';
+    source.colors['--mar-conversation-code'] = '#dbeee5';
+    const saved = theme.saveCustomTheme(JSON.stringify(source));
+    theme.setTheme(saved.id);
+  }, new URL(fixture.url).origin);
+  await expect(page.getByRole('link', { name: 'src/tasks.ts' })).toHaveCSS(
+    'color',
+    'rgb(152, 43, 103)'
+  );
+  await expect(header).not.toHaveCSS('background-color', previous);
+  const inlineCode = page.locator('.assistant_message p > code').filter({ hasText: /^title$/u });
+  const fill = await inlineCode.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(resolvedColorToHex(fill)).toBe('#cbded7');
+});
 
 test('copying a user message with an image only copies the message text', async ({ page }) => {
   await grantClipboardPermissions(page.context());

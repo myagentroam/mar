@@ -767,7 +767,7 @@ button.history-refresh {
   overflow: hidden;
   border-radius: 8px;
   background: var(--mar-fill-soft);
-  color: var(--mar-text-primary);
+  color: var(--mar-color-git-graph-main);
   font-size: var(--mar-font-size-nano);
   padding: 1px 5px;
   text-overflow: ellipsis;

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive, ref } from 'vue';
 import DecodedPreviewImage from '../../src/view/conversation/DecodedPreviewImage.vue?unit-render';
 import ConversationImageThumbnail from '../../src/view/conversation/ConversationImageThumbnail.vue?unit-render';
@@ -8,6 +8,17 @@ import type { ConversationTurn } from '../../src/model/workbench.js';
 import { flushComponent, renderComponent, trigger } from './support/component-renderer.js';
 
 describe('Conversation image loading', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      }
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
   it.each([
     '/api/agent-runs/run/images/0?nodeId=node',
     '/api/workspaces/workspace/files/content?nodeId=node&path=picture.png',
@@ -152,14 +163,14 @@ describe('Conversation image loading', () => {
     await flushComponent();
     try {
       const image = state.findAll('img')[0]!;
-      Object.assign(image, { decode: vi.fn(() => decoding) });
+      const decode = vi.fn(() => decoding);
+      Object.assign(image, { naturalWidth: 1600, naturalHeight: 900, decode });
       expect(image.props.src).toBe(source);
       expect(image.style.display).toBe('none');
-      const loaded = (image.props.onLoad as (event: unknown) => Promise<void>)({ target: image });
-      await flushComponent();
+      await trigger(image, 'onLoad', { currentTarget: image });
+      expect(decode).toHaveBeenCalledOnce();
       expect(image.style.display).toBe('none');
       finish();
-      await loaded;
       await flushComponent();
       expect(image.style.display).not.toBe('none');
       expect(state.findAll('div')[0]!.props['aria-busy']).toBe(false);
@@ -180,14 +191,11 @@ describe('Conversation image loading', () => {
           finish = resolve;
         })
     });
-    const loaded = (previous.props.onLoad as (event: unknown) => Promise<void>)({
-      target: previous
-    });
+    await trigger(previous, 'onLoad', { currentTarget: previous });
     props.source = 'blob:new';
     await flushComponent();
     const current = state.findAll('img')[0]!;
     finish();
-    await loaded;
     await flushComponent();
     expect(current.props.src).toBe('blob:new');
     expect(current.style.display).toBe('none');
@@ -197,12 +205,11 @@ describe('Conversation image loading', () => {
           finish = resolve;
         })
     });
-    const closing = (current.props.onLoad as (event: unknown) => Promise<void>)({
-      target: current
-    });
+    await trigger(current, 'onLoad', { currentTarget: current });
     state.unmount();
     finish();
-    await expect(closing).resolves.toBeUndefined();
+    await flushComponent();
+    expect(state.findAll('img')).toHaveLength(0);
   });
 
   it('shows an explicit retry after decoding fails and creates a fresh image element', async () => {
@@ -213,7 +220,8 @@ describe('Conversation image loading', () => {
     try {
       const image = state.findAll('img')[0]!;
       Object.assign(image, { decode: () => Promise.reject(new Error('Invalid image')) });
-      await trigger(image, 'onLoad', { target: image });
+      await trigger(image, 'onLoad', { currentTarget: image });
+      await flushComponent();
       expect(onError).toHaveBeenCalledExactlyOnceWith(source);
       expect(state.findAll('img')).toHaveLength(0);
       expect(state.findAll('div').some((node) => node.props.role === 'alert')).toBe(true);
