@@ -13,6 +13,61 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}mar-table-pagination.html`);
 });
 
+for (const [width, compact, headerFont, bodyFont] of [
+  [1280, 26, '12px', '14px'],
+  [390, 24, '11px', '13px']
+] as const) {
+  test(`Table keeps a compact header and readable rows at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    const records = page.getByRole('table', { name: 'Records' });
+    const header = records.getByRole('columnheader', { name: 'Name', exact: true });
+    const label = records.getByRole('columnheader', { name: 'Note', exact: true });
+    const sort = header.getByRole('button');
+    for (const cell of [header, label]) {
+      await expect(cell).toHaveCSS('font-size', headerFont);
+      await expect(cell).toHaveCSS('font-weight', '500');
+      expect((await cell.boundingBox())!.height).toBeCloseTo(compact + 1, 1);
+    }
+    await expect(sort).toHaveCSS('font-size', headerFont);
+    expect((await sort.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
+
+    const organization = page.getByRole('table', { name: 'Organizations' });
+    const value = organization.getByRole('cell', { name: 'Child', exact: true });
+    await expect(value).toHaveCSS('font-size', bodyFont);
+    await expect(value).toHaveCSS('padding-inline-start', '10px');
+    expect((await value.boundingBox())!.height).toBeCloseTo(compact + 3, 1);
+    const act = records.getByRole('button', { name: 'Act 0' });
+    expect((await act.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
+    await records.locator('..').screenshot({ path: testInfo.outputPath('compact-table.png') });
+  });
+}
+
+test('Long headers in narrow columns wrap without covering adjacent columns', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 850 });
+  const table = page.getByRole('table', { name: 'Narrow columns' });
+  const sortable = table.getByRole('columnheader', { name: 'Configuration', exact: true });
+  const plain = table.getByRole('columnheader', { name: 'Synchronization', exact: true });
+  for (const header of [sortable, plain]) {
+    const fits = await header.evaluate((cell) => {
+      const content = cell.firstElementChild!;
+      return content.scrollWidth === content.clientWidth && cell.scrollWidth === cell.clientWidth;
+    });
+    expect(fits).toBe(true);
+    expect((await header.boundingBox())!.height).toBeGreaterThan(25);
+  }
+  const sort = sortable.getByRole('button');
+  await sort.press('Enter');
+  await expect(sortable).toHaveAttribute('aria-sort', 'ascending');
+  await expect(sort).toBeFocused();
+  await table
+    .locator('thead')
+    .screenshot({ path: testInfo.outputPath('wrapped-table-header.png') });
+});
+
 test('Table sorts stable rows locally, delegates custom sorting, and preserves slots', async ({
   page
 }) => {

@@ -474,7 +474,8 @@ const ColumnView = () => renderTable();
 .mar-ui-table__viewport :deep(th) {
   background: var(--mar-ui-table-header-bg);
   color: var(--mar-ui-text-secondary);
-  font-weight: 600;
+  font-size: var(--mar-ui-font-size-meta);
+  font-weight: 500;
   text-align: start;
 }
 .is-height-limited :deep(th) {
@@ -484,9 +485,13 @@ const ColumnView = () => renderTable();
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__cell) {
   box-sizing: border-box;
-  padding: 2px 12px;
+  padding: 1px 10px;
   border-block-end: 1px solid var(--mar-ui-border-subtle);
   vertical-align: middle;
+}
+.mar-ui-table__viewport :deep(th.mar-ui-table__cell) {
+  overflow-wrap: anywhere;
+  padding-block: 0;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__cell-inner) {
   display: flex;

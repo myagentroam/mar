@@ -118,6 +118,11 @@ for (const [theme, width] of [
     await expect(third).toHaveCSS('border-block-start-width', '1px');
     const unruled = page.getByTestId('unruled-details').locator('.mar-ui-descriptions__item');
     await expect(unruled.last()).toHaveCSS('border-block-start-width', '0px');
+    for (const item of [first, unruled.first()]) {
+      await expect(item).toHaveCSS('padding-block-start', '4px');
+      await expect(item).toHaveCSS('padding-block-end', '4px');
+      await expect(item.locator('dd')).toHaveCSS('font-size', width >= 768 ? '14px' : '13px');
+    }
     if (width === 390) {
       expect(secondBox.x).toBeCloseTo(firstBox.x, 1);
       expect(secondBox.y).toBeGreaterThan(firstBox.y);

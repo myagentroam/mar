@@ -20,7 +20,7 @@ defineProps<{ label?: string }>();
   align-items: baseline;
   gap: 0.75rem;
   min-inline-size: 0;
-  padding-block: 0.5rem;
+  padding-block: 4px;
 }
 dt,
 dd {

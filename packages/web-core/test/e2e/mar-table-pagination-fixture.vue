@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarPagination } from '@myagentroam/mar-ui/pagination';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 
@@ -80,9 +81,7 @@ function filterOrganizations(): void {
       </MarTableColumn>
       <MarTableColumn label="Action" width="100">
         <template #default="{ row, $index }">
-          <button type="button" @click.stop="clicks = `action:${row.name}`">
-            Act {{ $index }}
-          </button>
+          <MarButton @click.stop="clicks = `action:${row.name}`"> Act {{ $index }} </MarButton>
         </template>
       </MarTableColumn>
     </MarTable>
@@ -102,6 +101,11 @@ function filterOrganizations(): void {
     </MarTable>
     <MarTable aria-label="Empty table" :data="[]" empty-text="Nothing here">
       <MarTableColumn label="Name" prop="name" />
+    </MarTable>
+    <MarTable aria-label="Narrow columns" class="narrow-columns" :data="rows">
+      <MarTableColumn label="Configuration" prop="name" width="76" sortable />
+      <MarTableColumn label="Synchronization" prop="note" width="86" />
+      <MarTableColumn label="Action" width="100" />
     </MarTable>
 
     <MarPagination
@@ -126,5 +130,8 @@ function filterOrganizations(): void {
 main {
   max-inline-size: 620px;
   padding: 12px;
+}
+.narrow-columns {
+  max-inline-size: 262px;
 }
 </style>
