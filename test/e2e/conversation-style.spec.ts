@@ -1820,7 +1820,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
   });
 
-  test(`Read-only and submitting Composer keep a neutral focus in ${theme}`, async ({ page }) => {
+  test(`Read-only and loading Composer keep a neutral focus in ${theme}`, async ({ page }) => {
     for (const mode of ['readonly', 'loading']) {
       await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-${mode}`);
       await page.locator('html').evaluate((root) => {

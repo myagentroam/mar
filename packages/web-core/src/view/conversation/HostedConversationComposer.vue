@@ -199,15 +199,15 @@ const canStopCurrent = computed(
   () =>
     activeRun.value !== undefined && activeRun.value.status !== 'CANCELLING' && !submitting.value
 );
-const composerReadonly = computed(
+const inputReadonly = computed(
   () =>
     props.readonly ||
     props.workspace.templateChanging.value ||
     (!props.draft && snapshot.value !== undefined && !props.workspace.watchReady.value) ||
     (props.draft === true && props.entry?.writable.value === false) ||
-    submitting.value ||
     (activeRun.value !== undefined && !canReplaceCurrent.value)
 );
+const composerReadonly = computed(() => inputReadonly.value || submitting.value);
 const syncingOnly = computed(
   () =>
     !props.draft &&
@@ -716,11 +716,12 @@ onBeforeUnmount(() => {
           ? translate('conversationActivity.syncing')
           : ''
     "
-    :readonly="composerReadonly"
+    :readonly="inputReadonly"
     :drop-target="draggingAttachments"
     :mobile-viewport="mobileViewport"
     :command-states="[]"
-    :loading="submitting || configurationUpdating || workspace.templateChanging.value"
+    :loading="configurationUpdating || workspace.templateChanging.value"
+    :submitting="submitting"
     :skill-tokens="[]"
     :file-references="references"
     @remove-reference="

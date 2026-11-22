@@ -206,6 +206,13 @@ function finishGesture(clientY: number, event: Event): void {
   else emit('send');
 }
 
+function preserveEditorFocus(event: MouseEvent): void {
+  if (event.button !== 0) return;
+  const button = event.currentTarget as HTMLButtonElement;
+  const editor = button.form?.querySelector('.composer-input');
+  if (editor === button.ownerDocument.activeElement) event.preventDefault();
+}
+
 function onClick(event: MouseEvent): void {
   // A completed or cancelled touch must not fall through to ordinary sending.
   if (suppressClick && event.detail !== 0) {
@@ -241,6 +248,7 @@ onBeforeUnmount(() => {
         : undefined
     "
     @pointerdown="onPointerDown"
+    @mousedown="preserveEditorFocus"
     @touchstart="onTouchStart"
     @touchmove.passive="onTouchMove"
     @touchend="onTouchEnd"

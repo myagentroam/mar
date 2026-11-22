@@ -676,6 +676,55 @@ test('A late catalog refresh loads the replacement template models after returni
   }
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Hosted Composer keeps its focus border through keyboard and mouse send in ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    const f = await openHostedSend(page, { theme });
+    const shell = f.composer.locator('.composer-shell');
+    try {
+      await expect(f.input).toBeEditable();
+      const idleBorder = await shell.evaluate(
+        (element) => getComputedStyle(element).borderTopColor
+      );
+      await f.input.fill(f.prompt);
+      const focusedBorder = await shell.evaluate(
+        (element) => getComputedStyle(element).borderTopColor
+      );
+      expect(focusedBorder).not.toBe(idleBorder);
+
+      await f.input.press('Enter');
+      await expect.poll(() => f.requests.length).toBe(1);
+      await expect(f.input).toHaveAttribute('readonly', '');
+      await expect(f.input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+      f.reply(true);
+      await expect(f.input).toBeEditable();
+      await expect(f.input).toHaveValue(f.prompt);
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+
+      await f.send.hover();
+      await page.mouse.down();
+      await expect(f.input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+      await page.mouse.up();
+      await expect.poll(() => f.requests.length).toBe(2);
+      await expect(f.input).toHaveAttribute('readonly', '');
+      await expect(f.input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+      f.reply();
+      await expect(f.input).toHaveValue('');
+      await expect(f.input).toBeEditable();
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+      await f.input.blur();
+      await expect(shell).toHaveCSS('border-top-color', idleBorder);
+    } finally {
+      f.release();
+    }
+  });
+}
+
 test('Hosted send displays only request feedback before Watch, including after HTTP settlement', async ({
   page
 }, testInfo) => {
