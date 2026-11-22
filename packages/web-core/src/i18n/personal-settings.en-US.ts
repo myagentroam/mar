@@ -242,7 +242,8 @@ export const personalSettingsEnUS = {
       'conversation-border': 'Message content boundaries',
       'conversation-process-border': 'Process block boundaries',
       'conversation-code': 'Code block backgrounds',
-      'conversation-activity-fg': 'Active conversation phase ring and status above the composer',
+      'conversation-activity-fg':
+        'Conversation phase ring, composer status and send button, and unread notification badges',
       'scrollbar-thumb': 'Scrollbar handles',
       'scrollbar-thumb-hover': 'Scrollbar handles on hover',
       'control-primary-bg': 'Filled primary actions and checked controls',

@@ -161,7 +161,7 @@ for (const width of [1280, 390]) {
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
-  test(`Composer send uses Primary while the context meter and sending feedback stay neutral in ${theme}`, async ({
+  test(`Composer send uses conversation activity blue while feedback stays neutral in ${theme}`, async ({
     page
   }, info) => {
     for (const width of [1280, 390]) {
@@ -177,26 +177,49 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const style = getComputedStyle(root);
         return Object.fromEntries(
           [
-            'control-primary-bg',
-            'control-primary-fg',
-            'control-primary-hover',
-            'control-primary-active',
+            'bg-panel',
+            'conversation-activity-fg',
+            'fill-soft',
+            'text-disabled',
             'text-secondary',
             'control-color-danger'
           ].map((token) => [token, style.getPropertyValue(`--mar-${token}`).trim()])
         );
       });
       await toolbar.screenshot({ path: info.outputPath(`composer-${theme}-${width}.png`) });
-      await page
-        .locator('html')
-        .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff'));
-      const color = (locator: Locator, property: 'color' | 'backgroundColor') =>
+      const color = (locator: Locator, property: 'color' | 'backgroundColor' | 'borderTopColor') =>
         locator
           .evaluate((element, property) => getComputedStyle(element)[property], property)
           .then(resolvedColorToHex);
-      await expect.poll(() => color(send, 'backgroundColor')).toBe(tokens['control-primary-bg']);
-      await expect.poll(() => color(send, 'color')).toBe(tokens['control-primary-fg']);
+      const expectSendColors = async (fill: string) => {
+        const expected = await send.evaluate((element, cssColor) => {
+          const probe = document.createElement('span');
+          probe.style.backgroundColor = cssColor;
+          probe.style.color = CSS.supports('color: contrast-color(red)')
+            ? `contrast-color(${cssColor})`
+            : 'var(--mar-bg-panel)';
+          element.append(probe);
+          const { backgroundColor, color } = getComputedStyle(probe);
+          probe.remove();
+          return { backgroundColor, color };
+        }, fill);
+        await expect
+          .poll(() => color(send, 'backgroundColor'))
+          .toBe(resolvedColorToHex(expected.backgroundColor));
+        await expect
+          .poll(() => color(send, 'borderTopColor'))
+          .toBe(resolvedColorToHex(expected.backgroundColor));
+        await expect.poll(() => color(send, 'color')).toBe(resolvedColorToHex(expected.color));
+      };
+      await expectSendColors(tokens['conversation-activity-fg']!);
+      const customActivityColor = theme === 'daylight' ? '#1565c0' : '#8ac7ff';
+      await page.locator('html').evaluate((root, activity) => {
+        root.style.setProperty('--mar-conversation-activity-fg', activity);
+      }, customActivityColor);
+      await expectSendColors(customActivityColor);
       await expect.poll(() => color(stop, 'color')).toBe(tokens['control-color-danger']);
+      await expect.poll(() => color(stop, 'borderTopColor')).toBe(tokens['control-color-danger']);
+      await expect.poll(() => color(stop, 'backgroundColor')).toBe(tokens['bg-panel']);
       const ring = await context.evaluate((element) => {
         const stop = getComputedStyle(element).backgroundImage.match(/rgb\([^)]+\)(?= 42%)/u);
         return stop?.[0] ?? '';
@@ -204,25 +227,30 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(resolvedColorToHex(ring)).toBe(tokens['text-secondary']);
       if (width >= 768) {
         await send.hover();
-        await expect
-          .poll(() => color(send, 'backgroundColor'))
-          .toBe(tokens['control-primary-hover']);
+        await expectSendColors(
+          `color-mix(in srgb, ${customActivityColor} 92%, var(--mar-text-primary))`
+        );
         await page.mouse.down();
         try {
-          await expect
-            .poll(() => color(send, 'backgroundColor'))
-            .toBe(tokens['control-primary-active']);
+          await expectSendColors(
+            `color-mix(in srgb, ${customActivityColor} 84%, var(--mar-text-primary))`
+          );
         } finally {
           await page.mouse.move(0, 0);
           await page.mouse.up();
         }
       }
+      await page.goto(`${url}&empty`);
+      await expect(send).toBeDisabled();
+      await expect.poll(() => color(send, 'backgroundColor')).toBe(tokens['fill-soft']);
+      await expect.poll(() => color(send, 'color')).toBe(tokens['text-disabled']);
       await page.goto(`${url}&submitting`);
       await page
         .locator('html')
         .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff'));
       await expect(send).toBeDisabled();
       await expect(send).toHaveAttribute('aria-busy', 'true');
+      await expect.poll(() => color(send, 'backgroundColor')).toBe(tokens['fill-soft']);
       await expect
         .poll(() => color(send.locator('[data-mar-icon="loading-action"]'), 'color'))
         .toBe(tokens['text-secondary']);

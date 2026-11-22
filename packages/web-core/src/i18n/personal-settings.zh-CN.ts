@@ -239,7 +239,7 @@ export const personalSettingsZhCN = {
       'conversation-border': '消息内容边框',
       'conversation-process-border': '过程块边框',
       'conversation-code': '代码块背景',
-      'conversation-activity-fg': '对话当前阶段圆环和输入框上方状态条',
+      'conversation-activity-fg': '对话阶段圆环、输入框上方状态、发送按钮及通知未读角标',
       'scrollbar-thumb': '滚动条滑块',
       'scrollbar-thumb-hover': '滚动条悬停滑块',
       'control-primary-bg': '主要操作及勾选控件的实底填充',

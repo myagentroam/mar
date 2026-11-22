@@ -481,12 +481,16 @@ for (const width of [1280, 390]) {
       const colors = await trigger.evaluate((element) => {
         const probe = document.createElement('span');
         element.append(probe);
-        const color = (token: string) => {
-          probe.style.color = `var(${token})`;
+        const resolve = (value: string) => {
+          probe.style.color = value;
           return getComputedStyle(probe).color;
         };
+        const color = (token: string) => resolve(`var(${token})`);
         const result = {
-          unread: color('--mar-text-secondary'),
+          unread: color('--mar-conversation-activity-fg'),
+          notificationText: CSS.supports('color: contrast-color(red)')
+            ? resolve('contrast-color(var(--mar-conversation-activity-fg))')
+            : color('--mar-bg-panel'),
           running: color('--mar-control-color-success'),
           page: color('--mar-bg-page'),
           chrome: color('--mar-bg-chrome'),
@@ -508,6 +512,10 @@ for (const width of [1280, 390]) {
         'background-color',
         colors.unread
       );
+      await expect(trigger.locator('.activity-entry-count')).toHaveCSS(
+        'color',
+        colors.notificationText
+      );
       await expect(trigger.locator('.activity-entry-running')).toHaveCSS(
         'background-color',
         colors.running
@@ -518,6 +526,11 @@ for (const width of [1280, 390]) {
         'aria-selected',
         'true'
       );
+      const notificationBadge = panel
+        .getByRole('tab', { name: /通知/ })
+        .locator('.activity-unread-count');
+      await expect(notificationBadge).toHaveCSS('background-color', colors.unread);
+      await expect(notificationBadge).toHaveCSS('color', colors.notificationText);
       const notices = panel.locator('.workbench-notification-list > li');
       await expect(notices).toHaveCount(30);
       await expect(notices.first()).toHaveCSS('border-top-width', '0px');

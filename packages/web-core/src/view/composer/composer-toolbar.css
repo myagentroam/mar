@@ -43,12 +43,17 @@
   min-height: var(--composer-action-size);
   height: var(--composer-action-size);
   place-items: center;
-  border: 1px solid var(--mar-control-primary-bg);
+  border: 1px solid;
   border-radius: 50%;
-  background: var(--mar-control-primary-bg);
-  color: var(--mar-control-primary-fg);
   padding: 0;
   cursor: pointer;
+}
+
+.mar-composer-action:not(.mar-composer-stop-action, :disabled) {
+  --composer-send-state-bg: var(--mar-conversation-activity-fg);
+  border-color: var(--composer-send-state-bg);
+  background: var(--composer-send-state-bg);
+  color: var(--mar-bg-panel);
 }
 
 .mar-composer-stop-action {
@@ -59,8 +64,11 @@
 
 @media (hover: hover) {
   .mar-composer-action:not(.mar-composer-stop-action, :disabled):hover {
-    border-color: var(--mar-control-primary-hover);
-    background: var(--mar-control-primary-hover);
+    --composer-send-state-bg: color-mix(
+      in srgb,
+      var(--mar-conversation-activity-fg) 92%,
+      var(--mar-text-primary)
+    );
   }
 
   .mar-composer-stop-action:not(:disabled):hover {
@@ -69,8 +77,17 @@
 }
 
 .mar-composer-action:not(.mar-composer-stop-action, :disabled):active {
-  border-color: var(--mar-control-primary-active);
-  background: var(--mar-control-primary-active);
+  --composer-send-state-bg: color-mix(
+    in srgb,
+    var(--mar-conversation-activity-fg) 84%,
+    var(--mar-text-primary)
+  );
+}
+
+@supports (color: contrast-color(red)) {
+  .mar-composer-action:not(.mar-composer-stop-action, :disabled) {
+    color: contrast-color(var(--composer-send-state-bg));
+  }
 }
 
 .mar-composer-action:focus-visible {
