@@ -766,9 +766,11 @@ button.history-refresh {
   max-width: 92px;
   overflow: hidden;
   border-radius: 8px;
-  background: var(--mar-fill-soft);
+  background: color-mix(in srgb-linear, var(--mar-fill-soft), currentColor 4%);
   color: var(--mar-color-git-graph-main);
   font-size: var(--mar-font-size-nano);
+  outline: 1px solid color-mix(in srgb, var(--mar-fill-soft), currentColor 42%);
+  outline-offset: -1px;
   padding: 1px 5px;
   text-overflow: ellipsis;
   white-space: nowrap;

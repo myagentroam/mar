@@ -292,6 +292,18 @@ describe('Custom theme validation', () => {
     }
   );
 
+  it('checks Git branch text against its tinted fill rather than the neutral base', () => {
+    const warnings = (foreground: string) =>
+      analyzeCustomTheme(
+        source({ '--mar-color-git-graph-main': foreground, '--mar-fill-soft': '#fff' })
+      ).warnings;
+    expect(warnings('#767676')).toContainEqual({
+      code: 'contrast',
+      field: '--mar-color-git-graph-main / --mar-fill-soft'
+    });
+    expect(warnings('#686868')).toEqual([]);
+  });
+
   it('uses the graphic contrast threshold for usage bars on their tracks', () => {
     const warnings = (color: string) =>
       analyzeCustomTheme(

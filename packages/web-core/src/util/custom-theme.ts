@@ -83,7 +83,7 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
       else colors[key] = color;
     }
   // Assess only explicit opaque pairs; inherited/translucent colors need visual inspection.
-  for (const [foreground, background, minimum = 4.5] of [
+  for (const [foreground, background, minimum = 4.5, tint = 0] of [
     ['--mar-text-primary', '--mar-bg-page'],
     ['--mar-text-secondary', '--mar-bg-page'],
     ['--mar-text-primary', '--mar-bg-panel'],
@@ -127,16 +127,15 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     ['--mar-color-warning-text', '--mar-color-warning-bg'],
     ['--mar-color-danger-text', '--mar-color-danger-bg'],
     ['--mar-color-git-graph-main', '--mar-bg-panel'],
-    ['--mar-color-git-graph-main', '--mar-fill-soft'],
+    // The branch badge mixes 4% of its text color into the fill in linear sRGB.
+    ['--mar-color-git-graph-main', '--mar-fill-soft', 4.5, 0.04],
     ['--mar-color-accent', '--mar-color-accent-bg']
   ] as const) {
     const a = colors[foreground] ? luminance(colors[foreground]!) : undefined;
-    const b = colors[background] ? luminance(colors[background]!) : undefined;
-    if (
-      a !== undefined &&
-      b !== undefined &&
-      (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < minimum
-    ) {
+    const base = colors[background] ? luminance(colors[background]!) : undefined;
+    if (a === undefined || base === undefined) continue;
+    const b = base * (1 - tint) + a * tint;
+    if ((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < minimum) {
       warn('contrast', `${foreground} / ${background}`);
     }
   }
