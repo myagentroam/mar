@@ -56,7 +56,6 @@ const noop = () => {};
 const selectedSessionId = ref<string>();
 const selectedWorkspaces = ref<Workspace[]>([]);
 const selectedSessions = ref<Session[]>([]);
-const draftOpen = ref(false);
 const selection = createWorkbenchWorkspaceSelectionService({
   workspaceTarget: target,
   setWorkspaceTarget: (value) => {
@@ -74,10 +73,7 @@ const selection = createWorkbenchWorkspaceSelectionService({
   replaceSessions: (value) => {
     selectedSessions.value = [...value];
   },
-  draftOpen,
-  setDraftOpen: (value) => {
-    draftOpen.value = value;
-  },
+  setDraftOpen: noop,
   profilesLoading: ref(false),
   isCacheActive: cache.isActive,
   nodeListConfirmed: ref(true),

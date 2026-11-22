@@ -294,7 +294,7 @@ function installMainPane(page: ReturnType<typeof pageFixture>): void {
         workspaceTarget: ref(page.selection.workspaceTarget),
         skillTokens: { remove: vi.fn() }
       },
-      presentation: { composerSessionOpen: ref(false) },
+      presentation: { composerSessionOpen: ref(false), sessionPaneOpen: ref(false) },
       configuration: {},
       runner: {},
       references: {},
@@ -922,6 +922,7 @@ describe('Workbench surface composition behavior', () => {
         },
         presentation: {
           composerSessionOpen: computed(() => page._test.composerSessionOpen),
+          sessionPaneOpen: computed(() => page._test.composerSessionOpen),
           workspaceHost: computed(() => page.resources.workspaceHost),
           composerWorking: computed(() => page._test.composerWorking),
           composerInputDisabled: computed(() => page._test.composerInputDisabled)

@@ -16,9 +16,8 @@ export interface WorkbenchSelectionPersistenceOptions {
   readonly sessions: Ref<readonly Session[]>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Readonly<Ref<string | undefined>>;
-  readonly setSelectedSessionId: (id: string | undefined) => void;
+  readonly draftInput: Readonly<Ref<string>>;
   readonly activateWorkspace: (target: WorkspaceTarget) => Promise<boolean>;
-  readonly synchronizeSessions: (workspaceId: string) => Promise<readonly Session[] | undefined>;
   readonly openSession: (sessionId: string) => Promise<void>;
   readonly lookupSession: (nodeId: string, sessionId: string) => Promise<Session | undefined>;
   readonly openDraft: () => void;
@@ -27,12 +26,14 @@ export interface WorkbenchSelectionPersistenceOptions {
   readonly rememberSession?: (nodeId: string, workspaceId: string, sessionId?: string) => void;
 }
 
+/** Restores the browser's Workspace target without promoting an unverified session to selection. */
 export function createWorkbenchSelectionPersistenceService(
   options: WorkbenchSelectionPersistenceOptions
 ) {
   let storage = options.storage ?? localStorage;
   let initialized = false;
   const pendingRestores = new Set<() => boolean>();
+  let deferred: { readonly sessionId: string; readonly current: () => boolean } | undefined;
 
   async function restore(): Promise<void> {
     const owner = storage;
@@ -70,22 +71,24 @@ export function createWorkbenchSelectionPersistenceService(
   async function restoreSession(workspaceId: string, preferredId?: string): Promise<void> {
     const owner = storage;
     const targetWorkspace = options.workspaceTarget.value;
-    if (targetWorkspace === undefined) return;
+    if (targetWorkspace?.workspaceId !== workspaceId) return;
     const nodeId = targetWorkspace.nodeId;
     const offline = () =>
       options.nodes.value.some((node) => node.id === nodeId && node.connected === false);
     const selectedId = options.selectedSessionId.value;
+    const draftInput = options.draftInput.value;
     const revision = options.currentSelectionRevision?.();
     const current = () =>
       owner === storage &&
       options.workspaceTarget.value === targetWorkspace &&
-      targetWorkspace.workspaceId === workspaceId &&
       options.selectedSessionId.value === selectedId &&
+      options.draftInput.value === draftInput &&
       options.currentSelectionRevision?.() === revision;
+    deferred = undefined;
     pendingRestores.add(current);
     try {
       if (offline()) {
-        if (current() && preferredId !== undefined) options.setSelectedSessionId(preferredId);
+        if (preferredId !== undefined) deferred = { sessionId: preferredId, current };
         return;
       }
       let target: Session | undefined;
@@ -106,19 +109,14 @@ export function createWorkbenchSelectionPersistenceService(
         if (!current()) return;
         if (target?.workspaceId !== workspaceId) target = undefined;
       }
-      if (target === undefined) {
-        const sessions = await options.synchronizeSessions(workspaceId);
-        if (!current() || sessions === undefined) return;
-        target = sessions.find(
-          (session) => session.workspaceId === workspaceId && session.id !== preferredId
-        );
+      if (current()) {
+        if (target === undefined) options.openDraft();
+        else await options.openSession(target.id);
       }
-      if (target === undefined) options.openDraft();
-      else await options.openSession(target.id);
     } catch (error) {
       if (current()) {
         // Retain the target through transient failures, including subsequent route syncs.
-        if (preferredId !== undefined) options.setSelectedSessionId(preferredId);
+        if (preferredId !== undefined) deferred = { sessionId: preferredId, current };
         if (errorCode(error) !== 'NODE_OFFLINE' || !offline()) options.notice(error);
       }
     } finally {
@@ -132,7 +130,8 @@ export function createWorkbenchSelectionPersistenceService(
     const workspace = options.workspaceTarget.value;
     if (!initialized && workspace === undefined) return;
     initialized = true;
-    const selectedId = options.selectedSessionId.value;
+    if (deferred !== undefined && !deferred.current()) deferred = undefined;
+    const selectedId = options.selectedSessionId.value ?? deferred?.sessionId;
     const selected = options.sessions.value.find((session) => session.id === selectedId);
     const sessionId =
       selectedId?.startsWith('draft:') ||
@@ -164,6 +163,7 @@ export function createWorkbenchSelectionPersistenceService(
     bindStorage: (next: Storage) => {
       storage = next;
       initialized = false;
+      deferred = undefined;
       pendingRestores.clear();
     }
   };

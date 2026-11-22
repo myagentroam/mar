@@ -27,7 +27,7 @@ vi.mock('../../src/service/workbench-clock-service', () => ({
   })
 }));
 
-function controlsFixture() {
+function controlsFixture(sessionResolved = true) {
   const session = ref<Session>({
     id: 'session-1',
     workspaceId: 'workspace-1',
@@ -37,6 +37,7 @@ function controlsFixture() {
     runtime: { capabilities: ['session.rollback'] }
   });
   const selectedSessionId = ref<string | undefined>(session.value.id);
+  const selectedSession = computed(() => (sessionResolved ? session.value : undefined));
   const runService = createRunService(selectedSessionId);
   const compact: RunnerCommand = {
     id: 'compact',
@@ -59,7 +60,7 @@ function controlsFixture() {
     }
   ]);
   const configuration = createComposerConfigurationService({
-    selectedSession: session,
+    selectedSession,
     profiles,
     effortLabel: String
   });
@@ -72,7 +73,7 @@ function controlsFixture() {
     workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
     selectedSessionId,
     selectedRunId: runService.selectedRunId,
-    selectedSession: computed(() => session.value),
+    selectedSession,
     sessions: ref([session.value]),
     runs: runService.runs,
     turns: ref([]),
@@ -142,6 +143,20 @@ function controlsFixture() {
 }
 
 afterEach(() => vi.restoreAllMocks());
+
+describe('Workbench session pane visibility', () => {
+  it('shows loading and retry for a selected session before its details resolve, without enabling the composer', () => {
+    const { state, selectedSessionId, draftOpen } = controlsFixture(false);
+    expect(state.sessionPaneOpen.value).toBe(true);
+    expect(state.composerSessionOpen.value).toBe(false);
+    expect(state.canUseComposer.value).toBe(false);
+
+    selectedSessionId.value = undefined;
+    expect(state.sessionPaneOpen.value).toBe(false);
+    draftOpen.value = true;
+    expect(state.sessionPaneOpen.value).toBe(true);
+  });
+});
 
 describe('Workbench context usage label', () => {
   it.each([

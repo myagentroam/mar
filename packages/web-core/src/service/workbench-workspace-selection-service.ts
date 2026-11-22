@@ -38,7 +38,6 @@ interface WorkbenchWorkspaceSelectionOptions {
   readonly replaceWorkspaces: (workspaces: readonly Workspace[]) => void;
   readonly sessions: Readonly<Ref<readonly Session[]>>;
   readonly replaceSessions: (sessions: readonly Session[]) => void;
-  readonly draftOpen: Readonly<Ref<boolean>>;
   readonly setDraftOpen: (open: boolean) => void;
   readonly profilesLoading: Readonly<Ref<boolean>>;
   readonly nodeListConfirmed: Readonly<Ref<boolean>>;
@@ -109,7 +108,7 @@ export function createWorkbenchWorkspaceSelectionService(
     options.resetQueue();
   }
 
-  async function select(target: WorkspaceTarget, openDraft = true): Promise<boolean> {
+  async function select(target: WorkspaceTarget, restoreSession = true): Promise<boolean> {
     if (!options.hasNode(target.nodeId)) {
       if (options.nodeListConfirmed.value) options.invalidateWorkspace(target);
       return false;
@@ -172,18 +171,23 @@ export function createWorkbenchWorkspaceSelectionService(
       options.selectedSessionId.value !== undefined &&
       options.sessions.value.some((session) => session.id === options.selectedSessionId.value);
     const stored = options.takeRestoredSelection(target.nodeId, target.workspaceId);
-    const cachedSession = cache.sessions.find((session) => session.id === cache.selectedSessionId);
-    if (
-      openDraft &&
-      restoreView &&
-      cachedSession !== undefined &&
-      sessionHasNativeIdentity(cachedSession)
-    )
-      void options.openSession(cachedSession.id, { skipSaveCurrent: true });
-    else if (openDraft && stored !== undefined) {
-      options.openDraft();
-      void options.restoreSession(target.workspaceId, stored.selectedSessionId);
-    } else if (openDraft && !keepSelected) options.openDraft();
+    if (!keepSelected) {
+      const cachedSession = cache.sessions.find(
+        (session) => session.id === cache.selectedSessionId
+      );
+      if (
+        restoreSession &&
+        restoreView &&
+        cachedSession !== undefined &&
+        sessionHasNativeIdentity(cachedSession)
+      ) {
+        void options.openSession(cachedSession.id, { skipSaveCurrent: true });
+      } else {
+        options.openDraft();
+        if (restoreSession && stored?.selectedSessionId !== undefined)
+          void options.restoreSession(target.workspaceId, stored.selectedSessionId);
+      }
+    }
     if (workspace !== undefined) void options.startWatch(target.workspaceId);
     if (restoreView || (!options.hasProfiles(target.nodeId) && !options.profilesLoading.value))
       void options.loadProfiles(target.nodeId);

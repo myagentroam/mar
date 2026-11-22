@@ -1569,8 +1569,8 @@ export function createWorkbenchPageController<
     }
   );
 
-  function selectWorkspace(target: WorkspaceTarget, openDraft = true): Promise<boolean> {
-    return workbenchWorkspaceSelectionService.select(target, openDraft);
+  function selectWorkspace(target: WorkspaceTarget, restoreSession = true): Promise<boolean> {
+    return workbenchWorkspaceSelectionService.select(target, restoreSession);
   }
 
   const workbenchWorkspaceSelectionService = workspaceSelection.connect({
@@ -1580,7 +1580,6 @@ export function createWorkbenchPageController<
     replaceWorkspaces: workbenchCapabilityService.replaceWorkspaces,
     sessions,
     replaceSessions: workspaceSessionDiscovery.replaceSessions,
-    draftOpen: draftSessionOpen,
     setDraftOpen: sessionSelection.setDraftOpen,
     profilesLoading: runnerProfilesLoading,
     isCacheActive: workspaceViewCacheService.isActive,
@@ -1652,7 +1651,7 @@ export function createWorkbenchPageController<
     viewCache: workspaceViewCache,
     resetQueue: queueProjection.reset,
     openSession,
-    openDraft: () => openDraftSessionComposer(),
+    openDraft: () => showDraftSessionComposer(),
     restoreDraft: (cache) => {
       restoreWorkspaceDraft(cache);
     },
@@ -1701,14 +1700,12 @@ export function createWorkbenchPageController<
     sessions,
     workspaceTarget,
     selectedSessionId,
-    setSelectedSessionId: sessionSelection.setSession,
+    draftInput: mainPane.draft.input,
     selectedHostedNodeId: hostedConversationWorkspace.selectedNodeId,
     selectedHostedConversationId: hostedConversationWorkspace.selectedConversationId,
     view,
     managementSection,
     activateWorkspace: (target) => selectWorkspace(target, false),
-    synchronizeSessions: async (workspaceId) =>
-      (await syncWorkspaceSessions(workspaceId, true))?.sessions,
     openSession,
     lookupSession: async (nodeId, sessionId) => {
       const result = await request<{ session: Session }>(
@@ -1716,7 +1713,7 @@ export function createWorkbenchPageController<
       );
       return result.session;
     },
-    openDraft: () => openDraftSessionComposer(),
+    openDraft: () => showDraftSessionComposer(),
     notice: (error) => notice(message(error), 'error', error),
     currentSelectionRevision: () =>
       currentDetailRequest() + workbenchWorkspaceSelectionService.currentSelectionRevision(),
@@ -1784,7 +1781,7 @@ export function createWorkbenchPageController<
         drafts.releaseNode(nodeId, { invalidateSubmissions: true });
         workbenchAsideService.removeNode(nodeId);
       },
-      openDraft: () => openDraftSessionComposer(),
+      openDraft: () => showDraftSessionComposer(),
       replaceUrl: syncWorkbenchRoute,
       clearNodeDetails
     });
@@ -1827,6 +1824,7 @@ export function createWorkbenchPageController<
   const {
     createDraftSession,
     ensureDraftRunnerSupported,
+    showDraft: showDraftSessionComposer,
     openNewSessionComposer: openDraftSessionComposer
   } = createWorkbenchNewSessionController({
     workspaceTarget,

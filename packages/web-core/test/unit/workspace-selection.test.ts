@@ -103,7 +103,6 @@ function fixture(create = createWorkbenchWorkspaceSelectionService) {
     replaceSessions: (values) => {
       sessions.value = [...values];
     },
-    draftOpen,
     setDraftOpen: (value) => {
       draftOpen.value = value;
     },
@@ -454,12 +453,14 @@ describe('Workspace-only foreground selection', () => {
     await f.service.select(target());
     f.sessions.value = [{ id: 'session', workspaceId: 'workspace-1' } as Session];
     f.selectedSessionId.value = 'session';
+    f.takeRestoredSelection.mockReturnValue({ selectedSessionId: 'session' });
     f.draftOpen.value = false;
     f.openDraft.mockClear();
     f.restoreDraft.mockClear();
     f.activateCache.mockClear();
     await f.service.select(target());
     expect(f.openDraft).not.toHaveBeenCalled();
+    expect(f.restoreSession).not.toHaveBeenCalled();
     expect(f.restoreDraft).not.toHaveBeenCalled();
     expect(f.activateCache).not.toHaveBeenCalled();
     expect(f.selectedSessionId.value).toBe('session');
@@ -472,6 +473,16 @@ describe('Workspace-only foreground selection', () => {
     await f.service.select(target());
     expect(f.openDraft).toHaveBeenCalledOnce();
     expect(f.restoreSession).toHaveBeenCalledWith('workspace-1', 'saved');
+  });
+
+  it('shows a draft immediately when the caller owns session restoration', async () => {
+    const f = fixture();
+    f.takeRestoredSelection.mockReturnValue({ selectedSessionId: 'saved' });
+    const activation = f.service.select(target(), false);
+    expect(f.draftOpen.value).toBe(true);
+    expect(f.restoreSession).not.toHaveBeenCalled();
+    expect(f.openSession).not.toHaveBeenCalled();
+    await expect(activation).resolves.toBe(true);
   });
 
   it('activates an offline Workspace immediately without requests, then restores its cache after reconnection', async () => {

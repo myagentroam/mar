@@ -152,6 +152,9 @@ export function createWorkspaceSessionPresentationStateService(
   const composerSessionOpen = computed(
     () => options.selectedSession.value !== undefined || options.draftOpen.value
   );
+  const sessionPaneOpen = computed(
+    () => composerSessionOpen.value || options.selectedSessionId.value !== undefined
+  );
   const composerConfigurationDisabled = computed(
     () => sessionControlsBusy.value || options.composerModels.value.length === 0
   );
@@ -315,6 +318,7 @@ export function createWorkspaceSessionPresentationStateService(
     composerDraftOpen,
     canUseComposer,
     composerSessionOpen,
+    sessionPaneOpen,
     composerConfigurationDisabled,
     composerAccessDisabled,
     composerInputDisabled,
