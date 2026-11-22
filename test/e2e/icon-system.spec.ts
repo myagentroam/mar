@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -1873,42 +1874,37 @@ for (const theme of ['dark', 'light'])
       expect(layout.right).toBeCloseTo(0, 0);
       expect(layout.gap).toBeCloseTo(layout.expectedGap, 0);
       expect(layout.gap).toBeGreaterThan(0);
-      const { fill, foreground, hover, active } = await create.evaluate((button) => {
-        const probe = document.createElement('span');
-        button.append(probe);
-        const resolvePrimaryColor = (state: string) => {
-          probe.style.color = `var(--mar-control-primary-${state})`;
-          return getComputedStyle(probe).color;
-        };
-        const colors = {
-          fill: resolvePrimaryColor('bg'),
-          foreground: resolvePrimaryColor('fg'),
-          hover: resolvePrimaryColor('hover'),
-          active: resolvePrimaryColor('active')
-        };
-        probe.remove();
-        return colors;
-      });
-      await expect(create).toHaveClass(/\bmar-ui-button--primary\b/);
-      await expect(create).toHaveCSS('background-color', fill);
-      await expect(create).toHaveCSS('color', foreground);
-      await expect(create).toHaveCSS('border-top-color', fill);
-      await expect(page.locator('.session-search .mar-ui-input')).not.toHaveCSS(
-        'background-color',
-        fill
-      );
+      const [fill, foreground, border, hover, active] =
+        theme === 'dark'
+          ? (['#323232', '#eaeaea', '#6e6e6e', '#3b3b3b', '#444444'] as const)
+          : (['#deeaff', '#17243a', '#7185a0', '#d4e0f5', '#cad6eb'] as const);
+      const expectCreateColors = async (background: string) => {
+        const colors = await create.evaluate((button) => {
+          const style = getComputedStyle(button);
+          return [style.backgroundColor, style.color, style.borderTopColor];
+        });
+        expect(colors.map(resolvedColorToHex)).toEqual([background, foreground, border]);
+      };
+      await expect(create).not.toHaveClass(/\bmar-ui-button--primary\b/);
+      await expectCreateColors(fill);
+      const searchSurface = await page
+        .locator('.session-search .mar-ui-input')
+        .evaluate((input) => getComputedStyle(input).backgroundColor);
+      expect(resolvedColorToHex(searchSurface)).not.toBe(fill);
       if (!mobile) {
         await create.hover();
-        await expect(create).toHaveCSS('background-color', hover);
-        await expect(create).toHaveCSS('border-top-color', hover);
+        await expectCreateColors(hover);
         await page.mouse.down();
         try {
-          await expect(create).toHaveCSS('background-color', active);
-          await expect(create).toHaveCSS('border-top-color', active);
+          await expectCreateColors(active);
         } finally {
           await page.mouse.move(0, 0);
           await page.mouse.up();
         }
+        await page.keyboard.press('Tab');
+        await create.focus();
+        await expect(create).toHaveCSS('outline-style', 'solid');
+        await create.blur();
       }
       await page
         .locator('.conversation-sidebar')

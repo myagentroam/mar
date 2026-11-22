@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '../session/runner-brand-icon.css';
+import '../session/session-create-action.css';
 import '../session/session-markers.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
@@ -405,8 +406,7 @@ function submitSessionSearch(): void {
     </form>
     <div class="new-session-form">
       <MarButton
-        class="new-session-button"
-        type="primary"
+        class="new-session-button mar-session-create-action"
         icon="session-add"
         :disabled="!nodeReady"
         @click="emit('create')"

@@ -335,7 +335,8 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
   }
   await page.getByRole('button', { name: '打开会话列表' }).click();
   const newSession = page.locator('.new-session-button');
-  await expect(newSession).toHaveClass(/\bmar-ui-button--primary\b/);
+  await expect(newSession).not.toHaveClass(/\bmar-ui-button--primary\b/);
+  await expect(newSession).toHaveCSS('border-top-width', '1px');
   await expect(newSession).toHaveCSS('height', '24px');
   const composer = page.getByRole('textbox', { name: '输入消息' });
   await newSession.click();

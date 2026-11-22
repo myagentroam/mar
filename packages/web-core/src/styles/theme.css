@@ -34,6 +34,11 @@ html.console-ui,
   --mar-fill-selection: #dce9ff;
   --mar-fill-soft: #f8fbff;
   --mar-fill-hover: #e8f1ff;
+  --mar-session-create-fill: color-mix(
+    in srgb,
+    var(--mar-fill-selection) 84%,
+    var(--mar-fill-row-hover)
+  );
   --mar-table-header-bg: #f1f6fc;
   --mar-table-row-hover-bg: #e8f1ff;
   --mar-border-default: #b9cadf;
@@ -163,6 +168,11 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-fill-selection: #373737;
   --mar-fill-soft: #222222;
   --mar-fill-hover: #2e2e2e;
+  --mar-session-create-fill: color-mix(
+    in srgb,
+    var(--mar-fill-selection) 45%,
+    var(--mar-fill-row-hover)
+  );
   --mar-table-header-bg: #222222;
   --mar-table-row-hover-bg: #2e2e2e;
   --mar-border-default: #3d3d3d;

@@ -1,0 +1,19 @@
+.mar-ui-button.mar-session-create-action {
+  --mar-ui-button-bg: var(--mar-session-create-fill);
+  --mar-ui-button-fg: var(--mar-text-primary);
+  --mar-ui-button-border: var(--mar-input-border);
+  --mar-ui-button-hover-bg: color-mix(
+    in srgb,
+    var(--mar-ui-button-bg) 95%,
+    var(--mar-ui-button-fg)
+  );
+  --mar-ui-button-hover-fg: var(--mar-ui-button-fg);
+  --mar-ui-button-hover-border: var(--mar-ui-button-border);
+  --mar-ui-button-active-bg: color-mix(
+    in srgb,
+    var(--mar-ui-button-bg) 90%,
+    var(--mar-ui-button-fg)
+  );
+  --mar-ui-button-active-fg: var(--mar-ui-button-fg);
+  --mar-ui-button-active-border: var(--mar-ui-button-border);
+}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../session/session-create-action.css';
 import '../session/session-markers.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
@@ -1056,8 +1057,7 @@ onBeforeUnmount(() => {
           />
         </div>
         <MarButton
-          class="history-create-button"
-          type="primary"
+          class="history-create-button mar-session-create-action"
           icon="session-add"
           @click="beginNewConversation"
         >

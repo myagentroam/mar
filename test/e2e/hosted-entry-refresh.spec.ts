@@ -4,6 +4,7 @@ import {
   hostedConversationSnapshotSchema,
   type HostedConversationSnapshot
 } from '../../packages/protocol/src/index.js';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/view/conversation/HostedConversationComposer.vue
@@ -26,9 +27,9 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-for (const [width, theme, primaryBackground, primaryForeground] of [
-  [1280, 'daylight', 'rgb(0, 87, 219)', 'rgb(255, 255, 255)'],
-  [390, 'vscode-dark-2026', 'rgb(222, 222, 222)', 'rgb(24, 24, 24)']
+for (const [width, theme, createColors] of [
+  [1280, 'daylight', ['#deeaff', '#17243a', '#7185a0']],
+  [390, 'vscode-dark-2026', ['#323232', '#eaeaea', '#6e6e6e']]
 ] as const) {
   test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
     page
@@ -82,10 +83,14 @@ for (const [width, theme, primaryBackground, primaryForeground] of [
       await search.blur();
       const newChat = page.getByRole('button', { name: 'New chat', exact: true });
       await expect(newChat).toBeEnabled();
-      await expect(newChat).toHaveClass(/\bmar-ui-button--primary\b/);
+      await expect(newChat).not.toHaveClass(/\bmar-ui-button--primary\b/);
       await expect(newChat).toHaveCSS('height', width < 768 ? '24px' : '26px');
-      await expect(newChat).toHaveCSS('background-color', primaryBackground);
-      await expect(newChat).toHaveCSS('color', primaryForeground);
+      await expect(newChat).toHaveCSS('border-top-width', '1px');
+      const colors = await newChat.evaluate((button) => {
+        const style = getComputedStyle(button);
+        return [style.backgroundColor, style.color, style.borderTopColor];
+      });
+      expect(colors.map(resolvedColorToHex)).toEqual(createColors);
       await expect(list.getByText('No conversations yet.')).toHaveCount(0);
       await list.screenshot({ path: testInfo.outputPath('hosted-directory-loading.png') });
     } finally {
@@ -96,6 +101,44 @@ for (const [width, theme, primaryBackground, primaryForeground] of [
     await list.screenshot({ path: testInfo.outputPath('hosted-directory-empty.png') });
   });
 }
+
+test('Hosted create action stays readable with a bright custom tool hover color', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.route('**/api/hosted-conversations?limit=*', (route) =>
+    route.fulfill({ json: { items: [], nextCursor: null } })
+  );
+  await page.route('**/api/conversation-templates', (route) =>
+    route.fulfill({ json: { templates: [] } })
+  );
+  await page.goto(`${fixture.url}hosted-entry.html?workspace-page=1&theme=vscode-dark-2026`);
+  const create = page.getByRole('button', { name: 'New chat', exact: true });
+  await expect(create).toBeEnabled();
+  await page.evaluate(async (modulePath) => {
+    const { themePreferenceService } = await import(modulePath);
+    const service = themePreferenceService();
+    const theme = service.saveCustomTheme(
+      JSON.stringify({
+        version: 1,
+        name: 'Custom sidebar',
+        colors: {
+          '--mar-fill-row-hover': '#242424',
+          '--mar-fill-selection': '#353535',
+          '--mar-fill-hover': '#dadada',
+          '--mar-text-primary': '#eeeeee',
+          '--mar-control-primary-bg': '#ff2090'
+        }
+      })
+    );
+    service.setTheme(theme.id);
+  }, '/packages/web-core/src/service/theme-preference-service.ts');
+  const colors = await create.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return [style.backgroundColor, style.color];
+  });
+  expect(colors.map(resolvedColorToHex)).toEqual(['#2c2c2c', '#eeeeee']);
+});
 
 const template = {
   id: 'template-1',

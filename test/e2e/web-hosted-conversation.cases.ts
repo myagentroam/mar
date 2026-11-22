@@ -804,7 +804,8 @@ test('Hosted conversation cards share visual hierarchy across themes and viewpor
   await page.getByRole('button', { name: '对话', exact: true }).click();
   const newChat = page.locator('.history-create-button');
   await expect(newChat).toBeVisible();
-  await expect(newChat).toHaveClass(/\bmar-ui-button--primary\b/);
+  await expect(newChat).not.toHaveClass(/\bmar-ui-button--primary\b/);
+  await expect(newChat).toHaveCSS('border-top-width', '1px');
   await expect(newChat).toHaveCSS('height', '26px');
   await verifyConversationThemes(page, testInfo, 'hosted-desktop');
   const codeCopy = page.locator('.agent-markdown-code-copy').first();
