@@ -575,7 +575,7 @@ test('MAR controls follow the provider locale for their built-in text', async ({
   ).toBeVisible();
 });
 
-test('console bootstrap keeps the saved custom page color before and after theme initialization', async ({
+test('console bootstrap keeps the saved page color and uses custom Primary after initialization', async ({
   page
 }) => {
   const consoleHtml = await readFile(
@@ -602,7 +602,7 @@ test('console bootstrap keeps the saved custom page color before and after theme
     const source = JSON.stringify({
       version: 1,
       name: 'Light startup',
-      colors: { '--mar-bg-page': '#f1f5e9' }
+      colors: { '--mar-bg-page': '#f1f5e9', '--mar-control-primary-bg': '#6725af' }
     });
     localStorage.setItem('mar.theme', id);
     localStorage.setItem('mar.customThemes', JSON.stringify([{ id, source }]));
@@ -616,10 +616,12 @@ test('console bootstrap keeps the saved custom page color before and after theme
 
   const root = page.locator('html');
   const bootstrap = page.locator('#mar-bootstrap');
+  const ring = bootstrap.locator('.mar-bootstrap__trace');
   const meta = page.locator('meta[name="theme-color"]');
   await page.goto(consoleUrl);
   await expect(root).not.toHaveClass(/\bdark\b/u);
   await expect(bootstrap).toHaveCSS('background-color', 'rgb(241, 245, 233)');
+  await expect(ring).toHaveCSS('border-top-color', 'rgb(0, 87, 219)');
   await expect(meta).toHaveAttribute('content', '#f1f5e9');
 
   initializeTheme = true;
@@ -630,6 +632,7 @@ test('console bootstrap keeps the saved custom page color before and after theme
     await root.evaluate((element) => element.style.getPropertyValue('--mar-bootstrap-bg'))
   ).toBe('');
   await expect(bootstrap).toHaveCSS('background-color', 'rgb(241, 245, 233)');
+  await expect(ring).toHaveCSS('border-top-color', 'rgb(103, 37, 175)');
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(241, 245, 233)');
   await expect(meta).toHaveAttribute('content', '#f1f5e9');
 });
@@ -675,7 +678,7 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', expected);
     await expect(page.locator('.mar-bootstrap__trace')).toHaveCSS(
       'color',
-      themeId === 'daylight' ? 'rgb(67, 83, 107)' : 'rgb(194, 194, 194)'
+      themeId === 'daylight' ? 'rgb(0, 87, 219)' : 'rgb(222, 222, 222)'
     );
     expect(await page.locator('html').evaluate((root) => root.classList.contains('dark'))).toBe(
       themeId !== 'daylight'

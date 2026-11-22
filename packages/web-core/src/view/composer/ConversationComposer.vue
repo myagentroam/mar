@@ -404,6 +404,7 @@ const emit = defineEmits<{
   width: 10px;
   height: 10px;
   border-width: 1.5px;
+  color: inherit;
 }
 
 .composer-shell {

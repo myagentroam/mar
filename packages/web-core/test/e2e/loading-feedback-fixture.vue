@@ -335,7 +335,8 @@ const moreRoot = ref<WorkspaceFileTreeNode>({
   display: flex;
   height: 5rem;
 }
-.runtime-status {
-  color: var(--mar-text-secondary);
+.runtime-status,
+.runtime-status > .mar-busy-indicator {
+  color: var(--mar-conversation-activity-fg);
 }
 </style>

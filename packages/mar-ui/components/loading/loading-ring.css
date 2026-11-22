@@ -1,3 +1,7 @@
+:where(.mar-ui-loading__indicator, .mar-busy-indicator) {
+  color: var(--mar-ui-control-primary-bg, currentColor);
+}
+
 .mar-ui-loading__indicator,
 .mar-busy-indicator {
   box-sizing: border-box;

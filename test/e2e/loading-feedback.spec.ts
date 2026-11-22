@@ -9,22 +9,26 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-async function expectReadIndicator(indicator: Locator, size: number) {
+async function expectReadIndicator(
+  indicator: Locator,
+  size: number,
+  colorToken = '--mar-control-primary-bg'
+) {
   await expect(indicator).toBeVisible();
-  const actual = await indicator.evaluate((element) => {
+  const actual = await indicator.evaluate((element, token) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--mar-text-secondary)';
+    probe.style.color = `var(${token})`;
     element.parentElement!.append(probe);
     const expected = getComputedStyle(probe).color;
     probe.remove();
     const style = getComputedStyle(element);
     return {
-      color: style.color,
+      color: style.borderTopColor,
       expected,
       size:
         parseFloat(style.width) / parseFloat(getComputedStyle(document.documentElement).fontSize)
     };
-  });
+  }, colorToken);
   expect(actual.color).toBe(actual.expected);
   expect(actual.size).toBeCloseTo(size);
 }
@@ -69,6 +73,7 @@ test('Library loading has one compact ring for each variant without mounting Mar
     const spinner = target.locator(`[data-variant="${variant}"] .mar-ui-loading__indicator`);
     await expect(spinner).toHaveCount(1);
     await expect(spinner).toBeVisible();
+    await expectReadIndicator(spinner, size);
     const style = await ring(spinner);
     expect(style.width).toBeCloseTo(size);
     expect(style.height).toBeCloseTo(size);
@@ -279,22 +284,24 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       ).toBeLessThan(1);
       for (const indicator of indicators) await expectReadIndicator(indicator, 0.875);
       const runtime = page.getByTestId('runtime-indicator');
-      await expectReadIndicator(runtime, 0.75);
+      await expectReadIndicator(runtime, 0.75, '--mar-conversation-activity-fg');
       const tree = page.getByTestId('file-tree');
       const row = tree.locator('.file-tree-row-shell').filter({ hasText: 'src' });
       const rowHeight = (await row.boundingBox())!.height;
       const star = tree.getByRole('status').locator('[data-mar-icon="loading-action"]');
       await expect(star).toBeVisible();
       await expect(star).not.toHaveCSS('animation-name', 'none');
+      const starColor = await star.evaluate((element) => getComputedStyle(element).color);
       await expect(tree.locator('.mar-busy-indicator')).toHaveCount(0);
       await page.screenshot({ path: testInfo.outputPath(`read-loading-${width}.png`) });
       await page
         .locator('html')
-        .evaluate((element) => element.style.setProperty('--mar-text-secondary', '#c084fc'));
+        .evaluate((element) => element.style.setProperty('--mar-control-primary-bg', '#a64bd4'));
       for (const loading of previews)
         await expectReadIndicator(loading.locator('.mar-busy-indicator'), 1.25);
       for (const indicator of indicators) await expectReadIndicator(indicator, 0.875);
-      await expectReadIndicator(runtime, 0.75);
+      await expectReadIndicator(runtime, 0.75, '--mar-conversation-activity-fg');
+      await expect(star).toHaveCSS('color', starColor);
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(star).toHaveCSS('animation-name', 'none');
       for (const loading of previews)

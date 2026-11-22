@@ -8,7 +8,6 @@
 .mar-read-loading-indicator {
   width: 0.875rem;
   height: 0.875rem;
-  color: var(--mar-text-secondary);
 }
 
 .mar-page-loading-state > .mar-busy-indicator {
