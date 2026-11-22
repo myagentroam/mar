@@ -111,12 +111,16 @@ function activate(event: MouseEvent) {
   pointer-events: none;
   content: '';
 }
-.mar-ui-dropdown-item:enabled:is(:hover, :focus-visible) {
+.mar-ui-dropdown-item:enabled:is(:hover, :focus-visible):not([aria-current='true']) {
   background: var(--mar-ui-fill-row-hover);
   color: var(--mar-ui-text-primary);
 }
+.mar-ui-dropdown-item:enabled[aria-current='true'] {
+  background: var(--mar-ui-fill-selection);
+  color: var(--mar-ui-text-primary);
+}
 .mar-ui-dropdown-item:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-dropdown-item:disabled {

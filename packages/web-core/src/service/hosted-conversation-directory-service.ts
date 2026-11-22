@@ -81,8 +81,8 @@ export function createHostedConversationDirectoryService(options: {
     return true;
   }
 
-  function conversationIsRunning(conversation: HostedConversationSummary): boolean {
-    return ['STARTING', 'RUNNING', 'CANCELLING'].includes(conversation.activity.status);
+  function conversationHasActiveRun(conversation: HostedConversationSummary): boolean {
+    return conversation.activity.status !== 'IDLE';
   }
 
   async function loadConversations(): Promise<void> {
@@ -207,7 +207,7 @@ export function createHostedConversationDirectoryService(options: {
     loadConversations,
     loadMoreConversations,
     projectActivityMessage,
-    conversationIsRunning,
+    conversationHasActiveRun,
     upsertConversation,
     remove
   };

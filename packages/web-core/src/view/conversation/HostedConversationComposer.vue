@@ -1044,7 +1044,7 @@ onBeforeUnmount(() => {
 
 .hosted-syncing :deep(.composer-shell.readonly) {
   border-color: var(--mar-border-medium);
-  background: var(--mar-bg-panel);
+  background: var(--composer-surface);
 }
 
 .hosted-syncing :deep(.composer-shell.readonly .composer-input) {
@@ -1121,12 +1121,12 @@ onBeforeUnmount(() => {
 
 .hosted-model-trigger[aria-expanded='true']:not(:disabled) {
   background: var(--mar-fill-soft);
-  box-shadow: 0 0 0 1px var(--mar-color-brand) inset;
+  box-shadow: 0 0 0 1px var(--mar-control-focus) inset;
 }
 
 .hosted-model-trigger:focus-visible {
   background: var(--mar-fill-soft);
-  outline: 1px solid var(--mar-color-brand);
+  outline: 1px solid var(--mar-control-focus);
   outline-offset: -1px;
 }
 

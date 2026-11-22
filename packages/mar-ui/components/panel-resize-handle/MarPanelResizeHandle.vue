@@ -129,7 +129,7 @@ onBeforeUnmount(cancel);
 .mar-panel-resize-handle:hover::before,
 .mar-panel-resize-handle:focus-visible::before,
 .mar-panel-resize-handle.dragging::before {
-  background: var(--mar-ui-color-brand);
+  background: var(--mar-ui-control-focus);
 }
 .mar-panel-resize-handle.dragging::after {
   position: fixed;

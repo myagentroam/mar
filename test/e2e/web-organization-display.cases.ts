@@ -189,6 +189,12 @@ for (const english of [false, true]) {
     const grants = page.getByRole('dialog');
     await expect(grants).toContainText('Root / Platform');
     await expect(grants.locator('.mar-ui-table__row').filter({ hasText: '99' })).toBeVisible();
+    const grantAction = grants.getByRole('button', {
+      name: english ? 'Grant' : '授权',
+      exact: true
+    });
+    await expect(grantAction).toBeVisible();
+    await expect(grantAction.locator('[data-mar-icon]')).toHaveCount(0);
     await grants.getByRole('button', { name: english ? 'Close' : '关闭', exact: true }).click();
     await page.getByRole('button', { name: english ? 'Work' : '工作', exact: true }).click();
     const tree = page.locator('.workspace-tree');

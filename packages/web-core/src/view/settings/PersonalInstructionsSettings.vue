@@ -399,7 +399,7 @@ h2 {
 }
 
 .instruction-scopes :deep(.mar-ui-check-tag:focus-visible) {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 
@@ -437,8 +437,8 @@ h2 {
   opacity: 1;
 }
 .personal-instructions textarea:focus {
-  border-color: var(--mar-color-brand);
-  box-shadow: 0 0 0 1px var(--mar-control-color-primary-light-8);
+  border-color: var(--mar-control-focus);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mar-control-focus) 24%, transparent);
 }
 .personal-instructions :deep(.is-error) textarea {
   border-color: var(--mar-control-color-danger);

@@ -297,7 +297,7 @@ onBeforeUnmount(() => {
           :node-label="(tab) => tab.nodeId"
           :direct-available="() => false"
           :direct-description="() => undefined"
-          :has-active-run="() => false"
+          :run-activity="() => undefined"
           :has-unread="() => false"
           @activate="activateTreeTarget"
         />

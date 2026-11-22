@@ -28,7 +28,7 @@ withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page'
   align-items: center;
   justify-content: center;
   margin: 0;
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-secondary);
 }
 
 .file-preview-loading :deep(.mar-busy-indicator) {

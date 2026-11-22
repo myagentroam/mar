@@ -538,9 +538,15 @@ test('Resumed external Claude history is not duplicated by managed projections',
     .toHaveLength(1);
   const managedActivity = page.locator('.session-list .mar-session-activity.running');
   await expect(managedActivity).toHaveCount(1);
-  await expect(managedActivity.locator('i')).toHaveCSS('animation-name', 'mar-run-glow');
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(managedActivity.locator('i')).toHaveCSS('animation-name', 'none');
+  await expect(managedActivity).toHaveAttribute('aria-label', '运行中');
+  const dot = managedActivity.locator('i');
+  await expect(dot).toHaveCSS('background-color', 'rgb(116, 198, 157)');
+  await expect(dot).toHaveCSS('box-shadow', 'none');
+  for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+    await page.emulateMedia({ reducedMotion });
+    await expect(dot).toHaveCSS('animation-name', 'none');
+    await expect(dot).toHaveCSS('opacity', '1');
+  }
   await expect(page.locator('.session-list .session-link')).toHaveCount(1);
   await expect(page.locator('.session-list .session-link')).toContainText('同一份 Claude 历史');
 });

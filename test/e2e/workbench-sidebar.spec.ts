@@ -1,5 +1,10 @@
 import { expect, test, type Locator } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
+
+// @test-covers packages/web-core/src/view/workbench/WorkbenchNavigation.vue
+// @test-covers packages/web-core/src/view/workbench/WorkbenchActivityCenter.vue
+// @test-covers packages/web-core/src/view/workspace/WorkspaceTabs.vue
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
@@ -31,6 +36,18 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
       await expect(work).toHaveAttribute('aria-current', 'page');
       const selected = await colors(work);
       const inactive = await colors(chat);
+      const palette = await rail.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          primary: style.getPropertyValue('--mar-text-primary').trim(),
+          focus: style.getPropertyValue('--mar-text-muted').trim(),
+          selection: style.getPropertyValue('--mar-fill-selection').trim()
+        };
+      });
+      expect(resolvedColorToHex(selected.color)).toBe(palette.primary);
+      expect(resolvedColorToHex(selected.backgroundColor)).toBe(palette.selection);
+      expect(selected.color).not.toBe(inactive.color);
+      await expect(work).toHaveCSS('outline-style', 'none');
 
       await work.hover();
       expect(await colors(work)).toEqual(selected);
@@ -40,8 +57,70 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
       expect(hovered.backgroundColor).not.toBe(inactive.backgroundColor);
       expect(hovered.backgroundColor).not.toBe(selected.backgroundColor);
       expect(await colors(work)).toEqual(selected);
+
+      await work.focus();
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(work).toBeFocused();
+      await expect(work).toHaveCSS('outline-style', 'solid');
+      const focus = await work.evaluate((element) => getComputedStyle(element).outlineColor);
+      expect(resolvedColorToHex(focus)).toBe(palette.focus);
+      expect(await colors(work)).toEqual(selected);
     });
   }
+
+  test(`Workspace overflow keeps the current item distinct from focus and hover: ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(
+      `${fixture.url}workspace-tabs.html?locale=en-US&layout=boundary&theme=${theme}`
+    );
+    const trigger = page.getByRole('button', { name: 'All open workspaces', exact: true });
+    await trigger.press('ArrowDown');
+    const menu = page.getByRole('menu');
+    const current = menu.getByRole('menuitem', { name: /^Workspace one\b/u });
+    const next = menu.getByRole('menuitem', { name: /^Workspace two\b/u });
+    const palette = await menu.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        selection: style.getPropertyValue('--mar-fill-selection').trim(),
+        hover: style.getPropertyValue('--mar-fill-row-hover').trim(),
+        surface: style.backgroundColor,
+        text: style.getPropertyValue('--mar-text-primary').trim(),
+        focus: style.getPropertyValue('--mar-text-muted').trim()
+      };
+    });
+    const background = (item: Locator) =>
+      item.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+    await expect(current).toBeFocused();
+    expect(resolvedColorToHex(await background(current))).toBe(palette.selection);
+    await expect(current).toHaveAttribute('aria-current', 'true');
+    await expect(current).toHaveCSS('outline-style', 'solid');
+    const style = await current.evaluate((element) => {
+      const { color, outlineColor } = getComputedStyle(element);
+      return { color, outlineColor };
+    });
+    expect(resolvedColorToHex(style.color)).toBe(palette.text);
+    expect(resolvedColorToHex(style.outlineColor)).toBe(palette.focus);
+    await current.hover();
+    expect(resolvedColorToHex(await background(current))).toBe(palette.selection);
+    await next.hover();
+    expect(resolvedColorToHex(await background(next))).toBe(palette.hover);
+    expect(palette.hover).not.toBe(resolvedColorToHex(palette.surface));
+    expect(resolvedColorToHex(await background(current))).toBe(palette.selection);
+
+    await next.click();
+    await expect(menu).toBeHidden();
+    await expect(page.getByRole('tab', { name: 'Workspace two', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await trigger.press('ArrowDown');
+    await expect(next).toHaveAttribute('aria-current', 'true');
+    await expect(current).not.toHaveAttribute('aria-current', 'true');
+  });
 
   test(`Expanded diagnostics match the recent sessions rail highlight: ${theme}`, async ({
     page

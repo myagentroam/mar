@@ -215,6 +215,8 @@ function saveFeedbackDialog(): void {
     <MarButton>Sample default</MarButton>
     <MarButton disabled>Sample disabled default</MarButton>
     <MarButton type="primary">Sample primary</MarButton>
+    <MarButton type="warning">Sample filled warning</MarButton>
+    <MarButton type="danger">Sample filled danger</MarButton>
     <MarButton type="primary" disabled>Sample disabled primary</MarButton>
     <MarButton type="primary" link>Sample link</MarButton>
     <MarButton type="primary" link disabled>Sample disabled link</MarButton>

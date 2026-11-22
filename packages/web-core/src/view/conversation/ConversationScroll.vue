@@ -505,7 +505,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-scroll.shows-focus-outline:focus {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 

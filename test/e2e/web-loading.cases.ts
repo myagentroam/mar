@@ -191,7 +191,7 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     await expect(page.locator('#mar-bootstrap')).toHaveCount(0);
     const actual = await ring.evaluate((element) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--mar-color-brand-text)';
+      probe.style.color = 'var(--mar-text-secondary)';
       element.parentElement!.append(probe);
       const expected = getComputedStyle(probe).color;
       probe.remove();
@@ -273,26 +273,26 @@ for (const mobile of [false, true]) {
       await retry.click();
       await expect(retry).toBeFocused();
       await expect(retry).toHaveAttribute('aria-disabled', 'true');
+      await expect(retry).toHaveAttribute('aria-busy', 'true');
       await expect(retry).toHaveText('');
       await expect(retry).toHaveAccessibleName('正在加载');
-      await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toHaveCount(1);
-      await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toBeVisible();
+      const appendRing = list.locator('.mar-list-append-state .mar-busy-indicator');
+      await expect(appendRing).toHaveCount(1);
+      await expect(appendRing).toBeVisible();
       expect(
-        await list
-          .locator('.mar-list-append-state .mar-busy-indicator')
-          .evaluate(
-            (element) =>
-              parseFloat(getComputedStyle(element).width) /
-              parseFloat(getComputedStyle(document.documentElement).fontSize)
-          )
+        await appendRing.evaluate(
+          (element) =>
+            parseFloat(getComputedStyle(element).width) /
+            parseFloat(getComputedStyle(document.documentElement).fontSize)
+        )
       ).toBeCloseTo(0.875);
-      await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toHaveCSS(
-        'color',
-        'rgb(48, 147, 255)'
-      );
+      await page.locator('html').evaluate((root) => {
+        root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
+      });
+      await expect(appendRing).toHaveCSS('color', 'rgb(182, 182, 182)');
       if (mobile && !search)
         await page.screenshot({ path: testInfo.outputPath('mobile-pagination-loading.png') });
-      await expect(list.locator('.mar-list-append-state [aria-busy="true"]')).toHaveCount(0);
+      await expect(list.locator('.mar-list-append-state').getByRole('status')).toHaveCount(0);
       await expect(list.locator('.session-row')).toHaveCount(30);
       retryResponse.release();
       await expect(list.locator('.session-row')).toHaveCount(60);

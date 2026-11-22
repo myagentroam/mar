@@ -59,7 +59,7 @@ input {
   block-size: 14px;
   margin: 0;
   flex: none;
-  accent-color: var(--mar-ui-color-brand);
+  accent-color: var(--mar-ui-control-primary-bg);
 }
 label,
 input {
@@ -71,7 +71,7 @@ input:disabled + label {
   cursor: not-allowed;
 }
 input:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: 2px;
 }
 .mar-ui-radio--button input {
@@ -105,12 +105,12 @@ input:focus-visible {
   font-weight: 600;
 }
 .mar-ui-radio--button input:focus-visible + label {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 @supports not (accent-color: auto) {
   input:checked {
-    outline: 1px solid var(--mar-ui-color-brand);
+    outline: 1px solid var(--mar-ui-control-focus);
   }
 }
 </style>

@@ -665,7 +665,7 @@ watch(controlDisabled, (disabled) => {
   box-shadow: 0 0 0 1px var(--mar-ui-input-border-hover) inset;
 }
 .mar-ui-select__field:is(:focus-within, [data-expanded]) {
-  box-shadow: 0 0 0 1px var(--mar-ui-color-brand) inset;
+  box-shadow: 0 0 0 1px var(--mar-ui-control-focus) inset;
 }
 .mar-ui-select__field:has([aria-invalid='true']) {
   box-shadow: 0 0 0 1px var(--mar-ui-control-color-danger) inset;
@@ -678,7 +678,7 @@ watch(controlDisabled, (disabled) => {
 }
 .mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible)
   + .mar-ui-popup:not([data-pointer-driven]) {
-  --mar-ui-select-option-focus: 2px solid var(--mar-ui-color-brand);
+  --mar-ui-select-option-focus: 2px solid var(--mar-ui-control-focus);
 }
 .mar-ui-select__field:focus-within + .mar-ui-popup:not([data-pointer-driven]) {
   --mar-ui-select-active-label-space: normal;
@@ -758,7 +758,7 @@ input.mar-ui-select__trigger {
   color: var(--mar-ui-text-secondary);
 }
 .mar-ui-select__action:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
 }
 .mar-ui-select__suffix {
   display: grid;

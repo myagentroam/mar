@@ -146,7 +146,7 @@ function navigateToEdge(event: KeyboardEvent): void {
   background: var(--mar-ui-fill-row-hover);
 }
 .mar-segmented-option:has(:focus-visible) {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-segmented:not(.has-indicator) .mar-segmented-option.is-selected,

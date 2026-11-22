@@ -217,14 +217,10 @@ onBeforeUnmount(() => {
                   </span>
                 </MarButton>
                 <template #dropdown>
-                  <MarDropdownMenu
-                    class="draft-agent-menu"
-                    :aria-label="translate('common.runner')"
-                  >
+                  <MarDropdownMenu :aria-label="translate('common.runner')">
                     <MarDropdownItem
                       v-for="option in controller.runnerOptions.value"
                       :key="option.value"
-                      class="draft-agent-option"
                       :command="option.value"
                       :aria-current="option.value === configuration.runner ? 'true' : undefined"
                     >
@@ -498,11 +494,6 @@ onBeforeUnmount(() => {
 .draft-agent-label :deep(.mar-icon) {
   align-self: center;
   color: var(--mar-text-secondary);
-}
-
-.draft-agent-menu .draft-agent-option[aria-current='true']:enabled {
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
 }
 
 @media (max-width: 767px) {

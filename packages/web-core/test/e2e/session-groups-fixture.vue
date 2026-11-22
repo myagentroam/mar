@@ -73,6 +73,17 @@ if (new URL(location.href).searchParams.has('stop-statuses')) {
     }
   ];
 }
+if (new URL(location.href).searchParams.has('transitioning')) {
+  service.recentRuns.value = [
+    { ...service.recentRuns.value[0]!, status: 'STARTING' },
+    {
+      ...service.recentRuns.value[1]!,
+      sessionGroup: 'MAIN',
+      status: 'CANCELLING',
+      completedAt: null
+    }
+  ];
+}
 service.notifications.value = ['MAIN', 'CHILD'].map((sessionGroup) => ({
   id: sessionGroup,
   source: 'server',
@@ -204,7 +215,7 @@ const props = {
         :node-label="() => 'Node'"
         :direct-available="() => false"
         :direct-description="() => undefined"
-        :has-active-run="() => true"
+        :run-activity="service.workspaceRunActivity"
         :has-unread="() => false"
       />
       <ConversationHeader

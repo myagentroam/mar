@@ -792,7 +792,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .change-list > li > span {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

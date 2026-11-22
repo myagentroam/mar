@@ -679,10 +679,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           Math.hypot(...left.map((value, index) => value - right[index]!));
         const border = rgb(style.borderTopColor);
         const neutral = rgb(style.getPropertyValue('--mar-conversation-border'));
-        const brandBorder = rgb(style.getPropertyValue('--mar-color-brand-border'));
         return {
-          borderDistance: distance(border, neutral),
-          oldBorderDistance: distance(brandBorder, neutral),
+          border,
+          neutral,
           surfaceDistance: distance(
             rgb(style.backgroundColor),
             rgb(style.getPropertyValue('--mar-conversation-surface'))
@@ -691,7 +690,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           secondaryColor: rgb(style.getPropertyValue('--mar-text-secondary').trim())
         };
       });
-      expect(colors.borderDistance).toBeLessThan(colors.oldBorderDistance);
+      expect(colors.border).toEqual(colors.neutral);
       expect(colors.surfaceDistance).toBeLessThan(30);
       expect(colors.titleColor).toEqual(colors.secondaryColor);
       await page.screenshot({
@@ -3893,7 +3892,7 @@ test('Opening a session loads only the latest window without initial scroll back
   expect(
     await historyLoading.evaluate((element) => {
       const reference = document.createElement('span');
-      reference.style.color = 'var(--mar-color-brand-text)';
+      reference.style.color = 'var(--mar-text-secondary)';
       element.append(reference);
       const expected = getComputedStyle(reference).color;
       reference.remove();

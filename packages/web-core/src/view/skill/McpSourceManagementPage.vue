@@ -591,7 +591,7 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.mcpSourceManagementPage.sourceMCPServers')"
         name="source"
       >
-        <div class="source-search-bar">
+        <div class="source-search-bar mar-management-filter">
           <MarSelect
             v-model="sourceId"
             :aria-label="translate('generated.mcpSourceManagementPage.selectAnEnabledMCPSource')"
@@ -706,7 +706,7 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.mcpSourceManagementPage.catalogMCPServers')"
         name="catalog"
       >
-        <div class="mcp-toolbar">
+        <div class="mcp-toolbar mar-management-filter">
           <MarInput
             v-model="pagination.keyword.value"
             clearable

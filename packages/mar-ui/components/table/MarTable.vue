@@ -463,7 +463,7 @@ const ColumnView = () => renderTable();
   overflow: auto;
 }
 .mar-ui-table__viewport:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__grid) {
@@ -484,7 +484,7 @@ const ColumnView = () => renderTable();
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__cell) {
   box-sizing: border-box;
-  padding: 7px 12px;
+  padding: 4px 12px;
   border-block-end: 1px solid var(--mar-ui-border-subtle);
   vertical-align: middle;
 }
@@ -492,8 +492,8 @@ const ColumnView = () => renderTable();
   display: flex;
   align-items: center;
   min-inline-size: 0;
-  min-block-size: 24px;
-  line-height: 24px;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+  line-height: 1.45;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__value) {
   min-inline-size: 0;
@@ -544,9 +544,12 @@ const ColumnView = () => renderTable();
   text-align: start;
   cursor: pointer;
 }
+.mar-ui-table__viewport :deep(.mar-ui-table__sort) {
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
+}
 .mar-ui-table__viewport :deep(.mar-ui-table__sort:focus-visible),
 .mar-ui-table__viewport :deep(.mar-ui-table__disclosure:focus-visible) {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: 2px;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__sort-indicators) {

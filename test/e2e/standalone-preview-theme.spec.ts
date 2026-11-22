@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/web-core/src/view/workspace/StandaloneFilePreviewPage.vue
+// @test-covers packages/web-core/src/styles/code-syntax-theme.css
+
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
@@ -44,6 +47,7 @@ for (const width of [1280, 390]) {
 
 for (const theme of ['daylight', 'dark', 'custom']) {
   test(`Standalone Markdown stays light under the ${theme} console theme`, async ({ page }) => {
+    const content = '# Preview\n\nReadable text.\n\n```ts\nconst preview = true;\n```\n';
     let release!: () => void;
     const ready = new Promise<void>((resolve) => {
       release = resolve;
@@ -54,9 +58,9 @@ for (const theme of ['daylight', 'dark', 'custom']) {
         json: {
           file: {
             path: 'guide.md',
-            size: 24,
+            size: content.length,
             encoding: 'utf-8',
-            content: '# Preview\n\nReadable text.',
+            content,
             truncated: false,
             nextOffset: null
           }
@@ -73,12 +77,7 @@ for (const theme of ['daylight', 'dark', 'custom']) {
       await expect(loading).toBeVisible();
       if (theme === 'custom') {
         await page.evaluate(() => {
-          for (const name of [
-            '--mar-bg-chrome',
-            '--mar-bg-panel',
-            '--mar-color-brand-text',
-            '--mar-text-secondary'
-          ]) {
+          for (const name of ['--mar-bg-chrome', '--mar-bg-panel', '--mar-text-secondary']) {
             document.documentElement.style.setProperty(name, '#ff00ff');
           }
         });
@@ -88,7 +87,7 @@ for (const theme of ['daylight', 'dark', 'custom']) {
       await expect(header).toHaveCSS('color', 'rgb(87, 96, 106)');
       await expect(header).toHaveCSS('border-bottom-color', 'rgb(208, 215, 222)');
       await expect(loading).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-      await expect(loading).toHaveCSS('color', 'rgb(9, 105, 218)');
+      await expect(loading).toHaveCSS('color', 'rgb(87, 96, 106)');
     } finally {
       release();
     }
@@ -97,6 +96,10 @@ for (const theme of ['daylight', 'dark', 'custom']) {
     await expect(root).toHaveCSS('overflow-y', 'auto');
     await expect(page.locator('.markdown-body')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(page.locator('.markdown-body > :first-child')).toHaveCSS('margin-top', '0px');
+    const codeBlock = page.locator('.markdown-body pre');
+    await expect(codeBlock).toHaveCSS('background-color', 'rgb(246, 248, 250)');
+    await expect(codeBlock.locator('code')).toContainText('const preview = true;');
+    await expect(codeBlock.locator('code')).toHaveCSS('color', 'rgb(31, 35, 40)');
     await expect(loading).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath(`${theme}-desktop.png`) });
     await page.setViewportSize({ width: 390, height: 844 });

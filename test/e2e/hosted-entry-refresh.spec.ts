@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
+  hostedConversationSummarySchema,
   hostedConversationSnapshotSchema,
   type HostedConversationSnapshot
 } from '../../packages/protocol/src/index.js';
@@ -89,6 +90,60 @@ const template = {
   updatedAt: 1
 };
 const alternate = { ...template, id: 'template-2', name: 'Second template' };
+
+test('Hosted history uses green for running and neutral dots for transitions', async ({ page }) => {
+  const states = [
+    { status: 'RUNNING', label: 'Running', color: 'rgb(116, 198, 157)' },
+    { status: 'STARTING', label: 'Starting', color: 'rgb(182, 182, 182)' },
+    { status: 'CANCELLING', label: 'Stopping', color: 'rgb(182, 182, 182)' },
+    { status: 'IDLE', label: undefined, color: undefined }
+  ] as const;
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.route('**/api/hosted-conversations?limit=*', (route) =>
+    route.fulfill({
+      json: {
+        items: states.map(({ status }, index) =>
+          hostedConversationSummarySchema.parse({
+            id: `conversation-${index}`,
+            nodeId: template.nodeId,
+            sessionId: `session-${index}`,
+            templateId: template.id,
+            templateName: template.name,
+            activeVersionId: template.currentVersionId,
+            title: `Conversation ${index + 1}`,
+            titleSource: 'CUSTOM',
+            pinnedAt: null,
+            status: 'ACTIVE',
+            modelId: 'model-1',
+            createdAt: 1,
+            updatedAt: 1,
+            lastActivityAt: 1,
+            activity: { status, version: 1, updatedAt: 1 }
+          })
+        ),
+        nextCursor: null
+      }
+    })
+  );
+  await page.route('**/api/conversation-templates', (route) =>
+    route.fulfill({ json: { templates: [] } })
+  );
+  await page.goto(`${fixture.url}hosted-entry.html?workspace-page=1&theme=vscode-dark-2026`);
+  for (const [index, state] of states.entries()) {
+    const row = page.getByRole('button', { name: new RegExp(`Conversation ${index + 1}`) });
+    await expect(row).toBeVisible();
+    const marker = row.locator('.history-run-indicator');
+    if (state.color) {
+      await expect(marker.locator('i')).toHaveCSS('background-color', state.color);
+      await expect(row).toHaveAccessibleDescription(state.label);
+      await marker.hover();
+      await expect(page.getByRole('tooltip')).toHaveText(state.label);
+    } else {
+      await expect(marker).toHaveCount(0);
+    }
+  }
+});
+
 test('Draft template and model reads display local failure and loading states', async ({
   page
 }, info) => {
@@ -262,7 +317,7 @@ function hostedHistoryTurn(
         startedAt: 1,
         completedAt: 1,
         kind: 'user_message',
-        payload: { clientMessageId: null, text: message, delivery: 'ACCEPTED' }
+        payload: { clientMessageId: null, text: message, delivery: 'ACCEPTED', contexts: [] }
       }
     ]
   };
@@ -345,12 +400,12 @@ async function openHostedSend(
   const input = composer.locator('textarea');
   const send = composer.locator('.hosted-send-button');
   const sending = composer.locator('.composer-submitting');
-  const working = composer.locator('.composer-working.is-active');
+  const working = composer.locator('.composer-working');
   const elapsed = composer.locator('.composer-elapsed');
   const prompt = 'Display this only from Hosted Watch.';
   const message = page.locator('.hosted-timeline-scroll').getByText(prompt, { exact: true });
 
-  async function emitRun(terminal = false) {
+  async function emitRun(status: 'STARTING' | 'RUNNING' | 'CANCELLING' | 'SUCCEEDED' = 'RUNNING') {
     const { clientMessageId } = requests.at(-1)!;
     async function emit(payload: object) {
       await page.evaluate(
@@ -372,9 +427,9 @@ async function openHostedSend(
     }
     await emit({
       kind: 'run',
-      run: terminal ? { ...run, status: 'SUCCEEDED', completedAt: Date.now() } : run
+      run: { ...run, status, completedAt: status === 'SUCCEEDED' ? Date.now() : null }
     });
-    if (!terminal)
+    if (status === 'RUNNING')
       await emit({
         kind: 'runtime',
         runtimeEvent: {
@@ -596,13 +651,20 @@ test('A late catalog refresh loads the replacement template models after returni
 
 test('Hosted send displays only request feedback before Watch, including after HTTP settlement', async ({
   page
-}) => {
+}, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const f = await openHostedSend(page);
   try {
     await f.input.fill(f.prompt);
+    await f.input.blur();
+    await expect(f.send).toHaveCSS('background-color', 'rgb(222, 222, 222)');
+    await expect(f.send).toHaveCSS('color', 'rgb(24, 24, 24)');
+    await page.screenshot({ path: testInfo.outputPath('chat-ready-dark.png') });
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(1);
     await expect(f.sending).toBeVisible();
+    await expect(f.sending).toHaveCSS('color', 'rgb(182, 182, 182)');
     await expect(f.send).toBeDisabled();
     await expect(f.input).toHaveValue(f.prompt);
     await expect(f.message).toHaveCount(0);
@@ -611,13 +673,16 @@ test('Hosted send displays only request feedback before Watch, including after H
     await f.composer.evaluate((form: HTMLFormElement) => form.requestSubmit());
 
     f.reply(true);
-    await expect(page.locator('.mar-message--error')).toBeVisible();
+    const error = page.locator('.mar-message--error');
+    await expect(error).toBeVisible();
     await expect(f.sending).toHaveCount(0);
     await expect(f.input).toHaveValue(f.prompt);
     await expect(f.message).toHaveCount(0);
     await expect(f.working).toHaveCount(0);
     await expect(f.elapsed).toHaveCount(0);
     expect(f.requests).toHaveLength(1);
+    await error.locator('.mar-ui-message__close').click();
+    await expect(error).toHaveCount(0);
 
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(2);
@@ -632,7 +697,11 @@ test('Hosted send displays only request feedback before Watch, including after H
     await f.emitRun();
     await expect(f.message).toBeVisible();
     await expect(f.working).toBeVisible();
+    await expect(f.working).toHaveCSS('color', 'rgb(105, 169, 240)');
+    await expect(f.working.locator('.mar-busy-indicator')).toHaveCSS('color', 'rgb(105, 169, 240)');
     await expect(f.elapsed).toBeVisible();
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: testInfo.outputPath('chat-running-dark.png') });
   } finally {
     f.release();
   }
@@ -646,13 +715,29 @@ test('Hosted send shows Watch activity immediately and does not revive a termina
     await f.input.fill(f.prompt);
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(1);
+    const ring = f.working.locator('.mar-busy-indicator');
+    const activityColor = 'rgb(105, 169, 240)';
+    await f.emitRun('STARTING');
+    await expect(f.working.getByRole('status')).toHaveText('Preparing');
+    await expect(f.working).toHaveCSS('color', activityColor);
+    await expect(ring).toHaveCSS('color', activityColor);
+
     await f.emitRun();
     await expect(f.sending).toBeVisible();
     await expect(f.message).toBeVisible();
     await expect(f.working).toBeVisible();
+    await expect(f.working.getByRole('status')).toHaveText('Running');
+    await expect(f.working).toHaveCSS('color', activityColor);
+    await expect(ring).toHaveCSS('color', activityColor);
     await expect(f.elapsed).toBeVisible();
 
-    await f.emitRun(true);
+    await f.emitRun('CANCELLING');
+    await expect(f.working.getByRole('status')).toHaveText('Stopping');
+    await expect(f.working).toHaveCSS('color', activityColor);
+    await expect(ring).toHaveCSS('color', activityColor);
+    await expect(f.elapsed).toBeVisible();
+
+    await f.emitRun('SUCCEEDED');
     await expect(f.working).toHaveCount(0);
     await expect(f.elapsed).toHaveCount(0);
     await expect(f.sending).toBeVisible();
@@ -670,7 +755,7 @@ test('Hosted send shows Watch activity immediately and does not revive a termina
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Restored conversation keeps the normal composer surface while syncing in ${theme}`, async ({
     page
-  }) => {
+  }, testInfo) => {
     const snapshot = {
       nodeAppVersion: '0.11.31',
       conversation: {
@@ -723,11 +808,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await page.goto(`${fixture.url}hosted-entry.html?existing=1&watch-pending=1&theme=${theme}`);
     const shell = page.locator('.composer-shell');
     const input = page.locator('.composer-input');
-    await expect(page.locator('.composer-working')).toContainText('Syncing');
+    const activity = page.locator('.composer-working');
+    const activityColor = theme === 'daylight' ? 'rgb(7, 95, 199)' : 'rgb(105, 169, 240)';
+    await expect(activity).toContainText('Syncing');
+    await expect(activity).toHaveCSS('color', activityColor);
+    await expect(page.locator('.composer-busy-indicator')).toHaveCSS('color', activityColor);
     await expect(page.locator('.hosted-syncing')).toHaveCount(1);
     await expect(input).toHaveAttribute('readonly', '');
     const background = await shell.evaluate((element) => getComputedStyle(element).backgroundColor);
     const border = await shell.evaluate((element) => getComputedStyle(element).borderColor);
+    await page.locator('.composer').screenshot({
+      path: testInfo.outputPath('composer-syncing.png'),
+      animations: 'disabled'
+    });
     releaseWatch();
     await expect(page.locator('.hosted-syncing')).toHaveCount(0);
     await expect(input).not.toHaveAttribute('readonly', '');

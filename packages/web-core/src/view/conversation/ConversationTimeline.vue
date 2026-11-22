@@ -1750,8 +1750,6 @@ function stepDuration(item: ConversationItem): string | undefined {
 .conversation-item.user_message {
   width: min(88%, 760px);
   justify-self: end;
-  border-color: color-mix(in srgb, var(--mar-color-brand) 8%, var(--mar-conversation-border));
-  background: color-mix(in srgb, var(--mar-color-brand) 6%, var(--mar-conversation-surface));
 }
 
 .conversation-item.assistant_message {
@@ -2175,9 +2173,9 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-file-change-status--renamed,
 .conversation-file-change-status--copied {
-  border-color: color-mix(in srgb, var(--mar-color-brand) 32%, transparent);
-  background: color-mix(in srgb, var(--mar-color-brand) 8%, transparent);
-  color: var(--mar-color-brand);
+  border-color: var(--mar-border-medium);
+  background: var(--mar-fill-soft);
+  color: var(--mar-text-primary);
 }
 
 .conversation-file-change-button {
@@ -2228,11 +2226,11 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-file-change-button:hover {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .conversation-file-change-button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 
@@ -2316,7 +2314,7 @@ details.conversation-record-group[open] > details:last-child {
   display: inline-flex;
   align-items: center;
   min-height: 32px;
-  border: 1px dashed color-mix(in srgb, var(--mar-color-brand) 46%, transparent);
+  border: 1px dashed var(--mar-border-medium);
   border-radius: 6px;
   padding: 0.3rem 0.5rem;
   color: var(--mar-text-secondary);
@@ -2392,7 +2390,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-item summary:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   /* Keep the ring inside the rounded row while the details animation clips overflow. */
   outline-offset: -2px;
 }

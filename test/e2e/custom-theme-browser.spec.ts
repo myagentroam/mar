@@ -6,13 +6,28 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import { CUSTOM_THEME_TOKENS } from '../../packages/web-core/src/model/custom-theme.js';
 
 const componentAliases = {
-  '--mar-ui-color-brand': '--mar-color-brand',
+  '--mar-ui-control-primary-bg': '--mar-control-primary-bg',
+  '--mar-ui-control-primary-fg': '--mar-control-primary-fg',
+  '--mar-ui-control-focus': '--mar-control-focus',
   '--mar-ui-bg-panel': '--mar-bg-panel',
   '--mar-ui-text-primary': '--mar-text-primary',
   '--mar-ui-text-secondary': '--mar-text-secondary',
   '--mar-ui-border-default': '--mar-border-default',
   '--mar-ui-message-surface': '--mar-control-bg-color-overlay'
 };
+
+function colorContrast(color: string, background: string): number {
+  const luminance = (value: string): number => {
+    const hex = resolvedColorToHex(value);
+    const channels = [1, 3, 5].map((offset) => {
+      const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+  };
+  const values = [luminance(color), luminance(background)].sort((a, b) => b - a);
+  return (values[0]! + 0.05) / (values[1]! + 0.05);
+}
 
 async function useThemeMenu(page: Page, option: Locator, action: string): Promise<void> {
   await option.getByRole('button', { name: /^More actions for / }).click();
@@ -646,7 +661,7 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     { themeId: 'daylight', snapshot: JSON.stringify(dark), expected: '#f7f9fd' },
     { themeId: null, snapshot: JSON.stringify(light) }
   ];
-  for (const { themeId, snapshot, expected = '#14181e' } of cases) {
+  for (const { themeId, snapshot, expected = '#181818' } of cases) {
     await page.evaluate(
       ({ themeId, snapshot }) => {
         if (themeId) localStorage.setItem('mar.theme', themeId);
@@ -658,6 +673,10 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     );
     await page.goto(consoleUrl);
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', expected);
+    await expect(page.locator('.mar-bootstrap__trace')).toHaveCSS(
+      'color',
+      themeId === 'daylight' ? 'rgb(85, 85, 85)' : 'rgb(182, 182, 182)'
+    );
     expect(await page.locator('html').evaluate((root) => root.classList.contains('dark'))).toBe(
       themeId !== 'daylight'
     );
@@ -680,7 +699,8 @@ test('Message, Dialog and MessageBox close controls share the icon action surfac
       '--mar-fill-row-hover': 'rgba(52, 86, 120, 0.5)',
       '--mar-text-primary': '#ddeeff',
       '--mar-text-secondary': '#8899aa',
-      '--mar-color-brand': '#5d97d8'
+      '--mar-conversation-activity-fg': '#5d97d8',
+      '--mar-control-focus': '#a5a5a5'
     }))
       document.documentElement.style.setProperty(token, value);
   });
@@ -712,7 +732,7 @@ test('Message, Dialog and MessageBox close controls share the icon action surfac
     await expect(close).toBeFocused();
     await expect(close).toHaveCSS('outline-style', 'solid');
     await expect(close).toHaveCSS('outline-width', '2px');
-    await expect(close).toHaveCSS('outline-color', 'rgb(93, 151, 216)');
+    await expect(close).toHaveCSS('outline-color', 'rgb(165, 165, 165)');
     await expect(close).toHaveCSS(
       'outline-offset',
       trigger === 'show-info-feedback' ? '2px' : '-2px'
@@ -755,18 +775,6 @@ for (const scheme of ['Dark', 'Light']) {
           root.setProperty('--mar-control-color-warning', dark ? '#ffeda8' : '#2b1900');
           root.setProperty('--mar-control-color-danger', dark ? '#ffd2dd' : '#300511');
         }, scheme === 'Dark');
-      const contrast = (color: string, background: string): number => {
-        const luminance = (value: string): number => {
-          const hex = resolvedColorToHex(value);
-          const channels = [1, 3, 5].map((offset) => {
-            const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-          });
-          return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-        };
-        const values = [luminance(color), luminance(background)].sort((a, b) => a - b);
-        return (values[1]! + 0.05) / (values[0]! + 0.05);
-      };
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         for (const type of ['warning', 'danger']) {
@@ -794,18 +802,18 @@ for (const scheme of ['Dark', 'Light']) {
           const normal = await appearance(action);
           const inactive = await appearance(disabled);
           expect(normal.color).toBe(normal.semanticColor);
-          expect(contrast(normal.color, normal.background)).toBeGreaterThanOrEqual(4.5);
+          expect(colorContrast(normal.color, normal.background)).toBeGreaterThanOrEqual(4.5);
           await action.hover();
           const hover = await appearance(action);
           expect(hover.color).toBe(hover.semanticColor);
-          expect(contrast(hover.color, hover.background)).toBeGreaterThanOrEqual(4.5);
+          expect(colorContrast(hover.color, hover.background)).toBeGreaterThanOrEqual(4.5);
           expect(resolvedColorToHex(hover.color)).not.toBe(resolvedColorToHex(inactive.color));
           await expect(action.locator('svg')).toHaveCSS('color', hover.color);
           await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
           await page.mouse.down();
           try {
             const active = await appearance(action);
-            expect(contrast(active.color, active.background)).toBeGreaterThanOrEqual(4.5);
+            expect(colorContrast(active.color, active.background)).toBeGreaterThanOrEqual(4.5);
             await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
           } finally {
             await page.mouse.up();
@@ -999,7 +1007,7 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
         '--mar-bg-page': '#ffffff',
         '--mar-bg-panel': '#ddeeff',
         '--mar-text-primary': '#112233',
-        '--mar-color-brand': '#2155bb',
+        '--mar-conversation-activity-fg': '#2155bb',
         '--mar-font-size-body': '100px',
         '--mar-fill-hover': 'url(https://invalid.test/image)'
       },
@@ -1137,8 +1145,8 @@ test('custom theme status and hover contrast warnings preserve editable colors a
     colors: {
       '--mar-color-danger-text': '#777777',
       '--mar-color-danger-bg': '#777777',
-      '--mar-color-on-accent': '#777777',
-      '--mar-color-brand-hover': '#777777'
+      '--mar-control-primary-fg': '#777777',
+      '--mar-control-primary-hover': '#777777'
     }
   };
   const source = JSON.stringify(theme, null, 2);
@@ -1150,7 +1158,7 @@ test('custom theme status and hover contrast warnings preserve editable colors a
   await expect(editor).toBeEditable();
   const validation = page.locator('.validation');
   await expect(validation).toContainText('--mar-color-danger-text / --mar-color-danger-bg');
-  await expect(validation).toContainText('--mar-color-on-accent / --mar-color-brand-hover');
+  await expect(validation).toContainText('--mar-control-primary-fg / --mar-control-primary-hover');
   await expect(validation).toContainText('saving is allowed');
   await expect(page.locator('.mar-theme-preview .danger')).toHaveCSS('color', 'rgb(119, 119, 119)');
   await expect(page.locator('.mar-theme-preview .danger')).toHaveCSS(
@@ -1167,8 +1175,8 @@ test('custom theme status and hover contrast warnings preserve editable colors a
     .screenshot({ path: testInfo.outputPath('status-contrast-warning.png') });
   theme.colors['--mar-color-danger-text'] = '#ffffff';
   theme.colors['--mar-color-danger-bg'] = '#000000';
-  theme.colors['--mar-color-on-accent'] = '#ffffff';
-  theme.colors['--mar-color-brand-hover'] = '#000000';
+  theme.colors['--mar-control-primary-fg'] = '#ffffff';
+  theme.colors['--mar-control-primary-hover'] = '#000000';
   await editor.fill(JSON.stringify(theme));
   await expect(validation).toContainText('No detected warnings.');
 });
@@ -1218,10 +1226,10 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   const copied = await editor.inputValue();
   expect(JSON.parse(copied).colors).toEqual(light.colors);
   const lowContrast = JSON.parse(copied);
-  lowContrast.colors['--mar-color-on-accent'] = lowContrast.colors['--mar-color-brand'];
+  lowContrast.colors['--mar-control-primary-fg'] = lowContrast.colors['--mar-control-primary-bg'];
   await editor.fill(JSON.stringify(lowContrast));
   await expect(page.locator('.validation')).toContainText(
-    '--mar-color-on-accent / --mar-color-brand'
+    '--mar-control-primary-fg / --mar-control-primary-bg'
   );
   await editor.fill(copied);
   await expect(page.locator('.validation')).toContainText('No detected warnings.');
@@ -1275,7 +1283,7 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   for (const token of [
     '--mar-bg-page',
     '--mar-bg-panel',
-    '--mar-color-brand-selected',
+    '--mar-control-primary-bg',
     '--mar-control-fill-color'
   ]) {
     expect(
@@ -1285,7 +1293,7 @@ test('built-ins are read-only, copies include every color, and reset restores sa
 });
 
 for (const scheme of ['Light', 'Dark']) {
-  test(`Select options separate neutral selection from brand focus in ${scheme}`, async ({
+  test(`Select options separate neutral selection from keyboard focus in ${scheme}`, async ({
     page
   }, testInfo) => {
     if (scheme === 'Light')
@@ -1299,7 +1307,8 @@ for (const scheme of ['Light', 'Dark']) {
       if (custom)
         await page.locator('html').evaluate((element) => {
           for (const [token, value] of Object.entries({
-            '--mar-color-brand': '#bf6ac9',
+            '--mar-conversation-activity-fg': '#bf6ac9',
+            '--mar-control-focus': '#9c9c9c',
             '--mar-text-primary': '#dae5cf',
             '--mar-text-disabled': '#8293a4',
             '--mar-border-medium': '#718293',
@@ -1322,7 +1331,7 @@ for (const scheme of ['Light', 'Dark']) {
           hover: color('--mar-fill-row-hover'),
           hoverBorder: color('--mar-input-border-hover'),
           disabledBorder: color('--mar-border-subtle'),
-          focus: color('--mar-color-brand')
+          focus: color('--mar-control-focus')
         };
         probe.remove();
         return result;
@@ -1351,9 +1360,27 @@ for (const scheme of ['Light', 'Dark']) {
           await expect(selected).toHaveCSS('color', palette.text);
           await expect(selected).toHaveCSS('font-weight', '400');
           await expect(selected).toHaveCSS('background-color', palette.selected);
+          await expect(select).toHaveAttribute(
+            'aria-activedescendant',
+            (await selected.getAttribute('id'))!
+          );
+          await expect(selected).toHaveCSS('outline-style', 'solid');
+          if (!custom) {
+            const { outlineColor, backgroundColor } = await selected.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return { outlineColor: style.outlineColor, backgroundColor: style.backgroundColor };
+            });
+            expect(colorContrast(outlineColor, backgroundColor)).toBeGreaterThanOrEqual(3);
+          }
           await other.hover();
           await expect(other).toHaveCSS('color', palette.text);
           await expect(other).toHaveCSS('background-color', palette.hover);
+          if (!custom) {
+            const surface = await dropdown.evaluate(
+              (element) => getComputedStyle(element).backgroundColor
+            );
+            expect(resolvedColorToHex(palette.hover)).not.toBe(resolvedColorToHex(surface));
+          }
           await selected.hover();
           await expect(selected).toHaveCSS('background-color', palette.selected);
           await disabled.hover({ force: true });
@@ -1395,6 +1422,51 @@ for (const scheme of ['Light', 'Dark']) {
     }
   });
 
+  test(`Filled primary, warning and danger actions preserve text contrast in ${scheme}`, async ({
+    page
+  }) => {
+    if (scheme === 'Light')
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const controls = page.getByRole('region', { name: 'Real theme controls' });
+    for (const name of ['Sample primary', 'Sample filled warning', 'Sample filled danger']) {
+      const button = controls.getByRole('button', { name, exact: true });
+      const appearance = () =>
+        button.evaluate((element) => {
+          const { color, backgroundColor } = getComputedStyle(element);
+          return { color, backgroundColor };
+        });
+      await page.mouse.move(0, 0);
+      const normal = await appearance();
+      expect(
+        colorContrast(normal.color, normal.backgroundColor),
+        `${name}, rest`
+      ).toBeGreaterThanOrEqual(4.5);
+      await button.hover();
+      const hover = await appearance();
+      expect(hover.backgroundColor).not.toBe(normal.backgroundColor);
+      expect(
+        colorContrast(hover.color, hover.backgroundColor),
+        `${name}, hover`
+      ).toBeGreaterThanOrEqual(4.5);
+      await page.mouse.down();
+      try {
+        const active = await appearance();
+        expect(active.backgroundColor).not.toBe(hover.backgroundColor);
+        expect(
+          colorContrast(active.color, active.backgroundColor),
+          `${name}, press`
+        ).toBeGreaterThanOrEqual(4.5);
+      } finally {
+        await page.mouse.up();
+      }
+    }
+  });
+
   test(`Ordinary actions preserve neutral states and bordered surfaces in ${scheme}`, async ({
     page
   }, testInfo) => {
@@ -1416,7 +1488,8 @@ for (const scheme of ['Light', 'Dark']) {
           for (const [token, value] of Object.entries({
             '--mar-text-primary': '#dae5cf',
             '--mar-text-secondary': '#a5b6c7',
-            '--mar-color-brand': '#bf6ac9',
+            '--mar-conversation-activity-fg': '#bf6ac9',
+            '--mar-control-focus': '#9c9c9c',
             '--mar-fill-row-hover': '#334455',
             '--mar-fill-selection': '#445566',
             '--mar-border-medium': '#718293'
@@ -1432,14 +1505,12 @@ for (const scheme of ['Light', 'Dark']) {
         };
         const result = {
           normal: color('--mar-text-secondary'),
-          normalSurface: color('--mar-bg-panel'),
+          normalSurface: color('--mar-fill-soft'),
           hover: color('--mar-text-primary'),
           surface: color('--mar-fill-row-hover'),
           pressed: color('--mar-fill-selection'),
           border: color('--mar-border-medium'),
-          focus: color('--mar-color-brand'),
-          navigation: color('--mar-color-brand'),
-          navigationSurface: color('--mar-control-color-primary-light-9')
+          focus: color('--mar-control-focus')
         };
         probe.remove();
         return result;
@@ -1514,8 +1585,8 @@ for (const scheme of ['Light', 'Dark']) {
         await expect(navigation).toHaveAttribute('target', '_blank');
         await expect(navigation).toHaveAttribute('rel', 'noopener noreferrer');
         await navigation.hover();
-        await expect(navigation).toHaveCSS('color', colors.navigation);
-        await expect(navigation).toHaveCSS('background-color', colors.navigationSurface);
+        await expect(navigation).toHaveCSS('color', colors.hover);
+        await expect(navigation).toHaveCSS('background-color', colors.surface);
         const preview = page.locator('.mar-theme-preview').first();
         const previewColors = await preview.evaluate((element) => {
           const probe = document.createElement('span');
@@ -1529,10 +1600,10 @@ for (const scheme of ['Light', 'Dark']) {
             hover: color('--mar-fill-row-hover'),
             pressed: color('--mar-fill-selection'),
             border: color('--mar-border-medium'),
-            disabledFill: color('--mar-control-fill-color-light'),
+            disabledFill: color('--mar-bg-panel'),
             disabledBorder: color('--mar-border-subtle'),
-            foreground: color('--mar-color-on-accent'),
-            primaryHover: color('--mar-color-brand-hover')
+            foreground: color('--mar-control-primary-fg'),
+            primaryHover: color('--mar-control-primary-hover')
           };
           probe.remove();
           return palette;
@@ -1579,7 +1650,7 @@ for (const scheme of ['Light', 'Dark']) {
       const branchName = branch.locator('.workspace-branch-name');
       const gitIcon = branch.getByRole('img', { name: 'Git' });
       const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
-      const colors = scheme === 'Light' ? ['#52627a', '#cbd6e4'] : ['#c3cad4', '#414e62'];
+      const colors = scheme === 'Light' ? ['#555555', '#cbd6e4'] : ['#b6b6b6', '#474747'];
       async function expectColors(expected: string[]): Promise<void> {
         await expect(branch).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(async () => {
@@ -1733,7 +1804,7 @@ for (const scheme of ['Light', 'Dark']) {
       await page.keyboard.press('Escape');
       await page.locator('html').evaluate((element) => {
         element.style.setProperty('--mar-text-primary', '#d9e2d0');
-        element.style.setProperty('--mar-color-brand-text', '#8a4fc7');
+        element.style.setProperty('--mar-conversation-activity-fg', '#8a4fc7');
         element.style.setProperty('--mar-fill-row-hover', '#345678');
       });
       for (const control of [help, more]) {
@@ -1804,7 +1875,7 @@ test('theme choices apply immediately without replacing an unsaved draft', async
   const saved = JSON.stringify({
     version: 1,
     name: 'Violet',
-    colors: { '--mar-color-brand': '#c792ea', '--mar-bg-page': '#302435' }
+    colors: { '--mar-conversation-activity-fg': '#c792ea', '--mar-bg-page': '#302435' }
   });
   await editor.fill(saved);
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
@@ -1817,7 +1888,9 @@ test('theme choices apply immediately without replacing an unsaved draft', async
   await expect(violet.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
   await expectChromeOnPage();
   expect(
-    await page.evaluate(() => document.documentElement.style.getPropertyValue('--mar-color-brand'))
+    await page.evaluate(() =>
+      document.documentElement.style.getPropertyValue('--mar-conversation-activity-fg')
+    )
   ).toBe('#c792ea');
   await violet.getByRole('button', { name: /^Inspect /u }).click();
   await editor.fill(saved + ' ');
@@ -1899,7 +1972,7 @@ for (const [scheme, width] of [
       await enabledInput.focus();
       await expect(wrapper(enabledInput)).toHaveCSS(
         'box-shadow',
-        await tokenShadow('--mar-color-brand')
+        await tokenShadow('--mar-control-focus')
       );
       await enabledInput.blur();
       await page.mouse.move(0, 0);
@@ -1919,7 +1992,8 @@ for (const [scheme, width] of [
       element.style.setProperty('--mar-border-subtle', '#4e5e73');
       element.style.setProperty('--mar-border-medium', '#718293');
       element.style.setProperty('--mar-text-secondary', '#93a5b6');
-      element.style.setProperty('--mar-color-brand', '#bf6ac9');
+      element.style.setProperty('--mar-conversation-activity-fg', '#bf6ac9');
+      element.style.setProperty('--mar-control-focus', '#9c9c9c');
       element.style.setProperty('--mar-overlay-border', '#7689a1');
       element.style.setProperty('--mar-overlay-surface', '#37485e80');
     });
@@ -1972,17 +2046,17 @@ test('filled primary controls use the same foreground as the theme preview', asy
   await useThemeMenu(page, options.first(), 'Duplicate');
   const save = page.getByRole('button', { name: 'Save theme', exact: true });
   const sample = page.locator('.mar-theme-preview .preview-button.primary');
-  await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await expect(save).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(sample).toHaveCSS('color', 'rgb(24, 24, 24)');
+  await expect(save).toHaveCSS('color', 'rgb(24, 24, 24)');
   const custom = JSON.stringify({
     version: 1,
     name: 'Palenight sample',
     colors: {
-      '--mar-color-brand': '#c792ea',
-      '--mar-color-on-accent': '#202331',
-      '--mar-control-color-primary-light-3': '#112233',
-      '--mar-control-color-primary-dark-2': '#223344',
-      '--mar-color-brand-hover': '#abcdef'
+      '--mar-conversation-activity-fg': '#c792ea',
+      '--mar-control-primary-bg': '#bdd6c8',
+      '--mar-control-primary-fg': '#202331',
+      '--mar-control-primary-active': '#bbccaa',
+      '--mar-control-primary-hover': '#abcdef'
     }
   });
   await editor.fill(custom);
@@ -1993,12 +2067,18 @@ test('filled primary controls use the same foreground as the theme preview', asy
     .click();
   await expect(sample).toHaveCSS('color', 'rgb(32, 35, 49)');
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(189, 214, 200)');
+  await expect(save).toHaveCSS('background-color', 'rgb(189, 214, 200)');
+  await expect(page.locator('.mar-theme-preview .process .mar-busy-indicator')).toHaveCSS(
+    'color',
+    'rgb(199, 146, 234)'
+  );
   await sample.hover();
   await expect(sample).toHaveCSS('background-color', 'rgb(171, 205, 239)');
   await expect(sample).toHaveCSS('border-color', 'rgb(171, 205, 239)');
   await page.mouse.down();
-  await expect(sample).toHaveCSS('background-color', 'rgb(34, 51, 68)');
-  await expect(sample).toHaveCSS('border-color', 'rgb(34, 51, 68)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(187, 204, 170)');
+  await expect(sample).toHaveCSS('border-color', 'rgb(187, 204, 170)');
   await page.mouse.up();
   await save.hover();
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
@@ -2006,21 +2086,23 @@ test('filled primary controls use the same foreground as the theme preview', asy
   await expect(save).toHaveCSS('border-color', 'rgb(171, 205, 239)');
   await page.mouse.down();
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
-  await expect(save).toHaveCSS('background-color', 'rgb(34, 51, 68)');
-  await expect(save).toHaveCSS('border-color', 'rgb(34, 51, 68)');
+  await expect(save).toHaveCSS('background-color', 'rgb(187, 204, 170)');
+  await expect(save).toHaveCSS('border-color', 'rgb(187, 204, 170)');
   await page.mouse.up();
 });
 
 test('expanded and compact previews share the applied palette without changing global state', async ({
   page
 }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
   await useThemeMenu(page, page.locator('.theme-option').first(), 'Duplicate');
   const source = JSON.stringify({
     version: 1,
     name: 'Preview',
     colors: {
-      '--mar-color-brand': '#ff00ff',
+      '--mar-conversation-activity-fg': '#ff00ff',
+      '--mar-control-focus': '#e2d4bf',
       '--mar-fill-selection': '#38475a',
       '--mar-fill-row-hover': '#283442',
       '--mar-color-diff-add-text': '#123456',
@@ -2041,9 +2123,11 @@ test('expanded and compact previews share the applied palette without changing g
   await expect(preview.locator('.user-message')).toHaveText('This is a sample message.');
   await expect(preview.locator('.assistant-message strong')).toHaveText('Sample heading');
   const expectPreviewText = async (sample: Locator) => {
-    for (const selector of ['.user-message', '.assistant-message p'])
+    for (const selector of ['.user-message', '.assistant-message p', '.process'])
       await expect(sample.locator(selector)).toHaveCSS('color', 'rgb(248, 238, 221)');
-    await expect(sample.locator('.process')).toHaveCSS('color', 'rgb(153, 170, 187)');
+    const previewRing = sample.locator('.process .mar-busy-indicator');
+    await expect(previewRing).toHaveCSS('color', 'rgb(255, 0, 255)');
+    await expect(previewRing).toHaveCSS('animation-name', 'none');
     await expect(sample.locator('.preview-sidebar .caption')).toHaveCSS(
       'color',
       'rgb(174, 184, 194)'
@@ -2063,14 +2147,14 @@ test('expanded and compact previews share the applied palette without changing g
   await expect(preview.locator('.preview-button.primary')).toHaveCSS('border-radius', '6px');
   await expect(preview.locator('.preview-toolbar')).toHaveCSS(
     'background-color',
-    'rgb(28, 34, 43)'
+    'rgb(27, 27, 27)'
   );
   await expect(preview.locator('.diff-add')).toHaveCSS('color', 'rgb(18, 52, 86)');
   const compactFont = await preview.evaluate((element) =>
     parseFloat(getComputedStyle(element).fontSize)
   );
   await preview.locator('input').focus();
-  await expect(preview.locator('input')).toHaveCSS('outline-color', 'rgb(255, 0, 255)');
+  await expect(preview.locator('input')).toHaveCSS('outline-color', 'rgb(226, 212, 191)');
   await page.getByRole('button', { name: 'Enlarge preview', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const expanded = dialog.locator('.mar-theme-preview');
@@ -2088,10 +2172,13 @@ test('expanded and compact previews share the applied palette without changing g
   ).toBeGreaterThan(compactFont);
   await expect(expanded.locator('.diff-add')).toHaveCSS('color', 'rgb(18, 52, 86)');
   await expanded.getByRole('textbox', { name: 'Message', exact: true }).fill('Preview only');
+  await expect(expanded.locator('input')).toHaveCSS('outline-color', 'rgb(226, 212, 191)');
   await expect(editor).toHaveValue(source);
   expect(await page.evaluate(() => localStorage.getItem('mar.customThemes'))).toBeNull();
   expect(
-    await page.evaluate(() => document.documentElement.style.getPropertyValue('--mar-color-brand'))
+    await page.evaluate(() =>
+      document.documentElement.style.getPropertyValue('--mar-conversation-activity-fg')
+    )
   ).toBe('');
   await page.screenshot({
     path: testInfo.outputPath('theme-expanded.png'),
@@ -2159,7 +2246,8 @@ for (const scheme of ['Light', 'Dark']) {
       expect(Object.keys(source.colors).every((key) => key.startsWith('--mar-'))).toBe(true);
       for (const [index, token] of [...new Set(Object.values(aliases))].entries())
         source.colors[token] = '#' + (0x203040 + index * 0x030507).toString(16).padStart(6, '0');
-      source.colors['--mar-color-brand'] = '#654321';
+      source.colors['--mar-conversation-activity-fg'] = '#654321';
+      source.colors['--mar-control-primary-bg'] = '#abcdef';
       source.colors['--mar-control-bg-color-overlay'] = '#34567880';
       source.colors['--mar-bg-panel'] = '#123456';
       source.colors['--mar-bg-page'] = scheme === 'Light' ? '#ffffff' : '#000000';
@@ -2192,7 +2280,7 @@ for (const scheme of ['Light', 'Dark']) {
       }
       await expect(page.getByRole('button', { name: 'Save theme', exact: true })).toHaveCSS(
         'background-color',
-        'rgb(101, 67, 33)'
+        'rgb(171, 205, 239)'
       );
       await page.getByRole('button', { name: 'Theme color reference', exact: true }).click();
       await expect(
@@ -2307,8 +2395,8 @@ for (const scheme of ['Light', 'Dark']) {
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
       const typography = page.getByRole('region', { name: 'Real conversation typography' });
-      const conversationText = scheme === 'Dark' ? 'rgb(226, 232, 240)' : 'rgb(23, 32, 51)';
-      const conversationSecondary = scheme === 'Dark' ? 'rgb(195, 202, 212)' : 'rgb(82, 98, 122)';
+      const conversationText = scheme === 'Dark' ? 'rgb(216, 216, 216)' : 'rgb(23, 32, 51)';
+      const conversationSecondary = scheme === 'Dark' ? 'rgb(182, 182, 182)' : 'rgb(85, 85, 85)';
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
@@ -2331,7 +2419,7 @@ for (const scheme of ['Light', 'Dark']) {
       await page.setViewportSize({ width: 1440, height: 900 });
       // Resizing and screenshots can leave the pointer over a control; inspect its neutral state.
       await page.mouse.move(-10, -10);
-      const panel = scheme === 'Dark' ? 'rgb(28, 34, 43)' : 'rgb(255, 255, 255)';
+      const panel = scheme === 'Dark' ? 'rgb(27, 27, 27)' : 'rgb(255, 255, 255)';
       await expect(controls.locator('.mar-ui-input')).toHaveCSS('background-color', panel);
       const select = controls.locator('.mar-ui-select__field');
       await expect(select).toHaveCSS('background-color', panel);
@@ -2347,25 +2435,26 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(controls.locator('.mar-ui-table')).toHaveCSS('background-color', panel);
       await expect(controls.getByRole('button', { name: 'Sample default', exact: true })).toHaveCSS(
         'background-color',
-        panel
+        scheme === 'Dark' ? 'rgb(34, 34, 34)' : 'rgb(240, 245, 251)'
       );
+      const primaryForeground = scheme === 'Dark' ? 'rgb(24, 24, 24)' : 'rgb(255, 255, 255)';
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'color',
-        'rgb(255, 255, 255)'
+        primaryForeground
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(31, 115, 207)' : 'rgb(9, 105, 232)'
+        scheme === 'Dark' ? 'rgb(222, 222, 222)' : 'rgb(48, 48, 48)'
       );
       const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
       await primary.scrollIntoViewIfNeeded();
       const primaryBounds = await primary.boundingBox();
       await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
       await primary.hover();
-      const hoverColor = scheme === 'Dark' ? 'rgb(26, 101, 184)' : 'rgb(5, 84, 184)';
+      const hoverColor = scheme === 'Dark' ? 'rgb(238, 238, 238)' : 'rgb(66, 66, 66)';
       await expect(primary).toHaveCSS('background-color', hoverColor);
       await expect(primary).toHaveCSS('border-top-color', hoverColor);
-      await expect(primary).toHaveCSS('color', 'rgb(255, 255, 255)');
+      await expect(primary).toHaveCSS('color', primaryForeground);
       await expect(primary).toHaveCSS('transform', 'none');
       expect(await primary.boundingBox()).toEqual(primaryBounds);
       await primary.screenshot({ path: testInfo.outputPath('primary-hover.png') });
@@ -2375,20 +2464,20 @@ for (const scheme of ['Light', 'Dark']) {
             .getByRole('button', { name: 'Sample disabled primary', exact: true })
             .evaluate((element) => getComputedStyle(element).color)
         )
-      ).toBe(scheme === 'Dark' ? '#ffffff80' : '#ffffff');
+      ).toBe(scheme === 'Dark' ? '#777777' : '#5f6f86');
       await expect(controls.getByRole('columnheader')).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(37, 45, 56)' : 'rgb(237, 243, 250)'
+        scheme === 'Dark' ? 'rgb(34, 34, 34)' : 'rgb(237, 243, 250)'
       );
       await controls.locator('tbody tr').first().hover();
       await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(229, 237, 246)'
+        scheme === 'Dark' ? 'rgb(40, 40, 40)' : 'rgb(229, 237, 246)'
       );
       await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
-        scheme === 'Dark' ? 'rgb(74, 163, 255)' : 'rgb(4, 74, 159)'
+        scheme === 'Dark' ? 'rgb(240, 240, 240)' : 'rgb(23, 23, 23)'
       );
       const neutral = controls.getByRole('button', { name: 'Sample neutral action', exact: true });
       const disabledNeutral = controls.getByRole('button', {
@@ -2403,7 +2492,7 @@ for (const scheme of ['Light', 'Dark']) {
         (element) => getComputedStyle(element).color
       );
       expect(neutralColor).not.toBe(dangerColor);
-      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(48, 147, 255)' : 'rgb(7, 95, 199)');
+      expect(neutralColor).not.toBe(scheme === 'Dark' ? 'rgb(105, 169, 240)' : 'rgb(7, 95, 199)');
       await expect(disabledNeutral).toBeDisabled();
       for (const action of [neutral, disabledNeutral, danger]) {
         await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -2444,12 +2533,13 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-bg-panel': '#123456',
         '--mar-table-header-bg': '#234567',
         '--mar-table-row-hover-bg': '#345678',
-        '--mar-color-on-accent': '#fedcba',
-        '--mar-color-brand-hover': '#234567',
+        '--mar-control-primary-fg': '#fedcba',
+        '--mar-control-primary-hover': '#234567',
         '--mar-text-primary': '#d5c4af',
+        '--mar-text-disabled': '#969696',
+        '--mar-fill-soft': '#434343',
         '--mar-control-link-text': '#abcdef',
-        '--mar-control-link-hover': '#bcdefa',
-        '--mar-color-brand-disabled': '#cdefab'
+        '--mar-control-link-hover': '#bcdefa'
       });
       await editor.fill(JSON.stringify(theme));
       await page.getByRole('button', { name: 'Save theme', exact: true }).click();
@@ -2500,16 +2590,19 @@ for (const scheme of ['Light', 'Dark']) {
         resolvedColorToHex(
           await disabledPrimary.evaluate((element) => getComputedStyle(element).color)
         );
-      await expect.poll(disabledColor).toBe(scheme === 'Dark' ? '#fedcba80' : '#fedcba');
+      const disabledForeground = '#969696';
+      await expect.poll(disabledColor).toBe(disabledForeground);
+      await expect(disabledPrimary).toHaveCSS('background-color', 'rgb(67, 67, 67)');
       await disabledPrimary.hover();
-      await expect.poll(disabledColor).toBe(scheme === 'Dark' ? '#fedcba80' : '#fedcba');
+      await expect.poll(disabledColor).toBe(disabledForeground);
+      await expect(disabledPrimary).toHaveCSS('background-color', 'rgb(67, 67, 67)');
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
         'rgb(171, 205, 239)'
       );
       await expect(
         controls.getByRole('button', { name: 'Sample disabled link', exact: true })
-      ).toHaveCSS('color', 'rgb(205, 239, 171)');
+      ).toHaveCSS('color', 'rgb(150, 150, 150)');
       await controls.getByRole('button', { name: 'Sample link', exact: true }).hover();
       await expect(controls.getByRole('button', { name: 'Sample link', exact: true })).toHaveCSS(
         'color',
@@ -2601,7 +2694,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
         '--mar-text-primary': '#f4f6fa',
         '--mar-text-secondary': '#c3d0df',
         '--mar-border-default': '#718096',
-        '--mar-color-brand': '#72a9ff',
+        '--mar-conversation-activity-fg': '#72a9ff',
         '--mar-control-color-success': '#39a879',
         '--mar-control-color-warning': '#e2a83b',
         '--mar-control-color-danger': '#f06a65'

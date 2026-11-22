@@ -37,7 +37,7 @@ const emit = defineEmits<{ change: [checked: boolean]; 'update:checked': [checke
   background: var(--mar-ui-fill-selection);
 }
 .mar-ui-check-tag:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 </style>

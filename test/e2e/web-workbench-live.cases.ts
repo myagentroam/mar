@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { emitMockSessionEvent, mockConsoleApi, json, write } from './support/web-console-api.js';
 import { createWorkbenchNotificationProxy } from './support/workbench-notification-proxy.js';
@@ -317,7 +318,7 @@ for (const language of [
 
 // Workbench Live and the capability baseline
 
-test('Workbench controls preserve selection, foreground-only emphasis, focus, and compact mobile controls', async ({
+test('Workbench controls preserve selection, neutral action feedback, focus, and compact mobile controls', async ({
   page
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -330,15 +331,13 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
     const colors = await navigation.evaluate((button) => {
       const reference = document.createElement('span');
       reference.style.cssText =
-        'background-color: var(--mar-fill-selection); color: var(--mar-color-brand-text);';
+        'background-color: var(--mar-fill-selection); color: var(--mar-text-primary);';
       button.append(reference);
       const actual = getComputedStyle(button);
       const expected = getComputedStyle(reference);
       const result = {
-        background: actual.backgroundColor,
-        text: actual.color,
-        expectedBackground: expected.backgroundColor,
-        expectedText: expected.color,
+        background: expected.backgroundColor,
+        text: expected.color,
         radii: [
           actual.borderTopLeftRadius,
           actual.borderTopRightRadius,
@@ -352,8 +351,8 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
       reference.remove();
       return result;
     });
-    expect(colors.background).toBe(colors.expectedBackground);
-    expect(colors.text).toBe(colors.expectedText);
+    await expect(navigation).toHaveCSS('background-color', colors.background);
+    await expect(navigation).toHaveCSS('color', colors.text);
     for (const radius of colors.radii) expect(radius).toBeGreaterThan(0);
     expect(colors.leftBorder).toBe('0px');
     expect(colors.bottomBorder).toBe('0px');
@@ -393,15 +392,25 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
     );
     await treeWorkspace.hover();
     await expect(treeWorkspace).toHaveCSS('background-color', selection.background);
-    const idle = await refresh.evaluate((button) => ({
-      color: getComputedStyle(button).color,
-      background: getComputedStyle(button).backgroundColor
-    }));
+    const action = await refresh.evaluate((button) => {
+      const reference = document.createElement('span');
+      reference.style.cssText =
+        'background-color: var(--mar-fill-row-hover); color: var(--mar-text-primary); outline-color: var(--mar-control-focus);';
+      button.append(reference);
+      const style = getComputedStyle(reference);
+      const palette = {
+        background: style.backgroundColor,
+        color: style.color,
+        outline: style.outlineColor
+      };
+      reference.remove();
+      return palette;
+    });
+    await expect(refresh).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(refresh).not.toHaveCSS('color', action.color);
     await refresh.hover();
-    await expect(refresh).toHaveCSS('background-color', idle.background);
-    await expect
-      .poll(() => refresh.evaluate((button) => getComputedStyle(button).color))
-      .not.toBe(idle.color);
+    await expect(refresh).toHaveCSS('background-color', action.background);
+    await expect(refresh).toHaveCSS('color', action.color);
     await page.mouse.move(0, 0);
     await page.keyboard.press('Tab');
     await refresh.focus();
@@ -412,7 +421,8 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
     await expect
       .poll(() => refresh.evaluate((button) => getComputedStyle(button).outlineStyle))
       .not.toBe('none');
-    await expect(refresh).toHaveCSS('background-color', idle.background);
+    await expect(refresh).toHaveCSS('outline-color', action.outline);
+    await expect(refresh).toHaveCSS('background-color', action.background);
     await refresh.evaluate((button) => (button as HTMLElement).blur());
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -430,7 +440,7 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
       Number.parseFloat(getComputedStyle(element).getPropertyValue('--mar-compact-control-size'))
     );
   for (const [opener, control, size] of [
-    ['打开文件', refresh, 26],
+    ['打开辅助工作面', refresh, 26],
     ['打开会话列表', page.getByRole('button', { name: '刷新当前工作区会话' }), compactSize]
   ] as const) {
     await page.getByRole('button', { name: opener, exact: true }).click();
@@ -438,11 +448,20 @@ test('Workbench controls preserve selection, foreground-only emphasis, focus, an
     const box = await control.boundingBox();
     expect(box?.width).toBe(size);
     expect(box?.height).toBe(size);
-    const scrim = page.getByRole('button', { name: '关闭工作区工具', exact: true });
-    const bounds = await scrim.boundingBox();
-    expect(bounds).not.toBeNull();
-    await page.mouse.click(bounds!.x + bounds!.width - 12, bounds!.y + 64);
+    const scrim = page.locator('.workspace-surface-scrim');
+    await expect(scrim).toBeVisible();
+    if (opener === '打开辅助工作面') {
+      await page
+        .locator('.workspace-aside')
+        .getByRole('button', { name: '关闭工作区工具', exact: true })
+        .click();
+    } else {
+      const bounds = await scrim.boundingBox();
+      expect(bounds).not.toBeNull();
+      await page.mouse.click(bounds!.x + bounds!.width - 12, bounds!.y + 64);
+    }
     await expect(scrim).toHaveCount(0);
+    await expect(control).toBeHidden();
   }
 });
 
@@ -827,6 +846,10 @@ test('Mobile Work mode mounts Workspace Tabs only above the main content', async
 test('Admin Console renders controlled Sessions, Runs, approvals, and text events from Node capabilities', async ({
   page
 }) => {
+  const { version } = JSON.parse(
+    await readFile(new URL('../../mar-web-console/package.json', import.meta.url), 'utf8')
+  ) as { version: string };
+  const consoleTitle = `MyAgentRoam - v${version}`;
   const writes: {
     readonly url: string;
     readonly csrf: string | undefined;
@@ -837,6 +860,9 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     'MANAGED',
     ['history.read', 'events.live', 'turn.start', 'turn.steer', 'turn.interrupt'],
     writes
+  );
+  await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+    json(route, { preparation: { state: 'UNAVAILABLE' } })
   );
   await page.addInitScript(() => {
     // This case explicitly verifies the Daylight palette, independent of the default theme.
@@ -904,15 +930,15 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   );
 
   await page.goto('/console');
-  await expect(page).toHaveTitle('MyAgentRoam');
+  await expect(page).toHaveTitle(consoleTitle);
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
     'href',
     '/favicon.ico?v=logo-20261011'
   );
-  await expect(page.locator('html')).toHaveCSS('--mar-color-brand', '#0a6fd8');
-  await expect(page.locator('html')).toHaveCSS('--mar-ui-color-brand', '#0a6fd8');
-  await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#dce3ea');
-  await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#e7ecf2');
+  await expect(page.locator('html')).toHaveCSS('--mar-conversation-activity-fg', '#075fc7');
+  await expect(page.locator('html')).toHaveCSS('--mar-ui-control-primary-bg', '#303030');
+  await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#cbd6e4');
+  await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#dce4ef');
   await expect(page.getByRole('button', { name: '进入控制台' })).toHaveClass(/mar-ui-button/);
   await expect(page.locator('.gate-panel')).toHaveCSS('border-radius', '8px');
   await expect(page.locator('.gate-panel')).toHaveCSS('box-shadow', 'none');
@@ -925,10 +951,9 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(placeholderTab).toContainText('新标签页');
   await expect(placeholderTab).toContainText('选择一个工作区开始');
   await expect(placeholderTab.locator('.tab-close')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '工作', exact: true })).toHaveCSS(
-    'border-left-color',
-    'rgb(19, 95, 168)'
-  );
+  const workNavigation = page.getByRole('button', { name: '工作', exact: true });
+  await expect(workNavigation).toHaveCSS('border-left-width', '0px');
+  await expect(workNavigation).toHaveCSS('background-color', 'rgb(223, 233, 246)');
   await page
     .locator('.workspace-tree')
     .getByRole('button', { name: /开发节点/ })
@@ -946,8 +971,8 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     const style = getComputedStyle(tab);
     return [style.backgroundColor, style.backgroundImage].join(' ');
   });
-  expect(placeholderBackground).toContain('rgb(228, 239, 251)');
-  await expect(placeholderTab).toHaveCSS('color', 'rgb(19, 95, 168)');
+  expect(placeholderBackground).toContain('rgb(223, 233, 246)');
+  await expect(placeholderTab).toHaveCSS('color', 'rgb(23, 32, 51)');
   await expect(placeholderTab).toHaveCSS('min-height', '32px');
   const placeholderGeometry = await placeholderTab.evaluate((tab) => {
     const header = tab.closest('.workbench-header')!.getBoundingClientRect();
@@ -966,15 +991,18 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     .locator('.workspace-tree')
     .getByRole('button', { name: 'project', exact: true })
     .click();
-  await expect(page).toHaveTitle('MyAgentRoam - project');
+  await expect(page).toHaveTitle(consoleTitle);
   await expect(page.getByRole('heading', { name: '新建会话' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '新建会话' })).toHaveCSS('font-weight', '500');
   await expect(page.getByRole('heading', { name: '会话', exact: true })).toHaveCSS(
     'font-weight',
     '500'
   );
-  await expect(page.getByRole('heading', { name: '文件与更改' })).toHaveCSS('font-weight', '500');
-  await expect(page.getByRole('heading', { name: '文件与更改' })).toHaveCSS('font-size', '13px');
+  const filesTab = page
+    .getByRole('tablist', { name: '工作区工具和会话' })
+    .getByRole('tab', { name: '文件', exact: true });
+  await expect(filesTab).toHaveCSS('font-weight', '500');
+  await expect(filesTab).toHaveCSS('font-size', '12px');
   await expect(page.getByRole('heading', { name: '选择一个会话' })).toHaveCount(0);
 
   const branchTag = page.locator('.session-heading-meta .workspace-branch-tag');
@@ -984,10 +1012,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.locator('.workspace-grid')).toHaveCSS('border-radius', '0px');
   await expect(page.locator('.workbench-header .workspace-tabs')).toHaveCSS('min-height', '0px');
   await expect(page.locator('.workspace-grid')).toHaveCSS('border-top-width', '0px');
-  await expect(page.locator('.workspace-grid')).toHaveCSS(
-    'border-bottom-color',
-    'rgb(220, 227, 234)'
-  );
+  await expect(page.locator('.workspace-grid')).toHaveCSS('border-bottom-width', '0px');
   await expect(page.locator('.workspace-tab.active small')).toHaveText('开发节点');
   await expect(page.locator('.workspace-tab.active > button').first()).toHaveCSS(
     'cursor',
@@ -995,8 +1020,8 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   );
   await expect(page.locator('.workspace-tab.active .tab-close')).toHaveCSS('cursor', 'pointer');
   await expect(page.locator('.new-session-button')).toHaveCSS('justify-content', 'flex-start');
-  await expect(page.locator('.new-session-button')).toHaveCSS('height', '32px');
-  await expect(page.locator('.session-link').first()).toHaveCSS('min-height', '34px');
+  await expect(page.locator('.new-session-button')).toHaveCSS('height', '26px');
+  await expect(page.locator('.session-link').first()).toHaveCSS('min-height', '32px');
   const searchSessionsButton = page.getByRole('button', { name: '刷新当前工作区会话' });
   await expect(searchSessionsButton).toHaveCSS('height', '26px');
   await expect(searchSessionsButton).toHaveAttribute('type', 'submit');
@@ -1035,8 +1060,8 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.getByLabel('选择中断上传的原文件')).toBeHidden();
   expect(
     await page.locator('.workbench').evaluate((element) => element.getBoundingClientRect().top)
-  ).toBe(0);
-  await expect(page.getByRole('heading', { name: '文件与更改' })).toBeVisible();
+  ).toBe(9);
+  await expect(filesTab).toBeVisible();
   await expect(page.getByRole('button', { name: '返回上级', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '返回根目录' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '搜索文件' })).toHaveCount(0);
@@ -1064,7 +1089,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(openedExplorerEntry).toHaveAttribute('aria-selected', 'true');
   const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
   await expect(preview).toBeVisible();
-  await expect(preview).toHaveCSS('position', 'static');
+  await expect(preview).toHaveCSS('position', 'fixed');
   await expect(page.getByText('export const answer = 42;')).toBeVisible();
   await expect(preview.locator('.cm-gutterElement').filter({ hasText: '1' })).toBeVisible();
   await expect(preview.locator('.cm-content')).toContainText('export const answer = 42;');
@@ -1086,22 +1111,21 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     });
   await page.keyboard.press('Escape');
   await expect(preview).toHaveCount(0);
-  const managedStatus = page.locator('.mar-session-activity.running');
+  const managedStatus = page.locator('.session-list .mar-session-activity.running');
   await expect(managedStatus).toHaveCount(1);
-  await expect(managedStatus.first()).toHaveAttribute('role', 'img');
-  await expect(managedStatus.first()).toHaveAttribute('aria-label', '运行中');
-  await expect(managedStatus.first()).not.toHaveAttribute('title');
-  await expect(managedStatus.first()).toHaveText('');
-  await expect(managedStatus.first().locator('i')).toHaveCSS(
-    'background-color',
-    'rgb(23, 128, 61)'
-  );
-  const existingSession = page.locator('.session-list button').first();
+  await expect(managedStatus).toHaveAttribute('role', 'img');
+  await expect(managedStatus).toHaveAttribute('aria-label', '运行中');
+  await expect(managedStatus).not.toHaveAttribute('title');
+  await expect(managedStatus).toHaveText('');
+  await expect(managedStatus.locator('i')).toHaveCSS('background-color', 'rgb(6, 117, 81)');
+  const existingSession = page.locator('.session-list .session-link').first();
   const existingSessionTitle =
     (await existingSession.locator('strong').textContent())?.trim() ?? '';
   await existingSession.click();
   const conversationHeader = page.locator('.conversation-header');
-  await expect(conversationHeader.getByRole('heading')).toHaveText(existingSessionTitle);
+  await expect(
+    conversationHeader.getByRole('heading', { name: existingSessionTitle, exact: true })
+  ).toBeVisible();
   await expect(page.locator('.conversation-title-runner-icon')).toHaveAttribute(
     'data-runner',
     'codex'
@@ -1112,17 +1136,24 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await conversationTitle.click();
   await expect(page.getByRole('menuitem', { name: '复制会话 ID' })).toBeVisible();
   await conversationTitle.click();
-  await expect(managedStatus).toHaveCount(2);
+  await expect(managedStatus).toHaveCount(1);
+  await expect(conversationHeader.locator('.mar-session-activity')).toHaveCount(0);
+  const composerActivity = page.locator('.composer-working');
+  await expect(composerActivity).toHaveCSS('color', 'rgb(7, 95, 199)');
+  await expect(composerActivity.getByRole('status')).toHaveText('等待你的确认');
+  await expect(composerActivity.locator('.composer-busy-indicator')).toHaveCount(0);
+  await expect(composerActivity.locator('.composer-elapsed')).toHaveCount(0);
   await expect(page.locator('.session-link-content').first()).toHaveCSS('display', 'grid');
-  await expect(page.locator('.session-link').first()).toHaveCSS('min-height', '34px');
+  await expect(page.locator('.session-link').first()).toHaveCSS('min-height', '32px');
   await expect(page.locator('.session-list .session-link').first()).toHaveCSS('cursor', 'pointer');
   const firstSessionTitle = page.locator('.session-link-content strong').first();
-  await expect(firstSessionTitle).toHaveAttribute('title', existingSessionTitle);
+  await expect(firstSessionTitle).toHaveText(existingSessionTitle);
   await expect(firstSessionTitle).toHaveCSS('text-overflow', 'ellipsis');
+  await existingSession.hover();
+  const tooltip = page.locator('.mar-tooltip[role="tooltip"]:visible');
+  await expect(tooltip).toHaveText(existingSessionTitle);
   await conversationHeader.locator('.conversation-title-text').hover();
-  await expect(page.locator('.mar-tooltip[role="tooltip"]:visible')).toHaveText(
-    existingSessionTitle
-  );
+  await expect(tooltip).toHaveText(existingSessionTitle);
   await expect(page.locator('.session-title-row .mar-runner-brand-icon')).toHaveAttribute(
     'data-runner',
     'codex'
@@ -1146,7 +1177,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.locator('.agent-markdown').filter({ hasText: '正在同步对话' })).toHaveCount(1);
   await expect(page.locator('.conversation-item.assistant_message').first()).toHaveCSS(
     'border-radius',
-    '8px'
+    '12px'
   );
   await expect(page.locator('.conversation-item.assistant_message').first()).toHaveCSS(
     'box-shadow',
@@ -1161,16 +1192,17 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     .toBe(true);
   await expect(page.locator('.conversation-item.tool_call').first()).toHaveCSS(
     'background-color',
-    'rgb(246, 248, 250)'
+    'rgba(0, 0, 0, 0)'
   );
-  await expect(page.locator('.composer-model-effort-select input')).toBeVisible();
+  await expect(page.getByRole('combobox', { name: '模型与思考强度' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: '权限' })).toBeVisible();
-  await expect(page.locator('.composer-shell')).toHaveCSS('border-radius', '8px');
+  await expect(page.locator('.composer-shell')).toHaveCSS('border-radius', '12px');
   await expect(page.locator('.composer-shell .composer-input')).toHaveCSS('min-height', '96px');
-  await expect(page.locator('.composer-working')).toHaveText(/运行中 · \d+s/);
   await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
   await expect(page.getByRole('button', { name: '停止运行' })).toHaveCSS('cursor', 'pointer');
   await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);
+  // Narrow composers intentionally hide the shortcut hint.
+  await page.setViewportSize({ width: 1920, height: 1000 });
   await expect(page.getByText('Enter 排队 · Ctrl + Enter 插入消息', { exact: true })).toBeVisible();
   await expect(page.getByText('<img src=x onerror=alert(1)>')).toHaveCount(0);
   await expect(page.locator('.conversation-scroll img')).toHaveCount(0);
@@ -1181,21 +1213,6 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.getByText('git status', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '允许' })).toBeVisible();
 
-  await page.getByRole('textbox', { name: '输入消息' }).focus();
-  const interruptResponse = page.waitForResponse((response) =>
-    response.url().includes('/interrupt')
-  );
-  await page.keyboard.press('Escape');
-  await interruptResponse;
-  await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '暂停消息队列' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);
-
-  const composer = page.getByRole('textbox', { name: '输入消息' });
-  await composer.fill('insert safely');
-  const queuedResponse = page.waitForResponse((response) => response.url().includes('/messages'));
-  await composer.press('Enter');
-  await queuedResponse;
   const decisionResponse = page.waitForResponse((response) => response.url().includes('/decision'));
   await page.getByRole('button', { name: '允许' }).click();
   await decisionResponse;
@@ -1222,6 +1239,22 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     page.locator('.conversation-item.approval_request').filter({ hasText: 'pwd' })
   ).toContainText('已允许');
   await expect(page.getByRole('button', { name: '允许' })).toHaveCount(0);
+
+  const composer = page.getByRole('textbox', { name: '输入消息' });
+  await composer.fill('insert safely');
+  const queuedResponse = page.waitForResponse((response) => response.url().includes('/messages'));
+  await composer.press('Enter');
+  await queuedResponse;
+
+  await composer.focus();
+  const interruptResponse = page.waitForResponse((response) =>
+    response.url().includes('/interrupt')
+  );
+  await page.keyboard.press('Escape');
+  await interruptResponse;
+  await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '暂停消息队列' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);
   expect(writes).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ url: expect.stringContaining('/messages'), csrf: 'csrf-1' }),

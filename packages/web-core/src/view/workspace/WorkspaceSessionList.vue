@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import '../session/runner-brand-icon.css';
 import '../session/session-markers.css';
-import '../session/session-create-button.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -406,7 +405,7 @@ function submitSessionSearch(): void {
     </form>
     <div class="new-session-form">
       <MarButton
-        class="new-session-button mar-soft-button"
+        class="new-session-button"
         icon="session-add"
         :disabled="!nodeReady"
         @click="emit('create')"
@@ -861,6 +860,7 @@ function submitSessionSearch(): void {
 .new-session-button {
   flex: 1;
   min-width: 0;
+  justify-content: flex-start;
 }
 
 .session-search {
@@ -1096,11 +1096,11 @@ function submitSessionSearch(): void {
 }
 
 .session-list li.drag-over-pinned {
-  box-shadow: inset 0 2px var(--mar-color-brand);
+  box-shadow: inset 0 2px var(--mar-control-focus);
 }
 
 .session-list li.drag-over-pinned-after {
-  box-shadow: inset 0 -2px var(--mar-color-brand);
+  box-shadow: inset 0 -2px var(--mar-control-focus);
 }
 
 @media (max-width: 767px) {

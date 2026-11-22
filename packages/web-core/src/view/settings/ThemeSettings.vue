@@ -67,7 +67,7 @@ const swatchTokens = [
   '--mar-bg-page',
   '--mar-bg-panel',
   '--mar-text-primary',
-  '--mar-color-brand',
+  '--mar-control-primary-bg',
   '--mar-color-accent'
 ];
 const themeOptions = computed<Array<ThemeRow & { colors: Record<string, string> }>>(() =>
@@ -505,7 +505,7 @@ h3 {
   background: transparent;
 }
 .theme-choice:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 .theme-swatches {

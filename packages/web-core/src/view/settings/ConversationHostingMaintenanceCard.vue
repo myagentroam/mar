@@ -559,7 +559,7 @@ onBeforeUnmount(() => {
   line-height: 1.5;
 }
 .hosting-maintenance-eyebrow {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -683,7 +683,7 @@ onBeforeUnmount(() => {
   padding: 10px 12px;
   border-radius: var(--mar-radius-control);
   color: var(--mar-text-secondary);
-  background: color-mix(in srgb, var(--mar-color-brand-text) 8%, var(--mar-bg-panel));
+  background: color-mix(in srgb, var(--mar-text-secondary) 8%, var(--mar-bg-panel));
 }
 .cleanup-result strong {
   color: var(--mar-text-primary);

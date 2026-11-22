@@ -224,6 +224,7 @@ export const workbenchShellZhCN = {
     scrollNext: '向右浏览工作区标签',
     allOpenWorkspaces: '全部已打开工作区',
     running: '工作区有正在运行的任务',
+    transitioning: '工作区有正在启动或停止的任务',
     unread: '未读',
     unreadDescription: '工作区有未读会话通知',
     directAvailable: '点对点直连可用',

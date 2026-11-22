@@ -82,10 +82,10 @@ const summary = computed(() => composerReferenceLabel(props.reference));
   align-items: stretch;
   min-width: 0;
   max-width: min(18rem, 100%);
-  border: 1px solid var(--mar-color-brand);
+  border: 1px solid var(--mar-border-default);
   border-radius: 999px;
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-soft);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);
 }
 .composer-quote-tag > :deep(.mar-ui-popover__reference) {
@@ -115,7 +115,7 @@ const summary = computed(() => composerReferenceLabel(props.reference));
   flex-shrink: 0;
 }
 .quote-tag-remove {
-  --mar-action-hover-color: var(--mar-color-brand-text);
+  --mar-action-hover-color: var(--mar-text-primary);
   border-radius: var(--mar-radius-control);
   padding-inline: 0.25rem;
   margin-right: 0.2rem;

@@ -88,7 +88,7 @@ input {
 .mar-ui-checkbox__check {
   display: none;
   grid-area: 1 / 1;
-  color: var(--mar-ui-color-on-accent);
+  color: var(--mar-ui-control-primary-fg);
   pointer-events: none;
 }
 label {
@@ -107,7 +107,7 @@ input:disabled,
   cursor: not-allowed;
 }
 input:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: 2px;
 }
 @media (forced-colors: none) {
@@ -122,8 +122,8 @@ input:focus-visible {
     border-color: var(--mar-ui-input-border-hover);
   }
   input:checked {
-    border-color: var(--mar-ui-color-brand);
-    background: var(--mar-ui-color-brand);
+    border-color: var(--mar-ui-control-primary-bg);
+    background: var(--mar-ui-control-primary-bg);
   }
   input:checked + .mar-ui-checkbox__check {
     display: block;

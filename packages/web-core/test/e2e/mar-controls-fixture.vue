@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { provide, ref } from 'vue';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarCheckbox, MarCheckboxGroup } from '@myagentroam/mar-ui/checkbox';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
@@ -36,6 +37,8 @@ const changes = ref(0);
 const timeChanges = ref(0);
 const expiration = ref<Date | null>(null);
 const showCommandMenu = new URLSearchParams(location.search).has('command-menu');
+const showButtonRow = new URLSearchParams(location.search).has('button-row');
+const actionsBusy = ref(false);
 const organizations = [
   {
     value: 1,
@@ -51,6 +54,24 @@ const organizations = [
 <template>
   <article>
     <h1>MAR controls</h1>
+    <section v-if="showButtonRow" aria-label="Standard actions">
+      <div>
+        <MarButton :loading="actionsBusy">Cancel</MarButton>
+        <MarButton type="primary" icon="plus" :loading="actionsBusy">Create</MarButton>
+        <MarButton tag="a" href="#action-destination" icon="external-link">Open</MarButton>
+        <MarButton icon="refresh" aria-label="Refresh" :loading="actionsBusy" circle text />
+        <MarButton
+          tag="a"
+          href="#action-destination"
+          icon="external-link"
+          aria-label="Open destination"
+          :loading="actionsBusy"
+          circle
+          text
+        />
+      </div>
+      <button @click="actionsBusy = !actionsBusy">Toggle busy</button>
+    </section>
     <div
       v-if="showCommandMenu"
       style="position: fixed; inset-block-start: 16px; inset-inline-end: 8px"

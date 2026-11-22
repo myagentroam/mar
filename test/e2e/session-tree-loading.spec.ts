@@ -53,7 +53,7 @@ async function expectUnmaskedLoading(
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS(
     'border-top-color',
-    theme === 'dark' ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)'
+    theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(203, 214, 228)'
   );
   await expect(popover).toHaveCSS('box-shadow', /0px 10px 24px/u);
   const loadingSurface = await popover.evaluate((element) => {
@@ -127,7 +127,7 @@ test('the teleported tree follows a custom floating surface and outline', async 
       const line = getComputedStyle(element, '::before');
       return { color: line.backgroundColor, height: line.height };
     })
-  ).toEqual({ color: 'rgb(47, 57, 73)', height: '1px' });
+  ).toEqual({ color: 'rgb(52, 52, 52)', height: '1px' });
 });
 
 test('preserves Node sibling order for 100 returned rows, including an active idle branch', async ({

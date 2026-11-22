@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import '../session/session-markers.css';
-import '../session/session-create-button.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -597,6 +596,14 @@ function conversationKey(conversation: Pick<HostedConversationSummary, 'nodeId' 
   return `${conversation.nodeId}\0${conversation.id}`;
 }
 
+function historyActivityLabel(
+  status: HostedConversationSummary['activity']['status']
+): string | undefined {
+  return status === 'IDLE'
+    ? undefined
+    : translate(`workbenchNotificationCenter.runStatus.${status}`);
+}
+
 function conversationActionsVisible(key: string): boolean {
   return (
     hoveredConversationKey.value === key ||
@@ -1048,11 +1055,7 @@ onBeforeUnmount(() => {
             @click="refreshDirectory"
           />
         </div>
-        <MarButton
-          class="history-create-button mar-soft-button"
-          icon="session-add"
-          @click="beginNewConversation"
-        >
+        <MarButton class="history-create-button" icon="session-add" @click="beginNewConversation">
           {{ translate('hostedConversations.create') }}
         </MarButton>
       </div>
@@ -1111,6 +1114,7 @@ onBeforeUnmount(() => {
                 ? 'page'
                 : undefined
             "
+            :aria-description="historyActivityLabel(conversation.activity.status)"
             @click="openConversationFromList(conversation)"
           >
             <span class="history-title-row mar-session-list-title">
@@ -1123,10 +1127,13 @@ onBeforeUnmount(() => {
                 :aria-label="translate('hostedConversations.pinnedLabel')"
               />
               <span
-                v-if="workspace.conversationIsRunning(conversation)"
-                class="history-run-indicator"
+                v-if="workspace.conversationHasActiveRun(conversation)"
+                v-tooltip="historyActivityLabel(conversation.activity.status)"
+                class="history-run-indicator mar-session-activity"
+                :class="{ running: conversation.activity.status === 'RUNNING' }"
                 aria-hidden="true"
-              ></span>
+                ><i
+              /></span>
               <span
                 v-if="hasUnreadConversation(conversation.nodeId, conversation.id)"
                 class="history-unread-label mar-unread-label"
@@ -1594,6 +1601,7 @@ onBeforeUnmount(() => {
 
 .history-create-button {
   width: 100%;
+  justify-content: flex-start;
 }
 
 .history-search-row {
@@ -1710,18 +1718,6 @@ onBeforeUnmount(() => {
   flex: none;
 }
 
-.history-run-indicator {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
-}
-
-.history-run-indicator {
-  background: var(--mar-color-success-text);
-  box-shadow: 0 0 0 2px var(--mar-color-success-bg);
-}
-
 .history-row-actions {
   position: absolute;
   top: 50%;
@@ -1808,7 +1804,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-empty > .mar-icon {
-  color: var(--mar-color-brand);
+  color: var(--mar-text-secondary);
   font-size: 34px;
 }
 
@@ -1886,9 +1882,9 @@ onBeforeUnmount(() => {
 
 .files-drop-target.active,
 .hosted-conversation-files.is-file-dragging .files-drop-target {
-  border-color: var(--mar-color-brand-border);
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
+  border-color: var(--mar-border-medium);
+  background: var(--mar-fill-soft);
+  color: var(--mar-text-primary);
 }
 
 .files-drop-target.disabled {

@@ -4,6 +4,7 @@ import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import '../../styles/code-syntax-theme.css';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import {
@@ -1068,7 +1069,7 @@ defineExpose({
                 >
                 <code
                   v-if="navigationPreviewHtml(target)"
-                  class="file-navigation-preview hljs"
+                  class="file-navigation-preview mar-code-syntax hljs"
                   v-html="navigationPreviewHtml(target)"
                 />
               </button>
@@ -1089,7 +1090,7 @@ defineExpose({
                 ><small>{{ target.line }} · {{ target.column }}</small>
                 <code
                   v-if="navigationPreviewHtml(target)"
-                  class="file-navigation-preview hljs"
+                  class="file-navigation-preview mar-code-syntax hljs"
                   v-html="navigationPreviewHtml(target)"
                 />
               </button>
@@ -1113,7 +1114,7 @@ defineExpose({
                 >
                 <code
                   v-if="navigationPreviewHtml(target)"
-                  class="file-navigation-preview hljs"
+                  class="file-navigation-preview mar-code-syntax hljs"
                   v-html="navigationPreviewHtml(target)"
                 />
               </button>
@@ -1319,7 +1320,7 @@ defineExpose({
 }
 
 .file-navigation-group.is-definition .file-navigation-option {
-  border-inline-start: 2px solid var(--mar-color-brand);
+  border-inline-start: 2px solid var(--mar-border-medium);
 }
 
 .file-navigation-group.is-reference .file-navigation-option {

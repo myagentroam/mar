@@ -2,6 +2,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/styles.css
+// @test-covers packages/mar-ui/components/dialog/MarDialog.vue
+// @test-covers packages/mar-ui/components/table/MarTable.vue
+// @test-covers packages/web-core/src/view/settings/ResourceManagementPanel.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/dialog-layout.html');
@@ -94,6 +97,136 @@ const viewports = [
 async function visit(page: Page, kind: string, theme = 'daylight'): Promise<void> {
   await page.goto(`${fixture.url}dialog-layout.html?kind=${kind}&theme=${theme}`);
 }
+
+test('Node management aligns filter typography and keeps rows compact without shrinking actions', async ({
+  page
+}, testInfo) => {
+  for (const [width, theme] of [
+    [1280, 'daylight'],
+    [390, 'vscode-dark-2026']
+  ] as const) {
+    await page.setViewportSize({ width, height: 720 });
+    await visit(page, 'node-registration', theme);
+    const keyword = page.getByPlaceholder('Name or ID');
+    const status = page.getByRole('combobox', { name: 'Status:', exact: true });
+    await expect(keyword).toBeVisible();
+    const selectSize = await status.evaluate((control) => getComputedStyle(control).fontSize);
+    const typography = await keyword.evaluate((input) => {
+      const text = getComputedStyle(input);
+      const placeholder = getComputedStyle(input, '::placeholder');
+      return {
+        textSize: text.fontSize,
+        placeholderSize: placeholder.fontSize,
+        textWeight: text.fontWeight,
+        placeholderWeight: placeholder.fontWeight,
+        differentColors: placeholder.color !== text.color
+      };
+    });
+    expect.soft(typography).toEqual({
+      textSize: selectSize,
+      placeholderSize: selectSize,
+      textWeight: '400',
+      placeholderWeight: '400',
+      differentColors: true
+    });
+
+    const table = page.getByRole('table');
+    const row = table.getByRole('row').filter({ has: page.getByText('Online', { exact: true }) });
+    const nameHeader = table.getByRole('columnheader', { name: 'Node Name' });
+    const sort = nameHeader.getByRole('button');
+    const edit = row.getByRole('button', { name: 'Edit', exact: true });
+    await expect(row).toBeVisible();
+    const compact = await status.evaluate((control) => control.getBoundingClientRect().height);
+    // The ownership heading can wrap to two lines at both widths.
+    expect.soft((await nameHeader.boundingBox())!.height).toBeLessThanOrEqual(compact + 25);
+    expect.soft((await row.boundingBox())!.height).toBeLessThanOrEqual(compact + 14);
+    expect((await sort.boundingBox())!.height).toBeGreaterThanOrEqual(24);
+    expect((await edit.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
+    const bodySize = await table.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue('--mar-ui-font-size-body').trim()
+    );
+    await expect(row.getByRole('cell', { name: 'Node', exact: true })).toHaveCSS(
+      'font-size',
+      bodySize
+    );
+    await page.screenshot({ path: testInfo.outputPath(`node-management-density-${width}.png`) });
+
+    await edit.click();
+    if (width === 390) {
+      // Clicking the action column scrolls the table viewport, not the whole page.
+      const { tableOffset, pageOffset } = await table.evaluate((element) => ({
+        tableOffset: element.parentElement!.scrollLeft,
+        pageOffset: window.scrollX
+      }));
+      expect(tableOffset).toBeGreaterThan(0);
+      expect(pageOffset).toBe(0);
+    }
+    const editor = page
+      .getByRole('dialog', { name: 'Edit Node' })
+      .getByRole('textbox', { name: 'Node Name', exact: true });
+    await expect(editor).toHaveValue('Node');
+    const resolvedEditSize = await editor.evaluate(
+      (input) => getComputedStyle(input, '::placeholder').fontSize
+    );
+    await expect(editor).toHaveCSS('font-size', resolvedEditSize);
+    expect(parseFloat(resolvedEditSize)).toBeGreaterThan(parseFloat(selectSize));
+  }
+});
+
+test('Node registration uses text-only footer actions and wraps them without overflow', async ({
+  page
+}, testInfo) => {
+  for (const [width, theme] of [
+    [1280, 'daylight'],
+    [390, 'vscode-dark-2026'],
+    [320, 'vscode-dark-2026']
+  ] as const) {
+    await page.setViewportSize({ width, height: 720 });
+    await visit(page, 'node-registration', theme);
+    const register = page.getByRole('button', { name: 'Register Node', exact: true });
+    const toolbar = page.locator('.mar-table-actions').filter({ has: register });
+    await expect(register).toBeVisible();
+    const registerBox = (await register.boundingBox())!;
+    for (const name of ['Refresh', 'Register Node', 'Push all']) {
+      const action = toolbar.getByRole('button', { name, exact: true });
+      const fontSize = await action.evaluate((button) => getComputedStyle(button).fontSize);
+      await expect(action.locator('[data-mar-icon]')).toHaveCSS('height', fontSize);
+      const box = (await action.boundingBox())!;
+      expect(box.height).toBeCloseTo(registerBox.height, 0);
+      if (width !== 320) expect(box.y).toBeCloseTo(registerBox.y, 0);
+    }
+    await toolbar.screenshot({ path: testInfo.outputPath(`node-actions-${width}.png`) });
+    if (width === 320) {
+      await page.addStyleTag({
+        content: '.mar-ui-dialog__footer { --mar-ui-font-size-meta: 18px; }'
+      });
+    }
+    await register.click();
+    const dialog = page.getByRole('dialog', { name: 'Register Node' });
+    await expectBounded(dialog);
+    const footer = dialog.locator('.mar-ui-dialog__footer');
+    const close = footer.getByRole('button', { name: 'Close', exact: true });
+    const create = footer.getByRole('button', { name: 'Create registration key' });
+    await expect(close.locator('[data-mar-icon]')).toHaveCount(0);
+    await expect(create.locator('[data-mar-icon]')).toHaveCount(0);
+    const footerBox = (await footer.boundingBox())!;
+    const closeBox = (await close.boundingBox())!;
+    const createBox = (await create.boundingBox())!;
+    expect(createBox.x + createBox.width).toBeCloseTo(footerBox.x + footerBox.width, 0);
+    expect(createBox.x).toBeGreaterThanOrEqual(footerBox.x - 1);
+    if (width === 320) {
+      expect(closeBox.x + closeBox.width).toBeCloseTo(footerBox.x + footerBox.width, 0);
+      expect(createBox.y - closeBox.y - closeBox.height).toBeCloseTo(8, 0);
+    } else {
+      expect(createBox.height).toBeCloseTo(closeBox.height, 0);
+      expect(createBox.y).toBeCloseTo(closeBox.y, 0);
+      expect(createBox.x - closeBox.x - closeBox.width).toBeCloseTo(8, 0);
+    }
+    await dialog.screenshot({ path: testInfo.outputPath(`node-registration-${width}.png`) });
+    await close.click();
+    await expect(dialog).toBeHidden();
+  }
+});
 
 for (const [kind, title] of [
   ['short', 'Content dialog'],
@@ -598,6 +731,10 @@ test('Long MessageBox confirmation scrolls its content without moving the action
     await expectBounded(dialog);
     const buttons = dialog.locator('.mar-ui-dialog__footer');
     const top = (await buttons.boundingBox())!.y;
+    const cancel = (await buttons.getByRole('button', { name: 'Cancel' }).boundingBox())!;
+    const confirm = (await buttons.getByRole('button', { name: 'Confirm' }).boundingBox())!;
+    expect(confirm.y).toBeCloseTo(cancel.y, 0);
+    expect(confirm.x - cancel.x - cancel.width).toBeCloseTo(8, 0);
     await expectScrollableBody(dialog, '.mar-ui-dialog__body');
     expect((await buttons.boundingBox())!.y).toBeCloseTo(top, 0);
     await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();

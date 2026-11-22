@@ -493,7 +493,7 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .brand-home-link:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 
@@ -574,11 +574,11 @@ function runBlankMenuCommand(command: string): void {
 .activity-rail nav button.active:not(:disabled),
 .activity-rail-footer :deep(button.nav-menu-button[aria-expanded='true']:not(:disabled)) {
   background: var(--mar-fill-selection);
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 
 .activity-rail :deep(button.nav-menu-button:focus-visible) {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-text-muted);
   outline-offset: -2px;
 }
 
@@ -730,7 +730,7 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .settings-nav button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-text-muted);
   outline-offset: -2px;
 }
 
@@ -849,13 +849,6 @@ function runBlankMenuCommand(command: string): void {
     background: var(--mar-fill-row-hover);
     color: var(--mar-text-primary);
     text-decoration: none;
-  }
-}
-
-@media (max-width: 767px) {
-  .activity-rail nav button.active:not(:disabled) {
-    background: var(--mar-fill-selection);
-    color: var(--mar-color-brand-text);
   }
 }
 

@@ -1074,7 +1074,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .workspace-group.drop-target > .workspace-group-toggle,
 .workspace-branches > li.drop-target:not(.workspace-group) {
-  background: var(--mar-color-brand-selected);
+  background: var(--mar-fill-selection);
 }
 
 .workspace-group-toggle .tree-chevron {
@@ -1364,18 +1364,18 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .tree-node-row.drop-target,
 .tree-node-row.drop-target:hover {
-  --mar-icon-status-surface: var(--mar-color-brand-selected);
-  background: var(--mar-color-brand-selected);
+  --mar-icon-status-surface: var(--mar-fill-selection);
+  background: var(--mar-fill-selection);
 }
 
 .tree-node-row.drop-before,
 .workspace-branches > li.drop-before {
-  box-shadow: inset 0 2px var(--mar-color-brand);
+  box-shadow: inset 0 2px var(--mar-control-focus);
 }
 
 .tree-node-row.drop-after,
 .workspace-branches > li.drop-after {
-  box-shadow: inset 0 -2px var(--mar-color-brand);
+  box-shadow: inset 0 -2px var(--mar-control-focus);
 }
 
 .tree-node-row:hover {
@@ -1428,7 +1428,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .node-expand-button:focus-visible,
 .workspace-group-toggle:focus-visible,
 .workspace-branch-button:focus-visible {
-  outline: 1px solid var(--mar-color-brand);
+  outline: 1px solid var(--mar-control-focus);
   outline-offset: -1px;
 }
 

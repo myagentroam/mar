@@ -1386,16 +1386,16 @@ describe('Web Workbench notification state', () => {
   });
 
   it.each([
-    ['STARTING', true],
-    ['RUNNING', true],
-    ['CANCELLING', true],
-    ['SUCCEEDED', false],
-    ['FAILED', false],
-    ['CANCELLED', false],
-    ['INTERRUPTED', false]
+    ['STARTING', 'transitioning'],
+    ['RUNNING', 'running'],
+    ['CANCELLING', 'transitioning'],
+    ['SUCCEEDED', undefined],
+    ['FAILED', undefined],
+    ['CANCELLED', undefined],
+    ['INTERRUPTED', undefined]
   ] as const)(
     'queries Workspace activity from the full recent-task list: %s',
-    async (status, active) => {
+    async (status, activity) => {
       const request = vi.fn().mockResolvedValue({
         notifications: [],
         recentRuns: [
@@ -1407,12 +1407,12 @@ describe('Web Workbench notification state', () => {
       const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
         request: request as never
       });
-      expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(false);
+      expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBeUndefined();
       await state.load();
-      expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(active);
-      expect(state.hasActiveWorkspaceRun('node-2', 'workspace-1')).toBe(true);
-      expect(state.hasActiveWorkspaceRun('node-1', 'workspace-2')).toBe(true);
-      expect(state.hasActiveWorkspaceRun('node-2', 'workspace-2')).toBe(false);
+      expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBe(activity);
+      expect(state.workspaceRunActivity('node-2', 'workspace-1')).toBe('running');
+      expect(state.workspaceRunActivity('node-1', 'workspace-2')).toBe('running');
+      expect(state.workspaceRunActivity('node-2', 'workspace-2')).toBeUndefined();
     }
   );
 
@@ -1505,13 +1505,13 @@ describe('Web Workbench notification state', () => {
       request: request as never
     });
     await state.load();
-    expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBe('running');
     expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
     recentRuns = recentRuns.map((run) =>
       run.sessionId === 'first-session' ? { ...run, status: 'SUCCEEDED' as const } : run
     );
     await state.load();
-    expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBe('transitioning');
     expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
     recentRuns = [];
     await state.load();
@@ -1569,7 +1569,7 @@ describe('Web Workbench notification state', () => {
       request: request as never
     });
     await state.load();
-    expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBe('running');
     expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
     state.markSessionRead('node-1', 'workspace-1', 'session-1');
     await vi.waitFor(() =>
@@ -1578,11 +1578,11 @@ describe('Web Workbench notification state', () => {
     expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
     state.markSessionRead('node-1', 'workspace-1', 'session-2');
     await vi.waitFor(() => expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(false));
-    expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBe('running');
     runs = [{ ...workspaceRun('SUCCEEDED'), completedAt: 200 }, runs[1]!];
     state.projectServerMessage({ type: 'recent-run.updated', run: runs[0] });
     await state.load();
-    expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(true);
+    expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBe('running');
     runs = [];
     state.projectServerMessage({
       type: 'recent-run.removed',
@@ -1590,7 +1590,7 @@ describe('Web Workbench notification state', () => {
       runId: 'second-run'
     });
     await state.load();
-    expect(state.hasActiveWorkspaceRun('node-1', 'workspace-1')).toBe(false);
+    expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBeUndefined();
     expect(state.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(false);
   });
 

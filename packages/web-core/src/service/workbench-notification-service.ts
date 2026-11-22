@@ -96,6 +96,8 @@ export interface RecentRun {
   readonly version: number;
 }
 
+export type WorkspaceRunActivity = 'running' | 'transitioning';
+
 export type WorkbenchNotificationInput = (
   | Omit<
       Extract<LocalNotification, { kind: 'upload' }>,
@@ -123,7 +125,7 @@ export interface WorkbenchNotificationService {
   readonly systemNotifications: ReturnType<typeof createWorkbenchSystemNotificationService>;
   readonly recentRuns: Readonly<Ref<RecentRun[]>>;
   readonly snapshotState: Readonly<Ref<'loading' | 'ready' | 'failed'>>;
-  hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean;
+  workspaceRunActivity(nodeId: string, workspaceId: string): WorkspaceRunActivity | undefined;
   hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean;
   workspaceTabSession(nodeId: string, workspaceId: string): string | undefined;
   hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean;
@@ -836,13 +838,17 @@ export function createWorkbenchNotificationService(
     persist();
   }
 
-  function hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean {
-    return recentRuns.value.some(
-      (run) =>
-        run.nodeId === nodeId &&
-        run.workspaceId === workspaceId &&
-        activeRecentRunStatus(run.status)
-    );
+  function workspaceRunActivity(
+    nodeId: string,
+    workspaceId: string
+  ): WorkspaceRunActivity | undefined {
+    let activity: WorkspaceRunActivity | undefined;
+    for (const run of recentRuns.value) {
+      if (run.nodeId !== nodeId || run.workspaceId !== workspaceId) continue;
+      if (run.status === 'RUNNING') return 'running';
+      if (activeRecentRunStatus(run.status)) activity = 'transitioning';
+    }
+    return activity;
   }
 
   function hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean {
@@ -1085,7 +1091,7 @@ export function createWorkbenchNotificationService(
     webUpdatePreviewId,
     takeWebUpdatePreview,
     systemNotifications,
-    hasActiveWorkspaceRun,
+    workspaceRunActivity,
     hasUnreadWorkspace,
     workspaceTabSession: firstUnreadWorkspaceSession,
     hasUnreadSession,
@@ -1338,7 +1344,7 @@ export interface WorkbenchNotificationsView {
   markAllRead: () => void;
   remove: (id: string) => void;
   systemNotifications: ReturnType<typeof createWorkbenchNotificationService>['systemNotifications'];
-  hasActiveWorkspaceRun: (nodeId: string, workspaceId: string) => boolean;
+  workspaceRunActivity: WorkbenchNotificationService['workspaceRunActivity'];
   hasUnreadWorkspace: (nodeId: string, workspaceId: string) => boolean;
   hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
   hasUnreadConversation: (nodeId: string, conversationId: string) => boolean;

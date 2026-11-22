@@ -247,7 +247,7 @@ async function sendTest(): Promise<void> {
   margin: 0 0 14px;
   color: var(--mar-text-secondary);
   line-height: 1.55;
-  border-left: 2px solid var(--mar-color-brand);
+  border-left: 2px solid var(--mar-border-medium);
   padding-left: 12px;
 }
 .template-layout {
@@ -289,7 +289,7 @@ async function sendTest(): Promise<void> {
   background: var(--mar-fill-selection);
 }
 .template-choice:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 .template-choice__meta,

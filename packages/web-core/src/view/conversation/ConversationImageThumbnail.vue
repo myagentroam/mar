@@ -58,7 +58,7 @@ function unavailable(): void {
   cursor: pointer;
 }
 .conversation-user-image-button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 .conversation-user-image {
@@ -68,7 +68,7 @@ function unavailable(): void {
   height: auto;
   max-width: 160px;
   max-height: 120px;
-  border: 1px solid color-mix(in srgb, var(--mar-color-brand) 26%, transparent);
+  border: 1px solid var(--mar-conversation-border);
   border-radius: 6px;
 }
 .conversation-user-image-button.is-unavailable {
@@ -76,7 +76,7 @@ function unavailable(): void {
   min-height: 2.5rem;
   align-items: center;
   justify-content: center;
-  border: 1px dashed color-mix(in srgb, var(--mar-color-brand) 46%, transparent);
+  border: 1px dashed var(--mar-border-medium);
   color: var(--mar-text-secondary);
 }
 .conversation-image-fallback {

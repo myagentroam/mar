@@ -1,12 +1,100 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/mar-ui/components/button/MarButton.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/mar-controls.html');
 });
 test.afterAll(async () => {
   await fixture?.close();
+});
+
+test('Button-shaped links match native button geometry without a global box-sizing reset', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 720 });
+  await page.goto(`${fixture.url}mar-controls.html?theme=dark&button-row=1`);
+  // Restore the browser defaults only for the action roots to exercise MAR UI in isolation.
+  await page.addStyleTag({
+    content: `:where([aria-label="Standard actions"] .mar-ui-button) { box-sizing: revert; }`
+  });
+  const row = page.getByRole('region', { name: 'Standard actions' });
+  const button = row.getByRole('button', { name: 'Create', exact: true });
+  const link = row.getByRole('link', { name: 'Open', exact: true });
+  await expect(link).toBeVisible();
+  const action = (await button.boundingBox())!;
+  const navigation = (await link.boundingBox())!;
+  expect(navigation.height).toBeCloseTo(action.height, 0);
+  expect(navigation.y).toBeCloseTo(action.y, 0);
+  await link.press('Enter');
+  await expect(page).toHaveURL(/#action-destination$/u);
+});
+
+test('Standard actions with and without icons align outside a dialog, including while busy', async ({
+  page
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const [width, theme] of [
+    [1280, 'light'],
+    [390, 'dark']
+  ] as const) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(`${fixture.url}mar-controls.html?theme=${theme}&button-row=1`);
+    const row = page.getByRole('region', { name: 'Standard actions' });
+    const cancel = row.getByRole('button', { name: 'Cancel' });
+    const create = row.getByRole('button', { name: 'Create' });
+    const open = row.getByRole('link', { name: 'Open', exact: true });
+    const refresh = row.getByRole('button', { name: 'Refresh' });
+    const iconLink = row.getByRole('link', { name: 'Open destination' });
+    await expect(create).toBeVisible();
+    // Exercise both the default density and larger root-relative button padding.
+    for (const rootFontSize of ['', '20px']) {
+      await page.evaluate((size) => (document.documentElement.style.fontSize = size), rootFontSize);
+      const initial = (await cancel.boundingBox())!;
+      const labelSize = await create.evaluate((button) =>
+        parseFloat(getComputedStyle(button).fontSize)
+      );
+      expect((await open.locator('[data-mar-icon]').boundingBox())!.height).toBeCloseTo(
+        labelSize,
+        1
+      );
+      for (const busy of [false, true]) {
+        if (busy) {
+          await row.getByRole('button', { name: 'Toggle busy' }).click();
+          await expect(create).toHaveAttribute('aria-busy', 'true');
+          await expect(iconLink).not.toHaveAttribute('href');
+        }
+        for (const action of [refresh, iconLink]) {
+          await expect(action.locator('[data-mar-icon]')).toHaveCSS(
+            'height',
+            `${width < 768 ? 18 : labelSize}px`
+          );
+        }
+        const iconButton = (await create.boundingBox())!;
+        const textButton = (await cancel.boundingBox())!;
+        const icon = (await create.locator('[data-mar-icon]').boundingBox())!;
+        expect(icon.height, `${width}px viewport, busy: ${busy}`).toBeCloseTo(labelSize, 1);
+        expect(icon.width).toBeCloseTo(labelSize, 1);
+        if (busy) {
+          const spinner = (await cancel.locator('[data-mar-icon="loading-action"]').boundingBox())!;
+          expect(spinner.height).toBeCloseTo(labelSize, 1);
+          expect(spinner.y + spinner.height / 2).toBeCloseTo(
+            textButton.y + textButton.height / 2,
+            0
+          );
+        }
+        expect(iconButton.height).toBeCloseTo(initial.height, 0);
+        expect(iconButton.height).toBeCloseTo(textButton.height, 0);
+        expect(iconButton.y).toBeCloseTo(textButton.y, 0);
+        expect(textButton.height).toBeCloseTo(initial.height, 0);
+        expect(icon.y + icon.height / 2).toBeCloseTo(iconButton.y + iconButton.height / 2, 0);
+      }
+      await row.getByRole('button', { name: 'Toggle busy' }).click();
+      await expect(create).not.toHaveAttribute('aria-busy');
+    }
+    await row.screenshot({ path: testInfo.outputPath(`standard-actions-${width}.png`) });
+  }
 });
 
 for (const [theme, width] of [

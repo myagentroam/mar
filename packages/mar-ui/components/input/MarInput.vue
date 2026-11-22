@@ -361,7 +361,7 @@ defineExpose({
   box-shadow: 0 0 0 1px var(--mar-ui-input-border-hover) inset;
 }
 .mar-ui-input:has(> .mar-ui-input__body:focus-within) {
-  box-shadow: 0 0 0 1px var(--mar-ui-color-brand) inset;
+  box-shadow: 0 0 0 1px var(--mar-ui-control-focus) inset;
 }
 .mar-ui-input:is(.mar-ui-input--over-limit, :has(.mar-ui-input__field[aria-invalid='true'])) {
   box-shadow: 0 0 0 1px var(--mar-ui-control-color-danger) inset;
@@ -456,7 +456,7 @@ defineExpose({
   visibility: visible;
 }
 .mar-ui-input__action:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
 }
 .mar-ui-input__addon {
   display: inline-flex;

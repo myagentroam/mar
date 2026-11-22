@@ -424,7 +424,15 @@ defineExpose({ handleClose, panel });
 }
 .mar-ui-dialog__footer {
   flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
   text-align: end;
   padding-block-start: 16px;
+}
+.mar-ui-dialog__footer > :deep(.mar-ui-button + .mar-ui-button) {
+  margin-inline-start: 0;
 }
 </style>

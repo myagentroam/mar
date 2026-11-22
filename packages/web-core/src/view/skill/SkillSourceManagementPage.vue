@@ -566,7 +566,7 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.skillSourceManagementPage.sourceSkills')"
         name="source"
       >
-        <div class="source-search-bar">
+        <div class="source-search-bar mar-management-filter">
           <MarSelect
             :model-value="service.selectedSourceId.value"
             :aria-label="translate('generated.skillSourceManagementPage.selectASkillSource')"
@@ -676,7 +676,7 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.skillSourceManagementPage.catalogSkills')"
         name="catalog"
       >
-        <div class="catalog-filter-bar">
+        <div class="catalog-filter-bar mar-management-filter">
           <MarInput
             v-model="catalogQuery"
             clearable
@@ -1083,7 +1083,7 @@ function scopeLabel(scope: string): string {
   font-weight: 400;
 }
 .skill-category-strip button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 1px;
 }
 .form-hint {

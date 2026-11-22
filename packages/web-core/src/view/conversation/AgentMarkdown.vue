@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '@myagentroam/mar-ui/icon.css';
+import '../../styles/code-syntax-theme.css';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { computed, inject, onBeforeUnmount, onMounted, onUpdated, ref } from 'vue';
@@ -9,7 +10,6 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
-import '../../styles/code-syntax-theme.css';
 import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
@@ -362,7 +362,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(.agent-markdown-image:focus-visible) {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 
@@ -373,7 +373,7 @@ function onLinkClick(event: MouseEvent): void {
   height: auto;
   max-width: min(160px, 100%);
   max-height: 120px;
-  border: 1px solid color-mix(in srgb, var(--mar-color-brand) 26%, transparent);
+  border: 1px solid var(--mar-conversation-border);
   border-radius: 6px;
   object-fit: contain;
 }
@@ -437,15 +437,15 @@ function onLinkClick(event: MouseEvent): void {
 
 .agent-markdown :deep(.task-list-item input) {
   margin: 0 0.36rem 0 0;
-  accent-color: var(--mar-color-brand);
+  accent-color: var(--mar-control-primary-bg);
   pointer-events: none;
 }
 
 .agent-markdown :deep(blockquote) {
   margin: 0.8rem 0;
-  border-left: 3px solid color-mix(in srgb, var(--mar-color-brand) 45%, var(--mar-border-medium));
+  border-left: 3px solid var(--mar-border-medium);
   border-radius: 0 5px 5px 0;
-  background: color-mix(in srgb, var(--mar-color-brand) 4%, var(--mar-fill-subtle));
+  background: var(--mar-fill-subtle);
   color: var(--mar-text-primary);
   padding: 0.6rem 0.8rem;
 }
@@ -464,7 +464,7 @@ function onLinkClick(event: MouseEvent): void {
   max-width: 100%;
   overflow-x: auto;
   margin: 0.8rem 0;
-  border: 1px solid var(--mar-border-default);
+  border: 1px solid light-dark(var(--mar-border-default), var(--mar-conversation-process-border));
   border-radius: 6px;
   border-spacing: 0;
   border-collapse: separate;
@@ -473,7 +473,8 @@ function onLinkClick(event: MouseEvent): void {
 .agent-markdown :deep(th),
 .agent-markdown :deep(td) {
   min-width: 5.5rem;
-  border-bottom: 1px solid var(--mar-border-default);
+  border-bottom: 1px solid
+    light-dark(var(--mar-border-default), var(--mar-conversation-process-border));
   padding: 0.45rem 0.7rem;
   text-align: left;
   vertical-align: top;
@@ -482,7 +483,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(th) {
-  background: var(--mar-fill-muted);
+  background: light-dark(var(--mar-fill-muted), var(--mar-bg-chrome));
   color: var(--mar-text-primary);
   font-weight: 650;
 }
@@ -537,7 +538,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(a) {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-control-link-text);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -547,7 +548,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(a:focus-visible) {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 .agent-markdown :deep(.task-list-item label) {

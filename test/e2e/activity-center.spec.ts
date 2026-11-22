@@ -16,11 +16,11 @@ async function expectActivityElevation(popover: Locator, theme: string) {
   const dark = theme === 'vscode-dark-2026';
   await expect(popover).toBeVisible();
   const background = await popover.evaluate((element) => getComputedStyle(element).backgroundColor);
-  expect(resolvedColorToHex(background)).toBe(dark ? '#1a2230' : '#ffffff');
+  expect(resolvedColorToHex(background)).toBe(dark ? '#242424' : '#ffffff');
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS(
     'border-top-color',
-    dark ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)'
+    dark ? 'rgb(71, 71, 71)' : 'rgb(203, 214, 228)'
   );
   await expect(popover).toHaveCSS('border-top-left-radius', '12px');
   await expect(popover).toHaveCSS('box-shadow', /0px 10px 24px/u);
@@ -445,7 +445,7 @@ for (const width of [1280, 390]) {
           return getComputedStyle(probe).color;
         };
         const result = {
-          unread: color('--mar-color-brand'),
+          unread: color('--mar-text-secondary'),
           running: color('--mar-control-color-success'),
           page: color('--mar-bg-page'),
           chrome: color('--mar-bg-chrome'),
@@ -519,10 +519,11 @@ for (const width of [1280, 390]) {
         'aria-selected',
         'true'
       );
-      await expect(panel.locator('.activity-running-count')).toHaveText('运行中 1');
+      await expect(panel.locator('.activity-running-count')).toHaveText('活动任务：1');
       await expect(panel.locator('.session-state-badge')).toHaveCount(0);
       await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(30);
       const statuses = panel.locator('.recent-sessions-list .mar-ui-tag');
+      await expect(statuses.first()).toHaveText('运行中');
       await expect(statuses.first()).toHaveAttribute('data-type', 'success');
       await expect(statuses.first()).toHaveCSS('color', colors.runningText);
       await expect(statuses.nth(1)).toHaveAttribute('data-type', 'info');

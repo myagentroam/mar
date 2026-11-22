@@ -236,7 +236,7 @@ defineExpose({ open: openShare });
       <MarButton @click="shareOpen = false">{{
         translate('generated.resourceSharingPage.close4')
       }}</MarButton>
-      <MarButton type="primary" :icon="marIcon('share')" :disabled="!writable" @click="createGrant">
+      <MarButton type="primary" :disabled="!writable" @click="createGrant">
         {{ translate('common.grant') }}
       </MarButton>
     </template>

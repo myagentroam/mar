@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/agent-extension-subagent",
-  "version": "0.14.22",
+  "version": "0.14.23",
   "license": "Apache-2.0",
   "private": false,
   "type": "module",

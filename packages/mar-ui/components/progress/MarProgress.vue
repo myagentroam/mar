@@ -38,7 +38,7 @@ progress {
   border: 0;
   border-radius: 999px;
   background: var(--mar-ui-fill-soft);
-  accent-color: var(--mar-ui-color-brand);
+  accent-color: var(--mar-ui-control-primary-bg);
 }
 progress::-webkit-progress-bar {
   border-radius: inherit;
@@ -46,10 +46,10 @@ progress::-webkit-progress-bar {
 }
 progress::-webkit-progress-value {
   border-radius: inherit;
-  background: var(--mar-ui-color-brand);
+  background: var(--mar-ui-control-primary-bg);
 }
 progress::-moz-progress-bar {
   border-radius: inherit;
-  background: var(--mar-ui-color-brand);
+  background: var(--mar-ui-control-primary-bg);
 }
 </style>

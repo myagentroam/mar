@@ -26,7 +26,7 @@ async function palette(page: Page) {
     const colors = {
       primary: resolve('--mar-text-primary'),
       secondary: resolve('--mar-text-secondary'),
-      focus: resolve('--mar-color-brand'),
+      focus: resolve('--mar-control-focus'),
       hover: resolve('--mar-fill-row-hover'),
       selected: resolve('--mar-fill-selection')
     };
@@ -40,8 +40,8 @@ async function customPalette(page: Page) {
     for (const [token, value] of Object.entries({
       '--mar-text-primary': '#d6dfc9',
       '--mar-text-secondary': '#8295a4',
-      '--mar-color-brand': '#9672d1',
-      '--mar-color-brand-text': '#af79d0',
+      '--mar-conversation-activity-fg': '#9672d1',
+      '--mar-control-focus': '#af79d0',
       '--mar-fill-row-hover': '#25334280',
       '--mar-fill-selection': '#35475a'
     }))

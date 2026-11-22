@@ -149,6 +149,6 @@ onUnmounted(() => observer?.disconnect());
   display: inline-flex;
   align-items: center;
   padding: 0 8px;
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-secondary);
 }
 </style>

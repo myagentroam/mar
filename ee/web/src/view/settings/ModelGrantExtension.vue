@@ -384,7 +384,6 @@ defineExpose({ open: openGrants });
       <MarButton :onClick="opening.close">{{ translate('marAgentModels.close') }}</MarButton>
       <MarButton
         type="primary"
-        :icon="marIcon('share')"
         :disabled="!writable || opening.loading"
         :loading="opening.saving"
         :onClick="createGrant.bind(null, opening)"

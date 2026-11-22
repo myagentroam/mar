@@ -87,7 +87,7 @@ function runTime(run: RecentRun): string {
       >
         <template v-if="page === 'recent-sessions'">
           <p class="activity-running-count">
-            {{ translate('activityCenter.runningCount', { count: activeCount }) }}
+            {{ translate('activityCenter.activeTaskCount', { count: activeCount }) }}
           </p>
           <WorkbenchRecentSessionList
             :runs="visibleRuns"

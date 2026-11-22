@@ -43,10 +43,10 @@
   min-height: var(--composer-action-size);
   height: var(--composer-action-size);
   place-items: center;
-  border: 1px solid var(--mar-color-brand);
+  border: 1px solid var(--mar-control-primary-bg);
   border-radius: 50%;
-  background: var(--mar-color-brand);
-  color: var(--mar-color-on-accent);
+  background: var(--mar-control-primary-bg);
+  color: var(--mar-control-primary-fg);
   padding: 0;
   cursor: pointer;
 }
@@ -57,17 +57,24 @@
   color: var(--mar-color-danger-text);
 }
 
-.mar-composer-action:not(.mar-composer-stop-action, :disabled):hover {
-  border-color: var(--mar-color-brand-hover);
-  background: var(--mar-color-brand-hover);
+@media (hover: hover) {
+  .mar-composer-action:not(.mar-composer-stop-action, :disabled):hover {
+    border-color: var(--mar-control-primary-hover);
+    background: var(--mar-control-primary-hover);
+  }
+
+  .mar-composer-stop-action:not(:disabled):hover {
+    background: var(--mar-color-danger-bg);
+  }
 }
 
-.mar-composer-stop-action:not(:disabled):hover {
-  background: var(--mar-color-danger-bg);
+.mar-composer-action:not(.mar-composer-stop-action, :disabled):active {
+  border-color: var(--mar-control-primary-active);
+  background: var(--mar-control-primary-active);
 }
 
 .mar-composer-action:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
 
@@ -75,7 +82,7 @@
   outline-color: var(--mar-color-danger-text);
 }
 
-.mar-composer-action:disabled:not([aria-busy='true']) {
+.mar-composer-action:disabled {
   cursor: not-allowed;
   border-color: var(--mar-border-default);
   background: var(--mar-fill-soft);
@@ -84,6 +91,7 @@
 
 .mar-composer-action[aria-busy='true'] {
   cursor: progress;
+  color: var(--mar-text-secondary);
 }
 
 .mar-composer-action[aria-busy='true'] .mar-icon[data-mar-icon='loading-action'] {

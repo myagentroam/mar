@@ -69,7 +69,7 @@ async function renderOfflineSurface() {
       workspaceDirectDescription: () => undefined
     },
     notifications: {
-      hasActiveWorkspaceRun: () => false,
+      workspaceRunActivity: () => undefined,
       hasUnreadWorkspace: () => false
     }
   };
@@ -244,7 +244,7 @@ describe('Shared workbench shell', () => {
   );
 
   it.each([
-    ['en-US', 'Unread', 'Workspace has an active task'],
+    ['en-US', 'Unread', 'Workspace has a running task'],
     ['zh-CN', '未读', '工作区有正在运行的任务']
   ] as const)(
     'shows independent state on an inactive Workspace tab and direct context only on the selected tab: %s',
@@ -264,8 +264,8 @@ describe('Shared workbench shell', () => {
             nodeLabel: () => 'Node 1',
             directAvailable: () => true,
             directDescription: () => directDescription,
-            hasActiveRun: (nodeId: string, workspaceId: string) =>
-              nodeId === 'node-1' && workspaceId === 'a',
+            runActivity: (nodeId: string, workspaceId: string) =>
+              nodeId === 'node-1' && workspaceId === 'a' ? 'running' : undefined,
             hasUnread: (nodeId: string, workspaceId: string) =>
               nodeId === 'node-1' && workspaceId === 'a'
           })
@@ -288,10 +288,9 @@ describe('Shared workbench shell', () => {
         html.match(/class="workspace-tab-running mar-session-activity running/gu)
       ).toHaveLength(1);
       expect(html.match(/class="workspace-tab-unread\b[^"]*"/gu)).toHaveLength(1);
-      expect(html).toContain('aria-label="' + running + '"');
-      expect(html).not.toContain(
-        'title="' + i18n.global.t('generated.sessionPresentation.running') + '"'
-      );
+      expect(html).toContain(`aria-description="${running}"`);
+      expect(html).toContain(`data-tooltip-content="${running}"`);
+      expect(html).not.toContain(`title="${running}"`);
       expect(html).toContain('>' + unread + '</span>');
       const directNode = html.match(
         /<[a-z][a-z\d-]*\b(?=[^>]*class="[^"]*\bworkspace-tab-node direct-available-node\b[^"]*")[^>]*>/u
@@ -316,7 +315,7 @@ describe('Shared workbench shell', () => {
           nodeLabel: () => '',
           directAvailable: () => false,
           directDescription: () => undefined,
-          hasActiveRun: () => true,
+          runActivity: () => 'running',
           hasUnread: () => true
         })
     });
@@ -346,7 +345,7 @@ describe('Shared workbench shell', () => {
           nodeLabel: () => '',
           directAvailable: () => false,
           directDescription: () => undefined,
-          hasActiveRun: () => false,
+          runActivity: () => undefined,
           hasUnread: () => false
         })
     });

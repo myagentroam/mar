@@ -28,7 +28,9 @@ const navigationNotice = ref<WorkspaceNavigationNotice | undefined>(
       : undefined
 );
 const navigationTargets = ref<WorkspaceNavigationTarget[]>(
-  query.has('navigationCandidate') ? [{ source: 'DEFINITION', path: 'src/target.ts', line: 4 }] : []
+  query.has('navigationCandidate')
+    ? [{ source: 'DEFINITION', path: 'src/target.ts', line: 4, preview: 'const target = true;' }]
+    : []
 );
 themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026');
 const longContent = query.has('long');
@@ -165,9 +167,12 @@ createApp({
       );
     const source = query.get('diff');
     if (source === 'HISTORY' || source === 'TOOL_CHANGE' || source === 'WORKING_TREE') {
+      const code = query.has('diff-code');
       const path = query.has('long-name')
         ? `/workspace/${'feature-'.repeat(20)}notes.txt`
-        : '/workspace/example.txt';
+        : code
+          ? '/workspace/example.ts'
+          : '/workspace/example.txt';
       return withActions(
         h(GitDiffViewer, {
           ref: handle,
@@ -181,7 +186,8 @@ createApp({
           source,
           diff: {
             binary: query.get('diff-state') === 'binary',
-            afterText: source === 'WORKING_TREE' ? content : undefined,
+            afterText:
+              source === 'WORKING_TREE' ? (code ? 'const preview = true;' : content) : undefined,
             text:
               query.get('diff-state') === 'empty'
                 ? undefined

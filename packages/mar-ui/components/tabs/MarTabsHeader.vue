@@ -320,7 +320,7 @@ function activate(name: Name): void {
   color: var(--mar-ui-text-primary);
 }
 .mar-ui-tabs__list [role='tab']:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-tabs__list .mar-tab-close {
@@ -444,7 +444,7 @@ function activate(name: Name): void {
 }
 
 .mar-tab-strip-tab:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 
@@ -488,7 +488,7 @@ function activate(name: Name): void {
 }
 .mar-tab-scroll:focus-visible,
 .mar-tab-close:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
 }
 .mar-tab-scroll:focus-visible {
   outline-offset: 2px;

@@ -563,7 +563,7 @@ function onKeydown(event: KeyboardEvent): void {
   color: var(--mar-text-primary);
 }
 .quick-open-tabs button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: -1px;
 }
 .quick-open-input {
@@ -575,7 +575,6 @@ function onKeydown(event: KeyboardEvent): void {
   padding: 0.65rem 0.8rem;
   background: var(--mar-bg-subtle);
   color: var(--mar-text-primary);
-  caret-color: var(--mar-color-brand);
   font: inherit;
 }
 .quick-open-input::placeholder {
@@ -583,10 +582,10 @@ function onKeydown(event: KeyboardEvent): void {
   opacity: 1;
 }
 .quick-open-input:focus {
-  border-color: var(--mar-color-brand);
+  border-color: var(--mar-control-focus);
   outline: 0;
   background: var(--mar-bg-panel);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-color-brand) 12%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-control-focus) 12%, transparent);
 }
 .quick-open-results {
   display: grid;
@@ -622,7 +621,7 @@ function onKeydown(event: KeyboardEvent): void {
   text-align: left;
 }
 .quick-open-results button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 .entry-main {
@@ -657,19 +656,9 @@ function onKeydown(event: KeyboardEvent): void {
   line-height: 1.25;
 }
 .entry-kind-workspace {
-  border-color: var(--mar-color-brand-border);
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
-}
-.entry-kind-session {
-  --quick-open-session-color: color-mix(
-    in srgb,
-    var(--mar-color-brand-text) 48%,
-    var(--mar-text-secondary)
-  );
-  border-color: color-mix(in srgb, var(--quick-open-session-color) 32%, var(--mar-border-subtle));
-  background: color-mix(in srgb, var(--quick-open-session-color) 9%, var(--mar-bg-subtle));
-  color: var(--quick-open-session-color);
+  border-color: var(--mar-border-medium);
+  background: var(--mar-fill-soft);
+  color: var(--mar-text-primary);
 }
 .entry-kind-definition {
   border-color: color-mix(in srgb, var(--mar-color-success-text) 35%, transparent);
@@ -687,9 +676,8 @@ function onKeydown(event: KeyboardEvent): void {
   color: var(--mar-text-secondary);
 }
 .quick-open-match {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--mar-color-brand) 55%, transparent);
   text-underline-offset: 0.14em;
 }
 .mar-empty {

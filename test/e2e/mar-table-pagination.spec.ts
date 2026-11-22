@@ -61,7 +61,7 @@ test('Table uses solid neutral sort indicators and a low-contrast dark header su
     return colors;
   });
 
-  await expect(name).toHaveCSS('background-color', 'rgb(37, 45, 56)');
+  await expect(name).toHaveCSS('background-color', 'rgb(34, 34, 34)');
   await expect(ascending).toHaveCSS('color', muted!);
   await expect(descending).toHaveCSS('color', muted!);
   expect(

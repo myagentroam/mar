@@ -121,7 +121,7 @@ test('Git changes append at the repository boundary and refresh in place', async
         .filter({ hasText: /^Submodule$/ });
       await expect(submoduleTag).toHaveCSS(
         'border-top-color',
-        theme === 'dark' ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)'
+        theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(203, 214, 228)'
       );
       await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(0);
       expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
@@ -299,7 +299,7 @@ for (const theme of ['dark', 'light']) {
       await expect(restore.locator('[data-mar-icon="undo"]')).toHaveCSS('width', '14px');
       const refresh = page.getByRole('button', { name: 'Refresh Git changes', exact: true });
       const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
-      const metadataBorder = theme === 'dark' ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)';
+      const metadataBorder = theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(203, 214, 228)';
       for (const label of [/^Root$/, /^Current$/]) {
         const tag = page.locator('.repository-tags-row .mar-ui-tag').filter({ hasText: label });
         await expect(tag).toHaveCSS('border-top-color', metadataBorder);
@@ -750,11 +750,11 @@ for (const theme of ['dark', 'light']) {
       if (mobile) {
         await expect(attachment).toHaveCSS('width', '16px');
         await expect(attachment).toHaveCSS('height', '16px');
-        for (const graphic of [copy, edit.locator('.mar-icon')]) {
-          await expect(graphic).toHaveCSS('width', '18px');
-          await expect(graphic).toHaveCSS('height', '18px');
-        }
-        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '18px');
+        await expect(copy).toHaveCSS('width', '18px');
+        await expect(copy).toHaveCSS('height', '18px');
+        await expect(edit.locator('.mar-icon')).toHaveCSS('width', '11px');
+        await expect(edit.locator('.mar-icon')).toHaveCSS('height', '11px');
+        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '11px');
         await expect(edit).toHaveCSS('font-size', '11px');
         await expect(page.locator('.composer-access-select .mar-icon')).not.toHaveCSS(
           'width',
@@ -1082,9 +1082,8 @@ for (const mobile of [false, true]) {
           bounds!.x + bounds!.width + (mobile ? 9 : 0)
         );
       } else await expect(trigger.locator('.activity-entry-running')).toHaveCount(0);
-      await expect(trigger).toHaveAttribute(
-        'aria-description',
-        `Running ${count}, 0 unread notifications`
+      await expect(trigger).toHaveAccessibleDescription(
+        `Active tasks: ${count}, 0 unread notifications`
       );
       await trigger.click();
       await expect(trigger).toHaveAttribute('aria-expanded', 'true');

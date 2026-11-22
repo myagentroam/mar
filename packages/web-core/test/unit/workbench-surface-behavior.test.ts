@@ -213,7 +213,7 @@ function pageFixture() {
       nodes: []
     }),
     notifications: {
-      hasActiveWorkspaceRun: (_nodeId: string, _workspaceId: string) => false,
+      workspaceRunActivity: (_nodeId: string, _workspaceId: string) => undefined,
       hasUnreadWorkspace: (_nodeId: string, _workspaceId: string) => false
     },
     terminal: shallowReactive({ terminalReady: true, terminalDocks: new Map() }),
@@ -331,51 +331,51 @@ describe('Workbench surface composition behavior', () => {
         layout: { mobileViewport },
         resources: { nodes },
         notifications: {
-          hasActiveWorkspaceRun: (nodeId: string, workspaceId: string) =>
-            activeRun.value && workspaceId === (nodeId === 'node' ? 'one' : 'other'),
+          workspaceRunActivity: (nodeId: string, workspaceId: string) =>
+            activeRun.value && workspaceId === (nodeId === 'node' ? 'one' : 'other')
+              ? nodeId === 'node'
+                ? 'running'
+                : 'transitioning'
+              : undefined,
           hasUnreadWorkspace: () => true
         }
       });
       const view = renderComponent(Surface, { page });
       try {
-        const tabStatus = (
-          name: 'has-active-run' | 'has-unread',
-          nodeId: string,
-          workspaceId: string
-        ) => {
-          const callback = view.findAll('tab-strip')[0]!.props[
-            name
-          ] as typeof page.notifications.hasActiveWorkspaceRun;
-          return callback(nodeId, workspaceId);
-        };
-        const running = (nodeId: string, workspaceId: string) =>
-          tabStatus('has-active-run', nodeId, workspaceId);
-        expect(running('node', 'one')).toBe(true);
-        expect(running('node', 'two')).toBe(false);
-        expect(running('other-node', 'other')).toBe(true);
-        expect(running('unknown-node', 'other')).toBe(false);
+        const tabProps = () =>
+          view.findAll('tab-strip')[0]!.props as {
+            'run-activity': typeof page.notifications.workspaceRunActivity;
+            'has-unread': typeof page.notifications.hasUnreadWorkspace;
+          };
+        const activity = (nodeId: string, workspaceId: string) =>
+          tabProps()['run-activity'](nodeId, workspaceId);
+        const unread = () => tabProps()['has-unread']('node', 'one');
+        expect(activity('node', 'one')).toBe('running');
+        expect(activity('node', 'two')).toBeUndefined();
+        expect(activity('other-node', 'other')).toBe('transitioning');
+        expect(activity('unknown-node', 'other')).toBeUndefined();
 
         Object.assign(page.application, { networkUnavailable: true });
         await nextTick();
-        expect(running('node', 'one')).toBe(false);
-        expect(running('other-node', 'other')).toBe(false);
+        expect(activity('node', 'one')).toBeUndefined();
+        expect(activity('other-node', 'other')).toBeUndefined();
         expect(nodes[0]!.connected).toBe(true);
-        expect(page.notifications.hasActiveWorkspaceRun('node', 'one')).toBe(true);
-        expect(tabStatus('has-unread', 'node', 'one')).toBe(true);
+        expect(page.notifications.workspaceRunActivity('node', 'one')).toBe('running');
+        expect(unread()).toBe(true);
 
         Object.assign(page.application, { networkUnavailable: false });
         nodes[0] = { id: 'node', connected: false };
         await nextTick();
-        expect(running('node', 'one')).toBe(false);
-        expect(running('other-node', 'other')).toBe(true);
+        expect(activity('node', 'one')).toBeUndefined();
+        expect(activity('other-node', 'other')).toBe('transitioning');
 
         nodes[0] = { id: 'node', connected: true };
         await nextTick();
-        expect(running('node', 'one')).toBe(true);
+        expect(activity('node', 'one')).toBe('running');
         activeRun.value = false;
         await nextTick();
-        expect(running('node', 'one')).toBe(false);
-        expect(tabStatus('has-unread', 'node', 'one')).toBe(true);
+        expect(activity('node', 'one')).toBeUndefined();
+        expect(unread()).toBe(true);
       } finally {
         view.unmount();
       }

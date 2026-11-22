@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/code-syntax-theme.css';
 import { basicSetup } from 'codemirror';
 import {
   autocompletion,
@@ -10,7 +11,6 @@ import { keymap, Decoration, EditorView } from '@codemirror/view';
 import { closeSearchPanel, openSearchPanel, searchPanelOpen } from '@codemirror/search';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
-import '../../styles/code-syntax-theme.css';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { FileReference } from '@myagentroam/code-navigation';
 import { translate } from '../../service/locale-preference-service.js';
@@ -629,21 +629,13 @@ onBeforeUnmount(() => {
   --mar-editor-cursor: #000000;
   --mar-editor-selection: color-mix(
     in srgb,
-    var(--mar-color-brand) 40%,
-    var(--mar-editor-background)
+    var(--mar-text-primary) 18%,
+    var(--mar-fill-selection)
   );
-  --mar-editor-selection-match: color-mix(
-    in srgb,
-    var(--mar-color-brand) 10%,
-    var(--mar-editor-background)
-  );
-  --mar-editor-selection-match-border: color-mix(
-    in srgb,
-    var(--mar-color-brand) 30%,
-    var(--mar-editor-background)
-  );
+  --mar-editor-selection-match: var(--mar-fill-row-hover);
+  --mar-editor-selection-match-border: var(--mar-border-default);
   --mar-editor-selection-match-main: var(--mar-editor-selection);
-  --mar-editor-selection-match-main-border: var(--mar-color-brand);
+  --mar-editor-selection-match-main-border: var(--mar-text-muted);
   --mar-editor-selection-match-main-foreground: var(--mar-editor-foreground);
   --mar-editor-active-line: rgb(31 31 31 / 3%);
   --mar-editor-active-line-indicator: #91a3b7;
@@ -660,23 +652,32 @@ onBeforeUnmount(() => {
 }
 
 :global(html[data-theme='vscode-dark-2026'] .code-file-editor) {
-  --mar-editor-background: #1e1e1e;
-  --mar-editor-foreground: #d4d4d4;
-  --mar-editor-cursor: #aeafad;
+  --mar-editor-background: var(--mar-bg-page);
+  --mar-editor-foreground: var(--mar-text-primary);
+  --mar-editor-cursor: var(--mar-text-primary);
   --mar-editor-selection: color-mix(
     in srgb,
-    var(--mar-color-brand) 55%,
+    var(--mar-text-primary) 12%,
+    var(--mar-fill-selection)
+  );
+  --mar-editor-selection-match-border: var(--mar-border-medium);
+  --mar-editor-active-line: color-mix(in srgb, var(--mar-text-primary) 4%, transparent);
+  --mar-editor-active-line-indicator: var(--mar-text-muted);
+  --mar-editor-gutter-background: var(--mar-bg-page);
+  --mar-editor-gutter-foreground: var(--mar-text-muted);
+  --mar-editor-border: var(--mar-border-subtle);
+  --mar-editor-search-match: var(--mar-color-warning-bg);
+  --mar-editor-search-match-border: color-mix(
+    in srgb,
+    var(--mar-color-warning-accent) 55%,
     var(--mar-editor-background)
   );
-  --mar-editor-active-line: rgb(255 255 255 / 4%);
-  --mar-editor-active-line-indicator: #4e83ac;
-  --mar-editor-gutter-background: #1e1e1e;
-  --mar-editor-gutter-foreground: #858585;
-  --mar-editor-border: #333333;
-  --mar-editor-search-match: #5b763e;
-  --mar-editor-search-match-border: #9ebf6e;
-  --mar-editor-search-match-active: #b7651d;
-  --mar-editor-search-match-active-border: #f0a35b;
+  --mar-editor-search-match-active: color-mix(
+    in srgb,
+    var(--mar-color-warning-accent) 30%,
+    var(--mar-editor-background)
+  );
+  --mar-editor-search-match-active-border: var(--mar-color-warning-accent);
 }
 
 .code-file-editor :deep(.cm-editor) {
@@ -689,15 +690,15 @@ onBeforeUnmount(() => {
 
 .code-file-editor :deep(.cm-code-navigation-target) {
   cursor: pointer;
-  color: var(--mar-color-brand);
+  color: var(--mar-control-link-text);
   text-decoration: underline;
   text-decoration-color: currentColor;
   text-underline-offset: 2px;
 }
 
 .code-file-editor :deep(.cm-line.cm-code-navigation-destination) {
-  background: color-mix(in srgb, var(--mar-color-brand) 15%, transparent);
-  box-shadow: inset 2px 0 0 var(--mar-color-brand);
+  background: color-mix(in srgb, var(--mar-control-focus) 15%, transparent);
+  box-shadow: inset 2px 0 0 var(--mar-control-focus);
 }
 
 .code-file-editor :deep(.cm-scroller) {
@@ -743,7 +744,7 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor :deep(.cm-textfield:focus) {
-  border-color: var(--mar-color-brand);
+  border-color: var(--mar-control-focus);
 }
 
 .code-file-editor :deep(.cm-button) {
@@ -757,7 +758,7 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor :deep(.cm-button:hover) {
-  border-color: var(--mar-color-brand);
+  border-color: var(--mar-control-focus);
 }
 
 .code-file-editor :deep(.cm-panel.cm-search [name='close']) {

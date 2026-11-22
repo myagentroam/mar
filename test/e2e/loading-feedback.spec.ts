@@ -13,7 +13,7 @@ async function expectReadIndicator(indicator: Locator, size: number) {
   await expect(indicator).toBeVisible();
   const actual = await indicator.evaluate((element) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--mar-color-brand-text)';
+    probe.style.color = 'var(--mar-text-secondary)';
     element.parentElement!.append(probe);
     const expected = getComputedStyle(probe).color;
     probe.remove();
@@ -279,14 +279,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       ).toBeLessThan(1);
       for (const indicator of indicators) await expectReadIndicator(indicator, 0.875);
       const runtime = page.getByTestId('runtime-indicator');
-      const runtimeColor = await runtime.evaluate((element) => getComputedStyle(element).color);
-      expect(
-        await runtime.evaluate(
-          (element) =>
-            parseFloat(getComputedStyle(element).width) /
-            parseFloat(getComputedStyle(document.documentElement).fontSize)
-        )
-      ).toBeCloseTo(0.75);
+      await expectReadIndicator(runtime, 0.75);
       const tree = page.getByTestId('file-tree');
       const row = tree.locator('.file-tree-row-shell').filter({ hasText: 'src' });
       const rowHeight = (await row.boundingBox())!.height;
@@ -297,11 +290,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.screenshot({ path: testInfo.outputPath(`read-loading-${width}.png`) });
       await page
         .locator('html')
-        .evaluate((element) => element.style.setProperty('--mar-color-brand-text', '#c084fc'));
+        .evaluate((element) => element.style.setProperty('--mar-text-secondary', '#c084fc'));
       for (const loading of previews)
         await expectReadIndicator(loading.locator('.mar-busy-indicator'), 1.25);
       for (const indicator of indicators) await expectReadIndicator(indicator, 0.875);
-      await expect(runtime).toHaveCSS('color', runtimeColor);
+      await expectReadIndicator(runtime, 0.75);
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(star).toHaveCSS('animation-name', 'none');
       for (const loading of previews)

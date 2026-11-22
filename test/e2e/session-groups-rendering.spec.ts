@@ -122,7 +122,7 @@ test('Mobile session rows remain selectable by touch', async ({ browser }) => {
     const page = await context.newPage();
     await page.goto(`${fixture.url}session-groups.html?locale=en-US`);
     const sidebar = page.locator('.conversation-sidebar');
-    await sidebar.getByRole('tab').nth(1).tap();
+    await sidebar.getByRole('radio', { name: 'Child Sessions', exact: true }).tap();
     const row = sidebar.locator('.session-row').first();
     await expect(row).toHaveCSS('height', '32px');
     await row.locator('.session-link').tap();
@@ -169,6 +169,7 @@ for (const [width, theme, locale] of [
         };
         const result = {
           running: color('--mar-control-color-success'),
+          runningText: color('--mar-color-success-text'),
           track: color('--mar-bg-subtle'),
           border: color('--mar-border-default'),
           selected: color('--mar-fill-selection'),
@@ -304,7 +305,8 @@ for (const [width, theme, locale] of [
       );
       const statuses = recent.locator('.recent-sessions-list .mar-ui-tag');
       await expect(statuses.first()).toHaveAttribute('data-type', 'info');
-      await expect(statuses.last()).toHaveAttribute('data-type', 'success');
+      await expect(statuses.last()).toHaveText(locale === 'zh-CN' ? '运行中' : 'Running');
+      await expect(statuses.last()).toHaveCSS('color', colors.runningText);
       await recent.screenshot({
         path: testInfo.outputPath(`plain-groups-${width}-${theme}-${locale}.png`)
       });

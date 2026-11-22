@@ -169,11 +169,7 @@ const emit = defineEmits<{
     @submit.prevent="emit('submit')"
   >
     <div ref="composerElement" class="composer">
-      <span
-        v-if="working || connectionLabel"
-        class="composer-working"
-        :class="{ 'is-active': working && !connectionLabel }"
-      >
+      <span v-if="working || connectionLabel" class="composer-working">
         <MarBusyIndicator
           v-if="connectionLabel ? connectionBusy : working && workingBusy"
           class="composer-busy-indicator"
@@ -322,6 +318,7 @@ const emit = defineEmits<{
 
 .composer {
   --composer-padding-inline: 0.8rem;
+  --composer-surface: light-dark(var(--mar-bg-panel), var(--mar-conversation-surface));
   position: relative;
   z-index: 3;
   background: var(--mar-conversation-canvas);
@@ -371,10 +368,10 @@ const emit = defineEmits<{
   margin: 0 0 -1px 0.55rem;
   overflow: hidden;
   border: 1px solid var(--mar-border-medium);
-  border-bottom-color: var(--mar-bg-panel);
+  border-bottom-color: var(--composer-surface);
   border-radius: var(--mar-radius-control) var(--mar-radius-control) 0 0;
-  background: var(--mar-bg-panel);
-  color: var(--mar-color-brand-text);
+  background: var(--composer-surface);
+  color: var(--mar-conversation-activity-fg);
   padding: 0.08rem 0.5rem 0.08rem 0.42rem;
   pointer-events: none;
   white-space: nowrap;
@@ -385,8 +382,8 @@ const emit = defineEmits<{
 }
 
 .composer:focus-within .composer-working {
-  border-color: var(--mar-color-brand);
-  border-bottom-color: var(--mar-bg-panel);
+  border-color: var(--mar-control-focus);
+  border-bottom-color: var(--composer-surface);
 }
 
 .composer-working > .composer-busy-indicator {
@@ -401,20 +398,20 @@ const emit = defineEmits<{
   overflow: hidden;
   border: 1px solid var(--mar-border-medium);
   border-radius: var(--mar-radius-surface);
-  background: var(--mar-bg-panel);
+  background: var(--composer-surface);
   box-shadow: none;
 }
 
 .composer-shell:focus-within {
-  border-color: var(--mar-color-brand);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
+  border-color: var(--mar-control-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-control-focus) 14%, transparent);
 }
 
 .composer-shell.composer-drop-target {
-  border-color: var(--mar-color-brand);
-  outline: 2px dashed var(--mar-color-brand);
+  border-color: var(--mar-control-focus);
+  outline: 2px dashed var(--mar-control-focus);
   outline-offset: -3px;
-  background: var(--mar-color-brand-subtle);
+  background: var(--mar-fill-selection);
 }
 
 .composer-shell.composer-drop-target .composer-input {
@@ -457,10 +454,10 @@ const emit = defineEmits<{
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  border: 1px solid var(--mar-color-brand);
+  border: 1px solid var(--mar-border-default);
   border-radius: 999px;
-  background: var(--mar-color-brand-subtle);
-  color: var(--mar-color-brand-text);
+  background: var(--mar-fill-soft);
+  color: var(--mar-text-primary);
   padding: 0.2rem 0.5rem;
   font-size: var(--mar-font-size-meta);
 }
@@ -486,7 +483,7 @@ const emit = defineEmits<{
 }
 
 .composer-command-state:not(:disabled):hover {
-  background: color-mix(in srgb, var(--mar-color-brand) 14%, var(--mar-bg-panel));
+  background: var(--mar-fill-row-hover);
 }
 
 .composer-skill-state {

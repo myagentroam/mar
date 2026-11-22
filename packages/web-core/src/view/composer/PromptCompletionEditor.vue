@@ -555,7 +555,7 @@ onBeforeUnmount(() => {
 }
 .completion-actions[data-state='pending'],
 .completion-actions[data-state='ready'] {
-  background: var(--mar-color-brand-subtle);
+  background: var(--mar-fill-soft);
 }
 .completion-buttons {
   display: inline-flex;
@@ -589,7 +589,7 @@ onBeforeUnmount(() => {
   background: var(--mar-text-secondary);
 }
 .completion-actions[data-state='ready'] .completion-indicator {
-  background: var(--mar-color-brand-text);
+  background: var(--mar-text-primary);
   animation: prediction-ready 240ms ease-out;
 }
 .completion-hint {

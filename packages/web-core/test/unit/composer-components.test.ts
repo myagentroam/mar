@@ -1021,15 +1021,23 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(settled).not.toMatch(/<textarea[^>]*readonly/u);
   });
 
-  it.each(['', 'Reconnecting'])(
-    'renders the shared input and gates activity while connection feedback is %s',
-    async (connectionLabel) => {
+  it.each([
+    { connectionLabel: '', workingBusy: true, connectionBusy: false, ring: true },
+    { connectionLabel: '', workingBusy: false, connectionBusy: false, ring: false },
+    { connectionLabel: 'Reconnecting', workingBusy: false, connectionBusy: true, ring: true },
+    { connectionLabel: 'Syncing', workingBusy: true, connectionBusy: false, ring: false }
+  ])(
+    'renders the shared input with ring=$ring and connection feedback "$connectionLabel"',
+    async ({ connectionLabel, workingBusy, connectionBusy, ring }) => {
       const html = await render(ConversationComposer, {
         input: 'Raw user input',
         placeholder: 'Original placeholder',
         working: true,
+        workingBusy,
         workingLabel: 'Original working status',
+        elapsedLabel: '00:42',
         connectionLabel,
+        connectionBusy,
         readonly: true,
         dropTarget: false,
         mobileViewport: false,
@@ -1043,9 +1051,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
       );
       expect(html).toContain(connectionLabel || 'Original working status');
       if (connectionLabel) {
-        expect(html).not.toContain('is-active');
         expect(html).not.toContain('Original working status');
-      } else expect(html).toContain('is-active');
+        expect(html).not.toContain('composer-elapsed');
+      } else {
+        expect(html).toContain('00:42');
+      }
+      expect(html.includes('composer-busy-indicator')).toBe(ring);
       expect(html).toMatch(/<textarea[^>]*readonly/u);
       expect(html).not.toContain('composer-takeover');
       expect(html).not.toMatch(

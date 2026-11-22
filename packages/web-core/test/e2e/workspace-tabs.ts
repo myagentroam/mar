@@ -104,8 +104,8 @@ function renderWorkspaceTabs() {
           : 'A very long Node name that must truncate before status indicators',
     directAvailable: () => connected.value,
     directDescription: () => 'Peer-to-peer connection available (Private network IPv4 UDP)',
-    hasActiveRun: (_nodeId: string, workspaceId: string) =>
-      hasStatus.value && workspaceId === 'workspace-1',
+    runActivity: (_nodeId: string, workspaceId: string) =>
+      hasStatus.value && workspaceId === 'workspace-1' ? ('running' as const) : undefined,
     hasUnread: (_nodeId: string, workspaceId: string) =>
       !dynamicLayout && hasStatus.value && workspaceId === 'workspace-1',
     onActivate: (tab: WorkspaceTab) => {

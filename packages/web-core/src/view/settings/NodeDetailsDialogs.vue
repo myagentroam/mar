@@ -460,7 +460,7 @@ function usagePercentageLabel(value: number): string {
 }
 
 .runner-usage-window strong {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
   font-variant-numeric: tabular-nums;
 }
@@ -505,13 +505,14 @@ function usagePercentageLabel(value: number): string {
 
 .node-detail-actions {
   display: flex;
+  flex-basis: 100%;
+  min-inline-size: 0;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
 }
 
 .node-detail-actions :deep(.mar-ui-button + .mar-ui-button) {
-  margin-left: 0;
+  margin-inline-start: 0;
 }
 
 :global(.node-details-dialog .mar-ui-dialog__title) {

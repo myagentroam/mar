@@ -1077,7 +1077,6 @@ onUnmounted(() => {
           type="primary"
           :disabled="!writable"
           :loading="creatingRegistrationToken"
-          :icon="marIcon('plus')"
           @click="registerNode"
           >{{
             translate('generated.resourceSharingPage.createOneTimeRegistrationToken')

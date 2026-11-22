@@ -129,6 +129,22 @@ test('Working-tree Diff keeps its minimap inside the content inset across viewpo
   }
 });
 
+test('Working-tree Diff minimap uses the near-black syntax palette only in dark mode', async ({
+  page
+}) => {
+  for (const theme of ['dark', 'light']) {
+    await page.goto(
+      `${fixture.url}file-editor-layout.html?diff=WORKING_TREE&diff-code=1&theme=${theme}`
+    );
+    const keyword = page.locator('.diff-minimap .hljs-keyword');
+    await expect(keyword).toHaveText('const');
+    await expect(keyword).toHaveCSS(
+      'color',
+      theme === 'dark' ? 'rgb(155, 188, 242)' : 'rgb(215, 58, 73)'
+    );
+  }
+});
+
 for (const theme of ['light', 'dark']) {
   test(`Text selections stand out above same-word matches and the current line in ${theme} theme`, async ({
     page
@@ -194,9 +210,13 @@ for (const theme of ['light', 'dark']) {
     }
     const selection = page.locator('.cm-selectionBackground').first();
     const before = await selection.evaluate((element) => getComputedStyle(element).backgroundColor);
-    await page
-      .locator('html')
-      .evaluate((element) => element.style.setProperty('--mar-color-brand', '#805ad5'));
+    await page.locator('html').evaluate((element) => {
+      element.style.setProperty('--mar-conversation-activity-fg', '#805ad5');
+    });
+    await expect(selection).toHaveCSS('background-color', before);
+    await page.locator('html').evaluate((element) => {
+      element.style.setProperty('--mar-fill-selection', '#424242');
+    });
     await expect
       .poll(() => selection.evaluate((element) => getComputedStyle(element).backgroundColor))
       .not.toBe(before);
@@ -317,7 +337,7 @@ for (const theme of ['light', 'dark']) {
               hoverBorder: color('--mar-border-medium'),
               hoverText: color('--mar-text-primary'),
               pressedBackground: color('--mar-fill-selection'),
-              focus: color('--mar-color-brand'),
+              focus: color('--mar-control-focus'),
               disabledBorder: color('--mar-border-subtle')
             };
             probe.remove();
@@ -510,6 +530,9 @@ for (const [notice, message, width] of [
     await dropdown.getByRole('status').click();
     await expect(dropdown).toBeVisible();
     if (notice === 'LIMITED') {
+      const keyword = dropdown.locator('.file-navigation-preview .hljs-keyword');
+      await expect(keyword).toHaveText('const');
+      await expect(keyword).toHaveCSS('color', 'rgb(155, 188, 242)');
       await dropdown.getByRole('option').click();
       await expect(page.locator('html')).toHaveAttribute(
         'data-opened-navigation-target',

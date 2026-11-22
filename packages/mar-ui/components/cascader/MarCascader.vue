@@ -308,7 +308,7 @@ function onFocusOut(event: FocusEvent) {
   border-color: var(--mar-ui-input-border-hover);
 }
 .mar-ui-cascader__field:is(:focus-within, [data-expanded='true']) {
-  border-color: var(--mar-ui-color-brand);
+  border-color: var(--mar-ui-control-focus);
 }
 .mar-ui-cascader__field[data-invalid='true'] {
   border-color: var(--mar-ui-control-color-danger);
@@ -393,7 +393,7 @@ input:disabled {
 .mar-ui-cascader__option:focus-visible,
 .mar-ui-cascader__choose:focus-visible,
 .mar-ui-cascader__action:focus-visible {
-  outline: 2px solid var(--mar-ui-color-brand);
+  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-cascader__option:disabled,
@@ -411,8 +411,8 @@ input:disabled {
   cursor: pointer;
 }
 .mar-ui-cascader__choose[aria-pressed='true'] {
-  border-color: var(--mar-ui-color-brand);
-  background: var(--mar-ui-color-brand);
+  border-color: var(--mar-ui-control-primary-bg);
+  background: var(--mar-ui-control-primary-bg);
   box-shadow: inset 0 0 0 3px var(--mar-ui-overlay-surface);
 }
 .mar-ui-cascader__empty {

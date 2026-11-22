@@ -447,7 +447,7 @@ const surfacePage = shallowReactive({
   workspaceDirectDescription: () => undefined,
   workspaceTabService: { move() {}, setPinned() {} },
   workbenchNotificationService: {
-    hasActiveWorkspaceRun: () => false,
+    workspaceRunActivity: () => undefined,
     hasUnreadWorkspace: () => false
   },
   mobileWorkspaceSurface: 'conversation'
@@ -648,7 +648,7 @@ if (composerFixture) {
         :node-label="() => 'Node'"
         :direct-available="() => false"
         :direct-description="() => undefined"
-        :has-active-run="() => false"
+        :run-activity="() => undefined"
         :has-unread="() => unreadFixture"
         @activate="activeTab = $event.id"
       />

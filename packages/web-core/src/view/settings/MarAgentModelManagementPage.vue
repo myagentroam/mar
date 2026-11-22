@@ -2223,7 +2223,6 @@ onBeforeUnmount(() => {
         }}</MarButton>
         <MarButton
           type="primary"
-          :icon="marIcon('connection')"
           :disabled="!modelTestNodeId"
           :loading="testingIds.has(modelTestModel.id)"
           @click="test(modelTestModel)"
@@ -2934,18 +2933,18 @@ onBeforeUnmount(() => {
   color: var(--mar-text-secondary);
 }
 .dialog-footer-summary {
-  float: left;
-  padding-block: 8px;
+  margin-inline-end: auto;
   color: var(--mar-text-secondary);
 }
 .credential-detail-actions {
   display: flex;
+  flex-basis: 100%;
+  min-inline-size: 0;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
 }
 .credential-detail-actions :deep(.mar-ui-button + .mar-ui-button) {
-  margin-left: 0;
+  margin-inline-start: 0;
 }
 .credential-proxy-url {
   overflow-wrap: anywhere;
@@ -3040,9 +3039,7 @@ onBeforeUnmount(() => {
     border-left: 0;
   }
   .dialog-footer-summary {
-    float: none;
-    display: block;
-    padding-top: 0;
+    flex-basis: 100%;
   }
 }
 </style>

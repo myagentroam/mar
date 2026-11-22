@@ -304,9 +304,7 @@ test('Composer image paste prevents default rich-text insertion', async ({ page,
   await expect.poll(() => uploadCompleted).toBe(true);
 });
 
-test('Dark theme uses consistent blue emphasis for new sessions and primary management actions', async ({
-  page
-}) => {
+test('Dark theme keeps new sessions in the neutral control hierarchy', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mar.theme', 'vscode-dark-2026'));
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
 
@@ -320,10 +318,10 @@ test('Dark theme uses consistent blue emphasis for new sessions and primary mana
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
 
   const newSession = page.getByRole('button', { name: '新建会话', exact: true });
-  await expect(newSession).toHaveCSS('background-color', 'rgb(48, 147, 255)');
+  await expect(newSession).toHaveCSS('background-color', 'rgb(34, 34, 34)');
+  await expect(newSession).toHaveCSS('color', 'rgb(216, 216, 216)');
   await newSession.hover();
-  await expect(newSession).toHaveCSS('background-color', 'rgb(74, 163, 255)');
-  await expect(page.locator('html')).toHaveCSS('--mar-control-color-primary-light-9', '#1f73cf24');
+  await expect(newSession).toHaveCSS('background-color', 'rgb(40, 40, 40)');
 });
 
 test('Composer Alt+M opens the model menu and delegates arrow keys to it', async ({ page }) => {

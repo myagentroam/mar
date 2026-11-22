@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import './file-tooltip-trigger.css';
+import '../../styles/code-syntax-theme.css';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
@@ -1003,7 +1004,7 @@ defineExpose({
           @pointerup="onMinimapPointerUp"
           @pointercancel="onMinimapPointerUp"
         >
-          <div class="diff-minimap-content" aria-hidden="true">
+          <div class="diff-minimap-content mar-code-syntax" aria-hidden="true">
             <span
               v-for="(row, index) in minimapRows"
               :key="index"
@@ -1107,11 +1108,11 @@ defineExpose({
 }
 .unified-history-diff code > .is-hunk,
 .unified-history-diff code > .is-meta {
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-secondary);
 }
 .unified-history-diff code > .is-mixed {
   background: var(--mar-fill-hover);
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-secondary);
 }
 .unified-diff-pane {
   position: relative;
@@ -1243,7 +1244,7 @@ defineExpose({
 .diff-code-navigation-target {
   cursor: pointer;
   text-decoration: underline;
-  text-decoration-color: var(--mar-color-brand);
+  text-decoration-color: currentColor;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.14em;
 }
@@ -1257,9 +1258,9 @@ defineExpose({
 }
 .unified-diff-line.is-active {
   box-shadow:
-    inset 3px 0 var(--mar-color-brand),
-    inset 0 1px var(--mar-color-brand),
-    inset 0 -1px var(--mar-color-brand);
+    inset 3px 0 var(--mar-control-focus),
+    inset 0 1px var(--mar-control-focus),
+    inset 0 -1px var(--mar-control-focus);
 }
 .unified-diff-empty {
   display: block;

@@ -61,12 +61,13 @@ const popoverOpen = computed({
     }
   }
 });
-const runningCount = computed(
-  () => props.service.recentRuns.value.filter((run) => activeRecentRunStatus(run.status)).length
+const activeRuns = computed(() =>
+  props.service.recentRuns.value.filter((run) => activeRecentRunStatus(run.status))
 );
+const hasRunning = computed(() => activeRuns.value.some((run) => run.status === 'RUNNING'));
 const entryDescription = computed(() =>
   [
-    translate('activityCenter.runningCount', { count: runningCount.value }),
+    translate('activityCenter.activeTaskCount', { count: activeRuns.value.length }),
     translate('activityCenter.unreadCount', { count: props.service.unreadCount.value })
   ].join(', ')
 );
@@ -196,8 +197,9 @@ onBeforeUnmount(() => {
           >{{ service.unreadCount.value > 99 ? '99+' : service.unreadCount.value }}</span
         >
         <span
-          v-if="runningCount > 0"
+          v-if="activeRuns.length > 0"
           class="activity-entry-running mar-icon-status-badge"
+          :class="{ running: hasRunning }"
           aria-hidden="true"
         />
       </button>
@@ -297,10 +299,10 @@ onBeforeUnmount(() => {
 .activity-center-trigger.active {
   --activity-marker-surface: var(--mar-fill-selection);
   background: var(--mar-fill-selection);
-  color: var(--mar-color-brand-text);
+  color: var(--mar-text-primary);
 }
 .activity-center-trigger:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
+  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 .activity-entry-count {
@@ -312,8 +314,12 @@ onBeforeUnmount(() => {
 }
 .activity-entry-running {
   --mar-icon-status-surface: var(--activity-marker-surface);
+  background: var(--mar-text-secondary);
   bottom: calc(50% - 13px);
   right: calc(50% - 13px);
+}
+.activity-entry-running.running {
+  background: var(--mar-control-color-success);
 }
 .workbench-activity-center.mobile-mode {
   --activity-marker-surface: var(--mar-bg-chrome);

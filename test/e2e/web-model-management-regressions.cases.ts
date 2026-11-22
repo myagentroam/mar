@@ -190,7 +190,7 @@ async function selectOrganization(page: Page, form: Locator, strings: Locale): P
   await page.getByRole('option', { name: strings.organizationScope, exact: true }).click();
   const organization = form.locator('.mar-ui-cascader input');
   await organization.fill('Platform');
-  await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
+  await page.getByRole('button', { name: 'Root / Platform', exact: true }).click();
 }
 
 async function selectModelProtocol(
@@ -297,9 +297,12 @@ for (const english of [false, true]) {
     const editedRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Edited Model 21' });
     await editedRow.getByRole('button', { name: strings.test, exact: true }).click();
     const testDialog = page.getByRole('dialog', { name: strings.testTitle, exact: true });
+    const runTest = testDialog.getByRole('button', { name: strings.test, exact: true });
+    await expect(runTest).toBeDisabled();
+    await expect(runTest.locator('[data-mar-icon]')).toHaveCount(0);
     await testDialog.getByRole('combobox').click();
     await page.getByRole('option', { name: 'Runtime Node', exact: true }).click();
-    await testDialog.getByRole('button', { name: strings.test, exact: true }).click();
+    await runTest.click();
     await expect(testDialog.locator('.model-test-result .mar-ui-tag')).toHaveText(
       english ? 'Success' : '成功'
     );
