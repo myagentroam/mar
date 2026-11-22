@@ -196,16 +196,6 @@ pre {
   padding: 0;
   border: 0;
 }
-:is(
-    .mar-management-page :is(.mar-filter-row, .mar-resource-filters, .mar-filter-field),
-    .mar-management-filter
-  )
-  :is(.mar-ui-select, .mar-ui-cascader) {
-  --mar-ui-font-size-input: var(--mar-ui-font-size-meta);
-}
-.mar-management-page .mar-filter-row .mar-ui-date-picker {
-  --mar-ui-date-picker-field-font-size: var(--mar-ui-font-size-meta);
-}
 .mar-management-page .mar-filter-row > *,
 .mar-management-page .mar-resource-filters > * {
   width: min(240px, 100%);

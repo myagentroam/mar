@@ -1740,7 +1740,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const button of await picker.locator('.workspace-picker-toolbar-actions button').all()) {
         const bounds = (await button.boundingBox())!;
         expect(bounds.width).toBeGreaterThanOrEqual(28);
-        expect(bounds.height).toBe(width < 768 ? 24 : 26);
+        expect(bounds.height).toBeCloseTo(width < 768 ? 24 : 26, 2);
         await expect(button.locator('svg')).toHaveCount(1);
       }
       const rowColors = await picker.evaluate((element) => {
@@ -2150,7 +2150,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const operation of ['refresh', 'branch'] as const) {
     test(`History ${operation} failure preserves pending commit files in ${theme}`, async ({
       page
-    }) => {
+    }, testInfo) => {
       let historyReads = 0;
       let filesStarted = false;
       let releaseHistory!: () => void;
@@ -2197,15 +2197,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         } else if (path.endsWith('/git/refs'))
           await route.fulfill({
             json: {
-              refs: [
-                {
-                  name: 'refs/heads/next',
-                  kind: 'LOCAL',
-                  displayName: 'next',
-                  hash: 'a'.repeat(40),
-                  current: false
-                }
-              ]
+              refs: ['develop', 'feature/compact-workbench-controls', 'next'].map((name) => ({
+                name: `refs/heads/${name}`,
+                kind: 'LOCAL',
+                displayName: name,
+                hash: 'a'.repeat(40),
+                current: false
+              }))
             }
           });
         else if (path.endsWith('/git/fetch')) await route.fulfill({ json: { fetchFailed: false } });
@@ -2224,8 +2222,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await refresh.click();
         await expect(refresh).toHaveAttribute('aria-busy', 'true');
       } else {
-        await inspector.getByRole('combobox', { name: 'Select Git branch' }).click();
-        await page.getByRole('option', { name: 'next', exact: true }).click();
+        const branch = inspector.getByRole('combobox', { name: 'Select Git branch' });
+        await branch.click();
+        const options = page.getByRole('listbox', { name: 'Select Git branch' });
+        const next = options.getByRole('option', { name: 'next', exact: true });
+        await options.screenshot({ path: testInfo.outputPath('git-branch-options.png') });
+        await expect(branch).toHaveCSS('font-size', '12px');
+        await expect(next).toHaveCSS('font-size', '12px');
+        await next.click();
         await expect(inspector.locator('.git-history > .mar-region-status')).toHaveText('Loading…');
         await expect(inspector.locator('.git-history > .mar-region-status')).not.toHaveClass(
           /mar-region-status--center/

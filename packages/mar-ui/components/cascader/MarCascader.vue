@@ -324,7 +324,7 @@ input {
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-input);
+  font-size: var(--mar-ui-font-size-meta);
   text-overflow: ellipsis;
 }
 input::placeholder {
@@ -362,6 +362,7 @@ input:disabled {
   align-content: start;
   max-block-size: 14rem;
   overflow: auto;
+  font-size: var(--mar-ui-font-size-meta);
 }
 .mar-ui-cascader__column + .mar-ui-cascader__column {
   border-inline-start: 1px solid var(--mar-ui-border-subtle);

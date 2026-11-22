@@ -203,8 +203,16 @@ test('Select and Dropdown limit long menus and show hints only for clipped label
   expect((await list.boundingBox())!.width).toBeGreaterThan(220);
   const long = list.getByRole('option', { name: /^feature\//u });
   const short = list.getByRole('option', { name: 'Main' });
+  const selectedBackground = await list.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--mar-ui-fill-selection)';
+    element.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
   await expect(short).toHaveAttribute('aria-selected', 'true');
-  await expect(short).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(short).toHaveCSS('background-color', selectedBackground);
   await long.hover();
   await expect(tooltip).toHaveText((await long.innerText()).trim());
   await branches.press('Escape');

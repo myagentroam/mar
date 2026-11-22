@@ -658,9 +658,6 @@ watch(controlDisabled, (disabled) => {
   text-align: start;
   cursor: pointer;
 }
-.mar-ui-select__field--filterable {
-  font-size: var(--mar-ui-font-size-input);
-}
 .mar-ui-select__field:hover {
   box-shadow: 0 0 0 1px var(--mar-ui-input-border-hover) inset;
 }

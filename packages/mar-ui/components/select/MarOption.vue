@@ -75,6 +75,7 @@ if (unregister) onBeforeUnmount(unregister);
   min-height: var(--mar-ui-compact-control-size);
   padding-inline: var(--mar-ui-compact-option-padding-inline);
   color: var(--mar-ui-text-primary);
+  font-size: var(--mar-ui-font-size-meta);
   font-weight: 400;
   cursor: pointer;
 }
