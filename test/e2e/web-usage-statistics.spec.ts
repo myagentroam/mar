@@ -476,6 +476,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await hoverForTooltip(bucket);
     await bucket.click();
     await expect(trend.locator('.trend-bucket:focus-visible')).toHaveCount(0);
+    await expect(bucket).toHaveCSS('outline-style', 'none');
     await expect(tooltip).toContainText(exact(buckets[0]!.inputTokens));
     await expect(bucket).toHaveAccessibleName(
       new RegExp(
@@ -496,6 +497,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       const focused = bars.nth(index);
       await expect(focused).toBeFocused();
       await expect(trend.locator('.trend-bucket:focus-visible')).toHaveCount(1);
+      await expect(focused.locator('.bucket-hit-area')).not.toHaveCSS('stroke', 'none');
       await expect(trend.locator('.trend-bucket[tabindex="0"]')).toHaveCount(1);
       await expect(tooltip.locator('.usage-tooltip-detail')).toHaveText(hoverDetails[index]!);
       await expect(focused).toHaveAccessibleName(hoverDetails[index]!.join(' · '));
@@ -515,6 +517,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(tooltip).toHaveCount(0);
     if (mobile) {
       await bars.nth(1).tap();
+      await expect(bars.nth(1)).toHaveCSS('outline-style', 'none');
       await expect(tooltip.locator('.usage-tooltip-detail')).toHaveText(hoverDetails[1]!);
       await trend.getByRole('img').first().tap();
       await expect(tooltip.locator('.usage-tooltip-detail')).toHaveText(hoverDetails[0]!);
