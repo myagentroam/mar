@@ -610,10 +610,6 @@ for (const width of [1280, 390]) {
         };
         const color = (token: string) => resolve(`var(${token})`);
         const result = {
-          unread: color('--mar-conversation-activity-fg'),
-          notificationText: CSS.supports('color: contrast-color(red)')
-            ? resolve('contrast-color(var(--mar-conversation-activity-fg))')
-            : color('--mar-bg-panel'),
           running: color('--mar-control-color-success'),
           page: color('--mar-bg-page'),
           chrome: color('--mar-bg-chrome'),
@@ -624,7 +620,8 @@ for (const width of [1280, 390]) {
         probe.remove();
         return result;
       });
-      expect(colors.running).not.toBe(colors.unread);
+      const unreadFill = theme === 'daylight' ? 'rgb(0, 95, 214)' : 'rgb(36, 114, 212)';
+      expect(colors.running).not.toBe(unreadFill);
       for (const marker of ['.activity-entry-count', '.activity-entry-running']) {
         await expect(trigger.locator(marker)).toHaveCSS(
           'box-shadow',
@@ -633,11 +630,11 @@ for (const width of [1280, 390]) {
       }
       await expect(trigger.locator('.activity-entry-count')).toHaveCSS(
         'background-color',
-        colors.unread
+        unreadFill
       );
       await expect(trigger.locator('.activity-entry-count')).toHaveCSS(
         'color',
-        colors.notificationText
+        'rgb(255, 255, 255)'
       );
       await expect(trigger.locator('.activity-entry-running')).toHaveCSS(
         'background-color',
@@ -652,8 +649,8 @@ for (const width of [1280, 390]) {
       const notificationBadge = panel
         .getByRole('tab', { name: /通知/ })
         .locator('.activity-unread-count');
-      await expect(notificationBadge).toHaveCSS('background-color', colors.unread);
-      await expect(notificationBadge).toHaveCSS('color', colors.notificationText);
+      await expect(notificationBadge).toHaveCSS('background-color', unreadFill);
+      await expect(notificationBadge).toHaveCSS('color', 'rgb(255, 255, 255)');
       const notices = panel.locator('.workbench-notification-list > li');
       await expect(notices).toHaveCount(30);
       await expect(notices.first().locator('.notification-unread-label')).toBeVisible();

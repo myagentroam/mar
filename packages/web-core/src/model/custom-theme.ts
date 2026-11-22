@@ -39,6 +39,7 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-conversation-process-border',
   '--mar-conversation-code',
   '--mar-conversation-activity-fg',
+  '--mar-conversation-activity-fill',
   '--mar-scrollbar-thumb',
   '--mar-scrollbar-thumb-hover',
   '--mar-control-primary-bg',

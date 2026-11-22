@@ -215,20 +215,21 @@ async function openDraft(
   };
 }
 
-test('Hosted Composer send uses the conversation activity color', async ({ page }) => {
+test('Hosted Composer send uses the conversation activity fill', async ({ page }) => {
   await openDraft(page, {
     beforeSend: async () => {
       const send = page.locator('.conversation-create-panel .hosted-send-button');
       await expect(send).toBeEnabled();
       const activityColor = await send.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--mar-conversation-activity-fg)';
+        probe.style.color = 'var(--mar-conversation-activity-fill)';
         element.append(probe);
         const color = getComputedStyle(probe).color;
         probe.remove();
         return color;
       });
       await expect(send).toHaveCSS('background-color', activityColor);
+      await expect(send).toHaveCSS('color', 'rgb(255, 255, 255)');
     }
   });
 });

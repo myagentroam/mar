@@ -58,6 +58,9 @@ html.console-ui,
   --mar-conversation-process-border: #d6e1ef;
   --mar-conversation-code: #f3f7fe;
   --mar-conversation-activity-fg: #005fd6;
+  --mar-conversation-activity-fill: #005fd6;
+  --mar-conversation-activity-on-fill: #fff;
+  --mar-conversation-activity-fill-state-tint: #000;
   --mar-scrollbar-thumb: #77777766;
   --mar-scrollbar-thumb-hover: #686868b3;
   --mar-control-primary-bg: #0057db;
@@ -184,6 +187,7 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-conversation-process-border: #2c2c2c;
   --mar-conversation-code: #1e1e1e;
   --mar-conversation-activity-fg: #4da3ff;
+  --mar-conversation-activity-fill: #2472d4;
 
   --mar-control-primary-bg: #dedede;
   --mar-control-primary-fg: #181818;

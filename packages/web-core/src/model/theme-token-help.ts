@@ -48,6 +48,10 @@ export const THEME_TOKEN_HELP = {
     group: 'conversation',
     description: 'conversation-activity-fg'
   },
+  '--mar-conversation-activity-fill': {
+    group: 'conversation',
+    description: 'conversation-activity-fill'
+  },
   '--mar-scrollbar-thumb': { group: 'borders', description: 'scrollbar-thumb' },
   '--mar-scrollbar-thumb-hover': { group: 'borders', description: 'scrollbar-thumb-hover' },
   '--mar-control-primary-bg': { group: 'controls', description: 'control-primary-bg' },

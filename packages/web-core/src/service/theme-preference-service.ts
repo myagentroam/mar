@@ -1,6 +1,16 @@
 import { computed, ref, type Ref } from 'vue';
-import type { BuiltinTheme, CustomTheme, ThemePreference } from '../model/custom-theme.js';
-import { analyzeCustomTheme, createThemeSource, themeColorScheme } from '../util/custom-theme.js';
+import {
+  CUSTOM_THEME_TOKENS,
+  type BuiltinTheme,
+  type CustomTheme,
+  type ThemePreference
+} from '../model/custom-theme.js';
+import {
+  analyzeCustomTheme,
+  createThemeSource,
+  resolveActivityFill,
+  themeColorScheme
+} from '../util/custom-theme.js';
 import { readBuiltinThemeColors } from '../util/theme-palette.js';
 
 export type { ThemePreference } from '../model/custom-theme.js';
@@ -75,7 +85,15 @@ export function createThemePreferenceService(
     return colors;
   }
   function resolveColors(source: string): Record<string, string> {
-    return { ...palette('vscode-dark-2026'), ...analyzeCustomTheme(source).colors };
+    const { colors } = analyzeCustomTheme(source);
+    const fill =
+      colors['--mar-conversation-activity-fill'] ?? colors['--mar-conversation-activity-fg'];
+    return {
+      ...palette('vscode-dark-2026'),
+      ...colors,
+      // A legacy source may only set the activity foreground. Preserve its hue for the solid fill.
+      ...(fill && resolveActivityFill(fill))
+    };
   }
   const customThemes = ref<readonly CustomTheme[]>(readCustomThemes());
   const theme = ref<ThemePreference>(
@@ -159,12 +177,13 @@ export function createThemePreferenceService(
       const data: Record<string, unknown> =
         original && typeof original === 'object' && !Array.isArray(original) ? { ...original } : {};
       delete data.base;
+      const colors = resolveColors(source);
       return JSON.stringify(
         {
           ...data,
           version: 1,
           name,
-          colors: resolveColors(source)
+          colors: Object.fromEntries(CUSTOM_THEME_TOKENS.map((token) => [token, colors[token]]))
         },
         null,
         2

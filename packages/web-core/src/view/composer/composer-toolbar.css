@@ -128,10 +128,10 @@
 }
 
 .mar-composer-action:not(.mar-composer-stop-action, :disabled) {
-  --composer-send-state-bg: var(--mar-conversation-activity-fg);
+  --composer-send-state-bg: var(--mar-conversation-activity-fill);
   border-color: var(--composer-send-state-bg);
   background: var(--composer-send-state-bg);
-  color: var(--mar-bg-panel);
+  color: var(--mar-conversation-activity-on-fill);
 }
 
 .mar-composer-stop-action {
@@ -144,8 +144,8 @@
   .mar-composer-action:not(.mar-composer-stop-action, :disabled):hover {
     --composer-send-state-bg: color-mix(
       in srgb,
-      var(--mar-conversation-activity-fg) 92%,
-      var(--mar-text-primary)
+      var(--mar-conversation-activity-fill) 92%,
+      var(--mar-conversation-activity-fill-state-tint)
     );
   }
 
@@ -157,15 +157,9 @@
 .mar-composer-action:not(.mar-composer-stop-action, :disabled):active {
   --composer-send-state-bg: color-mix(
     in srgb,
-    var(--mar-conversation-activity-fg) 84%,
-    var(--mar-text-primary)
+    var(--mar-conversation-activity-fill) 84%,
+    var(--mar-conversation-activity-fill-state-tint)
   );
-}
-
-@supports (color: contrast-color(red)) {
-  .mar-composer-action:not(.mar-composer-stop-action, :disabled) {
-    color: contrast-color(var(--composer-send-state-bg));
-  }
 }
 
 .mar-composer-action:focus-visible {

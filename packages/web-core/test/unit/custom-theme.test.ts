@@ -18,6 +18,7 @@ const darkPalette = {
   '--mar-fill-selection': '#293545',
   '--mar-bg-chrome': '#18263b',
   '--mar-conversation-activity-fg': '#3071d1',
+  '--mar-conversation-activity-fill': '#2472d4',
   '--mar-control-primary-bg': '#dedede',
   '--mar-control-primary-fg': '#181818',
   '--mar-control-focus': '#a0a0a0',
@@ -30,6 +31,7 @@ const lightPalette = {
   '--mar-fill-selection': '#dfe5ed',
   '--mar-bg-chrome': '#f5f6f8',
   '--mar-conversation-activity-fg': '#0a6fd8',
+  '--mar-conversation-activity-fill': '#0a6fd8',
   '--mar-text-primary': '#1c2733'
 };
 const createThemePreferenceService = () =>
@@ -120,6 +122,52 @@ describe('Custom theme validation', () => {
       '--mar-control-focus': '#9b9b9b'
     });
   });
+
+  it('uses the explicit activity fill before the legacy color and derives its contrast on apply', () => {
+    const service = createThemePreferenceService();
+    const empty = source();
+    expect(service.resolveColors(empty)['--mar-conversation-activity-fill']).toBe('#2472d4');
+    const legacy = { '--mar-conversation-activity-fg': '#8acf' };
+    expect(service.resolveColors(source(legacy))).toMatchObject({
+      ...legacy,
+      '--mar-conversation-activity-fill': '#8ac',
+      '--mar-conversation-activity-on-fill': '#000000',
+      '--mar-conversation-activity-fill-state-tint': '#ffffff'
+    });
+    const explicit = source({ ...legacy, '--mar-conversation-activity-fill': '#1565c080' });
+    const item = service.saveCustomTheme(explicit);
+    service.setTheme(item.id);
+    expect(styles.get('--mar-conversation-activity-fg')).toBe('#8acf');
+    expect(styles.get('--mar-conversation-activity-fill')).toBe('#1565c0');
+    expect(styles.get('--mar-conversation-activity-on-fill')).toBe('#ffffff');
+    expect(styles.get('--mar-conversation-activity-fill-state-tint')).toBe('#000000');
+    expect(item.source).toBe(explicit);
+    const copy = JSON.parse(service.duplicateSource(explicit, 'Copy'));
+    expect(copy.colors['--mar-conversation-activity-fill']).toBe('#1565c0');
+    expect(copy.colors).not.toHaveProperty('--mar-conversation-activity-on-fill');
+    expect(copy.colors).not.toHaveProperty('--mar-conversation-activity-fill-state-tint');
+    service.setTheme('daylight');
+    expect(styles.has('--mar-conversation-activity-fill')).toBe(false);
+    expect(styles.has('--mar-conversation-activity-on-fill')).toBe(false);
+    expect(styles.has('--mar-conversation-activity-fill-state-tint')).toBe(false);
+  });
+
+  it.each([
+    ['#0000', '#000', '#ffffff'],
+    ['#ffffff', '#ffffff', '#000000']
+  ])(
+    'retains interaction feedback with a pure black or white activity fill (%s)',
+    (hex, fill, ink) => {
+      const service = createThemePreferenceService();
+      expect(
+        service.resolveColors(source({ '--mar-conversation-activity-fill': hex }))
+      ).toMatchObject({
+        '--mar-conversation-activity-fill': fill,
+        '--mar-conversation-activity-on-fill': ink,
+        '--mar-conversation-activity-fill-state-tint': ink
+      });
+    }
+  );
 
   it('resolves chrome independently and defaults missing or invalid chrome colors', () => {
     const service = createThemePreferenceService();

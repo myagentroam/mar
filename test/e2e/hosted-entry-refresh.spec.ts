@@ -734,11 +734,8 @@ test('Hosted send displays only request feedback before Watch, including after H
   try {
     await f.input.fill(f.prompt);
     await f.input.blur();
-    await expect(f.send).toHaveCSS('background-color', 'rgb(77, 163, 255)');
-    const sendForeground = (await page.evaluate(() => CSS.supports('color: contrast-color(red)')))
-      ? 'rgb(0, 0, 0)'
-      : 'rgb(30, 30, 30)';
-    await expect(f.send).toHaveCSS('color', sendForeground);
+    await expect(f.send).toHaveCSS('background-color', 'rgb(36, 114, 212)');
+    await expect(f.send).toHaveCSS('color', 'rgb(255, 255, 255)');
     await page.screenshot({ path: testInfo.outputPath('chat-ready-dark.png') });
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(1);

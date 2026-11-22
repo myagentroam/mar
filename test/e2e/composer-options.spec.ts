@@ -161,7 +161,7 @@ for (const width of [1280, 390]) {
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
-  test(`Composer send uses conversation activity blue while feedback stays neutral in ${theme}`, async ({
+  test(`Composer send uses a contrasting activity fill while feedback stays neutral in ${theme}`, async ({
     page
   }, info) => {
     for (const width of [1280, 390]) {
@@ -176,14 +176,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const tokens = await page.locator('html').evaluate((root) => {
         const style = getComputedStyle(root);
         return Object.fromEntries(
-          [
-            'bg-panel',
-            'conversation-activity-fg',
-            'fill-soft',
-            'text-disabled',
-            'text-secondary',
-            'control-color-danger'
-          ].map((token) => [token, style.getPropertyValue(`--mar-${token}`).trim()])
+          ['bg-panel', 'fill-soft', 'text-disabled', 'text-secondary', 'control-color-danger'].map(
+            (token) => [token, style.getPropertyValue(`--mar-${token}`).trim()]
+          )
         );
       });
       await toolbar.screenshot({ path: info.outputPath(`composer-${theme}-${width}.png`) });
@@ -191,32 +186,29 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         locator
           .evaluate((element, property) => getComputedStyle(element)[property], property)
           .then(resolvedColorToHex);
-      const expectSendColors = async (fill: string) => {
-        const expected = await send.evaluate((element, cssColor) => {
+      const expectSendColors = async (fill: string, foreground: string) => {
+        const expectedFill = await send.evaluate((element, cssColor) => {
           const probe = document.createElement('span');
           probe.style.backgroundColor = cssColor;
-          probe.style.color = CSS.supports('color: contrast-color(red)')
-            ? `contrast-color(${cssColor})`
-            : 'var(--mar-bg-panel)';
           element.append(probe);
-          const { backgroundColor, color } = getComputedStyle(probe);
+          const { backgroundColor } = getComputedStyle(probe);
           probe.remove();
-          return { backgroundColor, color };
+          return backgroundColor;
         }, fill);
         await expect
           .poll(() => color(send, 'backgroundColor'))
-          .toBe(resolvedColorToHex(expected.backgroundColor));
+          .toBe(resolvedColorToHex(expectedFill));
         await expect
           .poll(() => color(send, 'borderTopColor'))
-          .toBe(resolvedColorToHex(expected.backgroundColor));
-        await expect.poll(() => color(send, 'color')).toBe(resolvedColorToHex(expected.color));
+          .toBe(resolvedColorToHex(expectedFill));
+        await expect.poll(() => color(send, 'color')).toBe(foreground);
       };
-      await expectSendColors(tokens['conversation-activity-fg']!);
-      const customActivityColor = theme === 'daylight' ? '#1565c0' : '#8ac7ff';
-      await page.locator('html').evaluate((root, activity) => {
-        root.style.setProperty('--mar-conversation-activity-fg', activity);
-      }, customActivityColor);
-      await expectSendColors(customActivityColor);
+      const builtinFill = theme === 'daylight' ? '#005fd6' : '#2472d4';
+      await expectSendColors(builtinFill, '#ffffff');
+      await page
+        .locator('html')
+        .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff'));
+      await expectSendColors(builtinFill, '#ffffff');
       await expect.poll(() => color(stop, 'color')).toBe(tokens['control-color-danger']);
       await expect.poll(() => color(stop, 'borderTopColor')).toBe(tokens['control-color-danger']);
       await expect.poll(() => color(stop, 'backgroundColor')).toBe(tokens['bg-panel']);
@@ -225,16 +217,37 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         return stop?.[0] ?? '';
       });
       expect(resolvedColorToHex(ring)).toBe(tokens['text-secondary']);
+      const legacy = theme === 'vscode-dark-2026';
+      const fill = legacy ? '#8ac7ff' : '#1565c0';
+      const foreground = legacy ? '#000000' : '#ffffff';
+      const tint = legacy ? '#ffffff' : '#000000';
+      await page.evaluate(
+        async ({ modulePath, colors }) => {
+          const { createThemePreferenceService } = await import(modulePath);
+          const service = createThemePreferenceService();
+          const theme = service.saveCustomTheme(
+            JSON.stringify({ version: 1, name: 'Ocean', colors })
+          );
+          service.setTheme(theme.id);
+        },
+        {
+          modulePath: '/packages/web-core/src/service/theme-preference-service.ts',
+          colors: legacy
+            ? { '--mar-conversation-activity-fg': fill }
+            : {
+                '--mar-bg-page': '#f8fbff',
+                '--mar-conversation-activity-fg': '#8ac7ff',
+                '--mar-conversation-activity-fill': fill
+              }
+        }
+      );
+      await expectSendColors(fill, foreground);
       if (width >= 768) {
         await send.hover();
-        await expectSendColors(
-          `color-mix(in srgb, ${customActivityColor} 92%, var(--mar-text-primary))`
-        );
+        await expectSendColors(`color-mix(in srgb, ${fill} 92%, ${tint})`, foreground);
         await page.mouse.down();
         try {
-          await expectSendColors(
-            `color-mix(in srgb, ${customActivityColor} 84%, var(--mar-text-primary))`
-          );
+          await expectSendColors(`color-mix(in srgb, ${fill} 84%, ${tint})`, foreground);
         } finally {
           await page.mouse.move(0, 0);
           await page.mouse.up();
@@ -247,7 +260,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(`${url}&submitting`);
       await page
         .locator('html')
-        .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff'));
+        .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fill', '#ff00ff'));
       await expect(send).toBeDisabled();
       await expect(send).toHaveAttribute('aria-busy', 'true');
       await expect.poll(() => color(send, 'backgroundColor')).toBe(tokens['fill-soft']);
