@@ -182,7 +182,7 @@ export const workbenchShellZhCN = {
     copy: '复制详细诊断信息',
     copySucceeded: '已复制详细诊断信息。',
     copyFailed: '无法复制性能诊断信息，请检查浏览器剪贴板权限。',
-    rateValue: '当前 {current} msg/s · 峰值 {peak} msg/s · 载荷 {codeUnits} UTF-16 码元/秒',
+    rateValue: '当前 {current} msg/s · 峰值 {peak} msg/s · 载荷 {payloadRate}',
     processingValue: '平均 {average} ms · P95 {p95} ms · 最大 {maximum} ms',
     longTaskValue: '{count} 次 {duration} ms',
     pageScaleValue: 'DOM {dom} · 消息卡片 {messages}',

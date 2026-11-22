@@ -78,15 +78,15 @@ describe('Public Workbench Real-Time Connection', () => {
       const encoder = new TextEncoder();
       expect(encoder.encode(ascii).byteLength).toBe(115);
       expect(encoder.encode(unicode).byteLength).toBe(121);
-      const metadata = {
+      const metadata = (payloadBytes: number) => ({
         observedAtMs: 1_000,
-        payloadUtf16CodeUnits: 115,
+        payloadBytes,
         durationMs: expect.any(Number),
         category: 'conversation',
         context: {}
-      };
-      expect(report.frames).toEqual([metadata, metadata]);
-      expect(report.snapshot.payloadUtf16CodeUnitsPerSecond).toBe(230);
+      });
+      expect(report.frames).toEqual([metadata(115), metadata(121)]);
+      expect(report.snapshot.payloadBytesPerSecond).toBe(236);
     } finally {
       service.close();
       diagnostics.dispose();
