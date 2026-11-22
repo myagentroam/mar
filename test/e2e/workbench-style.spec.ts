@@ -1180,8 +1180,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const kindBorder = getComputedStyle(probe).color;
         probe.style.color = 'var(--mar-text-secondary)';
         const secondary = getComputedStyle(probe).color;
+        probe.style.color = 'var(--mar-color-git-graph-main)';
+        const gitBlue = getComputedStyle(probe).color;
         probe.remove();
-        return { kindBorder, syncBorder, secondary };
+        return { kindBorder, syncBorder, secondary, gitBlue };
       }, theme);
       await expect(root.locator('.repository-current')).toHaveCSS('color', colors.secondary);
       for (const selector of ['.repository-kind', '.repository-current']) {
@@ -1191,8 +1193,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'border-color',
         colors.syncBorder
       );
-      await expect(root.locator('.repository-sync-tag')).toHaveText('↓ 0 ↑ 25');
       const syncTag = root.locator('.repository-sync-tag');
+      await expect(syncTag).toHaveText('↓ 0 ↑ 25');
+      await expect(syncTag).toHaveCSS('color', colors.gitBlue);
       await expect(syncTag).not.toHaveAttribute('title');
       const description = await syncTag.getAttribute('aria-label');
       expect(description).toContain('origin/develop');
@@ -1212,6 +1215,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await page.screenshot({ path: testInfo.outputPath('git-sync-tooltip.png') });
         await page.mouse.move(0, 0);
         await expect(hint).toHaveCount(0);
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty('--mar-control-primary-fg', '#c94b71');
+        });
+        await expect(syncTag).toHaveCSS('color', colors.gitBlue);
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty('--mar-color-git-graph-main', '#9454c0');
+        });
+        await expect(syncTag).toHaveCSS('color', 'rgb(148, 84, 192)');
+        await expect(root.locator('.repository-current')).toHaveCSS('color', colors.secondary);
+        await page.evaluate(() => {
+          document.documentElement.style.removeProperty('--mar-control-primary-fg');
+          document.documentElement.style.removeProperty('--mar-color-git-graph-main');
+        });
       }
       await expect(root.locator('.mar-ui-tag[data-type="warning"]')).toBeVisible();
       await expect(headings.nth(1).locator('.mar-ui-tag[data-type="success"]')).toBeVisible();

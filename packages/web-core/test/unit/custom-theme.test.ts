@@ -183,6 +183,7 @@ describe('Custom theme validation', () => {
     ['--mar-color-warning-text', '--mar-color-warning-bg'],
     ['--mar-color-danger-text', '--mar-color-danger-bg'],
     ['--mar-color-accent', '--mar-color-accent-bg'],
+    ['--mar-color-git-graph-main', '--mar-bg-panel'],
     ['--mar-control-primary-fg', '--mar-control-primary-bg'],
     ['--mar-control-primary-fg', '--mar-control-primary-hover'],
     ['--mar-control-primary-fg', '--mar-control-primary-active'],

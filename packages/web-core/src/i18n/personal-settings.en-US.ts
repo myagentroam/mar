@@ -271,7 +271,7 @@ export const personalSettingsEnUS = {
       'color-danger-bg': 'Error message backgrounds',
       'color-accent': 'Secondary accent and highlights',
       'color-accent-bg': 'Secondary accent backgrounds',
-      'color-git-graph-main': 'Main lane in the Git history graph',
+      'color-git-graph-main': 'Git history main lane and upstream sync counts',
       'color-diff-add-text': 'Added-line text in diffs',
       'color-diff-del-text': 'Removed-line text in diffs',
       'shadow-soft': 'Color of soft shadows, not their size',
