@@ -15,7 +15,7 @@ export interface WebPerformanceSnapshot {
   readonly health: WebPerformanceHealth;
   readonly messagesPerSecond: number;
   readonly peakMessagesPerSecond: number;
-  readonly payloadBytesPerSecond: number;
+  readonly contentLengthPerSecond: number;
   readonly categories: Readonly<Record<string, number>>;
   readonly activeRunSessions: number;
   readonly processing: {
@@ -37,8 +37,8 @@ export interface WebPerformanceSnapshot {
 }
 
 export interface WebPerformanceFrameSample {
-  /** UTF-8 byte length of the received JSON text. */
-  readonly payloadBytes: number;
+  /** Length of the received JSON text. */
+  readonly contentLength: number;
   readonly durationMs: number;
   readonly message: unknown;
 }
@@ -80,7 +80,7 @@ export interface WebPerformanceLongTaskAttribution {
 
 export interface WebPerformanceFrameDetail {
   readonly observedAtMs: number;
-  readonly payloadBytes: number;
+  readonly contentLength: number;
   readonly durationMs: number;
   readonly category: string;
   readonly context: WebPerformanceContext;
@@ -114,10 +114,8 @@ export interface WebPerformanceLongTaskDetail {
   readonly relatedFrames: readonly WebPerformanceFrameDetail[];
 }
 
-type StoredFrameDetail = Omit<WebPerformanceFrameDetail, 'payloadBytes'> & {
-  readonly payloadBytes?: number;
-  readonly payloadUtf16CodeUnits?: number;
-  readonly bytes?: number;
+type StoredFrameDetail = Omit<WebPerformanceFrameDetail, 'contentLength'> & {
+  readonly contentLength?: number;
 };
 
 type StoredLongTaskDetail = Omit<WebPerformanceLongTaskDetail, 'relatedFrames'> & {
@@ -141,7 +139,7 @@ export interface WebPerformanceLongAnimationFrameDetail {
 }
 
 export interface WebPerformanceDiagnosticDetail {
-  readonly schemaVersion: 3;
+  readonly schemaVersion: 4;
   readonly generatedAt: string;
   readonly windowMs: number;
   readonly context: WebPerformanceContext;
@@ -187,7 +185,7 @@ const emptySnapshot = (): WebPerformanceSnapshot => ({
   health: 'idle',
   messagesPerSecond: 0,
   peakMessagesPerSecond: 0,
-  payloadBytesPerSecond: 0,
+  contentLengthPerSecond: 0,
   categories: {},
   activeRunSessions: 0,
   processing: { averageMs: 0, p95Ms: 0, maxMs: 0 },
@@ -274,10 +272,9 @@ export function createWebPerformanceDiagnostics(
             : [];
           const relatedFrames = storedFrames.flatMap((frame) => {
             if (frame === null || typeof frame !== 'object') return [];
-            const { observedAtMs, durationMs, category, context, payloadBytes } = frame;
-            // Legacy string lengths cannot be converted to UTF-8 bytes without the original text.
-            return typeof payloadBytes === 'number'
-              ? [{ observedAtMs, durationMs, category, context, payloadBytes }]
+            const { observedAtMs, durationMs, category, context, contentLength } = frame;
+            return typeof contentLength === 'number'
+              ? [{ observedAtMs, durationMs, category, context, contentLength }]
               : [];
           });
           return { capturedAt, value: { ...value, relatedFrames } };
@@ -373,8 +370,8 @@ export function createWebPerformanceDiagnostics(
       health: health(p95Ms, at),
       messagesPerSecond: recent.length,
       peakMessagesPerSecond: Math.max(0, ...buckets.values()),
-      payloadBytesPerSecond: recent.reduce(
-        (total, frame) => total + Math.max(0, frame.payloadBytes),
+      contentLengthPerSecond: recent.reduce(
+        (total, frame) => total + Math.max(0, frame.contentLength),
         0
       ),
       categories,
@@ -431,7 +428,7 @@ export function createWebPerformanceDiagnostics(
     if (!enabled()) return;
     frames.push({
       observedAtMs: now(),
-      payloadBytes: sample.payloadBytes,
+      contentLength: sample.contentLength,
       durationMs: sample.durationMs,
       category: frameCategory(sample.message),
       context: context()
@@ -628,7 +625,7 @@ export function createWebPerformanceDiagnostics(
     }));
     const longTasks = longTaskSamples.map(longTaskDetail);
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       generatedAt: new Date().toISOString(),
       windowMs: FRAME_WINDOW_MS,
       context: context(),

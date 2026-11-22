@@ -15,7 +15,7 @@ import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import InteractiveWorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue?unit-render';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import { ICON_THEME_STORAGE_KEY } from '../../src/service/icon-theme-preference-service.js';
-import { renderComponent } from './support/component-renderer.js';
+import { renderComponent, trigger } from './support/component-renderer.js';
 
 async function render(component: Component, props: Record<string, unknown>): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) });
@@ -654,6 +654,7 @@ describe('public file navigation components', () => {
 
   describe('file tree drag expansion', () => {
     beforeEach(() => {
+      stubBrowserEnvironment();
       vi.stubGlobal(
         'ResizeObserver',
         class {
@@ -661,7 +662,10 @@ describe('public file navigation components', () => {
           disconnect(): void {}
         }
       );
-      vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '24px' }));
+      vi.stubGlobal('getComputedStyle', () => ({
+        paddingTop: '0px',
+        getPropertyValue: () => '24px'
+      }));
       vi.stubGlobal('HTMLElement', TestHostNode);
       vi.stubGlobal('Node', TestHostNode);
     });
@@ -671,6 +675,7 @@ describe('public file navigation components', () => {
       const view = renderComponent(InteractiveWorkspaceFileTree, {
         root,
         filter: '',
+        selectedPath: undefined,
         disabled: false,
         mutationsEnabled,
         mobileViewport: false,
@@ -680,6 +685,41 @@ describe('public file navigation components', () => {
         view.findAll('button').find((node) => node.props['data-file-path'] === path)!;
       return { ...view, row, toggled };
     }
+
+    it.each([true, false])(
+      'only accepts root-area file drops when rows are visible (hidden=%s)',
+      async (hideRows) => {
+        const onDropFiles = vi.fn();
+        const view = renderComponent(InteractiveWorkspaceFileTree, {
+          root: fileTreeNode('.', 'workspace', 'DIRECTORY'),
+          filter: '',
+          selectedPath: undefined,
+          disabled: false,
+          mutationsEnabled: true,
+          mobileViewport: false,
+          hideRows,
+          onDropFiles
+        });
+        try {
+          const file = new File(['data'], 'notes.txt');
+          const preventDefault = vi.fn();
+          const event = { dataTransfer: { files: [file] }, preventDefault };
+          const scrollRoot = view.findAll('div')[0]!;
+          await trigger(scrollRoot, 'onDragenter', event);
+          await trigger(scrollRoot, 'onDragover', event);
+          await trigger(scrollRoot, 'onDrop', event);
+          if (hideRows) {
+            expect(preventDefault).not.toHaveBeenCalled();
+            expect(onDropFiles).not.toHaveBeenCalled();
+          } else {
+            expect(preventDefault).toHaveBeenCalledTimes(3);
+            expect(onDropFiles).toHaveBeenCalledExactlyOnceWith('.', [file]);
+          }
+        } finally {
+          view.unmount();
+        }
+      }
+    );
 
     it('waits 500ms over upload targets, cancels on leave, and does not restart for repeated enter events', async () => {
       vi.useFakeTimers();

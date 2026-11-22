@@ -81,7 +81,7 @@ function activate(event: MouseEvent) {
   background: transparent;
   color: var(--mar-ui-text-secondary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   text-align: start;
   overflow-wrap: anywhere;
   cursor: pointer;

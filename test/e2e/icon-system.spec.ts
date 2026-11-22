@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -307,8 +308,8 @@ for (const theme of ['dark', 'light']) {
       await expect(refreshGlyph).toHaveCSS('width', '14px');
       await expect(refreshGlyph).toHaveCSS('height', '14px');
       const refreshBounds = (await refresh.boundingBox())!;
-      expect(refreshBounds.width).toBeCloseTo(width >= 768 ? 26 : 24, 2);
-      expect(refreshBounds.height).toBeCloseTo(width >= 768 ? 26 : 24, 2);
+      expect(refreshBounds.width).toBeCloseTo(26, 2);
+      expect(refreshBounds.height).toBeCloseTo(26, 2);
       const refreshGlyphBounds = (await refreshGlyph.boundingBox())!;
       expect(refreshGlyphBounds.x + refreshGlyphBounds.width / 2).toBeCloseTo(
         refreshBounds.x + refreshBounds.width / 2,
@@ -752,10 +753,10 @@ for (const theme of ['dark', 'light']) {
         await expect(attachment).toHaveCSS('height', '16px');
         await expect(copy).toHaveCSS('width', '18px');
         await expect(copy).toHaveCSS('height', '18px');
-        await expect(edit.locator('.mar-icon')).toHaveCSS('width', '11px');
-        await expect(edit.locator('.mar-icon')).toHaveCSS('height', '11px');
-        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '11px');
-        await expect(edit).toHaveCSS('font-size', '11px');
+        await expect(edit.locator('.mar-icon')).toHaveCSS('width', '12px');
+        await expect(edit.locator('.mar-icon')).toHaveCSS('height', '12px');
+        await expect(edit.locator('.mar-ui-button__icon')).toHaveCSS('width', '12px');
+        await expect(edit).toHaveCSS('font-size', '12px');
         await expect(page.locator('.composer-access-select .mar-icon')).not.toHaveCSS(
           'width',
           '18px'
@@ -1115,7 +1116,7 @@ test('Activity rail keeps separate hover surfaces for icon actions and navigatio
 }) => {
   for (const [theme, hoverOverlay, rowHover] of [
     ['dark', 'rgba(255, 255, 255, 0.1)', 'rgb(46, 46, 46)'],
-    ['light', 'rgba(0, 0, 0, 0.1)', 'rgb(232, 241, 255)']
+    ['light', 'rgba(0, 95, 214, 0.08)', 'rgb(232, 241, 255)']
   ] as const) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`${fixture.url}icon-system.html?navigation=1&theme=${theme}`);
@@ -1856,7 +1857,7 @@ for (const theme of ['dark', 'light'])
       expect(gap).toBeGreaterThanOrEqual(5);
       expect(centerOffset).toBeCloseTo(0, 0);
       await expect(create).toHaveCSS('border-top-width', '1px');
-      await expect(create).toHaveCSS('height', mobile ? '24px' : '26px');
+      await expect(create).toHaveCSS('height', '26px');
       const layout = await create.evaluate((button) => {
         const row = button.parentElement!;
         const more = row.querySelector('.workspace-more-button')!.getBoundingClientRect();
@@ -1873,42 +1874,37 @@ for (const theme of ['dark', 'light'])
       expect(layout.right).toBeCloseTo(0, 0);
       expect(layout.gap).toBeCloseTo(layout.expectedGap, 0);
       expect(layout.gap).toBeGreaterThan(0);
-      const { fill, foreground, hover, active } = await create.evaluate((button) => {
-        const probe = document.createElement('span');
-        button.append(probe);
-        const resolvePrimaryColor = (state: string) => {
-          probe.style.color = `var(--mar-control-primary-${state})`;
-          return getComputedStyle(probe).color;
-        };
-        const colors = {
-          fill: resolvePrimaryColor('bg'),
-          foreground: resolvePrimaryColor('fg'),
-          hover: resolvePrimaryColor('hover'),
-          active: resolvePrimaryColor('active')
-        };
-        probe.remove();
-        return colors;
-      });
-      await expect(create).toHaveClass(/\bmar-ui-button--primary\b/);
-      await expect(create).toHaveCSS('background-color', fill);
-      await expect(create).toHaveCSS('color', foreground);
-      await expect(create).toHaveCSS('border-top-color', fill);
-      await expect(page.locator('.session-search .mar-ui-input')).not.toHaveCSS(
-        'background-color',
-        fill
-      );
+      const [fill, foreground, border, hover, active] =
+        theme === 'dark'
+          ? (['#323232', '#eaeaea', '#3d3d3d', '#3b3b3b', '#444444'] as const)
+          : (['#deeaff', '#17243a', '#b9cadf', '#d4e0f5', '#cad6eb'] as const);
+      const expectCreateColors = async (background: string) => {
+        const colors = await create.evaluate((button) => {
+          const style = getComputedStyle(button);
+          return [style.backgroundColor, style.color, style.borderTopColor];
+        });
+        expect(colors.map(resolvedColorToHex)).toEqual([background, foreground, border]);
+      };
+      await expect(create).not.toHaveClass(/\bmar-ui-button--primary\b/);
+      await expectCreateColors(fill);
+      const searchSurface = await page
+        .locator('.session-search .mar-ui-input')
+        .evaluate((input) => getComputedStyle(input).backgroundColor);
+      expect(resolvedColorToHex(searchSurface)).not.toBe(fill);
       if (!mobile) {
         await create.hover();
-        await expect(create).toHaveCSS('background-color', hover);
-        await expect(create).toHaveCSS('border-top-color', hover);
+        await expectCreateColors(hover);
         await page.mouse.down();
         try {
-          await expect(create).toHaveCSS('background-color', active);
-          await expect(create).toHaveCSS('border-top-color', active);
+          await expectCreateColors(active);
         } finally {
           await page.mouse.move(0, 0);
           await page.mouse.up();
         }
+        await page.keyboard.press('Tab');
+        await create.focus();
+        await expect(create).toHaveCSS('outline-style', 'solid');
+        await create.blur();
       }
       await page
         .locator('.conversation-sidebar')
@@ -1929,7 +1925,7 @@ for (const theme of ['dark', 'light'])
       const menu = page.locator('.workspace-tool-menu:visible');
       await expect(menu.getByRole('menuitem', { name: 'Loaded skills' })).toBeVisible();
       for (const item of await menu.getByRole('menuitem').all()) {
-        await expect(item).toHaveCSS('font-size', mobile ? '11px' : '12px');
+        await expect(item).toHaveCSS('font-size', '12px');
       }
       await expect(menu).toHaveAttribute('data-arrow', '');
       await expect(menu).toHaveCSS('opacity', '1');

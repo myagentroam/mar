@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type WebSocketRoute } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
@@ -140,7 +140,7 @@ test('Desktop Git Changes contains both axes without disabling ordinary scrollin
   await resources.getByRole('button', { name: 'project' }).click();
   await page.getByRole('tab', { name: /Git Changes|Git 变更/i }).click();
 
-  const list = page.locator('.workspace-aside .change-list');
+  const list = page.locator('.workspace-aside .current-changes');
   await expect(list.getByText('change-00.ts', { exact: true })).toBeVisible();
   const header = page.locator('.workbench-header');
   const frame = await header.boundingBox();
@@ -161,12 +161,18 @@ test('Desktop Git Changes contains both axes without disabling ordinary scrollin
   expect(await header.boundingBox()).toEqual(frame);
 });
 
-test('Desktop Terminal contains gestures around its virtual scrollback', async ({ page }) => {
+test('Desktop Terminal contains gestures and overlays reconnect status without resizing', async ({
+  page
+}) => {
   await page.setViewportSize({ width: 1440, height: 800 });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.route('**/api/auth/me', (route) =>
     json(route, { authenticated: true, userId: 1, username: 'admin', isAdmin: true })
   );
+  const connections: WebSocketRoute[] = [];
+  await page.routeWebSocket('**/api/terminals/terminal-1/connect?*', (socket) => {
+    connections.push(socket);
+  });
   await page.goto(`${fixture.url}new-session-group.html`);
   const resources = page.locator('.workspace-tree');
   await resources.getByRole('button', { name: /node-1/ }).click();
@@ -176,4 +182,25 @@ test('Desktop Terminal contains gestures around its virtual scrollback', async (
   await expect(body.locator('.xterm')).toBeVisible();
   await expect(body).toHaveCSS('overscroll-behavior', 'contain');
   await expect(page.locator('html')).toHaveCSS('overscroll-behavior', 'auto');
+
+  const host = body.locator('.xterm-host');
+  const status = body.getByRole('status');
+  const attached = JSON.stringify({ type: 'attach', terminalId: 'terminal-1' });
+  await expect.poll(() => connections.length).toBe(1);
+  connections[0]!.send(attached);
+  const outputPosition = () =>
+    host.evaluate(({ offsetTop, offsetHeight }) => [offsetTop, offsetHeight]);
+  const original = await outputPosition();
+  await connections[0]!.close({ code: 1011 });
+  await expect(status).toBeVisible();
+  expect(await outputPosition()).toEqual(original);
+  const banner = (await status.boundingBox())!;
+  const output = (await host.boundingBox())!;
+  expect(banner.y).toBeGreaterThanOrEqual(output.y);
+  expect(banner.y + banner.height).toBeLessThan(output.y + output.height);
+  await expect(status).toHaveCSS('pointer-events', 'none');
+  await expect.poll(() => connections.length).toBe(2);
+  connections[1]!.send(attached);
+  await expect(status).toHaveCount(0);
+  expect(await outputPosition()).toEqual(original);
 });

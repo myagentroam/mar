@@ -12,6 +12,7 @@ import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
 import { useMarUiLocale } from '../../locale/index.js';
 import { useMarFormControl } from '../form/form-context.js';
+import '../form/field-frame.css';
 
 defineOptions({ inheritAttrs: false });
 
@@ -94,6 +95,9 @@ const wordLimit = computed(() => {
     return limit;
   return undefined;
 });
+const overLimit = computed(
+  () => wordLimit.value !== undefined && text.value.length > wordLimit.value
+);
 
 type NativeField = HTMLInputElement | HTMLTextAreaElement;
 let composing: NativeField | undefined;
@@ -227,12 +231,13 @@ defineExpose({
 
 <template>
   <span
-    class="mar-ui-input"
+    class="mar-ui-input mar-ui-field-frame mar-ui-field-frame--inset"
+    :data-invalid="overLimit || ariaInvalid($attrs['aria-invalid'])"
     :class="[
       $attrs.class,
       {
         'mar-ui-input--textarea': isTextarea,
-        'mar-ui-input--over-limit': wordLimit !== undefined && text.length > wordLimit
+        'mar-ui-input--over-limit': overLimit
       }
     ]"
     :style="$attrs.style"
@@ -350,30 +355,14 @@ defineExpose({
   width: 100%;
   min-width: 0;
   min-height: var(--mar-ui-compact-control-size, 24px);
-  border-radius: var(--mar-ui-radius-control);
-  background: var(--mar-ui-bg-panel);
-  box-shadow: 0 0 0 1px var(--mar-ui-input-border) inset;
-  color: var(--mar-ui-text-secondary);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   font-weight: 400;
 }
 .mar-ui-input--textarea {
   font-size: var(--mar-ui-font-size-input);
 }
-.mar-ui-input:has(> .mar-ui-input__body:hover) {
-  box-shadow: 0 0 0 1px var(--mar-ui-input-border-hover) inset;
-}
-.mar-ui-input:has(> .mar-ui-input__body:focus-within) {
-  box-shadow: 0 0 0 1px var(--mar-ui-control-focus) inset;
-}
-.mar-ui-input:is(.mar-ui-input--over-limit, :has(.mar-ui-input__field[aria-invalid='true'])) {
-  box-shadow: 0 0 0 1px var(--mar-ui-control-color-danger) inset;
-}
-.mar-ui-input:has(.mar-ui-input__field:disabled) {
-  background: var(--mar-ui-fill-soft);
-  box-shadow: 0 0 0 1px var(--mar-ui-border-subtle) inset;
-  color: var(--mar-ui-text-disabled);
-  cursor: not-allowed;
+.mar-ui-input:where(:has(> .mar-ui-input__body > .mar-ui-input__field:enabled)) {
+  color: var(--mar-ui-text-secondary);
 }
 .mar-ui-input__body {
   display: flex;
@@ -499,14 +488,6 @@ defineExpose({
 @media (hover: none) {
   .mar-ui-input__clear {
     visibility: visible;
-  }
-}
-@media (forced-colors: active) {
-  .mar-ui-input {
-    border: 1px solid CanvasText;
-  }
-  .mar-ui-input:focus-within {
-    outline: 2px solid Highlight;
   }
 }
 </style>

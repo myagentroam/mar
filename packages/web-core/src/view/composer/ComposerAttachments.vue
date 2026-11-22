@@ -111,7 +111,7 @@ const emit = defineEmits<{
   min-height: 32px;
   border: 0;
   border-radius: 0;
-  border-bottom: 1px solid var(--mar-fill-hover);
+  border-bottom: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-panel);
   padding: 0.25rem 0.7rem;
   font-size: var(--mar-font-size-body);

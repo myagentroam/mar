@@ -126,9 +126,32 @@ for (const { theme, width } of [
   }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(
-      `${fixture.url}workbench-style.html?session-markers&theme=${theme}&locale=en-US`
+      `${fixture.url}workbench-style.html?session-markers&unread=1&theme=${theme}&locale=en-US`
     );
-    const list = page.getByRole('region', { name: 'Session fixture' }).locator('.session-list');
+    const sidebar = page
+      .getByRole('region', { name: 'Session fixture' })
+      .locator('.conversation-sidebar');
+    const search = sidebar.locator('.session-search .mar-ui-input');
+    const create = sidebar.locator('.new-session-button');
+    const groups = sidebar.getByRole('radiogroup');
+    for (const control of [
+      search,
+      create,
+      groups,
+      sidebar.locator('.session-search-button'),
+      sidebar.locator('.workspace-more-button')
+    ]) {
+      await expect(control).toHaveCSS('height', '26px');
+    }
+    for (const label of [search.getByRole('textbox'), create, groups]) {
+      await expect(label).toHaveCSS('font-size', '12px');
+    }
+    const options = groups.getByRole('radio');
+    await expect(options).toHaveCount(2);
+    for (const option of await options.all()) {
+      await expect(option).toHaveCSS('height', '20px');
+    }
+    const list = sidebar.locator('.session-list');
     await expect(list.locator('strong')).toHaveText([
       'Scheduled',
       'Pinned',
@@ -221,6 +244,7 @@ for (const { theme, width } of [
     if (width >= 768)
       await tree.screenshot({ path: testInfo.outputPath('resource-tree-colors.png') });
     await list.screenshot({ path: testInfo.outputPath('session-list-markers.png') });
+    await sidebar.screenshot({ path: testInfo.outputPath('workspace-sessions-compact.png') });
   });
 }
 
@@ -303,7 +327,10 @@ for (const [theme, width] of [
     const historyFilter = page.locator('.history-search-row .mar-ui-input');
     await historyFilter.screenshot({ path: testInfo.outputPath('hosted-history-filter.png') });
     const textbox = historyFilter.getByRole('textbox');
-    const font = width >= 768 ? '12px' : '11px';
+    const font = '12px';
+    await expect(historyFilter).toHaveCSS('height', '26px');
+    await expect(page.locator('.history-refresh-button')).toHaveCSS('height', '26px');
+    await expect(page.locator('.history-create-button')).toHaveCSS('height', '26px');
     await expect(textbox).toHaveCSS('font-size', font);
     expect(await textbox.evaluate((el) => getComputedStyle(el, '::placeholder').fontSize)).toBe(
       font
@@ -330,6 +357,9 @@ for (const [theme, width] of [
       await page.mouse.move(0, 0);
     }
     await list.screenshot({ path: testInfo.outputPath('hosted-history-colors.png') });
+    await page.locator('.hosted-conversation-history').screenshot({
+      path: testInfo.outputPath('hosted-history-compact.png')
+    });
   });
 }
 
@@ -406,7 +436,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         });
       await page.mouse.move(0, 0);
       const normal = await appearance(standard);
-      expect(normal.font).toBe(width >= 768 ? '12px' : '11px');
+      expect(normal.font).toBe('12px');
       expect(normal.placeholderFont).toBe(normal.font);
       expect(normal.shadow).not.toBe('none');
       await standard.hover();
@@ -1244,6 +1274,32 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'font-size',
         width >= 768 ? '12px' : '11px'
       );
+      const changeEntry = inspector.locator('.change-entry').filter({ hasText: 'main.ts' });
+      const changePath = changeEntry.locator('.change-path');
+      await expect(changeEntry.locator('.change-status[data-file-change="MODIFIED"]')).toHaveCSS(
+        'color',
+        theme === 'daylight' ? 'rgb(133, 74, 0)' : 'rgb(248, 203, 114)'
+      );
+      await expect(changeEntry.locator('small.change-status')).toHaveCSS('color', colors.secondary);
+      if (width >= 768) {
+        const rowHover = await changeEntry.evaluate((row) => {
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--mar-fill-row-hover)';
+          row.append(probe);
+          const color = getComputedStyle(probe).color;
+          probe.remove();
+          return color;
+        });
+        await changePath.hover();
+        await expect(changeEntry).toHaveCSS('background-color', rowHover);
+        await expect(changePath).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await page.mouse.move(0, 0);
+        await page.keyboard.press('Tab');
+        await changePath.focus();
+        await expect(changePath).toHaveCSS('outline-style', 'solid');
+        await expect(changePath).toHaveCSS('outline-width', '2px');
+        await changePath.blur();
+      }
       // Keep the gap compact without assuming a specific font's inline box metrics.
       await expect(root).toHaveCSS('padding-bottom', '0px');
       const { rowGap, pathToFileGap } = await root.evaluate((heading) => {
@@ -1439,7 +1495,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const tabs = strip.getByRole('tab');
         await expect(tabs).toHaveCount(4);
         // Aside uses the shared compact Tab token, including its mobile size.
-        await expect(tabs.first()).toHaveCSS('font-size', viewportWidth >= 768 ? '12px' : '11px');
+        await expect(tabs.first()).toHaveCSS('font-size', '12px');
         for (const width of viewportWidth >= 768 ? [341, 275] : [366, 320]) {
           await inspector.evaluate((element, width) => {
             (element as HTMLElement).style.width = `${width}px`;
@@ -1748,7 +1804,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const button of await picker.locator('.workspace-picker-toolbar-actions button').all()) {
         const bounds = (await button.boundingBox())!;
         expect(bounds.width).toBeGreaterThanOrEqual(28);
-        expect(bounds.height).toBeCloseTo(width < 768 ? 24 : 26, 2);
+        expect(bounds.height).toBeCloseTo(26, 2);
         await expect(button.locator('svg')).toHaveCount(1);
       }
       const rowColors = await picker.evaluate((element) => {
@@ -2041,6 +2097,72 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       .locator('.workbench-aside')
       .screenshot({ path: testInfo.outputPath('files-empty.png') });
     await expect(retry).toHaveCount(0);
+  });
+
+  test(`Git History classifies branches and file changes in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    const parents = ['main', 'green', 'cyan', 'amber', 'neutral', 'red'];
+    const commit = (hash: string, incoming: string[] = []) => ({
+      hash,
+      parents: incoming,
+      subject: hash === 'merge' ? 'Merge worktree branches' : `Update ${hash} worktree`,
+      authorName: 'Author',
+      authorEmail: 'a@example.test',
+      committedAt: 1,
+      refs: []
+    });
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/git/history')) {
+        await route.fulfill({
+          json: { commits: [commit('merge', parents), ...parents.map((hash) => commit(hash))] }
+        });
+      } else if (path.includes('/git/commits/') && path.endsWith('/files')) {
+        await route.fulfill({
+          json: {
+            files: [
+              { path: 'src/added.ts', change: 'ADDED' },
+              { path: 'src/modified.ts', change: 'MODIFIED' },
+              { path: 'src/removed.ts', change: 'DELETED' }
+            ]
+          }
+        });
+      } else if (path.endsWith('/git/refs')) await route.fulfill({ json: { refs: [] } });
+      else if (path.endsWith('/git/fetch')) await route.fulfill({ json: { fetchFailed: false } });
+      else if (path.endsWith('/changes')) await route.fulfill({ json: { changes: [] } });
+      else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&git-previews=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
+    const history = inspector.locator('.git-history');
+    const merge = history
+      .locator('.history-commit-row')
+      .filter({ hasText: 'Merge worktree branches' });
+    const green = merge.locator('path.history-graph-color-1');
+    const greenStroke = theme === 'daylight' ? 'rgb(0, 107, 52)' : 'rgb(113, 228, 154)';
+    await expect(green).toHaveCSS('stroke', greenStroke);
+    const lanes = await merge
+      .locator('path.history-graph-edge')
+      .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
+    expect(new Set(lanes).size).toBe(6);
+    await merge.click();
+    await history.getByRole('button', { name: 'src', exact: true }).click();
+    const modified = history.locator('.history-file-status[data-file-change="MODIFIED"]');
+    const warning = theme === 'daylight' ? 'rgb(133, 74, 0)' : 'rgb(248, 203, 114)';
+    await expect(modified).toHaveCSS('color', warning);
+    await page.mouse.move(0, 0);
+    await history.screenshot({ path: testInfo.outputPath('git-branches-and-files.png') });
+    await page.locator('html').evaluate((root) => {
+      root.style.setProperty('--mar-color-success-text', '#aabbcc');
+    });
+    await expect(green).toHaveCSS('stroke', greenStroke);
+    await expect(history.locator('.history-file-status[data-file-change="ADDED"]')).toHaveCSS(
+      'color',
+      'rgb(170, 187, 204)'
+    );
   });
 
   test(`Git History auto-append and in-place failures in ${theme}`, async ({ page }, testInfo) => {

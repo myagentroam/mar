@@ -536,14 +536,15 @@ function onLinkClick(event: MouseEvent): void {
   border-top: 1px solid var(--mar-border-default);
 }
 
-.agent-markdown :deep(a) {
-  color: var(--mar-control-link-text);
+.agent-markdown :deep(a[href]) {
+  color: var(--mar-link-text);
   text-decoration: underline;
   text-underline-offset: 2px;
+  cursor: pointer;
 }
 
-.agent-markdown :deep(a[href]) {
-  cursor: pointer;
+.agent-markdown :deep(a[href]:hover) {
+  color: var(--mar-link-hover);
 }
 
 .agent-markdown :deep(a:focus-visible) {

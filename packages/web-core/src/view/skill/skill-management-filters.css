@@ -1,0 +1,39 @@
+.mar-management-filter {
+  container: skill-management-filter / inline-size;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-inline-size: 0;
+}
+
+.mar-management-filter--stacked {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.mar-management-filter
+  > :is(
+    .mar-management-filter__query,
+    .mar-management-filter__source,
+    .mar-management-filter__category
+  ) {
+  inline-size: 100%;
+}
+
+@media (min-width: 768px) {
+  @container skill-management-filter (width >= 32rem) {
+    .mar-management-filter > .mar-management-filter__query {
+      inline-size: 260px;
+    }
+
+    .mar-management-filter > .mar-management-filter__source {
+      inline-size: 220px;
+    }
+
+    .mar-management-filter > .mar-management-filter__category {
+      inline-size: 160px;
+    }
+  }
+}

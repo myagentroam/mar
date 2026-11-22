@@ -48,7 +48,7 @@ describe('Long Task diagnostic indicator', () => {
     const diagnostics = createWebPerformanceDiagnostics();
     try {
       diagnostics.start();
-      diagnostics.observeFrame({ payloadBytes: 1, durationMs: 0, message: {} });
+      diagnostics.observeFrame({ contentLength: 1, durationMs: 0, message: {} });
       diagnostics.setConnectionState('connected');
       if (state === 'samples')
         diagnostics.updateBrowserMetrics({
@@ -88,13 +88,19 @@ describe('Long Task diagnostic indicator', () => {
   });
 });
 
-describe('Live diagnostic payload rate', () => {
+describe('Live diagnostic content length', () => {
   it.each([
-    ['en-US', 115, 'payload 115 B/s'],
-    ['zh-CN', 115, '载荷 115 B/s'],
-    ['en-US', 1_536, 'payload 1.5 KB/s'],
-    ['zh-CN', 1_536, '载荷 1.5 KB/s']
-  ] as const)('renders the exported payload unit in %s', (locale, payloadBytes, expected) => {
+    ['en-US', 115, 'content length 115/s'],
+    ['zh-CN', 115, '内容长度 115/s'],
+    ['en-US', 1_536, 'content length 1.5 K/s'],
+    ['zh-CN', 1_536, '内容长度 1.5 K/s'],
+    ['en-US', 11_018, 'content length 11.0 K/s'],
+    ['zh-CN', 11_018, '内容长度 11.0 K/s'],
+    ['en-US', 999_999, 'content length 1.0 M/s'],
+    ['zh-CN', 999_999, '内容长度 1.0 M/s'],
+    ['en-US', 999_999_999, 'content length 1.0 G/s'],
+    ['zh-CN', 999_999_999, '内容长度 1.0 G/s']
+  ] as const)('renders the content length in %s', (locale, contentLength, expected) => {
     vi.stubGlobal('document', {
       hidden: false,
       documentElement: { lang: originalLocale },
@@ -103,12 +109,12 @@ describe('Live diagnostic payload rate', () => {
     });
     localePreferenceService().setLocale(locale);
     const diagnostics = createWebPerformanceDiagnostics({ now: () => 1_000 });
-    diagnostics.observeFrame({ payloadBytes, durationMs: 1, message: {} });
+    diagnostics.observeFrame({ contentLength, durationMs: 1, message: {} });
     diagnostics.refresh();
     const view = renderComponent(WebPerformanceIndicator, { diagnostics });
     try {
       expect(textContent(view.root)).toContain(expected);
-      expect(diagnostics.detail().snapshot.payloadBytesPerSecond).toBe(payloadBytes);
+      expect(diagnostics.detail().snapshot.contentLengthPerSecond).toBe(contentLength);
     } finally {
       view.unmount();
       diagnostics.dispose();

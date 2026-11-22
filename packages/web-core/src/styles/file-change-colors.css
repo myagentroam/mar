@@ -1,0 +1,11 @@
+.mar-file-change-status[data-file-change='ADDED'] {
+  --mar-file-change-fg: var(--mar-color-success-text);
+}
+
+.mar-file-change-status:is([data-file-change='MODIFIED'], [data-file-change='TYPE_CHANGED']) {
+  --mar-file-change-fg: var(--mar-color-warning-text);
+}
+
+.mar-file-change-status[data-file-change='DELETED'] {
+  --mar-file-change-fg: var(--mar-color-danger-text);
+}

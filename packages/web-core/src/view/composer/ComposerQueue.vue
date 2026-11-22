@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Presents queued work and owns local drag and menu feedback; parents handle queue mutations.
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
@@ -68,6 +69,12 @@ const contextMenuTrigger = ref<HTMLButtonElement>();
 const contextMenuIndex = computed(() =>
   props.items.findIndex((item) => item.queueItemId === contextMenu.value?.queueItemId)
 );
+const nativeDragSource = ref<string>();
+const nativeDragTarget = ref<string>();
+const nativeDragSourceIndex = computed(() =>
+  props.items.findIndex((item) => item.queueItemId === nativeDragSource.value)
+);
+const nativeDropEdge = computed(() => getNativeDropEdge(nativeDragTarget.value));
 const LONG_PRESS_MS = 500;
 let lastPointerType: string | undefined;
 let pressItem: WorkspaceQueueItem | undefined;
@@ -174,11 +181,64 @@ function onItemContextMenu(event: MouseEvent, item: WorkspaceQueueItem): void {
 }
 
 function onNativeDragStart(event: DragEvent, queueItemId: string): void {
+  if (event.target !== event.currentTarget) return;
   if (lastPointerType === 'touch' || lastPointerType === 'pen') {
     event.preventDefault();
     return;
   }
-  emit('dragStart', queueItemId);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-mar-queue-item', 'move');
+  }
+  nativeDragSource.value = queueItemId;
+  nativeDragTarget.value = undefined;
+}
+
+function getNativeDropEdge(queueItemId: string | undefined): 'before' | 'after' | undefined {
+  const source = nativeDragSourceIndex.value;
+  if (source < 0 || queueItemId === undefined) return;
+  const target = props.items.findIndex((item) => item.queueItemId === queueItemId);
+  if (target < 0 || source === target) return;
+  // Moving into the target index puts the source before it when moving up, after it going down.
+  return source > target ? 'before' : 'after';
+}
+
+function onNativeDragOver(event: DragEvent, queueItemId: string): void {
+  if (!getNativeDropEdge(queueItemId)) {
+    nativeDragTarget.value = undefined;
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  nativeDragTarget.value = queueItemId;
+}
+
+function onNativeDragLeave(event: DragEvent, queueItemId: string): void {
+  if (nativeDragTarget.value !== queueItemId) return;
+  if (
+    event.relatedTarget instanceof Node &&
+    (event.currentTarget as HTMLElement).contains(event.relatedTarget)
+  )
+    return;
+  nativeDragTarget.value = undefined;
+}
+
+function clearNativeDrag(): void {
+  nativeDragSource.value = undefined;
+  nativeDragTarget.value = undefined;
+}
+
+function onNativeDrop(event: DragEvent, queueItemId: string): void {
+  const source = nativeDragSource.value;
+  if (source === undefined || !getNativeDropEdge(queueItemId)) return;
+  event.preventDefault();
+  clearNativeDrag();
+  requestReorder(source, queueItemId);
+}
+
+function requestReorder(source: string, target: string): void {
+  emit('dragStart', source);
+  emit('reorder', target);
 }
 
 async function openContextMenu(
@@ -207,14 +267,16 @@ function contextCommand(command: string | number | object): void {
   const index = props.items.findIndex((item) => item.queueItemId === menu.queueItemId);
   const target = props.items[index + (command === 'up' ? -1 : 1)];
   if (index < 0 || target === undefined) return;
-  emit('dragStart', menu.queueItemId);
-  emit('reorder', target.queueItemId);
+  requestReorder(menu.queueItemId, target.queueItemId);
 }
 
 watch(
   () => props.items.map((item) => item.queueItemId),
   (itemIds, previousItemIds) => {
     if (contextMenu.value && !itemIds.includes(contextMenu.value.queueItemId)) closeContextMenu();
+    if (nativeDragSource.value !== undefined && !itemIds.includes(nativeDragSource.value)) {
+      clearNativeDrag();
+    }
     const previousIds = new Set(previousItemIds);
     if (workList.value && itemIds.some((id) => !previousIds.has(id))) {
       workList.value.scrollTop = workList.value.scrollHeight;
@@ -438,6 +500,7 @@ onMounted(() => {
           :ref="editingQueueItemId === item.queueItemId ? setEditingQueueItem : undefined"
           :class="{ editing: editingQueueItemId === item.queueItemId }"
           :data-queue-item-id="item.queueItemId"
+          :data-drop-edge="nativeDragTarget === item.queueItemId ? nativeDropEdge : undefined"
           draggable="true"
           @pointerdown="onItemPointerDown($event, item)"
           @pointermove="onItemPointerMove"
@@ -445,8 +508,10 @@ onMounted(() => {
           @pointercancel="onItemPointerUp"
           @contextmenu="onItemContextMenu($event, item)"
           @dragstart="onNativeDragStart($event, item.queueItemId)"
-          @dragover.prevent
-          @drop.prevent="emit('reorder', item.queueItemId)"
+          @dragover="onNativeDragOver($event, item.queueItemId)"
+          @dragleave="onNativeDragLeave($event, item.queueItemId)"
+          @dragend="clearNativeDrag"
+          @drop="onNativeDrop($event, item.queueItemId)"
         >
           <span class="queue-item-label">
             <span class="queue-drag" aria-hidden="true">⠿</span>
@@ -787,6 +852,7 @@ onMounted(() => {
 }
 
 .queue-item {
+  position: relative;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
   align-items: center;
@@ -794,6 +860,30 @@ onMounted(() => {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.queue-item[data-drop-edge]::after {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  inset-inline: 0;
+  block-size: 2px;
+  border-top: 2px solid var(--mar-control-focus);
+  pointer-events: none;
+}
+
+.queue-item[data-drop-edge='before']::after {
+  inset-block-start: 0;
+}
+
+.queue-item[data-drop-edge='after']::after {
+  inset-block-end: 0;
+}
+
+@media (forced-colors: active) {
+  .queue-item[data-drop-edge]::after {
+    border-top-color: Highlight;
+  }
 }
 
 .queue-item-label {

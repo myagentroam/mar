@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './skill-management-filters.css';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
@@ -580,9 +581,10 @@ function scopeLabel(scope: string): string {
           :label="translate('generated.skillCenterPage.availableSkills')"
           name="available"
         >
-          <div class="skill-filter-bar mar-management-filter">
+          <div class="mar-management-filter mar-management-filter--stacked">
             <MarInput
               v-model="skillQuery"
+              class="mar-management-filter__query"
               clearable
               :placeholder="translate('generated.skillCenterPage.searchSkillNamesOrDescriptions2')"
               :clear-icon="marIcon('clear-input')"
@@ -876,13 +878,6 @@ function scopeLabel(scope: string): string {
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
-.skill-filter-bar {
-  display: grid;
-  gap: 10px;
-}
-.skill-filter-bar > :deep(.mar-ui-input) {
-  width: min(320px, 100%);
-}
 .skill-category-strip {
   display: flex;
   overflow-x: auto;
@@ -910,7 +905,7 @@ function scopeLabel(scope: string): string {
   overflow: hidden;
   block-size: 4px;
   border-radius: 2px;
-  background: var(--mar-control-fill-color-light);
+  background: var(--mar-border-subtle);
 }
 .skill-install-progress__indicator::after {
   position: absolute;
@@ -956,7 +951,7 @@ function scopeLabel(scope: string): string {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--mar-fill-hover);
+  border-bottom: 1px solid var(--mar-border-subtle);
   padding-bottom: 12px;
 }
 .target-panel > div:first-child {
@@ -1000,9 +995,6 @@ function scopeLabel(scope: string): string {
     flex: none;
     overflow: visible;
     padding-right: 0;
-  }
-  .skill-filter-bar {
-    grid-template-columns: 1fr;
   }
 }
 </style>

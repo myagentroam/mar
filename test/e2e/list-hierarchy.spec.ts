@@ -4,6 +4,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 // @test-covers packages/mar-ui/components/check-tag/MarCheckTag.vue
 // @test-covers packages/mar-ui/components/segmented/MarSegmented.vue
 // @test-covers packages/web-core/src/view/composer/ComposerToolbar.vue
+// @test-covers packages/web-core/src/view/skill/skill-management-filters.css
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
@@ -39,7 +40,7 @@ async function colors(page: Page) {
 test('Catalog category tags distinguish selection in forced colors', async ({ page }) => {
   await page.emulateMedia({ forcedColors: 'active' });
   await page.goto(`${fixture.url}visual-alignment.html?list-hierarchy=skills&scope-columns`);
-  const filters = page.locator('.skill-filter-bar');
+  const filters = page.locator('.mar-management-filter:visible');
   const all = filters.getByRole('button', { name: 'All', exact: true });
   const engineering = filters.getByRole('button', { name: 'Engineering', exact: true });
   await expect(all).toHaveAttribute('aria-pressed', 'true');
@@ -116,7 +117,7 @@ test('MCP source search discards old results when switching sources', async ({ p
     );
     const search = page.getByRole('button', { name: 'Search', exact: true });
     const table = page.locator('.source-mcp-table');
-    const picker = page.locator('.source-search-bar').getByRole('combobox');
+    const picker = page.locator('.mar-management-filter:visible').getByRole('combobox');
     await search.click();
     await expect(table.getByText('Current old candidate')).toBeVisible();
     await picker.click();
@@ -313,7 +314,7 @@ for (const [view, field, selector, searchPlaceholder] of [
 test('Skill and MCP configuration search fields are compact and fit narrow panels', async ({
   page
 }, testInfo) => {
-  for (const width of [1920, 320]) {
+  for (const width of [1920, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(
       `${fixture.url}visual-alignment.html?list-hierarchy=skills&scope-columns&theme=vscode-dark-2026`
@@ -325,7 +326,7 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
       await page.getByRole('tab', { name: tab, exact: true }).click();
       const input = page.getByPlaceholder(placeholder);
       await expect(input).toBeVisible();
-      const filters = page.locator('.skill-filter-bar, .mcp-filter-bar').filter({ has: input });
+      const filters = page.locator('.mar-management-filter').filter({ has: input });
       const field = filters.locator('.mar-ui-input');
       const bounds = (await filters.boundingBox())!;
       const search = (await field.boundingBox())!;
@@ -366,7 +367,7 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
       await all.click();
       await expect(all).toHaveAttribute('aria-pressed', 'true');
       expect(search.x).toBeCloseTo(bounds.x, 0);
-      expect(search.width).toBeCloseTo(Math.min(320, bounds.width), 0);
+      expect(search.width).toBeCloseTo(width === 1920 ? 260 : bounds.width, 0);
       expect(search.x + search.width).toBeLessThanOrEqual(width);
       await filters.screenshot({ path: testInfo.outputPath(`${tab}-filters-${width}.png`) });
       await page.screenshot({ path: testInfo.outputPath(`${tab}-configuration-${width}.png`) });
@@ -438,13 +439,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     page
   }, testInfo) => {
     const locale = theme === 'vscode-dark-2026' ? 'zh-CN' : 'en-US';
-    for (const width of [1620, 390, 320]) {
+    for (const width of [1620, 1280, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       for (const view of ['sources', 'mcp-sources']) {
         await page.goto(
           `${fixture.url}visual-alignment.html?list-hierarchy=${view}&scope-columns&theme=${theme}&locale=${locale}`
         );
-        const toolbar = page.locator('.source-search-bar');
+        if (width === 1280) {
+          await page.addStyleTag({
+            content: '.list-hierarchy-fixture { max-inline-size: 460px; }'
+          });
+        }
+        const toolbar = page.locator('.mar-management-filter:visible');
         const group = toolbar.locator('.mar-ui-input');
         const source = toolbar.locator('.mar-ui-select');
         const button = group.getByRole('button', { name: /^(Search|搜索)$/u });
@@ -458,18 +464,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const select = (await source.boundingBox())!;
         expect(search.x + search.width).toBeLessThanOrEqual(width);
         if (width === 1620) {
-          expect(search.width).toBeCloseTo(360, 0);
+          expect(search.width).toBeCloseTo(260, 0);
+          expect(select.width).toBeCloseTo(220, 0);
           expect(search.x - (select.x + select.width)).toBeCloseTo(12, 0);
           expect(search.y + search.height / 2).toBeCloseTo(select.y + select.height / 2, 0);
         } else {
           expect(search.width).toBeCloseTo(frame.width, 0);
+          expect(select.width).toBeCloseTo(frame.width, 0);
           expect(search.x).toBeCloseTo(select.x, 0);
           expect(search.y).toBeGreaterThan(select.y + select.height);
         }
         await toolbar.screenshot({ path: testInfo.outputPath(`${view}-search-${width}.png`) });
 
         await page.getByRole('tab').last().click();
-        const filters = page.locator('.catalog-filter-bar, .mcp-toolbar');
+        const filters = page.locator('.mar-management-filter:visible');
         const catalogSearch = filters.locator('.mar-ui-input');
         await expect(catalogSearch.getByRole('textbox')).toBeVisible();
         await expect(catalogSearch.getByRole('textbox')).toHaveCSS('font-size', filterSize);
@@ -478,7 +486,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         }
         const filtersBounds = (await filters.boundingBox())!;
         const field = (await catalogSearch.boundingBox())!;
-        expect(field.width).toBeCloseTo(width === 1620 ? 320 : filtersBounds.width, 0);
+        expect(field.width).toBeCloseTo(width === 1620 ? 260 : filtersBounds.width, 0);
         expect(field.x).toBeCloseTo(filtersBounds.x, 0);
         expect(field.x + field.width, `${view} catalog at ${width}px`).toBeLessThanOrEqual(width);
       }
@@ -504,15 +512,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(panels.nth(0)).toHaveCSS('display', 'none');
         await expect(panels.nth(1)).toBeVisible();
         if (view === 'mcp-sources') {
-          const filters = panels.nth(1).locator('.mcp-toolbar');
+          const filters = panels.nth(1).locator('.mar-management-filter');
           const search = await filters.locator('.mar-ui-input').boundingBox();
           const category = await filters.locator('.mar-ui-select').boundingBox();
           expect(search).not.toBeNull();
           expect(category).not.toBeNull();
           if (width === 1280) {
+            expect(category!.width).toBeCloseTo(160, 0);
             expect(Math.abs(category!.y - search!.y)).toBeLessThan(2);
             expect(category!.x).toBeGreaterThan(search!.x + search!.width);
           } else {
+            expect(category!.width).toBeCloseTo(search!.width, 0);
             expect(category!.y).toBeGreaterThan(search!.y + search!.height);
             expect(Math.abs(category!.x - search!.x)).toBeLessThan(2);
           }
@@ -530,7 +540,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(
         `${fixture.url}visual-alignment.html?list-hierarchy=sources&scope-columns&theme=${theme}`
       );
-      const group = page.locator('.source-search-bar .mar-ui-input');
+      const bar = page.locator('.mar-management-filter:visible');
+      const group = bar.locator('.mar-ui-input');
       const search = group.getByRole('button', { name: 'Search', exact: true });
       await expect(search).toBeEnabled();
       const idleFrame = await group.evaluate((el) => getComputedStyle(el).boxShadow);
@@ -539,7 +550,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(search).not.toHaveCSS('background-color', idleBackground);
       await expect(search).toHaveCSS('border-top-width', '0px');
       await expect(group).toHaveCSS('box-shadow', idleFrame);
-      const bar = page.locator('.source-search-bar');
       const unusedHeight = await bar.evaluate((el) => {
         const frame = el.getBoundingClientRect();
         const input = el.querySelector('.mar-ui-input')!.getBoundingClientRect();
@@ -688,7 +698,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(rows.first().locator('.entry-name')).toHaveCSS('color', palette.primary);
       await expect(rows.last().locator('.entry-name')).toHaveCSS('color', palette.secondary);
       const input = page.getByRole('textbox', { name: 'Quick Open', exact: true });
-      const font = width >= 768 ? '12px' : '11px';
+      const font = '12px';
       await expect(input).toHaveCSS('font-size', font);
       expect(await input.evaluate((el) => getComputedStyle(el, '::placeholder').fontSize)).toBe(
         font
@@ -799,7 +809,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const input = select.getByRole('combobox');
           const wrapper = select.locator('.mar-ui-select__field');
           await page.getByRole('button', { name: 'Open hint dialog', exact: true }).focus();
-          if (kind === 'model-effort') {
+          if (kind !== 'runner') {
             await page.mouse.move(0, 0);
             await expect(wrapper).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
             await expect(wrapper).toHaveCSS('box-shadow', 'none');

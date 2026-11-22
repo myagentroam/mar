@@ -363,7 +363,15 @@ describe('queue interactions', () => {
       queue.fire('onItemPointerDown', { pointerType: 'mouse' });
       (queue.getState().onNativeDragStart as (event: object, id: string) => void)(mouseDrag, 'q1');
       expect(mouseDrag.preventDefault).not.toHaveBeenCalled();
+      expect(queue.dragStart).not.toHaveBeenCalled();
+      const drop = { preventDefault: vi.fn() };
+      const onDrop = queue.getState().onNativeDrop as (event: object, id: string) => void;
+      onDrop(drop, 'q1');
+      expect(queue.reorder).not.toHaveBeenCalled();
+      onDrop(drop, 'q2');
+      expect(drop.preventDefault).toHaveBeenCalledOnce();
       expect(queue.dragStart).toHaveBeenCalledExactlyOnceWith('q1');
+      expect(queue.reorder).toHaveBeenCalledExactlyOnceWith('q2');
     } finally {
       queue.app.unmount();
     }

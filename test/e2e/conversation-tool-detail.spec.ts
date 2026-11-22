@@ -1341,11 +1341,22 @@ for (const [width, theme] of [
         'href',
         'https://example.com/docs'
       );
+      const sourceColor = theme === 'dark' ? 'rgb(117, 183, 255)' : 'rgb(23, 78, 158)';
+      for (const link of [fetch.locator('.web-page-url a'), fetch.locator('.web-page-origin a')]) {
+        await expect(link).toHaveCSS('color', sourceColor);
+        await expect(link).toHaveCSS('text-decoration-line', 'underline');
+      }
       await expect(fetch.locator('.web-output')).toContainText('Returned page paragraph 1.');
       await page.screenshot({
         path: testInfo.outputPath(`web-details-${width}-${theme}.png`),
         fullPage: true
       });
+      const pageLink = fetch.locator('.web-page-url a');
+      await pageLink.hover();
+      await expect(pageLink).toHaveCSS(
+        'color',
+        theme === 'dark' ? 'rgb(162, 206, 255)' : 'rgb(18, 58, 120)'
+      );
       await search.locator('.detail-preview-toggle').click();
       await expect(search.locator('.conversation-tool-sources li')).toHaveCount(8);
       await expect(search.locator('a[href^="javascript:"]')).toHaveCount(0);
@@ -1357,6 +1368,10 @@ for (const [width, theme] of [
       await expect(search.locator('.conversation-tool-sources a').first()).toHaveAttribute(
         'rel',
         'noopener noreferrer'
+      );
+      await expect(search.locator('.conversation-tool-sources a').first()).toHaveCSS(
+        'color',
+        sourceColor
       );
       await expect(search.locator('.conversation-tool-source-host').first()).toHaveCSS(
         'font-size',

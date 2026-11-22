@@ -10,8 +10,10 @@ test('Skill settings show the available internal catalog and remove Skill Center
     readonly body: string;
   }[] = [];
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
-  await page.route('**/api/resources', (route) => json(route, { nodes: [], workspaces: [] }));
-  const favorites: Record<string, unknown>[] = [
+  await page.route(/\/api\/resources(?:\?.*)?$/u, (route) =>
+    json(route, { nodes: [], workspaces: [], page: 1, pageSize: 20, total: 0, hasMore: false })
+  );
+  const favorites = [
     {
       id: 'favorite-1',
       sourceId: 'skills-sh',
@@ -75,8 +77,21 @@ test('Skill settings show the available internal catalog and remove Skill Center
       ]
     })
   );
-  await page.route('**/api/skill-favorites', (route) => json(route, { favorites }));
-  await page.route('**/api/mcp-catalog', (route) =>
+  await page.route(/\/api\/skill-favorites(?:\?.*)?$/u, (route) => {
+    const category = new URL(route.request().url()).searchParams.get('category');
+    const matches = category
+      ? favorites.filter((favorite) => favorite.tags.includes(category))
+      : favorites;
+    return json(route, {
+      favorites: matches,
+      page: 1,
+      pageSize: 20,
+      total: matches.length,
+      hasMore: false,
+      facets: { tags: ['代码质量', '数据库'] }
+    });
+  });
+  await page.route(/\/api\/mcp-catalog(?:\?.*)?$/u, (route) =>
     json(route, {
       entries: [
         {
@@ -91,19 +106,25 @@ test('Skill settings show the available internal catalog and remove Skill Center
           tags: ['浏览器'],
           runtime: { transport: 'STDIO' }
         }
-      ]
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      hasMore: false,
+      facets: { tags: ['浏览器'] }
     })
   );
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
-  await expect(page.locator('.activity-rail .nav-menu-button .rail-label')).toHaveText([
-    '工作',
-    '对话',
-    '管理',
-    '设置',
-    '帮助'
-  ]);
+  const primaryNavigation = page.getByRole('navigation', { name: '主导航' });
+  const navigationItems = primaryNavigation
+    .getByRole('button')
+    .or(primaryNavigation.getByRole('link'));
+  await expect(navigationItems).toHaveCount(6);
+  for (const [index, name] of ['工作', '对话', '会话与通知', '管理', '设置', '帮助'].entries()) {
+    await expect(navigationItems.nth(index)).toHaveAccessibleName(name);
+  }
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await expect(page).toHaveURL(/view=management/);
   await page.keyboard.press('Tab');
@@ -156,13 +177,15 @@ test('Skill settings show the available internal catalog and remove Skill Center
     favorite.getByRole('button', { name: '安装' }).locator('[data-mar-icon]')
   ).toBeVisible();
   await expect(favorite.getByRole('button', { name: '安装' })).toBeDisabled();
+  const databaseSkill = page.getByRole('row', { name: /^database-query /u });
+  await expect(databaseSkill).toBeVisible();
   await page.getByRole('button', { name: '代码质量', exact: true }).click();
-  await expect(
-    page.locator('.available-skill-table .mar-ui-table__row').filter({ hasText: 'database-query' })
-  ).toHaveCount(0);
+  await expect(databaseSkill).toHaveCount(0);
   await page.getByRole('button', { name: '全部', exact: true }).click();
+  await expect(databaseSkill).toBeVisible();
   await favorite.click();
-  const details = page.getByRole('dialog', { name: 'code-review' });
+  const details = page.getByRole('dialog', { name: '技能详情', exact: true });
+  await expect(details.getByText('code-review', { exact: true })).toBeVisible();
   await expect(details).toContainText('Review changes before merge');
   await expect(details).toContainText('aaaaaaaa');
   await details.getByRole('button', { name: '关闭', exact: true }).click();
@@ -177,7 +200,8 @@ test('Skill settings show the available internal catalog and remove Skill Center
   await expect(page.locator('.mcp-card-grid, .mcp-card')).toHaveCount(0);
   await expect(mcpRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
   await mcpRow.click();
-  const mcpDetails = page.getByRole('dialog', { name: 'Playwright MCP' });
+  const mcpDetails = page.getByRole('dialog', { name: 'MCP 详情', exact: true });
+  await expect(mcpDetails.getByText('Playwright MCP', { exact: true })).toBeVisible();
   await expect(mcpDetails).toContainText('Browser automation tools');
   await mcpDetails.getByRole('button', { name: '关闭', exact: true }).click();
 });
@@ -185,9 +209,11 @@ test('Skill settings show the available internal catalog and remove Skill Center
 test('Mobile skill settings use page-level vertical scrolling', async ({ page }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route('**/api/resources', (route) => json(route, { nodes: [], workspaces: [] }));
+  await page.route(/\/api\/resources(?:\?.*)?$/u, (route) =>
+    json(route, { nodes: [], workspaces: [], page: 1, pageSize: 20, total: 0, hasMore: false })
+  );
   await page.route('**/api/skill-sources', (route) => json(route, { sources: [] }));
-  await page.route('**/api/skill-favorites', (route) =>
+  await page.route(/\/api\/skill-favorites(?:\?.*)?$/u, (route) =>
     json(route, {
       favorites: Array.from({ length: 14 }, (_, index) => ({
         id: `favorite-${index}`,
@@ -204,7 +230,12 @@ test('Mobile skill settings use page-level vertical scrolling', async ({ page })
         tlsVerified: true,
         updatedAt: 1_700_000_000_000 + index,
         manageable: true
-      }))
+      })),
+      page: 1,
+      pageSize: 20,
+      total: 14,
+      hasMore: false,
+      facets: { tags: ['移动端'] }
     })
   );
 
@@ -232,6 +263,7 @@ test('Mobile skill settings use page-level vertical scrolling', async ({ page })
   };
 
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('技能配置');
+  await expect(skillPage.getByText('mobile-skill-0', { exact: true })).toBeVisible();
   await expectPageScroll();
 });
 
@@ -635,7 +667,7 @@ test('Skill source management discovers external entries and adds them to the pe
     'true'
   );
   await expect(page.getByRole('tab', { name: '已加入的技能' })).toBeVisible();
-  const sourceSearchBar = page.locator('.source-search-bar');
+  const sourceSearchBar = page.locator('.mar-management-filter:visible');
   await expect(sourceSearchBar.getByRole('combobox')).toContainText('skills.sh');
   const sourceSearchBounds = await sourceSearchBar.evaluate((element) => {
     const select = element.querySelector('.mar-ui-select')?.getBoundingClientRect();
@@ -723,7 +755,7 @@ test('Skill source management discovers external entries and adds them to the pe
     .locator('.catalog-skill-table .mar-ui-table__row')
     .filter({ hasText: 'aaaaaaaa' });
   await expect(addedSkill).toContainText('更新于');
-  const catalogFilter = page.locator('.catalog-filter-bar');
+  const catalogFilter = page.locator('.mar-management-filter:visible');
   await expect(catalogFilter.getByRole('button', { name: '全部', exact: true })).toBeVisible();
   await expect(catalogFilter.getByRole('button', { name: '后端', exact: true })).toBeVisible();
   await catalogFilter.getByRole('textbox').fill('不存在的技能');
@@ -1003,7 +1035,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await page.getByRole('navigation', { name: '管理菜单' }).getByText('MCP 源管理').click();
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('MCP 源管理');
-  const mcpSourceSearchBar = page.locator('.source-search-bar');
+  const mcpSourceSearchBar = page.locator('.mar-management-filter:visible');
   const mcpSourceSearchBounds = await mcpSourceSearchBar.evaluate((element) => {
     const select = element.querySelector('.mar-ui-select')?.getBoundingClientRect();
     const input = element.querySelector('.mar-ui-input')?.getBoundingClientRect();

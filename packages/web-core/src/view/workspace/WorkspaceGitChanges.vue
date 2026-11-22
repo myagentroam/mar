@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '../../styles/region-retry-action.css';
+import '../../styles/file-change-colors.css';
 import './git-inline-loading.css';
 import '@myagentroam/mar-ui/region-status.css';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -92,7 +93,7 @@ function retryRead(): void {
 }
 const CHANGE_RENDER_BATCH = 200;
 const changeRenderLimit = ref(CHANGE_RENDER_BATCH);
-const changeListElement = ref<HTMLElement>();
+const changesContainer = ref<HTMLElement>();
 const loadMoreElements = ref<HTMLElement[]>([]);
 const renderedChangeRepositories = computed(() =>
   limitChangeRepositories(visibleChangeRepositories.value, changeRenderLimit.value)
@@ -121,7 +122,7 @@ watch(visibleChangeRepositories, () => {
 watchEffect(
   (onCleanup) => {
     const element = loadMoreElements.value[0];
-    const root = changeListElement.value;
+    const root = changesContainer.value;
     const limit = changeRenderLimit.value;
     if (!element || !root || typeof IntersectionObserver === 'undefined') return;
     let active = true;
@@ -234,7 +235,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 </script>
 
 <template>
-  <section class="current-changes">
+  <section ref="changesContainer" class="current-changes">
     <MarRegionStatus
       v-if="!refreshBusy && (showRetryControl || changesLoading)"
       class="changes-read-state"
@@ -336,11 +337,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
     >
       {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
     </MarRegionStatus>
-    <ul
-      v-else-if="visibleChangeRepositories.length > 0"
-      ref="changeListElement"
-      class="change-list"
-    >
+    <ul v-else-if="visibleChangeRepositories.length > 0" class="change-list">
       <template v-for="repository in renderedChangeRepositories" :key="repositoryKey(repository)">
         <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
           <div class="repository-heading-content">
@@ -473,9 +470,12 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               </small>
             </span>
           </button>
-          <span v-tooltip="entry.change" class="change-status">{{
-            shortChange(entry.change)
-          }}</span>
+          <span
+            v-tooltip="entry.change"
+            class="change-status mar-file-change-status"
+            :data-file-change="entry.change"
+            >{{ shortChange(entry.change) }}</span
+          >
           <small v-tooltip="entry.state" class="change-status">{{ shortState(entry.state) }}</small>
           <MarButton
             v-tooltip="
@@ -607,6 +607,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .change-list {
+  flex: none;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -633,7 +634,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 7px;
   align-items: center;
-  border-top: 1px solid var(--mar-fill-hover);
+  border-top: 1px solid var(--mar-border-subtle);
   padding: 5px 2px;
 }
 
@@ -804,19 +805,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .current-changes {
   margin-top: 0.2rem;
-  padding-top: 0;
-}
-
-.current-changes {
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-}
-
-.current-changes .change-list {
-  min-height: 0;
-  flex: 1 1 auto;
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -882,9 +874,10 @@ button.file-explorer-utility-button:disabled {
   cursor: pointer;
 }
 
-.change-list .change-path:hover:not(:disabled),
 .change-list .change-path:focus-visible {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-row-hover);
+  outline: 2px solid var(--mar-control-focus);
+  outline-offset: -2px;
 }
 
 .change-list .change-path:disabled {
@@ -945,6 +938,7 @@ button.file-explorer-utility-button:disabled {
 
 .change-list .change-entry > .change-status {
   inline-size: 1ch;
+  color: var(--mar-file-change-fg, var(--mar-text-secondary));
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-meta);
   font-weight: 400;

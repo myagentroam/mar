@@ -1,6 +1,6 @@
 ---
 title: Browse, Search, and Manage Files
-lastUpdated: 2026-11-18
+lastUpdated: 2026-11-22
 ---
 
 # Browse, Search, and Manage Files
@@ -26,7 +26,9 @@ The Workspace must be online and readable. Creating, renaming, moving, or deleti
 
 To get the latest saved HTML in the Aside browser, open the same preview again (for example, by clicking its conversation link again) or select **Reload** in the toolbar. The current page stays visible until the replacement loads.
 
-Standalone rendered Markdown/HTML pages retain the browser's native context menu instead of the custom menu used by ordinary file pages.
+After following a link or opening an image in the preview, use **Back** and **Forward** in the toolbar to move through its history. If the workbench moves to a different browser history entry, reload the preview to use these buttons again. Reloading or opening another HTML file starts a new preview history. These buttons are unavailable for cross-origin previews or in browsers that do not support navigation within the preview frame.
+
+Standalone HTML previews use the available window width and keep the document's own layout and styles. Standalone rendered Markdown/HTML pages retain the browser's native context menu instead of the custom menu used by ordinary file pages.
 
 File and Diff read failures show a short reason and **Retry** inside their content area, keeping the file title and close action without a duplicate global error message. Retry reads the same target without adding a file tab. Files and Git list failures likewise stay in their own lists with a retry action. Unsupported or failed previews offer download instead; a binary Diff or a Diff without displayable text can open the file preview when available.
 

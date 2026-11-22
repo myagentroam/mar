@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './skill-management-filters.css';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
@@ -390,9 +391,10 @@ function mcpErrorMessage(error: unknown): string {
         name="installed"
       />
     </MarTabs>
-    <div class="mcp-filter-bar mar-management-filter">
+    <div class="mar-management-filter mar-management-filter--stacked">
       <MarInput
         v-model="query"
+        class="mar-management-filter__query"
         clearable
         :placeholder="translate('generated.mcpCenterPanel.searchMCPServers')"
         :clear-icon="marIcon('clear-input')"
@@ -600,13 +602,6 @@ function mcpErrorMessage(error: unknown): string {
   overflow: auto;
   padding-right: 4px;
 }
-.mcp-filter-bar {
-  display: grid;
-  gap: 10px;
-}
-.mcp-filter-bar > :deep(.mar-ui-input) {
-  width: min(320px, 100%);
-}
 .mcp-category-strip {
   display: flex;
   overflow-x: auto;
@@ -622,7 +617,7 @@ function mcpErrorMessage(error: unknown): string {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--mar-fill-hover);
+  border-bottom: 1px solid var(--mar-border-subtle);
   padding-bottom: 12px;
 }
 .mcp-target-panel > div:first-child {
@@ -677,7 +672,7 @@ function mcpErrorMessage(error: unknown): string {
   overflow: hidden;
   block-size: 4px;
   border-radius: 2px;
-  background: var(--mar-control-fill-color-light);
+  background: var(--mar-border-subtle);
 }
 .mcp-install-progress__indicator::after {
   position: absolute;

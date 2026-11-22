@@ -375,43 +375,9 @@ defineExpose({
         <MarIcon name="document-add" v-else />
       </button>
     </div>
-    <MarRegionStatus
-      v-if="showReadState"
-      class="watch-status"
-      :placement="rootReady ? 'top' : 'center'"
-    >
-      <MarButton
-        v-if="showRetry"
-        v-tooltip="
-          !readBusy && fileTree.refreshError.value
-            ? errorMessage(fileTree.refreshError.value.cause)
-            : ''
-        "
-        :aria-description="
-          !readBusy && fileTree.refreshError.value
-            ? errorMessage(fileTree.refreshError.value.cause)
-            : undefined
-        "
-        class="files-read-retry mar-region-retry-action"
-        :class="{ failed: !readBusy }"
-        link
-        :aria-disabled="readBusy"
-        :aria-busy="readBusy || undefined"
-        :aria-label="readBusy ? translate('generated.workspaceInspector.loading') : undefined"
-        @click="retryRead"
-      >
-        <span v-if="readBusy" class="mar-inline-loading">
-          <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
-        </span>
-        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </MarButton>
-      <p v-else class="mar-region-status" role="status">
-        <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
-      </p>
-    </MarRegionStatus>
     <WorkspaceFileTree
       v-if="visible"
-      v-show="rootReady || !showReadState"
+      :hide-rows="!rootReady && showReadState"
       ref="fileTreeView"
       :root="fileTree.root.value"
       :root-path="workspacePath"
@@ -436,7 +402,46 @@ defineExpose({
           'warning'
         )
       "
-    />
+    >
+      <template #read-state>
+        <MarRegionStatus
+          v-if="showReadState"
+          class="watch-status"
+          :placement="rootReady ? 'top' : 'center'"
+        >
+          <MarButton
+            v-if="showRetry"
+            v-tooltip="
+              !readBusy && fileTree.refreshError.value
+                ? errorMessage(fileTree.refreshError.value.cause)
+                : ''
+            "
+            :aria-description="
+              !readBusy && fileTree.refreshError.value
+                ? errorMessage(fileTree.refreshError.value.cause)
+                : undefined
+            "
+            class="files-read-retry mar-region-retry-action"
+            :class="{ failed: !readBusy }"
+            link
+            :aria-disabled="readBusy"
+            :aria-busy="readBusy || undefined"
+            :aria-label="readBusy ? translate('generated.workspaceInspector.loading') : undefined"
+            @click="retryRead"
+          >
+            <span v-if="readBusy" class="mar-inline-loading">
+              <MarIcon name="loading-action" />{{
+                translate('generated.workspaceInspector.loading')
+              }}
+            </span>
+            <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+          </MarButton>
+          <p v-else class="mar-region-status" role="status">
+            <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+          </p>
+        </MarRegionStatus>
+      </template>
+    </WorkspaceFileTree>
     <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
@@ -542,7 +547,7 @@ defineExpose({
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.65rem;
   align-items: center;
-  border-top: 1px solid var(--mar-fill-hover);
+  border-top: 1px solid var(--mar-border-subtle);
   padding: 0.5rem 0;
 }
 

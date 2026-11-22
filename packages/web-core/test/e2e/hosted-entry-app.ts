@@ -9,8 +9,10 @@ import { createHostedConversationEntryService } from '../../src/service/hosted-c
 import { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import '../../src/styles.css';
 
+document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 localePreferenceService().setLocale('en-US');
 themePreferenceService().setTheme(
   new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'

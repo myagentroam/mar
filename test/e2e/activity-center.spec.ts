@@ -6,6 +6,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 // @test-covers packages/web-core/src/view/workbench/WorkbenchActivityCenter.vue
 // @test-covers packages/web-core/src/view/workbench/WorkbenchNotificationList.vue
 // @test-covers packages/web-core/src/view/workbench/WorkbenchRecentSessionList.vue
+// @test-covers packages/web-core/src/view/workbench/activity-list.css
 // @test-covers packages/web-core/src/view/session/session-markers.css
 
 test.use({ hasTouch: true });
@@ -257,10 +258,21 @@ test('Aggregated notifications preserve upload recovery, removal and cancellatio
   await expect(page.locator('.workbench-activity-panel')).toHaveCount(0);
 });
 
-test.describe('Notification row feedback with a mouse', () => {
+test.describe('Activity list feedback with a mouse', () => {
   test.use({ hasTouch: false });
 
   for (const theme of ['daylight', 'vscode-dark-2026']) {
+    test(`Single notification preview does not use list hover in ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 850 });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      await page.getByRole('button', { name: 'Preview notification' }).click();
+      const row = page.locator('.activity-preview:visible li.unread');
+      await row.hover();
+      await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(row).toHaveCSS('border-left-width', '2px');
+      await expect(row.locator('.notification-unread-label')).toBeVisible();
+    });
+
     test(`Unread and read rows share the notification surface and hover feedback in ${theme}`, async ({
       page
     }, testInfo) => {
@@ -305,6 +317,65 @@ test.describe('Notification row feedback with a mouse', () => {
       await panel.getByRole('tab', { name: 'Notifications', exact: true }).hover();
       await expect(row).toHaveCSS('background-color', defaultBackground);
     });
+
+    for (const width of [1280, 390]) {
+      test(`Recent session rows match notification hover at ${width}px in ${theme}`, async ({
+        page
+      }, testInfo) => {
+        await page.setViewportSize({ width, height: 850 });
+        await page.goto(
+          `${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}&child-run`
+        );
+        await page.locator('.activity-center-trigger').click();
+        const panel = page.locator('.workbench-activity-panel:visible');
+        const notice = panel.locator('.workbench-notification-list > li').first();
+        const defaultBackground = 'rgba(0, 0, 0, 0)';
+        await notice.hover();
+        await expect(notice).not.toHaveCSS('background-color', defaultBackground);
+        const hoverBackground = await notice.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
+        );
+        const recentTab = panel.getByRole('tab', { name: 'Recent Sessions', exact: true });
+        await recentTab.click();
+        const rows = panel.locator('.recent-sessions-list > li');
+        const running = rows.first();
+        const completed = rows.nth(1);
+        await expect(running.locator('.mar-ui-tag')).toHaveAttribute('data-type', 'success');
+        await expect(completed.locator('.mar-ui-tag')).toHaveAttribute('data-type', 'info');
+
+        for (const row of [running, completed]) {
+          const status = row.locator('.mar-ui-tag');
+          const statusColor = await status.evaluate((element) => getComputedStyle(element).color);
+          await expect(row).toHaveCSS('background-color', defaultBackground);
+          await status.hover();
+          await expect(row).toHaveCSS('background-color', hoverBackground);
+          await expect(row.getByRole('button')).toHaveCSS('background-color', defaultBackground);
+          await expect(status).toHaveCSS('color', statusColor);
+        }
+
+        const child = panel.locator('input[value="CHILD"]');
+        await child.click();
+        await expect(rows).toHaveCount(1);
+        const childRow = rows.first();
+        const button = childRow.getByRole('button', { name: /Session 1/u });
+        await expect(childRow).toHaveCSS('background-color', defaultBackground);
+        await button.hover();
+        await expect(childRow).toHaveCSS('background-color', hoverBackground);
+        await recentTab.hover();
+        await expect(childRow).toHaveCSS('background-color', defaultBackground);
+        await child.focus();
+        await page.keyboard.press('Tab');
+        await expect(button).toBeFocused();
+        await expect(button).toHaveCSS('outline-width', '2px');
+        await expect(button).toHaveCSS('outline-style', 'solid');
+        await expect(childRow).toHaveCSS('background-color', defaultBackground);
+        if (theme === 'vscode-dark-2026' && width === 1280) {
+          await panel.locator('input[value="MAIN"]').click();
+          await rows.first().hover();
+          await panel.screenshot({ path: testInfo.outputPath('recent-session-hover-dark.png') });
+        }
+      });
+    }
   }
 });
 
@@ -539,10 +610,6 @@ for (const width of [1280, 390]) {
         };
         const color = (token: string) => resolve(`var(${token})`);
         const result = {
-          unread: color('--mar-conversation-activity-fg'),
-          notificationText: CSS.supports('color: contrast-color(red)')
-            ? resolve('contrast-color(var(--mar-conversation-activity-fg))')
-            : color('--mar-bg-panel'),
           running: color('--mar-control-color-success'),
           page: color('--mar-bg-page'),
           chrome: color('--mar-bg-chrome'),
@@ -553,7 +620,8 @@ for (const width of [1280, 390]) {
         probe.remove();
         return result;
       });
-      expect(colors.running).not.toBe(colors.unread);
+      const unreadFill = theme === 'daylight' ? 'rgb(0, 95, 214)' : 'rgb(36, 114, 212)';
+      expect(colors.running).not.toBe(unreadFill);
       for (const marker of ['.activity-entry-count', '.activity-entry-running']) {
         await expect(trigger.locator(marker)).toHaveCSS(
           'box-shadow',
@@ -562,11 +630,11 @@ for (const width of [1280, 390]) {
       }
       await expect(trigger.locator('.activity-entry-count')).toHaveCSS(
         'background-color',
-        colors.unread
+        unreadFill
       );
       await expect(trigger.locator('.activity-entry-count')).toHaveCSS(
         'color',
-        colors.notificationText
+        'rgb(255, 255, 255)'
       );
       await expect(trigger.locator('.activity-entry-running')).toHaveCSS(
         'background-color',
@@ -581,8 +649,8 @@ for (const width of [1280, 390]) {
       const notificationBadge = panel
         .getByRole('tab', { name: /通知/ })
         .locator('.activity-unread-count');
-      await expect(notificationBadge).toHaveCSS('background-color', colors.unread);
-      await expect(notificationBadge).toHaveCSS('color', colors.notificationText);
+      await expect(notificationBadge).toHaveCSS('background-color', unreadFill);
+      await expect(notificationBadge).toHaveCSS('color', 'rgb(255, 255, 255)');
       const notices = panel.locator('.workbench-notification-list > li');
       await expect(notices).toHaveCount(30);
       await expect(notices.first().locator('.notification-unread-label')).toBeVisible();
@@ -641,27 +709,12 @@ for (const width of [1280, 390]) {
         animations: 'disabled'
       });
       const row = panel.locator('.recent-sessions-list button').first();
-      const rowHover = await row.evaluate((element) => {
-        const probe = document.createElement('span');
-        probe.style.color = 'var(--mar-fill-row-hover)';
-        element.append(probe);
-        const color = getComputedStyle(probe).color;
-        probe.remove();
-        return color;
-      });
       await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await row.hover();
-      await expect
-        .poll(() =>
-          row
-            .evaluate((element) => getComputedStyle(element).backgroundColor)
-            .then(resolvedColorToHex)
-        )
-        .toBe(`${resolvedColorToHex(rowHover)}${width >= 768 ? '80' : ''}`);
+      expect(await page.evaluate(() => matchMedia('(any-hover: hover)').matches)).toBe(false);
+      await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(row.locator('..')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(statuses.first()).toHaveCSS('color', colors.runningText);
-      if (width >= 768) {
-        await panel.screenshot({ path: testInfo.outputPath(`recent-session-hover-${theme}.png`) });
-      }
       await page.mouse.move(viewport.width - 1, viewport.height - 1);
       await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await panel.locator('input[value="CHILD"]').tap();

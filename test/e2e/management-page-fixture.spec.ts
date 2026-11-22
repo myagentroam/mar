@@ -66,6 +66,52 @@ test('Audit initial failure reports an error and recovers through refresh on mob
   await expect(section.locator('.management-mobile-status button')).toHaveCount(0);
 });
 
+for (const [theme, warning, danger] of [
+  ['daylight', 'rgb(133, 74, 0)', 'rgb(180, 35, 50)'],
+  ['vscode-dark-2026', 'rgb(248, 203, 114)', 'rgb(255, 128, 135)']
+] as const) {
+  test(`Audit results use the shared warning and danger palette in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto(`${fixture.url}management-page.html?area=audit&pages=1&result-colors=1`);
+    await page.locator('html').evaluate((root, value) => (root.dataset.theme = value), theme);
+    await expect
+      .poll(() => page.evaluate(() => window.managementPageFixture.calls().length))
+      .toBe(1);
+    await page.evaluate(() => window.managementPageFixture.settle(0, true));
+    const audit = page.locator('.audit-management');
+    const table = audit.locator('.mar-ui-table');
+    const warningTag = table.locator('.mar-ui-tag[data-type="warning"]').first();
+    const dangerTag = table.locator('.mar-ui-tag[data-type="danger"]').first();
+    await expect(warningTag).toHaveCSS('color', warning);
+    await expect(dangerTag).toHaveCSS('color', danger);
+    const actorHeader = table.getByRole('columnheader', { name: 'Actor', exact: true });
+    const resultHeader = table.getByRole('columnheader', { name: 'Result', exact: true });
+    await expect(actorHeader).toBeInViewport();
+    await expect(resultHeader).toBeInViewport();
+    await expect(dangerTag).toBeInViewport();
+    const actor = (await actorHeader.boundingBox())!;
+    const header = (await resultHeader.boundingBox())!;
+    const lastTag = (await dangerTag.boundingBox())!;
+    const left = Math.floor(actor.x);
+    await page.screenshot({
+      path: testInfo.outputPath('audit-status-palette.png'),
+      clip: {
+        x: left,
+        y: Math.floor(header.y),
+        width: Math.ceil(header.x + header.width) - left,
+        height: Math.ceil(lastTag.y + lastTag.height - header.y + 9)
+      }
+    });
+    await page.locator('html').evaluate((root) => {
+      root.style.setProperty('--mar-color-warning-text', '#9460da');
+    });
+    await expect(warningTag).toHaveCSS('color', 'rgb(148, 96, 218)');
+    await expect(dangerTag).toHaveCSS('color', danger);
+  });
+}
+
 test('Audit desktop page changes show one table loading indicator', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${fixture.url}management-page.html?area=audit&pages=1`);

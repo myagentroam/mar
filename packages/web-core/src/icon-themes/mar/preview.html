@@ -38,10 +38,14 @@
         --mar-fill-subtle: #f3f7fe;
         --mar-fill-muted: #f1f6fc;
         --mar-fill-row-hover: #e8f1ff;
-        --mar-action-hover-overlay: rgb(0 0 0 / 10%);
+        --mar-action-hover-overlay: rgb(0 95 214 / 8%);
         --mar-fill-selection: #dce9ff;
         --mar-fill-soft: #f8fbff;
-        --mar-fill-hover: #e8f1ff;
+        --mar-session-create-fill: color-mix(
+          in srgb,
+          var(--mar-fill-selection) 84%,
+          var(--mar-fill-row-hover)
+        );
         --mar-table-header-bg: #f1f6fc;
         --mar-table-row-hover-bg: #e8f1ff;
         --mar-border-default: #b9cadf;
@@ -49,8 +53,12 @@
         --mar-workbench-divider: var(--mar-border-subtle);
         --mar-border-medium: #7185a0;
         --mar-border-strong: #5e738f;
-        --mar-input-border: var(--mar-border-medium);
-        --mar-input-border-hover: var(--mar-border-strong);
+        --mar-input-border: var(--mar-border-default);
+        --mar-input-border-hover: color-mix(
+          in srgb,
+          var(--mar-input-border),
+          var(--mar-border-strong) 20%
+        );
         --mar-text-primary: #17243a;
         --mar-text-secondary: #43536b;
         --mar-text-muted: #52647c;
@@ -65,7 +73,11 @@
         --mar-conversation-border: #d6e1ef;
         --mar-conversation-process-border: #d6e1ef;
         --mar-conversation-code: #f3f7fe;
-        --mar-conversation-activity-fg: #005fd6;
+        --mar-palette-blue-activity: #005fd6;
+        --mar-conversation-activity-fg: var(--mar-palette-blue-activity);
+        --mar-conversation-activity-fill: var(--mar-palette-blue-activity);
+        --mar-conversation-activity-on-fill: #fff;
+        --mar-conversation-activity-fill-state-tint: #000;
         --mar-scrollbar-thumb: #77777766;
         --mar-scrollbar-thumb-hover: #686868b3;
         --mar-control-primary-bg: #0057db;
@@ -82,17 +94,24 @@
         --mar-control-focus: #506987;
         --mar-control-link-text: #174e9e;
         --mar-control-link-hover: #123a78;
+        --mar-link-text: #174e9e;
+        --mar-link-hover: #123a78;
         --mar-control-color-success: #00843d;
-        --mar-control-color-warning: #a56000;
+        --mar-palette-amber-emphasis: #a56000;
+        --mar-control-color-warning: var(--mar-palette-amber-emphasis);
         --mar-control-color-danger: #d12a3d;
-        --mar-color-success-text: #006b34;
+        --mar-palette-green-fg: #006b34;
+        --mar-color-success-text: var(--mar-palette-green-fg);
         --mar-color-success-bg: #e9f6ed;
-        --mar-color-warning-text: #854a00;
-        --mar-color-warning-accent: #a56000;
+        --mar-palette-amber-fg: #854a00;
+        --mar-color-warning-text: var(--mar-palette-amber-fg);
+        --mar-color-warning-accent: var(--mar-palette-amber-emphasis);
         --mar-color-warning-bg: #fff3de;
-        --mar-color-danger-text: #b42332;
+        --mar-palette-red-fg: #b42332;
+        --mar-color-danger-text: var(--mar-palette-red-fg);
         --mar-color-danger-bg: #fcebeb;
-        --mar-color-accent: #00758a;
+        --mar-palette-cyan-fg: #00758a;
+        --mar-color-accent: var(--mar-palette-cyan-fg);
         --mar-color-accent-bg: #e8f6f8;
         --mar-color-git-graph-main: #2767ad;
         --mar-color-diff-add-text: #006b34;
@@ -102,19 +121,11 @@
         --mar-radius-selection: 6px;
         --mar-radius-surface: 12px;
 
-        --mar-control-border-color-lighter: #d6e1ef;
-        --mar-control-border-color-extra-light: #d6e1ef;
-        --mar-control-border-color-dark: #7185a0;
-        --mar-control-border-color-darker: #5e738f;
-        --mar-control-fill-color: #e8f1ff;
-        --mar-control-fill-color-light: #f1f6fc;
-        --mar-control-fill-color-lighter: #f3f7fe;
-        --mar-control-fill-color-extra-light: #f8fbff;
-
         --mar-control-bg-color-overlay: #ffffff;
         --mar-font-size-detail: 12px;
         --mar-font-size-body: 13px;
         --mar-font-size-navigation: 13px;
+        --mar-font-size-control: 12px;
         --mar-font-size-meta: 11px;
         --mar-font-size-nano: 9px;
         --mar-font-size-title: 14px;
@@ -122,8 +133,7 @@
         --mar-font-size-page-title: 1.35rem;
         --mar-font-size-display: 1.5rem;
         --mar-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-        --mar-compact-control-size: 24px;
-        --mar-primary-control-size: 28px;
+        --mar-compact-control-size: 26px;
         --mar-utility-control-size: 28px;
         --mar-compact-row-size: 24px;
         --mar-session-row-min-height: 32px;
@@ -139,7 +149,6 @@
         --mar-workbench-header-height: 44px;
         --mar-session-sidebar-width: 238px;
         --mar-inspector-min-width: 250px;
-        --mar-inspector-max-width: 310px;
         --mar-terminal-font-size: 12;
         --mar-terminal-background: #0e1116;
         --mar-terminal-surface: #131922;
@@ -167,7 +176,11 @@
         --mar-action-hover-overlay: rgb(255 255 255 / 10%);
         --mar-fill-selection: #373737;
         --mar-fill-soft: #222222;
-        --mar-fill-hover: #2e2e2e;
+        --mar-session-create-fill: color-mix(
+          in srgb,
+          var(--mar-fill-selection) 45%,
+          var(--mar-fill-row-hover)
+        );
         --mar-table-header-bg: #222222;
         --mar-table-row-hover-bg: #2e2e2e;
         --mar-border-default: #3d3d3d;
@@ -175,16 +188,6 @@
         --mar-workbench-divider: var(--mar-border-medium);
         --mar-border-medium: #474747;
         --mar-border-strong: #606060;
-        --mar-input-border: color-mix(
-          in srgb,
-          var(--mar-border-default),
-          var(--mar-text-secondary) 37%
-        );
-        --mar-input-border-hover: color-mix(
-          in srgb,
-          var(--mar-input-border),
-          var(--mar-text-primary) 7%
-        );
         --mar-text-primary: #eaeaea;
         --mar-text-secondary: #c2c2c2;
         --mar-text-muted: #a0a0a0;
@@ -199,7 +202,9 @@
         --mar-conversation-border: #383838;
         --mar-conversation-process-border: #2c2c2c;
         --mar-conversation-code: #1e1e1e;
-        --mar-conversation-activity-fg: #4da3ff;
+        --mar-palette-blue-activity: #4da3ff;
+        --mar-conversation-activity-fg: var(--mar-palette-blue-activity);
+        --mar-conversation-activity-fill: #2472d4;
 
         --mar-control-primary-bg: #dedede;
         --mar-control-primary-fg: #181818;
@@ -215,17 +220,24 @@
         --mar-control-focus: #a0a0a0;
         --mar-control-link-text: #eaeaea;
         --mar-control-link-hover: #f0f0f0;
+        --mar-link-text: #75b7ff;
+        --mar-link-hover: #a2ceff;
         --mar-control-color-success: #35d56e;
-        --mar-control-color-warning: #ffc14d;
+        --mar-palette-amber-emphasis: #ffc14d;
+        --mar-control-color-warning: var(--mar-palette-amber-emphasis);
         --mar-control-color-danger: #ff626b;
-        --mar-color-success-text: #71e49a;
+        --mar-palette-green-fg: #71e49a;
+        --mar-color-success-text: var(--mar-palette-green-fg);
         --mar-color-success-bg: #1a2b21;
-        --mar-color-warning-text: #f8cb72;
-        --mar-color-warning-accent: #ffc14d;
+        --mar-palette-amber-fg: #f8cb72;
+        --mar-color-warning-text: var(--mar-palette-amber-fg);
+        --mar-color-warning-accent: var(--mar-palette-amber-emphasis);
         --mar-color-warning-bg: #302619;
-        --mar-color-danger-text: #ff8087;
+        --mar-palette-red-fg: #ff8087;
+        --mar-color-danger-text: var(--mar-palette-red-fg);
         --mar-color-danger-bg: #332024;
-        --mar-color-accent: #59d5ea;
+        --mar-palette-cyan-fg: #59d5ea;
+        --mar-color-accent: var(--mar-palette-cyan-fg);
         --mar-color-accent-bg: #192b31;
         --mar-color-git-graph-main: #529bee;
         --mar-color-diff-add-text: #9bd7ab;
@@ -241,15 +253,7 @@
           var(--mar-overlay-surface),
           var(--mar-text-primary) 14%
         );
-        --mar-control-fill-color: #171717;
-        --mar-control-fill-color-light: #2e2e2e;
-        --mar-control-fill-color-lighter: #191919;
-        --mar-control-fill-color-extra-light: #1e1e1e;
 
-        --mar-control-border-color-lighter: #303030;
-        --mar-control-border-color-extra-light: #2c2c2c;
-        --mar-control-border-color-dark: #444444;
-        --mar-control-border-color-darker: #4c4c4c;
         --mar-scrollbar-thumb: #707070;
         --mar-scrollbar-thumb-hover: #8a8a8a;
       }
@@ -281,8 +285,6 @@
           --mar-font-size-meta: 12px;
           --mar-font-size-nano: 10px;
           --mar-font-size-title: 15px;
-          --mar-compact-control-size: 26px;
-          --mar-primary-control-size: 30px;
           --mar-utility-control-size: 24px;
           --mar-compact-row-size: 27px;
           --mar-session-row-min-height: 32px;
@@ -299,7 +301,6 @@
           --mar-workbench-header-height: 44px;
           --mar-session-sidebar-width: 262px;
           --mar-inspector-min-width: 275px;
-          --mar-inspector-max-width: 341px;
           --mar-terminal-font-size: 13;
         }
       }
@@ -318,8 +319,6 @@
           --mar-font-size-nano: 9px;
           --mar-font-size-title: 14px;
           --mar-font-size-input: 0.875rem;
-          --mar-compact-control-size: 24px;
-          --mar-primary-control-size: 28px;
           --mar-utility-control-size: 28px;
           --mar-compact-row-size: 24px;
           --mar-session-row-min-height: 32px;

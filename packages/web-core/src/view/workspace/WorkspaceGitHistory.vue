@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '../../styles/region-retry-action.css';
+import '../../styles/file-change-colors.css';
 import './git-inline-loading.css';
 import './file-tooltip-trigger.css';
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
@@ -493,7 +494,11 @@ function toggleHistoryDirectory(commitHash: string, path: string): void {
                 :style="{ paddingLeft: historyTreeIndent(row.depth) }"
                 @click.stop="emit('open', commit, row.file, $event.ctrlKey || $event.metaKey)"
               >
-                <span class="history-file-status">{{ shortChange(row.file.change) }}</span>
+                <span
+                  class="history-file-status mar-file-change-status"
+                  :data-file-change="row.file.change"
+                  >{{ shortChange(row.file.change) }}</span
+                >
                 <FileTypeIcon :name="row.name" />
                 <span class="history-file-path">{{ row.name }}</span>
               </MarButton>
@@ -708,15 +713,15 @@ button.history-refresh {
 }
 
 .history-graph-color-1 {
-  color: var(--mar-color-success-text);
+  color: var(--mar-palette-green-fg);
 }
 
 .history-graph-color-2 {
-  color: var(--mar-color-accent);
+  color: var(--mar-palette-cyan-fg);
 }
 
 .history-graph-color-3 {
-  color: var(--mar-color-warning-text);
+  color: var(--mar-palette-amber-fg);
 }
 
 .history-graph-color-4 {
@@ -724,7 +729,7 @@ button.history-refresh {
 }
 
 .history-graph-color-5 {
-  color: var(--mar-color-danger-text);
+  color: var(--mar-palette-red-fg);
 }
 
 .history-commit-row:hover {
@@ -847,7 +852,7 @@ button.history-refresh {
   display: inline-block;
   flex: none;
   width: 16px;
-  color: var(--mar-text-secondary);
+  color: var(--mar-file-change-fg, var(--mar-text-secondary));
   font-size: var(--mar-font-size-nano);
 }
 

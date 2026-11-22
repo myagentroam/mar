@@ -40,6 +40,21 @@ function luminance(hex: string): number | undefined {
   return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
 }
 
+// Use an opaque fill so the same badge has a predictable contrast over every surface.
+export function resolveActivityFill(hex: string) {
+  const fill = hex.length === 5 ? hex.slice(0, -1) : hex.length === 9 ? hex.slice(0, -2) : hex;
+  const brightness = luminance(fill)!;
+  const useDarkInk = (brightness + 0.05) / 0.05 > 1.05 / (brightness + 0.05);
+  const ink = useDarkInk ? '#000000' : '#ffffff';
+  // Mixing toward the opposite pole preserves contrast, but would leave pure black or white unchanged.
+  const tint = brightness === 0 || brightness === 1 ? ink : useDarkInk ? '#ffffff' : '#000000';
+  return {
+    '--mar-conversation-activity-fill': fill,
+    '--mar-conversation-activity-on-fill': ink,
+    '--mar-conversation-activity-fill-state-tint': tint
+  };
+}
+
 export function analyzeCustomTheme(source: string): ThemeAnalysis {
   const warnings: ThemeWarning[] = [];
   const colors: Record<string, string> = {};
@@ -91,6 +106,16 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     ['--mar-text-primary', '--mar-conversation-process'],
     ['--mar-text-secondary', '--mar-conversation-process'],
     ['--mar-text-primary', '--mar-conversation-code'],
+    ['--mar-link-text', '--mar-bg-panel'],
+    ['--mar-link-text', '--mar-conversation-canvas'],
+    ['--mar-link-text', '--mar-conversation-surface'],
+    ['--mar-link-text', '--mar-conversation-process'],
+    ['--mar-link-text', '--mar-conversation-code'],
+    ['--mar-link-hover', '--mar-bg-panel'],
+    ['--mar-link-hover', '--mar-conversation-canvas'],
+    ['--mar-link-hover', '--mar-conversation-surface'],
+    ['--mar-link-hover', '--mar-conversation-process'],
+    ['--mar-link-hover', '--mar-conversation-code'],
     ['--mar-control-primary-fg', '--mar-control-primary-bg'],
     ['--mar-control-primary-fg', '--mar-control-primary-hover'],
     ['--mar-control-primary-fg', '--mar-control-primary-active'],

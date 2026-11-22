@@ -1,0 +1,5 @@
+@media (any-hover: hover) {
+  .mar-activity-list > li:hover {
+    background-color: color-mix(in srgb, var(--mar-action-hover-overlay) 65%, transparent);
+  }
+}

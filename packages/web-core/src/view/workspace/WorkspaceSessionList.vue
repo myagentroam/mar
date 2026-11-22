@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '../session/runner-brand-icon.css';
+import '../session/session-create-action.css';
 import '../session/session-markers.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
@@ -405,8 +406,7 @@ function submitSessionSearch(): void {
     </form>
     <div class="new-session-form">
       <MarButton
-        class="new-session-button"
-        type="primary"
+        class="new-session-button mar-session-create-action"
         icon="session-add"
         :disabled="!nodeReady"
         @click="emit('create')"
@@ -1033,11 +1033,6 @@ function submitSessionSearch(): void {
   padding: 1px 6px;
 }
 
-.session-group-tabs {
-  margin-inline: -0.7rem;
-  padding-inline: 6px;
-}
-
 .session-group-tabs ~ .session-list {
   margin-top: 0;
 }
@@ -1061,7 +1056,7 @@ function submitSessionSearch(): void {
   justify-content: space-between;
   gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--mar-control-border-color-lighter);
+  border-bottom: 1px solid var(--mar-border-subtle);
 }
 .effective-skill-row > div {
   min-width: 0;

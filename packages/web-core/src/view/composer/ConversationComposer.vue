@@ -2,7 +2,7 @@
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { translate } from '../../service/locale-preference-service.js';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { RunnerCommandState } from '../../model/workbench.js';
 import type { ComposerSkillToken } from '../../model/workbench.js';
 import type { ComposerReference } from '@myagentroam/protocol';
@@ -67,7 +67,8 @@ const props = withDefaults(
     dropTarget: boolean;
     mobileViewport: boolean;
     commandStates: readonly RunnerCommandState[];
-    loading: boolean;
+    loading?: boolean;
+    submitting?: boolean;
     skillTokens: readonly ComposerSkillToken[];
     fileReferences?: readonly ComposerReference[];
     completion?: PromptCompletionBinding | undefined;
@@ -75,6 +76,7 @@ const props = withDefaults(
   }>(),
   { fileReferences: () => [], workingBusy: true }
 );
+const busy = computed(() => props.loading || props.submitting);
 
 function requestCompletion(
   draft: CompletionDraft,
@@ -92,7 +94,7 @@ function onKeydown(event: KeyboardEvent): void {
   if (
     editor !== undefined &&
     !props.readonly &&
-    !props.loading &&
+    !busy.value &&
     event.key === 'Backspace' &&
     editor.value.length === 0 &&
     editor.selectionStart === 0 &&
@@ -168,7 +170,11 @@ const emit = defineEmits<{
     :style="mobileViewport ? { height: `${mobileComposerHeight}px` } : undefined"
     @submit.prevent="emit('submit')"
   >
-    <div ref="composerElement" class="composer">
+    <div
+      ref="composerElement"
+      class="composer"
+      :class="{ 'is-submitting': submitting && !loading && !readonly }"
+    >
       <span v-if="working || connectionLabel" class="composer-working">
         <MarBusyIndicator
           v-if="connectionLabel ? connectionBusy : working && workingBusy"
@@ -207,7 +213,7 @@ const emit = defineEmits<{
             :aria-label="state.detail ?? state.label"
             class="composer-command-state"
             type="button"
-            :disabled="!state.closable || loading"
+            :disabled="!state.closable || busy"
             @click="emit('closeCommand', state)"
           >
             <span>{{ state.label }}</span
@@ -224,7 +230,7 @@ const emit = defineEmits<{
             class="composer-command-state composer-skill-state"
             :class="{ unavailable: !token.available }"
             type="button"
-            :disabled="readonly || loading"
+            :disabled="readonly || busy"
             :aria-label="translate('composer.removeSkill', { name: token.name })"
             @click="emit('removeSkill', token.name)"
           >
@@ -236,7 +242,7 @@ const emit = defineEmits<{
             <ComposerQuoteTag
               v-if="reference.type === 'quote'"
               :reference="reference"
-              :disabled="readonly || loading"
+              :disabled="readonly || busy"
               @remove="emit('removeReference', composerReferenceKey(reference))"
             />
             <button
@@ -244,7 +250,7 @@ const emit = defineEmits<{
               v-tooltip="composerReferenceDescription(reference)"
               class="composer-command-state composer-file-reference-state"
               type="button"
-              :disabled="readonly || loading"
+              :disabled="readonly || busy"
               :aria-label="
                 translate(
                   reference.type === 'session'
@@ -269,7 +275,7 @@ const emit = defineEmits<{
         <PromptCompletionEditor
           ref="completionEditor"
           :enabled="completion?.enabled === true"
-          :blocked="readonly || loading || completionBlocked"
+          :blocked="readonly || busy || completionBlocked"
           :context-key="completion?.contextKey ?? ''"
           :automatic-key="completion?.automaticKey"
           :automatic-terminal-key="completion?.automaticTerminalKey"
@@ -281,7 +287,7 @@ const emit = defineEmits<{
             ref="editorElement"
             class="composer-input"
             :value="input"
-            :readonly="readonly || loading"
+            :readonly="readonly || busy"
             :aria-label="translate('generated.conversationComposer.message')"
             :placeholder="placeholder"
             enterkeyhint="enter"
@@ -331,7 +337,8 @@ const emit = defineEmits<{
   --composer-active-boundary: var(--mar-control-focus);
 }
 
-.composer:has(:where(.composer-input:focus:read-write)) {
+.composer:has(:where(.composer-input:focus:read-write)),
+.composer:where(.is-submitting):has(:where(.composer-input:focus)) {
   --composer-active-boundary: var(--mar-conversation-activity-fg);
 }
 
@@ -397,6 +404,7 @@ const emit = defineEmits<{
   width: 10px;
   height: 10px;
   border-width: 1.5px;
+  color: inherit;
 }
 
 .composer-shell {

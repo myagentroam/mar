@@ -117,7 +117,7 @@ it('appends only at the repository boundary inside the scroll root without a loa
       view.findAll('li').find((node) => node.props.class === 'change-append-state');
     expect(rows()).toHaveLength(200);
     expect(boundary()?.parent).toBe(view.findAll('ul')[0]);
-    expect(toRaw(observers[0]?.options?.root) === view.findAll('ul')[0]).toBe(true);
+    expect(toRaw(observers[0]?.options?.root)).toBe(view.findAll('section')[0]);
     const intersect = (index: number, isIntersecting = true) =>
       observers[index]!.callback(
         [{ isIntersecting } as IntersectionObserverEntry],

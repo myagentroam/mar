@@ -189,6 +189,14 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         );
       if (url.pathname.endsWith('/records')) {
         const number = Number(url.searchParams.get('page') ?? 1);
+        // Keep purpose-specific reads independent of the mobile pagination exercised above.
+        if (categoryTesting)
+          return json(route, {
+            records: [record('purpose-record')],
+            total: '1',
+            page: number,
+            nextCursor: null
+          });
         if (mobile && number === 2) await (filteredMobileAppend ?? nextMobilePage).promise;
         if (number === 4) await pendingPageRead;
         return json(route, {

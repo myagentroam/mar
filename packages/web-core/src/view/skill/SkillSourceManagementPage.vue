@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './skill-management-filters.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
@@ -567,9 +568,10 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.skillSourceManagementPage.sourceSkills')"
         name="source"
       >
-        <div class="source-search-bar mar-management-filter">
+        <div class="mar-management-filter">
           <MarSelect
             :model-value="service.selectedSourceId.value"
+            class="mar-management-filter__source"
             :aria-label="translate('generated.skillSourceManagementPage.selectASkillSource')"
             :placeholder="
               translate('generated.skillSourceManagementPage.selectAnEnabledSkillSource')
@@ -584,26 +586,25 @@ function scopeLabel(scope: string): string {
               :value="source.id"
             />
           </MarSelect>
-          <div class="toolbar">
-            <MarInput
-              v-model="service.query.value"
-              clearable
-              :placeholder="
-                translate('generated.skillSourceManagementPage.enterASkillNameOrDescription')
-              "
-              @keyup.enter="run(searchSourceSkills)"
-              :clear-icon="marIcon('clear-input')"
-            >
-              <template #append>
-                <MarButton
-                  :icon="marIcon('search')"
-                  :disabled="!selectedSource?.enabled || service.loading.value"
-                  @click="run(searchSourceSkills)"
-                  >{{ translate('generated.skillSourceManagementPage.search') }}</MarButton
-                >
-              </template>
-            </MarInput>
-          </div>
+          <MarInput
+            v-model="service.query.value"
+            class="mar-management-filter__query"
+            clearable
+            :placeholder="
+              translate('generated.skillSourceManagementPage.enterASkillNameOrDescription')
+            "
+            @keyup.enter="run(searchSourceSkills)"
+            :clear-icon="marIcon('clear-input')"
+          >
+            <template #append>
+              <MarButton
+                :icon="marIcon('search')"
+                :disabled="!selectedSource?.enabled || service.loading.value"
+                @click="run(searchSourceSkills)"
+                >{{ translate('generated.skillSourceManagementPage.search') }}</MarButton
+              >
+            </template>
+          </MarInput>
         </div>
         <div class="skill-table-section">
           <MarTable
@@ -677,9 +678,10 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.skillSourceManagementPage.catalogSkills')"
         name="catalog"
       >
-        <div class="catalog-filter-bar mar-management-filter">
+        <div class="mar-management-filter mar-management-filter--stacked">
           <MarInput
             v-model="catalogQuery"
+            class="mar-management-filter__query"
             clearable
             :placeholder="
               translate('generated.skillSourceManagementPage.searchSkillNamesOrDescriptions')
@@ -1026,34 +1028,13 @@ function scopeLabel(scope: string): string {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid var(--mar-fill-hover);
+  border-top: 1px solid var(--mar-border-subtle);
   padding-top: 14px;
 }
 .section-heading p {
   margin: 2px 0 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
-}
-.source-search-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-.source-search-bar :deep(.mar-ui-select) {
-  width: min(320px, 100%);
-  min-width: 200px;
-}
-.toolbar {
-  flex: 0 1 360px;
-  min-width: 0;
-}
-.catalog-filter-bar {
-  display: grid;
-  gap: 10px;
-}
-.catalog-filter-bar :deep(.mar-ui-input) {
-  width: min(320px, 100%);
 }
 .skill-category-strip {
   display: flex;
@@ -1102,18 +1083,5 @@ function scopeLabel(scope: string): string {
   margin-top: 2px;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
-}
-@media (max-width: 700px) {
-  .source-search-bar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .source-search-bar :deep(.mar-ui-select),
-  .catalog-filter-bar :deep(.mar-ui-input) {
-    width: 100%;
-  }
-  .source-search-bar .toolbar {
-    flex-basis: auto;
-  }
 }
 </style>

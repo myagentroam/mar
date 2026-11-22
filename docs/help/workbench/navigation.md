@@ -76,9 +76,11 @@ JSON 使用 `version: 1`、`name` 和 `colors`，不再使用 `base`。`colors` 
 
 可读文字分为主文字 `--mar-text-primary`、次级文字 `--mar-text-secondary` 和辅助文字 `--mar-text-muted`。例如资源树、工作区会话和托管对话列表以主文字显示选中名称、以次级文字显示未选中名称，时间和辅助说明使用辅助文字。禁用控件的文字单独配置。
 
-`--mar-conversation-activity-fg` 设置对话当前阶段圆环和输入框上方状态条的颜色。主按钮与发送按钮使用 `--mar-control-primary-bg`、`--mar-control-primary-hover`、`--mar-control-primary-active`，并搭配 `--mar-control-primary-fg`；键盘焦点使用 `--mar-control-focus`。要保留旧主题中的按钮颜色，请把对应色值填入这些字段。
+`--mar-conversation-activity-fg` 设置对话当前阶段圆环和输入框上方状态条的颜色。`--mar-conversation-activity-fill` 设置发送按钮和通知未读数字角标的实心底色，图标和数字自动选择对比度更高的黑色或白色。如果自定义主题只设置了活动前景色，实心底色沿用该颜色。普通主按钮仍使用 `--mar-control-primary-bg`、`--mar-control-primary-hover`、`--mar-control-primary-active`，并搭配 `--mar-control-primary-fg`；键盘焦点使用 `--mar-control-focus`。
 
 只有 **JSON 语法错误**阻止保存或导出。缺失名称、未知字段或变量、无效颜色及低对比度只提示警告。保存和导出保留未知与无效内容，但应用时忽略；旧 `base` 字段也仅保留并提示未知字段，不再改变缺色回退规则。不执行任意 CSS、URL 或脚本。对比度检查仅覆盖显式填写的不透明颜色组合，不代表完整的可访问性认证。
+
+Git History 的分支轨道使用内置分类色，与成功、警告等主题颜色独立；这些设置不会再改变分支分类色。Git 主轨仍可用 `--mar-color-git-graph-main` 自定义。文件增删等状态继续使用对应的主题状态色。
 
 主题不改变布局、字体、文件图标主题、终端固定配色或公开帮助。预览是代表性颜色样本，不执行真实工作台操作，也不覆盖终端等不受控区域。
 

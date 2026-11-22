@@ -85,6 +85,7 @@ const service = createWorkbenchNotificationService(ref('fixture-user'), {
         workspaceId: 'workspace',
         workspaceName: 'Project',
         sessionId: `session-${index}`,
+        ...(params.has('child-run') && index === 1 ? { sessionGroup: 'CHILD' } : {}),
         sessionTitle: `Session ${index}`,
         userMessage: `Review task ${index}`,
         runner: 'mar',

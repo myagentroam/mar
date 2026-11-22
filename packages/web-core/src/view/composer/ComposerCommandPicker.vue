@@ -170,7 +170,7 @@ function statusText(): string {
   grid-template-columns: 150px minmax(0, 1fr);
   gap: 0.55rem;
   border: 0;
-  border-bottom: 1px solid var(--mar-fill-hover);
+  border-bottom: 1px solid var(--mar-border-subtle);
   border-radius: 0;
   background: var(--mar-control-bg-color-overlay);
   color: var(--mar-text-secondary);

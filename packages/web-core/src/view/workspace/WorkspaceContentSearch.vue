@@ -113,81 +113,83 @@ defineExpose({
         }}</MarCheckbox>
       </div>
     </div>
-    <MarRegionStatus
-      v-if="contentSearchError !== undefined || (contentSearchLoading && !buttonLoading)"
-      class="content-search-state"
-      :placement="newQueryState ? 'center' : 'top'"
-    >
-      <MarButton
-        v-if="contentSearchError !== undefined"
-        v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
-        :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
-        class="watch-status mar-region-retry-action"
-        link
-        :class="{ failed: !contentSearchLoading }"
-        :aria-disabled="contentSearchLoading"
-        :aria-busy="contentSearchLoading || undefined"
-        :aria-label="
-          contentSearchLoading ? translate('generated.workspaceInspector.loading') : undefined
-        "
-        @click="contentSearch.retry()"
+    <div class="content-search-body">
+      <MarRegionStatus
+        v-if="contentSearchError !== undefined || (contentSearchLoading && !buttonLoading)"
+        class="content-search-state"
+        :placement="newQueryState ? 'center' : 'top'"
       >
-        <span v-if="contentSearchLoading" class="mar-inline-loading">
-          <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
-        </span>
-        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </MarButton>
-      <p v-else class="mar-region-status" role="status">
-        <MarIcon name="loading-action" />
-        {{ translate('generated.workspaceInspector.loading') }}
-      </p>
-    </MarRegionStatus>
-    <p v-if="contentSearchTruncated && !newQueryState" class="content-search-warning">
-      {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
-    </p>
-    <ul
-      v-show="!newQueryState"
-      class="content-search-results"
-      :aria-label="translate('generated.workspaceInspector.contentSearchResults')"
-    >
-      <li v-for="match in contentMatches" :key="`${match.path}:${match.line}:${match.column}`">
-        <button
-          v-tooltip="match.path"
-          :aria-label="match.path"
-          type="button"
-          @click="
-            emit('open', match.path, match.line, match.column, $event.ctrlKey || $event.metaKey)
+        <MarButton
+          v-if="contentSearchError !== undefined"
+          v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
+          :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
+          class="watch-status mar-region-retry-action"
+          link
+          :class="{ failed: !contentSearchLoading }"
+          :aria-disabled="contentSearchLoading"
+          :aria-busy="contentSearchLoading || undefined"
+          :aria-label="
+            contentSearchLoading ? translate('generated.workspaceInspector.loading') : undefined
           "
+          @click="contentSearch.retry()"
         >
-          <span class="content-search-name"
-            ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
-              match.path
-            }}</strong></span
-          ><small>{{
-            translate('generated.workspaceInspector.line', { value0: match.line })
-          }}</small>
-          <code
-            ><template
-              v-for="(fragment, index) in contentMatchFragments(match.preview)"
-              :key="index"
-              ><mark v-if="fragment.match">{{ fragment.text }}</mark
-              ><template v-else>{{ fragment.text }}</template></template
-            ></code
-          >
-        </button>
-      </li>
-      <li
-        v-if="
-          contentAppliedQuery !== '' &&
-          contentMatches.length === 0 &&
-          !contentSearchTruncated &&
-          contentSearchError === undefined
-        "
-        class="file-search-empty mar-region-status"
+          <span v-if="contentSearchLoading" class="mar-inline-loading">
+            <MarIcon name="loading-action" />{{ translate('generated.workspaceInspector.loading') }}
+          </span>
+          <template v-else>{{ translate('common.loadFailedRetry') }}</template>
+        </MarButton>
+        <p v-else class="mar-region-status" role="status">
+          <MarIcon name="loading-action" />
+          {{ translate('generated.workspaceInspector.loading') }}
+        </p>
+      </MarRegionStatus>
+      <p v-if="contentSearchTruncated && !newQueryState" class="content-search-warning">
+        {{ translate('generated.workspaceInspector.resultsAreIncompleteNarrowTheSearchScope') }}
+      </p>
+      <ul
+        v-show="!newQueryState"
+        class="content-search-results"
+        :aria-label="translate('generated.workspaceInspector.contentSearchResults')"
       >
-        {{ translate('generated.workspaceInspector.noMatchingContent') }}
-      </li>
-    </ul>
+        <li v-for="match in contentMatches" :key="`${match.path}:${match.line}:${match.column}`">
+          <button
+            v-tooltip="match.path"
+            :aria-label="match.path"
+            type="button"
+            @click="
+              emit('open', match.path, match.line, match.column, $event.ctrlKey || $event.metaKey)
+            "
+          >
+            <span class="content-search-name"
+              ><FileTypeIcon :name="changeFileName(match.path)" /><strong>{{
+                match.path
+              }}</strong></span
+            ><small>{{
+              translate('generated.workspaceInspector.line', { value0: match.line })
+            }}</small>
+            <code
+              ><template
+                v-for="(fragment, index) in contentMatchFragments(match.preview)"
+                :key="index"
+                ><mark v-if="fragment.match">{{ fragment.text }}</mark
+                ><template v-else>{{ fragment.text }}</template></template
+              ></code
+            >
+          </button>
+        </li>
+        <li
+          v-if="
+            contentAppliedQuery !== '' &&
+            contentMatches.length === 0 &&
+            !contentSearchTruncated &&
+            contentSearchError === undefined
+          "
+          class="file-search-empty mar-region-status"
+        >
+          {{ translate('generated.workspaceInspector.noMatchingContent') }}
+        </li>
+      </ul>
+    </div>
   </section>
 </template>
 
@@ -229,13 +231,19 @@ defineExpose({
   font-size: var(--mar-font-size-meta);
 }
 
-.content-search-results {
+.content-search-body {
+  display: flex;
+  flex: 1 1 auto;
   min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.content-search-results {
   margin: 0.45rem 0 0;
   padding: 0;
   list-style: none;
-  overflow: auto;
-  overscroll-behavior: contain;
 }
 
 .content-search-results > li + li {

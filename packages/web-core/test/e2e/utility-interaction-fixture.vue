@@ -270,6 +270,8 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       :editing-queue-item-id="editingQueueItemId"
       :editing-content="editingContent"
       :goal="goal"
+      @drag-start="(id) => record(`drag:${id}`)"
+      @reorder="(id) => record(`reorder:${id}`)"
       @edit="editQueueItem"
       @cancel-edit="queueEditor.finishEditing"
       @update-content="editingContent = $event"

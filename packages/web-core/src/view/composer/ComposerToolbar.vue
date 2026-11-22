@@ -271,7 +271,7 @@ function selectFiles(event: Event): void {
           :model-value="access"
           :disabled="accessDisabled"
           :aria-label="translate('generated.composerToolbar.access')"
-          class="composer-access-select"
+          class="composer-access-select mar-composer-dropdown-trigger"
           popper-class="composer-mini-popper composer-access-popper"
           @change="emit('updateAccess', String($event))"
         >
@@ -424,7 +424,7 @@ function selectFiles(event: Event): void {
   min-width: 0;
 }
 
-.composer-model-slot > .composer-select-slot::before {
+:is(.composer-model-slot > .composer-select-slot, .composer-access-slot)::before {
   padding-inline-start: var(--composer-dropdown-trigger-padding);
   padding-inline-end: calc(
     var(--composer-dropdown-trigger-padding) + var(--composer-dropdown-trigger-gap) +
@@ -571,6 +571,7 @@ function selectFiles(event: Event): void {
   .composer-configuration > .composer-access-slot {
     grid-column: 3;
     grid-row: 1;
+    justify-self: start;
   }
 }
 
@@ -684,27 +685,25 @@ function selectFiles(event: Event): void {
 </style>
 
 <style scoped>
-:is(.composer-runner-select, .composer-access-select) :deep(.mar-ui-select__field) {
+.composer-runner-select :deep(.mar-ui-select__field) {
   --mar-ui-select-padding: 0.35rem;
   --mar-ui-select-height: var(--mar-compact-control-size);
   background: transparent;
   box-shadow: none;
 }
 
-:is(.composer-runner-select, .composer-access-select)
-  :deep(.mar-ui-select__field:not([data-disabled]):hover) {
+.composer-runner-select :deep(.mar-ui-select__field:not([data-disabled]):hover) {
   background: var(--mar-fill-soft);
   box-shadow: 0 0 0 1px var(--mar-border-medium) inset;
 }
 
-:is(.composer-runner-select, .composer-access-select)
+.composer-runner-select
   :deep(.mar-ui-select__field:not([data-disabled]):is(:focus-within, [data-expanded])) {
   background: var(--mar-fill-soft);
   box-shadow: 0 0 0 1px var(--mar-control-focus) inset;
 }
 
-:is(.composer-runner-select, .composer-access-select)
-  :deep(.mar-ui-select__field:not([data-disabled]) .mar-ui-select__label) {
+.composer-runner-select :deep(.mar-ui-select__field:not([data-disabled]) .mar-ui-select__label) {
   color: var(--mar-text-primary);
 }
 

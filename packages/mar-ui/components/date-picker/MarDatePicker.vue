@@ -14,6 +14,7 @@ import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
 import { useMarUiLocale } from '../../locale/index.js';
 import { useMarFormControl } from '../form/form-context.js';
+import '../form/field-frame.css';
 import { usePopup } from '../popup/use-popup.js';
 import '../popup/surface.css';
 import MarCalendarMonth from './MarCalendarMonth.vue';
@@ -258,7 +259,7 @@ function onFocusOut(event: FocusEvent) {
   >
     <div
       ref="anchor"
-      class="mar-ui-date-picker__field"
+      class="mar-ui-date-picker__field mar-ui-field-frame"
       :data-range="range"
       :data-expanded="popup.open.value"
       :data-disabled="field.disabled.value"
@@ -401,18 +402,6 @@ function onFocusOut(event: FocusEvent) {
   align-items: center;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   box-sizing: border-box;
-  border: 1px solid var(--mar-ui-input-border);
-  border-radius: var(--mar-ui-radius-control);
-  background: var(--mar-ui-bg-panel);
-}
-.mar-ui-date-picker__field:not([data-disabled='true']):hover {
-  border-color: var(--mar-ui-input-border-hover);
-}
-.mar-ui-date-picker__field:is(:focus-within, [data-expanded='true']) {
-  border-color: var(--mar-ui-control-focus);
-}
-.mar-ui-date-picker__field[data-invalid='true'] {
-  border-color: var(--mar-ui-control-color-danger);
 }
 .mar-ui-date-picker__input {
   flex: 1;
@@ -424,7 +413,7 @@ function onFocusOut(event: FocusEvent) {
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
 }
 [data-range='true'] .mar-ui-date-picker__input {
   text-align: center;
@@ -491,7 +480,7 @@ function onFocusOut(event: FocusEvent) {
   padding-block-start: 0.625rem;
   margin-block-start: 0.5rem;
   border-block-start: 1px solid var(--mar-ui-border-subtle);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
 }
 .mar-ui-date-picker__footer > * {
   min-inline-size: 0;

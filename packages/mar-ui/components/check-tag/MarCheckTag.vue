@@ -28,7 +28,7 @@ const emit = defineEmits<{ change: [checked: boolean]; 'update:checked': [checke
   color: var(--mar-ui-text-secondary);
   background: var(--mar-ui-bg-panel);
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.35;
   white-space: nowrap;
   cursor: pointer;

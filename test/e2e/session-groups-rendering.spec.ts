@@ -102,7 +102,7 @@ test('Session rows keep their desktop and mobile density', async ({ page }, test
     });
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 850 });
-    await expect(groups).toHaveCSS('height', '24px');
+    await expect(groups).toHaveCSS('height', '26px');
     await expect(row).toHaveCSS('height', '32px');
     const mobileBounds = (await row.boundingBox())!;
     const nextMobileBounds = (await nextRow.boundingBox())!;
@@ -162,6 +162,14 @@ for (const [width, theme, locale] of [
       await expect(radios.nth(0)).toBeChecked();
       await expect(options.nth(0)).toHaveText(locale === 'zh-CN' ? '主会话' : 'Main');
       await expect(options.nth(1)).toHaveText(locale === 'zh-CN' ? '子会话' : 'Child');
+      const trackBounds = (await categories.boundingBox())!;
+      for (const toolbar of ['.session-search', '.new-session-form']) {
+        const row = chats.locator(toolbar);
+        await expect(row).toBeVisible();
+        const bounds = (await row.boundingBox())!;
+        expect(trackBounds.x).toBeCloseTo(bounds.x, 0);
+        expect(trackBounds.x + trackBounds.width).toBeCloseTo(bounds.x + bounds.width, 0);
+      }
       await categories.screenshot({ path: testInfo.outputPath('session-categories.png') });
       await expect(chats.locator('.session-state-badge')).toHaveCount(0);
       const colors = await chats.evaluate((element) => {
@@ -212,7 +220,7 @@ for (const [width, theme, locale] of [
         const text = (await option.locator('span').boundingBox())!;
         expect(bounds.height).toBeLessThanOrEqual(28);
         expect(text.x + text.width / 2).toBeCloseTo(bounds.x + bounds.width / 2, 0);
-        await expect(option).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
+        await expect(option).toHaveCSS('font-size', '12px');
         await expect(option).toHaveCSS('font-weight', '400');
       }
       const dots = page.locator('.mar-session-activity.running i');

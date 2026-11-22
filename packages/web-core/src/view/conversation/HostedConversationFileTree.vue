@@ -173,7 +173,7 @@ function disableLeavingBranch(branch: Element): void {
 }
 
 .file-row:hover {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-row-hover);
 }
 
 .file-open {

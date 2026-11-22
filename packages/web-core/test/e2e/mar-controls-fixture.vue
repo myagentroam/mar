@@ -67,7 +67,13 @@ const organizations = [
     <h1>MAR controls</h1>
     <section v-if="showInputs">
       <MarInput aria-label="Name" placeholder="Enter a name" />
-      <MarInput type="textarea" aria-label="Notes" placeholder="Enter notes" />
+      <MarInput
+        type="textarea"
+        aria-label="Notes"
+        placeholder="Enter notes"
+        maxlength="80"
+        show-word-limit
+      />
     </section>
     <MarSelect
       v-if="showRemoteSelect"

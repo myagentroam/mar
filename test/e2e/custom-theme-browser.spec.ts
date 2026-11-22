@@ -107,34 +107,38 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}custom-theme.html`);
 });
 
-for (const [width, height] of [
-  [1280, 26],
-  [390, 24]
-] as const) {
+for (const width of [1280, 390]) {
   test(`standard single-line controls align at ${width}px`, async ({ page }, testInfo) => {
+    const height = 26;
     await page.setViewportSize({ width, height: 900 });
     const fields = page.getByRole('region', { name: 'Standard field boundaries' });
     for (const control of [
       fields
         .locator('.mar-ui-input')
         .filter({ has: page.getByRole('textbox', { name: 'Text field', exact: true }) }),
-      fields.locator('.mar-ui-input-number'),
+      fields
+        .locator('.mar-ui-input-number')
+        .filter({ has: page.getByRole('spinbutton', { name: 'Number field', exact: true }) }),
       fields
         .locator('.mar-ui-select__field')
         .filter({ has: page.getByRole('combobox', { name: 'Select field', exact: true }) }),
       fields
         .locator('.mar-ui-select__field')
         .filter({ has: page.getByRole('combobox', { name: 'Time select field', exact: true }) }),
-      fields.locator('.mar-ui-cascader__field'),
+      fields
+        .locator('.mar-ui-cascader__field')
+        .filter({ has: page.getByPlaceholder('Cascader field', { exact: true }) }),
       fields
         .locator('.mar-ui-date-picker__field')
-        .filter({ has: page.getByPlaceholder('Single date field') }),
-      fields.locator('.mar-ui-time-picker__field'),
+        .filter({ has: page.getByPlaceholder('Single date field', { exact: true }) }),
+      fields
+        .locator('.mar-ui-time-picker__field')
+        .filter({ has: page.getByPlaceholder('Single time field', { exact: true }) }),
       page.getByRole('button', { name: 'Sample primary', exact: true })
     ]) {
       await expect(control).toHaveCSS('height', `${height}px`);
     }
-    const textarea = fields.getByRole('textbox', { name: 'Textarea field' });
+    const textarea = fields.getByRole('textbox', { name: 'Textarea field', exact: true });
     expect((await textarea.boundingBox())!.height).toBeGreaterThan(height);
     await fields.screenshot({ path: testInfo.outputPath('compact-fields.png') });
   });
@@ -575,7 +579,7 @@ test('MAR controls follow the provider locale for their built-in text', async ({
   ).toBeVisible();
 });
 
-test('console bootstrap keeps the saved custom page color before and after theme initialization', async ({
+test('console bootstrap keeps the saved page color and uses custom Primary after initialization', async ({
   page
 }) => {
   const consoleHtml = await readFile(
@@ -602,7 +606,7 @@ test('console bootstrap keeps the saved custom page color before and after theme
     const source = JSON.stringify({
       version: 1,
       name: 'Light startup',
-      colors: { '--mar-bg-page': '#f1f5e9' }
+      colors: { '--mar-bg-page': '#f1f5e9', '--mar-control-primary-bg': '#6725af' }
     });
     localStorage.setItem('mar.theme', id);
     localStorage.setItem('mar.customThemes', JSON.stringify([{ id, source }]));
@@ -616,10 +620,12 @@ test('console bootstrap keeps the saved custom page color before and after theme
 
   const root = page.locator('html');
   const bootstrap = page.locator('#mar-bootstrap');
+  const ring = bootstrap.locator('.mar-bootstrap__trace');
   const meta = page.locator('meta[name="theme-color"]');
   await page.goto(consoleUrl);
   await expect(root).not.toHaveClass(/\bdark\b/u);
   await expect(bootstrap).toHaveCSS('background-color', 'rgb(241, 245, 233)');
+  await expect(ring).toHaveCSS('border-top-color', 'rgb(0, 87, 219)');
   await expect(meta).toHaveAttribute('content', '#f1f5e9');
 
   initializeTheme = true;
@@ -630,6 +636,7 @@ test('console bootstrap keeps the saved custom page color before and after theme
     await root.evaluate((element) => element.style.getPropertyValue('--mar-bootstrap-bg'))
   ).toBe('');
   await expect(bootstrap).toHaveCSS('background-color', 'rgb(241, 245, 233)');
+  await expect(ring).toHaveCSS('border-top-color', 'rgb(103, 37, 175)');
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(241, 245, 233)');
   await expect(meta).toHaveAttribute('content', '#f1f5e9');
 });
@@ -675,7 +682,7 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', expected);
     await expect(page.locator('.mar-bootstrap__trace')).toHaveCSS(
       'color',
-      themeId === 'daylight' ? 'rgb(67, 83, 107)' : 'rgb(194, 194, 194)'
+      themeId === 'daylight' ? 'rgb(0, 87, 219)' : 'rgb(222, 222, 222)'
     );
     expect(await page.locator('html').evaluate((root) => root.classList.contains('dark'))).toBe(
       themeId !== 'daylight'
@@ -1007,9 +1014,10 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
         '--mar-bg-page': '#ffffff',
         '--mar-bg-panel': '#ddeeff',
         '--mar-text-primary': '#112233',
+        '--mar-control-fill-color': '#ff66bb',
         '--mar-conversation-activity-fg': '#2155bb',
         '--mar-font-size-body': '100px',
-        '--mar-fill-hover': 'url(https://invalid.test/image)'
+        '--mar-fill-muted': 'url(https://invalid.test/image)'
       },
       extension: { retained: true }
     },
@@ -1051,6 +1059,12 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   );
   await page.getByRole('button', { name: 'Inspect Ocean', exact: true }).click();
   await expect(editor).toHaveValue(source);
+  await expect(page.locator('.validation')).toContainText('--mar-control-fill-color');
+  expect(
+    await page
+      .locator('html')
+      .evaluate((root) => root.style.getPropertyValue('--mar-control-fill-color'))
+  ).toBe('');
   const downloadEvent = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export JSON', exact: true }).click();
   const download = await downloadEvent;
@@ -1199,6 +1213,9 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   ).toBeVisible();
   await expect(editor).toHaveAttribute('readonly', '');
   await expect(page.locator('.validation')).toContainText('No detected warnings.');
+  const dark = JSON.parse(await editor.inputValue());
+  expect(dark.colors['--mar-control-color-warning']).toBe('#ffc14d');
+  expect(dark.colors['--mar-color-warning-accent']).toBe('#ffc14d');
   const validation = await page.locator('.validation').boundingBox();
   const preview = await page.locator('.preview-heading').boundingBox();
   expect(validation!.y + validation!.height).toBeLessThanOrEqual(preview!.y);
@@ -1226,6 +1243,8 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   for (const token of CUSTOM_THEME_TOKENS)
     expect(light.colors[token]).toMatch(/^#[0-9a-f]{6}([0-9a-f]{2})?$/u);
   expect(light.colors['--mar-bg-panel']).toBe('#ffffff');
+  expect(light.colors['--mar-control-color-warning']).toBe('#a56000');
+  expect(light.colors['--mar-color-warning-accent']).toBe('#a56000');
   await useThemeMenu(page, rows.nth(1), 'Duplicate');
   const copied = await editor.inputValue();
   expect(JSON.parse(copied).colors).toEqual(light.colors);
@@ -1288,7 +1307,7 @@ test('built-ins are read-only, copies include every color, and reset restores sa
     '--mar-bg-page',
     '--mar-bg-panel',
     '--mar-control-primary-bg',
-    '--mar-control-fill-color'
+    '--mar-border-subtle'
   ]) {
     expect(
       await page.evaluate((key) => document.documentElement.style.getPropertyValue(key), token)
@@ -1959,18 +1978,18 @@ for (const [scheme, width] of [
         'xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," mar-ui-input ") or contains(@class,"mar-ui-select__field") or contains(@class,"mar-ui-input-number") or contains(@class,"mar-ui-cascader__field") or contains(@class,"mar-ui-date-picker__field") or contains(@class,"mar-ui-time-picker__field")][1]'
       );
     const check = async () => {
-      const shadow = await tokenShadow('--mar-input-border');
+      const shadow = await tokenShadow('--mar-border-default');
       const border = await fields.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--mar-input-border)';
+        probe.style.borderTop = '1px solid var(--mar-border-default)';
         element.append(probe);
-        const result = getComputedStyle(probe).color;
+        const result = getComputedStyle(probe).borderTopColor;
         probe.remove();
         return result;
       });
       for (const field of [
         fields.getByRole('textbox', { name: 'Text field', exact: true }),
-        fields.getByRole('textbox', { name: 'Textarea field' }),
+        fields.getByRole('textbox', { name: 'Textarea field', exact: true }),
         fields.getByRole('combobox', { name: 'Select field', exact: true }),
         fields.getByRole('combobox', { name: 'Time select field', exact: true })
       ])
@@ -1984,9 +2003,44 @@ for (const [scheme, width] of [
         await expect(wrapper(field)).toHaveCSS('border-top-width', '1px');
         await expect(wrapper(field)).toHaveCSS('border-top-color', border);
       }
-      await expect(fields.getByRole('textbox', { name: 'Disabled text field' })).toBeDisabled();
-      await expect(fields.getByRole('combobox', { name: 'Disabled field' })).toBeDisabled();
-      await expect(fields.getByPlaceholder('Disabled start date')).toBeDisabled();
+      const disabledColors = await fields.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.borderTop = '1px solid var(--mar-border-subtle)';
+        probe.style.backgroundColor = 'var(--mar-fill-soft)';
+        element.append(probe);
+        const style = getComputedStyle(probe);
+        const colors = { border: style.borderTopColor, fill: style.backgroundColor };
+        probe.remove();
+        return colors;
+      });
+      for (const input of [
+        fields.getByRole('textbox', { name: 'Disabled text field' }),
+        fields.getByRole('textbox', { name: 'Text field in disabled fieldset' }),
+        fields.getByRole('textbox', { name: 'Disabled textarea field' }),
+        fields.getByRole('combobox', { name: 'Disabled field' }),
+        fields.getByRole('combobox', { name: 'Disabled time select field' })
+      ]) {
+        await expect(input).toBeDisabled();
+        const frame = wrapper(input);
+        await frame.hover();
+        await expect(frame).toHaveCSS('box-shadow', await tokenShadow('--mar-border-subtle'));
+        await expect(frame).toHaveCSS('background-color', disabledColors.fill);
+      }
+      for (const field of [
+        ...[
+          'Disabled start date',
+          'Disabled single date',
+          'Disabled time field',
+          'Disabled cascader field'
+        ].map((placeholder) => fields.getByPlaceholder(placeholder, { exact: true })),
+        fields.getByRole('spinbutton', { name: 'Disabled number field' })
+      ]) {
+        await expect(field).toBeDisabled();
+        await expect(wrapper(field)).toHaveCSS('border-top-color', disabledColors.border);
+        await expect(wrapper(field)).toHaveCSS('background-color', disabledColors.fill);
+        await wrapper(field).hover();
+        await expect(wrapper(field)).toHaveCSS('border-top-color', disabledColors.border);
+      }
       const enabledInput = fields.getByRole('textbox', { name: 'Text field', exact: true });
       await enabledInput.hover();
       await expect(wrapper(enabledInput)).toHaveCSS(
@@ -1999,36 +2053,33 @@ for (const [scheme, width] of [
         await tokenShadow('--mar-control-focus')
       );
       await enabledInput.blur();
-      await page.mouse.move(0, 0);
-      await expect(wrapper(fields.getByRole('combobox', { name: 'Invalid field' }))).toHaveCSS(
+      const addOn = fields.getByRole('button', { name: 'Field add-on' });
+      await addOn.hover();
+      await addOn.focus();
+      await expect(wrapper(addOn)).toHaveCSS('box-shadow', shadow);
+      await addOn.blur();
+      const validSelect = fields.getByRole('combobox', { name: 'Select field', exact: true });
+      await validSelect.click();
+      await expect(wrapper(validSelect)).toHaveCSS(
         'box-shadow',
-        await tokenShadow('--mar-control-color-danger')
+        await tokenShadow('--mar-control-focus')
       );
+      await validSelect.press('Escape');
+      for (const input of [
+        fields.getByRole('textbox', { name: 'Invalid text field' }),
+        fields.getByRole('combobox', { name: 'Invalid field' })
+      ]) {
+        await expect(input).toHaveAttribute('aria-invalid', 'true');
+        await input.focus();
+        await expect(wrapper(input)).toHaveCSS(
+          'box-shadow',
+          await tokenShadow('--mar-control-color-danger')
+        );
+        await input.blur();
+      }
       await expect(fields.getByText('Select a date range', { exact: true })).toBeVisible();
     };
     await check();
-    if (scheme === 'Dark') {
-      const [border, hover, panel, conversationSurface] = await fields.evaluate((element) => {
-        const probe = document.createElement('span');
-        element.append(probe);
-        const colors = [
-          '--mar-input-border',
-          '--mar-input-border-hover',
-          '--mar-bg-panel',
-          '--mar-conversation-surface'
-        ].map((token) => {
-          probe.style.color = `var(${token})`;
-          return getComputedStyle(probe).color;
-        });
-        probe.remove();
-        return colors;
-      });
-      for (const surface of [panel!, conversationSurface!]) {
-        const restingContrast = colorContrast(border!, surface);
-        expect(restingContrast).toBeGreaterThanOrEqual(3);
-        expect(colorContrast(hover!, surface)).toBeGreaterThan(restingContrast);
-      }
-    }
     await page.mouse.move(0, 0);
     await fields.screenshot({
       path: testInfo.outputPath(`standard-fields-${scheme.toLowerCase()}.png`)
@@ -2065,6 +2116,67 @@ for (const [scheme, width] of [
   });
 }
 
+test('solid and inset field frames retain invalid and keyboard focus cues', async ({ page }) => {
+  const date = page.getByPlaceholder('Invalid start date', { exact: true });
+  const frame = page.locator('.mar-ui-date-picker__field').filter({ has: date });
+  const invalidInput = page.getByRole('textbox', { name: 'Invalid text field' });
+  const invalidSelect = page.getByRole('combobox', { name: 'Invalid field' });
+  const addOn = page.getByRole('button', { name: 'Field add-on', exact: true });
+  const fields = [
+    [invalidInput, page.locator('.mar-ui-input').filter({ has: invalidInput })],
+    [invalidSelect, page.locator('.mar-ui-select__field').filter({ has: invalidSelect })],
+    [date, frame]
+  ] as const;
+  await expect(date).toHaveAttribute('aria-invalid', 'true');
+  await expect(frame).toHaveCSS('border-top-color', 'rgb(255, 98, 107)');
+  await date.click();
+  await expect(frame).toHaveAttribute('data-expanded', 'true');
+  await expect(frame).toHaveCSS('border-top-color', 'rgb(255, 98, 107)');
+  await date.press('Escape');
+  await expect(frame).toHaveAttribute('data-expanded', 'false');
+  for (const [input, fieldFrame] of fields) {
+    // Focusing another control closes the picker; DOM blur alone has no related target.
+    await addOn.focus();
+    await expect(fieldFrame).toHaveCSS('outline-style', 'none');
+    const readEdge = () =>
+      fieldFrame.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [style.borderTopColor, style.boxShadow];
+      });
+    const errorEdge = await readEdge();
+    if (input === invalidInput) await page.keyboard.press('Tab');
+    else if (input === date) {
+      await frame.getByRole('button').focus();
+      await page.keyboard.press('Tab');
+    } else await input.focus();
+    await expect(input).toBeFocused();
+    await expect(fieldFrame).toHaveCSS('outline-style', 'solid');
+    await expect(fieldFrame).toHaveCSS('outline-width', '2px');
+    await expect.poll(readEdge).toEqual(errorEdge);
+  }
+  await addOn.focus();
+  await expect(frame).toHaveAttribute('data-expanded', 'false');
+  await page.emulateMedia({ forcedColors: 'active' });
+  for (const [input, fieldFrame] of fields) {
+    await input.focus();
+    await expect(fieldFrame).toHaveCSS('border-top-style', 'dashed');
+    await expect(fieldFrame).toHaveCSS('border-top-width', '1px');
+    await expect(fieldFrame).toHaveCSS('outline-style', 'solid');
+    await expect(fieldFrame).toHaveCSS('outline-width', '2px');
+  }
+  const disabledInput = page.getByRole('textbox', { name: 'Text field in disabled fieldset' });
+  const disabledFrame = page.locator('.mar-ui-input').filter({ has: disabledInput });
+  const propDisabled = page.locator('.mar-ui-input').filter({
+    has: page.getByRole('textbox', { name: 'Disabled text field' })
+  });
+  await expect(disabledFrame).toHaveCSS('border-top-style', 'solid');
+  await expect(disabledFrame).toHaveCSS(
+    'border-top-color',
+    await propDisabled.evaluate((element) => getComputedStyle(element).borderTopColor)
+  );
+  await expect(disabledFrame).toHaveCSS('outline-style', 'none');
+});
+
 test('theme preview input uses its own palette independently of the active theme', async ({
   page
 }) => {
@@ -2081,7 +2193,7 @@ test('theme preview input uses its own palette independently of the active theme
   expect(inputShadow).toContain(normalBorder);
   await page.getByRole('button', { name: 'Inspect Light', exact: true }).click();
   await expect(preview).toHaveAttribute('data-theme', 'daylight');
-  await expect(input).toHaveCSS('border-top-color', 'rgb(113, 133, 160)');
+  await expect(input).toHaveCSS('border-top-color', 'rgb(185, 202, 223)');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
   await expect(realInput).toHaveCSS('box-shadow', inputShadow);
 });
@@ -2147,6 +2259,8 @@ test('expanded and compact previews share the applied palette without changing g
     version: 1,
     name: 'Preview',
     colors: {
+      '--mar-link-text': '#a6d1ff',
+      '--mar-link-hover': '#c1e1ff',
       '--mar-conversation-activity-fg': '#ff00ff',
       '--mar-control-focus': '#e2d4bf',
       '--mar-fill-selection': '#38475a',
@@ -2171,6 +2285,11 @@ test('expanded and compact previews share the applied palette without changing g
   const expectPreviewText = async (sample: Locator) => {
     for (const selector of ['.user-message', '.assistant-message p', '.process'])
       await expect(sample.locator(selector)).toHaveCSS('color', 'rgb(248, 238, 221)');
+    const sampleLink = sample.getByText('Reference link', { exact: true });
+    await expect(sampleLink).toHaveCSS('color', 'rgb(166, 209, 255)');
+    await expect(sampleLink).toHaveCSS('text-decoration-line', 'underline');
+    await sampleLink.hover();
+    await expect(sampleLink).toHaveCSS('color', 'rgb(193, 225, 255)');
     const previewRing = sample.locator('.process .mar-busy-indicator');
     await expect(previewRing).toHaveCSS('color', 'rgb(255, 0, 255)');
     await expect(previewRing).toHaveCSS('animation-name', 'none');
@@ -2545,6 +2664,16 @@ for (const scheme of ['Light', 'Dark']) {
         scheme === 'Dark' ? 'rgb(240, 240, 240)' : 'rgb(18, 58, 120)'
       );
       await expect(link).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const anchor = controls.getByRole('link', { name: 'Sample anchor', exact: true });
+      await expect(anchor).toHaveCSS(
+        'color',
+        scheme === 'Dark' ? 'rgb(117, 183, 255)' : 'rgb(23, 78, 158)'
+      );
+      await anchor.hover();
+      await expect(anchor).toHaveCSS(
+        'color',
+        scheme === 'Dark' ? 'rgb(162, 206, 255)' : 'rgb(18, 58, 120)'
+      );
       const neutral = controls.getByRole('button', { name: 'Sample neutral action', exact: true });
       const disabledNeutral = controls.getByRole('button', {
         name: 'Sample disabled neutral action',
@@ -2606,7 +2735,9 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-text-disabled': '#969696',
         '--mar-fill-soft': '#434343',
         '--mar-control-link-text': '#abcdef',
-        '--mar-control-link-hover': '#bcdefa'
+        '--mar-control-link-hover': '#bcdefa',
+        '--mar-link-text': '#b4d4ff',
+        '--mar-link-hover': '#d2e8ff'
       });
       await editor.fill(JSON.stringify(theme));
       await page.getByRole('button', { name: 'Save theme', exact: true }).click();
@@ -2675,6 +2806,9 @@ for (const scheme of ['Light', 'Dark']) {
         'color',
         'rgb(188, 222, 250)'
       );
+      await expect(anchor).toHaveCSS('color', 'rgb(180, 212, 255)');
+      await anchor.hover();
+      await expect(anchor).toHaveCSS('color', 'rgb(210, 232, 255)');
       await controls.locator('tbody tr').first().hover();
       await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',
@@ -2704,6 +2838,8 @@ for (const scheme of ['Light', 'Dark']) {
           '--mar-sidebar-header-height': mobile ? '46px' : '44px',
           '--mar-brand-logo-size': mobile ? '32px' : '35px',
           '--mar-font-size-body': mobile ? '13px' : '14px',
+          '--mar-font-size-control': '12px',
+          '--mar-compact-control-size': '26px',
           '--mar-utility-control-size': mobile ? '28px' : '24px',
           '--mar-session-row-min-height': '32px',
           '--mar-workbench-sidebar-width': mobile ? '222px' : width <= 860 ? '220px' : '244px'

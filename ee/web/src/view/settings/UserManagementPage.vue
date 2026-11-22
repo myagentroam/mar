@@ -404,7 +404,7 @@ onUnmounted(() => usersPage.dispose());
   overflow-wrap: anywhere;
   border: 1px solid var(--mar-border-default);
   border-radius: 6px;
-  background: var(--mar-control-fill-color-light);
+  background: var(--mar-fill-muted);
   padding: 10px 12px;
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);

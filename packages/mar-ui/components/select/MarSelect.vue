@@ -23,6 +23,7 @@ import { MarIconGraphic, resolveMarIcon } from '../../icons/mar-icons.js';
 import { useMarUiLocale } from '../../locale/index.js';
 import { useMarFormControl } from '../form/form-context.js';
 import { usePopup } from '../popup/use-popup.js';
+import '../form/field-frame.css';
 import '../popup/surface.css';
 import { marUiTooltipDirectiveKey, readOverflowText } from '../tooltip/tooltip-directive.js';
 import MarOption from './MarOption.vue';
@@ -458,7 +459,7 @@ watch(controlDisabled, (disabled) => {
   <div class="mar-ui-select" :class="$attrs.class" :style="$attrs.style">
     <div
       ref="field"
-      class="mar-ui-select__field"
+      class="mar-ui-select__field mar-ui-field-frame mar-ui-field-frame--inset"
       :class="{
         'mar-ui-select__field--tags': hasTags,
         'mar-ui-select__field--compact-tags': compactTags,
@@ -466,6 +467,7 @@ watch(controlDisabled, (disabled) => {
       }"
       :data-disabled="controlDisabled || undefined"
       :data-expanded="open || undefined"
+      :data-invalid="ariaInvalid($attrs['aria-invalid'])"
       @click.capture="pointerDriven = $event.detail > 0"
       @click="onFieldClick"
       @focusout="onFocusOut"
@@ -649,29 +651,13 @@ watch(controlDisabled, (disabled) => {
   gap: 0.375rem;
   min-height: var(--mar-ui-select-height);
   padding-inline: var(--mar-ui-select-padding);
-  border-radius: var(--mar-ui-radius-control);
-  background: var(--mar-ui-bg-panel);
-  box-shadow: 0 0 0 1px var(--mar-ui-input-border) inset;
-  color: var(--mar-ui-text-primary);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   font-weight: 400;
   text-align: start;
+}
+.mar-ui-select__field:where(:not([data-disabled])) {
+  color: var(--mar-ui-text-primary);
   cursor: pointer;
-}
-.mar-ui-select__field:hover {
-  box-shadow: 0 0 0 1px var(--mar-ui-input-border-hover) inset;
-}
-.mar-ui-select__field:is(:focus-within, [data-expanded]) {
-  box-shadow: 0 0 0 1px var(--mar-ui-control-focus) inset;
-}
-.mar-ui-select__field:has([aria-invalid='true']) {
-  box-shadow: 0 0 0 1px var(--mar-ui-control-color-danger) inset;
-}
-.mar-ui-select__field[data-disabled] {
-  background: var(--mar-ui-fill-soft);
-  box-shadow: 0 0 0 1px var(--mar-ui-border-subtle) inset;
-  color: var(--mar-ui-text-disabled);
-  cursor: not-allowed;
 }
 .mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible)
   + .mar-ui-popup:not([data-pointer-driven]) {
@@ -811,7 +797,7 @@ input.mar-ui-select__trigger {
   padding-inline: 0.375rem;
   border-radius: var(--mar-ui-radius-control);
   background: color-mix(in srgb, var(--mar-ui-bg-panel), var(--mar-ui-text-secondary) 12%);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.2;
 }
 .mar-ui-select__tag-remove {
@@ -833,7 +819,7 @@ input.mar-ui-select__trigger {
   --mar-ui-popup-width: max-content;
   --mar-ui-popup-width-cap: 16rem;
   --mar-ui-popup-padding: 0.375rem;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -854,7 +840,7 @@ input.mar-ui-select__trigger {
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   padding: 4px var(--mar-ui-compact-option-padding-inline);
   color: var(--mar-ui-text-secondary);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.45;
   text-align: center;
 }
@@ -869,10 +855,6 @@ input.mar-ui-select__trigger {
   }
 }
 @media (forced-colors: active) {
-  .mar-ui-select__field {
-    border: 1px solid ButtonText;
-  }
-  .mar-ui-select__field:is(:focus-within, [data-expanded]),
   .mar-ui-select__action:focus-visible {
     outline: 2px solid Highlight;
   }

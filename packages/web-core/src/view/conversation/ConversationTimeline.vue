@@ -5,6 +5,7 @@ import { MarRadio, MarRadioGroup } from '@myagentroam/mar-ui/radio';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import './conversation-detail.css';
+import '../../styles/file-change-colors.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import ConversationQuoteMenu from './ConversationQuoteMenu.vue';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -451,7 +452,10 @@ async function animateDisclosure(event: MouseEvent): Promise<void> {
   const startHeight = details.getBoundingClientRect().height;
   previous?.animation?.cancel();
   delete details.dataset.disclosureClosing;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (
+    matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    !CSS.supports('selector(::details-content)')
+  ) {
     if (previous) {
       event.preventDefault();
       details.open = motion.open;
@@ -476,16 +480,18 @@ async function animateDisclosure(event: MouseEvent): Promise<void> {
   }
   const style = getComputedStyle(details);
   const duration = style.getPropertyValue('--mar-motion-duration-fast').trim();
+  const summaryEnd = summary.getBoundingClientRect().bottom - details.getBoundingClientRect().top;
   const collapsedHeight =
-    summary.getBoundingClientRect().bottom -
-    details.getBoundingClientRect().top +
+    summaryEnd +
     Number.parseFloat(style.paddingBottom) +
     Number.parseFloat(style.borderBottomWidth);
+  const bodyOffset = `${summaryEnd - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.borderTopWidth)}px`;
   const endHeight = motion.open ? details.getBoundingClientRect().height : collapsedHeight;
   motion.animation = details.animate(
     {
       height: [`${startHeight}px`, `${endHeight}px`],
-      overflow: ['hidden', 'hidden'],
+      '--mar-disclosure-body-offset': [bodyOffset, bodyOffset],
+      '--mar-disclosure-body-overflow': ['clip', 'clip'],
       boxSizing: ['border-box', 'border-box']
     },
     {
@@ -961,8 +967,8 @@ function stepDuration(item: ConversationItem): string | undefined {
                 >
                   <span
                     v-if="entry.status"
-                    class="conversation-file-change-status mar-conversation-list-marker"
-                    :class="`conversation-file-change-status--${entry.change.toLowerCase()}`"
+                    class="conversation-file-change-status mar-conversation-list-marker mar-file-change-status"
+                    :data-file-change="entry.change"
                     >{{ entry.status }}</span
                   >
                   <button
@@ -2141,38 +2147,27 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .task-list-status.task-list-status--in-progress {
-  border-color: color-mix(in srgb, var(--mar-control-color-warning) 32%, transparent);
-  background: color-mix(in srgb, var(--mar-control-color-warning) 8%, transparent);
-  color: var(--mar-control-color-warning);
+  --mar-task-status-fg: var(--mar-color-warning-text);
 }
 
 .task-list-status.task-list-status--done {
-  border-color: color-mix(in srgb, var(--mar-control-color-success) 32%, transparent);
-  background: color-mix(in srgb, var(--mar-control-color-success) 8%, transparent);
-  color: var(--mar-control-color-success);
+  --mar-task-status-fg: var(--mar-color-success-text);
 }
 
-.conversation-file-change-status--added {
-  border-color: color-mix(in srgb, var(--mar-control-color-success) 32%, transparent);
-  background: color-mix(in srgb, var(--mar-control-color-success) 8%, transparent);
-  color: var(--mar-control-color-success);
+.task-list-status:is(.task-list-status--in-progress, .task-list-status--done),
+.conversation-file-change-status:is(
+  [data-file-change='ADDED'],
+  [data-file-change='MODIFIED'],
+  [data-file-change='TYPE_CHANGED'],
+  [data-file-change='DELETED']
+) {
+  --mar-detail-marker-fg: var(--mar-task-status-fg, var(--mar-file-change-fg));
+  border-color: color-mix(in srgb, var(--mar-detail-marker-fg) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-detail-marker-fg) 8%, transparent);
+  color: var(--mar-detail-marker-fg);
 }
 
-.conversation-file-change-status--modified,
-.conversation-file-change-status--type_changed {
-  border-color: color-mix(in srgb, var(--mar-control-color-warning) 32%, transparent);
-  background: color-mix(in srgb, var(--mar-control-color-warning) 8%, transparent);
-  color: var(--mar-control-color-warning);
-}
-
-.conversation-file-change-status--deleted {
-  border-color: color-mix(in srgb, var(--mar-control-color-danger) 32%, transparent);
-  background: color-mix(in srgb, var(--mar-control-color-danger) 8%, transparent);
-  color: var(--mar-control-color-danger);
-}
-
-.conversation-file-change-status--renamed,
-.conversation-file-change-status--copied {
+.conversation-file-change-status:is([data-file-change='RENAMED'], [data-file-change='COPIED']) {
   border-color: var(--mar-border-medium);
   background: var(--mar-fill-soft);
   color: var(--mar-text-primary);
@@ -2326,6 +2321,15 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item details {
   margin-top: 0;
+  /* A nested disclosure owns its own clipping, not its parent's animation values. */
+  --mar-disclosure-body-offset: initial;
+  --mar-disclosure-body-overflow: visible;
+}
+
+.conversation-item details::details-content {
+  /* Keep the summary outside the clipping region throughout the height animation. */
+  max-height: calc(100% - var(--mar-disclosure-body-offset));
+  overflow: var(--mar-disclosure-body-overflow);
 }
 
 .conversation-item summary {
@@ -2394,7 +2398,6 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item summary:focus-visible {
   outline: 2px solid var(--mar-control-focus);
-  /* Keep the ring inside the rounded row while the details animation clips overflow. */
   outline-offset: -2px;
 }
 

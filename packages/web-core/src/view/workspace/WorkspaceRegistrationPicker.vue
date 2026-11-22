@@ -519,7 +519,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   display: flex;
   min-width: 0;
   align-items: center;
-  border-bottom: 1px solid var(--mar-fill-hover);
+  border-bottom: 1px solid var(--mar-border-subtle);
 }
 
 .workspace-directory-row:last-child {

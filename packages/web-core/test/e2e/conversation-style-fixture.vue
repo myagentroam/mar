@@ -276,7 +276,9 @@ if (markdownBlocksFixture) {
               '未声明语言的代码块使用通用标签，仍可完整复制：',
               '```',
               'pnpm --dir packages/web-core exec vitest run test/unit/agent-markdown.test.ts',
-              '```'
+              '```',
+              '',
+              'See [the documentation](https://example.invalid/docs) and [`src/tasks.ts`](src/tasks.ts#L3).'
             ].join('\n')
           }
         }

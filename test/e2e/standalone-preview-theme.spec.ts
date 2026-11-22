@@ -193,28 +193,54 @@ test('Standalone Markdown prints complete pages without the console viewport cli
   expect(geometry.height).toBeGreaterThan(geometry.viewport);
 });
 
-test('Standalone HTML keeps a light shell without recoloring the document', async ({ page }) => {
+test('Standalone HTML fills desktop and mobile widths without changing document styles', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  const documentReady = Promise.withResolvers<void>();
   await page.route('**/api/html-preview/grants', (route) =>
     route.fulfill({
       json: { url: new URL('/preview-document', fixture.url).href }
     })
   );
-  await page.route('**/preview-document', (route) =>
-    route.fulfill({
+  await page.route('**/preview-document', async (route) => {
+    await documentReady.promise;
+    await route.fulfill({
       contentType: 'text/html',
-      body: '<body style="background:#123456;color:white">Original document</body>'
-    })
-  );
+      body: `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>.wide { display: none } @media (min-width: 768px) {
+          .wide { display: block } .narrow { display: none }
+        }</style>
+        <body style="background:#123456;color:white">
+          <h1 class="wide">Desktop document</h1><h1 class="narrow">Mobile document</h1>
+        </body>`
+    });
+  });
   await page.goto(
-    `${fixture.url}standalone-preview.html?htmlPreview=1&nodeId=node&workspaceId=workspace&path=guide.html`
+    `${fixture.url}standalone-preview.html?htmlPreview=1&nodeId=node&workspaceId=workspace&path=guide.html`,
+    { waitUntil: 'domcontentloaded' }
   );
-  await expect(page.locator('.standalone-markdown-header')).toHaveCSS(
-    'background-color',
-    'rgb(246, 248, 250)'
-  );
-  await expect(page.frameLocator('iframe').locator('body')).toHaveCSS(
-    'background-color',
-    'rgb(18, 52, 86)'
-  );
-  await expect(page.locator('.file-preview-loading')).toHaveCount(0);
+  const header = page.getByRole('main').locator('header');
+  const loading = page.getByRole('main').getByRole('status');
+  const iframe = page.locator('iframe');
+  const frame = iframe.contentFrame();
+  const checkWidth = (width: number) =>
+    expect.poll(async () => (await iframe.boundingBox())?.width).toBe(width);
+  try {
+    await expect(header).toHaveCSS('background-color', 'rgb(246, 248, 250)');
+    await expect(loading).toBeVisible();
+    await expect(loading).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect.poll(async () => (await loading.boundingBox())?.width).toBe(1280);
+  } finally {
+    documentReady.resolve();
+  }
+  await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
+  await checkWidth(1280);
+  await expect(frame.getByRole('heading', { name: 'Desktop document' })).toBeVisible();
+  await expect(header).toHaveText('guide.html');
+  await expect(loading).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await checkWidth(390);
+  await expect(frame.getByRole('heading', { name: 'Mobile document' })).toBeVisible();
 });

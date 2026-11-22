@@ -4,6 +4,7 @@ import {
   hostedConversationSnapshotSchema,
   type HostedConversationSnapshot
 } from '../../packages/protocol/src/index.js';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/view/conversation/HostedConversationComposer.vue
@@ -26,9 +27,9 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-for (const [width, theme, primaryBackground, primaryForeground] of [
-  [1280, 'daylight', 'rgb(0, 87, 219)', 'rgb(255, 255, 255)'],
-  [390, 'vscode-dark-2026', 'rgb(222, 222, 222)', 'rgb(24, 24, 24)']
+for (const [width, theme, createColors] of [
+  [1280, 'daylight', ['#deeaff', '#17243a', '#b9cadf']],
+  [390, 'vscode-dark-2026', ['#323232', '#eaeaea', '#3d3d3d']]
 ] as const) {
   test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
     page
@@ -82,10 +83,14 @@ for (const [width, theme, primaryBackground, primaryForeground] of [
       await search.blur();
       const newChat = page.getByRole('button', { name: 'New chat', exact: true });
       await expect(newChat).toBeEnabled();
-      await expect(newChat).toHaveClass(/\bmar-ui-button--primary\b/);
-      await expect(newChat).toHaveCSS('height', width < 768 ? '24px' : '26px');
-      await expect(newChat).toHaveCSS('background-color', primaryBackground);
-      await expect(newChat).toHaveCSS('color', primaryForeground);
+      await expect(newChat).not.toHaveClass(/\bmar-ui-button--primary\b/);
+      await expect(newChat).toHaveCSS('height', '26px');
+      await expect(newChat).toHaveCSS('border-top-width', '1px');
+      const colors = await newChat.evaluate((button) => {
+        const style = getComputedStyle(button);
+        return [style.backgroundColor, style.color, style.borderTopColor];
+      });
+      expect(colors.map(resolvedColorToHex)).toEqual(createColors);
       await expect(list.getByText('No conversations yet.')).toHaveCount(0);
       await list.screenshot({ path: testInfo.outputPath('hosted-directory-loading.png') });
     } finally {
@@ -96,6 +101,44 @@ for (const [width, theme, primaryBackground, primaryForeground] of [
     await list.screenshot({ path: testInfo.outputPath('hosted-directory-empty.png') });
   });
 }
+
+test('Hosted create action stays readable with a bright custom tool hover color', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.route('**/api/hosted-conversations?limit=*', (route) =>
+    route.fulfill({ json: { items: [], nextCursor: null } })
+  );
+  await page.route('**/api/conversation-templates', (route) =>
+    route.fulfill({ json: { templates: [] } })
+  );
+  await page.goto(`${fixture.url}hosted-entry.html?workspace-page=1&theme=vscode-dark-2026`);
+  const create = page.getByRole('button', { name: 'New chat', exact: true });
+  await expect(create).toBeEnabled();
+  await page.evaluate(async (modulePath) => {
+    const { themePreferenceService } = await import(modulePath);
+    const service = themePreferenceService();
+    const theme = service.saveCustomTheme(
+      JSON.stringify({
+        version: 1,
+        name: 'Custom sidebar',
+        colors: {
+          '--mar-fill-row-hover': '#242424',
+          '--mar-fill-selection': '#353535',
+          '--mar-fill-muted': '#dadada',
+          '--mar-text-primary': '#eeeeee',
+          '--mar-control-primary-bg': '#ff2090'
+        }
+      })
+    );
+    service.setTheme(theme.id);
+  }, '/packages/web-core/src/service/theme-preference-service.ts');
+  const colors = await create.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return [style.backgroundColor, style.color];
+  });
+  expect(colors.map(resolvedColorToHex)).toEqual(['#2c2c2c', '#eeeeee']);
+});
 
 const template = {
   id: 'template-1',
@@ -676,6 +719,55 @@ test('A late catalog refresh loads the replacement template models after returni
   }
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Hosted Composer keeps its focus border through keyboard and mouse send in ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    const f = await openHostedSend(page, { theme });
+    const shell = f.composer.locator('.composer-shell');
+    try {
+      await expect(f.input).toBeEditable();
+      const idleBorder = await shell.evaluate(
+        (element) => getComputedStyle(element).borderTopColor
+      );
+      await f.input.fill(f.prompt);
+      const focusedBorder = await shell.evaluate(
+        (element) => getComputedStyle(element).borderTopColor
+      );
+      expect(focusedBorder).not.toBe(idleBorder);
+
+      await f.input.press('Enter');
+      await expect.poll(() => f.requests.length).toBe(1);
+      await expect(f.input).toHaveAttribute('readonly', '');
+      await expect(f.input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+      f.reply(true);
+      await expect(f.input).toBeEditable();
+      await expect(f.input).toHaveValue(f.prompt);
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+
+      await f.send.hover();
+      await page.mouse.down();
+      await expect(f.input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+      await page.mouse.up();
+      await expect.poll(() => f.requests.length).toBe(2);
+      await expect(f.input).toHaveAttribute('readonly', '');
+      await expect(f.input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+      f.reply();
+      await expect(f.input).toHaveValue('');
+      await expect(f.input).toBeEditable();
+      await expect(shell).toHaveCSS('border-top-color', focusedBorder);
+      await f.input.blur();
+      await expect(shell).toHaveCSS('border-top-color', idleBorder);
+    } finally {
+      f.release();
+    }
+  });
+}
+
 test('Hosted send displays only request feedback before Watch, including after HTTP settlement', async ({
   page
 }, testInfo) => {
@@ -685,11 +777,8 @@ test('Hosted send displays only request feedback before Watch, including after H
   try {
     await f.input.fill(f.prompt);
     await f.input.blur();
-    await expect(f.send).toHaveCSS('background-color', 'rgb(77, 163, 255)');
-    const sendForeground = (await page.evaluate(() => CSS.supports('color: contrast-color(red)')))
-      ? 'rgb(0, 0, 0)'
-      : 'rgb(30, 30, 30)';
-    await expect(f.send).toHaveCSS('color', sendForeground);
+    await expect(f.send).toHaveCSS('background-color', 'rgb(36, 114, 212)');
+    await expect(f.send).toHaveCSS('color', 'rgb(255, 255, 255)');
     await page.screenshot({ path: testInfo.outputPath('chat-ready-dark.png') });
     await f.send.click();
     await expect.poll(() => f.requests.length).toBe(1);

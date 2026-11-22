@@ -3,6 +3,7 @@ import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { MarIcon } from '../../icons/index.js';
 import { useMarUiLocale } from '../../locale/index.js';
 import { useMarFormControl } from '../form/form-context.js';
+import '../form/field-frame.css';
 
 defineOptions({ inheritAttrs: false });
 const props = withDefaults(
@@ -106,7 +107,7 @@ function preventWheelStep(event: WheelEvent) {
 
 <template>
   <div
-    class="mar-ui-input-number"
+    class="mar-ui-input-number mar-ui-field-frame"
     :class="$attrs.class"
     :style="$attrs.style"
     :data-disabled="field.disabled.value"
@@ -164,19 +165,7 @@ function preventWheelStep(event: WheelEvent) {
   inline-size: 150px;
   max-inline-size: 100%;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
-  border: 1px solid var(--mar-ui-input-border);
-  border-radius: var(--mar-ui-radius-control);
-  background: var(--mar-ui-bg-panel);
   overflow: hidden;
-}
-.mar-ui-input-number:not([data-disabled='true']):hover {
-  border-color: var(--mar-ui-input-border-hover);
-}
-.mar-ui-input-number:focus-within {
-  border-color: var(--mar-ui-control-focus);
-}
-.mar-ui-input-number[data-invalid='true'] {
-  border-color: var(--mar-ui-control-color-danger);
 }
 input {
   flex: 1;
@@ -188,7 +177,7 @@ input {
   color: var(--mar-ui-text-primary);
   background: transparent;
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.4;
   text-align: center;
 }

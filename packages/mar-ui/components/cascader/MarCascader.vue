@@ -14,6 +14,7 @@ import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
 import { useMarUiLocale } from '../../locale/index.js';
 import { useMarFormControl } from '../form/form-context.js';
+import '../form/field-frame.css';
 import { usePopup } from '../popup/use-popup.js';
 import '../popup/surface.css';
 
@@ -179,7 +180,7 @@ function onFocusOut(event: FocusEvent) {
   >
     <div
       ref="anchor"
-      class="mar-ui-cascader__field"
+      class="mar-ui-cascader__field mar-ui-field-frame"
       :data-expanded="open"
       :data-disabled="form.disabled.value"
       :data-invalid="form.ariaInvalid($attrs['aria-invalid'])"
@@ -300,18 +301,6 @@ function onFocusOut(event: FocusEvent) {
   align-items: center;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   box-sizing: border-box;
-  border: 1px solid var(--mar-ui-input-border);
-  border-radius: var(--mar-ui-radius-control);
-  background: var(--mar-ui-bg-panel);
-}
-.mar-ui-cascader__field:not([data-disabled='true']):hover {
-  border-color: var(--mar-ui-input-border-hover);
-}
-.mar-ui-cascader__field:is(:focus-within, [data-expanded='true']) {
-  border-color: var(--mar-ui-control-focus);
-}
-.mar-ui-cascader__field[data-invalid='true'] {
-  border-color: var(--mar-ui-control-color-danger);
 }
 input {
   flex: 1;
@@ -324,7 +313,7 @@ input {
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   text-overflow: ellipsis;
 }
 input::placeholder {
@@ -362,7 +351,7 @@ input:disabled {
   align-content: start;
   max-block-size: 14rem;
   overflow: auto;
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
 }
 .mar-ui-cascader__column + .mar-ui-cascader__column {
   border-inline-start: 1px solid var(--mar-ui-border-subtle);
@@ -427,7 +416,7 @@ input:disabled {
   padding: 4px var(--mar-ui-compact-option-padding-inline);
   margin: 0;
   color: var(--mar-ui-text-secondary);
-  font-size: var(--mar-ui-font-size-meta);
+  font-size: var(--mar-ui-font-size-control);
   line-height: 1.45;
   text-align: center;
 }

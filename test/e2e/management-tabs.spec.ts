@@ -68,8 +68,8 @@ for (const [width, theme] of [
       const first = tabs.first();
       const last = tabs.last();
       await expect(first).toHaveAttribute('aria-selected', 'true');
-      const expectedHeight = width >= 768 ? 26 : 24;
-      const expectedFontSize = width >= 768 ? '12px' : '11px';
+      const expectedHeight = 26;
+      const expectedFontSize = '12px';
       const { selected, inactive } = await list.evaluate((list) => {
         const probe = document.createElement('span');
         list.append(probe);

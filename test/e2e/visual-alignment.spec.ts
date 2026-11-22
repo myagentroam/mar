@@ -1328,7 +1328,7 @@ test('Performance diagnostics copy uses a compact independent hover surface', as
   });
   for (const [theme, locale, copyName, hoverOverlay] of [
     ['vscode-dark-2026', 'zh-CN', '复制详细诊断信息', 'rgba(255, 255, 255, 0.1)'],
-    ['daylight', 'en-US', 'Copy detailed diagnostics', 'rgba(0, 0, 0, 0.1)']
+    ['daylight', 'en-US', 'Copy detailed diagnostics', 'rgba(0, 95, 214, 0.08)']
   ] as const) {
     await page.goto(
       `${fixture.url}visual-alignment.html?performance=1&theme=${theme}&locale=${locale}`

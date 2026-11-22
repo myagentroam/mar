@@ -15,6 +15,8 @@ export const THEME_TOKEN_HELP = {
   '--mar-table-row-hover-bg': { group: 'surfaces', description: 'table-row-hover-bg' },
   '--mar-control-link-text': { group: 'controls', description: 'control-link-text' },
   '--mar-control-link-hover': { group: 'controls', description: 'control-link-hover' },
+  '--mar-link-text': { group: 'text', description: 'link-text' },
+  '--mar-link-hover': { group: 'text', description: 'link-hover' },
 
   '--mar-bg-page': { group: 'surfaces', description: 'bg-page' },
   '--mar-bg-panel': { group: 'surfaces', description: 'bg-panel' },
@@ -26,7 +28,6 @@ export const THEME_TOKEN_HELP = {
   '--mar-fill-row-hover': { group: 'surfaces', description: 'fill-row-hover' },
   '--mar-fill-selection': { group: 'surfaces', description: 'fill-selection' },
   '--mar-fill-soft': { group: 'surfaces', description: 'fill-soft' },
-  '--mar-fill-hover': { group: 'surfaces', description: 'fill-hover' },
   '--mar-border-default': { group: 'borders', description: 'border-default' },
   '--mar-border-subtle': { group: 'borders', description: 'border-subtle' },
   '--mar-border-medium': { group: 'borders', description: 'border-medium' },
@@ -48,6 +49,10 @@ export const THEME_TOKEN_HELP = {
     group: 'conversation',
     description: 'conversation-activity-fg'
   },
+  '--mar-conversation-activity-fill': {
+    group: 'conversation',
+    description: 'conversation-activity-fill'
+  },
   '--mar-scrollbar-thumb': { group: 'borders', description: 'scrollbar-thumb' },
   '--mar-scrollbar-thumb-hover': { group: 'borders', description: 'scrollbar-thumb-hover' },
   '--mar-control-primary-bg': { group: 'controls', description: 'control-primary-bg' },
@@ -59,32 +64,6 @@ export const THEME_TOKEN_HELP = {
   '--mar-control-color-warning': { group: 'controls', description: 'control-color-warning' },
   '--mar-control-color-danger': { group: 'controls', description: 'control-color-danger' },
   '--mar-control-bg-color-overlay': { group: 'controls', description: 'control-bg-color-overlay' },
-  '--mar-control-fill-color': { group: 'controls', description: 'control-fill-color' },
-  '--mar-control-fill-color-light': { group: 'controls', description: 'control-fill-color-light' },
-  '--mar-control-fill-color-lighter': {
-    group: 'controls',
-    description: 'control-fill-color-lighter'
-  },
-  '--mar-control-fill-color-extra-light': {
-    group: 'controls',
-    description: 'control-fill-color-extra-light'
-  },
-  '--mar-control-border-color-lighter': {
-    group: 'controls',
-    description: 'control-border-color-lighter'
-  },
-  '--mar-control-border-color-extra-light': {
-    group: 'controls',
-    description: 'control-border-color-extra-light'
-  },
-  '--mar-control-border-color-dark': {
-    group: 'controls',
-    description: 'control-border-color-dark'
-  },
-  '--mar-control-border-color-darker': {
-    group: 'controls',
-    description: 'control-border-color-darker'
-  },
   '--mar-color-success-text': { group: 'status', description: 'color-success-text' },
   '--mar-color-success-bg': { group: 'status', description: 'color-success-bg' },
   '--mar-color-warning-text': { group: 'status', description: 'color-warning-text' },

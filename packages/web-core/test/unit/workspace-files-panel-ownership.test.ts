@@ -18,16 +18,19 @@ vi.mock('../../src/view/workspace/WorkspaceFileTree.vue?unit-render', async () =
   return {
     default: defineComponent({
       emits: ['action'],
-      setup(_props, { emit }) {
+      setup(_props, { emit, slots }) {
         return () =>
-          h(
-            'button',
-            {
-              onClick: () =>
-                emit('action', 'DELETE', { path: 'old.ts', name: 'old.ts', kind: 'FILE' })
-            },
-            'delete fixture'
-          );
+          h('div', [
+            slots['read-state']?.(),
+            h(
+              'button',
+              {
+                onClick: () =>
+                  emit('action', 'DELETE', { path: 'old.ts', name: 'old.ts', kind: 'FILE' })
+              },
+              'delete fixture'
+            )
+          ]);
       }
     })
   };

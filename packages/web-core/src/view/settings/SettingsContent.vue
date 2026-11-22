@@ -1170,7 +1170,7 @@ async function confirmLogout(): Promise<void> {
   grid-template-columns: max-content minmax(0, 1fr) auto;
   gap: 0.16rem 0.5rem;
   align-items: baseline;
-  border-top: 1px solid var(--mar-fill-hover);
+  border-top: 1px solid var(--mar-border-subtle);
   padding: 0.45rem 0;
 }
 

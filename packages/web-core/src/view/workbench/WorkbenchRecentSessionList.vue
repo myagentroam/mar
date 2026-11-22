@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '../session/session-markers.css';
+import './activity-list.css';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -15,7 +16,6 @@ const props = defineProps<{
   readonly snapshotState?: 'loading' | 'ready' | 'failed';
   readonly retrySnapshot?: () => Promise<void>;
   readonly hasUnreadSession: (nodeId: string, workspaceId: string, sessionId: string) => boolean;
-  readonly mobileMode: boolean;
   readonly runTime: (run: RecentRun) => string;
 }>();
 const emit = defineEmits<{
@@ -62,7 +62,6 @@ function runStatusType(status: RecentRun['status']): 'success' | 'danger' | 'war
 <template>
   <section
     class="recent-sessions-panel"
-    :class="{ 'drawer-mode': mobileMode }"
     :aria-label="translate('workbenchNotificationCenter.recentSessions')"
   >
     <SessionGroupTabs
@@ -91,7 +90,7 @@ function runStatusType(status: RecentRun['status']): 'success' | 'danger' | 'war
       </span>
       <template v-else>{{ translate('workbenchNotificationCenter.noRecentSessions') }}</template>
     </div>
-    <ul v-else class="recent-sessions-list">
+    <ul v-else class="recent-sessions-list mar-activity-list">
       <li v-for="run in runs" :key="`${run.nodeId}:${run.runId}`">
         <button
           v-tooltip="
@@ -171,12 +170,6 @@ function runStatusType(status: RecentRun['status']): 'success' | 'danger' | 'war
   font-size: var(--mar-font-size-meta);
   text-align: left;
   cursor: pointer;
-}
-.recent-sessions-list button:hover {
-  background: var(--mar-fill-row-hover);
-}
-.recent-sessions-panel:not(.drawer-mode) .recent-sessions-list button:hover {
-  background: color-mix(in srgb, var(--mar-fill-row-hover) 50%, transparent);
 }
 .recent-sessions-list button:focus-visible {
   outline: 2px solid var(--mar-control-focus);

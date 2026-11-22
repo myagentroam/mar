@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../session/session-create-action.css';
 import '../session/session-markers.css';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
@@ -1056,8 +1057,7 @@ onBeforeUnmount(() => {
           />
         </div>
         <MarButton
-          class="history-create-button"
-          type="primary"
+          class="history-create-button mar-session-create-action"
           icon="session-add"
           @click="beginNewConversation"
         >
@@ -1881,7 +1881,7 @@ onBeforeUnmount(() => {
 
 .files-drop-target:hover:not(:disabled):not(.active) {
   border-color: var(--mar-border-strong);
-  background: var(--mar-fill-hover);
+  background: var(--mar-action-hover-overlay);
   color: var(--mar-text-primary);
 }
 
@@ -1998,17 +1998,6 @@ onBeforeUnmount(() => {
 
   .hosted-timeline-scroll :deep(.conversation-scroll) {
     padding-block-start: 50px;
-  }
-
-  .history-search-row {
-    grid-template-columns: minmax(0, 1fr) 36px;
-  }
-
-  .history-refresh-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
   }
 }
 

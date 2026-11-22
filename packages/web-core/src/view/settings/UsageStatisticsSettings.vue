@@ -378,67 +378,69 @@ onUnmounted(() => {
         label-position="top"
         @submit.prevent="refresh()"
       >
-        <MarFormItem :label="t('usageStatistics.range')"
-          ><MarSelect
-            v-model="draft.period"
-            :aria-label="t('usageStatistics.range')"
-            @change="change"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
-          >
-            <MarOption :label="t('usageStatistics.last24Hours')" value="24h" /><MarOption
-              :label="t('usageStatistics.last7Days')"
-              value="7d"
-            /><MarOption :label="t('usageStatistics.custom')" value="custom" /> </MarSelect
-        ></MarFormItem>
-        <MarFormItem :label="t('usageStatistics.runner')"
-          ><MarSelect
-            v-model="draft.runner"
-            clearable
-            :placeholder="t('usageStatistics.all')"
-            :aria-label="t('usageStatistics.runner')"
-            @change="
-              draft.model = '';
-              change();
-            "
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
-            ><MarOption
-              v-for="runner in runners"
-              :key="runner"
-              :label="runnerName(runner)"
-              :value="runner" /></MarSelect
-        ></MarFormItem>
-        <MarFormItem :label="t('usageStatistics.model')"
-          ><MarSelect
-            v-model="draft.model"
-            clearable
-            :placeholder="t('usageStatistics.all')"
-            :aria-label="t('usageStatistics.model')"
-            @change="change"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
-            ><MarOption
-              v-for="model in modelOptions"
-              :key="model.key"
-              :label="model.label || t('usageStatistics.unknown')"
-              :value="model.key" /></MarSelect
-        ></MarFormItem>
-        <MarFormItem :label="t('usageStatistics.mode')"
-          ><MarSelect
-            v-model="draft.mode"
-            clearable
-            :placeholder="t('usageStatistics.all')"
-            :aria-label="t('usageStatistics.mode')"
-            @change="change"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
-            ><MarOption
-              v-for="mode in ['work', 'conversation']"
-              :key="mode"
-              :label="t(`usageStatistics.modes.${mode}`)"
-              :value="mode" /></MarSelect
-        ></MarFormItem>
+        <div class="filter-selects">
+          <MarFormItem :label="t('usageStatistics.range')"
+            ><MarSelect
+              v-model="draft.period"
+              :aria-label="t('usageStatistics.range')"
+              @change="change"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
+            >
+              <MarOption :label="t('usageStatistics.last24Hours')" value="24h" /><MarOption
+                :label="t('usageStatistics.last7Days')"
+                value="7d"
+              /><MarOption :label="t('usageStatistics.custom')" value="custom" /> </MarSelect
+          ></MarFormItem>
+          <MarFormItem :label="t('usageStatistics.runner')"
+            ><MarSelect
+              v-model="draft.runner"
+              clearable
+              :placeholder="t('usageStatistics.all')"
+              :aria-label="t('usageStatistics.runner')"
+              @change="
+                draft.model = '';
+                change();
+              "
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
+              ><MarOption
+                v-for="runner in runners"
+                :key="runner"
+                :label="runnerName(runner)"
+                :value="runner" /></MarSelect
+          ></MarFormItem>
+          <MarFormItem :label="t('usageStatistics.model')"
+            ><MarSelect
+              v-model="draft.model"
+              clearable
+              :placeholder="t('usageStatistics.all')"
+              :aria-label="t('usageStatistics.model')"
+              @change="change"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
+              ><MarOption
+                v-for="model in modelOptions"
+                :key="model.key"
+                :label="model.label || t('usageStatistics.unknown')"
+                :value="model.key" /></MarSelect
+          ></MarFormItem>
+          <MarFormItem :label="t('usageStatistics.mode')"
+            ><MarSelect
+              v-model="draft.mode"
+              clearable
+              :placeholder="t('usageStatistics.all')"
+              :aria-label="t('usageStatistics.mode')"
+              @change="change"
+              :clear-icon="marIcon('clear-input')"
+              :suffix-icon="marIcon('chevron-down')"
+              ><MarOption
+                v-for="mode in ['work', 'conversation']"
+                :key="mode"
+                :label="t(`usageStatistics.modes.${mode}`)"
+                :value="mode" /></MarSelect
+          ></MarFormItem>
+        </div>
         <MarFormItem
           v-if="draft.period === 'custom'"
           prop="range"
@@ -660,7 +662,6 @@ onUnmounted(() => {
       <template v-if="state.overview || state.failed || state.loading">
         <div class="section-heading">
           <h3>{{ t('usageStatistics.records') }}</h3>
-          <span>{{ t('usageStatistics.recordsHint') }}</span>
         </div>
         <div v-if="state.recordsStale" class="records-update">
           <span class="metadata">{{ t('usageStatistics.recordsSnapshot') }}</span>
@@ -921,19 +922,30 @@ p {
   line-height: 1.6;
 }
 .filters {
+  container: usage-filters / inline-size;
+}
+.filter-selects {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 12rem));
   gap: 0.75rem;
+}
+@container usage-filters (width >= 44.25rem) {
+  .filter-selects {
+    grid-template-columns: 10rem 10rem 14rem 8rem;
+  }
 }
 .filters :deep(.mar-ui-form-item) {
   margin-bottom: 0.5rem;
   min-width: 0;
 }
+.filter-selects :deep(.mar-ui-form-item__label) {
+  line-height: 1.5;
+}
 .filters :deep(.mar-ui-select) {
   width: 100%;
 }
 .filters .custom-range {
-  grid-column: 1 / -1;
+  margin-top: 0.75rem;
   width: 100%;
   max-width: 38rem;
 }
@@ -1085,9 +1097,6 @@ dd {
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 640px) {
-  .filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .overview,
   .distributions {
     grid-template-columns: 1fr;

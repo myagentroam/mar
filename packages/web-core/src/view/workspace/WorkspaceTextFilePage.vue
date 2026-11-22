@@ -1352,9 +1352,12 @@ defineExpose({
   word-break: break-word;
 }
 
-.file-symbol-list button:hover,
+.file-symbol-list button:hover {
+  background: var(--mar-fill-row-hover);
+}
+
 .file-symbol-list button.is-selected {
-  background: var(--mar-fill-hover);
+  background: var(--mar-fill-selection);
 }
 
 .file-navigation-option {

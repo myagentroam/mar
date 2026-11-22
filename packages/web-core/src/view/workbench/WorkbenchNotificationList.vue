@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '../session/session-markers.css';
+import './activity-list.css';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -178,7 +179,11 @@ async function retrySnapshot(): Promise<void> {
             </div>
           </div>
         </section>
-        <ul v-else-if="group.items.length" class="workbench-notification-list">
+        <ul
+          v-else-if="group.items.length"
+          class="workbench-notification-list"
+          :class="{ 'mar-activity-list': previewId === undefined }"
+        >
           <li
             v-for="notification in group.items"
             :key="notification.id"
@@ -340,11 +345,6 @@ async function retrySnapshot(): Promise<void> {
 }
 .workbench-notification-content.is-preview .workbench-notification-list > li.unread {
   border-left: 2px solid var(--mar-border-strong);
-}
-@media (any-hover: hover) {
-  .workbench-notification-content:not(.is-preview) .workbench-notification-list > li:hover {
-    background-color: color-mix(in srgb, var(--mar-action-hover-overlay) 65%, transparent);
-  }
 }
 .workbench-notification-list > li > button:first-child {
   display: grid;

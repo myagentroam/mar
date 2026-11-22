@@ -11,7 +11,6 @@
   display: grid;
   place-items: center;
   background: var(--mar-ui-loading-mask);
-  color: var(--mar-ui-text-secondary);
 }
 
 .mar-ui-loading__indicator {
