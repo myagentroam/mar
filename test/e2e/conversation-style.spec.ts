@@ -1961,7 +1961,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           primary: color('--mar-text-primary'),
           secondary: color('--mar-text-secondary'),
           activity: color('--mar-conversation-activity-fg'),
-          utilityHover: color('--mar-fill-row-hover'),
+          utilityHover: color('--mar-action-hover-overlay'),
           canvas: color('--mar-conversation-canvas'),
           composerSurface: color(
             root.dataset.theme === 'daylight' ? '--mar-bg-panel' : '--mar-conversation-surface'
@@ -2212,43 +2212,46 @@ test('uses the bright daylight palette with accessible interactive and text colo
 }) => {
   await page.goto(fixture.url + 'conversation-style.html?theme=daylight');
   const daylight = await paletteColors(page);
-  expect(daylight['--mar-bg-page']).toBe('#f8f8f8');
+  expect(daylight['--mar-bg-page']).toBe('#f8fbff');
   expect(daylight['--mar-bg-panel']).toBe('#ffffff');
-  expect(daylight['--mar-bg-tab-inactive']).toBe('#f8f8f8');
-  expect(daylight['--mar-border-default']).toBe('#c9c9c9');
+  expect(daylight['--mar-bg-tab-inactive']).toBe('#f8fbff');
+  expect(daylight['--mar-border-default']).toBe('#b9cadf');
   expect(daylight['--mar-conversation-activity-fg']).toBe('#005fd6');
   expect(daylight).not.toHaveProperty('--mar-color-brand');
   expect(daylight['--mar-color-accent']).toBe('#00758a');
   expect(daylight['--mar-control-color-success']).toBe('#00843d');
-  expect(daylight['--mar-text-primary']).toBe('#202020');
-  expect(daylight['--mar-text-secondary']).toBe('#515151');
-  expect(daylight['--mar-text-muted']).toBe('#656565');
+  expect(daylight['--mar-text-primary']).toBe('#17243a');
+  expect(daylight['--mar-text-secondary']).toBe('#43536b');
+  expect(daylight['--mar-text-muted']).toBe('#52647c');
   expect(daylight['--mar-text-disabled']).toBe('#707070');
   expect(daylight).toMatchObject({
-    '--mar-bg-chrome': '#f1f1f1',
-    '--mar-fill-row-hover': '#ebebeb',
-    '--mar-fill-selection': '#e3e3e3',
-    '--mar-control-primary-bg': '#2563c9',
+    '--mar-bg-chrome': '#f1f6fc',
+    '--mar-border-subtle': '#d6e1ef',
+    '--mar-conversation-process': '#f3f7fe',
+    '--mar-conversation-code': '#f3f7fe',
+    '--mar-control-bg-color-overlay': '#ffffff',
+    '--mar-fill-row-hover': '#e8f1ff',
+    '--mar-fill-selection': '#dce9ff',
+    '--mar-control-primary-bg': '#0057db',
     '--mar-control-primary-fg': '#ffffff',
-    '--mar-control-primary-hover': '#1e54b1',
-    '--mar-control-primary-active': '#194695',
+    '--mar-control-primary-hover': '#004cc3',
+    '--mar-control-primary-active': '#0042aa',
+    '--mar-control-focus': '#506987',
     '--mar-control-link-text': '#174e9e',
     '--mar-control-link-hover': '#123a78'
   });
 
-  for (const role of ['primary', 'secondary']) {
-    expect(
-      contrast(daylight[`--mar-text-${role}`]!, daylight['--mar-bg-panel']!)
-    ).toBeGreaterThanOrEqual(4.5);
-  }
   for (const surface of [
     '--mar-bg-panel',
+    '--mar-bg-page',
     '--mar-bg-chrome',
     '--mar-bg-subtle',
     '--mar-fill-row-hover',
     '--mar-fill-selection'
   ]) {
     for (const foreground of [
+      '--mar-text-primary',
+      '--mar-text-secondary',
       '--mar-text-muted',
       '--mar-control-link-text',
       '--mar-control-link-hover'
@@ -2258,6 +2261,22 @@ test('uses the bright daylight palette with accessible interactive and text colo
         `${foreground} on ${surface}`
       ).toBeGreaterThanOrEqual(4.5);
     }
+    for (const edge of ['--mar-input-border', '--mar-input-border-hover', '--mar-control-focus']) {
+      expect(
+        contrast(daylight[edge]!, daylight[surface]!),
+        `${edge} on ${surface}`
+      ).toBeGreaterThanOrEqual(3);
+    }
+  }
+  for (const background of [
+    '--mar-control-primary-bg',
+    '--mar-control-primary-hover',
+    '--mar-control-primary-active'
+  ]) {
+    expect(
+      contrast(daylight['--mar-control-primary-fg']!, daylight[background]!),
+      background
+    ).toBeGreaterThanOrEqual(4.5);
   }
   for (const [foreground, background] of [
     ['--mar-color-accent', '--mar-color-accent-bg'],

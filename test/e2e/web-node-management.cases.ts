@@ -347,8 +347,7 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
   await page.route('**/api/system-settings', (route) =>
     json(route, {
       smtpConfiguration,
-      auditRetentionDays: 180,
-      skillTlsVerificationDisabled: false
+      auditRetentionDays: 180
     })
   );
   await page.route('**/api/system-settings/mail-smtp', (route) => {
@@ -359,8 +358,7 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
       Object.keys(config).length === 0 ? '{}' : JSON.stringify({ ...config, password: '' });
     return json(route, {
       smtpConfiguration,
-      auditRetentionDays: 180,
-      skillTlsVerificationDisabled: false
+      auditRetentionDays: 180
     });
   });
   await page.route('**/api/mail/templates', (route) =>
@@ -1383,7 +1381,7 @@ test('Node environment secrets use default controls, compact layout, and plain-t
   expect(spacing).toBeLessThanOrEqual(16);
   const secretTable = details.locator('.secret-table');
   await expect(secretTable).toBeVisible();
-  await expect(secretTable.getByRole('table')).toHaveCSS('font-size', '14px');
+  await expect(secretTable.getByRole('table')).toHaveCSS('font-size', '13px');
   await expect(secretTable.locator('thead th')).toHaveText([
     '环境变量名',
     '密钥值',
@@ -1619,9 +1617,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   );
   await page.route('**/api/audit-events/audit-1', (route) => json(route, auditFixture.events[0]));
   await page.route('**/api/audit-events/audit-6', (route) => json(route, auditFixture.events[5]));
-  await page.route('**/api/system-settings', (route) =>
-    json(route, { auditRetentionDays: 180, skillTlsVerificationDisabled: false })
-  );
+  await page.route('**/api/system-settings', (route) => json(route, { auditRetentionDays: 180 }));
   await page.route('**/api/resources*', (route) => json(route, { nodes: [], workspaces: [] }));
   await page.route('**/api/management/nodes', (route) => json(route, { nodes: [] }));
   await page.route('**/api/environment-secrets', (route) => json(route, { secrets: [] }));
@@ -1675,7 +1671,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.getByRole('button', { name: '用户管理' })).toHaveCSS('border-radius', '6px');
   await expect(page.getByRole('button', { name: '创建用户' })).toBeDisabled();
   await expect(page.locator('.mar-ui-table').getByText('成员', { exact: true })).toBeVisible();
-  await expect(page.locator('.mar-management-page .mar-ui-table')).toHaveCSS('font-size', '14px');
+  await expect(page.locator('.mar-management-page .mar-ui-table')).toHaveCSS('font-size', '13px');
   await expect(page.locator('.mar-row-actions').first()).toHaveCSS('white-space', 'nowrap');
   await expect(page.getByRole('button', { name: '重置密码' })).toHaveCSS('font-size', '12px');
   const filters = page.locator('.mar-management-page .mar-filter-row');
@@ -1792,8 +1788,7 @@ test('Enterprise management exposes role-based sections and disables writes when
     '使用资源 URL',
     '邮件SMTP配置',
     'Web Push 离线推送',
-    'HTML 预览域名',
-    '关闭 skills.sh 发现接口 TLS 证书校验'
+    'HTML 预览域名'
   ];
   await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(frozenSettingNames.length);
   for (const name of frozenSettingNames) {
@@ -1837,14 +1832,17 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page.route('**/api/system-settings', (route) => {
       settingsRequests += 1;
       return json(route, {
-        skillTlsVerificationDisabled: false,
         htmlPreviewOrigin: '',
         smtpConfiguration: '{}'
       });
     });
     const retiredRequests: string[] = [];
     page.on('request', (request) => {
-      if (new URL(request.url()).pathname === '/api/system-settings/management-key')
+      const path = new URL(request.url()).pathname;
+      if (
+        path === '/api/system-settings/management-key' ||
+        path === '/api/system-settings/skill-tls'
+      )
         retiredRequests.push(request.method());
     });
     const text =
@@ -1871,6 +1869,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page.getByRole('button', { name: text.settings }).click();
     await expect(page.locator('.mar-ui-table__row').filter({ hasText: text.smtp })).toBeVisible();
     await expect(page.getByText(text.key, { exact: true })).toHaveCount(0);
+    await expect(page.locator('.mar-ui-table__row').filter({ hasText: 'skills.sh' })).toHaveCount(
+      0
+    );
     await page.getByRole('button', { name: text.refresh, exact: true }).click();
     await expect.poll(() => settingsRequests).toBe(2);
     await expect(page.locator('.mar-ui-loading')).toHaveCount(0);
@@ -1886,7 +1887,7 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
     readonly csrf: string | undefined;
     readonly body: string;
   }[] = [];
-  const settings = { auditRetentionDays: 180, skillTlsVerificationDisabled: false };
+  const settings = { auditRetentionDays: 180, useResourceUrl: true };
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
   await mockPersonalResources(page);
   let authenticated = false;
@@ -1917,8 +1918,8 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
     const path = new URL(route.request().url()).pathname;
     const body = route.request().postDataJSON() as Record<string, unknown>;
     if (path.endsWith('/audit-retention')) settings.auditRetentionDays = Number(body.days);
-    if (path.endsWith('/skill-tls'))
-      settings.skillTlsVerificationDisabled = Boolean(body.verificationDisabled);
+    if (path.endsWith('/mar-agent-resource-input'))
+      settings.useResourceUrl = Boolean(body.useResourceUrl);
     await write(route, writes, { ...settings });
   });
 
@@ -1928,13 +1929,12 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
   await page.getByRole('button', { name: '系统配置' }).click();
 
   const auditRow = page.locator('.mar-ui-table__row').filter({ hasText: '审计保留天数' });
-  const tlsRow = page
-    .locator('.mar-ui-table__row')
-    .filter({ hasText: '关闭 Skill 回源 TLS 证书校验' });
+  const resourceUrlRow = page.locator('.mar-ui-table__row').filter({ hasText: '使用资源 URL' });
+  const resourceUrlSwitch = resourceUrlRow.getByRole('switch');
   // Deployment settings are a complete configuration catalog, not a paged query.
   await expect(page.locator('.management-pagination .mar-ui-pagination')).toHaveCount(0);
   await expect(auditRow.getByRole('spinbutton')).toHaveCount(0);
-  await expect(tlsRow.getByRole('switch')).toBeDisabled();
+  await expect(resourceUrlSwitch).toBeDisabled();
 
   await auditRow.getByRole('button', { name: '编辑' }).click();
   await expect(auditRow.getByRole('spinbutton')).toBeVisible();
@@ -1949,21 +1949,19 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
   await expect(page.getByText('系统配置已保存')).toBeVisible();
   await expect(auditRow.getByText('365', { exact: true })).toBeVisible();
 
-  await tlsRow.getByRole('button', { name: '编辑' }).click();
-  await expect(tlsRow.getByRole('switch')).toBeEnabled();
-  await tlsRow.getByRole('switch').click();
-  await tlsRow.getByRole('button', { name: '取消' }).click();
-  await expect(tlsRow.getByRole('switch')).toBeDisabled();
-  await expect(tlsRow.getByRole('switch')).not.toBeChecked();
+  await resourceUrlRow.getByRole('button', { name: '编辑' }).click();
+  await expect(resourceUrlSwitch).toBeEnabled();
+  await resourceUrlSwitch.click();
+  await resourceUrlRow.getByRole('button', { name: '取消' }).click();
+  await expect(resourceUrlSwitch).toBeDisabled();
+  await expect(resourceUrlSwitch).toBeChecked();
 
-  await tlsRow.getByRole('button', { name: '编辑' }).click();
-  await tlsRow.getByRole('switch').click();
-  await tlsRow.getByRole('button', { name: '保存' }).click();
+  await resourceUrlRow.getByRole('button', { name: '编辑' }).click();
+  await resourceUrlSwitch.click();
+  await resourceUrlRow.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('系统配置已保存').last()).toBeVisible();
-  await expect(tlsRow.getByRole('switch')).toBeDisabled();
-  await expect(tlsRow.getByRole('switch')).toBeChecked();
-  await expect(tlsRow.getByText(/默认关闭此开关/u)).toBeVisible();
-  await expect(page.getByRole('alert').filter({ hasText: 'Skill 回源 TLS' })).toHaveCount(0);
+  await expect(resourceUrlSwitch).toBeDisabled();
+  await expect(resourceUrlSwitch).not.toBeChecked();
 
   expect(writes.filter((entry) => entry.url.includes('/api/system-settings/'))).toEqual([
     expect.objectContaining({
@@ -1971,8 +1969,8 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
       body: JSON.stringify({ days: 365 })
     }),
     expect.objectContaining({
-      url: expect.stringContaining('/api/system-settings/skill-tls'),
-      body: JSON.stringify({ verificationDisabled: true })
+      url: expect.stringContaining('/api/system-settings/mar-agent-resource-input'),
+      body: JSON.stringify({ useResourceUrl: false })
     })
   ]);
 });

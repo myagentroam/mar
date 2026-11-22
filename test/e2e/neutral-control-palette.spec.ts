@@ -15,7 +15,7 @@ test.afterAll(async () => {
 
 for (const [scheme, width, background, foreground, loading] of [
   ['Dark', 1280, 'rgb(222, 222, 222)', 'rgb(24, 24, 24)', 'rgb(194, 194, 194)'],
-  ['Light', 390, 'rgb(37, 99, 201)', 'rgb(255, 255, 255)', 'rgb(81, 81, 81)']
+  ['Light', 390, 'rgb(0, 87, 219)', 'rgb(255, 255, 255)', 'rgb(67, 83, 107)']
 ] as const) {
   test(`Confirmation controls and loading are independent of the running accent in ${scheme}`, async ({
     page
@@ -54,7 +54,7 @@ for (const [scheme, width, background, foreground, loading] of [
     await expect(confirm).toHaveCSS('outline-style', 'solid');
     await expect(confirm).toHaveCSS(
       'outline-color',
-      scheme === 'Dark' ? 'rgb(160, 160, 160)' : 'rgb(96, 96, 96)'
+      scheme === 'Dark' ? 'rgb(160, 160, 160)' : 'rgb(80, 105, 135)'
     );
     await cancel.click();
     await expect(dialog).toBeHidden();

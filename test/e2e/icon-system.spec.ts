@@ -121,7 +121,7 @@ test('Git changes append at the repository boundary and refresh in place', async
         .filter({ hasText: /^Submodule$/ });
       await expect(submoduleTag).toHaveCSS(
         'border-top-color',
-        theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(201, 201, 201)'
+        theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(185, 202, 223)'
       );
       await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(0);
       expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
@@ -299,7 +299,7 @@ for (const theme of ['dark', 'light']) {
       await expect(restore.locator('[data-mar-icon="undo"]')).toHaveCSS('width', '14px');
       const refresh = page.getByRole('button', { name: 'Refresh Git changes', exact: true });
       const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
-      const metadataBorder = theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(201, 201, 201)';
+      const metadataBorder = theme === 'dark' ? 'rgb(71, 71, 71)' : 'rgb(185, 202, 223)';
       for (const label of [/^Root$/, /^Current$/]) {
         const tag = page.locator('.repository-tags-row .mar-ui-tag').filter({ hasText: label });
         await expect(tag).toHaveCSS('border-top-color', metadataBorder);
@@ -1109,6 +1109,32 @@ for (const mobile of [false, true]) {
     }
   });
 }
+
+test('Activity rail keeps separate hover surfaces for icon actions and navigation', async ({
+  page
+}) => {
+  for (const [theme, hoverOverlay, rowHover] of [
+    ['dark', 'rgba(255, 255, 255, 0.1)', 'rgb(46, 46, 46)'],
+    ['light', 'rgba(0, 0, 0, 0.1)', 'rgb(232, 241, 255)']
+  ] as const) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${fixture.url}icon-system.html?navigation=1&theme=${theme}`);
+    const rail = page.locator('.activity-rail');
+    const diagnostics = rail.getByRole('button', { name: 'Web performance diagnostics' });
+    const work = rail.getByRole('button', { name: 'Work', exact: true });
+    await diagnostics.hover();
+    await expect(diagnostics).toHaveCSS('background-color', hoverOverlay);
+    await expect(diagnostics).toHaveAttribute('aria-expanded', 'false');
+    await work.hover();
+    await expect(work).toHaveCSS('background-color', rowHover);
+
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(`${fixture.url}icon-system.html?navigation=1&theme=${theme}&mobile=1`);
+    const help = rail.getByRole('link', { name: 'Help', exact: true });
+    await help.hover();
+    await expect(help).toHaveCSS('background-color', hoverOverlay);
+  }
+});
 
 for (const { theme, locale } of [
   { theme: 'dark', locale: 'zh-CN' },

@@ -936,9 +936,9 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     '/favicon.ico?v=logo-20261011'
   );
   await expect(page.locator('html')).toHaveCSS('--mar-conversation-activity-fg', '#005fd6');
-  await expect(page.locator('html')).toHaveCSS('--mar-ui-control-primary-bg', '#2563c9');
-  await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#c9c9c9');
-  await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#dddddd');
+  await expect(page.locator('html')).toHaveCSS('--mar-ui-control-primary-bg', '#0057db');
+  await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#b9cadf');
+  await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#d6e1ef');
   await expect(page.getByRole('button', { name: '进入控制台' })).toHaveClass(/mar-ui-button/);
   await expect(page.locator('.gate-panel')).toHaveCSS('border-radius', '8px');
   await expect(page.locator('.gate-panel')).toHaveCSS('box-shadow', 'none');
@@ -953,7 +953,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(placeholderTab.locator('.tab-close')).toHaveCount(0);
   const workNavigation = page.getByRole('button', { name: '工作', exact: true });
   await expect(workNavigation).toHaveCSS('border-left-width', '0px');
-  await expect(workNavigation).toHaveCSS('background-color', 'rgb(227, 227, 227)');
+  await expect(workNavigation).toHaveCSS('background-color', 'rgb(220, 233, 255)');
   await page
     .locator('.workspace-tree')
     .getByRole('button', { name: /开发节点/ })
@@ -971,8 +971,8 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     const style = getComputedStyle(tab);
     return [style.backgroundColor, style.backgroundImage].join(' ');
   });
-  expect(placeholderBackground).toContain('rgb(227, 227, 227)');
-  await expect(placeholderTab).toHaveCSS('color', 'rgb(32, 32, 32)');
+  expect(placeholderBackground).toContain('rgb(220, 233, 255)');
+  await expect(placeholderTab).toHaveCSS('color', 'rgb(23, 36, 58)');
   await expect(placeholderTab).toHaveCSS('min-height', '32px');
   const placeholderGeometry = await placeholderTab.evaluate((tab) => {
     const header = tab.closest('.workbench-header')!.getBoundingClientRect();

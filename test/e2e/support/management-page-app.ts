@@ -76,8 +76,8 @@ window.managementPageFixture = {
           totalTokens: '24',
           cacheReadTokens: null,
           cacheWriteTokens: null,
-          requests: '1',
-          completeRequests: '1',
+          requests: '3',
+          completeRequests: '3',
           partialRequests: '0',
           unknownRequests: '0'
         };
@@ -92,8 +92,29 @@ window.managementPageFixture = {
             last7Days: totals,
             selected: totals,
             buckets: [],
-            runners: [],
-            models: [],
+            runners: [{ ...totals, key: 'mar-agent', label: 'MAR Agent' }],
+            models: [
+              {
+                ...totals,
+                key: 'fixture-model',
+                label: 'Fixture model',
+                inputTokens: '8',
+                outputTokens: '10',
+                totalTokens: '18',
+                requests: '2',
+                completeRequests: '2'
+              },
+              {
+                ...totals,
+                key: 'fixture-model-2',
+                label: 'Second model',
+                inputTokens: '2',
+                outputTokens: '4',
+                totalTokens: '6',
+                requests: '1',
+                completeRequests: '1'
+              }
+            ],
             coverage: 'observed-only'
           });
         else

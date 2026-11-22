@@ -34,8 +34,8 @@ test('Table updates conditional status slots without replacing the data', async 
 });
 
 for (const [width, compact, headerFont, bodyFont] of [
-  [1280, 26, '12px', '14px'],
-  [390, 24, '11px', '13px']
+  [1280, 26, '12px', '13px'],
+  [390, 24, '11px', '12px']
 ] as const) {
   test(`Table keeps a compact header and readable rows at ${width}px`, async ({
     page
@@ -48,7 +48,7 @@ for (const [width, compact, headerFont, bodyFont] of [
     for (const cell of [header, label]) {
       await expect(cell).toHaveCSS('font-size', headerFont);
       await expect(cell).toHaveCSS('font-weight', '500');
-      expect((await cell.boundingBox())!.height).toBeCloseTo(compact + 3, 1);
+      expect((await cell.boundingBox())!.height).toBeCloseTo(compact + 5, 1);
     }
     await expect(sort).toHaveCSS('font-size', headerFont);
     expect((await sort.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
@@ -57,7 +57,7 @@ for (const [width, compact, headerFont, bodyFont] of [
     const value = organization.getByRole('cell', { name: 'Child', exact: true });
     await expect(value).toHaveCSS('font-size', bodyFont);
     await expect(value).toHaveCSS('padding-inline-start', '10px');
-    expect((await value.boundingBox())!.height).toBeCloseTo(compact + 5, 1);
+    expect((await value.boundingBox())!.height).toBeCloseTo(compact + 7, 1);
     const act = records.getByRole('button', { name: 'Act 0' });
     expect((await act.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
     await records.locator('..').screenshot({ path: testInfo.outputPath('compact-table.png') });
@@ -161,7 +161,7 @@ test('Table uses solid neutral sort indicators and a low-contrast dark header su
   await expect(descending).toHaveCSS('color', muted!);
 
   await page.locator('html').evaluate((root) => root.removeAttribute('data-theme'));
-  await expect(name).toHaveCSS('background-color', 'rgb(241, 241, 241)');
+  await expect(name).toHaveCSS('background-color', 'rgb(241, 246, 252)');
   await page.locator('html').evaluate((root) => {
     root.style.setProperty('--mar-table-header-bg', '#324951');
   });

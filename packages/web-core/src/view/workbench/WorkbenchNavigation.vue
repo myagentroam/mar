@@ -534,11 +534,14 @@ function runBlankMenuCommand(command: string): void {
   gap: 2px;
   border: 0;
   border-radius: var(--mar-radius-selection);
-  background: transparent;
-  color: var(--mar-text-secondary);
   margin: 0 2px;
   padding: 3px 0;
   cursor: pointer;
+}
+
+.activity-rail :deep(button.nav-menu-button:not(.mar-icon-action)) {
+  background: transparent;
+  color: var(--mar-text-secondary);
 }
 
 .documentation-link {
@@ -559,7 +562,8 @@ function runBlankMenuCommand(command: string): void {
   text-decoration: none;
 }
 
-.activity-rail :deep(button.nav-menu-button:hover:not(:disabled, [aria-current='page'])) {
+.activity-rail
+  :deep(button.nav-menu-button:hover:not(:disabled, [aria-current='page'], .mar-icon-action)) {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
@@ -800,8 +804,6 @@ function runBlankMenuCommand(command: string): void {
     place-items: center;
     border: 0;
     border-radius: var(--mar-radius-selection);
-    background: transparent;
-    color: var(--mar-text-secondary);
     border-left: 0;
     margin: 0 1px;
     padding: 2px 6px;
@@ -839,16 +841,6 @@ function runBlankMenuCommand(command: string): void {
     width: auto;
     overflow-wrap: normal;
     white-space: nowrap;
-  }
-}
-
-@media (max-width: 767px) {
-  .activity-rail nav .documentation-link:hover,
-  .activity-rail nav .documentation-link:active,
-  .activity-rail nav .documentation-link:focus-visible {
-    background: var(--mar-fill-row-hover);
-    color: var(--mar-text-primary);
-    text-decoration: none;
   }
 }
 

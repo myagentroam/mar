@@ -226,7 +226,7 @@ function selectFiles(event: Event): void {
             :disabled="configurationDisabled"
             :placeholder="modelEffortLabel"
             :aria-label="translate('generated.composerToolbar.modelAndReasoningEffort')"
-            class="composer-model-effort-select"
+            class="composer-model-effort-select mar-composer-dropdown-trigger"
             :popper-class="
               hasModelAndEffort
                 ? 'composer-mini-popper composer-model-effort-popper'
@@ -418,6 +418,18 @@ function selectFiles(event: Event): void {
   font-size: var(--mar-font-size-meta);
   line-height: calc(var(--mar-compact-control-size) - 2px);
   white-space: nowrap;
+}
+
+.composer-model-slot > .composer-select-slot {
+  min-width: 0;
+}
+
+.composer-model-slot > .composer-select-slot::before {
+  padding-inline-start: var(--composer-dropdown-trigger-padding);
+  padding-inline-end: calc(
+    var(--composer-dropdown-trigger-padding) + var(--composer-dropdown-trigger-gap) +
+      var(--composer-dropdown-trigger-icon-size)
+  );
 }
 
 .composer-runner-select,
@@ -672,27 +684,26 @@ function selectFiles(event: Event): void {
 </style>
 
 <style scoped>
-:is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
-  :deep(.mar-ui-select__field) {
+:is(.composer-runner-select, .composer-access-select) :deep(.mar-ui-select__field) {
   --mar-ui-select-padding: 0.35rem;
   --mar-ui-select-height: var(--mar-compact-control-size);
   background: transparent;
   box-shadow: none;
 }
 
-:is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
+:is(.composer-runner-select, .composer-access-select)
   :deep(.mar-ui-select__field:not([data-disabled]):hover) {
   background: var(--mar-fill-soft);
   box-shadow: 0 0 0 1px var(--mar-border-medium) inset;
 }
 
-:is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
+:is(.composer-runner-select, .composer-access-select)
   :deep(.mar-ui-select__field:not([data-disabled]):is(:focus-within, [data-expanded])) {
   background: var(--mar-fill-soft);
   box-shadow: 0 0 0 1px var(--mar-control-focus) inset;
 }
 
-:is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
+:is(.composer-runner-select, .composer-access-select)
   :deep(.mar-ui-select__field:not([data-disabled]) .mar-ui-select__label) {
   color: var(--mar-text-primary);
 }

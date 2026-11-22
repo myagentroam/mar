@@ -3,6 +3,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/check-tag/MarCheckTag.vue
 // @test-covers packages/mar-ui/components/segmented/MarSegmented.vue
+// @test-covers packages/web-core/src/view/composer/ComposerToolbar.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
@@ -26,6 +27,7 @@ async function colors(page: Page) {
       link: color('--mar-control-link-text'),
       selected: color('--mar-fill-selection'),
       hover: color('--mar-fill-row-hover'),
+      actionHover: color('--mar-action-hover-overlay'),
       overlayHover: color('--mar-overlay-row-hover, var(--mar-fill-row-hover)'),
       match: color('--mar-text-primary')
     };
@@ -351,13 +353,13 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
       const table = page.locator('table:visible');
       const row = table.locator('tbody tr').first();
       await expect(row).toBeVisible();
-      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-start', '2px');
-      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-end', '2px');
+      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-start', '3px');
+      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-end', '3px');
       await expect(table.getByRole('columnheader').first()).toHaveCSS(
         'font-size',
         width >= 768 ? '12px' : '11px'
       );
-      await expect(table).toHaveCSS('font-size', width >= 768 ? '14px' : '13px');
+      await expect(table).toHaveCSS('font-size', width >= 768 ? '13px' : '12px');
       await engineering.press('Enter');
       await expect(engineering).toHaveAttribute('aria-pressed', 'true');
       await expect(all).toHaveAttribute('aria-pressed', 'false');
@@ -774,6 +776,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               '--mar-conversation-activity-fg': '#bf6ac9',
               '--mar-control-focus': '#8899aa',
               '--mar-text-primary': '#dae5cf',
+              '--mar-action-hover-overlay': 'rgba(91, 112, 120, 0.24)',
               '--mar-fill-row-hover': '#334455',
               '--mar-fill-selection': '#445566',
               '--mar-border-medium': '#718293'
@@ -796,10 +799,41 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const input = select.getByRole('combobox');
           const wrapper = select.locator('.mar-ui-select__field');
           await page.getByRole('button', { name: 'Open hint dialog', exact: true }).focus();
-          await wrapper.hover();
-          await expect(wrapper).toHaveCSS('box-shadow', `${borders.hover} 0px 0px 0px 1px inset`);
-          await input.focus();
-          await expect(wrapper).toHaveCSS('box-shadow', `${borders.focus} 0px 0px 0px 1px inset`);
+          if (kind === 'model-effort') {
+            await page.mouse.move(0, 0);
+            await expect(wrapper).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+            await expect(wrapper).toHaveCSS('box-shadow', 'none');
+            await expect(wrapper.locator('.mar-ui-select__label')).toHaveCSS(
+              'color',
+              palette.primary
+            );
+            await expect(wrapper.locator('[data-mar-icon="chevron-down"]')).toHaveCSS(
+              'color',
+              palette.secondary
+            );
+            await wrapper.hover();
+            await expect(wrapper).toHaveCSS('background-color', palette.actionHover);
+            await expect(wrapper).toHaveCSS('box-shadow', 'none');
+            await input.click();
+            await page.mouse.move(0, 0);
+            await expect(input).toHaveAttribute('aria-expanded', 'true');
+            await expect(wrapper).toHaveCSS('background-color', palette.actionHover);
+            await expect(wrapper).toHaveCSS('outline-style', 'none');
+            await input.press('Escape');
+            await expect(input).toHaveAttribute('aria-expanded', 'false');
+            await expect(input).toBeFocused();
+            await page.keyboard.press('Shift+Tab');
+            await page.keyboard.press('Tab');
+            await expect(input).toBeFocused();
+            await expect(wrapper).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+            await expect(wrapper).toHaveCSS('outline-style', 'solid');
+            await expect(wrapper).toHaveCSS('outline-color', borders.focus);
+          } else {
+            await wrapper.hover();
+            await expect(wrapper).toHaveCSS('box-shadow', `${borders.hover} 0px 0px 0px 1px inset`);
+            await input.focus();
+            await expect(wrapper).toHaveCSS('box-shadow', `${borders.focus} 0px 0px 0px 1px inset`);
+          }
           await input.press('ArrowDown');
           const dropdown = page.locator(`[role="listbox"].composer-${kind}-popper:visible`);
           const selected = dropdown.locator(
@@ -843,6 +877,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     });
     await expect(select.locator('.mar-ui-select__label')).toHaveCSS('color', disabled);
     await expect(select.locator('[data-mar-icon="chevron-down"]')).toHaveCSS('color', disabled);
+    const field = select.locator('.mar-ui-select__field');
+    await field.hover();
+    await expect(field).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(field).toHaveCSS('box-shadow', 'none');
   });
 
   test(`Settings navigation and model choices keep regular selected text in ${theme}`, async ({

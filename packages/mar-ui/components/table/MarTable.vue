@@ -465,7 +465,7 @@ ColumnView.props = ['loading', 'empty'];
   inline-size: 100%;
   background: var(--mar-ui-table-bg);
   color: var(--mar-ui-text-primary);
-  font-size: var(--mar-ui-font-size-body);
+  font-size: calc(var(--mar-ui-font-size-body) - 1px);
 }
 .mar-ui-table__viewport {
   overflow: auto;
@@ -493,13 +493,13 @@ ColumnView.props = ['loading', 'empty'];
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__cell) {
   box-sizing: border-box;
-  padding: 2px 10px;
+  padding: 3px 10px;
   border-block-end: 1px solid var(--mar-ui-border-subtle);
   vertical-align: middle;
 }
 .mar-ui-table__viewport :deep(th.mar-ui-table__cell) {
   overflow-wrap: anywhere;
-  padding-block: 1px;
+  padding-block: 2px;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__cell-inner) {
   display: flex;

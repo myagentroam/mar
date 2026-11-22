@@ -160,9 +160,10 @@ test('Usage details retain rows and retry a failed automatic page in place', asy
   expect(new URL(calls[3]!, 'http://fixture').searchParams.get('page')).toBe('2');
 });
 
-test('Usage distribution radio labels preserve section typography in both states', async ({
+// @test-covers packages/web-core/src/view/settings/UsageStatisticsSettings.vue
+test('Usage distribution follows the theme activity color and preserves radio typography', async ({
   page
-}) => {
+}, testInfo) => {
   await page.goto(`${fixture.url}management-page.html?area=usage`);
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
   await page.evaluate(() =>
@@ -174,7 +175,9 @@ test('Usage distribution radio labels preserve section typography in both states
   const labels = page
     .getByTestId('usage-statistics')
     .locator('.section-heading .mar-ui-radio--button');
+  const tracks = page.getByTestId('usage-statistics').locator('.distributions .bar-track');
   await expect(labels).toHaveCount(2);
+  await expect(tracks).toHaveCount(3);
   await page.evaluate(() => {
     const sentinel = document.createElement('div');
     sentinel.className = 'section-heading';
@@ -182,7 +185,10 @@ test('Usage distribution radio labels preserve section typography in both states
     sentinel.innerHTML = '<span>Outside usage</span>';
     document.body.append(sentinel);
   });
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const [theme, color] of [
+    ['daylight', 'rgb(0, 95, 214)'],
+    ['vscode-dark-2026', 'rgb(77, 163, 255)']
+  ] as const) {
     await page.locator('html').evaluate((root, value) => (root.dataset.theme = value), theme);
     const outside = await page
       .getByTestId('outside-usage-heading')
@@ -196,6 +202,21 @@ test('Usage distribution radio labels preserve section typography in both states
     for (const selected of [0, 1]) {
       await labels.nth(selected).locator('label').click();
       await expect(labels.nth(selected).getByRole('radio')).toBeChecked();
+      for (const track of await tracks.all()) {
+        const fill = track.locator('span');
+        await expect(fill).toBeVisible();
+        await expect(fill).toHaveCSS('background-color', color);
+      }
+      const smallerModelShare = await tracks.last().evaluate((track) => {
+        const fill = track.querySelector('span')!;
+        return fill.getBoundingClientRect().width / track.getBoundingClientRect().width;
+      });
+      expect(smallerModelShare).toBeCloseTo(selected === 0 ? 1 / 3 : 1 / 2);
+      if (selected === 0) {
+        await page.locator('.distributions').screenshot({
+          path: testInfo.outputPath(`usage-distribution-${theme}.png`)
+        });
+      }
       for (const label of await labels.all()) {
         await expect
           .poll(() =>
@@ -216,6 +237,13 @@ test('Usage distribution radio labels preserve section typography in both states
           .toBe(true);
       }
     }
+  }
+  await page.locator('html').evaluate((root) => {
+    root.style.setProperty('--mar-conversation-activity-fg', '#3167cc');
+    root.style.setProperty('--mar-control-primary-bg', '#df7820');
+  });
+  for (const track of await tracks.all()) {
+    await expect(track.locator('span')).toHaveCSS('background-color', 'rgb(49, 103, 204)');
   }
 });
 

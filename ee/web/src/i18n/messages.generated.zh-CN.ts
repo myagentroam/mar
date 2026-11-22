@@ -1803,8 +1803,6 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
 
   'systemConfigurationPage.unableToLoadSystemConfiguration':
     systemConfigurationZhCN.generated.systemConfigurationPage.unableToLoadSystemConfiguration,
-  'systemConfigurationPage.skillTLSConfigurationSaved': 'Skill TLS 配置已保存',
-  'systemConfigurationPage.unableToSaveSkillTLSConfiguration': '保存 Skill TLS 配置失败',
   'systemConfigurationPage.systemConfigurationSaved':
     systemConfigurationZhCN.generated.systemConfigurationPage.systemConfigurationSaved,
   'systemConfigurationPage.unableToSaveSystemConfiguration':
@@ -1827,10 +1825,6 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
     systemConfigurationZhCN.generated.systemConfigurationPage.actions,
   'systemConfigurationPage.edit': systemConfigurationZhCN.generated.systemConfigurationPage.edit,
   'systemConfigurationPage.save': systemConfigurationZhCN.generated.systemConfigurationPage.save,
-  'systemConfigurationPage.disableSkillSourceTLSVerification':
-    systemConfigurationZhCN.generated.systemConfigurationPage.disableSkillSourceTLSVerification,
-  'systemConfigurationPage.keepThisOffByDefaultUseIt':
-    systemConfigurationZhCN.generated.systemConfigurationPage.keepThisOffByDefaultUseIt,
   'nodeDetailsDialogs.nodeDetails': resourceDetailsZhCN.generated.nodeDetailsDialogs.nodeDetails,
   'nodeDetailsDialogs.name': resourceDetailsZhCN.generated.nodeDetailsDialogs.name,
   'nodeDetailsDialogs.registeredAddress':

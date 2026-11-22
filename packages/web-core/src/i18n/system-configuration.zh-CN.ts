@@ -13,15 +13,12 @@ export const systemConfigurationZhCN = {
       actions: '操作',
       edit: '编辑',
       save: '保存',
-      disableSkillSourceTLSVerification: '关闭 skills.sh 发现接口 TLS 证书校验',
       htmlPreviewOrigin: 'HTML 预览域名',
       htmlPreviewOriginDescription:
         '留空使用控制台域名，HTML 以当前用户权限运行；独立域名须转发预览请求至本 Server。',
       htmlPreviewOriginPlaceholder: 'https://preview.example.com（留空使用当前域名）',
       htmlPreviewOriginInvalid: '请输入不含路径的 HTTP 或 HTTPS Origin，或留空使用当前 Origin。',
       htmlPreviewCurrentOrigin: '当前控制台域名',
-      keepThisOffByDefaultUseIt:
-        '默认关闭此开关，仅影响 skills.sh 发现接口。Git 技能仓库始终跳过证书校验。',
       smtp: '邮件SMTP配置',
       smtpDescription: '配置部署级 SMTP 发信服务。',
       smtpPlaceholder: 'SMTP 连接配置',

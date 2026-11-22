@@ -1818,9 +1818,6 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
 
   'systemConfigurationPage.unableToLoadSystemConfiguration':
     systemConfigurationEnUS.generated.systemConfigurationPage.unableToLoadSystemConfiguration,
-  'systemConfigurationPage.skillTLSConfigurationSaved': 'Skill TLS configuration saved',
-  'systemConfigurationPage.unableToSaveSkillTLSConfiguration':
-    'Unable to save Skill TLS configuration',
   'systemConfigurationPage.systemConfigurationSaved':
     systemConfigurationEnUS.generated.systemConfigurationPage.systemConfigurationSaved,
   'systemConfigurationPage.unableToSaveSystemConfiguration':
@@ -1843,10 +1840,6 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
     systemConfigurationEnUS.generated.systemConfigurationPage.actions,
   'systemConfigurationPage.edit': systemConfigurationEnUS.generated.systemConfigurationPage.edit,
   'systemConfigurationPage.save': systemConfigurationEnUS.generated.systemConfigurationPage.save,
-  'systemConfigurationPage.disableSkillSourceTLSVerification':
-    systemConfigurationEnUS.generated.systemConfigurationPage.disableSkillSourceTLSVerification,
-  'systemConfigurationPage.keepThisOffByDefaultUseIt':
-    systemConfigurationEnUS.generated.systemConfigurationPage.keepThisOffByDefaultUseIt,
   'nodeDetailsDialogs.nodeDetails': resourceDetailsEnUS.generated.nodeDetailsDialogs.nodeDetails,
   'nodeDetailsDialogs.name': resourceDetailsEnUS.generated.nodeDetailsDialogs.name,
   'nodeDetailsDialogs.registeredAddress':

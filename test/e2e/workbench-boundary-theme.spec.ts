@@ -125,7 +125,7 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     const fileInput = inputWrappers[2]!;
     await fileInput.getByRole('textbox').focus();
     await expect(fileInput.getByRole('textbox')).toBeFocused();
-    const focusColor = theme === 'daylight' ? 'rgb(96, 96, 96)' : 'rgb(160, 160, 160)';
+    const focusColor = theme === 'daylight' ? 'rgb(80, 105, 135)' : 'rgb(160, 160, 160)';
     await expect
       .poll(async () =>
         readColor(await fileInput.evaluate((element) => getComputedStyle(element).boxShadow))

@@ -37,7 +37,6 @@ describe('Windows Quick Start community product', () => {
       app,
       database,
       audits: new AuditService(database, product.authorization),
-      network: { disabled: async () => false, setDisabled: vi.fn() },
       htmlPreviewOrigin: {
         read: async () => previewOrigin,
         write: async (origin) => {

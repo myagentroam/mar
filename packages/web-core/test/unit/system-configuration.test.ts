@@ -33,8 +33,7 @@ describe('Shared system configuration transactions', () => {
   });
   it('saves an optional HTML preview origin and refuses invalid origins', async () => {
     const request = vi.fn(async () => ({
-      htmlPreviewOrigin: 'https://preview.example.test',
-      skillTlsVerificationDisabled: false
+      htmlPreviewOrigin: 'https://preview.example.test'
     }));
     const service = createSystemConfigurationService(request as never);
     service.beginEdit('html-preview-origin');
@@ -58,8 +57,7 @@ describe('Shared system configuration transactions', () => {
 
   it('saves an external HTTP HTML preview origin', async () => {
     const request = vi.fn(async () => ({
-      htmlPreviewOrigin: 'http://preview.example.test',
-      skillTlsVerificationDisabled: false
+      htmlPreviewOrigin: 'http://preview.example.test'
     }));
     const service = createSystemConfigurationService(request as never);
     service.beginEdit('html-preview-origin');
@@ -72,30 +70,30 @@ describe('Shared system configuration transactions', () => {
   });
 
   it('loads the authority and cancels an edit without writing', async () => {
-    const request = vi.fn(async () => ({ skillTlsVerificationDisabled: false }));
+    const request = vi.fn(async () => ({ webPushEnabled: false }));
     const service = createSystemConfigurationService(request as never);
     await service.load();
-    service.beginEdit('skill-tls');
-    service.setDraft('skill-tls', true);
-    expect(service.drafts.value.skillTlsVerificationDisabled).toBe(true);
-    service.cancelEdit('skill-tls');
-    expect(service.drafts.value.skillTlsVerificationDisabled).toBe(false);
+    service.beginEdit('web-push');
+    service.setDraft('web-push', true);
+    expect(service.drafts.value.webPushEnabled).toBe(true);
+    service.cancelEdit('web-push');
+    expect(service.drafts.value.webPushEnabled).toBe(false);
     expect(service.editingKey.value).toBeNull();
     expect(request).toHaveBeenCalledOnce();
   });
 
   it('writes only the selected field and applies the complete returned snapshot', async () => {
-    const request = vi.fn(async () => ({ skillTlsVerificationDisabled: true, opaqueSetting: 42 }));
+    const request = vi.fn(async () => ({ webPushEnabled: true, opaqueSetting: 42 }));
     const service = createSystemConfigurationService(request as never);
-    service.beginEdit('skill-tls');
-    service.setDraft('skill-tls', true);
-    expect(await service.save('skill-tls')).toBe(true);
-    expect(request).toHaveBeenCalledWith('/api/system-settings/skill-tls', {
+    service.beginEdit('web-push');
+    service.setDraft('web-push', true);
+    expect(await service.save('web-push')).toBe(true);
+    expect(request).toHaveBeenCalledWith('/api/system-settings/web-push', {
       method: 'PATCH',
-      body: JSON.stringify({ verificationDisabled: true })
+      body: JSON.stringify({ enabled: true })
     });
     expect(service.snapshot.value).toEqual({
-      skillTlsVerificationDisabled: true,
+      webPushEnabled: true,
       opaqueSetting: 42
     });
     expect(service.editingKey.value).toBeNull();
@@ -109,12 +107,12 @@ describe('Shared system configuration transactions', () => {
         throw failure;
       }) as never
     );
-    service.beginEdit('skill-tls');
-    service.setDraft('skill-tls', true);
-    await expect(service.save('skill-tls')).rejects.toBe(failure);
-    expect(service.editingKey.value).toBe('skill-tls');
-    expect(service.drafts.value.skillTlsVerificationDisabled).toBe(true);
-    expect(service.snapshot.value.skillTlsVerificationDisabled).toBe(false);
+    service.beginEdit('web-push');
+    service.setDraft('web-push', true);
+    await expect(service.save('web-push')).rejects.toBe(failure);
+    expect(service.editingKey.value).toBe('web-push');
+    expect(service.drafts.value.webPushEnabled).toBe(true);
+    expect(service.snapshot.value.webPushEnabled).toBe(false);
     expect(service.savingKey.value).toBeNull();
   });
 
@@ -144,21 +142,20 @@ describe('Shared system configuration transactions', () => {
       'mar-agent-resource-input',
       'mail-smtp',
       'web-push',
-      'html-preview-origin',
-      'skill-tls'
+      'html-preview-origin'
     ]);
     service.beginEdit('example/window');
     service.setDraft('example/window', 30);
     const saving = service.save('example/window');
     expect(await service.save('example/window')).toBe(false);
     service.cancelEdit('example/window');
-    service.beginEdit('skill-tls');
+    service.beginEdit('web-push');
     expect(service.editingKey.value).toBe('example/window');
     expect(request).toHaveBeenCalledWith('/api/system-settings/example%2Fwindow', {
       method: 'PATCH',
       body: JSON.stringify({ days: 30 })
     });
-    finish({ window: 30, skillTlsVerificationDisabled: false });
+    finish({ window: 30 });
     await saving;
     expect(service.snapshot.value.window).toBe(30);
   });
@@ -168,9 +165,9 @@ describe('Shared system configuration transactions', () => {
     const service = createSystemConfigurationService(request as never);
     service.beginEdit('unknown');
     expect(await service.save('unknown')).toBe(false);
-    service.beginEdit('skill-tls');
-    service.setDraft('skill-tls', 'true');
-    expect(service.drafts.value.skillTlsVerificationDisabled).toBe(false);
+    service.beginEdit('web-push');
+    service.setDraft('web-push', 'true');
+    expect(service.drafts.value.webPushEnabled).toBe(false);
     expect(() =>
       createSystemConfigurationService(request as never, [service.settings[0]!])
     ).toThrow('WEB_SYSTEM_SETTING_DUPLICATE');

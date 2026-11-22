@@ -4,6 +4,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/styles/mar-ui-theme.css
 // @test-covers packages/web-core/src/view/workbench/WorkbenchActivityCenter.vue
+// @test-covers packages/web-core/src/view/workbench/WorkbenchNotificationList.vue
 // @test-covers packages/web-core/src/view/workbench/WorkbenchRecentSessionList.vue
 // @test-covers packages/web-core/src/view/session/session-markers.css
 
@@ -22,7 +23,7 @@ async function expectActivityElevation(popover: Locator, theme: string) {
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS(
     'border-top-color',
-    dark ? 'rgb(71, 71, 71)' : 'rgb(201, 201, 201)'
+    dark ? 'rgb(71, 71, 71)' : 'rgb(185, 202, 223)'
   );
   await expect(popover).toHaveCSS('border-top-left-radius', '12px');
   await expect(popover).toHaveCSS('box-shadow', /0px 10px 24px/u);
@@ -256,6 +257,57 @@ test('Aggregated notifications preserve upload recovery, removal and cancellatio
   await expect(page.locator('.workbench-activity-panel')).toHaveCount(0);
 });
 
+test.describe('Notification row feedback with a mouse', () => {
+  test.use({ hasTouch: false });
+
+  for (const theme of ['daylight', 'vscode-dark-2026']) {
+    test(`Unread and read rows share the notification surface and hover feedback in ${theme}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1280, height: 850 });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      await page.locator('.activity-center-trigger').click();
+      const panel = page.locator('.workbench-activity-panel:visible');
+      const row = panel.locator('.workbench-notification-list > li').first();
+      const badge = row.locator('.notification-unread-label');
+      const title = row.locator('.workbench-notification-title');
+      const remove = row.locator('.workbench-notification-delete');
+      const titleColor = await title.evaluate((element) => getComputedStyle(element).color);
+      const defaultBackground = 'rgba(0, 0, 0, 0)';
+      await expect(badge).toBeVisible();
+      await expect(row).toHaveCSS('background-color', defaultBackground);
+      await expect(row).toHaveCSS('border-inline-start-width', '0px');
+      if (theme === 'vscode-dark-2026') {
+        await panel.screenshot({ path: testInfo.outputPath('notification-unread-default.png') });
+      }
+      await title.hover();
+      await expect(row).not.toHaveCSS('background-color', defaultBackground);
+      await expect(badge).toBeVisible();
+      await expect(title).toHaveCSS('color', titleColor);
+      const hoverBackground = await row.evaluate(
+        (element) => getComputedStyle(element).backgroundColor
+      );
+      if (theme === 'vscode-dark-2026') {
+        await panel.screenshot({ path: testInfo.outputPath('notification-unread-hover.png') });
+      }
+      await remove.hover();
+      await expect(row).toHaveCSS('background-color', hoverBackground);
+      await expect(remove).toHaveCSS('background-color', defaultBackground);
+      await row.getByRole('button').first().focus();
+      await page.keyboard.press('Tab');
+      await expect(remove).toBeFocused();
+      await expect(remove).toHaveCSS('outline-style', 'solid');
+      await panel.getByRole('button', { name: 'Mark all as read', exact: true }).click();
+      await expect(badge).toHaveCount(0);
+      await expect(row).toHaveCSS('background-color', defaultBackground);
+      await title.hover();
+      await expect(row).toHaveCSS('background-color', hoverBackground);
+      await panel.getByRole('tab', { name: 'Notifications', exact: true }).hover();
+      await expect(row).toHaveCSS('background-color', defaultBackground);
+    });
+  }
+});
+
 test('Activity entry distinguishes all four states and caps unread counts', async ({ page }) => {
   for (const [query, count, running] of [
     ['many-notifications=1', '99+', true],
@@ -481,12 +533,16 @@ for (const width of [1280, 390]) {
       const colors = await trigger.evaluate((element) => {
         const probe = document.createElement('span');
         element.append(probe);
-        const color = (token: string) => {
-          probe.style.color = `var(${token})`;
+        const resolve = (value: string) => {
+          probe.style.color = value;
           return getComputedStyle(probe).color;
         };
+        const color = (token: string) => resolve(`var(${token})`);
         const result = {
-          unread: color('--mar-text-secondary'),
+          unread: color('--mar-conversation-activity-fg'),
+          notificationText: CSS.supports('color: contrast-color(red)')
+            ? resolve('contrast-color(var(--mar-conversation-activity-fg))')
+            : color('--mar-bg-panel'),
           running: color('--mar-control-color-success'),
           page: color('--mar-bg-page'),
           chrome: color('--mar-bg-chrome'),
@@ -508,6 +564,10 @@ for (const width of [1280, 390]) {
         'background-color',
         colors.unread
       );
+      await expect(trigger.locator('.activity-entry-count')).toHaveCSS(
+        'color',
+        colors.notificationText
+      );
       await expect(trigger.locator('.activity-entry-running')).toHaveCSS(
         'background-color',
         colors.running
@@ -518,8 +578,15 @@ for (const width of [1280, 390]) {
         'aria-selected',
         'true'
       );
+      const notificationBadge = panel
+        .getByRole('tab', { name: /通知/ })
+        .locator('.activity-unread-count');
+      await expect(notificationBadge).toHaveCSS('background-color', colors.unread);
+      await expect(notificationBadge).toHaveCSS('color', colors.notificationText);
       const notices = panel.locator('.workbench-notification-list > li');
       await expect(notices).toHaveCount(30);
+      await expect(notices.first().locator('.notification-unread-label')).toBeVisible();
+      await expect(notices.first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(notices.first()).toHaveCSS('border-top-width', '0px');
       await expect(notices.nth(1)).toHaveCSS('border-top-color', colors.divider);
       await expect(notices.last()).toHaveCSS('border-bottom-width', '0px');
@@ -630,6 +697,7 @@ for (const width of [1280, 390]) {
       const popover = page.locator('.workbench-activity-popover:visible');
       await expectActivityElevation(popover, theme);
       await expect(preview.locator('li.unread')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(preview.locator('li.unread')).toHaveCSS('border-left-width', '2px');
       const radius = await popover.evaluate(
         (element) => getComputedStyle(element).borderTopLeftRadius
       );

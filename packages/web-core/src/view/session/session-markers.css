@@ -8,13 +8,19 @@
   box-sizing: border-box;
   padding: 0 3px;
   border-radius: var(--mar-radius-marker);
-  background: var(--mar-text-secondary);
+  background: var(--mar-conversation-activity-fg);
   color: var(--mar-bg-panel);
   font-size: var(--mar-font-size-nano);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
+}
+
+@supports (color: contrast-color(red)) {
+  .mar-activity-count-badge {
+    color: contrast-color(var(--mar-conversation-activity-fg));
+  }
 }
 
 .mar-unread-label {

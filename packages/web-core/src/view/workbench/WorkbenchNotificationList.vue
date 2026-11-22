@@ -209,6 +209,7 @@ async function retrySnapshot(): Promise<void> {
             <button
               v-if="notification.kind !== 'web-update'"
               class="mar-icon-button mar-icon-action workbench-notification-delete"
+              :class="{ 'mar-icon-action--inline': previewId === undefined }"
               :aria-label="
                 translate('generated.workbenchNotificationCenter.deleteNotification', {
                   value0: notification.title
@@ -337,11 +338,13 @@ async function retrySnapshot(): Promise<void> {
   height: 5px;
   accent-color: var(--mar-control-primary-bg);
 }
-.workbench-notification-list > li.unread {
+.workbench-notification-content.is-preview .workbench-notification-list > li.unread {
   border-left: 2px solid var(--mar-border-strong);
 }
-.workbench-notification-content:not(.is-preview) .workbench-notification-list > li.unread {
-  background: var(--mar-bg-subtle);
+@media (any-hover: hover) {
+  .workbench-notification-content:not(.is-preview) .workbench-notification-list > li:hover {
+    background-color: color-mix(in srgb, var(--mar-action-hover-overlay) 65%, transparent);
+  }
 }
 .workbench-notification-list > li > button:first-child {
   display: grid;

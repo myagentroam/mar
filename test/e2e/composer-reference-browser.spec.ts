@@ -78,7 +78,7 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   const files = page.locator('.file-reference-picker [role=option]');
   await expect(files).toHaveCount(2);
   const reference = page.locator('.file-reference-picker');
-  await expect(reference).toHaveCSS('border-top-color', 'rgb(201, 201, 201)');
+  await expect(reference).toHaveCSS('border-top-color', 'rgb(185, 202, 223)');
   await expect(reference).toHaveCSS('box-shadow', /0px 4px 12px/u);
   expect(
     resolvedColorToHex(
@@ -94,7 +94,7 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   await placeCursor(page, 11);
   const commands = page.locator('.command-picker').filter({ hasText: 'review' });
   await expect(commands).toBeVisible();
-  await expect(commands).toHaveCSS('border-top-color', 'rgb(201, 201, 201)');
+  await expect(commands).toHaveCSS('border-top-color', 'rgb(185, 202, 223)');
   await expect(commands).toHaveCSS('box-shadow', /0px 4px 12px/u);
   expect(
     resolvedColorToHex(
@@ -263,6 +263,17 @@ for (const [width, theme] of [
         .toBe(theme === 'daylight' ? '#ffffff' : '#2b2b2b');
       if (name !== 'commands')
         await expect(picker.getByRole('option')).toHaveCount(name === 'references' ? 2 : 1);
+      if (name === 'quick-prompts') {
+        const option = picker.getByRole('option', { selected: true });
+        await expect(option).toHaveCSS(
+          'background-color',
+          theme === 'daylight' ? 'rgb(220, 233, 255)' : 'rgb(55, 55, 55)'
+        );
+        await expect(option).toHaveCSS(
+          'color',
+          theme === 'daylight' ? 'rgb(23, 36, 58)' : 'rgb(234, 234, 234)'
+        );
+      }
       await expect
         .poll(async () => {
           const popup = (await picker.boundingBox())!;

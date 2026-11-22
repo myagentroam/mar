@@ -20,16 +20,6 @@ export type SystemSettingDefinition = {
     }
 );
 
-const skillTlsSetting: SystemSettingDefinition = {
-  key: 'skill-tls',
-  field: 'skillTlsVerificationDisabled',
-  payloadField: 'verificationDisabled',
-  nameKey: 'generated.systemConfigurationPage.disableSkillSourceTLSVerification',
-  descriptionKey: 'generated.systemConfigurationPage.keepThisOffByDefaultUseIt',
-  type: 'boolean',
-  initialValue: false
-};
-
 const htmlPreviewOriginSetting: SystemSettingDefinition = {
   key: 'html-preview-origin',
   field: 'htmlPreviewOrigin',
@@ -77,8 +67,7 @@ export function createSystemConfigurationService(
     },
     smtpSetting,
     webPushSetting,
-    htmlPreviewOriginSetting,
-    skillTlsSetting
+    htmlPreviewOriginSetting
   ];
   const byKey = new Map(settings.map((setting) => [setting.key, setting]));
   if (byKey.size !== settings.length) throw new Error('WEB_SYSTEM_SETTING_DUPLICATE');

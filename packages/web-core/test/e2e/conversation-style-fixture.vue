@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
+import { serializeComposerTag } from '@myagentroam/protocol';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarIcon from '../../../mar-ui/icons/MarIcon.vue';
 import { unicodeLongFilePath } from '../support/unicode-layout-fixtures.js';
@@ -55,6 +56,9 @@ const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const readFilesFixture = new URL(location.href).searchParams.has('read-files');
 const historyActionsFixture = new URL(location.href).searchParams.has('history-actions');
 const markdownBlocksFixture = new URL(location.href).searchParams.has('markdown-blocks');
+const userMessageCopyFixture = new URL(location.href).searchParams.has('user-message-copy');
+const userMessageCopyImage =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMI6LkHAALqAbuJ9q1aAAAAAElFTkSuQmCC';
 const fileChangeResultFixture = new URL(location.href).searchParams.has('file-change-result');
 const resultOpenedFile = ref('');
 const previewRunStatus = ref<'RUNNING' | 'SUCCEEDED'>('RUNNING');
@@ -223,6 +227,26 @@ const turns = ref<ConversationTurn[]>([
         : items
   }
 ]);
+if (userMessageCopyFixture) {
+  const attachment = serializeComposerTag('mar_attachments', {
+    files: [{ name: 'input.png', mime: 'image/png', path: '.mar/temp-files/input/input.png' }]
+  });
+  turns.value = [
+    {
+      ...turns.value[0]!,
+      items: [
+        { ...items[0]!, payload: { text: `Review the **screenshot**.\n${attachment}` } },
+        { ...items[0]!, id: 'attachment-only', payload: { text: attachment } }
+      ]
+    }
+  ];
+}
+
+async function copyFixtureMessage(text: string, done: () => void): Promise<void> {
+  await navigator.clipboard.writeText(text);
+  done();
+}
+
 if (markdownBlocksFixture) {
   localePreferenceService().setLocale(
     new URL(location.href).searchParams.get('language') === 'zh-CN' ? 'zh-CN' : 'en-US'
@@ -696,6 +720,7 @@ function announceFixtureUpdate() {
     <ConversationTimeline
       v-if="timelineVisible"
       :turns="turns"
+      @copy="copyFixtureMessage"
       @open-file="(path) => (resultOpenedFile = path)"
       :performance="livePerformance"
       :runs="
@@ -710,6 +735,7 @@ function announceFixtureUpdate() {
       :initializing="initializing"
       :initial-render-version="renderVersion"
       :capture-render-anchor="captureRenderAnchor"
+      :image-resource-url="userMessageCopyFixture ? () => userMessageCopyImage : undefined"
       :image-attachments="
         (_runId, payload) =>
           detailSurfaceFixture &&

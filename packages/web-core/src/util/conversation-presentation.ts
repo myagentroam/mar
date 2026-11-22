@@ -493,7 +493,6 @@ export function conversationItemLabel(kind: string, payload?: unknown): string {
   );
 }
 
-/** User copies retain resource XML but exclude product provenance and execution wrappers. */
 export function conversationItemCopyText(
   kind: string,
   payload: unknown,

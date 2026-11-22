@@ -130,15 +130,10 @@ watch(
   margin: auto;
   left: calc((var(--preview-left) - var(--preview-right)) / 2);
   top: calc((var(--preview-top) - var(--preview-bottom)) / 2);
-  background: var(--mar-control-bg-color-overlay);
 }
 :global(.attachment-preview-dialog .mar-ui-dialog__header) {
   min-width: 0;
   flex: 0 0 auto;
-}
-:global(.attachment-preview-dialog .mar-ui-dialog__close) {
-  width: 32px;
-  height: 32px;
 }
 :global(.attachment-preview-dialog .mar-ui-dialog__title) {
   display: block;

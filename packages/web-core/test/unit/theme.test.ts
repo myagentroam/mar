@@ -45,7 +45,7 @@ it('defines every shared font role and MAR status token consumed by components',
 });
 
 function stubBrowserEnvironment(
-  pageColors = { 'vscode-dark-2026': '#14181e', daylight: '#f8f8f8' }
+  pageColors = { 'vscode-dark-2026': '#14181e', daylight: '#f8fbff' }
 ) {
   const storage = new Map<string, string>();
   const classes = new Set<string>();
@@ -147,7 +147,7 @@ describe('Web theme preference', () => {
     expect(service.theme.value).toBe('daylight');
     expect(attributes.has('data-theme')).toBe(false);
     expect(classes.has('dark')).toBe(false);
-    expect(themeColorAttributes.get('content')).toBe('#f8f8f8');
+    expect(themeColorAttributes.get('content')).toBe('#f8fbff');
     expect(storage.get(THEME_STORAGE_KEY)).toBe('daylight');
   });
 
@@ -167,7 +167,7 @@ describe('Web theme preference', () => {
     expect(storage.get(THEME_STORAGE_KEY)).toBe('daylight');
     expect(attributes.has('data-theme')).toBe(false);
     expect(classes.has('dark')).toBe(false);
-    expect(themeColorAttributes.get('content')).toBe('#f8f8f8');
+    expect(themeColorAttributes.get('content')).toBe('#f8fbff');
   });
 
   it('keeps PWA chrome on the applied page color through built-in and custom theme changes', () => {

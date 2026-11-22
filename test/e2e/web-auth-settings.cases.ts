@@ -280,6 +280,45 @@ test('Importing a License refreshes product capabilities and enterprise menus', 
   expect(capabilityReads).toBeGreaterThan(beforeImportReads);
 });
 
+test('System Information keeps License import reachable in a short mobile viewport', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route('**/api/auth/me', (route) =>
+    json(route, {
+      authenticated: true,
+      userId: 1,
+      mustChangePassword: false,
+      username: 'admin',
+      isAdmin: true,
+      edition: 'COMMUNITY',
+      licenseState: 'COMMUNITY',
+      managementWritable: true
+    })
+  );
+  await page.route('**/api/license', (route) =>
+    json(route, {
+      edition: 'COMMUNITY',
+      state: 'COMMUNITY',
+      reason: null,
+      licenseId: null,
+      enterpriseName: null,
+      expiresAt: null,
+      managementWritable: true
+    })
+  );
+  await page.route('**/api/license/request-code', (route) =>
+    json(route, { requestCode: 'MAR1.mobile-layout.checksum' })
+  );
+
+  await page.goto('/console?view=management&management=system');
+  await expect(page.getByRole('heading', { name: '系统运行情况' })).toBeInViewport();
+  const importLicense = page.getByRole('button', { name: '导入 License', exact: true });
+  await importLicense.scrollIntoViewIfNeeded();
+  await expect(importLicense).toBeInViewport({ ratio: 1 });
+});
+
 test('Login shows multiple OAuth 2.0 SSO entries by provider identity', async ({ page }) => {
   await page.route('**/api/auth/me', (route) =>
     json(route, { authenticated: false, mustChangePassword: false })

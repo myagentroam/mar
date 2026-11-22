@@ -1,5 +1,6 @@
 import type { VisibleSkillSource } from './skill-source-service.js';
 import { GitSkillRepository } from './git-skill-repository.js';
+import { publicHttpsFetch } from './skill-network-policy.js';
 
 export interface SkillCandidate {
   readonly id: string;
@@ -20,7 +21,7 @@ export class SkillDiscoveryService {
   private readonly pendingSearches = new Map<string, Promise<readonly SkillCandidate[]>>();
 
   constructor(
-    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly fetchImpl: typeof fetch = publicHttpsFetch,
     private readonly gitRepository: GitSkillRepository = new GitSkillRepository(),
     private readonly now: () => number = Date.now
   ) {}

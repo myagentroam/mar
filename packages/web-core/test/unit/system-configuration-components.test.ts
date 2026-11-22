@@ -32,8 +32,7 @@ describe('Public system configuration page', () => {
       'mar-agent-resource-input',
       'mail-smtp',
       'web-push',
-      'html-preview-origin',
-      'skill-tls'
+      'html-preview-origin'
     ]);
   });
   it.each(['zh-CN', 'en-US'] as const)(
@@ -58,7 +57,7 @@ describe('Public system configuration page', () => {
         for (const part of key.split('.')) value = (value as Record<string, unknown>)?.[part];
         expect(value, key).toBeTypeOf('string');
       }
-      const request = vi.fn(async <T>() => ({ skillTlsVerificationDisabled: false }) as T);
+      const request = vi.fn(async <T>() => ({}) as T);
       const app = createSSRApp({ render: () => h(Page, { request, writable: false }) });
       app.use(i18n);
       const html = await renderToString(app);
@@ -71,17 +70,15 @@ describe('Public system configuration page', () => {
   );
 
   it.each(['zh-CN', 'en-US'] as const)(
-    'keeps TLS guidance in its setting without a page-level error when verification is disabled (%s)',
+    'does not render a Skill TLS setting or alert for a stale snapshot (%s)',
     async (locale) => {
       i18n.global.locale.value = locale;
       const request = vi.fn().mockResolvedValue({ skillTlsVerificationDisabled: true });
       const view = renderComponent(Page, { request, writable: false });
       try {
         await flushComponent();
-        const messages = commonMessages[locale].generated.systemConfigurationPage;
-        const content = textContent(view.root);
-        expect(content).toContain(messages.disableSkillSourceTLSVerification);
-        expect(content).toContain(messages.keepThisOffByDefaultUseIt);
+        const rows = view.findAll('MarTable')[0]?.props['data'] as { key: string }[];
+        expect(rows.map(({ key }) => key)).not.toContain('skill-tls');
         expect(view.findAll('MarAlert')).toHaveLength(0);
         expect(request).toHaveBeenCalledExactlyOnceWith('/api/system-settings');
       } finally {
@@ -110,7 +107,6 @@ describe('Public system configuration page', () => {
     }));
     const request = vi.fn().mockResolvedValue({
       smtpConfiguration: '{}',
-      skillTlsVerificationDisabled: true,
       htmlPreviewOrigin: 'https://preview.example.com',
       webPushEnabled: true,
       ...Object.fromEntries(settings.map(({ field }) => [field, true]))
@@ -124,8 +120,7 @@ describe('Public system configuration page', () => {
         'mar-agent-resource-input',
         'mail-smtp',
         'web-push',
-        'html-preview-origin',
-        'skill-tls'
+        'html-preview-origin'
       ]);
       expect(textContent(view.root)).toContain('https://preview.example.com');
       expect(view.findAll('MarPagination')).toHaveLength(0);
@@ -152,7 +147,6 @@ describe('Public system configuration page', () => {
     const snapshot = {
       smtpConfiguration: '{}',
       extensionValue: true,
-      skillTlsVerificationDisabled: false,
       webPushEnabled: false,
       htmlPreviewOrigin: ''
     };

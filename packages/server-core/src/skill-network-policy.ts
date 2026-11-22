@@ -1,43 +1,9 @@
 import https from 'node:https';
-import type { Pool, RowDataPacket } from 'mysql2/promise';
 
-const SETTING_KEY = 'skill_tls_verification_disabled';
 const MAX_RESPONSE_BYTES = 110 * 1024 * 1024;
 
-export class SkillNetworkPolicy {
-  private cached: { value: boolean; expiresAt: number } | undefined;
-  constructor(private readonly database: { readonly raw: Pool }) {}
-
-  readonly fetch: typeof fetch = async (input, init) => {
-    return safeHttpsFetch(input, init, await this.disabled());
-  };
-
-  async disabled(): Promise<boolean> {
-    if (this.cached !== undefined && this.cached.expiresAt > Date.now()) return this.cached.value;
-    const [rows] = await this.database.raw.execute<RowDataPacket[]>(
-      'SELECT setting_value FROM system_settings WHERE setting_key=?',
-      [SETTING_KEY]
-    );
-    const value = rows[0]?.['setting_value'] === 'true';
-    this.cached = { value, expiresAt: Date.now() + 5_000 };
-    return value;
-  }
-
-  async setDisabled(disabled: boolean): Promise<void> {
-    await this.database.raw.execute(
-      `INSERT INTO system_settings (setting_key,setting_value,updated_at) VALUES (?,?,?)
-       ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)`,
-      [SETTING_KEY, String(disabled), Date.now()]
-    );
-    this.cached = { value: disabled, expiresAt: Date.now() + 5_000 };
-  }
-}
-
-async function safeHttpsFetch(
-  input: string | URL | Request,
-  init: RequestInit | undefined,
-  verificationDisabled: boolean
-): Promise<Response> {
+/** Anonymous catalog HTTPS transport. Skips certificate verification without following redirects. */
+export const publicHttpsFetch: typeof fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : input);
   if (url.protocol !== 'https:') throw new Error('SKILL_SOURCE_TLS_FAILED');
   return new Promise<Response>((resolve, reject) => {
@@ -51,7 +17,7 @@ async function safeHttpsFetch(
           ),
           host: url.host
         },
-        rejectUnauthorized: !verificationDisabled,
+        rejectUnauthorized: false,
         signal: init?.signal ?? undefined
       },
       (response) => {
@@ -79,8 +45,4 @@ async function safeHttpsFetch(
     request.once('error', reject);
     request.end();
   });
-}
-
-/** HTTPS fetch with certificate verification for remote service calls. */
-export const publicHttpsFetch: typeof fetch = async (input, init) =>
-  safeHttpsFetch(input, init, false);
+};

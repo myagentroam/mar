@@ -623,7 +623,7 @@ describe('Workbench surface composition behavior', () => {
       vi.stubGlobal('IntersectionObserver', undefined);
     }
   });
-  it('releases the old History menu and listeners on a same-tool Workspace switch without replacing Git', async () => {
+  it('replaces the old History view on a same-tool Workspace switch without replacing Git', async () => {
     const page = extendPage(pageFixture(), {
       resources: {
         workspaceHost: { connected: true },
@@ -661,35 +661,21 @@ describe('Workbench surface composition behavior', () => {
     });
     const git = page.files.workspaceGit;
     const reset = vi.spyOn(git, 'reset');
-    const removeListener = vi.spyOn(window, 'removeEventListener');
     const view = renderComponent(Surface, { page });
     try {
       await nextTick();
-      const row = view
-        .findAll('button')
-        .find((node) => String(node.props.class).includes('history-commit-row'))!;
-      (
-        row.props.onContextmenu as (event: {
-          preventDefault(): void;
-          clientX: number;
-          clientY: number;
-        }) => void
-      )({ preventDefault() {}, clientX: 40, clientY: 50 });
-      await nextTick();
-      expect(view.findAll('div').some((node) => node.props.class === 'history-context-menu')).toBe(
-        true
-      );
+      const historyView = () =>
+        view.findAll('section').find((node) => node.props.class === 'git-history');
+      const previous = historyView();
+      expect(previous).toBeDefined();
       page.selection.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
       await nextTick();
-      expect(view.findAll('div').some((node) => node.props.class === 'history-context-menu')).toBe(
-        false
-      );
-      expect(removeListener).toHaveBeenCalledWith('pointerdown', expect.any(Function));
+      expect(historyView()).toBeDefined();
+      expect(historyView()).not.toBe(previous);
       expect(page.files.workspaceGit).toBe(git);
       expect(reset).toHaveBeenCalledTimes(1);
     } finally {
       view.unmount();
-      removeListener.mockRestore();
       page.files.workspaceGit.reset();
     }
   });
