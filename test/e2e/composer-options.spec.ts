@@ -258,6 +258,66 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   });
 }
 
+for (const [width, theme] of [
+  [1280, 'vscode-dark-2026'],
+  [390, 'daylight']
+] as const) {
+  test(`Permission trigger matches the model trigger (${width}, ${theme})`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(
+      `${fixture.url}composer-options.html?short&compact-names&existing-session&theme=${theme}${width < 768 ? '&mobile' : ''}`
+    );
+    const model = page.locator('.composer-model-effort-select .mar-ui-select__field');
+    const access = page.locator('.composer-access-select .mar-ui-select__field');
+    const control = access.getByRole('combobox', { name: 'Access' });
+    const arrowStyle = (field: Locator) =>
+      field.locator('[data-mar-icon="chevron-down"]').evaluate((icon) => {
+        const { width, height, color } = getComputedStyle(icon);
+        const label = icon
+          .closest('.mar-ui-select__field')!
+          .querySelector('.mar-ui-select__label')!;
+        const text = document.createRange();
+        text.selectNodeContents(label);
+        return {
+          width,
+          height,
+          color,
+          gap: icon.getBoundingClientRect().left - text.getBoundingClientRect().right
+        };
+      });
+    const { gap: accessGap, ...accessArrowStyle } = await arrowStyle(access);
+    const { gap: modelGap, ...modelArrowStyle } = await arrowStyle(model);
+    expect(accessArrowStyle).toEqual(modelArrowStyle);
+    expect(Math.abs(accessGap - modelGap)).toBeLessThanOrEqual(1);
+    await expect(access).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(access).toHaveCSS('box-shadow', 'none');
+    await model.hover();
+    const hoverColor = await model.evaluate((field) => getComputedStyle(field).backgroundColor);
+    await access.hover();
+    await expect(access).toHaveCSS('background-color', hoverColor);
+    await expect(access).toHaveCSS('box-shadow', 'none');
+    await page.mouse.move(0, 0);
+
+    await model.getByRole('combobox').press('Tab');
+    await expect(control).toBeFocused();
+    await expect(access).toHaveCSS('outline-style', 'solid');
+    await expect(access).toHaveCSS('outline-width', '2px');
+    await control.press('Enter');
+    const menu = page.locator('[role="listbox"].composer-access-popper');
+    await expectMenuInsideViewport(menu);
+    await expect(access).toHaveCSS('background-color', hoverColor);
+    await expect(access).toHaveCSS('box-shadow', 'none');
+    await control.press('End');
+    await control.press('Enter');
+    await expect(menu).toBeHidden();
+    const label = access.locator('.mar-ui-select__label');
+    await expect(label).toHaveText('Full access');
+    expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true
+    );
+  });
+}
+
 for (const [width, height, theme, top] of [
   [1280, 844, 'daylight', false],
   [390, 844, 'vscode-dark-2026', false],
