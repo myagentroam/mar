@@ -66,7 +66,7 @@ async function onChange(event: Event) {
   display: inline-grid;
   place-items: center;
   flex: none;
-  inline-size: 40px;
+  inline-size: 36px;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   vertical-align: middle;
 }
@@ -81,12 +81,12 @@ async function onChange(event: Event) {
   cursor: pointer;
 }
 .mar-ui-switch__track {
-  --mar-ui-switch-thumb-size: 14px;
+  --mar-ui-switch-thumb-size: 12px;
   --mar-ui-switch-thumb-inset: 2px;
   position: relative;
   box-sizing: border-box;
   inline-size: 100%;
-  block-size: 20px;
+  block-size: 18px;
   border: 1px solid var(--mar-ui-border-medium);
   border-radius: 999px;
   background: var(--mar-ui-fill-soft);
@@ -134,10 +134,14 @@ async function onChange(event: Event) {
   background: transparent;
 }
 .mar-ui-switch__spinner {
-  font-size: 14px;
+  font-size: var(--mar-ui-switch-thumb-size);
 }
 @media (pointer: coarse) {
+  .mar-ui-switch {
+    inline-size: 40px;
+  }
   .mar-ui-switch__track {
+    --mar-ui-switch-thumb-size: 16px;
     block-size: 24px;
   }
 }

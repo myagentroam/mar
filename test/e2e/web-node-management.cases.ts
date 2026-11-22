@@ -1677,7 +1677,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.locator('.mar-ui-table').getByText('成员', { exact: true })).toBeVisible();
   await expect(page.locator('.mar-management-page .mar-ui-table')).toHaveCSS('font-size', '14px');
   await expect(page.locator('.mar-row-actions').first()).toHaveCSS('white-space', 'nowrap');
-  await expect(page.getByRole('button', { name: '重置密码' })).toHaveCSS('font-size', '14px');
+  await expect(page.getByRole('button', { name: '重置密码' })).toHaveCSS('font-size', '12px');
   const filters = page.locator('.mar-management-page .mar-filter-row');
   await expect(filters.getByRole('combobox')).toHaveCount(3);
   await expect(

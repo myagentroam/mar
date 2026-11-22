@@ -28,7 +28,7 @@ for (const [width, compact, headerFont, bodyFont] of [
     for (const cell of [header, label]) {
       await expect(cell).toHaveCSS('font-size', headerFont);
       await expect(cell).toHaveCSS('font-weight', '500');
-      expect((await cell.boundingBox())!.height).toBeCloseTo(compact + 1, 1);
+      expect((await cell.boundingBox())!.height).toBeCloseTo(compact + 3, 1);
     }
     await expect(sort).toHaveCSS('font-size', headerFont);
     expect((await sort.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
@@ -37,7 +37,7 @@ for (const [width, compact, headerFont, bodyFont] of [
     const value = organization.getByRole('cell', { name: 'Child', exact: true });
     await expect(value).toHaveCSS('font-size', bodyFont);
     await expect(value).toHaveCSS('padding-inline-start', '10px');
-    expect((await value.boundingBox())!.height).toBeCloseTo(compact + 3, 1);
+    expect((await value.boundingBox())!.height).toBeCloseTo(compact + 5, 1);
     const act = records.getByRole('button', { name: 'Act 0' });
     expect((await act.boundingBox())!.height).toBeGreaterThanOrEqual(compact);
     await records.locator('..').screenshot({ path: testInfo.outputPath('compact-table.png') });

@@ -578,9 +578,14 @@ function message(error: unknown): string {
 }
 .secret-toolbar {
   display: flex;
-  min-height: 28px;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-start;
+  gap: 8px;
   margin-bottom: 8px;
+}
+.secret-toolbar > .mar-ui-button + .mar-ui-button {
+  margin-inline-start: 0;
 }
 .secret-heading h3 {
   margin: 0;

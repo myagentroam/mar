@@ -23,6 +23,44 @@ async function close(page: Page) {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
+for (const [width, font, size] of [
+  [1280, '12px', '26px'],
+  [390, '11px', '24px']
+] as const) {
+  test(`Node details secret buttons keep the standard action size at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    const fixture = await startCustomThemeFixture();
+    try {
+      await page.setViewportSize({ width, height: 850 });
+      await page.goto(`${fixture.url}resource-details.html?kind=NODE&writable=1`);
+      const action = page.locator('.mar-row-actions').first().getByRole('button', { name: 'Edit' });
+      await expect(action).toHaveCSS('font-size', font);
+      await expect(action).toHaveCSS('height', size);
+      await open(page, 'Node a');
+      const dialog = page.getByRole('dialog');
+      const toolbar = dialog.locator('.secret-toolbar');
+      const footer = dialog.getByRole('button', { name: 'Close', exact: true });
+      await expect(footer).toHaveCSS('height', size);
+      for (const name of ['Refresh', 'Add Environment Secret']) {
+        const button = toolbar.getByRole('button', { name, exact: true });
+        await expect(button).toHaveCSS('height', size);
+        await expect(button).toHaveCSS('font-size', font);
+      }
+      const secret = dialog.getByRole('row').filter({ hasText: 'FIXTURE_VARIABLE' });
+      for (const name of ['Update', 'Delete']) {
+        const button = secret.getByRole('button', { name, exact: true });
+        await expect(button).toHaveCSS('height', size);
+        await expect(button).toHaveCSS('font-size', font);
+        await expect(button).toHaveCSS('margin-inline-start', '0px');
+      }
+      await toolbar.screenshot({ path: testInfo.outputPath('node-secret-actions.png') });
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 for (const outcome of ['success', 'failure'] as const) {
   test(`Workspace details stay closed after a late path ${outcome}`, async ({ page }) => {
     const fixture = await startCustomThemeFixture();

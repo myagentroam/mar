@@ -227,7 +227,6 @@ pre {
 .mar-management-page .mar-table-actions {
   display: flex;
   flex-wrap: wrap;
-  min-height: 28px;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
@@ -239,13 +238,12 @@ pre {
   gap: 10px;
   white-space: nowrap;
 }
-.mar-management-page .mar-row-actions .mar-ui-button + .mar-ui-button {
-  margin-left: 0;
+.mar-management-page :is(.mar-table-actions, .mar-row-actions) .mar-ui-button + .mar-ui-button {
+  margin-inline-start: 0;
 }
 .mar-management-page .mar-row-actions .mar-ui-button {
   min-height: var(--mar-compact-control-size);
   padding-inline: 2px;
-  font-size: var(--mar-font-size-body);
 }
 .mar-management-page header p {
   display: none;

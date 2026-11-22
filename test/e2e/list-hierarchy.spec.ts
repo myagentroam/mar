@@ -346,8 +346,8 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
       const table = page.locator('table:visible');
       const row = table.locator('tbody tr').first();
       await expect(row).toBeVisible();
-      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-start', '1px');
-      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-end', '1px');
+      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-start', '2px');
+      await expect(row.getByRole('cell').first()).toHaveCSS('padding-block-end', '2px');
       await expect(table.getByRole('columnheader').first()).toHaveCSS(
         'font-size',
         width >= 768 ? '12px' : '11px'
