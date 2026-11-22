@@ -46,8 +46,12 @@ html.console-ui,
   --mar-workbench-divider: var(--mar-border-subtle);
   --mar-border-medium: #7185a0;
   --mar-border-strong: #5e738f;
-  --mar-input-border: var(--mar-border-medium);
-  --mar-input-border-hover: var(--mar-border-strong);
+  --mar-input-border: var(--mar-border-default);
+  --mar-input-border-hover: color-mix(
+    in srgb,
+    var(--mar-input-border),
+    var(--mar-border-strong) 20%
+  );
   --mar-text-primary: #17243a;
   --mar-text-secondary: #43536b;
   --mar-text-muted: #52647c;
@@ -180,8 +184,6 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-workbench-divider: var(--mar-border-medium);
   --mar-border-medium: #474747;
   --mar-border-strong: #606060;
-  --mar-input-border: color-mix(in srgb, var(--mar-border-default), var(--mar-text-secondary) 37%);
-  --mar-input-border-hover: color-mix(in srgb, var(--mar-input-border), var(--mar-text-primary) 7%);
   --mar-text-primary: #eaeaea;
   --mar-text-secondary: #c2c2c2;
   --mar-text-muted: #a0a0a0;

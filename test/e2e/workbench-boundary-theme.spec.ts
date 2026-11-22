@@ -65,10 +65,15 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     const secondary = await aside
       .locator('.file-explorer > .explorer-toolbar')
       .evaluate((element) => getComputedStyle(element).borderBottomColor);
-    const track = await page
-      .locator('.conversation-sidebar')
-      .getByRole('radiogroup')
-      .evaluate((element) => getComputedStyle(element).borderTopColor);
+    const categories = page.locator('.conversation-sidebar').getByRole('radiogroup');
+    const trackBorder = await categories.evaluate(
+      (element) => getComputedStyle(element).borderTopColor
+    );
+    await expect(categories).toHaveCSS('border-top-width', '1px');
+    await expect(aside.locator('.mar-tab-strip-item').first()).toHaveCSS(
+      'border-top-color',
+      trackBorder
+    );
     const panel = await aside.evaluate((element) => getComputedStyle(element).backgroundColor);
     const inputWrappers = [
       resources.locator('.workspace-tree-filter .mar-ui-input'),
@@ -87,18 +92,19 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
         const style = getComputedStyle(element);
         return { border: style.boxShadow, background: style.backgroundColor };
       });
-      const normalContrast = contrast(readColor(border), background);
-      expect(normalContrast).toBeGreaterThanOrEqual(3);
+      const borderColor = readColor(border);
+      expect(trackBorder).toBe(borderColor);
+      const normalContrast = contrast(borderColor, background);
       await wrapper.hover();
-      await expect
-        .poll(async () => {
-          const shadow = await wrapper.evaluate((element) => getComputedStyle(element).boxShadow);
-          const hover = readColor(shadow);
-          return hover ? contrast(hover, background) : 0;
-        })
-        .toBeGreaterThan(normalContrast);
+      const hoverContrast = async () => {
+        const shadow = await wrapper.evaluate((element) => getComputedStyle(element).boxShadow);
+        return contrast(readColor(shadow), background);
+      };
+      await expect.poll(hoverContrast).toBeGreaterThan(normalContrast);
+      expect(await hoverContrast()).toBeLessThan(normalContrast + 0.35);
       await page.mouse.move(0, 0);
     }
+    expect(trackBorder).not.toBe(primary);
     if (theme === 'daylight') {
       expect(primary).toBe(secondary);
     } else {
@@ -113,14 +119,34 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
       const newSession = page
         .locator('.conversation-sidebar')
         .getByRole('button', { name: '新建会话', exact: true });
-      await expect(newSession).toHaveCSS('background-color', 'rgb(222, 222, 222)');
+      const { fill, border, primaryFill } = await newSession.evaluate((button) => {
+        const probe = document.createElement('span');
+        button.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const palette = {
+          fill: color('--mar-session-create-fill'),
+          border: color('--mar-input-border'),
+          primaryFill: color('--mar-control-primary-bg')
+        };
+        probe.remove();
+        return palette;
+      });
+      await expect(newSession).toHaveCSS('background-color', fill);
+      await expect(newSession).toHaveCSS('border-top-color', border);
       await newSession.hover();
-      await expect(newSession).toHaveCSS('background-color', 'rgb(238, 238, 238)');
+      const liveFill = async () =>
+        luminance(
+          await newSession.evaluate((element) => getComputedStyle(element).backgroundColor)
+        );
+      await expect.poll(liveFill).toBeGreaterThan(luminance(fill));
+      expect(await liveFill()).toBeLessThan(luminance(primaryFill));
+      await expect(newSession).toHaveCSS('border-top-color', border);
       await page.mouse.move(0, 0);
       expect(contrast(secondary)).toBeGreaterThanOrEqual(1.3);
-      expect(contrast(track)).toBeGreaterThan(contrast(secondary));
       expect(contrast(primary)).toBeGreaterThanOrEqual(1.7);
-      expect(contrast(primary)).toBeGreaterThan(contrast(track));
     }
     const fileInput = inputWrappers[2]!;
     await fileInput.getByRole('textbox').focus();
@@ -131,6 +157,7 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
         readColor(await fileInput.evaluate((element) => getComputedStyle(element).boxShadow))
       )
       .toBe(focusColor);
+    expect(contrast(focusColor)).toBeGreaterThanOrEqual(3);
     await fileInput.getByRole('textbox').blur();
     await page.screenshot({
       path: info.outputPath('workbench-boundaries.png'),

@@ -1033,11 +1033,6 @@ function submitSessionSearch(): void {
   padding: 1px 6px;
 }
 
-.session-group-tabs {
-  margin-inline: -0.7rem;
-  padding-inline: 6px;
-}
-
 .session-group-tabs ~ .session-list {
   margin-top: 0;
 }

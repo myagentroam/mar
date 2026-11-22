@@ -114,12 +114,14 @@ input:focus-visible {
   input {
     appearance: none;
     box-sizing: border-box;
-    border: 1px solid var(--mar-ui-input-border);
+    /* The outline alone identifies an unchecked box. */
+    border: 1px solid
+      color-mix(in srgb, var(--mar-ui-border-medium) 60%, var(--mar-ui-control-focus));
     border-radius: min(3px, var(--mar-ui-radius-control));
     background: var(--mar-ui-bg-panel);
   }
   .mar-ui-checkbox:hover input:enabled:not(:checked) {
-    border-color: var(--mar-ui-input-border-hover);
+    border-color: color-mix(in srgb, var(--mar-ui-border-medium) 45%, var(--mar-ui-control-focus));
   }
   input:checked {
     border-color: var(--mar-ui-control-primary-bg);

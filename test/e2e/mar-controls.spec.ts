@@ -3,6 +3,7 @@ import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palet
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/button/MarButton.vue
+// @test-covers packages/mar-ui/components/checkbox/MarCheckbox.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/mar-controls.html');
@@ -155,7 +156,31 @@ for (const [theme, width] of [
       expect(secondBox.y).toBeCloseTo(firstBox.y, 1);
       await expect(second).toHaveCSS('border-block-start-width', '0px');
     }
-    await page.getByRole('checkbox', { name: 'Read' }).check();
+    const checkbox = page.getByRole('checkbox', { name: 'Read' });
+    const checkboxContrast = async () => {
+      const colors = await checkbox.evaluate((input) => {
+        const style = getComputedStyle(input);
+        return [style.borderTopColor, style.backgroundColor];
+      });
+      const luminances = colors.map((color) => {
+        const hex = resolvedColorToHex(color);
+        return [0.2126, 0.7152, 0.0722].reduce((sum, weight, channel) => {
+          const offset = 1 + channel * 2;
+          const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+          return (
+            sum + weight * (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+          );
+        }, 0);
+      });
+      return (Math.max(...luminances) + 0.05) / (Math.min(...luminances) + 0.05);
+    };
+    await expect(checkbox).not.toBeChecked();
+    await expect(checkbox).toHaveCSS('border-top-width', '1px');
+    const restingCheckboxContrast = await checkboxContrast();
+    expect(restingCheckboxContrast).toBeGreaterThanOrEqual(3);
+    await checkbox.hover();
+    expect(await checkboxContrast()).toBeGreaterThan(restingCheckboxContrast);
+    await checkbox.check();
     await expect(page.getByRole('checkbox', { name: 'Write' })).toBeDisabled();
     await expect(page.getByLabel('Permissions value')).toHaveText('read');
     await page.getByRole('radio', { name: 'Requests' }).check();

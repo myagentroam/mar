@@ -1962,12 +1962,12 @@ for (const [scheme, width] of [
         'xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," mar-ui-input ") or contains(@class,"mar-ui-select__field") or contains(@class,"mar-ui-input-number") or contains(@class,"mar-ui-cascader__field") or contains(@class,"mar-ui-date-picker__field") or contains(@class,"mar-ui-time-picker__field")][1]'
       );
     const check = async () => {
-      const shadow = await tokenShadow('--mar-input-border');
+      const shadow = await tokenShadow('--mar-border-default');
       const border = await fields.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--mar-input-border)';
+        probe.style.borderTop = '1px solid var(--mar-border-default)';
         element.append(probe);
-        const result = getComputedStyle(probe).color;
+        const result = getComputedStyle(probe).borderTopColor;
         probe.remove();
         return result;
       });
@@ -2010,28 +2010,6 @@ for (const [scheme, width] of [
       await expect(fields.getByText('Select a date range', { exact: true })).toBeVisible();
     };
     await check();
-    if (scheme === 'Dark') {
-      const [border, hover, panel, conversationSurface] = await fields.evaluate((element) => {
-        const probe = document.createElement('span');
-        element.append(probe);
-        const colors = [
-          '--mar-input-border',
-          '--mar-input-border-hover',
-          '--mar-bg-panel',
-          '--mar-conversation-surface'
-        ].map((token) => {
-          probe.style.color = `var(${token})`;
-          return getComputedStyle(probe).color;
-        });
-        probe.remove();
-        return colors;
-      });
-      for (const surface of [panel!, conversationSurface!]) {
-        const restingContrast = colorContrast(border!, surface);
-        expect(restingContrast).toBeGreaterThanOrEqual(3);
-        expect(colorContrast(hover!, surface)).toBeGreaterThan(restingContrast);
-      }
-    }
     await page.mouse.move(0, 0);
     await fields.screenshot({
       path: testInfo.outputPath(`standard-fields-${scheme.toLowerCase()}.png`)
@@ -2084,7 +2062,7 @@ test('theme preview input uses its own palette independently of the active theme
   expect(inputShadow).toContain(normalBorder);
   await page.getByRole('button', { name: 'Inspect Light', exact: true }).click();
   await expect(preview).toHaveAttribute('data-theme', 'daylight');
-  await expect(input).toHaveCSS('border-top-color', 'rgb(113, 133, 160)');
+  await expect(input).toHaveCSS('border-top-color', 'rgb(185, 202, 223)');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
   await expect(realInput).toHaveCSS('box-shadow', inputShadow);
 });

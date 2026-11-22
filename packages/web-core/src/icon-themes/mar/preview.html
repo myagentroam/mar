@@ -42,6 +42,11 @@
         --mar-fill-selection: #dce9ff;
         --mar-fill-soft: #f8fbff;
         --mar-fill-hover: #e8f1ff;
+        --mar-session-create-fill: color-mix(
+          in srgb,
+          var(--mar-fill-selection) 84%,
+          var(--mar-fill-row-hover)
+        );
         --mar-table-header-bg: #f1f6fc;
         --mar-table-row-hover-bg: #e8f1ff;
         --mar-border-default: #b9cadf;
@@ -49,8 +54,12 @@
         --mar-workbench-divider: var(--mar-border-subtle);
         --mar-border-medium: #7185a0;
         --mar-border-strong: #5e738f;
-        --mar-input-border: var(--mar-border-medium);
-        --mar-input-border-hover: var(--mar-border-strong);
+        --mar-input-border: var(--mar-border-default);
+        --mar-input-border-hover: color-mix(
+          in srgb,
+          var(--mar-input-border),
+          var(--mar-border-strong) 20%
+        );
         --mar-text-primary: #17243a;
         --mar-text-secondary: #43536b;
         --mar-text-muted: #52647c;
@@ -171,6 +180,11 @@
         --mar-fill-selection: #373737;
         --mar-fill-soft: #222222;
         --mar-fill-hover: #2e2e2e;
+        --mar-session-create-fill: color-mix(
+          in srgb,
+          var(--mar-fill-selection) 45%,
+          var(--mar-fill-row-hover)
+        );
         --mar-table-header-bg: #222222;
         --mar-table-row-hover-bg: #2e2e2e;
         --mar-border-default: #3d3d3d;
@@ -178,16 +192,6 @@
         --mar-workbench-divider: var(--mar-border-medium);
         --mar-border-medium: #474747;
         --mar-border-strong: #606060;
-        --mar-input-border: color-mix(
-          in srgb,
-          var(--mar-border-default),
-          var(--mar-text-secondary) 37%
-        );
-        --mar-input-border-hover: color-mix(
-          in srgb,
-          var(--mar-input-border),
-          var(--mar-text-primary) 7%
-        );
         --mar-text-primary: #eaeaea;
         --mar-text-secondary: #c2c2c2;
         --mar-text-muted: #a0a0a0;

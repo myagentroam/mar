@@ -162,6 +162,14 @@ for (const [width, theme, locale] of [
       await expect(radios.nth(0)).toBeChecked();
       await expect(options.nth(0)).toHaveText(locale === 'zh-CN' ? '主会话' : 'Main');
       await expect(options.nth(1)).toHaveText(locale === 'zh-CN' ? '子会话' : 'Child');
+      const trackBounds = (await categories.boundingBox())!;
+      for (const toolbar of ['.session-search', '.new-session-form']) {
+        const row = chats.locator(toolbar);
+        await expect(row).toBeVisible();
+        const bounds = (await row.boundingBox())!;
+        expect(trackBounds.x).toBeCloseTo(bounds.x, 0);
+        expect(trackBounds.x + trackBounds.width).toBeCloseTo(bounds.x + bounds.width, 0);
+      }
       await categories.screenshot({ path: testInfo.outputPath('session-categories.png') });
       await expect(chats.locator('.session-state-badge')).toHaveCount(0);
       const colors = await chats.evaluate((element) => {
