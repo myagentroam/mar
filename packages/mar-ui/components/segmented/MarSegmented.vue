@@ -116,6 +116,8 @@ function navigateToEdge(event: KeyboardEvent): void {
   min-width: 0;
   padding-inline: var(--mar-ui-compact-option-padding-inline);
   border-radius: calc(var(--mar-ui-radius-control) - 2px);
+  color: inherit;
+  font-size: inherit;
   font-weight: 400;
   white-space: nowrap;
 }

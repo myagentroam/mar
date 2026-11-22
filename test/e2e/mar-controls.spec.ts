@@ -102,6 +102,28 @@ for (const [theme, width] of [
   ['light', 1280],
   ['dark', 390]
 ] as const) {
+  test(`MAR Input uses compact typography by default at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 930 });
+    await page.goto(`${fixture.url}mar-controls.html?theme=${theme}&inputs`);
+    await page.evaluate(() => document.documentElement.classList.add('console-ui'));
+    const input = page.getByRole('textbox', { name: 'Name', exact: true });
+    const inputSize = width >= 768 ? '12px' : '11px';
+    await expect(input).toHaveCSS('font-size', inputSize);
+    expect(await input.evaluate((field) => getComputedStyle(field, '::placeholder').fontSize)).toBe(
+      inputSize
+    );
+    const notes = page.getByRole('textbox', { name: 'Notes', exact: true });
+    const notesSize = await notes.evaluate((field) => {
+      const probe = document.createElement('span');
+      probe.style.fontSize = 'var(--mar-font-size-input)';
+      field.after(probe);
+      const size = getComputedStyle(probe).fontSize;
+      probe.remove();
+      return size;
+    });
+    await expect(notes).toHaveCSS('font-size', notesSize);
+  });
+
   test(`MAR controls render and keep interactive state at ${width}px in ${theme}`, async ({
     page
   }, testInfo) => {

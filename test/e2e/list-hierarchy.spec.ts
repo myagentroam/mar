@@ -663,7 +663,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
   test(`Quick Open and recent sessions keep regular names and distinct semantics in ${theme}`, async ({
     page
-  }) => {
+  }, testInfo) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`${fixture.url}visual-alignment.html?list-hierarchy=quick&theme=${theme}`);
@@ -685,7 +685,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(rows.first().locator('.entry-name')).toHaveCSS('font-weight', '400');
       await expect(rows.first().locator('.entry-name')).toHaveCSS('color', palette.primary);
       await expect(rows.last().locator('.entry-name')).toHaveCSS('color', palette.secondary);
-      const input = page.locator('.quick-open-input');
+      const input = page.getByRole('textbox', { name: 'Quick Open', exact: true });
+      const font = width >= 768 ? '12px' : '11px';
+      await expect(input).toHaveCSS('font-size', font);
+      expect(await input.evaluate((el) => getComputedStyle(el, '::placeholder').fontSize)).toBe(
+        font
+      );
+      await page.locator('.quick-open-input').screenshot({
+        path: testInfo.outputPath(`quick-open-search-${width}.png`)
+      });
       await input.fill('Review');
       await expect(rows.first().locator('.quick-open-match').first()).toHaveCSS(
         'color',

@@ -292,6 +292,14 @@ for (const [theme, width] of [
     await page.goto(
       `${fixture.url}hosted-entry.html?existing=1&workspace-page=1&history-open=1&theme=${theme}`
     );
+    const historyFilter = page.locator('.history-search-row .mar-ui-input');
+    await historyFilter.screenshot({ path: testInfo.outputPath('hosted-history-filter.png') });
+    const textbox = historyFilter.getByRole('textbox');
+    const font = width >= 768 ? '12px' : '11px';
+    await expect(textbox).toHaveCSS('font-size', font);
+    expect(await textbox.evaluate((el) => getComputedStyle(el, '::placeholder').fontSize)).toBe(
+      font
+    );
     const list = page.locator('.hosted-conversation-history .history-list');
     const selected = list.locator('button[aria-current="page"]');
     const idle = list.locator('.history-open:not([aria-current])');
@@ -351,9 +359,23 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           });
         else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
       });
-      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
       const inspector = page.getByRole('region', { name: 'Inspector fixture' });
       const files = inspector.locator('.file-display-filter');
+      if (theme === 'vscode-dark-2026' && width === 1280) {
+        await page.goto(
+          `${fixture.url}workbench-style.html?theme=${theme}&content-search=1&locale=zh-CN`
+        );
+        await files.screenshot({ path: testInfo.outputPath('files-filter.png') });
+        await page.locator('.workspace-tree-filter .mar-ui-input').screenshot({
+          path: testInfo.outputPath('resources-filter.png')
+        });
+        await page.locator('.session-search .mar-ui-input').screenshot({
+          path: testInfo.outputPath('sessions-filter.png')
+        });
+      }
+      await page.goto(
+        `${fixture.url}workbench-style.html?theme=${theme}&content-search=1&locale=en-US`
+      );
       await page.getByRole('button', { name: 'Open directory picker' }).click();
       const picker = page.getByRole('dialog', { name: 'Register Workspace' });
       const standard = picker.locator('.workspace-picker-filter');
@@ -369,11 +391,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             shadow: style.boxShadow,
             height: style.height,
             padding: getComputedStyle(wrapper.querySelector('.mar-ui-input__body')!).padding,
-            font: getComputedStyle(wrapper.querySelector('input')!).fontSize
+            font: getComputedStyle(wrapper.querySelector('input')!).fontSize,
+            placeholderFont: getComputedStyle(wrapper.querySelector('input')!, '::placeholder')
+              .fontSize
           };
         });
       await page.mouse.move(0, 0);
       const normal = await appearance(standard);
+      expect(normal.font).toBe(width >= 768 ? '12px' : '11px');
+      expect(normal.placeholderFont).toBe(normal.font);
       expect(normal.shadow).not.toBe('none');
       await standard.hover();
       const hover = await appearance(standard);

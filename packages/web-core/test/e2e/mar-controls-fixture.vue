@@ -8,6 +8,7 @@ import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import en from '@myagentroam/mar-ui/locale/en';
@@ -39,6 +40,7 @@ const timeChanges = ref(0);
 const expiration = ref<Date | null>(null);
 const showCommandMenu = new URLSearchParams(location.search).has('command-menu');
 const showButtonRow = new URLSearchParams(location.search).has('button-row');
+const showInputs = new URLSearchParams(location.search).has('inputs');
 const showRemoteSelect = new URLSearchParams(location.search).has('remote-select');
 const remoteLoading = ref(showRemoteSelect);
 const remoteOptions = ref<{ value: string; label: string }[]>([]);
@@ -63,6 +65,10 @@ const organizations = [
 <template>
   <article>
     <h1>MAR controls</h1>
+    <section v-if="showInputs">
+      <MarInput aria-label="Name" placeholder="Enter a name" />
+      <MarInput type="textarea" aria-label="Notes" placeholder="Enter notes" />
+    </section>
     <MarSelect
       v-if="showRemoteSelect"
       aria-label="Remote options"

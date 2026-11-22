@@ -111,6 +111,7 @@ test('Node management aligns filter typography and keeps rows compact without sh
     const status = page.getByRole('combobox', { name: 'Status:', exact: true });
     await expect(keyword).toBeVisible();
     const selectSize = await status.evaluate((control) => getComputedStyle(control).fontSize);
+    expect(selectSize).toBe(width >= 768 ? '12px' : '11px');
     const typography = await keyword.evaluate((input) => {
       const text = getComputedStyle(input);
       const placeholder = getComputedStyle(input, '::placeholder');
@@ -165,11 +166,10 @@ test('Node management aligns filter typography and keeps rows compact without sh
       .getByRole('dialog', { name: 'Edit Node' })
       .getByRole('textbox', { name: 'Node Name', exact: true });
     await expect(editor).toHaveValue('Node');
-    const resolvedEditSize = await editor.evaluate(
-      (input) => getComputedStyle(input, '::placeholder').fontSize
-    );
-    await expect(editor).toHaveCSS('font-size', resolvedEditSize);
-    expect(parseFloat(resolvedEditSize)).toBeGreaterThan(parseFloat(selectSize));
+    await expect(editor).toHaveCSS('font-size', selectSize);
+    expect(
+      await editor.evaluate((input) => getComputedStyle(input, '::placeholder').fontSize)
+    ).toBe(selectSize);
   }
 });
 
@@ -536,7 +536,7 @@ test('Quick Open keeps keyboard results visible when failed-source details expan
   await expect.poll(() => results.evaluate((el) => el.clientHeight)).toBeGreaterThanOrEqual(56);
   const notices = dialog.locator('.quick-open-statuses');
   await expect.poll(() => notices.evaluate((el) => el.clientHeight)).toBeGreaterThanOrEqual(32);
-  const input = dialog.locator('.quick-open-input');
+  const input = dialog.getByRole('textbox', { name: 'Quick Open', exact: true });
   for (let i = 0; i < 35; i++) await input.press('ArrowDown');
   await expect(dialog.locator('li[aria-selected="true"]')).toBeInViewport();
   await expect(input).toBeInViewport();
@@ -562,15 +562,21 @@ test('Quick Open keeps a single candidate compact alongside source errors', asyn
     });
   });
   await visit(page, 'quick');
-  await page.getByRole('button', { name: 'Open content' }).click();
+  const trigger = page.getByRole('button', { name: 'Open content' });
+  await trigger.click();
   const dialog = page.locator('.mar-ui-dialog:visible');
+  const input = dialog.getByRole('textbox', { name: 'Quick Open', exact: true });
+  await expect(input).toBeFocused();
   await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
-  await dialog.locator('.quick-open-input').fill('Skill 60');
+  await input.fill('Skill 60');
   const results = dialog.locator('.quick-open-results');
   await expect(results.locator('li')).toHaveCount(1);
   await expect.poll(() => results.evaluate((el) => el.clientHeight)).toBeLessThan(160);
   await expectBounded(dialog);
   await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeInViewport();
+  await input.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
 
 for (const kind of ['tokens', 'mail', 'registration', 'upload', 'quick']) {
@@ -617,7 +623,7 @@ for (const kind of ['tokens', 'mail', 'registration', 'upload', 'quick']) {
     }
     if (kind !== 'quick') await expectScrollableBody(dialog);
     if (kind === 'quick') {
-      const input = dialog.locator('.quick-open-input');
+      const input = dialog.getByRole('textbox', { name: 'Quick Open', exact: true });
       for (let i = 0; i < 35; i++) await input.press('ArrowDown');
       await expect(dialog.locator('li[aria-selected="true"]')).toBeInViewport();
       await expect(input).toBeInViewport();
