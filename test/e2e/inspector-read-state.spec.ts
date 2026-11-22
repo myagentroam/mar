@@ -106,8 +106,18 @@ for (const width of [1280, 390]) {
     );
 
     const search = page.getByTestId('Search');
+    const searchWarning = search.getByRole('alert');
+    await expect(searchWarning).toHaveText('Results are incomplete. Narrow the search scope.');
+    await expect(searchWarning).toHaveAttribute('data-type', 'warning');
+    const warningBounds = (await searchWarning.boundingBox())!;
+    const inputBounds = (await search.locator('.mar-ui-input').boundingBox())!;
+    const listBounds = (await search
+      .getByRole('list', { name: 'Content search results' })
+      .boundingBox())!;
+    expect(warningBounds.x).toBeCloseTo(inputBounds.x);
+    expect(warningBounds.x - listBounds.x).toBeGreaterThanOrEqual(6);
     await expectStatusToScrollWithRows(
-      search.locator('.content-search-warning'),
+      searchWarning,
       search.locator('.content-search-results button').first()
     );
 
