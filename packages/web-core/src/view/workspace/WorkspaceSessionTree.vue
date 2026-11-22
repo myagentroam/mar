@@ -459,10 +459,9 @@ function openContext(event: MouseEvent): void {
   cursor: pointer;
   text-align: start;
 }
-.session-tree-row:hover > .session-tree-item,
-.session-tree-item:hover,
-.session-tree-item:has([aria-expanded='true']) {
-  background: var(--mar-fill-row-hover);
+.session-tree-row:hover > .session-tree-item:not(.is-current),
+.session-tree-item:not(.is-current):is(:hover, :has([aria-expanded='true'])) {
+  background: color-mix(in srgb, var(--mar-fill-row-hover) 50%, transparent);
 }
 .session-tree-item.is-current {
   background: var(--mar-fill-selection);

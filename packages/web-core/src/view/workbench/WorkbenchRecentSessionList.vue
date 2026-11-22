@@ -175,6 +175,9 @@ function runStatusType(status: RecentRun['status']): 'success' | 'danger' | 'war
 .recent-sessions-list button:hover {
   background: var(--mar-fill-row-hover);
 }
+.recent-sessions-panel:not(.drawer-mode) .recent-sessions-list button:hover {
+  background: color-mix(in srgb, var(--mar-fill-row-hover) 50%, transparent);
+}
 .recent-sessions-list button:focus-visible {
   outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;

@@ -4,6 +4,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/styles/mar-ui-theme.css
 // @test-covers packages/web-core/src/view/workbench/WorkbenchActivityCenter.vue
+// @test-covers packages/web-core/src/view/workbench/WorkbenchRecentSessionList.vue
 // @test-covers packages/web-core/src/view/session/session-markers.css
 
 test.use({ hasTouch: true });
@@ -456,7 +457,8 @@ for (const width of [1280, 390]) {
     test(`Activity center combines lists without mixing state at ${width}px ${theme}`, async ({
       page
     }, testInfo) => {
-      await page.setViewportSize({ width, height: 850 });
+      const viewport = { width, height: 850 };
+      await page.setViewportSize(viewport);
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=zh-CN&theme=${theme}`);
       const trigger = page.locator('.activity-center-trigger');
@@ -571,6 +573,30 @@ for (const width of [1280, 390]) {
         path: testInfo.outputPath(`activity-${width}-${theme}-recent.png`),
         animations: 'disabled'
       });
+      const row = panel.locator('.recent-sessions-list button').first();
+      const rowHover = await row.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mar-fill-row-hover)';
+        element.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await row.hover();
+      await expect
+        .poll(() =>
+          row
+            .evaluate((element) => getComputedStyle(element).backgroundColor)
+            .then(resolvedColorToHex)
+        )
+        .toBe(`${resolvedColorToHex(rowHover)}${width >= 768 ? '80' : ''}`);
+      await expect(statuses.first()).toHaveCSS('color', colors.runningText);
+      if (width >= 768) {
+        await panel.screenshot({ path: testInfo.outputPath(`recent-session-hover-${theme}.png`) });
+      }
+      await page.mouse.move(viewport.width - 1, viewport.height - 1);
+      await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await panel.locator('input[value="CHILD"]').tap();
       await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(0);
       await expect(page.locator('output')).toHaveText('');
