@@ -194,6 +194,7 @@ onBeforeUnmount(() => {
             <template #agent>
               <MarDropdown
                 class="draft-agent-dropdown"
+                :placement="controller.mobileViewport.value ? 'top' : 'bottom'"
                 :disabled="
                   controller.runnerProfilesLoading.value || presentation.sessionControlsBusy
                 "

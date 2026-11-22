@@ -525,13 +525,27 @@ onBeforeUnmount(() => {
 
 .conversation-empty {
   display: grid;
-  flex: 1;
-  align-content: center;
+  flex: none;
   justify-items: center;
   gap: 0.75rem;
-  padding: 2rem 1rem;
+  padding: 0.5rem 1rem 1rem;
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+.conversation-scroll-region.is-workspace-welcome .conversation-empty {
+  gap: 0.5rem;
+  padding-block-end: 0.625rem;
+}
+
+@media (max-width: 767px) {
+  .conversation-scroll-region.is-empty .conversation-scroll {
+    padding-block-end: 0;
+  }
+
+  .conversation-empty {
+    margin-block-start: auto;
+  }
 }
 
 @media (min-width: 768px) {
@@ -551,16 +565,6 @@ onBeforeUnmount(() => {
 
   .conversation-scroll-region.is-empty .conversation-scroll-content.is-empty {
     min-height: 0;
-  }
-
-  .conversation-scroll-region.is-empty .conversation-empty {
-    flex: none;
-    padding: 0.5rem 1rem 1rem;
-  }
-
-  .conversation-scroll-region.is-workspace-welcome .conversation-empty {
-    gap: 0.5rem;
-    padding-block-end: 0.625rem;
   }
 }
 

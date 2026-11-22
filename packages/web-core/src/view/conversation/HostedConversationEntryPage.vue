@@ -148,16 +148,20 @@ onBeforeUnmount(() => {
 
 @media (max-width: 767px) {
   .hosted-entry-page {
-    place-items: end stretch;
+    place-items: stretch;
     padding: 0;
   }
 
   .conversation-create-panel {
     width: 100%;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .conversation-create-heading {
-    display: none;
+    align-content: safe end;
+    overflow: auto;
+    padding-inline: 1rem;
   }
 }
 </style>
