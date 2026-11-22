@@ -328,6 +328,10 @@ const emit = defineEmits<{
 }
 
 .composer:has(:where(.composer-input:focus)) {
+  --composer-active-boundary: var(--mar-control-focus);
+}
+
+.composer:has(:where(.composer-input:focus:read-write)) {
   --composer-active-boundary: var(--mar-conversation-activity-fg);
 }
 
@@ -406,7 +410,7 @@ const emit = defineEmits<{
 }
 
 .composer-shell:not(.composer-drop-target):has(.composer-input:focus) {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-conversation-activity-fg) 14%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--composer-active-boundary) 14%, transparent);
 }
 
 .composer-shell.composer-drop-target {
@@ -421,7 +425,7 @@ const emit = defineEmits<{
 
 .composer-shell.readonly {
   position: relative;
-  border-color: var(--mar-border-default);
+  border-color: var(--composer-active-boundary, var(--mar-border-default));
   background: var(--mar-bg-page);
 }
 

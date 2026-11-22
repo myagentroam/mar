@@ -1819,6 +1819,34 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
   });
 
+  test(`Read-only and submitting Composer keep a neutral focus in ${theme}`, async ({ page }) => {
+    for (const mode of ['readonly', 'loading']) {
+      await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-${mode}`);
+      await page.locator('html').evaluate((root) => {
+        root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
+        root.style.setProperty('--mar-control-focus', '#888888');
+      });
+      const shell = page.locator('.composer-shell');
+      const status = page.locator('.composer-working');
+      const input = page.locator('.composer-input');
+      const idleBorder = await shell.evaluate(
+        (element) => getComputedStyle(element).borderTopColor
+      );
+      await expect(input).toHaveAttribute('readonly', '');
+      await input.focus();
+      await expect(input).toBeFocused();
+      await expect(shell).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+      await expect(shell).toHaveCSS(
+        'box-shadow',
+        'color(srgb 0.533333 0.533333 0.533333 / 0.14) 0px 0px 0px 2px'
+      );
+      await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+      await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
+      await input.blur();
+      await expect(shell).toHaveCSS('border-top-color', idleBorder);
+    }
+  });
+
   test(`Idle Composer uses the activity color only while focused in ${theme}`, async ({
     page
   }, testInfo) => {

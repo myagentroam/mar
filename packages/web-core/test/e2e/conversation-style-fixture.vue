@@ -24,6 +24,8 @@ const input = ref('Review the result');
 const sidebarCollapsed = ref(false);
 const reconnecting = new URL(location.href).searchParams.has('reconnecting');
 const composerFocusFixture = new URL(location.href).searchParams.has('composer-focus');
+const composerReadonlyFixture = new URL(location.href).searchParams.has('composer-readonly');
+const composerLoadingFixture = new URL(location.href).searchParams.has('composer-loading');
 const composerDragging = ref(false);
 const processStopping = new URL(location.href).searchParams.has('process-stopping');
 const themes = themePreferenceService();
@@ -831,11 +833,11 @@ function announceFixtureUpdate() {
       working-label="Working"
       :connection-label="reconnecting ? 'Reconnecting' : undefined"
       :connection-busy="reconnecting"
-      :readonly="false"
+      :readonly="composerReadonlyFixture"
       :drop-target="composerDragging"
       :mobile-viewport="false"
       :command-states="[]"
-      :loading="false"
+      :loading="composerLoadingFixture"
       :skill-tokens="[]"
       @dragenter="composerDragging = composerFocusFixture"
       @dragleave="composerDragging = false"
