@@ -1920,7 +1920,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     );
   });
 
-  test(`Composer focus keeps toolbar and drop feedback neutral in ${theme}`, async ({ page }) => {
+  test(`Composer keeps toolbar and drop cues separate from editor focus in ${theme}`, async ({
+    page
+  }) => {
     await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-focus`);
     await page.locator('html').evaluate((root) => {
       root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
@@ -1941,7 +1943,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(shell).toHaveCSS('box-shadow', 'none');
     await expect(status).toHaveCSS('border-top-color', 'rgb(68, 68, 68)');
 
-    await input.focus();
     await shell.dispatchEvent('dragenter');
     await expect(shell).toHaveCSS('outline-style', 'dashed');
     await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
@@ -1949,12 +1950,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(shell).toHaveCSS('box-shadow', 'none');
     await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
+    await input.focus();
+    await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+    await expect(shell).toHaveCSS('box-shadow', 'none');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
     await shell.dispatchEvent('dragleave');
     await expect(input).toBeFocused();
     await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
   });
 
-  test(`Read-only and loading Composer keep a neutral focus in ${theme}`, async ({ page }) => {
+  test(`Read-only and synchronizing Composer keep the activity focus in ${theme}`, async ({
+    page
+  }) => {
     for (const mode of ['readonly', 'loading']) {
       await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&composer-${mode}`);
       await page.locator('html').evaluate((root) => {
@@ -1968,17 +1976,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         (element) => getComputedStyle(element).borderTopColor
       );
       await expect(input).toHaveAttribute('readonly', '');
+      await expect(status.getByRole('status')).toHaveText(
+        mode === 'loading' ? 'Synchronizing conversation' : 'Working'
+      );
       await input.focus();
       await expect(input).toBeFocused();
-      await expect(shell).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
-      await expect(shell).toHaveCSS(
-        'box-shadow',
-        'color(srgb 0.533333 0.533333 0.533333 / 0.14) 0px 0px 0px 2px'
-      );
-      await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+      await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
+      await expect(shell).toHaveCSS('box-shadow', 'color(srgb 1 0 1 / 0.14) 0px 0px 0px 2px');
+      await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
       await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
       await input.blur();
       await expect(shell).toHaveCSS('border-top-color', idleBorder);
+      await expect(shell).toHaveCSS('box-shadow', 'none');
     }
   });
 

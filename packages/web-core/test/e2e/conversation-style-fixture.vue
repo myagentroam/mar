@@ -872,8 +872,14 @@ function announceFixtureUpdate() {
       placeholder="Message"
       :working="true"
       working-label="Working"
-      :connection-label="reconnecting ? 'Reconnecting' : undefined"
-      :connection-busy="reconnecting"
+      :connection-label="
+        composerLoadingFixture
+          ? 'Synchronizing conversation'
+          : reconnecting
+            ? 'Reconnecting'
+            : undefined
+      "
+      :connection-busy="reconnecting || composerLoadingFixture"
       :readonly="composerReadonlyFixture"
       :drop-target="composerDragging"
       :mobile-viewport="false"
