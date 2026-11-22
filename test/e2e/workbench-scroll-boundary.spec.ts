@@ -161,7 +161,9 @@ test('Desktop Git Changes contains both axes without disabling ordinary scrollin
   expect(await header.boundingBox()).toEqual(frame);
 });
 
-test('Desktop Terminal contains gestures around its virtual scrollback', async ({ page }) => {
+test('Desktop Terminal contains gestures and overlays reconnect status without resizing', async ({
+  page
+}) => {
   await page.setViewportSize({ width: 1440, height: 800 });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.route('**/api/auth/me', (route) =>
@@ -186,20 +188,19 @@ test('Desktop Terminal contains gestures around its virtual scrollback', async (
   const attached = JSON.stringify({ type: 'attach', terminalId: 'terminal-1' });
   await expect.poll(() => connections.length).toBe(1);
   connections[0]!.send(attached);
-  const original = (await host.boundingBox())!;
+  const outputPosition = () =>
+    host.evaluate(({ offsetTop, offsetHeight }) => [offsetTop, offsetHeight]);
+  const original = await outputPosition();
   await connections[0]!.close({ code: 1011 });
   await expect(status).toBeVisible();
-  await expect
-    .poll(async () => {
-      const banner = (await status.boundingBox())!;
-      return (await host.boundingBox())!.y - (banner.y + banner.height);
-    })
-    .toBeGreaterThanOrEqual(0);
-  expect((await host.boundingBox())!.height).toBeLessThan(original.height);
+  expect(await outputPosition()).toEqual(original);
+  const banner = (await status.boundingBox())!;
+  const output = (await host.boundingBox())!;
+  expect(banner.y).toBeGreaterThanOrEqual(output.y);
+  expect(banner.y + banner.height).toBeLessThan(output.y + output.height);
+  await expect(status).toHaveCSS('pointer-events', 'none');
   await expect.poll(() => connections.length).toBe(2);
   connections[1]!.send(attached);
   await expect(status).toHaveCount(0);
-  const restored = (await host.boundingBox())!;
-  expect(restored.y).toBeCloseTo(original.y);
-  expect(restored.height).toBeCloseTo(original.height);
+  expect(await outputPosition()).toEqual(original);
 });
