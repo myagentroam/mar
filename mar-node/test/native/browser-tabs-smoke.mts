@@ -16,6 +16,7 @@ const server = createServer((request, response) => {
   response.writeHead(200, { 'Content-Type': 'text/html' }).end(`
     <a href="/popup" target="_blank" rel="opener">Open popup</a>
     <button onclick="history.pushState({}, '', '#chapter')">Add history</button>
+    <button onclick="window.close()">Close window</button>
     <input aria-label="Message" />
   `);
 }).listen(0, '127.0.0.1');
@@ -85,6 +86,23 @@ try {
     assert.equal(replacement.tabs.length, 1);
     assert.notEqual(replacement.activeId, activeId);
     assert.equal(replacement.tabs[0]?.url, 'about:blank');
+
+    const blank = context.pages()[0]!;
+    await blank.goto(`${base}/start`);
+    const lastPopupEvent = blank.waitForEvent('popup');
+    await blank.getByRole('link', { name: 'Open popup' }).click();
+    const lastPopup = await lastPopupEvent;
+    await tabs.close(replacement.activeId!);
+    const nextBlankEvent = context.waitForEvent('page', { timeout: 3_000 });
+    await lastPopup.getByRole('button', { name: 'Close window' }).click();
+    const nextBlank = await nextBlankEvent;
+    assert.equal(nextBlank.url(), 'about:blank');
+    assert.deepEqual(
+      tabs.snapshot().tabs.map(({ url }) => url),
+      ['about:blank']
+    );
+    await context.close();
+    assert.deepEqual(tabs.snapshot().tabs, []);
     assert(changed > 2);
     assert.deepEqual(errors, []);
     console.log('Browser tab and navigation smoke passed.');

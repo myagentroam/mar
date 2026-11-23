@@ -92,7 +92,11 @@ export class BrowserSessionService<T> {
   async shutdown(): Promise<void> {
     this.stopped = true;
     clearTimeout(this.timer);
-    await Promise.all([...this.entries].map(([key, entry]) => this.stopEntry(key, entry)));
+    const stopped = await Promise.allSettled(
+      [...this.entries].map(([key, entry]) => this.stopEntry(key, entry))
+    );
+    const failure = stopped.find((result) => result.status === 'rejected');
+    if (failure) throw failure.reason;
   }
 
   private key({ workspaceId, userId }: BrowserSessionKey): string {

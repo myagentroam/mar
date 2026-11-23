@@ -2,16 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeBrowserFrame } from '@myagentroam/protocol';
 import { BrowserViewport } from '../../src/service/browser-viewport.js';
 
-const chunks = (sequence = 1, viewVersion = 1) => [
-  ...encodeBrowserFrame({
-    sequence,
-    viewVersion,
-    width: 1280,
-    height: 800,
-    key: true,
-    data: new Uint8Array(17 * 1024)
-  })
-];
+const chunks = (sequence = 1, viewVersion = 1, key = true) =>
+  [
+    ...encodeBrowserFrame({
+      sequence,
+      viewVersion,
+      width: 1280,
+      height: 800,
+      key,
+      data: new Uint8Array(17 * 1024)
+    })
+  ].map(({ bytes }) => bytes);
 
 function fixture() {
   const drawImage = vi.fn();
@@ -94,16 +95,8 @@ describe('Browser viewport', () => {
 
   it('requires a key access unit before accepting frames for a new view', async () => {
     const { viewport } = fixture();
-    const [delta] = [
-      ...encodeBrowserFrame({
-        sequence: 1,
-        viewVersion: 1,
-        width: 1280,
-        height: 800,
-        key: false,
-        data: new Uint8Array(20)
-      })
-    ];
-    await expect(viewport.receive(delta!)).rejects.toThrow('Expected a key frame.');
+    const [first, last] = chunks(1, 1, false);
+    expect(await viewport.receive(first!)).toBeUndefined();
+    await expect(viewport.receive(last!)).rejects.toThrow('Expected a key frame.');
   });
 });

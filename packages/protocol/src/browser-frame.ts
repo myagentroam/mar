@@ -1,8 +1,7 @@
 export const BROWSER_FRAME_MESSAGE_BYTES = 16 * 1024;
 export const BROWSER_FRAME_MAX_BYTES = 512 * 1024;
 export const BROWSER_VIDEO_CODEC = 'avc1.42001f';
-export const BROWSER_FRAME_HEADER_BYTES = 21;
-const HEADER_BYTES = BROWSER_FRAME_HEADER_BYTES;
+const HEADER_BYTES = 21;
 const PAYLOAD_BYTES = BROWSER_FRAME_MESSAGE_BYTES - HEADER_BYTES;
 
 export interface BrowserFrame {
@@ -23,7 +22,9 @@ function uint(value: number, max: number): boolean {
 }
 
 /** Encodes one H.264 access unit lazily; waiting for transport capacity need not allocate its remaining chunks. */
-export function* encodeBrowserFrame(frame: BrowserFrame): Generator<Uint8Array> {
+export function* encodeBrowserFrame(
+  frame: BrowserFrame
+): Generator<{ bytes: Uint8Array; final: boolean }> {
   const { sequence, viewVersion, width, height, key, data } = frame;
   if (
     !uint(sequence, 0xffffffff) ||
@@ -46,7 +47,7 @@ export function* encodeBrowserFrame(frame: BrowserFrame): Generator<Uint8Array> 
     header.setUint32(16, data.byteLength);
     header.setUint8(20, key ? 1 : 0);
     chunk.set(payload, HEADER_BYTES);
-    yield chunk;
+    yield { bytes: chunk, final: offset + payload.byteLength === data.byteLength };
   }
 }
 

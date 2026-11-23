@@ -1,5 +1,4 @@
 import {
-  BROWSER_FRAME_HEADER_BYTES,
   BROWSER_FRAME_MAX_BYTES,
   encodeBrowserFrame,
   type BrowserFrame
@@ -98,7 +97,7 @@ export class BrowserFrameStream {
   private async encodeAndSend(capture: Capture, flight: Flight): Promise<void> {
     const { jpeg, ...view } = capture;
     const key = view.viewVersion !== this.encodedView;
-    let encoded: Pick<BrowserFrame, 'data' | 'key'> | undefined;
+    let encoded: Pick<BrowserFrame, 'data' | 'key'>;
     try {
       encoded = await this.options.encode(jpeg, key);
     } catch {
@@ -107,7 +106,6 @@ export class BrowserFrameStream {
     }
     if (this.flight !== flight) return;
     if (
-      !encoded ||
       !encoded.data.byteLength ||
       encoded.data.byteLength > BROWSER_FRAME_MAX_BYTES ||
       (key && !encoded.key)
@@ -121,12 +119,14 @@ export class BrowserFrameStream {
       return;
     }
     this.encodedView = view.viewVersion;
-    let remaining = encoded.data.byteLength;
-    for (const chunk of encodeBrowserFrame({ ...view, ...encoded, sequence: flight.sequence })) {
+    for (const { bytes, final } of encodeBrowserFrame({
+      ...view,
+      ...encoded,
+      sequence: flight.sequence
+    })) {
       this.abort.signal.throwIfAborted();
-      remaining -= chunk.byteLength - BROWSER_FRAME_HEADER_BYTES;
-      if (remaining === 0) flight.finalChunkStarted = true;
-      await this.options.send(chunk, this.abort.signal);
+      flight.finalChunkStarted = final;
+      await this.options.send(bytes, this.abort.signal);
     }
   }
 

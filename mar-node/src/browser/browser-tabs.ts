@@ -7,10 +7,12 @@ type Tab = { id: string; page: Page; view: BrowserPageView };
 /** Owns tab identities and active selection for one owned browsing context.
  * Playwright remains the source of URLs, history and popup behavior; the
  * session owns context shutdown and the attachment owns calls and snapshots.
+ * A live context whose last page closes gets a single replacement blank tab.
  */
 export class BrowserTabs {
   private readonly tabs = new Map<string, Tab>();
   private activeId: string | undefined;
+  private replacing: Promise<void> | undefined;
 
   constructor(
     private readonly context: BrowserContext,
@@ -36,6 +38,7 @@ export class BrowserTabs {
   }
 
   async open(): Promise<void> {
+    if (this.replacing) return this.replacing;
     if (this.tabs.size >= this.options.limit) throw new Error('BROWSER_TAB_LIMIT');
     await this.context.newPage();
   }
@@ -49,7 +52,7 @@ export class BrowserTabs {
 
   async close(id: string): Promise<void> {
     await this.get(id).page.close();
-    if (this.tabs.size === 0) await this.open();
+    await this.replacing;
   }
 
   private get(id: string): Tab {
@@ -72,6 +75,17 @@ export class BrowserTabs {
     page.once('close', () => {
       this.tabs.delete(id);
       if (this.activeId === id) this.activeId = [...this.tabs.keys()].at(-1);
+      if (this.tabs.size === 0 && !this.context.isClosed() && !this.replacing) {
+        this.replacing = this.context
+          .newPage()
+          .then(() => undefined)
+          .catch((error: unknown) => {
+            if (!this.context.isClosed()) this.options.failed(error);
+          })
+          .finally(() => {
+            this.replacing = undefined;
+          });
+      }
       this.options.changed();
     });
     if (notify) this.options.changed();

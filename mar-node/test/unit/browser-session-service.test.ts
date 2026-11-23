@@ -85,4 +85,34 @@ describe('Node Browser live session cache', () => {
     await shuttingDown;
     expect(close).toHaveBeenCalledOnce();
   });
+
+  it('waits for other processes to exit before reporting a shutdown failure', async () => {
+    const exit = Promise.withResolvers<void>();
+    const failure = new Error('Browser process did not exit');
+    const close = vi.fn(() => exit.promise);
+    const service = new BrowserSessionService({
+      launch: async ({ workspaceId }) => ({
+        resource: {},
+        close:
+          workspaceId === one.workspaceId
+            ? async () => {
+                throw failure;
+              }
+            : close
+      }),
+      limit: 2,
+      onCloseFailed: vi.fn()
+    });
+    await Promise.all([service.open(one), service.open(two)]);
+    const reported = vi.fn();
+    const shutdown = service.shutdown().catch(reported);
+    try {
+      await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+      expect(reported).not.toHaveBeenCalled();
+    } finally {
+      exit.resolve();
+      await shutdown;
+    }
+    expect(reported).toHaveBeenCalledExactlyOnceWith(failure);
+  });
 });
