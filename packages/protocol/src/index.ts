@@ -23,6 +23,8 @@ export * from './git-identity.js';
 export * from './direct-transfer.js';
 export * from './terminal-direct.js';
 export * from './remote-desktop.js';
+export * from './browser-frame.js';
+export * from './browser-input.js';
 export * from './mail-notification.js';
 export * from './marctl-execution-credential.js';
 export * from './notification-channels.js';
