@@ -599,7 +599,10 @@ describe('Workbench surface composition behavior', () => {
     const git = page.files.workspaceGit;
     const reset = vi.spyOn(git, 'reset');
     const view = renderComponent(Surface, { page });
-    const rows = () => view.findAll('li').filter((node) => node.props.class === 'change-entry');
+    const rows = () =>
+      view
+        .findAll('li')
+        .filter((node) => String(node.props.class).split(/\s+/u).includes('change-entry'));
     try {
       await nextTick();
       expect(rows()).toHaveLength(200);

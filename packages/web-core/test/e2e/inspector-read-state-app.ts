@@ -15,6 +15,7 @@ import '../../src/styles.css';
 
 const parameters = new URL(location.href).searchParams;
 const scrollFeedback = parameters.has('scroll-feedback');
+const rowStyles = parameters.has('row-styles');
 localePreferenceService().setLocale(parameters.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
 themePreferenceService().setTheme(
   parameters.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
@@ -53,13 +54,24 @@ function treeNode(path: string, kind: 'FILE' | 'DIRECTORY'): WorkspaceFileTreeNo
 const source = treeNode('src', 'DIRECTORY');
 const nested = treeNode('src/nested', 'DIRECTORY');
 nested.children = [treeNode('src/nested/existing.ts', 'FILE')];
-nested.failedAppend = true;
 source.children = [treeNode('src/existing.ts', 'FILE'), nested];
-source.failedAppend = false;
+if (rowStyles) {
+  nested.expanded = false;
+} else {
+  nested.failedAppend = true;
+  source.failedAppend = false;
+}
 files.tree.root.value.loaded = true;
 files.tree.root.value.children = scrollFeedback
   ? Array.from({ length: 60 }, (_, index) => treeNode(`file-${index}.ts`, 'FILE'))
-  : [source];
+  : rowStyles
+    ? [
+        { ...treeNode('scripts', 'DIRECTORY'), expanded: false },
+        source,
+        treeNode('README.md', 'FILE'),
+        treeNode('package.json', 'FILE')
+      ]
+    : [source];
 const watchStatus = ref<'ready' | 'failed'>('ready');
 const changesWatchStatus = ref<'ready' | 'loading'>('ready');
 const search = createWorkspaceContentSearchService({ http, onFailure: noop });
