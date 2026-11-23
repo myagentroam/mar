@@ -236,7 +236,7 @@ function activate(name: Name): void {
           ]"
         >
           <button
-            v-tooltip="workbench ? (tab.description ?? tab.label) : tab.description"
+            v-tooltip="tab.tooltip ?? tab.description ?? (workbench ? tab.label : undefined)"
             :class="[tabClass, workbench && 'mar-tab-strip-tab']"
             type="button"
             role="tab"
@@ -256,7 +256,7 @@ function activate(name: Name): void {
           </button>
           <button
             v-if="tab.closeLabel"
-            v-tooltip="tab.closeLabel"
+            v-tooltip="tab.closeTooltip ?? tab.closeLabel"
             class="mar-tab-close mar-tab-strip-close"
             :class="closeClass"
             type="button"

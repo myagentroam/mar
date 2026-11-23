@@ -94,8 +94,16 @@ export const personalSettingsEnUS = {
     composer: 'Messages and queue'
   },
   keyboardShortcuts: {
+    actionHint: '{label} ({keys})',
+    findInputHint: '{label} (press {keys} in the find box)',
+    queueInputHint: '{label} (press {keys} in the queue editor)',
+    composerInputHint: '{label} (press {keys} in the message field)',
+    focusContentSearch: 'Focus file content search',
+    refreshGitChanges: 'Open and refresh Git Changes',
+    toggleTerminal: 'Expand or collapse the terminal',
+    queueMessage: 'Queue message',
     platformHint:
-      'On macOS, use Command instead of Ctrl for Workspace and file shortcuts, and Option instead of Alt. Workspace Ctrl+Tab and Ctrl+W combinations, and Composer and queue Ctrl+Enter, still use Control.',
+      'Keys are shown for your current platform. If the browser intercepts a new-window or close-tab shortcut, use the listed Alt or Option combination.',
     openRecentSessions: 'Global: Open or close Recent Sessions',
     cycleWorkspaceTabs: 'Workspace: Switch to the previous or next tab (wraps around)',
     cycleWorkspaceTabsWithCtrlTab: 'Workspace: Switch to the next or previous tab (wraps around)',

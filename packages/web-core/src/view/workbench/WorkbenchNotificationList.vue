@@ -163,6 +163,11 @@ async function retrySnapshot(): Promise<void> {
                 v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
                 type="button"
                 class="mar-icon-button mar-icon-action workbench-notification-delete"
+                v-tooltip="
+                  translate('generated.workbenchNotificationCenter.delete', {
+                    value0: task.name
+                  })
+                "
                 :aria-label="
                   translate('generated.workbenchNotificationCenter.delete', {
                     value0: task.name
@@ -209,6 +214,11 @@ async function retrySnapshot(): Promise<void> {
             <button
               v-if="notification.kind !== 'web-update'"
               class="mar-icon-button mar-icon-action mar-icon-action--inline workbench-notification-delete"
+              v-tooltip="
+                translate('generated.workbenchNotificationCenter.deleteNotification', {
+                  value0: notification.title
+                })
+              "
               :aria-label="
                 translate('generated.workbenchNotificationCenter.deleteNotification', {
                   value0: notification.title

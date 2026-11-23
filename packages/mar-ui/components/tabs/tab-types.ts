@@ -4,8 +4,10 @@ export interface MarTabsTab<Name extends TabName = TabName> {
   readonly name: Name;
   readonly label: string;
   readonly description?: string | undefined;
+  readonly tooltip?: string | undefined;
   readonly disabled?: boolean | undefined;
   readonly closeLabel?: string | undefined;
+  readonly closeTooltip?: string | undefined;
   readonly closeDisabled?: boolean | undefined;
   readonly separatorBefore?: boolean | undefined;
 }

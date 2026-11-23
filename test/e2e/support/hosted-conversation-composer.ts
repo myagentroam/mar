@@ -23,7 +23,7 @@ export async function replaceActiveHostedConversationMessage(
     modelId: 'model-1',
     deliveryIntent: 'REPLACE_CURRENT'
   });
-  await expect(page.getByRole('button', { name: '停止（Esc）' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '停止', exact: true })).toBeEnabled();
   await composer.press('Escape');
   await expect
     .poll(() => writes.filter((entry) => entry.url.endsWith('/interrupt')).length)

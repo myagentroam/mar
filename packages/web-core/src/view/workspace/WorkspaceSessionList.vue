@@ -12,6 +12,7 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
+import { shortcutTooltip, workspaceKeys } from '../../service/console-shortcut-keys.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -406,6 +407,12 @@ function submitSessionSearch(): void {
     </form>
     <div class="new-session-form">
       <MarButton
+        v-tooltip="
+          shortcutTooltip(
+            translate('generated.workspaceSessionList.newSession'),
+            nodeReady ? workspaceKeys.newSession : []
+          )
+        "
         class="new-session-button mar-session-create-action"
         icon="session-add"
         :disabled="!nodeReady"
@@ -416,6 +423,7 @@ function submitSessionSearch(): void {
       <MarDropdown trigger="click" popper-class="workspace-tool-menu">
         <button
           class="workspace-more-button mar-icon-action"
+          v-tooltip="translate('generated.workspaceSessionList.moreWorkspaceActions')"
           :aria-label="translate('generated.workspaceSessionList.moreWorkspaceActions')"
           :disabled="!nodeReady"
           type="button"

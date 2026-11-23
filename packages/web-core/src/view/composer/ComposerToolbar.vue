@@ -6,9 +6,12 @@ import ComposerSendButton from './ComposerSendButton.vue';
 import './composer-toolbar.css';
 import { translate } from '../../service/locale-preference-service.js';
 import {
+  composerModelKeys,
   composerSendKeys,
   composerStopKeys,
-  shortcutKeyLabel
+  shortcutKeyLabel,
+  shortcutKeysLabel,
+  shortcutTooltip
 } from '../../service/console-shortcut-keys.js';
 import { computed, ref, useTemplateRef } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
@@ -23,6 +26,7 @@ const props = defineProps<{
   readonly modelEffortSelection: string | undefined;
   readonly modelEffortLabel: string;
   readonly hideModelSelection?: boolean;
+  readonly modelShortcut?: boolean;
   readonly hideAccessSelection?: boolean;
   readonly selectedModel: string;
   readonly selectedEffort: string;
@@ -75,6 +79,29 @@ const canSteer = computed(
     props.canInterrupt &&
     !props.hasSelectedCommand
 );
+const sendDisabled = computed(
+  () =>
+    (!props.inputHasContent && !props.hasSelectedCommand) ||
+    props.loading ||
+    props.submitting ||
+    (props.attachmentsPending && !props.hasSelectedCommand)
+);
+const sendTooltip = computed(() => {
+  if (props.submitting) return translate('workbench.sending');
+  const label = translate(
+    props.interruptVisible && !props.hasSelectedCommand
+      ? 'keyboardShortcuts.queueMessage'
+      : 'generated.composerToolbar.send2'
+  );
+  if (props.mobileViewport || sendDisabled.value) return label;
+  const send = shortcutTooltip(label, [composerSendKeys[0]]);
+  return canSteer.value
+    ? `${send}\n${translate('keyboardShortcuts.composerInputHint', {
+        label: translate('composerSend.steer'),
+        keys: shortcutKeysLabel([composerSendKeys[1]])
+      })}`
+    : send;
+});
 const contextHint = computed(() =>
   [
     props.contextUsageLabel,
@@ -197,6 +224,7 @@ function selectFiles(event: Event): void {
       >
         <MarSelect
           :model-value="runner"
+          :tooltip="translate('common.runner')"
           :aria-label="translate('common.runner')"
           class="composer-runner-select"
           popper-class="composer-mini-popper composer-runner-popper"
@@ -226,6 +254,15 @@ function selectFiles(event: Event): void {
             :disabled="configurationDisabled"
             :placeholder="modelEffortLabel"
             :aria-label="translate('generated.composerToolbar.modelAndReasoningEffort')"
+            :tooltip="
+              modelShortcut && !configurationDisabled
+                ? shortcutTooltip(
+                    modelEffortLabel ||
+                      translate('generated.composerToolbar.modelAndReasoningEffort'),
+                    composerModelKeys
+                  )
+                : undefined
+            "
             class="composer-model-effort-select mar-composer-dropdown-trigger"
             :popper-class="
               hasModelAndEffort
@@ -328,9 +365,12 @@ function selectFiles(event: Event): void {
       v-tooltip="
         activeRun?.status === 'CANCELLING'
           ? translate('generated.composerToolbar.stopping')
-          : translate('generated.composerToolbar.stopRunEsc', {
-              stop: shortcutKeyLabel(composerStopKeys[0])
-            })
+          : canInterrupt
+            ? translate('keyboardShortcuts.composerInputHint', {
+                label: translate('generated.composerToolbar.stopRun'),
+                keys: shortcutKeysLabel(composerStopKeys)
+              })
+            : translate('generated.composerToolbar.stopRun')
       "
       v-if="interruptVisible"
       class="composer-stop-button mar-composer-action mar-composer-stop-action"
@@ -342,15 +382,10 @@ function selectFiles(event: Event): void {
       <MarIcon name="stop" />
     </button>
     <ComposerSendButton
-      v-tooltip="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send2')"
+      v-tooltip="sendTooltip"
       v-if="!canInterrupt || inputHasContent"
       class="composer-send-button mar-composer-action"
-      :disabled="
-        (!inputHasContent && !hasSelectedCommand) ||
-        loading ||
-        submitting ||
-        (attachmentsPending && !hasSelectedCommand)
-      "
+      :disabled="sendDisabled"
       :mobile-viewport="mobileViewport"
       :can-steer="canSteer"
       :context-key="`${contextKey ?? ''}:${activeRun?.id ?? ''}`"

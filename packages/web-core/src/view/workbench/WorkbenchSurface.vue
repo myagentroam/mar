@@ -5,6 +5,7 @@
 >
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
+import { shortcutTooltip, workspaceKeys } from '../../service/console-shortcut-keys.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -219,10 +220,30 @@ function openPaneSurface(surface: 'sessions' | 'inspector' | 'terminal'): void {
 }
 const asideTools = computed(() => [
   { id: 'files' as const, label: translate('generated.workspaceInspector.files3') },
-  { id: 'search' as const, label: translate('generated.workspaceInspector.search') },
-  { id: 'changes' as const, label: translate('generated.workspaceInspector.gitChanges') },
+  {
+    id: 'search' as const,
+    label: translate('generated.workspaceInspector.search'),
+    tooltip: props.page.files.contentSearchReady
+      ? shortcutTooltip(translate('keyboardShortcuts.focusContentSearch'), workspaceKeys.search)
+      : undefined
+  },
+  {
+    id: 'changes' as const,
+    label: translate('generated.workspaceInspector.gitChanges'),
+    tooltip:
+      props.page.files.filesReady &&
+      props.page.resources.selectedWorkspace?.kind === 'GIT_WORKSPACE'
+        ? shortcutTooltip(translate('keyboardShortcuts.refreshGitChanges'), workspaceKeys.changes)
+        : undefined
+  },
   { id: 'history' as const, label: translate('generated.workspaceInspector.gitHistory') },
-  { id: 'terminal' as const, label: translate('generated.terminalDock.workspaceTerminal') }
+  {
+    id: 'terminal' as const,
+    label: translate('generated.terminalDock.workspaceTerminal'),
+    tooltip: props.page.terminal.terminalReady
+      ? shortcutTooltip(translate('keyboardShortcuts.toggleTerminal'), workspaceKeys.terminal)
+      : undefined
+  }
 ]);
 const asideSessions = computed(() =>
   (props.page.aside.asideState?.sessions ?? []).map((sessionId) => {

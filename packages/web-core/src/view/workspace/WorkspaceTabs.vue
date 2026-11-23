@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { closeTabKeys, shortcutTooltip } from '../../service/console-shortcut-keys.js';
 import '../session/session-markers.css';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -343,6 +344,7 @@ function activate(tab: WorkspaceTab): void {
     <button
       v-if="hasOverflow"
       class="tab-strip-scroll mar-icon-action"
+      v-tooltip="translate('workspaceTabs.scrollPrevious')"
       :aria-label="translate('workspaceTabs.scrollPrevious')"
       :disabled="!canScrollLeft"
       type="button"
@@ -444,6 +446,12 @@ function activate(tab: WorkspaceTab): void {
         <button
           v-else
           class="tab-close mar-icon-button mar-icon-action mar-icon-action--inline"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.workspaceTabs.close', { value0: tab.label }),
+              tab.id === activeTabId ? closeTabKeys : []
+            )
+          "
           :aria-label="translate('generated.workspaceTabs.close', { value0: tab.label })"
           type="button"
           @click="emit('close', tab)"
@@ -455,6 +463,7 @@ function activate(tab: WorkspaceTab): void {
     <div v-if="hasOverflow" class="workspace-tab-overflow-actions">
       <button
         class="tab-strip-scroll mar-icon-action"
+        v-tooltip="translate('workspaceTabs.scrollNext')"
         :aria-label="translate('workspaceTabs.scrollNext')"
         :disabled="!canScrollRight"
         type="button"
@@ -465,6 +474,7 @@ function activate(tab: WorkspaceTab): void {
       <MarDropdown trigger="click" @command="activateFromMenu">
         <button
           class="workspace-tab-menu mar-icon-action"
+          v-tooltip="translate('workspaceTabs.allOpenWorkspaces')"
           :aria-label="translate('workspaceTabs.allOpenWorkspaces')"
           type="button"
         >

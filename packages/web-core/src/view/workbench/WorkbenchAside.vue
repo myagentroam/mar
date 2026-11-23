@@ -9,7 +9,11 @@ import {
   consoleKeyboardShortcutService,
   type ConsoleShortcutBinding
 } from '../../service/console-keyboard-shortcut-service.js';
-import { workspaceKeys } from '../../service/console-shortcut-keys.js';
+import {
+  closeTabKeys,
+  shortcutTooltip,
+  workspaceKeys
+} from '../../service/console-shortcut-keys.js';
 import type {
   AsideSession,
   AsideState,
@@ -21,7 +25,11 @@ import type {
 const props = defineProps<{
   readonly workspace: AsideWorkspace;
   readonly state: AsideState;
-  readonly tools: readonly { readonly id: AsideTool; readonly label: string }[];
+  readonly tools: readonly {
+    readonly id: AsideTool;
+    readonly label: string;
+    readonly tooltip?: string | undefined;
+  }[];
   readonly browserLabel: string;
   readonly sessions: readonly {
     readonly sessionId: string;
@@ -54,6 +62,7 @@ type AsideTab = {
   label: string;
   active: boolean;
   target: AsideTarget;
+  tooltip?: string | undefined;
   closeLabel?: string;
   separatorBefore?: boolean;
 };
@@ -63,6 +72,7 @@ const entries = computed<AsideTab[]>(() => [
     .map((tool) => ({
       id: `tool:${tool.id}`,
       label: tool.label,
+      tooltip: tool.tooltip,
       active: false,
       target: { kind: 'tool', id: tool.id } as AsideTarget
     })),
@@ -93,10 +103,13 @@ const entries = computed<AsideTab[]>(() => [
     : [])
 ]);
 const tabItems = computed(() =>
-  entries.value.map(({ id, label, closeLabel, separatorBefore }) => ({
+  entries.value.map(({ id, label, tooltip, closeLabel, separatorBefore }) => ({
     name: id,
     label,
+    tooltip,
     closeLabel,
+    closeTooltip:
+      closeLabel && shortcutTooltip(closeLabel, id === activeId.value ? closeTabKeys : []),
     separatorBefore
   }))
 );
@@ -242,6 +255,7 @@ onBeforeUnmount(() => {
         v-if="mobile"
         type="button"
         class="workbench-aside-back mar-icon-action"
+        v-tooltip="closeSurfaceLabel"
         :aria-label="closeSurfaceLabel"
         @click="emit('closeSurface')"
       >

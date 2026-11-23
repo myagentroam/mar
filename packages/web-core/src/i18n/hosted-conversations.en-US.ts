@@ -142,7 +142,7 @@ export const hostedConversationsEnUS = {
     stop: 'Stop',
     stopWithEsc: 'Stop (Esc)',
     runActive: 'A task is already in progress.',
-    replaceCurrentHint: 'While working, press Ctrl+Enter to steer with this message.',
+    replaceCurrentHint: 'While working, press {keys} to steer with this message.',
     replaceCurrentUnsupported: 'This host does not support steering an in-progress task.',
     rollbackTitle: 'Roll back conversation?',
     rollbackConfirmation:

@@ -550,6 +550,11 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
               'node-expand-button mar-icon-action mar-icon-action--inline',
               { expanded: expandedNodeIds.includes(result.node.id) }
             ]"
+            v-tooltip="
+              expandedNodeIds.includes(result.node.id)
+                ? translate('generated.workspaceTree.collapseWorkspaces')
+                : translate('generated.workspaceTree.expandWorkspaces')
+            "
             :aria-expanded="nodeExpanded(result.node.id)"
             :aria-label="
               expandedNodeIds.includes(result.node.id)
@@ -595,6 +600,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
           >
             <button
               class="tree-more-button mar-icon-action mar-icon-action--inline"
+              v-tooltip="translate('generated.workspaceTree.nodeActions')"
               :aria-label="translate('generated.workspaceTree.nodeActions')"
               type="button"
               @click.stop
@@ -723,6 +729,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                   >
                     <button
                       class="tree-more-button mar-icon-action mar-icon-action--inline"
+                      v-tooltip="translate('generated.workspaceTree.workspaceActions')"
                       :aria-label="translate('generated.workspaceTree.workspaceActions')"
                       type="button"
                       @click.stop
@@ -894,6 +901,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                       >
                         <button
                           class="tree-more-button mar-icon-action mar-icon-action--inline"
+                          v-tooltip="translate('generated.workspaceTree.workspaceActions')"
                           :aria-label="translate('generated.workspaceTree.workspaceActions')"
                           type="button"
                           @click.stop

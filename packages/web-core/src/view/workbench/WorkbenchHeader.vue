@@ -39,6 +39,9 @@ const emit = defineEmits<{
     <button
       v-if="!mobileViewport && (view !== 'nodes' || !workspaceStartupBlocked)"
       class="workbench-tree-toggle mar-icon-button mar-icon-action"
+      v-tooltip="
+        sidebarCollapsed ? $t('navigation.expandSidebar') : $t('navigation.collapseSidebar')
+      "
       :aria-label="
         sidebarCollapsed ? $t('navigation.expandSidebar') : $t('navigation.collapseSidebar')
       "

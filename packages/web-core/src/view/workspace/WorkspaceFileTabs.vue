@@ -2,7 +2,12 @@
 import '../../styles/workbench-tab-header.css';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import { fileKeys } from '../../service/console-shortcut-keys.js';
+import {
+  closeAllTabsKeys,
+  closeTabKeys,
+  fileKeys,
+  shortcutTooltip
+} from '../../service/console-shortcut-keys.js';
 import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';
 import {
   consoleKeyboardShortcutService,
@@ -311,6 +316,10 @@ defineExpose({
               label: tab.fileName,
               description: tab.path,
               closeLabel: translate('generated.filePreviewDialog.closePreview'),
+              closeTooltip: shortcutTooltip(
+                translate('generated.filePreviewDialog.closePreview'),
+                !closing && tab.id === activeTab?.id ? closeTabKeys : []
+              ),
               closeDisabled: closing
             }))
           "
@@ -323,7 +332,12 @@ defineExpose({
           @tab-close="requestClose"
         />
         <button
-          v-tooltip="translate('filePreviewDialog.closeFileWindow')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('filePreviewDialog.closeFileWindow'),
+              closing ? [] : [...closeAllTabsKeys, ...fileKeys.dismiss]
+            )
+          "
           class="mar-icon-button mar-icon-action workspace-file-window-close"
           type="button"
           :disabled="closing"

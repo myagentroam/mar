@@ -535,6 +535,9 @@ defineExpose({ reveal });
                 class="file-tree-more mar-icon-action mar-icon-action--inline"
                 :class="{ 'is-visible': nodeActionsVisible(row.node.path) }"
                 type="button"
+                v-tooltip="
+                  translate('generated.workspaceFileTree.moreActionsFor', { value0: row.node.name })
+                "
                 :aria-label="
                   translate('generated.workspaceFileTree.moreActionsFor', { value0: row.node.name })
                 "

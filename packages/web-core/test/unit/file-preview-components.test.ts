@@ -21,10 +21,19 @@ import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import InlineFindBar from '../../src/view/workspace/InlineFindBar.vue';
 import FilePreviewLoading from '../../src/view/workspace/FilePreviewLoading.vue';
 
-async function render(component: Component, props: Record<string, unknown>): Promise<string> {
+async function render(
+  component: Component,
+  props: Record<string, unknown>,
+  tooltips?: unknown[]
+): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
-  app.directive('tooltip', { getSSRProps: () => ({}) });
+  app.directive('tooltip', {
+    getSSRProps: (binding) => {
+      tooltips?.push(binding.value);
+      return {};
+    }
+  });
   return renderToString(app);
 }
 
@@ -349,8 +358,21 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
       expect(embedded).not.toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
-      const standalone = await render(component, { ...base, fullscreen: true });
+      const tooltips: unknown[] = [];
+      const standalone = await render(component, { ...base, fullscreen: true }, tooltips);
       expectUnifiedButtonHints(standalone);
+      for (const labelKey of [
+        'generated.filePreviewDialog.closePreview',
+        'generated.filePreviewDialog.closePreview2'
+      ]) {
+        const label = translate(labelKey);
+        expect(tooltips).toContain(
+          translate('keyboardShortcuts.actionHint', {
+            label,
+            keys: 'Alt+Shift+W / Ctrl+Shift+W / Esc'
+          })
+        );
+      }
       expect(standalone).toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
