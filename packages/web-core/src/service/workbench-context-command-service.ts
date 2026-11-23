@@ -11,7 +11,6 @@ interface WorkbenchContextCommandServiceOptions {
   readonly selectedSession: ComputedRef<Session | undefined>;
   readonly compactCommand: ComputedRef<RunnerCommand | undefined>;
   readonly canCompact: ComputedRef<boolean>;
-  readonly contextUsageLabel: ComputedRef<string>;
   readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly execute: (session: Session, command: RunnerCommand, input: string) => Promise<unknown>;
@@ -45,12 +44,7 @@ export function createWorkbenchContextCommandService(
       options.selectedSession.value?.id === session.id;
     try {
       await MarMessageBox.confirm(
-        [
-          options.contextUsageLabel.value,
-          translate('generated.workbenchContextCommandService.compactOlderContextToFreeWindowSpace')
-        ]
-          .filter(Boolean)
-          .join('\n\n'),
+        translate('generated.workbenchContextCommandService.confirmCompactContext'),
         translate('generated.workbenchContextCommandService.compactContext'),
         {
           icon: marIcon('warning'),

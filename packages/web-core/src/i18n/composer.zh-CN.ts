@@ -202,8 +202,7 @@ export const composerZhCN = {
       unableToSendThroughTheClaudeChannel: 'Claude 通道发送失败：{value0}'
     },
     workbenchContextCommandService: {
-      compactOlderContextToFreeWindowSpace:
-        '将压缩较早的上下文以释放窗口空间；此操作会保留近期对话和必要摘要。是否继续？',
+      confirmCompactContext: '确定压缩当前会话的上下文吗？',
       compactContext: '压缩上下文',
       compact: '压缩',
       cancel: '取消',

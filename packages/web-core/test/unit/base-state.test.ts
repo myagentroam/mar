@@ -1068,7 +1068,6 @@ describe('shared Workbench state composition', () => {
             })),
             compactCommand: computed(() => ({ id: 'compact' }) as never),
             canCompact: computed(() => true),
-            contextUsageLabel: computed(() => ''),
             notice: vi.fn(),
             request: vi.fn(),
             execute,

@@ -1721,6 +1721,8 @@ test('Composer displays Node-reported context usage and compacts only after conf
       },
       run: {
         id: 'compact-run',
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
         status: 'STARTING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'compact'
@@ -1739,15 +1741,26 @@ test('Composer displays Node-reported context usage and compacts only after conf
   await page.locator('.session-list .session-link').first().click();
 
   const indicator = page.getByRole('button', { name: /上下文窗口：156k \/ 258k tokens/ });
-  await expect(indicator).toBeVisible();
-  await indicator.evaluate((element) => (element as HTMLButtonElement).click());
+  await indicator.click();
   const confirmation = page.getByRole('dialog', { name: '压缩上下文' });
-  await expect(confirmation).toContainText('释放窗口空间');
-  const response = page.waitForResponse((item) => item.url().includes('/commands'));
-  await confirmation.getByRole('button', { name: '压缩' }).click();
-  await expect(page.locator('.composer-working')).toBeVisible();
-  releaseCompact?.();
-  await response;
+  await expect(
+    confirmation.getByText('确定压缩当前会话的上下文吗？', { exact: true })
+  ).toBeVisible();
+  await expect(confirmation).not.toContainText('tokens');
+  const working = page.locator('.composer-working');
+  await Promise.all([
+    page.waitForResponse((item) => item.url().includes('/commands')),
+    (async () => {
+      try {
+        await confirmation.getByRole('button', { name: '压缩', exact: true }).click();
+        await expect(page.getByRole('button', { name: '发送中...', exact: true })).toBeDisabled();
+        await expect(working).toHaveCount(0);
+      } finally {
+        releaseCompact?.();
+      }
+    })()
+  ]);
+  await expect(working).toBeVisible();
   const commandWrite = writes.find((write) => write.url.includes('/commands'));
   expect(commandWrite).toBeDefined();
   expect(JSON.parse(commandWrite!.body)).toMatchObject({

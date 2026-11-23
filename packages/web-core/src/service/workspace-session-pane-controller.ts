@@ -970,7 +970,6 @@ export function createWorkspaceSessionPaneController(
     selectedSession: configuration.selectedSession,
     compactCommand: presentation.compactCommand,
     canCompact: presentation.canCompactContext,
-    contextUsageLabel: presentation.contextUsageLabel,
     notice: common.notice,
     request: common.request,
     execute: executeCommand,

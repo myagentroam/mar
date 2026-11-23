@@ -806,8 +806,10 @@ test('Touch Context details stay readable without stealing the compact action', 
     await compact.tap();
     const dialog = page.getByRole('dialog', { name: 'Compact Context', exact: true });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('42000 of 100000');
-    await expect(dialog).toContainText('GC: 3 · 12345 tokens');
+    await expect(
+      dialog.getByText('Compact the current conversation’s context?', { exact: true })
+    ).toBeVisible();
+    await expect(dialog).not.toContainText('tokens');
     await expect(hint).toHaveCount(0);
     await expect(page.getByTestId('compact-count')).toHaveText('0');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).tap();

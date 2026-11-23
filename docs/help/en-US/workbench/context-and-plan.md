@@ -1,6 +1,6 @@
 ---
 title: Context, Compact, and Plan
-lastUpdated: 2026-11-04
+lastUpdated: 2026-11-23
 ---
 
 # Context, Compact, and Plan
@@ -13,7 +13,7 @@ MAR Agent Context GC differs from Compact: deterministic rules reclaim stale or 
 
 The indicator details always show the GC count and reclaimed tokens. Missing statistics use the placeholder `GC: 0 · 0 tokens`; each missing value also defaults to `0` for display. This does not mean a measured zero or GC support, and does not change stored statistics. MAR Agent's actual statistics cover only the period since the latest successful Compact, or the session start before its first Compact. Tokens sum measured decreases between pre-GC and post-GC request inputs. Intervening additions affect this value; it is not an exact deletion count or billing savings. Refreshing preserves the statistics; successful Compact resets both, while failed or cancelled Compact does not. Skipped or failed GC attempts are not counted. Clear, rollback and fork use the retained session records.
 
-Tap context usage on a touchscreen to open the compact confirmation with full usage details. Compact runs only after confirmation. While compaction is unavailable, including during a run, tapping still shows full usage and the unavailable notice.
+Hover over the indicator or focus it with the keyboard to see full usage details. On a touchscreen, tapping opens the confirmation without usage details when compaction is available. Compact runs only after confirmation. When compaction is unavailable, tapping shows full usage and an unavailable notice.
 
 MAR Agent also supports Smart Compaction: when valid context usage is already large, the main model may request background compaction before sustained new work if prior details have low continuation value. This community capability is automatic, requires no extra setting, and does not replace fixed capacity protection. The task can continue during background generation; existing compaction status items show its lifecycle without exposing the internal summary. Temporary questions and unresolved work are not reasons to compact. Usage may remain unknown after compaction until a foreground request reports a new measurement. See [MAR Agent](../runners/mar-agent.md#dedicated-compact-model) for thresholds and limits.
 

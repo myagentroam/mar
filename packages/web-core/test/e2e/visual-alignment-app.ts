@@ -181,7 +181,6 @@ const contextCommands = createWorkbenchContextCommandService({
   selectedSession: computed(() => ({ id: 'session' }) as Session),
   compactCommand: computed(() => ({ id: 'compact' }) as RunnerCommand),
   canCompact: computed(() => canCompact.value),
-  contextUsageLabel: computed(() => toolbar.contextUsageLabel),
   notice: () => {},
   request: async <T>() => ({}) as T,
   execute: async () => {

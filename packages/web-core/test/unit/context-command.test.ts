@@ -27,7 +27,6 @@ function fixture() {
     selectedSession: computed(() => selectedSession.value),
     compactCommand: computed(() => ({ id: 'compact' }) as RunnerCommand),
     canCompact: computed(() => canCompact.value),
-    contextUsageLabel: computed(() => '42% used; 42000 of 100000 tokens'),
     notice,
     request: vi.fn(),
     execute,
@@ -46,8 +45,8 @@ describe('shared context command', () => {
     );
     await f.service.compactCurrentContext();
     expect(MarMessageBox.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('42% used; 42000 of 100000 tokens'),
-      expect.any(String),
+      'Compact the current conversation’s context?',
+      'Compact Context',
       expect.any(Object)
     );
     expect(f.beginSubmission).toHaveBeenCalledWith('session:session-1');
