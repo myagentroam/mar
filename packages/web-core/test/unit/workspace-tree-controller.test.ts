@@ -74,16 +74,21 @@ function fixture() {
     selectedSessionId.value = undefined as never;
     selectedRunId.value = undefined as never;
   });
-  const activateWorkspace = vi.fn(async (target: WorkspaceTarget, _restoreSession?: boolean) => {
-    selectedNodeId.value = target.nodeId;
-    selectedWorkspaceId.value = target.workspaceId;
-    return true;
-  });
+  const activateWorkspace = vi.fn<WorkbenchWorkspaceTreeControllerOptions['activateWorkspace']>(
+    async (target) => {
+      selectedNodeId.value = target.nodeId;
+      selectedWorkspaceId.value = target.workspaceId;
+      return true;
+    }
+  );
   const refreshWorkspaceSessions = vi.fn(async () => undefined);
   const refreshNodes = vi.fn(async () => undefined);
   const closeMobileSidebar = vi.fn();
   const closeMobileWorkspaceSurface = vi.fn();
   const workspaceTabSession = vi.fn<() => string | undefined>(() => undefined);
+  const hasAsideSession = vi.fn<WorkbenchWorkspaceTreeControllerOptions['hasAsideSession']>(
+    () => false
+  );
   const openWorkspaceTabSession = vi.fn(async (_sessionId: string) => undefined);
   const controller = createWorkbenchWorkspaceTreeController({
     nodes,
@@ -110,11 +115,12 @@ function fixture() {
     discardCache,
     releaseRemovedWorkspaceDrafts: vi.fn(),
     workspaceTabSession,
+    hasAsideSession,
     openWorkspaceTabSession,
     activateWorkspace: (target, restoreSession) => {
       selectionRevision += 1;
-      return restoreSession === false
-        ? activateWorkspace(target, false)
+      return restoreSession !== undefined
+        ? activateWorkspace(target, restoreSession)
         : activateWorkspace(target);
     },
     clearWorkspace,
@@ -155,6 +161,7 @@ function fixture() {
     tree,
     controller,
     workspaceTabSession,
+    hasAsideSession,
     openWorkspaceTabSession
   };
 }
@@ -324,6 +331,23 @@ describe('Public Workspace tree controller', () => {
       await f.controller.openWorkspaceTab(tab);
       expect(f.openWorkspaceTabSession).not.toHaveBeenCalled();
     }
+  });
+
+  it('keeps the Main selection when an unread target is already in Aside on another tab', async () => {
+    const f = fixture();
+    const tab = {
+      id: 'node-2:workspace-2',
+      nodeId: 'node-2',
+      workspaceId: 'workspace-2',
+      label: 'two',
+      lastActiveAt: 1
+    };
+    f.workspaceTabSession.mockReturnValue('unread');
+    f.hasAsideSession.mockReturnValue(true);
+    await f.controller.openWorkspaceTab(tab);
+    expect(f.hasAsideSession).toHaveBeenCalledWith(tab, 'unread');
+    expect(f.activateWorkspace).toHaveBeenCalledWith(tab, 'behind-aside');
+    expect(f.openWorkspaceTabSession).toHaveBeenCalledWith('unread');
   });
 
   it('does not reactivate the selected Workspace from tabs or the tree', async () => {

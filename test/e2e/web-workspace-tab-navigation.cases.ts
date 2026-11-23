@@ -472,19 +472,22 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         const tab = page.locator('.workspace-tab[data-tab-id="node-1:workspace-1"]');
         await expect(tab.locator('.workspace-tab-unread')).toBeVisible();
         await tab.getByRole('tab').click();
-        await expect(page.locator('.conversation-reload')).toBeVisible();
+        await expect(page.locator('.conversation-loading-initial')).toBeVisible();
         expect(watchPosts).toBe(0);
         expect(readPosts).toEqual([]);
         await expect(page.getByText('Gap recovery history', { exact: true })).toHaveCount(0);
-        await page.locator('.mar-ui-message__close').click();
-        await expect(page.locator('.mar-message')).toHaveCount(0);
         await tab.getByRole('tab').click();
-        await expect(page.locator('.conversation-reload')).toBeVisible();
+        await expect(page.locator('.conversation-loading-initial')).toBeVisible();
         expect(watchPosts).toBe(0);
         expect(readPosts).toEqual([]);
         await expect(tab.locator('.workspace-tab-unread')).toBeVisible();
-        await page.locator('.mar-ui-message__close').click();
         await expect(page.locator('.mar-message')).toHaveCount(0);
+        await page.waitForFunction(() =>
+          Boolean(
+            (window as unknown as { __workspaceTabLiveGap: { ready?: unknown } })
+              .__workspaceTabLiveGap.ready
+          )
+        );
         await page.evaluate(() => {
           const gap = (
             window as unknown as {
@@ -504,6 +507,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         await expect(page.getByText('Gap recovery history', { exact: true })).toBeVisible();
         await expect(page.locator('.conversation-loading-initial')).toHaveCount(0);
         expect(readPosts).toEqual([]);
+        await expect(tab.locator('.workspace-tab-unread')).toBeVisible();
         await tab.getByRole('tab').click();
         await expect(tab.locator('.workspace-tab-unread')).toHaveCount(0);
         expect(readPosts).toEqual(['session-1']);

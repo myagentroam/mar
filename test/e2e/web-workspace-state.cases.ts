@@ -128,7 +128,10 @@ test('Quick Open keyboard selection navigates to a session through the shared sh
   await page.keyboard.press('Control+Shift+O');
   const input = page.locator('.quick-open-dialog').getByRole('textbox');
   await expect(input).toBeFocused();
-  await page.getByRole('tab', { name: '会话', exact: true }).click();
+  await page
+    .locator('.quick-open-dialog')
+    .getByRole('button', { name: '会话', exact: true })
+    .click();
   await expect(page.locator('.quick-open-results [role="option"]').first()).toBeVisible();
   await input.focus();
   await page.keyboard.press('Enter');
@@ -489,6 +492,114 @@ test('Workspace HTML links from Aside sessions open the shared browser', async (
 });
 
 const listOnlySessionActions = /^(在侧栏打开|在主工作面打开|置顶|取消置顶|上移|下移|删除)$/u;
+
+for (const mobile of [false, true]) {
+  test(`Notification clicks and unread Workspace tabs reuse Aside on ${mobile ? 'mobile' : 'desktop'}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+    await prepareDescendantTree(page);
+    const main = page.locator('.workspace-grid > .conversation-panel');
+    const aside = page.locator('.workspace-aside');
+    const mainText = main.getByText('正文 tree-1', { exact: true });
+    const asideText = aside.getByText('正文 tree-2', { exact: true });
+    await main.getByRole('button', { name: '查看会话树' }).click();
+    await page.getByRole('button', { name: '树会话 2, 空闲', exact: true }).click();
+    await expect(asideText).toBeVisible();
+    const hideAside = async () => {
+      if (mobile) await page.goBack();
+      else await main.getByRole('button', { name: '收起辅助工作面' }).click();
+      await expect(asideText).toBeHidden();
+      await expect(mainText).toBeVisible();
+    };
+    await hideAside();
+
+    const now = Date.now();
+    const target = {
+      targetType: 'WORKSPACE_SESSION',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      sessionId: 'tree-2'
+    };
+    let notifications = ['aside-click', 'aside-unread'].map((id) => ({
+      id,
+      target,
+      kind: 'run',
+      title: id,
+      message: 'Run completed',
+      read: false,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: now + 60_000
+    }));
+    const reads: string[] = [];
+    await page.route('**/api/notifications', (route) => json(route, { notifications }));
+    await page.route('**/api/notifications/aside-click/read', (route) => {
+      reads.push('single');
+      notifications = notifications.map((item) =>
+        item.id === 'aside-click' ? { ...item, read: true } : item
+      );
+      return json(route, {});
+    });
+    await page.route('**/api/notifications/session/read', (route) => {
+      reads.push(route.request().postDataJSON().sessionId);
+      notifications = notifications.map((item) => ({ ...item, read: true }));
+      return json(route, { ids: ['aside-unread'], readAt: now });
+    });
+    await page.evaluate(() => {
+      navigator.serviceWorker.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'mar.workbench.notification.click', account: 'admin', id: 'aside-click' }
+        })
+      );
+    });
+    await expect(asideText).toBeVisible();
+    const tab = page.getByRole('tab', { name: /project/ });
+    await expect(tab.locator('.workspace-tab-unread')).toBeVisible();
+    expect(reads).toEqual(['single']);
+    await hideAside();
+
+    await tab.click();
+    await expect(asideText).toBeVisible();
+    await expect.poll(() => reads).toEqual(['single', 'tree-2']);
+    await expect(tab.locator('.workspace-tab-unread')).toHaveCount(0);
+    await hideAside();
+
+    if (!mobile) {
+      await page.keyboard.press('Control+Shift+O');
+      const quickOpen = page.locator('.quick-open-dialog');
+      await quickOpen.getByRole('button', { name: '会话', exact: true }).click();
+      await quickOpen.getByRole('button', { name: /^树会话 2 / }).click();
+      await expect(asideText).toBeVisible();
+      await expect(mainText).toBeVisible();
+    }
+  });
+}
+
+test('Quick Open reveals an existing Aside session in Main when the desktop is too narrow', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await prepareDescendantTree(page);
+  const main = page.locator('.workspace-grid > .conversation-panel');
+  const aside = page.locator('.workspace-aside');
+  const childText = '正文 tree-2';
+  await main.getByRole('button', { name: '查看会话树' }).click();
+  await page.getByRole('button', { name: '树会话 2, 空闲', exact: true }).click();
+  await expect(aside.getByText(childText, { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(aside).toBeHidden();
+  await expect(main.getByText('正文 tree-1', { exact: true })).toBeVisible();
+  await page.keyboard.press('Control+Shift+O');
+  const quickOpen = page.locator('.quick-open-dialog');
+  await quickOpen.getByRole('button', { name: '会话', exact: true }).click();
+  await quickOpen.getByRole('button', { name: /^树会话 2 / }).click();
+  await expect(main.getByText(childText, { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(aside.getByText(childText, { exact: true })).toBeVisible();
+});
 
 test('live descendant tree uses Workspace Watch and routes nodes to Aside or Main', async ({
   page

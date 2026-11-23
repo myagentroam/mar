@@ -45,12 +45,14 @@ export async function navigateWorkbenchNotification(
 
 export function createWorkbenchTargetNavigation(input: {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly sessions: Readonly<Ref<readonly Session[]>>;
   readonly selectView: (view: WorkbenchView) => void;
   readonly applyWebUpdate: () => Promise<void>;
   readonly closeMobileSidebar: () => void;
-  readonly selectWorkspace: (target: WorkspaceTarget, restoreSession?: boolean) => Promise<boolean>;
+  readonly selectWorkspace: (
+    target: WorkspaceTarget,
+    restoreSession?: import('./workbench-workspace-selection-service.js').WorkspaceSessionRestoration
+  ) => Promise<boolean>;
   readonly syncWorkspaceSessions: (workspaceId: string) => Promise<void>;
   readonly openHostedConversationTarget: (nodeId: string, conversationId: string) => Promise<void>;
   readonly discovery: Pick<
@@ -61,17 +63,12 @@ export function createWorkbenchTargetNavigation(input: {
     ReturnType<
       typeof import('./workbench-session-selection-service.js').createWorkbenchSessionSelectionService
     >,
-    'openWorkspaceTabSession'
+    'hasAsideSession' | 'openNavigatedSession'
   >;
-  readonly openSession: (
-    sessionId: string,
-    options?: import('./workspace-session-pane-controller.js').WorkspacePaneOpenOptions
-  ) => Promise<void>;
   readonly notice: MessageFeedback;
 }) {
   const {
     workspaceTarget,
-    selectedSessionId,
     sessions,
     selectView,
     applyWebUpdate,
@@ -79,8 +76,7 @@ export function createWorkbenchTargetNavigation(input: {
     selectWorkspace,
     syncWorkspaceSessions,
     openHostedConversationTarget,
-    notice,
-    openSession
+    notice
   } = input;
   const workspaceSessionDiscovery = input.discovery;
   const selectWorkspaceSessionGroup = input.discovery.selectGroup;
@@ -91,18 +87,21 @@ export function createWorkbenchTargetNavigation(input: {
     }
     const target = notification.target;
     if (target === undefined) return;
-    await navigateWorkbenchTarget(target, true);
+    await navigateWorkbenchTarget(target);
   }
 
   async function navigateWorkbenchTarget(
     target: NonNullable<WorkbenchNotification['target']>,
-    markSessionReadAfterOpen = false
+    destination?: 'main'
   ): Promise<void> {
     try {
       let groupRevision: number | undefined;
       await navigateWorkbenchNotification(target, {
         workspaceTarget: () => workspaceTarget.value,
         hasSession: (sessionId) =>
+          (destination === undefined &&
+            workspaceTarget.value !== undefined &&
+            input.selection().hasAsideSession(workspaceTarget.value, sessionId)) ||
           sessions.value.some(
             (session) =>
               session.id === sessionId &&
@@ -124,13 +123,19 @@ export function createWorkbenchTargetNavigation(input: {
             groupRevision = workspaceSessionDiscovery.groupSelectionRevision();
             return true;
           }
-          const activated = await selectWorkspace(workspace, !hasSessionTarget);
+          const activated = await selectWorkspace(
+            workspace,
+            !hasSessionTarget
+              ? true
+              : destination === undefined &&
+                  input.selection().hasAsideSession(workspace, target.sessionId) &&
+                  'behind-aside'
+          );
           if (activated) groupRevision = workspaceSessionDiscovery.groupSelectionRevision();
           return activated;
         },
         synchronizeSessions: syncWorkspaceSessions,
-        openSession: (sessionId) =>
-          openNavigatedSession(sessionId, markSessionReadAfterOpen, groupRevision),
+        openSession: (sessionId) => openNavigatedSession(sessionId, groupRevision, destination),
         openHostedConversation: openHostedConversationTarget
       });
     } catch (error) {
@@ -167,18 +172,17 @@ export function createWorkbenchTargetNavigation(input: {
     });
   }
 
-  async function openSessionGroupTarget(target: {
-    nodeId: string;
-    workspaceId: string;
-    sessionId: string;
-  }): Promise<void> {
-    await navigateWorkbenchTarget({ targetType: 'WORKSPACE_SESSION', ...target }, true);
+  async function openSessionGroupTarget(
+    target: { nodeId: string; workspaceId: string; sessionId: string },
+    destination?: 'main'
+  ): Promise<void> {
+    await navigateWorkbenchTarget({ targetType: 'WORKSPACE_SESSION', ...target }, destination);
   }
 
   function openNavigatedSession(
     sessionId: string,
-    markReadAfterOpen: boolean,
-    groupRevision = workspaceSessionDiscovery.groupSelectionRevision()
+    groupRevision = workspaceSessionDiscovery.groupSelectionRevision(),
+    destination?: 'main'
   ): Promise<void> {
     const target = workspaceTarget.value;
     const onSessionResolved = (session: Session) => {
@@ -187,14 +191,12 @@ export function createWorkbenchTargetNavigation(input: {
         workspaceTarget.value?.nodeId === target.nodeId &&
         workspaceTarget.value.workspaceId === target.workspaceId &&
         session.workspaceId === target.workspaceId &&
-        selectedSessionId.value === session.id &&
+        session.id === sessionId &&
         workspaceSessionDiscovery.groupSelectionRevision() === groupRevision
       )
         selectWorkspaceSessionGroup(session.sessionGroup ?? 'MAIN', true);
     };
-    return markReadAfterOpen
-      ? input.selection().openWorkspaceTabSession(sessionId, onSessionResolved)
-      : openSession(sessionId, { onSessionResolved });
+    return input.selection().openNavigatedSession(sessionId, onSessionResolved, destination);
   }
 
   return { openWorkbenchNotification, openRecentRun, openSessionGroupTarget, openNavigatedSession };

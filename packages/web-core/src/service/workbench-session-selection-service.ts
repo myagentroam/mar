@@ -1,7 +1,7 @@
 import type { WorkspaceTab, Workspace, WorkspaceTarget, Session } from '../model/workbench.js';
 import type { AsideSession, createWorkbenchAsideService } from './workbench-aside-service.js';
 import type { WorkspacePaneOpenOptions } from './workspace-session-pane-controller.js';
-import { computed, ref, type Ref } from 'vue';
+import { computed, nextTick, ref, type Ref } from 'vue';
 
 export function createWorkbenchSessionSelectionState(
   workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>
@@ -33,12 +33,14 @@ export interface WorkbenchSessionSelectionOptions {
   readonly secondaryPane: {
     readonly target: Readonly<Ref<AsideSession | undefined>>;
     readonly reloadChecked: () => Promise<void>;
+    readonly completeOpening: () => Promise<Session | undefined>;
   };
   readonly aside: Pick<
     ReturnType<typeof createWorkbenchAsideService>,
     'current' | 'openSession' | 'closeSession' | 'removeMissing' | 'replaceSession'
   >;
   readonly canOpenAside: () => boolean;
+  readonly canRevealAside: () => boolean;
   readonly saveAside: () => void;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Readonly<Ref<string | undefined>>;
@@ -47,6 +49,7 @@ export interface WorkbenchSessionSelectionOptions {
   readonly draftOpen: Readonly<Ref<boolean>>;
   readonly setDraftOpen: (open: boolean) => void;
   readonly closeMobileSurface: () => void;
+  readonly revealMobileAside: () => void;
   readonly workspaceTabId: (nodeId: string, workspaceId: string) => string;
   readonly ensureSessionVisible: (tabId: string, index: number) => void;
   readonly markSessionRead: (
@@ -66,7 +69,53 @@ export interface WorkbenchSessionSelectionOptions {
   };
 }
 
+/** Routes session selection to a pane; the panes own their loads and Aside owns its tab state. */
 export function createWorkbenchSessionSelectionService(options: WorkbenchSessionSelectionOptions) {
+  let navigationRevision = 0;
+
+  function hasAsideSession(workspace: WorkspaceTarget, sessionId: string): boolean {
+    return options.aside.current(workspace).sessions.includes(sessionId);
+  }
+
+  async function openNavigatedSession(
+    sessionId: string,
+    onSessionResolved?: (session: Session) => void,
+    destination?: 'main'
+  ): Promise<void> {
+    const revision = ++navigationRevision;
+    const workspace = options.workspaceTarget.value;
+    if (workspace === undefined) return;
+    const current = () =>
+      revision === navigationRevision && options.workspaceTarget.value === workspace;
+    const resolved =
+      onSessionResolved &&
+      ((session: Session) => {
+        if (current()) onSessionResolved(session);
+      });
+    const alreadyInMain = options.selectedSessionId.value === sessionId && !options.draftOpen.value;
+    if (destination === 'main' || alreadyInMain || !hasAsideSession(workspace, sessionId))
+      return options.pane.openTab(sessionId, resolved);
+
+    // A Workspace change can mount a different grid; wait for its layout measurement.
+    await nextTick();
+    if (!current()) return;
+    if (!options.canRevealAside() || !revealAsideSession({ ...workspace, sessionId }))
+      return options.pane.openTab(sessionId, resolved);
+
+    // The surface publishes visibility after the layout switches; reuse its in-flight read.
+    await nextTick();
+    const target = options.secondaryPane.target.value;
+    if (
+      !current() ||
+      target?.nodeId !== workspace.nodeId ||
+      target.workspaceId !== workspace.workspaceId ||
+      target.sessionId !== sessionId
+    )
+      return;
+    const session = await options.secondaryPane.completeOpening();
+    if (session !== undefined) resolved?.(session);
+  }
+
   async function openAsideTarget(sessionId: string): Promise<void> {
     const target = options.secondaryPane.target.value;
     if (target === undefined) return;
@@ -82,6 +131,12 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     const active = options.aside.current(workspace).active;
     if (active?.kind !== 'session' || active.sessionId !== sessionId) options.saveAside();
     options.aside.openSession(target);
+    return true;
+  }
+
+  function revealAsideSession(target: AsideSession): boolean {
+    if (!openAsideSession(target)) return false;
+    options.revealMobileAside();
     return true;
   }
 
@@ -134,7 +189,12 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
         (!openOptions.markReadAfterOpen ||
           item.workspaceId === options.workspaceTarget.value?.workspaceId)
     );
-    if (switching && session !== undefined && !openOptions.markReadAfterOpen)
+    if (
+      switching &&
+      session !== undefined &&
+      !openOptions.markReadAfterOpen &&
+      !openOptions.skipMarkRead
+    )
       options.markSessionRead(nodeId, session.workspaceId, sessionId);
     if (session !== undefined) {
       const tabId = options.workspaceTabId(nodeId, session.workspaceId);
@@ -158,8 +218,9 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     prepareTarget,
     openSession: options.pane.open,
     selectSession: options.pane.openTab,
-    openWorkspaceTabSession: options.pane.openTab,
-    openAsideSession,
+    hasAsideSession,
+    openNavigatedSession,
+    openAsideSession: revealAsideSession,
     openAsideTarget,
     closeAsideSession,
     replaceAsideSession,
@@ -222,11 +283,10 @@ export interface WorkbenchSelectionView {
   retryWorkspaceSelection: () => void;
   selectedSessionId: string | undefined;
   openSessionFromList: (sessionId: string) => Promise<void>;
-  openSessionGroupTarget: (target: {
-    nodeId: string;
-    workspaceId: string;
-    sessionId: string;
-  }) => Promise<void>;
+  openSessionGroupTarget: (
+    target: { nodeId: string; workspaceId: string; sessionId: string },
+    destination?: 'main'
+  ) => Promise<void>;
   openNewSessionComposer: () => void;
   draftSessionOpen: boolean;
 }

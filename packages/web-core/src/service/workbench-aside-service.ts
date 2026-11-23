@@ -422,6 +422,7 @@ export interface WorkbenchAsideView {
   selectAsideBrowser: (target: AsideWorkspace) => void;
   selectAsideTool: (target: AsideWorkspace & { readonly id: AsideTool }) => void;
   setAsideCollapsed: (target: AsideWorkspace, collapsed: boolean) => void;
+  setAsideSessionFits: (fits: boolean | undefined) => void;
   setAsideSurfaceVisible: (visible: boolean) => void;
   toggleAsideTerminal: () => void;
 }

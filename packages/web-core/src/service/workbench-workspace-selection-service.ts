@@ -28,6 +28,11 @@ import type { WorkspaceCacheView } from './workspace-view-cache-service.js';
 import { translate } from './locale-preference-service.js';
 import { errorCode } from '../util/api-error.js';
 import { sessionHasNativeIdentity } from '../util/session-presentation.js';
+import type { WorkspacePaneOpenOptions } from './workspace-session-pane-controller.js';
+
+export type WorkspaceSessionRestoration = boolean | 'behind-aside';
+
+const restoreBehindAside = { preserveMobileWorkspaceSurface: true, skipMarkRead: true } as const;
 
 interface WorkbenchWorkspaceSelectionOptions {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
@@ -71,10 +76,7 @@ interface WorkbenchWorkspaceSelectionOptions {
   readonly rememberWorkspace: (nodeId: string, workspace: Workspace) => void;
   readonly viewCache: (nodeId: string, workspaceId: string) => WorkspaceCacheView;
   readonly resetQueue: () => void;
-  readonly openSession: (
-    sessionId: string,
-    options?: { readonly skipSaveCurrent?: boolean }
-  ) => Promise<void>;
+  readonly openSession: (sessionId: string, options?: WorkspacePaneOpenOptions) => Promise<void>;
   readonly openDraft: () => void;
   readonly restoreDraft: (cache: WorkspaceCacheView | undefined) => void;
   readonly hasProfiles: (nodeId: string) => boolean;
@@ -83,7 +85,11 @@ interface WorkbenchWorkspaceSelectionOptions {
     nodeId: string,
     workspaceId: string
   ) => { readonly selectedSessionId?: string } | undefined;
-  readonly restoreSession: (workspaceId: string, sessionId?: string) => Promise<void>;
+  readonly restoreSession: (
+    workspaceId: string,
+    sessionId?: string,
+    openOptions?: WorkspacePaneOpenOptions
+  ) => Promise<void>;
 }
 
 /** Owns the only Workspace activation path; requests never gate the foreground selection. */
@@ -108,7 +114,10 @@ export function createWorkbenchWorkspaceSelectionService(
     options.resetQueue();
   }
 
-  async function select(target: WorkspaceTarget, restoreSession = true): Promise<boolean> {
+  async function select(
+    target: WorkspaceTarget,
+    restoreSession: WorkspaceSessionRestoration = true
+  ): Promise<boolean> {
     if (!options.hasNode(target.nodeId)) {
       if (options.nodeListConfirmed.value) options.invalidateWorkspace(target);
       return false;
@@ -181,11 +190,18 @@ export function createWorkbenchWorkspaceSelectionService(
         cachedSession !== undefined &&
         sessionHasNativeIdentity(cachedSession)
       ) {
-        void options.openSession(cachedSession.id, { skipSaveCurrent: true });
+        void options.openSession(cachedSession.id, {
+          skipSaveCurrent: true,
+          ...(restoreSession === 'behind-aside' ? restoreBehindAside : {})
+        });
       } else {
         options.openDraft();
-        if (restoreSession && stored?.selectedSessionId !== undefined)
-          void options.restoreSession(target.workspaceId, stored.selectedSessionId);
+        if (restoreSession && stored?.selectedSessionId !== undefined) {
+          const id = stored.selectedSessionId;
+          if (restoreSession === 'behind-aside')
+            void options.restoreSession(target.workspaceId, id, restoreBehindAside);
+          else void options.restoreSession(target.workspaceId, id);
+        }
       }
     }
     if (workspace !== undefined) void options.startWatch(target.workspaceId);

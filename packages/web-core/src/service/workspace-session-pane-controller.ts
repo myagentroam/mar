@@ -74,6 +74,7 @@ export interface WorkspacePaneOpenOptions {
   readonly deferInitialScroll?: boolean;
   readonly skipSaveCurrent?: boolean;
   readonly markReadAfterOpen?: boolean;
+  readonly skipMarkRead?: boolean;
   readonly onSessionResolved?: (session: Session) => void;
 }
 
