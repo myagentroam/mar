@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/server-core",
-  "version": "0.14.31",
+  "version": "0.14.32",
   "private": true,
   "type": "module",
   "files": [
