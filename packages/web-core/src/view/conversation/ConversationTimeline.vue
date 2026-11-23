@@ -1733,9 +1733,8 @@ function stepDuration(item: ConversationItem): string | undefined {
   gap: 0;
 }
 
-.conversation-turn:not(.is-group):has(.assistant_message) + .conversation-turn.is-group,
-.conversation-turn.is-group + .conversation-turn:not(.is-group):has(.assistant_message) {
-  margin-block-start: 0.625rem;
+.conversation-turn:not(.is-group):has(.assistant_message:last-child) + .conversation-turn.is-group {
+  margin-block-start: var(--conversation-record-gap);
 }
 
 .conversation-item {
