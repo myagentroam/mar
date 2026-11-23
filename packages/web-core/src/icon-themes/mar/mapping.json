@@ -77,10 +77,11 @@
     "kts": "kotlin",
     "scala": "scala",
     "c": "c",
+    "h": "c",
     "cpp": "cpp",
     "cxx": "cpp",
     "cc": "cpp",
-    "h": "cpp",
+    "c++": "cpp",
     "hpp": "cpp",
     "h++": "cpp",
     "hh": "cpp",
@@ -1222,7 +1223,7 @@
       "accent": "gold"
     },
     "exec": {
-      "accent": "orange"
+      "accent": "blue"
     },
     "package": {
       "accent": "orange"

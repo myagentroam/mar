@@ -62,6 +62,7 @@ const markdownPresentationFixture = new URL(location.href).searchParams.has(
 const markdownBlocksFixture =
   markdownPresentationFixture || new URL(location.href).searchParams.has('markdown-blocks');
 const userMessageCopyFixture = new URL(location.href).searchParams.has('user-message-copy');
+const binaryAttachmentFixture = new URL(location.href).searchParams.has('binary-attachment');
 const userMessageCopyImage =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMI6LkHAALqAbuJ9q1aAAAAAElFTkSuQmCC';
 const fileChangeResultFixture = new URL(location.href).searchParams.has('file-change-result');
@@ -243,6 +244,24 @@ if (userMessageCopyFixture) {
         { ...items[0]!, payload: { text: `Review the **screenshot**.\n${attachment}` } },
         { ...items[0]!, id: 'attachment-only', payload: { text: attachment } }
       ]
+    }
+  ];
+}
+if (binaryAttachmentFixture) {
+  const attachment = serializeComposerTag('mar_attachments', {
+    files: [
+      {
+        name: 'firmware.bin',
+        mime: 'application/octet-stream',
+        path: '.mar/temp-files/input/firmware.bin'
+      },
+      { name: 'notes.txt', mime: 'text/plain', path: '.mar/temp-files/input/notes.txt' }
+    ]
+  });
+  turns.value = [
+    {
+      ...turns.value[0]!,
+      items: [{ ...items[0]!, payload: { text: `Review the firmware.\n${attachment}` } }]
     }
   ];
 }
@@ -915,7 +934,12 @@ function announceFixtureUpdate() {
       </ConversationScroll>
     </section>
     <ConversationComposer
-      v-if="!readFilesFixture && !detailSurfaceFixture && !markdownBlocksFixture"
+      v-if="
+        !readFilesFixture &&
+        !detailSurfaceFixture &&
+        !markdownBlocksFixture &&
+        !binaryAttachmentFixture
+      "
       v-model:input="input"
       placeholder="Message"
       :working="true"
