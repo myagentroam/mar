@@ -20,8 +20,10 @@ const sourceExtensions = new Set([
 ]);
 const chineseText = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+const privatePath = /^(?:harness\/|docs\/design\/|\.env\/|\.plan\/|\.tasks\/)/u;
+const privateRepoPath = /^(?:repo\/|scripts\/repo\/|docs\/guides\/REPO_ENGINEERING\.md$)/u;
 const privateIdentifier =
-  /(?:my-agent-roam-enterprise|mar-server-enterprise|mar-web-enterprise|packages\/enterprise-[a-z0-9-]+|\bharness\/|docs\/design\/|\.plan\/|\.tasks\/)/u;
+  /(?:my-agent-roam-enterprise|mar-server-enterprise|mar-web-enterprise|packages\/enterprise-[a-z0-9-]+|\bharness\/|\brepo\/(?:routes|benchmarks)\.json\b|\bscripts\/repo\/|\bdocs\/guides\/REPO_ENGINEERING\.md\b|docs\/design\/|\.plan\/|\.tasks\/)/u;
 const privateIdentifierCheckers = new Set([
   'scripts/check-public-boundary.mjs',
   'scripts/check-release-artifacts.mjs'
@@ -60,7 +62,7 @@ export function publicSourceViolations(path, source, directory = root) {
   const failures = [];
   const name = path.split('/').at(-1);
   const core = /^(?:packages\/|mar-agent\/|mar-node\/|marctl\/)/u.test(path);
-  if (/^(?:harness\/|docs\/design\/|\.env\/|\.plan\/|\.tasks\/)/u.test(path))
+  if (privatePath.test(path) || privateRepoPath.test(path))
     failures.push('PUBLIC_PRIVATE_FILE_FORBIDDEN');
   if (name?.toLowerCase() === 'agents.md') failures.push('PUBLIC_AGENT_INSTRUCTIONS_FORBIDDEN');
   if (
@@ -133,10 +135,15 @@ export function publicSourceViolations(path, source, directory = root) {
     if (core && specifier.startsWith('@myagentroam-enterprise/'))
       failures.push('PUBLIC_CORE_EE_IMPORT_FORBIDDEN');
     if (specifier.startsWith('.') || isAbsolute(specifier)) {
-      const target = relative(directory, resolve(directory, dirname(path), specifier));
+      const target = relative(directory, resolve(directory, dirname(path), specifier)).replaceAll(
+        '\\',
+        '/'
+      );
       if (core && target.startsWith('ee/')) failures.push('PUBLIC_CORE_EE_IMPORT_FORBIDDEN');
       if (isAbsolute(target) || target === '..' || target.startsWith('../'))
         failures.push('PUBLIC_OUTSIDE_IMPORT_FORBIDDEN');
+      if (privateRepoPath.test(target) && !failures.includes('PUBLIC_PRIVATE_IDENTIFIER_FORBIDDEN'))
+        failures.push('PUBLIC_PRIVATE_IDENTIFIER_FORBIDDEN');
     }
   }
   if (name === 'package.json') {

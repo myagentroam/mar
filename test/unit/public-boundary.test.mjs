@@ -82,19 +82,27 @@ test('only root introductions are allowed and public instructions stay out', () 
   );
 });
 
-test('release configuration and scripts cannot depend on private Harness or old product paths', () => {
+test('release configuration and scripts cannot depend on private repository tooling or old product paths', () => {
   for (const [path, source] of [
     ['Dockerfile', 'COPY mar-server-enterprise/dist /runtime/server'],
     ['compose.yaml', 'image: my-agent-roam-enterprise:latest'],
     ['scripts/build.mjs', "import '../harness/routes.json'"],
+    ['scripts/build.mjs', "readFile('../repo/routes.json')"],
+    ['scripts/build.mjs', "readFile('../repo/benchmarks.json')"],
+    ['scripts/build.mjs', "import './repo/context.mjs'"],
+    ['README.md', '[Engineering](docs/guides/REPO_ENGINEERING.md)'],
     ['scripts/build.mjs', "readFile('../docs/design/PROJECT_DESIGN.md')"]
   ])
     assert.ok(
       publicSourceViolations(path, source).includes('PUBLIC_PRIVATE_IDENTIFIER_FORBIDDEN'),
-      path
+      `${path}: ${source}`
     );
   assert.deepEqual(
     publicSourceViolations('Dockerfile', 'COPY mar-server/dist /runtime/server'),
+    []
+  );
+  assert.deepEqual(
+    publicSourceViolations('README.md', 'https://github.com/example/repo/issues'),
     []
   );
 });
@@ -155,9 +163,14 @@ test('Chinese text in test assertions is allowed while other public source stays
       'PUBLIC_PRIVATE_FILE_FORBIDDEN'
     )
   );
-  assert.ok(
-    publicSourceViolations('harness/routes.json', '{}').includes('PUBLIC_PRIVATE_FILE_FORBIDDEN')
-  );
+  for (const path of [
+    'harness/routes.json',
+    'repo/routes.json',
+    'repo/benchmarks.json',
+    'scripts/repo/context.mjs',
+    'docs/guides/REPO_ENGINEERING.md'
+  ])
+    assert.ok(publicSourceViolations(path, '').includes('PUBLIC_PRIVATE_FILE_FORBIDDEN'), path);
   assert.ok(publicSourceViolations('.env/test.env', '').includes('PUBLIC_PRIVATE_FILE_FORBIDDEN'));
 });
 
