@@ -475,6 +475,16 @@ describe('Workspace-only foreground selection', () => {
     expect(f.restoreSession).toHaveBeenCalledWith('workspace-1', 'saved');
   });
 
+  it('restores Main behind a cross-Workspace Aside jump without closing mobile Aside or marking Main read', async () => {
+    const f = fixture();
+    f.takeRestoredSelection.mockReturnValue({ selectedSessionId: 'saved' });
+    await f.service.select(target(), 'behind-aside');
+    expect(f.restoreSession).toHaveBeenCalledWith('workspace-1', 'saved', {
+      preserveMobileWorkspaceSurface: true,
+      skipMarkRead: true
+    });
+  });
+
   it('shows a draft immediately when the caller owns session restoration', async () => {
     const f = fixture();
     f.takeRestoredSelection.mockReturnValue({ selectedSessionId: 'saved' });

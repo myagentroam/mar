@@ -89,6 +89,8 @@ interface LegacySelectionFixtureOptions {
 }
 
 type SelectionFixtureOptions = Omit<LegacySelectionFixtureOptions, 'createPaneLoader'> & {
+  canRevealAside?: () => boolean;
+  secondaryPane?: Parameters<typeof createWorkbenchSessionSelectionService>[0]['secondaryPane'];
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   sessionPathId: (sessionId: string) => string;
 };
@@ -178,7 +180,13 @@ function createSelection(
     ...options,
     pane,
     canOpenAside: () => options.canOpenAside(),
-    secondaryPane: { target: ref(undefined), reloadChecked: async () => {} },
+    canRevealAside: () => options.canRevealAside?.() ?? true,
+    secondaryPane: options.secondaryPane ?? {
+      target: ref(undefined),
+      reloadChecked: async () => {},
+      completeOpening: async () => undefined
+    },
+    revealMobileAside: () => {},
     setSelectedSessionId: (id) => {
       options.selectedSessionId.value = id;
     },
@@ -359,7 +367,103 @@ describe('Synchronous Session handoff', () => {
     });
     await opening;
     expect(f.options.selectedSessionId.value).toBe(f.session.id);
+    f.service.openAsideSession({ ...f.target.value, sessionId: 'other' });
+    await f.service.openNavigatedSession(f.session.id);
+    expect(f.aside.current(f.target.value).active).toEqual({ kind: 'session', sessionId: 'other' });
   });
+
+  it('falls back to Main when the existing Aside session cannot be revealed', async () => {
+    const f = tabSessionFixture();
+    f.aside.openSession({ ...f.target.value, sessionId: f.session.id });
+    vi.spyOn(f.options, 'canOpenAside').mockReturnValue(false);
+    const resolved = vi.fn();
+    await f.service.openNavigatedSession(f.session.id, resolved);
+    expect(f.options.selectedSessionId.value).toBe(f.session.id);
+    expect(resolved).toHaveBeenCalledWith(f.session);
+  });
+
+  it('uses Main without activating a hidden Aside tab when the desktop is too narrow', async () => {
+    const f = tabSessionFixture(3);
+    f.aside.openSession({ ...f.target.value, sessionId: f.session.id });
+    f.aside.openSession({ ...f.target.value, sessionId: 'other' });
+    f.options.canRevealAside = () => false;
+    const service = createSelection(f.options);
+    const onAsideRevealed = vi.fn();
+    await service.openNavigatedSession(f.session.id, undefined, onAsideRevealed);
+    expect(f.options.selectedSessionId.value).toBe(f.session.id);
+    expect(f.aside.current(f.target.value).active).toEqual({ kind: 'session', sessionId: 'other' });
+    expect(f.aside.current(f.target.value).sessions).toContain(f.session.id);
+    expect(onAsideRevealed).not.toHaveBeenCalled();
+  });
+
+  it('reports an existing Aside as soon as it is revealed, before the history finishes', async () => {
+    const f = tabSessionFixture();
+    const target = { ...f.target.value, sessionId: f.session.id };
+    f.aside.openSession(target);
+    let finish!: () => void;
+    const history = new Promise<undefined>((resolve) => {
+      finish = () => resolve(undefined);
+    });
+    f.options.secondaryPane = {
+      target: ref(target),
+      reloadChecked: async () => {},
+      completeOpening: () => history
+    };
+    const onAsideRevealed = vi.fn();
+    const service = createSelection(f.options);
+    const opening = service.openNavigatedSession(f.session.id, undefined, onAsideRevealed);
+    try {
+      await vi.waitFor(() => expect(onAsideRevealed).toHaveBeenCalledExactlyOnceWith(target));
+      expect(f.options.selectedSessionId.value).toBeUndefined();
+    } finally {
+      finish();
+      await opening;
+    }
+  });
+
+  it('does not recreate an Aside tab closed while navigation waits for layout', async () => {
+    const f = tabSessionFixture();
+    const target = { ...f.target.value, sessionId: f.session.id };
+    f.aside.openSession(target);
+    const service = createSelection(f.options);
+    const onAsideRevealed = vi.fn();
+
+    const opening = service.openNavigatedSession(f.session.id, undefined, onAsideRevealed);
+    service.closeAsideSession(target);
+    await opening;
+
+    expect(f.aside.current(f.target.value).sessions).not.toContain(f.session.id);
+    expect(f.options.selectedSessionId.value).toBe(f.session.id);
+    expect(onAsideRevealed).not.toHaveBeenCalled();
+  });
+
+  it('keeps Main when its saved selection is restored while an Aside jump waits for layout', async () => {
+    const f = tabSessionFixture(3);
+    const target = { ...f.target.value, sessionId: f.session.id };
+    f.aside.openSession(target);
+    f.aside.openSession({ ...f.target.value, sessionId: 'other' });
+    f.options.secondaryPane = {
+      target: ref(target),
+      reloadChecked: async () => {},
+      completeOpening: async () => f.session
+    };
+    const service = createSelection(f.options);
+    const onAsideRevealed = vi.fn();
+
+    const opening = service.openNavigatedSession(f.session.id, undefined, onAsideRevealed);
+    f.options.selectedSessionId.value = f.session.id;
+    await opening;
+
+    expect(f.options.selectedSessionId.value).toBe(f.session.id);
+    expect(f.aside.current(f.target.value).active).toEqual({ kind: 'session', sessionId: 'other' });
+    expect(f.options.markSessionRead).toHaveBeenCalledWith(
+      target.nodeId,
+      target.workspaceId,
+      target.sessionId
+    );
+    expect(onAsideRevealed).not.toHaveBeenCalled();
+  });
+
   it('saves the outgoing Aside before replacing its sole tab and leaves Main unchanged', () => {
     const f = tabSessionFixture();
     f.options.selectedSessionId.value = 'main';
@@ -776,7 +880,7 @@ describe('Shared session selection', () => {
             settle = () => (fails ? reject(failure) : resolve(true));
           })
       );
-      const opening = f.service.openWorkspaceTabSession(f.session.id);
+      const opening = f.service.openNavigatedSession(f.session.id);
       await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
       const loadingContent = f.service.loadingInitialContent.value;
       expect(f.options.loadingInitial.value).toBe(true);
@@ -829,7 +933,7 @@ describe('Shared session selection', () => {
         })
     );
     vi.spyOn(f.options, 'hasInitialSnapshot').mockReturnValue(false);
-    const opening = f.service.openWorkspaceTabSession(f.session.id);
+    const opening = f.service.openNavigatedSession(f.session.id);
     await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
     expect(f.turns.value).toEqual(cachedTurns);
     expect(f.options.loadingInitial.value).toBe(true);
@@ -838,7 +942,7 @@ describe('Shared session selection', () => {
     expect(f.options.scrollLatest).toHaveBeenCalledOnce();
     // The user can read cached history before the authoritative snapshot arrives.
     scrollTop = 120;
-    await f.service.openWorkspaceTabSession(f.session.id);
+    await f.service.openNavigatedSession(f.session.id);
     expect(f.options.beginWatch).toHaveBeenCalledOnce();
     resolveWatch(true);
     await opening;
@@ -997,15 +1101,15 @@ describe('Shared session selection', () => {
   it('retains unread across missing-connection and same-session retries, then reads after a real snapshot', async () => {
     const f = await watchedTabFixture();
     try {
-      await f.service.openWorkspaceTabSession(f.session.id);
-      await f.service.openWorkspaceTabSession(f.session.id);
+      await f.service.openNavigatedSession(f.session.id);
+      await f.service.openNavigatedSession(f.session.id);
       expect(f.watchPosts()).toHaveLength(0);
       expect(f.snapshot).not.toHaveBeenCalled();
       expect(f.readPosts).toEqual([]);
       expect(f.notifications.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
       expect(f.options.initialLoadFailed.value).toBe(true);
       f.connection.value = 'connection-1';
-      const retry = f.service.openWorkspaceTabSession(f.session.id);
+      const retry = f.service.openNavigatedSession(f.session.id);
       await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(1));
       expect(f.readPosts).toEqual([]);
       for (const mismatch of [
@@ -1024,7 +1128,7 @@ describe('Shared session selection', () => {
       expect(f.notifications.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(false);
       expect(f.options.initialLoadFailed.value).toBe(false);
       const scrolls = vi.mocked(f.options.scrollLatest).mock.calls.length;
-      await f.service.openWorkspaceTabSession(f.session.id);
+      await f.service.openNavigatedSession(f.session.id);
       expect(f.watchPosts()).toHaveLength(1);
       expect(f.options.scrollLatest).toHaveBeenCalledTimes(scrolls);
     } finally {
@@ -1038,7 +1142,7 @@ describe('Shared session selection', () => {
       const f = await watchedTabFixture();
       try {
         f.connection.value = 'connection-1';
-        const opening = f.service.openWorkspaceTabSession(f.session.id);
+        const opening = f.service.openNavigatedSession(f.session.id);
         await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(1));
         const stale = f.frame();
         if (replacement === 'node')
@@ -1059,7 +1163,7 @@ describe('Shared session selection', () => {
         expect(f.readPosts).toEqual([]);
         expect(f.notifications.hasUnreadWorkspace('node-1', 'workspace-1')).toBe(true);
         if (replacement === 'cancel') {
-          const retry = f.service.openWorkspaceTabSession(f.session.id);
+          const retry = f.service.openNavigatedSession(f.session.id);
           await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(2));
           expect(f.controller.handleEvent(stale)).toBe(false);
           f.controller.handleEvent(f.frame());
@@ -1079,7 +1183,7 @@ describe('Shared session selection', () => {
       const f = await watchedTabFixture();
       try {
         f.connection.value = 'connection-1';
-        const opening = f.service.openWorkspaceTabSession(f.session.id);
+        const opening = f.service.openNavigatedSession(f.session.id);
         await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(1));
         const message = 'Session watch snapshot failed.';
         expect(
@@ -1094,7 +1198,7 @@ describe('Shared session selection', () => {
         expect(f.readPosts).toEqual([]);
         expect(f.watchPosts()).toHaveLength(1);
 
-        const retry = f.service.openWorkspaceTabSession(f.session.id);
+        const retry = f.service.openNavigatedSession(f.session.id);
         await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(2));
         f.controller.handleEvent(f.frame());
         await retry;
@@ -1118,7 +1222,7 @@ describe('Shared session selection', () => {
             render = resolve;
           })
       );
-      const opening = f.service.openWorkspaceTabSession(f.session.id);
+      const opening = f.service.openNavigatedSession(f.session.id);
       await vi.waitFor(() => expect(f.watchPosts()).toHaveLength(1));
       f.controller.handleEvent(f.frame());
       expect(f.snapshot).toHaveBeenCalledOnce();
@@ -1141,10 +1245,10 @@ describe('Shared session selection', () => {
           finish = () => resolve(true);
         })
     );
-    const pending = f.service.openWorkspaceTabSession(f.session.id);
+    const pending = f.service.openNavigatedSession(f.session.id);
     await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
     expect(f.options.markSessionRead).not.toHaveBeenCalled();
-    await f.service.openWorkspaceTabSession(f.session.id);
+    await f.service.openNavigatedSession(f.session.id);
     expect(f.options.request).toHaveBeenCalledOnce();
     finish();
     await pending;
@@ -1154,7 +1258,7 @@ describe('Shared session selection', () => {
       'outside-page'
     );
     const scrolls = vi.mocked(f.options.scrollLatest).mock.calls.length;
-    await f.service.openWorkspaceTabSession(f.session.id);
+    await f.service.openNavigatedSession(f.session.id);
     expect(f.options.request).toHaveBeenCalledOnce();
     expect(f.options.scrollLatest).toHaveBeenCalledTimes(scrolls);
   });
@@ -1165,7 +1269,7 @@ describe('Shared session selection', () => {
     f.options.selectedSessionId.value = child.id;
     f.options.sessions.value = [child];
     const resolved = vi.fn();
-    await f.service.openWorkspaceTabSession(child.id, resolved);
+    await f.service.openNavigatedSession(child.id, resolved);
     expect(resolved).toHaveBeenCalledExactlyOnceWith(child);
     expect(f.options.request).not.toHaveBeenCalled();
   });
@@ -1188,7 +1292,7 @@ describe('Shared session selection', () => {
         finishDetail({ session: f.session });
         await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
       }
-      await f.service.openWorkspaceTabSession(f.session.id, resolved);
+      await f.service.openNavigatedSession(f.session.id, resolved);
       expect(f.options.request).toHaveBeenCalledOnce();
       if (stage === 'before detail') {
         expect(resolved).not.toHaveBeenCalled();
@@ -1216,7 +1320,7 @@ describe('Shared session selection', () => {
     );
     const pending = f.service.openSession(f.session.id);
     await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
-    await f.service.openWorkspaceTabSession(f.session.id, vi.fn());
+    await f.service.openNavigatedSession(f.session.id, vi.fn());
     finishWatch(false);
     await pending;
     expect(f.options.request).toHaveBeenCalledOnce();
@@ -1230,7 +1334,7 @@ describe('Shared session selection', () => {
       () => new Promise((resolve) => (complete = resolve))
     );
     const resolved = vi.fn();
-    const pending = f.service.openWorkspaceTabSession(f.session.id, resolved);
+    const pending = f.service.openNavigatedSession(f.session.id, resolved);
     f.options.selectedSessionId.value = 'another-session';
     complete({ session: f.session });
     await pending;
@@ -1258,7 +1362,7 @@ describe('Shared session selection', () => {
           f.options.nextRequest();
           return true;
         });
-      await f.service.openWorkspaceTabSession(f.session.id);
+      await f.service.openNavigatedSession(f.session.id);
       expect(f.options.markSessionRead).not.toHaveBeenCalled();
       if (failure !== 'superseded') expect(f.options.initialLoadFailed.value).toBe(true);
     }

@@ -18,7 +18,10 @@ export interface WorkbenchSelectionPersistenceOptions {
   readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly draftInput: Readonly<Ref<string>>;
   readonly activateWorkspace: (target: WorkspaceTarget) => Promise<boolean>;
-  readonly openSession: (sessionId: string) => Promise<void>;
+  readonly openSession: (
+    sessionId: string,
+    openOptions?: import('./workspace-session-pane-controller.js').WorkspacePaneOpenOptions
+  ) => Promise<void>;
   readonly lookupSession: (nodeId: string, sessionId: string) => Promise<Session | undefined>;
   readonly openDraft: () => void;
   readonly notice: (error: unknown) => void;
@@ -68,7 +71,11 @@ export function createWorkbenchSelectionPersistenceService(
     }
   }
 
-  async function restoreSession(workspaceId: string, preferredId?: string): Promise<void> {
+  async function restoreSession(
+    workspaceId: string,
+    preferredId?: string,
+    openOptions?: import('./workspace-session-pane-controller.js').WorkspacePaneOpenOptions
+  ): Promise<void> {
     const owner = storage;
     const targetWorkspace = options.workspaceTarget.value;
     if (targetWorkspace?.workspaceId !== workspaceId) return;
@@ -111,7 +118,8 @@ export function createWorkbenchSelectionPersistenceService(
       }
       if (current()) {
         if (target === undefined) options.openDraft();
-        else await options.openSession(target.id);
+        else if (openOptions === undefined) await options.openSession(target.id);
+        else await options.openSession(target.id, openOptions);
       }
     } catch (error) {
       if (current()) {

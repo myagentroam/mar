@@ -158,6 +158,44 @@ test('copying a user message with an image only copies the message text', async 
   await expect(messages.last().locator('.conversation-message-action')).toHaveCount(0);
 });
 
+test('Conversation binary attachment renders its own file icon in both color themes', async ({
+  page
+}, testInfo) => {
+  for (const theme of ['daylight', 'vscode-dark-2026']) {
+    await page.goto(`${fixture.url}conversation-style.html?binary-attachment&theme=${theme}`);
+    const attachments = page.locator('.conversation-timeline .conversation-file-attachments');
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const [name, id] of [
+        [/firmware\.bin/u, 'binary'],
+        [/notes\.txt/u, 'txt']
+      ] as const) {
+        const attachment = attachments.getByRole('button', { name });
+        await attachment.click({ trial: true });
+        const icon = attachment.locator('.mar-file-icon svg');
+        await expect(icon).toBeVisible();
+        const symbol = icon.locator('use');
+        await expect(symbol).toHaveAttribute('href', new RegExp(`#mar-file-${id}$`, 'u'));
+        await expect
+          .poll(() => symbol.evaluate((node: SVGUseElement) => node.getBBox().width))
+          .toBeGreaterThan(0);
+        // The attachment icon is 1rem, which follows the desktop root font size.
+        const size = await icon.evaluate((node) => {
+          const { width, height } = node.getBoundingClientRect();
+          const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+          return { width, height, rem };
+        });
+        expect(size.width).toBeCloseTo(size.rem, 1);
+        expect(size.height).toBeCloseTo(size.rem, 1);
+      }
+      await page.mouse.move(0, 0);
+      await attachments.screenshot({
+        path: testInfo.outputPath(`binary-attachment-${theme}-${width}.png`)
+      });
+    }
+  }
+});
+
 const source = [
   '// Preserve original whitespace when copying.',
   'type Task = { title: string; completed: boolean };',

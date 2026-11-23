@@ -77,10 +77,11 @@
     "kts": "kotlin",
     "scala": "scala",
     "c": "c",
+    "h": "c",
     "cpp": "cpp",
     "cxx": "cpp",
     "cc": "cpp",
-    "h": "cpp",
+    "c++": "cpp",
     "hpp": "cpp",
     "h++": "cpp",
     "hh": "cpp",
@@ -395,7 +396,7 @@
     "xcodeproj": "config",
     "ovpn": "config",
     "reg": "config",
-    "dockerignore": "ignore",
+    "dockerignore": "docker",
     "bazelignore": "ignore",
     "npmignore": "ignore",
     "eslintignore": "ignore",
@@ -854,8 +855,14 @@
     "package-lock.json": "lock",
     "dockerfile": "docker",
     "containerfile": "docker",
-    "compose.yaml": "compose",
-    "compose.yml": "compose",
+    "compose.yaml": "docker",
+    "compose.yml": "docker",
+    "docker-compose.yaml": "docker",
+    "docker-compose.yml": "docker",
+    "compose.override.yaml": "docker",
+    "compose.override.yml": "docker",
+    "docker-compose.override.yaml": "docker",
+    "docker-compose.override.yml": "docker",
     "makefile": "make",
     "cmakelists.txt": "make",
     "jenkinsfile": "ci",
@@ -863,7 +870,7 @@
     "chart.yaml": "kube",
     ".editorconfig": "config",
     ".npmrc": "config",
-    ".dockerignore": "ignore"
+    ".dockerignore": "docker"
   },
   "folderNames": {
     "src": "src",
@@ -1116,9 +1123,6 @@
     "docker": {
       "accent": "blue"
     },
-    "compose": {
-      "accent": "cyan"
-    },
     "make": {
       "accent": "orange"
     },
@@ -1222,7 +1226,7 @@
       "accent": "gold"
     },
     "exec": {
-      "accent": "orange"
+      "accent": "blue"
     },
     "package": {
       "accent": "orange"

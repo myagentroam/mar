@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-11-22
+lastUpdated: 2026-11-23
 ---
 
 # Create and Manage Sessions
@@ -83,7 +83,9 @@ Unexpected exits, forced kills, power loss, failed handoffs, other Agents, hoste
 
 Changing only the task prompt, notification settings, or saving user does not postpone the next scheduled occurrence. Changing the schedule or re-enabling a paused task recalculates the next run from the current time; missed occurrences during a pause are not replayed.
 
-Workspace tabs [open an unread session, or restore the last session when none is unread](navigation.md); an already open target keeps its reading position. Clicking the selected Workspace tree entry, or selecting the current session again from the session list or Quick Open, does not refresh content or change your reading position. Repeated selections also leave an in-progress load alone. Use the corresponding refresh action when you need updated data.
+The session list, Recent Sessions, and Quick Open open sessions in Main. Clicking a notification in the panel, a browser system notification, or an [unread Workspace tab](navigation.md) keeps an already selected Main session in place. If the session is open only in Aside and Aside can be shown, the jump activates it there without replacing your Main session. On desktop, a brief outline shows where it opened. If the session is not open or Aside cannot be shown, it opens in Main without closing any existing Aside tab. Explicit **Open in Main** and **Open in Aside** actions still use the pane you choose.
+
+Clicking the selected Workspace tree entry or jumping to an already open session does not explicitly refresh content or reset your reading position. Repeated selections also leave an in-progress load alone. Use the corresponding refresh action when you need updated data.
 
 Choose **Scheduled task** from a session's More menu and enter a task prompt. If no task exists, the dialog shows **Not configured** with the enable switch off; repeat and time values are only unsaved form defaults. Enable the task and save to allow automatic execution. Simple mode uses a time picker for hourly, daily, or weekly schedules; Cron mode accepts a standard five-field expression with numbers, ranges, lists, and steps. The task runs in the Node time zone; no time zone setting is needed. The dialog shows the notification recipient by nickname or account name. Saving a task makes you both its execution identity and notification recipient. Task notifications are off by default. Enable them for run completion, skips, and failures. When disabled, results remain in recent runs without in-app notifications, system notifications, or offline Push. Proposed task changes still notify separately. Enabling a task pins the session and shows a clock in the list. Pausing or deleting the task does not unpin the session; the list shows a pushpin if it is still pinned and no marker otherwise. The dialog shows the next run, recent results, and proposed changes. Recent results are shown in pages of 10; changing pages preserves unsaved task edits.
 

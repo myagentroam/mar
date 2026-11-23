@@ -29,7 +29,16 @@ test('File tree renders bundled MAR file and folder icons by default in both col
         ['test', 'tests'],
         ['button.spec.ts', 'test'],
         ['.gitignore', 'git'],
-        ['.gitmodules', 'git']
+        ['.gitmodules', 'git'],
+        ['firmware.bin', 'binary'],
+        ['app.exe', 'exec'],
+        ['codec.dll', 'library'],
+        ['notes.ipynb', 'notebook'],
+        ['module.wasm', 'wasm'],
+        ['Dockerfile', 'docker'],
+        ['main.cpp', 'cpp'],
+        ['widget.hpp', 'cpp'],
+        ['shared.h', 'c']
       ]) {
         const symbol = tree.locator(`[data-file-path="${path}"] .mar-file-icon use`);
         await expect(symbol).toHaveAttribute('href', new RegExp(`#mar-file-${id}$`));
@@ -44,7 +53,9 @@ test('File tree renders bundled MAR file and folder icons by default in both col
         .poll(() => symbol.evaluate((node: SVGUseElement) => node.getBBox().width))
         .toBeGreaterThan(0);
       expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme.v2'))).toBeNull();
-      await tree.screenshot({ path: testInfo.outputPath(`mar-file-tree-${theme}.png`) });
+      await page.locator('.workspace-file-tree').screenshot({
+        path: testInfo.outputPath(`mar-file-tree-${theme}.png`)
+      });
     }
   } finally {
     await fixture.close();

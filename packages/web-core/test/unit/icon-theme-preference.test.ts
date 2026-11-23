@@ -62,6 +62,22 @@ describe('File Icon Theme Preferences', () => {
       ['AGENTS.MD', 'agent'],
       ['nested.dir/AGENTS.MD', 'agent'],
       ['nested.dir/Dockerfile', 'docker'],
+      ['tools/Containerfile', 'docker'],
+      ['build.Dockerfile', 'docker'],
+      ['.dockerignore', 'docker'],
+      ['build.Dockerfile.dockerignore', 'docker'],
+      ['compose.yaml', 'docker'],
+      ['compose.yml', 'docker'],
+      ['docker-compose.yaml', 'docker'],
+      ['nested.dir/DOCKER-COMPOSE.YML', 'docker'],
+      ['compose.override.yaml', 'docker'],
+      ['compose.override.yml', 'docker'],
+      ['docker-compose.override.yaml', 'docker'],
+      ['docker-compose.override.yml', 'docker'],
+      ['service.compose.yaml', 'yaml'],
+      ['compose.prod.yaml', 'yaml'],
+      ['settings.yaml', 'yaml'],
+      ['project.npmignore', 'ignore'],
       ['nested.dir/.py', 'fallback'],
       ['CLAUDE.local.md', 'agent'],
       ['.mcp.json', 'bridge'],
@@ -75,6 +91,9 @@ describe('File Icon Theme Preferences', () => {
       ['illustrations.SVGZ', 'vector'],
       ['screenshot.png', 'image'],
       ['latest.tar.zst', 'archive'],
+      ['firmware.BIN', 'binary'],
+      ['payload.blob', 'binary'],
+      ['data.dat', 'binary'],
       ['places.geojson', 'geo'],
       ['schedule.ics', 'mail'],
       ['script.PY', 'python'],
@@ -100,6 +119,29 @@ describe('File Icon Theme Preferences', () => {
     expect(css).toMatchObject({ kind: 'sprite', href: expect.stringMatching(/#mar-file-style$/u) });
     for (const extension of ['SCSS', 'sass', 'less', 'styl', 'stylus', 'sss', 'pcss']) {
       expect(mar.resolveFile(`theme.${extension}`, true)).toEqual(css);
+    }
+  });
+
+  it('Shares the C icon with generic headers and reserves C++ for its own suffixes', () => {
+    const mar = resolveIconTheme('mar');
+    for (const [name, id] of [
+      ['main.c', 'c'],
+      ['main.cpp', 'cpp'],
+      ['main.cxx', 'cpp'],
+      ['main.cc', 'cpp'],
+      ['main.c++', 'cpp'],
+      ['include/widget.hpp', 'cpp'],
+      ['include/widget.hxx', 'cpp'],
+      ['include/widget.hh', 'cpp'],
+      ['include/widget.h++', 'cpp'],
+      ['include/shared.h', 'c'],
+      ['include/shared.H', 'c'],
+      ['include/kernel.cuh', 'cuda']
+    ] as const) {
+      expect(mar.resolveFile(name, true)).toMatchObject({
+        kind: 'sprite',
+        href: expect.stringMatching(new RegExp(`#mar-file-${id}$`, 'u'))
+      });
     }
   });
 

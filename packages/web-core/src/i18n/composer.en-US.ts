@@ -207,8 +207,7 @@ export const composerEnUS = {
       unableToSendThroughTheClaudeChannel: 'Unable to send through the Claude channel: {value0}'
     },
     workbenchContextCommandService: {
-      compactOlderContextToFreeWindowSpace:
-        'Compact older context to free window space while preserving recent conversation and required summaries. Continue?',
+      confirmCompactContext: 'Compact the current conversation’s context?',
       compactContext: 'Compact Context',
       compact: 'Compact',
       cancel: 'Cancel',

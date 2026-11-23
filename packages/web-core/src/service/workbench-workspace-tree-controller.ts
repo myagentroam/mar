@@ -39,9 +39,10 @@ export interface WorkbenchWorkspaceTreeControllerOptions {
   readonly releaseRemovedWorkspaceDrafts: (nodeId: string, workspaceId: string) => void;
   readonly activateWorkspace: (
     target: WorkspaceTarget,
-    restoreSession?: boolean
+    restoreSession?: import('./workbench-workspace-selection-service.js').WorkspaceSessionRestoration
   ) => Promise<boolean>;
   readonly workspaceTabSession: (nodeId: string, workspaceId: string) => string | undefined;
+  readonly hasAsideSession: (workspace: WorkspaceTarget, sessionId: string) => boolean;
   readonly openWorkspaceTabSession: (sessionId: string) => Promise<void>;
   readonly clearWorkspace: () => void;
   readonly currentSelectionRevision: () => number;
@@ -168,7 +169,10 @@ export function createWorkbenchWorkspaceTreeController(
     const node = resolveTabNode(tab);
     if (node === undefined) return;
     const sessionId = options.workspaceTabSession(tab.nodeId, tab.workspaceId);
-    const activation = activateWorkspaceTarget(tab, sessionId === undefined);
+    const activation = activateWorkspaceTarget(
+      tab,
+      sessionId === undefined ? true : options.hasAsideSession(tab, sessionId) && 'behind-aside'
+    );
     const revision = options.currentSelectionRevision();
     if (!(await activation) || revision !== options.currentSelectionRevision()) return;
     const selected = options.workspaceTarget.value;
@@ -184,15 +188,15 @@ export function createWorkbenchWorkspaceTreeController(
 
   function activateWorkspaceTarget(
     target: WorkspaceTarget,
-    restoreSession = true
+    restoreSession: import('./workbench-workspace-selection-service.js').WorkspaceSessionRestoration = true
   ): Promise<boolean> {
     const current = options.workspaceTarget.value;
     const activation =
       current?.nodeId === target.nodeId && current.workspaceId === target.workspaceId
         ? Promise.resolve(true)
-        : restoreSession
+        : restoreSession === true
           ? options.activateWorkspace(target)
-          : options.activateWorkspace(target, false);
+          : options.activateWorkspace(target, restoreSession);
     options.tree.revealWorkspace(target);
     options.closeMobileSidebar();
     options.showWorkbench();

@@ -74,6 +74,7 @@ export interface WorkspacePaneOpenOptions {
   readonly deferInitialScroll?: boolean;
   readonly skipSaveCurrent?: boolean;
   readonly markReadAfterOpen?: boolean;
+  readonly skipMarkRead?: boolean;
   readonly onSessionResolved?: (session: Session) => void;
 }
 
@@ -969,7 +970,6 @@ export function createWorkspaceSessionPaneController(
     selectedSession: configuration.selectedSession,
     compactCommand: presentation.compactCommand,
     canCompact: presentation.canCompactContext,
-    contextUsageLabel: presentation.contextUsageLabel,
     notice: common.notice,
     request: common.request,
     execute: executeCommand,

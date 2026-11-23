@@ -291,6 +291,7 @@ export function createWorkspaceSessionPaneLifecycle(options: {
 }) {
   const scope = getCurrentScope();
   let reload: (() => Promise<void>) | undefined;
+  let completeOpening: (() => Promise<Session | undefined>) | undefined;
   let renderedTarget: Extract<DraftTarget, { kind: 'session' }> | undefined;
   let renderedElement: HTMLElement | undefined;
   const renderer = createWorkspaceSessionPaneRenderLifecycle({
@@ -345,8 +346,11 @@ export function createWorkspaceSessionPaneLifecycle(options: {
         options.loading.value = false;
         options.loadingContent.value = false;
         reload = undefined;
+        completeOpening = undefined;
       });
+      let opened: Session | undefined;
       const run = async () => {
+        opened = undefined;
         renderer.begin();
         const restored = options.restore(captured);
         options.loadingContent.value = !restored;
@@ -354,7 +358,7 @@ export function createWorkspaceSessionPaneLifecycle(options: {
           ...captured,
           isCurrent: current,
           onResolved: () => {},
-          afterLoad: async () => {
+          afterLoad: async ({ session }) => {
             let element: HTMLElement | undefined;
             await renderer.finish({
               isCurrent: current,
@@ -374,6 +378,7 @@ export function createWorkspaceSessionPaneLifecycle(options: {
             if (!current()) return;
             renderedTarget = captured;
             renderedElement = element;
+            opened = session;
             await options.markRead(captured.nodeId, captured.workspaceId, captured.sessionId);
           },
           onSettle: () => {
@@ -392,6 +397,13 @@ export function createWorkspaceSessionPaneLifecycle(options: {
         });
         return operation;
       };
+      completeOpening = async () => {
+        // A new exposure already marks the target when the existing load succeeds.
+        if (pending !== undefined) await pending;
+        else if (current() && opened !== undefined)
+          void options.markRead(captured.nodeId, captured.workspaceId, captured.sessionId);
+        return current() && !options.failed.value ? opened : undefined;
+      };
       void reload();
     },
     { immediate: true, flush: 'sync' }
@@ -404,5 +416,10 @@ export function createWorkspaceSessionPaneLifecycle(options: {
         'The initial session snapshot has not been applied.'
       );
   }
-  return { reload: () => reload?.() ?? Promise.resolve(), reloadChecked, stop };
+  return {
+    reload: () => reload?.() ?? Promise.resolve(),
+    reloadChecked,
+    completeOpening: () => completeOpening?.() ?? Promise.resolve(undefined),
+    stop
+  };
 }

@@ -107,10 +107,14 @@ const workspaceGrid = ref<HTMLElement>();
 const terminalMount = ref<HTMLElement>();
 const asideSurfaceId = `workspace-aside-${useId()}`;
 const asideAvailableWidth = ref(0);
+const mainMinWidth = 360;
 watch(
   workspaceGrid,
   (element, _previous, onCleanup) => {
-    if (element == null) return;
+    if (element == null) {
+      asideAvailableWidth.value = 0;
+      return;
+    }
     const measure = () => {
       const sidebar =
         element.querySelector<HTMLElement>('.conversation-sidebar')?.getBoundingClientRect()
@@ -179,9 +183,15 @@ const workspaceFilesRestriction = computed(() => {
     : errorSummary(new ApiError(capability.reasonCode, fallback));
 });
 const asideWidth = computed(() =>
-  props.page.layout.mobileViewport
-    ? asideAvailableWidth.value
-    : props.page.aside.asideWidth(asideMode.value, asideAvailableWidth.value, 360)
+  props.page.layout.mobileViewport ? asideAvailableWidth.value : desktopAsideWidth(asideMode.value)
+);
+function desktopAsideWidth(mode: 'compact' | 'content'): number | undefined {
+  return props.page.aside.asideWidth(mode, asideAvailableWidth.value, mainMinWidth);
+}
+watch(
+  () => (asideAvailableWidth.value > 0 ? desktopAsideWidth('content') !== undefined : undefined),
+  (fits) => props.page.aside.setAsideSessionFits(fits),
+  { immediate: true }
 );
 const treeStatus = computed(() =>
   workspaceOffline.value
@@ -203,7 +213,10 @@ const asideVisible = computed(
 watch(asideVisible, (visible) => props.page.aside.setAsideSurfaceVisible(visible), {
   immediate: true
 });
-onBeforeUnmount(() => props.page.aside.setAsideSurfaceVisible(false));
+onBeforeUnmount(() => {
+  props.page.aside.setAsideSurfaceVisible(false);
+  props.page.aside.setAsideSessionFits(undefined);
+});
 const terminalVisible = computed(
   () =>
     asideVisible.value &&
@@ -327,10 +340,7 @@ function openAsideTarget(target: {
   workspaceId: string;
   sessionId: string;
 }): boolean {
-  const accepted = props.page.aside.openAsideSession(target);
-  if (accepted && props.page.layout.mobileViewport)
-    props.page.layout.openMobileWorkspaceSurface('inspector');
-  return accepted;
+  return props.page.aside.openAsideSession(target);
 }
 function openSessionInPane(sessionId: string, destination: 'aside' | 'main'): boolean {
   const workspace = props.page.selection.workspaceTarget;
@@ -842,6 +852,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             >
               <WorkbenchAside
                 :inert="!asideVisible"
+                :session-location="page.aside.asideSessionLocation"
                 :workspace="page.selection.workspaceTarget!"
                 :state="page.aside.asideState"
                 :tools="asideTools"
@@ -859,7 +870,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :max-width="
                   Math.max(
                     WORKBENCH_PANEL_LIMITS[asideMode].min,
-                    Math.min(WORKBENCH_PANEL_LIMITS[asideMode].max, asideAvailableWidth - 360)
+                    Math.min(
+                      WORKBENCH_PANEL_LIMITS[asideMode].max,
+                      asideAvailableWidth - mainMinWidth
+                    )
                   )
                 "
                 :mode="asideMode"

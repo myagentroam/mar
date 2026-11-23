@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-22
+lastUpdated: 2026-11-23
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -15,7 +15,7 @@ Every Workspace uses the same activation path: its tab activates and restores ca
 
 After a browser reload, Work restores the last open tabs and active Workspace. If the Node list cannot be loaded, select **Retry** to continue; the failure does not close the saved tabs. Other modes remain available during restoration.
 
-Clicking a Workspace tab, including the active tab, desktop overflow menu, or mobile strip, opens its first valid unread session and selects the correct Main / Child group. A successful open marks only that session read; another click can open the next unread session. With no unread sessions, the tab restores its last selected session, or preserves the existing empty or draft behavior. Running indicators are informational and never select a running session. A failed open does not clear unread state. Background notifications and task changes do not switch sessions automatically. Tree navigation, shortcuts, and tab-close fallback keep their existing behavior.
+Clicking a Workspace tab, including the active tab, desktop overflow menu, or mobile strip, opens its first valid unread session, [reusing its existing pane](sessions.md) when already open, and selects the correct Main / Child group. A successful open marks only that session read; another click can open the next unread session. With no unread sessions, the tab restores its last selected session, or preserves the existing empty or draft behavior. Running indicators are informational and never select a running session. A failed open does not clear unread state. Background notifications and task changes do not switch sessions automatically. Tree navigation, shortcuts, and tab-close fallback keep their existing behavior.
 
 Workspace registration uses an explicit host target in a dialog; closing it leaves the active Workspace unchanged. Open Workspaces appear as tabs and retain their order in the current browser.
 

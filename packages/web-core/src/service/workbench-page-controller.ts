@@ -107,7 +107,10 @@ import { WORKBENCH_HTTP_KEY } from './workbench-http-service.js';
 import type { WorkspaceFileWorkbenchHandle } from '../model/workspace-file-workbench.js';
 
 import type { TerminalDockHandle } from './terminal-direct-client.js';
-import { createWorkbenchWorkspaceSelection } from './workbench-workspace-selection-service.js';
+import {
+  createWorkbenchWorkspaceSelection,
+  type WorkspaceSessionRestoration
+} from './workbench-workspace-selection-service.js';
 import { createWorkbenchWorkspaceCache } from './workbench-workspace-cache-controller.js';
 import { createWorkbenchWorkspaceTreeController } from './workbench-workspace-tree-controller.js';
 import { createWorkbenchPresentationStateService } from './workbench-presentation-state-service.js';
@@ -660,6 +663,7 @@ export function createWorkbenchPageController<
   });
 
   const asideSurfaceVisible = ref(false);
+  const asideSessionFits = ref<boolean>();
   const fileWorkbench: ReturnType<typeof createWorkspaceFileWorkbenchController> =
     createWorkspaceFileWorkbenchController({
       page: () => undefined,
@@ -992,9 +996,9 @@ export function createWorkbenchPageController<
     remove: deleteWorkspaceUpload,
     dispose: disposeWorkspaceUploads
   } = workspaceUploadService;
+  const asideSessionLocation = shallowRef<import('./workbench-aside-service.js').AsideSession>();
   const targetNavigation = createWorkbenchTargetNavigation({
     workspaceTarget,
-    selectedSessionId,
     sessions,
     selectView: (target) => navigationService.selectView(target, 'preserve-layout'),
     applyWebUpdate,
@@ -1004,7 +1008,9 @@ export function createWorkbenchPageController<
     openHostedConversationTarget: (...args) => openHostedConversationTarget(...args),
     discovery: workspaceSessionDiscovery,
     selection: () => workbenchSessionSelectionService,
-    openSession,
+    onAsideRevealed: (target) => {
+      asideSessionLocation.value = { ...target };
+    },
     notice
   });
   function openWorkbenchNotification(notification: WorkbenchNotification): Promise<void> {
@@ -1012,9 +1018,8 @@ export function createWorkbenchPageController<
   }
   const { openRecentRun, openSessionGroupTarget, openNavigatedSession } = targetNavigation;
 
-  async function openSessionFromList(sessionId: string): Promise<void> {
-    await workbenchSessionSelectionService.selectSession(sessionId);
-  }
+  const openSessionFromList = (sessionId: string) =>
+    workbenchSessionSelectionService.selectSession(sessionId);
 
   const {
     workspaceViewCache,
@@ -1418,7 +1423,9 @@ export function createWorkbenchPageController<
     },
     activateWorkspace: (target, restoreSession) => selectWorkspace(target, restoreSession),
     workspaceTabSession: workbenchNotificationService.workspaceTabSession,
-    openWorkspaceTabSession: (sessionId) => openNavigatedSession(sessionId, true),
+    hasAsideSession: (target, sessionId) =>
+      workbenchSessionSelectionService.hasAsideSession(target, sessionId),
+    openWorkspaceTabSession: (sessionId) => openNavigatedSession(sessionId),
     clearWorkspace: () => workbenchWorkspaceSelectionService.clear(),
     currentSelectionRevision: () => workbenchWorkspaceSelectionService.currentSelectionRevision(),
     cleanupSessionsEnabled: () => cleanupSessionsEnabled,
@@ -1581,7 +1588,10 @@ export function createWorkbenchPageController<
     }
   );
 
-  function selectWorkspace(target: WorkspaceTarget, restoreSession = true): Promise<boolean> {
+  function selectWorkspace(
+    target: WorkspaceTarget,
+    restoreSession?: WorkspaceSessionRestoration
+  ): Promise<boolean> {
     return workbenchWorkspaceSelectionService.select(target, restoreSession);
   }
 
@@ -1670,8 +1680,8 @@ export function createWorkbenchPageController<
     hasProfiles: runnerProfileService.has,
     loadProfiles: loadRunnerProfiles,
     takeRestoredSelection: workspaceTabService.takeRestoredSelection,
-    restoreSession: (workspaceId, sessionId) =>
-      workbenchRouteService.restoreSession(workspaceId, sessionId)
+    restoreSession: (workspaceId, sessionId, openOptions) =>
+      workbenchRouteService.restoreSession(workspaceId, sessionId, openOptions)
   });
 
   reactivateConnectedWorkspace = (nodeId) => {
@@ -1687,7 +1697,8 @@ export function createWorkbenchPageController<
   const workbenchSessionSelectionService = sessionSelection.connect({
     secondaryPane: {
       target: asideTarget,
-      reloadChecked: () => asidePaneController.secondary!.reloadChecked()
+      reloadChecked: () => asidePaneController.secondary!.reloadChecked(),
+      completeOpening: () => asidePaneController.secondary!.completeOpening()
     },
     pane: mainPaneController.opening!,
     aside: workbenchAsideService,
@@ -1696,9 +1707,13 @@ export function createWorkbenchPageController<
         nodes.value.find((node) => node.id === workspaceNodeId.value)?.nodeAppVersion,
         nodeManifest.value?.sessionAside
       ),
+    canRevealAside: () => mobileViewport.value || asideSessionFits.value !== false,
     saveAside: () => saveAsideContext(),
     sessions,
     closeMobileSurface: closeMobileWorkspaceSurface,
+    revealMobileAside: () => {
+      if (mobileViewport.value) openMobileWorkspaceSurface('inspector');
+    },
     workspaceTabId,
     ensureSessionVisible: workspaceSessionPaging.ensureVisible,
     markSessionRead: markVisibleSessionRead,
@@ -2236,6 +2251,7 @@ export function createWorkbenchPageController<
     }),
     aside: proxyRefs({
       asidePaneController: asidePaneController.view,
+      asideSessionLocation,
       asideSessionMetadata: computed(() => {
         const workspace = workspaceTarget.value;
         return navigationQuery.value === undefined || workspace === undefined
@@ -2265,6 +2281,9 @@ export function createWorkbenchPageController<
       selectAsideBrowser,
       selectAsideTool,
       setAsideCollapsed: workbenchAsideService.setCollapsed,
+      setAsideSessionFits: (fits: boolean | undefined) => {
+        asideSessionFits.value = fits;
+      },
       setAsideSurfaceVisible: (visible: boolean) => {
         asideSurfaceVisible.value = visible;
       },

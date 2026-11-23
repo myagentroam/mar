@@ -405,6 +405,7 @@ export function createWorkbenchAsideService({
 
 export interface WorkbenchAsideView {
   asidePaneController: WorkspaceSessionPaneView;
+  asideSessionLocation: AsideSession | undefined;
   asideSessionMetadata: NavigationSession[];
   asideState: AsideState | undefined;
   asideSupported: boolean;
@@ -422,6 +423,7 @@ export interface WorkbenchAsideView {
   selectAsideBrowser: (target: AsideWorkspace) => void;
   selectAsideTool: (target: AsideWorkspace & { readonly id: AsideTool }) => void;
   setAsideCollapsed: (target: AsideWorkspace, collapsed: boolean) => void;
+  setAsideSessionFits: (fits: boolean | undefined) => void;
   setAsideSurfaceVisible: (visible: boolean) => void;
   toggleAsideTerminal: () => void;
 }
