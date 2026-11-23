@@ -29,8 +29,8 @@ describe('Browser attachment frame stream', () => {
     stream.offer(capture(2));
     stream.offer(capture(3));
     await vi.waitFor(() => expect(images).toEqual([1]));
-    expect(stream.acknowledge(2)).toBe(false);
-    expect(stream.acknowledge(1)).toBe(true);
+    expect(stream.acknowledge(2)).toBeUndefined();
+    expect(stream.acknowledge(1)).toBe(1);
     await vi.waitFor(() => expect(images).toEqual([1, 3]));
     stream.close();
   });
@@ -56,7 +56,7 @@ describe('Browser attachment frame stream', () => {
     stream.setView(2);
     stream.offer(capture(3));
     stream.offer(capture(4, 2));
-    expect(stream.acknowledge(1)).toBe(true);
+    expect(stream.acknowledge(1)).toBe(1);
     await vi.waitFor(() => expect(images).toEqual([1, 2]));
     expect(keys).toEqual([true, true]);
     stream.close();
@@ -79,7 +79,7 @@ describe('Browser attachment frame stream', () => {
     });
     stream.setView(1);
     stream.offer(capture(1));
-    expect(stream.acknowledge(1)).toBe(false);
+    expect(stream.acknowledge(1)).toBeUndefined();
     stream.setView(2);
     stream.offer(capture(2, 2));
     old.resolve({ data: Buffer.from([1]), key: true });
@@ -104,10 +104,10 @@ describe('Browser attachment frame stream', () => {
     stream.offer(capture(1));
     stream.offer(capture(2));
     await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
-    expect(stream.acknowledge(1)).toBe(false);
+    expect(stream.acknowledge(1)).toBeUndefined();
     first.resolve();
     await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
-    expect(stream.acknowledge(1)).toBe(true);
+    expect(stream.acknowledge(1)).toBe(1);
     expect(encode).toHaveBeenCalledTimes(1);
     last.resolve();
     await vi.waitFor(() => expect(encode).toHaveBeenCalledTimes(2));
@@ -145,7 +145,7 @@ describe('Browser attachment frame stream', () => {
     stream.offer(capture(2));
     await vi.advanceTimersByTimeAsync(100);
     stream.offer(capture(3));
-    expect(stream.acknowledge(1)).toBe(false);
+    expect(stream.acknowledge(1)).toBeUndefined();
     expect(send).toHaveBeenCalledTimes(1);
     expect(failed.mock.calls).toEqual([['BROWSER_FRAME_TIMEOUT']]);
   });

@@ -24,6 +24,7 @@ import { MarTimeSelect } from '@myagentroam/mar-ui/time-select';
 const locale = ref(en);
 provide(marUiLocaleKey, locale);
 const selected = ref<string[]>([]);
+const checked = ref(false);
 const radio = ref('a');
 const quantity = ref<number | undefined>(2);
 const quantityChanges = ref<string[]>([]);
@@ -135,6 +136,7 @@ const organizations = [
       </MarDescriptions>
     </section>
     <section aria-label="Interaction controls">
+      <MarCheckbox v-model="checked" aria-label="Select row" />
       <MarCheckboxGroup v-model="selected" aria-label="Permissions"
         ><MarCheckbox value="read">Read</MarCheckbox
         ><MarCheckbox value="write" disabled>Write</MarCheckbox></MarCheckboxGroup

@@ -11,9 +11,9 @@ const props = withDefaults(
     id?: string;
     disabled?: boolean | undefined;
     value?: CheckboxValue;
-    label?: CheckboxValue;
+    label?: CheckboxValue | undefined;
   }>(),
-  { disabled: undefined }
+  { disabled: undefined, label: undefined }
 );
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; change: [value: boolean] }>();
 const group = inject(checkboxGroupKey, undefined);

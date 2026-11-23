@@ -7,10 +7,10 @@ import { chromium } from 'playwright';
 import { RTCPeerConnection } from 'node-datachannel/polyfill';
 import { cleanup } from 'node-datachannel';
 import WebSocket, { WebSocketServer } from 'ws';
-import { BrowserPageView } from '../../src/browser/browser-page-view.js';
-import { BROWSER_FRAME_MESSAGE_BYTES, browserPageInputSchema } from '@myagentroam/protocol';
+import { BrowserAttachment } from '../../src/browser/browser-attachment.js';
+import { BrowserTabs } from '../../src/browser/browser-tabs.js';
+import { BROWSER_FRAME_MESSAGE_BYTES, browserAttachmentMessageSchema } from '@myagentroam/protocol';
 import { createBrowserVideoEncoder } from '../../src/browser/browser-video-encoder.js';
-import { BrowserFrameStream } from '../../src/browser/browser-frame-stream.js';
 import { BrowserSessionService } from '../../src/browser/browser-session-service.js';
 
 declare global {
@@ -27,7 +27,7 @@ declare global {
       click(): Promise<void>;
       keyboard(): void;
       slow(milliseconds: number): void;
-      view(version: number): void;
+      select(tabId: string): void;
     };
   }
 }
@@ -57,8 +57,21 @@ const sessions = new BrowserSessionService({
       chromiumSandbox: true
     });
     try {
-      const resource = await target.newPage({ viewport: { width: 960, height: 600 } });
-      return { resource, close: () => target.close() };
+      const context = await target.newContext({ viewport: { width: 960, height: 600 } });
+      const resource = {
+        page: await context.newPage(),
+        tabs: new BrowserTabs(context, { limit: 6, failed: console.error })
+      };
+      return {
+        resource,
+        close: async () => {
+          try {
+            await context.close();
+          } finally {
+            await target.close();
+          }
+        }
+      };
     } catch (error) {
       await target.close();
       throw error;
@@ -92,8 +105,9 @@ try {
     framerate: 24
   });
   const browserId = await sessions.open(scope);
-  const { resource: target, release } = sessions.pin(scope, browserId);
-  const pageView = new BrowserPageView(target);
+  const borrow = sessions.pin(scope, browserId);
+  const target = borrow.resource.page;
+  const originalTab = borrow.resource.tabs.snapshot().activeId!;
   await target.setContent(`
     <style>body{margin:0}canvas{display:block}</style><canvas width="960" height="600"></canvas>
     <script>
@@ -133,8 +147,7 @@ try {
       const canvas = document.querySelector('canvas');
       const ctx = canvas.getContext('2d');
       const viewport = new BrowserViewport(canvas);
-      let currentView = 1;
-      viewport.setView(currentView);
+      let currentView;
       const pc = new RTCPeerConnection({ iceServers: [] });
       const opened = {};
       let browserChannel, terminal, sentAt = 0, sampleAt = 0, ackDelay = 0, clickDone, white, clickTarget;
@@ -151,10 +164,17 @@ try {
         }
         browserChannel = channel;
         channel.onmessage = async ({ data }) => {
+          if (typeof data === 'string') {
+            const event = JSON.parse(data);
+            if (event.type === 'snapshot' && currentView !== event.snapshot.viewVersion) {
+              currentView = event.snapshot.viewVersion; viewport.setView(currentView);
+            }
+            return;
+          }
           stats.bytes += data.byteLength;
           const frame = await viewport.receive(new Uint8Array(data));
           if (!frame) return;
-          if (!frame.viewport) { browserChannel.send(String(frame.sequence)); return; }
+          if (!frame.viewport) { browserChannel.send(JSON.stringify({ type: 'ack', sequence: frame.sequence })); return; }
           white = ctx.getImageData(4, 4, 1, 1).data[0] > 128;
           stats.frames++;
           if (!stats.first) stats.first = performance.now() - globalThis.probe.startAt;
@@ -162,7 +182,7 @@ try {
             stats.clicks.push(performance.now() - sentAt); clickDone(); clickDone = undefined;
           }
           if (ackDelay) await new Promise(resolve => setTimeout(resolve, ackDelay));
-          browserChannel.send(String(frame.sequence));
+          browserChannel.send(JSON.stringify({ type: 'ack', sequence: frame.sequence }));
         };
       }
       globalThis.probe = { stats, startAt: 0,
@@ -178,12 +198,12 @@ try {
         ready() { return Promise.all(Object.values(opened)); },
         click() { clickTarget = !white; sentAt = performance.now();
           const position = { type: 'button', button: 'left', x: 10, y: 10, viewVersion: currentView };
-          browserChannel.send(JSON.stringify({ ...position, edge: 'down' }));
-          browserChannel.send(JSON.stringify({ ...position, edge: 'up' }));
+          browserChannel.send(JSON.stringify({ type: 'input', action: { ...position, edge: 'down' } }));
+          browserChannel.send(JSON.stringify({ type: 'input', action: { ...position, edge: 'up' } }));
           return new Promise(resolve => {clickDone = resolve;}); },
         keyboard() { sampleAt = performance.now(); terminal.send('key'); },
         slow(value) { ackDelay = value; },
-        view(version) { currentView = version; viewport.setView(version); }
+        select(tabId) { browserChannel.send(JSON.stringify({ type: 'tab.select', tabId })); }
       };
     `
     },
@@ -195,6 +215,7 @@ try {
   await workbench.addScriptTag({ content: artifact.outputFiles[0]!.text });
   let send: (chunk: Uint8Array, signal: AbortSignal) => Promise<void>;
   let accept: (receive: (message: string) => void) => void;
+  let sendText: (text: string) => void;
   let buffered = () => 0;
   if (mode === 'ice') {
     peer = new RTCPeerConnection({ iceServers: [], maxMessageSize: 64 * 1024 });
@@ -219,6 +240,7 @@ try {
     });
     const channel = await channelPromise;
     accept = (receive) => channel.addEventListener('message', ({ data }) => receive(String(data)));
+    sendText = (text) => channel.send(text);
     buffered = () => channel.bufferedAmount;
     send = async (chunk, signal) => {
       while (channel.bufferedAmount >= 2 * BROWSER_FRAME_MESSAGE_BYTES)
@@ -243,6 +265,7 @@ try {
     await once(socket, 'open');
     await workbench.evaluate((value) => window.probe.relay(value), url);
     accept = (receive) => socket.on('message', (data) => receive(String(data)));
+    sendText = (text) => socket.send(text);
     buffered = () => socket.bufferedAmount;
     send = (chunk, signal) =>
       new Promise<void>((resolve, reject) => {
@@ -251,7 +274,6 @@ try {
       });
   }
   await workbench.evaluate(() => window.probe.ready());
-  const errors: string[] = [];
   let captures = 0;
   let largestJpegBytes = 0;
   let largestKeyBytes = 0;
@@ -260,67 +282,78 @@ try {
   let capturedBytes = 0;
   const encodeTimes: number[] = [];
   let peakBuffered = 0;
+  let streamError: Error | undefined;
+  let rejectClick: ((error: Error) => void) | undefined;
+  async function measureClick(): Promise<void> {
+    if (streamError) throw streamError;
+    const { promise, reject } = Promise.withResolvers<never>();
+    rejectClick = reject;
+    // A click can produce no new frame even when the frame stream is healthy.
+    const timeout = setTimeout(
+      reject,
+      8_000,
+      new Error('Timed out waiting for the click to draw.')
+    );
+    try {
+      await Promise.race([promise, workbench.evaluate(() => window.probe.click())]);
+    } finally {
+      clearTimeout(timeout);
+      rejectClick = undefined;
+    }
+  }
   // An application-level bottleneck makes sender backpressure reproducible
   // without modifying the host network. It doesn't model packet loss or TCP.
   const sampleKibPerSecond = 125;
   let throttle = false;
-  const stream = new BrowserFrameStream({
-    encode: async (jpeg, key) => {
-      const started = performance.now();
-      const unit = await encoder.encode(jpeg, key).catch((error: unknown) => {
-        console.error('Encoder:', error);
-        throw error;
-      });
-      encodeTimes.push(performance.now() - started);
-      if (unit.key) {
-        keysSent++;
-        largestKeyBytes = Math.max(largestKeyBytes, unit.data.byteLength);
-      } else largestDeltaBytes = Math.max(largestDeltaBytes, unit.data.byteLength);
-      return unit;
-    },
-    deadlineMs: 5_000,
-    failed: (code) => {
-      errors.push(code);
-      console.error(code);
-    },
-    send: async (chunk, signal) => {
-      if (throttle)
-        await delay(chunk.byteLength / ((sampleKibPerSecond * 1024) / 1000), undefined, { signal });
-      await send(chunk, signal).catch((error: unknown) => {
-        console.error('Transport:', error);
-        throw error;
-      });
-      peakBuffered = Math.max(peakBuffered, buffered());
-    }
+  await workbench.evaluate(() => {
+    window.probe.startAt = performance.now();
   });
-  let capture: Awaited<ReturnType<BrowserPageView['startCapture']>> | undefined;
-  const beginCapture = (viewVersion: number) =>
-    pageView.startCapture({ width: 960, height: 600, quality }, (frame) => {
-      captures++;
-      capturedBytes += frame.jpeg.byteLength;
-      largestJpegBytes = Math.max(largestJpegBytes, frame.jpeg.byteLength);
-      stream.offer({ ...frame, viewVersion });
-    });
-  try {
-    let viewVersion = 1;
-    stream.setView(viewVersion);
-    let input = Promise.resolve();
-    accept((value) => {
-      if (value.startsWith('{')) {
-        const action = browserPageInputSchema.parse(JSON.parse(value));
-        input = input
-          .then(async () => {
-            if (action.viewVersion === viewVersion) await pageView.input(action);
-          })
-          .catch(() => {
-            errors.push('CLICK_FAILED');
+  const attachment = new BrowserAttachment(
+    { resource: borrow.resource.tabs, release: borrow.release },
+    {
+      encoder: {
+        close: encoder.close,
+        encode: async (jpeg, key) => {
+          const started = performance.now();
+          const unit = await encoder.encode(jpeg, key).catch((error: unknown) => {
+            console.error('Encoder:', error);
+            throw error;
           });
-      } else if (!stream.acknowledge(Number(value))) errors.push('BAD_ACK');
-    });
-    await workbench.evaluate(() => {
-      window.probe.startAt = performance.now();
-    });
-    capture = await beginCapture(1);
+          encodeTimes.push(performance.now() - started);
+          if (unit.key) {
+            keysSent++;
+            largestKeyBytes = Math.max(largestKeyBytes, unit.data.byteLength);
+          } else largestDeltaBytes = Math.max(largestDeltaBytes, unit.data.byteLength);
+          return unit;
+        }
+      },
+      render: { width: 960, height: 600, quality },
+      captured: (size) => {
+        captures++;
+        capturedBytes += size;
+        largestJpegBytes = Math.max(largestJpegBytes, size);
+      },
+      sendControl: (event) => sendText(JSON.stringify(event)),
+      deadlineMs: 5_000,
+      failed: (code) => {
+        streamError = new Error(code);
+        rejectClick?.(streamError);
+      },
+      sendFrame: async (chunk, signal) => {
+        if (throttle)
+          await delay(chunk.byteLength / ((sampleKibPerSecond * 1024) / 1000), undefined, {
+            signal
+          });
+        await send(chunk, signal).catch((error: unknown) => {
+          console.error('Transport:', error);
+          throw error;
+        });
+        peakBuffered = Math.max(peakBuffered, buffered());
+      }
+    }
+  );
+  accept((value) => attachment.receive(browserAttachmentMessageSchema.parse(JSON.parse(value))));
+  try {
     await workbench.waitForFunction(() => window.probe.stats.frames > 0, undefined, {
       timeout: 8_000
     });
@@ -329,7 +362,7 @@ try {
       await workbench.evaluate(() => window.probe.keyboard());
       await workbench.waitForFunction((n) => window.probe.stats.sibling.length > n, count);
     }
-    for (let i = 0; i < 12; i++) await workbench.evaluate(() => window.probe.click());
+    for (let i = 0; i < 12; i++) await measureClick();
     const before = await workbench.evaluate(() => window.probe.stats);
     const capturedBefore = captures;
     const capturedBytesBefore = capturedBytes;
@@ -348,24 +381,27 @@ try {
     const seconds = (performance.now() - started) / 1000;
     const cpu = process.cpuUsage(cpuBefore);
     const after = await workbench.evaluate(() => window.probe.stats);
+    const captured = captures - capturedBefore;
+    const delivered = after.frames - before.frames;
     const sampleJpegSize = capturedBytes - capturedBytesBefore;
+    if (streamError) throw streamError;
+    assert(
+      delivered > 2 && captured > delivered + 2,
+      `Expected draws and dropped captures in the slow sample (captured ${captured}, drew ${delivered}).`
+    );
     await target.evaluate(() => {
       window.freeze();
     });
     await delay(1_000);
-    for (let i = 0; i < 6; i++) await workbench.evaluate(() => window.probe.click());
+    for (let i = 0; i < 6; i++) await measureClick();
     const slowClicks = await workbench.evaluate(() => window.probe.stats.clicks.slice(12));
-    await capture.stop();
-    stream.setView(++viewVersion);
-    await workbench.evaluate(() => {
-      window.probe.view(2);
-      window.probe.slow(0);
-    });
+    await workbench.evaluate(() => window.probe.slow(0));
     throttle = false;
+    await borrow.resource.tabs.open();
     const previousKeys = keysSent;
     const drawnBeforeSwitch = await workbench.evaluate(() => window.probe.stats.frames);
     const switchedAt = performance.now();
-    capture = await beginCapture(2);
+    await workbench.evaluate((tabId) => window.probe.select(tabId), originalTab);
     await workbench.waitForFunction(
       (count) => window.probe.stats.frames > count,
       drawnBeforeSwitch,
@@ -375,12 +411,10 @@ try {
     assert(keysSent > previousKeys, 'The new view did not start with a key frame.');
     const p95 = (values: number[]) =>
       Math.round([...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1]! * 10) / 10;
-    assert.deepEqual(errors, []);
+    if (streamError) throw streamError;
     assert.equal(after.clicks.length, 12);
     assert.equal(slowClicks.length, 6);
     assert.equal(after.sibling.length, 32);
-    const delivered = after.frames - before.frames;
-    assert(delivered > 2 && captures - capturedBefore > delivered + 2);
     assert(
       largestKeyBytes > 0 && largestDeltaBytes > 0,
       'Benchmark did not encode key and delta frames.'
@@ -398,7 +432,7 @@ try {
         ackDelayMs,
         sampleKibPerSecond,
         slowSampleSeconds: Math.round(seconds * 100) / 100,
-        captured: captures - capturedBefore,
+        captured,
         delivered,
         slowWireKiBPerSecond: Math.round((after.bytes - before.bytes) / seconds / 1024),
         largestJpegBytes,
@@ -411,10 +445,7 @@ try {
       })
     );
   } finally {
-    stream.close();
-    await capture?.stop();
-    await encoder.close();
-    release();
+    await attachment.close();
   }
 } finally {
   for (const socket of relay?.clients ?? []) socket.terminate();

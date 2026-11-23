@@ -24,9 +24,12 @@ import ComposerAttachments from '../composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../composer/ComposerCommandPicker.vue';
 import ComposerReferencePicker from '../composer/ComposerReferencePicker.vue';
 import ConversationComposer from '../composer/ConversationComposer.vue';
+import type { WorkbenchBrowserLink } from '../../service/browser-link-routing.js';
+import { isHtmlFile, workspaceFileTarget } from '../../util/file-preview.js';
 
 const props = defineProps<{
   controller: WorkspaceSessionPaneView;
+  openBrowserLink?: (link: WorkbenchBrowserLink, alternate: boolean) => boolean;
   treeSupported?: boolean;
   asideReady?: boolean;
   asideControls?: string;
@@ -38,6 +41,42 @@ const props = defineProps<{
 }>();
 const state = props.controller.state;
 const workspaceTarget = state.workspaceTarget;
+function openUrl(url: string, alternate: boolean): boolean {
+  const source = workspaceTarget.value;
+  return (
+    source !== undefined &&
+    (props.openBrowserLink?.({ kind: 'url', source, url }, alternate) ?? false)
+  );
+}
+const openFile: WorkspaceSessionPaneView['openAgentFile'] = (
+  path,
+  line,
+  column,
+  alternate,
+  attachment
+) => {
+  const source = workspaceTarget.value;
+  const file =
+    source &&
+    props.openBrowserLink &&
+    line === undefined &&
+    column === undefined &&
+    isHtmlFile(path)
+      ? workspaceFileTarget(
+          path,
+          props.controller.selectedWorkspace.value?.path,
+          window.location.origin
+        )
+      : undefined;
+  if (
+    source &&
+    file &&
+    !/^(?:\/|[a-z]:)/iu.test(file.path) &&
+    props.openBrowserLink?.({ kind: 'html', source, path: file.path }, alternate ?? false)
+  )
+    return;
+  props.controller.openAgentFile(path, line, column, alternate, attachment);
+};
 const presentation = proxyRefs(props.controller.presentation);
 const configuration = proxyRefs(props.controller.configuration);
 const runner = proxyRefs(props.controller.runner);
@@ -138,6 +177,9 @@ onBeforeUnmount(() => {
             )
         "
       >
+        <template v-if="$slots['workspace-tools']" #workspace-tools>
+          <slot name="workspace-tools" />
+        </template>
         <template v-if="$slots['session-menu']" #session-menu="menu">
           <slot name="session-menu" v-bind="menu" />
         </template>
@@ -249,6 +291,7 @@ onBeforeUnmount(() => {
           :initial-render-version="state.conversation.initialRenderVersion.value"
           :capture-render-anchor="state.scroll.captureRenderAnchor"
           :workspace-root="controller.selectedWorkspace.value?.path"
+          :open-url="props.openBrowserLink ? openUrl : undefined"
           :image-resource-url="controller.imageResourceUrl.value"
           :loading="controller.loading.value || submitting"
           :image-attachments="controller.images.attachments"
@@ -264,7 +307,7 @@ onBeforeUnmount(() => {
           @initial-rendered="state.conversation.confirmInitialRender"
           @open-image="controller.images.open"
           @image-unavailable="controller.images.markUnavailable"
-          @open-file="controller.openAgentFile"
+          @open-file="openFile"
           @open-file-change="controller.openFileChange"
           @set-answer="controller.userInput.setAnswer"
           @submit-input="controller.userInput.submit"

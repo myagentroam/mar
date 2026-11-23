@@ -31,11 +31,14 @@ import { systemInformationEnUS, systemInformationZhCN } from './system-informati
 import { personalGitEnUS } from './personal-git.en-US.js';
 import { personalGitZhCN } from './personal-git.zh-CN.js';
 import { remoteDesktopEnUS } from './remote-desktop.en-US.js';
+import { browserEnUS } from './browser.en-US.js';
+import { browserZhCN } from './browser.zh-CN.js';
 import { remoteDesktopZhCN } from './remote-desktop.zh-CN.js';
 
 export const commonMessages = {
   'en-US': {
     remoteDesktop: remoteDesktopEnUS,
+    browser: browserEnUS,
     sessionGroups: workspaceEnUS.sessionGroups,
     sessionShare: sessionShareEnUS,
     personalGit: personalGitEnUS,
@@ -164,6 +167,7 @@ export const commonMessages = {
   },
   'zh-CN': {
     remoteDesktop: remoteDesktopZhCN,
+    browser: browserZhCN,
     sessionGroups: workspaceZhCN.sessionGroups,
     sessionShare: sessionShareZhCN,
     personalGit: personalGitZhCN,

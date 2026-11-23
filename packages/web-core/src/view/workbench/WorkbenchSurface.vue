@@ -30,7 +30,10 @@ import WorkspaceGitChanges from '../workspace/WorkspaceGitChanges.vue';
 import WorkspaceGitHistory from '../workspace/WorkspaceGitHistory.vue';
 import WorkspaceContentSearch from '../workspace/WorkspaceContentSearch.vue';
 import WorkspaceFilesPanel from '../workspace/WorkspaceFilesPanel.vue';
-import WorkspaceHtmlBrowser from '../workspace/WorkspaceHtmlBrowser.vue';
+import WorkspaceNodeBrowser from './WorkspaceNodeBrowser.vue';
+import BrowserClearDialog from '../settings/BrowserClearDialog.vue';
+import BrowserSettings from '../settings/BrowserSettings.vue';
+import BrowserHistoryDialog from './BrowserHistoryDialog.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
 import WorkspaceSessionActionsMenu from '../workspace/WorkspaceSessionActionsMenu.vue';
 import SessionPromptDialog from '../workspace/SessionPromptDialog.vue';
@@ -48,7 +51,12 @@ import { useManagementComposition } from '../../service/management-composition.j
 import WorkspaceSessionPane from './WorkspaceSessionPane.vue';
 import WorkbenchAside from './WorkbenchAside.vue';
 import WorkspaceSessionTreePopover from '../workspace/WorkspaceSessionTreePopover.vue';
-import type { AsideTool } from '../../service/workbench-aside-service.js';
+import type { AsideTool, AsideWorkspace } from '../../service/workbench-aside-service.js';
+import {
+  readBrowserLinkPreferences,
+  routeWorkbenchBrowserLink,
+  type WorkbenchBrowserLink
+} from '../../service/browser-link-routing.js';
 import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
 
 const loadingComponent = {
@@ -69,6 +77,88 @@ const SettingsContent = defineAsyncComponent({
 const props = defineProps<{
   page: WorkbenchSurfaceView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
 }>();
+const browserSource = ref<AsideWorkspace & { browserId: string }>();
+const browserReturn = ref<AsideWorkspace & { browserId: string }>();
+const browserData = ref<AsideWorkspace & { browserId: string; kind: 'cache' | 'history' }>();
+const browserScopeLabel = computed(
+  () =>
+    props.page.resources.selectedWorkspace?.displayName ??
+    props.page.resources.selectedWorkspace?.path ??
+    browserData.value?.workspaceId ??
+    ''
+);
+const browserDestination = props.page.browser.destination;
+const browserCapability = computed(() => props.page.browserCapability());
+function atBrowserScope(scope: AsideWorkspace | undefined): boolean {
+  const current = props.page.selection.workspaceTarget;
+  return (
+    scope !== undefined &&
+    current?.nodeId === scope.nodeId &&
+    current.workspaceId === scope.workspaceId
+  );
+}
+function openBrowserSettings(browserId: string | undefined): void {
+  const scope = props.page.selection.workspaceTarget;
+  browserSource.value = scope && browserId ? { ...scope, browserId } : undefined;
+  props.page.application.selectNavigation('settings');
+  props.page.application.selectSettingsSection('browser');
+}
+function openBrowserData(kind: 'cache' | 'history', browserId: string): void {
+  const scope = props.page.selection.workspaceTarget;
+  if (scope) browserData.value = { ...scope, browserId, kind };
+}
+function openInNodeBrowser(scope: AsideWorkspace | undefined, url?: string): void {
+  if (!scope || !atBrowserScope(scope)) return;
+  if (!browserCapability.value) {
+    props.page.application.notice(translate('browser.unavailable'), 'error');
+    return;
+  }
+  props.page.application.selectNavigation('nodes');
+  props.page.aside.selectAsideTool({ ...scope, id: 'node-browser' });
+  if (url !== undefined) props.page.browser.openDestination(scope, { url });
+}
+function openBrowserHistory(url: string): void {
+  const scope = browserData.value;
+  browserData.value = undefined;
+  openInNodeBrowser(scope, url);
+}
+function routeBrowserLink(link: WorkbenchBrowserLink, alternate: boolean): boolean {
+  if (!atBrowserScope(link.source)) return true;
+  const route = routeWorkbenchBrowserLink(
+    link,
+    readBrowserLinkPreferences(props.page.identity.admin.userId),
+    alternate
+  );
+  if (!route) return false;
+  if (link.kind === 'html') {
+    if (route.destination === 'external') props.page.application.openHtmlExternal(link.path);
+    else props.page.aside.openHtmlAside(link.path);
+  } else if (route.destination === 'mar') openInNodeBrowser(link.source, link.url);
+  else window.open(link.url, '_blank', 'noopener,noreferrer');
+  return true;
+}
+watch(
+  () => props.page.application.view,
+  (view, from) => {
+    if (from === 'settings' && browserSource.value) {
+      browserReturn.value =
+        view === 'nodes' && atBrowserScope(browserSource.value) ? browserSource.value : undefined;
+      browserSource.value = undefined;
+    }
+    if (view !== 'nodes') browserData.value = undefined;
+  }
+);
+watch(
+  () => [
+    props.page.selection.workspaceTarget?.nodeId,
+    props.page.selection.workspaceTarget?.workspaceId,
+    props.page.identity.admin.userId
+  ],
+  () => {
+    browserSource.value = browserReturn.value = browserData.value = undefined;
+    props.page.browser.clearDestination();
+  }
+);
 const workContent = ref<HTMLElement>();
 const startupRetry = ref<InstanceType<typeof MarButton>>();
 const workStartupBlocked = computed(
@@ -133,9 +223,16 @@ watch(
   },
   { flush: 'post' }
 );
-const asideMode = computed(() =>
-  props.page.aside.asideViewMode(props.page.aside.asideState?.active)
-);
+const asideMode = computed(() => {
+  const active = props.page.aside.asideState?.active;
+  if (
+    active?.kind === 'tool' &&
+    active.id === 'node-browser' &&
+    desktopAsideWidth('content') === undefined
+  )
+    return 'compact';
+  return props.page.aside.asideViewMode(active);
+});
 const workspaceCapabilitiesLoading = computed(
   () => props.page.resources.nodeManifestLoading && props.page.resources.nodeManifest === undefined
 );
@@ -232,6 +329,7 @@ function openPaneSurface(surface: 'sessions' | 'inspector' | 'terminal'): void {
   }
 }
 const asideTools = computed(() => [
+  { id: 'node-browser' as const, label: translate('browser.title') },
   { id: 'files' as const, label: translate('generated.workspaceInspector.files3') },
   {
     id: 'search' as const,
@@ -797,6 +895,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           />
           <WorkspaceSessionPane
             :controller="page.mainPaneController"
+            :open-browser-link="routeBrowserLink"
             :aside-ready="page.aside.asideState?.active !== undefined"
             :aside-controls="asideSurfaceId"
             :aside-expanded="asideVisible"
@@ -811,6 +910,19 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             @preview-attachment="page.interactions.openAttachmentPreview"
             @reload="page.sessionList.reloadSelectedSession"
           >
+            <template #workspace-tools>
+              <MarButton
+                v-if="browserCapability && page.selection.workspaceTarget"
+                text
+                icon="web"
+                v-tooltip="translate('browser.openAddress')"
+                :aria-label="translate('browser.openAddress')"
+                :disabled="
+                  !page.layout.mobileViewport && desktopAsideWidth('compact') === undefined
+                "
+                @click="openInNodeBrowser(page.selection.workspaceTarget)"
+              />
+            </template>
             <template #session-menu="{ session }">
               <WorkspaceSessionActionsMenu v-bind="titleMenuBindings(session)" />
             </template>
@@ -856,7 +968,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :workspace="page.selection.workspaceTarget!"
                 :state="page.aside.asideState"
                 :tools="asideTools"
-                :browser-label="translate('htmlPreview.browser')"
                 :sessions="asideSessions"
                 :tab-label="translate('generated.workbenchAside.tabs')"
                 :close-label="
@@ -878,32 +989,45 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 "
                 :mode="asideMode"
                 @select-tool="page.aside.selectAsideTool"
-                @select-browser="page.aside.selectAsideBrowser"
-                @close-browser="page.aside.closeAsideBrowser"
                 @select-session="page.aside.openAsideSession"
                 @close-session="page.aside.closeAsideSession"
+                @close-browser="page.aside.closeAsideBrowser"
                 @resize="page.layout.setPanelWidth(asideMode, $event)"
                 @close-surface="page.layout.closeMobileWorkspaceSurface"
               >
-                <template #browser>
-                  <WorkspaceHtmlBrowser
+                <template #tool="{ tool, visible }">
+                  <WorkspaceNodeBrowser
                     v-if="
+                      tool === 'node-browser' &&
+                      visible &&
                       asideVisible &&
-                      page.selection.workspaceTarget &&
-                      page.aside.asideState.htmlPath !== undefined &&
-                      page.aside.asideState.active?.kind === 'browser'
+                      browserCapability &&
+                      page.selection.workspaceTarget
                     "
-                    :node-id="page.selection.workspaceTarget.nodeId"
-                    :workspace-id="page.selection.workspaceTarget.workspaceId"
-                    :path="page.aside.asideState.htmlPath"
-                    :open-version="page.aside.asideState.htmlOpenVersion"
-                    :csrf-token="page.identity.csrfToken"
-                    :renew-csrf-token="page.identity.renewCsrfToken"
-                    @source="page.files.fileWorkbench.openFile($event)"
-                    @external="page.application.openHtmlExternal($event)"
+                    :key="
+                      JSON.stringify([
+                        page.selection.workspaceTarget.nodeId,
+                        page.selection.workspaceTarget.workspaceId,
+                        browserCapability.nodeGeneration
+                      ])
+                    "
+                    :scope="page.selection.workspaceTarget"
+                    :capability="browserCapability"
+                    :connected="page.browserConnectionReady()"
+                    :browser="page.browser"
+                    :requested="
+                      atBrowserScope(browserDestination?.scope)
+                        ? browserDestination?.target
+                        : undefined
+                    "
+                    :restore-id="
+                      atBrowserScope(browserReturn) ? browserReturn?.browserId : undefined
+                    "
+                    @consumed="page.browser.clearDestination"
+                    @restored="browserReturn = undefined"
+                    @settings="openBrowserSettings"
+                    @data="openBrowserData"
                   />
-                </template>
-                <template #tool="{ tool }">
                   <WorkspaceFilesPanel
                     v-if="tool === 'files' && page.selection.workspaceTarget !== undefined"
                     v-show="filesVisible"
@@ -1015,6 +1139,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 <template #session>
                   <WorkspaceSessionPane
                     :controller="page.aside.asidePaneController"
+                    :open-browser-link="routeBrowserLink"
                     :aside-ready="page.aside.asideState?.active !== undefined"
                     :tree-supported="page.aside.asideSupported"
                     :tree-open-session-id="openTreeSessionId"
@@ -1056,6 +1181,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         >
           <TerminalDock
             :error-message="errorMessage"
+            :open-browser-link="routeBrowserLink"
             embedded
             :ref="
               (instance) => {
@@ -1117,7 +1243,11 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       @close-mobile-history="page.hosted.closeHostedConversationMobileHistory"
     />
     <template v-else-if="page.application.view === 'settings'">
-      <slot name="settings">
+      <BrowserSettings
+        v-if="page.application.settingsSection === 'browser'"
+        :user-id="page.identity.admin.userId"
+      />
+      <slot v-else name="settings">
         <SettingsContent
           :web-version="page.application.webVersion"
           :pwa-state="page.application.pwaState"
@@ -1198,6 +1328,26 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       @after-leave="finishSessionTreeLeave"
       @open="openSessionFromTree"
       @retry="page.application.retryWorkspaceWatch"
+    />
+    <BrowserClearDialog
+      v-if="browserData?.kind === 'cache' && atBrowserScope(browserData)"
+      :browser="page.browser"
+      :scope="browserData"
+      :expected-live-id="browserData.browserId"
+      :scope-label="browserScopeLabel"
+      :connected="page.browserConnectionReady()"
+      @close="browserData = undefined"
+      @cleared="page.application.notice(translate('browser.cleared'), 'success')"
+    />
+    <BrowserHistoryDialog
+      v-if="browserData?.kind === 'history' && atBrowserScope(browserData)"
+      :browser="page.browser"
+      :scope="browserData"
+      :expected-live-id="browserData.browserId"
+      :scope-label="browserScopeLabel"
+      :connected="page.browserConnectionReady()"
+      @close="browserData = undefined"
+      @open="openBrowserHistory"
     />
   </section>
 </template>

@@ -7,6 +7,7 @@ export type SettingsSection =
   | 'quick-prompts'
   | 'personal-instructions'
   | 'git'
+  | 'browser'
   | 'registration'
   | 'shortcuts'
   | 'about';

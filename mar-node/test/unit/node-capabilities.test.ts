@@ -121,6 +121,11 @@ describe('Node capability version reporting', () => {
         capabilities: initial,
         capabilityDetector: () => current
       });
+      const browserOwner = connector as unknown as {
+        nodeGeneration: string;
+        browserService: { shutdown(): Promise<void>; disconnect(): Promise<void> };
+      };
+      browserOwner.browserService = { shutdown: async () => {}, disconnect: async () => {} };
       connectTestSocket(connector, {
         readyState: 1,
         OPEN: 1,
@@ -142,12 +147,17 @@ describe('Node capability version reporting', () => {
 
       current = { ...initial, codex: { available: true, version: 'codex 1.0.0' } };
       await vi.advanceTimersByTimeAsync(1);
-      expect(sent.filter((message) => message.type === 'capabilities')).toHaveLength(1);
+      await vi.waitFor(() =>
+        expect(sent.filter((message) => message.type === 'capabilities')).toHaveLength(1)
+      );
+      expect(sent.find((message) => message.type === 'capabilities')?.payload).toMatchObject({
+        browser: { apiVersion: 1, nodeGeneration: browserOwner.nodeGeneration, ice: false }
+      });
 
       await vi.advanceTimersByTimeAsync(60_000);
       expect(sent.filter((message) => message.type === 'capabilities')).toHaveLength(1);
 
-      connector.stop();
+      await connector.stop();
       current = { ...current, claudeCode: { available: true, version: 'claude 1.0.0' } };
       await vi.advanceTimersByTimeAsync(60_000);
       expect(sent.filter((message) => message.type === 'capabilities')).toHaveLength(1);
@@ -207,6 +217,12 @@ describe('Node capability version reporting', () => {
           codex: { available: false },
           claudeCode: { available: false },
           openCode: { available: false },
+          remoteDesktop: {
+            apiVersion: 1,
+            available: false,
+            nodeGeneration: expect.any(String),
+            reasonCode: 'DESKTOP_UNAVAILABLE'
+          },
           computerUse: expect.objectContaining({
             apiVersion: 1,
             enabled: false,

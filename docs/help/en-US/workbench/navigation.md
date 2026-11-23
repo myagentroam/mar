@@ -21,7 +21,7 @@ Workspace registration uses an explicit host target in a dialog; closing it leav
 
 Clicking a Workspace tab expands only its Node and group in the resource tree, collapses other Nodes and groups, and scrolls the selected Workspace into view without moving keyboard focus. Selecting an ungrouped Workspace collapses all groups. A closed sidebar or mobile drawer stays closed; the target is located when it next opens. Existing filters remain in place and continue to show matching branches. You can still expand or collapse branches manually; clicking a tab again restores only its target branch. This does not trigger additional session, file, or Git refreshes.
 
-Aside keeps fixed tools such as Files, Search, Git Changes, Git History, and Terminal on the left. Open sessions and the HTML Browser appear to their right with an × close button. Browser appears only after an HTML preview is opened and reuses one page per Workspace.
+Aside keeps Workspace tools, including Files, Search, Git Changes, Git History, Terminal, and [Browser](browser.md), on the left. Open sessions appear to their right with an × close button. The Workspace browser manages its own webpage tabs.
 
 On desktop, drag the divider at the right edge of the Workspace tree or the left edge of Aside to resize it within its minimum, maximum, and available space. Aside keeps a compact width for tools such as Files and a separate content width for sessions, Terminal, and Browser. Each preference is saved in the current browser and restored after a refresh; first use or invalid values use the corresponding default. When desktop space is insufficient, the work areas stack vertically; mobile uses drawers. These layouts do not offer horizontal resizing or overwrite your desktop preferences.
 

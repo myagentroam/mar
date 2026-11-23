@@ -140,6 +140,16 @@
       "types": "./dist/node-access-contracts.d.ts",
       "import": "./dist/node-access-contracts.js"
     },
+    "./browser-attachment-coordinator": {
+      "development": "./src/browser-attachment-coordinator.ts",
+      "types": "./dist/browser-attachment-coordinator.d.ts",
+      "import": "./dist/browser-attachment-coordinator.js"
+    },
+    "./browser-relay-service": {
+      "development": "./src/browser-relay-service.ts",
+      "types": "./dist/browser-relay-service.d.ts",
+      "import": "./dist/browser-relay-service.js"
+    },
     "./node-request-channel": {
       "development": "./src/node-request-channel.ts",
       "types": "./dist/node-request-channel.d.ts",

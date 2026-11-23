@@ -15,6 +15,8 @@ import type { WorkbenchTerminalView } from '../service/terminal-direct-client.js
 import type { WorkbenchTreeView } from '../service/workbench-workspace-tree-controller.js';
 import type { WorkbenchLayoutView } from '../service/workbench-layout-service.js';
 import type { WorkbenchApplicationView } from '../service/workbench-page-interaction-service.js';
+import type { WorkbenchBrowserService } from '../service/workbench-browser-service.js';
+import type { BrowserCapability } from '@myagentroam/protocol';
 
 export interface WorkbenchShellView<
   ManagementSection extends string,
@@ -43,6 +45,9 @@ export interface WorkbenchSurfaceView<
 > {
   readonly application: WorkbenchApplicationView<ManagementSection>;
   readonly aside: WorkbenchAsideView;
+  readonly browser: WorkbenchBrowserService;
+  readonly browserCapability: () => BrowserCapability | undefined;
+  readonly browserConnectionReady: () => boolean;
   readonly files: WorkbenchFilesView;
   readonly hosted: WorkbenchHostedView;
   readonly identity: WorkbenchIdentityView;

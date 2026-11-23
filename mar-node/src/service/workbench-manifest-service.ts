@@ -8,7 +8,8 @@ function revisionFor(capabilities: NodeCapabilities): number {
     architecture: capabilities.architecture,
     codex: capabilities.codex,
     claudeCode: capabilities.claudeCode,
-    openCode: capabilities.openCode
+    openCode: capabilities.openCode,
+    browser: capabilities.browser
   });
   let hash = 2_166_136_261;
   for (const character of source) hash = Math.imul(hash ^ character.charCodeAt(0), 16_777_619);
@@ -57,6 +58,7 @@ export class WorkbenchManifestService {
       },
       directTransfer: capabilities.workspaceDirectTransfer,
       terminalDirect: capabilities.terminalDirect,
+      browser: capabilities.browser,
       sessionAside: capabilities.sessionAside,
       sessionGroups: capabilities.sessionGroups,
       git: {

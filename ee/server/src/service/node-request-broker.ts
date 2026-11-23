@@ -198,6 +198,28 @@ export class NodeRequestBroker {
     return this.dispatch(nodeId, operation, data, user, workspaceId, timeoutMs, connection, signal);
   }
 
+  /** Calls the closed Browser RPC surface after the Browser owner authorizes it.
+   * These operations are deliberately not on the generic Workbench allowlist. */
+  requestBrowser(
+    nodeId: string,
+    operation: 'resource' | 'profile' | 'attachment' | 'upload' | 'download',
+    generation: string,
+    payload: object,
+    user: UserNodeAuthorization
+  ): Promise<unknown> {
+    const socket = this.socketFor(nodeId);
+    if (socket === undefined) return Promise.reject(new NodeRequestAdmissionError('NODE_OFFLINE'));
+    if (!this.connectionPolicy.allows(socket, `browser.${operation}`))
+      return Promise.reject(new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED'));
+    return this.channel.request(
+      nodeId,
+      `browser.${operation}`,
+      { generation, payload },
+      user,
+      30_000
+    );
+  }
+
   private denyAuthorizedRequest(
     nodeId: string,
     operation: string,

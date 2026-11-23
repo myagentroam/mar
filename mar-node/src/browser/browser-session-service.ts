@@ -14,6 +14,7 @@ type Entry<T> = {
   closing?: Promise<void>;
   idleSince?: number | undefined;
   attached?: boolean;
+  dataUse?: Promise<void> | undefined;
 };
 
 /** Owns live, isolated browser instances on this Node; the caller establishes
@@ -29,25 +30,29 @@ export class BrowserSessionService<T> {
 
   constructor(
     private readonly options: {
-      launch: (resource: BrowserSessionKey, browserId: string) => Promise<Session<T>>;
+      launch: (
+        resource: BrowserSessionKey,
+        browserId: string,
+        preserveLogin: boolean
+      ) => Promise<Session<T>>;
       limit: number;
       idleMs?: number;
       onCloseFailed: () => void;
     }
   ) {}
 
-  async open(resource: BrowserSessionKey): Promise<string> {
+  async open(resource: BrowserSessionKey, preserveLogin = false): Promise<string> {
     if (this.stopped) throw new Error('BROWSER_STOPPED');
     const key = this.key(resource);
     const current = this.entries.get(key);
     if (current && (current.closing || this.expired(current))) {
       await this.stopEntry(key, current);
-      return this.open(resource);
+      return this.open(resource, preserveLogin);
     }
     if (current) return current.opening;
 
     const id = randomUUID();
-    const opening = Promise.resolve().then(() => this.start(resource, key, id));
+    const opening = Promise.resolve().then(() => this.start(resource, key, id, preserveLogin));
     this.entries.set(key, { id, opening });
     return opening;
   }
@@ -55,6 +60,22 @@ export class BrowserSessionService<T> {
   lookup(resource: BrowserSessionKey): string | undefined {
     const entry = this.entries.get(this.key(resource));
     return entry?.session && !entry.closing && !this.expired(entry) ? entry.id : undefined;
+  }
+
+  /** Uses an exact live instance without taking over its interactive writer or
+   * renewing its idle period. Close waits for admitted operations to drain. */
+  async use<R>(resource: BrowserSessionKey, id: string, run: (value: T) => Promise<R>): Promise<R> {
+    const entry = this.entries.get(this.key(resource));
+    if (this.stopped || !entry?.session || entry.id !== id || entry.closing || this.expired(entry))
+      throw new Error('BROWSER_SESSION_ENDED');
+    const value = entry.session.resource;
+    const result = Promise.resolve().then(() => run(value));
+    const drained = Promise.allSettled([entry.dataUse, result]).then(() => undefined);
+    entry.dataUse = drained;
+    void drained.then(() => {
+      if (entry.dataUse === drained) entry.dataUse = undefined;
+    });
+    return result;
   }
 
   pin(resource: BrowserSessionKey, id: string): { resource: T; release: () => void } {
@@ -111,7 +132,12 @@ export class BrowserSessionService<T> {
     return entry.idleSince !== undefined && performance.now() - entry.idleSince >= this.idleMs;
   }
 
-  private async start(resource: BrowserSessionKey, key: string, id: string): Promise<string> {
+  private async start(
+    resource: BrowserSessionKey,
+    key: string,
+    id: string,
+    preserveLogin: boolean
+  ): Promise<string> {
     const entry = this.entries.get(key)!;
     let reserved = false;
     try {
@@ -135,7 +161,7 @@ export class BrowserSessionService<T> {
       if (this.stopped || entry.closing) throw new Error('BROWSER_STOPPED');
       this.occupied++;
       reserved = true;
-      entry.session = await this.options.launch(resource, id);
+      entry.session = await this.options.launch(resource, id, preserveLogin);
     } catch (error) {
       if (reserved) this.occupied--;
       if (!entry.closing) this.entries.delete(key);
@@ -151,6 +177,7 @@ export class BrowserSessionService<T> {
     entry.closing ??= (async () => {
       await entry.opening.catch(() => undefined);
       if (entry.session) {
+        await entry.dataUse;
         await entry.session.close();
         this.occupied--;
       }

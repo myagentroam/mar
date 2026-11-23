@@ -2002,96 +2002,36 @@ describe('Workbench controller composition behavior', () => {
     expect(draft).toEqual({ contentQuery: '', contentUseRegex: false });
   });
 
-  it('retains browser targets across Workspace switches but clears them on actual tab close and LRU eviction', async () => {
+  it('routes HTML preview to the scoped Browser and drops pending navigation on scope exit', async () => {
     const { page } = controller();
     const a = { nodeId: node.id, workspaceId: 'a' };
     const b = { nodeId: node.id, workspaceId: 'b' };
     await captured.seedNodes!([node]);
     captured.setTarget!(a);
-    await captured.seedManifest!({
-      manifestVersion: 1,
+    const manifest = {
+      manifestVersion: 1 as const,
       observedAt: 1,
       conversation: { available: true, reasonCode: null },
       files: { available: true, reasonCode: null }
-    });
+    };
+    await captured.seedManifest!(manifest);
     await nextTick();
-    captured.tabs!.remember(node.id, node, { id: 'a', path: '/a', kind: 'DIRECTORY' });
-    page.aside.openHtmlAside('a.html');
-    page.aside.selectAsideTool({ ...a, id: 'files' });
-    page.aside.selectAsideBrowser(b);
-    expect(page.aside.asideState?.active).toEqual({ kind: 'tool', id: 'files' });
-    page.aside.selectAsideBrowser(a);
-    page.aside.closeAsideBrowser(b);
-    expect(page.aside.asideState?.active).toEqual({ kind: 'browser' });
-    expect(page.aside.asideState?.htmlPath).toBe('a.html');
-    captured.setTarget!(b);
-    await nextTick();
-    expect(page.aside.asideState?.htmlPath).toBeUndefined();
-    page.aside.openHtmlAside('b.html');
-    captured.setTarget!(a);
-    await nextTick();
-    expect(page.aside.asideState?.htmlPath).toBe('a.html');
-    captured.setTarget!(b);
-    await nextTick();
-    page.selection.closeWorkspaceTab(
-      page.selection.workspaceTabs.find((tab) => tab.workspaceId === 'a')!
-    );
-    captured.setTarget!(a);
-    await nextTick();
-    expect(page.aside.asideState?.htmlPath).toBeUndefined();
-    page.aside.openHtmlAside('again.html');
-    page.aside.closeAsideBrowser(a);
-    expect(page.aside.asideState?.htmlPath).toBeUndefined();
-    expect(page.aside.asideState?.active).toEqual({ kind: 'tool', id: 'files' });
-    page.aside.openHtmlAside('again.html');
-    captured.tabs!.restore(
-      Array.from({ length: 8 }, (_, index) => ({
-        id: `${node.id}:${index === 0 ? 'a' : `other-${index}`}`,
-        nodeId: node.id,
-        workspaceId: index === 0 ? 'a' : `other-${index}`,
-        label: String(index),
-        lastActiveAt: index + 1
-      }))
-    );
-    captured.tabs!.remember(node.id, node, {
-      id: 'new',
-      path: '/new',
-      kind: 'DIRECTORY'
-    });
-    expect(page.aside.asideState?.htmlPath).toBeUndefined();
-  });
-
-  it('clears browser metadata when its Node is removed and on account sign-out', async () => {
-    const { page } = controller();
-    const a = { nodeId: node.id, workspaceId: 'a' };
-    await captured.seedNodes!([node]);
-    captured.setTarget!(a);
+    page.aside.openHtmlAside('unavailable.html');
+    expect(page.browser.destination.value).toBeUndefined();
     await captured.seedManifest!({
-      manifestVersion: 1,
-      observedAt: 1,
-      conversation: { available: true, reasonCode: null },
-      files: { available: true, reasonCode: null }
+      ...manifest,
+      browser: { apiVersion: 1, nodeGeneration: 'g1', ice: false }
     });
     await nextTick();
     page.aside.openHtmlAside('a.html');
-    vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue(
-      'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
-    );
-    await captured.entities!.deleteNode(node);
-    captured.setTarget!(a);
-    await captured.seedManifest!({
-      manifestVersion: 1,
-      observedAt: 1,
-      conversation: { available: true, reasonCode: null },
-      files: { available: true, reasonCode: null }
-    });
+    expect(page.aside.asideState?.active).toEqual({ kind: 'tool', id: 'node-browser' });
+    expect(page.browser.destination.value).toEqual({ scope: a, target: { htmlPath: 'a.html' } });
+    captured.setTarget!(b);
     await nextTick();
-    expect(page.aside.asideState?.htmlPath).toBeUndefined();
-    page.aside.openHtmlAside('new.html');
+    expect(page.browser.destination.value).toBeUndefined();
+    page.browser.openDestination(b, { url: 'https://example.test' });
     captured.signedOut!();
-    captured.setTarget!(a);
-    await nextTick();
-    expect(page.aside.asideState?.htmlPath).toBeUndefined();
+    expect(page.browser.destination.value).toBeUndefined();
   });
 
   it('projects and closes the image preview from its owning Main or Aside pane', () => {

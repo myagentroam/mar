@@ -132,8 +132,9 @@ export function createMobileSurfaceFocusService(options: {
         keys: [{ key: 'Escape' }],
         // Owned popups retain their native Escape handling before the surface closes.
         when: () => options.isOpen() && !options.terminal?.() && !hasModal() && !hasOpenPopup(),
-        execute: () => {
-          options.close?.();
+        execute: (event) => {
+          // Holding Escape must not close a surface after dismissing an inner control.
+          if (!event.repeat) options.close?.();
           return 'HANDLED';
         }
       });

@@ -2,6 +2,10 @@ import { readonly, ref } from 'vue';
 import {
   directBrowserMessageSchema,
   directServerMessageSchema,
+  browserControlRequestSchema,
+  browserControlResponseSchema,
+  type BrowserControlRequest,
+  type BrowserControlResponse,
   terminalDirectBrowserMessageSchema,
   terminalDirectServerMessageSchema,
   remoteDesktopDirectBrowserMessageSchema,
@@ -43,6 +47,7 @@ interface WorkbenchLiveConnectionOptions {
   readonly onReady?: (connectionId: string, resumed: boolean) => void;
   readonly onWatchEvent?: (event: unknown) => void;
   readonly onDirectMessage?: (message: DirectServerMessage) => void;
+  readonly onBrowserMessage?: (message: BrowserControlResponse) => void;
   readonly onTerminalDirectMessage?: (message: TerminalDirectServerMessage) => void;
   readonly onDesktopDirectMessage?: (message: RemoteDesktopDirectServerMessage) => void;
   readonly onDesktopRelayMessage?: (message: RemoteDesktopRelayServerMessage) => void;
@@ -155,6 +160,12 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     }
     if (message.type === 'watch.event' && message.event !== undefined) {
       options.onWatchEvent?.(message.event);
+      return;
+    }
+    if (message.type === 'browser.response') {
+      const parsed = browserControlResponseSchema.safeParse(message);
+      if (parsed.success) options.onBrowserMessage?.(parsed.data);
+      else options.onInvalidMessage();
       return;
     }
     if (typeof message.type === 'string' && message.type.startsWith('direct.')) {
@@ -338,6 +349,13 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     return true;
   }
 
+  function sendBrowser(message: BrowserControlRequest): boolean {
+    const parsed = browserControlRequestSchema.safeParse(message);
+    if (!parsed.success || !connected.value || socket?.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(parsed.data));
+    return true;
+  }
+
   function sendTerminalDirect(message: TerminalDirectBrowserMessage): boolean {
     const parsed = terminalDirectBrowserMessageSchema.safeParse(message);
     if (
@@ -377,6 +395,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     reconnect,
     close,
     sendDirect,
+    sendBrowser,
     sendTerminalDirect,
     sendDesktopDirect,
     sendDesktopRelay,

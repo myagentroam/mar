@@ -2,11 +2,10 @@ import type { WorkspaceSessionPaneView } from './workspace-session-pane-controll
 import type { NavigationSession } from './session-navigation-projection.js';
 import { shallowRef, watch, type Ref } from 'vue';
 
-export type AsideTool = 'files' | 'search' | 'changes' | 'history' | 'terminal';
+export type AsideTool = 'files' | 'search' | 'changes' | 'history' | 'terminal' | 'node-browser';
 export type AsideViewMode = 'compact' | 'content';
 export type AsideTarget =
   | { readonly kind: 'tool'; readonly id: AsideTool }
-  | { readonly kind: 'browser' }
   | { readonly kind: 'session'; readonly sessionId: string };
 export interface AsideWorkspace {
   readonly nodeId: string;
@@ -17,14 +16,13 @@ export interface AsideSession extends AsideWorkspace {
 }
 export interface AsideSnapshot {
   readonly sessions: readonly string[];
+  readonly browserOpen?: boolean;
   readonly active?: AsideTarget | undefined;
   readonly recentTool?: AsideTool | undefined;
   readonly terminalReturn?: AsideTarget | undefined;
-  readonly htmlPath?: string | undefined;
 }
 export interface AsideState extends AsideSnapshot {
   readonly tools: readonly AsideTool[];
-  readonly htmlOpenVersion?: number | undefined;
   readonly collapsed?: boolean;
 }
 
@@ -33,14 +31,14 @@ export const ASIDE_TOOLS: readonly AsideTool[] = [
   'search',
   'changes',
   'history',
-  'terminal'
+  'terminal',
+  'node-browser'
 ];
 const empty: AsideState = { tools: [], sessions: [] };
 
 export function asideViewMode(target: AsideTarget | undefined): AsideViewMode {
   return target?.kind === 'session' ||
-    target?.kind === 'browser' ||
-    (target?.kind === 'tool' && target.id === 'terminal')
+    (target?.kind === 'tool' && (target.id === 'terminal' || target.id === 'node-browser'))
     ? 'content'
     : 'compact';
 }
@@ -79,6 +77,7 @@ export function createWorkbenchAsideService({
         }
         if (manifest.terminal?.available === true && manifest.terminal.supportsReplay === true)
           tools.push('terminal');
+        if (manifest.browser?.apiVersion === 1) tools.push('node-browser');
         ensure(target, tools);
       },
       { immediate: true }
@@ -119,23 +118,27 @@ export function createWorkbenchAsideService({
     return (
       target !== undefined &&
       (target.kind === 'tool'
-        ? state.tools.includes(target.id)
-        : target.kind === 'browser'
-          ? state.tools.includes('files') && state.htmlPath !== undefined
-          : state.sessions.includes(target.sessionId))
+        ? state.tools.includes(target.id) &&
+          (target.id !== 'node-browser' || state.browserOpen === true)
+        : state.sessions.includes(target.sessionId))
     );
   }
   function fallback(state: AsideState): AsideTarget | undefined {
     const tool =
-      state.recentTool && state.tools.includes(state.recentTool)
+      state.recentTool &&
+      state.recentTool !== 'node-browser' &&
+      state.tools.includes(state.recentTool)
         ? state.recentTool
-        : state.tools.find((item) => item !== 'terminal');
+        : state.tools.find((item) => item !== 'terminal' && item !== 'node-browser');
     return tool === undefined ? undefined : { kind: 'tool', id: tool };
   }
   function ensure(target: AsideWorkspace, tools: readonly AsideTool[]): void {
     const available = ASIDE_TOOLS.filter((tool) => tools.includes(tool));
     const prior = current(target);
-    const next: AsideState = { ...prior, tools: available };
+    const next: AsideState =
+      prior.browserOpen && !available.includes('node-browser')
+        ? { ...prior, tools: available, browserOpen: false }
+        : { ...prior, tools: available };
     put(target, {
       ...next,
       active: valid(next, prior.active)
@@ -158,9 +161,29 @@ export function createWorkbenchAsideService({
       ...(mobileViewport?.value ? {} : { collapsed: false }),
       active: { kind: 'tool', id },
       terminalReturn,
-      ...(id === 'terminal' ? {} : { recentTool: id })
+      ...(id === 'node-browser'
+        ? { browserOpen: true }
+        : id === 'terminal'
+          ? {}
+          : { recentTool: id })
     });
     return true;
+  }
+
+  function closeBrowser(target: AsideWorkspace): void {
+    const state = current(target);
+    if (!state.browserOpen) return;
+    const next = { ...state, browserOpen: false };
+    if (state.active?.kind === 'tool' && state.active.id === 'node-browser') {
+      const sessionId = state.sessions.at(-1);
+      put(target, {
+        ...next,
+        active: sessionId
+          ? { kind: 'session', sessionId }
+          : (fallback(next) ??
+            (state.tools.includes('terminal') ? { kind: 'tool', id: 'terminal' } : undefined))
+      });
+    } else put(target, next);
   }
   function openSession(target: AsideSession): void {
     const state = current(target);
@@ -176,30 +199,6 @@ export function createWorkbenchAsideService({
         : [...state.sessions, target.sessionId],
       active: { kind: 'session', sessionId: target.sessionId }
     });
-  }
-
-  function openHtml(target: AsideWorkspace, path: string): boolean {
-    const state = current(target);
-    if (!state.tools.includes('files')) return false;
-    put(target, {
-      ...state,
-      ...(mobileViewport?.value ? {} : { collapsed: false }),
-      htmlPath: path,
-      htmlOpenVersion: (state.htmlOpenVersion ?? 0) + 1,
-      active: { kind: 'browser' }
-    });
-    return true;
-  }
-
-  function activateHtml(target: AsideWorkspace): boolean {
-    const state = current(target);
-    if (!valid(state, { kind: 'browser' })) return false;
-    put(target, {
-      ...state,
-      ...(mobileViewport?.value ? {} : { collapsed: false }),
-      active: { kind: 'browser' }
-    });
-    return true;
   }
 
   function replaceSession(target: AsideSession, nextSessionId: string): boolean {
@@ -250,12 +249,7 @@ export function createWorkbenchAsideService({
         state.sessions.slice(index + 1).find((id) => !missing.has(id));
       put(target, {
         ...next,
-        active:
-          neighbor !== undefined
-            ? { kind: 'session', sessionId: neighbor }
-            : valid(next, { kind: 'browser' })
-              ? { kind: 'browser' }
-              : fallback(next)
+        active: neighbor !== undefined ? { kind: 'session', sessionId: neighbor } : fallback(next)
       });
     } else put(target, next);
   }
@@ -271,8 +265,14 @@ export function createWorkbenchAsideService({
     return true;
   }
   function snapshot(target: AsideWorkspace): AsideSnapshot {
-    const { sessions, active, recentTool, terminalReturn, htmlPath } = current(target);
-    return { sessions: [...sessions], active, recentTool, terminalReturn, htmlPath };
+    const { sessions, active, recentTool, terminalReturn, browserOpen } = current(target);
+    return {
+      sessions: [...sessions],
+      active,
+      recentTool,
+      terminalReturn,
+      ...(browserOpen ? { browserOpen } : {})
+    };
   }
   function restore(
     target: AsideWorkspace,
@@ -288,31 +288,9 @@ export function createWorkbenchAsideService({
       active: saved.active,
       recentTool: saved.recentTool,
       terminalReturn: saved.terminalReturn,
-      htmlPath: saved.htmlPath
+      ...(saved.browserOpen ? { browserOpen: true } : {})
     });
     ensure(target, tools);
-  }
-  function clearHtmlWorkspace(target: AsideWorkspace): void {
-    const state = workspaces.value.get(target.nodeId)?.get(target.workspaceId);
-    if (state?.htmlPath === undefined) return;
-    const next: AsideState = { ...state, htmlPath: undefined, htmlOpenVersion: undefined };
-    const sessionId = state.sessions.at(-1);
-    put(target, {
-      ...next,
-      active:
-        state.active?.kind !== 'browser'
-          ? state.active
-          : sessionId !== undefined
-            ? { kind: 'session', sessionId }
-            : fallback(next)
-    });
-  }
-  function clearHtmlNode(nodeId: string): void {
-    for (const workspaceId of workspaces.value.get(nodeId)?.keys() ?? [])
-      clearHtmlWorkspace({ nodeId, workspaceId });
-  }
-  function clearHtml(): void {
-    for (const nodeId of workspaces.value.keys()) clearHtmlNode(nodeId);
   }
   function removeWorkspace(target: AsideWorkspace): void {
     const nodes = new Map(workspaces.value);
@@ -343,14 +321,6 @@ export function createWorkbenchAsideService({
       if (mobileViewport?.value)
         options.openMobile(target.id === 'terminal' ? 'terminal' : 'inspector');
     }
-    function openBrowser(target: AsideWorkspace): void {
-      if (!owns(target)) return;
-      saveActive(target);
-      if (activateHtml(target) && mobileViewport?.value) options.openMobile('inspector');
-    }
-    function closeBrowser(target: AsideWorkspace): void {
-      if (owns(target)) clearHtmlWorkspace(target);
-    }
     function toggleTerminalSurface(): void {
       const target = options.workspace.value;
       if (target === undefined) return;
@@ -369,7 +339,7 @@ export function createWorkbenchAsideService({
         );
       }
     }
-    return { select, openBrowser, closeBrowser, toggleTerminal: toggleTerminalSurface };
+    return { select, toggleTerminal: toggleTerminalSurface };
   }
   return {
     observeCapabilities,
@@ -378,12 +348,11 @@ export function createWorkbenchAsideService({
     setCollapsed,
     ensure,
     selectTool,
-    openHtml,
-    activateHtml,
     openSession,
     replaceSession,
     activateSession,
     closeSession,
+    closeBrowser,
     removeMissing,
     toggleTerminal,
     snapshot,
@@ -396,10 +365,7 @@ export function createWorkbenchAsideService({
     },
     clear: () => {
       workspaces.value = new Map();
-    },
-    clearHtmlWorkspace,
-    clearHtmlNode,
-    clearHtml
+    }
   };
 }
 
@@ -415,12 +381,11 @@ export interface WorkbenchAsideView {
     availableWidth: number,
     mainMinWidth: number
   ) => number | undefined;
-  closeAsideBrowser: (target: AsideWorkspace) => void;
   closeAsideSession: (target: AsideSession) => void;
+  closeAsideBrowser: (target: AsideWorkspace) => void;
   openAsideSession: (target: AsideSession) => boolean;
   openHtmlAside: (path: string) => void;
   reloadAsideSession: () => void;
-  selectAsideBrowser: (target: AsideWorkspace) => void;
   selectAsideTool: (target: AsideWorkspace & { readonly id: AsideTool }) => void;
   setAsideCollapsed: (target: AsideWorkspace, collapsed: boolean) => void;
   setAsideSessionFits: (fits: boolean | undefined) => void;

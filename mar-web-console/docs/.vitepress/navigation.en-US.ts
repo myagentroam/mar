@@ -51,6 +51,7 @@ export const enSidebar = [
       { text: 'Git History', link: '/en-US/workbench/git-history' },
       { text: 'Workspace Terminals', link: '/en-US/workbench/terminal' },
       { text: 'Node Remote Desktop', link: '/en-US/workbench/remote-desktop' },
+      { text: 'Workspace Browser', link: '/en-US/workbench/browser' },
       { text: 'Continue on Mobile', link: '/en-US/workbench/mobile' }
     ]
   },

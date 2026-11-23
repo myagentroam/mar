@@ -2,23 +2,35 @@ import type { BrowserPageInput } from '@myagentroam/protocol';
 import type { CDPSession, Page } from 'playwright';
 
 type Frame = { jpeg: Buffer; width: number; height: number };
-type Cast = { stop: () => Promise<void> };
+export type BrowserPageCapture = { stop: () => Promise<void> };
 
 /** Adapts a single owned Playwright page. The session owns the page and selects
  * the active view, while the attachment owns input ordering and frame transport.
  * Construct only for a browser launched within the Node's execution boundary.
  */
 export class BrowserPageView {
-  private active: Cast | undefined;
+  private active: BrowserPageCapture | undefined;
   private navigationSession: Promise<CDPSession> | undefined;
 
   constructor(private readonly page: Page) {}
 
-  async history(): Promise<{ canGoBack: boolean; canGoForward: boolean }> {
-    const { currentIndex, entries } = await (
-      await this.navigation()
-    ).send('Page.getNavigationHistory');
-    return { canGoBack: currentIndex > 0, canGoForward: currentIndex + 1 < entries.length };
+  async history(): Promise<{ canGoBack: boolean; canGoForward: boolean } | undefined> {
+    try {
+      const { currentIndex, entries } = await (
+        await this.navigation()
+      ).send('Page.getNavigationHistory');
+      return { canGoBack: currentIndex > 0, canGoForward: currentIndex + 1 < entries.length };
+    } catch (error) {
+      // Chromium may detach a target before Playwright delivers the page-close event.
+      if (
+        error instanceof Error &&
+        error.message.includes(
+          'Protocol error (Page.getNavigationHistory): Not attached to an active page'
+        )
+      )
+        return undefined;
+      throw error;
+    }
   }
 
   async travel(direction: -1 | 1): Promise<void> {
@@ -33,7 +45,7 @@ export class BrowserPageView {
   }
 
   async reload(): Promise<void> {
-    await this.page.reload({ waitUntil: 'commit' });
+    await this.load(() => this.page.reload({ waitUntil: 'commit' }));
   }
 
   private navigation(): Promise<CDPSession> {
@@ -50,7 +62,18 @@ export class BrowserPageView {
     ) {
       throw new Error('BROWSER_INVALID_ADDRESS');
     }
-    await this.page.goto(url.href, { waitUntil: 'commit' });
+    await this.load(() => this.page.goto(url.href, { waitUntil: 'commit' }));
+  }
+
+  private async load(navigate: () => Promise<unknown>): Promise<void> {
+    try {
+      await navigate();
+    } catch (cause) {
+      // Chromium also uses ERR_ABORTED for Stop and download handoff. Neither is a failed page.
+      if (cause instanceof Error && /\bnet::ERR_ABORTED\b/u.test(cause.message))
+        throw new Error('BROWSER_NAVIGATION_ABORTED', { cause });
+      throw new Error('BROWSER_NAVIGATION_FAILED', { cause });
+    }
   }
 
   /** The attachment owns input ordering, view fencing and synthetic releases. */
@@ -71,19 +94,51 @@ export class BrowserPageView {
     }
   }
 
+  async releaseInput(keys: ReadonlySet<string>, buttons: ReadonlySet<'left' | 'middle' | 'right'>) {
+    if (this.page.isClosed()) return;
+    for (const key of keys) await this.page.keyboard.up(key);
+    for (const button of buttons) await this.page.mouse.up({ button });
+  }
+
+  async selectedText(): Promise<string> {
+    for (const frame of this.page.frames()) {
+      const text = await frame
+        .evaluate(() => {
+          if (!document.hasFocus()) return '';
+          const field = document.activeElement;
+          if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) {
+            if (field instanceof HTMLInputElement && field.type === 'password') return '';
+            const { selectionStart, selectionEnd, value } = field;
+            if (selectionStart !== null && selectionEnd !== null)
+              return value.slice(selectionStart, Math.min(selectionEnd, selectionStart + 4096));
+          }
+          return (window.getSelection()?.toString() ?? '').slice(0, 4096);
+        })
+        .catch(() => '');
+      if (text) return text.slice(0, 4096);
+    }
+    return '';
+  }
+
   async startCapture(
     render: { width: number; height: number; quality: number },
     offer: (frame: Frame) => void
-  ): Promise<Cast> {
+  ): Promise<BrowserPageCapture> {
     if (this.active) throw new Error('BROWSER_CAPTURE_BUSY');
     let stopped = false;
     let stopping: Promise<void> | undefined;
     const capture = {
       stop: () => {
         stopped = true;
-        return (stopping ??= this.page.screencast.stop().finally(() => {
-          this.active = undefined;
-        }));
+        return (stopping ??= (
+          this.page.isClosed() ? Promise.resolve() : this.page.screencast.stop()
+        )
+          .catch((error: unknown) => {
+            if (!this.page.isClosed()) throw error;
+          })
+          .finally(() => {
+            this.active = undefined;
+          }));
       }
     };
     this.active = capture;

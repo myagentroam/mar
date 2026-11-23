@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-lastUpdated: 2026-11-13
+lastUpdated: 2026-11-24
 ---
 
 # Keyboard Shortcuts
@@ -9,7 +9,9 @@ Session shortcuts apply to the focused Main or Aside conversation. An open dialo
 
 With an Aside or file tab focused, use the arrow keys or Home/End to move focus, then press Enter or Space to activate it. Moving focus alone does not switch the content.
 
-With focus in the Aside tab strip, content, or Composer, `Ctrl+W` / `Alt+W` (`Control+W` / `Option+W` on macOS) closes only the active session or Browser, not the Workspace. Fixed tools stay open, and the Shift variants do not close background Workspaces. Closing a session preserves its draft and running task. Native inputs, editors, terminals, and dialogs retain their own key handling. Single-tab close also works inside same-origin HTML previews; for cross-origin previews, focus the preview toolbar first.
+With focus in the Aside tab strip, content, or Composer, `Ctrl+W` / `Alt+W` (`Control+W` / `Option+W` on macOS) closes only the active session or Browser, not the Workspace. Fixed tools stay open, and the Shift variants do not close background Workspaces. Closing a session preserves its draft and running task. Native inputs, editors, terminals, and dialogs retain their own key handling. The close shortcut also works while the Node browser page has focus and is not sent to that page. Closing the Aside tab does not close Chromium.
+
+While typing into a page in the [Workspace browser](../workbench/browser.md), `Esc` exits text input without closing the side pane. On a narrow screen, press `Esc` again to close the pane. Reopen it to continue on the same page.
 
 | Scope                         | Windows/Linux                                               | macOS                                                             | Action                                                                         | Available when                                                                                              |
 | ----------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |

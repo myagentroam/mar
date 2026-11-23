@@ -76,6 +76,7 @@ import { GitOperationService } from './service/git-operation-service.js';
 import { WorkspaceService } from './service/workspace-service.js';
 import { DirectTransferService } from './connection/direct-transfer-service.js';
 import { nodeDesktopRelayEndpoint } from './connection/endpoints.js';
+import { BrowserNodeService } from './browser/browser-node-service.js';
 import { RelayDesktopService } from './remote-desktop/relay-desktop-service.js';
 import {
   DesktopAttachmentRegistry,
@@ -430,6 +431,7 @@ export class NodeConnector {
     typeof composeWorkspaceResources
   >['invalidateFiles'];
   private directTransferService: DirectTransferService | undefined;
+  private browserService: BrowserNodeService | undefined;
   private relayDesktopService: RelayDesktopService | undefined;
   private desktopRuntime:
     X11RemoteDesktopRuntime | WindowsRemoteDesktopRuntime | MacosRemoteDesktopRuntime | undefined;
@@ -560,12 +562,13 @@ export class NodeConnector {
     };
     const detect = options.capabilityDetector ?? detectCapabilitiesAsync;
     this.capabilityDetector = async () => {
-      const capabilities = await detect();
+      const { browser: _reportedBrowser, ...capabilities } = await detect();
       if (!this.stopped) await this.initializeDesktopRuntime();
       return this.projectRemoteDesktopCapability(
         this.projectComputerUseCapability(
           await this.conversationHosting.project({
             ...capabilities,
+            ...this.browserCapability(),
             metadata: upgradeMetadata(
               capabilities.metadata,
               this.upgradeCoordinator.snapshot(),
@@ -1537,6 +1540,7 @@ export class NodeConnector {
         this.promptCompletion?.disconnect();
         this.usageOutbox?.disconnected();
         this.directTransferService?.close('DIRECT_TRANSFER_CONTROL_UNAVAILABLE');
+        void this.browserService?.disconnect();
         this.relayDesktopService?.invalidate('DESKTOP_TRANSPORT_ERROR');
         this.runtimeCredentials.disconnected();
         this.chatgptLogins.close();
@@ -1881,6 +1885,12 @@ export class NodeConnector {
         observations: this.agentNetworkObservations
       })
     );
+    for (const operation of ['resource', 'profile', 'attachment', 'upload', 'download'] as const) {
+      this.operationRouter.register(`browser.${operation}`, (data) => {
+        if (!this.browserService) throw new Error('BROWSER_UNAVAILABLE');
+        return this.browserService.execute(operation, data);
+      });
+    }
     this.operationRouter.register('desktop.describe', async (data) => {
       if (!isPlainRecord(data)) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
       const {
@@ -2141,6 +2151,7 @@ export class NodeConnector {
     this.computerUseEnablement.initialize();
     await this.initializeDesktopRuntime();
     this.directTransferService ??= await this.createDirectTransferService();
+    await this.initializeBrowser();
     this.initializeDesktopRelay();
     this.capabilities = this.projectRemoteDesktopCapability(this.capabilities);
     await this.terminalManager.warmup();
@@ -2266,6 +2277,11 @@ export class NodeConnector {
       return await DirectTransferService.create({
         nodeGeneration: () => nodeGeneration,
         send: (type, payload) => this.send(type, payload),
+        openBrowserChannel: (route, channel, first) => {
+          const browser = this.browserService;
+          if (browser) browser.openIce(route, channel, first);
+          else channel.close();
+        },
         desktop: {
           registry: this.desktopAttachmentRegistry,
           isCurrent: (command) => this.isCurrentDesktop(command, nodeGeneration),
@@ -2348,6 +2364,55 @@ export class NodeConnector {
         this.createDesktopAttachment(command, stream, callbacks, nodeGeneration),
       emit: (event) => this.emitDesktopEvent(event, nodeGeneration)
     });
+  }
+
+  private async initializeBrowser(): Promise<void> {
+    const { browser: _previous, ...capabilities } = this.capabilities;
+    const config = this.config;
+    if (!config) {
+      this.capabilities = capabilities;
+      return;
+    }
+    const service = new BrowserNodeService({
+      root: resolve(nodeDataDirectory(config, this.configPath), 'browser'),
+      generation: this.nodeGeneration,
+      requireWorkspace: (id) => {
+        this.workspaceCoordinator.require(id);
+      },
+      workspacePath: (id) => this.database?.getWorkspace(id)?.path,
+      relay: () => {
+        const current = this.config;
+        if (!current?.nodeId || !current.credential) throw new Error('BROWSER_RELAY_UNAVAILABLE');
+        const endpoint = new URL(nodeDesktopRelayEndpoint(current.serverUrl));
+        endpoint.pathname = endpoint.pathname.replace(/desktop-relay$/u, 'browser-relay');
+        return { endpoint: endpoint.href, nodeId: current.nodeId, credential: current.credential };
+      },
+      failed: (error) =>
+        nodeLog('browser.failed', { errorCode: safeErrorCode(error, 'BROWSER_FAILED') })
+    });
+    if (!(await service.probe())) {
+      await service
+        .shutdown()
+        .catch((error: unknown) =>
+          nodeLog('browser.failed', { errorCode: safeErrorCode(error, 'BROWSER_FAILED') })
+        );
+      this.capabilities = capabilities;
+      return;
+    }
+    this.browserService = service;
+    this.capabilities = { ...capabilities, ...this.browserCapability() };
+  }
+
+  private browserCapability(): Pick<NodeCapabilities, 'browser'> {
+    return this.browserService
+      ? {
+          browser: {
+            apiVersion: 1,
+            nodeGeneration: this.nodeGeneration,
+            ice: this.directTransferService !== undefined
+          }
+        }
+      : {};
   }
 
   private isCurrentDesktop(command: DesktopPrepare, nodeGeneration: string): boolean {
@@ -2475,6 +2540,8 @@ export class NodeConnector {
     this.upgradeCredentials.disconnect();
     const notificationMcpDrain = this.notificationMcpBridge.close();
     const webToolDrain = this.webToolService.close();
+    const browserDrain = this.browserService?.shutdown();
+    this.browserService = undefined;
     const desktopShutdown = AbortSignal.timeout(10_000);
     const directDrain = this.directTransferService?.shutdown(desktopShutdown);
     const relayDrain = this.relayDesktopService?.shutdown(desktopShutdown);
@@ -2501,6 +2568,7 @@ export class NodeConnector {
       scheduleMcpDrain,
       notificationMcpDrain,
       webToolDrain,
+      browserDrain,
       controlDrain
     ]);
     return (async () => {

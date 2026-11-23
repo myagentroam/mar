@@ -48,6 +48,12 @@ interface TerminalSummary {
 }
 const props = defineProps<{
   readonly errorMessage: (error: unknown) => string;
+  readonly openBrowserLink?:
+    | ((
+        link: import('../../service/browser-link-routing.js').WorkbenchBrowserLink,
+        alternate: boolean
+      ) => boolean)
+    | undefined;
   readonly nodeId: string | undefined;
   readonly direct?: Pick<ReturnType<typeof createTerminalDirectClient>, 'attach'>;
   readonly workspaceId: string | undefined;
@@ -66,6 +72,16 @@ const emit = defineEmits<{
   notice: [message: string, type: MessageType, cause?: unknown];
   collapse: [];
 }>();
+function openUrl(url: string, alternate: boolean): boolean {
+  return !!(
+    props.nodeId &&
+    props.workspaceId &&
+    props.openBrowserLink?.(
+      { kind: 'url', url, source: { nodeId: props.nodeId, workspaceId: props.workspaceId } },
+      alternate
+    )
+  );
+}
 
 const selectedProfileId = ref<string>();
 const terminalRoot = ref<HTMLElement>();
@@ -552,6 +568,7 @@ defineExpose({ release, toggle: toggleTerminal });
           :node-id="nodeId ?? ''"
           :direct="direct"
           :workspace-id="workspaceId"
+          :open-url="openBrowserLink ? openUrl : undefined"
           :csrf-token="csrfToken"
           :renew-csrf-token="renewCsrfToken"
           :windows-con-pty="capability?.supportsConPty === true"

@@ -265,6 +265,8 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
 
   return {
     workspace: { upload: workspace.upload, download: workspace.download },
+    acquireBrowser: (nodeId: string, generation: string) =>
+      workspace.acquireBrowserTransport(nodeId, generation),
     terminal: { attach: terminal.attach },
     handleDirect: workspace.handle,
     handleTerminalDirect: terminal.handle,

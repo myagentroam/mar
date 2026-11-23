@@ -54,6 +54,7 @@ import { createWorkbenchEntityService } from './workbench-entity-service.js';
 import { parseNodeUpgradeProgress } from '../model/node-upgrade.js';
 import { createWorkspaceUploadService } from './workspace-upload-service.js';
 import { createWorkbenchLiveService } from './workbench-live-service.js';
+import { createWorkbenchBrowserService } from './workbench-browser-service.js';
 import { createWorkbenchDirectTransportCoordinator } from './workbench-direct-transport-coordinator.js';
 import { createWebPerformanceDiagnostics } from './web-performance-diagnostic-service.js';
 import { createWorkbenchLayoutService } from './workbench-layout-service.js';
@@ -368,6 +369,7 @@ export function createWorkbenchPageController<
         .catch(() => undefined);
     },
     onDisconnected: () => {
+      browser.disconnected();
       watchCoordinator.current?.pause();
       directTransport.connectionLost();
     },
@@ -387,6 +389,7 @@ export function createWorkbenchPageController<
     },
     onDirectMessage: (message) => directTransport.handleDirect(message),
     onTerminalDirectMessage: (message) => directTransport.handleTerminalDirect(message),
+    onBrowserMessage: (message) => browser.handle(message),
     onUnauthenticated: () => returnToLogin(),
     onInvalidMessage: () =>
       notice(translate('generated.workbenchPageController.receivedAnUnreadableLiveUpdate'), 'error')
@@ -411,6 +414,22 @@ export function createWorkbenchPageController<
     sendTerminalDirect: (message): boolean => workbenchLiveConnection.sendTerminalDirect(message)
   });
   const { workspace: workspaceDirectTransfer, terminal: terminalDirectClient } = directTransport;
+  const browser = createWorkbenchBrowserService({
+    send: workbenchLiveConnection.sendBrowser,
+    http: workbenchHttpService.request,
+    connectionId: () =>
+      workbenchLiveConnection.connected.value ? workbenchConnectionId.value : undefined,
+    acquire: directTransport.acquireBrowser
+  });
+  watch(
+    workspaceTarget,
+    (next) => {
+      const scope = browser.destination.value?.scope;
+      if (scope && (scope.nodeId !== next?.nodeId || scope.workspaceId !== next.workspaceId))
+        browser.clearDestination();
+    },
+    { flush: 'sync' }
+  );
 
   const {
     workspaceDirectAvailable,
@@ -484,7 +503,10 @@ export function createWorkbenchPageController<
   const workbenchAsideService = createWorkbenchAsideService({ mobileViewport });
   function openHtmlAside(path: string): void {
     const target = workspaceTarget.value;
-    if (target === undefined || !workbenchAsideService.current(target).tools.includes('files')) {
+    if (
+      target === undefined ||
+      !workbenchAsideService.current(target).tools.includes('node-browser')
+    ) {
       notice(
         translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
         'error'
@@ -492,8 +514,9 @@ export function createWorkbenchPageController<
       return;
     }
     if (workbenchAsideService.current(target).active?.kind === 'session') saveAsideContext();
-    if (workbenchAsideService.openHtml(target, path) && mobileViewport.value)
-      openMobileWorkspaceSurface('inspector');
+    browser.openDestination(target, { htmlPath: path });
+    workbenchAsideService.selectTool(target, 'node-browser');
+    if (mobileViewport.value) openMobileWorkspaceSurface('inspector');
   }
   const asideTarget = computed(() => {
     const workspace = workspaceTarget.value;
@@ -1314,6 +1337,7 @@ export function createWorkbenchPageController<
     accountStorage.value = unboundAccountStorage;
     storageUserId = undefined;
     workbenchAsideService.clear();
+    browser.clearDestination();
     clearMessages();
     authenticationRestoreGeneration += 1;
     workspaceStartupStatus.value = 'loading';
@@ -1947,17 +1971,13 @@ export function createWorkbenchPageController<
     manifest: nodeManifest,
     selectedWorkspace
   });
-  const {
-    select: selectAsideTool,
-    openBrowser: selectAsideBrowser,
-    closeBrowser: closeAsideBrowser,
-    toggleTerminal: toggleAsideTerminal
-  } = workbenchAsideService.createInteraction({
-    workspace: workspaceTarget,
-    mobileSurface: mobileWorkspaceSurface,
-    saveSession: saveAsideContext,
-    openMobile: openMobileWorkspaceSurface
-  });
+  const { select: selectAsideTool, toggleTerminal: toggleAsideTerminal } =
+    workbenchAsideService.createInteraction({
+      workspace: workspaceTarget,
+      mobileSurface: mobileWorkspaceSurface,
+      saveSession: saveAsideContext,
+      openMobile: openMobileWorkspaceSurface
+    });
 
   watch(
     navigationQuery,
@@ -2150,6 +2170,9 @@ export function createWorkbenchPageController<
 
   return {
     layout: navigationPresentation.layoutView,
+    browser,
+    browserCapability: () => nodeManifest.value?.browser,
+    browserConnectionReady: () => workbenchLiveConnection.connected.value,
     tree: proxyRefs({
       draggingWorkspace,
       expandedNodeIds,
@@ -2273,12 +2296,11 @@ export function createWorkbenchPageController<
       ),
       asideViewMode,
       asideWidth: workbenchLayoutService.asideWidth,
-      closeAsideBrowser,
       closeAsideSession: workbenchSessionSelectionService.closeAsideSession,
+      closeAsideBrowser: workbenchAsideService.closeBrowser,
       openAsideSession: workbenchSessionSelectionService.openAsideSession,
       openHtmlAside,
       reloadAsideSession,
-      selectAsideBrowser,
       selectAsideTool,
       setAsideCollapsed: workbenchAsideService.setCollapsed,
       setAsideSessionFits: (fits: boolean | undefined) => {

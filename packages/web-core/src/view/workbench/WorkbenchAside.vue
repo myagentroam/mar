@@ -30,7 +30,6 @@ const props = defineProps<{
     readonly label: string;
     readonly tooltip?: string | undefined;
   }[];
-  readonly browserLabel: string;
   readonly sessions: readonly {
     readonly sessionId: string;
     readonly title: string;
@@ -50,10 +49,9 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   selectTool: [target: AsideWorkspace & { readonly id: AsideTool }];
-  selectBrowser: [target: AsideWorkspace];
-  closeBrowser: [target: AsideWorkspace];
   selectSession: [target: AsideSession];
   closeSession: [target: AsideSession];
+  closeBrowser: [target: AsideWorkspace];
   resize: [width: number];
   closeSurface: [];
 }>();
@@ -68,16 +66,22 @@ type AsideTab = {
   closeLabel?: string;
   separatorBefore?: boolean;
 };
+const fixedTools = computed(() =>
+  props.tools.filter((tool) => tool.id !== 'node-browser' && props.state.tools.includes(tool.id))
+);
+const browserTab = computed(() =>
+  props.state.browserOpen && props.state.tools.includes('node-browser')
+    ? props.tools.find((tool) => tool.id === 'node-browser')
+    : undefined
+);
 const entries = computed<AsideTab[]>(() => [
-  ...props.tools
-    .filter((tool) => props.state.tools.includes(tool.id))
-    .map((tool) => ({
-      id: `tool:${tool.id}`,
-      label: tool.label,
-      tooltip: tool.tooltip,
-      active: false,
-      target: { kind: 'tool', id: tool.id } as AsideTarget
-    })),
+  ...fixedTools.value.map((tool) => ({
+    id: `tool:${tool.id}`,
+    label: tool.label,
+    tooltip: tool.tooltip,
+    active: false,
+    target: { kind: 'tool', id: tool.id } as AsideTarget
+  })),
   ...props.state.sessions.map((sessionId, index) => {
     const session = props.sessions.find((item) => item.sessionId === sessionId);
     const label = session?.title ?? sessionId;
@@ -85,20 +89,19 @@ const entries = computed<AsideTab[]>(() => [
       id: `session:${sessionId}`,
       label,
       closeLabel: props.closeLabel(label),
-      separatorBefore:
-        index === 0 && props.tools.some((tool) => props.state.tools.includes(tool.id)),
+      separatorBefore: index === 0 && fixedTools.value.length > 0,
       target: { kind: 'session', sessionId } as AsideTarget,
       active: session?.active ?? false
     };
   }),
-  ...(props.state.htmlPath !== undefined && props.state.tools.includes('files')
+  ...(browserTab.value
     ? [
         {
-          id: 'browser',
-          label: props.browserLabel,
-          closeLabel: props.closeLabel(props.browserLabel),
-          separatorBefore: props.state.sessions.length === 0 && props.state.tools.length > 0,
-          target: { kind: 'browser' } as AsideTarget,
+          id: 'tool:node-browser',
+          label: browserTab.value.label,
+          closeLabel: props.closeLabel(browserTab.value.label),
+          separatorBefore: props.state.sessions.length === 0 && fixedTools.value.length > 0,
+          target: { kind: 'tool', id: 'node-browser' } as const,
           active: false
         }
       ]
@@ -119,11 +122,9 @@ const activeId = computed(() => {
   const target = props.state.active;
   return target?.kind === 'tool'
     ? `tool:${target.id}`
-    : target?.kind === 'browser'
-      ? 'browser'
-      : target?.kind === 'session'
-        ? `session:${target.sessionId}`
-        : undefined;
+    : target?.kind === 'session'
+      ? `session:${target.sessionId}`
+      : undefined;
 });
 let locationSequence = 0;
 const sessionLocation = ref<{ readonly id: string; readonly sequence: number }>();
@@ -162,21 +163,19 @@ watch(
 function activate(id: string | number): void {
   const target = entries.value.find((entry) => entry.id === id)?.target;
   if (target?.kind === 'tool') emit('selectTool', { ...props.workspace, id: target.id });
-  else if (target?.kind === 'browser') emit('selectBrowser', props.workspace);
   else if (target?.kind === 'session')
     emit('selectSession', { ...props.workspace, sessionId: target.sessionId });
 }
 function close(id: string | number): void {
   const target = entries.value.find((entry) => entry.id === id)?.target;
-  if (target?.kind === 'browser') emit('closeBrowser', props.workspace);
-  else if (target?.kind === 'session')
+  if (target?.kind === 'session')
     emit('closeSession', { ...props.workspace, sessionId: target.sessionId });
+  else if (target?.kind === 'tool' && target.id === 'node-browser')
+    emit('closeBrowser', props.workspace);
 }
 
-// Aside owns only local close intents and frame listeners; its domain owners
+// Aside owns only local close intents; its domain owners
 // retain tab cleanup, session drafts, selection fallback, and Run lifecycles.
-let browserDocument: Document | undefined;
-let releaseBrowserFrame: (() => void) | undefined;
 let unregisterClose: (() => void) | undefined;
 const closeBinding: ConsoleShortcutBinding = {
   command: 'aside.closeTab',
@@ -188,11 +187,11 @@ const closeBinding: ConsoleShortcutBinding = {
     const root = element.value;
     const target = event.target as Node | null;
     if (!root?.getClientRects().length || typeof target?.nodeType !== 'number') return false;
-    if (browserDocument?.contains(target) && props.state.active?.kind === 'browser') return true;
     if (!root.contains(target)) return false;
     return !(
       target instanceof Element &&
       target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') &&
+      !target.matches('[data-node-browser-input]') &&
       !consoleKeyboardShortcutService.isWithin('pane', target)
     );
   },
@@ -200,7 +199,7 @@ const closeBinding: ConsoleShortcutBinding = {
     // Fixed tools and bulk/repeated closes must never fall through to Workspace.
     if (!event.repeat && !event.shiftKey && activeId.value !== undefined) {
       const active = props.state.active;
-      if (active?.kind === 'browser' || active?.kind === 'session') {
+      if (active?.kind === 'session' || (active?.kind === 'tool' && active.id === 'node-browser')) {
         close(activeId.value);
         void nextTick(() => {
           const root = element.value;
@@ -217,65 +216,16 @@ const closeBinding: ConsoleShortcutBinding = {
     return 'HANDLED';
   }
 };
-function clearBrowserFrame(): void {
-  releaseBrowserFrame?.();
-  releaseBrowserFrame = undefined;
-  browserDocument = undefined;
-}
-function bindBrowserFrame(event: Event): void {
-  const frame = event.target;
-  if (
-    props.state.active?.kind !== 'browser' ||
-    !(frame instanceof HTMLIFrameElement) ||
-    !frame.matches('.html-preview-frame')
-  )
-    return;
-  clearBrowserFrame();
-  let frameDocument: Document | null;
-  try {
-    frameDocument = frame.contentDocument;
-  } catch {
-    // A separately configured preview origin intentionally isolates keyboard events.
-    return;
-  }
-  if (frameDocument === null) return;
-  browserDocument = frameDocument;
-  const keydown = (event: KeyboardEvent): void => {
-    // Never forward unrelated preview keys to background Workspace commands.
-    if (consoleKeyboardShortcutService.invoke(closeBinding, event) !== 'HANDLED') return;
-    event.preventDefault();
-    event.stopPropagation();
-  };
-  frameDocument.addEventListener('keydown', keydown, { capture: true });
-  releaseBrowserFrame = () =>
-    frameDocument.removeEventListener('keydown', keydown, { capture: true });
-}
-watch(
-  [
-    () => props.workspace.nodeId,
-    () => props.workspace.workspaceId,
-    () => activeId.value,
-    () => props.state.htmlPath
-  ],
-  clearBrowserFrame
-);
 onMounted(() => {
   unregisterClose = consoleKeyboardShortcutService.register(closeBinding);
 });
 onBeforeUnmount(() => {
   unregisterClose?.();
-  clearBrowserFrame();
 });
 </script>
 
 <template>
-  <aside
-    ref="element"
-    class="workbench-aside"
-    :inert="inert"
-    :style="{ width: `${width}px` }"
-    @load.capture="bindBrowserFrame"
-  >
+  <aside ref="element" class="workbench-aside" :inert="inert" :style="{ width: `${width}px` }">
     <MarPanelResizeHandle
       class="workbench-aside-resize"
       :target="element"
@@ -351,7 +301,6 @@ onBeforeUnmount(() => {
         :tabindex="entry.target.kind === 'session' ? -1 : undefined"
         :aria-labelledby="tabStripIdentity(tabPrefix, entry.id).tab"
       >
-        <slot v-if="entry.target.kind === 'browser' && entry.id === activeId" name="browser" />
         <slot
           v-if="entry.target.kind === 'tool' && entry.target.id === 'terminal'"
           name="terminal"

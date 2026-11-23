@@ -20,6 +20,7 @@ export function mockedWebSocket(original: typeof WebSocket): typeof WebSocket {
     nextSocket = undefined;
     const socket = new EventEmitter();
     return Object.assign(socket, target, {
+      ping: (data: Buffer) => queueMicrotask(() => socket.emit('pong', data)),
       close: (...closeArgs: unknown[]) => {
         target.close?.(...closeArgs);
         queueMicrotask(() => socket.emit('close', 1000, Buffer.alloc(0)));

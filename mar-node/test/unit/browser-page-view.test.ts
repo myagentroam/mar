@@ -19,7 +19,10 @@ describe('Browser page view', () => {
     const start = vi.fn(async (_: { onFrame: Handler }) => {});
     const pending = Promise.withResolvers<void>();
     const stop = vi.fn(() => pending.promise);
-    const view = new BrowserPageView({ screencast: { start, stop } } as unknown as Page);
+    const view = new BrowserPageView({
+      isClosed: () => false,
+      screencast: { start, stop }
+    } as unknown as Page);
     const offer = vi.fn();
     const size = { width: 640, height: 480, quality: 70 };
     const capture = await view.startCapture(size, offer);

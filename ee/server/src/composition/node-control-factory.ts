@@ -15,6 +15,7 @@ import { remoteDesktopDescriptionSchema } from '@myagentroam/protocol';
 import { TerminalRelayService } from '@myagentroam/server-core/terminal-relay-service';
 import { WorkbenchRelayService } from '@myagentroam/server-core/workbench-relay-service';
 import { NodeMessageProjector } from '@myagentroam/server-core/node-message-projector';
+import { BrowserWorkbenchService } from '../service/browser-workbench-service.js';
 
 /** Compose the connection owner with its request, relay, projection and transfer owners. */
 export function createNodeControl(
@@ -232,6 +233,25 @@ export function createNodeControl(
           message: (identity, message) => desktopRelay.handleBrowser(identity, message),
           revoked: (connectionId) => desktopRelay.revokeConnection(connectionId)
         });
+        const browser = new BrowserWorkbenchService({
+          workbench: workbenchRelay,
+          direct: directTransfers,
+          request: requestBroker.requestBrowser.bind(requestBroker),
+          authorize,
+          capability: (nodeId) => {
+            const socket = transport.socketFor(nodeId);
+            if (socket && transport.allows(socket, 'browser.resource'))
+              return transport.capabilities(nodeId)?.browser;
+          },
+          authenticateNode: async (nodeId, credential) =>
+            Boolean(await database.authenticateNode(nodeId, credential)),
+          failed: () => log?.('browser.relay.failed', {})
+        });
+        constructed.push(() => browser.close());
+        workbenchRelay.setBrowserHandler({
+          message: (identity, message) => browser.message(identity, message),
+          revoked: (id) => browser.revokeConnection(id)
+        });
         const messageProjector = new NodeMessageProjector({
           sessionGroupChanged: (change) => consumers.sessionGroupChanged(change),
           relay: workbenchRelay,
@@ -255,6 +275,7 @@ export function createNodeControl(
           desktopRelay,
           desktopPairing,
           desktopRelaySockets,
+          browser,
           messageProjector
         };
       } catch (error) {

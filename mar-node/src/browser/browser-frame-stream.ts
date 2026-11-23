@@ -9,6 +9,7 @@ type CloseReason =
   'BROWSER_FRAME_TIMEOUT' | 'BROWSER_FRAME_ENCODE_FAILED' | 'BROWSER_FRAME_TRANSPORT_FAILED';
 type Flight = {
   sequence: number;
+  viewVersion: number;
   finalChunkStarted: boolean;
   sent: boolean;
   acknowledged: boolean;
@@ -54,13 +55,13 @@ export class BrowserFrameStream {
     this.flush();
   }
 
-  acknowledge(sequence: number): boolean {
+  acknowledge(sequence: number): number | undefined {
     const flight = this.flight;
     if (!flight?.finalChunkStarted || flight.sequence !== sequence || flight.acknowledged)
-      return false;
+      return undefined;
     flight.acknowledged = true;
     if (flight.sent) this.finish();
-    return true;
+    return flight.viewVersion;
   }
 
   close(): void {
@@ -77,6 +78,7 @@ export class BrowserFrameStream {
     this.pending = undefined;
     const flight = {
       sequence: ++this.sequence,
+      viewVersion: capture.viewVersion,
       finalChunkStarted: false,
       sent: false,
       acknowledged: false

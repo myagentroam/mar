@@ -296,6 +296,7 @@ export interface NodeWorkbenchManifest {
     readonly maxChunkBytes: number;
   };
   readonly terminalDirect?: { readonly apiVersion: 1; readonly transport: true };
+  readonly browser?: import('@myagentroam/protocol').BrowserCapability;
   readonly git?: {
     readonly available: boolean;
     readonly reasonCode: string | null;

@@ -25,6 +25,7 @@ import {
   type ComponentPublicInstance
 } from 'vue';
 import AgentMarkdown from './AgentMarkdown.vue';
+import { conversationUrlSegments } from '../../util/conversation-url-segments.js';
 import {
   CONVERSATION_MARKDOWN_CACHE_KEY,
   createConversationMarkdownCache
@@ -122,6 +123,7 @@ function messageHeading(payload: unknown) {
 
 const props = defineProps<{
   readonly quoteTarget?: ComposerQuoteTarget | undefined;
+  readonly openUrl?: ((url: string, alternate: boolean) => boolean) | undefined;
   readonly turns: readonly ConversationTurn[];
   readonly performance?: RunPerformance | undefined;
   readonly runs?: readonly Pick<AgentRun, 'id' | 'status' | 'startedAt' | 'completedAt'>[];
@@ -145,6 +147,11 @@ const props = defineProps<{
 }>();
 
 provide(CONVERSATION_MARKDOWN_CACHE_KEY, createConversationMarkdownCache());
+
+function openPlainUrl(event: MouseEvent, url: string): void {
+  if (event.button === 0 && props.openUrl?.(url, event.ctrlKey || event.metaKey))
+    event.preventDefault();
+}
 
 function markdownCacheIdentity(
   turn: ConversationTurn,
@@ -1066,7 +1073,24 @@ function stepDuration(item: ConversationItem): string | undefined {
             v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
             class="conversation-message"
           >
-            {{ conversationItemText(displayItem.item.kind, displayItem.item.payload) }}
+            <template v-if="openUrl"
+              ><template
+                v-for="(part, index) in conversationUrlSegments(
+                  conversationItemText(displayItem.item.kind, displayItem.item.payload)
+                )"
+                :key="index"
+                ><a
+                  v-if="part.url"
+                  :href="part.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  @click="openPlainUrl($event, part.url)"
+                  >{{ part.text }}</a
+                ><template v-else>{{ part.text }}</template></template
+              ></template
+            ><template v-else>{{
+              conversationItemText(displayItem.item.kind, displayItem.item.payload)
+            }}</template>
           </p>
           <MessageAttachmentFiles
             :files="composerMessagePresentation(displayItem.item.payload).files"
@@ -1185,6 +1209,7 @@ function stepDuration(item: ConversationItem): string | undefined {
           >
             <AgentMarkdown
               :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
+              :open-url="openUrl"
               :cache-identity="markdownCacheIdentity(turn, displayItem.item)"
               v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
               :image-resource-url="imageResourceUrl"

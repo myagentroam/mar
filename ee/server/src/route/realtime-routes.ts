@@ -6,11 +6,13 @@ import {
 } from '@myagentroam/server-core/workbench-route';
 import websocket from '@fastify/websocket';
 import type { FastifyInstance } from 'fastify';
-import type { SessionLookup } from '@myagentroam/server-core/session';
+import { type SessionLookup } from '@myagentroam/server-core/session';
 import type { NodeControl } from '../node-control.js';
 import type { WebSocket } from 'ws';
 import type { FastifyRequest } from 'fastify';
 import { DesktopWebSocketDispatcher } from '../service/desktop-websocket-dispatcher.js';
+import { BROWSER_CONTROL_MAX_BYTES } from '@myagentroam/protocol';
+import { registerBrowserFileRoutes } from './browser-file-routes.js';
 
 export function registerRealtimeRoutes(input: {
   readonly app: FastifyInstance;
@@ -37,8 +39,16 @@ export function registerRealtimeRoutes(input: {
       }
     });
     const desktopWebSockets = new DesktopWebSocketDispatcher(routes.websocketServer);
-    routes.addHook('preClose', async () => desktopWebSockets.close());
+    const browserWebSockets = new DesktopWebSocketDispatcher(
+      routes.websocketServer,
+      BROWSER_CONTROL_MAX_BYTES
+    );
+    routes.addHook('preClose', async () => {
+      await browserWebSockets.close();
+      await desktopWebSockets.close();
+    });
     const desktopWire = async (request: FastifyRequest) => desktopWebSockets.mark(request.raw);
+    const browserWire = async (request: FastifyRequest) => browserWebSockets.mark(request.raw);
     if (input.sessionShares !== undefined)
       registerSessionShareRealtimeRoute({
         app: routes,
@@ -51,6 +61,26 @@ export function registerRealtimeRoutes(input: {
     routes.get('/api/node/terminal-connect', { websocket: true }, (socket) =>
       nodeControl.attachTerminal(socket)
     );
+    routes.get(
+      '/api/node/browser-relay',
+      { websocket: true, preValidation: browserWire },
+      (socket, request) => nodeControl.attachNodeBrowserRelay(socket, request.headers)
+    );
+    routes.get<{ Querystring: { connectionId?: string } }>(
+      '/api/browser/relay',
+      { websocket: true, preValidation: browserWire },
+      (socket, request) => {
+        const user = authorizeRealtimeConnection(socket, request, database, publicOrigin);
+        if (!user) return;
+        if (typeof request.query.connectionId !== 'string') return socket.terminate();
+        nodeControl.attachBrowserRelay(
+          socket,
+          { userId: user.userId, sessionHash: user.sessionHash },
+          request.query.connectionId
+        );
+      }
+    );
+    registerBrowserFileRoutes(routes, database, publicOrigin, nodeControl);
     routes.get(
       '/api/node/desktop-relay',
       { websocket: true, preValidation: desktopWire },

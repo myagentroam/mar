@@ -5,7 +5,7 @@ lastUpdated: 2026-11-23
 
 # Conversations, Tools, and Notifications
 
-In regular Workspace sessions, an HTML/HTM file link opens in the Aside browser; Ctrl/Cmd-click opens a rendered page in a new window. See [file preview and security](files.md).
+In regular Workspace sessions, website links and authorized HTML/HTM file links follow your [browser opening preferences](browser.md). HTML opens in the Workspace browser by default; Ctrl/Cmd-click inverts the destination. See [file preview and security](files.md).
 
 **Recent Sessions** also provides **Main Sessions / Child Sessions**, defaulting to Main Sessions and following the [session list rules](sessions.md). Tabs have no running or unread badges and only switch the list, without opening a session. The **Active tasks** count includes tasks that are starting, running, or stopping. Opening a notification, recent-session item, or Workspace tab synchronizes the target session's group in Chats; individual session indicators stay unchanged.
 

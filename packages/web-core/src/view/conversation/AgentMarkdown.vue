@@ -21,6 +21,7 @@ const props = defineProps<{
   readonly workspaceRoot?: string;
   readonly imageResourceUrl?: ((path: string) => string) | undefined;
   readonly cacheIdentity?: readonly string[] | undefined;
+  readonly openUrl?: ((url: string, alternate: boolean) => boolean) | undefined;
 }>();
 const emit = defineEmits<{
   'open-image': [source: string, name: string];
@@ -307,7 +308,18 @@ function onLinkClick(event: MouseEvent): void {
   if (!(target instanceof Element)) return;
   const link = target.closest<HTMLAnchorElement>('a[data-workspace-file]');
   const path = link?.dataset.workspaceFile;
-  if (path === undefined) return;
+  if (path === undefined) {
+    const href = target.closest<HTMLAnchorElement>('a[href]')?.getAttribute('href');
+    if (
+      !event.defaultPrevented &&
+      event.button === 0 &&
+      href &&
+      /^https?:\/\//iu.test(href) &&
+      props.openUrl?.(href, event.ctrlKey || event.metaKey)
+    )
+      event.preventDefault();
+    return;
+  }
   event.preventDefault();
   const parsedLine = Number(link?.dataset.workspaceLine);
   const parsedColumn = Number(link?.dataset.workspaceColumn);

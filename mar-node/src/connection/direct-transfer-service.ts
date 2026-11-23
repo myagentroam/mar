@@ -46,6 +46,11 @@ export interface DirectTransferServiceOptions {
   readonly terminalManager?: TerminalManager;
   readonly sendTerminalReady?: (directSessionId: string, phase?: 'ATTACHED') => void;
   readonly desktop?: Omit<DirectDesktopOptions, 'peer' | 'now' | 'nodeGeneration'>;
+  readonly openBrowserChannel?: (
+    route: { type: 'ice'; transportId: string; fingerprint: string },
+    channel: RTCDataChannel,
+    first: unknown
+  ) => void;
 }
 
 interface NodeRtcConfiguration extends RTCConfiguration {
@@ -462,6 +467,27 @@ export class DirectTransferService {
       if (attached) return;
       attached = true;
       transport.pendingChannels.delete(channel);
+      if (channel.label.startsWith('mar-browser-')) {
+        const remoteFingerprint = fingerprint(transport.peer.remoteDescription?.sdp);
+        if (
+          transport.peer.connectionState !== 'connected' ||
+          !remoteFingerprint ||
+          !this.options.openBrowserChannel
+        ) {
+          channel.close();
+          return;
+        }
+        this.options.openBrowserChannel(
+          {
+            type: 'ice',
+            transportId: transport.command.directSessionId,
+            fingerprint: remoteFingerprint
+          },
+          channel,
+          event.data
+        );
+        return;
+      }
       if (channel.label.startsWith('mar-terminal-')) {
         this.terminalDirect?.open(transport.command.directSessionId, channel, event.data);
         if (this.terminalDirect === undefined) channel.close();
