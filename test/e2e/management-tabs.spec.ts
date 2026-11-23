@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/tabs/MarTabs.vue
@@ -16,6 +16,12 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await fixture?.close();
 });
+
+async function expectCategoryStrip(group: Locator) {
+  await expect(group).toHaveCSS('display', 'flex');
+  await expect(group).toHaveCSS('overflow-x', 'auto');
+  await expect(group).toHaveCSS('scrollbar-width', 'thin');
+}
 
 test('Tapping a partially visible management tab reveals its full label', async ({
   browser
@@ -101,6 +107,7 @@ for (const [width, theme] of [
       };
       await expectTabStrip();
       if (view === 'skills') {
+        await expectCategoryStrip(page.getByRole('group', { name: 'Skill Categories' }));
         for (const tab of await page.locator('.skill-content').getByRole('tab').all()) {
           expect((await tab.boundingBox())!.height).toBeCloseTo(expectedHeight, 0);
           await expect(tab).toHaveCSS('font-size', expectedFontSize);
@@ -121,6 +128,7 @@ for (const [width, theme] of [
       if (view === 'skills') {
         const mcp = page.locator('.mcp-panel');
         await expect(mcp).toBeVisible();
+        await expectCategoryStrip(mcp.getByRole('group', { name: 'MCP Categories' }));
         const mcpTabs = mcp.getByRole('tablist').getByRole('tab');
         await expect(mcpTabs).toHaveCount(2);
         await mcpTabs.last().click();
@@ -131,6 +139,9 @@ for (const [width, theme] of [
         await expect(mcp.getByPlaceholder('Search MCP servers')).toBeVisible();
       } else {
         await expect(panel).toBeVisible();
+        if (view === 'sources') {
+          await expectCategoryStrip(panel.getByRole('group', { name: 'Catalog Skill Categories' }));
+        }
       }
 
       await last.press('Home');

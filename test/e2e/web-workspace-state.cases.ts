@@ -144,7 +144,12 @@ async function prepareDescendantTree(
   parentIndexes?: readonly number[],
   filesAvailable = true,
   beforeNavigation?: () => Promise<void>,
-  options?: { readonly userAttachments?: string; readonly activityRunning?: boolean }
+  options?: {
+    readonly userAttachments?: string;
+    readonly activityRunning?: boolean;
+    readonly sessionGroups?: boolean;
+    readonly beforeSessionWatch?: (sessionId: string) => Promise<void> | undefined;
+  }
 ) {
   await mockConsoleApi(
     page,
@@ -210,7 +215,8 @@ async function prepareDescendantTree(
         files: { available: filesAvailable, reasonCode: null },
         git: { available: false, reasonCode: null },
         terminal: { available: false, reasonCode: null },
-        sessionAside: { apiVersion: 1 }
+        sessionAside: { apiVersion: 1 },
+        ...(options?.sessionGroups ? { sessionGroups: { apiVersion: 1 } } : {})
       }
     })
   );
@@ -225,10 +231,12 @@ async function prepareDescendantTree(
     legacyTreeReads++;
     return json(route, {}, 500);
   });
-  await page.route(/\/api\/agent-sessions\/tree-[123]\/watch(?:\?.*)?$/, (route) => {
+  await page.route(/\/api\/agent-sessions\/tree-[123]\/watch(?:\?.*)?$/, async (route) => {
     const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
     const session = sessions.find((item) => item.id === id)!;
     if (route.request().method() === 'DELETE') return json(route, { released: true });
+    const pending = options?.beforeSessionWatch?.(id);
+    if (pending !== undefined) await pending;
     return fulfillMockSessionWatch(
       page,
       route,
@@ -559,6 +567,61 @@ async function clickBrowserNotification(page: Page, id: string): Promise<void> {
   }, id);
 }
 
+test('Explicit New keeps the Main group when a pending Aside notification finishes', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const childWatch = Promise.withResolvers<void>();
+  await prepareDescendantTree(page, undefined, true, undefined, {
+    sessionGroups: true,
+    beforeSessionWatch: (id) => (id === 'tree-2' ? childWatch.promise : undefined)
+  });
+  const main = page.locator('.workspace-grid > .conversation-panel');
+  const mainGroup = page.locator('.conversation-sidebar input[value="MAIN"]');
+  const aside = page.locator('.workspace-aside');
+  const now = Date.now();
+  await page.route('**/api/notifications', (route) =>
+    json(route, {
+      notifications: [
+        {
+          id: 'pending-child',
+          target: {
+            targetType: 'WORKSPACE_SESSION',
+            nodeId: 'node-1',
+            workspaceId: 'workspace-1',
+            sessionId: 'tree-2'
+          },
+          kind: 'run',
+          title: 'Child finished',
+          message: 'Run completed',
+          read: false,
+          createdAt: now,
+          updatedAt: now,
+          expiresAt: now + 60_000
+        }
+      ]
+    })
+  );
+  try {
+    await expect(mainGroup).toBeChecked();
+    await main.getByRole('button', { name: '查看会话树' }).click();
+    await page.getByRole('button', { name: '树会话 2, 空闲', exact: true }).click();
+    await clickBrowserNotification(page, 'pending-child');
+    await expect(aside.getByRole('tabpanel', { name: '树会话 2' })).toBeFocused();
+    await expect(aside.locator('.conversation-loading-initial')).toBeVisible();
+    await page.getByRole('button', { name: '新建会话', exact: true }).click();
+    await expect(main.locator('.conversation-empty')).toBeVisible();
+    await expect(mainGroup).toBeChecked();
+  } finally {
+    childWatch.resolve();
+  }
+
+  await expect(aside.getByText('正文 tree-2', { exact: true })).toBeVisible();
+  await expect(aside.locator('.conversation-loading-initial')).toHaveCount(0);
+  await expect(mainGroup).toBeChecked();
+  await expect(main.locator('.conversation-empty')).toBeVisible();
+});
+
 for (const mobile of [false, true]) {
   test(`Notification clicks and unread Workspace tabs locate the existing Aside on ${mobile ? 'mobile' : 'desktop'}`, async ({
     page
@@ -843,7 +906,7 @@ test('Mobile session title opens its actions without overlapping the session tre
   const icons = await tools
     .locator('[data-mar-icon]')
     .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-mar-icon')));
-  expect(icons).toEqual(['session-list', 'session-tree', 'split']);
+  expect(icons).toEqual(['session-list', 'session-tree', 'panel-right']);
   const [titleBounds, treeBounds, listBounds, asideBounds, headerBounds] = await Promise.all([
     title.boundingBox(),
     tree.boundingBox(),

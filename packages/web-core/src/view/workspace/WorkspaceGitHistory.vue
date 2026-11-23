@@ -2,6 +2,7 @@
 import '../../styles/region-retry-action.css';
 import '../../styles/file-change-colors.css';
 import './git-inline-loading.css';
+import './file-explorer-utility.css';
 import './inspector-row.css';
 import './file-tooltip-trigger.css';
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
@@ -290,7 +291,7 @@ function toggleHistoryDirectory(commitHash: string, path: string): void {
       </MarSelect>
       <button
         v-tooltip="translate('generated.workspaceInspector.refreshGitHistory2')"
-        class="history-refresh file-explorer-utility-button mar-icon-action"
+        class="history-refresh file-explorer-utility-button mar-icon-button mar-icon-action"
         :disabled="historyLoading"
         :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
         :aria-busy="refreshBusy || undefined"
@@ -574,29 +575,6 @@ function toggleHistoryDirectory(commitHash: string, path: string): void {
 .history-commit-row,
 .history-files :deep(.mar-ui-button) {
   border-radius: var(--mar-radius-selection);
-}
-</style>
-
-<style scoped>
-button.file-explorer-utility-button {
-  display: inline-grid;
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
-  place-items: center;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  background: transparent;
-  color: var(--mar-text-secondary);
-  font: inherit;
-  padding: 0;
-  cursor: pointer;
-}
-
-button.file-explorer-utility-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 </style>
 

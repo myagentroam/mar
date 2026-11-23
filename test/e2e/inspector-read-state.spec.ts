@@ -816,7 +816,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
                 lineHeight: Number.parseFloat(style.lineHeight),
                 rowHeight: rowBox.height,
                 expectedRowHeight: Number.parseFloat(
-                  getComputedStyle(row).getPropertyValue('--mar-compact-row-size')
+                  getComputedStyle(row).getPropertyValue('--file-tree-row-size')
                 )
               };
             })

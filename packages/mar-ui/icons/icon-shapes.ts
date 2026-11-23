@@ -22,7 +22,12 @@ export const iconShapes = {
   notification:
     '<path d="M6.5 9.5a5.5 5.5 0 0 1 11 0V13l2 3a.7.7 0 0 1-.6 1H5.1a.7.7 0 0 1-.6-1l2-3V9.5Zm3 11h5"/>',
   menu: '<path d="M4 6.5h16M4 12h16M4 17.5h16" />',
-  sidebar: '<rect x="3" y="4" width="18" height="16" rx="3.5"/><path d="M9 4v16"/>',
+  sidebar: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M10.25 4v16"/>',
+  'sidebar-expanded':
+    '<path d="M6 4h4.25v16H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z" fill="currentColor" stroke="none"/><rect x="3" y="4" width="18" height="16" rx="3"/>',
+  'panel-right': '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M13.75 4v16"/>',
+  'panel-right-expanded':
+    '<path d="M18 4h-4.25v16H18a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3Z" fill="currentColor" stroke="none"/><rect x="3" y="4" width="18" height="16" rx="3"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9 8.8a3 3 0 0 1 6 0c0 1.55-1.3 2.1-2.2 2.8-.55.45-.8.9-.8 1.8" /><circle cx="12" cy="17" r="1.1" fill="currentColor" stroke="none"/>',
   info: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.25" r="1.1" fill="currentColor" stroke="none"/><path d="M12 10.75v6" />',
   power: '<path d="M12 3v8M7 5.5a8 8 0 1 0 10 0" />',

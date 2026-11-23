@@ -50,7 +50,6 @@ const dismissed = ref(false);
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  box-sizing: border-box;
   inline-size: 100%;
   padding: 0.5rem 1rem;
   border-radius: var(--mar-ui-radius-control);
@@ -96,8 +95,5 @@ button {
   background: transparent;
   color: inherit;
   cursor: pointer;
-}
-button:focus-visible {
-  outline: 2px solid currentColor;
 }
 </style>

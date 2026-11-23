@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import '../../styles/region-retry-action.css';
 import './git-inline-loading.css';
+import './file-explorer-utility.css';
 import '@myagentroam/mar-ui/region-status.css';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
@@ -353,7 +354,7 @@ defineExpose({
       </MarInput>
       <button
         v-tooltip="translate('generated.workspaceInspector.refreshFiles2')"
-        class="file-explorer-utility-button mar-icon-action"
+        class="file-explorer-utility-button mar-icon-button mar-icon-action"
         :disabled="filesBusy"
         :aria-label="translate('generated.workspaceInspector.refreshFiles')"
         :aria-busy="buttonLoading || undefined"
@@ -364,7 +365,7 @@ defineExpose({
       </button>
       <button
         v-tooltip="translate('generated.workspaceInspector.uploadFiles2')"
-        class="file-explorer-utility-button mar-icon-action"
+        class="file-explorer-utility-button mar-icon-button mar-icon-action"
         :disabled="preparingUploads"
         :aria-label="translate('generated.workspaceInspector.uploadFiles')"
         :aria-busy="preparingUploads || undefined"
@@ -568,26 +569,5 @@ defineExpose({
 .upload-dialog-list > small {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
-}
-
-button.file-explorer-utility-button {
-  display: inline-grid;
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
-  place-items: center;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  background: transparent;
-  color: var(--mar-text-secondary);
-  font: inherit;
-  padding: 0;
-  cursor: pointer;
-}
-
-button.file-explorer-utility-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 </style>

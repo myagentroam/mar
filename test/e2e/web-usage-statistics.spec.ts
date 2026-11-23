@@ -240,6 +240,17 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.getByRole('button', { name: labels.title, exact: true }).click();
     const panel = page.getByTestId('usage-statistics');
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
+    const filterSelects = panel.locator('.filter-selects .mar-ui-select');
+    await expect(filterSelects).toHaveCount(4);
+    const filterBounds = await filterSelects.evaluateAll((elements) =>
+      elements.map((element) => {
+        const { width, top } = element.getBoundingClientRect();
+        return { width, top };
+      })
+    );
+    const filterWidths = filterBounds.map(({ width }) => width);
+    expect(Math.max(...filterWidths) - Math.min(...filterWidths)).toBeLessThanOrEqual(1);
+    expect(new Set(filterBounds.map(({ top }) => top)).size).toBe(mobile ? 2 : 1);
     const recordsTable = panel.locator('.records');
     const tableLoading = recordsTable.locator('tbody').getByRole('progressbar');
     const loadingMask = panel.locator('.mar-ui-loading');

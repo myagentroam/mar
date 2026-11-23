@@ -404,21 +404,15 @@ defineExpose({
   width: 24px;
   min-width: 24px;
   height: 24px;
+  flex: 0 0 24px;
+  align-self: center;
   place-items: center;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  cursor: pointer;
+  margin-inline: 0.25rem;
   font-size: 13px;
 }
 
-.workspace-file-window-close {
-  flex: 0 0 24px;
-  align-self: center;
-  margin-inline: 0.25rem;
-}
-
 .workspace-file-window-close:focus-visible {
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
 .workspace-file-tab-content {
@@ -447,9 +441,6 @@ defineExpose({
     width: 36px;
     min-width: 36px;
     height: 36px;
-  }
-
-  .workspace-file-window-close {
     flex-basis: 36px;
   }
 }

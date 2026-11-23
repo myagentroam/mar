@@ -1242,9 +1242,13 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
     });
   await manuallyOpenedFile.click();
   await expect(manuallyOpenedFile).toHaveAttribute('aria-selected', 'true');
-  await fileTree.evaluate((tree) =>
-    tree.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true }))
-  );
+  await fileTree.evaluate((tree) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(['attachment'], 'notes.txt'));
+    tree.dispatchEvent(
+      new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer })
+    );
+  });
   await expect(fileTree).toHaveClass(/is-root-drop-target/);
   await fileTree.evaluate((tree) =>
     tree.dispatchEvent(new DragEvent('dragleave', { bubbles: true, relatedTarget: document.body }))

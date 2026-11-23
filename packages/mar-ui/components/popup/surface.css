@@ -10,7 +10,6 @@
     var(--mar-ui-popup-max-height, 100dvh),
     var(--mar-ui-popup-height-cap, 100dvh)
   );
-  box-sizing: border-box;
   position: fixed;
   inset: auto;
   top: var(--mar-ui-popup-top, auto);
@@ -31,7 +30,6 @@
 }
 
 .mar-ui-popup__content {
-  box-sizing: border-box;
   max-height: max(0px, calc(var(--mar-ui-popup-height) - 2px));
   overflow: var(--mar-ui-popup-content-overflow, auto);
   overscroll-behavior: contain;

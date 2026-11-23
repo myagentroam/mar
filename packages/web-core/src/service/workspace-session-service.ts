@@ -97,13 +97,15 @@ export function createWorkspaceSessionService(options: {
   const groupQuery = () =>
     currentGroup.value === undefined ? '' : `&sessionGroup=${currentGroup.value}`;
 
-  function selectGroup(group: SessionGroup, deferUntilSupported = false): void {
+  function selectGroup(group: SessionGroup, source: 'explicit' | 'navigation' = 'explicit'): void {
     const target = options.workspaceTarget.value;
-    if (target === undefined || (currentGroup.value === undefined && !deferUntilSupported)) return;
+    if (target === undefined) return;
     const id = options.tabId(target.nodeId, target.workspaceId);
-    if ((groups.value.get(id) ?? 'MAIN') === group) return;
-    groupSelectionRevision += 1;
-    groups.value.set(id, group);
+    // Keep the intended group during capability refreshes without exposing it on legacy Nodes.
+    const changed = (groups.value.get(id) ?? 'MAIN') !== group;
+    // An explicit choice supersedes delayed navigation even if there is no visible change.
+    if (changed || source === 'explicit') groupSelectionRevision += 1;
+    if (changed) groups.value.set(id, group);
   }
   const searchQuery = ref('');
   const searchResults = ref<Session[]>([]);
@@ -676,7 +678,7 @@ export interface WorkbenchSessionListView {
   workspaceSessionSearchEnabled: boolean;
   workspaceSessionSearchQuery: string;
   workspaceSessionGroup: 'MAIN' | 'CHILD' | undefined;
-  selectWorkspaceSessionGroup: (group: SessionGroup, deferUntilSupported?: boolean) => void;
+  selectWorkspaceSessionGroup: (group: SessionGroup) => void;
   deleteSession: (session: Session) => Promise<void>;
   canDeleteSession: (session: Session) => boolean;
   cleanupWorkspaceSessions: (

@@ -9,7 +9,10 @@ import { ESLint } from 'eslint';
 import { readReleaseVersions, validateVersionGroups } from '../../scripts/product-versions.mjs';
 import { productCheckCommands } from '../../scripts/product-ci.mjs';
 import { cleanBuildOutput } from '../../scripts/clean-build-output.mjs';
-import { unexpectedNpmPackageFiles } from '../../scripts/check-release-artifacts.mjs';
+import {
+  checkBuildDirectory,
+  unexpectedNpmPackageFiles
+} from '../../scripts/check-release-artifacts.mjs';
 import {
   stageAllComputerUseRuntimes,
   stageComputerUseRuntime
@@ -28,6 +31,48 @@ import { computerRuntimeTargets } from '../../scripts/computer-runtime-packages.
 import { binariesTargets } from '../../scripts/binaries-packages.mjs';
 
 const ossRoot = fileURLToPath(new URL('../..', import.meta.url));
+
+test('release build checks reject private repository tooling references without rejecting generic repo URLs', async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), 'mar-release-build-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const entry = join(directory, 'index.js');
+  await writeFile(entry, 'export const source = "https://github.com/example/repo/issues";\n');
+  await checkBuildDirectory(directory);
+  for (const path of [
+    'harness/routes.json',
+    'repo/routes.json',
+    'repo/benchmarks.json',
+    'scripts/repo/context.mjs',
+    'docs/guides/REPO_ENGINEERING.md'
+  ]) {
+    await writeFile(entry, `export const source = ${JSON.stringify(path)};\n`);
+    await assert.rejects(
+      checkBuildDirectory(directory),
+      /contains private or enterprise-protected/u
+    );
+  }
+});
+
+test('release build checks reject copied private tooling even when its contents have no private references', async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), 'mar-release-build-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'index.js'), 'export {};\n');
+  await mkdir(join(directory, 'repo'));
+  await writeFile(join(directory, 'repo', 'issues.json'), '{}');
+  await checkBuildDirectory(directory);
+  for (const [parent, name] of [
+    ['repo', 'routes.json'],
+    ['assets/repo', 'benchmarks.json'],
+    ['assets/scripts/repo', 'context.mjs'],
+    ['docs/guides', 'REPO_ENGINEERING.md']
+  ]) {
+    await mkdir(join(directory, parent), { recursive: true });
+    const file = join(directory, parent, name);
+    await writeFile(file, '');
+    await assert.rejects(checkBuildDirectory(directory), /contains private tooling files/u);
+    await rm(file);
+  }
+});
 
 test('Node packages allow only the declared public config type and reject other source artifacts', () => {
   assert.deepEqual(

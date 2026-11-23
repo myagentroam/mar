@@ -128,6 +128,7 @@ function preventWheelStep(event: WheelEvent) {
       ref="input"
       v-bind="{ ...$attrs, class: undefined, style: undefined }"
       :id="field.id.value"
+      class="mar-ui-field-frame__control"
       type="number"
       :value="text"
       :min="min"
@@ -161,7 +162,6 @@ function preventWheelStep(event: WheelEvent) {
 <style scoped>
 .mar-ui-input-number {
   display: inline-flex;
-  box-sizing: border-box;
   inline-size: 150px;
   max-inline-size: 100%;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
@@ -172,7 +172,6 @@ input {
   min-inline-size: 0;
   appearance: textfield;
   border: 0;
-  outline: 0;
   padding: 0 0.5rem;
   color: var(--mar-ui-text-primary);
   background: transparent;

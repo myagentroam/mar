@@ -26,6 +26,10 @@
   --mar-action-hover-bg: transparent;
 }
 
+.mar-icon-action--panel-toggle > .mar-icon {
+  font-size: var(--mar-ui-action-icon-size, 18px);
+}
+
 :is(.mar-icon-action, .mar-text-action):is(
     :hover,
     :active,
@@ -35,9 +39,4 @@
   ):not(:disabled, .is-disabled, [aria-disabled='true']) {
   background: var(--mar-action-hover-bg);
   color: var(--mar-action-hover-color, var(--mar-ui-text-primary));
-}
-
-:is(.mar-icon-action, .mar-text-action):focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-  outline-offset: 2px;
 }

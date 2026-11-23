@@ -551,9 +551,6 @@ function onKeydown(event: KeyboardEvent): void {
   overflow-x: auto;
   scrollbar-width: none;
 }
-.quick-open-tabs::-webkit-scrollbar {
-  display: none;
-}
 .quick-open-tabs button {
   flex: 0 0 auto;
   border: 0;
@@ -575,7 +572,6 @@ function onKeydown(event: KeyboardEvent): void {
   color: var(--mar-text-primary);
 }
 .quick-open-tabs button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
   outline-offset: -1px;
 }
 .quick-open-results {
@@ -616,7 +612,6 @@ function onKeydown(event: KeyboardEvent): void {
   text-align: left;
 }
 .quick-open-results button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 .entry-main {

@@ -330,18 +330,11 @@ const emit = defineEmits<{
 }
 
 .composer:has(> .composer-drop-target) {
-  --composer-active-boundary: var(--mar-control-focus);
+  --composer-active-boundary: var(--mar-text-muted);
 }
 
 .composer:has(.composer-input:focus) {
   --composer-active-boundary: var(--mar-conversation-activity-fg);
-}
-
-.composer :deep(button),
-.composer :deep(input),
-.composer :deep(select),
-.composer :deep(textarea) {
-  font-family: inherit;
 }
 
 .composer-input {
@@ -413,7 +406,7 @@ const emit = defineEmits<{
 }
 
 .composer-shell.composer-drop-target {
-  outline: 2px dashed var(--mar-control-focus);
+  outline: 2px dashed var(--mar-drop-indicator);
   outline-offset: -3px;
   background: var(--mar-fill-selection);
 }

@@ -361,11 +361,6 @@ function onLinkClick(event: MouseEvent): void {
   cursor: pointer;
 }
 
-.agent-markdown :deep(.agent-markdown-image:focus-visible) {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
-
 .agent-markdown :deep(img) {
   display: inline-block;
   box-sizing: border-box;
@@ -564,10 +559,6 @@ function onLinkClick(event: MouseEvent): void {
   color: var(--mar-link-hover);
 }
 
-.agent-markdown :deep(a:focus-visible) {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
 .agent-markdown :deep(.task-list-item label) {
   display: inline;
   color: inherit;

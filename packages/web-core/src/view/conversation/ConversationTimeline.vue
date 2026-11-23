@@ -2226,11 +2226,6 @@ details.conversation-record-group[open] > details:last-child {
   }
 }
 
-.conversation-file-change-button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
-
 .user-input-card {
   display: grid;
   gap: 0.65rem;
@@ -2396,7 +2391,6 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-item summary:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 

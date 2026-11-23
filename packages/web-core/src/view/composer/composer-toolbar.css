@@ -85,12 +85,13 @@
 }
 
 .mar-composer-toolbar
-  :is(
-    button.mar-composer-dropdown-trigger:focus-visible,
-    .mar-composer-dropdown-trigger
-      > .mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible)
-  ) {
+  .mar-composer-dropdown-trigger
+  > .mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible) {
   outline: 2px solid var(--mar-control-focus);
+  outline-offset: -2px;
+}
+
+.mar-composer-toolbar button.mar-composer-dropdown-trigger:focus-visible {
   outline-offset: -2px;
 }
 
@@ -160,15 +161,6 @@
     var(--mar-conversation-activity-fill) 84%,
     var(--mar-conversation-activity-fill-state-tint)
   );
-}
-
-.mar-composer-action:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
-
-.mar-composer-stop-action:focus-visible {
-  outline-color: var(--mar-control-color-danger);
 }
 
 .mar-composer-action:disabled {

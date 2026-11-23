@@ -345,9 +345,4 @@ onBeforeUnmount(() => {
   height: 100%;
   background: var(--mar-terminal-background);
 }
-
-.xterm-host:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
 </style>

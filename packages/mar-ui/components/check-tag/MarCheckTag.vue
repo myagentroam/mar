@@ -20,7 +20,6 @@ const emit = defineEmits<{ change: [checked: boolean]; 'update:checked': [checke
 
 <style scoped>
 .mar-ui-check-tag {
-  box-sizing: border-box;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   padding: 0 0.625rem;
   border: 1px solid var(--mar-ui-border-default);
@@ -43,7 +42,6 @@ const emit = defineEmits<{ change: [checked: boolean]; 'update:checked': [checke
   background: var(--mar-ui-fill-selection);
 }
 .mar-ui-check-tag:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 @media (forced-colors: active) {

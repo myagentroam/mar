@@ -83,10 +83,6 @@ const emit = defineEmits<{
   border-color: var(--mar-border-strong);
   background: var(--mar-fill-row-hover);
 }
-.conversation-file-chip:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
 .conversation-file-name {
   min-width: 0;
   overflow: hidden;

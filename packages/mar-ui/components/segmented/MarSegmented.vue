@@ -92,7 +92,6 @@ function navigateToEdge(event: KeyboardEvent): void {
   position: relative;
   display: inline-flex;
   width: max-content;
-  box-sizing: border-box;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   gap: 2px;
   padding: 2px;
@@ -112,7 +111,6 @@ function navigateToEdge(event: KeyboardEvent): void {
   position: relative;
   display: grid;
   place-items: center;
-  box-sizing: border-box;
   min-width: 0;
   padding-inline: var(--mar-ui-compact-option-padding-inline);
   border-radius: calc(var(--mar-ui-radius-control) - 2px);

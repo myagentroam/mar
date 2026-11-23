@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import '../../styles/region-retry-action.css';
 import './git-inline-loading.css';
+import './file-explorer-utility.css';
 import './inspector-row.css';
 import '@myagentroam/mar-ui/region-status.css';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
@@ -100,7 +101,7 @@ defineExpose({
         />
         <button
           v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
-          class="content-search-button file-explorer-utility-button mar-icon-action"
+          class="content-search-button file-explorer-utility-button mar-icon-button mar-icon-action"
           :disabled="contentSearchLoading"
           :aria-label="translate('generated.workspaceInspector.runContentSearch')"
           :aria-busy="buttonLoading || undefined"
@@ -317,26 +318,5 @@ defineExpose({
 
 .content-search-results code {
   grid-column: 2 / -1;
-}
-
-button.file-explorer-utility-button {
-  display: inline-grid;
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
-  place-items: center;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  background: transparent;
-  color: var(--mar-text-secondary);
-  font: inherit;
-  padding: 0;
-  cursor: pointer;
-}
-
-button.file-explorer-utility-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 </style>

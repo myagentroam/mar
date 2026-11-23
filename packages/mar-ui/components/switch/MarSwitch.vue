@@ -84,7 +84,6 @@ async function onChange(event: Event) {
   --mar-ui-switch-thumb-size: 12px;
   --mar-ui-switch-thumb-inset: 2px;
   position: relative;
-  box-sizing: border-box;
   inline-size: 100%;
   block-size: 18px;
   border: 1px solid var(--mar-ui-border-medium);

@@ -460,7 +460,6 @@ ColumnView.props = ['loading', 'empty'];
 <style scoped>
 .mar-ui-table {
   position: relative;
-  box-sizing: border-box;
   min-inline-size: 0;
   inline-size: 100%;
   background: var(--mar-ui-table-bg);
@@ -471,7 +470,6 @@ ColumnView.props = ['loading', 'empty'];
   overflow: auto;
 }
 .mar-ui-table__viewport:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__grid) {
@@ -492,7 +490,6 @@ ColumnView.props = ['loading', 'empty'];
   z-index: 1;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__cell) {
-  box-sizing: border-box;
   padding: 3px 10px;
   border-block-end: 1px solid var(--mar-ui-border-subtle);
   vertical-align: middle;
@@ -533,7 +530,6 @@ ColumnView.props = ['loading', 'empty'];
 .mar-ui-table__viewport :deep(.mar-ui-table__empty-content) {
   position: sticky;
   inset-inline-start: 0;
-  box-sizing: border-box;
   max-inline-size: 100%;
   padding-inline: 12px;
   overflow-wrap: anywhere;
@@ -565,7 +561,6 @@ ColumnView.props = ['loading', 'empty'];
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__sort:focus-visible),
 .mar-ui-table__viewport :deep(.mar-ui-table__disclosure:focus-visible) {
-  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__sort-indicators) {

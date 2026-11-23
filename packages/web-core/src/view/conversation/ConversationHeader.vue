@@ -115,7 +115,7 @@ const asideLabel = computed(() =>
         :disabled="asideDisabled"
         @click="emit('openSurface', 'inspector')"
       >
-        <MarIcon name="split" />
+        <MarIcon :name="asideExpanded ? 'panel-right-expanded' : 'panel-right'" />
       </button>
     </div>
   </header>

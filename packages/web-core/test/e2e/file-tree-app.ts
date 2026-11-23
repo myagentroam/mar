@@ -1,7 +1,8 @@
-import { h, reactive } from 'vue';
+import { h, reactive, ref } from 'vue';
 import { createTooltipApp } from './tooltip-app.js';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
 import '../../src/styles.css';
 
 localePreferenceService().setLocale('en-US');
@@ -17,6 +18,7 @@ const file = reactive({
   nextCursor: null,
   placeholder: false
 });
+const dropTargets = new URLSearchParams(location.search).has('drop-targets');
 const root = reactive({
   ...file,
   path: '.',
@@ -29,7 +31,13 @@ const root = reactive({
       ...file,
       path: name,
       name,
-      kind: 'DIRECTORY' as const
+      kind: 'DIRECTORY' as const,
+      ...(dropTargets && name === 'src'
+        ? {
+            expanded: true,
+            children: [{ ...file, path: 'src/nested', name: 'nested', kind: 'DIRECTORY' as const }]
+          }
+        : {})
     })),
     ...[
       'button.spec.ts',
@@ -58,6 +66,7 @@ const state = reactive({
   mutationsEnabled: true,
   mobileViewport: false
 });
+const dropOutcome = ref('');
 createTooltipApp({
   render: () =>
     h('main', [
@@ -127,8 +136,16 @@ createTooltipApp({
       ),
       h('button', { onClick: () => localePreferenceService().setLocale('zh-CN') }, 'Change locale'),
       h('section', { style: 'width:240px;height:491px;display:flex;margin-top:12px' }, [
-        h(WorkspaceFileTree, { root, filter: '', ...state })
-      ])
+        h(WorkspaceFileTree, {
+          root,
+          filter: '',
+          ...state,
+          onMove: (source: WorkspaceFileTreeNode, target: WorkspaceFileTreeNode) =>
+            (dropOutcome.value = `${source.path} → ${target.path}`),
+          onInvalidDrop: () => (dropOutcome.value = 'Invalid drop')
+        })
+      ]),
+      dropTargets ? h('output', { 'aria-label': 'Drop outcome' }, dropOutcome.value) : undefined
     ])
 })
   .use(i18n)

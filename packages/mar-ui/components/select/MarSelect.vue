@@ -181,7 +181,7 @@ function controlAttrs(attrs: Record<string, unknown>) {
       compactTags.value && hasTags.value
         ? [description, `${id}-tag-0`].filter(Boolean).join(' ')
         : description,
-    class: 'mar-ui-select__trigger',
+    class: 'mar-ui-select__trigger mar-ui-field-frame__control',
     style: undefined,
     id: controlId.value ?? `${id}-trigger`,
     role: 'combobox',
@@ -697,7 +697,6 @@ watch(controlDisabled, (disabled) => {
   flex: 1 1 1em;
   min-width: 0;
   min-height: var(--mar-ui-select-height);
-  outline: none;
 }
 input.mar-ui-select__trigger {
   cursor: text;
@@ -740,9 +739,6 @@ input.mar-ui-select__trigger {
   flex: none;
   cursor: pointer;
   color: var(--mar-ui-text-secondary);
-}
-.mar-ui-select__action:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
 }
 .mar-ui-select__suffix {
   display: grid;
@@ -788,7 +784,6 @@ input.mar-ui-select__trigger {
 }
 .mar-ui-select__tag {
   position: relative;
-  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -834,7 +829,6 @@ input.mar-ui-select__trigger {
   animation: mar-ui-select-loading 0.9s linear infinite;
 }
 .mar-ui-select__empty {
-  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;

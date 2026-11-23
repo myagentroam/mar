@@ -1434,7 +1434,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain(i18n.global.t('generated.conversationHeader.newSession'));
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openSessionList'));
     expect(html).toContain('data-mar-icon="session-list"');
-    expect(html).toContain('data-mar-icon="split"');
+    expect(html).toContain('data-mar-icon="panel-right"');
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openAside'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openFiles'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openTerminal'));
@@ -1466,7 +1466,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('data-mar-icon="chevron-down"');
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openSessionList'));
     expect(html).toContain('data-mar-icon="session-list"');
-    expect(html).not.toContain('data-mar-icon="split"');
+    expect(html).not.toContain('data-mar-icon="panel-right');
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.files'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.terminal'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openAside'));
@@ -1501,7 +1501,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       sessionTitle: () => 'Session'
     });
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openAside'));
-    expect(html).toContain('data-mar-icon="split"');
+    expect(html).toContain('data-mar-icon="panel-right"');
   });
 
   it.each(['ready', 'failed'] as const)(

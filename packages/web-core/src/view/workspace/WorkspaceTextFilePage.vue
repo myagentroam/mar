@@ -1509,7 +1509,7 @@ defineExpose({
   line-height: 1.5;
   border: 0;
   border-radius: 0;
-  outline: 0;
+  outline-offset: -2px;
   resize: none;
   overflow-wrap: anywhere;
   white-space: pre-wrap;

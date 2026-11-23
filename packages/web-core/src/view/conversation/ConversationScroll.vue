@@ -158,8 +158,7 @@ function onScrollPointerdown(event: PointerEvent): void {
   const right = current.getBoundingClientRect().right;
   if (scrollbarWidth <= 0) {
     // Overlay scrollbars have no gutter; a click alone must not pause following.
-    const overlayWidth =
-      Number.parseFloat(getComputedStyle(current, '::-webkit-scrollbar').width) || 8;
+    const overlayWidth = 8;
     if (event.clientX >= right - overlayWidth && event.clientX < right)
       scrollbarPointerY = event.clientY;
     return;

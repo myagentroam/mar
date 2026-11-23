@@ -149,16 +149,25 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
       expect(contrast(primary)).toBeGreaterThanOrEqual(1.7);
     }
     const fileInput = inputWrappers[2]!;
-    await fileInput.getByRole('textbox').focus();
-    await expect(fileInput.getByRole('textbox')).toBeFocused();
-    const focusColor = theme === 'daylight' ? 'rgb(80, 105, 135)' : 'rgb(160, 160, 160)';
+    const textbox = fileInput.getByRole('textbox');
+    await textbox.focus();
+    await expect(textbox).toBeFocused();
+    const focusColor = await fileInput.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-input-border-focus)';
+      element.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
     await expect
       .poll(async () =>
         readColor(await fileInput.evaluate((element) => getComputedStyle(element).boxShadow))
       )
       .toBe(focusColor);
     expect(contrast(focusColor)).toBeGreaterThanOrEqual(3);
-    await fileInput.getByRole('textbox').blur();
+    await expect(textbox).toHaveCSS('outline-style', 'none');
+    await textbox.blur();
     await page.screenshot({
       path: info.outputPath('workbench-boundaries.png'),
       animations: 'disabled'

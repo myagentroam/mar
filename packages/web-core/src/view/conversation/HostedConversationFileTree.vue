@@ -111,7 +111,6 @@ function disableLeavingBranch(branch: Element): void {
 }
 
 .file-directory:focus-visible {
-  outline: 1px solid var(--mar-control-focus);
   outline-offset: -1px;
 }
 
@@ -192,8 +191,7 @@ function disableLeavingBranch(branch: Element): void {
 }
 
 .file-open:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--mar-control-focus);
+  outline-offset: -2px;
 }
 
 .file-open span {

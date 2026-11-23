@@ -133,7 +133,13 @@ for (const [theme, width] of [
   }, testInfo) => {
     await page.setViewportSize({ width, height: 930 });
     await page.goto(`${fixture.url}mar-controls.html?theme=${theme}`);
-    await expect(page.getByRole('alert')).toContainText('Changes are saved as a draft.');
+    const alert = page.getByRole('alert');
+    await expect(alert).toContainText('Changes are saved as a draft.');
+    const alertClose = alert.getByRole('button', { name: 'Close' });
+    await page.keyboard.press('Tab');
+    await alertClose.focus();
+    const focusColor = theme === 'light' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)';
+    await expect(alertClose).toHaveCSS('outline', `${focusColor} solid 2px`);
     await expect(page.getByText('SomePathWithoutSpaces/Segment/AnotherSegment')).toBeVisible();
     const details = page.locator('dl').filter({ hasText: 'Test fixture' });
     const first = details.locator('.mar-ui-descriptions__item').nth(0);
@@ -196,7 +202,9 @@ for (const [theme, width] of [
     await expect(quantity).toHaveValue('3');
     await expect(page.getByRole('button', { name: /increase/i })).toBeDisabled();
     await page.getByRole('tab', { name: 'Overview' }).press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Details' })).toBeFocused();
+    const detailsTab = page.getByRole('tab', { name: 'Details' });
+    await expect(detailsTab).toBeFocused();
+    await expect(detailsTab).toHaveCSS('outline', `${focusColor} solid 2px`);
     await expect(page.getByRole('tabpanel')).toHaveText('Details panel');
     const period = page.getByRole('radiogroup', { name: 'Period' });
     const day = period.getByRole('radio', { name: 'Day' });

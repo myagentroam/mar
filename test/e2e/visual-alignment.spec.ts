@@ -894,17 +894,21 @@ for (const theme of ['daylight', 'dark']) {
     await expect(workspace).toHaveCSS('box-shadow', hostedHover.shadow);
     await hosted.click();
     await expect(hosted).toHaveAttribute('aria-expanded', 'true');
-    const expandedShadow = await hosted.evaluate((element) => {
-      const probe = document.createElement('span');
-      element.append(probe);
-      probe.style.boxShadow = '0 0 0 1px var(--mar-control-focus) inset';
-      const value = getComputedStyle(probe).boxShadow;
-      probe.remove();
-      return value;
-    });
-    await expect(hosted).toHaveCSS('box-shadow', expandedShadow);
+    await expect(hosted).toHaveCSS('background-color', hostedHover.background);
+    await expect(hosted).toHaveCSS('box-shadow', 'none');
     await hosted.click();
     await expect(hosted).toHaveAttribute('aria-expanded', 'false');
+    const focusColor = theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)';
+    for (const [control, surface] of [
+      [hosted, hosted],
+      [workspace.getByRole('combobox'), workspace]
+    ]) {
+      await control.focus();
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(control).toBeFocused();
+      await expect(surface).toHaveCSS('outline', `${focusColor} solid 2px`);
+    }
   });
 }
 
@@ -922,6 +926,33 @@ test('Theme action hints do not replace dropdown semantics', async ({ page }) =>
   await expect(page.getByRole('menuitem', { name: /duplicate/i })).toBeVisible();
   await page.getByRole('menuitem', { name: /duplicate/i }).press('Escape');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('Workspace tab drag shows the insertion edge on the hovered half', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.goto(`${fixture.url}workbench-style.html?locale=en-US&theme=daylight`);
+  const strip = page.getByRole('region', { name: 'Workspace tab fixture' });
+  const source = strip.getByRole('tab', { name: 'Workspace 0', exact: true });
+  const target = strip.getByRole('tab', { name: 'Workspace 1', exact: true }).locator('..');
+  await source.hover({ position: { x: 12, y: 12 } });
+  await page.mouse.down();
+  await expect(source.locator('..')).toHaveClass(/\bdragging\b/u);
+  const box = (await target.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 4, box.y + box.height / 2, { steps: 5 });
+  await expect(target).toHaveAttribute('data-drop-edge', 'before');
+  const marker = (side: string) =>
+    target.evaluate(
+      (tab, edge) => getComputedStyle(tab, '::after').getPropertyValue(`border-${edge}`),
+      side
+    );
+  expect(await marker('left')).toBe('2px solid rgb(23, 78, 158)');
+  expect(await marker('right')).toMatch(/^0px none /u);
+  await page.mouse.move(box.x + (box.width * 3) / 4, box.y + box.height / 2);
+  await expect(target).toHaveAttribute('data-drop-edge', 'after');
+  expect(await marker('right')).toBe('2px solid rgb(23, 78, 158)');
+  expect(await marker('left')).toMatch(/^0px none /u);
+  await page.mouse.up();
+  await expect(target).not.toHaveAttribute('data-drop-edge');
 });
 
 test('Shared tooltip follows keyboard focus on real tree rows and workspace tabs', async ({
@@ -1248,10 +1279,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         return {
           visible: element.matches(':focus-visible'),
           width: parseFloat(style.outlineWidth),
-          offset: parseFloat(style.outlineOffset)
+          offset: parseFloat(style.outlineOffset),
+          color: style.outlineColor
         };
       });
       expect(focus.visible).toBe(true);
+      expect(focus.color).toBe(theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)');
       expect(focus.width).toBeGreaterThan(0);
       expect(focus.offset + focus.width).toBeLessThanOrEqual(0);
       await list.screenshot({

@@ -13,6 +13,17 @@
   gap: 10px;
 }
 
+.mar-management-category-strip {
+  display: flex;
+  overflow-x: auto;
+  gap: 6px;
+  padding: 1px 0 3px;
+}
+
+.mar-management-category-strip > * {
+  flex: none;
+}
+
 .mar-management-filter
   > :is(
     .mar-management-filter__query,

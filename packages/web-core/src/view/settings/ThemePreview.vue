@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { themeColorScheme } from '../../util/custom-theme.js';
 defineProps<{ name: string; colors: Record<string, string>; expanded?: boolean }>();
 const { t } = useI18n();
+const sampleInput = ref('');
 </script>
 
 <template>
@@ -61,8 +64,9 @@ const { t } = useI18n();
       </div>
       <label class="preview-label"
         >{{ t('customThemes.previewInput') }}
-        <input
-          type="text"
+        <MarInput
+          v-model="sampleInput"
+          class="preview-input"
           :placeholder="t('customThemes.previewPlaceholder')"
           :aria-label="t('customThemes.previewInput')"
         />
@@ -283,28 +287,8 @@ const { t } = useI18n();
   margin: 0.65rem 0 0.45rem;
   color: var(--mar-text-secondary);
 }
-input {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0.35rem 0.5rem;
+.preview-input {
   margin-top: 0.2rem;
-  border: 1px solid var(--mar-input-border);
-  border-radius: var(--mar-radius-control);
-  background: var(--mar-bg-panel);
-  color: var(--mar-text-primary);
-  font: inherit;
-}
-input:hover {
-  border-color: var(--mar-input-border-hover, var(--mar-input-border));
-}
-input::placeholder {
-  color: var(--mar-text-secondary);
-}
-.file:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 1px;
 }
 .preview-controls > .caption {
   margin: 0.5rem 0 0;

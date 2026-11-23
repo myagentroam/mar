@@ -121,7 +121,6 @@ const organizations = [
         description="Changes are saved as a draft."
         type="warning"
         show-icon
-        :closable="false"
       />
       <MarDescriptions :column="2" border>
         <MarDescriptionsItem label="Workspace">Test fixture</MarDescriptionsItem>

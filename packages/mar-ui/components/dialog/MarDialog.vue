@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import '../button/native-actions.css';
 import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from 'vue';
 import { useMarUiLocale } from '../../locale/index.js';
 import { MarButton } from '../button/index.js';
@@ -298,7 +297,6 @@ defineExpose({ handleClose, panel });
 .mar-ui-dialog-overlay {
   position: fixed;
   inset: 0;
-  box-sizing: border-box;
   inline-size: 100%;
   block-size: 100%;
   max-inline-size: none;
@@ -355,7 +353,6 @@ defineExpose({ handleClose, panel });
   min-block-size: 0;
   inline-size: var(--mar-ui-dialog-width, 50%);
   padding: var(--mar-ui-dialog-padding, 16px);
-  box-sizing: border-box;
   border-radius: var(--mar-ui-radius-surface);
   background: var(--mar-ui-dialog-surface, var(--mar-ui-bg-panel));
   color: var(--mar-ui-text-primary);

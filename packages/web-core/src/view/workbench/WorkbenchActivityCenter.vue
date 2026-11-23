@@ -302,7 +302,6 @@ onBeforeUnmount(() => {
   color: var(--mar-text-primary);
 }
 .activity-center-trigger:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 .activity-entry-count {

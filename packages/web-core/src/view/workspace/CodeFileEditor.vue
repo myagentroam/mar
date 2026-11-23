@@ -646,8 +646,8 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor :deep(.cm-line.cm-code-navigation-destination) {
-  background: color-mix(in srgb, var(--mar-control-focus) 15%, transparent);
-  box-shadow: inset 2px 0 0 var(--mar-control-focus);
+  background: color-mix(in srgb, var(--mar-text-muted) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--mar-text-muted);
 }
 
 .code-file-editor :deep(.cm-scroller) {
@@ -693,7 +693,7 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor :deep(.cm-textfield:focus) {
-  border-color: var(--mar-control-focus);
+  border-color: var(--mar-input-border-focus);
 }
 
 .code-file-editor :deep(.cm-button) {
@@ -707,7 +707,7 @@ onBeforeUnmount(() => {
 }
 
 .code-file-editor :deep(.cm-button:hover) {
-  border-color: var(--mar-control-focus);
+  border-color: var(--mar-input-border-hover);
 }
 
 .code-file-editor :deep(.cm-panel.cm-search [name='close']) {

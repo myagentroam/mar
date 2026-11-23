@@ -112,29 +112,56 @@ test('Process duration ticks do not reproject the conversation body', async ({ p
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [800, 1280]) {
-    test(`Sidebar panel icon stays stable while toggling in ${theme} at ${width}px`, async ({
+    test(`Sidebar panel icon fills only when expanded in ${theme} at ${width}px`, async ({
       page
     }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(
-        `${fixture.url}conversation-style.html?history-actions=1&language=en-US&theme=${theme}`
+        `${fixture.url}conversation-style.html?history-actions=1&panel-toggles&language=en-US&theme=${theme}`
       );
       const toggle = page.locator('.workbench-tree-toggle');
-      const glyph = toggle.locator('[data-mar-icon="sidebar"]');
+      const glyph = toggle.locator('svg');
+      const asideToggle = page.locator('.conversation-header .mar-icon-action--panel-toggle');
+      const asideGlyph = asideToggle.locator('svg');
+      async function expectMatchingPanelIconSizes() {
+        for (const icon of [glyph, asideGlyph]) {
+          await expect(icon).toHaveCSS('width', '18px');
+          await expect(icon).toHaveCSS('height', '18px');
+        }
+      }
+      const panelFill = glyph.locator('path[fill="currentColor"]');
       await expect(glyph).toBeVisible();
       await expect(glyph.locator('rect')).toHaveCount(1);
       await expect(glyph).toHaveAttribute('fill', 'none');
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       await expect(toggle).toHaveAccessibleName('Collapse sidebar');
-      const graphic = await glyph.innerHTML();
+      await expect(glyph).toHaveAttribute('data-mar-icon', 'sidebar-expanded');
+      await expect(panelFill).toHaveCount(1);
+      await expect(asideGlyph).toHaveAttribute('data-mar-icon', 'panel-right-expanded');
+      await expectMatchingPanelIconSizes();
+      await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const { width: buttonWidth, height: buttonHeight } = (await toggle.boundingBox())!;
+      const outline = await glyph.locator('rect').evaluate((element) => element.outerHTML);
       await toggle.click();
       await expect(toggle).toHaveAttribute('aria-expanded', 'false');
       await expect(toggle).toHaveAccessibleName('Expand sidebar');
-      expect(await glyph.innerHTML()).toBe(graphic);
+      await expect(glyph).toHaveAttribute('data-mar-icon', 'sidebar');
+      await expect(panelFill).toHaveCount(0);
+      await asideToggle.click();
+      await expect(asideGlyph).toHaveAttribute('data-mar-icon', 'panel-right');
+      await expectMatchingPanelIconSizes();
+      expect(await toggle.boundingBox()).toMatchObject({
+        width: buttonWidth,
+        height: buttonHeight
+      });
+      expect(await glyph.locator('rect').evaluate((element) => element.outerHTML)).toBe(outline);
       await toggle.press('Space');
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       await expect(toggle).toHaveAccessibleName('Collapse sidebar');
-      expect(await glyph.innerHTML()).toBe(graphic);
+      await expect(glyph).toHaveAttribute('data-mar-icon', 'sidebar-expanded');
+      await expect(panelFill).toHaveCount(1);
+      await expect(toggle).toBeFocused();
+      await expect(toggle).toHaveCSS('outline-style', 'solid');
       await page.locator('.workbench-header').screenshot({
         path: testInfo.outputPath('sidebar-panel-toggle.png')
       });
@@ -1927,6 +1954,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
       root.style.setProperty('--mar-control-focus', '#888888');
       root.style.setProperty('--mar-border-medium', '#444444');
+      root.style.setProperty('--mar-text-muted', '#999999');
     });
     const shell = page.locator('.composer-shell');
     const status = page.locator('.composer-working');
@@ -1944,13 +1972,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
     await shell.dispatchEvent('dragenter');
     await expect(shell).toHaveCSS('outline-style', 'dashed');
-    await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
-    await expect(shell).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    const dropColor = theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)';
+    await expect(shell).toHaveCSS('outline-color', dropColor);
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(153, 153, 153)');
     await expect(shell).toHaveCSS('box-shadow', 'none');
-    await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(153, 153, 153)');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
     await input.focus();
-    await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('outline-color', dropColor);
     await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
     await expect(shell).toHaveCSS('box-shadow', 'none');
     await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
@@ -2351,14 +2380,21 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 }
 
 async function paletteColors(page: Page): Promise<Record<string, string>> {
-  return page.locator('html').evaluate((root) => {
+  const { tokens, fieldFocus } = await page.locator('html').evaluate((root) => {
     const style = getComputedStyle(root);
-    return Object.fromEntries(
+    const tokens = Object.fromEntries(
       Array.from(style)
         .filter((key) => key.startsWith('--mar-'))
         .map((key) => [key, style.getPropertyValue(key).trim()])
     );
+    const probe = root.ownerDocument.createElement('span');
+    probe.style.color = 'var(--mar-input-border-focus)';
+    root.ownerDocument.body.append(probe);
+    const fieldFocus = getComputedStyle(probe).color;
+    probe.remove();
+    return { tokens, fieldFocus };
   });
+  return { ...tokens, '--mar-input-border-focus': resolvedColorToHex(fieldFocus) };
 }
 function contrast(foreground: string, background: string) {
   const luminance = (hex: string) => {
@@ -2401,7 +2437,8 @@ test('uses the bright daylight palette with accessible interactive and text colo
     '--mar-control-primary-fg': '#ffffff',
     '--mar-control-primary-hover': '#004cc3',
     '--mar-control-primary-active': '#0042aa',
-    '--mar-control-focus': '#506987',
+    '--mar-input-border': daylight['--mar-border-default'],
+    '--mar-control-focus': '#174e9e',
     '--mar-control-link-text': '#174e9e',
     '--mar-control-link-hover': '#123a78'
   });
@@ -2426,7 +2463,8 @@ test('uses the bright daylight palette with accessible interactive and text colo
         `${foreground} on ${surface}`
       ).toBeGreaterThanOrEqual(4.5);
     }
-    for (const edge of ['--mar-input-border', '--mar-input-border-hover', '--mar-control-focus']) {
+    // Resting and hover outlines are intentionally quiet; the focus indicator must be distinct.
+    for (const edge of ['--mar-input-border-focus', '--mar-control-focus']) {
       expect(
         contrast(daylight[edge]!, daylight[surface]!),
         `${edge} on ${surface}`
@@ -2572,7 +2610,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         contrast(colors['--mar-conversation-activity-fg']!, colors[surface]!)
       ).toBeGreaterThanOrEqual(4.5);
     for (const surface of ['--mar-bg-panel', '--mar-fill-row-hover', '--mar-fill-selection']) {
-      expect(contrast(colors['--mar-control-focus']!, colors[surface]!)).toBeGreaterThanOrEqual(3);
+      for (const edge of ['--mar-input-border-focus', '--mar-control-focus']) {
+        expect(
+          contrast(colors[edge]!, colors[surface]!),
+          `${edge} on ${surface}`
+        ).toBeGreaterThanOrEqual(3);
+      }
     }
     const messageBodies = [
       page.locator('.conversation-item.user_message .conversation-message'),

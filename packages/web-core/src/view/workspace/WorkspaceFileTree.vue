@@ -57,7 +57,10 @@ const emit = defineEmits<{
 const container = ref<HTMLElement>();
 const readState = ref<HTMLElement>();
 const focusedPath = ref('.');
-const draggingPath = ref<string>();
+const dropTarget = ref<{
+  rowPath?: string;
+  kind: 'root-upload' | 'directory-upload' | 'directory-move';
+}>();
 const movingNode = ref<WorkspaceFileTreeNode>();
 const actionNodePath = ref<string>();
 const actionMenuVisible = ref(false);
@@ -176,7 +179,7 @@ function updateViewport(): void {
   scrollTop.value = Math.max(0, offset);
   viewportHeight.value = Math.max(0, element.clientHeight + Math.min(0, offset));
   const configuredRowHeight = Number.parseFloat(
-    getComputedStyle(element).getPropertyValue('--mar-compact-row-size')
+    getComputedStyle(element).getPropertyValue('--file-tree-row-size')
   );
   if (Number.isFinite(configuredRowHeight) && configuredRowHeight > 0)
     rowHeight.value = configuredRowHeight;
@@ -232,7 +235,7 @@ watch(
 
 function drop(event: DragEvent, node?: WorkspaceFileTreeNode): void {
   cancelDirectoryHoverExpansion();
-  draggingPath.value = undefined;
+  dropTarget.value = undefined;
   if (!acceptsTreeDrop(event)) {
     movingNode.value = undefined;
     return;
@@ -242,7 +245,7 @@ function drop(event: DragEvent, node?: WorkspaceFileTreeNode): void {
     const source = movingNode.value;
     movingNode.value = undefined;
     if (props.mobileViewport) return;
-    if (node?.kind === 'DIRECTORY' && node.path !== source.path) emit('move', source, node);
+    if (node !== undefined && canDropIntoDirectory(source, node)) emit('move', source, node);
     else emit('invalidDrop');
     return;
   }
@@ -263,6 +266,17 @@ function drop(event: DragEvent, node?: WorkspaceFileTreeNode): void {
   }
   const directory = node?.kind === 'DIRECTORY' ? node.path : '.';
   emit('dropFiles', directory, files);
+}
+
+function canDropIntoDirectory(
+  source: WorkspaceFileTreeNode,
+  target: WorkspaceFileTreeNode
+): boolean {
+  return (
+    target.kind === 'DIRECTORY' &&
+    target.path !== source.path &&
+    !target.path.startsWith(`${source.path}/`)
+  );
 }
 
 function isFileUploadDrag(event: DragEvent): boolean {
@@ -305,34 +319,43 @@ function allowRootDrop(event: DragEvent): void {
 
 function enterRootDropTarget(event: DragEvent): void {
   if (!acceptsTreeDrop(event)) {
-    leaveRootDropTarget();
+    cancelDirectoryHoverExpansion();
+    dropTarget.value = undefined;
     return;
   }
   event.preventDefault();
   cancelDirectoryHoverExpansion();
-  draggingPath.value = '.';
+  dropTarget.value =
+    movingNode.value === undefined && isFileUploadDrag(event) ? { kind: 'root-upload' } : undefined;
 }
 
-function leaveRootDropTarget(): void {
-  cancelDirectoryHoverExpansion();
-  draggingPath.value = undefined;
+function leaveRootDropTarget(event: DragEvent): void {
+  if (event.relatedTarget instanceof Node && container.value?.contains(event.relatedTarget)) return;
+  if (dropTarget.value?.rowPath !== undefined) return;
+  dropTarget.value = undefined;
 }
 
 function enterDropTarget(event: DragEvent, node: WorkspaceFileTreeNode): void {
-  draggingPath.value = node.path;
+  const source = movingNode.value;
+  if (source !== undefined) {
+    dropTarget.value = canDropIntoDirectory(source, node)
+      ? { rowPath: node.path, kind: 'directory-move' }
+      : undefined;
+  } else {
+    dropTarget.value = isFileUploadDrag(event)
+      ? {
+          rowPath: node.path,
+          kind: node.kind === 'DIRECTORY' && node.path !== '.' ? 'directory-upload' : 'root-upload'
+        }
+      : undefined;
+  }
   if (directoryHoverExpansionPath !== node.path) cancelDirectoryHoverExpansion();
-  if (node.kind === 'DIRECTORY' && !node.expanded) {
-    if (movingNode.value !== undefined) {
+  if (dropTarget.value !== undefined && node.kind === 'DIRECTORY' && !node.expanded) {
+    if (source !== undefined) {
       cancelDirectoryHoverExpansion();
       emit('toggle', node);
-    } else if (isFileUploadDrag(event)) scheduleDirectoryHoverExpansion(node);
-    else {
-      cancelDirectoryHoverExpansion();
-      emit('toggle', node);
-    }
+    } else scheduleDirectoryHoverExpansion(node);
   } else cancelDirectoryHoverExpansion(node.path);
-  event.stopPropagation();
-  event.preventDefault();
 }
 
 function leaveDropTarget(event: DragEvent, path: string): void {
@@ -345,7 +368,7 @@ function leaveDropTarget(event: DragEvent, path: string): void {
   )
     return;
   cancelDirectoryHoverExpansion(path);
-  if (draggingPath.value === path) draggingPath.value = undefined;
+  if (dropTarget.value?.rowPath === path) dropTarget.value = undefined;
 }
 
 function fileMoveEnabled(node: WorkspaceFileTreeNode): boolean {
@@ -366,6 +389,7 @@ function startMove(event: DragEvent, node: WorkspaceFileTreeNode): void {
 function endDrag(): void {
   cancelDirectoryHoverExpansion();
   movingNode.value = undefined;
+  dropTarget.value = undefined;
 }
 
 function action(command: string, node: WorkspaceFileTreeNode): void {
@@ -431,9 +455,9 @@ defineExpose({ reveal });
   <div
     ref="container"
     class="workspace-file-tree"
-    :class="{ 'is-root-drop-target': !hideRows && draggingPath === '.' }"
+    :class="{ 'is-root-drop-target': !hideRows && dropTarget?.kind === 'root-upload' }"
     @dragenter="enterRootDropTarget"
-    @dragleave.self="leaveRootDropTarget"
+    @dragleave="leaveRootDropTarget"
     @dragover="allowRootDrop"
     @drop="drop($event)"
     @scroll="updateViewport"
@@ -466,7 +490,7 @@ defineExpose({ reveal });
             row.depth,
             row.loadMore,
             selectedPath === row.node.path,
-            draggingPath === row.node.path,
+            dropTarget?.rowPath === row.node.path ? dropTarget.kind : undefined,
             focusedPath === row.node.path,
             nodeActionsVisible(row.node.path),
             disabled,
@@ -481,7 +505,10 @@ defineExpose({ reveal });
             :class="{
               'mar-inspector-row': !disabled,
               selected: selectedPath === row.node.path,
-              'drop-target': draggingPath === row.node.path
+              'drop-target':
+                dropTarget?.rowPath === row.node.path && dropTarget.kind !== 'root-upload',
+              'is-upload-drop-target':
+                dropTarget?.rowPath === row.node.path && dropTarget.kind === 'directory-upload'
             }"
             @dragenter.stop.prevent="enterDropTarget($event, row.node)"
             @dragleave.stop="leaveDropTarget($event, row.node.path)"
@@ -654,6 +681,7 @@ defineExpose({ reveal });
 
 <style scoped>
 .workspace-file-tree {
+  --file-tree-row-size: var(--mar-compact-row-size);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -677,7 +705,7 @@ defineExpose({ reveal });
 }
 
 .workspace-file-tree.is-root-drop-target {
-  outline: 2px dashed var(--mar-control-focus);
+  outline: 2px dashed var(--mar-drop-indicator);
   outline-offset: -3px;
   background: var(--mar-fill-soft);
 }
@@ -703,13 +731,23 @@ defineExpose({ reveal });
   text-align: center;
 }
 
+@media (min-width: 768px) {
+  .workspace-file-tree {
+    --file-tree-row-size: 24px;
+  }
+
+  .tree-name {
+    font-size: var(--mar-font-size-navigation);
+  }
+}
+
 .file-tree-row,
 .file-tree-load-more {
   display: grid;
   width: 100%;
   min-width: 0;
-  min-height: var(--mar-compact-row-size);
-  height: var(--mar-compact-row-size);
+  min-height: var(--file-tree-row-size);
+  height: var(--file-tree-row-size);
   box-sizing: border-box;
   border: 0;
   background: transparent;
@@ -721,8 +759,8 @@ defineExpose({ reveal });
 }
 
 .file-tree-row {
-  min-height: calc(var(--mar-compact-row-size) - 2px);
-  height: calc(var(--mar-compact-row-size) - 2px);
+  min-height: calc(var(--file-tree-row-size) - 2px);
+  height: calc(var(--file-tree-row-size) - 2px);
   grid-template-columns: 0.8rem 18px minmax(0, 1fr);
   gap: 0;
   width: auto;
@@ -737,7 +775,7 @@ defineExpose({ reveal });
   display: flex;
   width: 100%;
   min-width: 0;
-  height: var(--mar-compact-row-size);
+  height: var(--file-tree-row-size);
   box-sizing: border-box;
   border-block: 1px solid transparent;
   border-radius: var(--mar-radius-selection);
@@ -757,8 +795,14 @@ defineExpose({ reveal });
 
 .file-tree-row-shell.drop-target {
   background-color: var(--mar-fill-soft);
-  outline: 1px solid var(--mar-control-focus);
+  outline: 1px solid var(--mar-drop-indicator);
   outline-offset: -1px;
+}
+
+.file-tree-row-shell.is-upload-drop-target {
+  outline-style: dashed;
+  outline-width: 2px;
+  outline-offset: -2px;
 }
 
 .file-tree-row:disabled {

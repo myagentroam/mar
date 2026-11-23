@@ -9,8 +9,10 @@ const sourceMap = /\.map$/u;
 const rawTypeScript = /(?<!\.d)\.ts$/u;
 const declaration = /\.d\.ts$/u;
 const protectionMarker = '/* mar-release-protected */';
+const privateRepoFile =
+  /(?:^|\/)(?:repo\/(?:routes|benchmarks)\.json$|scripts\/repo\/|docs\/guides\/REPO_ENGINEERING\.md$)/u;
 const privateIdentifier =
-  /(?:my-agent-roam-enterprise|mar-server-enterprise|mar-web-enterprise|packages\/enterprise-[a-z0-9-]+|harness\/|docs\/design\/)/u;
+  /(?:my-agent-roam-enterprise|mar-server-enterprise|mar-web-enterprise|packages\/enterprise-[a-z0-9-]+|harness\/|\brepo\/(?:routes|benchmarks)\.json\b|\bscripts\/repo\/|\bdocs\/guides\/REPO_ENGINEERING\.md\b|docs\/design\/)/u;
 const inspectableReleaseText = /\.(?:js|mjs|css|html|json|webmanifest|txt)$/u;
 export const binaryVendorAllowlist = new Set([
   'vendor/ripgrep/LICENSE-MIT',
@@ -154,13 +156,17 @@ async function walk(directory) {
   return nested.flat();
 }
 
-async function checkBuildDirectory(directory) {
+export async function checkBuildDirectory(directory) {
   check(
     (await stat(directory)).isDirectory(),
     `Missing build directory: ${relative(root, directory)}`
   );
   const files = (await walk(directory)).map((path) =>
     relative(directory, path).split(sep).join('/')
+  );
+  check(
+    !files.some((path) => privateRepoFile.test(path)),
+    `${directory} contains private tooling files`
   );
   check(!files.some((path) => sourceMap.test(path)), `${directory} contains source maps`);
   check(

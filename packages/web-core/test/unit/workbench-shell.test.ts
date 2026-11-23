@@ -53,6 +53,7 @@ async function renderOfflineSurface() {
     aside: {
       asideViewMode: () => 'none',
       asideWidth: () => undefined,
+      setAsideSessionFits: vi.fn(),
       setAsideSurfaceVisible: vi.fn()
     },
     files: {},
@@ -480,7 +481,9 @@ describe('Shared workbench shell', () => {
         commonMessages[locale].navigation[sidebarCollapsed ? 'expandSidebar' : 'collapseSidebar'];
       expect(html).toContain(`aria-label="${label}"`);
       expect(html).toContain(`aria-expanded="${!sidebarCollapsed}"`);
-      expect(html).toContain('data-mar-icon="sidebar"');
+      expect(html).toContain(
+        `data-mar-icon="${sidebarCollapsed ? 'sidebar' : 'sidebar-expanded'}"`
+      );
       expect(html).not.toContain('data-mar-icon="menu"');
     }
   );

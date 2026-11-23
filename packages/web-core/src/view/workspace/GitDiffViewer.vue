@@ -1301,9 +1301,9 @@ defineExpose({
 }
 .unified-diff-line.is-active {
   box-shadow:
-    inset 3px 0 var(--mar-control-focus),
-    inset 0 1px var(--mar-control-focus),
-    inset 0 -1px var(--mar-control-focus);
+    inset 3px 0 var(--mar-text-muted),
+    inset 0 1px var(--mar-text-muted),
+    inset 0 -1px var(--mar-text-muted);
 }
 .unified-diff-empty {
   display: block;

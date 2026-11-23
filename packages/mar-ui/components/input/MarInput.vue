@@ -266,7 +266,7 @@ defineExpose({
         }"
         :id="inputId"
         ref="textarea"
-        class="mar-ui-input__field mar-ui-input__field--textarea"
+        class="mar-ui-input__field mar-ui-input__field--textarea mar-ui-field-frame__control"
         :rows="rows"
         :maxlength="maxlength"
         :disabled="disabled"
@@ -289,7 +289,7 @@ defineExpose({
         }"
         :id="inputId"
         ref="input"
-        class="mar-ui-input__field"
+        class="mar-ui-input__field mar-ui-field-frame__control"
         :type="canReveal && passwordVisible ? 'text' : type"
         :maxlength="maxlength"
         :disabled="disabled"
@@ -351,7 +351,6 @@ defineExpose({
 .mar-ui-input {
   display: inline-flex;
   align-items: stretch;
-  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   min-height: var(--mar-ui-compact-control-size, 24px);
@@ -381,7 +380,6 @@ defineExpose({
   min-width: 0;
   padding: 0;
   border: 0;
-  outline: none;
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
@@ -389,7 +387,6 @@ defineExpose({
 }
 .mar-ui-input__field--textarea {
   display: block;
-  box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   padding: 0.3125rem 11px;
@@ -446,9 +443,6 @@ defineExpose({
 }
 .mar-ui-input:is(:hover, :focus-within) .mar-ui-input__clear {
   visibility: visible;
-}
-.mar-ui-input__action:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
 }
 .mar-ui-input__addon {
   display: inline-flex;

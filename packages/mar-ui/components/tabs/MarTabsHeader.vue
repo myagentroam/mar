@@ -320,10 +320,6 @@ function activate(name: Name): void {
   background: var(--mar-ui-fill-selection);
   color: var(--mar-ui-text-primary);
 }
-.mar-ui-tabs__list [role='tab']:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-  outline-offset: -2px;
-}
 .mar-ui-tabs__list .mar-tab-close {
   display: inline-grid;
   vertical-align: middle;
@@ -354,9 +350,6 @@ function activate(name: Name): void {
   min-width: 20px;
   height: auto;
   padding: 0;
-  border: 0;
-  border-radius: var(--mar-ui-radius-control);
-  cursor: pointer;
 }
 
 .mar-tab-strip {
@@ -371,17 +364,12 @@ function activate(name: Name): void {
   font-weight: var(--mar-tab-font-weight, 500);
 }
 
-.mar-tab-strip::-webkit-scrollbar {
-  display: none;
-}
-
 .mar-tab-strip-item {
   display: inline-flex;
   flex-shrink: 0;
   min-width: 0;
   height: var(--mar-tab-strip-item-height, 28px);
   max-width: min(15rem, 100%);
-  box-sizing: border-box;
   align-items: center;
   border: 1px solid var(--mar-ui-border-default);
   border-bottom: 0;
@@ -444,11 +432,6 @@ function activate(name: Name): void {
   margin-inline-start: -1px;
 }
 
-.mar-tab-strip-tab:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-  outline-offset: -2px;
-}
-
 .mar-tab-close {
   --mar-ui-action-icon-size: 14px;
   display: grid;
@@ -458,21 +441,24 @@ function activate(name: Name): void {
   height: 24px;
   place-items: center;
   padding: 2px;
-  border: 0;
-  border-radius: var(--mar-ui-radius-control);
-  cursor: pointer;
   font-size: var(--mar-ui-font-size-navigation);
 }
 
-.mar-tab-close:focus-visible {
-  outline-offset: 1px;
+/* Keep the shared outline inside the controls in a clipped tab header. */
+.mar-ui-tabs__list [role='tab']:focus-visible,
+.mar-tab-strip-tab:focus-visible,
+.mar-tab-close:focus-visible,
+.mar-tab-scroll:focus-visible {
+  outline-offset: -2px;
 }
 
 .mar-tab-close,
 .mar-tab-scroll {
   border: 0;
+  border-radius: var(--mar-ui-radius-control);
   background: transparent;
   color: var(--mar-ui-text-secondary);
+  cursor: pointer;
   text-align: center;
 }
 .mar-tab-close:disabled,
@@ -487,14 +473,6 @@ function activate(name: Name): void {
 .mar-tab-close:is(:hover, :active, :focus-visible):enabled {
   color: var(--mar-ui-text-primary);
 }
-.mar-tab-scroll:focus-visible,
-.mar-tab-close:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-}
-.mar-tab-scroll:focus-visible {
-  outline-offset: 2px;
-}
-
 @media (max-width: 767px) {
   .mar-tab-scroll {
     display: none;

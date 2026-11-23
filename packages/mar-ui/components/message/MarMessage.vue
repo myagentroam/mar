@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import '../button/native-actions.css';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { MarIcon } from '../../icons/index.js';
 import { useMarUiLocale } from '../../locale/index.js';
@@ -85,7 +84,6 @@ onBeforeUnmount(pause);
   align-items: start;
   inline-size: fit-content;
   max-inline-size: min(520px, 100%);
-  box-sizing: border-box;
   padding: 8px 12px;
   border: 1px solid var(--mar-ui-message-border);
   border-radius: var(--mar-ui-radius-control);

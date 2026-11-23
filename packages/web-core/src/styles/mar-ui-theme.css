@@ -49,6 +49,7 @@
   --mar-ui-radius-selection: var(--mar-radius-selection);
   --mar-ui-input-border: var(--mar-input-border);
   --mar-ui-input-border-hover: var(--mar-input-border-hover);
+  --mar-ui-input-border-focus: var(--mar-input-border-focus);
   --mar-ui-loading-mask: var(--mar-overlay-scrim);
   --mar-ui-dialog-scrim: var(--mar-overlay-scrim);
   --mar-ui-dialog-surface: var(--mar-bg-panel);

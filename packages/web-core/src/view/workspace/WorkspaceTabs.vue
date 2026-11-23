@@ -30,7 +30,7 @@ const emit = defineEmits<{
 }>();
 
 const draggingTabId = ref<string | undefined>();
-const dragOverTabId = ref<string | undefined>();
+const tabDrop = ref<{ id: string; edge: 'before' | 'after' }>();
 const suppressActivation = ref(false);
 const tabList = ref<HTMLElement>();
 const canScrollLeft = ref(false);
@@ -249,7 +249,7 @@ onBeforeUnmount(() => {
 
 function resetPointerInteraction(): void {
   draggingTabId.value = undefined;
-  dragOverTabId.value = undefined;
+  tabDrop.value = undefined;
   pointerId = undefined;
   pointerMoved = false;
   pointerTab = undefined;
@@ -285,9 +285,21 @@ function handlePointerMove(event: PointerEvent): void {
     pointerMoved = Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY) >= 4;
   }
   if (!pointerMoved) return;
-  const element = document.elementFromPoint(event.clientX, event.clientY);
-  dragOverTabId.value = element?.closest<HTMLElement>('.workspace-tab')?.dataset.tabId;
+  const target = document
+    .elementFromPoint(event.clientX, event.clientY)
+    ?.closest<HTMLElement>('.workspace-tab');
+  const id = target?.dataset.tabId;
+  tabDrop.value =
+    target && id !== undefined && id !== draggingTabId.value
+      ? { id, edge: tabDropEdge(target, event.clientX) }
+      : undefined;
   event.preventDefault();
+}
+
+function tabDropEdge(target: HTMLElement, clientX: number): 'before' | 'after' {
+  return clientX > target.getBoundingClientRect().left + target.offsetWidth / 2
+    ? 'after'
+    : 'before';
 }
 
 function handlePointerUp(event: PointerEvent): void {
@@ -313,8 +325,8 @@ function handlePointerUp(event: PointerEvent): void {
     const children = [...tabsElement.children] as HTMLElement[];
     const targetIndex = children.findIndex((child) => child.dataset.tabId === targetTabId);
     const sourceIndex = children.findIndex((child) => child.dataset.tabId === draggedTabId);
-    const midpoint = targetTab.getBoundingClientRect().left + targetTab.offsetWidth / 2;
-    const insertionIndex = event.clientX > midpoint ? targetIndex + 1 : targetIndex;
+    const insertionIndex =
+      tabDropEdge(targetTab, event.clientX) === 'after' ? targetIndex + 1 : targetIndex;
     emit(
       'reorder',
       draggedTabId,
@@ -380,9 +392,9 @@ function activate(tab: WorkspaceTab): void {
           'menu-open': contextMenu?.tabId === tab.id,
           pinned: tab.pinned === true,
           'sticky-pinned': pinnedOffsets[tab.id] !== undefined,
-          dragging: draggingTabId === tab.id,
-          'drag-over': dragOverTabId === tab.id && draggingTabId !== tab.id
+          dragging: draggingTabId === tab.id
         }"
+        :data-drop-edge="tabDrop?.id === tab.id ? tabDrop.edge : undefined"
         :style="
           pinnedOffsets[tab.id] === undefined ? undefined : { left: `${pinnedOffsets[tab.id]}px` }
         "
@@ -635,10 +647,6 @@ function activate(tab: WorkspaceTab): void {
   scrollbar-width: none;
 }
 
-.workspace-tabs::-webkit-scrollbar {
-  display: none;
-}
-
 .tab-strip-scroll,
 .workspace-tab-menu {
   display: inline-grid;
@@ -703,8 +711,12 @@ function activate(tab: WorkspaceTab): void {
   opacity: 0.55;
 }
 
-.workspace-tab.drag-over {
-  box-shadow: inset 2px 0 0 var(--mar-control-focus);
+.workspace-tab[data-drop-edge='before']::after {
+  border-left: 2px solid var(--mar-drop-indicator);
+}
+
+.workspace-tab[data-drop-edge='after']::after {
+  border-right: 2px solid var(--mar-drop-indicator);
 }
 
 .workspace-tab.sticky-pinned {
@@ -721,15 +733,17 @@ function activate(tab: WorkspaceTab): void {
   pointer-events: none;
 }
 
-.workspace-tab.sticky-pinned::after {
+.workspace-tab:is(.sticky-pinned, [data-drop-edge])::after {
   content: '';
   position: absolute;
-  z-index: -1;
   inset: 0;
   border-radius: inherit;
-  background: inherit;
-  box-shadow: inherit;
   pointer-events: none;
+}
+
+.workspace-tab.sticky-pinned::after {
+  z-index: -1;
+  background: inherit;
 }
 
 .workspace-tab.sticky-pinned.dragging {
@@ -767,7 +781,6 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab > button:first-child:focus-visible {
-  outline: 2px solid var(--mar-text-muted);
   outline-offset: -2px;
 }
 

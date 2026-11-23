@@ -203,6 +203,7 @@ function onFocusOut(event: FocusEvent) {
         v-bind="{ ...$attrs, class: undefined, style: undefined }"
         :id="field.id.value"
         v-model="draft"
+        class="mar-ui-field-frame__control"
         type="text"
         :placeholder="placeholder"
         :disabled="field.disabled.value"
@@ -278,7 +279,6 @@ function onFocusOut(event: FocusEvent) {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  box-sizing: border-box;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   padding-inline: 0.5rem;
 }
@@ -290,7 +290,6 @@ input {
   flex: 1;
   border: 0;
   padding: 0;
-  outline: 0;
   color: var(--mar-ui-text-primary);
   background: transparent;
   font: inherit;
@@ -308,9 +307,6 @@ button {
   padding: 0;
   cursor: pointer;
 }
-button:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-}
 .mar-ui-time-picker__popup {
   inline-size: 10rem;
   font-size: var(--mar-ui-font-size-control);
@@ -322,7 +318,6 @@ button:focus-visible {
   flex: 1;
   max-block-size: 10rem;
   overflow: auto;
-  scrollbar-width: thin;
 }
 .mar-ui-time-picker__column + .mar-ui-time-picker__column {
   border-inline-start: 1px solid var(--mar-ui-border-subtle);

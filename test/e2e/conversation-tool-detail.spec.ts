@@ -19,6 +19,9 @@ test('standalone tool detail loads its own shared presentation', async ({ page }
   await page.goto(`${fixture.url}isolated-tool-detail.html`);
   const detail = page.locator('.tool-detail.mar-conversation-detail-body');
   await expect(detail).toContainText('Inspection output');
+  const meta = detail.locator('.tool-detail-meta').first();
+  await expect(meta).toHaveCSS('white-space', 'pre-wrap');
+  await expect(meta).toHaveCSS('overflow-wrap', 'anywhere');
   const [padding, rootSize] = await detail.evaluate((element) => [
     parseFloat(getComputedStyle(element).paddingTop),
     parseFloat(getComputedStyle(document.documentElement).fontSize)
@@ -217,11 +220,19 @@ for (const [width, theme, locale] of [
     const runningStatus = agents.locator('li').first().locator('.mar-conversation-list-marker');
     const idleStatus = agents.locator('li').nth(1).locator('.mar-conversation-list-marker');
     const completedStatus = agents.locator('li').nth(2).locator('.mar-conversation-list-marker');
-    const green = await tasks
-      .locator('.task-list-status--done')
-      .evaluate((element) => getComputedStyle(element).color);
-    await expect(runningStatus).toHaveCSS('color', green);
-    await expect(idleStatus).not.toHaveCSS('color', green);
+    const [agentGreen, taskGreen, neutral] = await agents.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return [
+        '--mar-control-color-success',
+        '--mar-color-success-text',
+        '--mar-text-secondary'
+      ].map((token) => style.getPropertyValue(token).trim());
+    });
+    const markerColor = (marker: Locator) =>
+      marker.evaluate((element) => getComputedStyle(element).color).then(resolvedColorToHex);
+    expect(await markerColor(runningStatus)).toBe(agentGreen);
+    expect(await markerColor(tasks.locator('.task-list-status--done'))).toBe(taskGreen);
+    expect(await markerColor(idleStatus)).toBe(neutral);
     await expect(completedStatus).toHaveCSS(
       'color',
       await idleStatus.evaluate((element) => getComputedStyle(element).color)
@@ -771,8 +782,10 @@ for (const variant of [
       const rest = getComputedStyle(probe).color;
       probe.style.color = 'var(--mar-text-primary)';
       const hover = getComputedStyle(probe).color;
+      probe.style.color = 'var(--mar-control-focus)';
+      const focus = getComputedStyle(probe).color;
       probe.remove();
-      return { rest, hover };
+      return { rest, hover, focus };
     });
     await expect(more).toHaveCSS('color', toggleColor.rest);
     const collapsedIcon = await more
@@ -801,7 +814,7 @@ for (const variant of [
     expect(copied.payload.output.blocks[0].text).toContain('Returned line 40');
     await page.keyboard.press('Tab');
     await expect(more).toBeFocused();
-    await expect(more).toHaveCSS('outline-width', '1px');
+    await expect(more).toHaveCSS('outline', `${toggleColor.focus} solid 2px`);
     await page.keyboard.press('Enter');
     const less = file.getByRole('button', { name: variant.less, exact: true });
     await expect(less).toHaveAttribute('aria-expanded', 'true');
@@ -1739,10 +1752,16 @@ for (const width of [1280, 390]) {
           'visible stderr'
         ]);
         await expect(detail).not.toContainText('Working directory:');
-        const detailSurface = await detail.evaluate(
-          (element) => getComputedStyle(element).backgroundColor
-        );
-        expect(resolvedColorToHex(detailSurface)).toBe(theme === 'dark' ? '#20242b' : '#eaecf1');
+        const detailSurface = await detail.evaluate((element) => {
+          const swatch = document.createElement('span');
+          swatch.style.backgroundColor =
+            'color-mix(in srgb, var(--mar-conversation-canvas), var(--mar-text-primary) 6%)';
+          element.append(swatch);
+          const expected = getComputedStyle(swatch).backgroundColor;
+          swatch.remove();
+          return { actual: getComputedStyle(element).backgroundColor, expected };
+        });
+        expect(detailSurface.actual).toBe(detailSurface.expected);
         const expand = detail.getByRole('button', { name: 'Show more', exact: true });
         if (await expand.isVisible()) await expand.click();
         const textBounds = await detail.locator('.tool-source-text').boundingBox();

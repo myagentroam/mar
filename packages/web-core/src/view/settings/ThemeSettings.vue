@@ -505,7 +505,6 @@ h3 {
   background: transparent;
 }
 .theme-choice:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 .theme-swatches {
