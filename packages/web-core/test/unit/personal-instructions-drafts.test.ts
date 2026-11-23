@@ -52,8 +52,8 @@ describe('Personal instruction draft ownership', () => {
       validate === undefined ? {} : { validate }
     );
     await flushComponent();
-    const edit = (value: string) =>
-      trigger(view.findAll('textarea')[0]!, 'onUpdate:modelValue', value);
+    const input = () => view.findAll('MarInput').find((node) => node.props['type'] === 'textarea')!;
+    const edit = (value: string) => trigger(input(), 'onUpdate:modelValue', value);
     const select = (index: number) => trigger(view.findAll('MarCheckTag')[index]!, 'onChange');
     const button = (variant: string) =>
       view
@@ -61,7 +61,7 @@ describe('Personal instruction draft ownership', () => {
         .find((node) => String(node.props['class']).includes(`mar-ui-button--${variant}`))!;
     const save = () => trigger(button('primary'), 'onClick');
     const clear = () => trigger(button('default'), 'onClick');
-    const value = () => (view.findAll('textarea')[0]! as unknown as { value: string }).value;
+    const value = () => input().props['modelValue'];
     return { view, response, request, success, error, edit, select, save, clear, value };
   }
 

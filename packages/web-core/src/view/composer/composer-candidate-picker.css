@@ -40,7 +40,6 @@
 }
 
 .mar-composer-candidate-picker [role='option']:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 

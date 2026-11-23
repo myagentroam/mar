@@ -284,7 +284,7 @@ function onFocusOut(event: FocusEvent) {
         v-bind="{ ...$attrs, class: undefined, style: undefined }"
         :id="field.id.value"
         v-model="draft[0]"
-        class="mar-ui-date-picker__input"
+        class="mar-ui-date-picker__input mar-ui-field-frame__control"
         :aria-label="
           range ? (startPlaceholder ?? locale.datePicker.start) : ($attrs['aria-label'] as string)
         "
@@ -304,7 +304,7 @@ function onFocusOut(event: FocusEvent) {
         <input
           ref="end"
           v-model="draft[1]"
-          class="mar-ui-date-picker__input"
+          class="mar-ui-date-picker__input mar-ui-field-frame__control"
           :aria-label="endPlaceholder ?? locale.datePicker.end"
           :placeholder="endPlaceholder ?? locale.datePicker.end"
           :disabled="field.disabled.value"
@@ -401,7 +401,6 @@ function onFocusOut(event: FocusEvent) {
   display: flex;
   align-items: center;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
-  box-sizing: border-box;
 }
 .mar-ui-date-picker__input {
   flex: 1;
@@ -409,7 +408,6 @@ function onFocusOut(event: FocusEvent) {
   inline-size: 0;
   padding: 0;
   border: 0;
-  outline: 0;
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
@@ -498,7 +496,6 @@ input:disabled {
 }
 button:focus-visible,
 .mar-ui-date-picker__footer input:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 </style>

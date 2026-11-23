@@ -51,6 +51,7 @@ html.console-ui,
     var(--mar-input-border),
     var(--mar-border-strong) 20%
   );
+  --mar-input-border-focus: color-mix(in srgb, var(--mar-border-strong), var(--mar-text-muted) 55%);
   --mar-text-primary: #17243a;
   --mar-text-secondary: #43536b;
   --mar-text-muted: #52647c;
@@ -71,7 +72,6 @@ html.console-ui,
   --mar-conversation-activity-on-fill: #fff;
   --mar-conversation-activity-fill-state-tint: #000;
   --mar-scrollbar-thumb: #77777766;
-  --mar-scrollbar-thumb-hover: #686868b3;
   --mar-control-primary-bg: #0057db;
   --mar-control-primary-fg: #ffffff;
   --mar-control-primary-hover: #004cc3;
@@ -83,7 +83,7 @@ html.console-ui,
   --mar-control-intent-active-strength: 82%;
   --mar-control-intent-border-strength: 100%;
   --mar-control-intent-hover-border-strength: 90%;
-  --mar-control-focus: #506987;
+  --mar-control-focus: #174e9e;
   --mar-control-link-text: #174e9e;
   --mar-control-link-hover: #123a78;
   --mar-link-text: #174e9e;
@@ -209,7 +209,7 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-control-intent-active-strength: 16%;
   --mar-control-intent-border-strength: 64%;
   --mar-control-intent-hover-border-strength: 64%;
-  --mar-control-focus: #a0a0a0;
+  --mar-control-focus: #75b7ff;
   --mar-control-link-text: #eaeaea;
   --mar-control-link-hover: #f0f0f0;
   --mar-link-text: #75b7ff;
@@ -247,7 +247,6 @@ html.console-ui[data-theme='vscode-dark-2026'],
   );
 
   --mar-scrollbar-thumb: #707070;
-  --mar-scrollbar-thumb-hover: #8a8a8a;
 }
 
 /* Keep anchored overlays readable over any workspace surface without changing the palette. */

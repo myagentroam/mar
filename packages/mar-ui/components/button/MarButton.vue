@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import './native-actions.css';
 import { computed, useTemplateRef, type Component, type PropType } from 'vue';
 import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
@@ -123,6 +122,7 @@ function handleClick(event: MouseEvent): void {
   --mar-ui-button-disabled-fg: var(--mar-ui-text-disabled);
   --mar-ui-button-disabled-bg: var(--mar-ui-bg-panel);
   --mar-ui-button-disabled-border: var(--mar-ui-border-subtle);
+  /* Keep anchor and native button geometry identical when host styles reset either element. */
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -269,11 +269,6 @@ function handleClick(event: MouseEvent): void {
   background: var(--mar-ui-button-active-bg);
   border-color: var(--mar-ui-button-active-border);
   color: var(--mar-ui-button-active-fg);
-}
-
-.mar-ui-button:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-  outline-offset: 2px;
 }
 
 .mar-ui-button--disabled {

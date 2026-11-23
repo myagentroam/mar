@@ -189,6 +189,7 @@ function onFocusOut(event: FocusEvent) {
         ref="input"
         v-bind="{ ...$attrs, class: undefined, style: undefined }"
         :id="form.id.value"
+        class="mar-ui-field-frame__control"
         type="text"
         role="combobox"
         aria-autocomplete="list"
@@ -300,7 +301,6 @@ function onFocusOut(event: FocusEvent) {
   display: flex;
   align-items: center;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
-  box-sizing: border-box;
 }
 input {
   flex: 1;
@@ -309,7 +309,6 @@ input {
   padding-block: 0;
   padding-inline: 0.5rem 0.125rem;
   border: 0;
-  outline: 0;
   background: transparent;
   color: var(--mar-ui-text-primary);
   font: inherit;
@@ -386,7 +385,6 @@ input:disabled {
 .mar-ui-cascader__option:focus-visible,
 .mar-ui-cascader__choose:focus-visible,
 .mar-ui-cascader__action:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-cascader__option:disabled,
@@ -409,7 +407,6 @@ input:disabled {
   box-shadow: inset 0 0 0 3px var(--mar-ui-overlay-surface);
 }
 .mar-ui-cascader__empty {
-  box-sizing: border-box;
   display: grid;
   place-items: center;
   min-block-size: var(--mar-ui-compact-control-size, 24px);

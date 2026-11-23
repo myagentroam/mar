@@ -54,7 +54,6 @@ export const THEME_TOKEN_HELP = {
     description: 'conversation-activity-fill'
   },
   '--mar-scrollbar-thumb': { group: 'borders', description: 'scrollbar-thumb' },
-  '--mar-scrollbar-thumb-hover': { group: 'borders', description: 'scrollbar-thumb-hover' },
   '--mar-control-primary-bg': { group: 'controls', description: 'control-primary-bg' },
   '--mar-control-primary-fg': { group: 'controls', description: 'control-primary-fg' },
   '--mar-control-primary-hover': { group: 'controls', description: 'control-primary-hover' },

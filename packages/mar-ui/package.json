@@ -5,9 +5,11 @@
   "files": [
     "components",
     "icons",
-    "locale"
+    "locale",
+    "styles"
   ],
   "exports": {
+    "./styles.css": "./styles/base.css",
     "./alert": "./components/alert/index.ts",
     "./button": "./components/button/index.ts",
     "./cascader": "./components/cascader/index.ts",
@@ -52,7 +54,6 @@
     "./locale": "./locale/index.ts",
     "./busy-indicator": "./components/loading/MarBusyIndicator.vue",
     "./region-status": "./components/region-status/index.ts",
-    "./native-actions.css": "./components/button/native-actions.css",
     "./disclosure.css": "./components/disclosure/disclosure.css",
     "./region-status.css": "./components/region-status/region-status.css",
     "./surface-chrome.css": "./components/popup/surface-chrome.css"

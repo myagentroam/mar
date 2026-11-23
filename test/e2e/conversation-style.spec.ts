@@ -1941,6 +1941,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff');
       root.style.setProperty('--mar-control-focus', '#888888');
       root.style.setProperty('--mar-border-medium', '#444444');
+      root.style.setProperty('--mar-text-muted', '#999999');
     });
     const shell = page.locator('.composer-shell');
     const status = page.locator('.composer-working');
@@ -1958,13 +1959,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
     await shell.dispatchEvent('dragenter');
     await expect(shell).toHaveCSS('outline-style', 'dashed');
-    await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
-    await expect(shell).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('outline-color', 'rgb(153, 153, 153)');
+    await expect(shell).toHaveCSS('border-top-color', 'rgb(153, 153, 153)');
     await expect(shell).toHaveCSS('box-shadow', 'none');
-    await expect(status).toHaveCSS('border-top-color', 'rgb(136, 136, 136)');
+    await expect(status).toHaveCSS('border-top-color', 'rgb(153, 153, 153)');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
     await input.focus();
-    await expect(shell).toHaveCSS('outline-color', 'rgb(136, 136, 136)');
+    await expect(shell).toHaveCSS('outline-color', 'rgb(153, 153, 153)');
     await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
     await expect(shell).toHaveCSS('box-shadow', 'none');
     await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
@@ -2365,14 +2366,21 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 }
 
 async function paletteColors(page: Page): Promise<Record<string, string>> {
-  return page.locator('html').evaluate((root) => {
+  const { tokens, fieldFocus } = await page.locator('html').evaluate((root) => {
     const style = getComputedStyle(root);
-    return Object.fromEntries(
+    const tokens = Object.fromEntries(
       Array.from(style)
         .filter((key) => key.startsWith('--mar-'))
         .map((key) => [key, style.getPropertyValue(key).trim()])
     );
+    const probe = root.ownerDocument.createElement('span');
+    probe.style.color = 'var(--mar-input-border-focus)';
+    root.ownerDocument.body.append(probe);
+    const fieldFocus = getComputedStyle(probe).color;
+    probe.remove();
+    return { tokens, fieldFocus };
   });
+  return { ...tokens, '--mar-input-border-focus': resolvedColorToHex(fieldFocus) };
 }
 function contrast(foreground: string, background: string) {
   const luminance = (hex: string) => {
@@ -2415,7 +2423,8 @@ test('uses the bright daylight palette with accessible interactive and text colo
     '--mar-control-primary-fg': '#ffffff',
     '--mar-control-primary-hover': '#004cc3',
     '--mar-control-primary-active': '#0042aa',
-    '--mar-control-focus': '#506987',
+    '--mar-input-border': daylight['--mar-border-default'],
+    '--mar-control-focus': '#174e9e',
     '--mar-control-link-text': '#174e9e',
     '--mar-control-link-hover': '#123a78'
   });
@@ -2440,7 +2449,8 @@ test('uses the bright daylight palette with accessible interactive and text colo
         `${foreground} on ${surface}`
       ).toBeGreaterThanOrEqual(4.5);
     }
-    for (const edge of ['--mar-input-border', '--mar-input-border-hover', '--mar-control-focus']) {
+    // Resting and hover outlines are intentionally quiet; the focus indicator must be distinct.
+    for (const edge of ['--mar-input-border-focus', '--mar-control-focus']) {
       expect(
         contrast(daylight[edge]!, daylight[surface]!),
         `${edge} on ${surface}`
@@ -2586,7 +2596,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         contrast(colors['--mar-conversation-activity-fg']!, colors[surface]!)
       ).toBeGreaterThanOrEqual(4.5);
     for (const surface of ['--mar-bg-panel', '--mar-fill-row-hover', '--mar-fill-selection']) {
-      expect(contrast(colors['--mar-control-focus']!, colors[surface]!)).toBeGreaterThanOrEqual(3);
+      for (const edge of ['--mar-input-border-focus', '--mar-control-focus']) {
+        expect(
+          contrast(colors[edge]!, colors[surface]!),
+          `${edge} on ${surface}`
+        ).toBeGreaterThanOrEqual(3);
+      }
     }
     const messageBodies = [
       page.locator('.conversation-item.user_message .conversation-message'),

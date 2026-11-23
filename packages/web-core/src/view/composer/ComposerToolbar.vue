@@ -722,7 +722,7 @@ function selectFiles(event: Event): void {
 .composer-runner-select
   :deep(.mar-ui-select__field:not([data-disabled]):is(:focus-within, [data-expanded])) {
   background: var(--mar-fill-soft);
-  box-shadow: 0 0 0 1px var(--mar-control-focus) inset;
+  box-shadow: 0 0 0 1px var(--mar-input-border-focus) inset;
 }
 
 .composer-runner-select :deep(.mar-ui-select__field:not([data-disabled]) .mar-ui-select__label) {

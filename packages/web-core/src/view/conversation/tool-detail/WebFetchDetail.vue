@@ -131,8 +131,4 @@ const webOutput = computed(
 .web-detail a:hover {
   color: var(--mar-link-hover);
 }
-.web-detail a:focus-visible {
-  outline: 1px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
 </style>

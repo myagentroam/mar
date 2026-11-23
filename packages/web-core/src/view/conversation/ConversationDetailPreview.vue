@@ -156,8 +156,4 @@ onBeforeUnmount(() => {
 .detail-preview-toggle-icon.is-expanded {
   transform: rotate(180deg);
 }
-.detail-preview-toggle:focus-visible {
-  outline: 1px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
 </style>

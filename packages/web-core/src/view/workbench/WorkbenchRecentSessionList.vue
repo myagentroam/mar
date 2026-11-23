@@ -172,7 +172,6 @@ function runStatusType(status: RecentRun['status']): 'success' | 'danger' | 'war
   cursor: pointer;
 }
 .recent-sessions-list button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
   outline-offset: -2px;
 }
 .recent-session-heading {

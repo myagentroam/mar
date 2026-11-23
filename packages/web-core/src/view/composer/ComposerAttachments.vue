@@ -156,10 +156,11 @@ const emit = defineEmits<{
   cursor: pointer;
 }
 
-.composer-attachment-preview:hover,
-.composer-attachment-preview:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
+@media (any-hover: hover) {
+  .composer-attachment-preview:hover:not(:focus-visible) {
+    outline: 1px solid var(--mar-border-strong);
+    outline-offset: 2px;
+  }
 }
 
 .composer-attachment-remove {

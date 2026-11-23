@@ -196,7 +196,6 @@ button[data-outside='true'] {
   font-weight: 700;
 }
 button:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 </style>

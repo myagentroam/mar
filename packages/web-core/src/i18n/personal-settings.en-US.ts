@@ -252,12 +252,11 @@ export const personalSettingsEnUS = {
       'conversation-activity-fill':
         'Solid fill for the send button and unread notification count badges, with automatic foreground contrast',
       'scrollbar-thumb': 'Scrollbar handles',
-      'scrollbar-thumb-hover': 'Scrollbar handles on hover',
       'control-primary-bg': 'Filled primary actions and checked controls',
       'control-primary-fg': 'Text and icons on filled primary controls',
       'control-primary-hover': 'Filled primary actions on hover',
       'control-primary-active': 'Pressed fill of primary actions',
-      'control-focus': 'Focus outlines and active editing boundaries',
+      'control-focus': 'Keyboard focus outlines',
       'control-color-success': 'Success controls and indicators',
       'control-color-warning': 'Warning controls and indicators',
       'control-color-danger': 'Danger controls and indicators',

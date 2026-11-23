@@ -894,17 +894,21 @@ for (const theme of ['daylight', 'dark']) {
     await expect(workspace).toHaveCSS('box-shadow', hostedHover.shadow);
     await hosted.click();
     await expect(hosted).toHaveAttribute('aria-expanded', 'true');
-    const expandedShadow = await hosted.evaluate((element) => {
-      const probe = document.createElement('span');
-      element.append(probe);
-      probe.style.boxShadow = '0 0 0 1px var(--mar-control-focus) inset';
-      const value = getComputedStyle(probe).boxShadow;
-      probe.remove();
-      return value;
-    });
-    await expect(hosted).toHaveCSS('box-shadow', expandedShadow);
+    await expect(hosted).toHaveCSS('background-color', hostedHover.background);
+    await expect(hosted).toHaveCSS('box-shadow', 'none');
     await hosted.click();
     await expect(hosted).toHaveAttribute('aria-expanded', 'false');
+    const focusColor = theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)';
+    for (const [control, surface] of [
+      [hosted, hosted],
+      [workspace.getByRole('combobox'), workspace]
+    ]) {
+      await control.focus();
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(control).toBeFocused();
+      await expect(surface).toHaveCSS('outline', `${focusColor} solid 2px`);
+    }
   });
 }
 
@@ -1248,10 +1252,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         return {
           visible: element.matches(':focus-visible'),
           width: parseFloat(style.outlineWidth),
-          offset: parseFloat(style.outlineOffset)
+          offset: parseFloat(style.outlineOffset),
+          color: style.outlineColor
         };
       });
       expect(focus.visible).toBe(true);
+      expect(focus.color).toBe(theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)');
       expect(focus.width).toBeGreaterThan(0);
       expect(focus.offset + focus.width).toBeLessThanOrEqual(0);
       await list.screenshot({

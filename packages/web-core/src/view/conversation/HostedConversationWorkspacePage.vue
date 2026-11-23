@@ -1683,6 +1683,10 @@ onBeforeUnmount(() => {
   background: var(--mar-fill-selection);
 }
 
+.history-open:focus-visible {
+  outline-offset: -2px;
+}
+
 .history-open {
   display: grid;
   width: 100%;

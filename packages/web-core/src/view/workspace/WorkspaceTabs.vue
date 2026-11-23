@@ -635,10 +635,6 @@ function activate(tab: WorkspaceTab): void {
   scrollbar-width: none;
 }
 
-.workspace-tabs::-webkit-scrollbar {
-  display: none;
-}
-
 .tab-strip-scroll,
 .workspace-tab-menu {
   display: inline-grid;
@@ -704,7 +700,7 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab.drag-over {
-  box-shadow: inset 2px 0 0 var(--mar-control-focus);
+  box-shadow: inset 2px 0 0 var(--mar-text-muted);
 }
 
 .workspace-tab.sticky-pinned {
@@ -767,7 +763,6 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab > button:first-child:focus-visible {
-  outline: 2px solid var(--mar-text-muted);
   outline-offset: -2px;
 }
 

@@ -248,6 +248,28 @@ for (const { theme, width } of [
   });
 }
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  // @test-covers packages/web-core/src/view/workspace/WorkspaceSessionList.vue
+  test(`Workspace session rows use Console keyboard focus in ${theme}`, async ({ page }) => {
+    await page.goto(
+      `${fixture.url}workbench-style.html?session-markers&theme=${theme}&locale=en-US`
+    );
+    const row = page
+      .locator('.session-link')
+      .filter({ has: page.getByText('Scheduled', { exact: true }) });
+    await row.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(row).toBeFocused();
+    await expect(row).toHaveCSS('outline-style', 'solid');
+    await expect(row).toHaveCSS(
+      'outline-color',
+      theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)'
+    );
+    await expect(row).toHaveCSS('outline-offset', '-2px');
+  });
+}
+
 for (const [theme, width] of [
   ['daylight', 1280],
   ['vscode-dark-2026', 1280],
@@ -340,6 +362,18 @@ for (const [theme, width] of [
     const idle = list.locator('.history-open:not([aria-current])');
     await expect(selected.locator('strong')).toHaveText('Current conversation');
     await expect(idle.locator('strong')).toHaveText('Other conversation');
+    await selected.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(selected).toBeFocused();
+    await expect(selected).toHaveAttribute('aria-current', 'page');
+    await expect(selected).toHaveCSS('outline-style', 'solid');
+    await expect(selected).toHaveCSS(
+      'outline-color',
+      theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)'
+    );
+    await expect(selected).toHaveCSS('outline-offset', '-2px');
+    await selected.blur();
     const { primary, secondary, meta, fontSize } = await sessionListColors(list);
     for (const [row, color] of [
       [selected, primary],

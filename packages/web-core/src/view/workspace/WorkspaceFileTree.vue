@@ -678,7 +678,7 @@ defineExpose({ reveal });
 }
 
 .workspace-file-tree.is-root-drop-target {
-  outline: 2px dashed var(--mar-control-focus);
+  outline: 2px dashed var(--mar-text-muted);
   outline-offset: -3px;
   background: var(--mar-fill-soft);
 }
@@ -768,7 +768,7 @@ defineExpose({ reveal });
 
 .file-tree-row-shell.drop-target {
   background-color: var(--mar-fill-soft);
-  outline: 1px solid var(--mar-control-focus);
+  outline: 1px solid var(--mar-text-muted);
   outline-offset: -1px;
 }
 

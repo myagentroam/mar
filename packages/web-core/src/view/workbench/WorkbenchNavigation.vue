@@ -492,11 +492,6 @@ function runBlankMenuCommand(command: string): void {
   border-radius: 5px;
 }
 
-.brand-home-link:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
-
 .workbench-brand img {
   display: block;
   width: var(--mar-brand-logo-size);
@@ -582,7 +577,6 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .activity-rail :deep(button.nav-menu-button:focus-visible) {
-  outline: 2px solid var(--mar-text-muted);
   outline-offset: -2px;
 }
 
@@ -734,7 +728,6 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .settings-nav button:focus-visible {
-  outline: 2px solid var(--mar-text-muted);
   outline-offset: -2px;
 }
 
@@ -784,10 +777,6 @@ function runBlankMenuCommand(command: string): void {
     overscroll-behavior-inline: contain;
     scrollbar-width: none;
     touch-action: pan-x pinch-zoom;
-  }
-
-  .activity-rail nav::-webkit-scrollbar {
-    display: none;
   }
 }
 

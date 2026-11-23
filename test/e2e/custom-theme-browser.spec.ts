@@ -1354,6 +1354,7 @@ for (const scheme of ['Light', 'Dark']) {
           hover: color('--mar-overlay-row-hover, var(--mar-fill-row-hover)'),
           hoverBorder: color('--mar-input-border-hover'),
           disabledBorder: color('--mar-border-subtle'),
+          focusBorder: color('--mar-input-border-focus'),
           focus: color('--mar-control-focus')
         };
         probe.remove();
@@ -1379,7 +1380,10 @@ for (const scheme of ['Light', 'Dark']) {
           await page.keyboard.press('Tab');
           await expect(select).toBeFocused();
           await page.keyboard.press('ArrowDown');
-          await expect(wrapper).toHaveCSS('box-shadow', `${palette.focus} 0px 0px 0px 1px inset`);
+          await expect(wrapper).toHaveCSS(
+            'box-shadow',
+            `${palette.focusBorder} 0px 0px 0px 1px inset`
+          );
           const dropdown = page.getByRole('listbox', { name, exact: true });
           const selected = dropdown.getByRole('option', { name: 'One', exact: true });
           const other = dropdown.getByRole('option', { name: 'Two', exact: true });
@@ -1393,6 +1397,7 @@ for (const scheme of ['Light', 'Dark']) {
             (await selected.getAttribute('id'))!
           );
           await expect(selected).toHaveCSS('outline-style', 'solid');
+          await expect(selected).toHaveCSS('outline-color', palette.focus);
           if (!custom) {
             const { outlineColor, backgroundColor } = await selected.evaluate((element) => {
               const style = getComputedStyle(element);
@@ -2050,7 +2055,7 @@ for (const [scheme, width] of [
       await enabledInput.focus();
       await expect(wrapper(enabledInput)).toHaveCSS(
         'box-shadow',
-        await tokenShadow('--mar-control-focus')
+        await tokenShadow('--mar-input-border-focus')
       );
       await enabledInput.blur();
       const addOn = fields.getByRole('button', { name: 'Field add-on' });
@@ -2062,7 +2067,7 @@ for (const [scheme, width] of [
       await validSelect.click();
       await expect(wrapper(validSelect)).toHaveCSS(
         'box-shadow',
-        await tokenShadow('--mar-control-focus')
+        await tokenShadow('--mar-input-border-focus')
       );
       await validSelect.press('Escape');
       for (const input of [
@@ -2122,6 +2127,7 @@ test('solid and inset field frames retain invalid and keyboard focus cues', asyn
   const invalidInput = page.getByRole('textbox', { name: 'Invalid text field' });
   const invalidSelect = page.getByRole('combobox', { name: 'Invalid field' });
   const addOn = page.getByRole('button', { name: 'Field add-on', exact: true });
+  const calendar = frame.getByRole('button');
   const fields = [
     [invalidInput, page.locator('.mar-ui-input').filter({ has: invalidInput })],
     [invalidSelect, page.locator('.mar-ui-select__field').filter({ has: invalidSelect })],
@@ -2146,7 +2152,7 @@ test('solid and inset field frames retain invalid and keyboard focus cues', asyn
     const errorEdge = await readEdge();
     if (input === invalidInput) await page.keyboard.press('Tab');
     else if (input === date) {
-      await frame.getByRole('button').focus();
+      await calendar.focus();
       await page.keyboard.press('Tab');
     } else await input.focus();
     await expect(input).toBeFocused();
@@ -2156,7 +2162,12 @@ test('solid and inset field frames retain invalid and keyboard focus cues', asyn
   }
   await addOn.focus();
   await expect(frame).toHaveAttribute('data-expanded', 'false');
+  await calendar.focus();
+  await expect(calendar).toHaveCSS('outline-width', '2px');
+  await expect(frame).toHaveCSS('outline-style', 'none');
   await page.emulateMedia({ forcedColors: 'active' });
+  await expect(calendar).toHaveCSS('outline-width', '2px');
+  await expect(frame).toHaveCSS('outline-style', 'none');
   for (const [input, fieldFrame] of fields) {
     await input.focus();
     await expect(fieldFrame).toHaveCSS('border-top-style', 'dashed');
@@ -2182,18 +2193,17 @@ test('theme preview input uses its own palette independently of the active theme
 }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
   const preview = page.locator('.mar-theme-preview');
-  const input = preview.locator('.preview-label input');
+  const input = preview.locator('.preview-label .mar-ui-input');
   await expect(preview).toHaveAttribute('data-theme', 'vscode-dark-2026');
   const realInput = page
     .getByRole('region', { name: 'Real theme controls' })
     .locator('.mar-ui-input')
     .filter({ has: page.getByRole('textbox', { name: 'Sample input', exact: true }) });
   const inputShadow = await realInput.evaluate((element) => getComputedStyle(element).boxShadow);
-  const normalBorder = await input.evaluate((element) => getComputedStyle(element).borderTopColor);
-  expect(inputShadow).toContain(normalBorder);
+  await expect(input).toHaveCSS('box-shadow', inputShadow);
   await page.getByRole('button', { name: 'Inspect Light', exact: true }).click();
   await expect(preview).toHaveAttribute('data-theme', 'daylight');
-  await expect(input).toHaveCSS('border-top-color', 'rgb(185, 202, 223)');
+  await expect(input).toHaveCSS('box-shadow', 'rgb(185, 202, 223) 0px 0px 0px 1px inset');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
   await expect(realInput).toHaveCSS('box-shadow', inputShadow);
 });
@@ -2300,6 +2310,12 @@ test('expanded and compact previews share the applied palette without changing g
     const disabled = sample.getByRole('button', { name: 'Disabled', exact: true });
     await expect(disabled).toBeDisabled();
     await expect(disabled).toHaveCSS('color', 'rgb(119, 136, 153)');
+    const item = sample.locator('.file.selected');
+    await item.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(item).toBeFocused();
+    await expect(item).toHaveCSS('outline', 'rgb(226, 212, 191) solid 2px');
   };
   await expectPreviewText(preview);
   await expect(preview.locator('.assistant-message')).toHaveCSS(
@@ -2318,8 +2334,6 @@ test('expanded and compact previews share the applied palette without changing g
   const compactFont = await preview.evaluate((element) =>
     parseFloat(getComputedStyle(element).fontSize)
   );
-  await preview.locator('input').focus();
-  await expect(preview.locator('input')).toHaveCSS('outline-color', 'rgb(226, 212, 191)');
   await page.getByRole('button', { name: 'Enlarge preview', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const expanded = dialog.locator('.mar-theme-preview');
@@ -2336,8 +2350,10 @@ test('expanded and compact previews share the applied palette without changing g
     await expanded.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
   ).toBeGreaterThan(compactFont);
   await expect(expanded.locator('.diff-add')).toHaveCSS('color', 'rgb(18, 52, 86)');
-  await expanded.getByRole('textbox', { name: 'Message', exact: true }).fill('Preview only');
-  await expect(expanded.locator('input')).toHaveCSS('outline-color', 'rgb(226, 212, 191)');
+  const sampleInput = expanded.getByRole('textbox', { name: 'Message', exact: true });
+  await sampleInput.fill('Preview only');
+  await expect(sampleInput).toHaveValue('Preview only');
+  await expect(sampleInput).toHaveCSS('outline-style', 'none');
   await expect(editor).toHaveValue(source);
   expect(await page.evaluate(() => localStorage.getItem('mar.customThemes'))).toBeNull();
   expect(

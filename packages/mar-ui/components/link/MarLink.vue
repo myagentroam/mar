@@ -38,10 +38,6 @@ withDefaults(
 .mar-ui-link:hover {
   color: var(--mar-ui-link-hover-text-color, var(--mar-ui-control-link-hover));
 }
-.mar-ui-link:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-  outline-offset: 2px;
-}
 .mar-ui-link[data-underline='always'],
 .mar-ui-link[data-underline='true']:hover,
 .mar-ui-link[data-underline='hover']:hover {

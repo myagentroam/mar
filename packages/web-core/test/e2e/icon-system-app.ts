@@ -241,14 +241,24 @@ const app = createApp({
         ]);
     }
     if (new URL(location.href).searchParams.has('attachment-icons')) {
+      const withPreview = new URL(location.href).searchParams.has('attachment-preview');
+      const file = withPreview
+        ? new File(
+            ['<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'],
+            'sample.svg',
+            {
+              type: 'image/svg+xml'
+            }
+          )
+        : new File(['notes'], 'notes.txt', { type: 'text/plain' });
       const attachments = ref([
         {
           id: 'attachment',
-          file: new File(['notes'], 'notes.txt', { type: 'text/plain' }),
-          previewUrl: null,
+          file,
+          previewUrl: withPreview ? URL.createObjectURL(file) : null,
           nodeId: 'host',
           workspaceId: 'project',
-          receivedBytes: 5,
+          receivedBytes: file.size,
           status: 'COMPLETED' as const
         }
       ]);

@@ -735,7 +735,6 @@ onMounted(() => {
 }
 
 .composer-queue .goal-objective:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
   outline-offset: 1px;
 }
 
@@ -868,7 +867,7 @@ onMounted(() => {
   box-sizing: border-box;
   inset-inline: 0;
   block-size: 2px;
-  border-top: 2px solid var(--mar-control-focus);
+  border-top: 2px solid var(--mar-text-muted);
   pointer-events: none;
 }
 

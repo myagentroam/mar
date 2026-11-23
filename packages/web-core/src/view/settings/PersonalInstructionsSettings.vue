@@ -4,6 +4,7 @@ import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -130,10 +131,6 @@ function navigateScopes(event: KeyboardEvent, index: number): void {
   (event.currentTarget as HTMLElement).parentElement
     ?.querySelectorAll<HTMLElement>('[role="tab"]')
     [next]?.focus();
-}
-
-function validateContent(): void {
-  void form.value?.validateField('content').catch(() => undefined);
 }
 
 async function load(retry = false): Promise<void> {
@@ -303,15 +300,15 @@ async function clear(): Promise<void> {
         prop="content"
         for="personal-instructions-content"
       >
-        <textarea
+        <MarInput
           id="personal-instructions-content"
           v-model="formState.content"
+          type="textarea"
           :aria-label="translate('personalInstructions.prompt')"
           :disabled="loading"
           :maxlength="20000"
           :placeholder="translate('personalInstructions.placeholder')"
-          @blur="validateContent"
-        ></textarea>
+        />
       </MarFormItem>
       <div class="instruction-actions">
         <MarButton
@@ -400,11 +397,6 @@ h2 {
   background: var(--mar-fill-selection);
 }
 
-.instruction-scopes :deep(.mar-ui-check-tag:focus-visible) {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
-
 .instruction-scopes img {
   width: 16px;
   height: 16px;
@@ -418,32 +410,11 @@ h2 {
 .personal-instructions :deep(.mar-ui-form-item) {
   margin-bottom: 1.5rem;
 }
-.personal-instructions textarea {
-  box-sizing: border-box;
-  width: 100%;
+.personal-instructions :deep(.mar-ui-input--textarea textarea) {
   min-height: 12rem;
   height: clamp(12rem, 40vh, 28rem);
-  border: 1px solid var(--mar-input-border);
-  border-radius: var(--mar-radius-control);
-  outline: none;
-  background: var(--mar-bg-panel);
-  color: var(--mar-text-primary);
   padding: 0.5rem 0.7rem;
-  font-family: inherit;
-  font-size: var(--mar-font-size-input);
   line-height: 1.5;
-  resize: vertical;
-}
-.personal-instructions textarea::placeholder {
-  color: var(--mar-text-secondary);
-  opacity: 1;
-}
-.personal-instructions textarea:focus {
-  border-color: var(--mar-control-focus);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mar-control-focus) 24%, transparent);
-}
-.personal-instructions :deep(.is-error) textarea {
-  border-color: var(--mar-control-color-danger);
 }
 .instruction-state {
   flex: 1 1 auto;

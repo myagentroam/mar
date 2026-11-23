@@ -921,6 +921,10 @@ function submitSessionSearch(): void {
   user-select: none;
 }
 
+.session-link:focus-visible {
+  outline-offset: -2px;
+}
+
 .session-link {
   display: grid;
   min-width: 0;
@@ -1096,11 +1100,11 @@ function submitSessionSearch(): void {
 }
 
 .session-list li.drag-over-pinned {
-  box-shadow: inset 0 2px var(--mar-control-focus);
+  box-shadow: inset 0 2px var(--mar-text-muted);
 }
 
 .session-list li.drag-over-pinned-after {
-  box-shadow: inset 0 -2px var(--mar-control-focus);
+  box-shadow: inset 0 -2px var(--mar-text-muted);
 }
 
 @media (max-width: 767px) {

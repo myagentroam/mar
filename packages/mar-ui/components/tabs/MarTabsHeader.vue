@@ -321,7 +321,6 @@ function activate(name: Name): void {
   color: var(--mar-ui-text-primary);
 }
 .mar-ui-tabs__list [role='tab']:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 .mar-ui-tabs__list .mar-tab-close {
@@ -371,17 +370,12 @@ function activate(name: Name): void {
   font-weight: var(--mar-tab-font-weight, 500);
 }
 
-.mar-tab-strip::-webkit-scrollbar {
-  display: none;
-}
-
 .mar-tab-strip-item {
   display: inline-flex;
   flex-shrink: 0;
   min-width: 0;
   height: var(--mar-tab-strip-item-height, 28px);
   max-width: min(15rem, 100%);
-  box-sizing: border-box;
   align-items: center;
   border: 1px solid var(--mar-ui-border-default);
   border-bottom: 0;
@@ -445,7 +439,6 @@ function activate(name: Name): void {
 }
 
 .mar-tab-strip-tab:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
 }
 
@@ -487,14 +480,6 @@ function activate(name: Name): void {
 .mar-tab-close:is(:hover, :active, :focus-visible):enabled {
   color: var(--mar-ui-text-primary);
 }
-.mar-tab-scroll:focus-visible,
-.mar-tab-close:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-}
-.mar-tab-scroll:focus-visible {
-  outline-offset: 2px;
-}
-
 @media (max-width: 767px) {
   .mar-tab-scroll {
     display: none;

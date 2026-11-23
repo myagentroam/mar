@@ -1039,6 +1039,10 @@ test('closing a background file tab preserves the pending foreground code naviga
     await expect(page.locator('.workspace-file-page-frame:visible .cm-line')).toHaveText(
       'export {};'
     );
+    await expect(page.locator('.cm-code-navigation-destination:visible')).toHaveCSS(
+      'box-shadow',
+      'rgb(82, 100, 124) 3px 0px 0px 0px inset'
+    );
   } finally {
     reply.resolve();
     await fixture.close();

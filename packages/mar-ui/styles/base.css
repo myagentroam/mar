@@ -1,0 +1,23 @@
+@import './native-actions.css';
+
+* {
+  box-sizing: border-box;
+  scrollbar-color: var(--mar-ui-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+:where(button, select, input, textarea) {
+  font-family: inherit;
+}
+
+/* Document-wide defaults. The host theme may supply the focus color. */
+:where(:focus-visible) {
+  outline: 2px solid var(--mar-ui-control-focus, CanvasText);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  :where(:focus-visible) {
+    outline-color: Highlight;
+  }
+}

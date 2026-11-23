@@ -1,6 +1,6 @@
 @import './styles/theme.css';
 @import './styles/mar-ui-theme.css';
-@import '@myagentroam/mar-ui/native-actions.css';
+@import '@myagentroam/mar-ui/styles.css';
 @import './styles/product-primitives.css';
 
 /* Global document foundations and cross-page layouts. */
@@ -34,12 +34,6 @@ html.console-ui {
   }
 }
 
-* {
-  box-sizing: border-box;
-  scrollbar-color: var(--mar-scrollbar-thumb) transparent;
-  scrollbar-width: thin;
-}
-
 body {
   min-width: 320px;
   min-height: 100vh;
@@ -48,34 +42,9 @@ body {
   font-size: var(--mar-font-size-body);
 }
 
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-*::-webkit-scrollbar-track,
-*::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: var(--mar-scrollbar-thumb);
-  background-clip: padding-box;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--mar-scrollbar-thumb-hover);
-}
-
 html.file-preview-open,
 body.file-preview-open {
   overflow: hidden;
-}
-
-html.console-ui :where(button, select, input, textarea) {
-  font-family: inherit;
 }
 
 html.console-ui

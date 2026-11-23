@@ -157,10 +157,6 @@ watch(open, async () => {
 .process-heading-row:active {
   background-color: var(--mar-fill-row-hover);
 }
-.process-heading:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
 .process-chevron {
   /* This row disclosure matches the nested summary arrows, not standalone mobile actions. */
   font-size: inherit;

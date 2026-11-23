@@ -12,7 +12,12 @@
   box-shadow: 0 0 0 1px var(--mar-ui-field-frame-edge) inset;
 }
 
-/* Input add-ons are independent controls; only the editing body drives its frame. */
+/* Only the editing control delegates its focus indicator to the frame. */
+.mar-ui-field-frame__control {
+  outline: none;
+}
+
+/* Input add-ons are independent controls; only the editing body drives its hover edge. */
 .mar-ui-field-frame:where(
   :not(.mar-ui-input):hover,
   .mar-ui-input:has(> .mar-ui-input__body:hover)
@@ -20,12 +25,8 @@
   --mar-ui-field-frame-edge: var(--mar-ui-input-border-hover);
 }
 
-.mar-ui-field-frame:where(
-  :not(.mar-ui-input):focus-within,
-  .mar-ui-input:has(> .mar-ui-input__body:focus-within),
-  [data-expanded='true']
-) {
-  --mar-ui-field-frame-edge: var(--mar-ui-control-focus);
+.mar-ui-field-frame:where(:has(.mar-ui-field-frame__control:focus), [data-expanded='true']) {
+  --mar-ui-field-frame-edge: var(--mar-ui-input-border-focus);
 }
 
 .mar-ui-field-frame:where([data-invalid='true']) {
@@ -33,8 +34,7 @@
 }
 
 .mar-ui-field-frame:where([data-invalid='true']):where(
-    :not(.mar-ui-input):has(:focus-visible),
-    :has(> .mar-ui-input__body :focus-visible)
+    :has(.mar-ui-field-frame__control:focus-visible)
   ) {
   outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: 1px;
@@ -61,11 +61,7 @@
     border-style: dashed;
   }
 
-  .mar-ui-field-frame:where(
-    :not(.mar-ui-input):focus-within,
-    :has(> .mar-ui-input__body:focus-within),
-    [data-expanded='true']
-  ) {
+  .mar-ui-field-frame:where(:has(.mar-ui-field-frame__control:focus)) {
     outline: 2px solid Highlight;
   }
 

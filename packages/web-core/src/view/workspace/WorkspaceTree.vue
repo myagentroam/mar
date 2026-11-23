@@ -1378,12 +1378,12 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .tree-node-row.drop-before,
 .workspace-branches > li.drop-before {
-  box-shadow: inset 0 2px var(--mar-control-focus);
+  box-shadow: inset 0 2px var(--mar-text-muted);
 }
 
 .tree-node-row.drop-after,
 .workspace-branches > li.drop-after {
-  box-shadow: inset 0 -2px var(--mar-control-focus);
+  box-shadow: inset 0 -2px var(--mar-text-muted);
 }
 
 .tree-node-row:hover {
@@ -1436,7 +1436,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .node-expand-button:focus-visible,
 .workspace-group-toggle:focus-visible,
 .workspace-branch-button:focus-visible {
-  outline: 1px solid var(--mar-control-focus);
   outline-offset: -1px;
 }
 

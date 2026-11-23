@@ -15,6 +15,17 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+// @test-covers packages/web-core/src/view/composer/ComposerAttachments.vue
+test('Composer attachment thumbnails distinguish hover from keyboard focus', async ({ page }) => {
+  await page.goto(`${fixture.url}icon-system.html?attachment-icons&attachment-preview&theme=light`);
+  const preview = page.locator('.composer-attachment-preview');
+  await preview.hover();
+  await expect(preview).toHaveCSS('outline', 'rgb(94, 115, 143) solid 1px');
+  await page.keyboard.press('Tab');
+  await expect(preview).toBeFocused();
+  await expect(preview).toHaveCSS('outline', 'rgb(23, 78, 158) solid 2px');
+});
+
 async function palette(page: Page) {
   return page.evaluate(() => {
     const probe = document.createElement('span');
@@ -26,8 +37,10 @@ async function palette(page: Page) {
     const colors = {
       primary: resolve('--mar-text-primary'),
       secondary: resolve('--mar-text-secondary'),
+      drop: resolve('--mar-text-muted'),
       inputBorder: resolve('--mar-input-border'),
       inputBorderHover: resolve('--mar-input-border-hover'),
+      inputBorderFocus: resolve('--mar-input-border-focus'),
       focus: resolve('--mar-control-focus'),
       actionHover: resolve('--mar-action-hover-overlay'),
       hover: resolve('--mar-fill-row-hover'),
@@ -110,7 +123,7 @@ for (const theme of ['light', 'dark', 'custom']) {
       expect(line.content).not.toBe('none');
       expect(line.width).toBeCloseTo((await row.boundingBox())!.width, 0);
       expect(line.height).toBe('2px');
-      expect(line.color).toBe(colors.focus);
+      expect(line.color).toBe(colors.drop);
       expect(line.top).toBeCloseTo(edge === 'before' ? 0 : line.rowHeight - 2, 0);
     }
 
@@ -682,7 +695,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
                 );
               }
               await input.focus();
-              await expect(editor).toHaveCSS('box-shadow', `${colors.focus} 0px 0px 0px 1px inset`);
+              await expect(editor).toHaveCSS(
+                'box-shadow',
+                `${colors.inputBorderFocus} 0px 0px 0px 1px inset`
+              );
               if (!custom && width === 1280)
                 await editor.screenshot({ path: testInfo.outputPath('queue-editor-focused.png') });
             }
@@ -844,7 +860,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const control = page.locator('.composer-attachment-remove');
     const colors = await control.evaluate((element) => {
       const probe = document.createElement('span');
-      probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+      probe.style.backgroundColor = 'var(--mar-action-hover-overlay)';
       probe.style.color = 'var(--mar-color-danger-text)';
       element.append(probe);
       const style = getComputedStyle(probe);
@@ -908,7 +924,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(control).toBeEnabled();
       const colors = await palette(page);
       await control.hover();
-      await expect(control).toHaveCSS('background-color', colors.hover);
+      await expect(control).toHaveCSS('background-color', colors.actionHover);
       await expect(control).toHaveCSS('border-radius', '6px');
       await expect(control).toHaveCSS('color', colors.primary);
       await page.mouse.move(0, 0);
@@ -916,7 +932,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await control.focus();
       await expect(control).toHaveCSS('outline-color', colors.focus);
       await expect(control).toHaveCSS('outline-style', 'solid');
-      await expect(control).toHaveCSS('background-color', colors.hover);
+      await expect(control).toHaveCSS('background-color', colors.actionHover);
     }
   });
 

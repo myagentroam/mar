@@ -15,7 +15,5 @@ defineProps<{ always?: boolean; maxHeight?: string | number }>();
 .mar-ui-scrollbar {
   overflow: auto;
   min-block-size: 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--mar-ui-scrollbar-thumb) transparent;
 }
 </style>

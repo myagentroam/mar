@@ -73,10 +73,6 @@ input:disabled + label {
   color: var(--mar-ui-text-disabled);
   cursor: not-allowed;
 }
-input:focus-visible {
-  outline: 2px solid var(--mar-ui-control-focus);
-  outline-offset: 2px;
-}
 .mar-ui-radio--button input {
   position: absolute;
   inline-size: 1px;
@@ -86,7 +82,6 @@ input:focus-visible {
 .mar-ui-radio--button label {
   display: grid;
   place-items: center;
-  box-sizing: border-box;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   padding-inline: 0.5rem;
   border: 1px solid var(--mar-ui-input-border);
@@ -110,10 +105,5 @@ input:focus-visible {
 .mar-ui-radio--button input:focus-visible + label {
   outline: 2px solid var(--mar-ui-control-focus);
   outline-offset: -2px;
-}
-@supports not (accent-color: auto) {
-  input:checked {
-    outline: 1px solid var(--mar-ui-control-focus);
-  }
 }
 </style>

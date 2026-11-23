@@ -330,7 +330,7 @@ const emit = defineEmits<{
 }
 
 .composer:has(> .composer-drop-target) {
-  --composer-active-boundary: var(--mar-control-focus);
+  --composer-active-boundary: var(--mar-text-muted);
 }
 
 .composer:has(.composer-input:focus) {
@@ -413,7 +413,7 @@ const emit = defineEmits<{
 }
 
 .composer-shell.composer-drop-target {
-  outline: 2px dashed var(--mar-control-focus);
+  outline: 2px dashed var(--mar-text-muted);
   outline-offset: -3px;
   background: var(--mar-fill-selection);
 }

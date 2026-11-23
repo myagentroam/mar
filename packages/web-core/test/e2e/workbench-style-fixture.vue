@@ -394,6 +394,7 @@ if (new URLSearchParams(location.search).has('terminal-capability'))
 const surfacePage = shallowReactive({
   view: 'nodes',
   setAsideSurfaceVisible() {},
+  setAsideSessionFits() {},
   asideViewMode: () => 'compact' as const,
   asideWidth: () => undefined,
   mobileViewport: mobile,

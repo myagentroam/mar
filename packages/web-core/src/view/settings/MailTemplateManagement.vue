@@ -288,10 +288,6 @@ async function sendTest(): Promise<void> {
 .template-choice.is-selected:hover {
   background: var(--mar-fill-selection);
 }
-.template-choice:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
 .template-choice__meta,
 .template-choice__subject {
   color: var(--mar-text-secondary);

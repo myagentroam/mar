@@ -979,10 +979,6 @@ p {
 .trend-bucket {
   cursor: pointer;
 }
-.usage-count:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: 2px;
-}
 .bucket-hit-area {
   fill: transparent;
 }
