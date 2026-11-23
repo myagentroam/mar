@@ -1,6 +1,87 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test('File tree distinguishes upload regions from internal move targets', async ({ page }) => {
+  const fixture = await startCustomThemeFixture();
+  try {
+    await page.goto(`${fixture.url}file-tree.html?drop-targets`);
+    const tree = page.locator('.workspace-file-tree');
+    const file = tree.locator('[data-file-path="notes.txt"]');
+    const folder = tree.locator('[data-file-path="src"]').locator('..');
+    await expect(file).toBeVisible();
+    const files = await page.evaluateHandle(() => {
+      const data = new DataTransfer();
+      data.items.add(new File(['attachment'], 'upload.txt'));
+      return data;
+    });
+    const other = await page.evaluateHandle(() => {
+      const data = new DataTransfer();
+      data.setData('text/plain', 'not a file');
+      return data;
+    });
+    const dropColor = await tree.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-drop-indicator)';
+      element.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    await tree.dispatchEvent('dragenter', { dataTransfer: other });
+    await expect(tree).not.toHaveClass(/is-root-drop-target/);
+    const treeSpace = tree.getByRole('tree');
+    await treeSpace.dispatchEvent('dragenter', { dataTransfer: files });
+    await expect(tree).toHaveCSS('outline', `${dropColor} dashed 2px`);
+    await treeSpace.dispatchEvent('dragleave', {
+      dataTransfer: files,
+      relatedTarget: await page.locator('body').elementHandle()
+    });
+    await expect(tree).not.toHaveClass(/is-root-drop-target/);
+    await tree.dispatchEvent('dragenter', { dataTransfer: files });
+    await expect(tree).toHaveCSS('outline', `${dropColor} dashed 2px`);
+    await folder.dispatchEvent('dragenter', { dataTransfer: files });
+    await tree.dispatchEvent('dragleave', {
+      dataTransfer: files,
+      relatedTarget: await folder.elementHandle()
+    });
+    await expect(tree).not.toHaveClass(/is-root-drop-target/);
+    await expect(folder).toHaveCSS('outline', `${dropColor} dashed 2px`);
+    await file.dispatchEvent('dragenter', { dataTransfer: files });
+    await folder.dispatchEvent('dragleave', { dataTransfer: files });
+    await expect(folder).not.toHaveClass(/drop-target/);
+    await expect(tree).toHaveCSS('outline', `${dropColor} dashed 2px`);
+    await file.dispatchEvent('dragleave', { dataTransfer: files });
+    await expect(tree).not.toHaveClass(/is-root-drop-target/);
+
+    await file.dispatchEvent('dragstart', { dataTransfer: other });
+    await tree.dispatchEvent('dragenter', { dataTransfer: other });
+    await expect(tree).not.toHaveClass(/is-root-drop-target/);
+    await file.dispatchEvent('dragenter', { dataTransfer: other });
+    await expect(file.locator('..')).not.toHaveClass(/drop-target/);
+    await folder.dispatchEvent('dragenter', { dataTransfer: other });
+    await expect(folder).toHaveCSS('outline', `${dropColor} solid 1px`);
+    await file.dispatchEvent('dragend', { dataTransfer: other });
+    await expect(folder).not.toHaveClass(/drop-target/);
+
+    const folderSource = tree.locator('[data-file-path="src"]');
+    const nested = tree.locator('[data-file-path="src/nested"]').locator('..');
+    const outcome = page.getByRole('status', { name: 'Drop outcome' });
+    await folderSource.dispatchEvent('dragstart', { dataTransfer: other });
+    await nested.dispatchEvent('dragenter', { dataTransfer: other });
+    await expect(nested).not.toHaveClass(/drop-target/);
+    await nested.dispatchEvent('drop', { dataTransfer: other });
+    await expect(outcome).toHaveText('Invalid drop');
+
+    await file.dispatchEvent('dragstart', { dataTransfer: other });
+    await folder.dispatchEvent('dragenter', { dataTransfer: other });
+    await folder.dispatchEvent('drop', { dataTransfer: other });
+    await expect(outcome).toHaveText('notes.txt → src');
+    await Promise.all([files.dispose(), other.dispose()]);
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('File tree renders bundled MAR file and folder icons by default in both color themes', async ({
   page
 }, testInfo) => {

@@ -928,6 +928,33 @@ test('Theme action hints do not replace dropdown semantics', async ({ page }) =>
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 });
 
+test('Workspace tab drag shows the insertion edge on the hovered half', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.goto(`${fixture.url}workbench-style.html?locale=en-US&theme=daylight`);
+  const strip = page.getByRole('region', { name: 'Workspace tab fixture' });
+  const source = strip.getByRole('tab', { name: 'Workspace 0', exact: true });
+  const target = strip.getByRole('tab', { name: 'Workspace 1', exact: true }).locator('..');
+  await source.hover({ position: { x: 12, y: 12 } });
+  await page.mouse.down();
+  await expect(source.locator('..')).toHaveClass(/\bdragging\b/u);
+  const box = (await target.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 4, box.y + box.height / 2, { steps: 5 });
+  await expect(target).toHaveAttribute('data-drop-edge', 'before');
+  const marker = (side: string) =>
+    target.evaluate(
+      (tab, edge) => getComputedStyle(tab, '::after').getPropertyValue(`border-${edge}`),
+      side
+    );
+  expect(await marker('left')).toBe('2px solid rgb(23, 78, 158)');
+  expect(await marker('right')).toMatch(/^0px none /u);
+  await page.mouse.move(box.x + (box.width * 3) / 4, box.y + box.height / 2);
+  await expect(target).toHaveAttribute('data-drop-edge', 'after');
+  expect(await marker('right')).toBe('2px solid rgb(23, 78, 158)');
+  expect(await marker('left')).toMatch(/^0px none /u);
+  await page.mouse.up();
+  await expect(target).not.toHaveAttribute('data-drop-edge');
+});
+
 test('Shared tooltip follows keyboard focus on real tree rows and workspace tabs', async ({
   page
 }) => {

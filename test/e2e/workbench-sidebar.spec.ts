@@ -569,10 +569,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(button.y).toBeGreaterThanOrEqual(search.y + search.height);
     };
     await expect(create).toHaveCSS('border-top-width', '1px');
-    await expect(create).toHaveCSS('height', '32px');
+    const controlHeight = await create.evaluate((button) =>
+      getComputedStyle(button).getPropertyValue('--mar-compact-control-size').trim()
+    );
+    await expect(create).toHaveCSS('height', controlHeight);
     await expectCreateAlignedToSearch();
     const { createFill, createBorder, hoverFill, folderColor, fileNameColor } =
-      await create.evaluate((button, dark) => {
+      await create.evaluate((button) => {
         const probe = document.createElement('span');
         button.append(probe);
         const resolveColor = (color: string) => {
@@ -580,23 +583,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           return getComputedStyle(probe).color;
         };
         const colors = {
-          createFill: resolveColor(
-            dark
-              ? 'color-mix(in srgb, var(--mar-fill-row-hover) 44%, var(--mar-fill-selection))'
-              : 'var(--mar-fill-row-hover)'
-          ),
-          createBorder: resolveColor(
-            dark
-              ? 'color-mix(in srgb, var(--mar-border-medium) 82%, var(--mar-text-secondary))'
-              : 'var(--mar-border-default)'
-          ),
+          createFill: resolveColor('var(--mar-session-create-fill)'),
+          createBorder: resolveColor('var(--mar-input-border)'),
           hoverFill: resolveColor('var(--mar-fill-row-hover)'),
           folderColor: resolveColor('var(--mar-text-secondary)'),
           fileNameColor: resolveColor('var(--mar-text-primary)')
         };
         probe.remove();
         return colors;
-      }, theme === 'vscode-dark-2026');
+      });
     await expect(create).toHaveCSS('background-color', createFill);
     await expect(create).toHaveCSS('border-top-color', createBorder);
     const searchControl = history.locator('.history-search-row .mar-ui-input');
@@ -604,6 +599,35 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const upload = page.locator('.files-drop-target');
     await expect(upload).toBeVisible();
     await expect(upload).toBeEnabled();
+    const restingBorder = await upload.evaluate(
+      (element) => getComputedStyle(element).borderTopColor
+    );
+    const draggedFiles = await page.evaluateHandle(() => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File(['attachment'], 'notes.txt'));
+      return dataTransfer;
+    });
+    const draggedText = await page.evaluateHandle(() => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.setData('text/plain', 'not a file');
+      return dataTransfer;
+    });
+    await upload.dispatchEvent('dragenter', { dataTransfer: draggedText });
+    await expect(upload).toHaveCSS('border-top-color', restingBorder);
+    await upload.dispatchEvent('dragenter', { dataTransfer: draggedFiles });
+    await expect(upload).toHaveCSS('border-top-style', 'dashed');
+    await expect(upload).toHaveCSS(
+      'border-top-color',
+      theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)'
+    );
+    await upload.dispatchEvent('dragleave', {
+      dataTransfer: draggedFiles,
+      relatedTarget: await upload.locator('span').elementHandle()
+    });
+    await expect(upload).toHaveClass(/\bactive\b/u);
+    await upload.dispatchEvent('dragleave', { dataTransfer: draggedFiles });
+    await expect(upload).toHaveCSS('border-top-color', restingBorder);
+    await Promise.all([draggedFiles.dispose(), draggedText.dispose()]);
     const uploadTextColor = await upload
       .locator('span')
       .evaluate((span) => getComputedStyle(span).color);

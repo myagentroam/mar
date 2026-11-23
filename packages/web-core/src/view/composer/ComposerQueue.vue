@@ -867,7 +867,7 @@ onMounted(() => {
   box-sizing: border-box;
   inset-inline: 0;
   block-size: 2px;
-  border-top: 2px solid var(--mar-text-muted);
+  border-top: 2px solid var(--mar-drop-indicator);
   pointer-events: none;
 }
 
@@ -877,12 +877,6 @@ onMounted(() => {
 
 .queue-item[data-drop-edge='after']::after {
   inset-block-end: 0;
-}
-
-@media (forced-colors: active) {
-  .queue-item[data-drop-edge]::after {
-    border-top-color: Highlight;
-  }
 }
 
 .queue-item-label {

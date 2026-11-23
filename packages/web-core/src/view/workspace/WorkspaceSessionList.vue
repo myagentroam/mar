@@ -265,22 +265,36 @@ function clearPinnedDrag(): void {
 }
 
 function dragOverPinned(event: DragEvent, session: Session): void {
-  if (!pinnedDragEnabled(session) || draggingPinnedSessionId.value === undefined) return;
+  const sourceId = draggingPinnedSessionId.value;
+  if (!pinnedDragEnabled(session) || sourceId === undefined || sourceId === session.id) {
+    dragOverPinnedSessionId.value = undefined;
+    return;
+  }
   event.preventDefault();
   if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
   dragOverPinnedSessionId.value = session.id;
-  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  dragOverPinnedPosition.value =
-    event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+  dragOverPinnedPosition.value = pinnedDropPosition(event);
 }
 
-function dropPinned(session: Session): void {
+function pinnedDropPosition(event: DragEvent): 'before' | 'after' {
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  return event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+}
+
+function leavePinnedDrop(event: DragEvent, sessionId: string): void {
+  if (dragOverPinnedSessionId.value !== sessionId) return;
+  const row = event.currentTarget as HTMLElement;
+  if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return;
+  dragOverPinnedSessionId.value = undefined;
+}
+
+function dropPinned(event: DragEvent, session: Session): void {
   if (!pinnedDragEnabled(session)) {
     clearPinnedDrag();
     return;
   }
   const source = props.sessions.find((candidate) => candidate.id === draggingPinnedSessionId.value);
-  const position = dragOverPinnedPosition.value;
+  const position = pinnedDropPosition(event);
   clearPinnedDrag();
   if (source === undefined || source.id === session.id) return;
   emit('movePinTo', source, session, position);
@@ -495,8 +509,9 @@ function submitSessionSearch(): void {
         }"
         :draggable="pinnedDragEnabled(session)"
         @dragend="clearPinnedDrag"
+        @dragleave="leavePinnedDrop($event, session.id)"
         @dragover="dragOverPinned($event, session)"
-        @drop.prevent="dropPinned(session)"
+        @drop.prevent="dropPinned($event, session)"
         @dragstart="startPinnedDrag($event, session)"
         @mouseenter="hoveredSessionId = session.id"
         @mouseleave="hoveredSessionId = undefined"
@@ -1100,11 +1115,22 @@ function submitSessionSearch(): void {
 }
 
 .session-list li.drag-over-pinned {
-  box-shadow: inset 0 2px var(--mar-text-muted);
+  position: relative;
 }
 
-.session-list li.drag-over-pinned-after {
-  box-shadow: inset 0 -2px var(--mar-text-muted);
+.session-list li.drag-over-pinned::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.session-list li.drag-over-pinned:not(.drag-over-pinned-after)::after {
+  border-top: 2px solid var(--mar-drop-indicator);
+}
+
+.session-list li.drag-over-pinned-after::after {
+  border-bottom: 2px solid var(--mar-drop-indicator);
 }
 
 @media (max-width: 767px) {

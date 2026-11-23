@@ -37,7 +37,7 @@ async function palette(page: Page) {
     const colors = {
       primary: resolve('--mar-text-primary'),
       secondary: resolve('--mar-text-secondary'),
-      drop: resolve('--mar-text-muted'),
+      drop: resolve('--mar-drop-indicator'),
       inputBorder: resolve('--mar-input-border'),
       inputBorderHover: resolve('--mar-input-border-hover'),
       inputBorderFocus: resolve('--mar-input-border-focus'),
@@ -98,6 +98,8 @@ for (const theme of ['light', 'dark', 'custom']) {
       `${fixture.url}visual-alignment.html?utility-interaction&queue-count=3&theme=${theme === 'light' ? 'daylight' : 'vscode-dark-2026'}`
     );
     const colors = theme === 'custom' ? await customPalette(page) : await palette(page);
+    if (theme === 'custom') expect(colors.drop).not.toBe(colors.focus);
+    else expect(colors.drop).toBe(colors.focus);
     const rows = page.locator('.composer-queue .queue-item');
     const marker = page.locator('.composer-queue [data-drop-edge]');
     const events = page.getByTestId('events');

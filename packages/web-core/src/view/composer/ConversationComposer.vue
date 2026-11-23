@@ -406,7 +406,7 @@ const emit = defineEmits<{
 }
 
 .composer-shell.composer-drop-target {
-  outline: 2px dashed var(--mar-text-muted);
+  outline: 2px dashed var(--mar-drop-indicator);
   outline-offset: -3px;
   background: var(--mar-fill-selection);
 }

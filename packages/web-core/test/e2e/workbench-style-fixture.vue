@@ -120,6 +120,8 @@ const fileRootFixture = new URL(location.href).searchParams.has('file-root');
 const lateTreeFixture = new URL(location.href).searchParams.has('late-tree');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const reorderFixture = new URL(location.href).searchParams.has('session-reorder');
+const resourceDropFixture = new URL(location.href).searchParams.has('resource-drop');
+const draggingWorkspace = ref<{ nodeId: string; workspaceId: string }>();
 const sessionMarkersFixture = new URL(location.href).searchParams.has('session-markers');
 const gitPreviewFixture = new URL(location.href).searchParams.has('git-previews');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
@@ -252,6 +254,7 @@ const workspaces: Workspace[] = [
   { id: 'plain', path: '/plain', kind: 'DIRECTORY' },
   { id: 'grouped', path: '/grouped', kind: 'DIRECTORY', groupName: 'Team' }
 ];
+if (resourceDropFixture) workspaces.push({ id: 'other', path: '/other', kind: 'DIRECTORY' });
 const selectedWorkspace = ref('plain');
 const workspacePickerOpen = ref(false);
 const selectedDirectory = ref('/home');
@@ -664,7 +667,11 @@ if (composerFixture) {
     >
       <WorkspaceTree
         :visible="true"
-        :nodes="listState === 'no-nodes' ? [] : [node]"
+        :nodes="
+          listState === 'no-nodes'
+            ? []
+            : [resourceDropFixture ? { ...node, workspaceCreatable: true } : node]
+        "
         :startup-status="listState === 'loading' || listState === 'failed' ? listState : 'ready'"
         :expanded-node-ids="['node']"
         :workspace-target="
@@ -672,13 +679,17 @@ if (composerFixture) {
             ? undefined
             : { nodeId: 'node', workspaceId: selectedWorkspace }
         "
-        :dragging-workspace="undefined"
+        :dragging-workspace="draggingWorkspace"
         :mobile-viewport="mobile"
         :loading="false"
         :node-label="() => 'Node'"
         :workspace-label="(workspace) => workspace.id"
         :workspaces="() => workspaces"
         @open-workspace="(_node, workspace) => (selectedWorkspace = workspace)"
+        @start-workspace-drag="
+          (_event, nodeId, workspaceId) => (draggingWorkspace = { nodeId, workspaceId })
+        "
+        @end-workspace-drag="draggingWorkspace = undefined"
       />
     </section>
     <section

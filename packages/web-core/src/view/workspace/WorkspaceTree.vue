@@ -161,7 +161,8 @@ function setWorkspaceGroupDropTarget(event: DragEvent, node: NodeSummary, groupN
   workspaceGroupDropTargetKey.value = workspaceGroupKey(node.id, groupName);
 }
 
-function leaveWorkspaceDropTarget(event: DragEvent): void {
+function leaveWorkspaceDropTarget(event: DragEvent, ownsDropTarget: boolean): void {
+  if (!ownsDropTarget) return;
   const row = event.currentTarget as HTMLElement;
   if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return;
   clearWorkspaceDropTargets();
@@ -376,12 +377,14 @@ function dropPosition(event: DragEvent): 'before' | 'after' {
   return event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
 }
 
-function leaveNode(event: DragEvent): void {
+function leaveNode(event: DragEvent, nodeId: string): void {
   const row = event.currentTarget as HTMLElement;
   if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return;
-  nodeDropTargetId.value = undefined;
-  nodeDropPosition.value = undefined;
-  clearWorkspaceDropTargets();
+  if (nodeDropTargetId.value === nodeId) {
+    nodeDropTargetId.value = undefined;
+    nodeDropPosition.value = undefined;
+  }
+  if (workspaceNodeDropTargetId.value === nodeId) clearWorkspaceDropTargets();
 }
 
 function dropNode(event: DragEvent, node: NodeSummary): void {
@@ -541,7 +544,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
           @focusout="clearFocus($event, () => (focusedNodeId = undefined))"
           @contextmenu="openNodeActions($event, result.node.id)"
           @dragover.stop="dragOverNode($event, result.node)"
-          @dragleave="leaveNode"
+          @dragleave="leaveNode($event, result.node.id)"
           @drop.prevent.stop="dropNode($event, result.node)"
         >
           <button
@@ -695,7 +698,12 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                     emit('endWorkspaceDrag');
                   "
                   @dragenter.stop="setWorkspaceDropTarget($event, result.node, workspace)"
-                  @dragleave.stop="leaveWorkspaceDropTarget"
+                  @dragleave.stop="
+                    leaveWorkspaceDropTarget(
+                      $event,
+                      workspaceDropTargetKey === workspaceKey(result.node.id, workspace.id)
+                    )
+                  "
                   @dragover.stop="setWorkspaceDropTarget($event, result.node, workspace)"
                   @drop.prevent.stop="reorderWorkspace($event, result.node, workspace)"
                   @dragstart.stop="startWorkspaceDrag($event, result.node, workspace)"
@@ -809,7 +817,13 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                   @dragenter.stop="
                     setWorkspaceGroupDropTarget($event, result.node, group.groupName)
                   "
-                  @dragleave.stop="leaveWorkspaceDropTarget"
+                  @dragleave.stop="
+                    leaveWorkspaceDropTarget(
+                      $event,
+                      workspaceGroupDropTargetKey ===
+                        workspaceGroupKey(result.node.id, group.groupName)
+                    )
+                  "
                   @dragover.stop="setWorkspaceGroupDropTarget($event, result.node, group.groupName)"
                   @drop.prevent.stop="moveWorkspaceToGroup(result.node, group.groupName)"
                   type="button"
@@ -867,7 +881,12 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                         emit('endWorkspaceDrag');
                       "
                       @dragenter.stop="setWorkspaceDropTarget($event, result.node, workspace)"
-                      @dragleave.stop="leaveWorkspaceDropTarget"
+                      @dragleave.stop="
+                        leaveWorkspaceDropTarget(
+                          $event,
+                          workspaceDropTargetKey === workspaceKey(result.node.id, workspace.id)
+                        )
+                      "
                       @dragover.stop="setWorkspaceDropTarget($event, result.node, workspace)"
                       @drop.prevent.stop="reorderWorkspace($event, result.node, workspace)"
                       @dragstart.stop="startWorkspaceDrag($event, result.node, workspace)"
@@ -1376,14 +1395,35 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   background: var(--mar-fill-selection);
 }
 
-.tree-node-row.drop-before,
-.workspace-branches > li.drop-before {
-  box-shadow: inset 0 2px var(--mar-text-muted);
+.tree-node-row:is(.drop-target, .drop-before, .drop-after),
+.workspace-group.drop-target > .workspace-group-toggle {
+  position: relative;
 }
 
-.tree-node-row.drop-after,
-.workspace-branches > li.drop-after {
-  box-shadow: inset 0 -2px var(--mar-text-muted);
+:is(.tree-node-row, .workspace-branches > li:not(.workspace-group)):is(
+    .drop-target,
+    .drop-before,
+    .drop-after
+  )::after,
+.workspace-group.drop-target > .workspace-group-toggle::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+:is(.tree-node-row, .workspace-branches > li:not(.workspace-group)).drop-target::after,
+.workspace-group.drop-target > .workspace-group-toggle::after {
+  border: 1px solid var(--mar-drop-indicator);
+}
+
+:is(.tree-node-row, .workspace-branches > li:not(.workspace-group)).drop-before::after {
+  border-top: 2px solid var(--mar-drop-indicator);
+}
+
+:is(.tree-node-row, .workspace-branches > li:not(.workspace-group)).drop-after::after {
+  border-bottom: 2px solid var(--mar-drop-indicator);
 }
 
 .tree-node-row:hover {

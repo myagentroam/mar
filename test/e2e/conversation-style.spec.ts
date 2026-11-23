@@ -1959,13 +1959,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
     await shell.dispatchEvent('dragenter');
     await expect(shell).toHaveCSS('outline-style', 'dashed');
-    await expect(shell).toHaveCSS('outline-color', 'rgb(153, 153, 153)');
+    const dropColor = theme === 'daylight' ? 'rgb(23, 78, 158)' : 'rgb(117, 183, 255)';
+    await expect(shell).toHaveCSS('outline-color', dropColor);
     await expect(shell).toHaveCSS('border-top-color', 'rgb(153, 153, 153)');
     await expect(shell).toHaveCSS('box-shadow', 'none');
     await expect(status).toHaveCSS('border-top-color', 'rgb(153, 153, 153)');
     await expect(status).toHaveCSS('color', 'rgb(255, 0, 255)');
     await input.focus();
-    await expect(shell).toHaveCSS('outline-color', 'rgb(153, 153, 153)');
+    await expect(shell).toHaveCSS('outline-color', dropColor);
     await expect(shell).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');
     await expect(shell).toHaveCSS('box-shadow', 'none');
     await expect(status).toHaveCSS('border-top-color', 'rgb(255, 0, 255)');

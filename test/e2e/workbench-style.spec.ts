@@ -720,6 +720,44 @@ test('Manual session dragging immediately takes over activity reorder motion', a
   await expect(page.locator('html')).toHaveAttribute('data-session-moves', '4');
 });
 
+test('Resource tree distinguishes inserting a workspace from moving it into a group', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}workbench-style.html?resource-drop=1&theme=daylight`);
+  const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
+  const source = tree.getByRole('button', { name: 'plain', exact: true });
+  const row = tree.getByRole('button', { name: 'other', exact: true }).locator('..');
+  const group = tree.getByRole('button', { name: /Team/ });
+  await source.dispatchEvent('dragstart');
+  const bounds = (await row.boundingBox())!;
+  await row.dispatchEvent('dragover', { clientY: bounds.y + 2 });
+  const marker = (target: typeof row, edge: 'top' | 'bottom') =>
+    target.evaluate(
+      (element, side) => getComputedStyle(element, '::after').getPropertyValue(`border-${side}`),
+      edge
+    );
+  expect(await marker(row, 'top')).toBe('2px solid rgb(23, 78, 158)');
+  expect(await marker(row, 'bottom')).toMatch(/^0px none /u);
+  await group.dispatchEvent('dragenter');
+  await row.dispatchEvent('dragleave', { relatedTarget: await group.elementHandle() });
+  expect(await marker(group, 'top')).toBe('1px solid rgb(23, 78, 158)');
+  expect(await marker(group, 'bottom')).toBe('1px solid rgb(23, 78, 158)');
+  expect(await marker(row, 'top')).toMatch(/^0px none /u);
+  await page.emulateMedia({ forcedColors: 'active' });
+  const highlight = await group.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'Highlight';
+    element.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  expect(await marker(group, 'top')).toBe(`1px solid ${highlight}`);
+  await group.dispatchEvent('dragleave');
+  expect(await marker(group, 'top')).toMatch(/^0px none /u);
+});
+
 for (const { sourceId, targetId, after, expected } of [
   { sourceId: 'one', targetId: 'three', after: false, expected: ['two', 'one', 'three'] },
   { sourceId: 'one', targetId: 'three', after: true, expected: ['two', 'three', 'one'] },
@@ -732,7 +770,8 @@ for (const { sourceId, targetId, after, expected } of [
     page
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(`${fixture.url}workbench-style.html?session-reorder=1`);
+    const theme = after ? 'vscode-dark-2026' : 'daylight';
+    await page.goto(`${fixture.url}workbench-style.html?session-reorder=1&theme=${theme}`);
     const list = page.getByRole('region', { name: 'Session fixture' });
     const source = list.locator('li').filter({ hasText: `pinned-${sourceId}` });
     const target = list.locator('li').filter({ hasText: `pinned-${targetId}` });
@@ -743,6 +782,15 @@ for (const { sourceId, targetId, after, expected } of [
     // Chromium needs a second move to deliver native dragover after dragstart.
     await page.mouse.move(bounds.x + 31, bounds.y + (after ? bounds.height - 3 : 3));
     await expect(target).toHaveClass(/drag-over-pinned/);
+    const marker = (side: string) =>
+      target.evaluate(
+        (row, edge) => getComputedStyle(row, '::after').getPropertyValue(`border-${edge}`),
+        side
+      );
+    expect(await marker(after ? 'bottom' : 'top')).toBe(
+      after ? '2px solid rgb(117, 183, 255)' : '2px solid rgb(23, 78, 158)'
+    );
+    expect(await marker(after ? 'top' : 'bottom')).toMatch(/^0px none /u);
     expect(await target.evaluate((row) => row.classList.contains('drag-over-pinned-after'))).toBe(
       after
     );
@@ -755,6 +803,41 @@ for (const { sourceId, targetId, after, expected } of [
     await expect(list.locator('.drag-over-pinned')).toHaveCount(0);
   });
 }
+
+test('Pinned session markers clear outside a valid row without canceling the drag', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}workbench-style.html?session-reorder=1&theme=vscode-dark-2026`);
+  const list = page.getByRole('region', { name: 'Session fixture' });
+  const source = list.locator('li').filter({ hasText: 'pinned-one' });
+  const target = list.locator('li').filter({ hasText: 'pinned-three' });
+  const unpinned = list.locator('li').filter({ hasText: 'idle' });
+  const marker = list.locator('.drag-over-pinned');
+  const bounds = (await target.boundingBox())!;
+  const overTarget = () => target.dispatchEvent('dragover', { clientY: bounds.y + 2 });
+
+  await source.dispatchEvent('dragstart');
+  await overTarget();
+  await expect(marker).toHaveCount(1);
+  await target.locator('.session-link').dispatchEvent('dragleave', {
+    relatedTarget: await target.locator('.session-row').elementHandle()
+  });
+  await expect(marker).toHaveCount(1);
+  await target.dispatchEvent('dragleave');
+  await expect(marker).toHaveCount(0);
+  await overTarget();
+  await expect(marker).toHaveCount(1);
+  await source.dispatchEvent('dragover');
+  await expect(marker).toHaveCount(0);
+  await overTarget();
+  await expect(marker).toHaveCount(1);
+  await unpinned.dispatchEvent('dragover');
+  await expect(marker).toHaveCount(0);
+  await overTarget();
+  await expect(marker).toHaveCount(1);
+  await source.dispatchEvent('dragend');
+  await expect(marker).toHaveCount(0);
+});
 
 for (const scenario of [
   {

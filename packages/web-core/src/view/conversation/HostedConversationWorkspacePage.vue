@@ -230,7 +230,6 @@ const composer = ref<{
 }>();
 const expandedFileDirectories = ref<ReadonlySet<string>>(new Set());
 let directorySequence = 0;
-let filesDragDepth = 0;
 let conversationResizeObserver: ResizeObserver | undefined;
 
 const filteredConversations = computed(() => {
@@ -280,6 +279,9 @@ const rollbackEnabled = computed(
 );
 const filesWritable = computed(
   () => interactionReady.value && !props.workspace.templateChanging.value
+);
+const filesDropActive = computed(
+  () => filesDragging.value && filesWritable.value && !uploadingDroppedFiles.value
 );
 const readonlyVisible = computed(() => {
   if (selectedSummary.value === undefined) return false;
@@ -720,25 +722,20 @@ async function rollbackConversation(turn: ConversationTurn, item: ConversationIt
   }
 }
 
-function handleFilesDragEnter(event: DragEvent): void {
-  if (!filesWritable.value || !dragContainsFiles(event)) return;
-  filesDragDepth += 1;
-  filesDragging.value = true;
-}
-
-function handleFilesDragOver(event: DragEvent): void {
+function updateFilesDropTarget(event: DragEvent): void {
+  filesDragging.value =
+    filesWritable.value && !uploadingDroppedFiles.value && dragContainsFiles(event);
   if (event.dataTransfer !== null)
-    event.dataTransfer.dropEffect =
-      filesWritable.value && dragContainsFiles(event) ? 'copy' : 'none';
+    event.dataTransfer.dropEffect = filesDragging.value ? 'copy' : 'none';
 }
 
-function handleFilesDragLeave(): void {
-  filesDragDepth = Math.max(0, filesDragDepth - 1);
-  if (filesDragDepth === 0) filesDragging.value = false;
+function handleFilesDragLeave(event: DragEvent): void {
+  const pane = event.currentTarget as HTMLElement;
+  if (event.relatedTarget instanceof Node && pane.contains(event.relatedTarget)) return;
+  filesDragging.value = false;
 }
 
 async function handleFilesDrop(event: DragEvent): Promise<void> {
-  filesDragDepth = 0;
   filesDragging.value = false;
   if (!filesWritable.value || uploadingDroppedFiles.value) return;
   await uploadRelatedFiles(event.dataTransfer?.files ?? []);
@@ -1368,14 +1365,11 @@ onBeforeUnmount(() => {
       tabindex="-1"
       :inert="mobileViewport && !mobileFilesOpen"
       class="hosted-conversation-files"
-      :class="{
-        'mobile-open': mobileViewport && mobileFilesOpen,
-        'is-file-dragging': filesDragging
-      }"
+      :class="{ 'mobile-open': mobileViewport && mobileFilesOpen }"
       :aria-label="translate('hostedConversations.filesTitle')"
-      @dragenter.prevent="handleFilesDragEnter"
-      @dragover.prevent="handleFilesDragOver"
-      @dragleave.prevent="handleFilesDragLeave"
+      @dragenter.prevent="updateFilesDropTarget"
+      @dragover.prevent="updateFilesDropTarget"
+      @dragleave="handleFilesDragLeave"
       @drop.prevent="handleFilesDrop"
     >
       <header class="pane-header files-header">
@@ -1392,7 +1386,7 @@ onBeforeUnmount(() => {
         />
         <button
           class="files-drop-target"
-          :class="{ active: filesDragging, disabled: !filesWritable }"
+          :class="{ active: filesDropActive, disabled: !filesWritable }"
           :aria-disabled="!filesWritable"
           type="button"
           :disabled="!filesWritable || uploadingDroppedFiles"
@@ -1401,7 +1395,7 @@ onBeforeUnmount(() => {
           <MarIcon name="upload" />
           <span>
             {{
-              filesDragging
+              filesDropActive
                 ? translate('hostedConversations.filesDropNow')
                 : translate('hostedConversations.filesDropHint')
             }}
@@ -1889,9 +1883,8 @@ onBeforeUnmount(() => {
   color: var(--mar-text-primary);
 }
 
-.files-drop-target.active,
-.hosted-conversation-files.is-file-dragging .files-drop-target {
-  border-color: var(--mar-border-medium);
+.files-drop-target.active {
+  border-color: var(--mar-drop-indicator);
   background: var(--mar-fill-soft);
   color: var(--mar-text-primary);
 }
