@@ -634,7 +634,6 @@ function stepDuration(item: ConversationItem): string | undefined {
       :synchronized="synchronized"
       :performance="block.id === performanceBlockId ? performance : undefined"
       class="conversation-turn"
-      :class="{ 'is-completed-process': block.groupId && block.status === 'completed' }"
     >
       <article
         v-for="{ turn, displayItem } in block.entries"
@@ -1735,15 +1734,8 @@ function stepDuration(item: ConversationItem): string | undefined {
 }
 
 .conversation-turn:not(.is-group):has(.assistant_message) + .conversation-turn.is-group,
-.conversation-turn.is-group:not(.is-completed-process)
-  + .conversation-turn:not(.is-group):has(.assistant_message) {
+.conversation-turn.is-group + .conversation-turn:not(.is-group):has(.assistant_message) {
   margin-block-start: 0.625rem;
-}
-
-.conversation-turn.is-completed-process
-  + .conversation-turn:not(.is-group):has(.assistant_message)
-  + .conversation-turn.is-group {
-  margin-block-start: 0.25rem;
 }
 
 .conversation-item {

@@ -1366,15 +1366,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           };
         });
       const expandedGaps = await replyGaps();
-      expect(expandedGaps.before).toBeCloseTo(recordGap, 1);
-      expect(expandedGaps.after).toBeGreaterThan(expandedGaps.before);
-      expect(expandedGaps.after).toBeLessThan(gap);
+      expect(expandedGaps.before).toBeCloseTo(gap, 1);
+      expect(expandedGaps.after).toBeCloseTo(gap, 1);
       await heading.click();
       await expect(heading).toHaveAttribute('aria-expanded', 'false');
       await expect(preview).toHaveCount(0);
       const collapsedGaps = await replyGaps();
-      expect(collapsedGaps.before).toBeCloseTo(recordGap, 1);
-      expect(collapsedGaps.after).toBeCloseTo(expandedGaps.after, 1);
+      expect(collapsedGaps.before).toBeCloseTo(gap, 1);
+      expect(collapsedGaps.after).toBeCloseTo(gap, 1);
       await page.locator('.conversation-timeline').screenshot({
         path: testInfo.outputPath(`reply-spacing-${width}.png`),
         animations: 'disabled'
