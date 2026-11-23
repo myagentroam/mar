@@ -107,7 +107,9 @@ function saveQueueItem(id: string) {
 function saveGoal(objective: string) {
   goal.value = { ...goal.value!, goal: { ...goal.value!.goal!, objective } };
 }
-const commands: RunnerCommand[] = ['first', 'second'].map((id) => ({
+const candidateKind = new URLSearchParams(location.search).get('candidates') ?? 'commands';
+const secondCommand = candidateKind === 'long-commands' ? 'long-command-'.repeat(8) : 'second';
+const commands: RunnerCommand[] = ['first', secondCommand].map((id) => ({
   id,
   runner: 'mar-agent',
   label: id,
@@ -118,7 +120,6 @@ const commands: RunnerCommand[] = ['first', 'second'].map((id) => ({
   available: true,
   reasonCode: null
 }));
-const candidateKind = new URLSearchParams(location.search).get('candidates') ?? 'commands';
 const skills = commands.map((command) => ({
   name: command.id,
   description: command.description,
@@ -284,7 +285,9 @@ const request = async <T,>(): Promise<T> => ({}) as T;
     <section class="picker-host" data-testid="commands">
       <ComposerCommandPicker
         :open="true"
-        :commands="candidateKind === 'commands' ? commands : []"
+        :commands="
+          candidateKind === 'commands' || candidateKind === 'long-commands' ? commands : []
+        "
         :skills="candidateKind === 'skills' ? skills : []"
         :quick-prompts="candidateKind === 'quick-prompts' ? quickPrompts : []"
         :quick-prompts-loading="false"

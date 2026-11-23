@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '@myagentroam/mar-ui/surface-chrome.css';
+import './composer-candidate-picker.css';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { translate } from '../../service/locale-preference-service.js';
 import { computed, nextTick, ref, watch } from 'vue';
@@ -65,8 +66,7 @@ watch(
   <div
     v-if="open"
     ref="picker"
-    class="command-picker file-reference-picker mar-compact-overlay"
-    :aria-label="pickerLabel"
+    class="command-picker file-reference-picker mar-composer-candidate-picker mar-compact-overlay"
   >
     <p v-if="capacityExceeded" role="status">{{ translate('errors.COMPOSER_TAG_INVALID') }}</p>
     <div role="listbox" :aria-label="pickerLabel">
@@ -74,7 +74,7 @@ watch(
         <template
           v-if="(kind === 'file' && !sessionOnly) || (kind === 'session' && sessionEnabled)"
         >
-          <p v-if="sessionEnabled" class="source-heading">
+          <p v-if="sessionEnabled" class="mar-composer-candidate-heading">
             {{ translate(`composerReference.${kind}`) }}
           </p>
           <p v-if="kind === 'file' && fileReady === false">
@@ -109,7 +109,7 @@ watch(
             "
             type="button"
             role="option"
-            :class="{ active: index === activeIndex, 'session-candidate': kind === 'session' }"
+            :class="{ 'session-candidate': kind === 'session' }"
             :aria-selected="index === activeIndex"
             @mouseenter="emit('activate', index)"
             @mousedown.prevent
@@ -169,113 +169,23 @@ watch(
   </div>
 </template>
 <style scoped>
-.command-picker {
-  position: absolute;
-  inset-inline: var(--composer-padding-inline, 0.8rem);
-  bottom: calc(100% + 0.5rem);
-  display: grid;
-  max-height: 200px;
-  overflow: auto;
+.file-reference-picker [role='option'] {
+  grid-template-columns: 1rem var(--composer-candidate-name-width) minmax(0, 1fr) max-content;
 }
 
-.command-picker button {
-  font-family: inherit;
-  font-size: var(--mar-font-size-body);
-  font-weight: 400;
-  line-height: 1.4;
-  display: grid;
-  grid-template-columns: max-content 150px minmax(0, 1fr) max-content;
-  gap: 0.55rem;
-  border: 0;
-  border-bottom: 1px solid var(--mar-border-subtle);
-  border-radius: 0;
-  background: var(--mar-control-bg-color-overlay);
-  color: var(--mar-text-secondary);
-  cursor: pointer;
-  padding: 0.55rem 0.65rem;
-  text-align: left;
-}
-
-.command-picker [role='option'] {
-  align-items: center;
-  box-sizing: border-box;
-  width: 100%;
-}
-
-.command-picker [role='option'].session-candidate {
+.file-reference-picker .session-candidate {
   grid-template-columns: 1rem minmax(0, 1fr) fit-content(50%);
 }
 
-.command-picker button:hover {
-  background: var(--mar-fill-row-hover);
-}
-
-.command-picker button.active {
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-}
-
-.command-picker button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: -2px;
-}
-
-.command-picker p {
-  margin: 0;
-  color: var(--mar-text-secondary);
-  padding: 0.65rem;
-  font-size: var(--mar-font-size-meta);
-}
-
-.file-reference-picker button code,
-.file-reference-picker button .candidate-meta,
-.file-reference-picker button .candidate-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-reference-picker button code,
-.file-reference-picker button .candidate-meta {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-}
-
 .candidate-meta {
-  text-align: right;
+  text-align: end;
 }
 
 .entry-kind {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
   white-space: nowrap;
 }
-</style>
-<style scoped>
-@media (max-width: 767px) {
-  .command-picker {
-    max-height: min(200px, 34dvh);
-  }
 
-  .command-picker [role='option'] {
-    align-items: center;
-    box-sizing: border-box;
-    width: 100%;
-    justify-self: stretch;
-    grid-template-columns: max-content minmax(0, 0.45fr) minmax(0, 1fr) max-content;
-    gap: 0.45rem;
-    padding: 0.5rem 0.65rem;
-  }
-
-  .command-picker .candidate-name {
-    white-space: nowrap;
-  }
-
-  .command-picker button span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.file-reference-picker [role='status'] :deep(.mar-icon) {
+  vertical-align: middle;
 }
 </style>

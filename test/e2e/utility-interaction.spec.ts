@@ -937,10 +937,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(page.getByTestId('events')).toContainText('file-active:1');
   });
 
-  test(`completion names stay regular and inactive names recede in ${theme}`, async ({ page }) => {
+  test(`completion rows stay compact and names stay regular in ${theme}`, async ({
+    page
+  }, info) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      for (const candidates of ['commands', 'skills', 'quick-prompts']) {
+      for (const candidates of ['long-commands', 'skills', 'quick-prompts']) {
         await page.goto(
           `${fixture.url}visual-alignment.html?utility-interaction&theme=${theme}&candidates=${candidates}`
         );
@@ -954,10 +956,49 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           await expect(inactiveName).toHaveCSS('font-weight', '400');
           await expect(selectedName).toHaveCSS('color', colors.primary);
           await expect(inactiveName).toHaveCSS('color', colors.secondary);
+          const layout = await options.first().evaluate((option) => {
+            const name = option.querySelector('.candidate-name')!.getBoundingClientRect();
+            const row = option.getBoundingClientRect();
+            const parts = [...option.children].map((part) => {
+              const rect = part.getBoundingClientRect();
+              return rect.top + rect.height / 2;
+            });
+            return {
+              height: row.height,
+              divider: getComputedStyle(option).borderBottomWidth,
+              nameFits: name.right <= row.right,
+              centerSpread: Math.max(...parts) - Math.min(...parts)
+            };
+          });
+          expect(layout.height).toBeGreaterThanOrEqual(26);
+          expect(layout.height).toBeLessThanOrEqual(30);
+          expect(layout.divider).toBe('0px');
+          expect(layout.nameFits).toBe(true);
+          expect(layout.centerSpread).toBeLessThanOrEqual(1);
+          if (kind === 'commands' && candidates === 'long-commands') {
+            await expect(inactiveName).toHaveText(`/${'long-command-'.repeat(8)}`);
+            expect(await inactiveName.evaluate((name) => name.scrollWidth > name.clientWidth)).toBe(
+              true
+            );
+            const descriptions = options.locator('.candidate-description');
+            const first = (await descriptions.first().boundingBox())!;
+            const second = (await descriptions.nth(1).boundingBox())!;
+            expect(Math.abs(first.x - second.x)).toBeLessThanOrEqual(1);
+            expect(second.width).toBeGreaterThan(width < 500 ? 140 : 300);
+          }
           await options.nth(1).hover();
           await expect(inactiveName).toHaveCSS('color', colors.secondary);
           await expect(options.first()).toHaveAttribute('aria-selected', 'true');
           await expect(options.nth(1)).toHaveCSS('background-color', colors.hover);
+          if (kind === 'commands' && candidates === 'long-commands' && width === 1280) {
+            await expect(page.getByRole('tooltip')).toContainText(`/${'long-command-'.repeat(8)}`);
+          }
+        }
+        if (width === 1280 && candidates === 'quick-prompts') {
+          await page.mouse.move(0, 0);
+          await page
+            .getByTestId('commands')
+            .screenshot({ path: info.outputPath('quick-prompts.png') });
         }
       }
     }

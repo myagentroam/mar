@@ -1,0 +1,79 @@
+/* Shared presentation for the Composer's inline command and reference pickers. */
+.mar-composer-candidate-picker {
+  --composer-candidate-name-width: min(7rem, 35%);
+  position: absolute;
+  inset-inline: var(--composer-padding-inline, 0.8rem);
+  bottom: calc(100% + 0.375rem);
+  max-block-size: 12.5rem;
+  padding: 0.25rem;
+  overflow: auto;
+}
+
+.mar-composer-candidate-picker [role='option'] {
+  display: grid;
+  grid-template-columns: var(--composer-candidate-name-width) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: var(--mar-compact-control-size);
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: var(--mar-radius-selection);
+  background: transparent;
+  color: var(--mar-text-secondary);
+  font: inherit;
+  font-size: var(--mar-font-size-body);
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: start;
+  cursor: pointer;
+}
+
+.mar-composer-candidate-picker [role='option']:hover {
+  background: var(--mar-fill-row-hover);
+}
+
+.mar-composer-candidate-picker [role='option'][aria-selected='true'] {
+  background: var(--mar-fill-selection);
+  color: var(--mar-text-primary);
+}
+
+.mar-composer-candidate-picker [role='option']:focus-visible {
+  outline: 2px solid var(--mar-control-focus);
+  outline-offset: -2px;
+}
+
+.mar-composer-candidate-picker
+  [role='option']
+  > :is(.candidate-name, .candidate-description, .candidate-meta, code) {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mar-composer-candidate-picker :is(p, .candidate-description, .candidate-meta, .entry-kind, code) {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+}
+
+.mar-composer-candidate-picker p {
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.mar-composer-candidate-picker .mar-composer-candidate-heading {
+  font-weight: 600;
+}
+
+.mar-composer-candidate-picker .mar-composer-candidate-heading:not(:first-child) {
+  margin-block-start: 0.25rem;
+}
+
+@media (max-width: 767px) {
+  .mar-composer-candidate-picker {
+    max-block-size: min(12.5rem, 34dvh);
+  }
+}
