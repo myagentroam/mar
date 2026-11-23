@@ -189,7 +189,7 @@ export function createWorkbenchTargetNavigation(input: {
         session.id === sessionId &&
         workspaceSessionDiscovery.groupSelectionRevision() === groupRevision
       )
-        selectWorkspaceSessionGroup(session.sessionGroup ?? 'MAIN', true);
+        selectWorkspaceSessionGroup(session.sessionGroup ?? 'MAIN', 'navigation');
     };
     const selection = input.selection();
     return destination === 'main'

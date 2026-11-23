@@ -737,12 +737,46 @@ describe('Web Workspace Session Discovery', () => {
       vi.fn().mockResolvedValue({ sessions: [], nextCursor: null }),
       () => supported.value
     );
-    fixture.controller.selectGroup('CHILD', true);
+    fixture.controller.selectGroup('CHILD', 'navigation');
     expect(fixture.controller.currentGroup.value).toBeUndefined();
     supported.value = true;
     await nextTick();
     expect(fixture.controller.currentGroup.value).toBe('CHILD');
   });
+
+  it('records an explicit Main selection even when the group does not change', async () => {
+    const request = vi.fn().mockResolvedValue({ sessions: [], nextCursor: null });
+    const { controller } = state([], request, () => true);
+    const revision = controller.groupSelectionRevision();
+
+    controller.selectGroup('MAIN', 'navigation');
+    expect(controller.groupSelectionRevision()).toBe(revision);
+
+    controller.selectGroup('MAIN');
+    await nextTick();
+
+    expect(controller.groupSelectionRevision()).toBe(revision + 1);
+    expect(controller.currentGroup.value).toBe('MAIN');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it.each(['MAIN', 'CHILD'] as const)(
+    'retains explicit Main over the remembered %s group and pending navigation during a capability refresh',
+    (remembered) => {
+      const supported = ref(true);
+      const { controller } = state([], vi.fn(), () => supported.value);
+      controller.selectGroup(remembered);
+      const pendingRevision = controller.groupSelectionRevision();
+
+      supported.value = false;
+      controller.selectGroup('MAIN');
+      expect(controller.currentGroup.value).toBeUndefined();
+      expect(controller.groupSelectionRevision()).toBe(pendingRevision + 1);
+
+      supported.value = true;
+      expect(controller.currentGroup.value).toBe('MAIN');
+    }
+  );
 
   it('includes the selected group in every Workspace list and search request', async () => {
     const request = vi.fn().mockResolvedValue({ sessions: [], nextCursor: 'next' });
