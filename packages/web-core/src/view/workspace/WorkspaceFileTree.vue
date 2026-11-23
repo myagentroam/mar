@@ -176,7 +176,7 @@ function updateViewport(): void {
   scrollTop.value = Math.max(0, offset);
   viewportHeight.value = Math.max(0, element.clientHeight + Math.min(0, offset));
   const configuredRowHeight = Number.parseFloat(
-    getComputedStyle(element).getPropertyValue('--mar-compact-row-size')
+    getComputedStyle(element).getPropertyValue('--file-tree-row-size')
   );
   if (Number.isFinite(configuredRowHeight) && configuredRowHeight > 0)
     rowHeight.value = configuredRowHeight;
@@ -654,6 +654,7 @@ defineExpose({ reveal });
 
 <style scoped>
 .workspace-file-tree {
+  --file-tree-row-size: var(--mar-compact-row-size);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -703,13 +704,23 @@ defineExpose({ reveal });
   text-align: center;
 }
 
+@media (min-width: 768px) {
+  .workspace-file-tree {
+    --file-tree-row-size: 24px;
+  }
+
+  .tree-name {
+    font-size: var(--mar-font-size-navigation);
+  }
+}
+
 .file-tree-row,
 .file-tree-load-more {
   display: grid;
   width: 100%;
   min-width: 0;
-  min-height: var(--mar-compact-row-size);
-  height: var(--mar-compact-row-size);
+  min-height: var(--file-tree-row-size);
+  height: var(--file-tree-row-size);
   box-sizing: border-box;
   border: 0;
   background: transparent;
@@ -721,8 +732,8 @@ defineExpose({ reveal });
 }
 
 .file-tree-row {
-  min-height: calc(var(--mar-compact-row-size) - 2px);
-  height: calc(var(--mar-compact-row-size) - 2px);
+  min-height: calc(var(--file-tree-row-size) - 2px);
+  height: calc(var(--file-tree-row-size) - 2px);
   grid-template-columns: 0.8rem 18px minmax(0, 1fr);
   gap: 0;
   width: auto;
@@ -737,7 +748,7 @@ defineExpose({ reveal });
   display: flex;
   width: 100%;
   min-width: 0;
-  height: var(--mar-compact-row-size);
+  height: var(--file-tree-row-size);
   box-sizing: border-box;
   border-block: 1px solid transparent;
   border-radius: var(--mar-radius-selection);

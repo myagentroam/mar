@@ -495,28 +495,33 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }
 }
 
-test('late-mounted Files reveals the selected virtual row without taking focus', async ({
-  page
-}) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`${fixture.url}workbench-style.html?late-tree=1`);
-  const inspector = page.getByRole('region', { name: 'Inspector fixture' });
-  const files = inspector.getByRole('tab', { name: 'Files', exact: true });
-  await files.click();
-  const selected = inspector.getByRole('treeitem', { name: /file-450\.ts/ });
-  await expect(selected).toHaveAttribute('aria-selected', 'true');
-  await expect
-    .poll(() =>
-      selected.evaluate((row) => {
-        const tree = row.closest('.workspace-file-tree')!;
-        const visible = tree.getBoundingClientRect();
-        const bounds = row.getBoundingClientRect();
-        return bounds.top >= visible.top && bounds.bottom <= visible.bottom;
-      })
-    )
-    .toBe(true);
-  await expect(files).toBeFocused();
-});
+for (const width of [1280, 390]) {
+  test(`late-mounted Files uses compact rows and reveals the selected file without taking focus at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${fixture.url}workbench-style.html?late-tree=1`);
+    const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+    const files = inspector.getByRole('tab', { name: 'Files', exact: true });
+    await files.click();
+    const selected = inspector.getByRole('treeitem', { name: /file-450\.ts/ });
+    await expect(selected).toHaveAttribute('aria-selected', 'true');
+    await expect(selected.locator('.tree-name')).toHaveCSS('font-size', '13px');
+    await expect(selected.locator('..')).toHaveCSS('height', '24px');
+    await expect(inspector.getByRole('tree')).toHaveCSS('height', `${501 * 24}px`);
+    await expect
+      .poll(() =>
+        selected.evaluate((row) => {
+          const tree = row.closest('.workspace-file-tree')!;
+          const visible = tree.getBoundingClientRect();
+          const bounds = row.getBoundingClientRect();
+          return bounds.top >= visible.top && bounds.bottom <= visible.bottom;
+        })
+      )
+      .toBe(true);
+    await expect(files).toBeFocused();
+  });
+}
 
 for (const width of [1280, 390]) {
   test(`Closing the last embedded terminal preserves the new-terminal action at ${width}px`, async ({
