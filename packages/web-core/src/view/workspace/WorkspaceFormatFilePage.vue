@@ -6,6 +6,11 @@ import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { createFilePreviewWindowInteractionService } from '../../service/file-preview-window-interaction-service.js';
+import {
+  closeAllTabsKeys,
+  fileKeys,
+  shortcutTooltip
+} from '../../service/console-shortcut-keys.js';
 import { type FilePreviewKind } from '../../util/file-preview.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import ImagePreviewControls from '../common/ImagePreviewControls.vue';
@@ -146,7 +151,12 @@ defineExpose({
       />
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="translate('generated.filePreviewDialog.closePreview')"
+        v-tooltip="
+          shortcutTooltip(translate('generated.filePreviewDialog.closePreview'), [
+            ...closeAllTabsKeys,
+            ...fileKeys.dismiss
+          ])
+        "
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview')"
         circle
@@ -172,7 +182,12 @@ defineExpose({
       />
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="translate('generated.filePreviewDialog.closePreview2')"
+        v-tooltip="
+          shortcutTooltip(translate('generated.filePreviewDialog.closePreview2'), [
+            ...closeAllTabsKeys,
+            ...fileKeys.dismiss
+          ])
+        "
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview2')"
         circle

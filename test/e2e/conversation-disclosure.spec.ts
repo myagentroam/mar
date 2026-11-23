@@ -37,6 +37,13 @@ for (const [width, theme] of [
         element.nextElementSibling?.classList.contains('file-change-group')
       )
     ).toBe(true);
+    const { gap, recordGap } = await reply.evaluate((element) => ({
+      gap:
+        element.nextElementSibling!.getBoundingClientRect().top -
+        element.getBoundingClientRect().bottom,
+      recordGap: parseFloat(getComputedStyle(element.parentElement!).rowGap)
+    }));
+    expect(gap).toBeCloseTo(recordGap, 1);
     const details = changes.locator('.conversation-file-change-details');
     if (!(await details.evaluate((element) => (element as HTMLDetailsElement).open)))
       await details.locator(':scope > summary').click();

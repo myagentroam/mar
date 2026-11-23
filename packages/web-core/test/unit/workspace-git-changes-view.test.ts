@@ -112,7 +112,10 @@ it('appends only at the repository boundary inside the scroll root without a loa
   });
   try {
     await nextTick();
-    const rows = () => view.findAll('li').filter((node) => node.props.class === 'change-entry');
+    const rows = () =>
+      view
+        .findAll('li')
+        .filter((node) => String(node.props.class).split(/\s+/u).includes('change-entry'));
     const boundary = () =>
       view.findAll('li').find((node) => node.props.class === 'change-append-state');
     expect(rows()).toHaveLength(200);
@@ -411,7 +414,7 @@ describe.each(['zh-CN', 'en-US'] as const)('Git changes in %s', (locale) => {
     expect(html).toContain('feature/test');
     expect(html).toContain(i18n.global.t('gitWorktrees.title'));
     expect(html).toContain(i18n.global.t('gitWorktrees.clean'));
-    expect(html.match(/class="change-entry"/gu)).toHaveLength(200);
+    expect(html.match(/class="(?:[^"]*\s)?change-entry(?:\s[^"]*)?"/gu)).toHaveLength(200);
     expect(html).toContain('class="change-append-state"');
     expect(html).not.toContain(i18n.global.t('generated.workspaceInspector.loadMore'));
     expect(html).toContain(i18n.global.t('gitWorktrees.changesTruncated'));

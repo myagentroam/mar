@@ -52,6 +52,7 @@ const asideLabel = computed(() =>
       >
         <button
           ref="titleButton"
+          v-tooltip="sessionTitle(session)"
           type="button"
           class="conversation-title-button conversation-title-row mar-icon-action"
         >
@@ -62,9 +63,7 @@ const asideLabel = computed(() =>
             aria-hidden="true"
             class="mar-runner-brand-icon conversation-title-runner-icon"
           />
-          <span class="conversation-title-text" v-tooltip="sessionTitle(session)">{{
-            sessionTitle(session)
-          }}</span>
+          <span class="conversation-title-text">{{ sessionTitle(session) }}</span>
           <MarIcon name="chevron-down" aria-hidden="true" />
         </button>
         <template #dropdown>

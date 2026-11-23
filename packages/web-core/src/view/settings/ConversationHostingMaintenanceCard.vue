@@ -372,6 +372,7 @@ onBeforeUnmount(() => {
         text
         :loading="loading"
         :disabled="!available || previewing || executing"
+        v-tooltip="translate('conversationHostingMaintenance.refresh')"
         :aria-label="translate('conversationHostingMaintenance.refresh')"
         @click="loadStorage"
       />

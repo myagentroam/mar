@@ -10,6 +10,7 @@ export interface MarSelectProps<
   id?: string;
   ariaLabel?: string;
   ariaLabelledby?: string;
+  tooltip?: string | undefined;
   modelValue?: Value | readonly Value[] | null | undefined;
   disabled?: boolean | undefined;
   validateEvent?: boolean;

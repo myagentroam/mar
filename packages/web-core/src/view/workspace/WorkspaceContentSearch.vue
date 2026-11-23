@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import '../../styles/region-retry-action.css';
 import './git-inline-loading.css';
+import './inspector-row.css';
 import '@myagentroam/mar-ui/region-status.css';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
@@ -163,6 +164,7 @@ defineExpose({
           <button
             v-tooltip="match.path"
             :aria-label="match.path"
+            class="mar-inspector-row mar-inspector-row-action"
             type="button"
             @click="
               emit('open', match.path, match.line, match.column, $event.ctrlKey || $event.metaKey)
@@ -205,11 +207,6 @@ defineExpose({
 </template>
 
 <style scoped>
-.content-search-state,
-.file-search-empty {
-  padding-inline: 8px;
-}
-
 .content-search-state:not(.mar-region-status--center) {
   padding-block-start: 8px;
 }
@@ -225,7 +222,12 @@ defineExpose({
   display: grid;
   gap: 0.25rem;
   border-bottom: 1px solid var(--mar-border-subtle);
-  padding: 0.375rem;
+  padding-block: 0.375rem;
+}
+
+.content-search-toolbar,
+.content-search-body {
+  padding-inline: 0.375rem;
 }
 
 .content-search-toolbar form {
@@ -237,7 +239,7 @@ defineExpose({
 }
 
 .content-search-warning {
-  margin: 0.375rem 0.375rem 0;
+  margin-block-start: 0.375rem;
   inline-size: auto;
   flex: none;
   padding: 0.375rem 0.5rem;
@@ -277,16 +279,6 @@ defineExpose({
   cursor: pointer;
 }
 
-.content-search-results button:hover,
-.content-search-results button:focus-visible {
-  background: var(--mar-fill-row-hover);
-}
-
-.content-search-results button:focus-visible {
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: -2px;
-}
-
 .content-search-file,
 .content-search-directory,
 .content-search-results code {
@@ -307,9 +299,10 @@ defineExpose({
 }
 
 .content-search-results mark {
-  border-radius: 2px;
   background: var(--mar-color-warning-bg);
-  color: var(--mar-text-primary);
+  color: var(--mar-color-warning-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .content-search-directory,
@@ -324,7 +317,6 @@ defineExpose({
 
 .content-search-results code {
   grid-column: 2 / -1;
-  color: var(--mar-text-secondary);
 }
 
 button.file-explorer-utility-button {

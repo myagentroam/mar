@@ -14,7 +14,12 @@ import {
 import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-service.js';
-import { fileKeys, workspaceKeys } from '../../service/console-shortcut-keys.js';
+import {
+  closeAllTabsKeys,
+  fileKeys,
+  shortcutTooltip,
+  workspaceKeys
+} from '../../service/console-shortcut-keys.js';
 
 import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -803,7 +808,7 @@ defineExpose({
     <template #primary-actions>
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="translate('inlineFind.label')"
+        v-tooltip="shortcutTooltip(translate('inlineFind.label'), contained ? [] : fileKeys.find)"
         v-if="props.kind === 'text'"
         circle
         :aria-label="translate('inlineFind.label')"
@@ -814,7 +819,7 @@ defineExpose({
       <template v-if="codeEditorEnabled">
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('fileEditor.symbols')"
+          v-tooltip="shortcutTooltip(translate('fileEditor.symbols'), fileKeys.symbols)"
           data-file-symbol-toggle
           circle
           :aria-label="translate('fileEditor.symbols')"
@@ -824,7 +829,12 @@ defineExpose({
         </MarButton>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
+          v-tooltip="
+            shortcutTooltip(
+              editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit'),
+              fileKeys.toggleEdit
+            )
+          "
           v-if="canWrite"
           circle
           :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
@@ -835,7 +845,9 @@ defineExpose({
         </MarButton>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('common.save')"
+          v-tooltip="
+            shortcutTooltip(translate('common.save'), dirty && !saving ? fileKeys.save : [])
+          "
           v-if="editing"
           circle
           :disabled="!dirty"
@@ -848,7 +860,14 @@ defineExpose({
       <template v-if="html">
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate(dirty ? 'htmlPreview.savedVersion' : 'htmlPreview.open')"
+          v-tooltip="
+            [
+              shortcutTooltip(translate('htmlPreview.open'), workspaceKeys.preview),
+              dirty ? translate('htmlPreview.savedVersion') : undefined
+            ]
+              .filter(Boolean)
+              .join('\n')
+          "
           circle
           :aria-label="translate('htmlPreview.open')"
           @click="emit('open-html-preview')"
@@ -858,7 +877,7 @@ defineExpose({
       <template v-if="markdown && !renderMarkdown">
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('markdownPreview.open')"
+          v-tooltip="shortcutTooltip(translate('markdownPreview.open'), workspaceKeys.preview)"
           circle
           :aria-label="translate('markdownPreview.open')"
           @click="emit('open-markdown-preview')"
@@ -886,7 +905,12 @@ defineExpose({
       />
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="translate('generated.filePreviewDialog.closePreview')"
+        v-tooltip="
+          shortcutTooltip(translate('generated.filePreviewDialog.closePreview'), [
+            ...closeAllTabsKeys,
+            ...fileKeys.dismiss
+          ])
+        "
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview')"
         circle
@@ -898,7 +922,7 @@ defineExpose({
     <template #mobile-actions>
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="translate('inlineFind.label')"
+        v-tooltip="shortcutTooltip(translate('inlineFind.label'), contained ? [] : fileKeys.find)"
         v-if="props.kind === 'text'"
         data-file-symbol-toggle
         circle
@@ -908,7 +932,7 @@ defineExpose({
       /></MarButton>
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="translate('fileEditor.symbols')"
+        v-tooltip="shortcutTooltip(translate('fileEditor.symbols'), fileKeys.symbols)"
         v-if="codeEditorEnabled"
         circle
         :aria-label="translate('fileEditor.symbols')"
@@ -917,7 +941,12 @@ defineExpose({
       /></MarButton>
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
+        v-tooltip="
+          shortcutTooltip(
+            editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit'),
+            fileKeys.toggleEdit
+          )
+        "
         v-if="canWrite"
         circle
         :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
@@ -926,7 +955,7 @@ defineExpose({
       /></MarButton>
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="translate('common.save')"
+        v-tooltip="shortcutTooltip(translate('common.save'), dirty && !saving ? fileKeys.save : [])"
         v-if="editing"
         circle
         :disabled="!dirty"
@@ -938,7 +967,14 @@ defineExpose({
       <template v-if="html">
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate(dirty ? 'htmlPreview.savedVersion' : 'htmlPreview.open')"
+          v-tooltip="
+            [
+              shortcutTooltip(translate('htmlPreview.open'), workspaceKeys.preview),
+              dirty ? translate('htmlPreview.savedVersion') : undefined
+            ]
+              .filter(Boolean)
+              .join('\n')
+          "
           circle
           :aria-label="translate('htmlPreview.open')"
           @click="emit('open-html-preview')"
@@ -948,7 +984,7 @@ defineExpose({
       <template v-if="markdown && !renderMarkdown">
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('markdownPreview.open')"
+          v-tooltip="shortcutTooltip(translate('markdownPreview.open'), workspaceKeys.preview)"
           circle
           :aria-label="translate('markdownPreview.open')"
           @click="emit('open-markdown-preview')"
@@ -974,7 +1010,12 @@ defineExpose({
       />
       <MarButton
         class="file-toolbar-control"
-        v-tooltip="translate('generated.filePreviewDialog.closePreview2')"
+        v-tooltip="
+          shortcutTooltip(translate('generated.filePreviewDialog.closePreview2'), [
+            ...closeAllTabsKeys,
+            ...fileKeys.dismiss
+          ])
+        "
         v-if="fullscreen"
         :aria-label="translate('generated.filePreviewDialog.closePreview2')"
         circle

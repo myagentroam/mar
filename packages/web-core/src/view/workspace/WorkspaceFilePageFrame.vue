@@ -118,27 +118,24 @@ defineExpose({ root });
       >
         <slot name="mobile-actions" />
       </div>
-      <span
+      <button
         v-tooltip="
           mobileActionsExpanded
             ? translate('filePreviewDialog.collapseMobileActions')
             : translate('filePreviewDialog.expandMobileActions')
         "
-        class="mar-tooltip-control"
-        ><button
-          class="workspace-file-mobile-actions-toggle mar-icon-button mar-icon-action"
-          type="button"
-          :aria-expanded="mobileActionsExpanded"
-          :aria-label="
-            mobileActionsExpanded
-              ? translate('filePreviewDialog.collapseMobileActions')
-              : translate('filePreviewDialog.expandMobileActions')
-          "
-          @click="toggleMobileActions"
-        >
-          <MarIcon name="menu" v-if="mobileActionsExpanded" />
-          <MarIcon name="menu" v-else /></button
-      ></span>
+        class="workspace-file-mobile-actions-toggle mar-icon-button mar-icon-action"
+        type="button"
+        :aria-expanded="mobileActionsExpanded"
+        :aria-label="
+          mobileActionsExpanded
+            ? translate('filePreviewDialog.collapseMobileActions')
+            : translate('filePreviewDialog.expandMobileActions')
+        "
+        @click="toggleMobileActions"
+      >
+        <MarIcon name="menu" />
+      </button>
     </div>
   </section>
 </template>

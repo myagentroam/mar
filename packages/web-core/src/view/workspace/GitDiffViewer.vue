@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import {
+  diffNavigationKeys,
+  fileKeys,
+  shortcutTooltip
+} from '../../service/console-shortcut-keys.js';
 import './file-tooltip-trigger.css';
 import '../../styles/code-syntax-theme.css';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -650,23 +655,21 @@ watch(
 );
 let unregisterNavigationShortcuts: (() => void)[] = [];
 onMounted(() => {
-  unregisterNavigationShortcuts = (
-    ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'] as const
-  ).map((key) =>
+  unregisterNavigationShortcuts = diffNavigationKeys.map((chord) =>
     consoleKeyboardShortcutService.register({
-      command: `diff.navigate.${key}`,
+      command: `diff.navigate.${chord.key}`,
       scope: 'file-preview',
       priority: 120,
       owner: () => diffRoot.value?.root,
-      keys: [{ key }],
+      keys: [chord],
       when: (event) =>
         props.active !== false &&
         !(event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]'),
       execute: () => {
-        if (key === 'ArrowLeft' || key === 'ArrowRight') {
+        if (chord.key === 'ArrowLeft' || chord.key === 'ArrowRight') {
           if (props.paths.length > 1 && !props.loading)
-            emit('moveFile', key === 'ArrowLeft' ? -1 : 1);
-        } else moveDiff(key === 'ArrowUp' ? -1 : 1);
+            emit('moveFile', chord.key === 'ArrowLeft' ? -1 : 1);
+        } else moveDiff(chord.key === 'ArrowUp' ? -1 : 1);
         return 'HANDLED';
       }
     })
@@ -676,7 +679,7 @@ onMounted(() => {
     scope: 'file-preview',
     priority: 120,
     owner: () => diffRoot.value?.root,
-    keys: [{ key: 'Escape' }],
+    keys: fileKeys.dismiss,
     when: () => props.active !== false && findOpen.value,
     execute: () => {
       closeFind();
@@ -758,7 +761,12 @@ defineExpose({
       <div class="diff-mobile-action-row diff-mobile-navigation">
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.previousFile')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.gitDiffViewer.previousFile'),
+              paths.length > 1 && !loading ? [diffNavigationKeys[0]] : []
+            )
+          "
           circle
           :disabled="props.paths.length < 2 || props.loading"
           :aria-label="translate('generated.gitDiffViewer.previousFile')"
@@ -767,7 +775,12 @@ defineExpose({
         /></MarButton>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.previousChange')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.gitDiffViewer.previousChange'),
+              hunks.length > 0 ? [diffNavigationKeys[2]] : []
+            )
+          "
           circle
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.previousChange')"
@@ -776,7 +789,12 @@ defineExpose({
         /></MarButton>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.nextChange')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.gitDiffViewer.nextChange'),
+              hunks.length > 0 ? [diffNavigationKeys[3]] : []
+            )
+          "
           circle
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.nextChange')"
@@ -785,7 +803,12 @@ defineExpose({
         /></MarButton>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.nextFile')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.gitDiffViewer.nextFile'),
+              paths.length > 1 && !loading ? [diffNavigationKeys[1]] : []
+            )
+          "
           circle
           :disabled="props.paths.length < 2 || props.loading"
           :aria-label="translate('generated.gitDiffViewer.nextFile')"
@@ -796,7 +819,7 @@ defineExpose({
       <div class="diff-mobile-action-row diff-mobile-utilities">
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('fileEditor.openSourceShortcut')"
+          v-tooltip="shortcutTooltip(translate('fileEditor.openSource'), fileKeys.toggleEdit)"
           circle
           :aria-label="translate('fileEditor.openSource')"
           @click="toggleEdit"
@@ -804,7 +827,7 @@ defineExpose({
         /></MarButton>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('inlineFind.label')"
+          v-tooltip="shortcutTooltip(translate('inlineFind.label'), fileKeys.find)"
           v-if="findAvailable"
           circle
           :aria-label="translate('inlineFind.label')"
@@ -839,7 +862,7 @@ defineExpose({
       >
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('fileEditor.openSourceShortcut')"
+          v-tooltip="shortcutTooltip(translate('fileEditor.openSource'), fileKeys.toggleEdit)"
           circle
           :aria-label="translate('fileEditor.openSource')"
           @click="toggleEdit"
@@ -847,7 +870,12 @@ defineExpose({
         /></MarButton>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.previousFile2')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.gitDiffViewer.previousFile'),
+              paths.length > 1 && !loading ? [diffNavigationKeys[0]] : []
+            )
+          "
           :disabled="paths.length < 2 || loading"
           :aria-label="translate('generated.gitDiffViewer.previousFile')"
           circle
@@ -863,7 +891,12 @@ defineExpose({
         </span>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.nextFile2')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.gitDiffViewer.nextFile'),
+              paths.length > 1 && !loading ? [diffNavigationKeys[1]] : []
+            )
+          "
           :disabled="paths.length < 2 || loading"
           :aria-label="translate('generated.gitDiffViewer.nextFile')"
           circle
@@ -874,7 +907,12 @@ defineExpose({
         <span class="diff-toolbar-divider" aria-hidden="true" />
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.previousChange2')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.gitDiffViewer.previousChange'),
+              hunks.length > 0 ? [diffNavigationKeys[2]] : []
+            )
+          "
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.previousChange')"
           circle
@@ -890,7 +928,12 @@ defineExpose({
         </span>
         <MarButton
           class="file-toolbar-control"
-          v-tooltip="translate('generated.gitDiffViewer.nextChange2')"
+          v-tooltip="
+            shortcutTooltip(
+              translate('generated.gitDiffViewer.nextChange'),
+              hunks.length > 0 ? [diffNavigationKeys[3]] : []
+            )
+          "
           :disabled="hunks.length === 0"
           :aria-label="translate('generated.gitDiffViewer.nextChange')"
           circle

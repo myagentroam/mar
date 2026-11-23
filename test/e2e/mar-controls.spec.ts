@@ -4,6 +4,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/button/MarButton.vue
 // @test-covers packages/mar-ui/components/checkbox/MarCheckbox.vue
+// @test-covers packages/mar-ui/components/segmented/MarSegmented.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/mar-controls.html');
@@ -215,6 +216,109 @@ for (const [theme, width] of [
     await page.screenshot({ path: testInfo.outputPath(`${theme}-${width}.png`) });
   });
 }
+
+for (const [reducedMotion, title] of [
+  ['no-preference', 'Segmented fades the hover surface as the indicator starts sliding'],
+  ['reduce', 'Segmented switches immediately with reduced motion']
+] as const) {
+  test(title, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.goto(`${fixture.url}mar-controls.html?theme=dark`);
+    const period = page.getByRole('radiogroup', { name: 'Period' });
+    const week = period.getByRole('radio', { name: 'Week' });
+    await expect(period.locator('.mar-segmented-indicator')).toBeVisible();
+    await week.hover();
+
+    const { before, start, middle, end, targetX } = await week.evaluate(async (element) => {
+      const radio = element as HTMLInputElement;
+      const option = radio.labels![0]!;
+      const indicator = radio
+        .closest('[role="radiogroup"]')!
+        .querySelector('.mar-segmented-indicator')!;
+      const background = () => getComputedStyle(option).backgroundColor;
+      const sample = () => ({ background: background(), x: indicator.getBoundingClientRect().x });
+      await Promise.all(option.getAnimations().map((animation) => animation.finished));
+      const before = sample();
+
+      radio.click();
+      await new Promise(requestAnimationFrame);
+      const hover = option.getAnimations();
+      const animations = [...hover, ...indicator.getAnimations()];
+      // Sample the first frame without depending on browser or host frame timing.
+      for (const animation of animations) {
+        animation.pause();
+        animation.currentTime = 0;
+      }
+      const start = sample();
+      for (const animation of hover)
+        animation.currentTime = animation.effect!.getComputedTiming().endTime / 2;
+      const middle = background();
+      for (const animation of animations) animation.finish();
+      return { before, start, middle, end: sample(), targetX: option.getBoundingClientRect().x };
+    });
+
+    await expect(week).toBeChecked();
+    expect(end.x).toBeCloseTo(targetX, 0);
+    expect(end.background).toBe('rgba(0, 0, 0, 0)');
+    expect(before.background).not.toBe(end.background);
+    if (reducedMotion === 'reduce') {
+      expect(start).toEqual(end);
+    } else {
+      expect(start).toEqual(before);
+      expect(middle).not.toBe(before.background);
+      expect(middle).not.toBe(end.background);
+    }
+  });
+}
+
+test('Segmented keeps the hover surface continuous when a slide reverses', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}mar-controls.html?theme=dark`);
+  const period = page.getByRole('radiogroup', { name: 'Period' });
+  const week = period.getByRole('radio', { name: 'Week' });
+  await expect(period.locator('.mar-segmented-indicator')).toBeVisible();
+  await week.hover();
+
+  const { resting, fading, reversed, settled } = await week.evaluate(async (element) => {
+    const radio = element as HTMLInputElement;
+    const option = radio.labels![0]!;
+    const previous = radio
+      .closest('[role="radiogroup"]')!
+      .querySelector<HTMLInputElement>('input:checked')!;
+    const background = () => getComputedStyle(option).backgroundColor;
+    await Promise.all(option.getAnimations().map((animation) => animation.finished));
+    const resting = background();
+
+    radio.click();
+    await new Promise(requestAnimationFrame);
+    let fading = background();
+    while (fading === resting && option.getAnimations().length) {
+      await new Promise(requestAnimationFrame);
+      fading = background();
+    }
+
+    // Read both sides of the reversal in the same frame, without seeking the running fade.
+    const selectionChanged = new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        observer.disconnect();
+        resolve();
+      });
+      observer.observe(option, { attributes: true, attributeFilter: ['class'] });
+    });
+    previous.click();
+    await selectionChanged;
+    const reversed = background();
+    await Promise.all(option.getAnimations().map((animation) => animation.finished));
+    return { resting, fading, reversed, settled: background() };
+  });
+
+  await expect(period.getByRole('radio', { name: 'Day' })).toBeChecked();
+  for (const intermediate of [fading, reversed]) {
+    expect(intermediate).not.toBe(resting);
+    expect(intermediate).not.toBe('rgba(0, 0, 0, 0)');
+  }
+  expect(settled).toBe(resting);
+});
 
 test('MAR descriptions stack and wrap inside a narrow container on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 930 });

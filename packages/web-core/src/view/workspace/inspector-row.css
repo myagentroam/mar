@@ -1,0 +1,11 @@
+/* The row surface can include sibling actions; only the focused control gets a ring. */
+@media (hover: hover) {
+  .mar-inspector-row:hover:not(.selected, .drop-target) {
+    background-color: var(--mar-fill-row-hover);
+  }
+}
+
+.mar-inspector-row-action:focus-visible {
+  outline: 2px solid var(--mar-control-focus);
+  outline-offset: -2px;
+}

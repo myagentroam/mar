@@ -128,10 +128,10 @@ describe('Public Hosted Conversation Boundaries', () => {
 
   it('Keep bilingual public message keys, placeholders, and composition fields aligned', () => {
     expect(hostedConversationsEnUS.hostedConversations.replaceCurrentHint).toBe(
-      'While working, press Ctrl+Enter to steer with this message.'
+      'While working, press {keys} to steer with this message.'
     );
     expect(hostedConversationsZhCN.hostedConversations.replaceCurrentHint).toBe(
-      '任务进行中，按 Ctrl+Enter 可插入消息。'
+      '任务进行中，按 {keys} 可插入消息。'
     );
     expect(hostedConversationsEnUS.hostedConversations.replaceCurrentUnsupported).toBe(
       'This host does not support steering an in-progress task.'

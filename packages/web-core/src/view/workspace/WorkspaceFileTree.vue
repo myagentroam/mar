@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './inspector-row.css';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
@@ -478,6 +479,7 @@ defineExpose({ reveal });
             v-if="!row.loadMore"
             class="file-tree-row-shell"
             :class="{
+              'mar-inspector-row': !disabled,
               selected: selectedPath === row.node.path,
               'drop-target': draggingPath === row.node.path
             }"
@@ -494,7 +496,7 @@ defineExpose({ reveal });
             <button
               v-tooltip="row.node.path === '.' ? (rootPath ?? row.node.name) : row.node.path"
               :aria-label="row.node.path === '.' ? (rootPath ?? row.node.name) : row.node.path"
-              class="file-tree-row"
+              class="file-tree-row mar-inspector-row-action"
               type="button"
               role="treeitem"
               :data-file-path="row.node.path"
@@ -533,6 +535,9 @@ defineExpose({ reveal });
                 class="file-tree-more mar-icon-action mar-icon-action--inline"
                 :class="{ 'is-visible': nodeActionsVisible(row.node.path) }"
                 type="button"
+                v-tooltip="
+                  translate('generated.workspaceFileTree.moreActionsFor', { value0: row.node.name })
+                "
                 :aria-label="
                   translate('generated.workspaceFileTree.moreActionsFor', { value0: row.node.name })
                 "
@@ -740,15 +745,6 @@ defineExpose({ reveal });
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
-}
-
-.file-tree-row-shell:hover {
-  background-color: var(--mar-fill-muted);
-}
-
-.file-tree-row:hover:not(:disabled),
-.file-tree-row:focus-visible {
-  background: transparent;
 }
 
 .file-tree-row-shell.selected {

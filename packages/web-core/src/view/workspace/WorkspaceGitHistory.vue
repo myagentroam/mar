@@ -2,6 +2,7 @@
 import '../../styles/region-retry-action.css';
 import '../../styles/file-change-colors.css';
 import './git-inline-loading.css';
+import './inspector-row.css';
 import './file-tooltip-trigger.css';
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -343,7 +344,7 @@ function toggleHistoryDirectory(commitHash: string, path: string): void {
             `${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`
           "
           :aria-label="`${commit.subject || translate('generated.workspaceInspector.untitled')}\n${commit.authorName} · ${historyTime(commit.committedAt)}${commit.refs.length > 0 ? `\n${commit.refs.join(', ')}` : ''}`"
-          class="history-commit-row"
+          class="history-commit-row mar-inspector-row mar-inspector-row-action"
           type="button"
           @click="toggleHistoryCommit(commit)"
           @contextmenu="openHistoryContextMenu(commit.hash, $event)"
@@ -730,10 +731,6 @@ button.history-refresh {
 
 .history-graph-color-5 {
   color: var(--mar-palette-red-fg);
-}
-
-.history-commit-row:hover {
-  background: var(--mar-fill-row-hover);
 }
 
 .history-content,

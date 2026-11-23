@@ -892,10 +892,12 @@ test('Appearance changes UI and file preferences independently of the MAR icon t
   expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme.v2'))).toBeNull();
   await expect(root).not.toHaveAttribute('data-theme', /.*/);
   await expect(root).not.toHaveClass(/dark/);
-  await selectAppearanceOption(page, '文件默认打开方式', '只读');
+  const fileMode = page.getByRole('combobox', { name: '文件默认打开方式', exact: true });
+  await expect(fileMode).toHaveText('只读');
+  await selectAppearanceOption(page, '文件默认打开方式', '编辑');
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('mar.file-editor.default-mode')))
-    .toBe('read-only');
+    .toBe('edit');
 
   await page.reload();
   await page.getByRole('button', { name: '设置', exact: true }).click();
@@ -903,9 +905,7 @@ test('Appearance changes UI and file preferences independently of the MAR icon t
   await expect(page.getByRole('combobox', { name: '图标主题', exact: true })).toContainText(
     'MAR File Icons'
   );
-  await expect(page.getByRole('combobox', { name: '文件默认打开方式', exact: true })).toContainText(
-    '只读'
-  );
+  await expect(fileMode).toHaveText('编辑');
 });
 
 test('About shows versions, documentation, and third-party notices without duplicating system information', async ({

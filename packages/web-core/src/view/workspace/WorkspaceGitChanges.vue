@@ -2,6 +2,7 @@
 import '../../styles/region-retry-action.css';
 import '../../styles/file-change-colors.css';
 import './git-inline-loading.css';
+import './inspector-row.css';
 import '@myagentroam/mar-ui/region-status.css';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
@@ -442,10 +443,14 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
         <li v-if="repository.changesTruncated" class="change-repository-empty" role="status">
           {{ translate('gitWorktrees.changesTruncated') }}
         </li>
-        <li v-for="entry in repository.changes" :key="changeKey(entry)" class="change-entry">
+        <li
+          v-for="entry in repository.changes"
+          :key="changeKey(entry)"
+          class="change-entry mar-inspector-row"
+        >
           <button
             v-tooltip="workspaceChangePath(entry)"
-            class="change-path"
+            class="change-path mar-inspector-row-action"
             type="button"
             :aria-label="
               entry.diffAvailable && !usesRawFilePreview(entry.path)
@@ -780,14 +785,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   border-radius: var(--mar-radius-selection);
 }
 
-.change-list .change-entry:hover {
-  background: var(--mar-fill-row-hover);
-}
-
-.change-list .change-path:not(.is-disabled):hover {
-  color: var(--mar-text-primary);
-}
-
 .change-list .change-restore {
   min-width: 1.4rem;
   padding: 0.15rem;
@@ -872,12 +869,6 @@ button.file-explorer-utility-button:disabled {
   font-size: var(--mar-font-size-meta);
   text-align: left;
   cursor: pointer;
-}
-
-.change-list .change-path:focus-visible {
-  background: var(--mar-fill-row-hover);
-  outline: 2px solid var(--mar-control-focus);
-  outline-offset: -2px;
 }
 
 .change-list .change-path:disabled {

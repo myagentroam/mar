@@ -34,6 +34,21 @@ async function placeCursor(page: Page, position: number) {
     }, position);
 }
 
+test('quick prompt matches and empty results keep the correct listbox name', async ({ page }) => {
+  await page.goto(`${fixture.url}composer-reference-browser.html`);
+  const editor = page.locator('textarea.composer-input');
+  const listbox = page.getByRole('listbox', { name: 'Quick Prompts', exact: true });
+
+  await editor.fill('#review');
+  await placeCursor(page, '#review'.length);
+  await expect(listbox.getByRole('option', { selected: true })).toContainText('#review');
+
+  await editor.fill('#nonexistent');
+  await placeCursor(page, '#nonexistent'.length);
+  await expect(listbox).toBeVisible();
+  await expect(listbox.getByRole('option')).toHaveCount(0);
+});
+
 test('mixed results render once and session selection removes the trigger in one undoable edit', async ({
   page
 }) => {
@@ -335,11 +350,21 @@ for (const [theme, width] of [
       });
       return {
         spread: Math.max(...centers) - Math.min(...centers),
-        sameFont: getComputedStyle(parts[1]!).fontFamily === getComputedStyle(parts[2]!).fontFamily
+        sameFont: getComputedStyle(parts[1]!).fontFamily === getComputedStyle(parts[2]!).fontFamily,
+        trailingInset:
+          element.getBoundingClientRect().right - parts[2]!.getBoundingClientRect().right
       };
     });
     expect(alignment.spread).toBeLessThanOrEqual(1);
     expect(alignment.sameFont).toBe(true);
+    const fileTrailingInset = await picker
+      .getByRole('option')
+      .nth(1)
+      .evaluate((option) => {
+        const kind = option.querySelector('.entry-kind')!;
+        return option.getBoundingClientRect().right - kind.getBoundingClientRect().right;
+      });
+    expect(Math.abs(alignment.trailingInset - fileTrailingInset)).toBeLessThanOrEqual(1);
     await page.evaluate((theme) => {
       document.documentElement.dataset.theme = theme;
     }, theme);

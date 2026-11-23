@@ -1,3 +1,4 @@
+import { fileKeys, workspaceKeys } from './console-shortcut-keys.js';
 import {
   consoleKeyboardShortcutService,
   invokeConsoleShortcut,
@@ -52,12 +53,7 @@ export function createFilePreviewWindowInteractionService(
     priority: 110,
     scope: 'file-preview',
     modalOwner: () => options.root?.(),
-    keys: [
-      { key: 'w', code: 'KeyW', ctrl: true },
-      { key: 'w', code: 'KeyW', ctrl: true, shift: true },
-      { key: 'w', code: 'KeyW', alt: true },
-      { key: 'w', code: 'KeyW', alt: true, shift: true }
-    ],
+    keys: workspaceKeys.close,
     when: options.isOpen,
     execute: (event) => {
       // Foreground ownership remains in effect while confirmation is pending.
@@ -94,7 +90,7 @@ export function createFilePreviewWindowInteractionService(
     priority: 105,
     scope: 'file-preview',
     modalOwner: () => options.root?.(),
-    keys: [{ key: 'Escape' }],
+    keys: fileKeys.dismiss,
     when: (event) => options.isOpen() && !isEscapeBlocked(event),
     execute: (event) => {
       if (!event.repeat) void requestClose(true);

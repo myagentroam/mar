@@ -56,7 +56,7 @@ const emit = defineEmits<{
   blur: [event: FocusEvent];
 }>();
 const locale = useMarUiLocale();
-const vOverflowTooltip = inject(marUiTooltipDirectiveKey, {});
+const vTooltip = inject(marUiTooltipDirectiveKey, {});
 const id = useId();
 const createId = `${id}-create`;
 const field = useTemplateRef<HTMLElement>('field');
@@ -482,6 +482,7 @@ watch(controlDisabled, (disabled) => {
         <input
           v-if="filterable"
           v-bind="controlAttrs($attrs)"
+          v-tooltip="!open ? tooltip : undefined"
           ref="trigger"
           v-model="query"
           type="text"
@@ -502,7 +503,7 @@ watch(controlDisabled, (disabled) => {
         <button
           v-else
           v-bind="controlAttrs($attrs)"
-          v-overflow-tooltip="overflowText"
+          v-tooltip="!open ? (tooltip ?? overflowText) : undefined"
           ref="trigger"
           type="button"
           :class="{ 'mar-ui-select__trigger--with-tags': hasTags }"

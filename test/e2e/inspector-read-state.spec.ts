@@ -23,6 +23,206 @@ async function expectStatusToScrollWithRows(status: Locator, firstRow: Locator) 
   await expect.poll(async () => (await status.boundingBox())?.y).toBeCloseTo(statusBefore.y - 110);
 }
 
+function textContrast(locator: Locator) {
+  return locator.evaluate((element) => {
+    const backgrounds: string[] = [];
+    for (let layer: Element | null = element; layer; layer = layer.parentElement) {
+      backgrounds.unshift(getComputedStyle(layer).backgroundColor);
+    }
+    const canvas = document.createElement('canvas').getContext('2d')!;
+    const luminance = (layers: string[]) => {
+      canvas.clearRect(0, 0, 1, 1);
+      for (const color of layers) {
+        canvas.fillStyle = color;
+        canvas.fillRect(0, 0, 1, 1);
+      }
+      const [r, g, b] = canvas.getImageData(0, 0, 1, 1).data;
+      const linear = (channel: number) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * linear(r!) + 0.7152 * linear(g!) + 0.0722 * linear(b!);
+    };
+    const bg = luminance(backgrounds);
+    const fg = luminance([...backgrounds, getComputedStyle(element).color]);
+    return (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05);
+  });
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Inspector result rows share visible hover and keyboard focus in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1600, height: 880 });
+    const changes = [
+      { path: 'scripts/release-uat.mjs', change: 'MODIFIED' },
+      { path: 'src/inspector.ts', change: 'ADDED' },
+      { path: 'src/old-panel.ts', change: 'DELETED' }
+    ].map((file) => ({ ...file, state: 'UNSTAGED', diffAvailable: true }));
+    await page.route('**/api/**', (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/content/search')) {
+        return route.fulfill({
+          json: {
+            search: {
+              truncated: true,
+              matches: [
+                'const workspace = resolve(root);',
+                'await git(workspace, args);',
+                'const status = await readStatus(workspace);',
+                'return workspace;',
+                'await publishWorkspace(workspace);',
+                'await refresh(workspace);'
+              ].map((preview, index) => ({
+                path: changes[0]!.path,
+                line: 37 + index * 7,
+                column: 1,
+                preview
+              }))
+            }
+          }
+        });
+      }
+      if (path.endsWith('/changes')) {
+        return route.fulfill({
+          json: {
+            changes,
+            repositories: [
+              {
+                repositoryPath: '',
+                repositoryName: 'my-agent-roam',
+                source: 'ROOT',
+                current: true,
+                branch: 'develop',
+                status: 'DIRTY',
+                changes
+              }
+            ]
+          }
+        });
+      }
+      if (path.endsWith('/git/history')) {
+        return route.fulfill({
+          json: {
+            commits: [
+              'Unify inspector row states',
+              'Align search results',
+              'Improve file preview'
+            ].map((subject, index) => ({
+              subject,
+              hash: `commit-${index}`,
+              parents: index < 2 ? [`commit-${index + 1}`] : [],
+              authorName: 'Developer',
+              authorEmail: 'dev@example.test',
+              committedAt: Date.UTC(2026, 6, 10, 14, 32 - index * 5),
+              refs: index === 0 ? ['develop'] : []
+            })),
+            nextCursor: null
+          }
+        });
+      }
+      if (path.includes('/git/commits/') && path.endsWith('/files')) {
+        return route.fulfill({ json: { files: changes } });
+      }
+      return route.fulfill({ json: { refs: [] } });
+    });
+    await page.goto(
+      `${fixture.url}inspector-read-state.html?theme=${theme}&locale=zh-CN&row-styles`
+    );
+    const search = page.getByTestId('Search');
+    const input = search.getByRole('textbox');
+    await input.fill('workspace');
+    await input.press('Enter');
+    const searchRow = search.locator('.content-search-results button').first();
+    const match = searchRow.locator('mark');
+    await expect(match).toHaveText('workspace');
+    await expect(match).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(match).toHaveCSS('text-decoration-line', 'underline');
+
+    const files = page.getByTestId('Files');
+    const file = files.locator('[data-file-path="src/existing.ts"]');
+    const gitChanges = page.getByTestId('Git Changes');
+    const change = gitChanges.locator('.change-entry').first();
+    const history = page.getByTestId('Git History');
+    const commit = history.locator('.history-commit-row').first();
+    await commit.click();
+    const directory = history.getByRole('button', { name: 'scripts', exact: true });
+    await directory.click();
+    const historyFile = history.getByRole('button', { name: /release-uat\.mjs/ });
+    const rows = [
+      { panel: files, name: 'files', row: file.locator('..'), target: file, text: ['.tree-name'] },
+      {
+        panel: search,
+        name: 'search',
+        row: searchRow,
+        target: searchRow,
+        text: ['.content-search-file', '.content-search-directory', 'small', 'code', 'mark']
+      },
+      {
+        panel: gitChanges,
+        name: 'git-changes',
+        row: change,
+        target: change.locator('.change-path'),
+        text: ['.change-file-name', '.change-directory', '.change-status']
+      },
+      {
+        panel: history,
+        name: 'git-history',
+        row: commit,
+        target: commit,
+        text: ['.history-subject', 'small', '.history-ref']
+      },
+      {
+        row: historyFile,
+        target: historyFile,
+        text: ['.history-file-path', '.history-file-status']
+      }
+    ];
+    const hover = theme === 'daylight' ? 'rgb(232, 241, 255)' : 'rgb(46, 46, 46)';
+    for (const { panel, name, row, target, text } of rows) {
+      for (const selector of text) {
+        expect(await textContrast(row.locator(selector).first()), selector).toBeGreaterThanOrEqual(
+          4.5
+        );
+      }
+      await target.hover();
+      await expect(row).toHaveCSS('background-color', hover);
+      if (panel) await panel.screenshot({ path: testInfo.outputPath(`${name}.png`) });
+      for (const selector of text) {
+        expect(await textContrast(row.locator(selector).first()), selector).toBeGreaterThanOrEqual(
+          4.5
+        );
+      }
+      await page.mouse.move(0, 0);
+      await page.keyboard.press('Tab');
+      await target.focus();
+      await expect(target).toHaveCSS('outline-style', 'solid');
+      await expect(target).toHaveCSS('outline-width', '2px');
+      await target.blur();
+    }
+
+    const customHover = theme === 'daylight' ? '#d6d6d6' : '#444444';
+    const matchColors = theme === 'daylight' ? ['#261900', '#ffd386'] : ['#fff4dc', '#653700'];
+    await page.locator('html').evaluate(
+      (root, { customHover, matchColors }) => {
+        root.style.setProperty('--mar-fill-row-hover', customHover);
+        root.style.setProperty('--mar-color-warning-bg', matchColors[0]!);
+        root.style.setProperty('--mar-color-warning-text', matchColors[1]!);
+      },
+      { customHover, matchColors }
+    );
+    for (const { row, target } of rows) {
+      await target.hover();
+      await expect(row).toHaveCSS(
+        'background-color',
+        theme === 'daylight' ? 'rgb(214, 214, 214)' : 'rgb(68, 68, 68)'
+      );
+    }
+    await searchRow.hover();
+    expect(await textContrast(match)).toBeGreaterThanOrEqual(4.5);
+  });
+}
+
 for (const width of [1280, 390]) {
   const theme = width < 768 ? 'daylight' : 'vscode-dark-2026';
   test(`Inspector feedback scrolls with the content it describes at ${width}px`, async ({
@@ -114,12 +314,19 @@ for (const width of [1280, 390]) {
     const listBounds = (await search
       .getByRole('list', { name: 'Content search results' })
       .boundingBox())!;
+    const firstSearchRow = search.locator('.content-search-results button').first();
     expect(warningBounds.x).toBeCloseTo(inputBounds.x);
-    expect(warningBounds.x - listBounds.x).toBeGreaterThanOrEqual(6);
-    await expectStatusToScrollWithRows(
-      searchWarning,
-      search.locator('.content-search-results button').first()
-    );
+    expect(warningBounds.x).toBeCloseTo(listBounds.x);
+    expect(warningBounds.width).toBeCloseTo(listBounds.width);
+    const gutters = await firstSearchRow.evaluate((row) => {
+      const scrollport = row.closest('.content-search-body')!;
+      const x = scrollport.getBoundingClientRect().left;
+      const bounds = row.getBoundingClientRect();
+      return { left: bounds.left - x, right: x + scrollport.clientWidth - bounds.right };
+    });
+    expect(gutters.left).toBeGreaterThanOrEqual(6);
+    expect(gutters.right).toBeCloseTo(gutters.left);
+    await expectStatusToScrollWithRows(searchWarning, firstSearchRow);
 
     await page.getByRole('button', { name: 'Fail Files Watch' }).click();
     const files = page.getByTestId('Files');

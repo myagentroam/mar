@@ -359,6 +359,7 @@ onBeforeUnmount(() => {
             :submitting="submitting"
             v-if="presentation.canUseComposer"
             ref="composerToolbar"
+            model-shortcut
             :draft-session-open="false"
             :runner="configuration.runner"
             :runner-options="controller.runnerOptions.value"

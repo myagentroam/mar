@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
+import { marUiTooltipDirectiveKey, readOverflowText } from '@myagentroam/mar-ui/tooltip';
 import { createUuid } from '../../util/uuid.js';
 // Owns the current hosted Composer draft; quote callbacks bind its watch and reuse the existing submission snapshot.
 import { parseComposerTags, type ComposerReference } from '@myagentroam/protocol';
@@ -17,8 +18,13 @@ import ComposerSendButton from '../composer/ComposerSendButton.vue';
 import '../composer/composer-toolbar.css';
 import type { ConversationTemplateSummary, HostedConversationUpload } from '@myagentroam/protocol';
 import { MarMessageBox } from '../../service/message-box-service.js';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 import { registerComposerShortcuts } from '../../service/composer-shortcut-service.js';
+import {
+  composerSendKeys,
+  shortcutKeysLabel,
+  shortcutTooltip
+} from '../../service/console-shortcut-keys.js';
 import { createComposerAttachmentInputService } from '../../service/composer-attachment-input-service.js';
 import { createWorkbenchClockService } from '../../service/workbench-clock-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -230,6 +236,18 @@ const sendLabel = computed(() =>
         : 'hostedConversations.send'
   )
 );
+const sendDisabled = computed(
+  () =>
+    composerReadonly.value ||
+    pendingAttachments.value ||
+    failedDraftAttachments.value ||
+    !inputHasContent.value ||
+    configurationUpdating.value ||
+    modelUnavailable.value
+);
+const modelLabel = useTemplateRef<HTMLElement>('modelLabel');
+const vOverflowTooltip = inject(marUiTooltipDirectiveKey, {});
+const modelOverflowText = () => readOverflowText(modelLabel.value);
 const workingLabel = computed(() =>
   conversationActivityLabel(activeRun.value, props.readonly ? [] : props.workspace.turns.value)
 );
@@ -773,6 +791,11 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="mar-icon-action"
+            v-tooltip="
+              translate('hostedConversations.removeAttachment', {
+                name: attachment.name
+              })
+            "
             :aria-label="
               translate('hostedConversations.removeAttachment', {
                 name: attachment.name
@@ -885,13 +908,14 @@ onBeforeUnmount(() => {
           >
             <button
               class="hosted-model-trigger mar-composer-dropdown-trigger"
+              v-overflow-tooltip="modelOverflowText"
               type="button"
               :disabled="modelSelectionDisabled"
               :aria-label="translate('hostedConversations.model')"
               :aria-description="selectedModelLabel"
               :aria-busy="draft && draftModelsLoading ? true : undefined"
             >
-              <span>{{ selectedModelLabel }}</span>
+              <span ref="modelLabel">{{ selectedModelLabel }}</span>
               <MarIcon
                 :name="draft && draftModelsLoading ? 'loading-action' : 'chevron-down'"
                 aria-hidden="true"
@@ -927,7 +951,11 @@ onBeforeUnmount(() => {
             class="hosted-replace-hint"
             role="status"
           >
-            {{ translate('hostedConversations.replaceCurrentHint') }}
+            {{
+              translate('hostedConversations.replaceCurrentHint', {
+                keys: shortcutKeysLabel([composerSendKeys[1]])
+              })
+            }}
           </span>
           <span
             v-if="submitting"
@@ -937,33 +965,29 @@ onBeforeUnmount(() => {
           >
           <button
             v-tooltip="
-              translate(
-                activeRun.status === 'CANCELLING'
-                  ? 'generated.composerToolbar.stopping'
-                  : 'hostedConversations.stopWithEsc'
-              )
+              activeRun.status === 'CANCELLING'
+                ? translate('generated.composerToolbar.stopping')
+                : translate('hostedConversations.stop')
             "
             v-if="activeRun"
             class="hosted-stop-button mar-composer-action mar-composer-stop-action"
             type="button"
             :disabled="!canStopCurrent"
-            :aria-label="translate('hostedConversations.stopWithEsc')"
+            :aria-label="translate('hostedConversations.stop')"
             @click="stop"
           >
             <MarIcon name="stop" aria-hidden="true" />
           </button>
           <ComposerSendButton
-            v-tooltip="sendLabel"
+            v-tooltip="
+              shortcutTooltip(
+                sendLabel,
+                !mobileViewport && !sendDisabled ? [composerSendKeys[0]] : []
+              )
+            "
             v-if="!activeRun || (mobileViewport && canReplaceCurrent && inputHasContent)"
             class="hosted-send-button mar-composer-action"
-            :disabled="
-              composerReadonly ||
-              pendingAttachments ||
-              failedDraftAttachments ||
-              !inputHasContent ||
-              configurationUpdating ||
-              modelUnavailable
-            "
+            :disabled="sendDisabled"
             :mobile-viewport="mobileViewport"
             :can-steer="canReplaceCurrent"
             :context-key="`${selectedSubmissionContext ?? draftTemplateId}:${activeRun?.id ?? ''}`"

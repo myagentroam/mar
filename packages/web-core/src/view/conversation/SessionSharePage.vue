@@ -230,6 +230,11 @@ onBeforeUnmount(() => {
                 class="mar-icon-button mar-icon-action mar-icon-action--inline"
                 type="button"
                 :aria-label="translate('sessionShare.showPassword')"
+                v-tooltip="
+                  translate(
+                    passwordVisible ? 'sessionShare.hidePassword' : 'sessionShare.showPassword'
+                  )
+                "
                 :aria-pressed="passwordVisible"
                 :disabled="loading"
                 @click="passwordVisible = !passwordVisible"

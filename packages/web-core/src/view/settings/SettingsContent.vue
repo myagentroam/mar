@@ -20,13 +20,15 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
 import {
   activityToggleKeys,
+  closeAllTabsKeys,
+  closeTabKeys,
   composerModelKeys,
   composerSendKeys,
   composerStopKeys,
   fileKeys,
   findNavigationKeys,
   queueKeys,
-  shortcutKeyLabel,
+  shortcutKeysLabel,
   workspaceKeys
 } from '../../service/console-shortcut-keys.js';
 import { iconThemes, type IconThemeId } from '../../icon-themes/index.js';
@@ -534,28 +536,26 @@ async function confirmLogout(): Promise<void> {
         <dl class="shortcut-list">
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(activityToggleKeys[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(activityToggleKeys) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.openRecentSessions') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.cycle[0]) }}</kbd> /
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.cycle[1]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(workspaceKeys.cycle.slice(0, 2)) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.cycleWorkspaceTabs') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.cycle[2]) }}</kbd> /
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.cycle[3]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(workspaceKeys.cycle.slice(2)) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.cycleWorkspaceTabsWithCtrlTab') }}</dd>
           </div>
           <div>
             <dt>
               <kbd
-                >{{ shortcutKeyLabel(workspaceKeys.numbered[1]!) }}…{{
+                >{{ shortcutKeysLabel([workspaceKeys.numbered[1]!]) }}…{{
                   workspaceKeys.numbered[9]!.key
                 }}/{{ workspaceKeys.numbered[0]!.key }}</kbd
               >
@@ -564,34 +564,31 @@ async function confirmLogout(): Promise<void> {
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.newSession[0]) }}</kbd> /
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.newSession[1]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(workspaceKeys.newSession) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.openNewSession') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.close[0]) }}</kbd> /
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.close[1]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(closeTabKeys) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.closeWorkspaceTab') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.close[2]) }}</kbd> /
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.close[3]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(closeAllTabsKeys) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.closeAllWorkspaceTabs') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.changes[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(workspaceKeys.changes) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.openGitChanges') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.terminal[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(workspaceKeys.terminal) }}</kbd>
             </dt>
             <dd>
               {{ translate('keyboardShortcuts.focusWorkspaceTerminal') }}
@@ -604,7 +601,7 @@ async function confirmLogout(): Promise<void> {
         <dl class="shortcut-list">
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.quickOpen[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(workspaceKeys.quickOpen) }}</kbd>
             </dt>
             <dd>
               {{ translate('keyboardShortcuts.quickOpenWorkspaceFile') }}
@@ -612,14 +609,14 @@ async function confirmLogout(): Promise<void> {
           </div>
           <div>
             <dt>
-              <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>{{ shortcutKeyLabel(fileKeys.choose[0]) }}</kbd
-              >/<kbd>{{ shortcutKeyLabel(fileKeys.dismiss[0]) }}</kbd>
+              <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>{{ shortcutKeysLabel([fileKeys.choose[0]]) }}</kbd
+              >/<kbd>{{ shortcutKeysLabel([fileKeys.dismiss[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.quickOpenNavigation') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.choose[1]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(fileKeys.choose.slice(1)) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.quickOpenSeparatePreview') }}</dd>
           </div>
@@ -633,31 +630,32 @@ async function confirmLogout(): Promise<void> {
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.dismiss[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([fileKeys.dismiss[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.closeFileTab') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.back[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([fileKeys.back[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.previousPreviewLocation') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.forward[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([fileKeys.forward[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.nextPreviewLocation') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.preview[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(workspaceKeys.preview) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.openMarkdownPreview') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.dismiss[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([fileKeys.dismiss[0]]) }}</kbd>
+              / <kbd>{{ shortcutKeysLabel(closeAllTabsKeys) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.closeStandalonePreview') }}</dd>
           </div>
@@ -668,7 +666,7 @@ async function confirmLogout(): Promise<void> {
         <dl class="shortcut-list">
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(workspaceKeys.search[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(workspaceKeys.search) }}</kbd>
             </dt>
             <dd>
               {{ translate('keyboardShortcuts.searchWorkspaceContent') }}
@@ -676,50 +674,50 @@ async function confirmLogout(): Promise<void> {
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.find[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(fileKeys.find) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.findInPreview') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(findNavigationKeys[0]) }}</kbd
-              >/<kbd>{{ shortcutKeyLabel(findNavigationKeys[1]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([findNavigationKeys[0]]) }}</kbd
+              >/<kbd>{{ shortcutKeysLabel([findNavigationKeys[1]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.findMatchNavigation') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.dismiss[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([fileKeys.dismiss[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.closeEmbeddedFind') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.symbols[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([fileKeys.symbols[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.openEditorSymbols') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.toggleEdit[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(fileKeys.toggleEdit) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.toggleFileEditing') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.selectAll[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(fileKeys.selectAll) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.selectEditorContent') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.replace[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(fileKeys.replace) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.replaceInEditor') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(fileKeys.save[0]!) }}</kbd>
+              <kbd>{{ shortcutKeysLabel(fileKeys.save) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.saveEditor') }}</dd>
           </div>
@@ -730,7 +728,7 @@ async function confirmLogout(): Promise<void> {
         <dl class="shortcut-list">
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(composerModelKeys[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([composerModelKeys[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.openComposerModelMenu') }}</dd>
           </div>
@@ -740,7 +738,7 @@ async function confirmLogout(): Promise<void> {
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(composerSendKeys[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([composerSendKeys[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.sendMessage') }}</dd>
           </div>
@@ -750,13 +748,13 @@ async function confirmLogout(): Promise<void> {
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(composerSendKeys[1]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([composerSendKeys[1]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.replaceRunningMessage') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(composerStopKeys[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([composerStopKeys[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.stopRun') }}</dd>
           </div>
@@ -770,13 +768,13 @@ async function confirmLogout(): Promise<void> {
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(queueKeys.save[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([queueKeys.save[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.saveQueuedMessage') }}</dd>
           </div>
           <div>
             <dt>
-              <kbd>{{ shortcutKeyLabel(queueKeys.execute[0]) }}</kbd>
+              <kbd>{{ shortcutKeysLabel([queueKeys.execute[0]]) }}</kbd>
             </dt>
             <dd>{{ translate('keyboardShortcuts.runQueuedMessage') }}</dd>
           </div>

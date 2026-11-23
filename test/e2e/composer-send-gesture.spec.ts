@@ -418,7 +418,7 @@ test('Hosted mobile steering also retains a directly tappable action', async ({ 
   await page.goto(`${fixture.url}workbench-style.html?hosted-gesture=1`);
   await page.locator('textarea.composer-input').fill('Tap to steer');
   const steer = page.getByRole('button', { name: 'Steer', exact: true });
-  const stop = page.getByRole('button', { name: 'Stop (Esc)', exact: true });
+  const stop = page.getByRole('button', { name: 'Stop', exact: true });
   const [stopBox, steerBox] = await Promise.all([stop.boundingBox(), steer.boundingBox()]);
   expect(stopBox!.y).toBe(steerBox!.y);
   expect(stopBox!.x + stopBox!.width).toBeLessThan(steerBox!.x);
@@ -435,6 +435,8 @@ test('Hosted desktop retains the Ctrl+Enter steering hint while running', async 
   await expect(
     page.getByText('While working, press Ctrl+Enter to steer with this message.', { exact: true })
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Stop', exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toHaveText('Stop');
 });
 
 test('Desktop mouse clicks retain ordinary sending without arming a touch gesture', async ({
@@ -442,6 +444,11 @@ test('Desktop mouse clicks retain ordinary sending without arming a touch gestur
 }) => {
   await page.setViewportSize({ width: 1280, height: 844 });
   const ui = await openWorkspace(page);
+  const tooltip = page.getByRole('tooltip');
+  await page.getByRole('button', { name: 'Stop run', exact: true }).hover();
+  await expect(tooltip).toHaveText('Stop run');
+  await ui.button.hover();
+  await expect(tooltip).toHaveText('Queue message (Enter)');
   const bounds = (await ui.button.boundingBox())!;
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();

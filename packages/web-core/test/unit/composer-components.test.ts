@@ -11,7 +11,11 @@ import {
 } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import {
+  i18n,
+  localePreferenceService,
+  translate
+} from '../../src/service/locale-preference-service.js';
 import { serializeComposerTag } from '@myagentroam/protocol';
 import {
   composerReferenceDescription,
@@ -577,6 +581,32 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     }
   );
 
+  it('keeps queue button tooltips to their action names during editing', async () => {
+    const tooltips: unknown[] = [];
+    await render(
+      ComposerQueue,
+      {
+        items: [
+          { queueItemId: 'editing', content: 'Editing this' },
+          { queueItemId: 'other', content: 'Another message' }
+        ],
+        paused: false,
+        loading: false,
+        goal: undefined,
+        editingQueueItemId: 'editing',
+        editingContent: 'Edited message'
+      },
+      tooltips
+    );
+    expect(tooltips).toContain(translate('generated.composerQueue.save'));
+    expect(
+      tooltips.filter((tip) => tip === translate('generated.composerQueue.runNow'))
+    ).toHaveLength(2);
+    expect(tooltips.filter((tip) => typeof tip === 'string' && tip.includes('Enter'))).toHaveLength(
+      0
+    );
+  });
+
   it('shows Session and marctl source labels for queued normal and steering messages', async () => {
     const origin = serializeComposerTag('mar_session_origin', {
       sessionId: 'session-42',
@@ -719,7 +749,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     );
     expect(promptHtml).toContain('#review');
     expect(promptHtml).toContain('Review the current changes');
-    expect(promptHints.filter(Boolean)).toEqual(['Review the current changes']);
+    const [promptHint, ...extraPromptHints] = promptHints.filter(Boolean);
+    expect(extraPromptHints).toEqual([]);
+    expect(typeof promptHint === 'function' ? promptHint() : promptHint).toBe(
+      'Review the current changes'
+    );
 
     vi.stubGlobal('localStorage', { getItem: () => null });
     vi.stubGlobal('document', {

@@ -94,8 +94,13 @@ export const personalSettingsZhCN = {
     composer: '消息与队列'
   },
   keyboardShortcuts: {
+    actionHint: '{label}（{keys}）',
+    focusContentSearch: '聚焦文件内容搜索',
+    refreshGitChanges: '打开 Git 变更并刷新',
+    toggleTerminal: '展开或收起终端',
+    queueMessage: '排队消息',
     platformHint:
-      'macOS 的工作区和文件快捷键请将 Ctrl 换为 Command、Alt 换为 Option；工作区 Ctrl+Tab、Ctrl+W 系列及消息输入框和队列的 Ctrl+Enter 仍使用 Control。',
+      '按键按当前平台显示。浏览器可能拦截新建窗口和关闭标签等按键，此时可使用列出的 Alt 或 Option 组合。',
     openRecentSessions: '全局：打开或关闭最近会话',
     cycleWorkspaceTabs: '工作区：切换到前一个或后一个标签（首尾循环）',
     cycleWorkspaceTabsWithCtrlTab: '工作区：切换到下一个或前一个标签（首尾循环）',

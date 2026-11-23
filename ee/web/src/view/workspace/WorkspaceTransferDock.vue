@@ -34,6 +34,7 @@ const emit = defineEmits<{
         v-if="activeCount === 0"
         class="mar-icon-button mar-icon-action"
         type="button"
+        v-tooltip="translate('generated.workspaceTransferDock.closeFileTransfers')"
         :aria-label="translate('generated.workspaceTransferDock.closeFileTransfers')"
         @click="emit('closeDock')"
       >

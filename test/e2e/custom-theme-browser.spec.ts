@@ -949,22 +949,22 @@ test('Appearance choices keep file mode, icon theme and language independent on 
       const modeChoices = page.getByRole('listbox', { name: 'Default file mode', exact: true });
       const icon = page.getByRole('combobox', { name: 'Icon theme', exact: true });
       const language = page.getByRole('combobox', { name: 'Language', exact: true });
-      await expect(mode).toHaveText('Edit');
+      await expect(mode).toHaveText('Read only');
       if (width === 390) await mode.tap();
       else await mode.press('Enter');
-      await expect(modeChoices.getByRole('option', { name: 'Edit' })).toHaveAttribute(
+      await expect(modeChoices.getByRole('option', { name: 'Read only' })).toHaveAttribute(
         'aria-selected',
         'true'
       );
       if (width === 390) {
-        await modeChoices.getByRole('option', { name: 'Read only' }).tap();
+        await modeChoices.getByRole('option', { name: 'Edit', exact: true }).tap();
       } else {
-        await mode.press('ArrowDown');
-        await expect(mode).toHaveText('Edit');
+        await mode.press('ArrowUp');
+        await expect(mode).toHaveText('Read only');
         await mode.press('Enter');
       }
       await expect(modeChoices).toBeHidden();
-      await expect(mode).toHaveText('Read only');
+      await expect(mode).toHaveText('Edit');
       await icon.click();
       await expect(
         page.getByRole('listbox', { name: 'Icon theme' }).getByRole('option')
@@ -978,11 +978,11 @@ test('Appearance choices keep file mode, icon theme and language independent on 
       await page.screenshot({ path: testInfo.outputPath(`appearance-choices-${width}.png`) });
       await languageChoices.getByRole('option', { name: '简体中文' }).click();
       await expect(page.getByRole('heading', { name: '外观' })).toBeVisible();
-      await expect(page.getByRole('combobox', { name: '文件默认打开方式' })).toHaveText('只读');
+      await expect(page.getByRole('combobox', { name: '文件默认打开方式' })).toHaveText('编辑');
       await expect(page.getByRole('combobox', { name: '语言' })).toHaveText('简体中文');
       expect(await page.evaluate(() => localStorage.getItem('mar.locale.v2'))).toBe('zh-CN');
       expect(await page.evaluate(() => localStorage.getItem('mar.file-editor.default-mode'))).toBe(
-        'read-only'
+        'edit'
       );
     } finally {
       await page.close();

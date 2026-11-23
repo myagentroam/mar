@@ -68,6 +68,7 @@ const summary = computed(() => composerReferenceLabel(props.reference));
       class="quote-tag-remove mar-icon-action mar-icon-action--inline"
       type="button"
       :disabled="disabled"
+      v-tooltip="translate('composer.removeQuote', { name: summary })"
       :aria-label="translate('composer.removeQuote', { name: summary })"
       @click="emit('remove')"
     >

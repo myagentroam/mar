@@ -212,13 +212,12 @@ function openContext(event: MouseEvent): void {
         <button
           type="button"
           class="session-tree-node"
+          v-tooltip="tree.parent.title"
           :aria-current="tree.parent.id === mainSessionId ? 'true' : undefined"
           :aria-label="`${tree.parent.title}, ${translate(`sessionGroups.status${tree.parent.status}`)}`"
           @click="emit('open', tree.parent.id, 'aside')"
         >
-          <span v-tooltip="tree.parent.title" class="session-tree-title">{{
-            tree.parent.title
-          }}</span>
+          <span class="session-tree-title">{{ tree.parent.title }}</span>
           <span
             v-if="tree.parent.status !== 'IDLE'"
             class="mar-session-activity"
@@ -312,11 +311,12 @@ function openContext(event: MouseEvent): void {
           <button
             type="button"
             class="session-tree-node"
+            v-tooltip="row.node.title"
             :aria-current="row.node.id === mainSessionId ? 'true' : undefined"
             :aria-label="`${row.node.title}, ${translate(`sessionGroups.status${row.node.status}`)}`"
             @click="emit('open', row.node.id, 'aside')"
           >
-            <span v-tooltip="row.node.title" class="session-tree-title">{{ row.node.title }}</span>
+            <span class="session-tree-title">{{ row.node.title }}</span>
             <span v-if="row.node.id === mainSessionId" class="session-tree-location">{{
               translate('sessionGroups.inMain')
             }}</span>

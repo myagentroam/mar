@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fileSpecifierParser } from '@myagentroam/code-navigation';
 import { filePreviewEnUS, filePreviewZhCN } from '../../src/i18n/file-preview.js';
 import { commonMessages } from '../../src/i18n/messages.js';
+import { fileEditorPreferenceService } from '../../src/service/file-editor-preference-service.js';
 import {
   i18n,
   localePreferenceService,
@@ -20,10 +21,19 @@ import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import InlineFindBar from '../../src/view/workspace/InlineFindBar.vue';
 import FilePreviewLoading from '../../src/view/workspace/FilePreviewLoading.vue';
 
-async function render(component: Component, props: Record<string, unknown>): Promise<string> {
+async function render(
+  component: Component,
+  props: Record<string, unknown>,
+  tooltips?: unknown[]
+): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
-  app.directive('tooltip', { getSSRProps: () => ({}) });
+  app.directive('tooltip', {
+    getSSRProps: (binding) => {
+      tooltips?.push(binding.value);
+      return {};
+    }
+  });
   return renderToString(app);
 }
 
@@ -348,8 +358,21 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
       expect(embedded).not.toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
-      const standalone = await render(component, { ...base, fullscreen: true });
+      const tooltips: unknown[] = [];
+      const standalone = await render(component, { ...base, fullscreen: true }, tooltips);
       expectUnifiedButtonHints(standalone);
+      for (const labelKey of [
+        'generated.filePreviewDialog.closePreview',
+        'generated.filePreviewDialog.closePreview2'
+      ]) {
+        const label = translate(labelKey);
+        expect(tooltips).toContain(
+          translate('keyboardShortcuts.actionHint', {
+            label,
+            keys: 'Alt+Shift+W / Ctrl+Shift+W / Esc'
+          })
+        );
+      }
       expect(standalone).toContain(
         `aria-label="${i18n.global.t('generated.filePreviewDialog.closePreview')}"`
       );
@@ -427,12 +450,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
 
   it('renders the inline find bar with localized labels, a truncated count, and enabled navigation', async () => {
     localePreferenceService().setLocale(locale);
-    const html = await render(InlineFindBar, {
-      modelValue: 'needle',
-      current: 2,
-      total: 7,
-      truncated: true
-    });
+    const tooltips: unknown[] = [];
+    const html = await render(
+      InlineFindBar,
+      { modelValue: 'needle', current: 2, total: 7, truncated: true },
+      tooltips
+    );
 
     expect(html).toContain('role="search"');
     expect(html).toContain(i18n.global.t('inlineFind.label'));
@@ -444,6 +467,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     for (const key of ['inlineFind.previous', 'inlineFind.next']) {
       expect(buttonTag(html, i18n.global.t(key))).not.toMatch(/\sdisabled(?:\s|=|>)/u);
     }
+    expect(tooltips.filter(Boolean)).toEqual(
+      ['inlineFind.previous', 'inlineFind.next', 'inlineFind.close'].map((key) =>
+        i18n.global.t(key)
+      )
+    );
     expect(html).not.toMatch(/(?:inlineFind|generated)\./u);
   });
 
@@ -741,6 +769,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
   it('keeps fallback-decoded source read-only even on a writable Node', async () => {
     stubBrowserEnvironment();
     localePreferenceService().setLocale(locale);
+    const preference = fileEditorPreferenceService();
+    const previousMode = preference.mode.value;
+    preference.setMode('edit');
     const html = await render(WorkspaceFilePage, {
       file: {
         path: 'DisplayBoard.c',
@@ -755,7 +786,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
       targetLine: undefined,
       writeEnabled: true,
       saveFile: async () => 'revision-2'
-    });
+    }).finally(() => preference.setMode(previousMode));
     expect(html).toContain('GB18030');
     expect(html).toContain(i18n.global.t('fileEditor.readOnly'));
     expect(html).not.toContain(i18n.global.t('fileEditor.editing'));
@@ -768,23 +799,21 @@ describe('public file preview preferences', () => {
     const browser = stubBrowserEnvironment();
     vi.resetModules();
 
-    const { fileEditorPreferenceService, parseFileEditorDefaultMode } =
+    const { fileEditorPreferenceService } =
       await import('../../src/service/file-editor-preference-service.js');
-    expect(parseFileEditorDefaultMode('read-only')).toBe('read-only');
-    expect(parseFileEditorDefaultMode('unexpected')).toBe('edit');
 
     const first = fileEditorPreferenceService();
     const second = fileEditorPreferenceService();
-    expect(first.mode.value).toBe('edit');
+    expect(first.mode.value).toBe('read-only');
 
-    first.setMode('read-only');
-    expect(second.mode.value).toBe('read-only');
-    expect(browser.storage.get('mar.file-editor.default-mode')).toBe('read-only');
+    first.setMode('edit');
+    expect(second.mode.value).toBe('edit');
+    expect(browser.storage.get('mar.file-editor.default-mode')).toBe('edit');
 
     vi.resetModules();
     const { fileEditorPreferenceService: restoredEditorPreferenceService } =
       await import('../../src/service/file-editor-preference-service.js');
-    expect(restoredEditorPreferenceService().mode.value).toBe('read-only');
+    expect(restoredEditorPreferenceService().mode.value).toBe('edit');
   });
 
   it('normalizes saved Markdown preferences and applies storage events to the current service', async () => {
