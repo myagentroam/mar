@@ -38,7 +38,7 @@ const emit = defineEmits<{
   >
     <button
       v-if="!mobileViewport && (view !== 'nodes' || !workspaceStartupBlocked)"
-      class="workbench-tree-toggle mar-icon-button mar-icon-action"
+      class="workbench-tree-toggle mar-icon-button mar-icon-action mar-icon-action--panel-toggle"
       v-tooltip="
         sidebarCollapsed ? $t('navigation.expandSidebar') : $t('navigation.collapseSidebar')
       "
@@ -49,7 +49,7 @@ const emit = defineEmits<{
       type="button"
       @click="emit('toggleSidebar')"
     >
-      <MarIcon name="sidebar" />
+      <MarIcon :name="sidebarCollapsed ? 'sidebar' : 'sidebar-expanded'" />
     </button>
     <div v-if="view === 'nodes'" class="workspace-tabs-slot">
       <slot name="workspace-tabs"></slot>
@@ -98,11 +98,6 @@ const emit = defineEmits<{
   min-height: var(--mar-compact-control-size);
   place-items: center;
   line-height: 1;
-}
-
-.workbench-tree-toggle[aria-expanded='true']:not(:hover):not(:focus-visible):not(:active) {
-  background: transparent;
-  color: var(--mar-text-secondary);
 }
 
 .workbench-tree-toggle :deep(.mar-icon) {

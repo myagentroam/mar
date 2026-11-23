@@ -29,6 +29,7 @@ async function palette(page: Page) {
       inputBorder: resolve('--mar-input-border'),
       inputBorderHover: resolve('--mar-input-border-hover'),
       focus: resolve('--mar-control-focus'),
+      actionHover: resolve('--mar-action-hover-overlay'),
       hover: resolve('--mar-fill-row-hover'),
       selected: resolve('--mar-fill-selection')
     };
@@ -44,6 +45,7 @@ async function customPalette(page: Page) {
       '--mar-text-secondary': '#8295a4',
       '--mar-conversation-activity-fg': '#9672d1',
       '--mar-control-focus': '#af79d0',
+      '--mar-action-hover-overlay': '#4d627340',
       '--mar-fill-row-hover': '#25334280',
       '--mar-fill-selection': '#35475a'
     }))
@@ -60,7 +62,8 @@ async function checkUtility(
 ) {
   await control.hover();
   await expect(control).toHaveCSS('color', colors.primary);
-  await expect(control).toHaveCSS('background-color', inline ? 'rgba(0, 0, 0, 0)' : colors.hover);
+  const hoverBackground = inline ? 'rgba(0, 0, 0, 0)' : colors.actionHover;
+  await expect(control).toHaveCSS('background-color', hoverBackground);
   if (!inline) await expect(control).toHaveCSS('border-radius', '6px');
   await expect(control).toHaveCSS('transform', 'none');
   await control.focus();
@@ -70,7 +73,7 @@ async function checkUtility(
   await expect(control).toHaveCSS('outline-style', 'solid');
   await expect(control).toHaveCSS('outline-width', '2px');
   await expect(control).toHaveCSS('outline-color', colors.focus);
-  await expect(control).toHaveCSS('background-color', inline ? 'rgba(0, 0, 0, 0)' : colors.hover);
+  await expect(control).toHaveCSS('background-color', hoverBackground);
 }
 
 for (const theme of ['light', 'dark', 'custom']) {
@@ -716,9 +719,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     for (const custom of [false, true]) {
       const colors = custom ? await customPalette(page) : await palette(page);
       await expect(expand).toHaveAttribute('aria-expanded', 'false');
+      await expect(expand.locator('svg')).toHaveAttribute('data-mar-icon', 'panel-right');
+      await expect(expand.locator('svg path[fill="currentColor"]')).toHaveCount(0);
+      const { width, height } = (await expand.boundingBox())!;
       await expand.click();
       await expect(aside).toBeVisible();
       await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+      await expect(collapse.locator('svg')).toHaveAttribute(
+        'data-mar-icon',
+        'panel-right-expanded'
+      );
+      await expect(collapse.locator('svg path[fill="currentColor"]')).toHaveCount(1);
+      expect(await collapse.boundingBox()).toMatchObject({ width, height });
       await page.mouse.move(0, 0);
       await page.getByTestId('disable').focus();
       await expect(collapse).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -727,12 +739,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await collapse.press('Enter');
       await expect(aside).toBeHidden();
       await expect(expand).toBeFocused();
+      await expect(expand.locator('svg')).toHaveAttribute('data-mar-icon', 'panel-right');
 
       await menuTrigger.click();
       await expect(menuTrigger).toHaveAttribute('aria-expanded', 'true');
       await page.mouse.move(0, 0);
       expect(await menuTrigger.evaluate((el) => el.matches(':hover, :focus-visible'))).toBe(false);
-      await expect(menuTrigger).toHaveCSS('background-color', colors.hover);
+      await expect(menuTrigger).toHaveCSS('background-color', colors.actionHover);
       await menuTrigger.click();
       await expect(menuTrigger).toHaveAttribute('aria-expanded', 'false');
     }
@@ -1018,7 +1031,7 @@ test('native utility keeps neutral pressed feedback outside hover', async ({ pag
       true
     );
     await expect(control).toHaveCSS('color', colors.primary);
-    await expect(control).toHaveCSS('background-color', colors.hover);
+    await expect(control).toHaveCSS('background-color', colors.actionHover);
   } finally {
     await page.mouse.up();
   }

@@ -112,7 +112,7 @@ test('Process duration ticks do not reproject the conversation body', async ({ p
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [800, 1280]) {
-    test(`Sidebar panel icon stays stable while toggling in ${theme} at ${width}px`, async ({
+    test(`Sidebar panel icon fills only when expanded in ${theme} at ${width}px`, async ({
       page
     }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
@@ -120,21 +120,35 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         `${fixture.url}conversation-style.html?history-actions=1&language=en-US&theme=${theme}`
       );
       const toggle = page.locator('.workbench-tree-toggle');
-      const glyph = toggle.locator('[data-mar-icon="sidebar"]');
+      const glyph = toggle.locator('svg');
+      const panelFill = glyph.locator('path[fill="currentColor"]');
       await expect(glyph).toBeVisible();
       await expect(glyph.locator('rect')).toHaveCount(1);
       await expect(glyph).toHaveAttribute('fill', 'none');
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       await expect(toggle).toHaveAccessibleName('Collapse sidebar');
-      const graphic = await glyph.innerHTML();
+      await expect(glyph).toHaveAttribute('data-mar-icon', 'sidebar-expanded');
+      await expect(panelFill).toHaveCount(1);
+      await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const { width: buttonWidth, height: buttonHeight } = (await toggle.boundingBox())!;
+      const outline = await glyph.locator('rect').evaluate((element) => element.outerHTML);
       await toggle.click();
       await expect(toggle).toHaveAttribute('aria-expanded', 'false');
       await expect(toggle).toHaveAccessibleName('Expand sidebar');
-      expect(await glyph.innerHTML()).toBe(graphic);
+      await expect(glyph).toHaveAttribute('data-mar-icon', 'sidebar');
+      await expect(panelFill).toHaveCount(0);
+      expect(await toggle.boundingBox()).toMatchObject({
+        width: buttonWidth,
+        height: buttonHeight
+      });
+      expect(await glyph.locator('rect').evaluate((element) => element.outerHTML)).toBe(outline);
       await toggle.press('Space');
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       await expect(toggle).toHaveAccessibleName('Collapse sidebar');
-      expect(await glyph.innerHTML()).toBe(graphic);
+      await expect(glyph).toHaveAttribute('data-mar-icon', 'sidebar-expanded');
+      await expect(panelFill).toHaveCount(1);
+      await expect(toggle).toBeFocused();
+      await expect(toggle).toHaveCSS('outline-style', 'solid');
       await page.locator('.workbench-header').screenshot({
         path: testInfo.outputPath('sidebar-panel-toggle.png')
       });
