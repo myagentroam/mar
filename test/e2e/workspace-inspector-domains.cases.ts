@@ -37,6 +37,10 @@ for (const mobile of [false, true]) {
         undefined,
         '0.9.12'
       );
+      await page.addInitScript(() => localStorage.setItem('mar.file-editor.default-mode', 'edit'));
+      await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+        json(route, { preparation: { state: 'UNAVAILABLE' } })
+      );
       const initial = 'export const value = 1;';
       let failRefresh = false;
       await page.route(/\/api\/workspaces\/workspace-1\/files(?:\?.*)?$/, (route) =>

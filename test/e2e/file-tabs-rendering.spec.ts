@@ -86,7 +86,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(active).toHaveCSS('outline-width', '2px');
         await expect(selected).toHaveCSS('background-color', colors.selected);
         await expect(frame.locator('.cm-content')).toBeVisible();
-        await expect(frame.locator('.cm-content')).toHaveAttribute('contenteditable', 'true');
+        await expect(frame.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
         await active.evaluate((element) => (element as HTMLElement).blur());
         await page.mouse.move(width - 1, 849);
         await frame.locator('.cm-content').evaluate((element) => (element as HTMLElement).blur());
@@ -430,7 +430,7 @@ for (const width of [1280, 390]) {
           ? 'rgba(0, 0, 0, 0)'
           : await close.evaluate((element) => {
               const probe = document.createElement('span');
-              probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+              probe.style.backgroundColor = 'var(--mar-ui-action-hover-overlay)';
               element.append(probe);
               const color = getComputedStyle(probe).backgroundColor;
               probe.remove();
@@ -828,9 +828,15 @@ for (const source of ['workspace', 'parent'] as const) {
         } else {
           await expect(frame.locator('.cm-content')).toBeVisible();
           await expect(frame).toBeFocused();
-          await expect(frame.getByRole('button', { name: 'Save', exact: true })).toHaveCount(
-            source === 'workspace' ? 1 : 0
-          );
+          const save = frame.getByRole('button', { name: 'Save', exact: true });
+          const edit = frame.getByRole('button', { name: 'Edit file', exact: true });
+          await expect(save).toHaveCount(0);
+          if (source === 'workspace') {
+            await edit.click();
+            await expect(save).toBeVisible();
+          } else {
+            await expect(edit).toHaveCount(0);
+          }
         }
         expect(fileRequests).toHaveLength(1);
         expect(fileRequests[0]!.searchParams.get('path')).toBe(

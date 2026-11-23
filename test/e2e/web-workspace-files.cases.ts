@@ -281,6 +281,10 @@ test('Hiding a constrained Aside preserves the dirty file window and its owner',
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'GIT_WORKSPACE', true);
+  await page.addInitScript(() => localStorage.setItem('mar.file-editor.default-mode', 'edit'));
+  await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+    json(route, { preparation: { state: 'UNAVAILABLE' } })
+  );
   await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) =>
     json(route, {
       file: {
@@ -1700,7 +1704,7 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
   await expect(preview.locator('.cm-activeLine')).toContainText('const 中文内容 = true;');
 });
 
-test('Text files default to editing and support saving, replacement, symbols, and unsaved-close confirmation', async ({
+test('Text files default to read-only and support editing, saving, replacement, symbols, and unsaved-close confirmation', async ({
   page,
   browserName
 }) => {
@@ -1720,6 +1724,9 @@ test('Text files default to editing and support saving, replacement, symbols, an
     { length: 30 },
     (_, index) => `export function answer${index + 1}() { return ${index + 1}; }`
   ).join('\n');
+  await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+    json(route, { preparation: { state: 'UNAVAILABLE' } })
+  );
   await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) =>
     json(route, {
       file: {
@@ -1762,8 +1769,11 @@ test('Text files default to editing and support saving, replacement, symbols, an
   await page.getByRole('treeitem', { name: 'src/main.ts', exact: true }).click();
 
   const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
-  await expect(preview.locator('.mar-file-preview-eyebrow')).toContainText('正在编辑');
   const editor = preview.locator('.cm-content');
+  await expect(preview.locator('.mar-file-preview-eyebrow')).toContainText('只读文件');
+  await expect(editor).toHaveAttribute('contenteditable', 'false');
+  await preview.getByRole('button', { name: '编辑文件', exact: true }).click();
+  await expect(preview.locator('.mar-file-preview-eyebrow')).toContainText('正在编辑');
   await page.evaluate(() =>
     document.documentElement.setAttribute('data-theme', 'vscode-light-2026')
   );
@@ -1771,7 +1781,7 @@ test('Text files default to editing and support saving, replacement, symbols, an
   await page.evaluate(() =>
     document.documentElement.setAttribute('data-theme', 'vscode-dark-2026')
   );
-  await expect(preview.locator('.cm-editor')).toHaveCSS('background-color', 'rgb(30, 30, 30)');
+  await expect(preview.locator('.cm-editor')).toHaveCSS('background-color', 'rgb(26, 26, 26)');
   await editor.click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: '复制' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: '粘贴' })).toBeEnabled();
@@ -1825,6 +1835,9 @@ test('Text files default to editing and support saving, replacement, symbols, an
   await expect(page.locator('.mar-message-box')).toContainText('重新加载会丢弃未保存的修改');
   await page.locator('.mar-ui-dialog__footer .mar-ui-button--primary').click();
   await expect(editor).toContainText('answer1()');
+  await expect(editor).toHaveAttribute('contenteditable', 'false');
+  await preview.getByRole('button', { name: '编辑文件', exact: true }).click();
+  await expect(editor).toHaveAttribute('contenteditable', 'true');
   await editor.press('Control+Home');
   await page.keyboard.press('Alt+m');
   const navigationSearch = preview.getByPlaceholder('搜索符号');

@@ -6,12 +6,13 @@ const STORAGE_KEY = 'mar.file-editor.default-mode';
 const mode = ref<FileEditorDefaultMode>(readStoredMode());
 
 function readStoredMode(): FileEditorDefaultMode {
-  if (typeof localStorage === 'undefined') return 'edit';
-  return parseFileEditorDefaultMode(localStorage.getItem(STORAGE_KEY));
+  return parseFileEditorDefaultMode(
+    typeof localStorage === 'undefined' ? undefined : localStorage.getItem(STORAGE_KEY)
+  );
 }
 
 export function parseFileEditorDefaultMode(value: unknown): FileEditorDefaultMode {
-  return value === 'read-only' ? 'read-only' : 'edit';
+  return value === 'edit' ? 'edit' : 'read-only';
 }
 
 export function fileEditorPreferenceService(): {
