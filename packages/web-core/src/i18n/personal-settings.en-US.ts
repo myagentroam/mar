@@ -95,9 +95,6 @@ export const personalSettingsEnUS = {
   },
   keyboardShortcuts: {
     actionHint: '{label} ({keys})',
-    findInputHint: '{label} (press {keys} in the find box)',
-    queueInputHint: '{label} (press {keys} in the queue editor)',
-    composerInputHint: '{label} (press {keys} in the message field)',
     focusContentSearch: 'Focus file content search',
     refreshGitChanges: 'Open and refresh Git Changes',
     toggleTerminal: 'Expand or collapse the terminal',

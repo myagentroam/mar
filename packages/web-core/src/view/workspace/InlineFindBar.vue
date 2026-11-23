@@ -6,11 +6,7 @@ import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
-import {
-  fileKeys,
-  findNavigationKeys,
-  shortcutKeysLabel
-} from '../../service/console-shortcut-keys.js';
+import { fileKeys, findNavigationKeys } from '../../service/console-shortcut-keys.js';
 
 defineProps<{
   readonly modelValue: string;
@@ -91,14 +87,7 @@ onBeforeUnmount(() => {
       >
       <MarButton
         class="mar-icon-action"
-        v-tooltip="
-          total === 0
-            ? translate('inlineFind.previous')
-            : translate('keyboardShortcuts.findInputHint', {
-                label: translate('inlineFind.previous'),
-                keys: shortcutKeysLabel([findNavigationKeys[1]])
-              })
-        "
+        v-tooltip="translate('inlineFind.previous')"
         text
         :disabled="total === 0"
         :aria-label="translate('inlineFind.previous')"
@@ -107,14 +96,7 @@ onBeforeUnmount(() => {
       /></MarButton>
       <MarButton
         class="mar-icon-action"
-        v-tooltip="
-          total === 0
-            ? translate('inlineFind.next')
-            : translate('keyboardShortcuts.findInputHint', {
-                label: translate('inlineFind.next'),
-                keys: shortcutKeysLabel([findNavigationKeys[0]])
-              })
-        "
+        v-tooltip="translate('inlineFind.next')"
         text
         :disabled="total === 0"
         :aria-label="translate('inlineFind.next')"
@@ -123,12 +105,7 @@ onBeforeUnmount(() => {
       /></MarButton>
       <MarButton
         class="mar-icon-action"
-        v-tooltip="
-          translate('keyboardShortcuts.findInputHint', {
-            label: translate('inlineFind.close'),
-            keys: shortcutKeysLabel(fileKeys.dismiss)
-          })
-        "
+        v-tooltip="translate('inlineFind.close')"
         text
         :aria-label="translate('inlineFind.close')"
         @click="emit('close')"

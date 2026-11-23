@@ -450,12 +450,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
 
   it('renders the inline find bar with localized labels, a truncated count, and enabled navigation', async () => {
     localePreferenceService().setLocale(locale);
-    const html = await render(InlineFindBar, {
-      modelValue: 'needle',
-      current: 2,
-      total: 7,
-      truncated: true
-    });
+    const tooltips: unknown[] = [];
+    const html = await render(
+      InlineFindBar,
+      { modelValue: 'needle', current: 2, total: 7, truncated: true },
+      tooltips
+    );
 
     expect(html).toContain('role="search"');
     expect(html).toContain(i18n.global.t('inlineFind.label'));
@@ -467,6 +467,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     for (const key of ['inlineFind.previous', 'inlineFind.next']) {
       expect(buttonTag(html, i18n.global.t(key))).not.toMatch(/\sdisabled(?:\s|=|>)/u);
     }
+    expect(tooltips.filter(Boolean)).toEqual(
+      ['inlineFind.previous', 'inlineFind.next', 'inlineFind.close'].map((key) =>
+        i18n.global.t(key)
+      )
+    );
     expect(html).not.toMatch(/(?:inlineFind|generated)\./u);
   });
 

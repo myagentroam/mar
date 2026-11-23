@@ -11,7 +11,7 @@ import { MarIcon } from '@myagentroam/mar-ui/icons';
 import MessageReferenceTags from './MessageReferenceTags.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
-import { queueKeys, shortcutKeysLabel } from '../../service/console-shortcut-keys.js';
+import { queueKeys } from '../../service/console-shortcut-keys.js';
 import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerCommandState, WorkspaceQueueItem } from '../../model/workbench.js';
 import { composerMessagePresentation } from '../../util/composer-message.js';
@@ -553,12 +553,7 @@ onMounted(() => {
           <div class="work-item-actions queue-item-actions">
             <button
               class="mar-text-action"
-              v-tooltip="
-                translate('keyboardShortcuts.queueInputHint', {
-                  label: translate('generated.composerQueue.save'),
-                  keys: shortcutKeysLabel([queueKeys.save[0]])
-                })
-              "
+              v-tooltip="translate('generated.composerQueue.save')"
               v-if="editingQueueItemId === item.queueItemId"
               type="button"
               :aria-label="translate('generated.composerQueue.save')"
@@ -581,14 +576,7 @@ onMounted(() => {
               }}</span>
             </button>
             <button
-              v-tooltip="
-                !loading && editingQueueItemId === item.queueItemId
-                  ? translate('keyboardShortcuts.queueInputHint', {
-                      label: translate('generated.composerQueue.runNow'),
-                      keys: shortcutKeysLabel([queueKeys.execute[0]])
-                    })
-                  : translate('generated.composerQueue.runNow')
-              "
+              v-tooltip="translate('generated.composerQueue.runNow')"
               class="mar-text-action work-item-primary-action"
               type="button"
               :disabled="loading"

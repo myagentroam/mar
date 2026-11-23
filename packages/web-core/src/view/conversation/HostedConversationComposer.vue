@@ -22,7 +22,6 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, useTemplateRef, watc
 import { registerComposerShortcuts } from '../../service/composer-shortcut-service.js';
 import {
   composerSendKeys,
-  composerStopKeys,
   shortcutKeysLabel,
   shortcutTooltip
 } from '../../service/console-shortcut-keys.js';
@@ -968,12 +967,7 @@ onBeforeUnmount(() => {
             v-tooltip="
               activeRun.status === 'CANCELLING'
                 ? translate('generated.composerToolbar.stopping')
-                : canStopCurrent
-                  ? translate('keyboardShortcuts.composerInputHint', {
-                      label: translate('hostedConversations.stop'),
-                      keys: shortcutKeysLabel(composerStopKeys)
-                    })
-                  : translate('hostedConversations.stop')
+                : translate('hostedConversations.stop')
             "
             v-if="activeRun"
             class="hosted-stop-button mar-composer-action mar-composer-stop-action"

@@ -581,7 +581,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     }
   );
 
-  it('only advertises queue edit shortcuts on the edited item and identifies the editor scope', async () => {
+  it('keeps queue button tooltips to their action names during editing', async () => {
     const tooltips: unknown[] = [];
     await render(
       ComposerQueue,
@@ -598,20 +598,12 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
       },
       tooltips
     );
-    expect(tooltips).toContain(translate('generated.composerQueue.runNow'));
-    for (const [operation, keys] of [
-      ['save', 'Enter'],
-      ['runNow', 'Ctrl+Enter']
-    ] as const) {
-      expect(tooltips).toContain(
-        translate('keyboardShortcuts.queueInputHint', {
-          label: translate(`generated.composerQueue.${operation}`),
-          keys
-        })
-      );
-    }
+    expect(tooltips).toContain(translate('generated.composerQueue.save'));
+    expect(
+      tooltips.filter((tip) => tip === translate('generated.composerQueue.runNow'))
+    ).toHaveLength(2);
     expect(tooltips.filter((tip) => typeof tip === 'string' && tip.includes('Enter'))).toHaveLength(
-      2
+      0
     );
   });
 

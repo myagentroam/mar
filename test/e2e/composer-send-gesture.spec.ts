@@ -436,7 +436,7 @@ test('Hosted desktop retains the Ctrl+Enter steering hint while running', async 
     page.getByText('While working, press Ctrl+Enter to steer with this message.', { exact: true })
   ).toBeVisible();
   await page.getByRole('button', { name: 'Stop', exact: true }).hover();
-  await expect(page.getByRole('tooltip')).toHaveText('Stop (press Esc in the message field)');
+  await expect(page.getByRole('tooltip')).toHaveText('Stop');
 });
 
 test('Desktop mouse clicks retain ordinary sending without arming a touch gesture', async ({
@@ -444,10 +444,11 @@ test('Desktop mouse clicks retain ordinary sending without arming a touch gestur
 }) => {
   await page.setViewportSize({ width: 1280, height: 844 });
   const ui = await openWorkspace(page);
+  const tooltip = page.getByRole('tooltip');
+  await page.getByRole('button', { name: 'Stop run', exact: true }).hover();
+  await expect(tooltip).toHaveText('Stop run');
   await ui.button.hover();
-  await expect(page.getByRole('tooltip')).toHaveText(
-    'Queue message (Enter) Steer (press Ctrl+Enter in the message field)'
-  );
+  await expect(tooltip).toHaveText('Queue message (Enter)');
   const bounds = (await ui.button.boundingBox())!;
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();

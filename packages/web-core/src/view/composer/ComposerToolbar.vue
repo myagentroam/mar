@@ -8,9 +8,7 @@ import { translate } from '../../service/locale-preference-service.js';
 import {
   composerModelKeys,
   composerSendKeys,
-  composerStopKeys,
   shortcutKeyLabel,
-  shortcutKeysLabel,
   shortcutTooltip
 } from '../../service/console-shortcut-keys.js';
 import { computed, ref, useTemplateRef } from 'vue';
@@ -94,13 +92,7 @@ const sendTooltip = computed(() => {
       : 'generated.composerToolbar.send2'
   );
   if (props.mobileViewport || sendDisabled.value) return label;
-  const send = shortcutTooltip(label, [composerSendKeys[0]]);
-  return canSteer.value
-    ? `${send}\n${translate('keyboardShortcuts.composerInputHint', {
-        label: translate('composerSend.steer'),
-        keys: shortcutKeysLabel([composerSendKeys[1]])
-      })}`
-    : send;
+  return shortcutTooltip(label, [composerSendKeys[0]]);
 });
 const contextHint = computed(() =>
   [
@@ -365,12 +357,7 @@ function selectFiles(event: Event): void {
       v-tooltip="
         activeRun?.status === 'CANCELLING'
           ? translate('generated.composerToolbar.stopping')
-          : canInterrupt
-            ? translate('keyboardShortcuts.composerInputHint', {
-                label: translate('generated.composerToolbar.stopRun'),
-                keys: shortcutKeysLabel(composerStopKeys)
-              })
-            : translate('generated.composerToolbar.stopRun')
+          : translate('generated.composerToolbar.stopRun')
       "
       v-if="interruptVisible"
       class="composer-stop-button mar-composer-action mar-composer-stop-action"

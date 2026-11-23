@@ -95,9 +95,6 @@ export const personalSettingsZhCN = {
   },
   keyboardShortcuts: {
     actionHint: '{label}（{keys}）',
-    findInputHint: '{label}（在查找框内按 {keys}）',
-    queueInputHint: '{label}（在队列编辑框内按 {keys}）',
-    composerInputHint: '{label}（在消息输入框内按 {keys}）',
     focusContentSearch: '聚焦文件内容搜索',
     refreshGitChanges: '打开 Git 变更并刷新',
     toggleTerminal: '展开或收起终端',
