@@ -241,4 +241,11 @@ const detailText = computed(() => {
   --conversation-copy-end: 0.5rem;
   --mar-conversation-detail-end: calc(var(--mar-utility-control-size) + 1rem);
 }
+:where(.tool-detail) :deep(.tool-detail-meta) {
+  color: var(--mar-text-secondary);
+  font-size: inherit;
+  font-weight: 400;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 </style>

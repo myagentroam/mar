@@ -400,7 +400,7 @@ function mcpErrorMessage(error: unknown): string {
         :clear-icon="marIcon('clear-input')"
       />
       <div
-        class="mcp-category-strip"
+        class="mar-management-category-strip"
         role="group"
         :aria-label="translate('generated.mcpCenterPanel.mCPCategories')"
       >
@@ -601,16 +601,6 @@ function mcpErrorMessage(error: unknown): string {
   gap: 12px;
   overflow: auto;
   padding-right: 4px;
-}
-.mcp-category-strip {
-  display: flex;
-  overflow-x: auto;
-  gap: 6px;
-  padding: 1px 0 3px;
-  scrollbar-width: thin;
-}
-.mcp-category-strip > * {
-  flex: none;
 }
 .mcp-target-panel {
   display: flex;

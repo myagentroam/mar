@@ -71,11 +71,4 @@ const compactShowsOutput = computed(
 .tool-content > .tool-detail-heading {
   margin-bottom: 0.375rem;
 }
-.tool-detail-meta {
-  color: var(--mar-text-secondary);
-  font-size: inherit;
-  font-weight: 400;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 </style>

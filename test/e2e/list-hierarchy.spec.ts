@@ -741,12 +741,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      for (const view of ['skills', 'mcp', 'sources']) {
+      for (const [view, group] of [
+        ['skills', 'Skill Categories'],
+        ['mcp', 'MCP Categories'],
+        ['sources', 'Catalog Skill Categories']
+      ] as const) {
         await page.goto(
           `${fixture.url}visual-alignment.html?list-hierarchy=${view}&theme=${theme}`
         );
         if (view === 'sources') await page.getByRole('tab').last().click();
-        const strip = page.locator('.skill-category-strip, .mcp-category-strip');
+        const strip = page.getByRole('group', { name: group, exact: true });
         const engineering = strip.getByRole('button', { name: 'Engineering', exact: true });
         await expect(engineering).toBeVisible();
         const palette = await colors(page);

@@ -2,6 +2,7 @@
 import '../../styles/region-retry-action.css';
 import '../../styles/file-change-colors.css';
 import './git-inline-loading.css';
+import './file-explorer-utility.css';
 import './inspector-row.css';
 import '@myagentroam/mar-ui/region-status.css';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -359,7 +360,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               <button
                 v-if="repository.source === 'ROOT'"
                 v-tooltip="translate('generated.workspaceInspector.refreshGitChanges2')"
-                class="changes-refresh-button file-explorer-utility-button mar-icon-action"
+                class="changes-refresh-button file-explorer-utility-button mar-icon-button mar-icon-action"
                 :disabled="changesLoading"
                 :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
                 :aria-busy="refreshBusy || undefined"
@@ -821,29 +822,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   .git-worktree-statuses {
     flex-wrap: wrap;
   }
-}
-</style>
-
-<style scoped>
-button.file-explorer-utility-button {
-  display: inline-grid;
-  width: var(--mar-compact-control-size);
-  min-width: var(--mar-compact-control-size);
-  height: var(--mar-compact-control-size);
-  min-height: var(--mar-compact-control-size);
-  place-items: center;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  background: transparent;
-  color: var(--mar-text-secondary);
-  font: inherit;
-  padding: 0;
-  cursor: pointer;
-}
-
-button.file-explorer-utility-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 </style>
 

@@ -689,7 +689,7 @@ function scopeLabel(scope: string): string {
             :clear-icon="marIcon('clear-input')"
           />
           <div
-            class="skill-category-strip"
+            class="mar-management-category-strip"
             role="group"
             :aria-label="translate('generated.skillSourceManagementPage.catalogSkillCategories')"
           >
@@ -1035,16 +1035,6 @@ function scopeLabel(scope: string): string {
   margin: 2px 0 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
-}
-.skill-category-strip {
-  display: flex;
-  overflow-x: auto;
-  gap: 6px;
-  padding: 1px 0 3px;
-  scrollbar-width: thin;
-}
-.skill-category-strip > * {
-  flex: none;
 }
 .form-hint {
   margin: -8px 0 14px;

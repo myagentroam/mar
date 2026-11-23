@@ -337,13 +337,6 @@ const emit = defineEmits<{
   --composer-active-boundary: var(--mar-conversation-activity-fg);
 }
 
-.composer :deep(button),
-.composer :deep(input),
-.composer :deep(select),
-.composer :deep(textarea) {
-  font-family: inherit;
-}
-
 .composer-input {
   width: 100%;
   min-height: 4.8rem;

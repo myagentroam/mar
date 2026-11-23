@@ -106,13 +106,6 @@ const webOutput = computed(
 .tool-content > .tool-content-section:not(:first-child) {
   margin-top: 0.5rem;
 }
-.tool-detail-meta {
-  color: var(--mar-text-secondary);
-  font-size: inherit;
-  font-weight: 400;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 .conversation-tool-sources {
   margin: 0;
   padding: 0;
