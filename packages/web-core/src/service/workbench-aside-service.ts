@@ -405,6 +405,7 @@ export function createWorkbenchAsideService({
 
 export interface WorkbenchAsideView {
   asidePaneController: WorkspaceSessionPaneView;
+  asideSessionLocation: AsideSession | undefined;
   asideSessionMetadata: NavigationSession[];
   asideState: AsideState | undefined;
   asideSupported: boolean;

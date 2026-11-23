@@ -1,4 +1,5 @@
 import type { Ref } from 'vue';
+import type { AsideSession } from './workbench-aside-service.js';
 import type { Session } from '../model/workbench.js';
 import type { WorkbenchView } from '../util/workbench-route.js';
 import type { WorkbenchNotification } from './workbench-notification-service.js';
@@ -63,8 +64,9 @@ export function createWorkbenchTargetNavigation(input: {
     ReturnType<
       typeof import('./workbench-session-selection-service.js').createWorkbenchSessionSelectionService
     >,
-    'hasAsideSession' | 'openNavigatedSession'
+    'hasAsideSession' | 'openNavigatedSession' | 'selectSession'
   >;
+  readonly onAsideRevealed: (target: AsideSession) => void;
   readonly notice: MessageFeedback;
 }) {
   const {
@@ -87,19 +89,19 @@ export function createWorkbenchTargetNavigation(input: {
     }
     const target = notification.target;
     if (target === undefined) return;
-    await navigateWorkbenchTarget(target);
+    await navigateWorkbenchTarget(target, 'reuse');
   }
 
   async function navigateWorkbenchTarget(
     target: NonNullable<WorkbenchNotification['target']>,
-    destination?: 'main'
+    destination: 'main' | 'reuse'
   ): Promise<void> {
     try {
       let groupRevision: number | undefined;
       await navigateWorkbenchNotification(target, {
         workspaceTarget: () => workspaceTarget.value,
         hasSession: (sessionId) =>
-          (destination === undefined &&
+          (destination === 'reuse' &&
             workspaceTarget.value !== undefined &&
             input.selection().hasAsideSession(workspaceTarget.value, sessionId)) ||
           sessions.value.some(
@@ -127,7 +129,7 @@ export function createWorkbenchTargetNavigation(input: {
             workspace,
             !hasSessionTarget
               ? true
-              : destination === undefined &&
+              : destination === 'reuse' &&
                   input.selection().hasAsideSession(workspace, target.sessionId) &&
                   'behind-aside'
           );
@@ -152,37 +154,30 @@ export function createWorkbenchTargetNavigation(input: {
   async function openRecentRun(
     run: import('./workbench-notification-service.js').RecentRun
   ): Promise<void> {
-    await openWorkbenchNotification({
-      id: `recent-run:${run.nodeId}:${run.runId}`,
-      source: 'server',
-      kind: 'run',
-      title: run.sessionTitle,
-      message: '',
-      createdAt: run.createdAt,
-      updatedAt: run.updatedAt,
-      expiresAt: Number.MAX_SAFE_INTEGER,
-      read: true,
-      target: {
+    await navigateWorkbenchTarget(
+      {
         targetType: 'WORKSPACE_SESSION',
         nodeId: run.nodeId,
         workspaceId: run.workspaceId,
         sessionId: run.sessionId,
         sessionName: run.sessionTitle
-      }
-    });
+      },
+      'main'
+    );
   }
 
-  async function openSessionGroupTarget(
-    target: { nodeId: string; workspaceId: string; sessionId: string },
-    destination?: 'main'
-  ): Promise<void> {
-    await navigateWorkbenchTarget({ targetType: 'WORKSPACE_SESSION', ...target }, destination);
+  async function openSessionGroupTarget(target: {
+    nodeId: string;
+    workspaceId: string;
+    sessionId: string;
+  }): Promise<void> {
+    await navigateWorkbenchTarget({ targetType: 'WORKSPACE_SESSION', ...target }, 'main');
   }
 
   function openNavigatedSession(
     sessionId: string,
     groupRevision = workspaceSessionDiscovery.groupSelectionRevision(),
-    destination?: 'main'
+    destination: 'main' | 'reuse' = 'reuse'
   ): Promise<void> {
     const target = workspaceTarget.value;
     const onSessionResolved = (session: Session) => {
@@ -196,7 +191,10 @@ export function createWorkbenchTargetNavigation(input: {
       )
         selectWorkspaceSessionGroup(session.sessionGroup ?? 'MAIN', true);
     };
-    return input.selection().openNavigatedSession(sessionId, onSessionResolved, destination);
+    const selection = input.selection();
+    return destination === 'main'
+      ? selection.selectSession(sessionId, onSessionResolved)
+      : selection.openNavigatedSession(sessionId, onSessionResolved, input.onAsideRevealed);
   }
 
   return { openWorkbenchNotification, openRecentRun, openSessionGroupTarget, openNavigatedSession };

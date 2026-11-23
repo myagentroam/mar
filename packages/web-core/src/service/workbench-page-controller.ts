@@ -996,6 +996,7 @@ export function createWorkbenchPageController<
     remove: deleteWorkspaceUpload,
     dispose: disposeWorkspaceUploads
   } = workspaceUploadService;
+  const asideSessionLocation = shallowRef<import('./workbench-aside-service.js').AsideSession>();
   const targetNavigation = createWorkbenchTargetNavigation({
     workspaceTarget,
     sessions,
@@ -1007,6 +1008,9 @@ export function createWorkbenchPageController<
     openHostedConversationTarget: (...args) => openHostedConversationTarget(...args),
     discovery: workspaceSessionDiscovery,
     selection: () => workbenchSessionSelectionService,
+    onAsideRevealed: (target) => {
+      asideSessionLocation.value = { ...target };
+    },
     notice
   });
   function openWorkbenchNotification(notification: WorkbenchNotification): Promise<void> {
@@ -1014,9 +1018,8 @@ export function createWorkbenchPageController<
   }
   const { openRecentRun, openSessionGroupTarget, openNavigatedSession } = targetNavigation;
 
-  async function openSessionFromList(sessionId: string): Promise<void> {
-    await workbenchSessionSelectionService.openNavigatedSession(sessionId);
-  }
+  const openSessionFromList = (sessionId: string) =>
+    workbenchSessionSelectionService.selectSession(sessionId);
 
   const {
     workspaceViewCache,
@@ -2248,6 +2251,7 @@ export function createWorkbenchPageController<
     }),
     aside: proxyRefs({
       asidePaneController: asidePaneController.view,
+      asideSessionLocation,
       asideSessionMetadata: computed(() => {
         const workspace = workspaceTarget.value;
         return navigationQuery.value === undefined || workspace === undefined

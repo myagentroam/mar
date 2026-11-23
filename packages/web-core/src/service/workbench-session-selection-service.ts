@@ -80,7 +80,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
   async function openNavigatedSession(
     sessionId: string,
     onSessionResolved?: (session: Session) => void,
-    destination?: 'main'
+    onAsideRevealed?: (target: AsideSession) => void
   ): Promise<void> {
     const revision = ++navigationRevision;
     const workspace = options.workspaceTarget.value;
@@ -92,14 +92,21 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       ((session: Session) => {
         if (current()) onSessionResolved(session);
       });
-    const alreadyInMain = options.selectedSessionId.value === sessionId && !options.draftOpen.value;
-    if (destination === 'main' || alreadyInMain || !hasAsideSession(workspace, sessionId))
+    const alreadyInMain = () =>
+      options.selectedSessionId.value === sessionId && !options.draftOpen.value;
+    if (alreadyInMain() || !hasAsideSession(workspace, sessionId))
       return options.pane.openTab(sessionId, resolved);
 
     // A Workspace change can mount a different grid; wait for its layout measurement.
     await nextTick();
     if (!current()) return;
-    if (!options.canRevealAside() || !revealAsideSession({ ...workspace, sessionId }))
+    // Main can finish restoring, or the Aside tab can change, during the layout update.
+    if (
+      alreadyInMain() ||
+      !hasAsideSession(workspace, sessionId) ||
+      !options.canRevealAside() ||
+      !revealAsideSession({ ...workspace, sessionId })
+    )
       return options.pane.openTab(sessionId, resolved);
 
     // The surface publishes visibility after the layout switches; reuse its in-flight read.
@@ -112,6 +119,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
       target.sessionId !== sessionId
     )
       return;
+    onAsideRevealed?.(target);
     const session = await options.secondaryPane.completeOpening();
     if (session !== undefined) resolved?.(session);
   }
@@ -217,7 +225,10 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     },
     prepareTarget,
     openSession: options.pane.open,
-    selectSession: options.pane.openTab,
+    selectSession: (sessionId: string, onSessionResolved?: (session: Session) => void) => {
+      navigationRevision += 1;
+      return options.pane.openTab(sessionId, onSessionResolved);
+    },
     hasAsideSession,
     openNavigatedSession,
     openAsideSession: revealAsideSession,
@@ -283,10 +294,11 @@ export interface WorkbenchSelectionView {
   retryWorkspaceSelection: () => void;
   selectedSessionId: string | undefined;
   openSessionFromList: (sessionId: string) => Promise<void>;
-  openSessionGroupTarget: (
-    target: { nodeId: string; workspaceId: string; sessionId: string },
-    destination?: 'main'
-  ) => Promise<void>;
+  openSessionGroupTarget: (target: {
+    nodeId: string;
+    workspaceId: string;
+    sessionId: string;
+  }) => Promise<void>;
   openNewSessionComposer: () => void;
   draftSessionOpen: boolean;
 }

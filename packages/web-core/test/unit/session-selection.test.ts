@@ -90,6 +90,7 @@ interface LegacySelectionFixtureOptions {
 
 type SelectionFixtureOptions = Omit<LegacySelectionFixtureOptions, 'createPaneLoader'> & {
   canRevealAside?: () => boolean;
+  secondaryPane?: Parameters<typeof createWorkbenchSessionSelectionService>[0]['secondaryPane'];
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   sessionPathId: (sessionId: string) => string;
 };
@@ -180,7 +181,7 @@ function createSelection(
     pane,
     canOpenAside: () => options.canOpenAside(),
     canRevealAside: () => options.canRevealAside?.() ?? true,
-    secondaryPane: {
+    secondaryPane: options.secondaryPane ?? {
       target: ref(undefined),
       reloadChecked: async () => {},
       completeOpening: async () => undefined
@@ -387,11 +388,82 @@ describe('Synchronous Session handoff', () => {
     f.aside.openSession({ ...f.target.value, sessionId: 'other' });
     f.options.canRevealAside = () => false;
     const service = createSelection(f.options);
-    await service.openNavigatedSession(f.session.id);
+    const onAsideRevealed = vi.fn();
+    await service.openNavigatedSession(f.session.id, undefined, onAsideRevealed);
     expect(f.options.selectedSessionId.value).toBe(f.session.id);
     expect(f.aside.current(f.target.value).active).toEqual({ kind: 'session', sessionId: 'other' });
     expect(f.aside.current(f.target.value).sessions).toContain(f.session.id);
+    expect(onAsideRevealed).not.toHaveBeenCalled();
   });
+
+  it('reports an existing Aside as soon as it is revealed, before the history finishes', async () => {
+    const f = tabSessionFixture();
+    const target = { ...f.target.value, sessionId: f.session.id };
+    f.aside.openSession(target);
+    let finish!: () => void;
+    const history = new Promise<undefined>((resolve) => {
+      finish = () => resolve(undefined);
+    });
+    f.options.secondaryPane = {
+      target: ref(target),
+      reloadChecked: async () => {},
+      completeOpening: () => history
+    };
+    const onAsideRevealed = vi.fn();
+    const service = createSelection(f.options);
+    const opening = service.openNavigatedSession(f.session.id, undefined, onAsideRevealed);
+    try {
+      await vi.waitFor(() => expect(onAsideRevealed).toHaveBeenCalledExactlyOnceWith(target));
+      expect(f.options.selectedSessionId.value).toBeUndefined();
+    } finally {
+      finish();
+      await opening;
+    }
+  });
+
+  it('does not recreate an Aside tab closed while navigation waits for layout', async () => {
+    const f = tabSessionFixture();
+    const target = { ...f.target.value, sessionId: f.session.id };
+    f.aside.openSession(target);
+    const service = createSelection(f.options);
+    const onAsideRevealed = vi.fn();
+
+    const opening = service.openNavigatedSession(f.session.id, undefined, onAsideRevealed);
+    service.closeAsideSession(target);
+    await opening;
+
+    expect(f.aside.current(f.target.value).sessions).not.toContain(f.session.id);
+    expect(f.options.selectedSessionId.value).toBe(f.session.id);
+    expect(onAsideRevealed).not.toHaveBeenCalled();
+  });
+
+  it('keeps Main when its saved selection is restored while an Aside jump waits for layout', async () => {
+    const f = tabSessionFixture(3);
+    const target = { ...f.target.value, sessionId: f.session.id };
+    f.aside.openSession(target);
+    f.aside.openSession({ ...f.target.value, sessionId: 'other' });
+    f.options.secondaryPane = {
+      target: ref(target),
+      reloadChecked: async () => {},
+      completeOpening: async () => f.session
+    };
+    const service = createSelection(f.options);
+    const onAsideRevealed = vi.fn();
+
+    const opening = service.openNavigatedSession(f.session.id, undefined, onAsideRevealed);
+    f.options.selectedSessionId.value = f.session.id;
+    await opening;
+
+    expect(f.options.selectedSessionId.value).toBe(f.session.id);
+    expect(f.aside.current(f.target.value).active).toEqual({ kind: 'session', sessionId: 'other' });
+    expect(f.options.markSessionRead).toHaveBeenCalledWith(
+      target.nodeId,
+      target.workspaceId,
+      target.sessionId
+    );
+    expect(onAsideRevealed).not.toHaveBeenCalled();
+  });
+
   it('saves the outgoing Aside before replacing its sole tab and leaves Main unchanged', () => {
     const f = tabSessionFixture();
     f.options.selectedSessionId.value = 'main';

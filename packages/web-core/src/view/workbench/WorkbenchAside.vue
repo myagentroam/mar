@@ -43,6 +43,8 @@ const props = defineProps<{
   readonly minWidth: number;
   readonly maxWidth: number;
   readonly mode: 'compact' | 'content';
+  readonly inert?: boolean;
+  readonly sessionLocation?: AsideSession | undefined;
   readonly mobile?: boolean;
   readonly closeSurfaceLabel?: string;
 }>();
@@ -123,6 +125,40 @@ const activeId = computed(() => {
         ? `session:${target.sessionId}`
         : undefined;
 });
+let locationSequence = 0;
+const sessionLocation = ref<{ readonly id: string; readonly sequence: number }>();
+
+function indicateSessionLocation(target: AsideSession): void {
+  const id = `session:${target.sessionId}`;
+  if (
+    props.mobile ||
+    props.inert ||
+    props.workspace.nodeId !== target.nodeId ||
+    props.workspace.workspaceId !== target.workspaceId ||
+    activeId.value !== id
+  )
+    return;
+  sessionLocation.value = { id, sequence: ++locationSequence };
+  document.getElementById(tabStripIdentity(tabPrefix, id).panel)?.focus({ preventScroll: true });
+}
+watch(
+  [
+    () => props.workspace.nodeId,
+    () => props.workspace.workspaceId,
+    activeId,
+    () => props.inert,
+    () => props.mobile
+  ],
+  () => (sessionLocation.value = undefined)
+);
+watch(
+  () => props.sessionLocation,
+  (target) => {
+    if (target !== undefined) indicateSessionLocation(target);
+  },
+  { flush: 'post' }
+);
+
 function activate(id: string | number): void {
   const target = entries.value.find((entry) => entry.id === id)?.target;
   if (target?.kind === 'tool') emit('selectTool', { ...props.workspace, id: target.id });
@@ -236,6 +272,7 @@ onBeforeUnmount(() => {
   <aside
     ref="element"
     class="workbench-aside"
+    :inert="inert"
     :style="{ width: `${width}px` }"
     @load.capture="bindBrowserFrame"
   >
@@ -309,7 +346,9 @@ onBeforeUnmount(() => {
         :id="tabStripIdentity(tabPrefix, entry.id).panel"
         :key="entry.id"
         class="workbench-aside-panel"
+        :class="{ 'workbench-aside-session-panel': entry.target.kind === 'session' }"
         role="tabpanel"
+        :tabindex="entry.target.kind === 'session' ? -1 : undefined"
         :aria-labelledby="tabStripIdentity(tabPrefix, entry.id).tab"
       >
         <slot v-if="entry.target.kind === 'browser' && entry.id === activeId" name="browser" />
@@ -322,6 +361,13 @@ onBeforeUnmount(() => {
           v-if="entry.target.kind === 'session' && entry.id === activeId"
           name="session"
           :target="{ ...workspace, sessionId: entry.target.sessionId }"
+        />
+        <span
+          v-if="sessionLocation && sessionLocation.id === entry.id && entry.id === activeId"
+          :key="sessionLocation.sequence"
+          class="workbench-aside-session-location"
+          aria-hidden="true"
+          @animationend="sessionLocation = undefined"
         />
       </div>
     </div>
@@ -369,6 +415,39 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+}
+.workbench-aside-session-panel {
+  position: relative;
+}
+.workbench-aside-session-location {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  border: 1px solid var(--mar-conversation-activity-fg);
+  pointer-events: none;
+  animation: aside-session-location 560ms ease-out both;
+}
+@keyframes aside-session-location {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workbench-aside-session-location {
+    animation: aside-session-location-static 400ms step-end both;
+  }
+}
+@keyframes aside-session-location-static {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 .workbench-aside-resize {
   z-index: 6;

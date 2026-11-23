@@ -347,7 +347,7 @@ function openSessionInPane(sessionId: string, destination: 'aside' | 'main'): bo
   if (!workspace || !props.page.aside.asideSupported) return false;
   const target = { ...workspace, sessionId };
   if (destination === 'aside') return openAsideTarget(target);
-  void props.page.selection.openSessionGroupTarget(target, 'main');
+  void props.page.selection.openSessionGroupTarget(target);
   return true;
 }
 
@@ -852,6 +852,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             >
               <WorkbenchAside
                 :inert="!asideVisible"
+                :session-location="page.aside.asideSessionLocation"
                 :workspace="page.selection.workspaceTarget!"
                 :state="page.aside.asideState"
                 :tools="asideTools"
