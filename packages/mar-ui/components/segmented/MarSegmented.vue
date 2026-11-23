@@ -163,6 +163,10 @@ function navigateToEdge(event: KeyboardEvent): void {
   pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {
+  .has-indicator .mar-segmented-option {
+    /* Keep the hover fill continuous as the selection indicator slides or reverses. */
+    transition: background-color 100ms ease-out;
+  }
   .has-indicator .mar-segmented-indicator {
     transition:
       transform 160ms ease-out,
