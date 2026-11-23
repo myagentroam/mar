@@ -443,12 +443,42 @@ for (const width of [1280, 390]) {
         await close.focus();
         await expect(close).toHaveCSS('outline-style', 'solid');
         await expect(close).toHaveCSS('outline-width', '2px');
+        await expect(close).toHaveCSS('outline-color', 'rgb(175, 121, 208)');
+        expect(
+          await close.evaluate(
+            (button, selector) => {
+              const clip = button.closest(selector)!.getBoundingClientRect();
+              const bounds = button.getBoundingClientRect();
+              const style = getComputedStyle(button);
+              const outset = Math.max(
+                0,
+                parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth)
+              );
+              return (
+                bounds.top - outset >= clip.top &&
+                bounds.bottom + outset <= clip.bottom &&
+                bounds.left - outset >= clip.left &&
+                bounds.right + outset <= clip.right
+              );
+            },
+            inline ? '.mar-tab-strip' : '.workspace-file-tabs'
+          ),
+          `${inline ? 'File tab close' : 'File window close'} must not clip the keyboard outline`
+        ).toBe(true);
+      }
+      if (width >= 768) {
+        const next = page.getByRole('button', { name: 'Browse next tabs' });
+        await next.focus();
+        await expect(next).toBeFocused();
+        await expect(next).toHaveCSS('outline', 'rgb(175, 121, 208) solid 2px');
+        await expect(next).toHaveCSS('outline-offset', '-2px');
       }
       await expect(tabs.nth(0)).toHaveAttribute('tabindex', '0');
       await expect(tabs.nth(1)).toHaveAttribute('tabindex', '-1');
       await tabs.nth(0).focus();
       await page.keyboard.press('ArrowLeft');
       await expect(tabs.nth(11)).toBeFocused();
+      await expect(tabs.nth(11)).toHaveCSS('outline-color', 'rgb(175, 121, 208)');
       await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
       await expect(tabs.nth(11)).toHaveAttribute('aria-selected', 'false');
       await page.keyboard.press('Enter');
@@ -460,6 +490,13 @@ for (const width of [1280, 390]) {
       await page.keyboard.press('End');
       await expect(tabs.nth(11)).toBeFocused();
       await expect(tabs.nth(11)).toHaveAttribute('aria-selected', 'true');
+      const lastClose = page.locator('.workspace-file-tab-close').last();
+      await page.keyboard.press('Tab');
+      await expect(lastClose).toBeFocused();
+      await expect(lastClose).toBeInViewport({ ratio: 0.99 });
+      await expect(lastClose).toHaveCSS('outline', 'rgb(175, 121, 208) solid 2px');
+      await page.keyboard.press('Shift+Tab');
+      await expect(tabs.nth(11)).toBeFocused();
       await page.keyboard.press('Home');
       await expect(tabs.nth(11)).toHaveAttribute('aria-selected', 'true');
       await page.keyboard.press('Space');

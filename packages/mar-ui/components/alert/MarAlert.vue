@@ -96,7 +96,4 @@ button {
   color: inherit;
   cursor: pointer;
 }
-button:focus-visible {
-  outline: 2px solid currentColor;
-}
 </style>
