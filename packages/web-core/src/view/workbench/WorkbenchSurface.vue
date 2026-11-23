@@ -1489,7 +1489,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  padding: 0 0.7rem 0.7rem;
+  padding-block-end: 0.7rem;
 }
 
 .workbench {

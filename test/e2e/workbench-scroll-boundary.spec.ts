@@ -6,6 +6,7 @@ import { json, mockConsoleApi } from './support/web-console-api.js';
 // @test-covers packages/web-core/src/view/workbench/WorkbenchSurface.vue
 // @test-covers packages/web-core/src/view/workspace/WorkspaceFileTree.vue
 // @test-covers packages/web-core/src/view/workspace/WorkspaceGitChanges.vue
+// @test-covers packages/web-core/src/view/workspace/WorkspaceGitHistory.vue
 // @test-covers packages/web-core/src/view/workspace/WorkspaceTabs.vue
 // @test-covers packages/web-core/src/view/workbench/WorkbenchNavigation.vue
 // @test-covers packages/web-core/src/view/terminal/TerminalTabView.vue
@@ -16,6 +17,61 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await fixture?.close();
 });
+
+for (const width of [1440, 390]) {
+  test(`Aside Files, Search and Git content share a leading edge at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    await page.route('**/api/auth/me', (route) =>
+      json(route, { authenticated: true, userId: 1, username: 'admin', isAdmin: true })
+    );
+    await page.route(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/, (route) =>
+      json(route, {
+        changes: [],
+        repositories: [
+          {
+            repositoryPath: '',
+            repositoryName: 'project',
+            source: 'ROOT',
+            current: true,
+            changes: []
+          }
+        ]
+      })
+    );
+    await page.route(/\/api\/workspaces\/workspace-1\/git\/refs(?:\?.*)?$/, (route) =>
+      json(route, { refs: [] })
+    );
+    await page.route(/\/api\/workspaces\/workspace-1\/git\/history(?:\?.*)?$/, (route) =>
+      json(route, { commits: [], nextCursor: null })
+    );
+    await page.goto(`${fixture.url}new-session-group.html`);
+    const resources = page.locator('.workspace-tree');
+    if (width < 768) await page.getByRole('button', { name: /^(Work|工作)$/ }).click();
+    await resources.getByRole('button', { name: /node-1/ }).click();
+    await resources.getByRole('button', { name: 'project' }).click();
+    if (width < 768) {
+      await page.getByRole('button', { name: /Open auxiliary workspace|打开辅助工作面/ }).click();
+    }
+
+    const aside = page.locator('.workspace-aside');
+    const leadingEdges: number[] = [];
+    for (const [name, selector] of [
+      [/^(Files|文件)$/, '.file-display-filter'],
+      [/^(Search|搜索)$/, '.content-search-toolbar form'],
+      [/^Git (Changes|变更)$/, '.repository-title-row strong'],
+      [/^Git (History|历史)$/, '.history-toolbar .mar-ui-select:first-child']
+    ] as const) {
+      await aside.getByRole('tab', { name }).click();
+      const content = aside.getByRole('tabpanel').locator(selector);
+      await expect(content).toBeVisible();
+      leadingEdges.push((await content.boundingBox())!.x);
+    }
+    expect(leadingEdges).toEqual(leadingEdges.map(() => leadingEdges[0]));
+  });
+}
 
 test('Desktop Files scrolls independently without moving the workbench frame', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 800 });
