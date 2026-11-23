@@ -931,7 +931,7 @@ p {
 }
 @container usage-filters (width >= 44.25rem) {
   .filter-selects {
-    grid-template-columns: 10rem 10rem 14rem 8rem;
+    grid-template-columns: repeat(4, 10.5rem);
   }
 }
 .filters :deep(.mar-ui-form-item) {
