@@ -23,6 +23,8 @@ const captureRenderAnchor = createConversationScrollService().captureRenderAncho
 const following = ref(false);
 const input = ref('Review the result');
 const sidebarCollapsed = ref(false);
+const panelTogglesFixture = new URL(location.href).searchParams.has('panel-toggles');
+const asideExpanded = ref(true);
 const reconnecting = new URL(location.href).searchParams.has('reconnecting');
 const composerFocusFixture = new URL(location.href).searchParams.has('composer-focus');
 const composerReadonlyFixture = new URL(location.href).searchParams.has('composer-readonly');
@@ -782,9 +784,17 @@ function announceFixtureUpdate() {
       :files-ready="true"
       :terminal-ready="true"
       :content-search-ready="true"
+      :aside-controls="panelTogglesFixture ? 'fixture-conversation-aside' : undefined"
+      :aside-expanded="panelTogglesFixture && asideExpanded"
       :runner-icon="() => ''"
       :session-title="() => 'Review session'"
+      @open-surface="
+        (target) => {
+          if (panelTogglesFixture && target === 'inspector') asideExpanded = !asideExpanded;
+        }
+      "
     />
+    <aside v-if="panelTogglesFixture" v-show="asideExpanded" id="fixture-conversation-aside" />
     <ConversationWorkProcess
       v-if="!markdownBlocksFixture"
       :block="{

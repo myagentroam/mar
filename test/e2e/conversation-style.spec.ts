@@ -117,10 +117,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(
-        `${fixture.url}conversation-style.html?history-actions=1&language=en-US&theme=${theme}`
+        `${fixture.url}conversation-style.html?history-actions=1&panel-toggles&language=en-US&theme=${theme}`
       );
       const toggle = page.locator('.workbench-tree-toggle');
       const glyph = toggle.locator('svg');
+      const asideToggle = page.locator('.conversation-header .mar-icon-action--panel-toggle');
+      const asideGlyph = asideToggle.locator('svg');
+      async function expectMatchingPanelIconSizes() {
+        for (const icon of [glyph, asideGlyph]) {
+          await expect(icon).toHaveCSS('width', '18px');
+          await expect(icon).toHaveCSS('height', '18px');
+        }
+      }
       const panelFill = glyph.locator('path[fill="currentColor"]');
       await expect(glyph).toBeVisible();
       await expect(glyph.locator('rect')).toHaveCount(1);
@@ -129,6 +137,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(toggle).toHaveAccessibleName('Collapse sidebar');
       await expect(glyph).toHaveAttribute('data-mar-icon', 'sidebar-expanded');
       await expect(panelFill).toHaveCount(1);
+      await expect(asideGlyph).toHaveAttribute('data-mar-icon', 'panel-right-expanded');
+      await expectMatchingPanelIconSizes();
       await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const { width: buttonWidth, height: buttonHeight } = (await toggle.boundingBox())!;
       const outline = await glyph.locator('rect').evaluate((element) => element.outerHTML);
@@ -137,6 +147,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(toggle).toHaveAccessibleName('Expand sidebar');
       await expect(glyph).toHaveAttribute('data-mar-icon', 'sidebar');
       await expect(panelFill).toHaveCount(0);
+      await asideToggle.click();
+      await expect(asideGlyph).toHaveAttribute('data-mar-icon', 'panel-right');
+      await expectMatchingPanelIconSizes();
       expect(await toggle.boundingBox()).toMatchObject({
         width: buttonWidth,
         height: buttonHeight

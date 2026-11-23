@@ -26,6 +26,10 @@
   --mar-action-hover-bg: transparent;
 }
 
+.mar-icon-action--panel-toggle > .mar-icon {
+  font-size: var(--mar-ui-action-icon-size, 18px);
+}
+
 :is(.mar-icon-action, .mar-text-action):is(
     :hover,
     :active,
