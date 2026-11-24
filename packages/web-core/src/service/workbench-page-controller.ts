@@ -2179,7 +2179,8 @@ export function createWorkbenchPageController<
           resizeViewport: manifest.browserViewportResize === true,
           hd: manifest.browserHd === true,
           tabIcons: manifest.browserTabIcons === true,
-          nativeTouch: manifest.browserNativeTouch === true
+          nativeTouch: manifest.browserNativeTouch === true,
+          contextMenu: manifest.browserContextMenu === true
         };
     },
     browserConnectionReady: () => workbenchLiveConnection.connected.value,

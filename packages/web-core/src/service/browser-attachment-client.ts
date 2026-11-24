@@ -51,6 +51,7 @@ export class BrowserAttachmentClient {
     private readonly options: {
       snapshot(snapshot: BrowserTabSnapshot): void;
       selection?(id: string, text: string): void;
+      contextMenu?(event: Extract<BrowserAttachmentEvent, { type: 'context.result' }>): void;
       attached?(): void;
       resizeViewport?: boolean;
       tabIcon?: (event: Extract<BrowserAttachmentEvent, { type: 'tab.icon' }>) => void;
@@ -132,6 +133,8 @@ export class BrowserAttachmentClient {
         this.options.snapshot(event.snapshot);
       } else if (event.type === 'selection') {
         this.options.selection?.(event.id, event.text);
+      } else if (event.type === 'context.result') {
+        this.options.contextMenu?.(event);
       } else if (event.type === 'tab.icon') {
         this.options.tabIcon?.(event);
       } else {

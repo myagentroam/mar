@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
@@ -22,6 +22,7 @@ import type {
 } from '../../service/workbench-browser-service.js';
 import { browserAddress, isBrowserLoopback } from '../../service/browser-link-routing.js';
 import BrowserDownloadsDialog from './BrowserDownloadsDialog.vue';
+import BrowserContextMenu from './BrowserContextMenu.vue';
 import BrowserPerformanceIndicator from './BrowserPerformanceIndicator.vue';
 import BrowserTabLabel from './BrowserTabLabel.vue';
 import WorkspaceFloatingActions from '../common/WorkspaceFloatingActions.vue';
@@ -207,6 +208,11 @@ watch(dialog, (next, previous) => {
 });
 let unregisterInputEscape: (() => void) | undefined;
 onMounted(() => {
+  document.addEventListener('pointerdown', newPointerIntent, {
+    capture: true,
+    signal: lifetime.signal
+  });
+  document.addEventListener('focusin', newFocusIntent, { capture: true, signal: lifetime.signal });
   // Exit focused page input before the enclosing mobile surface handles Escape.
   unregisterInputEscape = consoleKeyboardShortcutService.register({
     command: 'browser.exitPageInput',
@@ -434,6 +440,16 @@ function pointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
   }
   const button = (['left', 'middle', 'right'] as const)[event.button];
   if (!button || pressedPointers.has(event.pointerId)) return;
+  if (button === 'right' && props.capability.contextMenu) {
+    event.preventDefault();
+    // Use the pointer edge as the sole mouse trigger, regardless of when the
+    // host browser emits its separate contextmenu event.
+    void openContext(
+      new DOMRect(event.clientX, event.clientY),
+      event.shiftKey ? undefined : position
+    );
+    return;
+  }
   // The canvas's default pointer focus would blur the text sink and release the drag.
   event.preventDefault();
   keyboard.value?.focus({ preventScroll: true });
@@ -460,8 +476,13 @@ function feedback(message: string, type: 'info' | 'warning' | 'error'): void {
     showMessage(message, type, undefined, { owner: body.value, signal: lifetime.signal });
 }
 
-async function copy(): Promise<void> {
+async function copy(link?: string): Promise<void> {
   try {
+    if (link) {
+      await navigator.clipboard.writeText(link);
+      feedback(t('browser.copied'), 'info');
+      return;
+    }
     if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined')
       throw new Error('Clipboard unavailable');
     const viewVersion = frame.value?.viewVersion;
@@ -478,7 +499,84 @@ async function copy(): Promise<void> {
     ]);
     feedback(t('browser.copied'), 'info');
   } catch {
-    feedback(t('browser.copyFailed'), 'error');
+    feedback(t(link ? 'browser.contextCopyLinkFailed' : 'browser.copyFailed'), 'error');
+  }
+}
+
+const contextMenu = shallowRef<{
+  intent: number;
+  anchor: DOMRect;
+  options: NonNullable<Awaited<ReturnType<WorkbenchBrowserService['queryContextMenu']>>>;
+}>();
+let contextIntent = 0;
+function inContextMenu(target: EventTarget | null): boolean {
+  return !!(
+    contextMenu.value &&
+    target instanceof Element &&
+    target.closest('.browser-context-menu')
+  );
+}
+function newPointerIntent(event: PointerEvent): void {
+  // The shared dropdown owns dismissal; an item click must not invalidate its own command.
+  if (inContextMenu(event.target)) return;
+  ++contextIntent;
+}
+function newFocusIntent(event: FocusEvent): void {
+  // Menu navigation and the dropdown's focus restoration are part of this action.
+  if (event.target === keyboard.value || inContextMenu(event.target)) return;
+  ++contextIntent;
+}
+
+async function openContext(anchor: DOMRect, target?: ReturnType<typeof point>): Promise<void> {
+  if (!props.capability.contextMenu || blank.value || status.value !== 'ready') return;
+  const viewVersion = frame.value?.viewVersion;
+  if (viewVersion === undefined || pressedPointers.size || nativeTouch || touch) return;
+  const intent = ++contextIntent;
+  contextMenu.value = undefined;
+  const sink = keyboard.value;
+  sink?.focus({ preventScroll: true });
+  inputScheduler.finish(viewVersion);
+  const options = await props.browser.queryContextMenu(
+    viewVersion,
+    target && { x: target.x, y: target.y }
+  );
+  if (options && currentContext(intent, viewVersion) && document.activeElement === sink)
+    contextMenu.value = { intent, anchor, options };
+}
+
+function currentContext(intent: number, viewVersion: number): boolean {
+  return (
+    !lifetime.signal.aborted &&
+    intent === contextIntent &&
+    status.value === 'ready' &&
+    frame.value?.viewVersion === viewVersion
+  );
+}
+
+async function contextCommand(
+  command: 'copy' | 'paste' | 'copyLink' | 'openLink' | 'back' | 'forward' | 'reload'
+): Promise<void> {
+  const menu = contextMenu.value;
+  if (!menu || !currentContext(menu.intent, menu.options.viewVersion)) return;
+  const { link, viewVersion, id } = menu.options;
+  if (command === 'copy') return copy();
+  if (command === 'copyLink') {
+    if (link) return copy(link);
+    return;
+  }
+  if (command === 'openLink') {
+    if (link) props.browser.send({ type: 'tab.open', address: link });
+    return;
+  }
+  if (command !== 'paste') return travel(command);
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text || !currentContext(menu.intent, viewVersion)) return;
+    if (text.length > 4096 || !props.browser.send({ type: 'context.paste', id, viewVersion, text }))
+      throw new Error('Cannot paste');
+  } catch {
+    if (currentContext(menu.intent, viewVersion))
+      feedback(t('browser.contextPasteFailed'), 'warning');
   }
 }
 
@@ -508,6 +606,16 @@ function key(event: KeyboardEvent, edge: 'up' | 'down'): void {
     return;
   }
   if (event.key === 'Escape' || event.key === 'Tab') return;
+  if (
+    props.capability.contextMenu &&
+    (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+  ) {
+    event.preventDefault();
+    const painted = paintedPage();
+    if (painted && !event.repeat)
+      void openContext(new DOMRect(painted.left + 12, painted.top + 12));
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
     if (event.key.toLowerCase() === 'v') return;
     if (event.key.toLowerCase() === 'c') {
@@ -550,8 +658,12 @@ function resetTransientInput(): void {
   if (keyboard.value) keyboard.value.value = '';
 }
 watch(
-  [() => snapshot.value?.viewVersion, () => frame.value?.viewVersion, status],
+  // Watch scalar values: passing the shallow status ref directly makes Vue
+  // invoke this on every rendered frame even if the generation has not changed.
+  [() => snapshot.value?.viewVersion, () => frame.value?.viewVersion, () => status.value],
   () => {
+    ++contextIntent;
+    contextMenu.value = undefined;
     if (status.value !== 'ready') return resetTransientInput();
     inputScheduler.reset();
     textInput.invalidate();
@@ -754,6 +866,17 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         @wheel.prevent="wheel"
         @contextmenu.prevent
       />
+      <BrowserContextMenu
+        v-if="contextMenu"
+        :key="contextMenu.intent"
+        :options="contextMenu.options"
+        :anchor="contextMenu.anchor"
+        :can-go-back="!!active?.canGoBack"
+        :can-go-forward="!!active?.canGoForward"
+        :can-open-tab="tabs.length < BROWSER_TAB_LIMIT"
+        @command="contextCommand"
+        @close="contextMenu = undefined"
+      />
       <textarea
         v-if="status === 'ready' && !blank"
         ref="keyboard"
@@ -836,7 +959,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           icon="copy"
           :aria-label="t('browser.copySelection')"
           v-tooltip="t('browser.copySelection')"
-          @click="copy"
+          @click="copy()"
         />
         <BrowserPerformanceIndicator
           :connection="connection"

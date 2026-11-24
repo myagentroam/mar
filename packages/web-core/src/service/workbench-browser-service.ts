@@ -4,6 +4,7 @@ import {
   browserDownloadPageSchema,
   type BrowserAttachmentMessage,
   type BrowserCapability,
+  type BrowserContextOptions,
   type BrowserControlRequest,
   type BrowserControlResponse,
   type BrowserProfileCommand,
@@ -31,6 +32,7 @@ type View = { viewVersion: number; width: number; height: number };
 type Path = 'ice' | 'relay';
 type Connection = {
   selection?: { id: string; finish: (text: string) => void };
+  contextMenu?: { id: string; finish: (options?: BrowserContextOptions) => void };
   scope: Scope;
   canvas: HTMLCanvasElement;
   browserId?: string;
@@ -98,6 +100,7 @@ export function createWorkbenchBrowserService(options: {
 
   function stop(connection: Connection): void {
     connection.selection?.finish('');
+    connection.contextMenu?.finish();
     connection.upload?.abort();
     uploadStatus.value = undefined;
     clearTimeout(connection.deadline);
@@ -241,7 +244,10 @@ export function createWorkbenchBrowserService(options: {
         connection.renew = setTimeout(() => void renew(), 5_000);
       },
       snapshot(value) {
-        if (snapshot.value?.viewVersion !== value.viewVersion) connection.selection?.finish('');
+        if (snapshot.value?.viewVersion !== value.viewVersion) {
+          connection.selection?.finish('');
+          connection.contextMenu?.finish();
+        }
         const currentIcons = tabIcons.value;
         const retained = [...currentIcons].filter(([id, { url }]) =>
           value.tabs.some((tab) => tab.id === id && tab.url === url && !tab.loading)
@@ -251,6 +257,9 @@ export function createWorkbenchBrowserService(options: {
       },
       selection(id, text) {
         if (connection.selection?.id === id) connection.selection.finish(text);
+      },
+      contextMenu({ id, options }) {
+        if (connection.contextMenu?.id === id) connection.contextMenu.finish(options);
       },
       frame(value) {
         clearTimeout(connection.deadline);
@@ -344,6 +353,26 @@ export function createWorkbenchBrowserService(options: {
       };
       connection.selection = { id, finish };
       if (!send({ type: 'selection.copy', id, viewVersion })) finish('');
+    });
+  }
+
+  function queryContextMenu(
+    viewVersion: number,
+    point?: { x: number; y: number }
+  ): Promise<(BrowserContextOptions & { id: string; viewVersion: number }) | undefined> {
+    const connection = current;
+    if (!connection || frame.value?.viewVersion !== viewVersion) return Promise.resolve(undefined);
+    connection.contextMenu?.finish();
+    return new Promise((resolve) => {
+      const id = createUuid();
+      const timer = setTimeout(() => finish(), 5_000);
+      const finish = (options?: BrowserContextOptions): void => {
+        clearTimeout(timer);
+        delete connection.contextMenu;
+        resolve(options && { ...options, id, viewVersion });
+      };
+      connection.contextMenu = { id, finish };
+      if (!send({ type: 'context.open', id, viewVersion, ...(point && { point }) })) finish();
     });
   }
 
@@ -447,6 +476,7 @@ export function createWorkbenchBrowserService(options: {
     },
     send,
     copySelection,
+    queryContextMenu,
     upload,
     downloads,
     cancelDownload,
@@ -468,4 +498,5 @@ export type WorkbenchBrowserCapability = BrowserCapability & {
   hd?: boolean;
   tabIcons?: boolean;
   nativeTouch?: boolean;
+  contextMenu?: boolean;
 };

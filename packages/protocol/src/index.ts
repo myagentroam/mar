@@ -2032,6 +2032,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   browserHd: z.literal(true).optional(),
   browserTabIcons: z.literal(true).optional(),
   browserNativeTouch: z.literal(true).optional(),
+  browserContextMenu: z.literal(true).optional(),
   remoteDesktop: remoteDesktopCapabilitySchema.optional(),
   sessionAside: sessionAsideCapabilitySchema.optional(),
   sessionGroups: z

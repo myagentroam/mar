@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { installBrowserContextMenu } from './browser-context-menu.js';
 import { attachBrowserProfileData, writeBrowserDataExtension } from './browser-profile-data.js';
 import { BROWSER_VIEWPORT } from './browser-video-config.js';
 
@@ -31,6 +32,7 @@ export function createBrowserLauncher(runRoot: string, failed: (error: unknown) 
         args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`]
       });
       const owned = context;
+      await installBrowserContextMenu(owned);
       const data = await attachBrowserProfileData(owned);
       let closing: Promise<void> | undefined;
       return {

@@ -1,5 +1,6 @@
 import type { BrowserPageInput } from '@myagentroam/protocol';
 import type { CDPSession, Page } from 'playwright';
+import { BrowserContextMenu } from './browser-context-menu.js';
 
 type Frame = { jpeg: Buffer; width: number; height: number };
 export type BrowserPageCapture = { stop: () => Promise<void> };
@@ -11,8 +12,11 @@ export type BrowserPageCapture = { stop: () => Promise<void> };
 export class BrowserPageView {
   private active: BrowserPageCapture | undefined;
   private navigationSession: Promise<CDPSession> | undefined;
+  readonly contextMenu: BrowserContextMenu;
 
-  constructor(private readonly page: Page) {}
+  constructor(private readonly page: Page) {
+    this.contextMenu = new BrowserContextMenu(page);
+  }
 
   async history(): Promise<
     { canGoBack: boolean; canGoForward: boolean; currentUrl: string | undefined } | undefined

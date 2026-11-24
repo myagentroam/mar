@@ -18,6 +18,7 @@ In Work mode, open the side pane, then select **+ → Browser** at the end of it
 - When a site asks for files, choose them on your device. Site downloads start on the Node automatically and are not saved to your device until you choose to save them. The **Downloads** button to the left of **More** signals list updates. Open it to check progress, cancel a download, or choose **Save to device**. Downloaded files remain on the Node until the MAR browser instance closes; save any files you need before closing it.
 - On a touchscreen, tap to click and swipe to scroll the remote page. On Nodes with native touch support, you can also drag sliders and other page controls. To type, tap a field on the page, then use the keyboard button in the lower-right corner to show or hide the keyboard.
 - Select text on the remote page and choose **Copy selected text** in the lower-right corner to copy it to your device. To paste plain text, focus a field on the remote page and use your device's paste shortcut.
+- On Nodes with context menu support, right-click selected text to copy it, an editable field to paste plain text, or a link to copy its address or open it in a new tab. If the page handles right-click itself, MAR does not show a second menu. To open MAR's menu anyway, select the text or focus the field, then use Shift+right-click, the Menu key, or Shift+F10. If your device browser blocks clipboard access from the menu, use the paste shortcut.
 
 ## Choose where links open
 

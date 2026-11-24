@@ -43,6 +43,7 @@ export class BrowserAttachment {
   private closed = false;
   private icons: Map<string, { url: string }> | undefined;
   private shown: number | undefined;
+  private contextPasteId: string | undefined;
   private next:
     | {
         version: number;
@@ -201,6 +202,7 @@ export class BrowserAttachment {
     this.refreshIcons(snapshot);
     if (snapshot.viewVersion === this.next?.version) return;
     const size = this.borrow.resource.viewport;
+    this.contextPasteId = undefined;
     this.next = {
       version: snapshot.viewVersion,
       page: this.borrow.resource.activeView,
@@ -345,6 +347,31 @@ export class BrowserAttachment {
             id: command.id,
             text: this.next?.version === command.viewVersion ? text : ''
           });
+        return;
+      }
+      case 'context.open': {
+        this.contextPasteId = undefined;
+        const view = this.next;
+        const options =
+          view?.version === command.viewVersion && this.shown === command.viewVersion
+            ? await view.page?.contextMenu.open(command.id, command.point)
+            : undefined;
+        if (!this.closed) {
+          const current = this.next?.version === command.viewVersion;
+          if (current && options?.paste) this.contextPasteId = command.id;
+          this.options.sendControl({
+            type: 'context.result',
+            id: command.id,
+            ...(current && options ? { options } : {})
+          });
+        }
+        return;
+      }
+      case 'context.paste': {
+        if (this.contextPasteId !== command.id) return;
+        this.contextPasteId = undefined;
+        if (this.next?.version === command.viewVersion && this.shown === command.viewVersion)
+          await this.next.page?.contextMenu.paste(command.id, command.text);
         return;
       }
       case 'input': {

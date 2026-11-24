@@ -90,6 +90,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       <link rel="icon" href="/site-icon.png">
       <style>body{margin:0;background:${request.url === '/relay' ? 'rgb(200,0,0)' : request.url === '/ice' ? 'rgb(0,200,0)' : 'white'}}a{position:absolute;left:76%;top:20%;width:8%;height:10%;background:blue}</style>
       <a href="/clicked" aria-label="Click the Node page"></a>
+      ${['/ice', '/relay'].includes(request.url ?? '') ? '<textarea aria-label="Context menu fixture" style="position:absolute;left:25%;top:65%;width:25%;height:8%"></textarea>' : ''}
       ${request.url === '/touch' ? `<input id="touch-field" style="position:absolute;left:24%;top:8%;width:18%;height:8%"><button id="touch-check" style="position:fixed;left:76%;top:8%;width:17%;height:8%">Check draft</button><input id="touch-slider" type="range" value="0" style="position:absolute;left:10%;top:60%;width:70%;height:8%;margin:0"><div style="height:200vh"></div>` : ''}
       <script>
         function publishViewport() {
@@ -120,6 +121,8 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         document.addEventListener('mouseup', ({ clientX }) => {
           if (clientX > innerWidth * 0.7) fetch('/released');
         });
+        document.querySelector('textarea')?.addEventListener('input', ({ target }) =>
+          fetch('/context-pasted?' + new URLSearchParams({ route: location.pathname, text: target.value })));
         document.addEventListener('keydown', ({ code, key, altKey, ctrlKey }) => {
           if ((altKey || ctrlKey) && key.toLowerCase() === 'w') fetch('/unexpected-close');
           if (key === 'ArrowRight') fetch('/key-next');
@@ -652,9 +655,37 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       await page.keyboard.press('Escape');
       await expect(dialog).toBeHidden();
     }
+    async function verifyContextMenu(route: 'ice' | 'relay') {
+      await test.step(`Use page context menu over ${route}`, async () => {
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+          origin: new URL(page.url()).origin
+        });
+        const text = `Context ${route}`;
+        const { x, y } = await canvasPoint(0.34, 0.69);
+        await page.mouse.click(x, y);
+        await expect(page.locator('[data-node-browser-input]')).toBeFocused();
+        await page.evaluate((value) => navigator.clipboard.writeText(value), text);
+        const menu = page.getByRole('menu', { name: /^(Page context menu|网页右键菜单)$/u });
+        await page.mouse.click(x, y, { button: 'right' });
+        await menu.getByRole('menuitem', { name: /^(Paste|粘贴)$/u }).click({ timeout: 8_000 });
+        await expect
+          .poll(() =>
+            requests.includes(
+              '/context-pasted?' + new URLSearchParams({ route: `/${route}`, text })
+            )
+          )
+          .toBe(true);
+        await page.evaluate(() => navigator.clipboard.writeText('Before menu copy'));
+        await page.keyboard.press('Control+a');
+        await page.mouse.click(x, y, { button: 'right' });
+        await menu.getByRole('menuitem', { name: /^(Copy|复制)$/u }).click({ timeout: 8_000 });
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+      });
+    }
     await upload('ice');
     await download('saved', 'ice');
     await download('cancel', 'ice');
+    await verifyContextMenu('ice');
     const target = await canvasPoint(0.8, 0.25);
     await page.mouse.move(target.x, target.y);
     await page.mouse.down();
@@ -705,6 +736,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await upload('relay');
     await download('saved', 'relay');
     await download('fail', 'relay');
+    await verifyContextMenu('relay');
     for (let attempt = 0; attempt < 2; attempt++) {
       const freshRelay = page.waitForEvent(
         'websocket',

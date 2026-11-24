@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { BrowserPageInput } from '../../packages/protocol/src/index.js';
+import type {
+  BrowserAttachmentMessage,
+  BrowserPageInput
+} from '../../packages/protocol/src/index.js';
+import { installBrowserContextMenu } from '../../mar-node/src/browser/browser-context-menu.js';
 import { BrowserPageView } from '../../mar-node/src/browser/browser-page-view.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
@@ -220,7 +224,9 @@ test('Browser drag-selects remote text and delivers a right click to the remote 
   const remote = await context.newPage();
   try {
     await remote.setViewportSize({ width: 800, height: 600 });
-    await remote.setContent(`<style>
+    await setContextPage(
+      remote,
+      `<style>
       p { position: absolute; top: 100px; left: 100px; font: 24px monospace; margin: 0; }
       button { position: absolute; top: 200px; left: 100px; }
     </style><p>Remote selectable words</p><button>Page menu</button><output></output><script>
@@ -228,7 +234,8 @@ test('Browser drag-selects remote text and delivers a right click to the remote 
         event.preventDefault();
         document.querySelector('output').textContent = 'Page menu opened';
       };
-    </script>`);
+    </script>`
+    );
     await attach(page, remote, fixture.url);
     const bounds = (await remote.locator('p').boundingBox())!;
     const start = await canvasPoint(page, bounds.x + 1, bounds.y + bounds.height / 2);
@@ -250,6 +257,181 @@ test('Browser drag-selects remote text and delivers a right click to the remote 
     const menu = await canvasPoint(page, 120, 211);
     await page.mouse.click(menu.clientX, menu.clientY, { button: 'right' });
     await expect(remote.locator('output')).toHaveText('Page menu opened');
+    await expect(page.getByRole('menu', { name: 'Page context menu' })).toHaveCount(0);
+  } finally {
+    await remote.close();
+    await fixture.close();
+  }
+});
+
+test('Browser opens the context menu for text, fields, and links and preserves a page override', async ({
+  page,
+  context
+}, testInfo) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const remote = await context.newPage();
+  try {
+    await remote.setViewportSize({ width: 800, height: 600 });
+    await setContextPage(
+      remote,
+      `<style>
+      p, input, a { position: absolute; left: 100px; margin: 0; }
+      p { top: 80px; } input { top: 140px; } a { top: 200px; }
+    </style>
+    <p>Selected remotely</p><input><a href="https://example.test/path">Link</a>
+    <script>
+      window.addEventListener('contextmenu', event => {
+        document.body.dataset.contextEvents = Number(document.body.dataset.contextEvents || 0) + 1;
+        if (!document.body.dataset.intercept) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        document.body.dataset.count = Number(document.body.dataset.count || 0) + 1;
+      }, true);
+    </script>`
+    );
+    await attach(page, remote, fixture.url);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: fixture.url });
+    const menu = page.getByRole('menu', { name: 'Page context menu' });
+    async function clickAt(x: number, y: number, button: 'left' | 'right' = 'right') {
+      const position = await canvasPoint(page, x, y);
+      await page.mouse.click(position.clientX, position.clientY, { button });
+    }
+
+    await remote.locator('p').evaluate((element) => getSelection()?.selectAllChildren(element));
+    // Some hosts dispatch contextmenu before pointerdown. One physical click
+    // must still send exactly one request without canceling its own result.
+    const selectionPoint = await canvasPoint(page, 110, 88);
+    await page.locator('canvas').dispatchEvent('contextmenu', { ...selectionPoint, button: 2 });
+    await clickAt(110, 88);
+    await expect(remote.locator('body')).toHaveAttribute('data-context-events', '1');
+    await expect(menu.locator('kbd')).toHaveText([/^(Ctrl\+|⌘)C$/u, /^(Ctrl\+|⌘)V$/u]);
+    await menu.screenshot({
+      path: testInfo.outputPath('chrome-context-menu-light.png'),
+      animations: 'disabled'
+    });
+    await menu.getByRole('menuitem', { name: 'Copy', exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe('Selected remotely');
+
+    await page.evaluate(() => navigator.clipboard.writeText('Paste from the device'));
+    await clickAt(110, 150);
+    await menu.getByRole('menuitem', { name: 'Paste', exact: true }).click();
+    await expect(remote.locator('input')).toHaveValue('Paste from the device');
+
+    await clickAt(110, 207);
+    await expect(menu.getByRole('menuitem', { name: 'Open link in new tab' })).toBeEnabled();
+    await menu.getByRole('menuitem', { name: 'Copy link address' }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe('https://example.test/path');
+
+    await remote.locator('body').evaluate((body) => {
+      body.dataset.intercept = '1';
+    });
+    await clickAt(110, 150, 'left');
+    await clickAt(110, 150);
+    await expect(remote.locator('body')).toHaveAttribute('data-count', '1');
+    await expect(menu).toBeHidden();
+    await page.keyboard.press('Shift+F10');
+    await expect(menu.getByRole('menuitem', { name: 'Paste', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(page.locator('[data-node-browser-input]')).toBeFocused();
+    await page.keyboard.down('Shift');
+    await clickAt(110, 150);
+    await page.keyboard.up('Shift');
+    await expect(menu).toBeVisible();
+    await expect(remote.locator('body')).toHaveAttribute('data-count', '1');
+    await page.evaluate(() => document.dispatchEvent(new Event('fixture-view-change')));
+    await expect(menu).toBeHidden();
+    await remote.locator('body').evaluate((body) => delete body.dataset.intercept);
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.evaluate(() =>
+      document.documentElement.setAttribute('data-theme', 'vscode-dark-2026')
+    );
+    await clickAt(780, 560);
+    await expect(menu).toHaveCSS('background-color', 'rgb(41, 42, 45)');
+    const menuBox = (await menu.boundingBox())!;
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(390);
+    expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(700);
+    await menu.screenshot({
+      path: testInfo.outputPath('chrome-context-menu-dark.png'),
+      animations: 'disabled'
+    });
+  } finally {
+    await remote.close();
+    await fixture.close();
+  }
+});
+
+test('Browser drops delayed menu paste after a view change and does not paste into a replacement field', async ({
+  page,
+  context
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const remote = await context.newPage();
+  try {
+    await remote.setViewportSize({ width: 800, height: 600 });
+    await setContextPage(
+      remote,
+      '<textarea id="first"></textarea><textarea id="second"></textarea>'
+    );
+    let sent = 0;
+    await attach(page, remote, fixture.url, undefined, () => {
+      sent++;
+    });
+    const menu = page.getByRole('menu', { name: 'Page context menu' });
+    const input = page.locator('[data-node-browser-input]');
+    const paste = menu.getByRole('menuitem', { name: 'Paste', exact: true });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, 'readText', {
+        value: () =>
+          new Promise<string>((resolve) => {
+            document.documentElement.dataset.pendingClipboard = 'yes';
+            document.addEventListener(
+              'finish-fixture-clipboard',
+              () => resolve('Do not redirect'),
+              { once: true }
+            );
+          })
+      });
+    });
+    await remote.locator('#first').focus();
+    await input.focus();
+    await page.keyboard.press('Shift+F10');
+    await paste.click();
+    await expect(page.locator('html')).toHaveAttribute('data-pending-clipboard', 'yes');
+    await page.evaluate(async () => {
+      document.dispatchEvent(new Event('fixture-view-change'));
+      document.dispatchEvent(new Event('finish-fixture-clipboard'));
+      await new Promise(requestAnimationFrame);
+    });
+    expect(sent).toBe(0);
+    await expect(remote.locator('#first')).toHaveValue('');
+
+    await input.focus();
+    await page.keyboard.press('Shift+F10');
+    await paste.click();
+    const toolbar = page.getByRole('button', { name: 'Browser commands' });
+    await toolbar.focus();
+    await expect(toolbar).toBeFocused();
+    await input.focus();
+    await page.evaluate(async () => {
+      document.dispatchEvent(new Event('finish-fixture-clipboard'));
+      await new Promise(requestAnimationFrame);
+    });
+    expect(sent).toBe(0);
+
+    await input.focus();
+    await page.keyboard.press('Shift+F10');
+    await expect(paste).toBeEnabled();
+    await remote.locator('#second').focus();
+    await paste.click();
+    await page.evaluate(() => document.dispatchEvent(new Event('finish-fixture-clipboard')));
+    await expect.poll(() => sent).toBe(1);
+    await expect(remote.locator('#first')).toHaveValue('');
+    await expect(remote.locator('#second')).toHaveValue('');
   } finally {
     await remote.close();
     await fixture.close();
@@ -438,7 +620,8 @@ async function attach(
   page: Page,
   remote: Page,
   url: string,
-  observeCopy?: (lastAction: BrowserPageInput | undefined) => void
+  observeCopy?: (lastAction: BrowserPageInput | undefined) => void,
+  observePaste?: () => void
 ) {
   const actions: BrowserPageInput[] = [];
   const view = new BrowserPageView(remote);
@@ -459,10 +642,39 @@ async function attach(
       await page.bringToFront();
     }
   });
+  await page.exposeFunction(
+    'fixtureContext',
+    async (id: string, point?: { x: number; y: number }) => {
+      await ordered;
+      await remote.bringToFront();
+      try {
+        return await view.contextMenu.open(id, point);
+      } finally {
+        await page.bringToFront();
+      }
+    }
+  );
+  await page.exposeFunction(
+    'fixturePaste',
+    async (message: Extract<BrowserAttachmentMessage, { type: 'context.paste' }>) => {
+      await remote.bringToFront();
+      try {
+        await view.contextMenu.paste(message.id, message.text);
+        observePaste?.();
+      } finally {
+        await page.bringToFront();
+      }
+    }
+  );
   await page.setViewportSize({ width: 880, height: 760 });
   await page.goto(`${url}browser-input.html`);
   await expect(page.locator('canvas')).toHaveJSProperty('width', 800);
   return actions;
+}
+
+async function setContextPage(remote: Page, html: string): Promise<void> {
+  await installBrowserContextMenu(remote.context());
+  await remote.goto(`data:text/html,${encodeURIComponent(html)}`);
 }
 
 function canvasPoint(page: Page, x: number, y: number) {

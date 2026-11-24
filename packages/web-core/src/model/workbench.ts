@@ -301,6 +301,7 @@ export interface NodeWorkbenchManifest {
   readonly browserHd?: true;
   readonly browserTabIcons?: true;
   readonly browserNativeTouch?: true;
+  readonly browserContextMenu?: true;
   readonly git?: {
     readonly available: boolean;
     readonly reasonCode: string | null;

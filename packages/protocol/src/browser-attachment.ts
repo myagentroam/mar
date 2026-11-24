@@ -6,6 +6,18 @@ const positiveUint32 = z.number().int().positive().max(0xffffffff);
 const tabId = z.string().uuid();
 const id = z.string().uuid();
 const opaque = z.string().min(1).max(512);
+const coordinate = z.number().min(0).max(0xffff);
+const browserContextOptionsSchema = z.strictObject({
+  copy: z.boolean(),
+  paste: z.boolean(),
+  link: z
+    .string()
+    .url()
+    .regex(/^https?:\/\//u)
+    .max(8192)
+    .optional()
+});
+export type BrowserContextOptions = z.infer<typeof browserContextOptionsSchema>;
 export const BROWSER_CONTROL_MAX_BYTES = 32 * 1024;
 export const BROWSER_TAB_LIMIT = 8;
 export const BROWSER_TAB_ICON_BASE64_MAX = 4096;
@@ -90,6 +102,18 @@ export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('input'), action: browserPageInputSchema }),
   z.strictObject({ type: z.literal('selection.copy'), id, viewVersion: positiveUint32 }),
   z.strictObject({
+    type: z.literal('context.open'),
+    id,
+    viewVersion: positiveUint32,
+    point: z.strictObject({ x: coordinate, y: coordinate }).optional()
+  }),
+  z.strictObject({
+    type: z.literal('context.paste'),
+    id,
+    viewVersion: positiveUint32,
+    text: z.string().min(1).max(4096)
+  }),
+  z.strictObject({
     type: z.literal('navigate'),
     viewVersion: positiveUint32,
     address: z.string().min(1).max(8192)
@@ -154,6 +178,11 @@ export const browserAttachmentEventSchema = z.discriminatedUnion('type', [
       .regex(/^[A-Za-z0-9+/]+={0,2}$/u)
   }),
   z.strictObject({ type: z.literal('selection'), id, text: z.string().max(4096) }),
+  z.strictObject({
+    type: z.literal('context.result'),
+    id,
+    options: browserContextOptionsSchema.optional()
+  }),
   z.strictObject({
     type: z.literal('command.failed'),
     code: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/u)
