@@ -66,7 +66,7 @@ for (const [theme, width] of [
     const fullMessage =
       'The review is ready.\nThe implementation and browser checks passed. Please review the final conversation layout, including how long messages wrap on smaller screens.';
     await expect(messageSummary.locator('.collaboration-action')).toHaveText('message');
-    await expect(messageSummary.locator('.collaboration-source')).toHaveText('from child session');
+    await expect(messageSummary.locator('.collaboration-source')).toHaveText('child session');
     await expect(messageSummary).not.toContainText('Review session');
     const preview = messageSummary.locator('.collaboration-text');
     await expect(preview).toHaveText(fullMessage);
@@ -83,7 +83,7 @@ for (const [theme, width] of [
     await messageSummary.press('Enter');
     await expect(messageBody).toBeVisible();
     const sourceHeading = messageBody.locator('.conversation-item-heading > strong');
-    await expect(sourceHeading).toHaveText('from Review session');
+    await expect(sourceHeading).toHaveText('From child session Review session');
     const metaSize = await sourceHeading.evaluate((element) =>
       getComputedStyle(element).getPropertyValue('--mar-font-size-meta').trim()
     );
@@ -107,16 +107,24 @@ for (const [theme, width] of [
     await expect(last).not.toHaveAttribute('open');
     await lastSummary.click();
     await expect(last.locator('.collaboration-source')).toHaveText([
-      'from another session',
-      'from parent session'
+      'another session',
+      'parent session'
     ]);
-    const recent = last.locator('.agent-collaboration-message').last();
+    const messages = last.locator('.agent-collaboration-message');
+    const otherMessage = messages.first();
+    await otherMessage.locator('summary').click();
+    await expect(otherMessage.locator('.conversation-item-heading > strong')).toHaveText(
+      'From another session Build session'
+    );
+    const recent = messages.last();
     const recentSummary = recent.locator('summary');
     await expect(recentSummary).not.toContainText('Test session');
     await recentSummary.click();
     await expect(recent.locator('.conversation-message')).toHaveText('Browser checks passed.');
     const recentSource = recent.locator('.conversation-item-heading > strong');
-    await expect(recentSource).toHaveText(`from Test session ${'BrowserChecks'.repeat(10)}`);
+    await expect(recentSource).toHaveText(
+      `From parent session Test session ${'BrowserChecks'.repeat(10)}`
+    );
     await expect
       .poll(() =>
         recentSource.evaluate((element) => {
@@ -144,6 +152,28 @@ for (const [theme, width] of [
     );
   });
 }
+
+test('distinguishes the Chinese source label from the full collaboration heading', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`${fixture.url}agent-operation.html?theme=dark&collaboration&locale=zh-CN`);
+  const process = page.locator('.conversation-process.is-group').first();
+  const processHeading = process.locator('.process-heading');
+  await expect(processHeading).toBeVisible();
+  if ((await processHeading.getAttribute('aria-expanded')) === 'false')
+    await processHeading.click();
+  const group = process.locator('.subagent-group > details');
+  await group.locator(':scope > summary').click();
+  const message = group.locator('.agent-collaboration-message');
+  const summary = message.locator(':scope > summary');
+  await expect(summary.locator('.collaboration-source')).toHaveText('子会话');
+  await expect(summary).not.toContainText('Review session');
+  await summary.click();
+  await expect(message.locator('.conversation-item-heading > strong')).toHaveText(
+    '来自子会话 Review session'
+  );
+});
 
 for (const theme of ['light', 'dark']) {
   for (const width of [390, 1280]) {

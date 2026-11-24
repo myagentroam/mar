@@ -333,11 +333,10 @@ export const conversationUiZhCN = {
     subagentTask: 'Agent',
     agentCollaborationCount: '{count} 条记录',
     agentCollaborationMessage: '消息',
-    agentCollaborationMessageFrom: '来自 {name}',
     agentCollaborationSource: {
-      parent: '来自父会话',
-      child: '来自子会话',
-      other: '来自其他会话'
+      parent: '父会话',
+      child: '子会话',
+      other: '其他会话'
     },
     subagentCallFailed: '调用失败',
     noAgentSessions: '没有会话',

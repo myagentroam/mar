@@ -17,7 +17,7 @@ import {
 } from '../../util/conversation-presentation.js';
 import { conversationUrlSegments } from '../../util/conversation-url-segments.js';
 
-/** Shared public message content; collaboration details show the named source. */
+/** Shared public message content for the main timeline and collaboration details. */
 const props = defineProps<{
   payload: unknown;
   collaborationDetail?: boolean;
@@ -52,22 +52,14 @@ const text = computed(() =>
 const copyText = computed(() => composerMessageCopyText(props.payload));
 const heading = computed(() => {
   const input = message.value;
-  const source = composerMessageSource(input);
-  if (props.collaborationDetail) {
-    const name = input.sessionOrigin?.name;
-    return name
-      ? {
-          label: translate('presentation.agentCollaborationMessageFrom', { name }),
-          title: source?.title
-        }
-      : undefined;
-  }
   const label =
     props.sharerName ??
     (input.restarted || input.scheduled || input.goal
       ? conversationItemLabel('user_message', props.payload)
       : undefined);
-  return source ?? (label === undefined ? undefined : { label, title: undefined });
+  return (
+    composerMessageSource(input) ?? (label === undefined ? undefined : { label, title: undefined })
+  );
 });
 function openPlainUrl(event: MouseEvent, url: string): void {
   if (event.button === 0 && props.openUrl?.(url, event.ctrlKey || event.metaKey))
