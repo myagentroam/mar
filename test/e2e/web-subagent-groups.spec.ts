@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { fulfillMockSessionWatch, json, mockConsoleApi } from './support/web-console-api.js';
 
-test('subagent controls group by identity and phase with expandable results and no running badges', async ({
+test('groups Agent operations within each process without changing operation statuses', async ({
   page
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
@@ -45,7 +45,15 @@ test('subagent controls group by identity and phase with expandable results and 
     control('wait', 'child', 'STATUS', 'FAILED'),
     control('message', 'child', 'MESSAGE'),
     {
-      ...control('reply', null, 'START'),
+      id: 'reply',
+      sessionId: 'session-1',
+      turnId: 'turn',
+      runId: null,
+      parentItemId: null,
+      sourceSequence: null,
+      revision: 1,
+      startedAt: null,
+      completedAt: null,
       kind: 'assistant_message',
       status: 'COMPLETED',
       payload: { text: 'Continue with another phase.', format: 'markdown', model: null }
@@ -89,7 +97,18 @@ test('subagent controls group by identity and phase with expandable results and 
               status: 'SUCCEEDED',
               startedAt: null,
               completedAt: null,
-              items
+              items: items.slice(0, 5)
+            },
+            {
+              id: 'turn:segment:1',
+              sessionId: 'session-1',
+              turnId: 'turn',
+              index: 1,
+              runId: null,
+              status: 'SUCCEEDED',
+              startedAt: null,
+              completedAt: null,
+              items: items.slice(5)
             }
           ]
         }
@@ -114,42 +133,44 @@ test('subagent controls group by identity and phase with expandable results and 
   };
   await openProcesses();
   const groups = page.locator('.subagent-group');
-  await expect(groups).toHaveCount(5);
-  const group = groups.nth(1);
+  await expect(groups).toHaveCount(2);
+  const group = groups.first();
   const heading = group.locator(':scope > details > summary');
-  await expect(heading.locator('.conversation-record-preview')).toHaveText('Review integration');
-  await expect(heading.locator('.conversation-group-meta')).toHaveText('3 次操作');
+  await expect(heading).toContainText('Agent 协作');
+  await expect(groups.last().locator('.conversation-group-meta')).toHaveText('3 条记录');
+  await expect(heading.locator('.conversation-group-meta')).toHaveText('4 条记录');
   await expect(heading).not.toContainText(/Running|运行中|Completed/);
   await expect(group.locator('.conversation-tool-detail')).toHaveCount(0);
   await heading.click();
   const operations = group.locator('.conversation-tool-detail');
-  await expect(operations).toHaveCount(3);
+  await expect(operations).toHaveCount(4);
   await expect(group.getByRole('button', { name: '打开会话' })).toHaveCount(0);
-  await expect(operations.locator('summary')).toHaveText([
-    '启动执行中',
-    '等待失败',
-    '发送消息已完成'
+  await expect(operations.locator('.conversation-tool-preview')).toHaveText([
+    'start Review integration',
+    'start Review integration',
+    'wait Review integration',
+    'send Review integration'
   ]);
-  await operations.nth(1).locator('summary').click();
-  await expect(operations.nth(1).getByText('Input wait', { exact: false })).toBeVisible();
-  await expect(operations.nth(1).getByText('Result wait', { exact: false })).toBeVisible();
+  await expect(operations.locator('.conversation-record-meta')).toHaveText([
+    '执行中',
+    '已完成',
+    '失败',
+    '已完成'
+  ]);
+  await operations.nth(2).locator('summary').click();
+  await expect(operations.nth(2).getByText('Input wait', { exact: false })).toBeVisible();
+  await expect(operations.nth(2).getByText('Result wait', { exact: false })).toBeVisible();
   await heading.click();
   await expect(group.locator('.conversation-tool-detail')).toHaveCount(0);
   await page.reload();
   await openProcesses();
-  await expect(groups).toHaveCount(5);
-  await expect(groups.nth(1).locator('.conversation-record-preview')).toHaveText(
-    'Review integration'
-  );
-  await expect(groups.nth(1).locator('.conversation-group-meta')).toHaveText('3 次操作');
+  await expect(groups).toHaveCount(2);
+  await expect(groups.first().locator('.conversation-group-meta')).toHaveText('4 条记录');
   await page.evaluate(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   await page.reload();
   await openProcesses();
-  await expect(groups.nth(1).locator('.conversation-record-preview')).toHaveText(
-    'Review integration'
-  );
-  await expect(groups.nth(1).locator('.conversation-group-meta')).toHaveText('3 operations');
-  await expect(groups.first().locator('.conversation-group-meta')).toHaveText('1 operation');
+  await expect(groups.first().locator('.conversation-group-meta')).toHaveText('4 records');
+  await expect(groups.last().locator('.conversation-group-meta')).toHaveText('3 records');
 });
 
 test('shows Agent records without shortcuts and opens the child through the session list', async ({
@@ -311,13 +332,10 @@ test('shows Agent records without shortcuts and opens the child through the sess
   await expect(process).toHaveCount(1);
   if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
   const groups = page.locator('.subagent-group');
-  await expect(groups).toHaveCount(3);
-  await groups.nth(1).locator(':scope > details > summary').click();
-  await expect(groups.nth(1).getByRole('button', { name: '打开会话' })).toHaveCount(0);
-  await groups.nth(2).locator(':scope > details > summary').click();
-  await expect(groups.nth(2).getByRole('button', { name: '打开会话' })).toHaveCount(0);
-  await groups.nth(0).locator(':scope > details > summary').click();
-  await expect(groups.nth(0).getByRole('button', { name: '打开会话' })).toHaveCount(0);
+  await expect(groups).toHaveCount(1);
+  await groups.first().locator(':scope > details > summary').click();
+  await expect(groups.first().locator('.conversation-tool-detail')).toHaveCount(4);
+  await expect(groups.first().getByRole('button', { name: '打开会话' })).toHaveCount(0);
   const connection = (connected: boolean) =>
     page.evaluate((value) => {
       (

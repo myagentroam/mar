@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-11-23
+lastUpdated: 2026-11-24
 ---
 
 # Create and Manage Sessions
@@ -19,7 +19,7 @@ In work mode, closing a Workspace preserves its drafts in the current browser ta
 
 Aside keeps at most one session tab per Workspace. Opening another session replaces the previous session tab while preserving Aside's current input and leaving the previous session's task running. Tool tabs such as Files and Terminal are unaffected.
 
-Agent operations follow the [conversation work-process grouping rules](conversation.md), without splitting by target, operation, or target count. Records show actual calls, their targets, and results without session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
+Agent operations and messages from other sessions appear in the [Agent collaboration](conversation.md) group inside the work process. The group does not provide session shortcuts. To view a target session, send a message, or stop its run, open it from the session list or session tree. Normal session permissions still apply.
 
 When an Agent sends a message or sets a Goal on an ancestor session that has ended or is stopping, the operation returns `AGENT_ANCESTOR_NOT_ACTIVE` without restarting it. Sending works again once the ancestor is running. Users can still resume sessions manually.
 

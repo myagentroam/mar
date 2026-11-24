@@ -1,3 +1,4 @@
+import { serializeComposerTag } from '@myagentroam/protocol';
 import { describe, expect, it } from 'vitest';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import {
@@ -1105,7 +1106,7 @@ describe('Conversation work process blocks', () => {
     expect(records).toEqual(original);
   });
 
-  it('keeps Agent calls independent under one stable category across segments', () => {
+  it('groups Node-projected collaboration records within their original process', () => {
     const groupId = 'agent-process';
     const first = item('agent-first', 'tool_call', {
       processGroup: { id: groupId, isStart: true },
@@ -1120,17 +1121,46 @@ describe('Conversation work process blocks', () => {
         agentOperation: { action: 'WAIT', targets: [{ agentId: 'other' }] }
       }
     });
-    const blocks = conversationWorkProcessBlocks([
-      turn([first]),
-      turn([second], { id: 'segment-2', segmentIndex: 1 })
-    ]);
-    const entries = processBlock(blocks, groupId).entries;
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.displayItem).toMatchObject({
-      type: 'subagent_group',
-      id: 'agent-first',
-      items: [first, second]
+    const message = item('incoming', 'user_message', {
+      processGroup: { id: groupId },
+      payload: {
+        text: `Status update.\n${serializeComposerTag('mar_session_origin', {
+          sessionId: 'other-session',
+          name: 'Reviewer',
+          relation: 'other'
+        })}`
+      }
     });
+    const human = item('human', 'user_message', { payload: { text: 'Human message' } });
+    const reply = item('reply', 'assistant_message', { payload: { text: 'Current reply' } });
+    const ordinaryTool = item('ordinary', 'tool_call', {
+      processGroup: { id: groupId },
+      payload: { toolName: 'ordinary' }
+    });
+    const warning = item('warning', 'warning', {
+      processGroup: { id: groupId },
+      payload: { message: 'A notice in the same process.' }
+    });
+    const segment = turn([first, warning, message, ordinaryTool, second, human, reply]);
+    const later = turn(
+      [{ ...second, id: 'next-agent', processGroup: { id: 'next-process', isStart: true } }],
+      { id: 'segment-2', segmentIndex: 1 }
+    );
+    const blocks = conversationWorkProcessBlocks([segment, later]);
+    const entries = processBlock(blocks, groupId).entries.map(({ displayItem }) => displayItem);
+    expect(entries.map(({ type }) => type)).toEqual(['item', 'tool_group', 'subagent_group']);
+    expect(entries[0]).toMatchObject({ item: warning });
+    expect(entries[2]).toMatchObject({ id: 'agent-first', items: [first, message, second] });
+    expect(blocks.slice(1).map(({ entries }) => entries[0]?.displayItem.id)).toEqual([
+      'human',
+      'reply',
+      'next-agent'
+    ]);
+    const partial = conversationWorkProcessProjection([segment, later], [later]);
+    expect(partial.blocks).toEqual([blocks.at(-1)]);
+    expect(conversationWorkProcessVisibleBlocks([segment, later], partial.metadataBlocks)).toEqual(
+      blocks
+    );
   });
 
   it('keeps an unknown prefix without process metadata flat instead of inferring membership', () => {

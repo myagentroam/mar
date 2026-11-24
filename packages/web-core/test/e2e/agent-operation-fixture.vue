@@ -1,8 +1,30 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { serializeComposerTag } from '@myagentroam/protocol';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 const copied = ref('');
+const collaboration = new URLSearchParams(location.search).has('collaboration');
+
+function fromSession(id: string, name: string, text: string): ConversationItem {
+  return {
+    id,
+    kind: 'user_message',
+    processGroup:
+      id === 'reviewer'
+        ? { id: 'process' }
+        : { id: 'second-process', ...(id === 'build' ? { isStart: true } : {}) },
+    status: 'COMPLETED',
+    startedAt: 1795495200000,
+    payload: {
+      text: `${text}\n${serializeComposerTag('mar_session_origin', {
+        sessionId: id,
+        name,
+        relation: id === 'reviewer' ? 'child' : 'other'
+      })}`
+    }
+  };
+}
 
 function item(
   id: string,
@@ -19,7 +41,7 @@ function item(
     payload
   };
 }
-const turns: ConversationTurn[] = [
+const turns = ref<ConversationTurn[]>([
   {
     id: 'turn',
     sessionId: 'root',
@@ -51,6 +73,7 @@ const turns: ConversationTurn[] = [
         'FAILED',
         'second-code-cell'
       ),
+      ...(collaboration ? [fromSession('reviewer', 'Review session', 'The review is ready.')] : []),
       ...[
         ['codex', 'spawn_agent', 'Inspect persistence'],
         ['claude', 'Agent', 'Check browser interactions'],
@@ -102,12 +125,52 @@ const turns: ConversationTurn[] = [
         payload: { text: 'Review complete.', format: 'markdown' }
       }
     ]
-  }
-];
+  },
+  ...(collaboration
+    ? [
+        {
+          id: 'segment-2',
+          sessionId: 'root',
+          runId: 'run',
+          turnId: 'turn',
+          segmentIndex: 1,
+          status: 'SUCCEEDED' as const,
+          items: [
+            {
+              id: 'visitor',
+              kind: 'user_message',
+              status: 'COMPLETED',
+              payload: {
+                text: `${serializeComposerTag('mar_channel', {
+                  source: 'WEB_SHARE',
+                  channelId: 'share',
+                  senderId: 'visitor',
+                  name: 'Alice'
+                })}\nThanks for the review.`
+              }
+            },
+            fromSession('build', 'Build session', 'The isolated build passed.')
+          ] as ConversationItem[]
+        }
+      ]
+    : [])
+]);
+
+function addCollaborationMessage() {
+  const last = turns.value.at(-1)!;
+  turns.value = [
+    ...turns.value.slice(0, -1),
+    {
+      ...last,
+      items: [...last.items, fromSession('test', 'Test session', 'Browser checks passed.')]
+    }
+  ];
+}
 </script>
 
 <template>
   <main>
+    <button v-if="collaboration" type="button" @click="addCollaborationMessage">Add update</button>
     <ConversationTimeline
       :turns="turns"
       :workspace-root="undefined"

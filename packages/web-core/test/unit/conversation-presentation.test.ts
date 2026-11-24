@@ -2192,11 +2192,9 @@ describe('Conversation Show Aggregation', () => {
     expect(display.map(({ id }) => id)).toEqual(['first', 'next-process']);
     expect(display[0]).toMatchObject({ items: records.slice(0, 5) });
     expect(
-      conversationDisplayItems([
-        first,
-        item('error', 'error', {}, 'FAILED', { id: 'p' }),
-        last
-      ]).map(({ id }) => id)
+      conversationDisplayItems([first, item('error', 'error', {}, 'FAILED'), last]).map(
+        ({ id }) => id
+      )
     ).toEqual(['first', 'error', 'last']);
     expect(conversationDisplayItems([first, { ...last, status: 'FAILED' }])[0]).toMatchObject({
       id: 'first',

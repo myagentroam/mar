@@ -779,6 +779,39 @@ describe('Web Conversation Projection State', () => {
     });
   });
 
+  it('keeps a streaming reply continuous when a projected collaboration message arrives', () => {
+    const { turns, controller } = state();
+    controller.mergeTextDelta('run-1', { text: 'One' }, 2);
+    controller.mergeItem(
+      'run-1',
+      {
+        itemId: 'collaborator',
+        kind: 'user_message',
+        status: 'COMPLETED',
+        processGroup: { id: 'process', isStart: true },
+        payload: { text: 'Update' }
+      },
+      3
+    );
+    controller.mergeTextDelta('run-1', { text: ' two' }, 4);
+    controller.flushPendingTextDeltas();
+    expect(turns.value[0]?.items).toMatchObject([
+      { kind: 'assistant_message', status: 'IN_PROGRESS', payload: { text: 'One two' } },
+      { id: 'collaborator', processGroup: { id: 'process', isStart: true } }
+    ]);
+    controller.mergeItem(
+      'run-1',
+      {
+        itemId: 'tool',
+        kind: 'tool_call',
+        status: 'COMPLETED',
+        payload: {}
+      },
+      5
+    );
+    expect(turns.value[0]?.items[0]?.status).toBe('COMPLETED');
+  });
+
   it('Rejects late Items and deltas from rewinding a terminal message to streaming', () => {
     const { turns, controller } = state();
     expect(

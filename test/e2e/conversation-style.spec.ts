@@ -1866,7 +1866,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const groups = page.locator('.conversation-record-group');
       await expect(groups).toHaveCount(4);
       await expect(page.locator('.subagent-group .conversation-group-meta')).toHaveText(
-        '3 operations'
+        '3 records'
       );
       for (const group of await groups.all()) {
         const heading = group.locator(':scope > summary');

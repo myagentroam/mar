@@ -9,6 +9,86 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const [theme, width] of [
+  ['light', 1280],
+  ['dark', 390]
+] as const) {
+  test(`keeps incoming messages inside each Agent collaboration group (${theme}, ${width})`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${fixture.url}agent-operation.html?theme=${theme}&collaboration`);
+    const processes = page.locator('.conversation-process.is-group');
+    await expect(processes).toHaveCount(2);
+    for (const process of await processes.all()) {
+      const heading = process.locator('.process-heading');
+      if ((await heading.getAttribute('aria-expanded')) === 'false') await heading.click();
+    }
+    const groups = processes.locator('.subagent-group > details');
+    await expect(groups).toHaveCount(2);
+    const first = groups.first();
+    const last = groups.last();
+    const firstSummary = first.locator(':scope > summary');
+    const lastSummary = last.locator(':scope > summary');
+    await expect(firstSummary).toHaveText(/Agent collaboration\s*8 records/);
+    await expect(lastSummary).toHaveText(/Agent collaboration\s*1 record/);
+    await expect(page.getByText('Review complete.')).toBeVisible();
+    await expect(page.getByText('Thanks for the review.')).toBeVisible();
+    await expect(
+      page.locator('.user_message').filter({ hasText: 'Thanks for the review.' })
+    ).toContainText('Alice');
+    await expect(processes.first().locator('.subagent-group')).toHaveCount(1);
+    await expect(processes.last().locator('.subagent-group')).toHaveCount(1);
+    expect(
+      await first.evaluate(
+        (group) => group.closest('.conversation-turn')?.nextElementSibling?.textContent
+      )
+    ).toContain('Review complete.');
+    await expect(page.locator('.agent-collaboration-message')).toHaveCount(0);
+    await page.locator('.conversation-timeline').screenshot({
+      path: testInfo.outputPath(`collaboration-collapsed-${width}.png`),
+      animations: 'disabled'
+    });
+    await firstSummary.focus();
+    await page.keyboard.press('Enter');
+    const records = first.locator(
+      ':scope > :is(.conversation-tool-detail, .agent-collaboration-message)'
+    );
+    await expect(records.nth(1)).toContainText('send');
+    await expect(records.nth(2)).toContainText('The review is ready.');
+    await expect(records.nth(3)).toContainText('Inspect persistence');
+    await expect(records.nth(2)).toContainText('Review session');
+    const source = records.nth(2).locator('.conversation-item-heading > strong');
+    const metaSize = await source.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue('--mar-font-size-meta').trim()
+    );
+    await expect(source).toHaveCSS('font-size', metaSize);
+    await expect(source).toHaveCSS('font-weight', '400');
+    await expect(records.nth(2).locator('time')).toBeVisible();
+    await first.screenshot({
+      path: testInfo.outputPath(`collaboration-expanded-${width}.png`),
+      animations: 'disabled'
+    });
+    await records.nth(2).getByRole('button', { name: /Copy/ }).click();
+    await expect(page.getByTestId('copied-record')).toHaveText('The review is ready.');
+    await expect(last).not.toHaveAttribute('open');
+    await page.getByRole('button', { name: 'Add update' }).click();
+    await expect(lastSummary).toHaveText(/Agent collaboration\s*2 records/);
+    await expect(last).not.toHaveAttribute('open');
+    await lastSummary.click();
+    await expect(last.locator('.agent-collaboration-message')).toHaveText([
+      /Build session.*The isolated build passed\./s,
+      /Test session.*Browser checks passed\./s
+    ]);
+    await expect(first).toHaveAttribute('open', '');
+    await lastSummary.click();
+    await expect(last.locator('.agent-collaboration-message')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+  });
+}
+
 for (const theme of ['light', 'dark']) {
   for (const width of [390, 1280]) {
     test(`Agent cards show real operations without session shortcuts (${theme}, ${width})`, async ({
@@ -25,7 +105,7 @@ for (const theme of ['light', 'dark']) {
       ).not.toContainText('Review the implementation');
       await groups.first().locator('.conversation-record-group > summary').click();
       await expect(groups.locator('.conversation-tool-detail')).toHaveCount(7);
-      await expect(groups.first()).toContainText('Agent operations');
+      await expect(groups.first()).toContainText('Agent collaboration');
       await expect(groups.first()).toContainText('Review the implementation');
       const controls = groups.first().locator('.conversation-tool-detail');
       await expect(controls).toHaveCount(7);

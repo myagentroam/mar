@@ -25,13 +25,11 @@ import {
   type ComponentPublicInstance
 } from 'vue';
 import AgentMarkdown from './AgentMarkdown.vue';
-import { conversationUrlSegments } from '../../util/conversation-url-segments.js';
 import {
   CONVERSATION_MARKDOWN_CACHE_KEY,
   createConversationMarkdownCache
 } from '../../util/conversation-markdown-cache.js';
-import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
-import MessageReferenceTags from '../composer/MessageReferenceTags.vue';
+import ConversationUserMessage from './ConversationUserMessage.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
@@ -48,7 +46,6 @@ import {
 import RunnerApprovalCard from './RunnerApprovalCard.vue';
 import type { ComposerAttachmentFile, RunPerformance } from '@myagentroam/protocol';
 import type { FileChangeEntry } from '../../util/conversation-presentation.js';
-import { composerMessagePresentation } from '../../util/composer-message.js';
 import {
   CONVERSATION_RENDER_BATCH_ITEMS,
   conversationPayload,
@@ -58,7 +55,6 @@ import {
   latestConversationItems
 } from '../../util/conversation-history.js';
 import {
-  conversationDisplayItems,
   type ConversationDisplayItem,
   conversationApproval,
   conversationFileChangeEntries,
@@ -66,7 +62,6 @@ import {
   conversationReadFileCount,
   conversationItemDetail,
   conversationItemLabel,
-  composerMessageSource,
   conversationItemText,
   conversationItemCopyText,
   conversationErrorCodeVisible,
@@ -109,18 +104,6 @@ interface UserInputQuestion {
 
 type UserInputAnswer = string | readonly string[];
 
-function messageHeading(payload: unknown) {
-  const input = composerMessagePresentation(payload);
-  const label =
-    props.sharerName ??
-    (input.restarted || input.scheduled || input.goal
-      ? conversationItemLabel('user_message', payload)
-      : undefined);
-  return (
-    composerMessageSource(input) ?? (label === undefined ? undefined : { label, title: undefined })
-  );
-}
-
 const props = defineProps<{
   readonly quoteTarget?: ComposerQuoteTarget | undefined;
   readonly openUrl?: ((url: string, alternate: boolean) => boolean) | undefined;
@@ -147,11 +130,6 @@ const props = defineProps<{
 }>();
 
 provide(CONVERSATION_MARKDOWN_CACHE_KEY, createConversationMarkdownCache());
-
-function openPlainUrl(event: MouseEvent, url: string): void {
-  if (event.button === 0 && props.openUrl?.(url, event.ctrlKey || event.metaKey))
-    event.preventDefault();
-}
 
 function markdownCacheIdentity(
   turn: ConversationTurn,
@@ -564,6 +542,39 @@ function messageTimeTitle(timestamp: number): string {
   return absoluteMessageTime(timestamp);
 }
 
+function userMessageProps(turn: ConversationTurn, item: ConversationItem) {
+  return {
+    payload: item.payload,
+    timestamp: messageTimestamp(turn, item),
+    sharerName: props.sharerName,
+    images: props.imageAttachments(turn.runId, item.payload),
+    imageResourceUrl: props.imageResourceUrl,
+    openUrl: props.openUrl,
+    copied: copiedMessage.value === `${turn.id}:${item.id}`,
+    canRewind: props.rewindEnabled && Boolean(turn.rewind),
+    canRollback:
+      props.rollbackEnabled && Boolean(turn.rewind) && Boolean(rollbackTarget(turn, item)),
+    loading: props.loading
+  };
+}
+
+function userMessageActions(turn: ConversationTurn, item: ConversationItem) {
+  return {
+    openFile: (
+      path: string,
+      line: number | undefined,
+      column: number | undefined,
+      external: boolean,
+      attachment?: ComposerAttachmentFile
+    ) => emit('openFile', path, line, column, external, attachment),
+    openImage: (attachment: ImageAttachment) => emit('openImage', attachment),
+    imageUnavailable: (source: string) => emit('imageUnavailable', source),
+    copy: () => copyItem(turn, item),
+    rewind: () => emit('rewind', turn, item),
+    rollback: () => emit('rollback', turn, item)
+  };
+}
+
 const processBlocks = computed(() =>
   conversationFileChangeResultBlocks(
     props.turns,
@@ -587,9 +598,9 @@ watch(
           : [])
       ])
     ),
-    // Temporary result groups have a display identity rather than a raw Item ID.
+    // Temporary results have their own display identity.
     ...processBlocks.value.flatMap((block) =>
-      block.entries.map(({ displayItem }) => displayItem.id)
+      block.entries.flatMap(({ displayItem }) => [displayItem.id, `group:${displayItem.id}`])
     )
   ],
   (itemIds) => {
@@ -788,35 +799,42 @@ function stepDuration(item: ConversationItem): string | undefined {
               <ConversationRecordIcon kind="tool_call" class="conversation-record-icon" />
               <strong>{{ translate('generated.conversationPresentation.subagent') }}</strong>
               <span class="conversation-group-meta">{{
-                translate('presentation.subagentOperationCount', {
+                translate('presentation.agentCollaborationCount', {
                   count: displayItem.items.length
                 })
               }}</span>
             </summary>
             <template v-if="groupedItemDisclosure[`group:${displayItem.id}`]">
-              <details
-                v-for="toolItem in displayItem.items"
-                :key="toolItem.id"
-                class="conversation-tool-detail"
-                :open="groupedItemDisclosure[toolItem.id] === true"
-                @toggle="updateGroupedItemDisclosure(toolItem.id, $event)"
-                @vue:unmounted="delete groupedItemDisclosure[toolItem.id]"
-              >
-                <summary class="mar-disclosure-summary">
-                  <MarIcon class="mar-disclosure-icon" name="chevron-right" />
-                  <span class="conversation-tool-preview">{{
-                    conversationItemText(toolItem.kind, toolItem.payload, toolItem.status)
-                  }}</span>
-                  <span class="conversation-record-meta">{{
-                    toolPresentationStatus(toolItem.status)
-                  }}</span>
-                </summary>
-                <ConversationToolDetail
-                  v-if="groupedItemDisclosure[toolItem.id]"
-                  :item="toolItem"
-                  @copy="(text, done) => emit('copy', text, done)"
-                />
-              </details>
+              <template v-for="item in displayItem.items" :key="item.id">
+                <div v-if="item.kind === 'user_message'" class="agent-collaboration-message">
+                  <ConversationUserMessage
+                    v-bind="userMessageProps(turn, item)"
+                    v-on="userMessageActions(turn, item)"
+                  />
+                </div>
+                <details
+                  v-else
+                  class="conversation-tool-detail"
+                  :open="groupedItemDisclosure[item.id] === true"
+                  @toggle="updateGroupedItemDisclosure(item.id, $event)"
+                  @vue:unmounted="delete groupedItemDisclosure[item.id]"
+                >
+                  <summary class="mar-disclosure-summary">
+                    <MarIcon class="mar-disclosure-icon" name="chevron-right" />
+                    <span class="conversation-tool-preview">{{
+                      conversationItemText(item.kind, item.payload, item.status)
+                    }}</span>
+                    <span class="conversation-record-meta">{{
+                      toolPresentationStatus(item.status)
+                    }}</span>
+                  </summary>
+                  <ConversationToolDetail
+                    v-if="groupedItemDisclosure[item.id]"
+                    :item="item"
+                    @copy="(text, done) => emit('copy', text, done)"
+                  />
+                </details>
+              </template>
             </template>
           </details>
         </template>
@@ -1055,146 +1073,11 @@ function stepDuration(item: ConversationItem): string | undefined {
             <strong>{{ conversationItemLabel('file_change') }}</strong>
           </div>
         </template>
-        <template v-else-if="displayItem.item.kind === 'user_message'">
-          <div v-if="messageHeading(displayItem.item.payload)" class="conversation-item-heading">
-            <strong
-              v-tooltip="{
-                content: messageHeading(displayItem.item.payload)?.title,
-                disabled: !messageHeading(displayItem.item.payload)?.title
-              }"
-              :aria-description="messageHeading(displayItem.item.payload)?.title"
-              >{{ messageHeading(displayItem.item.payload)?.label }}</strong
-            >
-          </div>
-          <MessageReferenceTags
-            :references="composerMessagePresentation(displayItem.item.payload).references"
-          />
-          <p
-            v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
-            class="conversation-message"
-          >
-            <template v-if="openUrl"
-              ><template
-                v-for="(part, index) in conversationUrlSegments(
-                  conversationItemText(displayItem.item.kind, displayItem.item.payload)
-                )"
-                :key="index"
-                ><a
-                  v-if="part.url"
-                  :href="part.url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  @click="openPlainUrl($event, part.url)"
-                  >{{ part.text }}</a
-                ><template v-else>{{ part.text }}</template></template
-              ></template
-            ><template v-else>{{
-              conversationItemText(displayItem.item.kind, displayItem.item.payload)
-            }}</template>
-          </p>
-          <MessageAttachmentFiles
-            :files="composerMessagePresentation(displayItem.item.payload).files"
-            :image-resource-url="props.imageResourceUrl"
-            @open-file="
-              (path, line, column, external, attachment) =>
-                emit('openFile', path, line, column, external, attachment)
-            "
-          />
-          <div
-            v-if="
-              !composerMessagePresentation(displayItem.item.payload).files.length &&
-              props.imageAttachments(turn.runId, displayItem.item.payload).length
-            "
-            class="conversation-user-image-attachments"
-          >
-            <template
-              v-for="attachment in props.imageAttachments(turn.runId, displayItem.item.payload)"
-              :key="attachment.name"
-            >
-              <ConversationImageThumbnail
-                v-if="attachment.previewUrl"
-                :source="attachment.previewUrl"
-                :name="attachment.name"
-                :aria-label="
-                  translate('generated.conversationTimeline.enlarge', { value0: attachment.name })
-                "
-                @click="emit('openImage', attachment)"
-                @unavailable="emit('imageUnavailable', $event)"
-              />
-              <span v-else class="conversation-user-image-placeholder"
-                >{{ translate('generated.conversationTimeline.imageAttachment') }}:
-                {{ attachment.name }}</span
-              >
-            </template>
-          </div>
-          <div
-            v-if="
-              messageTimestamp(turn, displayItem.item) !== undefined ||
-              conversationItemCopyText(displayItem.item.kind, displayItem.item.payload) ||
-              (props.rewindEnabled && turn.rewind) ||
-              (props.rollbackEnabled && rollbackTarget(turn, displayItem.item))
-            "
-            class="conversation-message-actions"
-          >
-            <time
-              v-tooltip="messageTimeTitle(messageTimestamp(turn, displayItem.item)!)"
-              v-if="messageTimestamp(turn, displayItem.item) !== undefined"
-              class="conversation-message-time"
-              :datetime="new Date(messageTimestamp(turn, displayItem.item)!).toISOString()"
-              >{{ messageTimeLabel(messageTimestamp(turn, displayItem.item)!) }}</time
-            >
-            <button
-              v-tooltip="
-                translate(
-                  copiedMessage === `${turn.id}:${displayItem.item.id}`
-                    ? 'generated.conversationTimeline.copiedMessage'
-                    : 'generated.conversationTimeline.copyMessage2'
-                )
-              "
-              v-if="conversationItemCopyText(displayItem.item.kind, displayItem.item.payload)"
-              class="conversation-message-action mar-icon-button mar-icon-action"
-              type="button"
-              :aria-label="
-                copiedMessage === `${turn.id}:${displayItem.item.id}`
-                  ? translate('generated.conversationTimeline.copiedMessage')
-                  : translate('generated.conversationTimeline.copyMessage', {
-                      value0: conversationItemLabel(displayItem.item.kind)
-                    })
-              "
-              @click.stop="copyItem(turn, displayItem.item)"
-            >
-              <MarIcon name="check" v-if="copiedMessage === `${turn.id}:${displayItem.item.id}`" />
-              <MarIcon name="copy" v-else />
-            </button>
-            <button
-              v-tooltip="
-                translate('generated.conversationTimeline.createSessionBranchBeforeMessage')
-              "
-              v-if="props.rewindEnabled && turn.rewind"
-              class="conversation-message-action mar-icon-button mar-icon-action"
-              type="button"
-              :aria-label="
-                translate('generated.conversationTimeline.createSessionBranchBeforeMessage')
-              "
-              @click.stop="emit('rewind', turn, displayItem.item)"
-            >
-              <MarIcon name="branch" />
-            </button>
-            <button
-              v-tooltip="translate('generated.conversationTimeline.rollbackConversation')"
-              v-if="props.rollbackEnabled && turn.rewind && rollbackTarget(turn, displayItem.item)"
-              class="conversation-message-action mar-icon-button mar-icon-action"
-              type="button"
-              :disabled="props.loading"
-              :aria-label="
-                translate('generated.conversationTimeline.rollbackConversationBeforeThisMessage')
-              "
-              @click.stop="emit('rollback', turn, displayItem.item)"
-            >
-              <MarIcon name="undo" />
-            </button>
-          </div>
-        </template>
+        <ConversationUserMessage
+          v-else-if="displayItem.item.kind === 'user_message'"
+          v-bind="userMessageProps(turn, displayItem.item)"
+          v-on="userMessageActions(turn, displayItem.item)"
+        />
         <template v-else-if="displayItem.item.kind === 'assistant_message'">
           <div
             :data-quote-message-id="displayItem.item.id"
@@ -1882,7 +1765,7 @@ function stepDuration(item: ConversationItem): string | undefined {
 
 .conversation-item > details > summary > span,
 .conversation-reasoning-status > span,
-.conversation-item-heading > span,
+:deep(.conversation-item-heading) > span,
 .task-list-heading > span {
   color: var(--mar-text-secondary);
 }
@@ -1905,13 +1788,19 @@ function stepDuration(item: ConversationItem): string | undefined {
   color: var(--mar-color-danger-text);
 }
 
+.conversation-item.subagent-group .agent-collaboration-message {
+  margin-block: var(--conversation-record-gap);
+  padding-inline-start: 0.5rem;
+  min-width: 0;
+}
+
 .conversation-reasoning-status {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
 }
 
-.conversation-item-heading {
+:deep(.conversation-item-heading) {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
@@ -2269,16 +2158,23 @@ details.conversation-record-group[open] > details:last-child {
   margin-top: 0.5rem;
 }
 
-.conversation-item strong {
+.conversation-item strong,
+.conversation-item :deep(.conversation-item-heading > strong) {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 
-.conversation-item-heading {
+.agent-collaboration-message :deep(.conversation-item-heading > strong) {
+  font-size: var(--mar-font-size-meta);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+:deep(.conversation-item-heading) {
   min-height: 1.2rem;
 }
 
-.conversation-message-actions {
+:deep(.conversation-message-actions) {
   display: flex;
   min-height: 24px;
   justify-content: flex-end;
@@ -2286,7 +2182,7 @@ details.conversation-record-group[open] > details:last-child {
   margin-top: 4px;
 }
 
-.conversation-message-time {
+:deep(.conversation-message-time) {
   align-self: center;
   margin-right: auto;
   color: var(--mar-text-secondary);
@@ -2295,7 +2191,7 @@ details.conversation-record-group[open] > details:last-child {
   line-height: 1;
 }
 
-.conversation-message-action {
+:deep(.conversation-message-action) {
   display: inline-flex;
   width: var(--mar-utility-control-size);
   height: var(--mar-utility-control-size);
@@ -2306,12 +2202,13 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .conversation-message-action {
+  :deep(.conversation-message-action) {
     transition: none;
   }
 }
 
 .conversation-item p,
+.conversation-item :deep(.conversation-message),
 .conversation-item summary {
   margin: 0.25rem 0 0;
   white-space: pre-wrap;
@@ -2320,14 +2217,14 @@ details.conversation-record-group[open] > details:last-child {
   word-break: break-word;
 }
 
-.conversation-user-image-attachments {
+:deep(.conversation-user-image-attachments) {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
   margin-top: 0.55rem;
 }
 
-.conversation-user-image-placeholder {
+:deep(.conversation-user-image-placeholder) {
   display: inline-flex;
   align-items: center;
   min-height: 32px;
@@ -2428,7 +2325,7 @@ details.conversation-record-group[open] > details:last-child {
     --conversation-item-inset: 8px;
   }
 
-  .conversation-message-action {
+  :deep(.conversation-message-action) {
     width: 36px;
     height: 36px;
   }

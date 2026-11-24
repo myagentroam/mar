@@ -6,7 +6,10 @@ import type {
 import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeConversationItem, NodeConversationTurn } from '../runtime-model.js';
 import type { ConversationHistoryPage } from '../session/runner-native-session-parsers.js';
-import { projectConversationWorkProcesses } from '../session/runtime/work-process.js';
+import {
+  isAgentCollaborationMessage,
+  projectConversationWorkProcesses
+} from '../session/runtime/work-process.js';
 
 const MAX_INITIAL_TURN_PAGE_SIZE = 30;
 
@@ -29,19 +32,27 @@ interface SegmentCursor {
   readonly turnCursor?: string | null;
 }
 
+/** Use the same boundaries for snapshot and realtime delivery. */
+function* segmentItemPositions(items: readonly NodeConversationItem[]) {
+  let index = 0;
+  let previousKind: string | undefined;
+  for (const item of items) {
+    if (!isAgentCollaborationMessage(item)) {
+      if (previousKind === 'assistant_message' && item.kind !== 'assistant_message') index++;
+      previousKind = item.kind;
+    }
+    yield { item, index, previousKind };
+  }
+}
+
 export function conversationSegments(turn: NodeConversationTurn): ConversationSegment[] {
   turn = projectConversationWorkProcesses(turn);
   const prefix = conversationSegmentPrefix(turn);
   const groups: NodeConversationItem[][] = [];
-  let current: NodeConversationItem[] = [];
-  for (const item of turn.items) {
-    if (current.at(-1)?.kind === 'assistant_message' && item.kind !== 'assistant_message') {
-      groups.push(current);
-      current = [];
-    }
-    current.push(item);
+  for (const { item, index } of segmentItemPositions(turn.items)) {
+    (groups[index] ??= []).push(item);
   }
-  if (current.length > 0 || groups.length === 0) groups.push(current);
+  if (groups.length === 0) groups.push([]);
   return groups.map((items, index) => {
     const id = `${prefix}:segment:${index}`;
     const latest = index === groups.length - 1;
@@ -75,15 +86,14 @@ export function conversationSegmentIdentityForItem(
 ): { readonly id: string; readonly index: number } {
   const prefix = conversationSegmentPrefix(turn);
   let index = 0;
+  let previousKind: string | undefined;
   const runtimeItemId = turn.runId === null ? itemId : `${turn.runId}:${itemId}`;
-  for (const [itemIndex, item] of turn.items.entries()) {
-    const previous = turn.items[itemIndex - 1];
-    if (previous?.kind === 'assistant_message' && item.kind !== 'assistant_message') index += 1;
-    if (item.id === itemId || item.id === runtimeItemId)
+  for (const position of segmentItemPositions(turn.items)) {
+    ({ index, previousKind } = position);
+    if (position.item.id === itemId || position.item.id === runtimeItemId)
       return { id: `${prefix}:segment:${index}`, index };
   }
-  if (turn.items.at(-1)?.kind === 'assistant_message' && itemKind !== 'assistant_message')
-    index += 1;
+  if (previousKind === 'assistant_message' && itemKind !== 'assistant_message') index++;
   return { id: `${prefix}:segment:${index}`, index };
 }
 

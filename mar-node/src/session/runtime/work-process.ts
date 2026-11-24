@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { parseComposerTags } from '@myagentroam/protocol';
 import type { NodeConversationItem, NodeConversationTurn } from '../../runtime-model.js';
 
 const members = new Set([
@@ -22,6 +23,28 @@ function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+/** Classify admitted session-origin markup at the Node projection boundary. */
+export function isAgentCollaborationMessage(item: NodeConversationItem): boolean {
+  if (item.kind !== 'user_message' || item.permissionStop !== undefined) return false;
+  const payload = record(item.payload);
+  if (payload.source === 'SCHEDULED' || typeof payload.text !== 'string') return false;
+  const parts = parseComposerTags(payload.text);
+  const origin = parts.find((part) => part.kind === 'mar_session_origin');
+  return Boolean(
+    origin?.payload.sessionId &&
+    origin.payload.sessionId !== item.sessionId &&
+    !parts.some(({ kind }) =>
+      [
+        'mar_channel',
+        'mar_goal_start',
+        'mar_goal_continue',
+        'mar_restart',
+        'mar_schedule'
+      ].includes(kind)
+    )
+  );
 }
 
 function visible(item: NodeConversationItem): boolean {
@@ -74,21 +97,36 @@ export function projectConversationWorkProcesses(turn: NodeConversationTurn): No
   );
   let knownBoundary = turn.runId !== null || turn.items.some((item) => item.id === turn.userItemId);
   let current: string | undefined;
+  let beforeReply: string | undefined;
+  let afterReply = false;
   const assigned = new Map<string, string>();
   const items = ordered.map((item): NodeConversationItem => {
     let group: string | undefined;
     let isStart = false;
-    const independent =
-      boundaries.has(item.kind) || (item.kind === 'error' && item.parentItemId === null);
     if (visible(item)) {
+      const collaboration = isAgentCollaborationMessage(item);
+      const independent =
+        !collaboration &&
+        (boundaries.has(item.kind) || (item.kind === 'error' && item.parentItemId === null));
+      if (!collaboration) {
+        // Collaboration may still join the previous work, but ordinary work must start fresh.
+        if (item.kind === 'assistant_message') beforeReply ??= current;
+        else beforeReply = undefined;
+        if (afterReply) current = undefined;
+        afterReply = item.kind === 'assistant_message';
+      }
       if (independent) {
         current = undefined;
         knownBoundary = true;
-      } else if (members.has(item.kind) || ['warning', 'error', 'unknown'].includes(item.kind)) {
+      } else if (
+        collaboration ||
+        members.has(item.kind) ||
+        ['warning', 'error', 'unknown'].includes(item.kind)
+      ) {
         group = item.parentItemId === null ? undefined : assigned.get(item.parentItemId);
         if (group === undefined) {
-          group = current;
-          if (group === undefined && knownBoundary && members.has(item.kind)) {
+          group = current ?? (collaboration ? beforeReply : undefined);
+          if (group === undefined && knownBoundary && (collaboration || members.has(item.kind))) {
             group = `process:${createHash('sha256')
               .update(`${turn.sessionId}\0${sourceIdentity(item)}`)
               .digest('hex')}`;

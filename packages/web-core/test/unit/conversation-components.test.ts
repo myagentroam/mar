@@ -18,6 +18,7 @@ import ConversationHeader from '../../src/view/conversation/ConversationHeader.v
 import WorkspaceSessionTreeButton from '../../src/view/workspace/WorkspaceSessionTreeButton.vue';
 import ConversationScroll from '../../src/view/conversation/ConversationScroll.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
+import ConversationUserMessage from '../../src/view/conversation/ConversationUserMessage.vue';
 import ConversationToolDetail from '../../src/view/conversation/tool-detail/ConversationToolDetail.vue';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
 import ConversationRecordIcon from '../../src/view/conversation/ConversationRecordIcon.vue';
@@ -1108,15 +1109,32 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       });
       const html = await render(ConversationTimeline, {
         ...timelineProps,
+        synchronized: true,
+        runs: [{ id: 'run-1', status: 'RUNNING' }],
         ...(shared ? { sharerName: 'Owner' } : {}),
         turns: [
           conversationTurn([
-            conversationItem('normal-origin', 'user_message', {
-              text: `Review the patch.\n${sessionOrigin}\n${attachments}`
-            }),
-            conversationItem('steer-origin', 'user_message', {
-              text: `${steer}\n${steeredOrigin}`
-            }),
+            {
+              ...conversationItem('normal-origin', 'user_message', {
+                text: `Review the patch.\n${sessionOrigin}\n${attachments}`
+              }),
+              processGroup: { id: 'collaboration', isStart: true }
+            },
+            {
+              ...conversationItem('steer-origin', 'user_message', {
+                text: `${steer}\n${steeredOrigin}`
+              }),
+              processGroup: { id: 'collaboration' }
+            },
+            {
+              ...conversationItem(
+                'working',
+                'tool_call',
+                { toolName: 'agent_send', agentOperation: { action: 'SEND', targets: [] } },
+                'IN_PROGRESS'
+              ),
+              processGroup: { id: 'collaboration' }
+            },
             conversationItem('marctl-origin', 'user_message', {
               text: `Terminal input\n${serializeComposerTag('mar_session_origin', {})}`
             }),
@@ -1131,10 +1149,22 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
           name: historicalName
         }
       );
-      expect(html).toContain(historicalLabel.replace('<', '&lt;').replace('>', '&gt;'));
-      expect(html).not.toContain('<img src=x onerror=alert(1)>');
-      expect(html).not.toContain(renamedSession);
-      expect(html).toContain(
+      expect(html).toContain('subagent-group');
+      expect(html).not.toContain('Review the patch.');
+      expect(html).not.toContain('review-notes.txt');
+      expect(html).not.toContain('Steering Agent');
+      const expanded = await render(ConversationUserMessage, {
+        payload: { text: `Review the patch.\n${sessionOrigin}\n${attachments}` },
+        images: [],
+        copied: false,
+        canRewind: false,
+        canRollback: false,
+        loading: false
+      });
+      expect(expanded).toContain(historicalLabel.replace('<', '&lt;').replace('>', '&gt;'));
+      expect(expanded).not.toContain('<img src=x onerror=alert(1)>');
+      expect(expanded).not.toContain(renamedSession);
+      expect(expanded).toContain(
         `aria-description="${i18n.global.t(
           'generated.conversationPresentation.sessionSourceDetails',
           {
@@ -1142,15 +1172,10 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
           }
         )}"`
       );
-      expect(html).toContain(
-        i18n.global.t('generated.conversationPresentation.messageFromSource', {
-          name: 'Steering Agent'
-        })
-      );
       expect(html).toContain(i18n.global.t('generated.conversationPresentation.messageFromMarctl'));
-      expect(html).toContain('Review the patch.');
-      expect(html).toContain('Focus on the resume path.');
-      expect(html).toContain('review-notes.txt');
+      expect(expanded).toContain('Review the patch.');
+      expect(html).not.toContain('Focus on the resume path.');
+      expect(expanded).toContain('review-notes.txt');
       expect(html).toContain('Terminal input');
       expect(html).toContain('Unmarked input');
       expect(html).not.toContain('mar_session_origin');
@@ -1175,13 +1200,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
         name: 'Source',
         relation
       });
-      const html = await render(ConversationTimeline, {
-        ...timelineProps,
-        turns: [
-          conversationTurn([
-            conversationItem('origin', 'user_message', { text: `${origin}\nHello` })
-          ])
-        ]
+      const html = await render(ConversationUserMessage, {
+        payload: { text: `${origin}\nHello` },
+        images: [],
+        copied: false,
+        canRewind: false,
+        canRollback: false,
+        loading: false
       });
       expect(html).toContain(
         i18n.global.t(
@@ -1242,8 +1267,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
     expect(html.match(/class="[^"]*subagent-group/gu)).toHaveLength(1);
     expect(html).not.toContain('Review integration');
-    expect(html).not.toContain(i18n.global.t('presentation.subagentOperationCount', { count: 1 }));
-    expect(html).toContain(i18n.global.t('presentation.subagentOperationCount', { count: 3 }));
+    expect(html).not.toContain(i18n.global.t('presentation.agentCollaborationCount', { count: 1 }));
+    expect(html).toContain(i18n.global.t('presentation.agentCollaborationCount', { count: 3 }));
     for (const status of ['running', 'failed', 'completed'])
       expect(html).not.toContain(i18n.global.t(`toolPresentation.status.${status}`));
     expect(html).not.toContain('conversation-tool-detail');
