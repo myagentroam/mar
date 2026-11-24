@@ -12,9 +12,8 @@ export type BrowserPageCapture = { stop: () => Promise<void> };
  * Construct only for a browser launched within the Node's execution boundary.
  */
 export class BrowserPageView {
-  private pendingResize: Promise<void> = Promise.resolve();
+  private pendingViewport: Promise<void> = Promise.resolve();
   private navigationSession: Promise<CDPSession> | undefined;
-  private pendingSeed: Promise<void> = Promise.resolve();
   readonly contextMenu: BrowserContextMenu;
   readonly find: BrowserPageFind;
 
@@ -60,12 +59,12 @@ export class BrowserPageView {
   }
 
   resize(size: { width: number; height: number }): Promise<void> {
-    const operation = this.pendingResize.then(async () => {
+    const operation = this.pendingViewport.then(async () => {
       const current = this.page.viewportSize();
       if (current?.width !== size.width || current.height !== size.height)
         await this.page.setViewportSize(size);
     });
-    this.pendingResize = operation.catch(() => undefined);
+    this.pendingViewport = operation.catch(() => undefined);
     return operation;
   }
 
@@ -186,6 +185,7 @@ export class BrowserPageView {
     const session = await this.page.context().newCDPSession(this.page);
     let stopped = false;
     let receivedFrame = false;
+    let activeSeed: Promise<{ data: string }> | undefined;
     let stopping: Promise<void> | undefined;
     const publish = (jpeg: Buffer, width: number, height: number) => {
       const image = browserJpegSize(jpeg);
@@ -220,9 +220,13 @@ export class BrowserPageView {
       stop: () => {
         stopped = true;
         session.off('Page.screencastFrame', onFrame);
-        return (stopping ??= session.detach().catch((error: unknown) => {
-          if (!this.page.isClosed()) throw error;
-        }));
+        return (stopping ??= (async () => {
+          // Keep the CDP session alive until Chromium restores the viewport.
+          if (activeSeed) await activeSeed.catch(() => undefined);
+          await session.detach().catch((error: unknown) => {
+            if (!this.page.isClosed()) throw error;
+          });
+        })());
       }
     };
     try {
@@ -234,8 +238,8 @@ export class BrowserPageView {
         quality: render.quality
       });
       // A new viewer can subscribe to a static page without triggering a
-      // repaint. Serialize clip captures across viewers; Chromium may temporarily
-      // change its capture viewport while a clipped screenshot is in flight.
+      // repaint. Serialize clip captures and resizes because Chromium saves the
+      // old viewport before taking a clipped screenshot and restores it afterward.
       if (viewport && !stopped && !receivedFrame) {
         const waiting = () => {
           const current = this.page.viewportSize();
@@ -246,7 +250,7 @@ export class BrowserPageView {
             current.height === viewport.height
           );
         };
-        this.pendingSeed = this.pendingSeed
+        this.pendingViewport = this.pendingViewport
           .then(async () => {
             if (!waiting()) return;
             const { visualViewport, contentSize, cssContentSize } =
@@ -259,7 +263,7 @@ export class BrowserPageView {
               render.width / (viewport.width * density),
               render.height / (viewport.height * density)
             );
-            const { data } = await session.send('Page.captureScreenshot', {
+            activeSeed = session.send('Page.captureScreenshot', {
               format: 'jpeg',
               quality: render.quality,
               clip: {
@@ -270,7 +274,12 @@ export class BrowserPageView {
                 scale: scale * visualViewport.scale
               }
             });
-            if (waiting()) publish(Buffer.from(data, 'base64'), viewport.width, viewport.height);
+            try {
+              const { data } = await activeSeed;
+              if (waiting()) publish(Buffer.from(data, 'base64'), viewport.width, viewport.height);
+            } finally {
+              activeSeed = undefined;
+            }
           })
           .catch(() => undefined);
       }

@@ -115,7 +115,8 @@ describe('Browser page view', () => {
       emit(frame(jpegHeader(render.width + 1, render.height), 549, 732));
       emit(frame(jpegHeader(render.width, render.height + 1), 549, 732));
       if (state === 'live') emit(frame(native, 549, 732));
-      if (state === 'stopped') await capture.stop();
+      const stopping = state === 'stopped' ? capture.stop() : undefined;
+      if (stopping) expect(session.detach).not.toHaveBeenCalled();
       if (state === 'resized') viewportSize.mockReturnValue({ width: 700, height: 732 });
       const seed = hd ? jpegHeader(822, 1096) : jpegHeader(549, 732);
       screenshot.resolve({ data: seed.toString('base64') });
@@ -127,6 +128,7 @@ describe('Browser page view', () => {
           : [[{ jpeg: state === 'live' ? native : seed, width: 549, height: 732 }]]
       );
       await capture.stop();
+      expect(session.detach).toHaveBeenCalledOnce();
     }
   );
 
@@ -167,5 +169,45 @@ describe('Browser page view', () => {
     );
     await a.stop();
     await b.stop();
+  });
+
+  it('resizes only after Chromium can restore the static clip viewport', async () => {
+    const session = castSession();
+    const old = { width: 800, height: 450 };
+    const next = { width: 1000, height: 700 };
+    let actualViewport = old;
+    const screenshot = Promise.withResolvers<void>();
+    session.send.mockImplementation(async (method) => {
+      if (method === 'Page.getLayoutMetrics') {
+        return {
+          visualViewport: { pageX: 0, pageY: 0, scale: 1 },
+          contentSize: { width: 1600 },
+          cssContentSize: { width: 800 }
+        };
+      }
+      if (method === 'Page.captureScreenshot') {
+        await screenshot.promise;
+        actualViewport = old;
+        return { data: jpegHeader(800, 450).toString('base64') };
+      }
+    });
+    const view = new BrowserPageView({
+      viewportSize: () => actualViewport,
+      setViewportSize: async (size: typeof old) => {
+        actualViewport = size;
+      },
+      isClosed: () => false,
+      context: () => ({ newCDPSession: async () => session })
+    } as unknown as Page);
+    const capture = await view.startCapture({ ...old, quality: 85 }, vi.fn());
+    await vi.waitFor(() =>
+      expect(session.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything())
+    );
+    const resized = view.resize(next);
+    await Promise.resolve();
+    screenshot.resolve();
+    await resized;
+    await capture.stop();
+    expect(actualViewport).toEqual(next);
   });
 });
