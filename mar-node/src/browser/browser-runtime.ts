@@ -119,6 +119,7 @@ export class BrowserRuntime {
             ...(browser.data ? { data: browser.data } : {})
           },
           agentConnected: () => access.hasClients(),
+          hasActiveDownloads: () => tabs.activeDownloadCount > 0,
           close: async () => {
             await access.close();
             await this.attachments.revokeBrowser(id);

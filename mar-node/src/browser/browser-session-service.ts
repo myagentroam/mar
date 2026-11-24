@@ -9,6 +9,7 @@ type Session<T> = {
   resource: T;
   close: () => Promise<void>;
   agentConnected?: () => boolean;
+  hasActiveDownloads?: () => boolean;
 };
 
 type Entry<T> = {
@@ -170,6 +171,7 @@ export class BrowserSessionService<T> {
             !candidate[1].attachments &&
             !candidate[1].session?.agentConnected?.() &&
             !candidate[1].dataUse &&
+            !candidate[1].session?.hasActiveDownloads?.() &&
             (!oldest || idle < oldest[1].lastActivity!)
           )
             oldest = candidate;
