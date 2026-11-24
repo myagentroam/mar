@@ -565,9 +565,6 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
       <MarTabs
         mode="strip"
         appearance="workbench"
-        item-class="browser-web-tab"
-        tab-class="browser-web-tab-trigger"
-        close-class="browser-web-tab-close"
         :id-prefix="tabPrefix"
         :tabs="tabs"
         :label="t('browser.title')"
@@ -585,7 +582,6 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         <template #action>
           <MarButton
             text
-            circle
             icon="plus"
             :aria-label="t('browser.tab')"
             v-tooltip="t('browser.tab')"
@@ -842,7 +838,6 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 
 <style scoped>
 .node-browser {
-  --browser-tab-surface: color-mix(in srgb, var(--mar-ui-bg-panel) 75%, var(--mar-ui-fill-row-hover));
   display: flex;
   flex-direction: column;
   block-size: 100%;
@@ -860,68 +855,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
   flex: 1;
   min-inline-size: 0;
 }
-.node-browser-tabs {
-  --browser-tab-corner: 8px;
-  container-type: inline-size;
-  background: var(--mar-ui-bg-subtle);
-  border-block-end: 1px solid var(--mar-ui-border-default);
-}
-.node-browser-tabs :deep(.mar-tab-strip) {
-  padding-inline: var(--browser-tab-corner);
-}
-.node-browser-tabs :deep(.browser-web-tab) {
-  position: relative;
-  inline-size: clamp(7rem, 36cqi, 13rem);
-  margin-inline-start: 0;
-  border: 0;
-  border-radius: 10px 10px 0 0;
-  background: transparent;
-}
-.node-browser-tabs :deep(.browser-web-tab-trigger) {
-  justify-content: start;
-}
-.node-browser-tabs :deep(.browser-web-tab-close) {
-  border-radius: 50%;
-}
-.node-browser-tabs :deep(.browser-web-tab-close:hover:enabled) {
-  background: var(--mar-ui-action-hover-overlay);
-}
-.node-browser-tabs :deep(.browser-web-tab:not(.is-active) + .browser-web-tab:not(.is-active)::before) {
-  content: '';
-  position: absolute;
-  inset: 25% auto 25% 0;
-  border-inline-start: 1px solid var(--mar-ui-border-default);
-  pointer-events: none;
-}
-.node-browser-tabs :deep(.browser-web-tab.is-active) {
-  z-index: 1;
-  background: var(--browser-tab-surface);
-}
-.node-browser-tabs :deep(.browser-web-tab.is-active::before),
-.node-browser-tabs :deep(.browser-web-tab.is-active::after) {
-  content: '';
-  position: absolute;
-  inset-block-end: 0;
-  inline-size: var(--browser-tab-corner);
-  block-size: var(--browser-tab-corner);
-  pointer-events: none;
-}
-.node-browser-tabs :deep(.browser-web-tab.is-active::before) {
-  right: 100%;
-  background: radial-gradient(circle at 0 0, transparent 68%, var(--browser-tab-surface) 72%);
-}
-.node-browser-tabs :deep(.browser-web-tab.is-active::after) {
-  left: 100%;
-  background: radial-gradient(circle at 100% 0, transparent 68%, var(--browser-tab-surface) 72%);
-}
-@media (forced-colors: active) {
-  .node-browser-tabs :deep(.browser-web-tab.is-active) {
-    outline: 1px solid Highlight;
-    outline-offset: -1px;
-  }
-}
 .node-browser-toolbar {
-  background: var(--browser-tab-surface);
   gap: 0.25rem;
   padding: 0.25rem;
   border-block-end: 1px solid var(--mar-ui-border);
