@@ -74,6 +74,7 @@ export const browserDownloadRequestSchema = z.strictObject({
   command: z.discriminatedUnion('action', [
     z.strictObject({ action: z.literal('list'), offset }),
     z.strictObject({ action: z.literal('cancel'), id }),
+    z.strictObject({ action: z.literal('delete'), id }),
     z.strictObject({ action: z.literal('info'), id })
   ])
 });

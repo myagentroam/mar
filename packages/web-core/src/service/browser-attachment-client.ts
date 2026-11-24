@@ -55,6 +55,7 @@ export class BrowserAttachmentClient {
       attached?(): void;
       resizeViewport?: boolean;
       browserUse?: boolean;
+      downloadManagement?: boolean;
       tabIcon?: (event: Extract<BrowserAttachmentEvent, { type: 'tab.icon' }>) => void;
       frame(frame: { viewVersion: number; width: number; height: number }): void;
       sample(value: BrowserStreamSample): void;
@@ -120,6 +121,7 @@ export class BrowserAttachmentClient {
         if (this.options.resizeViewport) this.observeSize();
         if (this.options.tabIcon) this.sendText({ type: 'tab.icons' });
         if (this.options.browserUse) this.sendText({ type: 'agent.control', action: 'observe' });
+        if (this.options.downloadManagement) this.sendText({ type: 'downloads.observe' });
         this.options.attached?.();
         return;
       }

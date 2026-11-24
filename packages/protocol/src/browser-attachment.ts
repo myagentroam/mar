@@ -98,6 +98,7 @@ export type BrowserResourceCommand = z.infer<typeof browserResourceCommandSchema
 export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ack'), sequence: positiveUint32 }),
   z.strictObject({ type: z.literal('tab.icons') }),
+  z.strictObject({ type: z.literal('downloads.observe') }),
   z.strictObject({
     type: z.literal('agent.control'),
     action: z.enum(['observe', 'take', 'resume'])
@@ -166,7 +167,8 @@ export const browserTabSnapshotSchema = z.strictObject({
     })
     .optional(),
   fileChooser: browserFileChooserSchema.optional(),
-  downloadVersion: z.number().int().nonnegative().safe().optional()
+  downloadVersion: z.number().int().nonnegative().safe().optional(),
+  activeDownloadCount: z.number().int().nonnegative().safe().optional()
 });
 
 export const browserAttachmentEventSchema = z.discriminatedUnion('type', [

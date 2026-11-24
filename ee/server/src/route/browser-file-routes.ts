@@ -82,20 +82,29 @@ export function registerBrowserFileRoutes(
     }
   });
 
-  routes.post('/api/browser/downloads/cancel', async (request, reply) => {
-    const user = session(request, reply, true);
-    if (!user) return;
-    const query = target.safeParse(request.query);
-    const body = browserDownloadRequestSchema.safeParse(request.body);
-    if (!query.success || !body.success || body.data.command.action !== 'cancel')
-      return sendError(reply, 400, 'BROWSER_DOWNLOAD_INVALID');
-    try {
-      await node.downloadBrowserFile(user, query.data.connectionId, body.data);
-      return reply.send({});
-    } catch (error) {
-      return fileError(reply, error, 'BROWSER_DOWNLOAD_FAILED');
+  routes.post<{ Params: { action: string } }>(
+    '/api/browser/downloads/:action',
+    async (request, reply) => {
+      const user = session(request, reply, true);
+      if (!user) return;
+      const { action } = request.params;
+      const query = target.safeParse(request.query);
+      const body = browserDownloadRequestSchema.safeParse(request.body);
+      if (
+        !query.success ||
+        !body.success ||
+        (action !== 'cancel' && action !== 'delete') ||
+        body.data.command.action !== action
+      )
+        return sendError(reply, 400, 'BROWSER_DOWNLOAD_INVALID');
+      try {
+        await node.downloadBrowserFile(user, query.data.connectionId, body.data);
+        return reply.send({});
+      } catch (error) {
+        return fileError(reply, error, 'BROWSER_DOWNLOAD_FAILED');
+      }
     }
-  });
+  );
 
   routes.get('/api/browser/downloads/file', async (request, reply) => {
     const user = session(request, reply, false);

@@ -637,13 +637,19 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       const target = await canvasPoint({ saved: 0.3, cancel: 0.5, fail: 0.7 }[action], 0.415);
       const request = page.request;
       await page.mouse.click(target.x, target.y);
-      await page.getByRole('button', { name: /^(Downloads|下载)$/u }).click();
+      const downloads = page.getByRole('button', { name: /^(Downloads|下载)$/u });
+      if (action === 'cancel')
+        await expect(downloads).toHaveAccessibleDescription(
+          /^(1 active download|1 个下载进行中)$/u
+        );
+      await downloads.click();
       const dialog = page.getByRole('dialog', { name: /^(Downloads|下载)$/u });
       const name = `${action === 'saved' ? route : action}.bin`;
       const row = dialog.getByRole('listitem').filter({ hasText: name });
       if (action === 'saved') {
         const save = row.getByRole('link', { name: /^(Save to device|保存到本机)$/u });
         await expect(save).toBeVisible();
+        await expect(row.getByText('9 MB', { exact: true })).toBeVisible();
         const href = (await save.getAttribute('href'))!;
         const mismatched = new URL(href, page.url());
         mismatched.searchParams.set('attachmentId', '12345678-1234-4234-8234-123456789012');
@@ -693,11 +699,18 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
           await checkRelay();
           return;
         }
+        await row.getByRole('button', { name: /^(Delete download|删除下载)$/u }).click();
+        const confirm = page.getByRole('dialog', { name: /^(Delete download|删除下载)$/u });
+        await confirm.getByRole('button', { name: /^(Delete|删除)$/u }).click();
+        await expect(row).toHaveCount(0);
+        expect((await request.get(href)).status()).toBe(409);
+        expect((await readFile((await file.path())!)).equals(largeFile)).toBe(true);
       } else if (action === 'cancel') {
         const previous = canceledRequests;
         await expect(row.locator('progress:not([value])')).toBeVisible();
         await row.getByRole('button', { name: /^(Cancel|取消)$/u }).click();
         await expect(row.getByText(/^(Canceled|已取消)$/u)).toBeVisible();
+        await expect(downloads).not.toHaveAttribute('aria-describedby', /download-status/u);
         await expect.poll(() => canceledRequests).toBeGreaterThan(previous);
       } else await expect(row.getByText(/^(Failed|失败)$/u)).toBeVisible({ timeout: 20_000 });
       await page.keyboard.press('Escape');

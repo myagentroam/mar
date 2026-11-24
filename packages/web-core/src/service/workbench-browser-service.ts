@@ -232,6 +232,7 @@ export function createWorkbenchBrowserService(options: {
     connection.data = new BrowserAttachmentClient(link, canvas, open, {
       resizeViewport: capability.resizeViewport === true,
       browserUse: capability.browserUse === true,
+      downloadManagement: capability.downloadManagement === true,
       ...(capability.tabIcons && {
         tabIcon({ tabId, url, png }) {
           if (
@@ -439,11 +440,11 @@ export function createWorkbenchBrowserService(options: {
     );
   }
 
-  async function cancelDownload(id: string): Promise<void> {
+  async function changeDownload(action: 'cancel' | 'delete', id: string): Promise<void> {
     const target = downloadTarget();
     if (!options.http || !target) throw new Error('BROWSER_LEASE_ENDED');
     await options.http(
-      `/api/browser/downloads/cancel?${new URLSearchParams({ connectionId: target.connectionId })}`,
+      `/api/browser/downloads/${action}?${new URLSearchParams({ connectionId: target.connectionId })}`,
       {
         method: 'POST',
         body: JSON.stringify({
@@ -480,7 +481,8 @@ export function createWorkbenchBrowserService(options: {
     queryContextMenu,
     upload,
     downloads,
-    cancelDownload,
+    cancelDownload: (id: string) => changeDownload('cancel', id),
+    deleteDownload: (id: string) => changeDownload('delete', id),
     downloadHref,
     hide,
     show,
@@ -501,4 +503,5 @@ export type WorkbenchBrowserCapability = BrowserCapability & {
   browserUse?: boolean;
   nativeTouch?: boolean;
   contextMenu?: boolean;
+  downloadManagement?: boolean;
 };

@@ -103,6 +103,11 @@ export class BrowserAttachment {
 
   receive(message: BrowserAttachmentMessage): void {
     if (this.closed) return;
+    if (message.type === 'downloads.observe') {
+      this.downloadsSubscribed = true;
+      this.refresh();
+      return;
+    }
     if (message.type === 'agent.control') {
       if (message.action === 'observe') {
         this.agentControlSubscribed = true;
@@ -226,6 +231,7 @@ export class BrowserAttachment {
   }
 
   private agentControlSubscribed = false;
+  private downloadsSubscribed = false;
 
   private refresh(): void {
     if (this.closed) return;
@@ -248,9 +254,11 @@ export class BrowserAttachment {
     try {
       this.options.sendControl({
         type: 'snapshot',
-        snapshot: this.agentControlSubscribed
-          ? { ...snapshot, agentControl: this.borrow.resource.agentControl }
-          : snapshot
+        snapshot: {
+          ...snapshot,
+          ...(this.agentControlSubscribed && { agentControl: this.borrow.resource.agentControl }),
+          ...(this.downloadsSubscribed && { activeDownloadCount: this.borrow.resource.activeDownloadCount })
+        }
       });
     } catch {
       this.fail('BROWSER_FRAME_TRANSPORT_FAILED');

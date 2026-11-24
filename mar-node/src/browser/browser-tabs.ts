@@ -233,6 +233,10 @@ export class BrowserTabs {
     return this.downloads.execute(command);
   }
 
+  get activeDownloadCount(): number {
+    return this.downloads.activeCount;
+  }
+
   cancelDownloads(): Promise<void> {
     return this.downloads.cancelActive();
   }

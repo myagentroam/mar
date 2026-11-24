@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { open, stat } from 'node:fs/promises';
+import { open, rm, stat } from 'node:fs/promises';
 import {
   BROWSER_DOWNLOAD_PAGE_SIZE,
   type BrowserDownloadInfo,
@@ -14,19 +14,25 @@ type Entry = {
   location?: { path: string; size: number };
   canceling?: Promise<void>;
   canceledByUser?: boolean;
+  deleting?: Promise<void>;
 };
 
-/** Owns the download projection for a single browser context. Chromium owns
- * writing and close-time deletion; paths never cross the Node boundary. */
+/** Owns the download projection and explicit removal for one browser context.
+ * Chromium writes the files and owns close-time cleanup; paths stay in Node. */
 export class BrowserDownloads {
   private readonly entries = new Map<string, Entry>();
   private readonly ordered: Entry[] = [];
+  private readonly active = new Set<Entry>();
   private revision = 0;
 
   constructor(private readonly changed: () => void) {}
 
   get version(): number {
     return this.revision;
+  }
+
+  get activeCount(): number {
+    return this.active.size;
   }
 
   listen(page: Page): void {
@@ -43,6 +49,7 @@ export class BrowserDownloads {
       const entry: Entry = { native, info: { id, name, state: 'downloading' } };
       this.entries.set(id, entry);
       this.ordered.push(entry);
+      this.active.add(entry);
       this.notify();
       void this.settle(entry);
     });
@@ -79,6 +86,16 @@ export class BrowserDownloads {
       }
       return {};
     }
+    if (command.action === 'delete') {
+      if (this.active.has(entry)) throw new Error('BROWSER_DOWNLOAD_IN_PROGRESS');
+      const deletion = (entry.deleting ??= this.remove(entry));
+      try {
+        await deletion;
+      } finally {
+        if (entry.deleting === deletion) delete entry.deleting;
+      }
+      return {};
+    }
     const location = entry.location;
     if (!location) throw new Error('BROWSER_DOWNLOAD_NOT_READY');
     if (command.action === 'info') return entry.info;
@@ -99,10 +116,15 @@ export class BrowserDownloads {
 
   async cancelActive(): Promise<void> {
     await Promise.allSettled(
-      this.ordered
-        .filter(({ info }) => info.state === 'downloading')
-        .map(({ info }) => this.execute({ action: 'cancel', id: info.id }))
+      [...this.active].map(({ info }) => this.execute({ action: 'cancel', id: info.id }))
     );
+  }
+
+  private async remove(entry: Entry): Promise<void> {
+    if (entry.location) await rm(entry.location.path, { force: true });
+    this.entries.delete(entry.info.id);
+    this.ordered.splice(this.ordered.indexOf(entry), 1);
+    this.notify();
   }
 
   private async settle(entry: Entry): Promise<void> {
@@ -120,6 +142,7 @@ export class BrowserDownloads {
     } catch {
       entry.info = { ...entry.info, state: 'failed' };
     }
+    this.active.delete(entry);
     this.notify();
   }
 

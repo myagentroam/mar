@@ -65,6 +65,7 @@ export class WorkbenchManifestService {
       browserUse: capabilities.browser ? (true as const) : undefined,
       browserNativeTouch: capabilities.browser ? (true as const) : undefined,
       browserContextMenu: capabilities.browser ? (true as const) : undefined,
+      browserDownloadManagement: capabilities.browser ? (true as const) : undefined,
       sessionAside: capabilities.sessionAside,
       sessionGroups: capabilities.sessionGroups,
       git: {

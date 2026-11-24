@@ -6,7 +6,8 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import { createTooltipApp } from './tooltip-app.js';
 import '../../src/styles.css';
 
-localePreferenceService().setLocale('en-US');
+const fixtureLocale = new URLSearchParams(location.search).get('locale');
+localePreferenceService().setLocale(fixtureLocale === 'zh-CN' ? 'zh-CN' : 'en-US');
 const browser = createWorkbenchBrowserService({
   send: () => false,
   connectionId: () => undefined,
@@ -17,6 +18,9 @@ type Update = {
   id?: string;
   status?: typeof browser.status.value;
   items?: BrowserDownloadInfo[];
+  activeCount?: number | null;
+  failList?: boolean;
+  failDelete?: boolean;
 };
 const browserId = ref('browser-a');
 const scope = { nodeId: 'test-node', workspaceId: 'test-workspace' };
@@ -31,16 +35,32 @@ const tab = {
 };
 const tabs = [tab, { ...tab, id: 'second-tab', title: 'Second page' }];
 let items: BrowserDownloadInfo[] = [];
+let failList = false;
+let failDelete = false;
 
-function update({ revision, id, status, items: nextItems }: Update): void {
+function update({
+  revision,
+  id,
+  status,
+  items: nextItems,
+  activeCount,
+  failList: listError,
+  failDelete: fail
+}: Update): void {
   if (id !== undefined) browserId.value = id;
   if (status !== undefined) browser.status.value = status;
   if (nextItems !== undefined) items = nextItems;
+  if (listError !== undefined) failList = listError;
+  if (fail !== undefined) failDelete = fail;
   browser.snapshot.value = {
     activeId: browser.snapshot.value?.activeId ?? tab.id,
     tabs,
     viewVersion: 1,
-    downloadVersion: revision
+    downloadVersion: revision,
+    activeDownloadCount:
+      activeCount === null
+        ? undefined
+        : (activeCount ?? items.filter(({ state }) => state === 'downloading').length)
   };
 }
 
@@ -51,11 +71,21 @@ browser.send = (message) => {
   return true;
 };
 browser.browserId = () => browserId.value;
-browser.downloads = async () => ({ items, more: false });
+browser.downloads = async () => {
+  if (failList) throw new Error('Fixture could not list downloads');
+  return { items, more: false };
+};
 browser.cancelDownload = async (id) => {
   update({
     revision: (browser.snapshot.value?.downloadVersion ?? 0) + 1,
     items: items.map((item) => (item.id === id ? { ...item, state: 'canceled' } : item))
+  });
+};
+browser.deleteDownload = async (id) => {
+  if (failDelete) throw new Error('Fixture could not delete download');
+  update({
+    revision: (browser.snapshot.value?.downloadVersion ?? 0) + 1,
+    items: items.filter((item) => item.id !== id)
   });
 };
 browser.downloadHref = (id) => `/fixture-download/${id}`;

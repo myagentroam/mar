@@ -63,35 +63,12 @@ const invalid = ref(false);
 const answer = ref('');
 const downloadsOpen = ref(false);
 const { snapshot, status, frame, path, streamSample, error, uploadStatus } = props.browser;
-const downloadRevision = computed(() => snapshot.value?.downloadVersion);
 const downloadBrowserId = computed(() => props.browser.browserId());
-const downloadNotice = ref<number>();
-watch(
-  [downloadRevision, status, downloadBrowserId],
-  ([revision, state, id], [previous, previousState, previousId], cleanup) => {
-    downloadNotice.value = undefined;
-    if (
-      state !== 'ready' ||
-      previousState !== 'ready' ||
-      !id ||
-      id !== previousId ||
-      revision === undefined ||
-      previous === undefined ||
-      revision <= previous ||
-      downloadsOpen.value
-    )
-      return;
-    downloadNotice.value = revision;
-    const timer = setTimeout(() => {
-      downloadNotice.value = undefined;
-    }, 2400);
-    cleanup(() => clearTimeout(timer));
-  }
+const activeDownloads = computed(() =>
+  status.value === 'ready' ? snapshot.value?.activeDownloadCount ?? 0 : 0
 );
-function openDownloads(): void {
-  downloadNotice.value = undefined;
-  downloadsOpen.value = true;
-}
+const downloadStatusId = `${tabPrefix}-download-status`;
+watch(downloadBrowserId, () => (downloadsOpen.value = false));
 const connection = computed(() => {
   if (path.value === 'ice') return props.directDescription ?? t('workspaceTabs.directAvailable');
   if (path.value === 'relay') return t('browser.relay');
@@ -917,19 +894,17 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           class="node-browser-icon"
           icon="download"
           :aria-label="t('browser.downloads')"
+          :aria-describedby="activeDownloads ? downloadStatusId : undefined"
           aria-haspopup="dialog"
           v-tooltip="t('browser.downloads')"
           :disabled="status !== 'ready'"
-          @click="openDownloads"
+          @click="downloadsOpen = true"
         />
-        <span role="status" class="node-browser-download-status">
-          <span
-            v-if="downloadNotice !== undefined"
-            :key="downloadNotice"
-            class="node-browser-download-hint"
-          >
-            {{ t('browser.downloadActivity') }}
-          </span>
+        <span :id="downloadStatusId" class="node-browser-download-status">{{
+          activeDownloads ? t('browser.downloadActive', { count: activeDownloads }) : ''
+        }}</span>
+        <span v-if="activeDownloads" class="node-browser-download-badge" aria-hidden="true">
+          {{ activeDownloads > 99 ? '99+' : activeDownloads }}
         </span>
       </div>
       <MarDropdown trigger="click" placement="bottom-end" @command="command">
@@ -1118,6 +1093,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
     </div>
     <BrowserDownloadsDialog
       v-if="downloadsOpen"
+      :key="downloadBrowserId ?? ''"
       :browser="browser"
       @close="downloadsOpen = false"
     />
@@ -1282,48 +1258,29 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 }
 .node-browser-download-status {
   position: absolute;
-  z-index: 2;
-  inset-block-start: calc(100% + 0.45rem);
-  inset-inline-end: 0;
-  pointer-events: none;
-}
-.node-browser-download-hint {
-  position: relative;
-  display: block;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--mar-ui-border-default);
-  border-radius: var(--mar-ui-radius-sm, 4px);
-  background: var(--mar-ui-bg-panel);
-  color: var(--mar-ui-text-primary);
-  font-size: var(--mar-ui-font-size-meta);
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
-.node-browser-download-hint::before {
-  content: '';
+.node-browser-download-badge {
   position: absolute;
+  z-index: 1;
   inset-block-start: -4px;
-  inset-inline-end: 8px;
-  inline-size: 6px;
-  block-size: 6px;
-  transform: rotate(45deg);
-  border-block-start: 1px solid var(--mar-ui-border-default);
-  border-inline-start: 1px solid var(--mar-ui-border-default);
-  background: inherit;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .node-browser-download-hint {
-    animation: node-browser-download-arrive 180ms ease-out;
-  }
-}
-@keyframes node-browser-download-arrive {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  inset-inline-end: -4px;
+  min-inline-size: 0.875rem;
+  padding-inline: 0.15em;
+  box-sizing: border-box;
+  border: 1px solid var(--mar-ui-bg-panel);
+  border-radius: 999px;
+  background: var(--mar-ui-control-primary-bg);
+  color: var(--mar-ui-control-primary-fg);
+  font-size: var(--mar-ui-font-size-meta);
+  font-weight: 600;
+  line-height: 1.05;
+  text-align: center;
+  pointer-events: none;
 }
 .node-browser-nav > :not(:first-child) {
   margin-inline-start: -1px;

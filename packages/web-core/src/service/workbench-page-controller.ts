@@ -2180,6 +2180,7 @@ export function createWorkbenchPageController<
           hd: manifest.browserHd === true,
           tabIcons: manifest.browserTabIcons === true,
           browserUse: manifest.browserUse === true,
+          downloadManagement: manifest.browserDownloadManagement === true,
           nativeTouch: manifest.browserNativeTouch === true,
           contextMenu: manifest.browserContextMenu === true
         };
