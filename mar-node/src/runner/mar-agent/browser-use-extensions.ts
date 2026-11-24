@@ -21,7 +21,7 @@ const modelInputSchema = z.toJSONSchema(
 const tool: ClientToolDefinition = {
   name,
   description:
-    'Find this Workspace’s shared MAR browser resource for standard Playwright when a task needs the user’s current page, existing sign-in, or help signing in. Use Playwright directly for isolated tests.',
+    'Access this Workspace’s shared MAR browser for Playwright when a task needs the user’s current page, existing sign-in, or help signing in. Use Playwright directly for isolated tests.',
   parallelSafety: 'serial',
   allowedCallers: ['direct'],
   inputSchema: modelInputSchema
