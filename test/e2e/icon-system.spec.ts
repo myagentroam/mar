@@ -1509,6 +1509,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }
 }
 
+test('Aside add menu lists Terminal before Browser', async ({ page }) => {
+  await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${fixture.url}icon-system.html?terminal=1&compare-tabs=1&aside-tools=1`);
+    await page.getByRole('button', { name: 'Add Aside tab' }).click();
+    await expect(
+      page.getByRole('menu', { name: 'Add Aside tab' }).getByRole('menuitem')
+    ).toHaveText(['Terminal', 'Browser']);
+  }
+});
+
 test('Terminal close icons preserve accessible names and close only the selected terminal', async ({
   page
 }) => {

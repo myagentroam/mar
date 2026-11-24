@@ -592,6 +592,12 @@ const app = createApp({
     if (new URL(location.href).searchParams.has('terminal')) {
       const multipleProfiles = new URL(location.href).searchParams.has('multipleProfiles');
       const compareTabs = new URL(location.href).searchParams.has('compare-tabs');
+      const asideTools = new URL(location.href).searchParams.has('aside-tools')
+        ? ([
+            { id: 'node-browser', label: 'Browser' },
+            { id: 'terminal', label: 'Terminal' }
+          ] as const)
+        : [];
       return () =>
         h('div', [
           ...(compareTabs
@@ -599,11 +605,11 @@ const app = createApp({
                 h(WorkbenchAside, {
                   workspace: { nodeId: 'host', workspaceId: 'project' },
                   state: {
-                    tools: [],
+                    tools: asideTools.map(({ id }) => id),
                     sessions: ['session'],
                     active: { kind: 'session', sessionId: 'session' }
                   },
-                  tools: [],
+                  tools: asideTools,
                   sessions: [{ sessionId: 'session', title: 'Session', active: false }],
                   browserLabel: 'Browser',
                   tabLabel: 'Workspace tabs',
