@@ -12,7 +12,6 @@ import type { WorkbenchHttpService } from '../../src/service/workbench-http-serv
 const mock = vi.hoisted(() => ({
   send: vi.fn(() => true),
   open: undefined as BrowserAttachmentOpen | undefined,
-  supportsBrowserVideo: vi.fn(async (_hd?: boolean) => true),
   snapshot: undefined as ((value: BrowserTabSnapshot) => void) | undefined,
   frame: undefined as
     ((value: { viewVersion: number; width: number; height: number }) => void) | undefined,
@@ -21,7 +20,6 @@ const mock = vi.hoisted(() => ({
 }));
 
 vi.mock('../../src/service/browser-attachment-client.js', () => ({
-  supportsBrowserVideo: mock.supportsBrowserVideo,
   BrowserAttachmentClient: class {
     constructor(
       _link: unknown,
@@ -48,8 +46,6 @@ vi.mock('../../src/service/browser-attachment-client.js', () => ({
 afterEach(() => {
   vi.useRealTimers();
   mock.send.mockClear();
-  mock.supportsBrowserVideo.mockReset();
-  mock.supportsBrowserVideo.mockResolvedValue(true);
   vi.unstubAllGlobals();
 });
 
@@ -83,6 +79,7 @@ it.each([true, undefined])(
       { nodeId: 'n', workspaceId: 'w' },
       {
         apiVersion: 1,
+        vnc: true,
         ice: false,
         nodeGeneration: 'g',
         ...(supported && { foregroundPresence: true })
@@ -150,7 +147,7 @@ it.each([
   try {
     await service.show(
       { nodeId: 'n', workspaceId: 'w' },
-      { apiVersion: 1, ice: true, nodeGeneration: 'g' },
+      { apiVersion: 1, vnc: true, ice: true, nodeGeneration: 'g' },
       {} as HTMLCanvasElement,
       { action: 'resume', browserId: 'same-browser' },
       {} as HTMLElement
@@ -248,8 +245,8 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
     const scope = { nodeId: 'node', workspaceId: 'workspace' };
     const capability = {
       apiVersion: 1,
+      vnc: true,
       ice: true,
-      hd: transition !== 'reopen',
       nodeGeneration: 'generation'
     } as const;
     const view = {} as HTMLCanvasElement;
@@ -272,17 +269,13 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
     await vi.waitFor(() => expect(requests).toHaveLength(1));
     attached(0, firstId);
     await first;
-    if (capability.hd) expect(mock.open?.hd).toBe(true);
-    else expect(mock.open).not.toHaveProperty('hd');
+    expect(mock.open?.rfb).toBe(true);
     const relaySocket = vi.fn(class {});
     if (transition === 'fallback') {
       vi.stubGlobal('window', { location: { origin: 'https://workbench.test' } });
       vi.stubGlobal('WebSocket', relaySocket);
     }
     if (transition !== 'reopen') mock.ended!('BROWSER_DISCONNECTED');
-    if (transition === 'reopen during fallback') {
-      mock.supportsBrowserVideo.mockImplementation(async (hd) => hd !== true);
-    }
     const next =
       transition === 'fallback' ? undefined : service.show(scope, capability, view, resume, view);
     expect(requests[1]?.request).toEqual({ action: 'release', attachmentId: firstId });
@@ -299,11 +292,11 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
     if (next) {
       expect(requests[2]?.request).toHaveProperty('transportId', 'transport');
       await next;
-      expect(mock.open).not.toHaveProperty('hd');
+      expect(mock.open?.rfb).toBe(true);
     } else {
       expect(requests[2]?.request).not.toHaveProperty('transportId');
       await vi.waitFor(() => expect(relaySocket).toHaveBeenCalledOnce());
-      expect(mock.open).not.toHaveProperty('hd');
+      expect(mock.open?.rfb).toBe(true);
     }
     service.hide();
     reply(3);
@@ -339,7 +332,7 @@ it('holds the upload state until cancellation settles, not until the aborted upl
   });
   const opening = service.show(
     { nodeId: 'node', workspaceId: 'workspace' },
-    { apiVersion: 1, ice: true, nodeGeneration: 'generation' },
+    { apiVersion: 1, vnc: true, ice: true, nodeGeneration: 'generation' },
     {} as HTMLCanvasElement,
     { action: 'resume', browserId: 'browser' },
     {} as HTMLElement
@@ -390,7 +383,7 @@ it.each(['cancel', 'delete', 'workspace'] as const)(
     const id = randomUUID();
     const opening = service.show(
       { nodeId: 'node', workspaceId: 'workspace' },
-      { apiVersion: 1, ice: true, nodeGeneration: 'generation' },
+      { apiVersion: 1, vnc: true, ice: true, nodeGeneration: 'generation' },
       {} as HTMLCanvasElement,
       { action: 'resume', browserId: 'browser' },
       {} as HTMLElement

@@ -100,8 +100,8 @@ it('uses a successful Thought only at the next request boundary without restrict
   expect(run).toHaveBeenCalledTimes(2);
 
   // Request transforms may omit the last call while retaining an earlier successful Thought.
-  await coordinator.checkpoint(round, usage, [thought.callId, 'filtered-thought']);
-  await coordinator.prepareRequestGc(round, [thought], undefined, soft);
+  await coordinator.checkpoint(round, undefined, [thought.callId, 'filtered-thought']);
+  await coordinator.prepareRequestGc(round, [thought], usage, soft);
   expect(run).toHaveBeenCalledTimes(3);
   expect(run).toHaveBeenLastCalledWith(expect.objectContaining({ inlineMedia: soft, usage }));
 });

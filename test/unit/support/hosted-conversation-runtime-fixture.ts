@@ -40,6 +40,7 @@ export const modelOne: MarAgentRuntimeModelConfiguration = {
   inputCapabilities: ['TEXT'],
   outputCapabilities: ['TEXT'],
   reasoningEfforts: ['high'],
+  contextGcMode: 'auto',
   hostedWebSearch: false,
   responsesPreviousResponseId: false,
   titleGeneration: false,

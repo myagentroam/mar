@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/node",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/myagentroam/mar.git",
@@ -67,6 +67,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@myagentroam/browser-vnc": "workspace:*",
     "@myagentroam/code-navigation": "workspace:*",
     "@myagentroam/marctl": "workspace:*",
     "@types/js-yaml": "^4.0.9",

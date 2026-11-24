@@ -102,7 +102,7 @@ test('Browser Aside saves to Workspace, changes page zoom, and reattaches withou
 }, testInfo) => {
   test.skip(
     browserName !== 'chromium',
-    'This journey verifies the Chromium H.264 and ICE implementation.'
+    'This journey verifies the Chromium RFB and ICE implementation.'
   );
   await browserAsideJourney(page, baseURL, testInfo, 'interaction');
 });
@@ -123,7 +123,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
 }, testInfo) => {
   test.skip(
     browserName !== 'chromium',
-    'This journey verifies the Chromium H.264 and ICE implementation.'
+    'This journey verifies the Chromium RFB and ICE implementation.'
   );
   await browserAsideJourney(page, baseURL, testInfo, 'full');
 });
@@ -160,7 +160,8 @@ async function browserAsideJourney(
   testInfo: TestInfo,
   scenario: 'interaction' | 'close-last' | 'full' | 'find' | 'first-address'
 ): Promise<void> {
-  test.setTimeout(120_000);
+  // The full journey serially uploads two multi-file selections over different paths.
+  test.setTimeout(scenario === 'full' ? 180_000 : 120_000);
   const directory = await mkdtemp(join(tmpdir(), 'mar-browser-aside-'));
   const requests: string[] = [];
   let remoteViewport: { width: number; height: number; narrow: boolean } | undefined;
@@ -311,13 +312,13 @@ async function browserAsideJourney(
         });
         document.querySelector('textarea')?.addEventListener('input', ({ target }) =>
           fetch('/context-pasted?' + new URLSearchParams({ route: location.pathname, text: target.value })));
-        document.addEventListener('keydown', ({ code, key, altKey, ctrlKey }) => {
+        document.addEventListener('keydown', ({ code, key, altKey, ctrlKey, shiftKey }) => {
           if ((altKey || ctrlKey) && key.toLowerCase() === 'w') fetch('/unexpected-close');
           if (key === 'ArrowRight') fetch('/key-next');
-          if (code === 'KeyY') fetch('/key-press');
+          if (code === 'KeyY') fetch('/key-press?' + new URLSearchParams({ key, altKey, ctrlKey, shiftKey }));
         });
-        document.addEventListener('keyup', ({ code }) => {
-          if (code === 'KeyY') fetch('/key-release');
+        document.addEventListener('keyup', ({ code, key, altKey, ctrlKey, shiftKey }) => {
+          if (code === 'KeyY') fetch('/key-release?' + new URLSearchParams({ key, altKey, ctrlKey, shiftKey }));
         });
         document.querySelector('input').addEventListener('change', async ({ target }) => {
           const file = target.files[0];
@@ -779,7 +780,7 @@ async function browserAsideJourney(
       .getAttribute('aria-description', { timeout: 15_000 });
     expect(directDescription).toBeTruthy();
     await expect(performancePanel.getByText(directDescription!, { exact: true })).toBeVisible();
-    await expect(performancePanel.getByText('H.264', { exact: true })).toBeVisible();
+    await expect(performancePanel.getByText('RFB (Tight)', { exact: true })).toBeVisible();
     await expect(performancePanel.getByText(/^[\d.,]+ (?:[kM]?bit\/s)$/u)).toBeVisible();
     await expect(performancePanel.getByText(/^[\d.,]+ fps$/u)).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('browser-performance-ice.png') });
@@ -892,15 +893,12 @@ async function browserAsideJourney(
         paths.push(path);
       }
       await dialog.locator('input[type=file]').setInputFiles(paths);
+      // Requests are acknowledged serially, including all chunks of the 9 MiB file.
       await expect
-        .poll(
-          () =>
-            requests.includes(
-              `/received?name=${label}.txt&size=${largeFile.length}&count=17&first=a&last=a`
-            ),
-          { timeout: 30_000 }
-        )
-        .toBe(true);
+        .poll(() => requests.filter((path) => path.startsWith(`/received?name=${label}.txt&`)), {
+          timeout: 60_000
+        })
+        .toContain(`/received?name=${label}.txt&size=${largeFile.length}&count=17&first=a&last=a`);
     }
     async function download(action: 'saved' | 'cancel' | 'fail', route: 'ice' | 'relay') {
       const target = await canvasPoint({ saved: 0.3, cancel: 0.5, fail: 0.7 }[action], 0.415);
@@ -1102,7 +1100,7 @@ async function browserAsideJourney(
       await expect(count).toHaveText('1/3');
       await finder.getByRole('button', { name: /Next match|下一个匹配/u }).click();
       await expect(count).toHaveText('2/3');
-      // H.264 alters exact colors; allow small channel variation while requiring both paints.
+      // Identify the highlight fills, not unrelated antialiased edge colors.
       const visibleMarks = () =>
         canvas.evaluate((element) => {
           const source = element as HTMLCanvasElement;
@@ -1116,8 +1114,8 @@ async function browserAsideJourney(
           let orange = 0;
           for (let i = 0; i < pixels.length; i += 4) {
             const [r, g, b] = [pixels[i]!, pixels[i + 1]!, pixels[i + 2]!];
-            if (r > 210 && g > 195 && b < 140) yellow++;
-            if (r > 210 && g >= 110 && g < 185 && b < 120) orange++;
+            if (r >= 250 && Math.abs(g - 228) <= 5 && Math.abs(b - 91) <= 5) yellow++;
+            if (r >= 250 && Math.abs(g - 150) <= 5 && Math.abs(b - 59) <= 5) orange++;
           }
           return { yellow: yellow > 30, orange: orange > 30 };
         });
@@ -1128,7 +1126,12 @@ async function browserAsideJourney(
       });
       await query.fill('not-in-the-fixture');
       await expect(count).toHaveText('0/0');
-      await expect.poll(visibleMarks).toEqual({ yellow: false, orange: false });
+      try {
+        await expect.poll(visibleMarks).toEqual({ yellow: false, orange: false });
+      } catch (error) {
+        await canvas.screenshot({ path: testInfo.outputPath('browser-find-cleared-failure.png') });
+        throw error;
+      }
       await query.fill('shadow beacon');
       await expect(count).toHaveText('1/3');
       await expect.poll(visibleMarks).toEqual({ yellow: true, orange: true });
@@ -1378,21 +1381,33 @@ async function browserAsideJourney(
     await expect(browserTab).toHaveCount(0);
     await openWorkspaceBrowser();
     await expect(address).toHaveValue(`${origin}/relay`);
+    // A restored address can precede the current viewport's first painted picture.
+    await expectViewportFits();
     await keyboard.focus();
+    await expect(keyboard).toBeFocused();
     await keyboard.press('ArrowRight');
     await expect.poll(() => requests.filter((path) => path === '/key-next').length).toBe(2);
     expect(requests).not.toContain('/unexpected-close');
 
     await test.step('Release a remote key even when its modifiers were released first', async () => {
+      await keyboard.focus();
+      await expect(keyboard).toBeFocused();
       await page.keyboard.down('Control');
       await page.keyboard.down('Shift');
-      // Playwright takes the literal key value. Both events still have code KeyY.
+      // Both letter events have physical code KeyY, but different key values.
       await page.keyboard.down('Y');
-      await page.keyboard.up('Shift');
-      await page.keyboard.up('Control');
-      await page.keyboard.up('y');
-      await expect.poll(() => requests.includes('/key-press')).toBe(true);
-      await expect.poll(() => requests.includes('/key-release')).toBe(true);
+      try {
+        await expect
+          .poll(() => requests.filter((path) => path.startsWith('/key-press?')))
+          .toEqual(['/key-press?key=Y&altKey=false&ctrlKey=true&shiftKey=true']);
+      } finally {
+        await page.keyboard.up('Shift');
+        await page.keyboard.up('Control');
+        await page.keyboard.up('y');
+      }
+      await expect
+        .poll(() => requests.filter((path) => path.startsWith('/key-release?')))
+        .toEqual(['/key-release?key=Y&altKey=false&ctrlKey=false&shiftKey=false']);
     });
 
     const aside = page.locator('.workspace-aside');
@@ -1482,6 +1497,24 @@ async function browserAsideJourney(
     await performanceAction.press('Enter');
     const performanceSurface = page.locator('.browser-performance');
     await expect(performanceSurface).toBeVisible();
+    const qualityPreference = performanceSurface.getByRole('combobox', {
+      name: /^(Picture quality preference|画质偏好)$/u
+    });
+    await page.keyboard.press('Tab');
+    await expect(qualityPreference).toBeFocused();
+    await qualityPreference.press('Enter');
+    await expect(page.getByRole('option')).toHaveText([
+      /^(Automatic|自动)$/u,
+      /^(Low|低)$/u,
+      /^(Medium|中)$/u,
+      /^(High|高)$/u
+    ]);
+    await page.getByRole('option', { name: /^(Low|低)$/u, exact: true }).click();
+    await expect(performanceSurface.locator('dd').filter({ hasText: /^(Low|低)$/u })).toBeVisible();
+    await qualityPreference.press('Enter');
+    await page.getByRole('option', { name: /^(Automatic|自动)$/u, exact: true }).click();
+    await expect(qualityPreference).toHaveText(/^(Automatic|自动)$/u);
+    await expect(qualityPreference).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(collapseActions).toBeFocused();
     await page.keyboard.press('Enter');

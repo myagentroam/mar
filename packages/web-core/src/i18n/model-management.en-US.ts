@@ -134,8 +134,6 @@ export const modelManagementEnUS = {
     contextGcOff: 'Off',
     contextGcAuto: 'Automatic',
     contextGcWithThought: 'GC with thought',
-    contextGcHint:
-      'GC with thought waits for a fresh summary unless the request exceeds the image hard limit.',
     serviceTier: 'Speed',
     serviceTierDefault: 'Default',
     serviceTierFast: 'Fast',

@@ -2204,7 +2204,7 @@ export function createWorkbenchPageController<
         return {
           ...manifest.browser,
           resizeViewport: manifest.browserViewportResize === true,
-          hd: manifest.browserHd === true,
+          vnc: manifest.browserVnc === true,
           tabIcons: manifest.browserTabIcons === true,
           downloadManagement: manifest.browserDownloadManagement === true,
           agentActivity: manifest.browserAgentActivity === true,

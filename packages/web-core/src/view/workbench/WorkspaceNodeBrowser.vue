@@ -68,7 +68,17 @@ const edited = ref(false);
 const invalid = ref(false);
 const answer = ref('');
 const downloadsOpen = ref(false);
-const { snapshot, status, frame, path, streamSample, error, uploadStatus } = props.browser;
+const {
+  snapshot,
+  status,
+  frame,
+  path,
+  streamSample,
+  pictureMode,
+  pictureQuality,
+  error,
+  uploadStatus
+} = props.browser;
 const closingTabs = new Set<string>();
 function closePageTab(id: string): void {
   if (!closingTabs.has(id) && props.browser.send({ type: 'tab.close', tabId: id }))
@@ -359,8 +369,7 @@ const canRestoreTabs = computed(
     recentAddresses.length > 0
 );
 const canRecover = computed(
-  () =>
-    error.value !== 'BROWSER_H264_DECODER_UNAVAILABLE' && error.value !== 'BROWSER_NOT_AUTHORIZED'
+  () => error.value !== 'BROWSER_VNC_UNAVAILABLE' && error.value !== 'BROWSER_NOT_AUTHORIZED'
 );
 const problem = computed(() =>
   error.value && error.value !== 'BROWSER_NAVIGATION_FAILED' ? browserError(error.value) : undefined
@@ -1413,6 +1422,9 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           :disabled="!expanded"
           :frame="frame"
           :sample="streamSample"
+          :mode="pictureMode"
+          :quality="pictureQuality"
+          @quality="browser.selectPictureMode($event)"
         />
       </WorkspaceFloatingActions>
     </div>

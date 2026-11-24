@@ -60,7 +60,7 @@ export class WorkbenchManifestService {
       terminalDirect: capabilities.terminalDirect,
       browser: capabilities.browser,
       browserViewportResize: capabilities.browser ? (true as const) : undefined,
-      browserHd: capabilities.browser ? (true as const) : undefined,
+      browserVnc: capabilities.browser ? (true as const) : undefined,
       browserTabIcons: capabilities.browser ? (true as const) : undefined,
       browserAgentActivity: capabilities.browser ? (true as const) : undefined,
       browserForegroundPresence: capabilities.browser ? (true as const) : undefined,

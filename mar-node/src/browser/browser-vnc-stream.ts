@@ -1,0 +1,331 @@
+import sharp from 'sharp';
+import {
+  BROWSER_VNC_MOTION_BPS,
+  BrowserRfbPeer,
+  BrowserVncRate,
+  browserVncAreaUnion,
+  encodeBrowserVncUpdate,
+  RFB_COPY_RECT,
+  RFB_TIGHT,
+  type BrowserVncArea,
+  type BrowserVncQuality,
+  type Raster
+} from '@myagentroam/browser-vnc';
+import {
+  BROWSER_FRAME_MAX_BYTES,
+  encodeBrowserFrame,
+  type BrowserFrame
+} from '@myagentroam/protocol';
+
+type Capture = Pick<BrowserFrame, 'viewVersion' | 'width' | 'height'> & {
+  png: Buffer;
+  scrollY?: number;
+};
+type Flight = { sequence: number; view: number; final: boolean; acknowledged: () => void };
+
+/** One attachment owns one RFB peer, one confirmed framebuffer and a single latest capture. */
+export class BrowserVncStream {
+  private readonly controller = new AbortController();
+  private readonly peer: BrowserRfbPeer;
+  private readonly rate: BrowserVncRate;
+  private version = 0;
+  private rasterGeneration = 0;
+  private sequence = 0;
+  private pending: Capture | undefined;
+  private current: Flight | undefined;
+  private busy = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private deadline: ReturnType<typeof setTimeout> | undefined;
+  private captureAt = -Infinity;
+  private lastOfferAt = -Infinity;
+  private movingUntil = -Infinity;
+  private sentRaster: Raster | undefined;
+  private sentVersion = 0;
+  private sentScroll: number | undefined;
+  private dimensions = { width: 1, height: 1 };
+  private wheel = 0;
+  private loss: BrowserVncArea | undefined;
+  private motionReadyAt = -Infinity;
+  private motionResize = false;
+  private repairRequested = false;
+  private repair: ReturnType<typeof setTimeout> | undefined;
+  private latest: Capture | undefined;
+
+  constructor(
+    private readonly options: {
+      relay: boolean;
+      send: (chunk: Uint8Array, signal: AbortSignal) => Promise<void>;
+      handshake: (data: string) => void;
+      failed: (code: string) => void;
+      changed: (quality: BrowserVncQuality) => void;
+      deadlineMs: number;
+    }
+  ) {
+    this.rate = new BrowserVncRate(options.relay);
+    this.peer = new BrowserRfbPeer(
+      (bytes) => options.handshake(Buffer.from(bytes).toString('base64')),
+      () => this.flush()
+    );
+  }
+
+  get scale() {
+    return this.rate.profile.scale;
+  }
+  get fps() {
+    return this.rate.profile.fps;
+  }
+  get quality() {
+    return this.rate.profile.quality;
+  }
+
+  start() {
+    this.peer.start();
+  }
+
+  receive(bytes: Buffer) {
+    try {
+      this.peer.receive(bytes);
+    } catch {
+      this.fail('BROWSER_INVALID_MESSAGE');
+    }
+  }
+
+  select(quality: BrowserVncQuality | 'auto') {
+    if (this.rate.limit(quality)) this.options.changed(this.quality);
+  }
+
+  scroll(dy: number) {
+    this.wheel += dy;
+  }
+
+  setView(version: number) {
+    if (version === this.version) return;
+    this.version = version;
+    this.resetRaster();
+  }
+
+  resetRaster(downscale = false) {
+    // Only a confirmed broad-motion update can arm lossy encoding during an
+    // adaptive downscale. New tabs, CSS resize and static starts stay lossless.
+    this.motionResize =
+      downscale && this.motionReadyAt !== -Infinity && performance.now() < this.movingUntil;
+    this.rasterGeneration++;
+    this.wheel = 0;
+    if (!this.motionResize) {
+      this.lastOfferAt = this.movingUntil = this.motionReadyAt = -Infinity;
+    }
+    this.pending = this.latest = undefined;
+    this.loss = undefined;
+    this.repairRequested = false;
+    this.sentRaster = undefined;
+    this.sentScroll = undefined;
+    clearTimeout(this.timer);
+    clearTimeout(this.repair);
+    this.timer = undefined;
+  }
+
+  offer(capture: Capture) {
+    if (this.controller.signal.aborted || capture.viewVersion !== this.version) return;
+    if (capture !== this.latest) {
+      const now = performance.now();
+      // Motion classification depends on captures, not encode/send latency.
+      // A busy encoder can take longer than a frame interval at 1080p.
+      if (now - this.lastOfferAt < 500) this.movingUntil = now + 500;
+      this.lastOfferAt = now;
+    }
+    this.latest = this.pending = capture;
+    this.flush();
+  }
+
+  acknowledge(sequence: number): number | undefined {
+    const flight = this.current;
+    if (!flight || !flight.final || flight.sequence !== sequence) return;
+    flight.final = false;
+    flight.acknowledged();
+    return flight.view;
+  }
+
+  close() {
+    this.controller.abort();
+    clearTimeout(this.deadline);
+    this.resetRaster();
+  }
+
+  private flush() {
+    if (
+      this.controller.signal.aborted ||
+      this.busy ||
+      this.timer ||
+      !this.pending ||
+      !this.peer.requested
+    )
+      return;
+    const now = performance.now();
+    const nextMotion =
+      this.repairRequested || now >= this.movingUntil ? -Infinity : this.motionReadyAt;
+    const wait = Math.max(this.captureAt + 1000 / this.rate.profile.fps, nextMotion) - now;
+    if (wait > 0 && this.version === this.sentVersion) {
+      this.timer = setTimeout(() => {
+        this.timer = undefined;
+        this.flush();
+      }, wait);
+      this.timer.unref();
+      return;
+    }
+    const capture = this.pending;
+    this.pending = undefined;
+    this.busy = true;
+    const motion = performance.now() < this.movingUntil;
+    this.captureAt = performance.now();
+    this.deadline = setTimeout(
+      () => this.fail('BROWSER_FRAME_TIMEOUT'),
+      this.options.deadlineMs
+    ).unref();
+    void this.sendUpdate(capture, motion)
+      .catch(() => this.fail('BROWSER_FRAME_TRANSPORT_FAILED'))
+      .finally(() => {
+        clearTimeout(this.deadline);
+        this.busy = false;
+        this.flush();
+      });
+  }
+
+  private async encodeCapture(capture: Capture, motion: boolean, currentRaster: () => boolean) {
+    const { data: rgb, info } = await sharp(capture.png, { limitInputPixels: 1920 * 1080 })
+      .toColourspace('srgb')
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    if (!currentRaster()) return;
+    const { width, height } = info;
+    const frame = { width, height, rgb };
+    const resize = width !== this.dimensions.width || height !== this.dimensions.height;
+    const displacement =
+      capture.scrollY !== undefined && this.sentScroll !== undefined
+        ? capture.scrollY - this.sentScroll || this.wheel
+        : this.wheel;
+    const scroll = Math.round((displacement * height) / capture.height);
+    this.wheel = 0;
+    const previous =
+      !resize && this.sentVersion === capture.viewVersion ? this.sentRaster : undefined;
+    const repair = this.repairRequested && previous ? this.loss : undefined;
+    const quality = this.quality;
+    const update = await encodeBrowserVncUpdate(frame, previous, {
+      resize,
+      tight: this.peer.supports(RFB_TIGHT),
+      copyRect: this.peer.supports(RFB_COPY_RECT),
+      scroll,
+      motion,
+      motionResize: this.motionResize && this.sentVersion === capture.viewVersion,
+      ...(previous && this.loss && { lossyReference: this.loss }),
+      ...(repair && { repair }),
+      quality,
+      ...(this.peer.supportsJpeg && {
+        jpeg: (data, size, quality) =>
+          sharp(data, { raw: { ...size, channels: 3 } })
+            .jpeg({ quality, chromaSubsampling: quality >= 90 ? '4:4:4' : '4:2:0' })
+            .toBuffer()
+      })
+    });
+    if (!update) return;
+    if (!update.data.length || update.data.length > BROWSER_FRAME_MAX_BYTES)
+      throw new Error('Invalid encoded Browser frame size.');
+    return { frame, resize, previous, repair, update };
+  }
+
+  private async sendUpdate(capture: Capture, motion: boolean) {
+    const signal = this.controller.signal;
+    const generation = this.rasterGeneration;
+    const currentRaster = () => !signal.aborted && generation === this.rasterGeneration;
+    const processingStarted = performance.now();
+    const encoded = await this.encodeCapture(capture, motion, currentRaster).catch(() => {
+      if (currentRaster()) this.fail('BROWSER_FRAME_ENCODE_FAILED');
+    });
+    if (!encoded || !currentRaster()) return;
+    const { frame, resize, previous, repair, update } = encoded;
+    this.peer.consume();
+    const ack = Promise.withResolvers<void>();
+    const current: Flight = (this.current = {
+      sequence: ++this.sequence,
+      view: capture.viewVersion,
+      final: false,
+      acknowledged: ack.resolve
+    });
+    const started = performance.now();
+    const aborted = () => ack.resolve();
+    signal.addEventListener('abort', aborted, { once: true });
+    try {
+      for (const { bytes, final } of encodeBrowserFrame({
+        ...capture,
+        data: update.data,
+        sequence: current.sequence,
+        key: resize
+      })) {
+        signal.throwIfAborted();
+        current.final = final;
+        await this.options.send(bytes, signal);
+      }
+      const written = performance.now();
+      await ack.promise;
+      const confirmed = performance.now();
+      if (signal.aborted) return;
+      this.dimensions = { width: frame.width, height: frame.height };
+      this.sentVersion = capture.viewVersion;
+      if (!currentRaster()) return;
+      this.sentRaster = frame;
+      this.sentScroll = capture.scrollY;
+      this.motionResize = false;
+      if (!previous || update.repaired) {
+        this.loss = undefined;
+        this.repairRequested = false;
+      }
+      if (update.lossyArea) {
+        this.loss = browserVncAreaUnion(this.loss, update.lossyArea);
+        this.repairRequested = false;
+      }
+      // Pace broad motion by actual encoded bytes. Bounded debt allows a
+      // large still/resize/repair to remain responsive and never queues frames.
+      this.motionReadyAt = update.motion
+        ? started + Math.min(450, (update.data.length * 8_000) / BROWSER_VNC_MOTION_BPS)
+        : -Infinity;
+      if (!this.loss || update.lossyArea || repair) {
+        this.repairRequested = false;
+        this.scheduleRepair();
+      }
+      if (
+        this.rate.observe(
+          written - started,
+          confirmed - started,
+          !!this.pending,
+          update.motion ? update.data.length : 0,
+          update.motion ? written - processingStarted : undefined
+        )
+      )
+        this.options.changed(this.quality);
+    } finally {
+      signal.removeEventListener('abort', aborted);
+      this.current = undefined;
+    }
+  }
+
+  private scheduleRepair() {
+    clearTimeout(this.repair);
+    if (!this.loss) return;
+    this.repair = setTimeout(
+      () => {
+        if (!this.loss || !this.latest) return;
+        this.repairRequested = true;
+        clearTimeout(this.timer);
+        this.timer = undefined;
+        this.offer(this.latest);
+      },
+      Math.max(350, 2_000 / this.fps, this.motionReadyAt - performance.now() + 250)
+    ).unref();
+  }
+
+  private fail(code: string) {
+    if (this.controller.signal.aborted) return;
+    this.close();
+    this.options.failed(code);
+  }
+}

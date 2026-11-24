@@ -35,6 +35,7 @@ const modelBase: AgentModelConfiguration = {
   hostedWebSearch: false,
   defaultReasoningEffort: 'low',
   enabled: true,
+  contextGcMode: 'auto',
   codeMode: false
 };
 
@@ -566,38 +567,44 @@ describe('SDK inline media lifecycle', () => {
     ).toHaveLength(0);
   });
 
-  it('rejects media over the hard budget without GC when the model disables it', async () => {
-    const { home, create } = await fixture();
-    const first = await imagePng('disabled-first');
-    const second = await imagePng('disabled-second');
-    const fresh = await imagePng('disabled-fresh');
-    const adapter = new ScriptedAdapter({ ...modelBase, gcEnabled: false }, [
-      { events: [{ type: 'text.completed', itemId: 'seed', text: 'history' }] }
-    ]);
-    const agent = await create(adapter);
-    const session = await agent.createSession({ workspace: home });
-    try {
+  it.each([undefined, 'off'] as const)(
+    'rejects media over the hard budget without GC (mode=%s)',
+    async (mode) => {
+      const { home, create } = await fixture();
+      const first = await imagePng('disabled-first');
+      const second = await imagePng('disabled-second');
+      const fresh = await imagePng('disabled-fresh');
+      const { contextGcMode: _auto, ...model } = modelBase;
+      const adapter = new ScriptedAdapter(
+        mode === undefined ? model : { ...model, contextGcMode: mode },
+        [{ events: [{ type: 'text.completed', itemId: 'seed', text: 'history' }] }]
+      );
+      const agent = await create(adapter);
+      const session = await agent.createSession({ workspace: home });
+      try {
+        expect(
+          await session
+            .run({
+              prompt: 'seed',
+              images: [imageInput('first.png', first), imageInput('second.png', second)]
+            })
+            .result()
+        ).toMatchObject({ status: 'completed' });
+        expect(
+          await session.run({ prompt: 'fresh', images: [imageInput('fresh.png', fresh)] }).result()
+        ).toMatchObject({ status: 'failed', errorCode: 'MAR_AGENT_INLINE_MEDIA_LIMIT' });
+        expect(adapter.requests).toHaveLength(1);
+        expect(adapter.requests[0]!.thoughtSchema).toBeUndefined();
+      } finally {
+        await agent.dispose();
+      }
       expect(
-        await session
-          .run({
-            prompt: 'seed',
-            images: [imageInput('first.png', first), imageInput('second.png', second)]
-          })
-          .result()
-      ).toMatchObject({ status: 'completed' });
-      expect(
-        await session.run({ prompt: 'fresh', images: [imageInput('fresh.png', fresh)] }).result()
-      ).toMatchObject({ status: 'failed' });
-      expect(adapter.requests).toHaveLength(1);
-    } finally {
-      await agent.dispose();
+        (await readRecords(home, session.id)).filter(
+          (record) => record.type === 'context.gc.completed'
+        )
+      ).toHaveLength(0);
     }
-    expect(
-      (await readRecords(home, session.id)).filter(
-        (record) => record.type === 'context.gc.completed'
-      )
-    ).toHaveLength(0);
-  });
+  );
 
   it.each([false, true])(
     'resolves hard-limit GC append failures from the durable outcome (appended=%s)',
@@ -649,7 +656,7 @@ describe('SDK inline media lifecycle', () => {
     }
   );
 
-  it.each(['valid', 'oversize', 'denied'] as const)(
+  it.each(['valid', 'valid-code-mode', 'oversize', 'denied'] as const)(
     'uses only successful, originally validated Thoughts for soft image GC (%s)',
     async (variant) => {
       const { home } = await fixture();
@@ -658,22 +665,30 @@ describe('SDK inline media lifecycle', () => {
       const oversized = 'x'.repeat(32 * 1024 + 1);
       const title = 'The second image supersedes the first';
       const content = 'evid: img2 > img1; img1 superseded';
-      const adapter = new ScriptedAdapter({ ...modelBase, contextGcMode: 'with_thought' }, [
-        { events: [{ type: 'text.completed', itemId: 'seed', text: 'history' }] },
-        {
-          events: [
-            toolCall('thought-1', 'thought', {
-              title,
-              content: variant === 'oversize' ? oversized : content,
-              ...(variant === 'denied'
-                ? { permission: { action: 'deny', reason: 'Do not record this note.' } }
-                : {})
-            })
-          ],
-          reason: 'tool_use'
-        },
-        { events: [{ type: 'text.completed', itemId: 'answer', text: 'done' }] }
-      ]);
+      const codeMode = variant === 'valid-code-mode';
+      const thoughtInput = {
+        title,
+        content: variant === 'oversize' ? oversized : content,
+        ...(variant === 'denied'
+          ? { permission: { action: 'deny', reason: 'Do not record this note.' } }
+          : {})
+      };
+      const adapter = new ScriptedAdapter(
+        { ...modelBase, codeMode, contextGcMode: 'with_thought' },
+        [
+          { events: [{ type: 'text.completed', itemId: 'seed', text: 'history' }] },
+          {
+            events: [
+              ...(codeMode
+                ? [codeModeCall('code-1', 'observe.text("same-batch cell completed");')]
+                : []),
+              toolCall('thought-1', 'thought', thoughtInput)
+            ],
+            reason: 'tool_use'
+          },
+          { events: [{ type: 'text.completed', itemId: 'answer', text: 'done' }] }
+        ]
+      );
       const agent = await createAgentWithAdapter(
         {
           mode: 'normal',
@@ -684,7 +699,8 @@ describe('SDK inline media lifecycle', () => {
               id: 'thought-short-circuit',
               apiVersion: '1.0',
               attachSession(context) {
-                context.hooks.intercept('tool.invoke', (input) => {
+                context.hooks.intercept('tool.invoke', (input, _call, next) => {
+                  if (input.name !== 'thought') return next(input);
                   Object.assign(input.arguments as object, {
                     title: 'Altered',
                     content: oversized
@@ -709,9 +725,10 @@ describe('SDK inline media lifecycle', () => {
               .result()
           ).status
         ).toBe('completed');
-        expect(
-          (await session.run({ prompt: 'Continue.', permissionMode: 'auto' }).result()).status
-        ).toBe('completed');
+        const run = session.run({ prompt: 'Continue.', permissionMode: 'auto' });
+        const events = [];
+        for await (const event of run) events.push(event);
+        expect((await run.result()).status).toBe('completed');
         expect(adapter.requests).toHaveLength(3);
         expect(adapter.requests[1]!.thoughtSchema?.properties).toEqual({
           title: expect.objectContaining({ type: 'string' }),
@@ -719,10 +736,19 @@ describe('SDK inline media lifecycle', () => {
         });
         const records = await readRecords(home, session.id);
         const thought = records.find((record) => record.type === 'thought.recorded');
-        if (variant === 'valid') {
+        if (variant === 'valid' || codeMode) {
+          if (codeMode)
+            expect(adapter.requests[2]!.messages).toContainEqual({
+              role: 'tool',
+              content: expect.stringContaining('same-batch cell completed')
+            });
+          expect(adapter.requests[2]!.thoughtInputs).toEqual([{ title, content }]);
+          expect(events.filter((event) => event.type === 'thought.recorded')).toEqual([
+            expect.objectContaining({ callId: 'thought-1', title })
+          ]);
+          expect(JSON.stringify(events)).not.toContain(content);
           expect(thought?.payload).toMatchObject({ title });
           expect(JSON.stringify(thought?.payload)).not.toContain(content);
-          expect(adapter.requests[2]!.thoughtInputs).toEqual([{ title, content }]);
           expect(adapter.requests[2]!.imageHashes).toEqual([imageHash(second)]);
           expectSingleInlineGcCheckpoint(records, 'SOFT_LIMIT');
         } else {

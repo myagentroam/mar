@@ -1,13 +1,24 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserPageInput } from '@myagentroam/protocol';
 import type { CDPSession, Page } from 'playwright';
 import { BrowserContextMenu } from './browser-context-menu.js';
-import { browserJpegSize } from './browser-jpeg.js';
 import { BrowserPageFind } from './browser-page-find.js';
 import { BrowserPageZoom } from './browser-page-zoom.js';
 
-type Frame = { jpeg: Buffer; width: number; height: number };
+function pngSize(png: Buffer) {
+  if (
+    png.length < 24 ||
+    png.readUInt32BE(0) !== 0x89504e47 ||
+    png.toString('ascii', 12, 16) !== 'IHDR'
+  )
+    return;
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+}
+
+type Frame = { png: Buffer; width: number; height: number; scrollY?: number };
 export type BrowserPageCapture = { stop: () => Promise<void> };
 const STATIC_FRAME_TIMEOUT_MS = 1_000;
+const CAPTURE_SETTLE_MS = 250;
 
 /** Adapts a single owned Playwright page. The session owns the page and selects
  * the active view, while the attachment owns input ordering and frame transport.
@@ -188,8 +199,34 @@ export class BrowserPageView {
   }
 
   async startCapture(
-    render: { width: number; height: number; quality: number },
-    offer: (frame: Frame) => void
+    render: { width: number; height: number },
+    offer: (frame: Frame) => void,
+    fps?: () => number
+  ): Promise<BrowserPageCapture> {
+    // Cross-document navigation can replace the DevTools target between attach
+    // and start. Rebind briefly instead of disconnecting the browser viewer.
+    for (const wait of [40, 120, 250]) {
+      try {
+        return await this.attachCapture(render, offer, fps);
+      } catch (error) {
+        if (
+          this.page.isClosed() ||
+          !(error instanceof Error) ||
+          !error.message.includes(
+            'Protocol error (Page.startScreencast): Not attached to an active page'
+          )
+        )
+          throw error;
+        await delay(wait);
+      }
+    }
+    return this.attachCapture(render, offer, fps);
+  }
+
+  private async attachCapture(
+    render: { width: number; height: number },
+    offer: (frame: Frame) => void,
+    fps?: () => number
   ): Promise<BrowserPageCapture> {
     const viewport = this.page.viewportSize();
     // A separate CDP session gives each attachment its own size and frame credit.
@@ -197,38 +234,101 @@ export class BrowserPageView {
     let stopped = false;
     let receivedFrame = false;
     let stopping: Promise<void> | undefined;
-    const publish = (jpeg: Buffer, width: number, height: number) => {
-      const image = browserJpegSize(jpeg);
+    let lastAck = -Infinity;
+    let ackTimer: ReturnType<typeof setTimeout> | undefined;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastFrameAt = -Infinity;
+    let lastTimestamp = -Infinity;
+    const credits: number[] = [];
+    const ack = () => {
+      ackTimer = undefined;
+      const sessionId = credits.shift();
+      if (stopped || sessionId === undefined) return;
+      lastAck = performance.now();
+      void session.send('Page.screencastFrameAck', { sessionId }).catch(() => undefined);
+      if (credits.length) scheduleAck();
+    };
+    const scheduleAck = () => {
+      if (ackTimer) return;
+      const wait = fps ? lastAck + 1000 / fps() - performance.now() : 0;
+      if (wait <= 0) ack();
+      else ackTimer = setTimeout(ack, wait).unref();
+    };
+    const publish = (png: Buffer, width: number, height: number, scrollY?: number) => {
+      const image = pngSize(png);
       // CDP can report the new CSS viewport with an old compositor surface.
       // Allow rounding at the raster edge, but do not present a cropped surface as the full page.
       if (
         !image ||
+        !image.width ||
+        !image.height ||
         image.width > render.width ||
         image.height > render.height ||
         Math.abs(image.width * height - image.height * width) > 2 * (width + height)
       )
         return;
       receivedFrame = true;
-      offer({ jpeg, width, height });
+      offer({ png, width, height, ...(scrollY !== undefined && { scrollY }) });
+    };
+    const queueSeed = (waiting: () => boolean) => {
+      if (!viewport) return;
+      const current = () => {
+        const size = this.page.viewportSize();
+        return (
+          !stopped && size?.width === viewport.width && size.height === viewport.height && waiting()
+        );
+      };
+      this.pendingViewport = this.pendingViewport
+        .then(() =>
+          this.seedFrame(viewport, render, current, (png) =>
+            publish(png, viewport.width, viewport.height)
+          )
+        )
+        .catch(() => undefined);
     };
     const onFrame = (event: {
       data: string;
-      metadata: { deviceWidth: number; deviceHeight: number };
+      metadata: {
+        deviceWidth: number;
+        deviceHeight: number;
+        scrollOffsetY?: number;
+        timestamp?: number;
+      };
       sessionId: number;
     }) => {
       const { data, metadata, sessionId } = event;
       const { deviceWidth: width, deviceHeight: height } = metadata;
       if (!stopped) {
-        void session.send('Page.screencastFrameAck', { sessionId }).catch(() => undefined);
+        // Pace credit rather than sampling every Nth frame, which can lose a
+        // single repaint when a page becomes static.
+        credits.push(sessionId);
+        scheduleAck();
         // Chromium may queue a frame using the old viewport during resize.
         if (!viewport || (viewport.width === width && viewport.height === height)) {
-          publish(Buffer.from(data, 'base64'), width, height);
+          const timestamp = metadata.timestamp;
+          if (timestamp !== undefined && timestamp < lastTimestamp) return;
+          if (timestamp !== undefined) lastTimestamp = timestamp;
+          const previous = lastFrameAt;
+          const at = (lastFrameAt = performance.now());
+          // Chromium can drop the last repaint when all capture credits are
+          // outstanding. Take one exact sample after a paced burst goes quiet.
+          if (fps) {
+            const quiet = Math.max(CAPTURE_SETTLE_MS, 2_000 / fps());
+            if (at - previous < quiet) {
+              clearTimeout(settleTimer);
+              settleTimer = setTimeout(() => queueSeed(() => lastFrameAt === at), quiet).unref();
+            }
+          }
+          publish(Buffer.from(data, 'base64'), width, height, metadata.scrollOffsetY);
         }
       }
     };
     const capture = {
       stop: () => {
         stopped = true;
+        clearTimeout(ackTimer);
+        clearTimeout(settleTimer);
+        credits.length = 0;
         session.off('Page.screencastFrame', onFrame);
         return (stopping ??= (async () => {
           await session.detach().catch((error: unknown) => {
@@ -240,32 +340,14 @@ export class BrowserPageView {
     try {
       session.on('Page.screencastFrame', onFrame);
       await session.send('Page.startScreencast', {
-        format: 'jpeg',
+        format: 'png',
         maxWidth: render.width,
-        maxHeight: render.height,
-        quality: render.quality
+        maxHeight: render.height
       });
       // A new viewer can subscribe to a static page without triggering a
       // repaint. Serialize clip captures and resizes because Chromium saves the
       // old viewport before taking a clipped screenshot and restores it afterward.
-      if (viewport && !stopped && !receivedFrame) {
-        const waiting = () => {
-          const current = this.page.viewportSize();
-          return (
-            !stopped &&
-            !receivedFrame &&
-            current?.width === viewport.width &&
-            current.height === viewport.height
-          );
-        };
-        this.pendingViewport = this.pendingViewport
-          .then(() =>
-            this.seedFrame(viewport, render, waiting, (jpeg) =>
-              publish(jpeg, viewport.width, viewport.height)
-            )
-          )
-          .catch(() => undefined);
-      }
+      if (!receivedFrame) queueSeed(() => !receivedFrame);
       return capture;
     } catch (error) {
       await capture.stop().catch(() => undefined);
@@ -275,9 +357,9 @@ export class BrowserPageView {
 
   private async seedFrame(
     viewport: { width: number; height: number },
-    render: { width: number; height: number; quality: number },
+    render: { width: number; height: number },
     waiting: () => boolean,
-    publish: (jpeg: Buffer) => void
+    publish: (png: Buffer) => void
   ): Promise<void> {
     if (!waiting()) return;
     // Navigation can leave the screenshot unanswered. Never make stopping a
@@ -300,8 +382,7 @@ export class BrowserPageView {
         );
         restoreViewport = true;
         const { data } = await session.send('Page.captureScreenshot', {
-          format: 'jpeg',
-          quality: render.quality,
+          format: 'png',
           clip: {
             x: visualViewport.pageX,
             y: visualViewport.pageY,

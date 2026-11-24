@@ -1387,6 +1387,7 @@ function triggerMatchesRecords(
     (!usageRecord ||
       !isRecord(usageRecord.payload) ||
       usageRecord.payload.type !== 'usage.updated' ||
+      usageRecord.payload.purpose === 'compact' ||
       modelContextUsage(usageRecord.payload) !== payload.trigger.contextInputTokens)
   )
     return false;
@@ -1417,6 +1418,7 @@ function triggerMatchesRecords(
       matchingConfiguration &&
       isRecord(record.payload) &&
       record.payload.type === 'usage.updated' &&
+      record.payload.purpose !== 'compact' &&
       modelContextUsage(record.payload) !== undefined
     )
       latestMatchingUsageSequence = record.sequence;

@@ -1363,8 +1363,7 @@ function modelSummary(
     ),
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
-    ...(model.contextGcMode === undefined ? {} : { contextGcMode: model.contextGcMode }),
-    gcEnabled: model.gcEnabled ?? true,
+    contextGcMode: model.contextGcMode ?? 'off',
     ...(model.serviceTier === undefined ? {} : { serviceTier: model.serviceTier }),
     hostedWebSearch: model.hostedWebSearch,
     ...(model.responsesTransport === undefined

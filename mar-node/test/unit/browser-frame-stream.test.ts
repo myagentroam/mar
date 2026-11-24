@@ -1,262 +1,220 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BROWSER_FRAME_MAX_BYTES, BrowserFrameReceiver } from '@myagentroam/protocol';
-import { BrowserFrameStream } from '../../src/browser/browser-frame-stream.js';
+import { afterEach, expect, it, vi } from 'vitest';
+import sharp from 'sharp';
+import {
+  BROWSER_FRAME_MAX_BYTES,
+  BrowserFrameReceiver,
+  type BrowserFrame
+} from '@myagentroam/protocol';
+import * as vnc from '@myagentroam/browser-vnc';
+import { BrowserVncStream } from '../../src/browser/browser-vnc-stream.js';
 
-const capture = (value: number, viewVersion = 1) => ({
+const request = Buffer.of(3, 1, 0, 0, 0, 0, 0, 64, 0, 80);
+const streams: BrowserVncStream[] = [];
+const capture = async (value: number, viewVersion = 1, width = 64) => ({
   viewVersion,
-  width: 800,
-  height: 600,
-  jpeg: Buffer.from([value])
+  width,
+  height: 80,
+  png: await sharp({
+    create: { width, height: 80, channels: 3, background: { r: value, g: 0, b: 0 } }
+  })
+    .png()
+    .toBuffer()
 });
-const encode = async (jpeg: Buffer, key: boolean) => ({ data: jpeg, key });
 
-afterEach(() => vi.useRealTimers());
-
-describe('Browser attachment frame stream', () => {
-  it('keeps only the newest capture while waiting for frame credit', async () => {
-    const receiver = new BrowserFrameReceiver();
-    const images: number[] = [];
-    const stream = new BrowserFrameStream({
-      encode,
-      send: async (chunk) => {
-        images.push(receiver.push(chunk)!.data[0]!);
-      },
-      failed: vi.fn(),
-      deadlineMs: 1000
-    });
-    stream.setView(1);
-    stream.offer(capture(1));
-    stream.offer(capture(2));
-    stream.offer(capture(3));
-    await vi.waitFor(() => expect(images).toEqual([1]));
-    expect(stream.acknowledge(2)).toBeUndefined();
-    expect(stream.acknowledge(1)).toBe(1);
-    await vi.waitFor(() => expect(images).toEqual([1, 3]));
-    stream.close();
-  });
-
-  it('discards pending captures from the previous view but finishes its in-flight frame', async () => {
-    const receiver = new BrowserFrameReceiver();
-    const images: number[] = [];
-    const keys: boolean[] = [];
-    const stream = new BrowserFrameStream({
-      encode,
-      send: async (chunk) => {
-        const frame = receiver.push(chunk)!;
-        images.push(frame.viewVersion);
-        keys.push(frame.key);
-      },
-      failed: vi.fn(),
-      deadlineMs: 1000
-    });
-    stream.setView(1);
-    stream.offer(capture(1));
-    stream.offer(capture(2));
-    await vi.waitFor(() => expect(images).toEqual([1]));
-    stream.setView(2);
-    stream.offer(capture(3));
-    stream.offer(capture(4, 2));
-    expect(stream.acknowledge(1)).toBe(1);
-    await vi.waitFor(() => expect(images).toEqual([1, 2]));
-    expect(keys).toEqual([true, true]);
-    stream.close();
-  });
-
-  it('does not send a stale encode and starts the next view with a key', async () => {
-    const old = Promise.withResolvers<{ data: Buffer; key: boolean }>();
-    const encode = vi
-      .fn(async (jpeg: Buffer, key: boolean) => ({ data: jpeg, key }))
-      .mockReturnValueOnce(old.promise);
-    const receiver = new BrowserFrameReceiver();
-    const received: number[] = [];
-    const stream = new BrowserFrameStream({
-      encode,
-      send: async (chunk) => {
-        received.push(receiver.push(chunk)!.viewVersion);
-      },
-      failed: vi.fn(),
-      deadlineMs: 1000
-    });
-    stream.setView(1);
-    stream.offer(capture(1));
-    expect(stream.acknowledge(1)).toBeUndefined();
-    stream.setView(2);
-    stream.offer(capture(2, 2));
-    old.resolve({ data: Buffer.from([1]), key: true });
-    await vi.waitFor(() => expect(received).toEqual([2]));
-    expect(encode).toHaveBeenLastCalledWith(
-      Buffer.from([2]),
-      true,
-      { viewVersion: 2, width: 800, height: 600 },
-      { fps: 24, bitrate: 1_500_000, hd: false }
-    );
-    stream.close();
-  });
-
-  it('does not grant credit before the last fragment starts or until its write finishes', async () => {
-    const first = Promise.withResolvers<void>();
-    const last = Promise.withResolvers<void>();
-    const send = vi
-      .fn(async () => {})
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(last.promise);
-    const encode = vi.fn(async (_jpeg: Buffer, key: boolean) => ({
-      data: Buffer.alloc(17 * 1024),
-      key
-    }));
-    const stream = new BrowserFrameStream({ encode, send, failed: vi.fn(), deadlineMs: 1000 });
-    stream.setView(1);
-    stream.offer(capture(1));
-    stream.offer(capture(2));
-    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
-    expect(stream.acknowledge(1)).toBeUndefined();
-    first.resolve();
-    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
-    expect(stream.acknowledge(1)).toBe(1);
-    expect(encode).toHaveBeenCalledTimes(1);
-    last.resolve();
-    await vi.waitFor(() => expect(encode).toHaveBeenCalledTimes(2));
-    stream.close();
-  });
-
-  it('reports a wire-size violation as an encode failure, not a path failure', async () => {
-    const failed = vi.fn();
-    const send = vi.fn(async () => {});
-    const encode = vi.fn(async (_jpeg: Buffer, key: boolean) => ({
-      data: Buffer.alloc(BROWSER_FRAME_MAX_BYTES + 1),
-      key
-    }));
-    const stream = new BrowserFrameStream({ encode, send, failed, deadlineMs: 1000 });
-    stream.setView(1);
-    stream.offer({ ...capture(1), jpeg: Buffer.alloc(BROWSER_FRAME_MAX_BYTES + 1) });
-    await vi.waitFor(() =>
-      expect(failed).toHaveBeenCalledExactlyOnceWith('BROWSER_FRAME_ENCODE_FAILED')
-    );
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it('aborts a blocked send and reports a single timeout', async () => {
-    vi.useFakeTimers();
-    const failed = vi.fn();
-    const send = vi.fn(
-      (_chunk: Uint8Array, signal: AbortSignal) =>
-        new Promise<void>((_, reject) => {
-          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-        })
-    );
-    const stream = new BrowserFrameStream({ encode, send, failed, deadlineMs: 100 });
-    stream.setView(1);
-    stream.offer(capture(1));
-    stream.offer(capture(2));
-    await vi.advanceTimersByTimeAsync(100);
-    stream.offer(capture(3));
-    expect(stream.acknowledge(1)).toBeUndefined();
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(failed.mock.calls).toEqual([['BROWSER_FRAME_TIMEOUT']]);
-  });
-
-  it.each([
-    ['encode', 'BROWSER_FRAME_ENCODE_FAILED'],
-    ['send', 'BROWSER_FRAME_TRANSPORT_FAILED']
-  ] as const)(
-    'reports a failed %s immediately and discards pending work',
-    async (stage, reason) => {
-      vi.useFakeTimers();
-      const error = new Error('test failure');
-      const encodeFrame = vi.fn(encode);
-      const send = vi.fn(async () => {});
-      if (stage === 'encode') encodeFrame.mockRejectedValueOnce(error);
-      else send.mockRejectedValueOnce(error);
-      const failed = vi.fn();
-      const stream = new BrowserFrameStream({
-        encode: encodeFrame,
-        send,
-        failed,
-        deadlineMs: 1000
-      });
-      stream.setView(1);
-      stream.offer(capture(1));
-      stream.offer(capture(2));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(failed).toHaveBeenCalledExactlyOnceWith(reason);
-      stream.offer(capture(3));
-      expect(stream.acknowledge(1)).toBeUndefined();
-      expect(encodeFrame).toHaveBeenCalledTimes(1);
-      expect(send).toHaveBeenCalledTimes(stage === 'send' ? 1 : 0);
+function fixture(send?: (chunk: Uint8Array, signal: AbortSignal) => Promise<void>, tight = true) {
+  const receiver = new BrowserFrameReceiver();
+  const frames: BrowserFrame[] = [];
+  const failed = vi.fn();
+  const stream = new BrowserVncStream({
+    deadlineMs: 350,
+    relay: false,
+    failed,
+    changed: vi.fn(),
+    handshake: vi.fn(),
+    send: async (chunk, signal) => {
+      const frame = receiver.push(chunk);
+      if (frame) frames.push(frame);
+      await send?.(chunk, signal);
     }
-  );
-
-  it('paces before encoding, sends the final pending capture, and gives a new view immediate credit', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
-    const receiver = new BrowserFrameReceiver();
-    const frames: number[] = [];
-    const stream = new BrowserFrameStream({
-      encode,
-      send: async (chunk) => {
-        const frame = receiver.push(chunk)!;
-        frames.push(frame.data[0]!);
-        stream.acknowledge(frame.sequence);
-      },
-      failed: vi.fn(),
-      deadlineMs: 1000
-    });
-    stream.setView(1);
-    stream.offer(capture(1));
-    await vi.advanceTimersByTimeAsync(0);
-    stream.offer(capture(2));
-    stream.offer(capture(3));
-    await vi.advanceTimersByTimeAsync(5);
-    expect(frames).toEqual([1]);
-    await vi.advanceTimersByTimeAsync(40);
-    expect(frames).toEqual([1, 3]);
-    stream.offer(capture(4));
-    stream.setView(2);
-    stream.offer(capture(5, 2));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(frames).toEqual([1, 3, 5]);
-    stream.offer(capture(6, 2));
-    stream.close();
-    await vi.advanceTimersByTimeAsync(100);
-    expect(frames).toEqual([1, 3, 5]);
   });
+  streams.push(stream);
+  stream.start();
+  stream.receive(Buffer.from('RFB 003.008\n'));
+  stream.receive(Buffer.of(1, 1));
+  const encodings = Buffer.from([2, 0, 0, tight ? 2 : 1, 255, 255, 255, 33, 0, 0, 0, 7]);
+  stream.receive(tight ? encodings : encodings.subarray(0, 8));
+  const next = () => stream.receive(request);
+  stream.setView(1);
+  next();
+  return { stream, frames, failed, next };
+}
 
-  it('starts each changed quality profile with a key frame without changing the view', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
-    const receiver = new BrowserFrameReceiver();
-    const encode = vi.fn<ConstructorParameters<typeof BrowserFrameStream>[0]['encode']>(
-      async (jpeg, key) => ({
-        data: Buffer.alloc(10 * 1024, jpeg[0]),
-        key
+afterEach(() => {
+  for (const stream of streams.splice(0)) stream.close();
+  vi.restoreAllMocks();
+});
+
+it('admits one update until drawn and keeps only the final capture of a burst', async () => {
+  const [first, middle, last] = await Promise.all([capture(1), capture(2), capture(3)]);
+  const { stream, frames, next } = fixture();
+  stream.offer(first);
+  stream.offer(middle);
+  stream.offer(last);
+  await vi.waitFor(() => expect(frames).toHaveLength(1));
+  next();
+  expect(stream.acknowledge(2)).toBeUndefined();
+  expect(stream.acknowledge(1)).toBe(1);
+  expect(stream.acknowledge(1)).toBeUndefined();
+  await vi.waitFor(() => expect(frames).toHaveLength(2));
+  expect(frames[1]!.data[17]).toBe(3); // Tight Fill red channel.
+});
+
+it('drops stale encodes and pending views, but finishes consuming a committed older view', async () => {
+  const [a, b, c, d] = await Promise.all([
+    capture(1),
+    capture(2, 2),
+    capture(3, 2),
+    capture(4, 3, 80)
+  ]);
+  const { stream, frames, next } = fixture();
+  stream.offer(a);
+  stream.setView(2);
+  stream.offer(b);
+  await vi.waitFor(() => expect(frames.map(({ viewVersion }) => viewVersion)).toEqual([2]));
+  stream.offer(c);
+  stream.setView(3);
+  stream.offer(c);
+  stream.offer(d);
+  expect(stream.acknowledge(1)).toBe(2);
+  next();
+  await vi.waitFor(() => expect(frames.map(({ viewVersion }) => viewVersion)).toEqual([2, 3]));
+  expect(frames[1]!.key).toBe(true);
+});
+
+it('rejects credit before the last chunk starts and waits for its write even after credit', async () => {
+  const [a, b] = await Promise.all([capture(1), capture(2)]);
+  const first = Promise.withResolvers<void>();
+  const last = Promise.withResolvers<void>();
+  const send = vi
+    .fn(async (_chunk: Uint8Array, _signal: AbortSignal) => {})
+    .mockReturnValueOnce(first.promise)
+    .mockReturnValueOnce(last.promise);
+  const { stream, frames, next } = fixture(send, false);
+  stream.offer(a);
+  stream.offer(b);
+  await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+  expect(stream.acknowledge(1)).toBeUndefined();
+  first.resolve();
+  await vi.waitFor(() => expect(frames).toHaveLength(1));
+  next();
+  expect(stream.acknowledge(1)).toBe(1);
+  expect(send).toHaveBeenCalledTimes(2);
+  last.resolve();
+  await vi.waitFor(() => expect(frames).toHaveLength(2));
+});
+
+it('times out once, aborting a blocked send and discarding pending work', async () => {
+  const a = await capture(1);
+  const send = vi.fn(
+    (_chunk: Uint8Array, signal: AbortSignal) =>
+      new Promise<void>((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
       })
-    );
-    const stream = new BrowserFrameStream({
-      encode,
-      send: async (chunk) => {
-        const frame = receiver.push(chunk)!;
-        await new Promise((resolve) => setTimeout(resolve, 120));
-        stream.acknowledge(frame.sequence);
-      },
-      failed: vi.fn(),
-      deadlineMs: 1000
-    });
-    stream.setView(1);
-    for (let value = 1; value <= 8; value++) {
-      stream.offer(capture(value));
-      await vi.advanceTimersByTimeAsync(150);
-    }
-    const calls = encode.mock.calls;
-    expect(calls.slice(0, 6).map((call) => call[1])).toEqual([
-      true,
-      false,
-      false,
-      true,
-      false,
-      false
-    ]);
-    expect(calls[3]?.[3]).toEqual({ ...calls[0]![3], fps: 10 });
-    expect(calls[6]?.[1]).toBe(true);
-    expect(calls[6]?.[2]).toEqual({ viewVersion: 1, width: 800, height: 600 });
-    expect(calls[6]?.[3]).toEqual({ fps: 10, bitrate: 768_000, hd: false });
-    stream.close();
+  );
+  const { stream, next, failed } = fixture(send);
+  stream.offer(a);
+  stream.offer(a);
+  await vi.waitFor(() => expect(failed).toHaveBeenCalledExactlyOnceWith('BROWSER_FRAME_TIMEOUT'));
+  next();
+  stream.offer(a);
+  expect(stream.acknowledge(1)).toBeUndefined();
+  expect(send).toHaveBeenCalledOnce();
+});
+
+it('times out a stalled encode on an established view and never sends its late result', async () => {
+  const [first, second] = await Promise.all([capture(1), capture(2)]);
+  const encode = vi.spyOn(vnc, 'encodeBrowserVncUpdate');
+  const { stream, next, frames, failed } = fixture();
+  stream.offer(first);
+  await vi.waitFor(() => expect(frames).toHaveLength(1));
+  expect(stream.acknowledge(1)).toBe(1);
+  const late = Promise.withResolvers<vnc.BrowserVncUpdate | undefined>();
+  const encoded = await encode.mock.results[0]!.value;
+  encode.mockReturnValueOnce(late.promise);
+  next();
+  stream.offer(second);
+  await vi.waitFor(() => expect(encode).toHaveBeenCalledTimes(2));
+  try {
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledExactlyOnceWith('BROWSER_FRAME_TIMEOUT'));
+  } finally {
+    late.resolve(encoded);
+  }
+  await Promise.resolve();
+  expect(frames).toHaveLength(1);
+});
+
+it.each([
+  { label: 'expensive continuous motion', encodeMs: 250, ackMs: 20, pause: 0, expectedFps: 12 },
+  { label: 'expensive isolated stills', encodeMs: 250, ackMs: 20, pause: 600, expectedFps: 24 },
+  { label: 'continuous motion with steady RTT', encodeMs: 5, ackMs: 140, pause: 0, expectedFps: 24 }
+] as const)('selects cadence for $label', async ({ encodeMs, ackMs, pause, expectedFps }) => {
+  const pictures = await Promise.all([capture(1), capture(2), capture(3), capture(4)]);
+  let clock = 0;
+  vi.spyOn(performance, 'now').mockImplementation(() => clock);
+  const encode = vnc.encodeBrowserVncUpdate;
+  vi.spyOn(vnc, 'encodeBrowserVncUpdate').mockImplementation(async (...args) => {
+    const update = await encode(...args);
+    clock += encodeMs;
+    return update;
   });
+
+  const { stream, frames, next } = fixture();
+  for (const [index, picture] of pictures.entries()) {
+    stream.offer(picture);
+    await vi.waitFor(() => expect(frames).toHaveLength(index + 1));
+    clock += ackMs;
+    expect(stream.acknowledge(index + 1)).toBe(1);
+    await Promise.resolve();
+    clock += pause;
+    next();
+  }
+  expect(stream.fps).toBe(expectedFps);
+  expect(stream.scale).toBe(2);
+});
+
+it('closes on malformed capture or failed writes rather than draining queued updates', async () => {
+  const a = await capture(1);
+  const send = vi.fn(async () => {
+    throw new Error('fixture transport failure');
+  });
+  const write = fixture(send);
+  write.stream.offer(a);
+  write.stream.offer(a);
+  await vi.waitFor(() =>
+    expect(write.failed).toHaveBeenCalledExactlyOnceWith('BROWSER_FRAME_TRANSPORT_FAILED')
+  );
+  expect(send).toHaveBeenCalledOnce();
+  const bad = fixture(send);
+  bad.stream.offer({ ...a, png: Buffer.of(1) });
+  await vi.waitFor(() =>
+    expect(bad.failed).toHaveBeenCalledExactlyOnceWith('BROWSER_FRAME_ENCODE_FAILED')
+  );
+  expect(send).toHaveBeenCalledOnce();
+});
+
+it('reports an oversized encoded update as an encode failure before sending any chunks', async () => {
+  const picture = await capture(1);
+  const real = vnc.encodeBrowserVncUpdate;
+  const encode = vi.spyOn(vnc, 'encodeBrowserVncUpdate');
+  const { stream, frames, failed } = fixture();
+  // Leave the encoder's geometry unchanged while substituting an invalid payload size.
+  encode.mockImplementationOnce(async (...args) => {
+    const update = await real(...args);
+    return update && { ...update, data: Buffer.alloc(BROWSER_FRAME_MAX_BYTES + 1) };
+  });
+  stream.offer(picture);
+  await vi.waitFor(() =>
+    expect(failed).toHaveBeenCalledExactlyOnceWith('BROWSER_FRAME_ENCODE_FAILED')
+  );
+  expect(frames).toHaveLength(0);
 });

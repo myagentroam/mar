@@ -318,6 +318,7 @@ function latestUsageRecord(
       activeModelId === selectedModelId &&
       isRecord(record.payload) &&
       record.payload.type === 'usage.updated' &&
+      record.payload.purpose !== 'compact' &&
       modelContextUsage(record.payload) !== undefined
     )
       latest = record;

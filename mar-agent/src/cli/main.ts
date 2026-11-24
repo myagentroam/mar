@@ -202,14 +202,7 @@ async function modelsCommand(
   const defaultReasoningEffortOption = option('--default-reasoning-effort');
   const model: CliModelConfiguration = {
     useResourceUrl: existing?.useResourceUrl ?? false,
-    ...(existing === undefined
-      ? { contextGcMode: 'off' as const }
-      : {
-          ...(existing.contextGcMode === undefined
-            ? {}
-            : { contextGcMode: existing.contextGcMode }),
-          gcEnabled: existing.gcEnabled ?? true
-        }),
+    contextGcMode: existing?.contextGcMode ?? 'off',
     id,
     name: required(option('--name', existing?.name), '--name'),
     protocol,

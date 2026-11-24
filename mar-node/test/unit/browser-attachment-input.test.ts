@@ -1,5 +1,10 @@
+import sharp from 'sharp';
 import { expect, it, vi } from 'vitest';
-import type { BrowserPageInput } from '@myagentroam/protocol';
+import {
+  BrowserFrameReceiver,
+  type BrowserFrame,
+  type BrowserPageInput
+} from '@myagentroam/protocol';
 import { BrowserAttachment } from '../../src/browser/browser-attachment.js';
 import type { BrowserPageView } from '../../src/browser/browser-page-view.js';
 import { BrowserTabs } from '../../src/browser/browser-tabs.js';
@@ -16,8 +21,12 @@ async function fixture(navigation?: {
   resize: (viewport: typeof size) => Promise<void>;
   navigate: (address: string) => Promise<void>;
 }) {
+  const png = await sharp({ create: { width: 4, height: 3, channels: 3, background: 'white' } })
+    .png()
+    .toBuffer();
   const blocked = Promise.withResolvers<void>();
-  let ready = Promise.withResolvers<void>();
+  const receiver = new BrowserFrameReceiver();
+  const frames: BrowserFrame[] = [];
   let viewVersion = 1;
   let viewport = size;
   let refresh: () => void;
@@ -28,16 +37,15 @@ async function fixture(navigation?: {
   const input = vi.fn(async (action: BrowserPageInput) => {
     if (action.type === 'key' && action.edge === 'down') await blocked.promise;
   });
+  const resize = vi.fn(navigation?.resize ?? (async (_viewport: typeof size) => {}));
+  const startCapture = vi.fn<BrowserPageView['startCapture']>(async (_options, offer) => {
+    offer({ ...size, png });
+    return { stop: async () => {} };
+  });
   const page = {
-    resize: navigation?.resize ?? (async () => {}),
+    resize: navigation?.resize ?? resize,
     navigate: navigation?.navigate,
-    startCapture: async (
-      _options: unknown,
-      offer: (frame: typeof size & { jpeg: Buffer }) => void
-    ) => {
-      offer({ ...size, jpeg: Buffer.from([1]) });
-      return { stop: async () => {} };
-    },
+    startCapture,
     input,
     releaseInput
   } as unknown as BrowserPageView;
@@ -60,16 +68,42 @@ async function fixture(navigation?: {
   const attachment = new BrowserAttachment(
     { resource: tabs, release: vi.fn(), activity },
     {
-      quality: 85,
-      encoder: { encode: async (data, key) => ({ data, key }), close: async () => {} },
-      sendFrame: async () => ready.resolve(),
+      relay: false,
+      sendFrame: async (bytes) => {
+        const frame = receiver.push(bytes);
+        if (frame) frames.push(frame);
+      },
       sendControl,
       failed,
       deadlineMs: 5000
     }
   );
-  await ready.promise;
-  attachment.receive({ type: 'ack', sequence: 1 });
+  const requestFrame = (handshake = false) =>
+    attachment.receive({
+      type: 'rfb',
+      data: Buffer.concat([
+        ...(handshake
+          ? [Buffer.from('RFB 003.008\n'), Buffer.of(1, 1, 2, 0, 0, 1, 255, 255, 255, 33)]
+          : []),
+        Buffer.of(3, 1, 0, 0, 0, 0, 0, 4, 0, 3)
+      ]).toString('base64')
+    });
+  const acknowledgeView = async (version: number) => {
+    let frame: BrowserFrame | undefined;
+    await vi.waitFor(() => {
+      frame = frames.find((value) => value.viewVersion === version);
+      expect(frame).toBeDefined();
+    });
+    attachment.receive({ type: 'ack', sequence: frame!.sequence });
+  };
+  const switchView = () => {
+    viewVersion++;
+    refresh();
+    requestFrame();
+    return viewVersion;
+  };
+  requestFrame(true);
+  await acknowledgeView(1);
   const send = (action: BrowserPageInput) => attachment.receive({ type: 'input', action });
   send(key('down'));
   await vi.waitFor(() => expect(input).toHaveBeenCalledWith(key('down')));
@@ -82,18 +116,72 @@ async function fixture(navigation?: {
     activity,
     blocked,
     releaseInput,
+    frames,
+    resize,
+    startCapture,
+    switchView,
+    acknowledgeView,
     setViewport: (next: typeof size) => {
       viewport = next;
     },
-    nextView: async () => {
-      ready = Promise.withResolvers<void>();
-      viewVersion++;
-      refresh();
-      await ready.promise;
-      attachment.receive({ type: 'ack', sequence: viewVersion });
-    }
+    nextView: () => acknowledgeView(switchView())
   };
 }
+
+it.each(['resize', 'startCapture'] as const)(
+  'ignores a superseded capture %s failure but still reports an active one',
+  async (stage) => {
+    const f = await fixture();
+    const obsolete = Promise.withResolvers<never>();
+    const step = f[stage];
+    const error = new Error('Fixture capture target was lost');
+    try {
+      f.blocked.resolve();
+      step.mockImplementationOnce(() => obsolete.promise);
+      f.switchView();
+      await vi.waitFor(() => expect(step).toHaveBeenCalledTimes(2));
+      const latest = f.switchView();
+      obsolete.reject(error);
+      await f.acknowledgeView(latest);
+      expect(f.frames.map(({ viewVersion }) => viewVersion)).toEqual([1, latest]);
+      expect(f.failed).not.toHaveBeenCalled();
+      const input: BrowserPageInput = { type: 'text', viewVersion: latest, text: 'still live' };
+      f.send(input);
+      await vi.waitFor(() => expect(f.input).toHaveBeenCalledWith(input));
+
+      step.mockImplementationOnce(async () => {
+        throw error;
+      });
+      f.switchView();
+      await vi.waitFor(() =>
+        expect(f.failed).toHaveBeenCalledExactlyOnceWith('BROWSER_CAPTURE_FAILED')
+      );
+    } finally {
+      await f.attachment.close();
+    }
+  }
+);
+
+it('stops a capture that finishes starting after its view was replaced', async () => {
+  const f = await fixture();
+  const late = Promise.withResolvers<Awaited<ReturnType<BrowserPageView['startCapture']>>>();
+  const stop = vi.fn(async () => {});
+  try {
+    f.blocked.resolve();
+    f.startCapture.mockImplementationOnce(() => late.promise);
+    f.switchView();
+    await vi.waitFor(() => expect(f.startCapture).toHaveBeenCalledTimes(2));
+    const latest = f.switchView();
+    late.resolve({ stop });
+    await f.acknowledgeView(latest);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(f.frames.map(({ viewVersion }) => viewVersion)).toEqual([1, latest]);
+    expect(f.failed).not.toHaveBeenCalled();
+  } finally {
+    late.resolve({ stop });
+    await f.attachment.close();
+  }
+});
 
 it.each(['none', 'geometry', 'target', 'target closes', 'resize fails'])(
   'waits for the viewport and rechecks the navigation target (change: %s)',

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { installBrowserContextMenu } from './browser-context-menu.js';
 import { attachBrowserProfileData, writeBrowserDataExtension } from './browser-profile-data.js';
-import { BROWSER_DEVICE_SCALE_FACTOR, BROWSER_VIEWPORT } from './browser-video-config.js';
+import { BROWSER_DEVICE_SCALE_FACTOR, BROWSER_VIEWPORT } from './browser-capture-config.js';
 import { recordBrowserRun, retireBrowserRun, sweepBrowserRuns } from './browser-run-directories.js';
 
 const HTTP_CACHE_BYTES = 128 * 1024 * 1024;

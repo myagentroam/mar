@@ -129,10 +129,7 @@ export class MarAgentRuntimeModelFactory {
           unifiedCompact: configuration.unifiedCompact ?? false,
           titleGeneration: configuration.titleGeneration,
           codeMode: configuration.codeMode,
-          ...(configuration.contextGcMode === undefined
-            ? {}
-            : { contextGcMode: configuration.contextGcMode }),
-          gcEnabled: configuration.gcEnabled ?? true,
+          contextGcMode: configuration.contextGcMode ?? 'off',
           smartCompactEnabled: configuration.smartCompactEnabled ?? false,
           ...(configuration.serviceTier === undefined
             ? {}

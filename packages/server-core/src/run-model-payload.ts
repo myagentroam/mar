@@ -6,12 +6,7 @@ export function assertLegacyModelCompatibility(models: readonly unknown[]): void
     models.some((model) => {
       if (model === null || typeof model !== 'object') return false;
       if ('socks5Url' in model && model.socks5Url !== undefined) return true;
-      const mode = 'contextGcMode' in model ? model.contextGcMode : undefined;
-      return (
-        mode === 'off' ||
-        mode === 'with_thought' ||
-        (mode === undefined && 'gcEnabled' in model && model.gcEnabled === false)
-      );
+      return !('contextGcMode' in model) || model.contextGcMode !== 'auto';
     })
   )
     throw new Error('CAPABILITY_VERSION_UNSUPPORTED');

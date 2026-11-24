@@ -10,14 +10,12 @@ import {
   type BrowserFindOperation,
   type BrowserFindResult,
   type BrowserProfileCommand,
+  type BrowserPictureMode,
+  type BrowserPictureQuality,
   type BrowserTabSnapshot
 } from '@myagentroam/protocol';
 import { createUuid } from '../util/uuid.js';
-import {
-  BrowserAttachmentClient,
-  supportsBrowserVideo,
-  type BrowserStreamSample
-} from './browser-attachment-client.js';
+import { BrowserAttachmentClient, type BrowserStreamSample } from './browser-attachment-client.js';
 import type { BrowserDrawnView } from './browser-viewport.js';
 import { uploadBrowserFiles } from './browser-upload.js';
 import type { WorkbenchHttpService } from './workbench-http-service.js';
@@ -66,6 +64,8 @@ export function createWorkbenchBrowserService(options: {
   const frame = shallowRef<BrowserDrawnView>();
   const tabIcons = shallowRef(new Map<string, { url: string; png: string }>());
   const path = shallowRef<Path>();
+  const pictureMode = shallowRef<BrowserPictureMode>('auto');
+  const pictureQuality = shallowRef<BrowserPictureQuality>();
   const streamSample = shallowRef<BrowserStreamSample>();
   const status = shallowRef<'idle' | 'connecting' | 'ready' | 'failed'>('idle');
   const uploadStatus = shallowRef<'sending' | 'finishing' | 'canceling'>();
@@ -213,8 +213,6 @@ export function createWorkbenchBrowserService(options: {
     try {
       const next = admission.then(async () => {
         await cleanup;
-        const hd =
-          transport && capability.hd && (await supportsBrowserVideo(true).catch(() => false));
         if (!active()) return;
         const grant = browserAttachmentOpenSchema.parse(
           await request({
@@ -229,7 +227,7 @@ export function createWorkbenchBrowserService(options: {
           return;
         }
         connection.attachmentId = grant.attachmentId;
-        return hd ? { ...grant, hd: true as const } : grant;
+        return { ...grant, rfb: true as const };
       });
       admission = next.catch(() => undefined);
       const grant = await next;
@@ -298,6 +296,9 @@ export function createWorkbenchBrowserService(options: {
       }),
       attached() {
         if (!attachedHere()) return;
+        pictureQuality.value = undefined;
+        if (pictureMode.value !== 'auto')
+          connection.data?.send({ type: 'quality', mode: pictureMode.value });
         path.value = route;
         if (capability.foregroundPresence && typeof document !== 'undefined') {
           connection.presence = new AbortController();
@@ -343,6 +344,9 @@ export function createWorkbenchBrowserService(options: {
         frame.value = value;
         status.value = 'ready';
       },
+      quality(value) {
+        if (attachedHere()) pictureQuality.value = value;
+      },
       sample(value) {
         if (attachedHere()) streamSample.value = value;
       },
@@ -369,8 +373,7 @@ export function createWorkbenchBrowserService(options: {
     current = connection;
     status.value = 'connecting';
     try {
-      if (!(await supportsBrowserVideo()))
-        return fail(connection, 'BROWSER_H264_DECODER_UNAVAILABLE');
+      if (!capability.vnc) return fail(connection, 'BROWSER_VNC_UNAVAILABLE');
       if (current !== connection) return;
       const browserId =
         operation.action === 'resume'
@@ -572,6 +575,12 @@ export function createWorkbenchBrowserService(options: {
     tabIcons,
     path,
     streamSample,
+    pictureMode,
+    pictureQuality,
+    selectPictureMode(mode: BrowserPictureMode) {
+      pictureMode.value = mode;
+      current?.data?.send({ type: 'quality', mode });
+    },
     status,
     uploadStatus,
     error,
@@ -607,7 +616,7 @@ export function createWorkbenchBrowserService(options: {
 export type WorkbenchBrowserService = ReturnType<typeof createWorkbenchBrowserService>;
 export type WorkbenchBrowserCapability = BrowserCapability & {
   resizeViewport?: boolean;
-  hd?: boolean;
+  vnc?: boolean;
   downloadProgress?: boolean;
   tabIcons?: boolean;
   nativeTouch?: boolean;

@@ -1,7 +1,6 @@
 export const BROWSER_FRAME_MESSAGE_BYTES = 16 * 1024;
-export const BROWSER_FRAME_MAX_BYTES = 512 * 1024;
-export const BROWSER_VIDEO_CODEC = 'avc1.42001f';
-export const BROWSER_VIDEO_HD_CODEC = 'avc1.420028';
+// Bounded by a full 1920×1080 RGBX framebuffer plus rectangle headers.
+export const BROWSER_FRAME_MAX_BYTES = 8 * 1024 * 1024;
 const HEADER_BYTES = 21;
 const PAYLOAD_BYTES = BROWSER_FRAME_MESSAGE_BYTES - HEADER_BYTES;
 
@@ -22,7 +21,7 @@ function uint(value: number, max: number): boolean {
   return Number.isInteger(value) && value > 0 && value <= max;
 }
 
-/** Encodes one H.264 access unit lazily; waiting for transport capacity need not allocate its remaining chunks. */
+/** Segments one RFB update lazily while the transport waits for capacity. */
 export function* encodeBrowserFrame(
   frame: BrowserFrame
 ): Generator<{ bytes: Uint8Array; final: boolean }> {

@@ -130,7 +130,6 @@ test('model settings follow transactional create, duplicate, update and deletion
     const { socks5Url: _proxy, contextGcMode: _mode, ...duplicateInput } = input;
     const copy = await models.duplicate(userId, created.id, {
       ...duplicateInput,
-      gcEnabled: true,
       name: 'Settings Copy'
     });
     expect(copy).toMatchObject({
@@ -143,7 +142,7 @@ test('model settings follow transactional create, duplicate, update and deletion
     await models.update(userId, created.id, {
       name: 'Updated Source',
       serviceTier: 'flex',
-      gcEnabled: true
+      contextGcMode: 'auto'
     });
     expect(JSON.stringify(await models.listManagedForUser(userId))).not.toContain(input.socks5Url);
     expect(await models.connectionDetails(userId, created.id)).toEqual({
@@ -155,7 +154,7 @@ test('model settings follow transactional create, duplicate, update and deletion
     expect(await models.stored(created.id)).toMatchObject({
       name: 'Updated Source',
       unifiedCompact: true,
-      contextGcMode: 'with_thought',
+      contextGcMode: 'auto',
       serviceTier: 'flex'
     });
 

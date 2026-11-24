@@ -35,7 +35,10 @@ import {
 } from './mysql-schema-support.js';
 import { mailTemplatesZhCN } from './i18n/mail-templates.zh-CN.js';
 import { mailTemplatesEnUS } from './i18n/mail-templates.en-US.js';
-import { MODEL_SETTINGS_MIGRATION } from './model-settings-migration.js';
+import {
+  MODEL_CONTEXT_GC_MODE_MIGRATION,
+  MODEL_SETTINGS_MIGRATION
+} from './model-settings-migration.js';
 
 // Core v9 freezes the complete common installation schema. New changes must use Core v10+.
 export const CORE_MYSQL_BASELINE_VERSION = 9;
@@ -703,5 +706,6 @@ export const CORE_MYSQL_MIGRATIONS = [
       )
         throw new Error('SERVER_DATABASE_SCHEMA_INVALID');
     }
-  }
+  },
+  MODEL_CONTEXT_GC_MODE_MIGRATION
 ] as const;

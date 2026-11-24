@@ -502,7 +502,7 @@ async function provisionStaticTextModel(databaseUrl: string, baseUrl: string): P
     await new ModelSettingsStore().write(
       id,
       'ANTHROPIC_MESSAGES',
-      { version: 1, gcEnabled: true },
+      { version: 1, contextGcMode: 'auto' },
       connection
     );
     return id;

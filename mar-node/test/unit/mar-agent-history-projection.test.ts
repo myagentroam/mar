@@ -12,7 +12,7 @@ const session = {
 } as NodeAgentSession;
 
 describe('MAR Agent history projection', () => {
-  it('replays only a Thought title and never a legacy summary', () => {
+  it('replays a marked Thought title and never a legacy summary', () => {
     const title = '确认单写入者约束';
     const legacy = {
       ...eventBase(2, 'thought-turn'),
@@ -27,7 +27,7 @@ describe('MAR Agent history projection', () => {
     expect(turns[0]?.items.map(({ kind, payload }) => ({ kind, payload }))).toEqual([
       {
         kind: 'reasoning',
-        payload: { representation: 'summary', sections: [{ index: 0, text: title }] }
+        payload: { representation: 'summary', sections: [{ index: 0, text: `✦ ${title}` }] }
       }
     ]);
   });

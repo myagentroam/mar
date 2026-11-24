@@ -2,6 +2,8 @@
 import { ref, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarPopover } from '@myagentroam/mar-ui/popover';
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import type { BrowserPictureMode, BrowserPictureQuality } from '@myagentroam/protocol';
 import type { BrowserStreamSample } from '../../service/browser-attachment-client.js';
 import type { BrowserDrawnView } from '../../service/browser-viewport.js';
 import { useI18n } from 'vue-i18n';
@@ -12,7 +14,11 @@ const props = defineProps<{
   frame?: BrowserDrawnView | undefined;
   sample?: BrowserStreamSample | undefined;
   disabled?: boolean;
+  mode: BrowserPictureMode;
+  quality?: BrowserPictureQuality | undefined;
 }>();
+const emit = defineEmits<{ quality: [mode: BrowserPictureMode] }>();
+const modes = ['auto', 'low', 'medium', 'high'] as const;
 const { t, n } = useI18n();
 const open = ref(false);
 const panelId = useId();
@@ -64,8 +70,22 @@ function bitrate(bits: number): string {
         <dt>{{ t('browser.performance.decodedResolution') }}</dt>
         <dd>{{ frame ? `${frame.raster.width} × ${frame.raster.height}` : '—' }}</dd>
         <dt>{{ t('browser.performance.codec') }}</dt>
-        <dd>{{ frame ? 'H.264' : '—' }}</dd>
+        <dd>{{ frame ? t('browser.performance.rfbTight') : '—' }}</dd>
+        <dt>{{ t('browser.performance.quality') }}</dt>
+        <dd>{{ quality ? t(`browser.performance.${quality}`) : '—' }}</dd>
       </dl>
+      <MarSelect
+        :model-value="mode"
+        :aria-label="t('browser.performance.qualityMode')"
+        @change="emit('quality', $event as BrowserPictureMode)"
+      >
+        <MarOption
+          v-for="value in modes"
+          :key="value"
+          :value="value"
+          :label="t(`browser.performance.${value}`)"
+        />
+      </MarSelect>
       <p>{{ t('browser.performance.hint') }}</p>
     </section>
   </MarPopover>

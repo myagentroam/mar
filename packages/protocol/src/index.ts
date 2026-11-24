@@ -898,13 +898,6 @@ export const imageGenerationCatalogSchema = z
 export const marAgentContextGcModeSchema = z.enum(['off', 'auto', 'with_thought']);
 export type MarAgentContextGcMode = z.infer<typeof marAgentContextGcModeSchema>;
 
-export function resolveMarAgentContextGcMode(model: {
-  contextGcMode?: MarAgentContextGcMode | undefined;
-  gcEnabled?: boolean | undefined;
-}): MarAgentContextGcMode {
-  return model.contextGcMode ?? (model.gcEnabled === false ? 'off' : 'auto');
-}
-
 const marAgentModelShape = {
   metadata: z
     .object({ useResourceUrl: z.boolean().default(false) })
@@ -926,7 +919,6 @@ const marAgentModelShape = {
   titleGeneration: z.boolean().default(false),
   codeMode: z.boolean().default(false),
   contextGcMode: marAgentContextGcModeSchema.optional(),
-  gcEnabled: z.boolean().default(true),
   serviceTier: marAgentResponsesServiceTierSchema.optional(),
   hostedWebSearch: z.boolean(),
   responsesTransport: marAgentResponsesTransportSchema.optional(),
@@ -1018,7 +1010,6 @@ export interface MarAgentModelSummary {
   titleGeneration: boolean;
   codeMode: boolean;
   contextGcMode?: MarAgentContextGcMode;
-  gcEnabled?: boolean;
   serviceTier?: MarAgentResponsesServiceTier;
   hostedWebSearch: boolean;
   responsesTransport?: MarAgentResponsesTransport;
@@ -2044,7 +2035,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   terminalDirect: terminalDirectCapabilitySchema.optional(),
   browser: browserCapabilitySchema.optional(),
   browserViewportResize: z.literal(true).optional(),
-  browserHd: z.literal(true).optional(),
+  browserVnc: z.literal(true).optional(),
   browserTabIcons: z.literal(true).optional(),
   browserAgentActivity: z.literal(true).optional(),
   browserForegroundPresence: z.literal(true).optional(),

@@ -190,7 +190,7 @@ test('root typecheck builds common declaration prerequisites before recursive ch
   const packageJson = JSON.parse(await readFile(join(ossRoot, 'package.json'), 'utf8'));
   assert.equal(
     packageJson.scripts.typecheck,
-    'pnpm --filter @myagentroam/protocol build && pnpm --filter @myagentroam/code-navigation build && pnpm --filter @myagentroam/agent build && pnpm --filter @myagentroam/server-core build && pnpm -r typecheck && tsc -p tsconfig.tests.json'
+    'pnpm --filter @myagentroam/protocol build && pnpm --filter @myagentroam/code-navigation build && pnpm --filter @myagentroam/browser-vnc build && pnpm --filter @myagentroam/agent build && pnpm --filter @myagentroam/server-core build && pnpm -r typecheck && tsc -p tsconfig.tests.json'
   );
 });
 
