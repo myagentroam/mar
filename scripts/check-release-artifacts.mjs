@@ -14,6 +14,16 @@ const privateRepoFile =
 const privateIdentifier =
   /(?:my-agent-roam-enterprise|mar-server-enterprise|mar-web-enterprise|packages\/enterprise-[a-z0-9-]+|harness\/|\brepo\/(?:routes|benchmarks)\.json\b|\bscripts\/repo\/|\bdocs\/guides\/REPO_ENGINEERING\.md\b|docs\/design\/)/u;
 const inspectableReleaseText = /\.(?:js|mjs|css|html|json|webmanifest|txt)$/u;
+export const nodeBrowserPackageFiles = new Set([
+  'scripts/install-web-browser.mjs',
+  'scripts/browser-bin/cancel-launch.mjs',
+  'scripts/browser-bin/close-scope.mjs',
+  'scripts/browser-bin/launch-lock.mjs',
+  'scripts/browser-bin/playwright-cli',
+  'scripts/browser-bin/playwright-cli.cmd',
+  'scripts/browser-bin/playwright-isolated.json',
+  'scripts/browser-bin/shared-resource.mjs'
+]);
 export const binaryVendorAllowlist = new Set([
   'vendor/ripgrep/LICENSE-MIT',
   'vendor/ripgrep/UNLICENSE',
@@ -197,15 +207,7 @@ export function unexpectedNpmPackageFiles(packageName, files) {
   return files.filter(
     (path) =>
       !['package.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'NOTICE'].includes(path) &&
-      !(
-        isNode &&
-        [
-          'scripts/install-web-browser.mjs',
-          'scripts/browser-bin/playwright-cli',
-          'scripts/browser-bin/playwright-cli.cmd',
-          'scripts/browser-bin/playwright-isolated.json'
-        ].includes(path)
-      ) &&
+      !(isNode && nodeBrowserPackageFiles.has(path)) &&
       !(isNode && path === 'dist/config.d.ts') &&
       !(binaries && binaries.has(path)) &&
       (!path.startsWith('dist/') ||

@@ -101,6 +101,23 @@ test('Node packages allow only the declared public config type and reject other 
   }
 });
 
+test('public package inspection accepts the exact runtime browser helpers only in Node', () => {
+  const helpers = [
+    'cancel-launch.mjs',
+    'close-scope.mjs',
+    'launch-lock.mjs',
+    'playwright-cli',
+    'playwright-cli.cmd',
+    'playwright-isolated.json',
+    'shared-resource.mjs'
+  ].map((name) => `scripts/browser-bin/${name}`);
+  const unknown = 'scripts/browser-bin/unknown.mjs';
+  assert.deepEqual(unexpectedNpmPackageFiles('@myagentroam/node', [...helpers, unknown]), [
+    unknown
+  ]);
+  assert.deepEqual(unexpectedNpmPackageFiles('@myagentroam/agent', helpers), helpers);
+});
+
 test('the independent subagent peer resolves the unpublished workspace Agent from source', async () => {
   const extension = JSON.parse(
     await readFile(join(ossRoot, 'mar-agent/extensions/subagent/package.json'), 'utf8')

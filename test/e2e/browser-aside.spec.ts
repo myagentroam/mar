@@ -128,6 +128,15 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
   await browserAsideJourney(page, baseURL, testInfo, 'full');
 });
 
+test('Browser Aside finds and paints text in open shadow trees', async ({
+  page,
+  baseURL,
+  browserName
+}, testInfo) => {
+  test.skip(browserName !== 'chromium', 'This journey uses the real Chromium browser.');
+  await browserAsideJourney(page, baseURL, testInfo, 'find');
+});
+
 async function submitWorkspacePath(page: Page, row: Locator, path: string): Promise<void> {
   const name = /^(Save to Workspace|保存到工作区)$/iu;
   await row.getByRole('button', { name }).click();
@@ -140,7 +149,7 @@ async function browserAsideJourney(
   page: Page,
   baseURL: string | undefined,
   testInfo: TestInfo,
-  scenario: 'interaction' | 'close-last' | 'full'
+  scenario: 'interaction' | 'close-last' | 'full' | 'find'
 ): Promise<void> {
   test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), 'mar-browser-aside-'));
@@ -223,7 +232,20 @@ async function browserAsideJourney(
         <p>Look for the <strong>Lantern</strong> at the bend in the trail.</p>
         <h2>03 · The return</h2>
         <p>At dusk, a lantern marks the way back to the harbour.</p>
-        <p hidden>lantern</p>`);
+        <p hidden>lantern</p>
+        <div id="shadow-fixture"><span>shadow beacon</span><span slot="unused">shadow beacon</span></div>
+        <div id="reordered-fixture"><span>signal</span><span>reordered </span></div>
+        <script>
+          document.querySelector('#shadow-fixture').attachShadow({ mode: 'open' }).innerHTML =
+            '<a href="#beacon">Shadow <strong>beacon</strong></a><slot>shadow beacon</slot>' +
+            '<span hidden>shadow beacon</span><div id="nested"></div>';
+          document.querySelector('#shadow-fixture').shadowRoot.querySelector('#nested')
+            .attachShadow({ mode: 'open' }).textContent = 'Shadow beacon';
+          const reordered = document.querySelector('#reordered-fixture');
+          const manual = reordered.attachShadow({ mode: 'open', slotAssignment: 'manual' });
+          manual.innerHTML = '<slot></slot>';
+          manual.firstChild.assign(reordered.lastChild, reordered.firstChild);
+        </script>`);
       return;
     }
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(`<!doctype html>
@@ -588,6 +610,10 @@ async function browserAsideJourney(
       return;
     }
     await expectViewportFits();
+    if (scenario === 'find') {
+      await verifyFind(`${origin}/ice`);
+      return;
+    }
     if (scenario === 'interaction') {
       await expect
         .poll(() =>
@@ -995,7 +1021,7 @@ async function browserAsideJourney(
       await expect(address).toHaveValue(`${origin}/relay`);
     }
 
-    await test.step('Find remote page text with the browser shortcut and paint both highlights', async () => {
+    async function verifyFind(previousUrl: string) {
       await address.fill(`${origin}/page-find`);
       await address.press('Enter');
       await expect(address).toHaveValue(`${origin}/page-find`);
@@ -1041,6 +1067,18 @@ async function browserAsideJourney(
       });
       await query.fill('not-in-the-fixture');
       await expect(count).toHaveText('0/0');
+      await expect.poll(visibleMarks).toEqual({ yellow: false, orange: false });
+      await query.fill('shadow beacon');
+      await expect(count).toHaveText('1/3');
+      await expect.poll(visibleMarks).toEqual({ yellow: true, orange: true });
+      await query.press('Shift+Enter');
+      await expect(count).toHaveText('3/3');
+      await query.fill('not-in-the-fixture');
+      await expect(count).toHaveText('0/0');
+      await expect.poll(visibleMarks).toEqual({ yellow: false, orange: false });
+      await query.fill('reordered signal');
+      await expect(count).toHaveText('1/1');
+      await expect.poll(visibleMarks).toEqual({ yellow: false, orange: true });
       await query.fill('lantern');
       await expect(count).toHaveText('1/3');
       await expect.poll(visibleMarks).toEqual({ yellow: true, orange: true });
@@ -1049,8 +1087,10 @@ async function browserAsideJourney(
       await expect(address).toBeFocused();
       await expect.poll(visibleMarks).toEqual({ yellow: false, orange: false });
       await page.getByRole('button', { name: /^(Back|后退)$/u }).click();
-      await expect(address).toHaveValue(`${origin}/relay`);
-    });
+      await expect(address).toHaveValue(previousUrl);
+    }
+    await test.step('Find remote page text with the browser shortcut and paint both highlights', () =>
+      verifyFind(`${origin}/relay`));
 
     const longHistoryPath = `/long-history?value=${'a'.repeat(350)}`;
     const longHistoryUrl = origin + longHistoryPath;

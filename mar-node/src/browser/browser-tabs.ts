@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import {
+  BROWSER_CONTROL_MAX_BYTES,
   isBrowserWorkspacePreview,
   type BrowserTabSnapshot,
   type BrowserUpload
@@ -26,6 +27,8 @@ type Tab = {
 };
 
 const ERROR_PAGE = 'chrome-error://chromewebdata/';
+// The attachment adds its envelope and optional subscription flags and counters.
+const TAB_SNAPSHOT_BYTES = BROWSER_CONTROL_MAX_BYTES - 512;
 
 function restorableAddress(value: string): string | undefined {
   const url = URL.parse(value);
@@ -164,26 +167,37 @@ export class BrowserTabs {
   snapshot(): BrowserTabSnapshot {
     const dialog = this.dialogs.snapshot();
     const fileChooser = this.files.snapshot();
-    return {
+    const snapshot: BrowserTabSnapshot = {
       activeId: this.activeId,
       viewVersion: this.viewVersion,
       downloadVersion: this.downloads.version,
-      tabs: [...this.tabs.values()].map(
-        ({ id, page, title, navigation, canGoBack, canGoForward, errorUrl }) => ({
-          id,
-          url: (page.url() === ERROR_PAGE ? errorUrl : page.url()).slice(
-            0,
-            id === this.activeId ? 8192 : 1024
-          ),
-          title,
-          loading: navigation !== undefined,
-          canGoBack,
-          canGoForward
-        })
-      ),
+      tabs: [...this.tabs.values()].map(({ id, title, navigation, canGoBack, canGoForward }) => ({
+        id,
+        url: '',
+        title,
+        loading: navigation !== undefined,
+        canGoBack,
+        canGoForward
+      })),
       ...(dialog ? { dialog } : {}),
       ...(fileChooser ? { fileChooser } : {})
     };
+    let remaining = TAB_SNAPSHOT_BYTES - Buffer.byteLength(JSON.stringify(snapshot));
+    const active = snapshot.tabs.find(({ id }) => id === this.activeId);
+    const ordered = active
+      ? [active, ...snapshot.tabs.filter((tab) => tab !== active)]
+      : snapshot.tabs;
+    for (const tab of ordered) {
+      const { page, errorUrl } = this.get(tab.id);
+      const committed = page.url();
+      const url = committed === ERROR_PAGE ? errorUrl : committed;
+      if (url.length > 8192) continue;
+      const bytes = Buffer.byteLength(JSON.stringify(url)) - 2; // Replace the empty string.
+      if (bytes > remaining) continue;
+      tab.url = url;
+      remaining -= bytes;
+    }
+    return snapshot;
   }
 
   observe(changed: () => void): () => void {

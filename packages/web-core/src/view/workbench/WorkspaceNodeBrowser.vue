@@ -286,7 +286,10 @@ const external = computed(() => {
 const tabs = computed(
   () =>
     snapshot.value?.tabs.map((tab) => {
-      const label = tab.url === 'about:blank' ? t('browser.blank') : tab.title || tab.url;
+      const label =
+        tab.url === 'about:blank'
+          ? t('browser.blank')
+          : tab.title || tab.url || t('browser.untitledTab');
       return {
         name: tab.id,
         label,

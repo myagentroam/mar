@@ -53,6 +53,7 @@ export const browserZhCN = {
   tab: '新建标签页',
   addAsideTab: '添加辅助面标签页',
   blank: '空白页',
+  untitledTab: '无标题页面',
   blankAddress: '输入网址',
   closeTab: '关闭 {tab}',
   viewport: '远程浏览器页面',

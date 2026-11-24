@@ -56,6 +56,7 @@ export const browserEnUS = {
   tab: 'New tab',
   addAsideTab: 'Add Aside tab',
   blank: 'Blank',
+  untitledTab: 'Untitled page',
   blankAddress: 'Enter a web address',
   closeTab: 'Close {tab}',
   viewport: 'Remote browser page',

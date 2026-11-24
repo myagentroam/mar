@@ -26,7 +26,10 @@ test('One Reconnect click opens a usable browser when the last attachment is sta
     await restore.click();
     await expect(page.locator('body')).toHaveAttribute(
       'data-restored-addresses',
-      '["https://example.test/previous"]'
+      JSON.stringify([
+        `https://example.test/archive?padding=${'a'.repeat(1600)}&chapter=kept#section`,
+        'https://example.test/previous'
+      ])
     );
     await expect(restore).toHaveCount(0);
   } finally {
@@ -44,6 +47,7 @@ test('One Reconnect click rejoins a live browser without offering tab restoratio
     await page.goto(`${fixture.url}browser-input.html?live-reconnect`);
     await page.getByRole('button', { name: 'Reconnect', exact: true }).click();
     await expect(page.getByRole('tab', { name: 'Previous page', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Untitled page', exact: true })).toBeVisible();
     await expect(page.locator('body')).toHaveAttribute('data-reconnect-opens', '1');
     await expect(page.getByRole('button', { name: 'Reopen recent tabs' })).toHaveCount(0);
     await expect(page.locator('body')).not.toHaveAttribute('data-restored-addresses');
