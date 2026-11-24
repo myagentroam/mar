@@ -424,7 +424,7 @@ describe('Server hosted conversation routes', () => {
       outputCapabilities: model.outputCapabilities,
       reasoningEfforts: model.reasoningEfforts,
       defaultReasoningEffort: 'high',
-      gcEnabled: true,
+      contextGcMode: 'auto',
       titleGeneration: false,
       codeMode: false,
       conversationModel: true,
@@ -816,8 +816,8 @@ describe('Server hosted conversation routes', () => {
         workspaceId: 'workspace-target',
         name: 'Office',
         description: 'Office template',
-        allowedModels: [{ modelId: nodeModelTwo.modelId, name: nodeModelTwo.name }],
-        defaultModelId: nodeModelTwo.modelId
+        allowedModels: [{ modelId: nodeModelTwo.id, name: nodeModelTwo.name }],
+        defaultModelId: nodeModelTwo.id
       };
       await seedVersion(node, 'office-v1', 2, targetDraft);
       const original = await createConversation(node, [nodeModelOne, nodeModelTwo]);
@@ -868,7 +868,7 @@ describe('Server hosted conversation routes', () => {
         payload: { expectedTemplateId: original.templateId, templateId: target.id }
       });
 
-      expect(switched.statusCode).toBe(200);
+      expect(switched.statusCode, switched.json().error?.code).toBe(200);
       expect(switched.json()).toMatchObject({
         conversation: {
           id: original.id,
@@ -1866,6 +1866,7 @@ const model: MarAgentRuntimeModelConfiguration = {
   inputCapabilities: ['TEXT'],
   outputCapabilities: ['TEXT'],
   reasoningEfforts: ['high'],
+  contextGcMode: 'auto',
   hostedWebSearch: false,
   responsesPreviousResponseId: false,
   enabled: true

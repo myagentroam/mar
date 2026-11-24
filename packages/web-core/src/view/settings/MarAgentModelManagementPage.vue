@@ -31,7 +31,6 @@ import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
   modelSocks5UrlSchema,
-  resolveMarAgentContextGcMode,
   resolveMarAgentDefaultReasoningEffort
 } from '@myagentroam/protocol';
 import type {
@@ -787,7 +786,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
     unifiedCompact: model.unifiedCompact ?? false,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
-    contextGcMode: resolveMarAgentContextGcMode(model),
+    contextGcMode: model.contextGcMode ?? 'off',
     serviceTier: model.serviceTier ?? 'default',
     hostedWebSearch: model.hostedWebSearch,
     useResourceUrl: model.metadata?.useResourceUrl ?? false,

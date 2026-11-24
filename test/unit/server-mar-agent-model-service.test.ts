@@ -318,7 +318,7 @@ function modelEditDatabase(
   let model: ReturnType<typeof modelServiceRow> | undefined = modelServiceRow(modelId);
   const originalName = model.name;
   let settings = new Map([
-    [configKey, '{"version":1,"gcEnabled":true,"unifiedCompact":false}'],
+    [configKey, '{"version":1,"contextGcMode":"auto","unifiedCompact":false}'],
     [inputKey, '{"useResourceUrl":false}']
   ]);
   let nextTransaction = 0;
@@ -473,7 +473,7 @@ describe('MAR Agent model service', () => {
       const { modelId, service } = db;
       const update = service.update(7, modelId, {
         name: 'Edited',
-        gcEnabled: false,
+        contextGcMode: 'off',
         metadata: { useResourceUrl: true }
       });
       let remove: Promise<void> | undefined;
@@ -490,13 +490,13 @@ describe('MAR Agent model service', () => {
         await expect(update).resolves.toMatchObject({
           id: modelId,
           name: 'Edited',
-          gcEnabled: false,
+          contextGcMode: 'off',
           metadata: { useResourceUrl: true }
         });
         expect(db.committed).toEqual([1]);
         expect(JSON.parse(db.state().settings.get(db.configKey)!)).toMatchObject({
           version: 1,
-          gcEnabled: false
+          contextGcMode: 'off'
         });
         expect(JSON.parse(db.state().settings.get(db.inputKey)!)).toEqual({ useResourceUrl: true });
         expect(db.audit.mock.calls.map(([event]) => event.eventType)).toEqual(['model.updated']);
@@ -921,7 +921,7 @@ describe('MAR Agent model service', () => {
       expect(modelSettingsDocument(db.raw.execute, 'grok-id')).toEqual({
         version: 1,
         unifiedCompact: false,
-        gcEnabled: true,
+        contextGcMode: 'off',
         hostedWebSearch,
         serviceTier: 'default',
         responsesTransport,
@@ -1020,7 +1020,7 @@ describe('MAR Agent model service', () => {
       expect(modelSettingsDocument(db.raw.execute, 'http-model')).toEqual({
         version: 1,
         unifiedCompact: false,
-        gcEnabled: true,
+        contextGcMode: 'off',
         hostedWebSearch: false,
         responsesTransport: { transport: 'HTTP', httpVersion },
         responsesPreviousResponseId: true
@@ -1529,7 +1529,7 @@ describe('MAR Agent model service', () => {
       expect(modelSettingsDocument(createDatabase.raw.execute, 'responses-id')).toEqual({
         version: 1,
         unifiedCompact: false,
-        gcEnabled: true,
+        contextGcMode: 'off',
         hostedWebSearch: false,
         serviceTier: 'auto',
         responsesTransport: { transport: 'WEBSOCKET' },
@@ -1567,7 +1567,7 @@ describe('MAR Agent model service', () => {
       expect(modelSettingsDocument(updateDatabase.raw.execute, 'responses-id')).toEqual({
         version: 1,
         unifiedCompact: false,
-        gcEnabled: true,
+        contextGcMode: 'off',
         hostedWebSearch: false,
         serviceTier: 'auto',
         responsesTransport: { transport: 'HTTP', httpVersion: '2' },
@@ -1636,7 +1636,7 @@ describe('MAR Agent model service', () => {
     expect(modelSettingsDocument(db.raw.execute, 'codex-id')).toEqual({
       version: 1,
       unifiedCompact: false,
-      gcEnabled: true,
+      contextGcMode: 'off',
       hostedWebSearch: true,
       serviceTier: 'default',
       responsesTransport: { transport: 'WEBSOCKET' },
@@ -1842,7 +1842,7 @@ describe('MAR Agent model service', () => {
     expect(modelSettingsDocument(db.raw.execute, 'codex-id')).toEqual({
       version: 1,
       unifiedCompact: false,
-      gcEnabled: true,
+      contextGcMode: 'off',
       hostedWebSearch: true,
       serviceTier: 'priority',
       responsesTransport: { transport: 'WEBSOCKET' },
@@ -2838,7 +2838,7 @@ describe('MAR Agent model service', () => {
       expect(modelSettingsDocument(execute, String(firstParams[0]))).toEqual({
         version: 1,
         unifiedCompact: false,
-        gcEnabled: true,
+        contextGcMode: 'off',
         hostedWebSearch: true,
         serviceTier: 'default',
         responsesTransport: { transport: 'WEBSOCKET' },
@@ -2853,7 +2853,7 @@ describe('MAR Agent model service', () => {
       expect(modelSettingsDocument(execute, String(miniParams[0]))).toEqual({
         version: 1,
         unifiedCompact: false,
-        gcEnabled: true,
+        contextGcMode: 'off',
         hostedWebSearch: false,
         serviceTier: 'default',
         responsesTransport: { transport: 'WEBSOCKET' },
@@ -3085,7 +3085,7 @@ describe('MAR Agent model service', () => {
       expect(modelSettingsDocument(execute, String(insert[1]?.[0]))).toEqual({
         version: 1,
         unifiedCompact: false,
-        gcEnabled: true,
+        contextGcMode: 'off',
         hostedWebSearch: true,
         serviceTier: 'default',
         responsesTransport: expectedTransport,

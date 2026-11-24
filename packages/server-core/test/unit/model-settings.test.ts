@@ -39,34 +39,25 @@ describe('model settings documents', () => {
     }
   );
   it.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
-    'round-trips explicit GC control for %s and accepts legacy documents',
+    'round-trips only the explicit GC mode for %s and defaults new settings to Off',
     (protocol) => {
-      for (const gcEnabled of [true, false]) {
-        const settings = modelSettingsFromInput({ protocol, hostedWebSearch: false, gcEnabled });
-        expect(parseStoredModelSettings(protocol, JSON.stringify(settings)).gcEnabled).toBe(
-          gcEnabled
-        );
-      }
       for (const contextGcMode of ['off', 'auto', 'with_thought'] as const) {
         const settings = modelSettingsFromInput({
           protocol,
           hostedWebSearch: false,
-          contextGcMode,
-          gcEnabled: contextGcMode === 'off'
+          contextGcMode
         });
-        expect(parseStoredModelSettings(protocol, JSON.stringify(settings))).toMatchObject({
-          contextGcMode,
-          gcEnabled: contextGcMode !== 'off'
-        });
+        expect(parseStoredModelSettings(protocol, JSON.stringify(settings)).contextGcMode).toBe(
+          contextGcMode
+        );
+        expect(settings).not.toHaveProperty('gcEnabled');
       }
-      const legacy =
-        protocol === 'ANTHROPIC_MESSAGES'
-          ? { version: 1 }
-          : { version: 1, hostedWebSearch: false, responsesPreviousResponseId: false };
-      expect(parseStoredModelSettings(protocol, JSON.stringify(legacy)).gcEnabled ?? true).toBe(
-        true
+      const defaults = modelSettingsFromInput({ protocol, hostedWebSearch: false });
+      expect(defaults.contextGcMode).toBe('off');
+      expect(() => parseModelSettings(protocol, { ...defaults, contextGcMode: true })).toThrow(
+        'MAR_AGENT_MODEL_CONFIG_INVALID'
       );
-      expect(() => parseModelSettings(protocol, { ...legacy, gcEnabled: 'false' })).toThrow(
+      expect(() => parseModelSettings(protocol, { ...defaults, gcEnabled: true })).toThrow(
         'MAR_AGENT_MODEL_CONFIG_INVALID'
       );
     }

@@ -47,6 +47,7 @@ const model: AgentModelConfiguration = {
   defaultReasoningEffort: 'medium',
   titleGeneration: false,
   codeMode: false,
+  contextGcMode: 'auto',
   hostedWebSearch: false,
   responsesPreviousResponseId: false,
   enabled: true
@@ -235,7 +236,7 @@ describe('context GC runtime integration', () => {
     }
   });
 
-  it.each([undefined, true, false, 'with_thought'] as const)(
+  it.each([undefined, 'auto', 'off', 'with_thought'] as const)(
     'honors model GC setting %s in a real SDK run',
     async (setting) => {
       const home = await mkdtemp(join(tmpdir(), 'mar-gc-model-setting-'));
@@ -243,11 +244,7 @@ describe('context GC runtime integration', () => {
       await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
       const configured = {
         ...model,
-        ...(setting === 'with_thought'
-          ? { contextGcMode: setting }
-          : setting === undefined
-            ? {}
-            : { gcEnabled: setting })
+        contextGcMode: setting
       };
       const adapter = new ContextGcAdapter(configured);
       const gc = vi.spyOn(ContextGcRuntime.prototype, 'run');
@@ -271,7 +268,7 @@ describe('context GC runtime integration', () => {
       try {
         const records = await store.read(session.id);
         const checkpoint = records.find((record) => record.type === 'context.gc.completed');
-        expect(checkpoint !== undefined).toBe(setting !== false);
+        expect(checkpoint !== undefined).toBe(setting === 'auto' || setting === 'with_thought');
         if (setting === 'with_thought') {
           const priorUsage = records.find(
             (record) =>
@@ -286,8 +283,8 @@ describe('context GC runtime integration', () => {
           expect(adapter.requests.at(-1)?.messages).toContainEqual(
             expect.objectContaining({ role: 'tool_call', name: 'thought', callId: 'thought-12' })
           );
-        } else if (setting === false) expect(gc).not.toHaveBeenCalled();
-        else expect(gc).toHaveBeenCalled();
+        } else if (setting === 'auto') expect(gc).toHaveBeenCalled();
+        else expect(gc).not.toHaveBeenCalled();
       } finally {
         await store.close();
       }

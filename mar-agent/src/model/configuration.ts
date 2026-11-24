@@ -36,13 +36,6 @@ export type AgentReasoningEffort = z.infer<typeof agentReasoningEffortSchema>;
 const contextGcModeSchema = z.enum(['off', 'auto', 'with_thought']);
 export type ContextGcMode = z.infer<typeof contextGcModeSchema>;
 
-export function resolveContextGcMode(model: {
-  contextGcMode?: ContextGcMode | undefined;
-  gcEnabled?: boolean | undefined;
-}): ContextGcMode {
-  return model.contextGcMode ?? (model.gcEnabled === false ? 'off' : 'auto');
-}
-
 const modelFieldsSchema = z
   .object({
     id: z
@@ -69,7 +62,6 @@ const modelFieldsSchema = z
     titleGeneration: z.boolean().optional().default(false),
     codeMode: z.boolean().optional().default(false),
     contextGcMode: contextGcModeSchema.optional(),
-    gcEnabled: z.boolean().optional(),
     smartCompactEnabled: z.boolean().optional(),
     useResourceUrl: z.boolean().optional().default(false),
     fastMode: z.boolean().optional(),

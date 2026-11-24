@@ -4,7 +4,6 @@ import {
   XAI_SUBSCRIPTION_BASE_URL,
   marAgentRuntimeModelConfigurationSchema,
   resolveMarAgentDefaultReasoningEffort,
-  resolveMarAgentContextGcMode,
   type MarAgentRuntimeCredentialCapability,
   type MarAgentRuntimeModelConfiguration,
   type MarAgentStoredModelConfiguration,
@@ -309,12 +308,13 @@ function assertContextGcCapability(
   model: MarAgentStoredModelConfiguration,
   capability: MarAgentRuntimeCredentialCapability | undefined
 ): void {
-  const mode = resolveMarAgentContextGcMode(model);
-  if (mode === 'off' && capability?.contextGcControl !== true)
-    throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
-  if (mode === 'with_thought' && capability?.contextGcWithThought !== true)
+  const mode = model.contextGcMode ?? 'off';
+  if (mode !== 'auto' && capability?.contextGcWithThought !== true)
     throw Object.assign(new Error('CAPABILITY_VERSION_UNSUPPORTED'), {
-      publicMessage: 'Upgrade this Node to use GC with thought.'
+      publicMessage:
+        mode === 'with_thought'
+          ? 'Upgrade this Node to use GC with thought.'
+          : 'Upgrade this Node to turn off Context GC.'
     });
 }
 
@@ -383,8 +383,7 @@ function runtimeModel(
     subagentModel: model.subagentModel ?? false,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
-    ...(model.contextGcMode === undefined ? {} : { contextGcMode: model.contextGcMode }),
-    gcEnabled: resolveMarAgentContextGcMode(model) !== 'off',
+    contextGcMode: model.contextGcMode ?? 'off',
     smartCompactEnabled,
     unifiedCompact: model.unifiedCompact ?? false,
     ...(supportsTier ? { serviceTier } : {}),

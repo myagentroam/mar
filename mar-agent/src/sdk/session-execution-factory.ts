@@ -1,5 +1,4 @@
 import type { ModelImage } from '../model/image.js';
-import { resolveContextGcMode } from '../model/configuration.js';
 import { restoreMessages } from '../runtime/context/restore.js';
 import { latestModelUsage, reasoningEffortBaseline } from '../runtime/context/usage.js';
 import { publicModelUsage } from '../runtime/event-projection.js';
@@ -948,7 +947,7 @@ export function createSessionExecutionFactory(ports: {
             executionId,
             turnId
           });
-          const contextGcMode = resolveContextGcMode(selectedModel);
+          const contextGcMode = selectedModel.contextGcMode ?? 'off';
           const contextCoordinator = new ExecutionContextCoordinator({
             initialBoundary: restoredMessageCount,
             messages,

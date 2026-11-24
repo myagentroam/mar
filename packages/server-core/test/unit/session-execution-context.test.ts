@@ -26,7 +26,8 @@ describe('shared execution preparation', () => {
     const get = vi.fn(async () => `instructions-${revision}`);
     const runtimeForUser = vi.fn(async (_userId: number, modelId: string) => ({
       id: modelId,
-      credential: `model-${revision}`
+      credential: `model-${revision}`,
+      contextGcMode: 'auto'
     }));
     const options = {
       user: { userId: 7 },

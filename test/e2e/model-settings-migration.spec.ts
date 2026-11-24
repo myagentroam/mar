@@ -1,12 +1,88 @@
 import { expect, test } from '@playwright/test';
 import mysql from 'mysql2/promise';
-import { MODEL_SETTINGS_MIGRATION } from '../../packages/server-core/src/model-settings-migration.js';
+import {
+  MODEL_CONTEXT_GC_MODE_MIGRATION,
+  MODEL_SETTINGS_MIGRATION
+} from '../../packages/server-core/src/model-settings-migration.js';
 import type { MysqlMigrationConnection } from '../../packages/server-core/src/mysql-migration-contracts.js';
 import {
   createPlaywrightTestDatabase,
   dropPlaywrightTestDatabase,
   resolvePlaywrightTestDatabase
 } from './support/playwright-test-database.js';
+
+test('model GC settings migrate once without changing effective modes or unrelated settings', async () => {
+  const runId = process.env['MAR_TEST_RUN_ID'];
+  if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
+  const target = resolvePlaywrightTestDatabase(`${runId}-model-gc`);
+  await createPlaywrightTestDatabase(target);
+  const connection = await mysql.createConnection(target.databaseUrl);
+  const migration = connection as unknown as MysqlMigrationConnection;
+  try {
+    await connection.query(
+      'CREATE TABLE system_settings (setting_key varchar(191) PRIMARY KEY, setting_value json NOT NULL, updated_at bigint NOT NULL)'
+    );
+    await connection.query('CREATE TABLE mar_agent_models (id varchar(128) PRIMARY KEY)');
+    const models = {
+      enabled: [{ gcEnabled: true }, 'auto'],
+      disabled: [{ gcEnabled: false }, 'off'],
+      unspecified: [{}, 'auto'],
+      thought: [{ gcEnabled: false, contextGcMode: 'with_thought' }, 'with_thought'],
+      current: [{ contextGcMode: 'off' }, 'off']
+    } as const;
+    for (const [id, [fields]] of Object.entries(models)) {
+      await connection.execute('INSERT INTO mar_agent_models VALUES (?)', [id]);
+      await connection.execute('INSERT INTO system_settings VALUES (?,?,42)', [
+        `mar_agent_model_config:${id}`,
+        JSON.stringify({ version: 1, unifiedCompact: true, ...fields })
+      ]);
+    }
+    await connection.execute('INSERT INTO system_settings VALUES (?,?,42)', [
+      'unrelated',
+      JSON.stringify({ gcEnabled: false })
+    ]);
+    const read = async () => {
+      const [rows] = await connection.execute<mysql.RowDataPacket[]>(
+        'SELECT setting_key, setting_value, updated_at FROM system_settings ORDER BY setting_key'
+      );
+      return Object.fromEntries(
+        rows.map(({ setting_key, setting_value, updated_at }) => [
+          setting_key,
+          {
+            value: typeof setting_value === 'string' ? JSON.parse(setting_value) : setting_value,
+            updatedAt: Number(updated_at)
+          }
+        ])
+      );
+    };
+    const before = await read();
+    await expect(
+      MODEL_CONTEXT_GC_MODE_MIGRATION.up({
+        query: migration.query.bind(connection),
+        execute: async (sql, values) => {
+          const result = await migration.execute.call(connection, sql, values);
+          if (sql.startsWith('UPDATE system_settings')) throw new Error('INJECTED_GC_FAILURE');
+          return result;
+        },
+        release: () => undefined
+      })
+    ).rejects.toThrow('INJECTED_GC_FAILURE');
+    expect(await read()).toEqual(before);
+    await MODEL_CONTEXT_GC_MODE_MIGRATION.up(migration);
+    const after = await read();
+    for (const [id, [, contextGcMode]] of Object.entries(models))
+      expect(after[`mar_agent_model_config:${id}`]).toEqual({
+        value: { version: 1, unifiedCompact: true, contextGcMode },
+        updatedAt: 42
+      });
+    expect(after.unrelated).toEqual(before.unrelated);
+    await MODEL_CONTEXT_GC_MODE_MIGRATION.up(migration);
+    expect(await read()).toEqual(after);
+  } finally {
+    await connection.end();
+    await dropPlaywrightTestDatabase(target);
+  }
+});
 
 test('model settings backfill resumes after DDL interruption and rejects missing or conflicting facts', async () => {
   const runId = process.env['MAR_TEST_RUN_ID'];

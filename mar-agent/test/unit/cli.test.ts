@@ -960,6 +960,7 @@ describe('maragent CLI', () => {
           reasoningEfforts: ['low', 'high'],
           defaultReasoningEffort: 'high',
           codeMode: true,
+          contextGcMode: 'off',
           responsesTransport: { transport: 'WEBSOCKET' },
           responsesPreviousResponseId: true
         })
@@ -969,6 +970,8 @@ describe('maragent CLI', () => {
     expect(JSON.parse(raw).models[0]).not.toHaveProperty('responsesEncoding');
     expect(JSON.parse(raw).models[0]).not.toHaveProperty('highDensityCompaction');
     const proxyCatalog = JSON.parse(raw);
+    proxyCatalog.models[0].contextGcMode = 'with_thought';
+    proxyCatalog.models[0].gcEnabled = false;
     proxyCatalog.models[0].socks5Url = 'socks5://fixture-user:fixture-password@proxy.invalid:1080';
     await writeFile(path, JSON.stringify(proxyCatalog));
     await execute(
@@ -986,16 +989,19 @@ describe('maragent CLI', () => {
       ],
       { cwd: process.cwd() }
     );
-    expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({
+    const edited = JSON.parse(await readFile(path, 'utf8'));
+    expect(edited).toMatchObject({
       models: [
         expect.objectContaining({
           reasoningEfforts: ['low'],
           defaultReasoningEffort: 'low',
           codeMode: false,
+          contextGcMode: 'with_thought',
           socks5Url: proxyCatalog.models[0].socks5Url
         })
       ]
     });
+    expect(edited.models[0]).not.toHaveProperty('gcEnabled');
     await execute(
       process.execPath,
       ['dist/cli/main.js', '--home', home, 'models', 'remove', 'coding', '--yes'],

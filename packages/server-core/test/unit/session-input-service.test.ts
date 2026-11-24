@@ -59,6 +59,7 @@ describe('SessionInputService execution entry', () => {
         reasoningEfforts: [],
         hostedWebSearch: false,
         enabled: true,
+        contextGcMode: 'auto',
         credential: { type: 'INLINE_API_KEY', value: 'fixture' }
       });
       const runtimeModels = new MarAgentRuntimeModelService({

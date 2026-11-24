@@ -261,13 +261,13 @@ describe('Model management component behavior', () => {
   );
 
   it.each([
-    { locale: 'zh-CN', initial: undefined, expected: 'auto' },
-    { locale: 'en-US', initial: false, expected: 'off' }
+    { locale: 'zh-CN', initial: undefined, expected: 'off' },
+    { locale: 'en-US', initial: 'auto', expected: 'auto' }
   ] as const)('edits the model GC setting in $locale', async ({ locale, initial, expected }) => {
     i18n.global.locale.value = locale;
     const labels = commonMessages[locale].marAgentModels;
     const request = requestFixture([
-      initial === undefined ? model : { ...model, gcEnabled: initial }
+      initial === undefined ? model : { ...model, contextGcMode: initial }
     ]);
     const view = renderComponent(
       Page,

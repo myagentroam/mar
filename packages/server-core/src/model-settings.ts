@@ -43,7 +43,6 @@ const CHATGPT_BASE_URL = 'https://api.openai.com/v1';
 type ModelSettingsV1 = z.infer<typeof responses> | z.infer<typeof anthropic>;
 export type ModelSettings = ModelSettingsV1 & {
   contextGcMode?: MarAgentModelSummary['contextGcMode'];
-  gcEnabled?: boolean;
   unifiedCompact?: boolean;
   socks5Url?: string;
 };
@@ -101,12 +100,7 @@ export function parseModelSettings(
 ): ModelSettings {
   if (value === null || typeof value !== 'object' || Array.isArray(value))
     throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
-  const { contextGcMode, gcEnabled, unifiedCompact, socks5Url, ...legacy } = value as Record<
-    string,
-    unknown
-  >;
-  if (gcEnabled !== undefined && typeof gcEnabled !== 'boolean')
-    throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
+  const { contextGcMode, unifiedCompact, socks5Url, ...legacy } = value as Record<string, unknown>;
   if (unifiedCompact !== undefined && typeof unifiedCompact !== 'boolean')
     throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
   const proxy = modelSocks5UrlSchema.optional().safeParse(socks5Url);
@@ -115,11 +109,6 @@ export function parseModelSettings(
   return {
     ...parseModelSettingsV1(protocol, legacy),
     ...(mode.data === undefined ? {} : { contextGcMode: mode.data }),
-    ...(mode.data !== undefined
-      ? { gcEnabled: mode.data !== 'off' }
-      : gcEnabled === undefined
-        ? {}
-        : { gcEnabled }),
     ...(unifiedCompact === undefined ? {} : { unifiedCompact }),
     ...(proxy.data === undefined ? {} : { socks5Url: proxy.data })
   };
@@ -148,12 +137,11 @@ export function modelSettingsFromInput(model: {
   serviceTier?: MarAgentModelSummary['serviceTier'] | undefined;
   responsesTransport?: MarAgentModelSummary['responsesTransport'] | undefined;
   responsesPreviousResponseId?: boolean | undefined;
-  gcEnabled?: boolean | undefined;
   contextGcMode?: MarAgentModelSummary['contextGcMode'];
   unifiedCompact?: boolean | undefined;
   socks5Url?: string | undefined;
 }): ModelSettings {
-  const gc = { contextGcMode: model.contextGcMode, gcEnabled: model.gcEnabled ?? true };
+  const contextGcMode = model.contextGcMode ?? 'off';
   if (model.protocol === 'ANTHROPIC_MESSAGES') {
     if (
       model.hostedWebSearch ||
@@ -165,14 +153,14 @@ export function modelSettingsFromInput(model: {
     return parseModelSettings(model.protocol, {
       version: 1,
       ...(model.socks5Url === undefined ? {} : { socks5Url: model.socks5Url }),
-      ...gc,
+      contextGcMode,
       unifiedCompact: model.unifiedCompact ?? false
     });
   }
   return parseModelSettings(model.protocol, {
     version: 1,
     ...(model.socks5Url === undefined ? {} : { socks5Url: model.socks5Url }),
-    ...gc,
+    contextGcMode,
     unifiedCompact: model.unifiedCompact ?? false,
     hostedWebSearch: model.hostedWebSearch,
     ...(model.serviceTier === undefined ? {} : { serviceTier: model.serviceTier }),

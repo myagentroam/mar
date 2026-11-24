@@ -67,6 +67,53 @@ function json(value: unknown): unknown {
   return typeof value === 'string' ? JSON.parse(value) : value;
 }
 
+const GC_MODE_SPEC =
+  'model-setting: explicit mode wins; legacy false=off; otherwise auto; remove gcEnabled';
+
+/** Preserve existing GC behavior without keeping the old flag in the runtime decoder. */
+export const MODEL_CONTEXT_GC_MODE_MIGRATION = {
+  version: 40,
+  name: 'model_context_gc_mode',
+  checksum: createHash('sha256').update(GC_MODE_SPEC).digest('hex'),
+  async up(connection: MysqlMigrationConnection): Promise<void> {
+    await connection.query('START TRANSACTION');
+    try {
+      const [rows] = (await connection.execute(
+        `SELECT settings.setting_key,settings.setting_value FROM system_settings settings
+         JOIN mar_agent_models model ON settings.setting_key=CONCAT('mar_agent_model_config:',model.id)
+         WHERE JSON_CONTAINS_PATH(settings.setting_value,'one','$.gcEnabled')
+            OR NOT JSON_CONTAINS_PATH(settings.setting_value,'one','$.contextGcMode')
+         FOR UPDATE`
+      )) as [readonly Row[], unknown];
+      for (const row of rows) {
+        const raw = json(row['setting_value']);
+        if (raw === null || typeof raw !== 'object' || Array.isArray(raw))
+          throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
+        const { gcEnabled, contextGcMode, ...settings } = raw as Row;
+        if (
+          (gcEnabled !== undefined && typeof gcEnabled !== 'boolean') ||
+          (contextGcMode !== undefined &&
+            contextGcMode !== 'off' &&
+            contextGcMode !== 'auto' &&
+            contextGcMode !== 'with_thought')
+        )
+          throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
+        await connection.execute('UPDATE system_settings SET setting_value=? WHERE setting_key=?', [
+          JSON.stringify({
+            ...settings,
+            contextGcMode: contextGcMode ?? (gcEnabled === false ? 'off' : 'auto')
+          }),
+          String(row['setting_key'])
+        ]);
+      }
+      await connection.query('COMMIT');
+    } catch (error) {
+      await connection.query('ROLLBACK');
+      throw error;
+    }
+  }
+};
+
 function flag(value: unknown): boolean {
   if (value !== 0 && value !== 1 && value !== false && value !== true)
     throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
