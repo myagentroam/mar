@@ -116,7 +116,8 @@ export class BrowserTabs {
       options.failed,
       options.directory
     );
-    this.downloads = new BrowserDownloads(() => this.events.emit('changed'));
+    this.downloads = new BrowserDownloads(() => this.events.emit('changed'), options.failed);
+    context.once('close', () => this.downloads.dispose());
     for (const page of context.pages()) this.add(page, false);
     context.on('page', (page) => this.add(page, true));
   }

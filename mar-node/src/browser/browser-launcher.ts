@@ -6,6 +6,8 @@ import { attachBrowserProfileData, writeBrowserDataExtension } from './browser-p
 import { BROWSER_VIEWPORT } from './browser-video-config.js';
 import { recordBrowserRun, retireBrowserRun, sweepBrowserRuns } from './browser-run-directories.js';
 
+const HTTP_CACHE_BYTES = 128 * 1024 * 1024;
+
 /** Owns one managed Chromium process and its run directory. The session registry
  * supplies the optional durable profile path and owns all scope/capacity rules. */
 export function createBrowserLauncher(
@@ -41,7 +43,11 @@ export function createBrowserLauncher(
         acceptDownloads: true,
         downloadsPath,
         ignoreDefaultArgs: ['--disable-extensions'],
-        args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`]
+        args: [
+          `--disk-cache-size=${HTTP_CACHE_BYTES}`,
+          `--disable-extensions-except=${extension}`,
+          `--load-extension=${extension}`
+        ]
       });
       const owned = context;
       await recordBrowserRun(run, profileRoot, profilePath).catch(failed);
