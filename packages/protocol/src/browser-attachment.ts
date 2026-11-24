@@ -115,6 +115,7 @@ export type BrowserFindResult = z.infer<typeof browserFindResultSchema>;
 
 export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ack'), sequence: positiveUint32 }),
+  z.strictObject({ type: z.literal('presence') }),
   z.strictObject({ type: z.literal('downloads.observe'), progress: z.literal(true).optional() }),
   z.strictObject({ type: z.literal('tab.icons') }),
   z.strictObject({ type: z.literal('agent.activity.observe') }),

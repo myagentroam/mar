@@ -7,6 +7,51 @@ import { installBrowserContextMenu } from '../../mar-node/src/browser/browser-co
 import { BrowserPageView } from '../../mar-node/src/browser/browser-page-view.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test('One Reconnect click opens a usable browser when the last attachment is stale', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html', {
+    protocolSource: true
+  });
+  try {
+    await page.goto(`${fixture.url}browser-input.html?expired-reconnect`);
+    const reconnect = page.getByRole('button', { name: 'Reconnect', exact: true });
+    await reconnect.click();
+    await expect(reconnect).toHaveCount(0);
+    await expect(page.locator('body')).toHaveAttribute('data-reconnect-opens', '1');
+    await expect(page.getByRole('tab', { name: 'Blank', exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Enter a web address' })).toBeEnabled();
+    const restore = page.getByRole('button', { name: 'Reopen recent tabs', exact: true });
+    await expect(page.locator('body')).not.toHaveAttribute('data-restored-addresses');
+    await restore.click();
+    await expect(page.locator('body')).toHaveAttribute(
+      'data-restored-addresses',
+      '["https://example.test/previous"]'
+    );
+    await expect(restore).toHaveCount(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('One Reconnect click rejoins a live browser without offering tab restoration', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html', {
+    protocolSource: true
+  });
+  try {
+    await page.goto(`${fixture.url}browser-input.html?live-reconnect`);
+    await page.getByRole('button', { name: 'Reconnect', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Previous page', exact: true })).toBeVisible();
+    await expect(page.locator('body')).toHaveAttribute('data-reconnect-opens', '1');
+    await expect(page.getByRole('button', { name: 'Reopen recent tabs' })).toHaveCount(0);
+    await expect(page.locator('body')).not.toHaveAttribute('data-restored-addresses');
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('Closing the last browser page requests Aside closure only after the page is gone', async ({
   page
 }) => {

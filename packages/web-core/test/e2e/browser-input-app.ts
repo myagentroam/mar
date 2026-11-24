@@ -81,7 +81,63 @@ document.addEventListener('fixture-raster-change', () => {
   if (frame) browser.frame.value = { ...frame, raster: { width: 640, height: 480 } };
 });
 browser.path.value = 'relay';
-browser.show = async () => {};
+const reconnect = fixtureOptions.has('expired-reconnect') || fixtureOptions.has('live-reconnect');
+const previousReconnectTab = {
+  id: 'previous-tab',
+  title: 'Previous page',
+  url: 'https://example.test/previous',
+  loading: false,
+  canGoBack: false,
+  canGoForward: false
+};
+let attemptedResume = false;
+browser.show = async (_scope, _capability, _canvas, action) => {
+  if (!reconnect) return;
+  if (action.action === 'resume') {
+    if (attemptedResume) browser.error.value = 'BROWSER_SESSION_ENDED';
+    else {
+      browser.snapshot.value = {
+        activeId: previousReconnectTab.id,
+        tabs: [previousReconnectTab],
+        viewVersion: 1
+      };
+      browser.snapshot.value = undefined;
+    }
+    attemptedResume = true;
+    return;
+  }
+  if (action.action === 'open' && action.preserveLogin) {
+    document.body.dataset.reconnectOpens = String(
+      Number(document.body.dataset.reconnectOpens ?? '0') + 1
+    );
+    const live = fixtureOptions.has('live-reconnect');
+    if (!live) browser.browserId = () => 'replacement-browser';
+    browser.snapshot.value = {
+      activeId: live ? previousReconnectTab.id : 'replacement-tab',
+      tabs: live
+        ? [previousReconnectTab]
+        : [
+            {
+              id: 'replacement-tab',
+              title: '',
+              url: 'about:blank',
+              loading: false,
+              canGoBack: false,
+              canGoForward: false
+            }
+          ],
+      tabControls: { reopen: false, zoom: 100 },
+      viewVersion: 1
+    };
+    browser.error.value = undefined;
+    browser.status.value = 'ready';
+  }
+};
+if (reconnect) {
+  browser.status.value = 'failed';
+  browser.error.value = 'BROWSER_DISCONNECTED';
+  browser.browserId = () => 'old-browser';
+}
 const requested = ref<{ url: string }>();
 document.addEventListener('fixture-agent-activity', () => {
   browser.snapshot.value = { tabs: [], viewVersion: 1, agentActive: true };
@@ -99,6 +155,8 @@ browser.queryContextMenu = async (viewVersion, point) => {
   return options && { ...options, id, viewVersion };
 };
 browser.send = (message) => {
+  if (message.type === 'tab.restore')
+    document.body.dataset.restoredAddresses = JSON.stringify(message.addresses);
   if (message.type === 'input') void fixtureInput(message.action);
   if (message.type === 'tab.open') document.body.dataset.opened = message.address;
   if (message.type === 'tab.close') document.body.dataset.closePage = message.tabId;
@@ -142,11 +200,13 @@ createTooltipApp(
           requested.value = undefined;
           document.body.dataset.consumed = 'true';
         },
-        connected: false,
+        connected: reconnect,
+        ...(reconnect && { restoreId: 'old-browser' }),
         capability: {
           apiVersion: 1,
           nodeGeneration: 'fixture',
           ice: false,
+          tabControls: reconnect,
           nativeTouch,
           contextMenu: !location.search.includes('legacy')
         }

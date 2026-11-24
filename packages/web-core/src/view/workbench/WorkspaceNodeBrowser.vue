@@ -295,11 +295,29 @@ const tabs = computed(
     }) ?? []
 );
 const hasCommands = computed(() => !!snapshot.value && status.value !== 'failed');
-const reconnectId = computed(() =>
-  error.value !== 'BROWSER_SESSION_ENDED' ? props.browser.browserId() : undefined
-);
 let recentAddresses: string[] = [];
 let restoreAddresses: string[] | undefined;
+const reconnectFrom = shallowRef<{ id: string; addresses: string[] }>();
+const blankForRestore = computed(
+  () =>
+    snapshot.value?.tabs.length === 1 &&
+    blank.value &&
+    !active.value?.loading &&
+    !active.value?.canGoBack &&
+    !active.value?.canGoForward
+);
+const replacementRestore = computed(() => {
+  const previous = reconnectFrom.value;
+  const id = props.browser.browserId();
+  return previous &&
+    id &&
+    id !== previous.id &&
+    status.value === 'ready' &&
+    snapshot.value?.tabControls &&
+    blankForRestore.value
+    ? previous.addresses
+    : undefined;
+});
 watch(
   snapshot,
   (value) => {
@@ -323,6 +341,12 @@ watch(
 );
 watch([status, snapshot], () => {
   if (status.value === 'failed') restoreAddresses = undefined;
+  if (
+    status.value === 'ready' &&
+    snapshot.value?.tabs.length &&
+    (!blankForRestore.value || props.browser.browserId() === reconnectFrom.value?.id)
+  )
+    reconnectFrom.value = undefined;
   if (!restoreAddresses || status.value !== 'ready' || !snapshot.value?.tabControls) return;
   const addresses = restoreAddresses;
   restoreAddresses = undefined;
@@ -528,11 +552,19 @@ function command(value: string | number | object): void {
 }
 
 function recover(): void {
-  if (reconnectId.value) show({ action: 'resume', browserId: reconnectId.value });
-  else show({ action: 'open', preserveLogin: true });
+  const id = props.browser.browserId();
+  if (id && props.capability.tabControls && recentAddresses.length)
+    reconnectFrom.value = { id, addresses: recentAddresses };
+  show({ action: 'open', preserveLogin: true });
 }
 function restoreRecentTabs(): void {
+  if (replacementRestore.value) {
+    if (props.browser.send({ type: 'tab.restore', addresses: replacementRestore.value }))
+      reconnectFrom.value = undefined;
+    return;
+  }
   if (!canRestoreTabs.value) return;
+  reconnectFrom.value = undefined;
   restoreAddresses = [...recentAddresses];
   show({ action: 'open', preserveLogin: true });
 }
@@ -1332,6 +1364,13 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           @edit="edit"
           @navigate="navigateTo"
         />
+        <MarButton
+          v-if="replacementRestore"
+          class="node-browser-blank-restore"
+          v-tooltip="t('browser.restoreTabsHint')"
+          @click="restoreRecentTabs"
+          >{{ t('browser.restoreTabs') }}</MarButton
+        >
       </form>
       <WorkspaceFloatingActions
         v-slot="{ expanded }"
@@ -1665,6 +1704,11 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 }
 .node-browser-blank {
   inline-size: min(28rem, calc(100% - 2rem));
+}
+.node-browser-blank-restore {
+  display: flex;
+  margin-block-start: 0.75rem;
+  margin-inline: auto;
 }
 .node-browser-blank :deep(.mar-ui-field-frame) {
   min-block-size: 2.75rem;

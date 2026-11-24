@@ -304,6 +304,7 @@ export interface NodeWorkbenchManifest {
   readonly browserContextMenu?: true;
   readonly browserFind?: true;
   readonly browserAgentActivity?: true;
+  readonly browserForegroundPresence?: true;
   readonly browserDownloadManagement?: true;
   readonly browserDownloadProgress?: true;
   readonly browserTabControls?: true;

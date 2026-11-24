@@ -2207,6 +2207,7 @@ export function createWorkbenchPageController<
           tabIcons: manifest.browserTabIcons === true,
           downloadManagement: manifest.browserDownloadManagement === true,
           agentActivity: manifest.browserAgentActivity === true,
+          foregroundPresence: manifest.browserForegroundPresence === true,
           nativeTouch: manifest.browserNativeTouch === true,
           contextMenu: manifest.browserContextMenu === true,
           find: manifest.browserFind === true,

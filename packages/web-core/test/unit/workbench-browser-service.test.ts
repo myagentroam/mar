@@ -10,6 +10,7 @@ import { createWorkbenchBrowserService } from '../../src/service/workbench-brows
 import type { WorkbenchHttpService } from '../../src/service/workbench-http-service.js';
 
 const mock = vi.hoisted(() => ({
+  send: vi.fn(() => true),
   open: undefined as BrowserAttachmentOpen | undefined,
   supportsBrowserVideo: vi.fn(async (_hd?: boolean) => true),
   snapshot: undefined as ((value: BrowserTabSnapshot) => void) | undefined,
@@ -39,16 +40,78 @@ vi.mock('../../src/service/browser-attachment-client.js', () => ({
       mock.ended = callbacks.ended;
       mock.attached = callbacks.attached;
     }
+    send = mock.send;
     close() {}
   }
 }));
 
 afterEach(() => {
   vi.useRealTimers();
+  mock.send.mockClear();
   mock.supportsBrowserVideo.mockReset();
   mock.supportsBrowserVideo.mockResolvedValue(true);
   vi.unstubAllGlobals();
 });
+
+it.each([true, undefined])(
+  'reports presence only for a visible, active attachment (capability: %s)',
+  async (supported) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', { location: { origin: 'https://workbench.test' } });
+    vi.stubGlobal('WebSocket', class {});
+    const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    vi.stubGlobal('document', document);
+    const requests: BrowserControlRequest['request'][] = [];
+    const service = createWorkbenchBrowserService({
+      connectionId: () => 'workbench',
+      acquire: () => undefined,
+      send({ requestId, request }) {
+        requests.push(request);
+        queueMicrotask(() =>
+          service.handle({
+            type: 'browser.response',
+            requestId,
+            ...(request.action === 'attach' && {
+              result: { type: 'OPEN', attachmentId: randomUUID(), ticket: 'A'.repeat(32) }
+            })
+          })
+        );
+        return true;
+      }
+    });
+    await service.show(
+      { nodeId: 'n', workspaceId: 'w' },
+      {
+        apiVersion: 1,
+        ice: false,
+        nodeGeneration: 'g',
+        ...(supported && { foregroundPresence: true })
+      },
+      {} as HTMLCanvasElement,
+      { action: 'resume', browserId: 'browser' }
+    );
+    expect(mock.send).not.toHaveBeenCalled();
+    mock.attached!();
+    mock.frame!({ viewVersion: 1, width: 800, height: 600 });
+    expect(mock.send).toHaveBeenCalledTimes(supported ? 1 : 0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(mock.send).toHaveBeenCalledTimes(supported ? 2 : 0);
+    document.visibilityState = 'hidden';
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(mock.send).toHaveBeenCalledTimes(supported ? 2 : 0);
+    expect(requests.filter(({ action }) => action === 'renew')).toHaveLength(2);
+    document.visibilityState = 'visible';
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(mock.send).toHaveBeenCalledTimes(supported ? 3 : 0);
+    if (supported) expect(mock.send).toHaveBeenLastCalledWith({ type: 'presence' });
+    service.hide();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mock.send).toHaveBeenCalledTimes(supported ? 3 : 0);
+    expect(requests.filter(({ action }) => action === 'renew')).toHaveLength(2);
+  }
+);
 
 it.each([
   'first-frame timeout',

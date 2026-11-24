@@ -19,7 +19,7 @@ type Encoder = (
 ) => Promise<{ data: Uint8Array; key: boolean }>;
 type Command = Exclude<
   BrowserAttachmentMessage,
-  { type: 'ack' | 'dialog.respond' | 'agent.activity.observe' }
+  { type: 'ack' | 'presence' | 'dialog.respond' | 'agent.activity.observe' }
 >;
 type Button = Extract<BrowserPageInput, { type: 'button' }>['button'];
 export type BrowserAttachmentEncoder = { encode: Encoder; close: () => Promise<void>; hd?: true };
@@ -112,6 +112,10 @@ export class BrowserAttachment {
 
   receive(message: BrowserAttachmentMessage): void {
     if (this.closed) return;
+    if (message.type === 'presence') {
+      this.borrow.activity();
+      return;
+    }
     if (message.type === 'tab.controls.observe') {
       this.tabControlsSubscribed = true;
       this.refresh();

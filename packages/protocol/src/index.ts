@@ -2035,6 +2035,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   browserTabIcons: z.literal(true).optional(),
   browserUse: z.literal(true).optional(),
   browserAgentActivity: z.literal(true).optional(),
+  browserForegroundPresence: z.literal(true).optional(),
   browserNativeTouch: z.literal(true).optional(),
   browserContextMenu: z.literal(true).optional(),
   browserFind: z.literal(true).optional(),

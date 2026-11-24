@@ -63,6 +63,7 @@ export class WorkbenchManifestService {
       browserHd: capabilities.browser ? (true as const) : undefined,
       browserTabIcons: capabilities.browser ? (true as const) : undefined,
       browserAgentActivity: capabilities.browser ? (true as const) : undefined,
+      browserForegroundPresence: capabilities.browser ? (true as const) : undefined,
       browserNativeTouch: capabilities.browser ? (true as const) : undefined,
       browserContextMenu: capabilities.browser ? (true as const) : undefined,
       browserFind: capabilities.browser ? (true as const) : undefined,

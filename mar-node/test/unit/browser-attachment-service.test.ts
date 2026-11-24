@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserAttachmentPrepare, BrowserAttachmentRoute } from '@myagentroam/protocol';
 import { BrowserAttachmentService } from '../../src/browser/browser-attachment-service.js';
 import { BrowserSessionService } from '../../src/browser/browser-session-service.js';
@@ -13,7 +13,9 @@ const ice: BrowserAttachmentRoute = {
 };
 const relay: BrowserAttachmentRoute = { type: 'relay' };
 
-async function fixture(hdSupported = true) {
+afterEach(() => vi.useRealTimers());
+
+async function fixture(hdSupported = true, idleMs?: number) {
   const dismiss = vi.fn(async (_present: boolean) => {});
   const tabs = {
     snapshot: () => ({ activeId: undefined, viewVersion: 1, tabs: [] }),
@@ -25,6 +27,7 @@ async function fixture(hdSupported = true) {
   const sessions = new BrowserSessionService({
     launch: async () => ({ resource: tabs, close: async () => {} }),
     limit: 1,
+    ...(idleMs !== undefined && { idleMs }),
     onCloseFailed: vi.fn()
   });
   const browserId = await sessions.open(scope);
@@ -118,6 +121,36 @@ describe('Node Browser attachment admission', () => {
       expect(link.sendControl).toHaveBeenCalledWith({ type: 'ATTACHED' });
     } finally {
       clock.mockRestore();
+      await f.close();
+    }
+  });
+
+  it('keeps a foreground attachment alive without input and expires it when only the lease is renewed', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout'] });
+    const f = await fixture(true, 15_000);
+    try {
+      const grant = f.grant(relay);
+      const link = channel();
+      await f.service.open(open(grant), relay, link);
+      for (let i = 0; i < 4; i++) {
+        await vi.advanceTimersByTimeAsync(5_000);
+        f.service.receive(grant.attachmentId, link, { type: 'presence' });
+        expect(f.service.renew(grant.attachmentId, Date.now() + 10_000)).toBe(true);
+        expect(f.sessions.lookup(scope)).toBe(f.browserId);
+      }
+      expect(await f.sessions.open(scope, true)).toBe(f.browserId);
+
+      for (let i = 0; i < 2; i++) {
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(f.service.renew(grant.attachmentId, Date.now() + 10_000)).toBe(true);
+        f.service.receive(grant.attachmentId, channel(), { type: 'presence' });
+      }
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(f.sessions.lookup(scope)).toBeUndefined();
+      const replacement = await f.sessions.open(scope, true);
+      expect(replacement).not.toBe(f.browserId);
+      expect(f.sessions.lookup(scope)).toBe(replacement);
+    } finally {
       await f.close();
     }
   });

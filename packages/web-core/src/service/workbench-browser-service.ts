@@ -48,6 +48,7 @@ type Connection = {
   transport?: Transport;
   deadline?: ReturnType<typeof setTimeout>;
   renew?: ReturnType<typeof setTimeout>;
+  presence?: AbortController;
   upload?: AbortController;
 };
 
@@ -116,6 +117,8 @@ export function createWorkbenchBrowserService(options: {
     uploadStatus.value = undefined;
     clearTimeout(connection.deadline);
     clearTimeout(connection.renew);
+    connection.presence?.abort();
+    delete connection.presence;
     connection.data?.close();
     tabIcons.value = new Map();
     streamSample.value = undefined;
@@ -259,7 +262,12 @@ export function createWorkbenchBrowserService(options: {
     } catch {
       return linkFailed('BROWSER_DISCONNECTED');
     }
+    const reportPresence = () => {
+      if (attachedHere() && connection.presence && document.visibilityState === 'visible')
+        connection.data?.send({ type: 'presence' });
+    };
     const renew = async () => {
+      reportPresence();
       try {
         await request({ action: 'renew', attachmentId: open.attachmentId });
         if (current === connection && connection.attachmentId === open.attachmentId)
@@ -290,6 +298,13 @@ export function createWorkbenchBrowserService(options: {
       attached() {
         if (!attachedHere()) return;
         path.value = route;
+        if (capability.foregroundPresence && typeof document !== 'undefined') {
+          connection.presence = new AbortController();
+          document.addEventListener('visibilitychange', reportPresence, {
+            signal: connection.presence.signal
+          });
+          reportPresence();
+        }
         connection.renew = setTimeout(() => void renew(), 5_000);
       },
       snapshot(value) {
@@ -600,4 +615,5 @@ export type WorkbenchBrowserCapability = BrowserCapability & {
   tabControls?: boolean;
   downloadWorkspace?: boolean;
   agentActivity?: boolean;
+  foregroundPresence?: boolean;
 };
