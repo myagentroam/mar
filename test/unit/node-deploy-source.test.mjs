@@ -35,6 +35,7 @@ test('Node deploy source verifies binaries and embedded navigation and CLI again
     await put(join(root, `vendor/ripgrep/${platform}/rg`), 'fixture');
   }
   for (const [original, target] of [
+    ['packages/browser-vnc/dist/index.js', 'dist/browser-vnc/index.js'],
     ['packages/code-navigation/dist/index.js', 'dist/code-navigation/index.js'],
     ['marctl/bin/marctl.mjs', 'dist/marctl/bin/marctl.mjs'],
     ['marctl/src/scp-worker.cjs', 'dist/marctl/src/scp-worker.cjs']
@@ -47,6 +48,7 @@ test('Node deploy source verifies binaries and embedded navigation and CLI again
   await checkNodeDeploySource(source, stage);
   for (const path of [
     `node_modules/@myagentroam/${platformPackage}/vendor/ripgrep/${platform}/rg`,
+    'dist/browser-vnc/index.js',
     'dist/code-navigation/index.js',
     'dist/marctl/src/scp-worker.cjs'
   ]) {

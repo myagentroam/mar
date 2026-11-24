@@ -12,7 +12,6 @@ import {
   type BrowserAgentAction,
   type BrowserAgentExecution
 } from './browser-agent-access.js';
-import type { BrowserAttachmentEncoder } from './browser-attachment.js';
 import { BrowserCacheMaintenance } from './browser-cache-maintenance.js';
 import { BrowserProfiles } from './browser-profiles.js';
 import type { BrowserProfileData } from './browser-profile-data.js';
@@ -36,7 +35,7 @@ type LiveBrowser = {
 
 /** Composition of Node Browser owners, installed only with a deployment's
  * verified execution boundary. The boundary launches an isolated context with
- * an initial page and a separately trusted codec. The runtime closes data
+ * an initial page. The runtime closes data
  * attachments before their borrowed browsing resource; it owns no transport,
  * user authentication, network rules or Playwright command state. */
 export class BrowserRuntime {
@@ -57,7 +56,6 @@ export class BrowserRuntime {
       workspacePath?: (workspaceId: string) => string | undefined;
       workspaceFilesChanged?: (workspaceId: string) => void;
       launch: (profilePath?: string) => Promise<RunningBrowser>;
-      encoder: (hd: boolean) => Promise<BrowserAttachmentEncoder>;
       failed: (error: unknown) => void;
     }
   ) {
@@ -138,7 +136,6 @@ export class BrowserRuntime {
           return { resource: resource.tabs, release, activity };
         }
       },
-      encoder: options.encoder,
       failed: options.failed
     });
     this.sweep();

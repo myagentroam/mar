@@ -20,8 +20,8 @@ index 4efd6f4b97dfda3ab450723ff8c722c8258d60fc..b21f0e9c67c1fa4696fb31d409d8f99d
                  this._targetCtx.drawImage(this._backbuffer,
                                            x, y, w, h,
                                            vx, vy, w, h);
-+                if (onPaint) onPaint();
              }
++            if (onPaint) onPaint(w > 0 && h > 0);
  
              this._damageBounds.left = this._damageBounds.top = 65535;
 @@ -501,7 +503,7 @@ export default class Display {
@@ -212,8 +212,8 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..54f376027dff34b9368c74cc740411b2
  
 -        this._display.flip();
 +        const hasPixels = this._frameHasPixels;
-+        this._display.flip(false, () => {
-+            if (this._rfbConnectionState !== 'connected') return;
++        this._display.flip(false, (painted) => {
++            if (this._rfbConnectionState !== 'connected' || (!painted && !this._requestDrivenUpdates)) return;
 +            this.dispatchEvent(new CustomEvent('frame'));
 +            if (hasPixels && !this._firstFrame) {
 +                this._firstFrame = true;

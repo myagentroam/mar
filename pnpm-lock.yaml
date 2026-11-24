@@ -14,7 +14,7 @@ overrides:
   '@myagentroam/binaries-win32-arm64': workspace:0.10.4
 
 patchedDependencies:
-  '@novnc/novnc@1.7.0': c500ab41d1b31efe694aa1660827e4ed5185d09d9c7012029baee21101bf6699
+  '@novnc/novnc@1.7.0': 55b1c2da191bf2d9264243dd39c0f5c9848c92e3aa221c3e20b8bf2a5ba5cf1c
 
 importers:
   .:
@@ -224,6 +224,9 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@myagentroam/browser-vnc':
+        specifier: workspace:*
+        version: link:../packages/browser-vnc
       '@myagentroam/code-navigation':
         specifier: workspace:*
         version: link:../packages/code-navigation
@@ -319,6 +322,8 @@ importers:
   packages/binaries-win32-arm64: {}
 
   packages/binaries-win32-x64: {}
+
+  packages/browser-vnc: {}
 
   packages/code-navigation: {}
 
@@ -429,7 +434,7 @@ importers:
         version: link:../protocol
       '@novnc/novnc':
         specifier: 1.7.0
-        version: 1.7.0(patch_hash=c500ab41d1b31efe694aa1660827e4ed5185d09d9c7012029baee21101bf6699)
+        version: 1.7.0(patch_hash=55b1c2da191bf2d9264243dd39c0f5c9848c92e3aa221c3e20b8bf2a5ba5cf1c)
       '@vue-office/docx':
         specifier: 1.6.3
         version: 1.6.3(vue-demi@0.14.10(vue@3.5.41(typescript@5.9.3)))(vue@3.5.41(typescript@5.9.3))
@@ -10077,7 +10082,7 @@ snapshots:
   '@node-datachannel/win32-x64-msvc@0.33.4':
     optional: true
 
-  '@novnc/novnc@1.7.0(patch_hash=c500ab41d1b31efe694aa1660827e4ed5185d09d9c7012029baee21101bf6699)':
+  '@novnc/novnc@1.7.0(patch_hash=55b1c2da191bf2d9264243dd39c0f5c9848c92e3aa221c3e20b8bf2a5ba5cf1c)':
     {}
 
   '@opencode-ai/sdk@1.18.20':

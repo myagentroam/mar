@@ -261,6 +261,7 @@ export async function checkProductReleaseArtifacts(directory = root) {
   await Promise.all(
     [
       'packages/protocol/dist',
+      'packages/browser-vnc/dist',
       'packages/code-navigation/dist',
       'mar-agent/dist',
       'mar-agent/extensions/subagent/dist',

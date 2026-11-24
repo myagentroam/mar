@@ -17,7 +17,7 @@ export function browserError(code: string): string {
       return translate('browser.denied');
     case 'BROWSER_OUTCOME_UNKNOWN':
       return translate('browser.unknown');
-    case 'BROWSER_H264_DECODER_UNAVAILABLE':
+    case 'BROWSER_VNC_UNAVAILABLE':
       return translate('browser.unsupported');
     case 'BROWSER_NAVIGATION_FAILED':
     case 'BROWSER_TAB_NAVIGATION_FAILED':

@@ -66,6 +66,11 @@ export async function checkNodeDeploySource(source, deployed) {
     }
   }
   await sameFiles(
+    resolve(source, 'packages/browser-vnc/dist'),
+    resolve(deployed, 'dist/browser-vnc'),
+    (path) => path.endsWith('.js')
+  );
+  await sameFiles(
     resolve(source, 'packages/code-navigation/dist'),
     resolve(deployed, 'dist/code-navigation'),
     (path) => path.endsWith('.js')

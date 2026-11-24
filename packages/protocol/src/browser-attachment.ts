@@ -62,7 +62,7 @@ export const browserAttachmentOpenSchema = z.strictObject({
   type: z.literal('OPEN'),
   attachmentId: id,
   ticket: z.string().min(32).max(128),
-  hd: z.literal(true).optional()
+  rfb: z.literal(true).optional()
 });
 
 export type BrowserAttachmentPrepare = z.infer<typeof browserAttachmentPrepareSchema>;
@@ -113,7 +113,21 @@ const browserFindResultSchema = z.strictObject({
 });
 export type BrowserFindResult = z.infer<typeof browserFindResultSchema>;
 
+export const browserPictureQualitySchema = z.enum(['low', 'medium', 'high']);
+export type BrowserPictureQuality = z.infer<typeof browserPictureQualitySchema>;
+export type BrowserPictureMode = BrowserPictureQuality | 'auto';
+const rfbControl = z
+  .string()
+  .min(4)
+  .max(2732)
+  .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u);
+
 export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('rfb'), data: rfbControl }),
+  z.strictObject({
+    type: z.literal('quality'),
+    mode: z.union([browserPictureQualitySchema, z.literal('auto')])
+  }),
   z.strictObject({ type: z.literal('ack'), sequence: positiveUint32 }),
   z.strictObject({ type: z.literal('presence') }),
   z.strictObject({ type: z.literal('downloads.observe'), progress: z.literal(true).optional() }),
@@ -209,7 +223,9 @@ export const browserTabSnapshotSchema = z.strictObject({
 });
 
 export const browserAttachmentEventSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('ATTACHED'), hd: z.literal(true).optional() }),
+  z.strictObject({ type: z.literal('ATTACHED'), rfb: z.literal(true) }),
+  z.strictObject({ type: z.literal('rfb'), data: rfbControl }),
+  z.strictObject({ type: z.literal('quality'), quality: browserPictureQualitySchema }),
   z.strictObject({ type: z.literal('snapshot'), snapshot: browserTabSnapshotSchema }),
   z.strictObject({
     type: z.literal('tab.icon'),

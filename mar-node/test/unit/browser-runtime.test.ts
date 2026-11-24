@@ -25,9 +25,6 @@ it('keeps a detached browser alive only while a download receives new bytes', as
       downloads: { session: cdp as unknown as CDPSession, directory: profileRoot },
       close
     }),
-    encoder: async () => {
-      throw new Error('No attachment expected');
-    },
     failed: vi.fn()
   });
   const guid = 'dc17dcf2-df54-4095-aeb5-5fd7c50e071b';
@@ -92,9 +89,6 @@ it('protects background downloads from capacity eviction until they settle', asy
     profileRoot,
     profileUnused: async () => true,
     launch,
-    encoder: async () => {
-      throw new Error('No attachment expected');
-    },
     failed: vi.fn()
   });
   const idle = { ...scope, workspaceId: 'idle' };
@@ -147,9 +141,6 @@ it('releases the live slot after confirmed exit even if the profile marker canno
       if (profilePath) markerTemp = join(dirname(profilePath), 'retention.tmp');
       const context = Object.assign(new EventEmitter(), { pages: () => [] });
       return { context: context as unknown as BrowserContext, close };
-    },
-    encoder: async () => {
-      throw new Error('No attachment expected');
     },
     failed
   });

@@ -21,12 +21,6 @@ import {
 } from '../../src/browser/browser-data-channel.js';
 import { BrowserRuntime } from '../../src/browser/browser-runtime.js';
 import { createBrowserResourceOperation } from '../../src/browser/browser-resource-operations.js';
-import { createBrowserVideoEncoder } from '../../src/browser/browser-video-encoder.js';
-import {
-  BROWSER_VIDEO_HD_BITRATE,
-  BROWSER_VIDEO_HD_LIMIT
-} from '../../src/browser/browser-video-config.js';
-
 declare global {
   interface Window {
     startProbe(url: string, grant: BrowserAttachmentOpen): Promise<void>;
@@ -41,9 +35,14 @@ declare global {
       contextReceived: boolean;
       click(): boolean;
       button(edge: 'down' | 'up'): boolean;
+      key(key: string, edge: 'down' | 'up'): boolean;
       context(): boolean;
       resize(width: number, height: number): boolean;
       resizeAndNavigate(address: string): boolean;
+      wheel(y: number): boolean;
+      quality?: 'low' | 'medium' | 'high';
+      selectQuality(mode: 'low' | 'medium' | 'high' | 'auto'): boolean;
+      samples: { bitsPerSecond: number; framesPerSecond: number }[];
     };
   }
 }
@@ -53,7 +52,7 @@ declare global {
 const mode = process.argv[2] ?? 'relay';
 assert(mode === 'relay' || mode === 'ice' || mode === 'ice-hd');
 const hd = mode === 'ice-hd';
-const fixtureViewport = hd ? BROWSER_VIDEO_HD_LIMIT : { width: 960, height: 600 };
+const fixtureViewport = hd ? { width: 1920, height: 1080 } : { width: 960, height: 600 };
 const transportId = 'fixture-transport';
 const fingerprint = 'fixture-fingerprint';
 const server = createServer((request, response) => {
@@ -84,7 +83,6 @@ let chrome: Browser | undefined;
 let wsNode: WebSocket | undefined;
 let wsOther: WebSocket | undefined;
 let nativePeer: RTCPeerConnection | undefined;
-let fixtureOrigin: string;
 let targetPage: Page | undefined;
 const profileRoot = await mkdtemp(join(tmpdir(), 'mar-browser-attachment-'));
 const runtime = new BrowserRuntime({
@@ -97,6 +95,7 @@ const runtime = new BrowserRuntime({
         channel: 'chrome',
         headless: true,
         chromiumSandbox: true,
+        deviceScaleFactor: 2,
         viewport: fixtureViewport
       });
       try {
@@ -116,7 +115,7 @@ const runtime = new BrowserRuntime({
       chromiumSandbox: true
     });
     try {
-      const context = await process.newContext({ viewport: fixtureViewport });
+      const context = await process.newContext({ deviceScaleFactor: 2, viewport: fixtureViewport });
       targetPage = await context.newPage();
       await targetPage.setContent(
         '<button onclick="window.browserClicked = true">Click me</button>'
@@ -136,36 +135,15 @@ const runtime = new BrowserRuntime({
       throw error;
     }
   },
-  encoder: async (wantsHd) => {
-    if (!chrome) throw new Error('Missing test Chrome');
-    const page = await chrome.newPage();
-    try {
-      await page.goto(fixtureOrigin);
-      const codec = await createBrowserVideoEncoder(page, {
-        ...(wantsHd ? BROWSER_VIDEO_HD_LIMIT : { width: 960, height: 600 }),
-        bitrate: wantsHd ? BROWSER_VIDEO_HD_BITRATE : 384_000,
-        framerate: 24,
-        hd: wantsHd
-      });
-      return {
-        ...(wantsHd && { hd: true as const }),
-        encode: codec.encode,
-        close: async () => {
-          try {
-            await codec.close();
-          } finally {
-            await page.close();
-          }
-        }
-      };
-    } catch (error) {
-      await page.close();
-      throw error;
-    }
-  },
   failed
 });
 const service = runtime.attachments;
+const revoked: string[] = [];
+const revoke = service.revoke.bind(service);
+service.revoke = (id, code) => {
+  revoked.push(code);
+  return revoke(id, code);
+};
 const resource = createBrowserResourceOperation(runtime, (id) => {
   if (id !== scope.workspaceId) throw new Error('WORKSPACE_NOT_FOUND');
 });
@@ -205,13 +183,13 @@ const coordinator = new BrowserAttachmentCoordinator({
   failed
 });
 const relay = new BrowserRelayService(coordinator, failed);
+let primaryRenewal: ReturnType<typeof setInterval> | undefined;
 
 try {
   await listening;
   const address = server.address();
   assert(address && typeof address !== 'string');
   const http = `http://127.0.0.1:${address.port}`;
-  fixtureOrigin = http;
   const ws = `ws://127.0.0.1:${address.port}`;
   chrome = await chromium.launch({
     channel: 'chrome',
@@ -276,35 +254,42 @@ try {
   }
   const web = await chrome.newPage();
   web.on('pageerror', (error) => errors.push(error));
+  web.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
   await web.goto(http);
   const bundle = await build({
     stdin: {
       resolveDir: import.meta.dirname,
-      contents: `import { BrowserAttachmentClient, supportsBrowserVideo } from '../../../packages/web-core/src/service/browser-attachment-client.ts';
+      contents: `import { BrowserAttachmentClient } from '../../../packages/web-core/src/service/browser-attachment-client.ts';
         async function start(link, grant) {
-          if (!await supportsBrowserVideo()) throw new Error('No H.264 decoder');
-          if (grant.hd && !await supportsBrowserVideo(true)) throw new Error('No HD H.264 decoder');
           let version;
           const button = (edge) => client.send({ type: 'input', action: {
             type: 'button', button: 'left', x: 20, y: 16, viewVersion: version, edge
           } });
-          window.probe = { frame: 0, contextReceived: false, button,
+          window.probe = { frame: 0, contextReceived: false, button, samples: [],
             click: () => button('down') && button('up'),
+            key: (key, edge) => client.send({ type: 'input', action: { type: 'key', key, edge, viewVersion: version } }),
+            wheel: (y) => client.send({ type: 'input', action: {
+              type: 'wheel', x: 0, y, viewVersion: version
+            } }),
+            selectQuality: (mode) => client.send({ type: 'quality', mode }),
             context: () => client.send({ type: 'context.open', id: crypto.randomUUID(), viewVersion: version, point: { x: 20, y: 16 } }),
             resize: (width, height) => client.send({ type: 'viewport.resize', width, height }),
           resizeAndNavigate: (address) =>
             client.send({ type: 'viewport.resize', width: 391, height: 701 }) &&
             client.send({ type: 'navigate', address, viewVersion: version })
           };
-          const client = new BrowserAttachmentClient(link, document.querySelector('canvas'), grant, {
+          const client = new BrowserAttachmentClient(link, document.querySelector('canvas'), { ...grant, rfb: true }, {
             attached: () => {
-              if (grant.hd) client.send({ type: 'viewport.resize', width: 1920, height: 1080 });
+              if (${hd}) client.send({ type: 'viewport.resize', width: 1920, height: 1080 });
             },
             snapshot: (state) => { window.probe.active = state.activeId; },
             contextMenu: () => { window.probe.contextReceived = true; },
             frame: (drawn) => { version = drawn.viewVersion; window.probe.frame++; window.probe.viewport = drawn; },
-            sample: () => {},
-            failed: (code) => { throw new Error(code); },
+            sample: (sample) => { window.probe.samples.push(sample); },
+            quality: (quality) => { window.probe.quality = quality; },
+            failed: (code) => { console.error("remote failure", code); throw new Error(code); },
             ended: (code) => { window.probe.ended = code; }
           });
         }
@@ -321,9 +306,10 @@ try {
     bundle: true,
     write: false,
     platform: 'browser',
-    format: 'iife'
+    format: 'esm'
   });
-  await web.addScriptTag({ content: bundle.outputFiles[0]!.text });
+  await web.addScriptTag({ type: 'module', content: bundle.outputFiles[0]!.text });
+  await web.waitForFunction(() => !!window.startIce);
   if (mode === 'relay') {
     await web.evaluate(({ ws, open }) => window.startProbe(ws, open), { ws, open });
   } else {
@@ -345,9 +331,7 @@ try {
         { once: true }
       );
     });
-    await peer.setRemoteDescription(
-      await web.evaluate((open) => window.startIce(open), { ...open, ...(hd && { hd: true }) })
-    );
+    await peer.setRemoteDescription(await web.evaluate((open) => window.startIce(open), open));
     if (peer.iceGatheringState !== 'complete')
       await new Promise<void>((resolve) =>
         peer.addEventListener('icegatheringstatechange', () => {
@@ -366,6 +350,9 @@ try {
   );
   const ended = await web.evaluate(() => window.probe.ended);
   assert.equal(ended, undefined, JSON.stringify({ ended, errors: errors.map(String) }));
+  primaryRenewal = setInterval(() => {
+    void coordinator.renew(identity, open.attachmentId).catch(failed);
+  }, 5_000).unref();
   if (hd) {
     await web.waitForFunction(() => window.probe.viewport?.width === 1920, undefined, {
       timeout: 5_000
@@ -379,14 +366,314 @@ try {
   }
   assert.equal(await web.evaluate(() => window.probe.click()), true);
   await target.waitForFunction(() => window.browserClicked, undefined, { timeout: 5_000 });
-  const resized = `${http}/after-resize`;
-  assert.equal(await web.evaluate((url) => window.probe.resizeAndNavigate(url), resized), true);
-  await target.waitForURL(resized, { timeout: 5_000 });
+  const readKeys = await target.evaluateHandle(() => {
+    const keys: unknown[] = [];
+    for (const type of ['keydown', 'keyup'] as const) {
+      document.addEventListener(type, ({ code, key, ctrlKey, shiftKey }) => {
+        if (code === 'KeyY') keys.push({ type, key, ctrlKey, shiftKey });
+      });
+    }
+    return { keys };
+  });
+  assert.equal(
+    await web.evaluate(() => {
+      const { key } = window.probe;
+      return (
+        key('Control', 'down') &&
+        key('Shift', 'down') &&
+        key('Y', 'down') &&
+        key('Shift', 'up') &&
+        key('Control', 'up') &&
+        key('Y', 'up')
+      );
+    }),
+    true
+  );
+  await target.waitForFunction((value) => value.keys.length === 2, readKeys, { timeout: 5_000 });
+  assert.deepEqual(await readKeys.evaluate((value) => value.keys), [
+    { type: 'keydown', key: 'Y', ctrlKey: true, shiftKey: true },
+    { type: 'keyup', key: 'Y', ctrlKey: false, shiftKey: false }
+  ]);
+  await readKeys.dispose();
+  await target.setContent(`<!doctype html><style>
+    body{margin:0;background:#141f59;color:white} header{position:fixed;inset:0 0 auto;height:48px;background:#9a2855}
+    section{box-sizing:border-box;height:160px;padding:62px 16px;font:22px monospace}
+    </style><header></header>${Array.from(
+      { length: 30 },
+      (_, index) =>
+        `<section style="background:rgb(${20 + index * 6},${40 + index * 3},89)">Section ${index}</section>`
+    ).join('')}`);
+  const scrollPixel = (red: number) =>
+    web.waitForFunction(
+      (expected) => {
+        const screen = document.querySelector('canvas')!;
+        if (!screen.width || !screen.height) return false;
+        const context = screen.getContext('2d')!;
+        const [r, g, b] = context.getImageData(
+          4,
+          Math.floor((screen.height * 100) / window.probe.viewport!.height),
+          1,
+          1
+        ).data;
+        return r === expected && g === 40 + (expected - 20) / 2 && b === 89;
+      },
+      red,
+      { timeout: 5_000 }
+    );
+  await scrollPixel(20);
+  const scrollStart = performance.now();
+  assert(await web.evaluate(() => window.probe.wheel(170)));
+  await target.waitForFunction(() => scrollY === 170, undefined, { timeout: 5_000 });
+  await scrollPixel(26);
+  const scrollDownMs = performance.now() - scrollStart;
+  const scrollBack = performance.now();
+  assert(await web.evaluate(() => window.probe.wheel(-170)));
+  await target.waitForFunction(() => scrollY === 0, undefined, { timeout: 5_000 });
+  await scrollPixel(20);
+  const scrollUpMs = performance.now() - scrollBack;
+
+  const continuous = async (delta: number, expectedY: number, expectedRed: number) => {
+    const start = await web.evaluate(() => ({
+      frame: window.probe.frame,
+      samples: window.probe.samples.length
+    }));
+    const started = performance.now();
+    assert(
+      await web.evaluate(async (dy) => {
+        for (let i = 0; i < 90; i++) {
+          if (!window.probe.wheel(dy)) return false;
+          await new Promise((resolve) => setTimeout(resolve, 16));
+        }
+        return true;
+      }, delta)
+    );
+    const sent = performance.now();
+    await target.waitForFunction((y) => scrollY === y, expectedY, { timeout: 5_000 });
+    await scrollPixel(expectedRed);
+    const elapsed = performance.now() - started;
+    const result = await web.evaluate(({ frame, samples }) => {
+      const canvas = document.querySelector('canvas')!;
+      const fixed = canvas.getContext('2d')!.getImageData(4, 4, 1, 1).data;
+      return {
+        frames: window.probe.frame - frame,
+        fixed: Array.from(fixed),
+        samples: window.probe.samples.slice(samples)
+      };
+    }, start);
+    assert(result.frames > 2, 'Continuous scrolling must draw intermediate frames');
+    assert.deepEqual(result.fixed, [154, 40, 85, 255]);
+    return {
+      ...result,
+      fps: (result.frames * 1_000) / elapsed,
+      finalAfterInputMs: performance.now() - sent
+    };
+  };
+  const continuousScroll = [await continuous(16, 1440, 74), await continuous(-16, 0, 20)];
+
+  assert(await web.evaluate(() => window.probe.selectQuality('high')));
   await web.waitForFunction(
-    () => window.probe.viewport?.width === 391 && window.probe.viewport.height === 701,
+    ({ width, height }) =>
+      window.probe.viewport?.raster.width === width &&
+      window.probe.viewport.raster.height === height,
+    fixtureViewport,
+    { timeout: 5_000 }
+  );
+
+  // Stable textured canvas, full-surface animation, then an exact repeat of the
+  // initial state. Sample full rows, not just a solid patch that JPEG preserves.
+  // Align the reference texture with the high raster: fractional scaling of
+  // a 960×600 canvas onto 1920×1080 depends on the compositor capture path.
+  const textureHeight = fixtureViewport.height / (hd ? 2 : 1);
+  await target.setContent(`<!doctype html><style>body{margin:0}canvas{width:100vw;height:100vh;display:block;image-rendering:pixelated}</style>
+    <canvas width="960" height="${textureHeight}"></canvas><script>
+    const canvas = document.querySelector('canvas'), ctx = canvas.getContext('2d');
+    const ref = document.createElement('canvas'); ref.width = canvas.width; ref.height = canvas.height;
+    const refCtx = ref.getContext('2d'); const image = refCtx.createImageData(ref.width,ref.height);
+    for (let y=0;y<ref.height;y++) for(let x=0;x<ref.width;x++) {
+      const i=(y*ref.width+x)*4; let v=((x*113+y*271) ^ (x*y*31)) & 255;
+      image.data.set([v,(v+y)&255,(v+x)&255,255],i);
+    }
+    refCtx.putImageData(image,0,0);
+    let running = false;
+    function draw(shift) {
+      ctx.drawImage(ref,-shift,0); if (shift) ctx.drawImage(ref,ref.width-shift,0);
+      ctx.fillStyle=shift?'#40da24':'#f01969';ctx.fillRect(0,0,48,48);
+    }
+    draw(0);
+    window.animateFixture = enable => { running=enable; if (!running) draw(0);
+      else requestAnimationFrame(function tick(t) { if (running) { draw(1+(Math.floor(t/8)%500)); requestAnimationFrame(tick); } }); };
+    let markerTimer;
+    window.animateMarker = enable => {
+      clearInterval(markerTimer); if (!enable) { draw(0); return; }
+      let tick=0; markerTimer = setInterval(() => {
+        ctx.fillStyle = 'rgb(' + (tick++ % 256) + ',48,225)'; ctx.fillRect(800,32,24,24);
+      },80);
+    };
+    </script>`);
+  await web.waitForFunction(
+    () => {
+      const canvas = document.querySelector('canvas')!;
+      if (!canvas.width || !canvas.height) return false;
+      return canvas.getContext('2d')!.getImageData(8, 8, 1, 1).data[0] === 240;
+    },
     undefined,
     { timeout: 5_000 }
   );
+  // At HD Chromium can sample clipped stills differently from the compositor
+  // screencast. Compare two screencast samples at the same raster and cadence.
+  const mark = (enabled: boolean) =>
+    target.evaluate(
+      (value) =>
+        (window as unknown as { animateMarker: (active: boolean) => void }).animateMarker(value),
+      enabled
+    );
+  const baselineStart = await web.evaluate(() => window.probe.frame);
+  await mark(true);
+  await web.waitForFunction((count) => window.probe.frame >= count + 3, baselineStart, {
+    timeout: 5_000
+  });
+  const stillPixels = await web.evaluate(() => {
+    const canvas = document.querySelector('canvas')!;
+    return Array.from(canvas.getContext('2d')!.getImageData(100, 100, 160, 1).data);
+  });
+  await mark(false);
+  const beforeMotion = await web.evaluate(() => {
+    window.probe.samples.length = 0;
+    return window.probe.frame;
+  });
+  assert(await web.evaluate(() => window.probe.selectQuality('auto')));
+  const animate = (enabled: boolean) =>
+    target.evaluate(
+      (value) =>
+        (window as unknown as { animateFixture: (active: boolean) => void }).animateFixture(value),
+      enabled
+    );
+  await animate(true);
+  try {
+    await web.waitForFunction(
+      (count) =>
+        window.probe.frame >= count + 5 &&
+        window.probe.samples.length >= 3 &&
+        window.probe.quality !== 'high',
+      beforeMotion,
+      { timeout: 12_000 }
+    );
+  } catch (cause) {
+    const observed = await web.evaluate(() => ({ ...window.probe }));
+    throw new Error(
+      `Motion did not adapt: ${JSON.stringify({ observed, revoked, errors: errors.map(String) })}`,
+      { cause }
+    );
+  }
+  const animation = await web.evaluate(() => window.probe.samples.slice(1));
+  const stableStart = await web.evaluate(() => window.probe.samples.length);
+  await web.waitForFunction((count) => window.probe.samples.length >= count + 3, stableStart, {
+    timeout: 10_000
+  });
+  const steadyAnimation = await web.evaluate(
+    (count) => window.probe.samples.slice(count + 1),
+    stableStart
+  );
+  const settleStarted = performance.now();
+  await animate(false);
+  try {
+    await web.waitForFunction(
+      () => {
+        const canvas = document.querySelector('canvas')!;
+        const data = canvas.getContext('2d')!.getImageData(8, 8, 1, 1).data;
+        return data[0] === 240 && data[1] === 25 && data[2] === 105;
+      },
+      undefined,
+      { timeout: 8_000 }
+    );
+  } catch (cause) {
+    const state = await web.evaluate(() => ({
+      ...window.probe,
+      pixel: Array.from(
+        document.querySelector('canvas')!.getContext('2d')!.getImageData(8, 8, 1, 1).data
+      )
+    }));
+    throw new Error(
+      `Motion did not settle: ${JSON.stringify({ state, revoked, errors: errors.map(String) })}`,
+      { cause }
+    );
+  }
+  const adaptiveQuality = await web.evaluate(() => window.probe.quality);
+  assert.notEqual(adaptiveQuality, 'high', 'Sustained textured motion must reduce the quality');
+  const quietMs = performance.now() - settleStarted;
+  // Compare pixels at the original raster; changing the raster changes the
+  // compositor's sampling even for an otherwise identical page. A small
+  // ticker supplies fresh draw samples so auto can ramp back up without help.
+  await mark(true);
+  try {
+    await web.waitForFunction(
+      ({ pixels, size }) => {
+        const canvas = document.querySelector('canvas')!;
+        const context = canvas.getContext('2d')!;
+        return (
+          window.probe.quality === 'high' &&
+          canvas.width === size.width &&
+          canvas.height === size.height &&
+          context.getImageData(8, 8, 1, 1).data[0] === 240 &&
+          context.getImageData(100, 100, 160, 1).data.every((value, i) => value === pixels[i])
+        );
+      },
+      { pixels: stillPixels, size: fixtureViewport },
+      { timeout: 16_000 }
+    );
+  } catch (cause) {
+    const detail = await web.evaluate((pixels) => {
+      const canvas = document.querySelector('canvas')!;
+      const ctx = canvas.getContext('2d')!;
+      const actual = Array.from(ctx.getImageData(100, 100, 160, 1).data);
+      return {
+        quality: window.probe.quality,
+        width: canvas.width,
+        height: canvas.height,
+        frame: window.probe.frame,
+        count: actual.filter((value, i) => value !== pixels[i]).length,
+        actual: actual.slice(0, 16),
+        expected: pixels.slice(0, 16),
+        ended: window.probe.ended,
+        samples: window.probe.samples.slice(-3)
+      };
+    }, stillPixels);
+    throw new Error(
+      `Quality did not recover: ${JSON.stringify({ detail, revoked, errors: errors.map(String) })}`,
+      { cause }
+    );
+  }
+  await mark(false);
+  console.log(
+    JSON.stringify({
+      mode,
+      scrollDownMs: Math.round(scrollDownMs),
+      scrollUpMs: Math.round(scrollUpMs),
+      continuousScroll,
+      animation,
+      steadyAnimation,
+      adaptiveQuality,
+      settledMs: Math.round(quietMs),
+      restoredHighMs: Math.round(performance.now() - settleStarted)
+    })
+  );
+  const resized = `${http}/after-resize`;
+  assert.equal(await web.evaluate((url) => window.probe.resizeAndNavigate(url), resized), true);
+  await target.waitForURL(resized, { timeout: 5_000 });
+  try {
+    await web.waitForFunction(
+      () => window.probe.viewport?.width === 391 && window.probe.viewport.height === 701,
+      undefined,
+      { timeout: 5_000 }
+    );
+  } catch (cause) {
+    const observed = await web.evaluate(() => ({ ...window.probe, samples: [] }));
+    const size = target.viewportSize();
+    throw new Error(
+      `Resize was not drawn: ${JSON.stringify({ observed, size, revoked, errors: errors.map(String) })}`,
+      { cause }
+    );
+  }
   assert.deepEqual(await target.evaluate(() => [innerWidth, innerHeight]), [391, 701]);
   const other = { ...identity, connectionId: 'other-workbench' };
   const otherGrant = await coordinator.prepare(other, { ...targetScope, browserId });
@@ -405,7 +692,8 @@ try {
   const otherWeb = await chrome.newPage();
   otherWeb.on('pageerror', failed);
   await otherWeb.goto(http);
-  await otherWeb.addScriptTag({ content: bundle.outputFiles[0]!.text });
+  await otherWeb.addScriptTag({ type: 'module', content: bundle.outputFiles[0]!.text });
+  await otherWeb.waitForFunction(() => !!window.startProbe);
   await otherWeb.evaluate(({ ws, grant }) => window.startProbe(ws, grant), {
     ws,
     grant: otherGrant
@@ -464,6 +752,7 @@ try {
   await otherWeb.waitForFunction(() => window.probe.contextReceived, undefined, { timeout: 5_000 });
   const concurrentInput = 'mousedown:0;mousedown:2;mouseup:2;';
   assert.equal(await target.evaluate(() => document.body.dataset.input), concurrentInput);
+  clearInterval(primaryRenewal);
   allowed = false;
   await assert.rejects(coordinator.renew(identity, open.attachmentId), /BROWSER_NOT_AUTHORIZED/);
   const failure = await Promise.race([
@@ -509,9 +798,10 @@ try {
   await runtime.close(scope, reopened);
   assert.deepEqual(errors, []);
   console.log(
-    `Browser ${mode} attachment: H.264 decode, concurrent relay viewer, viewport handoff, click and lease revocation passed.`
+    `Browser ${mode} attachment: RFB drawing, concurrent relay viewer, viewport handoff, click and lease revocation passed.`
   );
 } finally {
+  clearInterval(primaryRenewal);
   await coordinator.shutdown();
   await runtime.shutdown();
   wsNode?.terminate();

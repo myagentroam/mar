@@ -1,13 +1,12 @@
 import {
   BROWSER_CONTROL_MAX_BYTES,
-  BROWSER_VIDEO_CODEC,
-  BROWSER_VIDEO_HD_CODEC,
   BROWSER_VIEWPORT_MAX,
   BROWSER_VIEWPORT_MIN,
   browserAttachmentEventSchema,
   type BrowserAttachmentEvent,
   type BrowserAttachmentMessage,
   type BrowserAttachmentOpen,
+  type BrowserPictureQuality,
   type BrowserTabSnapshot
 } from '@myagentroam/protocol';
 import { BrowserViewport, type BrowserDrawnView } from './browser-viewport.js';
@@ -15,24 +14,11 @@ import { BrowserViewport, type BrowserDrawnView } from './browser-viewport.js';
 type Link = WebSocket | RTCDataChannel;
 export type BrowserStreamSample = Readonly<{ bitsPerSecond: number; framesPerSecond: number }>;
 
-export async function supportsBrowserVideo(hd = false): Promise<boolean> {
-  return (
-    typeof VideoDecoder !== 'undefined' &&
-    (
-      await VideoDecoder.isConfigSupported({
-        codec: hd ? BROWSER_VIDEO_HD_CODEC : BROWSER_VIDEO_CODEC,
-        ...(hd && { codedWidth: 1920, codedHeight: 1080 }),
-        optimizeForLatency: true
-      })
-    ).supported === true
-  );
-}
-
 /** Owns one already-selected data path, its decoder and local stream counters. Its caller owns
  * authorization, path selection and reconnection. It never queues input.
  */
 export class BrowserAttachmentClient {
-  private readonly viewport: BrowserViewport;
+  private viewport?: BrowserViewport;
   private ready = false;
   private closed = false;
   private version: number | undefined;
@@ -47,7 +33,7 @@ export class BrowserAttachmentClient {
 
   constructor(
     private readonly link: Link,
-    canvas: HTMLCanvasElement,
+    private readonly canvas: HTMLCanvasElement,
     private readonly open: BrowserAttachmentOpen,
     private readonly options: {
       snapshot(snapshot: BrowserTabSnapshot): void;
@@ -55,6 +41,7 @@ export class BrowserAttachmentClient {
       find?(event: Extract<BrowserAttachmentEvent, { type: 'find.result' }>): void;
       contextMenu?(event: Extract<BrowserAttachmentEvent, { type: 'context.result' }>): void;
       attached?(): void;
+      quality?(value: BrowserPictureQuality): void;
       viewportElement?: HTMLElement;
       downloadManagement?: boolean;
       agentActivity?: boolean;
@@ -67,7 +54,6 @@ export class BrowserAttachmentClient {
       ended(code: string): void;
     }
   ) {
-    this.viewport = new BrowserViewport(canvas);
     link.binaryType = 'arraybuffer';
     link.addEventListener('open', this.sendOpen);
     link.addEventListener('message', this.onMessage);
@@ -103,7 +89,7 @@ export class BrowserAttachmentClient {
     this.link.removeEventListener('message', this.onMessage);
     this.link.removeEventListener('close', this.onClose);
     this.link.removeEventListener('error', this.onClose);
-    this.viewport.close();
+    this.viewport?.close();
     this.link.close();
   }
 
@@ -127,8 +113,13 @@ export class BrowserAttachmentClient {
         throw new Error('Browser control limit');
       const event = browserAttachmentEventSchema.parse(JSON.parse(data));
       if (event.type === 'ATTACHED' && !this.ready) {
-        if (event.hd && !this.open.hd) throw new Error('Unexpected browser codec');
-        this.viewport.setHd(event.hd === true);
+        this.viewport = new BrowserViewport(
+          this.canvas,
+          (data) => {
+            this.sendText({ type: 'rfb', data });
+          },
+          () => this.end('BROWSER_FRAME_TRANSPORT_FAILED')
+        );
         this.ready = true;
         this.sampleStart = performance.now();
         this.sampleTimer = setInterval(this.publishSample, 1_000);
@@ -148,9 +139,13 @@ export class BrowserAttachmentClient {
         this.options.attached?.();
         return;
       }
-      if (!this.ready || event.type === 'ATTACHED')
+      if (!this.viewport || !this.ready || event.type === 'ATTACHED')
         throw new Error('Browser attachment out of order');
-      if (event.type === 'snapshot') {
+      if (event.type === 'rfb') {
+        this.viewport.handshake(event.data);
+      } else if (event.type === 'quality') {
+        this.options.quality?.(event.quality);
+      } else if (event.type === 'snapshot') {
         const version = event.snapshot.viewVersion;
         if (version !== this.version) {
           this.drawn = false;
@@ -171,7 +166,8 @@ export class BrowserAttachmentClient {
       }
       return;
     }
-    if (!this.ready || !(data instanceof ArrayBuffer)) throw new Error('Unexpected browser frame');
+    if (!this.viewport || !this.ready || !(data instanceof ArrayBuffer))
+      throw new Error('Unexpected browser frame');
     this.receivedBytes += data.byteLength;
     const frame = await this.viewport.receive(new Uint8Array(data));
     if (this.closed || !frame || !this.sendText({ type: 'ack', sequence: frame.sequence })) return;

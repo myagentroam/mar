@@ -21,6 +21,7 @@ test('Node internal staging rewrites supported imports and rejects unknown inter
     await put('mar-node/package.json', JSON.stringify({ version: '1.2.3' }));
     await put('mar-node/src/terminal-pty-host.mjs', 'export {};');
     await put('mar-node/src/terminal-pty-tree.mjs', 'export {};');
+    await put('packages/browser-vnc/dist/index.js', 'export {};');
     await put('packages/code-navigation/dist/index.js', 'export {};');
     await put('packages/code-navigation/dist/symbol-navigation.js', 'export {};');
     await put('marctl/src/cli.mjs', 'export {};');
@@ -28,7 +29,7 @@ test('Node internal staging rewrites supported imports and rejects unknown inter
     const entry = join(root, 'mar-node/dist/entry.js');
     await put(
       'mar-node/dist/entry.js',
-      "import '@myagentroam/code-navigation';\nimport '@myagentroam/marctl/bin/marctl.mjs';\n"
+      "import '@myagentroam/browser-vnc';\nimport '@myagentroam/code-navigation';\nimport '@myagentroam/marctl/bin/marctl.mjs';\n"
     );
     const script = join(root, 'scripts/stage-node-internals.mjs');
     execFileSync(process.execPath, [script]);
@@ -39,6 +40,11 @@ test('Node internal staging rewrites supported imports and rejects unknown inter
     );
     assert.equal(
       await readFile(join(root, 'mar-node/dist/terminal-pty-tree.mjs'), 'utf8'),
+      'export {};'
+    );
+    assert.match(output, /\.\/browser-vnc\/index\.js/u);
+    assert.equal(
+      await readFile(join(root, 'mar-node/dist/browser-vnc/index.js'), 'utf8'),
       'export {};'
     );
     assert.match(output, /\.\/code-navigation\/index\.js/u);

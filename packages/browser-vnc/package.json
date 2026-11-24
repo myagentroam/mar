@@ -1,0 +1,22 @@
+{
+  "name": "@myagentroam/browser-vnc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Request-driven RFB framebuffer updates for the Workspace browser.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run test"
+  }
+}

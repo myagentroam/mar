@@ -6,23 +6,16 @@ import type {
   BrowserUpload
 } from '@myagentroam/protocol';
 import { setTimeout as delay } from 'node:timers/promises';
-import { BrowserFrameStream } from './browser-frame-stream.js';
+import { BrowserVncStream } from './browser-vnc-stream.js';
 import type { BrowserPageCapture, BrowserPageView } from './browser-page-view.js';
 import type { BrowserTabs } from './browser-tabs.js';
-import { browserStreamSize, type BrowserSize } from './browser-video-config.js';
+import { browserStreamSize, type BrowserSize } from './browser-capture-config.js';
 
-type Encoder = (
-  jpeg: Buffer,
-  key: boolean,
-  raster: BrowserSize,
-  profile: { bitrate: number; fps: number }
-) => Promise<{ data: Uint8Array; key: boolean }>;
 type Command = Exclude<
   BrowserAttachmentMessage,
-  { type: 'ack' | 'presence' | 'dialog.respond' | 'agent.activity.observe' }
+  { type: 'rfb' | 'quality' | 'ack' | 'presence' | 'dialog.respond' | 'agent.activity.observe' }
 >;
 type Button = Extract<BrowserPageInput, { type: 'button' }>['button'];
-export type BrowserAttachmentEncoder = { encode: Encoder; close: () => Promise<void>; hd?: true };
 const COMMAND_LIMIT = 64;
 // A wheel sample can carry its own pointer move. Budget that burst separately
 // from ordered controls without changing the order in which any command runs.
@@ -41,11 +34,11 @@ const COMMAND_ERRORS = new Set([
 ]);
 
 /** One interactive borrower of a browser session. Owns in-flight commands,
- * pressed input, capture and encoder disposal; its caller owns channel lifetime
+ * pressed input, capture and framebuffer disposal; its caller owns channel lifetime
  * and authorization. The tabs remain owned by the browser session.
  */
 export class BrowserAttachment {
-  private readonly stream: BrowserFrameStream;
+  private readonly stream: BrowserVncStream;
   private readonly unobserve: () => void;
   private readonly queue: Command[] = [];
   private queuedPointerCommands = 0;
@@ -87,20 +80,20 @@ export class BrowserAttachment {
       activity: () => boolean;
     },
     private readonly options: {
-      quality: number;
-      encoder: BrowserAttachmentEncoder;
-      sendFrame: ConstructorParameters<typeof BrowserFrameStream>[0]['send'];
+      relay: boolean;
+      sendFrame: ConstructorParameters<typeof BrowserVncStream>[0]['send'];
       sendControl: (event: BrowserAttachmentEvent) => void;
-      captured?: (bytes: number) => void;
       failed: (code: string) => void;
       deadlineMs: number;
     }
   ) {
-    this.stream = new BrowserFrameStream({
-      encode: (jpeg, key, viewport, profile) =>
-        options.encoder.encode(jpeg, key, browserStreamSize(viewport, profile.hd), profile),
-      hd: options.encoder.hd === true,
-      rasterChanged: () => this.updateRaster(),
+    this.stream = new BrowserVncStream({
+      relay: options.relay,
+      handshake: (data) => options.sendControl({ type: 'rfb', data }),
+      changed: (quality) => {
+        options.sendControl({ type: 'quality', quality });
+        this.updateRaster();
+      },
       send: options.sendFrame,
       failed: (code) => this.fail(code),
       deadlineMs: options.deadlineMs
@@ -108,6 +101,8 @@ export class BrowserAttachment {
     this.unobserve = borrow.resource.observe(() => this.refresh());
     void borrow.resource.attach(this).catch(() => this.fail('BROWSER_DIALOG_FAILED'));
     this.refresh();
+    this.stream.start();
+    options.sendControl({ type: 'quality', quality: this.stream.quality });
   }
 
   receive(message: BrowserAttachmentMessage): void {
@@ -137,6 +132,14 @@ export class BrowserAttachment {
         this.icons = new Map();
         this.refreshIcons(this.borrow.resource.snapshot());
       }
+      return;
+    }
+    if (message.type === 'rfb') {
+      this.stream.receive(Buffer.from(message.data, 'base64'));
+      return;
+    }
+    if (message.type === 'quality') {
+      this.stream.select(message.mode);
       return;
     }
     if (message.type === 'ack') {
@@ -232,8 +235,7 @@ export class BrowserAttachment {
       this.answering,
       this.uploading?.catch(() => undefined),
       this.capturing,
-      this.clearFind(),
-      this.options.encoder.close()
+      this.clearFind()
     ]);
     const cleanup = await Promise.allSettled([this.capture?.stop(), this.releaseInput()]);
     const detached = await Promise.allSettled([this.borrow.resource.detach(this)]);
@@ -282,7 +284,7 @@ export class BrowserAttachment {
       version: snapshot.viewVersion,
       page: this.borrow.resource.activeView,
       size,
-      raster: browserStreamSize(size, this.stream.hd)
+      raster: browserStreamSize(size, this.stream.scale)
     };
     this.shown = undefined;
     this.stream.setView(snapshot.viewVersion);
@@ -346,10 +348,12 @@ export class BrowserAttachment {
   private updateRaster(): void {
     const target = this.next;
     if (!target) return;
-    const raster = browserStreamSize(target.size, this.stream.hd);
+    const raster = browserStreamSize(target.size, this.stream.scale);
     if (raster.width === target.raster.width && raster.height === target.raster.height) return;
     this.next = { ...target, raster };
-    this.stream.resetRaster();
+    this.stream.resetRaster(
+      raster.width < target.raster.width || raster.height < target.raster.height
+    );
     this.updateCapture();
   }
 
@@ -361,17 +365,22 @@ export class BrowserAttachment {
       this.capture = undefined;
       await capture?.stop();
       if (this.closed || target !== this.next || !target?.page) continue;
-      await target.page.resize(target.size);
-      if (this.closed || target !== this.next) continue;
-      const version = target.version;
-      this.capture = await target.page.startCapture(
-        { ...target.raster, quality: this.options.quality },
-        (frame) => {
-          if (target !== this.next) return;
-          this.options.captured?.(frame.jpeg.byteLength);
-          this.stream.offer({ ...frame, viewVersion: version });
-        }
-      );
+      try {
+        await target.page.resize(target.size);
+        if (this.closed || target !== this.next) continue;
+        this.capture = await target.page.startCapture(
+          target.raster,
+          (frame) => {
+            if (this.closed || target !== this.next) return;
+            this.stream.offer({ ...frame, viewVersion: target.version });
+          },
+          () => this.stream.fps
+        );
+      } catch (error) {
+        // A tab or raster change can supersede a pending CDP setup. Only the
+        // current target can fail the attachment; teardown errors still surface.
+        if (!this.closed && target === this.next) throw error;
+      }
     }
   }
 
@@ -560,6 +569,7 @@ export class BrowserAttachment {
       }
       return;
     }
+    if (action.type === 'wheel') this.stream.scroll(action.y);
     await page.input(action);
   }
 

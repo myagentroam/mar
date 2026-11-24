@@ -8,7 +8,7 @@ import { attachBrowserProfileData } from '../../src/browser/browser-profile-data
 import { BrowserCacheMaintenance } from '../../src/browser/browser-cache-maintenance.js';
 import { createBrowserLauncher } from '../../src/browser/browser-launcher.js';
 import { chromiumProfileLock } from '../../src/browser/browser-profile-lock.js';
-import { BROWSER_VIEWPORT } from '../../src/browser/browser-video-config.js';
+import { BROWSER_VIEWPORT } from '../../src/browser/browser-capture-config.js';
 
 // Local trusted fixtures only. This proves native semantics, not deployment isolation.
 const root = await mkdtemp(join(tmpdir(), 'mar-browser-profile-data-'));

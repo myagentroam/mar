@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { BrowserAttachmentClient } from '../../src/service/browser-attachment-client.js';
 
-const { receive, setHd } = vi.hoisted(() => ({ receive: vi.fn(), setHd: vi.fn() }));
+const { receive, handshake } = vi.hoisted(() => ({ receive: vi.fn(), handshake: vi.fn() }));
 vi.mock('../../src/service/browser-viewport.js', () => ({
   BrowserViewport: class {
     receive = receive;
-    setHd = setHd;
+    handshake = handshake;
     setView() {}
     close() {}
   }
@@ -17,44 +17,47 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it.each([
-  { offered: true, accepted: true },
-  { offered: true, accepted: false },
-  { offered: false, accepted: true }
-])('honors the negotiated decoder profile: %o', ({ offered, accepted }) => {
-  setHd.mockClear();
-  const link = Object.assign(new EventTarget(), {
-    readyState: 'open',
-    send: vi.fn(),
-    close: vi.fn()
-  });
-  const attached = vi.fn();
-  const failed = vi.fn();
-  const client = new BrowserAttachmentClient(
-    link as unknown as RTCDataChannel,
-    {} as HTMLCanvasElement,
-    {
-      type: 'OPEN',
-      attachmentId: randomUUID(),
-      ticket: 'x'.repeat(32),
-      ...(offered && { hd: true })
-    },
-    { attached, failed, snapshot: vi.fn(), frame: vi.fn(), sample: vi.fn(), ended: vi.fn() }
-  );
-  link.dispatchEvent(
-    new MessageEvent('message', {
-      data: JSON.stringify({ type: 'ATTACHED', ...(accepted && { hd: true }) })
-    })
-  );
-  if (accepted && !offered) {
-    expect(setHd).not.toHaveBeenCalled();
-    expect(attached).not.toHaveBeenCalled();
-  } else {
-    expect(setHd).toHaveBeenCalledWith(accepted);
-    expect(attached).toHaveBeenCalledOnce();
+it.each([{ rfb: true }, {}, { rfb: true, hd: true }])(
+  'requires an RFB attachment: %o',
+  async (fields) => {
+    handshake.mockClear();
+    const link = Object.assign(new EventTarget(), {
+      readyState: 'open',
+      send: vi.fn(),
+      close: vi.fn()
+    });
+    const attached = vi.fn();
+    const ended = vi.fn();
+    const client = new BrowserAttachmentClient(
+      link as unknown as RTCDataChannel,
+      {} as HTMLCanvasElement,
+      {
+        type: 'OPEN',
+        attachmentId: randomUUID(),
+        ticket: 'x'.repeat(32),
+        rfb: true
+      },
+      { attached, failed: vi.fn(), snapshot: vi.fn(), frame: vi.fn(), sample: vi.fn(), ended }
+    );
+    link.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({ type: 'ATTACHED', ...fields })
+      })
+    );
+    if (!('rfb' in fields) || 'hd' in fields) {
+      await vi.waitFor(() => expect(ended).toHaveBeenCalledWith('BROWSER_INVALID_MESSAGE'));
+      expect(handshake).not.toHaveBeenCalled();
+      expect(attached).not.toHaveBeenCalled();
+    } else {
+      expect(attached).toHaveBeenCalledOnce();
+      link.dispatchEvent(
+        new MessageEvent('message', { data: JSON.stringify({ type: 'rfb', data: 'UkZC' }) })
+      );
+      expect(handshake).toHaveBeenCalledWith('UkZC');
+    }
+    client.close();
   }
-  client.close();
-});
+);
 
 it('measures received bytes and drawn frames separately, then stops sampling when detached', async () => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
@@ -76,7 +79,7 @@ it('measures received bytes and drawn frames separately, then stops sampling whe
     link.dispatchEvent(new MessageEvent('message', { data }));
   await vi.advanceTimersByTimeAsync(1_000);
   expect(sample).not.toHaveBeenCalled();
-  message(JSON.stringify({ type: 'ATTACHED' }));
+  message(JSON.stringify({ type: 'ATTACHED', rfb: true }));
   message(
     JSON.stringify({
       type: 'snapshot',
@@ -152,7 +155,9 @@ it('sends the content size before the first frame or navigation and debounces re
       ended: vi.fn()
     }
   );
-  link.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'ATTACHED' }) }));
+  link.dispatchEvent(
+    new MessageEvent('message', { data: JSON.stringify({ type: 'ATTACHED', rfb: true }) })
+  );
   expect(link.send.mock.calls.map(([data]) => JSON.parse(data))).toEqual([
     open,
     { type: 'viewport.resize', width: 510, height: 880 }

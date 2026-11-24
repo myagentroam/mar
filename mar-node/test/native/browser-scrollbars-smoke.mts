@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { createBrowserLauncher } from '../../src/browser/browser-launcher.js';
 import { BrowserPageView } from '../../src/browser/browser-page-view.js';
-import { BROWSER_VIEWPORT } from '../../src/browser/browser-video-config.js';
+import { BROWSER_VIEWPORT } from '../../src/browser/browser-capture-config.js';
 
 const root = await mkdtemp(join(tmpdir(), 'mar-browser-scrollbars-'));
 const errors: unknown[] = [];

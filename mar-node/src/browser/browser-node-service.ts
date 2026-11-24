@@ -1,4 +1,3 @@
-import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { WebSocket } from 'ws';
@@ -20,16 +19,6 @@ import {
   createBrowserResourceOperation
 } from './browser-resource-operations.js';
 import { BrowserRuntime } from './browser-runtime.js';
-import { createBrowserVideoEncoder } from './browser-video-encoder.js';
-import {
-  BROWSER_VIDEO_BITRATE,
-  BROWSER_VIDEO_FRAMERATE,
-  BROWSER_VIDEO_HD_BITRATE,
-  BROWSER_VIDEO_HD_LIMIT,
-  BROWSER_VIEWPORT
-} from './browser-video-config.js';
-
-const encoderOrigin = 'https://mar-browser-encoder.invalid/';
 type Command = 'resource' | 'profile' | 'attachment' | 'upload' | 'download';
 const nodeRequest = z.object({
   generation: z.string(),
@@ -37,14 +26,12 @@ const nodeRequest = z.object({
   payload: z.record(z.string(), z.unknown())
 });
 
-/** Connector-facing Browser composition. Owns the runtime and trusted encoder
- * host; workspace admission, identity and ICE negotiation stay with the Connector. */
+/** Connector-facing Browser composition. Owns the runtime and relay sockets; workspace admission, identity and ICE negotiation stay with the Connector. */
 export class BrowserNodeService {
   private readonly browser: BrowserRuntime;
   private readonly launcher: ReturnType<typeof createBrowserLauncher>;
   private readonly resource;
   private readonly profile;
-  private encoderHost?: ReturnType<typeof chromium.launch>;
   private readonly relaySockets = new Set<WebSocket>();
 
   constructor(
@@ -69,7 +56,6 @@ export class BrowserNodeService {
         workspaceFilesChanged: options.workspaceFilesChanged
       }),
       launch: this.launcher.launch,
-      encoder: (hd) => this.encoder(hd),
       failed: options.failed
     });
     this.resource = createBrowserResourceOperation(this.browser, options.requireWorkspace);
@@ -79,14 +65,13 @@ export class BrowserNodeService {
   async probe(): Promise<boolean> {
     try {
       await this.launcher.sweepOrphans();
-      await access(chromium.executablePath());
-      const encoder = await this.encoder();
-      try {
-        const frame = await encoder.probeFrame();
-        return frame.key && frame.data.length > 0;
-      } finally {
-        await encoder.close();
-      }
+      const browser = await chromium.launch({
+        channel: 'chromium',
+        headless: true,
+        timeout: 10_000
+      });
+      await browser.close();
+      return true;
     } catch (error) {
       this.options.failed(error);
       return false;
@@ -144,12 +129,8 @@ export class BrowserNodeService {
   }
 
   async shutdown(): Promise<void> {
-    try {
-      await this.disconnect();
-      await this.browser.shutdown();
-    } finally {
-      if (this.encoderHost) await (await this.encoderHost).close();
-    }
+    await this.disconnect();
+    await this.browser.shutdown();
   }
 
   private async attachment(payload: unknown, userId: number) {
@@ -211,75 +192,5 @@ export class BrowserNodeService {
         resolve();
       });
     });
-  }
-
-  private async encoder(hd = false) {
-    if (!this.encoderHost) {
-      const launch = chromium.launch({
-        channel: 'chromium',
-        headless: true,
-        chromiumSandbox: false,
-        timeout: 10_000
-      });
-      const reset = () => {
-        if (this.encoderHost === launch) delete this.encoderHost;
-      };
-      this.encoderHost = launch;
-      void launch.then((host) => {
-        host.once('disconnected', reset);
-        if (!host.isConnected()) reset();
-      }, reset);
-    }
-    const host = await this.encoderHost;
-    const page = await host.newPage();
-    try {
-      await page.route(encoderOrigin, (route) =>
-        route.fulfill({ contentType: 'text/html', body: '<!doctype html>' })
-      );
-      await page.goto(encoderOrigin);
-      const create = (hd: boolean) =>
-        createBrowserVideoEncoder(page, {
-          ...(hd ? BROWSER_VIDEO_HD_LIMIT : BROWSER_VIEWPORT),
-          bitrate: hd ? BROWSER_VIDEO_HD_BITRATE : BROWSER_VIDEO_BITRATE,
-          framerate: BROWSER_VIDEO_FRAMERATE,
-          hd
-        });
-      const probe = async (codec: Awaited<ReturnType<typeof create>>) => {
-        const jpeg = await page.screenshot({
-          type: 'jpeg',
-          clip: { x: 0, y: 0, width: 16, height: 16 },
-          timeout: 5_000
-        });
-        return codec.encode(jpeg, true);
-      };
-      let codec: Awaited<ReturnType<typeof create>> | undefined;
-      if (hd) {
-        try {
-          codec = await create(true);
-          const frame = await probe(codec);
-          if (!frame.key || !frame.data.length) throw new Error('BROWSER_H264_ENCODER_UNAVAILABLE');
-        } catch {
-          await codec?.close();
-          codec = undefined;
-        }
-      }
-      const negotiatedHd = codec !== undefined;
-      const active = codec ?? (await create(false));
-      return {
-        ...(negotiatedHd && { hd: true as const }),
-        encode: active.encode,
-        probeFrame: () => probe(active),
-        close: async () => {
-          try {
-            await active.close();
-          } finally {
-            await page.close();
-          }
-        }
-      };
-    } catch {
-      await page.close();
-      throw new Error('BROWSER_H264_ENCODER_UNAVAILABLE');
-    }
   }
 }

@@ -11,7 +11,7 @@ import { BrowserDownloads } from './browser-downloads.js';
 import { BrowserDialogs } from './browser-dialogs.js';
 import { BrowserFileChooser } from './browser-file-chooser.js';
 import { BrowserPageView } from './browser-page-view.js';
-import { BROWSER_VIEWPORT, type BrowserSize } from './browser-video-config.js';
+import { BROWSER_VIEWPORT, type BrowserSize } from './browser-capture-config.js';
 import { openBrowserWorkspaceHtml } from './browser-workspace-html.js';
 
 type Tab = {

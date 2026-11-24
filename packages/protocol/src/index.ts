@@ -2044,7 +2044,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   terminalDirect: terminalDirectCapabilitySchema.optional(),
   browser: browserCapabilitySchema.optional(),
   browserViewportResize: z.literal(true).optional(),
-  browserHd: z.literal(true).optional(),
+  browserVnc: z.literal(true).optional(),
   browserTabIcons: z.literal(true).optional(),
   browserAgentActivity: z.literal(true).optional(),
   browserForegroundPresence: z.literal(true).optional(),
