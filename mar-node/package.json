@@ -38,6 +38,7 @@
     "build": "node ../scripts/clean-build-output.mjs dist && tsc -p tsconfig.json && node ../scripts/stage-node-internals.mjs",
     "stage:computer-use-runtime": "node ../scripts/stage-computer-use-runtime.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "lint:tool-schemas": "vitest run --config vitest.config.mts test/unit/model-tool-schemas.test.ts",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
     "test:unit": "vitest run --config vitest.config.mts && node --test test/unit/*.test.mjs",

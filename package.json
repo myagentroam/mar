@@ -13,7 +13,7 @@
     "dev:web": "pnpm --filter @myagentroam/web-console dev",
     "test:e2e": "node --import tsx scripts/test-e2e.mjs",
     "test:integration": "node --import tsx scripts/test-e2e.mjs --integration",
-    "test:smoke": "node --import tsx scripts/test-e2e.mjs --smoke",
+    "test:smoke": "pnpm --filter @myagentroam/node lint:tool-schemas && node --import tsx scripts/test-e2e.mjs --smoke",
     "test": "pnpm test:unit && pnpm test:e2e",
     "check:versions": "node scripts/product-versions.mjs",
     "computer-runtime:prepare": "node scripts/prepare-computer-use-runtime.mjs",

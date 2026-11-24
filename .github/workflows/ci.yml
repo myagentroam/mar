@@ -67,6 +67,9 @@ jobs:
       - name: Check compiled CLI entrypoints
         run: node --test test/unit/cli-smoke.test.mjs
 
+      - name: Lint Node-owned model tool schemas
+        run: pnpm --filter @myagentroam/node lint:tool-schemas
+
       - name: Check Node health and process probes
         run: pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts test/unit/node-smoke.test.ts
 

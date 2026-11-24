@@ -12,13 +12,19 @@ import {
 const binDirectory = fileURLToPath(new URL('../../../scripts/browser-bin', import.meta.url));
 const name = 'mar_browser';
 const inputSchema = z.strictObject({ command: browserAgentActionSchema });
+// The action literals make the variants disjoint. Publish anyOf instead of the
+// discriminator's oneOf; draft-04 renders the action literals as singleton enums.
+const modelInputSchema = z.toJSONSchema(
+  z.strictObject({ command: z.union(browserAgentActionSchema.options) }),
+  { target: 'draft-04' }
+);
 const tool: ClientToolDefinition = {
   name,
   description:
-    'Access this Workspace’s shared MAR browser for Playwright when a task needs the user’s current page, existing sign-in, or help signing in. Use Playwright directly for isolated tests.',
+    'Find this Workspace’s shared MAR browser resource for standard Playwright when a task needs the user’s current page, existing sign-in, or help signing in. Use Playwright directly for isolated tests.',
   parallelSafety: 'serial',
   allowedCallers: ['direct'],
-  inputSchema: z.toJSONSchema(inputSchema)
+  inputSchema: modelInputSchema
 };
 
 /** Exposes the shared browser access tool and the pinned CLI in an authorized execution. */
