@@ -68,6 +68,10 @@ import { createModelTransportTestService } from '../../service/model-transport-t
 import { createCodexCatalogInteractionService } from '../../service/codex-catalog-interaction-service';
 import { runnerUsageWindowLabel } from '../../service/runner-usage-service';
 import { errorCode } from '../../util/api-error';
+import {
+  marAgentReasoningEffortOptions,
+  orderMarAgentReasoningEfforts
+} from '../../util/mar-agent-reasoning-effort.js';
 import { codexUsageTokenCountLabel, errorMessage } from '../../util/workbench-presentation';
 import ImageGenerationManagement from './ImageGenerationManagement.vue';
 import MarAgentCompactSettings from './MarAgentCompactSettings.vue';
@@ -131,14 +135,6 @@ interface CatalogRow extends MutableCodexImportDraft {
   readonly requiredInputs: readonly 'contextWindowTokens'[];
 }
 
-const reasoningEffortOptions: readonly ReasoningEffort[] = [
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'max',
-  'ultra'
-];
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 256_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 32_000;
 const props = defineProps<{
@@ -366,7 +362,9 @@ const eligibleTestNodes = computed(() => {
 });
 const selectedCatalogCount = computed(() => catalogRows.value.filter((row) => row.selected).length);
 const defaultReasoningEffortOptions = computed<readonly ReasoningEffort[]>(() =>
-  draft.reasoningEfforts.length > 0 ? draft.reasoningEfforts : reasoningEffortOptions
+  draft.reasoningEfforts.length > 0
+    ? orderMarAgentReasoningEfforts(draft.reasoningEfforts)
+    : marAgentReasoningEffortOptions
 );
 const rules = computed<FormRules>(() => ({
   name: [{ required: true, whitespace: true, message: translate('marAgentModels.nameRequired') }],
@@ -1281,7 +1279,7 @@ async function openCatalog(credential: CodexCredentialSummary): Promise<void> {
       name: model.displayName,
       contextWindowTokens: model.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS,
       warnings: model.warnings,
-      reasoningEfforts: model.reasoningEfforts,
+      reasoningEfforts: orderMarAgentReasoningEfforts(model.reasoningEfforts),
       defaultReasoningEffort: resolveMarAgentDefaultReasoningEffort(
         model.defaultReasoningEffort,
         model.reasoningEfforts
@@ -2098,7 +2096,7 @@ onBeforeUnmount(() => {
             :aria-label="translate('marAgentModels.reasoningEfforts')"
           >
             <MarCheckbox
-              v-for="effort in reasoningEffortOptions"
+              v-for="effort in marAgentReasoningEffortOptions"
               :key="effort"
               :label="effort"
               :value="effort"

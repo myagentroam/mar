@@ -1,5 +1,6 @@
 import { computed, ref, type Ref } from 'vue';
 import type { RunnerDefaultConfiguration, RunnerProfile, Session } from '../model/workbench.js';
+import { orderMarAgentReasoningEfforts } from '../util/mar-agent-reasoning-effort.js';
 import {
   runnerLabel as presentRunnerLabel,
   runnerModelCandidates
@@ -26,7 +27,12 @@ export function createComposerConfigurationService(options: {
   const selectedModel = computed(() =>
     models.value.find((candidate) => candidate.id === model.value)
   );
-  const efforts = computed(() => selectedModel.value?.supportedEfforts ?? []);
+  const efforts = computed(() => {
+    const supported = selectedModel.value?.supportedEfforts ?? [];
+    return activeRunner.value === 'mar-agent'
+      ? orderMarAgentReasoningEfforts(supported)
+      : supported;
+  });
   const accessOptions = computed(() => profile.value?.accessOptions ?? []);
   const modelEffortLabel = computed(() => {
     // The saved model remains displayable even when it is not a selectable candidate.

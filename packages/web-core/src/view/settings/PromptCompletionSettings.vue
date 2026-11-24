@@ -15,6 +15,7 @@ import {
 } from '@myagentroam/protocol';
 import { createPromptCompletionSettingsService } from '../../service/prompt-completion-settings-service';
 import { translate } from '../../service/locale-preference-service';
+import { orderMarAgentReasoningEfforts } from '../../util/mar-agent-reasoning-effort.js';
 import { errorMessage } from '../../util/workbench-presentation';
 
 const props = defineProps<{
@@ -48,7 +49,7 @@ const efforts = computed(() =>
   selected.value === undefined
     ? []
     : selected.value.reasoningEfforts.length
-      ? selected.value.reasoningEfforts
+      ? orderMarAgentReasoningEfforts(selected.value.reasoningEfforts)
       : [
           resolveMarAgentDefaultReasoningEffort(
             selected.value.defaultReasoningEffort,
