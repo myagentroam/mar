@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { installBrowserContextMenu } from './browser-context-menu.js';
+import { installBrowserTouchSelection } from './browser-touch-selection.js';
 import { attachBrowserProfileData, writeBrowserDataExtension } from './browser-profile-data.js';
 import { BROWSER_DEVICE_SCALE_FACTOR, BROWSER_VIEWPORT } from './browser-capture-config.js';
 import { recordBrowserRun, retireBrowserRun, sweepBrowserRuns } from './browser-run-directories.js';
@@ -56,6 +57,7 @@ export function createBrowserLauncher(
       const owned = context;
       await recordBrowserRun(run, profileRoot, profilePath).catch(failed);
       await installBrowserContextMenu(owned);
+      await installBrowserTouchSelection(owned);
       const data = await attachBrowserProfileData(owned);
       const downloads = await (async () => {
         const session = await owned.browser()?.newBrowserCDPSession();
