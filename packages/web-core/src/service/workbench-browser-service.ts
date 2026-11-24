@@ -53,6 +53,7 @@ export function createWorkbenchBrowserService(options: {
   const pending = new Map<string, (message: BrowserControlResponse) => void>();
   const snapshot = shallowRef<BrowserTabSnapshot>();
   const frame = shallowRef<View>();
+  const tabIcons = shallowRef(new Map<string, { url: string; png: string }>());
   const path = shallowRef<Path>();
   const streamSample = shallowRef<BrowserStreamSample>();
   const status = shallowRef<'idle' | 'connecting' | 'ready' | 'failed'>('idle');
@@ -102,6 +103,7 @@ export function createWorkbenchBrowserService(options: {
     clearTimeout(connection.deadline);
     clearTimeout(connection.renew);
     connection.data?.close();
+    tabIcons.value = new Map();
     streamSample.value = undefined;
     connection.transport?.release();
     if (connection.attachmentId) {
@@ -224,12 +226,25 @@ export function createWorkbenchBrowserService(options: {
     }, 10_000);
     connection.data = new BrowserAttachmentClient(link, canvas, open, {
       resizeViewport: capability.resizeViewport === true,
+      ...(capability.tabIcons && {
+        tabIcon({ tabId, url, png }) {
+          if (
+            snapshot.value?.tabs.some((tab) => tab.id === tabId && tab.url === url && !tab.loading)
+          )
+            tabIcons.value = new Map(tabIcons.value).set(tabId, { url, png });
+        }
+      }),
       attached() {
         path.value = route;
         connection.renew = setTimeout(() => void renew(), 5_000);
       },
       snapshot(value) {
         if (snapshot.value?.viewVersion !== value.viewVersion) connection.selection?.finish('');
+        const currentIcons = tabIcons.value;
+        const retained = [...currentIcons].filter(([id, { url }]) =>
+          value.tabs.some((tab) => tab.id === id && tab.url === url && !tab.loading)
+        );
+        if (retained.length !== currentIcons.size) tabIcons.value = new Map(retained);
         snapshot.value = value;
       },
       selection(id, text) {
@@ -412,6 +427,7 @@ export function createWorkbenchBrowserService(options: {
   return {
     snapshot,
     frame,
+    tabIcons,
     path,
     streamSample,
     status,
@@ -442,4 +458,8 @@ export function createWorkbenchBrowserService(options: {
 }
 
 export type WorkbenchBrowserService = ReturnType<typeof createWorkbenchBrowserService>;
-export type WorkbenchBrowserCapability = BrowserCapability & { resizeViewport?: true };
+export type WorkbenchBrowserCapability = BrowserCapability & {
+  resizeViewport?: boolean;
+  tabIcons?: boolean;
+  nativeTouch?: boolean;
+};

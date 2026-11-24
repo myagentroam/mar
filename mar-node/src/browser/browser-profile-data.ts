@@ -6,7 +6,7 @@ import type {
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BrowserContext, Worker } from 'playwright';
-import { isBrowserWorkspacePreview } from '@myagentroam/protocol';
+import { BROWSER_TAB_ICON_BASE64_MAX, isBrowserWorkspacePreview } from '@myagentroam/protocol';
 
 const HOUR_MS = 60 * 60_000;
 const RANGE_HOURS = { hour: 1, day: 24, week: 7 * 24, 'four-weeks': 28 * 24 };
@@ -25,7 +25,7 @@ export async function writeBrowserDataExtension(directory: string): Promise<void
         manifest_version: 3,
         name: 'MAR Profile Data',
         version: '1.0',
-        permissions: ['browsingData', 'history'],
+        permissions: ['browsingData', 'history', 'favicon'],
         background: { service_worker: WORKER }
       }),
       { mode: 0o600 }
@@ -89,6 +89,28 @@ export class BrowserProfileData {
     private readonly worker: Worker,
     private readonly now = Date.now
   ) {}
+
+  async favicon(url: string): Promise<string | undefined> {
+    if (!/^https?:\/\//iu.test(url)) return;
+    return this.worker.evaluate(
+      async ({ url, limit }) => {
+        // The native extension endpoint returns a default PNG on misses, not a 404.
+        const [image, fallback] = await Promise.all(
+          [url, 'about:blank'].map(async (pageUrl) => {
+            const favicon = new URL('/_favicon/', globalThis.location.href);
+            favicon.search = new URLSearchParams({ pageUrl, size: '16' }).toString();
+            const response = await fetch(favicon);
+            if (!response.ok) return;
+            const png = new Uint8Array(await response.arrayBuffer());
+            if (png.byteLength > (limit / 4) * 3 || png[0] !== 137 || png[1] !== 80) return;
+            return btoa(String.fromCharCode(...png));
+          })
+        );
+        if (fallback && image !== fallback) return image;
+      },
+      { url, limit: BROWSER_TAB_ICON_BASE64_MAX }
+    );
+  }
 
   clear({ range, categories }: BrowserDataClear): Promise<void> {
     const since = range === 'all' ? 0 : Math.max(0, this.now() - RANGE_HOURS[range] * HOUR_MS);

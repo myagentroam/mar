@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
@@ -22,9 +22,9 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; cleared: [] }>();
 const range = ref<BrowserDataClear['range']>('hour');
 const categories = {
-  history: 'browser.history',
-  'site-data': 'browser.siteData',
-  cache: 'browser.cachedFiles'
+  history: ['browser.history', 'browser.historyDetail'],
+  'site-data': ['browser.siteData', 'browser.signout'],
+  cache: ['browser.cachedFiles', 'browser.cacheDetail']
 } as const;
 const ranges = {
   hour: 'browser.hour',
@@ -42,6 +42,11 @@ const failure = ref<string>();
 const unknown = ref(false);
 const scope = { nodeId: props.scope.nodeId, workspaceId: props.scope.workspaceId };
 const targetLabel = computed(() => (target.value ? browserProfileLabel(target.value) : undefined));
+const detailId = useId();
+let disposed = false;
+onBeforeUnmount(() => {
+  disposed = true;
+});
 
 watch(
   () => props.connected,
@@ -91,9 +96,12 @@ async function clear(): Promise<void> {
       target: target.value,
       input: { range: range.value, categories: selected.value }
     });
-    emit('cleared');
-    emit('close');
+    if (!disposed) {
+      emit('cleared');
+      emit('close');
+    }
   } catch (error) {
+    if (disposed) return;
     failure.value = error instanceof Error ? error.message : 'BROWSER_FAILED';
     unknown.value =
       failure.value === 'BROWSER_OUTCOME_UNKNOWN' || failure.value === 'BROWSER_PROFILE_CHANGED';
@@ -107,6 +115,7 @@ async function clear(): Promise<void> {
   <MarDialog
     :model-value="true"
     :title="t('browser.clear')"
+    width="min(480px, calc(100vw - 32px))"
     append-to-body
     :show-close="!busy"
     :close-on-click-modal="false"
@@ -114,16 +123,21 @@ async function clear(): Promise<void> {
     @update:model-value="(open) => !open && !busy && emit('close')"
   >
     <div class="browser-clear-fields">
-      <p>
+      <p class="browser-clear-scope">
         {{ scopeLabel }}<template v-if="targetLabel"> · {{ targetLabel }}</template>
       </p>
       <div v-if="loading" role="status" :aria-label="t('common.loading')">
         <MarBusyIndicator class="mar-read-loading-indicator" />
       </div>
+      <p v-else-if="!connected" role="status">{{ t('browser.disconnected') }}</p>
       <p v-if="failure" role="alert">{{ browserError(failure) }}</p>
-      <label
-        >{{ t('browser.timeRange') }}
-        <MarSelect v-model="range" :aria-label="t('browser.timeRange')" :disabled="busy">
+      <div class="browser-clear-range">
+        <span>{{ t('browser.timeRange') }}</span>
+        <MarSelect
+          v-model="range"
+          :aria-label="t('browser.timeRange')"
+          :disabled="busy || !target || !connected || unknown"
+        >
           <MarOption
             v-for="(label, value) in ranges"
             :key="value"
@@ -131,16 +145,23 @@ async function clear(): Promise<void> {
             :label="t(label)"
           />
         </MarSelect>
-      </label>
-      <MarCheckbox
-        v-for="(label, category) in categories"
-        :key="category"
-        :model-value="selected.includes(category)"
-        :disabled="busy"
-        @update:model-value="(checked) => toggle(category, checked === true)"
-        >{{ t(label) }}</MarCheckbox
-      >
-      <p v-if="selected.includes('site-data')">{{ t('browser.signout') }}</p>
+      </div>
+      <div role="group" :aria-label="t('browser.clearCategories')" class="browser-clear-categories">
+        <div
+          v-for="([label, detail], category) in categories"
+          :key="category"
+          class="browser-clear-category"
+        >
+          <MarCheckbox
+            :model-value="selected.includes(category)"
+            :disabled="busy || !target || !connected || unknown"
+            :aria-describedby="`${detailId}-${category}`"
+            @update:model-value="(checked) => toggle(category, checked === true)"
+            >{{ t(label) }}</MarCheckbox
+          >
+          <p :id="`${detailId}-${category}`">{{ t(detail) }}</p>
+        </div>
+      </div>
     </div>
     <template #footer>
       <MarButton :disabled="busy" @click="emit('close')">{{ t('browser.cancel') }}</MarButton>
@@ -158,11 +179,27 @@ async function clear(): Promise<void> {
 <style scoped>
 .browser-clear-fields {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.875rem;
 }
-.browser-clear-fields label {
+.browser-clear-range {
   display: grid;
-  gap: 0.25rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+.browser-clear-categories {
+  border-block: 1px solid var(--mar-ui-border-subtle);
+  padding-block: 0.25rem;
+}
+.browser-clear-category {
+  padding-block: 0.375rem;
+}
+.browser-clear-category p {
+  padding-inline-start: 1.375rem;
+}
+.browser-clear-scope,
+.browser-clear-category p {
+  color: var(--mar-ui-text-secondary);
 }
 .browser-clear-fields p {
   margin: 0;

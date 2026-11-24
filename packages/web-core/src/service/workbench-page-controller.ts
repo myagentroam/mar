@@ -2173,9 +2173,13 @@ export function createWorkbenchPageController<
     browser,
     browserCapability: () => {
       const manifest = nodeManifest.value;
-      return manifest?.browser && manifest.browserViewportResize
-        ? { ...manifest.browser, resizeViewport: true as const }
-        : manifest?.browser;
+      if (manifest?.browser)
+        return {
+          ...manifest.browser,
+          resizeViewport: manifest.browserViewportResize === true,
+          tabIcons: manifest.browserTabIcons === true,
+          nativeTouch: manifest.browserNativeTouch === true
+        };
     },
     browserConnectionReady: () => workbenchLiveConnection.connected.value,
     tree: proxyRefs({

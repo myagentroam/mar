@@ -160,6 +160,8 @@ function pageFixture() {
     setRangeEditor: vi.fn()
   };
   const page = {
+    browser: { destination: ref(undefined), clearDestination: vi.fn() },
+    browserCapability: () => undefined,
     application: shallowReactive({
       view: 'nodes',
       managementSection: 'overview',
@@ -168,6 +170,7 @@ function pageFixture() {
     }),
     aside: shallowReactive({
       setAsideSurfaceVisible: vi.fn(),
+      setAsideSessionFits: vi.fn(),
       asideViewMode: () => 'compact' as const,
       asideWidth: () => 320,
       asideState: { tools: ['terminal'], sessions: [], active: { kind: 'tool', id: 'terminal' } },

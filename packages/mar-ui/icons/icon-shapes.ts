@@ -54,6 +54,8 @@ export const iconShapes = {
   image:
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2.8"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4" />',
   key: '<circle cx="8" cy="8" r="4.5"/><path d="m11.3 11.3 9.2 9.2m-5.8-5.8 2.5-2.5m.3 5.3 2.5-2.5" />',
+  keyboard:
+    '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M7 10h.1m4.9 0h.1m4.9 0h.1M8 14.5h8"/>',
   connection: '<path d="M8 3.5v4m8-4v4M6 7.5h12v4a6 6 0 0 1-12 0v-4Zm6 10v3" />',
   // Tabler Icons link-off (MIT); see icon-shapes.NOTICE.txt.
   'connection-off':

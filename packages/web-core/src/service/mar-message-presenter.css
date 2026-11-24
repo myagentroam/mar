@@ -9,3 +9,9 @@
   gap: 8px;
   pointer-events: none;
 }
+
+.mar-feedback-stack--local {
+  position: absolute;
+  z-index: 1;
+  inset: 8px 8px auto;
+}

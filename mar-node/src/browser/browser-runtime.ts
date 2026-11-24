@@ -69,6 +69,7 @@ export class BrowserRuntime {
           limit: BROWSER_TAB_LIMIT,
           failed: options.failed,
           directory: browser.directory,
+          favicon: browser.data?.favicon.bind(browser.data),
           workspacePath: () => options.workspacePath?.(scope.workspaceId)
         });
         browser.context.once('close', () => {

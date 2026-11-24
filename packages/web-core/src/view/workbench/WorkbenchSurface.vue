@@ -912,14 +912,14 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           >
             <template #workspace-tools>
               <MarButton
-                v-if="browserCapability && page.selection.workspaceTarget"
+                v-if="
+                  !page.layout.mobileViewport && browserCapability && page.selection.workspaceTarget
+                "
                 text
                 icon="web"
                 v-tooltip="translate('browser.openAddress')"
                 :aria-label="translate('browser.openAddress')"
-                :disabled="
-                  !page.layout.mobileViewport && desktopAsideWidth('compact') === undefined
-                "
+                :disabled="desktopAsideWidth('compact') === undefined"
                 @click="openInNodeBrowser(page.selection.workspaceTarget)"
               />
             </template>

@@ -14,12 +14,18 @@ export class BrowserPageView {
 
   constructor(private readonly page: Page) {}
 
-  async history(): Promise<{ canGoBack: boolean; canGoForward: boolean } | undefined> {
+  async history(): Promise<
+    { canGoBack: boolean; canGoForward: boolean; currentUrl: string | undefined } | undefined
+  > {
     try {
       const { currentIndex, entries } = await (
         await this.navigation()
       ).send('Page.getNavigationHistory');
-      return { canGoBack: currentIndex > 0, canGoForward: currentIndex + 1 < entries.length };
+      return {
+        canGoBack: currentIndex > 0,
+        canGoForward: currentIndex + 1 < entries.length,
+        currentUrl: entries[currentIndex]?.url
+      };
     } catch (error) {
       // Chromium may detach a target before Playwright delivers the page-close event.
       if (
@@ -44,10 +50,11 @@ export class BrowserPageView {
     await (await this.navigation()).send('Page.stopLoading');
   }
 
-  async resize(size: { width: number; height: number }): Promise<void> {
+  async resize(size: { width: number; height: number }): Promise<boolean> {
     const current = this.page.viewportSize();
-    if (current?.width !== size.width || current.height !== size.height)
-      await this.page.setViewportSize(size);
+    if (current?.width === size.width && current.height === size.height) return false;
+    await this.page.setViewportSize(size);
+    return true;
   }
 
   async reload(): Promise<void> {
@@ -93,6 +100,8 @@ export class BrowserPageView {
         return mouse[action.edge]({ button: action.button });
       case 'wheel':
         return mouse.wheel(action.x, action.y);
+      case 'touch':
+        return this.touch(action.phase, action.x, action.y);
       case 'key':
         return keyboard[action.edge](action.key);
       case 'text':
@@ -100,8 +109,28 @@ export class BrowserPageView {
     }
   }
 
-  async releaseInput(keys: ReadonlySet<string>, buttons: ReadonlySet<'left' | 'middle' | 'right'>) {
+  private async touch(phase: 'start' | 'move' | 'end' | 'cancel', x = 0, y = 0): Promise<void> {
+    const type = {
+      start: 'touchStart',
+      move: 'touchMove',
+      end: 'touchEnd',
+      cancel: 'touchCancel'
+    } as const;
+    await (
+      await this.navigation()
+    ).send('Input.dispatchTouchEvent', {
+      type: type[phase],
+      touchPoints: phase === 'start' || phase === 'move' ? [{ x, y }] : []
+    });
+  }
+
+  async releaseInput(
+    keys: ReadonlySet<string>,
+    buttons: ReadonlySet<'left' | 'middle' | 'right'>,
+    touch = false
+  ) {
     if (this.page.isClosed()) return;
+    if (touch) await this.touch('cancel');
     for (const key of keys) await this.page.keyboard.up(key);
     for (const button of buttons) await this.page.mouse.up({ button });
   }
@@ -128,10 +157,13 @@ export class BrowserPageView {
 
   async startCapture(
     render: { width: number; height: number; quality: number },
-    offer: (frame: Frame) => void
+    offer: (frame: Frame) => void,
+    resized = false
   ): Promise<BrowserPageCapture> {
     if (this.active) throw new Error('BROWSER_CAPTURE_BUSY');
+    const viewport = this.page.viewportSize();
     let stopped = false;
+    let receivedFrame = false;
     let stopping: Promise<void> | undefined;
     const capture = {
       stop: () => {
@@ -153,9 +185,28 @@ export class BrowserPageView {
         size: { width: render.width, height: render.height },
         quality: render.quality,
         onFrame: ({ data, viewportWidth, viewportHeight }) => {
-          if (!stopped) offer({ jpeg: data, width: viewportWidth, height: viewportHeight });
+          // Chromium may deliver a queued frame from before setViewportSize to the new capture.
+          if (
+            !stopped &&
+            (!viewport || (viewport.width === viewportWidth && viewport.height === viewportHeight))
+          ) {
+            receivedFrame = true;
+            offer({ jpeg: data, width: viewportWidth, height: viewportHeight });
+          }
         }
       });
+      // A static page may repaint before the new screencast subscribes. Seed that
+      // resized view once, without overwriting a newer compositor frame.
+      if (resized && viewport && !stopped && !receivedFrame) {
+        void this.page
+          .screenshot({ type: 'jpeg', quality: render.quality, scale: 'css', timeout: 3_000 })
+          .then(
+            (jpeg) => {
+              if (!stopped && !receivedFrame) offer({ jpeg, ...viewport });
+            },
+            () => undefined
+          );
+      }
       return capture;
     } catch (error) {
       stopped = true;

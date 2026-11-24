@@ -22,9 +22,11 @@ import type {
 import { browserAddress, isBrowserLoopback } from '../../service/browser-link-routing.js';
 import BrowserDownloadsDialog from './BrowserDownloadsDialog.vue';
 import BrowserPerformanceIndicator from './BrowserPerformanceIndicator.vue';
+import BrowserTabLabel from './BrowserTabLabel.vue';
 import { browserError } from '../../service/browser-presentation.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 
 const props = defineProps<{
   scope: AsideWorkspace;
@@ -45,12 +47,13 @@ const canvas = ref<HTMLCanvasElement>();
 const tabPrefix = useId();
 const keyboard = ref<HTMLTextAreaElement>();
 const keyboardFocused = ref(false);
+const body = ref<HTMLElement>();
+const lifetime = new AbortController();
 const draft = ref('');
 const edited = ref(false);
 const invalid = ref(false);
 const preserve = ref(false);
 const answer = ref('');
-const clipboardStatus = ref<'copied' | 'copyFailed'>();
 const downloadsOpen = ref(false);
 const { snapshot, status, frame, path, streamSample, error, uploadStatus } = props.browser;
 const connection = computed(() => {
@@ -83,16 +86,14 @@ const tabs = computed(
   () =>
     snapshot.value?.tabs.map((tab) => {
       const label = tab.title || (tab.url === 'about:blank' ? '' : tab.url) || t('browser.blank');
-      return { name: tab.id, label, closeLabel: t('browser.closeTab', { tab: label }) };
+      return {
+        name: tab.id,
+        label,
+        closeLabel: t('browser.closeTab', { tab: label })
+      };
     }) ?? []
 );
 const hasCommands = computed(() => !!snapshot.value && status.value !== 'failed');
-const pageUnavailable = computed(
-  () => status.value === 'ready' && error.value === 'BROWSER_NAVIGATION_FAILED'
-);
-const stateTitle = computed(() =>
-  pageUnavailable.value ? t('browser.pageUnavailable') : t('browser.browserUnavailable')
-);
 const reconnectId = computed(() =>
   error.value !== 'BROWSER_SESSION_ENDED' ? props.browser.browserId() : undefined
 );
@@ -101,10 +102,12 @@ const canRecover = computed(
     error.value !== 'BROWSER_H264_DECODER_UNAVAILABLE' && error.value !== 'BROWSER_NOT_AUTHORIZED'
 );
 const problem = computed(() =>
-  invalid.value ? t('browser.invalid') : error.value ? browserError(error.value) : undefined
+  error.value && error.value !== 'BROWSER_NAVIGATION_FAILED' ? browserError(error.value) : undefined
 );
+watch(error, () => {
+  if (status.value === 'ready' && !chooser.value && problem.value) feedback(problem.value, 'error');
+});
 let desired: BrowserDestination | undefined;
-const submitted = ref<{ target: string; previous: string | undefined; tab: string | undefined }>();
 let initial = true;
 
 function show(action: Parameters<WorkbenchBrowserService['show']>[3]): void {
@@ -159,23 +162,13 @@ watch(
   { flush: 'post' }
 );
 
+function showCurrentAddress(): void {
+  edited.value = invalid.value = false;
+  const url = active.value?.url;
+  draft.value = !url || url === 'about:blank' ? '' : url;
+}
 watch(active, (tab, previous) => {
-  if (tab?.id !== previous?.id) {
-    edited.value = invalid.value = false;
-    submitted.value = undefined;
-  }
-  if (
-    submitted.value &&
-    tab &&
-    !tab.loading &&
-    tab.id === submitted.value.tab &&
-    !error.value &&
-    (tab.url === submitted.value.target || tab.url !== submitted.value.previous)
-  ) {
-    edited.value = false;
-    submitted.value = undefined;
-  }
-  if (!edited.value) draft.value = !tab || tab.url === 'about:blank' ? '' : tab.url;
+  if (tab?.id !== previous?.id || !edited.value) showCurrentAddress();
 });
 watch(dialog, (next, previous) => {
   if (next?.id !== previous?.id) answer.value = next?.defaultValue ?? '';
@@ -197,6 +190,7 @@ onMounted(() => {
   });
 });
 onBeforeUnmount(() => {
+  lifetime.abort();
   unregisterInputEscape?.();
   releaseControls();
   props.browser.hide();
@@ -212,29 +206,22 @@ function navigate(): void {
   const address = browserAddress(draft.value);
   if (!address) {
     invalid.value = true;
+    feedback(t('browser.invalid'), 'warning');
     return;
   }
   navigateTo(address);
 }
 function navigateTo(address: string): void {
   if (!snapshot.value) return;
-  if (props.browser.send({ type: 'navigate', viewVersion: snapshot.value.viewVersion, address })) {
-    draft.value = address;
-    edited.value = true;
-    invalid.value = false;
-    submitted.value = { target: address, previous: active.value?.url, tab: active.value?.id };
-  }
+  if (props.browser.send({ type: 'navigate', viewVersion: snapshot.value.viewVersion, address }))
+    showCurrentAddress();
 }
 function travel(action: 'back' | 'forward' | 'reload' | 'stop'): void {
   if (!snapshot.value) return;
-  if (action === 'reload' && pageUnavailable.value && submitted.value)
-    return navigateTo(submitted.value.target);
-  edited.value = invalid.value = false;
-  submitted.value = undefined;
+  showCurrentAddress();
   props.browser.send({ type: 'navigation', viewVersion: snapshot.value.viewVersion, action });
 }
 function command(value: string | number | object): void {
-  if (value === 'copy') void copy();
   const id = props.browser.browserId();
   if (value === 'settings') return emit('settings', id);
   if (!id) return;
@@ -243,8 +230,7 @@ function command(value: string | number | object): void {
   if (value === 'close') void props.browser.closeBrowser();
 }
 function recover(): void {
-  if (pageUnavailable.value) travel('reload');
-  else if (reconnectId.value) show({ action: 'resume', browserId: reconnectId.value });
+  if (reconnectId.value) show({ action: 'resume', browserId: reconnectId.value });
   else show({ action: 'open', preserveLogin: preserve.value });
 }
 function respond(accept: boolean): void {
@@ -274,17 +260,13 @@ function paintedPage() {
   };
 }
 
-function point(event: PointerEvent) {
+function point(event: PointerEvent, captured = false) {
   const painted = paintedPage();
   if (!painted || !frame.value || !canvas.value) return;
   const { width, height, viewVersion } = frame.value;
   const x = (event.clientX - painted.left) / painted.scaleX;
   const y = (event.clientY - painted.top) / painted.scaleY;
-  if (
-    (x < 0 || x >= width || y < 0 || y >= height) &&
-    !canvas.value.hasPointerCapture(event.pointerId)
-  )
-    return;
+  if (!captured && (x < 0 || x >= width || y < 0 || y >= height)) return;
   return {
     viewVersion,
     x: Math.max(0, Math.min(width - 1, x)),
@@ -294,6 +276,7 @@ function point(event: PointerEvent) {
 const input = (action: BrowserPageInput) => props.browser.send({ type: 'input', action });
 type ButtonPress = Omit<Extract<BrowserPageInput, { type: 'button' }>, 'type' | 'edge'>;
 const pressedPointers = new Map<number, ButtonPress>();
+let nativeTouch: { id: number; position: NonNullable<ReturnType<typeof point>> } | undefined;
 let touch:
   | {
       id: number;
@@ -305,6 +288,27 @@ let touch:
   | undefined;
 
 function touchPointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
+  if (props.capability.nativeTouch) {
+    // Touch pointers can already have implicit capture on pointerdown, even outside the picture.
+    const position = point(event, nativeTouch?.id === event.pointerId);
+    if (edge === 'down') {
+      if (!position || nativeTouch || !event.isPrimary) return;
+      event.preventDefault();
+      if (input({ type: 'touch', phase: 'start', ...position })) {
+        nativeTouch = { id: event.pointerId, position };
+        canvas.value?.setPointerCapture(event.pointerId);
+      }
+      return;
+    }
+    if (nativeTouch?.id !== event.pointerId) return;
+    if (edge === 'up') {
+      input({ type: 'touch', phase: 'end', ...nativeTouch.position });
+      nativeTouch = undefined;
+    } else if (position?.viewVersion === nativeTouch.position.viewVersion) {
+      input({ type: 'touch', phase: 'move', ...position });
+    }
+    return;
+  }
   if (edge === 'down') {
     const position = point(event);
     if (!position || touch || !event.isPrimary) return;
@@ -343,6 +347,10 @@ function touchPointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
 }
 
 function cancelPointer(id: number): void {
+  if (nativeTouch?.id === id) {
+    input({ type: 'touch', phase: 'cancel', ...nativeTouch.position });
+    nativeTouch = undefined;
+  }
   if (touch?.id === id) touch = undefined;
   releasePointer(id);
 }
@@ -359,7 +367,7 @@ function releasePointer(id: number, position?: ReturnType<typeof point>): void {
 }
 function pointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
   if (event.pointerType === 'touch') return touchPointer(event, edge);
-  const position = point(event);
+  const position = point(event, pressedPointers.has(event.pointerId));
   if (edge === 'up') {
     releasePointer(event.pointerId, position);
     return;
@@ -388,8 +396,12 @@ function wheel(event: WheelEvent): void {
   });
 }
 const keys = new Set<string>();
+function feedback(message: string, type: 'info' | 'warning' | 'error'): void {
+  if (body.value)
+    showMessage(message, type, undefined, { owner: body.value, signal: lifetime.signal });
+}
+
 async function copy(): Promise<void> {
-  clipboardStatus.value = undefined;
   try {
     if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined')
       throw new Error('Clipboard unavailable');
@@ -402,9 +414,9 @@ async function copy(): Promise<void> {
         })
       })
     ]);
-    clipboardStatus.value = 'copied';
+    feedback(t('browser.copied'), 'info');
   } catch {
-    clipboardStatus.value = 'copyFailed';
+    feedback(t('browser.copyFailed'), 'error');
   }
 }
 
@@ -440,6 +452,7 @@ function releaseKeys(): void {
   keys.clear();
 }
 function releaseControls(): void {
+  if (nativeTouch) cancelPointer(nativeTouch.id);
   touch = undefined;
   for (const id of pressedPointers.keys()) releasePointer(id);
   releaseKeys();
@@ -450,6 +463,7 @@ watch(
     // Node releases held input when the active view changes; never send old input to its replacement.
     pressedPointers.clear();
     touch = undefined;
+    nativeTouch = undefined;
     keys.clear();
   }
 );
@@ -484,6 +498,13 @@ function insertText(value: string): void {
         @tab-activate="(id) => browser.send({ type: 'tab.select', tabId: String(id) })"
         @tab-close="(id) => browser.send({ type: 'tab.close', tabId: String(id) })"
       >
+        <template #label="{ tab }">
+          <BrowserTabLabel
+            :label="tab.label"
+            :loading="snapshot.tabs.find(({ id }) => id === tab.name)?.loading ?? false"
+            :icon="browser.tabIcons.value.get(String(tab.name))?.png"
+          />
+        </template>
         <template #action>
           <MarButton
             text
@@ -563,12 +584,6 @@ function insertText(value: string): void {
         />
         <template #dropdown>
           <MarDropdownMenu :aria-label="t('browser.menu')">
-            <MarDropdownItem
-              command="copy"
-              icon="copy"
-              :disabled="status !== 'ready' || pageUnavailable"
-              >{{ t('browser.copySelection') }}</MarDropdownItem
-            >
             <MarDropdownItem command="downloads" icon="download" :disabled="status !== 'ready'">{{
               t('browser.downloads')
             }}</MarDropdownItem>
@@ -587,31 +602,12 @@ function insertText(value: string): void {
           </MarDropdownMenu>
         </template>
       </MarDropdown>
-      <MarButton
-        v-if="status === 'ready' && !pageUnavailable"
-        class="node-browser-keyboard"
-        @pointerdown.prevent
-        @click="keyboardFocused ? keyboard?.blur() : keyboard?.focus({ preventScroll: true })"
-        >{{ t(keyboardFocused ? 'browser.hideKeyboard' : 'browser.showKeyboard') }}</MarButton
-      >
     </form>
-    <p v-if="invalid" :id="`${tabPrefix}-address-error`" class="node-browser-notice" role="alert">
-      <MarIcon name="warning" aria-hidden="true" />{{ t('browser.invalid') }}
-    </p>
-    <p
-      v-else-if="problem && status === 'ready' && !pageUnavailable && !chooser"
-      class="node-browser-notice"
-      role="alert"
-    >
-      <MarIcon name="warning" aria-hidden="true" />{{ problem }}
-    </p>
-    <p v-if="clipboardStatus" class="node-browser-text" role="status">
-      {{ t(`browser.${clipboardStatus}`) }}
-    </p>
-    <div class="node-browser-body">
+    <span v-if="invalid" :id="`${tabPrefix}-address-error`" hidden>{{ t('browser.invalid') }}</span>
+    <div ref="body" class="node-browser-body">
       <canvas
         ref="canvas"
-        v-show="status === 'ready' && !pageUnavailable"
+        v-show="status === 'ready'"
         :aria-label="t('browser.viewport')"
         @pointerdown="pointer($event, 'down')"
         @pointerup="pointer($event, 'up')"
@@ -622,7 +618,7 @@ function insertText(value: string): void {
         @contextmenu.prevent
       />
       <textarea
-        v-if="status === 'ready' && !pageUnavailable"
+        v-if="status === 'ready'"
         ref="keyboard"
         data-node-browser-input
         class="node-browser-input"
@@ -643,34 +639,19 @@ function insertText(value: string): void {
       <div v-if="status === 'connecting'" class="node-browser-loading" role="status">
         <MarBusyIndicator />{{ t('browser.connecting') }}
       </div>
-      <div v-else-if="status === 'failed' || pageUnavailable" class="node-browser-placeholder">
+      <div v-else-if="status === 'failed'" class="node-browser-placeholder">
         <div class="node-browser-error" role="alert">
-          <MarIcon
-            :name="pageUnavailable ? 'document' : 'connection'"
-            :size="32"
-            aria-hidden="true"
-          />
-          <h2>{{ stateTitle }}</h2>
-          <p v-if="pageUnavailable && submitted" class="node-browser-error-address">
-            {{ submitted.target }}
-          </p>
+          <MarIcon name="connection" :size="32" aria-hidden="true" />
+          <h2>{{ t('browser.browserUnavailable') }}</h2>
           <p>{{ error ? browserError(error) : t('browser.failed') }}</p>
         </div>
         <MarButton
           v-if="canRecover"
           type="primary"
-          :icon="pageUnavailable ? 'refresh' : 'retry'"
+          :icon="reconnectId ? 'retry' : 'web'"
           :disabled="!connected"
           @click="recover"
-          >{{
-            t(
-              pageUnavailable
-                ? 'browser.tryPageAgain'
-                : reconnectId
-                  ? 'browser.retry'
-                  : 'browser.open'
-            )
-          }}</MarButton
+          >{{ t(reconnectId ? 'browser.retry' : 'browser.open') }}</MarButton
         >
       </div>
       <div v-else-if="status === 'idle'" class="node-browser-placeholder">
@@ -683,10 +664,35 @@ function insertText(value: string): void {
           >{{ t('browser.open') }}</MarButton
         >
       </div>
+      <div
+        v-if="status === 'ready'"
+        class="node-browser-actions"
+        role="group"
+        :aria-label="t('browser.pageActions')"
+      >
+        <MarButton
+          class="node-browser-keyboard"
+          circle
+          icon="keyboard"
+          :aria-label="t(keyboardFocused ? 'browser.hideKeyboard' : 'browser.showKeyboard')"
+          v-tooltip="t(keyboardFocused ? 'browser.hideKeyboard' : 'browser.showKeyboard')"
+          @pointerdown.prevent
+          @click="keyboardFocused ? keyboard?.blur() : keyboard?.focus({ preventScroll: true })"
+        />
+        <MarButton
+          circle
+          icon="copy"
+          :aria-label="t('browser.copySelection')"
+          v-tooltip="t('browser.copySelection')"
+          @click="copy"
+        />
+        <BrowserPerformanceIndicator
+          :connection="connection"
+          :frame="frame"
+          :sample="streamSample"
+        />
+      </div>
     </div>
-    <footer class="node-browser-status">
-      <BrowserPerformanceIndicator :connection="connection" :frame="frame" :sample="streamSample" />
-    </footer>
     <BrowserDownloadsDialog
       v-if="downloadsOpen"
       :browser="browser"
@@ -784,6 +790,7 @@ function insertText(value: string): void {
 }
 .node-browser-nav {
   isolation: isolate;
+  flex: none;
 }
 .node-browser-nav > :focus-visible {
   position: relative;
@@ -852,36 +859,23 @@ function insertText(value: string): void {
   color: var(--mar-ui-text-secondary);
   overflow-wrap: anywhere;
 }
-.node-browser-error .node-browser-error-address {
-  color: var(--mar-ui-text-primary);
-}
-.node-browser-notice {
+.node-browser-actions {
+  position: absolute;
+  inset-inline-end: max(0.5rem, env(safe-area-inset-right));
+  inset-block-end: max(0.5rem, env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0.5rem;
-  border-block-end: 1px solid var(--mar-ui-border);
-  color: var(--mar-ui-text-secondary);
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--mar-ui-border);
+  border-radius: var(--mar-radius-surface);
+  background: color-mix(in srgb, var(--mar-ui-bg-panel) 96%, transparent);
+  box-shadow: var(--mar-ui-overlay-shadow);
 }
-.node-browser-text {
-  margin: 0.25rem 0.5rem;
-  color: var(--mar-ui-text-secondary);
-}
-.node-browser-status {
-  display: flex;
-  flex: none;
-  justify-content: flex-end;
-  padding: 0.125rem 0.25rem;
-}
-@media (max-width: 420px) {
-  .node-browser-toolbar {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-  }
-  .node-browser-address {
-    grid-column: 1 / -1;
-    grid-row: 1;
+@media (any-pointer: coarse) {
+  .node-browser-actions :deep(.mar-ui-button) {
+    inline-size: 36px;
+    block-size: 36px;
   }
 }
 </style>

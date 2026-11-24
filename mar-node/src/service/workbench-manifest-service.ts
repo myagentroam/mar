@@ -60,6 +60,8 @@ export class WorkbenchManifestService {
       terminalDirect: capabilities.terminalDirect,
       browser: capabilities.browser,
       browserViewportResize: capabilities.browser ? (true as const) : undefined,
+      browserTabIcons: capabilities.browser ? (true as const) : undefined,
+      browserNativeTouch: capabilities.browser ? (true as const) : undefined,
       sessionAside: capabilities.sessionAside,
       sessionGroups: capabilities.sessionGroups,
       git: {

@@ -14,6 +14,7 @@ export interface MarMessageBoxOptions {
   inputPattern?: RegExp;
   inputErrorMessage?: string;
   inputValidator?: (value: string) => boolean | string | undefined;
+  signal?: AbortSignal;
 }
 
 export type MarMessageBoxVariant = 'alert' | 'confirm' | 'prompt';
@@ -30,6 +31,7 @@ function open(
   options: MarMessageBoxOptions = {}
 ) {
   return new Promise<{ value: string; action: 'confirm' }>((resolve, reject) => {
+    if (options.signal?.aborted) return reject('cancel');
     const host = document.createElement('div');
     document.body.append(host);
     let finished = false;
@@ -38,6 +40,7 @@ function open(
       if (finished) return;
       finished = true;
       dismissals.delete(dismiss);
+      options.signal?.removeEventListener('abort', dismiss);
       queueMicrotask(() => {
         app.unmount();
         host.remove();
@@ -61,6 +64,7 @@ function open(
     app.config.idPrefix = `mar-message-box-${++sequence}`;
     try {
       app.mount(host);
+      options.signal?.addEventListener('abort', dismiss, { once: true });
     } catch (error) {
       dismissals.delete(dismiss);
       host.remove();

@@ -17,8 +17,11 @@ type Tab = {
   canGoBack: boolean;
   canGoForward: boolean;
   navigation: Request | undefined;
+  errorUrl: string;
   revision: number;
 };
+
+const ERROR_PAGE = 'chrome-error://chromewebdata/';
 
 /** Owns tab identities and active selection for one owned browsing context.
  * Playwright remains the source of URLs, history and popup behavior; the
@@ -45,6 +48,7 @@ export class BrowserTabs {
       failed: (error: unknown) => void;
       directory?: string | undefined;
       workspacePath?: () => string | undefined;
+      favicon?: ((url: string) => Promise<string | undefined>) | undefined;
     }
   ) {
     this.dialogs = new BrowserDialogs(context, () => this.events.emit('changed'), options.failed);
@@ -98,9 +102,12 @@ export class BrowserTabs {
       viewVersion: this.viewVersion,
       downloadVersion: this.downloads.version,
       tabs: [...this.tabs.values()].map(
-        ({ id, page, title, navigation, canGoBack, canGoForward }) => ({
+        ({ id, page, title, navigation, canGoBack, canGoForward, errorUrl }) => ({
           id,
-          url: page.url().slice(0, id === this.activeId ? 8192 : 1024),
+          url: (page.url() === ERROR_PAGE ? errorUrl : page.url()).slice(
+            0,
+            id === this.activeId ? 8192 : 1024
+          ),
           title,
           loading: navigation !== undefined,
           canGoBack,
@@ -115,6 +122,10 @@ export class BrowserTabs {
   observe(changed: () => void): () => void {
     this.events.on('changed', changed);
     return () => this.events.off('changed', changed);
+  }
+
+  favicon(url: string): Promise<string | undefined> | undefined {
+    return this.options.favicon?.(url);
   }
 
   async presentDialogs(enabled: boolean): Promise<void> {
@@ -203,6 +214,7 @@ export class BrowserTabs {
       canGoBack: false,
       canGoForward: false,
       navigation: undefined,
+      errorUrl: '',
       revision: 0
     };
     this.tabs.set(id, tab);
@@ -227,6 +239,7 @@ export class BrowserTabs {
     });
     page.on('framenavigated', (frame: Frame) => {
       if (frame !== page.mainFrame()) return;
+      tab.errorUrl = '';
       this.changed(this.activeId === id);
       this.updatePresentation(tab);
     });
@@ -257,13 +270,19 @@ export class BrowserTabs {
       .then(([title, history]) => {
         if (!history || tab.revision !== revision || this.tabs.get(tab.id) !== tab) return;
         const nextTitle = title.slice(0, 256);
+        // Chromium's committed history entry retains the actual URL, including a failed redirect.
+        const currentUrl = history.currentUrl ?? '';
+        const errorUrl =
+          tab.page.url() === ERROR_PAGE && /^https?:\/\//iu.test(currentUrl) ? currentUrl : '';
         if (
           tab.title === nextTitle &&
+          tab.errorUrl === errorUrl &&
           tab.canGoBack === history.canGoBack &&
           tab.canGoForward === history.canGoForward
         )
           return;
         tab.title = nextTitle;
+        tab.errorUrl = errorUrl;
         tab.canGoBack = history.canGoBack;
         tab.canGoForward = history.canGoForward;
         this.changed(false);

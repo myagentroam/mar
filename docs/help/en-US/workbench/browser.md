@@ -5,7 +5,7 @@ lastUpdated: 2026-11-24
 
 # Use the Workspace browser
 
-In Work mode, select **+ → Browser** at the end of the side pane’s tab strip. You can also select **Open a website in MAR** in the Workspace toolbar. Pages run in Chromium on the Node that hosts the Workspace, not on the device running the Console. Browser data for your account is kept separately for each Workspace.
+In Work mode, select **+ → Browser** at the end of the side pane’s tab strip. On desktop, you can also select **Open a website in MAR** in the Workspace toolbar. Pages run in Chromium on the Node that hosts the Workspace, not on the device running the Console. Browser data for your account is kept separately for each Workspace.
 
 ## Browse pages
 
@@ -15,8 +15,8 @@ In Work mode, select **+ → Browser** at the end of the side pane’s tab strip
 - Select the **Info** icon in the bottom-right corner of the browser to see the current connection, receive bitrate, drawn frame rate, viewport size, and codec. A still page may send no new frames; zero does not mean the connection has dropped.
 - In MAR, `localhost` and `127.0.0.1` refer to **the Node's loopback interface**. Open an address for a service started in the Workspace terminal without registering a port. Opening the same URL externally points to **your device** instead.
 - When a site asks for files, choose them on your device. In the browser toolbar, choose **More → Downloads** to see current downloads, cancel one, or save a finished file to your device. Downloaded files remain on the Node until the MAR browser instance closes; save any files you need before closing it.
-- On a touchscreen, tap to click and swipe to scroll the remote page. To type, tap a field on the page, then select **Show keyboard**. Select **Hide keyboard** when finished.
-- Select text on the remote page and choose **More → Copy selected text** to copy it to your device. To paste plain text, focus a field on the remote page and use your device's paste shortcut.
+- On a touchscreen, tap to click and swipe to scroll the remote page. On Nodes with native touch support, you can also drag sliders and other page controls. To type, tap a field on the page, then use the keyboard button in the lower-right corner to show or hide the keyboard.
+- Select text on the remote page and choose **Copy selected text** in the lower-right corner to copy it to your device. To paste plain text, focus a field on the remote page and use your device's paste shortcut.
 
 ## Choose where links open
 
@@ -28,4 +28,4 @@ Choose whether to keep website sign-ins when you open the browser. Hiding the pa
 
 Choose **More → Clear browser cache** to open the current browser's clear-data dialog without leaving the page. Check the Workspace and profile before choosing a time range and data categories. Only the cache is selected by default. Deleting cookies and site data can sign you out of websites. It does not delete Workspace files, downloaded files, your MAR sign-in, or data from your device browser.
 
-Choose **More → Browsing history** to search by URL, page title, or date. Open a result in a new MAR tab, or remove individual or selected entries. **More → Browser settings** goes to Personal settings and only controls where links open. Use **Work** in the main navigation to return to the Workbench.
+Choose **More → Browsing history** to see pages grouped by date. Type a title or URL to search, or choose **Filter by date**. Open a result in a new MAR tab, use its menu to remove it, or select rows and choose **Delete selected**. Confirming removes all visits to the selected URLs from this profile. **More → Browser settings** goes to Personal settings and only controls where links open. Use **Work** in the main navigation to return to the Workbench.

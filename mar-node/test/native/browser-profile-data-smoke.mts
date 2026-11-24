@@ -15,8 +15,16 @@ const launch = createBrowserLauncher(runs, (error) => {
   throw error;
 });
 const hits = new Map<string, number>();
+const favicon = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGP47NtIEmIY1TCqYfhqAAAlYMEQZSHRQgAAAABJRU5ErkJggg==',
+  'base64'
+);
 const server = createServer((request, response) => {
   const path = request.url ?? '/';
+  if (path === '/site-icon.png') {
+    response.writeHead(200, { 'content-type': 'image/png' }).end(favicon);
+    return;
+  }
   if (path.startsWith('/asset/')) {
     const count = (hits.get(path) ?? 0) + 1;
     hits.set(path, count);
@@ -25,7 +33,9 @@ const server = createServer((request, response) => {
   }
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
   const title = request.url === '/earlier' ? 'Earlier' : 'Recent';
-  response.end(`<!doctype html><title>${title}</title><input id="draft">`);
+  response.end(
+    `<!doctype html><title>${title}</title><link rel="icon" href="/site-icon.png"><input id="draft">`
+  );
 });
 let owned: Awaited<ReturnType<typeof launch>> | undefined;
 try {
@@ -41,6 +51,24 @@ try {
   const page = context.pages()[0]!;
   assert.deepEqual(page.viewportSize(), BROWSER_VIEWPORT);
   await page.goto(`${origin}/earlier`);
+  const iconColor = async () => {
+    const icon = await owned!.data.favicon(`${origin}/earlier`);
+    if (!icon) return;
+    return page.evaluate(async (png) => {
+      const bitmap = await createImageBitmap(
+        await (await fetch(`data:image/png;base64,${png}`)).blob()
+      );
+      const context = new OffscreenCanvas(16, 16).getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      return [...context.getImageData(8, 8, 1, 1).data];
+    }, icon);
+  };
+  for (let attempt = 0; attempt < 25; attempt++) {
+    if ((await iconColor())?.[0] === 243) break;
+    await delay(80);
+  }
+  assert.deepEqual(await iconColor(), [243, 77, 129, 255]);
   await page.evaluate(() => {
     document.cookie = 'earlier=kept; path=/';
   });

@@ -4,6 +4,7 @@ import {
   BROWSER_VIEWPORT_MAX,
   BROWSER_VIEWPORT_MIN,
   browserAttachmentEventSchema,
+  type BrowserAttachmentEvent,
   type BrowserAttachmentMessage,
   type BrowserAttachmentOpen,
   type BrowserTabSnapshot
@@ -46,6 +47,7 @@ export class BrowserAttachmentClient {
       selection?(id: string, text: string): void;
       attached?(): void;
       resizeViewport?: boolean;
+      tabIcon?: (event: Extract<BrowserAttachmentEvent, { type: 'tab.icon' }>) => void;
       frame(frame: { viewVersion: number; width: number; height: number }): void;
       sample(value: BrowserStreamSample): void;
       failed(code: string): void;
@@ -106,6 +108,7 @@ export class BrowserAttachmentClient {
         this.sampleStart = performance.now();
         this.sampleTimer = setInterval(this.publishSample, 1_000);
         if (this.options.resizeViewport) this.observeSize();
+        if (this.options.tabIcon) this.sendText({ type: 'tab.icons' });
         this.options.attached?.();
         return;
       }
@@ -121,6 +124,8 @@ export class BrowserAttachmentClient {
         this.options.snapshot(event.snapshot);
       } else if (event.type === 'selection') {
         this.options.selection?.(event.id, event.text);
+      } else if (event.type === 'tab.icon') {
+        this.options.tabIcon?.(event);
       } else {
         this.options.failed(event.code);
       }

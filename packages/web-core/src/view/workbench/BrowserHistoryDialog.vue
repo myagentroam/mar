@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import type {
   BrowserHistoryItem,
   BrowserHistoryQuery,
@@ -36,9 +38,11 @@ const queryInvalid = ref(false);
 const history = ref<BrowserHistoryResult>();
 const index = ref(0);
 const checkedUrls = ref<string[]>([]);
-const removal = ref<{ scope: AsideWorkspace; target: BrowserProfileTarget; urls: string[] }>();
 const removing = ref(false);
 const removalFailure = ref<string>();
+const lifetime = new AbortController();
+onBeforeUnmount(() => lifetime.abort());
+const showDates = ref(false);
 const PAGE_SIZE = 30;
 const pageCount = computed(() =>
   Math.max(1, Math.ceil((history.value?.items.length ?? 0) / PAGE_SIZE))
@@ -46,12 +50,16 @@ const pageCount = computed(() =>
 const page = computed(
   () => history.value?.items.slice(index.value * PAGE_SIZE, (index.value + 1) * PAGE_SIZE) ?? []
 );
+const dateFormat = computed(
+  () => new Intl.DateTimeFormat(i18n.global.locale.value, { dateStyle: 'full' })
+);
+const timeFormat = computed(
+  () => new Intl.DateTimeFormat(i18n.global.locale.value, { timeStyle: 'short' })
+);
 const groups = computed(() => {
   const grouped = new Map<string, BrowserHistoryItem[]>();
   for (const item of page.value) {
-    const date = new Intl.DateTimeFormat(i18n.global.locale.value, { dateStyle: 'medium' }).format(
-      item.visitedAt
-    );
+    const date = dateFormat.value.format(item.visitedAt);
     if (!grouped.has(date)) grouped.set(date, []);
     grouped.get(date)!.push(item);
   }
@@ -131,9 +139,18 @@ function searchHistory(): void {
     !Number.isFinite(startTime) ||
     startTime < 0 ||
     (endTime !== undefined && (!Number.isFinite(endTime) || endTime <= startTime));
-  if (!queryInvalid.value)
-    query.value = { text: search.value, startTime, ...(endTime !== undefined ? { endTime } : {}) };
+  if (queryInvalid.value) return;
+  const text = search.value.trim();
+  const previous = query.value;
+  if (previous.text === text && previous.startTime === startTime && previous.endTime === endTime)
+    return;
+  removalFailure.value = undefined;
+  query.value = { text, startTime, ...(endTime !== undefined ? { endTime } : {}) };
 }
+watch(search, (_, __, onCleanup) => {
+  const timer = setTimeout(searchHistory, 250);
+  onCleanup(() => clearTimeout(timer));
+});
 function paginate(offset: number): void {
   index.value += offset;
   checkedUrls.value = [];
@@ -143,27 +160,35 @@ function toggle(url: string, value: boolean): void {
     ? [...checkedUrls.value, url]
     : checkedUrls.value.filter((item) => item !== url);
 }
-function confirmRemoval(urls: string[]): void {
-  if (!profile.value || !urls.length) return;
-  removalFailure.value = undefined;
-  removal.value = { scope: props.scope, target: profile.value, urls: [...urls] };
-}
-async function remove(): Promise<void> {
-  const operation = removal.value;
-  if (!operation || removing.value || removalFailure.value || !props.connected) return;
-  removing.value = true;
+async function confirmRemoval(urls: string[]): Promise<void> {
+  const target = profile.value;
+  if (!target || !urls.length || removing.value || !props.connected || loading.value) return;
+  const selected = [...urls];
   try {
-    await props.browser.profile(operation.scope, {
-      action: 'delete',
-      target: operation.target,
-      input: operation.urls
+    await MarMessageBox.confirm(t('browser.deleteConfirm'), t('browser.deleteHistory'), {
+      confirmButtonType: 'danger',
+      confirmButtonText: t('browser.delete'),
+      cancelButtonText: t('browser.cancel'),
+      signal: lifetime.signal
     });
-    if (removal.value !== operation) return;
-    removal.value = undefined;
-    refresh();
+  } catch {
+    return;
+  }
+  if (lifetime.signal.aborted || !props.connected) return;
+  removing.value = true;
+  removalFailure.value = undefined;
+  try {
+    await props.browser.profile(props.scope, {
+      action: 'delete',
+      target,
+      input: selected
+    });
+    if (!lifetime.signal.aborted) refresh();
   } catch (error) {
-    if (removal.value === operation)
+    if (!lifetime.signal.aborted) {
+      if (error instanceof Error && error.message === 'BROWSER_OUTCOME_UNKNOWN') refresh();
       removalFailure.value = error instanceof Error ? error.message : 'BROWSER_FAILED';
+    }
   } finally {
     removing.value = false;
   }
@@ -176,10 +201,10 @@ async function remove(): Promise<void> {
     :title="t('browser.history')"
     width="min(720px, calc(100vw - 32px))"
     append-to-body
-    :show-close="!removal"
-    :close-on-press-escape="!removal"
+    :show-close="!removing"
+    :close-on-press-escape="!removing"
     :close-on-click-modal="false"
-    @update:model-value="(open) => !open && emit('close')"
+    @update:model-value="(open) => !open && !removing && emit('close')"
   >
     <div class="browser-history-content">
       <p class="browser-history-scope">
@@ -189,21 +214,44 @@ async function remove(): Promise<void> {
         <MarInput
           v-model="search"
           maxlength="512"
+          autofocus
+          prefix-icon="search"
+          clearable
           :aria-label="t('browser.search')"
           :placeholder="t('browser.search')"
-          :disabled="!profile"
+          :disabled="removing"
         />
-        <label
-          >{{ t('browser.from') }} <input v-model="from" type="date" :disabled="!profile"
-        /></label>
-        <label
-          >{{ t('browser.to') }} <input v-model="through" type="date" :disabled="!profile"
-        /></label>
-        <MarButton native-type="submit" icon="search" :disabled="!profile">{{
-          t('browser.search')
-        }}</MarButton>
+        <MarButton
+          icon="calendar"
+          :aria-expanded="showDates"
+          :disabled="removing"
+          @click="showDates = !showDates"
+        >
+          {{ t('browser.dateFilter') }}
+        </MarButton>
+        <div v-if="showDates" class="browser-history-dates">
+          <label
+            >{{ t('browser.from') }}
+            <input
+              v-model="from"
+              type="date"
+              class="mar-ui-field-frame"
+              :disabled="removing"
+              @change="searchHistory"
+          /></label>
+          <label
+            >{{ t('browser.to') }}
+            <input
+              v-model="through"
+              type="date"
+              class="mar-ui-field-frame"
+              :disabled="removing"
+              @change="searchHistory"
+          /></label>
+        </div>
       </form>
       <p v-if="queryInvalid" role="alert">{{ t('browser.invalidDates') }}</p>
+      <p v-if="removalFailure" role="alert">{{ browserError(removalFailure) }}</p>
       <div
         v-if="loading"
         class="browser-history-loading"
@@ -217,83 +265,73 @@ async function remove(): Promise<void> {
       <p v-else-if="!profile">{{ t('browser.noProfile') }}</p>
       <p v-else-if="history && !page.length">{{ t('browser.noHistory') }}</p>
       <p v-if="history?.capped">{{ t('browser.capped') }}</p>
-      <MarButton
-        v-if="page.length"
-        text
-        icon="delete"
-        :disabled="!checkedUrls.length || !connected"
-        @click="confirmRemoval(checkedUrls)"
-        >{{ t('browser.deleteSelected') }}</MarButton
-      >
-      <div v-for="[date, items] in groups" :key="date">
+      <div v-if="checkedUrls.length" class="browser-history-selection">
+        <span role="status">{{ t('browser.selectedHistory', { count: checkedUrls.length }) }}</span>
+        <MarButton text :disabled="removing" @click="checkedUrls = []">{{
+          t('browser.cancel')
+        }}</MarButton>
+        <MarButton
+          type="danger"
+          :loading="removing"
+          :disabled="!connected"
+          @click="confirmRemoval(checkedUrls)"
+        >
+          {{ t('browser.deleteSelected') }}
+        </MarButton>
+      </div>
+      <section v-for="[date, items] in groups" :key="date" class="browser-history-day">
         <h3>{{ date }}</h3>
         <ul class="browser-history-list">
           <li v-for="item in items" :key="item.url">
             <MarCheckbox
               :model-value="checkedUrls.includes(item.url)"
               :aria-label="t('browser.selectHistory', { title: item.title || item.url })"
+              :disabled="!connected || removing"
               @update:model-value="(value) => toggle(item.url, value === true)"
             />
+            <time :datetime="new Date(item.visitedAt).toISOString()">{{
+              timeFormat.format(item.visitedAt)
+            }}</time>
             <MarButton
               text
               class="browser-history-entry"
-              :disabled="!connected"
+              :disabled="!connected || removing"
               @click="emit('open', item.url)"
             >
               <span>{{ item.title || item.url }}</span
               ><small v-if="item.title">{{ item.url }}</small>
             </MarButton>
-            <MarButton
-              text
-              icon="delete"
-              :aria-label="t('browser.delete')"
-              v-tooltip="t('browser.delete')"
-              :disabled="!connected"
-              @click="confirmRemoval([item.url])"
-            />
+            <MarDropdown :disabled="!connected || removing" @command="confirmRemoval([item.url])">
+              <MarButton
+                text
+                icon="more"
+                :disabled="!connected || removing"
+                :aria-label="t('browser.historyActions', { title: item.title || item.url })"
+                v-tooltip="t('browser.historyActions', { title: item.title || item.url })"
+              />
+              <template #dropdown>
+                <MarDropdownMenu
+                  :aria-label="t('browser.historyActions', { title: item.title || item.url })"
+                >
+                  <MarDropdownItem command="remove" icon="delete">{{
+                    t('browser.removeHistoryEntry')
+                  }}</MarDropdownItem>
+                </MarDropdownMenu>
+              </template>
+            </MarDropdown>
           </li>
         </ul>
-      </div>
+      </section>
       <div class="browser-inline-actions" v-if="pageCount > 1">
-        <MarButton :disabled="index === 0" @click="paginate(-1)">{{
+        <MarButton :disabled="index === 0 || removing" @click="paginate(-1)">{{
           t('browser.previous')
         }}</MarButton>
         <span>{{ index + 1 }} / {{ pageCount }}</span>
-        <MarButton :disabled="index + 1 >= pageCount" @click="paginate(1)">{{
+        <MarButton :disabled="index + 1 >= pageCount || removing" @click="paginate(1)">{{
           t('browser.next')
         }}</MarButton>
       </div>
     </div>
-  </MarDialog>
-  <MarDialog
-    v-if="removal"
-    :model-value="true"
-    :title="t('browser.deleteHistory')"
-    append-to-body
-    :show-close="!removing"
-    :close-on-press-escape="!removing"
-    :close-on-click-modal="false"
-    @update:model-value="(open) => !open && !removing && (removal = undefined)"
-  >
-    <p>{{ t('browser.deleteConfirm') }}</p>
-    <p v-if="removalFailure" role="alert">{{ browserError(removalFailure) }}</p>
-    <template #footer>
-      <MarButton
-        :disabled="removing"
-        @click="
-          removal = undefined;
-          refresh();
-        "
-        >{{ t('browser.cancel') }}</MarButton
-      >
-      <MarButton
-        type="danger"
-        :loading="removing"
-        :disabled="!!removalFailure || !connected"
-        @click="remove"
-        >{{ t('browser.delete') }}</MarButton
-      >
-    </template>
   </MarDialog>
 </template>
 
@@ -319,14 +357,39 @@ async function remove(): Promise<void> {
   gap: 0.75rem;
 }
 .browser-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+.browser-history-dates {
+  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  align-items: end;
 }
-.browser-search label {
+.browser-history-dates label {
   display: grid;
   gap: 0.25rem;
+}
+.browser-history-dates input {
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  color: inherit;
+}
+.browser-history-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.browser-history-selection span {
+  margin-inline-end: auto;
+}
+.browser-history-day h3 {
+  padding-block: 0.375rem;
+  border-block-end: 1px solid var(--mar-ui-border-subtle);
+  font-size: inherit;
 }
 .browser-history-list {
   list-style: none;
@@ -338,6 +401,13 @@ async function remove(): Promise<void> {
   align-items: center;
   gap: 0.25rem;
   min-inline-size: 0;
+  padding-block: 0.25rem;
+}
+.browser-history-list time {
+  flex: none;
+  min-inline-size: 5ch;
+  color: var(--mar-ui-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 .browser-history-entry {
   min-inline-size: 0;

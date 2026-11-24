@@ -16,6 +16,13 @@ export const browserPageInputSchema = z.discriminatedUnion('type', [
     y: coordinate
   }),
   z.strictObject({ type: z.literal('wheel'), viewVersion, x: delta, y: delta }),
+  z.strictObject({
+    type: z.literal('touch'),
+    viewVersion,
+    phase: z.enum(['start', 'move', 'end', 'cancel']),
+    x: coordinate,
+    y: coordinate
+  }),
   z.strictObject({ type: z.literal('key'), viewVersion, edge, key: z.string().min(1).max(64) }),
   z.strictObject({ type: z.literal('text'), viewVersion, text: z.string().min(1).max(4096) })
 ]);

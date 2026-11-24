@@ -37,6 +37,7 @@ const error = ref('');
 const id = useId();
 const input = useTemplateRef<InstanceType<typeof MarInput>>('input');
 const confirmAction = useTemplateRef<InstanceType<typeof MarButton>>('confirmAction');
+const cancelAction = useTemplateRef<InstanceType<typeof MarButton>>('cancelAction');
 const dialog = useTemplateRef<InstanceType<typeof MarDialog>>('dialog');
 const history = createMobileLayerHistoryService({
   isOpen: () => open.value,
@@ -47,6 +48,8 @@ onBeforeUnmount(() => history.dispose());
 function show() {
   history.start();
   if (props.variant === 'prompt') input.value?.focus({ preventScroll: true });
+  else if (props.variant === 'confirm' && props.options.confirmButtonType === 'danger')
+    cancelAction.value?.focus({ preventScroll: true });
   else confirmAction.value?.focus({ preventScroll: true });
 }
 
@@ -119,7 +122,7 @@ const MessageBody = () => props.message;
       </p>
     </form>
     <template #footer>
-      <MarButton v-if="variant !== 'alert'" @click="settle('cancel')">
+      <MarButton v-if="variant !== 'alert'" ref="cancelAction" @click="settle('cancel')">
         {{ options.cancelButtonText ?? locales[locale].messageBox.cancel }}
       </MarButton>
       <MarButton

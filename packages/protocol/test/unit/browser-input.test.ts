@@ -19,6 +19,17 @@ describe('Browser page input wire format', () => {
     expect(browserPageInputSchema.safeParse({ ...text, viewVersion: 0 }).success).toBe(false);
   });
 
+  it('accepts single-contact touch phases and checks the version and CSS coordinates', () => {
+    const contact = { type: 'touch', viewVersion: 2, x: 140, y: 82 };
+    for (const phase of ['start', 'move', 'end', 'cancel']) {
+      expect(browserPageInputSchema.parse({ ...contact, phase })).toEqual({ ...contact, phase });
+    }
+    expect(browserPageInputSchema.safeParse({ ...contact, phase: 'down' }).success).toBe(false);
+    expect(browserPageInputSchema.safeParse({ ...contact, phase: 'move', x: -1 }).success).toBe(
+      false
+    );
+  });
+
   it('rejects unbounded pointer input and commands outside the allowlist', () => {
     expect(browserPageInputSchema.safeParse({ type: 'evaluate', viewVersion: 1 }).success).toBe(
       false

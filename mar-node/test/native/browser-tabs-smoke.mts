@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,6 +14,14 @@ const server = createServer((request, response) => {
   requests.push(path);
   if (path === '/redirect') {
     response.writeHead(302, { Location: '/start' }).end();
+    return;
+  }
+  if (path === '/redirect-to-error') {
+    response.writeHead(302, { Location: '/network-error' }).end();
+    return;
+  }
+  if (path === '/network-error') {
+    response.destroy();
     return;
   }
   if (path === '/stall') return;
@@ -79,6 +87,26 @@ try {
     await view.input({ type: 'key', edge: 'down', key: 'Backspace', viewVersion: 1 });
     await view.input({ type: 'key', edge: 'up', key: 'Backspace', viewVersion: 1 });
     assert.equal(await message.inputValue(), '你');
+
+    const urls: string[] = [];
+    const errorShown = new EventEmitter();
+    const stopWatching = tabs.observe(() => {
+      const url = tabs.snapshot().tabs[0]?.url ?? '';
+      urls.push(url);
+      if (url === `${base}/network-error`) errorShown.emit('projected');
+    });
+    try {
+      await assert.rejects(view.navigate(`${base}/redirect-to-error`), /BROWSER_NAVIGATION_FAILED/);
+      await page.waitForURL('chrome-error://chromewebdata/');
+      if (tabs.snapshot().tabs[0]?.url !== `${base}/network-error`)
+        await once(errorShown, 'projected', { signal: AbortSignal.timeout(3_000) });
+      assert(!urls.some((url) => url.startsWith('chrome-error:')));
+      assert.equal(tabs.snapshot().tabs[0]?.url, `${base}/network-error`);
+      await view.travel(-1);
+      await page.waitForURL(`${base}/start#chapter`);
+    } finally {
+      stopWatching();
+    }
 
     const blocked = `${base}/blocked`;
     await context.route(blocked, (route) => route.abort());

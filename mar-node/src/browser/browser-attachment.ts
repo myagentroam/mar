@@ -5,6 +5,7 @@ import type {
   BrowserPageInput,
   BrowserUpload
 } from '@myagentroam/protocol';
+import { setTimeout as delay } from 'node:timers/promises';
 import { BrowserFrameStream } from './browser-frame-stream.js';
 import type { BrowserPageCapture, BrowserPageView } from './browser-page-view.js';
 import type { BrowserTabs } from './browser-tabs.js';
@@ -40,12 +41,20 @@ export class BrowserAttachment {
   private uploading: Promise<void> | undefined;
   private closing: Promise<void> | undefined;
   private closed = false;
+  private icons: Map<string, { url: string }> | undefined;
   private shown: number | undefined;
   private next:
     { version: number; page: BrowserPageView | undefined; size: Readonly<BrowserSize> } | undefined;
   private captureTarget: typeof this.next;
   private pressed:
-    { page: BrowserPageView; version: number; keys: Set<string>; buttons: Set<Button> } | undefined;
+    | {
+        page: BrowserPageView;
+        version: number;
+        keys: Set<string>;
+        buttons: Set<Button>;
+        touch: boolean;
+      }
+    | undefined;
 
   constructor(
     private readonly borrow: { resource: BrowserTabs; release: () => void },
@@ -72,6 +81,13 @@ export class BrowserAttachment {
 
   receive(message: BrowserAttachmentMessage): void {
     if (this.closed) return;
+    if (message.type === 'tab.icons') {
+      if (!this.icons) {
+        this.icons = new Map();
+        this.refreshIcons(this.borrow.resource.snapshot());
+      }
+      return;
+    }
     if (message.type === 'ack') {
       const version = this.stream.acknowledge(message.sequence);
       if (version !== undefined && version === this.next?.version) this.shown = version;
@@ -106,7 +122,14 @@ export class BrowserAttachment {
       (message.type === 'input' &&
         message.action.type === 'move' &&
         tail?.type === 'input' &&
-        tail.action.type === 'move')
+        tail.action.type === 'move') ||
+      (message.type === 'input' &&
+        message.action.type === 'touch' &&
+        message.action.phase === 'move' &&
+        tail?.type === 'input' &&
+        tail.action.type === 'touch' &&
+        tail.action.phase === 'move' &&
+        tail.action.viewVersion === message.action.viewVersion)
     ) {
       this.queue[this.queue.length - 1] = message;
     } else {
@@ -166,6 +189,7 @@ export class BrowserAttachment {
       this.fail('BROWSER_FRAME_TRANSPORT_FAILED');
       return;
     }
+    this.refreshIcons(snapshot);
     if (snapshot.viewVersion === this.next?.version) return;
     this.next = {
       version: snapshot.viewVersion,
@@ -176,6 +200,40 @@ export class BrowserAttachment {
     this.stream.setView(snapshot.viewVersion);
     this.updateCapture();
     this.drain();
+  }
+
+  private refreshIcons(snapshot: ReturnType<BrowserTabs['snapshot']>): void {
+    const icons = this.icons;
+    if (!icons) return;
+    for (const id of icons.keys()) {
+      if (!snapshot.tabs.some((tab) => tab.id === id)) icons.delete(id);
+    }
+    for (const { id, url, loading } of snapshot.tabs) {
+      if (loading || !/^https?:\/\//iu.test(url)) {
+        icons.delete(id);
+        continue;
+      }
+      if (icons.get(id)?.url === url) continue;
+      const lookup = { url };
+      icons.set(id, lookup);
+      void this.sendIcon(id, lookup).catch(() => undefined);
+    }
+  }
+
+  private async sendIcon(id: string, lookup: { url: string }): Promise<void> {
+    const current = () => !this.closed && this.icons?.get(id) === lookup;
+    // The profile records favicons asynchronously, independently of page load.
+    for (const wait of [0, 150, 400, 1_000]) {
+      if (wait) await delay(wait, undefined, { ref: false });
+      if (!current()) return;
+      const read = this.borrow.resource.favicon(lookup.url);
+      if (!read) return;
+      const png = await read;
+      if (png && current()) {
+        this.options.sendControl({ type: 'tab.icon', tabId: id, url: lookup.url, png });
+        return;
+      }
+    }
   }
 
   private updateCapture(): void {
@@ -196,7 +254,7 @@ export class BrowserAttachment {
       this.capture = undefined;
       await capture?.stop();
       if (this.closed || target !== this.next || !target?.page) continue;
-      await target.page.resize(target.size);
+      const resized = await target.page.resize(target.size);
       if (this.closed || target !== this.next) continue;
       const version = target.version;
       this.capture = await target.page.startCapture(
@@ -204,7 +262,8 @@ export class BrowserAttachment {
         (frame) => {
           this.options.captured?.(frame.jpeg.byteLength);
           this.stream.offer({ ...frame, viewVersion: version });
-        }
+        },
+        resized
       );
     }
   }
@@ -270,18 +329,25 @@ export class BrowserAttachment {
         const page = this.next?.page;
         if (!page || action.viewVersion !== this.shown || action.viewVersion !== this.next?.version)
           return;
-        if (action.type === 'key' || action.type === 'button') {
+        if (action.type === 'touch' && (action.phase === 'start') === !!this.pressed?.touch) return;
+        if (action.type === 'key' || action.type === 'button' || action.type === 'touch') {
           await page.input(action);
           const pressed = (this.pressed ??= {
             page,
             version: action.viewVersion,
             keys: new Set(),
-            buttons: new Set()
+            buttons: new Set(),
+            touch: false
           });
-          const method = action.edge === 'down' ? 'add' : 'delete';
-          if (action.type === 'key') pressed.keys[method](action.key);
-          else pressed.buttons[method](action.button);
-          if (!pressed.keys.size && !pressed.buttons.size) this.pressed = undefined;
+          if (action.type === 'touch')
+            pressed.touch = action.phase === 'start' || action.phase === 'move';
+          else {
+            const method = action.edge === 'down' ? 'add' : 'delete';
+            if (action.type === 'key') pressed.keys[method](action.key);
+            else pressed.buttons[method](action.button);
+          }
+          if (!pressed.keys.size && !pressed.buttons.size && !pressed.touch)
+            this.pressed = undefined;
           return;
         }
         return page.input(action);
@@ -301,7 +367,7 @@ export class BrowserAttachment {
   private async releaseInput(): Promise<void> {
     const pressed = this.pressed;
     this.pressed = undefined;
-    if (pressed) await pressed.page.releaseInput(pressed.keys, pressed.buttons);
+    if (pressed) await pressed.page.releaseInput(pressed.keys, pressed.buttons, pressed.touch);
   }
 
   private commandFailed(error: unknown): void {

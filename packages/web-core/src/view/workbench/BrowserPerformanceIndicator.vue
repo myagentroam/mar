@@ -33,7 +33,7 @@ function bitrate(bits: number): string {
   >
     <template #reference>
       <MarButton
-        text
+        circle
         icon="info"
         v-tooltip="t('browser.performance.title')"
         :aria-label="t('browser.performance.title')"

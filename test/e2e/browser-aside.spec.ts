@@ -28,11 +28,20 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
   const requests: string[] = [];
   let remoteViewport: { width: number; height: number; narrow: boolean } | undefined;
   const largeFile = Buffer.alloc(9 * 1024 * 1024 + 17, 0x61);
+  const longTabTitle = 'ICE fixture — A long webpage title showing how the browser tab fades';
+  const favicon = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGP47NtIEmIY1TCqYfhqAAAlYMEQZSHRQgAAAABJRU5ErkJggg==',
+    'base64'
+  );
   let canceledRequests = 0;
   let failPage = true;
   let finishPage: (() => void) | undefined;
   const site = createServer((request, response) => {
     requests.push(request.url ?? '');
+    if (request.url === '/site-icon.png') {
+      response.writeHead(200, { 'content-type': 'image/png' }).end(favicon);
+      return;
+    }
     if (request.url?.startsWith('/viewport-size?')) {
       const params = new URLSearchParams(request.url.split('?')[1]);
       remoteViewport = {
@@ -70,11 +79,12 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       } else response.end(largeFile);
       return;
     }
-    response.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html>
-      <title>${request.url === '/relay' ? 'Relay fixture' : 'ICE fixture'}</title>
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(`<!doctype html>
+      <title>${request.url === '/relay' ? 'Relay fixture' : request.url === '/ice' ? longTabTitle : 'ICE fixture'}</title>
+      <link rel="icon" href="/site-icon.png">
       <style>body{margin:0;background:${request.url === '/relay' ? 'rgb(200,0,0)' : request.url === '/ice' ? 'rgb(0,200,0)' : 'white'}}a{position:absolute;left:76%;top:20%;width:8%;height:10%;background:blue}</style>
       <a href="/clicked" aria-label="Click the Node page"></a>
-      ${request.url === '/touch' ? `<input id="touch-field" style="position:absolute;left:24%;top:8%;width:18%;height:8%"><button id="touch-check" style="position:fixed;left:76%;top:8%;width:17%;height:8%">Check draft</button><div style="height:200vh"></div>` : ''}
+      ${request.url === '/touch' ? `<input id="touch-field" style="position:absolute;left:24%;top:8%;width:18%;height:8%"><button id="touch-check" style="position:fixed;left:76%;top:8%;width:17%;height:8%">Check draft</button><input id="touch-slider" type="range" value="0" style="position:absolute;left:10%;top:60%;width:70%;height:8%;margin:0"><div style="height:200vh"></div>` : ''}
       <script>
         function publishViewport() {
           fetch('/viewport-size?' + new URLSearchParams({ width: innerWidth, height: innerHeight, narrow: matchMedia('(max-width: 500px)').matches }));
@@ -94,7 +104,11 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         if (location.pathname === '/touch') {
           const field = document.querySelector('#touch-field');
           document.addEventListener('scroll', () => fetch('/touch-scrolled'), { once: true });
+          document.addEventListener('touchstart', ({ touches }) => {
+            if (touches[0].clientX < 2) fetch('/touch-edge');
+          });
           field.addEventListener('input', ({ target }) => fetch('/typed?text=' + encodeURIComponent(target.value)));
+          document.querySelector('#touch-slider').addEventListener('change', ({ target }) => fetch('/slider?value=' + target.value));
           document.querySelector('#touch-check').addEventListener('click', () => fetch('/draft?text=' + encodeURIComponent(field.value)));
         }
         document.addEventListener('mouseup', ({ clientX }) => {
@@ -185,23 +199,26 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const canvas = page.locator('.node-browser canvas');
     async function expectViewportFits() {
       await expect
-        .poll(() =>
-          canvas
-            .evaluate((element: HTMLCanvasElement) => ({
-              width: element.clientWidth,
-              height: element.clientHeight,
-              ratio: element.width / element.height
-            }))
-            .then(
-              ({ width, height, ratio }) =>
-                width > 0 &&
-                height > 0 &&
-                remoteViewport?.width === width &&
-                remoteViewport.height === height &&
-                Math.abs(ratio - width / height) < 0.02
-            )
-        )
-        .toBe(true);
+        .poll(async () => {
+          const painted = await canvas.evaluate((element: HTMLCanvasElement) => ({
+            width: element.clientWidth,
+            height: element.clientHeight,
+            ratio: element.width / element.height
+          }));
+          return {
+            widthError: (remoteViewport?.width ?? 0) - painted.width,
+            heightError: (remoteViewport?.height ?? 0) - painted.height,
+            fits:
+              painted.width > 0 &&
+              painted.height > 0 &&
+              Math.abs(painted.ratio - painted.width / painted.height) < 0.02,
+            ratios: {
+              decoded: painted.ratio,
+              displayed: painted.width / painted.height
+            }
+          };
+        })
+        .toMatchObject({ widthError: 0, heightError: 0, fits: true });
     }
     const performanceInfo = page.getByRole('button', {
       name: /^(Browser streaming performance|浏览器投屏性能)$/u
@@ -219,6 +236,11 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const opener = page.getByRole('button', {
       name: /^(Open a website in MAR|在 MAR 中打开网址)$/u
     });
+    const addAside = page.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u });
+    const expandAside = page.getByRole('button', {
+      name: /^(Open auxiliary workspace|打开辅助工作面)$/u
+    });
+    const addBrowser = page.getByRole('menuitem', { name: /^(Browser|浏览器)$/u });
     async function ensureWorkspace() {
       const noWorkspace = page.getByRole('heading', {
         name: /^(Select a workspace|选择一个工作区)$/iu
@@ -231,6 +253,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
           async () =>
             (await browserTab.isVisible()) ||
             (await opener.isVisible()) ||
+            (await expandAside.isVisible()) ||
             ((await noWorkspace.isVisible()) &&
               ((await expand.isVisible()) || (await workspace.isVisible()))),
           { timeout: 15_000 }
@@ -243,7 +266,16 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     }
     async function openWorkspaceBrowser() {
       await ensureWorkspace();
-      if (!(await browserTab.isVisible())) await opener.click();
+      if (!(await browserTab.isVisible())) {
+        if (await opener.isVisible()) await opener.click();
+        else {
+          if (await expandAside.isVisible()) await expandAside.click();
+          if (!(await browserTab.isVisible())) {
+            await addAside.click();
+            await addBrowser.click();
+          }
+        }
+      }
       await expect(browserTab).toBeVisible({ timeout: 25_000 });
       await browserTab.click();
     }
@@ -276,17 +308,12 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     });
     await page.goto(route);
     await ensureWorkspace();
-    const addAside = page.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u });
-    const expandAside = page.getByRole('button', {
-      name: /^(Open auxiliary workspace|打开辅助工作面)$/u
-    });
     await expect(addAside.or(expandAside).first()).toBeVisible({ timeout: 15_000 });
     if (await expandAside.isVisible()) await expandAside.click();
     await expect(browserTab).toHaveCount(0);
     await addAside.click();
     await expect(browserTab).toHaveCount(0);
     await expect(addAside).toHaveAttribute('aria-expanded', 'true');
-    const addBrowser = page.getByRole('menuitem', { name: /^(Browser|浏览器)$/u });
     await expect(addBrowser).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('browser-aside-add.png'),
@@ -317,6 +344,32 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect(address).toHaveValue(`${origin}/ice`);
     await expect.poll(() => requests.includes('/ice')).toBe(true);
     await expectViewportFits();
+    async function expectSiteIcon(tabName: string) {
+      const icon = tabRow.getByRole('tab', { name: tabName, exact: true }).locator('img');
+      await expect(icon).toHaveAttribute('src', /^data:image\/png;base64,/u);
+      await expect
+        .poll(() =>
+          icon.evaluate((image: HTMLImageElement) => {
+            if (!image.complete || !image.naturalWidth) return [];
+            const canvas = new OffscreenCanvas(16, 16).getContext('2d')!;
+            canvas.drawImage(image, 0, 0);
+            return [...canvas.getImageData(8, 8, 1, 1).data];
+          })
+        )
+        .toEqual([243, 77, 129, 255]);
+    }
+    await expectSiteIcon(longTabTitle);
+    const longTab = tabRow.getByRole('tab', { name: longTabTitle, exact: true });
+    await expect(longTab.locator('.browser-tab-clip')).toHaveCSS('mask-image', /linear-gradient/u);
+    await expect(longTab.locator('.browser-tab-clip')).toHaveCSS('text-overflow', 'clip');
+    await expect(tabRow.getByRole('tab').first().locator('.browser-tab-clip')).toHaveCSS(
+      'mask-image',
+      'none'
+    );
+    await page.screenshot({
+      path: testInfo.outputPath('browser-site-tab.png'),
+      animations: 'disabled'
+    });
     await performanceInfo.click();
     const directDescription = await page
       .locator('.workspace-tab [aria-description].direct-available-node:visible')
@@ -349,10 +402,8 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
 
     await address.fill(`${origin}/retry-page`);
     await address.press('Enter');
-    await expect(
-      page.getByRole('heading', { name: /^(This page can’t be reached|无法访问此网页)$/u })
-    ).toBeVisible();
-    await expect(canvas).toBeHidden();
+    await expect(address).toHaveValue(`${origin}/retry-page`);
+    await expect(canvas).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('browser-navigation-failed.png'),
       animations: 'disabled'
@@ -360,7 +411,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await address.fill(`${origin}/unsubmitted`);
     const attempts = requests.filter((path) => path === '/retry-page').length;
     failPage = false;
-    await page.getByRole('button', { name: /^(Try again|重试)$/u }).click();
+    await navigation.getByRole('button', { name: /^(Reload|刷新)$/u }).click();
     await expect
       .poll(() => requests.filter((path) => path === '/retry-page').length)
       .toBeGreaterThan(attempts);
@@ -519,6 +570,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect.poll(() => requests.includes('/relay')).toBe(true);
     await expect(address).toHaveValue(`${origin}/relay`);
     await expectViewportFits();
+    await expectSiteIcon('Relay fixture');
     const relayWidth = remoteViewport!.width;
     const divider = page.locator('.workbench-aside').getByRole('separator');
     const dividerBox = (await divider.boundingBox())!;
@@ -552,7 +604,12 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect(commands).toBeEnabled();
     await commands.click();
     const browserMenu = page.getByRole('menu', { name: /^(Browser commands|浏览器命令)$/u });
-    await expect(browserMenu.getByRole('menuitem').locator('svg')).toHaveCount(6);
+    const browserCommands = browserMenu.getByRole('menuitem');
+    await expect(browserCommands).toHaveCount(5);
+    await expect(browserCommands.locator('svg')).toHaveCount(5);
+    await expect(
+      browserMenu.getByRole('menuitem', { name: /^(Copy selected text|复制网页所选文本)$/u })
+    ).toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath('browser-toolbar-menu.png'),
       animations: 'disabled'
@@ -565,6 +622,12 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect(
       clear.getByRole('checkbox', { name: /^(Browsing history|浏览历史)$/u })
     ).not.toBeChecked();
+    await expect(
+      clear.getByRole('checkbox', { name: /^(Cookies and site data|Cookie 和站点数据)$/u })
+    ).toHaveAccessibleDescription(/sign you out|退出登录/u);
+    const range = clear.getByRole('combobox', { name: /^(Time range|时间范围)$/u });
+    await range.click();
+    await page.getByRole('option', { name: /^(Last 24 hours|最近 24 小时)$/u }).click();
     await page.screenshot({
       path: testInfo.outputPath('browser-clear-data.png'),
       animations: 'disabled'
@@ -576,7 +639,14 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await commands.click();
     await page.getByRole('menuitem', { name: /^(Browsing history|浏览历史)$/u }).click();
     const historyDialog = page.getByRole('dialog', { name: /^(Browsing history|浏览历史)$/u });
-    const history = historyDialog.getByRole('button', { name: /Relay fixture/u });
+    const search = historyDialog.getByRole('textbox', {
+      name: /^(Search titles and URLs|搜索标题或网址)$/u
+    });
+    await expect(search).toBeFocused();
+    const history = historyDialog.getByRole('button', {
+      name: `Relay fixture ${origin}/relay`,
+      exact: true
+    });
     await expect(history).toBeVisible();
     await expect(history).toContainText(`${origin}/relay`);
     await expect(historyDialog.getByText('false', { exact: true })).toHaveCount(0);
@@ -585,13 +655,26 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       path: testInfo.outputPath('browser-history.png'),
       animations: 'disabled'
     });
-    await history
-      .locator('..')
-      .getByRole('button', { name: /^(Delete|删除)$/u })
-      .click();
+    const outsideMatch = historyDialog.getByRole('button', { name: /^ICE fixture/u }).first();
+    await expect(outsideMatch).toBeVisible();
+    await search.fill('Relay fixture');
+    await expect(outsideMatch).toHaveCount(0);
+    await expect(history).toBeVisible();
+    const row = history.locator('..');
+    const selectEntry = row.getByRole('checkbox');
+    await selectEntry.check();
+    await historyDialog.getByRole('button', { name: /^(Delete selected|删除所选)$/u }).click();
     const confirmation = page.getByRole('dialog', {
       name: /^(Delete browsing history|删除浏览历史)$/u
     });
+    const cancelDeletion = confirmation.getByRole('button', { name: /^(Cancel|取消)$/u });
+    await expect(cancelDeletion).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(confirmation).toBeHidden();
+    await expect(search).toHaveValue('Relay fixture');
+    await expect(selectEntry).toBeChecked();
+    await row.getByRole('button', { name: /History actions for|历史记录操作/u }).click();
+    await page.getByRole('menuitem', { name: /Remove from history|从历史记录中移除/u }).click();
     await confirmation.getByRole('button', { name: /^(Delete|删除)$/u }).click();
     await expect(confirmation).toBeHidden();
     await expect(history).toHaveCount(0);
@@ -638,6 +721,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const touch = await page.context().newCDPSession(page);
     await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
     await page.setViewportSize({ width: 390, height: 750 });
+    await expect(opener).toHaveCount(0);
     await openWorkspaceBrowser();
     await address.fill(`${origin}/touch`);
     await address.press('Enter');
@@ -646,16 +730,83 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expectViewportFits();
     expect(remoteViewport?.narrow).toBe(true);
     const touchInput = page.getByRole('button', { name: /^(Show keyboard|显示键盘)$/u });
-    await expect(touchInput).toBeVisible();
+    const pageActions = page.getByRole('group', { name: /^(Remote page actions|远端网页操作)$/u });
+    const copySelection = pageActions.getByRole('button', {
+      name: /^(Copy selected text|复制网页所选文本)$/u
+    });
+    await expect(
+      pageActions.getByRole('button', { name: /^(Show keyboard|显示键盘)$/u })
+    ).toBeVisible();
+    await expect(pageActions.locator('button')).toHaveCount(3);
+    await address.fill(`${origin}/touch?query=${'long-address'.repeat(20)}`);
+    const toolbar = page.locator('.node-browser-toolbar');
+    await expect
+      .poll(() =>
+        toolbar.evaluate((element) => {
+          const row = element.getBoundingClientRect();
+          const controls = [...element.querySelectorAll('button, a[href], input')]
+            .map((control) => control.getBoundingClientRect())
+            .filter(({ width, height }) => width > 0 && height > 0);
+          return (
+            controls.length === 6 &&
+            controls.every(
+              (rect) =>
+                Math.abs(rect.y + rect.height / 2 - (row.y + row.height / 2)) < 2 &&
+                rect.left >= row.left &&
+                rect.right <= row.right
+            )
+          );
+        })
+      )
+      .toBe(true);
     await page.screenshot({
       path: testInfo.outputPath('browser-toolbar-mobile.png'),
       animations: 'disabled'
     });
+    const beforeInvalid = await canvas.boundingBox();
+    await address.fill('ftp://example.test');
+    await address.press('Enter');
+    const invalidNotice = page
+      .locator('.node-browser-body')
+      .getByRole('alert')
+      .filter({
+        hasText: /valid HTTP or HTTPS|有效的 HTTP 或 HTTPS/u
+      });
+    await expect(invalidNotice).toBeVisible();
+    await expect(address).toHaveAttribute('aria-invalid', 'true');
+    expect(await canvas.boundingBox()).toEqual(beforeInvalid);
+    await invalidNotice.getByRole('button').click();
+    await address.fill(`${origin}/touch`);
     const field = await canvasPoint(0.32, 0.12);
     const touchAt = (
       type: 'touchStart' | 'touchMove' | 'touchEnd',
       point?: { x: number; y: number }
     ) => touch.send('Input.dispatchTouchEvent', { type, touchPoints: point ? [point] : [] });
+    // Model a touch that starts in letterboxing: implicit capture must not clamp a new gesture.
+    await canvas.evaluate((element) => {
+      const pointerId = 123;
+      const bounds = element.getBoundingClientRect();
+      Object.defineProperty(element, 'hasPointerCapture', {
+        configurable: true,
+        value: () => true
+      });
+      try {
+        element.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            pointerId,
+            pointerType: 'touch',
+            isPrimary: true,
+            clientX: bounds.left - 5,
+            clientY: bounds.top + bounds.height / 2
+          })
+        );
+        element.dispatchEvent(
+          new PointerEvent('pointerup', { pointerId, pointerType: 'touch', isPrimary: true })
+        );
+      } finally {
+        Reflect.deleteProperty(element, 'hasPointerCapture');
+      }
+    });
     await touchAt('touchStart', field);
     await touchAt('touchEnd');
     await touchInput.click();
@@ -664,12 +815,26 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect
       .poll(() => requests.includes(`/typed?text=${encodeURIComponent('你好')}`))
       .toBe(true);
+    expect(requests).not.toContain('/touch-edge');
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.keyboard.press('Control+a');
-    await page.getByRole('button', { name: /^(Browser commands|浏览器命令)$/u }).click();
-    await page.getByRole('menuitem', { name: /^(Copy selected text|复制网页所选文本)$/u }).click();
-    await expect(page.getByText(/^(Text copied|已复制文本)$/u)).toBeVisible();
+    const beforeCopy = await canvas.boundingBox();
+    await copySelection.click();
+    const copied = page
+      .locator('.node-browser-body')
+      .getByRole('status')
+      .filter({
+        hasText: /^(Text copied|已复制文本)$/u
+      });
+    await expect(copied).toBeVisible();
+    expect(await canvas.boundingBox()).toEqual(beforeCopy);
+    // Measure the placement owner, not the message translated during its entrance animation.
+    const noticeBounds = await page
+      .locator('.node-browser-body > .mar-feedback-stack--local')
+      .boundingBox();
+    expect(noticeBounds!.y - beforeCopy!.y).toBeCloseTo(8, 0);
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('你好');
+    await expect(copied).toBeHidden({ timeout: 8_000 });
     await touchInput.click();
     await page.evaluate(() => navigator.clipboard.writeText('已粘贴'));
     await page.keyboard.press('Control+v');
@@ -678,6 +843,13 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       .toBe(true);
     await page.getByRole('button', { name: /^(Hide keyboard|收起键盘)$/u }).click();
     await expect(page.locator('[data-node-browser-input]')).not.toBeFocused();
+    await touchAt('touchStart', await canvasPoint(0.126, 0.64));
+    await touchAt('touchMove', await canvasPoint(0.72, 0.64));
+    await touchAt('touchEnd');
+    await expect
+      .poll(() => requests.some((path) => /^\/slider\?value=(?:[7-9]\d|100)$/u.test(path)))
+      .toBe(true);
+    expect(requests).not.toContain('/touch-scrolled');
     await touchAt('touchStart', await canvasPoint(0.6, 0.82));
     await touchAt('touchMove', await canvasPoint(0.6, 0.55));
     await touchAt('touchEnd');
