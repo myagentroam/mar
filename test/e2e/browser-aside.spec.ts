@@ -370,6 +370,20 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     );
     const newWebTab = page.getByRole('button', { name: /^(New tab|新建标签页)$/u });
     const tabRow = page.locator('.node-browser-tabs').getByRole('tablist');
+    async function captureBrowserChrome(name: string) {
+      const aside = (await page.locator('.workspace-aside').boundingBox())!;
+      const toolbar = (await page.locator('.node-browser-toolbar').boundingBox())!;
+      await page.screenshot({
+        path: testInfo.outputPath(name),
+        animations: 'disabled',
+        clip: {
+          x: aside.x,
+          y: aside.y,
+          width: aside.width,
+          height: toolbar.y + toolbar.height - aside.y
+        }
+      });
+    }
     const blankAddress = page.getByRole('textbox', { name: /^(Enter a web address|输入网址)$/u });
     await expect(tabRow.getByRole('tab', { name: /^(Blank|空白页)$/u })).toBeVisible();
     await expect(blankAddress).toBeVisible();
@@ -413,6 +427,15 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       'mask-image',
       'none'
     );
+    await expect(page.locator('.node-browser-tabs')).toHaveCSS('border-bottom-width', '1px');
+    const activeWebTab = longTab.locator('..');
+    await expect(activeWebTab).toHaveCSS('border-top-left-radius', /^(?:[89]|[1-9]\d+)px$/u);
+    await expect(activeWebTab).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(tabRow.getByRole('tab').first().locator('..')).toHaveCSS(
+      'background-color',
+      'rgba(0, 0, 0, 0)'
+    );
+    await captureBrowserChrome('browser-chrome-tabs-desktop.png');
     await page.screenshot({
       path: testInfo.outputPath('browser-site-tab.png'),
       animations: 'disabled'
@@ -857,6 +880,31 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect.poll(() => requests.includes('/touch')).toBe(true);
     await expectViewportFits();
     expect(remoteViewport?.narrow).toBe(true);
+    const narrowTabs = tabRow.getByRole('tab');
+    await expect(narrowTabs).toHaveCount(3);
+    for (const tab of await narrowTabs.all()) await expect(tab).toBeInViewport({ ratio: 0.99 });
+    await expect(newWebTab).toBeInViewport({ ratio: 0.99 });
+    await captureBrowserChrome('browser-chrome-tabs-mobile.png');
+    await test.step('Reveal focused tabs in the overflowing strip and restore focus on close', async () => {
+      await newWebTab.click();
+      await expect(narrowTabs).toHaveCount(4);
+      const newest = narrowTabs.last();
+      await expect(newest).toHaveAttribute('aria-selected', 'true');
+      await newest.press('Home');
+      await expect(narrowTabs.first()).toBeFocused();
+      await expect(narrowTabs.first()).toBeInViewport({ ratio: 0.99 });
+      await expect(newest).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('End');
+      await expect(newest).toBeFocused();
+      await expect(newest).toBeInViewport({ ratio: 0.99 });
+      await newest
+        .locator('..')
+        .getByRole('button', { name: /^(Close Blank|关闭\s*空白页)$/u })
+        .press('Enter');
+      await expect(narrowTabs).toHaveCount(3);
+      await expect(narrowTabs.last()).toBeFocused();
+      await expect(address).toHaveValue(`${origin}/touch`);
+    });
     const touchInput = page.getByRole('button', { name: /^(Show keyboard|显示键盘)$/u });
     const pageActions = page.getByRole('group', { name: /^(Remote page actions|远端网页操作)$/u });
     const copySelection = pageActions.getByRole('button', {
