@@ -167,6 +167,7 @@ browser.queryContextMenu = async (viewVersion, point) => {
 browser.send = (message) => {
   if (message.type === 'tab.restore')
     document.body.dataset.restoredAddresses = JSON.stringify(message.addresses);
+  if (message.type === 'navigate') document.body.dataset.navigated = message.address;
   if (message.type === 'input') void fixtureInput(message.action);
   if (message.type === 'tab.open') document.body.dataset.opened = message.address;
   if (message.type === 'tab.close') document.body.dataset.closePage = message.tabId;

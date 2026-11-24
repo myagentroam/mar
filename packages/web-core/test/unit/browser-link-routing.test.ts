@@ -1,24 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   browserAddress,
-  browserAddressDestination,
   routeWorkbenchBrowserLink,
   DEFAULT_BROWSER_LINK_PREFERENCES
 } from '../../src/service/browser-link-routing.js';
 
 describe('Workbench Browser link routing', () => {
-  it('keeps private addresses local to the Node and searches only when explicitly requested', () => {
-    expect(browserAddressDestination('internal-host/status')).toBe('https://internal-host/status');
-    expect(browserAddressDestination('https://internal-host:8443/status')).toBe(
-      'https://internal-host:8443/status'
-    );
-    expect(browserAddressDestination('internal host')).toBeUndefined();
-    expect(browserAddressDestination('? ')).toBeUndefined();
-    expect(browserAddressDestination('? ' + 'a'.repeat(513))).toBeUndefined();
-    const search = new URL(browserAddressDestination('? café & browser')!);
-    expect(search.origin).toBe('https://www.google.com');
-    expect([...search.searchParams]).toEqual([['q', 'café & browser']]);
-  });
   const source = { nodeId: 'original-node', workspaceId: 'original-workspace' };
   it('reverses the selected destination without rewriting the original target or scope', () => {
     const local = { kind: 'url' as const, source, url: 'HTTP://localhost:8080/path?q=1#tab' };
@@ -57,12 +44,18 @@ describe('Workbench Browser link routing', () => {
 
   it('defaults bare addresses without applying link preferences', () => {
     expect(browserAddress(' example.org:8443/a?q=1#b ')).toBe('https://example.org:8443/a?q=1#b');
+    expect(browserAddress('internal-host/status')).toBe('https://internal-host/status');
+    expect(browserAddress('https://internal-host:8443/status')).toBe(
+      'https://internal-host:8443/status'
+    );
     expect(browserAddress('localhost:3000/x')).toBe('http://localhost:3000/x');
     expect(browserAddress('127.0.0.1:9820')).toBe('http://127.0.0.1:9820/');
     expect(browserAddress('https://localhost:3000/x')).toBe('https://localhost:3000/x');
     for (const address of [
       '',
       'hello world',
+      '? ',
+      ' ? café & browser ',
       'ftp://example.net/',
       'tel:123',
       'https://user:pass@example.net/'

@@ -82,14 +82,3 @@ export function browserAddress(input: string): string | undefined {
   if (isBrowserLoopback(`https://${value}`)) return httpUrl(`http://${value}`)?.href;
   return url.href;
 }
-
-/** A query is sent to a search provider only after an explicit `? ` prefix. */
-export function browserAddressDestination(input: string): string | undefined {
-  const value = input.trimStart();
-  if (!/^\?\s/u.test(value)) return browserAddress(input);
-  const query = value.slice(1).trim();
-  if (!query || query.length > 512) return;
-  const search = new URL('https://www.google.com/search');
-  search.searchParams.set('q', query);
-  return search.href;
-}

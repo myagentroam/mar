@@ -6,7 +6,6 @@ export const browserZhCN = {
   reload: '刷新',
   stop: '停止加载',
   address: '地址栏',
-  addressOrSearch: '输入网址，或用 ? 加空格搜索',
   reopenTab: '重新打开已关闭的标签页',
   zoomIn: '放大网页',
   zoom: '缩放',
@@ -78,7 +77,7 @@ export const browserZhCN = {
     hint: '按约一秒内的实际活动统计；网页静止时可能没有新画面。'
   },
   retry: '重新连接',
-  invalid: '请输入有效的 HTTP 或 HTTPS 地址，或用「? 」开始搜索。',
+  invalid: '请输入有效的 HTTP 或 HTTPS 地址。',
   failed: '未能完成浏览器操作。',
   htmlUnavailable: '无法打开工作区 HTML 文件。',
   navigation: '网页未能加载，请检查地址后重试。',

@@ -39,14 +39,7 @@ watch(
     selection.value = -1;
     results.value = [];
     pending.value = false;
-    if (
-      !props.historyContext ||
-      props.disabled ||
-      text.startsWith('?') ||
-      text.length < 2 ||
-      text.length > 512
-    )
-      return;
+    if (!props.historyContext || props.disabled || text.length < 2 || text.length > 512) return;
     pending.value = true;
     let current = true;
     const timer = setTimeout(async () => {
@@ -129,7 +122,7 @@ function keydown(event: KeyboardEvent): void {
       v-bind="blank ? ({ prefixIcon: 'web' } as const) : {}"
       :disabled="disabled"
       :aria-label="label"
-      :placeholder="t('browser.addressOrSearch')"
+      :placeholder="t('browser.blankAddress')"
       :aria-invalid="invalid || undefined"
       :aria-describedby="invalid ? errorId : undefined"
       role="combobox"

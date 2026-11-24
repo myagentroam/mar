@@ -25,10 +25,7 @@ import type {
   WorkbenchBrowserCapability,
   WorkbenchBrowserService
 } from '../../service/workbench-browser-service.js';
-import {
-  browserAddressDestination,
-  isBrowserLoopback
-} from '../../service/browser-link-routing.js';
+import { browserAddress, isBrowserLoopback } from '../../service/browser-link-routing.js';
 import BrowserAddressInput from './BrowserAddressInput.vue';
 import BrowserFindBar from './BrowserFindBar.vue';
 import BrowserDownloadsDialog from './BrowserDownloadsDialog.vue';
@@ -503,7 +500,7 @@ function edit(value: string): void {
 }
 function navigate(): void {
   if (!snapshot.value || !hasCommands.value) return;
-  const address = browserAddressDestination(draft.value);
+  const address = browserAddress(draft.value);
   if (!address) {
     invalid.value = true;
     feedback(t('browser.invalid'), 'warning');

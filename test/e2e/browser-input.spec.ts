@@ -7,6 +7,37 @@ import { installBrowserContextMenu } from '../../mar-node/src/browser/browser-co
 import { BrowserPageView } from '../../mar-node/src/browser/browser-page-view.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test('Browser address fields only navigate to web addresses', async ({ page }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html', {
+    protocolSource: true
+  });
+  try {
+    await page.goto(`${fixture.url}browser-input.html?expired-reconnect`);
+    await page.getByRole('button', { name: 'Reconnect', exact: true }).click();
+    const body = page.locator('body');
+    for (const [name, path] of [
+      ['Address', 'toolbar'],
+      ['Enter a web address', 'blank']
+    ] as const) {
+      const address = page.getByRole('combobox', { name, exact: true });
+      await address.fill('? private words');
+      await address.press('Enter');
+      await expect(address).toHaveAttribute('aria-invalid', 'true');
+      await expect(body).not.toHaveAttribute('data-navigated', /.+/u);
+      await expect(address).toHaveAttribute('placeholder', 'Enter a web address');
+      await address.fill(`internal-host/${path}?q=1#section`);
+      await address.press('Enter');
+      await expect(body).toHaveAttribute(
+        'data-navigated',
+        `https://internal-host/${path}?q=1#section`
+      );
+      await body.evaluate((element) => delete element.dataset.navigated);
+    }
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('One Reconnect click opens a usable browser when the last attachment is stale', async ({
   page
 }) => {

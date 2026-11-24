@@ -6,7 +6,6 @@ export const browserEnUS = {
   reload: 'Reload',
   stop: 'Stop loading',
   address: 'Address',
-  addressOrSearch: 'Address or ? search terms',
   reopenTab: 'Reopen closed tab',
   zoomIn: 'Zoom in',
   zoom: 'Zoom',
@@ -81,7 +80,7 @@ export const browserEnUS = {
     hint: 'Measured over about one second. A still page may send no frames.'
   },
   retry: 'Reconnect',
-  invalid: 'Enter a valid HTTP or HTTPS address, or start a search with “? ”.',
+  invalid: 'Enter a valid HTTP or HTTPS address.',
   failed: 'The browser action could not be completed.',
   htmlUnavailable: 'The Workspace HTML file could not be opened.',
   navigation: 'The page could not be loaded. Check the address or try again.',
