@@ -275,9 +275,6 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       await performanceInfo.press('Escape');
       await expect(performancePanel).toBeHidden();
     }
-    const opener = page.getByRole('button', {
-      name: /^(Open a website in MAR|在 MAR 中打开网址)$/u
-    });
     const addAside = page.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u });
     const expandAside = page.getByRole('button', {
       name: /^(Open auxiliary workspace|打开辅助工作面)$/u
@@ -294,7 +291,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         .poll(
           async () =>
             (await browserTab.isVisible()) ||
-            (await opener.isVisible()) ||
+            (await addAside.isVisible()) ||
             (await expandAside.isVisible()) ||
             ((await noWorkspace.isVisible()) &&
               ((await expand.isVisible()) || (await workspace.isVisible()))),
@@ -309,13 +306,10 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     async function openWorkspaceBrowser() {
       await ensureWorkspace();
       if (!(await browserTab.isVisible())) {
-        if (await opener.isVisible()) await opener.click();
-        else {
-          if (await expandAside.isVisible()) await expandAside.click();
-          if (!(await browserTab.isVisible())) {
-            await addAside.click();
-            await addBrowser.click();
-          }
+        if (await expandAside.isVisible()) await expandAside.click();
+        if (!(await browserTab.isVisible())) {
+          await addAside.click();
+          await addBrowser.click();
         }
       }
       await expect(browserTab).toBeVisible({ timeout: 25_000 });
@@ -910,7 +904,6 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const touch = await page.context().newCDPSession(page);
     await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
     await page.setViewportSize({ width: 390, height: 750 });
-    await expect(opener).toHaveCount(0);
     await openWorkspaceBrowser();
     await address.fill(`${origin}/touch`);
     await address.press('Enter');

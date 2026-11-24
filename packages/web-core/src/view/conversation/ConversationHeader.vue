@@ -103,7 +103,6 @@ const asideLabel = computed(() =>
         <MarIcon name="session-list" />
       </button>
       <slot v-if="session && !sessionIsDraft(session)" name="tree" :session-id="session.id" />
-      <slot name="workspace-tools" />
       <button
         v-if="asideReady || filesReady || terminalReady"
         class="mar-icon-button mar-icon-action mar-icon-action--panel-toggle conversation-header-tool"

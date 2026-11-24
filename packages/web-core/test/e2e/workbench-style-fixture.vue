@@ -513,7 +513,10 @@ if (composerFixture) {
             observedAt: 1,
             conversation: { available: true, reasonCode: null },
             files: { available: true, reasonCode: null },
-            sessionAside: { apiVersion: 1 }
+            sessionAside: { apiVersion: 1 },
+            ...(new URL(location.href).searchParams.has('browser')
+              ? { browser: { apiVersion: 1, nodeGeneration: 'fixture', ice: false } }
+              : {})
           }
         })
       );

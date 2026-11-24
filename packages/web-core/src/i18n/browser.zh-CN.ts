@@ -1,7 +1,6 @@
 export const browserZhCN = {
   title: '浏览器',
   close: '关闭浏览器',
-  openAddress: '在 MAR 中打开网址',
   back: '后退',
   forward: '前进',
   reload: '刷新',

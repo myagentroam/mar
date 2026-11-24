@@ -5,7 +5,7 @@ lastUpdated: 2026-11-24
 
 # Use the Workspace browser
 
-In Work mode, select **+ → Browser** at the end of the side pane’s tab strip. On desktop, you can also select **Open a website in MAR** in the Workspace toolbar. Pages run in Chromium on the Node that hosts the Workspace, not on the device running the Console. Browser data for your account is kept separately for each Workspace.
+In Work mode, open the side pane, then select **+ → Browser** at the end of its tab strip. Pages run in Chromium on the Node that hosts the Workspace, not on the device running the Console. Browser data for your account is kept separately for each Workspace.
 
 ## Browse pages
 

@@ -5,7 +5,7 @@ lastUpdated: 2026-11-24
 
 # 使用 Workspace 浏览器
 
-在工作模式下，选择辅助工作面标签栏末尾的「+ → 浏览器」。桌面端也可通过工作区工具栏的「在 MAR 中打开网址」进入。网页运行在当前 Workspace 所属 Node 的 Chromium 中，不是在你操作 Console 的设备上运行。当前账号在不同 Workspace 的浏览器数据分别保存。
+在工作模式下，打开辅助工作面，然后选择标签栏末尾的「+ → 浏览器」。网页运行在当前 Workspace 所属 Node 的 Chromium 中，不是在你操作 Console 的设备上运行。当前账号在不同 Workspace 的浏览器数据分别保存。
 
 ## 浏览网页
 

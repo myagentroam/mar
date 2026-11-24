@@ -107,7 +107,7 @@ function openBrowserData(kind: 'cache' | 'history', browserId: string): void {
   const scope = props.page.selection.workspaceTarget;
   if (scope) browserData.value = { ...scope, browserId, kind };
 }
-function openInNodeBrowser(scope: AsideWorkspace | undefined, url?: string): void {
+function openInNodeBrowser(scope: AsideWorkspace | undefined, url: string): void {
   if (!scope || !atBrowserScope(scope)) return;
   if (!browserCapability.value) {
     props.page.application.notice(translate('browser.unavailable'), 'error');
@@ -115,7 +115,7 @@ function openInNodeBrowser(scope: AsideWorkspace | undefined, url?: string): voi
   }
   props.page.application.selectNavigation('nodes');
   props.page.aside.selectAsideTool({ ...scope, id: 'node-browser' });
-  if (url !== undefined) props.page.browser.openDestination(scope, { url });
+  props.page.browser.openDestination(scope, { url });
 }
 function openBrowserHistory(url: string): void {
   const scope = browserData.value;
@@ -910,19 +910,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             @preview-attachment="page.interactions.openAttachmentPreview"
             @reload="page.sessionList.reloadSelectedSession"
           >
-            <template #workspace-tools>
-              <MarButton
-                v-if="
-                  !page.layout.mobileViewport && browserCapability && page.selection.workspaceTarget
-                "
-                text
-                icon="web"
-                v-tooltip="translate('browser.openAddress')"
-                :aria-label="translate('browser.openAddress')"
-                :disabled="desktopAsideWidth('compact') === undefined"
-                @click="openInNodeBrowser(page.selection.workspaceTarget)"
-              />
-            </template>
             <template #session-menu="{ session }">
               <WorkspaceSessionActionsMenu v-bind="titleMenuBindings(session)" />
             </template>

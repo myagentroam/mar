@@ -177,9 +177,6 @@ onBeforeUnmount(() => {
             )
         "
       >
-        <template v-if="$slots['workspace-tools']" #workspace-tools>
-          <slot name="workspace-tools" />
-        </template>
         <template v-if="$slots['session-menu']" #session-menu="menu">
           <slot name="session-menu" v-bind="menu" />
         </template>

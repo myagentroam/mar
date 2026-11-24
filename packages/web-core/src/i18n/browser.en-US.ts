@@ -1,7 +1,6 @@
 export const browserEnUS = {
   title: 'Browser',
   close: 'Close browser',
-  openAddress: 'Open a website in MAR',
   back: 'Back',
   forward: 'Forward',
   reload: 'Reload',
