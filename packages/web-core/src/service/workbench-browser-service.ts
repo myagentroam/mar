@@ -38,6 +38,7 @@ type Connection = {
   contextMenu?: { id: string; finish: (options?: BrowserContextOptions) => void };
   scope: Scope;
   canvas: HTMLCanvasElement;
+  viewportElement: HTMLElement;
   capability: WorkbenchBrowserCapability;
   attempt: number;
   browserId?: string;
@@ -198,7 +199,7 @@ export function createWorkbenchBrowserService(options: {
     relayOnly = false
   ): Promise<void> {
     if (current !== connection || !connection.browserId) return;
-    const { scope, canvas, browserId } = connection;
+    const { scope, canvas, viewportElement, browserId } = connection;
     const attempt = ++connection.attempt;
     const transport =
       !relayOnly && capability.ice
@@ -282,7 +283,7 @@ export function createWorkbenchBrowserService(options: {
     };
     awaitPicture();
     connection.data = new BrowserAttachmentClient(link, canvas, open, {
-      resizeViewport: capability.resizeViewport === true,
+      ...(capability.resizeViewport && { viewportElement }),
       downloadManagement: capability.downloadManagement === true,
       tabControls: capability.tabControls === true,
       agentActivity: capability.agentActivity === true,
@@ -360,10 +361,11 @@ export function createWorkbenchBrowserService(options: {
     operation:
       | { action: 'lookup' }
       | { action: 'open'; preserveLogin: boolean }
-      | { action: 'resume'; browserId: string }
+      | { action: 'resume'; browserId: string },
+    viewportElement: HTMLElement
   ): Promise<void> {
     hide();
-    const connection: Connection = { scope, canvas, capability, attempt: 0 };
+    const connection: Connection = { scope, canvas, viewportElement, capability, attempt: 0 };
     current = connection;
     status.value = 'connecting';
     try {

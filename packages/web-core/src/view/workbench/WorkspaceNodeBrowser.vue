@@ -372,8 +372,8 @@ let desired: BrowserDestination | undefined;
 let initial = true;
 
 function show(action: Parameters<WorkbenchBrowserService['show']>[3]): void {
-  if (canvas.value && props.connected)
-    void props.browser.show(props.scope, props.capability, canvas.value, action);
+  if (canvas.value && body.value && props.connected)
+    void props.browser.show(props.scope, props.capability, canvas.value, action, body.value);
 }
 
 watch(

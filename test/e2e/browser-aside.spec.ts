@@ -137,6 +137,15 @@ test('Browser Aside finds and paints text in open shadow trees', async ({
   await browserAsideJourney(page, baseURL, testInfo, 'find');
 });
 
+test('Browser Aside uses its content size on the first address and paints the complete page', async ({
+  page,
+  baseURL,
+  browserName
+}, testInfo) => {
+  test.skip(browserName !== 'chromium', 'This journey uses the real Chromium browser.');
+  await browserAsideJourney(page, baseURL, testInfo, 'first-address');
+});
+
 async function submitWorkspacePath(page: Page, row: Locator, path: string): Promise<void> {
   const name = /^(Save to Workspace|保存到工作区)$/iu;
   await row.getByRole('button', { name }).click();
@@ -149,7 +158,7 @@ async function browserAsideJourney(
   page: Page,
   baseURL: string | undefined,
   testInfo: TestInfo,
-  scenario: 'interaction' | 'close-last' | 'full' | 'find'
+  scenario: 'interaction' | 'close-last' | 'full' | 'find' | 'first-address'
 ): Promise<void> {
   test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), 'mar-browser-aside-'));
@@ -168,6 +177,22 @@ async function browserAsideJourney(
     requests.push(request.url ?? '');
     if (request.url === '/site-icon.png') {
       response.writeHead(200, { 'content-type': 'image/png' }).end(favicon);
+      return;
+    }
+    if (request.url === '/first-address') {
+      response.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html>
+        <title>First viewport fixture</title>
+        <style>html { overflow: hidden }
+          body { margin: 0; display: grid; width: 100vw; height: 100vh;
+            grid-template: repeat(2, 1fr) / repeat(2, 1fr); }
+        </style>
+        <div style="background:#f00"></div><div style="background:#0f0"></div>
+        <div style="background:#00f"></div><div style="background:#ff0"></div>
+        <script>fetch('/initial-viewport?width=' + innerWidth + '&height=' + innerHeight)</script>`);
+      return;
+    }
+    if (request.url?.startsWith('/initial-viewport?')) {
+      response.writeHead(204).end();
       return;
     }
     if (request.url?.startsWith('/viewport-size?')) {
@@ -573,6 +598,42 @@ async function browserAsideJourney(
     await expect(tabRow.getByRole('tab', { name: /^(Blank|空白页)$/u })).toBeVisible();
     await expect(blankAddress).toBeVisible();
     await expect(canvas).toBeHidden();
+    if (scenario === 'first-address') {
+      const size = await page.locator('.node-browser-body').evaluate((element) => ({
+        width: element.clientWidth,
+        height: element.clientHeight
+      }));
+      await page.evaluate(() => {
+        const context = CanvasRenderingContext2D.prototype;
+        context.drawImage = new Proxy(context.drawImage, {
+          apply(draw, receiver: CanvasRenderingContext2D, args) {
+            Reflect.apply(draw, receiver, args);
+            const target = receiver.canvas;
+            if (!target.matches('.node-browser canvas') || target.dataset.firstContentFrame) return;
+            const colors = [
+              [0.25, 0.25],
+              [0.75, 0.25],
+              [0.25, 0.75],
+              [0.75, 0.75]
+            ].map(([x, y]) => {
+              const rgb = receiver.getImageData(target.width * x!, target.height * y!, 1, 1).data;
+              return [...rgb.subarray(0, 3)].map((channel) => (channel > 128 ? '1' : '0')).join('');
+            });
+            // Ignore blank/loading pictures, but record the first one containing the test page.
+            if (colors.some((color) => color !== '111' && color !== '000'))
+              target.dataset.firstContentFrame = colors.join(',');
+          }
+        });
+      });
+      await blankAddress.fill(`${origin}/first-address`);
+      await blankAddress.press('Enter');
+      await expect
+        .poll(() => requests.find((path) => path.startsWith('/initial-viewport?')))
+        .toBe(`/initial-viewport?width=${size.width}&height=${size.height}`);
+      await expect(canvas).toBeVisible();
+      await expect(canvas).toHaveAttribute('data-first-content-frame', '100,010,001,110');
+      return;
+    }
     await expect(page.locator('.node-browser-body')).toHaveCSS('background-color', /rgba?\(/u);
     await checkBlankAddressSizing('browser-blank-address-desktop.png');
     await page.screenshot({ path: testInfo.outputPath('browser-blank.png') });

@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import type { BrowserPageInput } from '@myagentroam/protocol';
 import { BrowserAttachment } from '../../src/browser/browser-attachment.js';
 import type { BrowserPageView } from '../../src/browser/browser-page-view.js';
-import type { BrowserTabs } from '../../src/browser/browser-tabs.js';
+import { BrowserTabs } from '../../src/browser/browser-tabs.js';
 
 const size = { width: 800, height: 600 };
 const key = (edge: 'down' | 'up'): Extract<BrowserPageInput, { type: 'key' }> => ({
@@ -12,10 +12,14 @@ const key = (edge: 'down' | 'up'): Extract<BrowserPageInput, { type: 'key' }> =>
   viewVersion: 1
 });
 
-async function fixture() {
+async function fixture(navigation?: {
+  resize: (viewport: typeof size) => Promise<void>;
+  navigate: (address: string) => Promise<void>;
+}) {
   const blocked = Promise.withResolvers<void>();
   let ready = Promise.withResolvers<void>();
   let viewVersion = 1;
+  let viewport = size;
   let refresh: () => void;
   const failed = vi.fn();
   const sendControl = vi.fn();
@@ -25,7 +29,8 @@ async function fixture() {
     if (action.type === 'key' && action.edge === 'down') await blocked.promise;
   });
   const page = {
-    resize: async () => false,
+    resize: navigation?.resize ?? (async () => {}),
+    navigate: navigation?.navigate,
     startCapture: async (
       _options: unknown,
       offer: (frame: typeof size & { jpeg: Buffer }) => void
@@ -38,7 +43,11 @@ async function fixture() {
   } as unknown as BrowserPageView;
   const tabs = {
     activeView: page,
-    viewport: size,
+    get viewport() {
+      return viewport;
+    },
+    navigateWithViewport: BrowserTabs.prototype.navigateWithViewport,
+    navigationView: (version: number) => (version === viewVersion ? page : undefined),
     snapshot: () => ({ viewVersion, tabs: [] }),
     observe: (callback: () => void) => {
       refresh = callback;
@@ -73,6 +82,9 @@ async function fixture() {
     activity,
     blocked,
     releaseInput,
+    setViewport: (next: typeof size) => {
+      viewport = next;
+    },
     nextView: async () => {
       ready = Promise.withResolvers<void>();
       viewVersion++;
@@ -82,6 +94,67 @@ async function fixture() {
     }
   };
 }
+
+it.each(['none', 'geometry', 'target', 'target closes', 'resize fails'])(
+  'waits for the viewport and rechecks the navigation target (change: %s)',
+  async (changed) => {
+    const applied = Promise.withResolvers<void>();
+    const latestApplied = Promise.withResolvers<void>();
+    const resize = vi.fn(async () => {});
+    const navigate = vi.fn(async () => {});
+    const { attachment, blocked, nextView, setViewport, sendControl } = await fixture({
+      resize,
+      navigate
+    });
+    try {
+      resize.mockClear();
+      resize.mockImplementationOnce(() => applied.promise);
+      attachment.receive({ type: 'navigate', address: 'https://example.test/', viewVersion: 1 });
+      blocked.resolve();
+      await vi.waitFor(() => expect(resize).toHaveBeenCalledExactlyOnceWith(size));
+      expect(navigate).not.toHaveBeenCalled();
+      const switched = changed === 'target' || changed === 'target closes';
+      if (switched) {
+        await nextView();
+        attachment.receive({
+          type: 'navigate',
+          address: 'https://example.test/next',
+          viewVersion: 2
+        });
+      }
+      if (changed === 'geometry') {
+        // Another attachment can change the shared size before capture catches up.
+        const latestSize = { width: 721, height: 881 };
+        setViewport(latestSize);
+        resize.mockImplementationOnce(() => latestApplied.promise);
+        applied.resolve();
+        await vi.waitFor(() => expect(resize).toHaveBeenLastCalledWith(latestSize));
+        expect(navigate).not.toHaveBeenCalled();
+        latestApplied.resolve();
+      }
+      if (changed === 'target closes' || changed === 'resize fails')
+        applied.reject(new Error('Viewport update failed'));
+      else applied.resolve();
+      const failure = { type: 'command.failed', code: 'BROWSER_COMMAND_FAILED' };
+      if (changed === 'resize fails') {
+        await vi.waitFor(() => expect(sendControl).toHaveBeenCalledWith(failure));
+        expect(navigate).not.toHaveBeenCalled();
+      } else {
+        await vi.waitFor(() =>
+          expect(navigate).toHaveBeenCalledExactlyOnceWith(
+            switched ? 'https://example.test/next' : 'https://example.test/'
+          )
+        );
+        expect(sendControl).not.toHaveBeenCalledWith(failure);
+      }
+    } finally {
+      applied.resolve();
+      latestApplied.resolve();
+      blocked.resolve();
+      await attachment.close();
+    }
+  }
+);
 
 it('keeps the attachment and wheel targets intact when alternating wheel input fills the queue', async () => {
   const { attachment, send, input, failed, blocked } = await fixture();

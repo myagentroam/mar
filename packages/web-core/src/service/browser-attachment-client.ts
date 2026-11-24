@@ -43,10 +43,11 @@ export class BrowserAttachmentClient {
   private drawnFrames = 0;
   private resizeObserver: ResizeObserver | undefined;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  private sentSize: { width: number; height: number } | undefined;
 
   constructor(
     private readonly link: Link,
-    private readonly canvas: HTMLCanvasElement,
+    canvas: HTMLCanvasElement,
     private readonly open: BrowserAttachmentOpen,
     private readonly options: {
       snapshot(snapshot: BrowserTabSnapshot): void;
@@ -54,7 +55,7 @@ export class BrowserAttachmentClient {
       find?(event: Extract<BrowserAttachmentEvent, { type: 'find.result' }>): void;
       contextMenu?(event: Extract<BrowserAttachmentEvent, { type: 'context.result' }>): void;
       attached?(): void;
-      resizeViewport?: boolean;
+      viewportElement?: HTMLElement;
       downloadManagement?: boolean;
       agentActivity?: boolean;
       tabIcon?: (event: Extract<BrowserAttachmentEvent, { type: 'tab.icon' }>) => void;
@@ -78,6 +79,16 @@ export class BrowserAttachmentClient {
   send(command: Exclude<BrowserAttachmentMessage, { type: 'ack' }>): boolean {
     if (!this.ready || this.closed) return false;
     if (command.type === 'input' && (!this.drawn || command.action.viewVersion !== this.version))
+      return false;
+    if (
+      (command.type === 'navigate' ||
+        (command.type === 'navigation' && command.action !== 'stop') ||
+        (command.type === 'tab.open' && command.address !== undefined) ||
+        command.type === 'tab.openHtml' ||
+        command.type === 'tab.reopen' ||
+        command.type === 'tab.restore') &&
+      !this.sendSize()
+    )
       return false;
     return this.sendText(command);
   }
@@ -121,7 +132,11 @@ export class BrowserAttachmentClient {
         this.ready = true;
         this.sampleStart = performance.now();
         this.sampleTimer = setInterval(this.publishSample, 1_000);
-        if (this.options.resizeViewport) this.observeSize();
+        const element = this.options.viewportElement;
+        if (element) {
+          if (!this.sendSize()) return;
+          this.observeSize(element);
+        }
         if (this.options.tabIcon) this.sendText({ type: 'tab.icons' });
         if (this.options.tabControls) this.sendText({ type: 'tab.controls.observe' });
         if (this.options.agentActivity) this.sendText({ type: 'agent.activity.observe' });
@@ -179,25 +194,28 @@ export class BrowserAttachmentClient {
     this.options.sample(value);
   };
 
-  private observeSize(): void {
-    let sent: { width: number; height: number } | undefined;
+  private observeSize(element: HTMLElement): void {
     this.resizeObserver = new ResizeObserver(() => {
       clearTimeout(this.resizeTimer);
-      this.resizeTimer = setTimeout(() => {
-        const { clientWidth, clientHeight } = this.canvas;
-        if (
-          this.closed ||
-          clientWidth < BROWSER_VIEWPORT_MIN ||
-          clientHeight < BROWSER_VIEWPORT_MIN
-        )
-          return;
-        const width = Math.min(clientWidth, BROWSER_VIEWPORT_MAX);
-        const height = Math.min(clientHeight, BROWSER_VIEWPORT_MAX);
-        if (width === sent?.width && height === sent.height) return;
-        if (this.send({ type: 'viewport.resize', width, height })) sent = { width, height };
-      }, 120);
+      if (this.closed) return;
+      if (this.sentSize) this.resizeTimer = setTimeout(() => this.sendSize(), 120);
+      else this.sendSize();
     });
-    this.resizeObserver.observe(this.canvas);
+    this.resizeObserver.observe(element);
+  }
+
+  private sendSize(): boolean {
+    // The content area has layout even while the canvas waits for its first picture.
+    const element = this.options.viewportElement;
+    if (!element || this.closed) return !this.closed;
+    const { clientWidth, clientHeight } = element;
+    if (clientWidth < BROWSER_VIEWPORT_MIN || clientHeight < BROWSER_VIEWPORT_MIN) return true;
+    const width = Math.min(clientWidth, BROWSER_VIEWPORT_MAX);
+    const height = Math.min(clientHeight, BROWSER_VIEWPORT_MAX);
+    if (width === this.sentSize?.width && height === this.sentSize.height) return true;
+    if (!this.sendText({ type: 'viewport.resize', width, height })) return false;
+    this.sentSize = { width, height };
+    return true;
   }
 
   private linkOpen(): boolean {

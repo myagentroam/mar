@@ -116,7 +116,7 @@ it('measures received bytes and drawn frames separately, then stops sampling whe
   expect(sample).toHaveBeenCalledTimes(2);
 });
 
-it('sends the latest visible viewport after a resize burst, and cancels on detach', async () => {
+it('sends the content size before the first frame or navigation and debounces resize bursts', async () => {
   vi.useFakeTimers();
   const disconnect = vi.fn();
   let resized!: () => void;
@@ -137,13 +137,14 @@ it('sends the latest visible viewport after a resize burst, and cancels on detac
     close: vi.fn()
   });
   const canvas = { clientWidth: 0, clientHeight: 0 };
+  const body = { clientWidth: 510, clientHeight: 880 };
   const open = { type: 'OPEN' as const, attachmentId: randomUUID(), ticket: 'x'.repeat(32) };
   const client = new BrowserAttachmentClient(
     link as unknown as RTCDataChannel,
     canvas as HTMLCanvasElement,
     open,
     {
-      resizeViewport: true,
+      viewportElement: body as HTMLElement,
       sample: vi.fn(),
       frame: vi.fn(),
       snapshot: vi.fn(),
@@ -152,23 +153,37 @@ it('sends the latest visible viewport after a resize burst, and cancels on detac
     }
   );
   link.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'ATTACHED' }) }));
-  resized();
-  await vi.advanceTimersByTimeAsync(120);
-  expect(link.send).toHaveBeenCalledTimes(1);
-  Object.assign(canvas, { clientWidth: 321, clientHeight: 601 });
-  resized();
-  await vi.advanceTimersByTimeAsync(60);
-  Object.assign(canvas, { clientWidth: 701, clientHeight: 401 });
-  resized();
-  await vi.advanceTimersByTimeAsync(120);
   expect(link.send.mock.calls.map(([data]) => JSON.parse(data))).toEqual([
     open,
-    { type: 'viewport.resize', width: 701, height: 401 }
+    { type: 'viewport.resize', width: 510, height: 880 }
   ]);
-  Object.assign(canvas, { clientWidth: 601 });
+  Object.assign(body, { clientWidth: 520 });
+  const navigate = { type: 'navigate', viewVersion: 1, address: 'https://example.test/' } as const;
+  expect(client.send(navigate)).toBe(true);
+  expect(link.send.mock.calls.slice(-2).map(([data]) => JSON.parse(data))).toEqual([
+    { type: 'viewport.resize', width: 520, height: 880 },
+    navigate
+  ]);
+  Object.assign(body, { clientWidth: 321, clientHeight: 601 });
+  resized();
+  await vi.advanceTimersByTimeAsync(60);
+  Object.assign(body, { clientWidth: 701, clientHeight: 401 });
+  resized();
+  await vi.advanceTimersByTimeAsync(120);
+  expect(link.send).toHaveBeenCalledTimes(5);
+  expect(JSON.parse(link.send.mock.lastCall![0])).toEqual({
+    type: 'viewport.resize',
+    width: 701,
+    height: 401
+  });
+  Object.assign(body, { clientWidth: 0, clientHeight: 0 });
+  resized();
+  await vi.advanceTimersByTimeAsync(120);
+  expect(link.send).toHaveBeenCalledTimes(5);
+  Object.assign(body, { clientWidth: 601, clientHeight: 401 });
   resized();
   client.close();
   await vi.advanceTimersByTimeAsync(120);
   expect(disconnect).toHaveBeenCalledOnce();
-  expect(link.send).toHaveBeenCalledTimes(2);
+  expect(link.send).toHaveBeenCalledTimes(5);
 });

@@ -88,7 +88,8 @@ it.each([true, undefined])(
         ...(supported && { foregroundPresence: true })
       },
       {} as HTMLCanvasElement,
-      { action: 'resume', browserId: 'browser' }
+      { action: 'resume', browserId: 'browser' },
+      {} as HTMLElement
     );
     expect(mock.send).not.toHaveBeenCalled();
     mock.attached!();
@@ -151,7 +152,8 @@ it.each([
       { nodeId: 'n', workspaceId: 'w' },
       { apiVersion: 1, ice: true, nodeGeneration: 'g' },
       {} as HTMLCanvasElement,
-      { action: 'resume', browserId: 'same-browser' }
+      { action: 'resume', browserId: 'same-browser' },
+      {} as HTMLElement
     );
     if (failure !== 'first-frame timeout') {
       mock.attached!();
@@ -266,7 +268,7 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
         attachmentId,
         ticket: 'A'.repeat(32)
       });
-    const first = service.show(scope, capability, view, resume);
+    const first = service.show(scope, capability, view, resume, view);
     await vi.waitFor(() => expect(requests).toHaveLength(1));
     attached(0, firstId);
     await first;
@@ -282,7 +284,7 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
       mock.supportsBrowserVideo.mockImplementation(async (hd) => hd !== true);
     }
     const next =
-      transition === 'fallback' ? undefined : service.show(scope, capability, view, resume);
+      transition === 'fallback' ? undefined : service.show(scope, capability, view, resume, view);
     expect(requests[1]?.request).toEqual({ action: 'release', attachmentId: firstId });
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(requests).toHaveLength(2);
@@ -339,7 +341,8 @@ it('holds the upload state until cancellation settles, not until the aborted upl
     { nodeId: 'node', workspaceId: 'workspace' },
     { apiVersion: 1, ice: true, nodeGeneration: 'generation' },
     {} as HTMLCanvasElement,
-    { action: 'resume', browserId: 'browser' }
+    { action: 'resume', browserId: 'browser' },
+    {} as HTMLElement
   );
   await vi.waitFor(() => expect(requests).toHaveLength(1));
   service.handle({
@@ -389,7 +392,8 @@ it.each(['cancel', 'delete', 'workspace'] as const)(
       { nodeId: 'node', workspaceId: 'workspace' },
       { apiVersion: 1, ice: true, nodeGeneration: 'generation' },
       {} as HTMLCanvasElement,
-      { action: 'resume', browserId: 'browser' }
+      { action: 'resume', browserId: 'browser' },
+      {} as HTMLElement
     );
     await vi.waitFor(() => expect(requests).toHaveLength(1));
     service.handle({

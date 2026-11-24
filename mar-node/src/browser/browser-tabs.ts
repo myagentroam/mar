@@ -152,6 +152,26 @@ export class BrowserTabs {
     this.changed(false);
   }
 
+  async navigateWithViewport(
+    page: BrowserPageView,
+    navigate: () => Promise<void>,
+    isCurrent?: () => boolean
+  ): Promise<void> {
+    // Capture applies geometry independently. The owner may change it again while we wait.
+    while (isCurrent?.() !== false) {
+      const size = this.viewport;
+      try {
+        await page.resize(size);
+      } catch (error) {
+        if (isCurrent?.() === false) return;
+        throw error;
+      }
+      if (size !== this.viewport) continue;
+      if (isCurrent?.() !== false) return navigate();
+      return;
+    }
+  }
+
   async stopLoading(version: number): Promise<void> {
     const tab = this.activeId ? this.tabs.get(this.activeId) : undefined;
     if (!tab || !this.navigationView(version)) return;
@@ -298,7 +318,7 @@ export class BrowserTabs {
     const opened = [...this.tabs.values()].find((tab) => tab.page === page);
     try {
       if (!opened) throw new Error('BROWSER_TAB_ENDED');
-      await navigate(opened);
+      await this.navigateWithViewport(opened.view, () => navigate(opened));
     } catch (error) {
       const restore = this.activeId === opened?.id;
       await page.close().catch(this.options.failed);
@@ -366,7 +386,8 @@ export class BrowserTabs {
       let incomplete = false;
       for (const [index, url] of urls.entries()) {
         try {
-          if (index === 0) await blank.view.navigate(url);
+          if (index === 0)
+            await this.navigateWithViewport(blank.view, () => blank.view.navigate(url));
           else await this.open(url);
         } catch (error) {
           if (

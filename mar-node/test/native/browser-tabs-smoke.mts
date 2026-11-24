@@ -27,6 +27,7 @@ const server = createServer((request, response) => {
   }
   if (path === '/stall') return;
   response.writeHead(200, { 'Content-Type': 'text/html' }).end(`
+    <script>document.documentElement.dataset.initialViewport = innerWidth + 'x' + innerHeight</script>
     <a href="/popup" target="_blank" rel="opener">Open popup</a>
     <button onclick="history.pushState({}, '', '#chapter')">Add history</button>
     <button onclick="window.close()">Close window</button>
@@ -290,12 +291,16 @@ try {
       ['about:blank']
     );
     assert.equal(tabs.tabControls().reopen, true);
+    tabs.resize({ width: 510, height: 880 });
     await tabs.reopen();
     assert.equal(
       tabs.snapshot().tabs.find(({ id }) => id === tabs.snapshot().activeId)?.url,
       `${base}/start`
     );
     const reopened = context.pages().at(-1)!;
+    const initialViewport = (page: typeof reopened) =>
+      page.locator('html[data-initial-viewport]').getAttribute('data-initial-viewport');
+    assert.equal(await initialViewport(reopened), '510x880');
     const zoom = () => reopened.locator('html').evaluate((root) => getComputedStyle(root).zoom);
     const viewport = () => reopened.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
     const before = await viewport();
@@ -309,12 +314,17 @@ try {
     assert.equal(await zoom(), '1');
     await assert.rejects(tabs.restore([`${base}/start`]), /BROWSER_RESTORE_NOT_BLANK/);
     await tabs.close(tabs.snapshot().activeId!);
+    tabs.resize({ width: 601, height: 742 });
     const longUrl = `${base}/start?padding=${'a'.repeat(1600)}&chapter=kept#section`;
     await tabs.restore([longUrl, `${base}/popup`]);
     assert.deepEqual(
       tabs.snapshot().tabs.map(({ url }) => url),
       [longUrl, `${base}/popup`]
     );
+    assert.deepEqual(await Promise.all(context.pages().map(initialViewport)), [
+      '601x742',
+      '601x742'
+    ]);
     assert.equal(tabs.snapshot().tabs.at(-1)?.id, tabs.snapshot().activeId);
     for (const { id } of tabs.snapshot().tabs) await tabs.close(id);
     await assert.rejects(

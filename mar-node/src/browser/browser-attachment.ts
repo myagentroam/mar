@@ -496,10 +496,16 @@ export class BrowserAttachment {
       case 'navigation': {
         const page = tabs.navigationView(command.viewVersion);
         if (!page) return;
-        if (command.type === 'navigate') return page.navigate(command.address);
-        if (command.action === 'reload') return page.reload();
-        if (command.action === 'back' || command.action === 'forward')
-          return page.travel(command.action === 'back' ? -1 : 1);
+        return tabs.navigateWithViewport(
+          page,
+          async () => {
+            if (command.type === 'navigate') return page.navigate(command.address);
+            if (command.action === 'reload') return page.reload();
+            if (command.action === 'back' || command.action === 'forward')
+              return page.travel(command.action === 'back' ? -1 : 1);
+          },
+          () => !this.closed && tabs.navigationView(command.viewVersion) === page
+        );
       }
     }
   }
