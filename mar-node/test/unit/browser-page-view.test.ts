@@ -4,7 +4,7 @@ import { BrowserPageView } from '../../src/browser/browser-page-view.js';
 
 type Frame = {
   data: string;
-  metadata: { deviceWidth: number; deviceHeight: number };
+  metadata: { deviceWidth: number; deviceHeight: number; timestamp?: number };
   sessionId: number;
 };
 
@@ -29,6 +29,48 @@ function pngHeader(width: number, height: number): Buffer {
 }
 
 describe('Browser page view', () => {
+  it.each(['partial raster', 'stale pixels'] as const)(
+    'recovers a static first frame without a viewport change (%s)',
+    async (initial) => {
+      const live = castSession();
+      const sample = castSession();
+      const viewport = { width: 657, height: 839 };
+      const render = { width: 656, height: 838 };
+      const full = pngHeader(render.width, render.height);
+      const cropped =
+        initial === 'partial raster'
+          ? pngHeader(328, 419)
+          : Buffer.concat([full, Buffer.from([1])]);
+      const create = vi.fn().mockResolvedValueOnce(live).mockResolvedValueOnce(sample);
+      const setViewportSize = vi.fn();
+      const view = new BrowserPageView({
+        viewportSize: () => viewport,
+        setViewportSize,
+        context: () => ({ newCDPSession: create })
+      } as unknown as Page);
+      live.send.mockImplementationOnce(async () => {
+        live.on.mock.calls[0]![1](frame(cropped, viewport.width, viewport.height));
+      });
+      sample.send.mockImplementationOnce(async () => {
+        sample.on.mock.calls[0]![1](frame(full, viewport.width, viewport.height));
+      });
+      const offer = vi.fn();
+      const capture = await view.startCapture(render, offer, () => 6);
+      try {
+        await vi.waitFor(() => expect(offer).toHaveBeenLastCalledWith({ png: full, ...viewport }));
+        expect(offer.mock.calls).toEqual(
+          initial === 'partial raster'
+            ? [[{ png: full, ...viewport }]]
+            : [[{ png: cropped, ...viewport }], [{ png: full, ...viewport }]]
+        );
+        expect(live.send).toHaveBeenCalledWith('Page.screencastFrameAck', { sessionId: 1 });
+        expect(setViewportSize).not.toHaveBeenCalled();
+      } finally {
+        await capture.stop();
+      }
+    }
+  );
+
   it('rebinds screencast to the active page after a navigation replaces its target', async () => {
     const old = castSession();
     const current = castSession();
@@ -70,12 +112,7 @@ describe('Browser page view', () => {
     const first = castSession();
     const second = castSession();
     first.detach.mockReturnValueOnce(pending.promise);
-    const create = vi
-      .fn()
-      .mockResolvedValueOnce(first)
-      .mockResolvedValueOnce(castSession())
-      .mockResolvedValueOnce(second)
-      .mockResolvedValueOnce(castSession());
+    const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
     const view = new BrowserPageView({
       isClosed: () => false,
       viewportSize: () => ({ width: 1280, height: 800 }),
@@ -96,7 +133,7 @@ describe('Browser page view', () => {
     expect(first.send).toHaveBeenCalledWith('Page.screencastFrameAck', { sessionId: 1 });
     const stopping = capture.stop();
     oldCallback(frame(png, 1280, 800));
-    currentCallback(frame(png, 1280, 800));
+    currentCallback(frame(pngHeader(768, 480), 1280, 800));
     expect(offer).toHaveBeenCalledOnce();
     expect(other).toHaveBeenCalledOnce();
     expect(second.detach).not.toHaveBeenCalled();
@@ -106,242 +143,181 @@ describe('Browser page view', () => {
   });
 
   it.each(['static', 'static-hd', 'live', 'stopped', 'resized'] as const)(
-    'seeds a new capture only when the current screencast has not painted (%s)',
+    'samples bounded current pixels when the cast is missing a complete frame (%s)',
     async (state) => {
-      const screenshot = Promise.withResolvers<{ data: string }>();
-      const session = castSession();
-      const seedSession = castSession();
-      seedSession.send.mockImplementation(async (method) => {
-        if (method === 'Page.getLayoutMetrics') {
-          return {
-            visualViewport: { pageX: 5, pageY: 30, scale: 1 },
-            contentSize: { width: 1098 },
-            cssContentSize: { width: 549 }
-          };
-        }
-        if (method === 'Page.captureScreenshot') return screenshot.promise;
-      });
-      const viewportSize = vi.fn(() => ({ width: 549, height: 732 }));
-      const create = vi.fn().mockResolvedValueOnce(session).mockResolvedValueOnce(seedSession);
+      const live = castSession();
+      const sample = castSession();
+      const viewport = { width: 549, height: 732 };
+      const render =
+        state === 'static-hd' ? { width: 822, height: 1096 } : { width: 550, height: 732 };
+      const viewportSize = vi.fn(() => viewport);
+      const create = vi.fn().mockResolvedValueOnce(live).mockResolvedValueOnce(sample);
       const view = new BrowserPageView({
-        isClosed: () => false,
         viewportSize,
         context: () => ({ newCDPSession: create })
       } as unknown as Page);
       const offer = vi.fn();
-      const hd = state === 'static-hd';
-      const render = hd ? { width: 822, height: 1096 } : { width: 550, height: 732 };
-      const capture = await view.startCapture({ ...render }, offer);
-      await vi.waitFor(() => {
-        expect(seedSession.send).toHaveBeenCalledWith('Page.captureScreenshot', {
+      vi.useFakeTimers();
+      try {
+        const capture = await view.startCapture(render, offer);
+        const emit = live.on.mock.calls[0]![1];
+        emit(frame(pngHeader(render.width, render.height), 639, 732));
+        emit(frame(pngHeader(render.width, 550), 549, 732));
+        emit(frame(pngHeader(render.width + 1, render.height), 549, 732));
+        emit(frame(pngHeader(render.width, render.height + 1), 549, 732));
+        expect(offer).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(250);
+        expect(sample.send).toHaveBeenCalledExactlyOnceWith('Page.startScreencast', {
           format: 'png',
-          clip: { x: 5, y: 30, width: 549, height: 732, scale: hd ? 1096 / 1464 : 0.5 }
+          maxWidth: render.width,
+          maxHeight: render.height
         });
-      });
-      const emit = session.on.mock.calls[0]![1];
-      const native = pngHeader(275, 366);
-      emit(frame(native, 639, 732));
-      emit(frame(pngHeader(550, 550), 549, 732));
-      emit(frame(pngHeader(1098, 1464), 549, 732));
-      emit(frame(pngHeader(render.width + 1, render.height), 549, 732));
-      emit(frame(pngHeader(render.width, render.height + 1), 549, 732));
-      if (state === 'live') emit(frame(native, 549, 732));
-      const stopping = state === 'stopped' ? capture.stop() : undefined;
-      if (stopping) {
-        await stopping;
-        expect(seedSession.detach).not.toHaveBeenCalled();
+        const late = sample.on.mock.calls[0]![1];
+        const full = frame(pngHeader(render.width, render.height), 549, 732);
+        const native = pngHeader(render.width - 2, render.height - 2);
+        if (state === 'live') emit(frame(native, 549, 732));
+        if (state === 'stopped') await capture.stop();
+        if (state === 'resized') viewportSize.mockReturnValue({ width: 700, height: 732 });
+        late(full);
+        await vi.advanceTimersByTimeAsync(state === 'live' ? 0 : 1_000);
+        expect(sample.detach).toHaveBeenCalledOnce();
+        expect(offer.mock.calls).toEqual(
+          state === 'stopped' || state === 'resized'
+            ? []
+            : [[{ png: state === 'live' ? native : Buffer.from(full.data, 'base64'), ...viewport }]]
+        );
+        await capture.stop();
+        expect(live.detach).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
       }
-      if (state === 'resized') viewportSize.mockReturnValue({ width: 700, height: 732 });
-      const seed = hd ? pngHeader(822, 1096) : pngHeader(549, 732);
-      screenshot.resolve({ data: seed.toString('base64') });
-      await vi.waitFor(() => expect(seedSession.detach).toHaveBeenCalledOnce());
-      expect(offer.mock.calls).toEqual(
-        state === 'stopped' || state === 'resized'
-          ? []
-          : [[{ png: state === 'live' ? native : seed, width: 549, height: 732 }]]
-      );
-      await capture.stop();
-      expect(session.detach).toHaveBeenCalledOnce();
     }
   );
 
-  it('serializes the static clip across viewers and continues after the first fails', async () => {
-    const first = castSession();
-    const second = castSession();
-    const blocked = Promise.withResolvers<never>();
-    const metrics = {
-      visualViewport: { pageX: 0, pageY: 0, scale: 1 },
-      contentSize: { width: 1600 },
-      cssContentSize: { width: 800 }
-    };
-    const png = pngHeader(800, 450);
-    first.send.mockImplementation(async (method) => {
-      if (method === 'Page.getLayoutMetrics') return metrics;
-      if (method === 'Page.captureScreenshot') return blocked.promise;
-    });
-    second.send.mockImplementation(async (method) => {
-      if (method === 'Page.getLayoutMetrics') return metrics;
-      if (method === 'Page.captureScreenshot') return { data: png.toString('base64') };
-    });
-    const cast = castSession();
-    const create = vi.fn(async () => cast);
-    create.mockResolvedValueOnce(cast).mockResolvedValueOnce(first);
-    const view = new BrowserPageView({
-      viewportSize: () => ({ width: 800, height: 450 }),
-      context: () => ({ newCDPSession: create })
-    } as unknown as Page);
-    const offer = vi.fn();
-    const render = { width: 800, height: 450 };
-    const a = await view.startCapture(render, vi.fn());
-    await vi.waitFor(() =>
-      expect(first.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything())
-    );
-    create.mockResolvedValueOnce(castSession()).mockResolvedValueOnce(second);
-    const b = await view.startCapture(render, offer);
-    expect(second.send).not.toHaveBeenCalledWith('Page.getLayoutMetrics');
-    blocked.reject(new Error('screenshot failed'));
-    await vi.waitFor(() =>
-      expect(offer).toHaveBeenCalledExactlyOnceWith({ png, width: 800, height: 450 })
-    );
-    await a.stop();
-    await b.stop();
-  });
-
   it('samples the final pixels once after a four-fps burst and rejects an older capture', async () => {
     vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
-    const session = castSession();
-    const seed = castSession();
+    const live = castSession();
+    const sample = castSession();
     const size = { width: 800, height: 450 };
     const png = pngHeader(size.width, size.height);
-    seed.send.mockImplementation(async (method) => {
-      if (method === 'Page.getLayoutMetrics')
-        return {
-          visualViewport: { pageX: 0, pageY: 0, scale: 1 },
-          contentSize: size,
-          cssContentSize: size
-        };
-      if (method === 'Page.captureScreenshot') return { data: png.toString('base64') };
-    });
-    const create = vi.fn().mockResolvedValueOnce(session).mockResolvedValueOnce(seed);
+    const create = vi.fn().mockResolvedValueOnce(live).mockResolvedValueOnce(sample);
     const view = new BrowserPageView({
       viewportSize: () => size,
       context: () => ({ newCDPSession: create })
     } as unknown as Page);
     const offer = vi.fn();
-    session.send.mockImplementationOnce(async () => {
-      session.on.mock.calls[0]![1](frame(png, size.width, size.height));
+    live.send.mockImplementationOnce(async () => {
+      live.on.mock.calls[0]![1](frame(png, size.width, size.height));
+    });
+    sample.send.mockImplementationOnce(async () => {
+      sample.on.mock.calls[0]![1](frame(png, size.width, size.height));
     });
     try {
       const capture = await view.startCapture(size, offer, () => 4);
       const deliver = (timestamp: number) => {
         const event = frame(png, size.width, size.height);
-        session.on.mock.calls[0]![1]({
-          ...event,
-          metadata: { ...event.metadata, timestamp }
-        } as Frame);
+        live.on.mock.calls[0]![1]({ ...event, metadata: { ...event.metadata, timestamp } });
       };
       await vi.advanceTimersByTimeAsync(260);
       deliver(2);
       deliver(1);
       expect(offer).toHaveBeenCalledTimes(2);
       await vi.advanceTimersByTimeAsync(499);
-      expect(seed.send).not.toHaveBeenCalled();
+      expect(sample.send).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(2_000);
       expect(offer).toHaveBeenCalledTimes(3);
-      expect(
-        seed.send.mock.calls.filter(([method]) => method === 'Page.captureScreenshot')
-      ).toHaveLength(1);
+      expect(sample.send).toHaveBeenCalledExactlyOnceWith('Page.startScreencast', {
+        format: 'png',
+        maxWidth: size.width,
+        maxHeight: size.height
+      });
+      expect(sample.detach).toHaveBeenCalledOnce();
       await capture.stop();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('resizes only after Chromium can restore the static clip viewport', async () => {
-    const seed = castSession();
-    const old = { width: 800, height: 450 };
-    const next = { width: 1000, height: 700 };
-    let actualViewport = old;
-    const screenshot = Promise.withResolvers<void>();
-    seed.send.mockImplementation(async (method) => {
-      if (method === 'Page.getLayoutMetrics') {
-        return {
-          visualViewport: { pageX: 0, pageY: 0, scale: 1 },
-          contentSize: { width: 1600 },
-          cssContentSize: { width: 800 }
-        };
-      }
-      if (method === 'Page.captureScreenshot') {
-        await screenshot.promise;
-        actualViewport = old;
-        return { data: pngHeader(800, 450).toString('base64') };
-      }
-    });
-    const create = vi.fn().mockResolvedValueOnce(castSession()).mockResolvedValueOnce(seed);
-    const view = new BrowserPageView({
-      viewportSize: () => actualViewport,
-      setViewportSize: async (size: typeof old) => {
-        actualViewport = size;
-      },
-      isClosed: () => false,
-      context: () => ({ newCDPSession: create })
-    } as unknown as Page);
-    const capture = await view.startCapture({ ...old }, vi.fn());
-    await vi.waitFor(() =>
-      expect(seed.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything())
-    );
-    const resized = view.resize(next);
-    await Promise.resolve();
-    screenshot.resolve();
-    await resized;
-    await capture.stop();
-    expect(actualViewport).toEqual(next);
-  });
-
-  it('does not hold a screencast or resize indefinitely when the static clip never answers', async () => {
+  it('recovers a rejected update after a good idle frame without dragging the viewport', async () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
     const live = castSession();
-    const seed = castSession();
-    const screenshot = Promise.withResolvers<{ data: string }>();
-    seed.send.mockImplementation(async (method) => {
-      if (method === 'Page.getLayoutMetrics') {
-        return {
-          visualViewport: { pageX: 0, pageY: 0, scale: 1 },
-          contentSize: { width: 1600 },
-          cssContentSize: { width: 800 }
-        };
-      }
-      if (method === 'Page.captureScreenshot') return screenshot.promise;
-    });
-    const viewport = { width: 800, height: 450 };
-    const setViewportSize = vi.fn(async (_size: typeof viewport) => {});
-    const create = vi.fn().mockResolvedValueOnce(live).mockResolvedValueOnce(seed);
+    const sample = castSession();
+    const size = { width: 657, height: 839 };
+    const render = { width: 656, height: 838 };
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(live)
+      .mockResolvedValueOnce(castSession())
+      .mockResolvedValueOnce(sample);
     const view = new BrowserPageView({
-      viewportSize: () => viewport,
-      setViewportSize,
-      isClosed: () => false,
+      viewportSize: () => size,
       context: () => ({ newCDPSession: create })
     } as unknown as Page);
-    vi.useFakeTimers();
+    const offer = vi.fn();
+    const full = frame(pngHeader(render.width, render.height), size.width, size.height);
+    const partial = frame(pngHeader(328, 419), size.width, size.height);
+    live.send.mockImplementationOnce(async () => {
+      live.on.mock.calls[0]![1]({ ...full, metadata: { ...full.metadata, timestamp: 1 } });
+    });
+    sample.send.mockImplementationOnce(async () => {
+      const deliver = sample.on.mock.calls[0]![1];
+      deliver(partial);
+      deliver({ ...full, metadata: { ...full.metadata, timestamp: 0.5 } });
+      deliver({ ...full, metadata: { ...full.metadata, timestamp: 4 } });
+    });
     try {
-      const offer = vi.fn();
-      const capture = await view.startCapture({ ...viewport }, offer);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(seed.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything());
-      const next = { width: 1000, height: 700 };
-      const resized = view.resize(next);
+      const capture = await view.startCapture(render, offer, () => 4);
+      await vi.advanceTimersByTimeAsync(1_550);
+      expect(offer).toHaveBeenCalledOnce();
+      const emit = live.on.mock.calls[0]![1];
+      emit({ ...partial, metadata: { ...partial.metadata, timestamp: 3 } });
+      await vi.advanceTimersByTimeAsync(250);
+      expect(offer).toHaveBeenCalledTimes(2);
+      emit({ ...full, metadata: { ...full.metadata, timestamp: 2 } });
+      expect(offer).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1_250);
+      expect(create).toHaveBeenCalledTimes(3);
       await capture.stop();
-      expect(live.detach).toHaveBeenCalledOnce();
-      expect(seed.detach).not.toHaveBeenCalled();
-      expect(setViewportSize).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1_000);
-      await resized;
-      expect(seed.detach).toHaveBeenCalledOnce();
-      expect(setViewportSize.mock.calls).toEqual([[viewport], [next]]);
-      screenshot.resolve({ data: pngHeader(800, 450).toString('base64') });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(offer).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
   });
+
+  it.each(['timeout', 'failed'] as const)(
+    'releases an unsuccessful sample and does not block viewport changes (%s)',
+    async (outcome) => {
+      const live = castSession();
+      const sample = castSession();
+      const blocked = Promise.withResolvers<never>();
+      sample.send.mockImplementationOnce(() => blocked.promise);
+      const viewport = { width: 800, height: 450 };
+      const setViewportSize = vi.fn(async (_size: typeof viewport) => {});
+      const create = vi.fn().mockResolvedValueOnce(live).mockResolvedValueOnce(sample);
+      const view = new BrowserPageView({
+        viewportSize: () => viewport,
+        setViewportSize,
+        context: () => ({ newCDPSession: create })
+      } as unknown as Page);
+      vi.useFakeTimers();
+      try {
+        const offer = vi.fn();
+        const capture = await view.startCapture(viewport, offer);
+        await vi.advanceTimersByTimeAsync(250);
+        expect(sample.send).toHaveBeenCalledWith('Page.startScreencast', expect.anything());
+        const next = { width: 1000, height: 700 };
+        await view.resize(next);
+        expect(setViewportSize).toHaveBeenCalledExactlyOnceWith(next);
+        expect(sample.detach).not.toHaveBeenCalled();
+        if (outcome === 'failed') blocked.reject(new Error('sample failed'));
+        await vi.advanceTimersByTimeAsync(outcome === 'timeout' ? 1_000 : 0);
+        expect(sample.detach).toHaveBeenCalledOnce();
+        expect(live.detach).not.toHaveBeenCalled();
+        expect(offer).not.toHaveBeenCalled();
+        await capture.stop();
+        expect(live.detach).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
 });

@@ -19,6 +19,10 @@ import {
   openBrowserIceChannel,
   openBrowserRelayChannel
 } from '../../src/browser/browser-data-channel.js';
+import {
+  BROWSER_DEVICE_SCALE_FACTOR,
+  browserStreamSize
+} from '../../src/browser/browser-capture-config.js';
 import { BrowserRuntime } from '../../src/browser/browser-runtime.js';
 import { createBrowserResourceOperation } from '../../src/browser/browser-resource-operations.js';
 declare global {
@@ -55,6 +59,7 @@ const hd = mode === 'ice-hd';
 const fixtureViewport = hd ? { width: 1920, height: 1080 } : { width: 960, height: 600 };
 const transportId = 'fixture-transport';
 const fingerprint = 'fixture-fingerprint';
+const launchArgs = [`--force-device-scale-factor=${BROWSER_DEVICE_SCALE_FACTOR}`];
 const server = createServer((request, response) => {
   if (request.url === '/slow-download') {
     response.writeHead(200, {
@@ -95,7 +100,8 @@ const runtime = new BrowserRuntime({
         channel: 'chrome',
         headless: true,
         chromiumSandbox: true,
-        deviceScaleFactor: 2,
+        args: launchArgs,
+        deviceScaleFactor: BROWSER_DEVICE_SCALE_FACTOR,
         viewport: fixtureViewport
       });
       try {
@@ -112,10 +118,14 @@ const runtime = new BrowserRuntime({
     const process = await chromium.launch({
       channel: 'chrome',
       headless: true,
-      chromiumSandbox: true
+      chromiumSandbox: true,
+      args: launchArgs
     });
     try {
-      const context = await process.newContext({ deviceScaleFactor: 2, viewport: fixtureViewport });
+      const context = await process.newContext({
+        deviceScaleFactor: BROWSER_DEVICE_SCALE_FACTOR,
+        viewport: fixtureViewport
+      });
       targetPage = await context.newPage();
       await targetPage.setContent(
         '<button onclick="window.browserClicked = true">Click me</button>'
@@ -471,18 +481,11 @@ try {
   const continuousScroll = [await continuous(16, 1440, 74), await continuous(-16, 0, 20)];
 
   assert(await web.evaluate(() => window.probe.selectQuality('high')));
-  await web.waitForFunction(
-    ({ width, height }) =>
-      window.probe.viewport?.raster.width === width &&
-      window.probe.viewport.raster.height === height,
-    fixtureViewport,
-    { timeout: 5_000 }
-  );
+  const highRaster = browserStreamSize(fixtureViewport, BROWSER_DEVICE_SCALE_FACTOR);
 
   // Stable textured canvas, full-surface animation, then an exact repeat of the
   // initial state. Sample full rows, not just a solid patch that JPEG preserves.
-  // Align the reference texture with the high raster: fractional scaling of
-  // a 960×600 canvas onto 1920×1080 depends on the compositor capture path.
+  // Use integral scaling for the texture at both fixture sizes.
   const textureHeight = fixtureViewport.height / (hd ? 2 : 1);
   await target.setContent(`<!doctype html><style>body{margin:0}canvas{width:100vw;height:100vh;display:block;image-rendering:pixelated}</style>
     <canvas width="960" height="${textureHeight}"></canvas><script>
@@ -519,8 +522,7 @@ try {
     undefined,
     { timeout: 5_000 }
   );
-  // At HD Chromium can sample clipped stills differently from the compositor
-  // screencast. Compare two screencast samples at the same raster and cadence.
+  // Keep both reference and recovery samples on the live screencast path.
   const mark = (enabled: boolean) =>
     target.evaluate(
       (value) =>
@@ -529,9 +531,20 @@ try {
     );
   const baselineStart = await web.evaluate(() => window.probe.frame);
   await mark(true);
-  await web.waitForFunction((count) => window.probe.frame >= count + 3, baselineStart, {
-    timeout: 5_000
-  });
+  // Selecting high does not undo a congestion downgrade until we draw more frames.
+  await web.waitForFunction(
+    ({ count, size }) => {
+      const canvas = document.querySelector('canvas')!;
+      return (
+        window.probe.frame >= count + 3 &&
+        window.probe.quality === 'high' &&
+        canvas.width === size.width &&
+        canvas.height === size.height
+      );
+    },
+    { count: baselineStart, size: highRaster },
+    { timeout: 12_000 }
+  );
   const stillPixels = await web.evaluate(() => {
     const canvas = document.querySelector('canvas')!;
     return Array.from(canvas.getContext('2d')!.getImageData(100, 100, 160, 1).data);
@@ -618,7 +631,7 @@ try {
           context.getImageData(100, 100, 160, 1).data.every((value, i) => value === pixels[i])
         );
       },
-      { pixels: stillPixels, size: fixtureViewport },
+      { pixels: stillPixels, size: highRaster },
       { timeout: 16_000 }
     );
   } catch (cause) {
