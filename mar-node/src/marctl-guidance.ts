@@ -33,7 +33,7 @@ export const marctlDescription =
 export const marctlInstructions = [
   '## MAR Workspace CLI',
   'Run marctl from the shell. Commands use the authenticated Node and Workspace; marctl help agents, nodes, ssh or scp shows options.',
-  'Use agents start --title <title> -m <text> [--runner <runner>] [--model-id <id>] [--effort <effort>] [--goal <objective>]. An Agent must supply a nonblank title; a manual terminal may omit it. The default Runner is the current Session Runner; a terminal without a current Session must specify --runner or an explicit --parent. Start returns without waiting for completion.',
+  "Use agents start --title <title> -m <text> [--runner <runner>] [--parent <id>] [--model-id <id>] [--effort <effort>] [--goal <objective>]. An Agent must supply a nonblank title; a manual terminal may omit it. From an Agent, omit --runner to use the calling Agent's type. From a terminal, specify --runner or --parent. Without --runner, the parent Session supplies the Agent type. Start returns without waiting for completion.",
   'Use agents send <id> -m <text> [--steer|--queue], agents wait [<id>] [--wait-for message|completion] [--timeout <duration>], agents stop <id>, agents list [--scope tree|active], and agents view <id>. --timeout 0ms takes a snapshot; positive durations are used as requested. Stop targets the current Session execution and clears its Goal.',
   marctlHistory,
   'While children run, prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work. Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.',

@@ -119,7 +119,7 @@ marctl agents goal clear <session-id> --json
 
 `start`、`send` 和 `goal set` 可用 `-m` / `--message` 直接传文本，也可用 `--message-file` 读取 UTF-8 文件或 stdin，两种选项互斥。文本中的文件路径指向目标获授权可访问的资源，不会自动上传 CLI 主机上的文件。`goal set` 拒绝保留目标 `--clear`；清除目标请显式使用 `goal clear`。
 
-`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以各 Agent 实际支持的能力为准。省略 `--model-id` 时使用目标 Agent 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
+`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以各 Agent 实际支持的能力为准。Agent 内调用时，省略 `--runner` 则沿用调用方的 Agent 类型。从终端调用时，须指定 `--runner` 或 `--parent`；省略 `--runner` 时继承父会话的 Agent 类型。省略 `--model-id` 时使用目标 Agent 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
 
 Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来源；终端用户可用 `--parent` 指定合法父会话，Node 校验同一 Workspace 后保存正式 `parentSessionId`。没有父会话则为空，创建后不能修改。`list --scope tree` 返回当前会话所在协作树，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Agent 的原生会话历史。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它。删除父会话会按 Node 的关系树删除后代；旧会话不从消息或标题推断关系。
 
