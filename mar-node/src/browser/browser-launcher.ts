@@ -43,7 +43,8 @@ export function createBrowserLauncher(
         deviceScaleFactor: BROWSER_DEVICE_SCALE_FACTOR,
         acceptDownloads: true,
         downloadsPath,
-        ignoreDefaultArgs: ['--disable-extensions'],
+        // Keep native scrollbars in the interactive screencast.
+        ignoreDefaultArgs: ['--disable-extensions', '--hide-scrollbars'],
         args: [
           // Screencast uses the native scale; deviceScaleFactor alone only changes emulation.
           `--force-device-scale-factor=${BROWSER_DEVICE_SCALE_FACTOR}`,
