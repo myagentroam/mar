@@ -1,6 +1,60 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+for (const [width, theme] of [
+  [1280, 'dark'],
+  [390, 'daylight']
+] as const) {
+  test(`Aside add button uses the shared action overlay and opens Browser at ${width}px`, async ({
+    page
+  }) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+    try {
+      await page.setViewportSize({ width, height: 740 });
+      await page.goto(
+        `${fixture.url}workbench-aside.html?browser&theme=${theme}${width < 768 ? '&mobile' : ''}`
+      );
+      const add = page.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u });
+      const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+      const browserTab = tabs.getByRole('tab', { name: 'Browser', exact: true });
+      const browserCommand = page.getByRole('menuitem', { name: 'Browser', exact: true });
+      await expect(add).toBeInViewport();
+      await expect(add).toHaveAttribute('aria-haspopup', 'menu');
+      await expect(
+        tabs.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u })
+      ).toHaveCount(0);
+      await expect(add).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const overlay = await add.evaluate((button) => {
+        const swatch = document.createElement('span');
+        swatch.style.backgroundColor = 'var(--mar-ui-action-hover-overlay)';
+        button.append(swatch);
+        const color = getComputedStyle(swatch).backgroundColor;
+        swatch.remove();
+        return color;
+      });
+      if (width === 1280) {
+        await add.hover();
+        await expect(add).toHaveCSS('background-color', overlay);
+      }
+      await add.click();
+      await expect(add).toHaveAttribute('aria-expanded', 'true');
+      await expect(browserCommand).toBeVisible();
+      await expect(browserTab).toHaveCount(0);
+      await page.mouse.move(width - 1, 739);
+      await expect(add).toHaveCSS('background-color', overlay);
+      await page.keyboard.press('Escape');
+      await expect(browserCommand).toBeHidden();
+      await expect(add).toBeFocused();
+      await add.press('ArrowDown');
+      await expect(browserCommand).toBeFocused();
+      await browserCommand.press('Enter');
+      await expect(browserTab).toHaveAttribute('aria-selected', 'true');
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('Aside close shortcuts stay in the focused layer and preserve the session draft', async ({
   page
 }) => {

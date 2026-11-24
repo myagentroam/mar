@@ -279,6 +279,7 @@ onBeforeUnmount(() => {
             @command="emit('selectTool', { ...workspace, id: 'node-browser' })"
           >
             <MarButton
+              class="mar-icon-action"
               text
               icon="plus"
               :aria-label="t('browser.addAsideTab')"

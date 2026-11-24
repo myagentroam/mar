@@ -52,7 +52,9 @@
         ? (longTitle === 'zh' ? chineseLongTitle : 'A long readable session title ').repeat(8)
         : 'Child';
       const aside = createWorkbenchAsideService();
-      aside.ensure(workspace, ['files', 'search', 'changes', 'history', 'terminal']);
+      const tools = ['files', 'search', 'changes', 'history', 'terminal'];
+      if (new URLSearchParams(location.search).has('browser')) tools.push('node-browser');
+      aside.ensure(workspace, tools);
       aside.openSession({ ...workspace, sessionId: 'child' });
       if (!new URLSearchParams(location.search).has('active-child'))
         aside.selectTool(workspace, 'files');
@@ -157,10 +159,14 @@
               {
                 workspace,
                 state: state.value,
-                tools: ['files', 'search', 'changes', 'history', 'terminal'].map((id) => ({
+                tools: tools.map((id) => ({
                   id,
                   label:
-                    language === 'zh' ? chineseToolLabels[id] : id[0].toUpperCase() + id.slice(1)
+                    id === 'node-browser'
+                      ? 'Browser'
+                      : language === 'zh'
+                        ? chineseToolLabels[id]
+                        : id[0].toUpperCase() + id.slice(1)
                 })),
                 sessions: [{ sessionId: 'child', title: childTitle, active: true }],
                 tabLabel: 'Workbench Aside',
