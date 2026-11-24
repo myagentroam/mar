@@ -76,8 +76,6 @@ export const browserEnUS = {
     fps: 'Drawn frame rate',
     viewport: 'CSS viewport',
     decodedResolution: 'Decoded resolution',
-    codec: 'Codec',
-    rfbTight: 'RFB (Tight)',
     quality: 'Current picture quality',
     qualityMode: 'Picture quality preference',
     auto: 'Automatic',

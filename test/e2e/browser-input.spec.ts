@@ -1,9 +1,13 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type {
   BrowserAttachmentMessage,
   BrowserPageInput
 } from '../../packages/protocol/src/index.js';
 import { installBrowserContextMenu } from '../../mar-node/src/browser/browser-context-menu.js';
+import { createBrowserLauncher } from '../../mar-node/src/browser/browser-launcher.js';
 import { BrowserPageView } from '../../mar-node/src/browser/browser-page-view.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
@@ -838,6 +842,129 @@ test('Browser sends a single-finger swipe as native touch and scrolls remote con
   }
 });
 
+test('Browser long press selects remote text without activating it', async ({ page }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const directory = await mkdtemp(join(tmpdir(), 'mar-browser-touch-'));
+  const errors: unknown[] = [];
+  const launcher = createBrowserLauncher(
+    join(directory, 'runs'),
+    join(directory, 'profiles'),
+    (error) => errors.push(error)
+  );
+  try {
+    const launched = await launcher.launch();
+    try {
+      const remote = launched.context.pages()[0]!;
+      const pageErrors: Error[] = [];
+      remote.on('pageerror', (error) => pageErrors.push(error));
+      await remote.setViewportSize({ width: 800, height: 600 });
+      await remote.goto(
+        `data:text/html,${encodeURIComponent(`
+      <style>
+        body { margin: 0; height: 1500px; font: 20px monospace }
+        p { margin: 0; padding: 12px 24px }
+        input { margin: 12px 24px; font: inherit }
+      </style>
+      <p id="article" onclick="this.dataset.clicked = 'true'">Readable article</p>
+      <input aria-label="Draft" value="Editable text">
+      <div id="shadow"></div>
+      <p id="custom" ontouchstart="event.preventDefault()">Handled by site</p>
+      <input aria-label="Amount" value="Amount to enter" onfocus="this.type = 'number'; this.value = '17'">
+      <script>
+        document.querySelector('#shadow').attachShadow({ mode: 'open' }).innerHTML =
+          '<p style="margin: 0; padding: 12px 24px">Shadow text</p>';
+      </script>
+    `)}`
+      );
+      const actions = await attach(page, remote, fixture.url);
+      await page.setViewportSize({ width: 390, height: 740 });
+      const session = await page.context().newCDPSession(page);
+      await session.send('Emulation.setTouchEmulationEnabled', {
+        enabled: true,
+        maxTouchPoints: 1
+      });
+      const touch = async (
+        type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel',
+        x = 0,
+        y = 0
+      ) => {
+        const point =
+          type === 'touchStart' || type === 'touchMove' ? await canvasPoint(page, x, y) : undefined;
+        await session.send('Input.dispatchTouchEvent', {
+          type,
+          touchPoints: point ? [{ x: point.clientX, y: point.clientY }] : []
+        });
+      };
+      await touch('touchStart', 60, 23);
+      await expect.poll(() => remote.evaluate(() => String(getSelection()))).toBe('Readable');
+      await touch('touchEnd');
+      await expect.poll(() => actions.at(-1)).toMatchObject({ type: 'touch', phase: 'end' });
+      await expect(remote.locator('#article')).not.toHaveAttribute('data-clicked');
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+        origin: fixture.url
+      });
+      const copySelection = async (text: string) => {
+        await page.getByRole('button', { name: 'Copy selected text' }).click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+      };
+      await copySelection('Readable');
+
+      const input = remote.getByRole('textbox', { name: 'Draft' });
+      const { x, y, height } = (await input.boundingBox())!;
+      await touch('touchStart', x + 35, y + height / 2);
+      await expect
+        .poll(() => input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]))
+        .toEqual([0, 8]);
+      await touch('touchEnd');
+      await copySelection('Editable');
+
+      const shadow = (await remote.getByText('Shadow text').boundingBox())!;
+      await touch('touchStart', shadow.x + 60, shadow.y + shadow.height / 2);
+      await expect.poll(() => remote.evaluate(() => String(getSelection()))).toBe('Shadow');
+      await touch('touchEnd');
+      await copySelection('Shadow');
+
+      await remote.evaluate(() => getSelection()?.removeAllRanges());
+      const custom = (await remote.locator('#custom').boundingBox())!;
+      await touch('touchStart', custom.x + 60, custom.y + custom.height / 2);
+      await expect.poll(() => actions.at(-1)).toMatchObject({ type: 'touch', phase: 'start' });
+      // Allow the complete hold interval to elapse on a site that consumes touchstart.
+      await remote.evaluate(() => new Promise((resolve) => setTimeout(resolve, 650)));
+      expect(await remote.evaluate(() => String(getSelection()))).toBe('');
+      await touch('touchCancel');
+
+      const amount = remote.getByRole('textbox', { name: 'Amount' });
+      const changingField = (await amount.boundingBox())!;
+      await touch('touchStart', changingField.x + 35, changingField.y + changingField.height / 2);
+      await expect(remote.getByRole('spinbutton', { name: 'Amount' })).toHaveValue('17');
+      await touch('touchEnd');
+      expect(pageErrors).toEqual([]);
+
+      await touch('touchStart', 60, 23);
+      await touch('touchCancel');
+      await expect.poll(() => actions.at(-1)).toMatchObject({ type: 'touch', phase: 'cancel' });
+      await remote.evaluate(() => new Promise((resolve) => setTimeout(resolve, 650)));
+      expect(await remote.evaluate(() => String(getSelection()))).toBe('');
+      await expect(remote.locator('#article')).not.toHaveAttribute('data-clicked');
+
+      await touch('touchStart', 60, 23);
+      await touch('touchEnd');
+      await expect(remote.locator('#article')).toHaveAttribute('data-clicked', 'true');
+      await touch('touchStart', 430, 440);
+      await touch('touchMove', 430, 190);
+      await touch('touchEnd');
+      await expect.poll(() => remote.evaluate(() => scrollY)).toBeGreaterThan(100);
+      await session.detach();
+    } finally {
+      await launched.close();
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await fixture.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('Browser releases the original remote key after modifier changes', async ({
   page,
   context
@@ -1113,21 +1240,53 @@ function canvasPoint(page: Page, x: number, y: number) {
   );
 }
 
-test('Browser performance separates the CSS viewport from the decoded resolution', async ({
-  page
-}) => {
-  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
-  try {
-    await page.goto(`${fixture.url}browser-input.html`);
-    await page.getByRole('button', { name: 'Browser streaming performance' }).click();
-    const panel = page.getByRole('region', { name: 'Browser streaming performance' });
-    const value = (label: string) => panel.getByText(label, { exact: true }).locator('+ dd');
-    await expect(value('CSS viewport')).toHaveText('800 × 600');
-    await expect(value('Decoded resolution')).toHaveText('800 × 600');
-    await page.evaluate(() => document.dispatchEvent(new Event('fixture-raster-change')));
-    await expect(value('Decoded resolution')).toHaveText('640 × 480');
-    await expect(value('CSS viewport')).toHaveText('800 × 600');
-  } finally {
-    await fixture.close();
-  }
-});
+for (const [locale, width, title, viewport, raster, codec, preference] of [
+  [
+    'en-US',
+    390,
+    'Browser streaming performance',
+    'CSS viewport',
+    'Decoded resolution',
+    'Codec',
+    'Picture quality preference'
+  ],
+  ['zh-CN', 960, '浏览器投屏性能', '网页 CSS 视口', '解码分辨率', '编码', '画质偏好']
+] as const) {
+  test(`Browser performance shows distinct raster sizes and compact quality controls (${locale})`, async ({
+    page
+  }, testInfo) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+    try {
+      await page.setViewportSize({ width, height: 700 });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto(`${fixture.url}browser-input.html?locale=${locale}`);
+      if (locale === 'zh-CN') {
+        await page.evaluate(() => {
+          document.documentElement.dataset.theme = 'vscode-dark-2026';
+        });
+      }
+      await page.getByRole('button', { name: title }).click();
+      const panel = page.getByRole('region', { name: title });
+      const value = (label: string) => panel.getByText(label, { exact: true }).locator('+ dd');
+      await expect(value(viewport)).toHaveText('800 × 600');
+      await expect(value(raster)).toHaveText('800 × 600');
+      await page.evaluate(() => document.dispatchEvent(new Event('fixture-raster-change')));
+      await expect(value(raster)).toHaveText('640 × 480');
+      await expect(value(viewport)).toHaveText('800 × 600');
+      const facts = (await panel.locator('dl').boundingBox())!;
+      const select = (await panel.getByRole('combobox', { name: preference }).boundingBox())!;
+      const hint = (await panel.locator('p').boundingBox())!;
+      const rootFontSize = await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.documentElement).fontSize)
+      );
+      const gap = select.y - (facts.y + facts.height);
+      expect(gap).toBeGreaterThan(0);
+      expect(gap).toBeLessThanOrEqual(rootFontSize * 0.375);
+      expect(hint.y - (select.y + select.height)).toBeCloseTo(gap, 1);
+      await expect(panel.getByText(codec, { exact: true })).toHaveCount(0);
+      await panel.screenshot({ path: testInfo.outputPath('browser-performance.png') });
+    } finally {
+      await fixture.close();
+    }
+  });
+}

@@ -7,15 +7,10 @@ export type BrowserSize = { width: number; height: number };
 
 /** Density only changes the capture raster, never the page's CSS viewport. */
 export function browserStreamSize(viewport: BrowserSize, density: number): BrowserSize {
-  const { width, height } = { width: viewport.width * density, height: viewport.height * density };
-  const limit =
-    density < 1
-      ? { width: 864, height: 486 }
-      : density === 1
-        ? { width: 1280, height: 720 }
-        : density === 1.5
-          ? { width: 1600, height: 900 }
-          : LIMIT;
+  const scale = Math.min(density, 1);
+  const width = viewport.width * scale;
+  const height = viewport.height * scale;
+  const limit = scale < 1 ? { width: 864, height: 486 } : LIMIT;
   const portrait = height > width;
   const maxWidth = portrait ? limit.height : limit.width;
   const maxHeight = portrait ? limit.width : limit.height;

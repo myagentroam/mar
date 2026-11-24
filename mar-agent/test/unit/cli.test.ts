@@ -161,7 +161,7 @@ async function subagentResponsesServer(requests: unknown[]) {
               arguments: JSON.stringify({
                 title: 'Inspect',
                 description: 'Inspect',
-                prompt: 'Inspect delegated fixture',
+                content: 'Inspect delegated fixture',
                 role: 'general-purpose'
               })
             }
@@ -266,7 +266,7 @@ async function subagentLifecycleServer(requests: unknown[]) {
           return tool('agent_start', {
             title: 'Inspect',
             description: 'Inspect',
-            prompt: 'First child task',
+            content: 'First child task',
             role: 'general-purpose'
           });
         case 1:
@@ -276,11 +276,11 @@ async function subagentLifecycleServer(requests: unknown[]) {
           }
           return tool('sleep', { durationMs: 500 });
         case 2:
-          return tool('agent_wait', { agentId, waitFor: 'completion', waitMs: 30000 });
+          return tool('agent_wait', { agentIds: [agentId], waitFor: 'completion', waitMs: 30000 });
         case 3:
           return tool('agent_send', { agentId, content: 'Continue with a long task' });
         case 4:
-          return tool('agent_wait', { agentId, waitMs: 0 });
+          return tool('agent_wait', { agentIds: [agentId], waitMs: 0 });
         case 5:
           return tool('agent_stop', { agentId });
         default:
@@ -1325,7 +1325,9 @@ describe('maragent CLI', () => {
       requests.some((request) => JSON.stringify(request).includes('<mar_subagent_update>'))
     ).toBe(true);
     const stopped = completed.find((event) => event.toolName === 'agent_stop');
-    expect(JSON.parse(stopped.summary)).toMatchObject({ status: 'cancelled' });
+    expect(JSON.parse(stopped.summary)).toMatchObject({
+      cancel: { executionStatus: 'CANCELLED' }
+    });
   });
 
   it('rejects a reasoning effort not declared by the selected model', async () => {

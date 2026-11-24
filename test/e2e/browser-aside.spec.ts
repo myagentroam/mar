@@ -189,7 +189,13 @@ async function browserAsideJourney(
         </style>
         <div style="background:#f00"></div><div style="background:#0f0"></div>
         <div style="background:#00f"></div><div style="background:#ff0"></div>
-        <script>fetch('/initial-viewport?width=' + innerWidth + '&height=' + innerHeight)</script>`);
+        <script>
+          fetch('/initial-viewport?width=' + innerWidth + '&height=' + innerHeight);
+          document.addEventListener('click', () => {
+            const colors = ['#0ff', '#f0f', '#f00', '#0f0'];
+            document.querySelectorAll('div').forEach((tile, i) => tile.style.backgroundColor = colors[i]);
+          });
+        </script>`);
       return;
     }
     if (request.url?.startsWith('/initial-viewport?')) {
@@ -633,6 +639,52 @@ async function browserAsideJourney(
         .toBe(`/initial-viewport?width=${size.width}&height=${size.height}`);
       await expect(canvas).toBeVisible();
       await expect(canvas).toHaveAttribute('data-first-content-frame', '100,010,001,110');
+      const performance = page.getByRole('button', {
+        name: /^(Browser streaming performance|浏览器投屏性能)$/u
+      });
+      await performance.click();
+      await page
+        .getByRole('combobox', { name: /^(Picture quality preference|画质偏好)$/u })
+        .click();
+      await page.getByRole('option', { name: /^(Low|低)$/u, exact: true }).click();
+      await expect(
+        page.getByText(/^(Current picture quality|当前画质)$/u).locator('+ dd')
+      ).toHaveText(/^(Low|低)$/u);
+      await performance.click();
+      // A single interaction on an otherwise static page must repaint the whole
+      // surface, without a splitter drag or a reload to wake up capture.
+      await canvas.click({ position: { x: 24, y: 24 } });
+      await expect
+        .poll(() =>
+          canvas.evaluate((element: HTMLCanvasElement) => {
+            const context = element.getContext('2d')!;
+            return [
+              [0.15, 0.15],
+              [0.85, 0.15],
+              [0.15, 0.85],
+              [0.85, 0.85]
+            ]
+              .map(([x, y]) => {
+                const rgb = context.getImageData(
+                  element.width * x!,
+                  element.height * y!,
+                  1,
+                  1
+                ).data;
+                return [...rgb.subarray(0, 3)]
+                  .map((channel) => (channel > 128 ? '1' : '0'))
+                  .join('');
+              })
+              .join(',');
+          })
+        )
+        .toBe('011,101,100,010');
+      expect(
+        await page.locator('.node-browser-body').evaluate((element) => ({
+          width: element.clientWidth,
+          height: element.clientHeight
+        }))
+      ).toEqual(size);
       return;
     }
     await expect(page.locator('.node-browser-body')).toHaveCSS('background-color', /rgba?\(/u);

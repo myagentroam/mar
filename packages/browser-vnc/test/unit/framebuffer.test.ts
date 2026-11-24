@@ -36,13 +36,17 @@ test('writes MSB-first mono rows with padding and exact RGB palette entries', as
 
 test('repairs the lossy tile even if the capture equals the source reference', async () => {
   const frame = raster(256, 128);
-  const repair = { x: 65, y: 17, width: 5, height: 5 };
+  const lossyTiles = new Map([
+    [64, 350],
+    [128, 450]
+  ]);
   const update = (await encodeBrowserVncUpdate(frame, frame, {
     ...options,
-    repair,
+    lossyTiles,
+    repairThrough: 350,
     motion: true
   }))!;
-  expect(update).toMatchObject({ lossy: false, motion: false });
+  expect(update).toMatchObject({ lossy: false, motion: false, restoredTiles: [64] });
   expect(update.data.readUInt16BE(2)).toBe(1);
   expect([...update.data.subarray(4, 12)]).toEqual([0, 64, 0, 0, 0, 64, 0, 64]);
 });
@@ -50,15 +54,44 @@ test('repairs the lossy tile even if the capture equals the source reference', a
 test('defers repairing a region that is still broadly changing', async () => {
   const base = raster(256, 128);
   const frame = raster(256, 128, Buffer.alloc(256 * 128 * 3, 5));
-  const repair = { x: 0, y: 0, width: 256, height: 128 };
-  const active = (await encodeBrowserVncUpdate(frame, base, { ...options, repair, motion: true }))!;
-  expect(active).toMatchObject({ motion: true, repaired: false });
+  const repair = { lossyTiles: new Map([[0, 350]]), repairThrough: 350, motion: true };
+  const active = (await encodeBrowserVncUpdate(frame, base, { ...options, ...repair }))!;
+  // A naturally lossless delta can also restore a fully overwritten tile.
+  expect(active).toMatchObject({ motion: true, repairBytes: 0, restoredTiles: [0] });
   const stopped = (await encodeBrowserVncUpdate(frame, frame, {
     ...options,
-    repair,
-    motion: true
+    ...repair
   }))!;
-  expect(stopped).toMatchObject({ lossy: false, motion: false, repaired: true });
+  expect(stopped).toMatchObject({ lossy: false, motion: false, restoredTiles: [0] });
+  expect(stopped.repairBytes).toBeGreaterThan(0);
+});
+
+test('a trimmed lossless delta does not mark an entire JPEG tile as restored', async () => {
+  const base = raster(256, 128);
+  const frame = raster(256, 128);
+  frame.rgb[0] = 1;
+  const delta = await encodeBrowserVncUpdate(frame, base, {
+    ...options,
+    lossyTiles: new Map([[0, 350]]),
+    repairThrough: 100
+  });
+  expect(delta).toMatchObject({ restoredTiles: [], repairBytes: 0 });
+  expect(delta?.data.readUInt16BE(8)).toBe(1);
+});
+
+test('a small moving caret does not postpone the rest of its JPEG tile repair', async () => {
+  const base = raster(256, 128);
+  const frame = raster(256, 128);
+  for (let y = 8; y < 40; y++) frame.rgb[(y * frame.width + 28) * 3] = 255;
+  const delta = await encodeBrowserVncUpdate(frame, base, {
+    ...options,
+    lossyTiles: new Map([[0, 350]]),
+    repairThrough: 350,
+    motion: true
+  });
+  expect(delta).toMatchObject({ restoredTiles: [0], motion: false });
+  expect(delta!.repairBytes).toBeGreaterThan(0);
+  expect([...delta!.data.subarray(4, 12)]).toEqual([0, 0, 0, 0, 0, 64, 0, 64]);
 });
 
 test('a static surface needs no update and a local change sends only its exact bounds', async () => {
@@ -143,11 +176,14 @@ test('scroll repairs a lossy reference before emitting any CopyRect', async () =
   base.rgb.copy(shifted.rgb, 0, stride * 16);
   const update = await encodeBrowserVncUpdate(shifted, base, {
     ...options,
-    lossyReference: { x: 0, y: 0, width, height },
+    lossyTiles: new Map([
+      [0, Infinity],
+      [64 * width, Infinity]
+    ]),
     scroll: 16,
     motion: true
   });
-  expect(update).toMatchObject({ repaired: true, lossy: false, motion: false });
+  expect(update).toMatchObject({ restoredTiles: [0, 64 * width], lossy: false, motion: false });
   expect(update?.data.readInt32BE(12)).toBe(RFB_TIGHT);
 
   const next = raster(width, height);
@@ -186,14 +222,15 @@ test('automatic quality first reduces cadence, then scale, and can recover withi
   const fast = () => {
     for (let i = 0; i < 4; i++) rate.observe(4, 35, true);
   };
+  expect(rate.profile).toEqual({ quality: 'high', fps: 24, scale: 1 });
   slow();
-  expect(rate.profile).toEqual({ quality: 'high', fps: 12, scale: 2 });
+  expect(rate.profile).toEqual({ quality: 'high', fps: 12, scale: 1 });
   slow();
-  expect(rate.profile.quality).toBe('medium');
+  expect(rate.profile).toEqual({ quality: 'medium', fps: 10, scale: 1 });
   slow();
-  expect(rate.profile.quality).toBe('low');
+  expect(rate.profile).toEqual({ quality: 'low', fps: 6, scale: 1 });
   slow();
-  expect(rate.profile).toMatchObject({ quality: 'low', fps: 4 });
+  expect(rate.profile).toEqual({ quality: 'low', fps: 4, scale: 0.65 });
   fast();
   fast();
   expect(rate.profile.quality).toBe('medium');
@@ -207,9 +244,24 @@ test('automatic quality first reduces cadence, then scale, and can recover withi
 
 test('severe sustained motion reduces cadence in two updates before reducing raster', () => {
   const rate = new BrowserVncRate(false);
-  expect(rate.observe(4, 35, true, 300_000)).toBe(false);
-  expect(rate.observe(4, 35, true, 300_000)).toBe(true);
-  expect(rate.profile).toMatchObject({ fps: 12, scale: 2 });
+  expect(rate.observe(4, 35, true, 400_000)).toBe(false);
+  expect(rate.observe(4, 35, true, 400_000)).toBe(true);
+  expect(rate.profile).toMatchObject({ fps: 12, scale: 1 });
+});
+
+test('fast direct motion has more headroom than relay but still adapts to delayed draws', () => {
+  const direct = new BrowserVncRate(false);
+  const relay = new BrowserVncRate(true);
+  for (let i = 0; i < 9; i++) {
+    direct.observe(4, 35, true, 90_000, 28);
+    relay.observe(4, 35, true, 90_000, 28);
+  }
+  expect(direct.profile).toMatchObject({ fps: 24, quality: 'high' });
+  expect(relay.profile).toMatchObject({ fps: 12, quality: 'high' });
+  for (let i = 0; i < 9; i++) direct.observe(4, 230, true, 90_000, 28);
+  expect(direct.profile).toMatchObject({ fps: 6, quality: 'low', scale: 1 });
+  for (let i = 0; i < 12; i++) direct.observe(4, 35, true, 4_000, 15);
+  expect(direct.profile).toMatchObject({ fps: 24, quality: 'high', scale: 1 });
 });
 
 test('raises motion cadence only after frame processing fits the faster profile', () => {
@@ -219,12 +271,12 @@ test('raises motion cadence only after frame processing fits the faster profile'
   expect(observe(254)).toBe(false);
   expect(observe(254)).toBe(false);
   expect(observe(254)).toBe(true);
-  expect(rate.profile).toMatchObject({ fps: 12, scale: 2 });
+  expect(rate.profile).toMatchObject({ fps: 12, scale: 1 });
   // 65 ms fits 12 fps, but even with a fast link it cannot sustain 24 fps.
   for (let i = 0; i < 12; i++) expect(observe(65)).toBe(false);
   for (let i = 0; i < 3; i++) expect(observe(28)).toBe(false);
   expect(observe(28)).toBe(true);
-  expect(rate.profile).toMatchObject({ fps: 24, scale: 2 });
+  expect(rate.profile).toMatchObject({ fps: 24, scale: 1 });
 });
 
 test('quality choices cap the adaptive profile without discarding measured congestion', () => {
@@ -249,7 +301,7 @@ test('recovering sooner requires consecutive cheap updates and still respects th
   expect(rate.profile.fps).toBe(12);
   for (let i = 0; i < 3; i++) expect(rate.observe(4, 35, true, 4_000)).toBe(false);
   // Fits the 75% threshold but interrupts the four-update cheap streak.
-  expect(rate.observe(4, 35, true, 30_000)).toBe(false);
+  expect(rate.observe(4, 35, true, 60_000)).toBe(false);
   for (let i = 0; i < 3; i++) expect(rate.observe(4, 35, true, 4_000)).toBe(false);
   expect(rate.observe(4, 35, true, 4_000)).toBe(true);
   expect(rate.profile.fps).toBe(24);
@@ -261,7 +313,7 @@ test('adapts costly motion on a fast link without interpreting steady RTT as con
   expect(rate.profile.fps).toBe(24);
   for (let i = 0; i < 9; i++) rate.observe(3, 25, true, 750_000);
   expect(rate.profile.quality).toBe('low');
-  for (let i = 0; i < 12; i++) rate.observe(3, 25, true, 400_000);
+  for (let i = 0; i < 12; i++) rate.observe(3, 25, true, 550_000);
   expect(rate.profile.fps).toBe(4);
   for (let i = 0; i < 32; i++) rate.observe(3, 25, true, 8_000);
   expect(rate.profile.fps).toBe(24);

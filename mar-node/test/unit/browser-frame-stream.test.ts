@@ -1,3 +1,4 @@
+import { constants, inflateSync } from 'node:zlib';
 import { afterEach, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import {
@@ -21,7 +22,11 @@ const capture = async (value: number, viewVersion = 1, width = 64) => ({
     .toBuffer()
 });
 
-function fixture(send?: (chunk: Uint8Array, signal: AbortSignal) => Promise<void>, tight = true) {
+function fixture(
+  send?: (chunk: Uint8Array, signal: AbortSignal) => Promise<void>,
+  tight = true,
+  jpeg = false
+) {
   const receiver = new BrowserFrameReceiver();
   const frames: BrowserFrame[] = [];
   const failed = vi.fn();
@@ -41,8 +46,11 @@ function fixture(send?: (chunk: Uint8Array, signal: AbortSignal) => Promise<void
   stream.start();
   stream.receive(Buffer.from('RFB 003.008\n'));
   stream.receive(Buffer.of(1, 1));
-  const encodings = Buffer.from([2, 0, 0, tight ? 2 : 1, 255, 255, 255, 33, 0, 0, 0, 7]);
-  stream.receive(tight ? encodings : encodings.subarray(0, 8));
+  const encodings = [2, 0, 0, 1, 255, 255, 255, 33];
+  if (tight) encodings.push(0, 0, 0, 7);
+  if (jpeg) encodings.push(255, 255, 255, 233); // JPEG quality pseudo-encoding (-23).
+  encodings[3] = (encodings.length - 4) / 4;
+  stream.receive(Buffer.from(encodings));
   const next = () => stream.receive(request);
   stream.setView(1);
   next();
@@ -52,6 +60,7 @@ function fixture(send?: (chunk: Uint8Array, signal: AbortSignal) => Promise<void
 afterEach(() => {
   for (const stream of streams.splice(0)) stream.close();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 it('admits one update until drawn and keeps only the final capture of a burst', async () => {
@@ -68,6 +77,118 @@ it('admits one update until drawn and keeps only the final capture of a burst', 
   await vi.waitFor(() => expect(frames).toHaveLength(2));
   expect(frames[1]!.data[17]).toBe(3); // Tight Fill red channel.
 });
+
+it('repairs stationary JPEG pixels while an adjacent region keeps sending JPEG', async () => {
+  const side = 128;
+  const width = side * 2;
+  let seed = 1;
+  const texture = () =>
+    Buffer.from(
+      Uint8Array.from({ length: side * side * 3 }, () => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return seed >>> 24;
+      })
+    );
+  const still = texture();
+  const pictures = await Promise.all(
+    Array.from({ length: 7 }, async (_, index) => {
+      const left = index === 0 ? texture() : still;
+      const right = texture();
+      const rgb = Buffer.alloc(width * side * 3);
+      const stride = side * 3;
+      for (let y = 0; y < side; y++) {
+        left.copy(rgb, y * stride * 2, y * stride, (y + 1) * stride);
+        right.copy(rgb, (y * 2 + 1) * stride, y * stride, (y + 1) * stride);
+      }
+      return {
+        viewVersion: 1,
+        width,
+        height: side,
+        png: await sharp(rgb, {
+          raw: { width, height: side, channels: 3 }
+        })
+          .png()
+          .toBuffer()
+      };
+    })
+  );
+  let clock = 0;
+  vi.spyOn(performance, 'now').mockImplementation(() => clock);
+  const { stream, frames, next, failed } = fixture(undefined, true, true);
+  for (const [index, picture] of pictures.entries()) {
+    stream.offer(picture);
+    await vi.waitFor(() => expect(frames).toHaveLength(index + 1), { interval: 5 });
+    expect(stream.acknowledge(index + 1)).toBe(1);
+    await Promise.resolve();
+    clock += 100;
+    if (index < pictures.length - 1) next();
+  }
+
+  expect(failed).not.toHaveBeenCalled();
+  const updates = frames.map(({ data }) => Buffer.from(data));
+  expect(updates[1]![16]).toBe(0x90); // Both halves initially lossy.
+  expect(updates[2]!.readUInt16BE(4)).toBe(side); // Only the right changes.
+  expect(updates[2]![16]).toBe(0x90);
+  const mixed = updates.slice(3).find((data) => data.readUInt16BE(2) === 2);
+  expect(mixed).toBeDefined();
+  expect(mixed!.readUInt16BE(4)).toBe(0);
+  expect(mixed!.readUInt16BE(8)).toBe(side);
+  expect(mixed![16]).toBe(1); // Tight Basic, lossless RGB.
+  let end = 17;
+  let length = mixed![end++]!;
+  if (length & 128) {
+    const second = mixed![end++]!;
+    length = (length & 127) | ((second & 127) << 7);
+    if (second & 128) length |= mixed![end++]! << 14;
+  }
+  expect(
+    inflateSync(mixed!.subarray(end, end + length), { finishFlush: constants.Z_SYNC_FLUSH })
+  ).toEqual(still);
+  expect(mixed!.readUInt16BE(end + length)).toBe(side);
+  expect(mixed![end + length + 12]).toBe(0x90);
+  expect(updates.at(-1)!.readUInt16BE(4)).toBe(side); // Don't repair the left again.
+
+  next();
+  clock += 500;
+  // When captures stop, the timer must replay the last capture for the remaining tiles.
+  await vi.waitFor(() => expect(frames).toHaveLength(updates.length + 1));
+  const final = Buffer.from(frames.at(-1)!.data);
+  expect(final.readUInt16BE(2)).toBe(1);
+  expect(final.readUInt16BE(4)).toBe(side);
+  expect(final[16]).toBe(1);
+});
+
+it.each([false, true])(
+  'counts newer captures, not a timed repair, as backpressure (%s)',
+  async (newer) => {
+    const [a, b, c] = await Promise.all([capture(1), capture(2), capture(3)]);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const observe = vi.spyOn(vnc.BrowserVncRate.prototype, 'observe');
+    const encode = vnc.encodeBrowserVncUpdate;
+    vi.spyOn(vnc, 'encodeBrowserVncUpdate').mockImplementationOnce(async (...args) => {
+      const update = (await encode(...args))!;
+      return { ...update, lossyTiles: [0] };
+    });
+    const { stream, frames, next, failed } = fixture();
+    stream.offer(a);
+    await vi.waitFor(() => expect(frames).toHaveLength(1), { interval: 5 });
+    expect(stream.acknowledge(1)).toBe(1);
+    await vi.advanceTimersByTimeAsync(150);
+    next();
+    stream.offer(b);
+    await vi.waitFor(() => expect(frames).toHaveLength(2), { interval: 5 });
+    if (newer) stream.offer(c);
+    // The previous lossy tile becomes due while the current capture awaits ACK.
+    await vi.advanceTimersByTimeAsync(250);
+    expect(stream.acknowledge(2)).toBe(1);
+    await Promise.resolve();
+
+    expect(failed).not.toHaveBeenCalled();
+    expect(observe).toHaveBeenCalledTimes(2);
+    expect(observe.mock.calls[1]?.[1]).toBeGreaterThanOrEqual(200);
+    expect(observe.mock.calls[1]?.[2]).toBe(newer);
+  }
+);
 
 it('drops stale encodes and pending views, but finishes consuming a committed older view', async () => {
   const [a, b, c, d] = await Promise.all([
@@ -179,7 +300,7 @@ it.each([
     next();
   }
   expect(stream.fps).toBe(expectedFps);
-  expect(stream.scale).toBe(2);
+  expect(stream.scale).toBe(1);
 });
 
 it('closes on malformed capture or failed writes rather than draining queued updates', async () => {
