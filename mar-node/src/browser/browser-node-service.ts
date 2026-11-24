@@ -21,7 +21,11 @@ import {
 } from './browser-resource-operations.js';
 import { BrowserRuntime } from './browser-runtime.js';
 import { createBrowserVideoEncoder } from './browser-video-encoder.js';
-import { BROWSER_VIEWPORT } from './browser-video-config.js';
+import {
+  BROWSER_VIDEO_BITRATE,
+  BROWSER_VIDEO_FRAMERATE,
+  BROWSER_VIEWPORT
+} from './browser-video-config.js';
 
 const encoderOrigin = 'https://mar-browser-encoder.invalid/';
 type Command = 'resource' | 'profile' | 'attachment' | 'upload' | 'download';
@@ -211,8 +215,8 @@ export class BrowserNodeService {
       await page.goto(encoderOrigin);
       const codec = await createBrowserVideoEncoder(page, {
         ...BROWSER_VIEWPORT,
-        bitrate: 384_000,
-        framerate: 24
+        bitrate: BROWSER_VIDEO_BITRATE,
+        framerate: BROWSER_VIDEO_FRAMERATE
       });
       return {
         encode: codec.encode,

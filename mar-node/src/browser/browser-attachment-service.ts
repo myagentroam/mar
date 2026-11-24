@@ -8,6 +8,7 @@ import {
   type BrowserUpload
 } from '@myagentroam/protocol';
 import { BrowserAttachment, type BrowserAttachmentEncoder } from './browser-attachment.js';
+import { BROWSER_CAPTURE_QUALITY } from './browser-video-config.js';
 import type { BrowserSessionService } from './browser-session-service.js';
 import type { BrowserTabs } from './browser-tabs.js';
 
@@ -219,7 +220,7 @@ export class BrowserAttachmentService {
       if (entry.closing || entry.expiresAt <= Date.now()) throw new Error('BROWSER_LEASE_EXPIRED');
       channel.sendControl({ type: 'ATTACHED' });
       entry.attachment = new BrowserAttachment(borrow, {
-        quality: 70,
+        quality: BROWSER_CAPTURE_QUALITY,
         encoder,
         sendFrame: (chunk, signal) => channel.sendFrame(chunk, signal),
         sendControl: (event) => channel.sendControl(event),

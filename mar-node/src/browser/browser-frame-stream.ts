@@ -3,6 +3,7 @@ import {
   encodeBrowserFrame,
   type BrowserFrame
 } from '@myagentroam/protocol';
+import { BrowserFrameRate } from './browser-frame-rate.js';
 
 type Capture = Omit<BrowserFrame, 'sequence' | 'data' | 'key'> & { jpeg: Buffer };
 type CloseReason =
@@ -11,11 +12,13 @@ type Flight = {
   sequence: number;
   viewVersion: number;
   finalChunkStarted: boolean;
-  sent: boolean;
-  acknowledged: boolean;
+  bytes: number;
+  firstWriteAt?: number;
+  sentAt?: number;
+  acknowledgedAt?: number;
 };
 
-/** Owns frame credit and one latest pending capture for a single Node attachment.
+/** Owns frame credit, pacing and one latest pending capture for a Node attachment.
  * The attachment owner closes the encoder on failure or detach. The sink owns
  * socket backpressure and must stop a blocked send on abort. This stream does
  * not start Playwright, own the encoder, or choose or reconnect a transport.
@@ -24,9 +27,13 @@ export class BrowserFrameStream {
   private sequence = 0;
   private viewVersion = 0;
   private encodedView: number | undefined;
+  private encodedBitrate: number | undefined;
   private pending: Capture | undefined;
   private flight: Flight | undefined;
+  private lastStartedAt = 0;
+  private pacing: ReturnType<typeof setTimeout> | undefined;
   private timeout: ReturnType<typeof setTimeout> | undefined;
+  private readonly rate = new BrowserFrameRate();
   private readonly abort = new AbortController();
 
   constructor(
@@ -35,7 +42,8 @@ export class BrowserFrameStream {
       encode: (
         jpeg: Buffer,
         key: boolean,
-        viewport: Pick<BrowserFrame, 'width' | 'height'>
+        viewport: Pick<BrowserFrame, 'width' | 'height'>,
+        bitrate: number
       ) => Promise<Pick<BrowserFrame, 'data' | 'key'>>;
       failed: (reason: CloseReason) => void;
       deadlineMs: number;
@@ -46,6 +54,8 @@ export class BrowserFrameStream {
     if (viewVersion === this.viewVersion) return;
     this.viewVersion = viewVersion;
     this.pending = undefined;
+    clearTimeout(this.pacing);
+    this.pacing = undefined;
   }
 
   offer(capture: Capture): void {
@@ -61,51 +71,66 @@ export class BrowserFrameStream {
 
   acknowledge(sequence: number): number | undefined {
     const flight = this.flight;
-    if (!flight?.finalChunkStarted || flight.sequence !== sequence || flight.acknowledged)
+    if (
+      !flight?.finalChunkStarted ||
+      flight.sequence !== sequence ||
+      flight.acknowledgedAt !== undefined
+    )
       return undefined;
-    flight.acknowledged = true;
-    if (flight.sent) this.finish();
+    flight.acknowledgedAt = performance.now();
+    if (flight.sentAt !== undefined) this.finish();
     return flight.viewVersion;
   }
 
   close(): void {
     this.abort.abort();
     clearTimeout(this.timeout);
+    clearTimeout(this.pacing);
     this.pending = undefined;
     this.flight = undefined;
   }
 
   private flush(): void {
-    if (this.flight !== undefined || this.pending === undefined || this.abort.signal.aborted)
+    if (this.flight || !this.pending || this.pacing || this.abort.signal.aborted) return;
+    const now = performance.now();
+    const { fps, bitrate } = this.rate.profile;
+    const wait = this.lastStartedAt + 1000 / fps - now;
+    if (this.encodedView === this.pending.viewVersion && wait > 0) {
+      this.pacing = setTimeout(() => {
+        this.pacing = undefined;
+        this.flush();
+      }, Math.ceil(wait));
+      this.pacing.unref();
       return;
+    }
     const capture = this.pending;
     this.pending = undefined;
-    const flight = {
+    const flight: Flight = {
       sequence: ++this.sequence,
       viewVersion: capture.viewVersion,
       finalChunkStarted: false,
-      sent: false,
-      acknowledged: false
+      bytes: 0
     };
     this.flight = flight;
+    this.lastStartedAt = now;
     this.timeout = setTimeout(() => this.fail('BROWSER_FRAME_TIMEOUT'), this.options.deadlineMs);
     this.timeout.unref();
-    void this.encodeAndSend(capture, flight).then(
+    void this.encodeAndSend(capture, flight, bitrate).then(
       () => {
         if (this.flight !== flight) return;
-        flight.sent = true;
-        if (flight.acknowledged) this.finish();
+        flight.sentAt = performance.now();
+        if (flight.acknowledgedAt !== undefined) this.finish();
       },
       () => this.fail('BROWSER_FRAME_TRANSPORT_FAILED')
     );
   }
 
-  private async encodeAndSend(capture: Capture, flight: Flight): Promise<void> {
+  private async encodeAndSend(capture: Capture, flight: Flight, bitrate: number): Promise<void> {
     const { jpeg, ...view } = capture;
-    const key = view.viewVersion !== this.encodedView;
+    const key = view.viewVersion !== this.encodedView || bitrate !== this.encodedBitrate;
     let encoded: Pick<BrowserFrame, 'data' | 'key'>;
     try {
-      encoded = await this.options.encode(jpeg, key, view);
+      encoded = await this.options.encode(jpeg, key, view, bitrate);
     } catch {
       this.fail('BROWSER_FRAME_ENCODE_FAILED');
       return;
@@ -125,6 +150,9 @@ export class BrowserFrameStream {
       return;
     }
     this.encodedView = view.viewVersion;
+    this.encodedBitrate = bitrate;
+    flight.bytes = encoded.data.byteLength;
+    flight.firstWriteAt = performance.now();
     for (const { bytes, final } of encodeBrowserFrame({
       ...view,
       ...encoded,
@@ -138,6 +166,23 @@ export class BrowserFrameStream {
 
   private finish(): void {
     clearTimeout(this.timeout);
+    const flight = this.flight;
+    if (
+      flight?.viewVersion === this.viewVersion &&
+      flight.firstWriteAt !== undefined &&
+      flight.sentAt !== undefined &&
+      flight.acknowledgedAt !== undefined
+    ) {
+      const completedAt = Math.max(flight.sentAt, flight.acknowledgedAt);
+      this.rate.record(
+        {
+          bytes: flight.bytes,
+          writeMs: flight.sentAt - flight.firstWriteAt,
+          confirmedMs: completedAt - flight.firstWriteAt
+        },
+        completedAt
+      );
+    }
     this.flight = undefined;
     this.flush();
   }

@@ -12,6 +12,12 @@ import { BrowserTabs } from '../../src/browser/browser-tabs.js';
 import { BROWSER_FRAME_MESSAGE_BYTES, browserAttachmentMessageSchema } from '@myagentroam/protocol';
 import { createBrowserVideoEncoder } from '../../src/browser/browser-video-encoder.js';
 import { BrowserSessionService } from '../../src/browser/browser-session-service.js';
+import {
+  BROWSER_CAPTURE_QUALITY,
+  BROWSER_VIDEO_BITRATE,
+  BROWSER_VIDEO_FRAMERATE,
+  BROWSER_VIEWPORT
+} from '../../src/browser/browser-video-config.js';
 
 declare global {
   interface Window {
@@ -19,7 +25,14 @@ declare global {
     freeze(): void;
     probe: {
       startAt: number;
-      stats: { first: number; frames: number; bytes: number; clicks: number[]; sibling: number[] };
+      stats: {
+        first: number;
+        frames: number;
+        bytes: number;
+        clicks: number[];
+        sibling: number[];
+        size: [number, number];
+      };
       ice(): Promise<RTCSessionDescriptionInit>;
       answer(answer: RTCSessionDescriptionInit): Promise<void>;
       relay(url: string): void;
@@ -36,7 +49,7 @@ declare global {
 // frame layer only; it does not start MAR routing, authentication or a PTY.
 const mode = process.argv[2];
 assert(mode === 'ice' || mode === 'relay', 'Specify ice or relay.');
-const quality = Number(process.argv[3] ?? 70);
+const quality = Number(process.argv[3] ?? BROWSER_CAPTURE_QUALITY);
 assert(Number.isInteger(quality) && quality >= 1 && quality <= 100, 'JPEG quality must be 1–100.');
 const browser = await chromium.launch({
   channel: 'chrome',
@@ -57,7 +70,7 @@ const sessions = new BrowserSessionService({
       chromiumSandbox: true
     });
     try {
-      const context = await target.newContext({ viewport: { width: 960, height: 600 } });
+      const context = await target.newContext({ viewport: BROWSER_VIEWPORT });
       const resource = {
         page: await context.newPage(),
         tabs: new BrowserTabs(context, { limit: 6, failed: console.error })
@@ -99,19 +112,23 @@ try {
   const encoderPage = await browser.newPage();
   await encoderPage.goto(`${site}/encode`);
   const encoder = await createBrowserVideoEncoder(encoderPage, {
-    width: 960,
-    height: 600,
-    bitrate: 384_000,
-    framerate: 24
+    ...BROWSER_VIEWPORT,
+    bitrate: BROWSER_VIDEO_BITRATE,
+    framerate: BROWSER_VIDEO_FRAMERATE
   });
   const browserId = await sessions.open(scope);
   const borrow = sessions.pin(scope, browserId);
   const target = borrow.resource.page;
   const originalTab = borrow.resource.tabs.snapshot().activeId!;
+  borrow.resource.tabs.resize({ width: 1600, height: 900 });
   await target.setContent(`
-    <style>body{margin:0}canvas{display:block}</style><canvas width="960" height="600"></canvas>
+    <style>body{margin:0}canvas{display:block}aside{position:absolute;top:60px;right:40px;width:460px;
+      height:750px;overflow:auto;background:#fafafa;color:#242936;padding-inline:12px;font:12px/21px monospace}</style>
+    <canvas width="1600" height="900"></canvas>
+    <aside>${Array.from({ length: 150 }, (_, i) => `<div>${i + 1}: Render the latest frame at the current viewport.</div>`).join('')}</aside>
     <script>
       const ctx = document.querySelector('canvas').getContext('2d');
+      const text = document.querySelector('aside');
       let count = 0;
       const texture = ctx.createImageData(480, 96);
       let seed = 17;
@@ -121,9 +138,9 @@ try {
         texture.data[i + 3] = 255;
       }
       function paint() {
-        const g = ctx.createLinearGradient(count % 700, 0, 960, 600);
+        const g = ctx.createLinearGradient(count % 700, 0, 1600, 900);
         g.addColorStop(0, '#314b88'); g.addColorStop(1, '#eea742');
-        ctx.fillStyle = g; ctx.fillRect(0, 0, 960, 600);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, 1600, 900);
         for(let i = 0; i < 40; i++) {
           ctx.fillStyle = i % 2 ? '#cde0ae' : '#832d38';
           ctx.fillRect((i * 143 + count * 31) % 870, (i * 69) % 560, 55, 30);
@@ -133,7 +150,12 @@ try {
       }
       onclick = () => { count++; paint(); };
       let timer;
-      window.animate = () => { timer = setInterval(onclick, 16); };
+      window.animate = () => {
+        timer = setInterval(() => {
+          text.scrollTop = count * 6 % (text.scrollHeight - text.clientHeight);
+          onclick();
+        }, 16);
+      };
       window.freeze = () => clearInterval(timer);
       paint();
     </script>
@@ -143,7 +165,7 @@ try {
       resolveDir: import.meta.dirname,
       contents: `
       import { BrowserViewport } from '../../../packages/web-core/src/service/browser-viewport.ts';
-      const stats = { first: 0, frames: 0, bytes: 0, clicks: [], sibling: [] };
+      const stats = { first: 0, frames: 0, bytes: 0, clicks: [], sibling: [], size: [] };
       const canvas = document.querySelector('canvas');
       const ctx = canvas.getContext('2d');
       const viewport = new BrowserViewport(canvas);
@@ -176,6 +198,7 @@ try {
           if (!frame) return;
           if (!frame.viewport) { browserChannel.send(JSON.stringify({ type: 'ack', sequence: frame.sequence })); return; }
           white = ctx.getImageData(4, 4, 1, 1).data[0] > 128;
+          stats.size = [canvas.width, canvas.height];
           stats.frames++;
           if (!stats.first) stats.first = performance.now() - globalThis.probe.startAt;
           if (clickDone && white === clickTarget) {
@@ -281,6 +304,7 @@ try {
   let keysSent = 0;
   let capturedBytes = 0;
   const encodeTimes: number[] = [];
+  const bitrateChanges: number[] = [];
   let peakBuffered = 0;
   let streamError: Error | undefined;
   let rejectClick: ((error: Error) => void) | undefined;
@@ -313,12 +337,18 @@ try {
     {
       encoder: {
         close: encoder.close,
-        encode: async (jpeg, key, viewport) => {
+        encode: async (jpeg, key, viewport, bitrate) => {
           const started = performance.now();
-          const unit = await encoder.encode(jpeg, key, viewport).catch((error: unknown) => {
-            console.error('Encoder:', error);
-            throw error;
-          });
+          const unit = await encoder
+            .encode(jpeg, key, viewport, bitrate)
+            .catch((error: unknown) => {
+              console.error('Encoder:', error);
+              throw error;
+            });
+          if (bitrateChanges.at(-1) !== bitrate) {
+            assert(unit.key, 'Bitrate must change on a key frame.');
+            bitrateChanges.push(bitrate);
+          }
           encodeTimes.push(performance.now() - started);
           if (unit.key) {
             keysSent++;
@@ -357,6 +387,7 @@ try {
     await workbench.waitForFunction(() => window.probe.stats.frames > 0, undefined, {
       timeout: 8_000
     });
+    assert.deepEqual(await workbench.evaluate(() => window.probe.stats.size), [1280, 720]);
     for (let i = 0; i < 12; i++) {
       const count = await workbench.evaluate(() => window.probe.stats.sibling.length);
       await workbench.evaluate(() => window.probe.keyboard());
@@ -385,18 +416,36 @@ try {
     const delivered = after.frames - before.frames;
     const sampleJpegSize = capturedBytes - capturedBytesBefore;
     if (streamError) throw streamError;
+    assert.deepEqual(after.size, [1280, 720], 'Network shaping must not resize the stream.');
+    assert(bitrateChanges.at(-1)! < BROWSER_VIDEO_BITRATE, 'Expected sustained backoff.');
     assert(
       delivered > 2 && captured > delivered + 2,
       `Expected draws and dropped captures in the slow sample (captured ${captured}, drew ${delivered}).`
     );
-    await target.evaluate(() => {
-      window.freeze();
-    });
+    await target.evaluate(() => window.freeze());
     await delay(1_000);
     for (let i = 0; i < 6; i++) await measureClick();
     const slowClicks = await workbench.evaluate(() => window.probe.stats.clicks.slice(12));
     await workbench.evaluate(() => window.probe.slow(0));
     throttle = false;
+    const recoveredAt = performance.now();
+    await target.evaluate(() => window.animate());
+    while (bitrateChanges.at(-1) !== BROWSER_VIDEO_BITRATE && !streamError) {
+      assert(performance.now() - recoveredAt < 8_000, 'Expected bitrate recovery.');
+      await delay(100);
+    }
+    if (streamError) throw streamError;
+    const recoveryMs = Math.round(performance.now() - recoveredAt);
+    // Wait until the receiver draws additional frames after the bitrate change,
+    // not just until the encoder is configured.
+    const drawnAtRecovery = await workbench.evaluate(() => window.probe.stats.frames);
+    await workbench.waitForFunction(
+      (count) => window.probe.stats.frames >= count + 2,
+      drawnAtRecovery,
+      { timeout: 5_000 }
+    );
+    await target.evaluate(() => window.freeze());
+    assert.deepEqual(await workbench.evaluate(() => window.probe.stats.size), [1280, 720]);
     await borrow.resource.tabs.open();
     const previousKeys = keysSent;
     const drawnBeforeSwitch = await workbench.evaluate(() => window.probe.stats.frames);
@@ -423,6 +472,9 @@ try {
       JSON.stringify({
         mode,
         quality,
+        encodedSize: after.size,
+        bitrateChanges,
+        recoveryMs,
         firstFrameMs: Math.round(after.first),
         switchToDrawMs,
         inputToDrawP95Ms: p95(after.clicks),

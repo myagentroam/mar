@@ -84,11 +84,12 @@ describe('Browser attachment frame stream', () => {
     stream.offer(capture(2, 2));
     old.resolve({ data: Buffer.from([1]), key: true });
     await vi.waitFor(() => expect(received).toEqual([2]));
-    expect(encode).toHaveBeenLastCalledWith(Buffer.from([2]), true, {
-      viewVersion: 2,
-      width: 800,
-      height: 600
-    });
+    expect(encode).toHaveBeenLastCalledWith(
+      Buffer.from([2]),
+      true,
+      { viewVersion: 2, width: 800, height: 600 },
+      expect.any(Number)
+    );
     stream.close();
   });
 
@@ -152,5 +153,109 @@ describe('Browser attachment frame stream', () => {
     expect(stream.acknowledge(1)).toBeUndefined();
     expect(send).toHaveBeenCalledTimes(1);
     expect(failed.mock.calls).toEqual([['BROWSER_FRAME_TIMEOUT']]);
+  });
+
+  it.each([
+    ['encode', 'BROWSER_FRAME_ENCODE_FAILED'],
+    ['send', 'BROWSER_FRAME_TRANSPORT_FAILED']
+  ] as const)(
+    'reports a failed %s immediately and discards pending work',
+    async (stage, reason) => {
+      vi.useFakeTimers();
+      const error = new Error('test failure');
+      const encodeFrame = vi.fn(encode);
+      const send = vi.fn(async () => {});
+      if (stage === 'encode') encodeFrame.mockRejectedValueOnce(error);
+      else send.mockRejectedValueOnce(error);
+      const failed = vi.fn();
+      const stream = new BrowserFrameStream({
+        encode: encodeFrame,
+        send,
+        failed,
+        deadlineMs: 1000
+      });
+      stream.setView(1);
+      stream.offer(capture(1));
+      stream.offer(capture(2));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(failed).toHaveBeenCalledExactlyOnceWith(reason);
+      stream.offer(capture(3));
+      expect(stream.acknowledge(1)).toBeUndefined();
+      expect(encodeFrame).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledTimes(stage === 'send' ? 1 : 0);
+    }
+  );
+
+  it('paces before encoding, sends the final pending capture, and gives a new view immediate credit', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const receiver = new BrowserFrameReceiver();
+    const frames: number[] = [];
+    const stream = new BrowserFrameStream({
+      encode,
+      send: async (chunk) => {
+        const frame = receiver.push(chunk)!;
+        frames.push(frame.data[0]!);
+        stream.acknowledge(frame.sequence);
+      },
+      failed: vi.fn(),
+      deadlineMs: 1000
+    });
+    stream.setView(1);
+    stream.offer(capture(1));
+    await vi.advanceTimersByTimeAsync(0);
+    stream.offer(capture(2));
+    stream.offer(capture(3));
+    await vi.advanceTimersByTimeAsync(5);
+    expect(frames).toEqual([1]);
+    await vi.advanceTimersByTimeAsync(40);
+    expect(frames).toEqual([1, 3]);
+    stream.offer(capture(4));
+    stream.setView(2);
+    stream.offer(capture(5, 2));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(frames).toEqual([1, 3, 5]);
+    stream.offer(capture(6, 2));
+    stream.close();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(frames).toEqual([1, 3, 5]);
+  });
+
+  it('starts a changed bitrate with a key frame without changing the view', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const receiver = new BrowserFrameReceiver();
+    const encode = vi.fn<ConstructorParameters<typeof BrowserFrameStream>[0]['encode']>(
+      async (jpeg, key) => ({
+        data: Buffer.alloc(10 * 1024, jpeg[0]),
+        key
+      })
+    );
+    const stream = new BrowserFrameStream({
+      encode,
+      send: async (chunk) => {
+        const frame = receiver.push(chunk)!;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        stream.acknowledge(frame.sequence);
+      },
+      failed: vi.fn(),
+      deadlineMs: 1000
+    });
+    stream.setView(1);
+    for (let value = 1; value <= 8; value++) {
+      stream.offer(capture(value));
+      await vi.advanceTimersByTimeAsync(150);
+    }
+    const calls = encode.mock.calls;
+    expect(calls.slice(0, 6).map((call) => call[1])).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]);
+    expect(calls[6]?.[1]).toBe(true);
+    expect(calls[6]?.[2]).toEqual({ viewVersion: 1, width: 800, height: 600 });
+    expect(calls[6]?.[3]).toBeLessThan(calls[0]![3]);
+    stream.close();
   });
 });

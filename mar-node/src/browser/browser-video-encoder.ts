@@ -45,23 +45,30 @@ export async function createBrowserVideoEncoder(
         }
       });
       encoder.configure(config);
+      let activeBitrate = config.bitrate;
       let lastTimestamp = -1;
       return {
         async encode({
           jpeg,
           key,
           timestamp,
-          size
+          size,
+          bitrate
         }: {
           jpeg: string;
           key: boolean;
           timestamp: number;
           size?: { width: number; height: number };
+          bitrate: number;
         }) {
-          if (size && (size.width !== canvas.width || size.height !== canvas.height)) {
+          const resized = size && (size.width !== canvas.width || size.height !== canvas.height);
+          if (resized) {
             canvas.width = size.width;
             canvas.height = size.height;
-            encoder.configure({ ...config, ...size });
+          }
+          if (resized || activeBitrate !== bitrate) {
+            encoder.configure({ ...config, width: canvas.width, height: canvas.height, bitrate });
+            activeBitrate = bitrate;
             key = true;
           }
           const binary = atob(jpeg);
@@ -100,10 +107,11 @@ export async function createBrowserVideoEncoder(
 
   let closing: Promise<void> | undefined;
   return {
-    async encode(jpeg: Buffer, key: boolean, viewport?: BrowserSize) {
+    async encode(jpeg: Buffer, key: boolean, viewport?: BrowserSize, bitrate = options.bitrate) {
       const value = await handle.evaluate((encoder, input) => encoder.encode(input), {
         jpeg: jpeg.toString('base64'),
         key,
+        bitrate,
         ...(viewport ? { size: browserEncodeSize(viewport) } : {}),
         timestamp: Math.round(performance.now() * 1000)
       });
