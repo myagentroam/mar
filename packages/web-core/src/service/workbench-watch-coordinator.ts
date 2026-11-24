@@ -1,3 +1,5 @@
+import { errorCode } from '../util/api-error.js';
+
 export interface WorkbenchWatchCoordinatorOptions {
   readonly workspace: {
     start(workspaceId: string, directory?: string): Promise<void>;
@@ -147,7 +149,7 @@ export function createWorkbenchWatchRecovery(input: {
   readonly coordinator: () =>
     | Pick<
         ReturnType<typeof createWorkbenchWatchCoordinator>,
-        'restartWorkspace' | 'handleVisibility'
+        'restartWorkspace' | 'restartSession' | 'handleVisibility'
       >
     | undefined;
   readonly invalidateManifest: (nodeId: string) => void;
@@ -202,14 +204,26 @@ export function createWorkbenchWatchRecovery(input: {
     invalidateNodeManifest(nodeId);
     if (view.value !== 'nodes') return;
     discardNodeViewCaches(nodeId);
-    if (workspaceNodeId.value === nodeId) void refreshNodeManifest(nodeId);
-    if (workspaceNodeId.value === nodeId) {
-      input.resetSession();
-    }
-    if (workspaceNodeId.value === nodeId && activeWorkspaceId.value !== undefined)
-      void watchCoordinator.current?.restartWorkspace(activeWorkspaceId.value);
-    if (workspaceNodeId.value === nodeId && selectedSessionId.value !== undefined)
-      refreshSelectedSessionSnapshot();
+    const target = input.workspaceTarget.value;
+    if (target?.nodeId !== nodeId) return;
+    void refreshNodeManifest(nodeId);
+    input.resetSession();
+    const coordinator = watchCoordinator.current;
+    void coordinator?.restartWorkspace(target.workspaceId);
+    const sessionId = selectedSessionId.value;
+    // The page connection can outlive the Node Watch lease. Reopening the same
+    // session can reuse that lease, so explicitly request a new initial snapshot.
+    if (sessionId !== undefined)
+      void Promise.resolve(coordinator?.restartSession(sessionId)).catch((error: unknown) => {
+        // An initial failure pauses the lease. Let the normal loader retry and surface failure.
+        if (
+          errorCode(error) !== 'WATCH_CANCELLED' &&
+          view.value === 'nodes' &&
+          input.workspaceTarget.value === target &&
+          selectedSessionId.value === sessionId
+        )
+          refreshSelectedSessionSnapshot();
+      });
   }
 
   function handleVisibility(): void {

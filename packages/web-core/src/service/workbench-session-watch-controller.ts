@@ -50,6 +50,8 @@ export function createWorkbenchSessionWatchController(options: {
   let watchedConnectionId: string | undefined;
   let nodeGeneration: string | undefined;
   let previousWatch: { readonly id: string; readonly generation: string } | undefined;
+  let initialBaseline:
+    (WorkspaceTarget & { readonly sessionId: string; readonly generation: string }) | undefined;
   const appliedInitialSnapshot = shallowRef<{
     readonly watchId: string;
     readonly nodeId: string;
@@ -428,11 +430,28 @@ export function createWorkbenchSessionWatchController(options: {
       pendingInitial = undefined;
       previousWatch = undefined;
       pending.removeAbortListener();
-      options.applySnapshot(sessionId, page, event.historyReset === true ? 'reset' : 'initial');
-      appliedInitialSnapshot.value = {
-        watchId: pending.watchId,
+      const baseline = {
         nodeId: event.nodeId as string,
         workspaceId: event.workspaceId as string,
+        sessionId,
+        generation: event.nodeGeneration
+      };
+      // Conversation sequence numbers are only comparable within one Node generation.
+      const generationChanged =
+        initialBaseline?.nodeId === baseline.nodeId &&
+        initialBaseline.workspaceId === baseline.workspaceId &&
+        initialBaseline.sessionId === sessionId &&
+        initialBaseline.generation !== baseline.generation;
+      initialBaseline = baseline;
+      options.applySnapshot(
+        sessionId,
+        page,
+        event.historyReset === true || generationChanged ? 'reset' : 'initial'
+      );
+      appliedInitialSnapshot.value = {
+        watchId: pending.watchId,
+        nodeId: baseline.nodeId,
+        workspaceId: baseline.workspaceId,
         sessionId,
         connectionId: event.workbenchConnectionId as string
       };

@@ -81,6 +81,7 @@ describe('Session Watch projection composition', () => {
       invalidateWorkspace
     });
     let connectionId = 'connection-1';
+    let generation = 'generation-1';
     let requested: Record<string, unknown> = {};
     const watch = createWorkbenchSessionWatchController({
       workspaceTarget,
@@ -96,7 +97,7 @@ describe('Session Watch projection composition', () => {
             ...(JSON.parse(String(init.body)) as Record<string, unknown>),
             sessionId: _path.split('/').at(-2)
           };
-        return { nodeGeneration: 'generation-1' } as T;
+        return { nodeGeneration: generation } as T;
       },
       sessionPathId: (id) => id,
       applyEvent: projection.apply,
@@ -130,21 +131,26 @@ describe('Session Watch projection composition', () => {
     let sequence = 0;
     const broadcast = (category: WorkbenchLiveEvent['category'], payload: unknown) =>
       emit({ type: 'event', event: { nodeId: 'node-1', sequence: ++sequence, category, payload } });
-    const initial = (identity = requested, title = 'Watch initial') =>
+    const initial = (identity = requested, title = 'Watch initial', sequence = 10) =>
       emit({
         type: 'watch.event',
         event: {
           ...identity,
           type: 'watch.session.snapshot',
-          nodeGeneration: 'generation-1',
+          nodeGeneration: generation,
           payload: {
             kind: 'session-watch-snapshot',
-            sequence: 10,
+            sequence,
             session: { ...session, id: selectedSessionId.value, runnerTitle: title },
             runs: [],
             queue: { version: 0, items: [], paused: false },
             context: null,
-            conversation: { unit: 'SEGMENT', segments: [], nextCursor: null, snapshotSequence: 10 }
+            conversation: {
+              unit: 'SEGMENT',
+              segments: [],
+              nextCursor: null,
+              snapshotSequence: sequence
+            }
           }
         }
       });
@@ -291,10 +297,26 @@ describe('Session Watch projection composition', () => {
       expect(effects.mergeSessions).not.toHaveBeenCalled();
       initial(fourth, 'Reconnected initial');
       await reconnected;
+      expect(effects.applyConversationSnapshot).toHaveBeenLastCalledWith(
+        'session-2',
+        expect.objectContaining({ snapshotSequence: 10 }),
+        'initial'
+      );
       directed(fourth, 'Reconnected event');
       expect(effects.mergeSessions.mock.calls.at(-1)?.[0][0]).toMatchObject({
         runnerTitle: 'Reconnected event'
       });
+
+      generation = 'generation-2';
+      const nodeRestarted = watch.restartSelectedSessionWatch('session-2');
+      await vi.waitFor(() => expect(requested.watchId).not.toBe(fourth.watchId));
+      initial(requested, 'Restarted Node initial', 1);
+      await nodeRestarted;
+      expect(effects.applyConversationSnapshot).toHaveBeenLastCalledWith(
+        'session-2',
+        expect.objectContaining({ snapshotSequence: 1 }),
+        'reset'
+      );
     } finally {
       watch.stopSelectedSessionWatch();
       live.close();
