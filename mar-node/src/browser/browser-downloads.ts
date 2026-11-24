@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { open, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   BROWSER_DOWNLOAD_PAGE_SIZE,
   type BrowserDownloadInfo,
   type BrowserDownloadRead,
   type BrowserDownloadRequest
 } from '@myagentroam/protocol';
-import type { Download, Page } from 'playwright';
+import type { CDPSession, Page } from 'playwright';
 
 const HOUR_MS = 60 * 60_000;
 const RETENTION_MS = 30 * 24 * HOUR_MS;
@@ -15,8 +16,9 @@ const MAX_RETAINED_BYTES = 1024 ** 3;
 const MAX_RETAINED_ENTRIES = 256;
 
 type Entry = {
-  native: Download;
+  cancel: () => Promise<void>;
   info: BrowserDownloadInfo;
+  progress?: { receivedBytes: number; totalBytes?: number };
   location?: { path: string; size: number };
   recentSaveUntil?: number;
   readers?: number;
@@ -41,6 +43,8 @@ export class BrowserDownloads {
   private sweeping: Promise<void> | undefined;
   private sweepPending = false;
   private revision = 0;
+  private started = 0;
+  private progressUpdate: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly changed: () => void,
@@ -52,6 +56,7 @@ export class BrowserDownloads {
   dispose(): void {
     this.disposed = true;
     clearInterval(this.retention);
+    clearTimeout(this.progressUpdate);
   }
 
   get version(): number {
@@ -62,23 +67,54 @@ export class BrowserDownloads {
     return this.active.size;
   }
 
+  get startedCount(): number {
+    return this.started;
+  }
+
+  /** The managed context uses Chromium's GUID for both progress and settlement.
+   * The path is derived from its private download directory, not event paths. */
+  observe(session: CDPSession, directory: string): void {
+    const transfers = new Map<string, Entry>();
+    session.on('Browser.downloadWillBegin', ({ guid, suggestedFilename }) => {
+      if (
+        this.disposed ||
+        transfers.has(guid) ||
+        !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(guid)
+      )
+        return;
+      const entry = this.begin(suggestedFilename, async () => {
+        await session.send('Browser.cancelDownload', { guid });
+      });
+      transfers.set(guid, entry);
+    });
+    session.on('Browser.downloadProgress', ({ guid, state, receivedBytes, totalBytes }) => {
+      const entry = transfers.get(guid);
+      if (this.disposed || !entry) return;
+      if (state !== 'inProgress') {
+        transfers.delete(guid);
+        void this.settle(entry, async () =>
+          state === 'completed' ? join(directory, guid) : undefined
+        );
+        return;
+      }
+      if (!Number.isSafeInteger(receivedBytes) || receivedBytes < 0) return;
+      const total =
+        Number.isSafeInteger(totalBytes) && totalBytes > 0 && totalBytes >= receivedBytes;
+      if (
+        entry.progress?.receivedBytes === receivedBytes &&
+        entry.progress.totalBytes === (total ? totalBytes : undefined)
+      )
+        return;
+      entry.progress = { receivedBytes, ...(total && { totalBytes }) };
+      this.progressUpdate ??= setTimeout(() => this.notify(), 500).unref();
+    });
+  }
+
   listen(page: Page): void {
     page.on('download', (native) => {
-      const id = randomUUID();
-      const name =
-        native
-          .suggestedFilename()
-          .split(/[\\/]/u)
-          .at(-1)
-          ?.replace(/[\u0000-\u001f\u007f]/gu, '')
-          .slice(0, 255)
-          .toWellFormed() || 'download';
-      const entry: Entry = { native, info: { id, name, state: 'downloading' } };
-      this.entries.set(id, entry);
-      this.ordered.push(entry);
-      this.active.add(entry);
-      this.notify();
-      void this.settle(entry);
+      if (this.disposed) return;
+      const entry = this.begin(native.suggestedFilename(), () => native.cancel());
+      void this.settle(entry, async () => ((await native.failure()) ? undefined : native.path()));
     });
   }
 
@@ -92,7 +128,9 @@ export class BrowserDownloads {
         items: this.ordered
           .slice(start, end)
           .reverse()
-          .map(({ info }) => info),
+          .map(({ info, progress }) =>
+            command.progress && progress ? { ...info, ...progress } : info
+          ),
         more: start > 0
       };
     }
@@ -101,7 +139,7 @@ export class BrowserDownloads {
     if (command.action === 'cancel') {
       if (entry.info.state === 'downloading') {
         entry.canceledByUser = true;
-        const cancel = (entry.canceling ??= entry.native.cancel());
+        const cancel = (entry.canceling ??= entry.cancel());
         try {
           await cancel;
         } catch (error) {
@@ -218,14 +256,34 @@ export class BrowserDownloads {
     if (removed && !this.disposed) this.notify();
   }
 
-  private async settle(entry: Entry): Promise<void> {
+  private begin(suggestedFilename: string, cancel: Entry['cancel']): Entry {
+    const id = randomUUID();
+    const name =
+      suggestedFilename
+        .split(/[\\/]/u)
+        .at(-1)
+        ?.replace(/[\u0000-\u001f\u007f]/gu, '')
+        .slice(0, 255)
+        .toWellFormed() || 'download';
+    const entry: Entry = { cancel, info: { id, name, state: 'downloading' } };
+    this.entries.set(id, entry);
+    this.ordered.push(entry);
+    this.active.add(entry);
+    this.started++;
+    this.notify();
+    return entry;
+  }
+
+  private async settle(
+    entry: Entry,
+    completedPath: () => Promise<string | undefined>
+  ): Promise<void> {
     try {
-      const failure = await entry.native.failure();
+      const path = await completedPath();
       // Chromium also reports `canceled` for interrupted network responses.
-      if (failure)
+      if (!path)
         entry.info = { ...entry.info, state: entry.canceledByUser ? 'canceled' : 'failed' };
       else {
-        const path = await entry.native.path();
         const { size } = await stat(path);
         entry.location = { path, size };
         entry.info = { ...entry.info, state: 'ready', size };
@@ -233,6 +291,7 @@ export class BrowserDownloads {
     } catch {
       entry.info = { ...entry.info, state: 'failed' };
     }
+    delete entry.progress;
     this.active.delete(entry);
     if (this.disposed) return;
     this.ended.set(entry, performance.now());
@@ -243,6 +302,8 @@ export class BrowserDownloads {
   }
 
   private notify(): void {
+    clearTimeout(this.progressUpdate);
+    this.progressUpdate = undefined;
     this.revision++;
     this.changed();
   }

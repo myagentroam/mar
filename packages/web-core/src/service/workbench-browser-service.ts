@@ -280,6 +280,7 @@ export function createWorkbenchBrowserService(options: {
       sample(value) {
         streamSample.value = value;
       },
+      downloadProgress: capability.downloadProgress === true,
       failed(code) {
         error.value = code;
       },
@@ -464,7 +465,11 @@ export function createWorkbenchBrowserService(options: {
     if (!options.http || !target) throw new Error('BROWSER_LEASE_ENDED');
     return browserDownloadPageSchema.parse(
       await options.http(
-        `/api/browser/downloads?${new URLSearchParams({ ...target, offset: String(offset) })}`,
+        `/api/browser/downloads?${new URLSearchParams({
+          ...target,
+          offset: String(offset),
+          ...(snapshot.value?.startedDownloadCount !== undefined && { progress: '1' })
+        })}`,
         { signal }
       )
     );
@@ -534,6 +539,7 @@ export type WorkbenchBrowserService = ReturnType<typeof createWorkbenchBrowserSe
 export type WorkbenchBrowserCapability = BrowserCapability & {
   resizeViewport?: boolean;
   hd?: boolean;
+  downloadProgress?: boolean;
   tabIcons?: boolean;
   nativeTouch?: boolean;
   contextMenu?: boolean;

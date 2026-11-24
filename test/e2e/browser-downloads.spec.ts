@@ -10,6 +10,8 @@ async function update(
     status?: 'connecting' | 'ready';
     items?: BrowserDownloadInfo[];
     activeCount?: number | null;
+    startedCount?: number | null;
+    listDelay?: number;
     failList?: boolean;
     failDelete?: boolean;
   }
@@ -45,7 +47,11 @@ test('Browser signals download activity at the toolbar without interrupting page
     await address.focus();
     await expect(badge).toHaveCount(0);
 
-    await update(page, { revision: 6, activeCount: 2 });
+    const started = page.getByText('Download started', { exact: true });
+    await update(page, { revision: 5, activeCount: 0, startedCount: 3 });
+    await expect(started).toHaveCount(0);
+    await update(page, { revision: 6, activeCount: 2, startedCount: 5 });
+    await expect(started).toHaveCount(1);
     await expect(badge).toHaveText('2');
     await expect(button).toHaveAccessibleDescription('2 active downloads');
     const badgeRect = (await badge.boundingBox())!;
@@ -56,28 +62,33 @@ test('Browser signals download activity at the toolbar without interrupting page
     await expect(dialog).toHaveCount(0);
 
     await page.clock.runFor(2600);
+    await expect(started).toHaveCount(0);
     await expect(badge).toHaveText('2');
-    await update(page, { revision: 10, status: 'connecting', activeCount: 2 });
+    await update(page, { revision: 10, status: 'connecting', activeCount: 2, startedCount: null });
     await expect(button).toBeDisabled();
     await expect(badge).toHaveCount(0);
-    await update(page, { revision: 11, status: 'ready', activeCount: 1 });
+    await update(page, { revision: 11, status: 'ready', activeCount: 1, startedCount: 7 });
     await expect(button).toBeEnabled();
     await expect(button).toHaveAccessibleDescription('1 active download');
-    await update(page, { revision: 12, id: 'browser-b', activeCount: 0 });
+    await update(page, { revision: 12, id: 'browser-b', activeCount: 0, startedCount: 8 });
     await expect(badge).toHaveCount(0);
+    await expect(started).toHaveCount(0);
     await button.click();
     await expect(dialog).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
     await expect(button).toBeFocused();
+    await update(page, { revision: 13, startedCount: 9, activeCount: 0 });
+    await expect(started).toHaveCount(1);
+    await expect(badge).toHaveCount(0);
   } finally {
     await fixture.close();
   }
 });
 
-test('Browser shows indeterminate progress only while each Node download is active', async ({
+test('Browser shows received bytes, a determinate bar when size is known, and completion', async ({
   page
-}) => {
+}, testInfo) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/browser-downloads.html');
   try {
     await page.goto(`${fixture.url}browser-downloads.html`);
@@ -85,7 +96,7 @@ test('Browser shows indeterminate progress only while each Node download is acti
     await expect(button).toBeVisible();
     const pending = { id: 'pending', name: 'slow.bin', state: 'downloading' } as const;
     const completing = { id: 'completing', name: 'finish.bin', state: 'downloading' } as const;
-    await update(page, { revision: 6, items: [pending, completing] });
+    await update(page, { revision: 6, items: [pending, completing], listDelay: 250 });
     await button.click();
     const dialog = page.getByRole('dialog', { name: 'Downloads' });
     const row = dialog.getByRole('listitem').filter({ hasText: pending.name });
@@ -97,13 +108,24 @@ test('Browser shows indeterminate progress only while each Node download is acti
     const statusBox = (await row.getByText('Downloading…', { exact: true }).boundingBox())!;
     const progressBox = (await bar.boundingBox())!;
     const cancelBox = (await row.getByRole('button', { name: 'Cancel' }).boundingBox())!;
-    expect(progressBox.x).toBeGreaterThan(statusBox.x + statusBox.width);
-    expect(progressBox.y).toBeGreaterThanOrEqual(statusBox.y);
-    expect(progressBox.y + progressBox.height).toBeLessThanOrEqual(statusBox.y + statusBox.height);
+    expect(progressBox.y).toBeGreaterThanOrEqual(statusBox.y + statusBox.height);
     expect(progressBox.x + progressBox.width).toBeLessThan(cancelBox.x);
 
+    // Revisions arriving during the list request must not starve it by aborting.
+    await update(page, { revision: 7, items: [{ ...pending, receivedBytes: 512 }, completing] });
+    await update(page, { revision: 8, items: [{ ...pending, receivedBytes: 1024 }, completing] });
+    await expect(row.getByText('1 KB downloaded', { exact: true })).toBeVisible();
+    expect(await bar.getAttribute('value')).toBeNull();
     await update(page, {
-      revision: 7,
+      revision: 9,
+      items: [{ ...pending, receivedBytes: 1024, totalBytes: 4096 }, completing]
+    });
+    await expect(bar).toHaveAttribute('value', '25');
+    await expect(bar).toHaveAttribute('aria-valuetext', '1 KB of 4 KB downloaded');
+    await dialog.screenshot({ path: testInfo.outputPath('browser-download-progress.png') });
+
+    await update(page, {
+      revision: 10,
       items: [pending, { ...completing, state: 'ready', size: 1234 }]
     });
     const ready = dialog.getByRole('listitem').filter({ hasText: completing.name });
@@ -118,6 +140,38 @@ test('Browser shows indeterminate progress only while each Node download is acti
     await row.getByRole('button', { name: 'Cancel' }).click();
     await expect(row.getByText('Canceled')).toBeVisible();
     await expect(dialog.getByRole('progressbar')).toHaveCount(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('Browser loads paused download progress once the attachment subscription is confirmed', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-downloads.html');
+  try {
+    await page.goto(`${fixture.url}browser-downloads.html?negotiateProgress`);
+    await update(page, {
+      revision: 4,
+      items: [
+        {
+          id: 'paused',
+          name: 'paused.bin',
+          state: 'downloading',
+          receivedBytes: 1024,
+          totalBytes: 4096
+        }
+      ]
+    });
+    await page.getByRole('button', { name: 'Downloads', exact: true }).click();
+    const bar = page.getByRole('dialog', { name: 'Downloads' }).getByRole('progressbar');
+    await expect(bar).toBeVisible();
+    expect(await bar.getAttribute('value')).toBeNull();
+
+    // Subscription starts projecting the counter but does not change the download revision.
+    await update(page, { revision: 4, startedCount: 1 });
+    await expect(bar).toHaveAttribute('value', '25');
+    await expect(page.getByText('Download started', { exact: true })).toHaveCount(0);
   } finally {
     await fixture.close();
   }

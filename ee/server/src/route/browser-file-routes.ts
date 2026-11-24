@@ -20,7 +20,10 @@ import type { NodeControl } from '../node-control.js';
 
 const target = z.object({ connectionId: z.string().min(1).max(512) });
 const downloadTarget = target.extend({ attachmentId: z.string().uuid() });
-const listTarget = downloadTarget.extend({ offset: z.coerce.number().int().nonnegative().safe() });
+const listTarget = downloadTarget.extend({
+  offset: z.coerce.number().int().nonnegative().safe(),
+  progress: z.literal('1').optional()
+});
 const fileTarget = downloadTarget.extend({ id: z.string().uuid() });
 
 /** File HTTP adapter. The Browser coordinator authorizes every RPC, including
@@ -68,11 +71,11 @@ export function registerBrowserFileRoutes(
     if (!user) return;
     const query = listTarget.safeParse(request.query);
     if (!query.success) return sendError(reply, 400, 'BROWSER_DOWNLOAD_INVALID');
-    const { connectionId, attachmentId, offset } = query.data;
+    const { connectionId, attachmentId, offset, progress } = query.data;
     try {
       const result = await node.downloadBrowserFile(user, connectionId, {
         attachmentId,
-        command: { action: 'list', offset }
+        command: { action: 'list', offset, ...(progress && { progress: true }) }
       });
       return reply
         .header('cache-control', 'private, no-store')

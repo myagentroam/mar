@@ -116,8 +116,8 @@ export type BrowserFindResult = z.infer<typeof browserFindResultSchema>;
 
 export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ack'), sequence: positiveUint32 }),
+  z.strictObject({ type: z.literal('downloads.observe'), progress: z.literal(true).optional() }),
   z.strictObject({ type: z.literal('tab.icons') }),
-  z.strictObject({ type: z.literal('downloads.observe') }),
   z.strictObject({ type: z.literal('agent.activity.observe') }),
   z.strictObject({ type: z.literal('viewport.resize'), width: viewportEdge, height: viewportEdge }),
   z.strictObject({ type: z.literal('input'), action: browserPageInputSchema }),
@@ -190,6 +190,7 @@ export const browserTabSnapshotSchema = z.strictObject({
     .optional(),
   fileChooser: browserFileChooserSchema.optional(),
   downloadVersion: z.number().int().nonnegative().safe().optional(),
+  startedDownloadCount: z.number().int().nonnegative().safe().optional(),
   activeDownloadCount: z.number().int().nonnegative().safe().optional()
 });
 

@@ -73,6 +73,19 @@ const activeDownloads = computed(() =>
 );
 const downloadStatusId = `${tabPrefix}-download-status`;
 watch(downloadBrowserId, () => (downloadsOpen.value = false));
+watch(
+  [downloadBrowserId, () => snapshot.value?.startedDownloadCount],
+  ([id, count], [previousId, previousCount]) => {
+    if (
+      id &&
+      id === previousId &&
+      count !== undefined &&
+      previousCount !== undefined &&
+      count > previousCount
+    )
+      feedback(t('browser.downloadStarted'), 'info');
+  }
+);
 const connection = computed(() => {
   if (path.value === 'ice') return props.directDescription ?? t('workspaceTabs.directAvailable');
   if (path.value === 'relay') return t('browser.relay');

@@ -305,6 +305,7 @@ export interface NodeWorkbenchManifest {
   readonly browserFind?: true;
   readonly browserAgentActivity?: true;
   readonly browserDownloadManagement?: true;
+  readonly browserDownloadProgress?: true;
   readonly git?: {
     readonly available: boolean;
     readonly reasonCode: string | null;

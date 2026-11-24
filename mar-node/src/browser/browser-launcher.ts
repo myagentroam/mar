@@ -56,11 +56,31 @@ export function createBrowserLauncher(
       await recordBrowserRun(run, profileRoot, profilePath).catch(failed);
       await installBrowserContextMenu(owned);
       const data = await attachBrowserProfileData(owned);
+      const downloads = await (async () => {
+        const session = await owned.browser()?.newBrowserCDPSession();
+        if (!session) return;
+        try {
+          // Retain Playwright's managed artifact names while enabling native progress.
+          await session.send('Browser.setDownloadBehavior', {
+            behavior: 'allowAndName',
+            downloadPath: downloadsPath,
+            eventsEnabled: true
+          });
+          return { session, directory: downloadsPath };
+        } catch (error) {
+          await session.detach().catch(() => undefined);
+          throw error;
+        }
+      })().catch((error: unknown) => {
+        failed(error);
+        return undefined;
+      });
       let closing: Promise<void> | undefined;
       return {
         context: owned,
         directory: run,
         data,
+        ...(downloads && { downloads }),
         close: () => (closing ??= owned.close().then(() => retireBrowserRun(run).catch(failed)))
       };
     } catch (error) {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type { BrowserTabSnapshot, BrowserUpload } from '@myagentroam/protocol';
-import type { BrowserContext, Frame, Page, Request } from 'playwright';
+import type { BrowserContext, CDPSession, Frame, Page, Request } from 'playwright';
 import { BrowserDownloads } from './browser-downloads.js';
 import { BrowserDialogs } from './browser-dialogs.js';
 import { BrowserFileChooser } from './browser-file-chooser.js';
@@ -83,6 +83,7 @@ export class BrowserTabs {
       limit: number;
       failed: (error: unknown) => void;
       directory?: string | undefined;
+      downloads?: { session: CDPSession; directory: string } | undefined;
       workspacePath?: () => string | undefined;
       favicon?: ((url: string) => Promise<string | undefined>) | undefined;
     }
@@ -98,6 +99,8 @@ export class BrowserTabs {
       options.directory
     );
     this.downloads = new BrowserDownloads(() => this.events.emit('changed'), options.failed);
+    if (options.downloads)
+      this.downloads.observe(options.downloads.session, options.downloads.directory);
     context.once('close', () => this.downloads.dispose());
     for (const page of context.pages()) this.add(page, false);
     context.on('page', (page) => this.add(page, true));
@@ -219,6 +222,10 @@ export class BrowserTabs {
     return this.downloads.activeCount;
   }
 
+  get startedDownloadCount(): number {
+    return this.downloads.startedCount;
+  }
+
   cancelDownloads(): Promise<void> {
     return this.downloads.cancelActive();
   }
@@ -296,7 +303,7 @@ export class BrowserTabs {
     };
     this.tabs.set(id, tab);
     this.files.listen(page);
-    this.downloads.listen(page);
+    if (!this.options.downloads) this.downloads.listen(page);
     this.activeId = id;
     page.on('request', (request) => {
       if (!request.isNavigationRequest() || request.frame() !== page.mainFrame()) return;

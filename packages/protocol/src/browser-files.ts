@@ -50,7 +50,9 @@ export const browserDownloadInfoSchema = z.strictObject({
   id,
   name: z.string().max(255),
   state: z.enum(['downloading', 'ready', 'failed', 'canceled']),
-  size: z.number().int().nonnegative().safe().optional()
+  size: z.number().int().nonnegative().safe().optional(),
+  receivedBytes: z.number().int().nonnegative().safe().optional(),
+  totalBytes: z.number().int().positive().safe().optional()
 });
 const downloadPageSize = 20;
 export const BROWSER_DOWNLOAD_PAGE_SIZE = downloadPageSize;
@@ -72,7 +74,7 @@ const downloadRead = z.strictObject({
 export const browserDownloadRequestSchema = z.strictObject({
   attachmentId: id,
   command: z.discriminatedUnion('action', [
-    z.strictObject({ action: z.literal('list'), offset }),
+    z.strictObject({ action: z.literal('list'), offset, progress: z.literal(true).optional() }),
     z.strictObject({ action: z.literal('cancel'), id }),
     z.strictObject({ action: z.literal('delete'), id }),
     z.strictObject({ action: z.literal('info'), id })

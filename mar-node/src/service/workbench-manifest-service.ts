@@ -67,6 +67,7 @@ export class WorkbenchManifestService {
       browserContextMenu: capabilities.browser ? (true as const) : undefined,
       browserFind: capabilities.browser ? (true as const) : undefined,
       browserDownloadManagement: capabilities.browser ? (true as const) : undefined,
+      browserDownloadProgress: capabilities.browser ? (true as const) : undefined,
       sessionAside: capabilities.sessionAside,
       sessionGroups: capabilities.sessionGroups,
       git: {

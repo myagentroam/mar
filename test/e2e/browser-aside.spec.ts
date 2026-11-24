@@ -150,7 +150,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         'content-length': largeFile.length
       });
       if (file === 'cancel.bin' || file === 'fail.bin') {
-        response.write(largeFile.subarray(0, 128));
+        response.write(largeFile.subarray(0, file === 'cancel.bin' ? 1024 * 1024 : 128));
         if (file === 'cancel.bin') response.once('close', () => canceledRequests++);
         else {
           const timer = setTimeout(() => response.destroy(), 200);
@@ -690,6 +690,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         await expect(downloads).toHaveAccessibleDescription(
           /^(1 active download|1 个下载进行中)$/u
         );
+      await expect(page.getByText(/^(Download started|已开始下载)$/u).last()).toBeVisible();
       await downloads.click();
       const dialog = page.getByRole('dialog', { name: /^(Downloads|下载)$/u });
       const name = `${action === 'saved' ? route : action}.bin`;
@@ -755,7 +756,10 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         expect((await readFile((await file.path())!)).equals(largeFile)).toBe(true);
       } else if (action === 'cancel') {
         const previous = canceledRequests;
-        await expect(row.locator('progress:not([value])')).toBeVisible();
+        await expect(row.getByRole('progressbar')).toHaveAttribute('value', '11');
+        await expect(
+          row.getByText(/^(1 MB of 9 MB downloaded|已下载 1 MB \/ 9 MB)$/u)
+        ).toBeVisible();
         await row.getByRole('button', { name: /^(Cancel|取消)$/u }).click();
         await expect(row.getByText(/^(Canceled|已取消)$/u)).toBeVisible();
         await expect(downloads).not.toHaveAttribute('aria-describedby', /download-status/u);

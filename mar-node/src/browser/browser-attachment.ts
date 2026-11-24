@@ -117,6 +117,7 @@ export class BrowserAttachment {
     }
     if (message.type === 'downloads.observe') {
       this.downloadsSubscribed = true;
+      this.downloadProgressSubscribed = message.progress === true;
       this.refresh();
       return;
     }
@@ -233,6 +234,7 @@ export class BrowserAttachment {
   }
 
   private downloadsSubscribed = false;
+  private downloadProgressSubscribed = false;
   private agentActivitySubscribed = false;
 
   private refresh(): void {
@@ -247,6 +249,9 @@ export class BrowserAttachment {
             this.borrow.resource.agentActive && { agentActive: true }),
           ...(this.downloadsSubscribed && {
             activeDownloadCount: this.borrow.resource.activeDownloadCount
+          }),
+          ...(this.downloadProgressSubscribed && {
+            startedDownloadCount: this.borrow.resource.startedDownloadCount
           })
         }
       });

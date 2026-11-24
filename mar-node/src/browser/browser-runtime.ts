@@ -1,4 +1,4 @@
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext, CDPSession } from 'playwright';
 import {
   BROWSER_TAB_LIMIT,
   type BrowserDownloadRead,
@@ -23,6 +23,7 @@ type RunningBrowser = {
   context: BrowserContext;
   data?: BrowserProfileData;
   directory?: string;
+  downloads?: { session: CDPSession; directory: string };
   /** Resolves only when the process and its writable mounts are released. */
   close: () => Promise<void>;
 };
@@ -90,6 +91,7 @@ export class BrowserRuntime {
           limit: BROWSER_TAB_LIMIT,
           failed: options.failed,
           directory: browser.directory,
+          downloads: browser.downloads,
           favicon: browser.data?.favicon.bind(browser.data),
           workspacePath: () => options.workspacePath?.(scope.workspaceId)
         });

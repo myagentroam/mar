@@ -16,6 +16,7 @@ const props = defineProps<{ browser: WorkbenchBrowserService }>();
 const emit = defineEmits<{ close: [] }>();
 const { snapshot, status } = props.browser;
 const revision = computed(() => snapshot.value?.downloadVersion);
+const hasProgress = computed(() => snapshot.value?.startedDownloadCount !== undefined);
 const canDelete = computed(() => snapshot.value?.activeDownloadCount !== undefined);
 const lifetime = new AbortController();
 onBeforeUnmount(() => lifetime.abort());
@@ -33,9 +34,17 @@ const labels = {
   canceled: 'browser.downloadCanceled'
 } as const;
 
+function progressLabel(item: BrowserDownloadInfo): string {
+  if (item.receivedBytes === undefined) return t(labels.downloading);
+  const received = fileSizeLabel(item.receivedBytes);
+  return item.totalBytes
+    ? t('browser.downloadProgressTotal', { received, total: fileSizeLabel(item.totalBytes) })
+    : t('browser.downloadProgressReceived', { received });
+}
+
 watch(
-  [revision, status, offset, refresh],
-  async ([_revision, attachmentState, start], _, cleanup) => {
+  [status, offset, refresh],
+  ([attachmentState, start], _, cleanup) => {
     if (attachmentState !== 'ready') {
       items.value = [];
       more.value = false;
@@ -45,24 +54,42 @@ watch(
       return;
     }
     const controller = new AbortController();
-    cleanup(() => controller.abort());
     failed.value = false;
     loading.value = true;
-    try {
-      const result = await props.browser.downloads(start, controller.signal);
-      if (!controller.signal.aborted) {
-        if (!result.items.length && start > 0) {
-          offset.value = Math.max(0, start - BROWSER_DOWNLOAD_PAGE_SIZE);
-          return;
-        }
-        items.value = result.items;
-        more.value = result.more;
+    let running = false;
+    let queued = false;
+    const load = async () => {
+      if (running) {
+        queued = true;
+        return;
       }
-    } catch {
-      if (!controller.signal.aborted) failed.value = true;
-    } finally {
-      if (!controller.signal.aborted) loading.value = false;
-    }
+      running = true;
+      do {
+        queued = false;
+        try {
+          const result = await props.browser.downloads(start, controller.signal);
+          if (controller.signal.aborted) return;
+          if (!result.items.length && start > 0) {
+            offset.value = Math.max(0, start - BROWSER_DOWNLOAD_PAGE_SIZE);
+            return;
+          }
+          items.value = result.items;
+          more.value = result.more;
+          failed.value = false;
+        } catch {
+          if (!controller.signal.aborted) failed.value = true;
+        } finally {
+          if (!controller.signal.aborted) loading.value = false;
+        }
+      } while (queued && !controller.signal.aborted);
+      running = false;
+    };
+    // Keep the current request alive when a newer progress revision arrives.
+    const stop = watch([revision, hasProgress], () => void load(), { immediate: true });
+    cleanup(() => {
+      stop();
+      controller.abort();
+    });
   },
   { immediate: true }
 );
@@ -134,11 +161,17 @@ async function change(item: BrowserDownloadInfo, action: 'cancel' | 'delete'): P
             {{ fileSizeLabel(item.size) }}
           </span>
           <div v-else-if="item.state === 'downloading'" class="download-progress-row">
-            <span class="download-meta">{{ t(labels.downloading) }}</span>
+            <span class="download-meta">{{ progressLabel(item) }}</span>
             <MarProgress
-              indeterminate
+              :indeterminate="item.totalBytes === undefined || item.receivedBytes === undefined"
+              :percentage="
+                item.totalBytes
+                  ? Math.floor(((item.receivedBytes ?? 0) / item.totalBytes) * 100)
+                  : 0
+              "
               :stroke-width="4"
               :aria-label="`${t(labels.downloading)} ${item.name}`"
+              :aria-valuetext="item.receivedBytes === undefined ? undefined : progressLabel(item)"
             />
           </div>
           <span
@@ -257,9 +290,7 @@ async function change(item: BrowserDownloadInfo, action: 'cancel' | 'delete'): P
 }
 .download-progress-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.5rem;
+  gap: 0.3rem;
 }
 .download-notice,
 .download-empty {

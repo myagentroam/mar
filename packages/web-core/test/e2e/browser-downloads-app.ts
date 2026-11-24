@@ -7,6 +7,7 @@ import { createTooltipApp } from './tooltip-app.js';
 import '../../src/styles.css';
 
 const fixtureLocale = new URLSearchParams(location.search).get('locale');
+const negotiateProgress = new URLSearchParams(location.search).has('negotiateProgress');
 localePreferenceService().setLocale(fixtureLocale === 'zh-CN' ? 'zh-CN' : 'en-US');
 const browser = createWorkbenchBrowserService({
   send: () => false,
@@ -19,6 +20,8 @@ type Update = {
   status?: typeof browser.status.value;
   items?: BrowserDownloadInfo[];
   activeCount?: number | null;
+  startedCount?: number | null;
+  listDelay?: number;
   failList?: boolean;
   failDelete?: boolean;
 };
@@ -37,6 +40,7 @@ const tabs = [tab, { ...tab, id: 'second-tab', title: 'Second page' }];
 let items: BrowserDownloadInfo[] = [];
 let failList = false;
 let failDelete = false;
+let listDelay = 0;
 
 function update({
   revision,
@@ -44,6 +48,8 @@ function update({
   status,
   items: nextItems,
   activeCount,
+  startedCount,
+  listDelay: delay,
   failList: listError,
   failDelete: fail
 }: Update): void {
@@ -52,11 +58,16 @@ function update({
   if (nextItems !== undefined) items = nextItems;
   if (listError !== undefined) failList = listError;
   if (fail !== undefined) failDelete = fail;
+  if (delay !== undefined) listDelay = delay;
   browser.snapshot.value = {
     activeId: browser.snapshot.value?.activeId ?? tab.id,
     tabs,
     viewVersion: 1,
     downloadVersion: revision,
+    startedDownloadCount:
+      startedCount === null
+        ? undefined
+        : (startedCount ?? browser.snapshot.value?.startedDownloadCount),
     activeDownloadCount:
       activeCount === null
         ? undefined
@@ -71,9 +82,16 @@ browser.send = (message) => {
   return true;
 };
 browser.browserId = () => browserId.value;
-browser.downloads = async () => {
+browser.downloads = async (_offset, signal) => {
+  const listed =
+    negotiateProgress && browser.snapshot.value?.startedDownloadCount === undefined
+      ? items.map(({ receivedBytes: _received, totalBytes: _total, ...item }) => item)
+      : items;
+  const result = { items: listed, more: false };
+  if (listDelay) await new Promise((resolve) => setTimeout(resolve, listDelay));
+  signal.throwIfAborted();
   if (failList) throw new Error('Fixture could not list downloads');
-  return { items, more: false };
+  return result;
 };
 browser.cancelDownload = async (id) => {
   update({

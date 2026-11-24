@@ -60,6 +60,7 @@ export class BrowserAttachmentClient {
       tabIcon?: (event: Extract<BrowserAttachmentEvent, { type: 'tab.icon' }>) => void;
       frame(frame: BrowserDrawnView): void;
       sample(value: BrowserStreamSample): void;
+      downloadProgress?: boolean;
       failed(code: string): void;
       ended(code: string): void;
     }
@@ -121,8 +122,12 @@ export class BrowserAttachmentClient {
         this.sampleTimer = setInterval(this.publishSample, 1_000);
         if (this.options.resizeViewport) this.observeSize();
         if (this.options.tabIcon) this.sendText({ type: 'tab.icons' });
-        if (this.options.downloadManagement) this.sendText({ type: 'downloads.observe' });
         if (this.options.agentActivity) this.sendText({ type: 'agent.activity.observe' });
+        if (this.options.downloadManagement)
+          this.sendText({
+            type: 'downloads.observe',
+            ...(this.options.downloadProgress && { progress: true })
+          });
         this.options.attached?.();
         return;
       }
