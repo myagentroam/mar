@@ -1039,6 +1039,10 @@ describe('usage statistics settings contract', () => {
       );
       expect(html).not.toContain(locale === 'en-US' ? 'About these statistics' : '统计说明');
       expect(html).toContain(commonMessages[locale].usageStatistics.range);
+      expect(html.replace(/<!--[\s\S]*?-->/gu, '')).toMatch(
+        /class="mar-ui-form-item__label"[^>]*>Agent<\//u
+      );
+      expect(html).toMatch(/<[^>]+role="combobox"[^>]*aria-label="Agent"/u);
       const refreshButton = html.match(/<button\b[\s\S]*?<\/button>/u)?.[0];
       expect(refreshButton).toContain('<svg');
       expect(refreshButton).toContain(
@@ -1049,7 +1053,7 @@ describe('usage statistics settings contract', () => {
   );
 
   it.each(['en-US', 'zh-CN'] as const)(
-    'renders category-only chart legends while retaining cache counts in the summary in %s',
+    'renders Agent usage labels and category-only chart legends with cache totals in %s',
     async (locale) => {
       localePreferenceService().setLocale(locale);
       const request = vi.fn();
@@ -1072,6 +1076,8 @@ describe('usage statistics settings contract', () => {
       app.directive('tooltip', {});
       app.use(i18n);
       const html = await renderToString(app);
+      expect(html).toMatch(/class="mar-ui-table__sort"[^>]*><span>Agent<\/span>/u);
+      expect(html).toContain(`>${locale === 'en-US' ? 'By Agent' : '按 Agent'}</h4>`);
       const legend = html.match(/<div class="legend"[^>]*>([\s\S]*?)<\/div>/u)?.[1];
       expect(legend).toBeDefined();
       const legendText = legend!.replace(/<[^>]*>/gu, '');
