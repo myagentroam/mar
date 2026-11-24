@@ -280,6 +280,11 @@ describe('Model management component behavior', () => {
       await trigger(button(view, labels.edit), 'onClick');
       const setting = control(view, labels.contextGc, 'MarSelect');
       expect(setting.props['modelValue']).toBe(expected);
+      expect(textContent(view.root)).not.toContain(
+        locale === 'zh-CN'
+          ? '带思考摘要的 GC 等待本轮记录摘要；请求超过图片硬限额时除外。'
+          : 'GC with thought waits for a fresh summary unless the request exceeds the image hard limit.'
+      );
       await trigger(setting, 'onUpdate:modelValue', 'with_thought');
       await trigger(button(view, labels.save), 'onClick');
       const saved = request.mock.calls.find(([, init]) => init?.method === 'PUT');

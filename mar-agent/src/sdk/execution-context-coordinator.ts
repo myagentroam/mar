@@ -22,7 +22,7 @@ type GcUsage = ContextGcRuntimeInput['usage'] | undefined;
 /** Coordinates safe-point adoption of Compact and GC without owning Session state. */
 export class ExecutionContextCoordinator {
   #boundary: number;
-  #thought: { readonly callIds: readonly string[]; readonly usage: GcUsage } | undefined;
+  #thoughtCallIds: readonly string[] = [];
   constructor(
     private readonly ports: {
       readonly initialBoundary: number;
@@ -141,8 +141,8 @@ export class ExecutionContextCoordinator {
     if (this.ports.contextGcMode === 'auto' && !this.ports.compact.pending)
       await this.gc(round, usage, await this.ports.resources.gcCandidate(), true);
     if (this.ports.contextGcMode === 'with_thought') {
-      this.#thought = thoughtCallIds.length === 0 ? undefined : { callIds: thoughtCallIds, usage };
-      if (this.#thought === undefined && !this.ports.compact.pending)
+      this.#thoughtCallIds = thoughtCallIds;
+      if (thoughtCallIds.length === 0 && !this.ports.compact.pending)
         this.ports.gc.skipRollout(usage, this.ports.window);
     }
   }
@@ -150,24 +150,23 @@ export class ExecutionContextCoordinator {
   async prepareRequestGc(
     round: GcRound,
     messages: readonly SessionModelMessage[],
-    usage: GcUsage,
+    latestUsage: GcUsage,
     media: ContextGcRuntimeInput['inlineMedia']
   ): Promise<boolean> {
-    const pending = this.#thought;
-    this.#thought = undefined;
+    const pending = this.#thoughtCallIds;
+    this.#thoughtCallIds = [];
     const thought =
-      pending !== undefined &&
+      pending.length > 0 &&
       messages.some(
         (message) =>
           message.role === 'tool_call' &&
           message.name === THOUGHT_TOOL_NAME &&
           message.callId !== undefined &&
-          pending.callIds.includes(message.callId)
+          pending.includes(message.callId)
       );
     const hardLimit = media?.reason === 'HARD_LIMIT';
     if (!thought && !hardLimit) return false;
-    // The image hard limit keeps its own usage source even when a Thought also triggers GC.
-    return this.gc(round, hardLimit ? usage : pending?.usage, media, thought);
+    return this.gc(round, latestUsage, media, thought);
   }
   async gc(
     round: GcRound,

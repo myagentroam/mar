@@ -377,7 +377,15 @@ describe('context GC checkpoint store', () => {
           { callId: 'exec', toolName: 'exec', input, status: 'completed', result: { content: '' } }
         ]
       });
-      for (let i = 0; i < 10; i++) await appendSuccessfulRollout(store, session.id, 6000);
+      for (let i = 0; i < 9; i++) await appendSuccessfulRollout(store, session.id, 6000);
+      const { usage } = await appendSuccessfulRollout(store, session.id, 6000);
+      // A Compact attempt can report usage without installing a new context base.
+      await append('usage.updated', {
+        type: 'usage.updated',
+        purpose: 'compact',
+        inputTokens: 4000,
+        contextInputTokens: 4000
+      });
       const records = await store.read(session.id);
       const projection = buildContextProjection(records);
       const plan = planContextGc({
@@ -401,6 +409,7 @@ describe('context GC checkpoint store', () => {
         activeProcessIds: new Set()
       });
       expect(plan).toBeDefined();
+      expect(plan!.draft.trigger.usageSequence).toBe(usage.sequence);
       expect(plan!.draft).not.toHaveProperty('economics');
       const committed = await store.commitContextGc(session.id, plan!.draft);
       expect(parseContextGcCheckpoint(committed)).toBeDefined();

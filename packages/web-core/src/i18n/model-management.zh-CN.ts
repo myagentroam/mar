@@ -127,7 +127,6 @@ export const modelManagementZhCN = {
     contextGcOff: '关闭',
     contextGcAuto: '自动',
     contextGcWithThought: '带思考摘要的 GC',
-    contextGcHint: '带思考摘要的 GC 等待本轮记录摘要；请求超过图片硬限额时除外。',
     serviceTier: '速度',
     serviceTierDefault: '默认',
     serviceTierFast: 'Fast',

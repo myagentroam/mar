@@ -2062,7 +2062,6 @@ onBeforeUnmount(() => {
               value="with_thought"
             />
           </MarSelect>
-          <p class="form-hint">{{ translate('marAgentModels.contextGcHint') }}</p>
         </MarFormItem>
         <MarFormItem :label="translate('marAgentModels.capabilities')">
           <div class="model-capabilities">

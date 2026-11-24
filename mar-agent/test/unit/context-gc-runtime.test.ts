@@ -111,6 +111,13 @@ class ContextGcAdapter implements ModelAdapter {
           '*** End Patch'
         ].join('\n')
       };
+    else if (call === 12 && this.configuration.contextGcMode === 'with_thought')
+      yield {
+        type: 'client_tool.call',
+        callId: 'thought-12',
+        name: 'thought',
+        arguments: { title: 'File updated', content: 'read-1 superseded by patch-1' }
+      };
     else if (call >= 3 && call <= 12)
       yield {
         type: 'client_tool.call',
@@ -119,16 +126,17 @@ class ContextGcAdapter implements ModelAdapter {
         arguments: { durationMs: 1 }
       };
     else yield { type: 'text.completed', itemId: `answer-${call}`, text: 'finished' };
-    yield {
-      type: 'usage',
-      usage: {
-        inputTokens: 6_000 + call * 100,
-        contextInputTokens: 6_000 + call * 100,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        outputTokens: 10
-      }
-    };
+    if (call !== 12 || this.configuration.contextGcMode !== 'with_thought')
+      yield {
+        type: 'usage',
+        usage: {
+          inputTokens: 6_000 + call * 100,
+          contextInputTokens: 6_000 + call * 100,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 10
+        }
+      };
     yield { type: 'completed', reason: call < 13 ? 'tool_use' : 'completed' };
     await request.onAttemptDiagnostic?.({
       protocol: 'ANTHROPIC_MESSAGES',
@@ -227,13 +235,20 @@ describe('context GC runtime integration', () => {
     }
   });
 
-  it.each([undefined, true, false])(
+  it.each([undefined, true, false, 'with_thought'] as const)(
     'honors model GC setting %s in a real SDK run',
-    async (gcEnabled) => {
+    async (setting) => {
       const home = await mkdtemp(join(tmpdir(), 'mar-gc-model-setting-'));
       homes.push(home);
       await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
-      const configured = { ...model, ...(gcEnabled === undefined ? {} : { gcEnabled }) };
+      const configured = {
+        ...model,
+        ...(setting === 'with_thought'
+          ? { contextGcMode: setting }
+          : setting === undefined
+            ? {}
+            : { gcEnabled: setting })
+      };
       const adapter = new ContextGcAdapter(configured);
       const gc = vi.spyOn(ContextGcRuntime.prototype, 'run');
       const agent = await createMarAgent(
@@ -255,10 +270,23 @@ describe('context GC runtime integration', () => {
       const store = await JsonlSessionStore.open(home);
       try {
         const records = await store.read(session.id);
-        expect(records.some((record) => record.type === 'context.gc.completed')).toBe(
-          gcEnabled !== false
-        );
-        if (gcEnabled === false) expect(gc).not.toHaveBeenCalled();
+        const checkpoint = records.find((record) => record.type === 'context.gc.completed');
+        expect(checkpoint !== undefined).toBe(setting !== false);
+        if (setting === 'with_thought') {
+          const priorUsage = records.find(
+            (record) =>
+              record.type === 'usage.updated' &&
+              (record.payload as { contextInputTokens?: number }).contextInputTokens === 7_100
+          );
+          expect(priorUsage).toBeDefined();
+          expect(checkpoint?.payload).toMatchObject({
+            trigger: { usageSequence: priorUsage!.sequence, contextInputTokens: 7_100 }
+          });
+          expect(gc).toHaveBeenCalledTimes(1);
+          expect(adapter.requests.at(-1)?.messages).toContainEqual(
+            expect.objectContaining({ role: 'tool_call', name: 'thought', callId: 'thought-12' })
+          );
+        } else if (setting === false) expect(gc).not.toHaveBeenCalled();
         else expect(gc).toHaveBeenCalled();
       } finally {
         await store.close();
