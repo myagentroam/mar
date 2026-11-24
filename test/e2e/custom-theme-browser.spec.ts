@@ -75,23 +75,29 @@ async function expectMessageThemeTokens(message: Locator, iconToken: string): Pr
   expect(resolvedColorToHex(actual.iconColor)).toBe(resolvedColorToHex(actual.statusColor));
 }
 
-async function expectMessageFirstLineAlignment(message: Locator): Promise<void> {
+async function expectMessageIconAlignment(message: Locator): Promise<void> {
   const offsets = await message.evaluate((element) => {
     const content = element.querySelector('.mar-message-text');
     const statusIcon = element.querySelector('.mar-ui-message__icon');
     const closeIcon = element.querySelector('.mar-message-close .mar-icon');
     if (!content || !statusIcon || !closeIcon)
       throw new Error('Message feedback layout is missing');
+    const messageRect = element.getBoundingClientRect();
     const contentRect = content.getBoundingClientRect();
+    const statusRect = statusIcon.getBoundingClientRect();
+    const innerLeft =
+      messageRect.left + Number.parseFloat(getComputedStyle(element).borderLeftWidth);
     const lineHeight = Number.parseFloat(getComputedStyle(content).lineHeight);
     const firstLineCenter = contentRect.y + lineHeight / 2;
     const centerY = (rect: DOMRect) => rect.y + rect.height / 2;
     return {
-      status: centerY(statusIcon.getBoundingClientRect()) - firstLineCenter,
+      status: centerY(statusRect) - firstLineCenter,
+      statusInline: statusRect.left - innerLeft - (contentRect.left - statusRect.right),
       close: centerY(closeIcon.getBoundingClientRect()) - firstLineCenter
     };
   });
   expect(Math.abs(offsets.status)).toBeLessThanOrEqual(1);
+  expect(Math.abs(offsets.statusInline)).toBeLessThanOrEqual(1);
   expect(Math.abs(offsets.close)).toBeLessThanOrEqual(1);
 }
 
@@ -2896,7 +2902,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
       .filter({ hasText: 'Theme-aware info feedback' });
     await expect(message).toContainText('Theme-aware info feedback');
     await expectMessageThemeTokens(message, '--mar-text-secondary');
-    await expectMessageFirstLineAlignment(message);
+    await expectMessageIconAlignment(message);
     await message.locator('.mar-message-close').click();
     await expect(message).toHaveCount(0);
   }
@@ -2936,7 +2942,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
       .filter({ hasText: 'Theme-aware ' + type + ' feedback' });
     await expect(message).toBeVisible();
     await expectMessageThemeTokens(message, token);
-    await expectMessageFirstLineAlignment(message);
+    await expectMessageIconAlignment(message);
     await message.locator('.mar-message-close').click();
     await expect(message).toHaveCount(0);
   }
@@ -3016,7 +3022,7 @@ test('mobile long feedback scrolls without trapping its accessible close control
   await expect(content).toContainText(
     'Line 1: long feedback remains readable and can be dismissed.'
   );
-  await expectMessageFirstLineAlignment(message);
+  await expectMessageIconAlignment(message);
   expect(await message.evaluate((element) => element.closest('[role="dialog"]') !== null)).toBe(
     true
   );
