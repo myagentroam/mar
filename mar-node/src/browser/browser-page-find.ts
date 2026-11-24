@@ -6,7 +6,12 @@ const NODE_LIMIT = 50_000;
 const TEXT_LIMIT = 2_000_000;
 const FRAME_LIMIT = 24;
 
-type Marks = { ranges: Range[]; sheet: CSSStyleSheet; limited: boolean };
+type Marks = {
+  matches: Range[][];
+  roots: Set<Document | ShadowRoot>;
+  sheet: CSSStyleSheet;
+  limited: boolean;
+};
 
 // Executed inside Chromium. Keep real Ranges and CSS highlights, not rewritten page DOM.
 function markDocument({
@@ -26,7 +31,7 @@ function markDocument({
     ::highlight(mar-page-find-current) { background-color: #ff963b; color: #202124; }
   `);
   const root = document.body;
-  const result: Marks = { ranges: [], sheet, limited: false };
+  const result: Marks = { matches: [], roots: new Set(), sheet, limited: false };
   if (!root || !query.trim() || !globalThis.Highlight || !CSS.highlights) return result;
 
   const literal = query
@@ -42,39 +47,49 @@ function markDocument({
   function flush(): void {
     let startPiece = 0;
     for (const match of text.matchAll(pattern)) {
-      if (result.ranges.length >= remaining) {
+      if (result.matches.length >= remaining) {
         result.limited = true;
         break;
       }
       const start = match.index;
       const end = start + match[0].length;
       while (pieces[startPiece + 1] && pieces[startPiece + 1]!.start <= start) startPiece++;
-      let endPiece = startPiece;
-      while (pieces[endPiece + 1] && pieces[endPiece + 1]!.start < end) endPiece++;
-      const first = pieces[startPiece]!;
-      const last = pieces[endPiece]!;
-      const range = new Range();
-      range.setStart(first.node, start - first.start);
-      range.setEnd(last.node, end - last.start);
-      result.ranges.push(range);
+      // A rendered match may span nodes that are not contiguous or ordered the same in the DOM.
+      const ranges: Range[] = [];
+      for (let i = startPiece; pieces[i] && pieces[i]!.start < end; i++) {
+        const { node, start: offset } = pieces[i]!;
+        const range = new Range();
+        range.setStart(node, Math.max(0, start - offset));
+        range.setEnd(node, Math.min(node.length, end - offset));
+        ranges.push(range);
+        const scope = node.getRootNode();
+        result.roots.add(scope instanceof ShadowRoot ? scope : document);
+      }
+      result.matches.push(ranges);
     }
     text = '';
     pieces = [];
   }
 
-  // Use a depth-bounded stack of siblings rather than materializing the entire tree.
-  const stack: { next: ChildNode | null; split: boolean; visible: boolean }[] = [
+  // Walk displayed children in place. Only slots need to materialize their assigned nodes.
+  const stack: {
+    next: ChildNode | null;
+    assigned?: { nodes: Node[]; index: number };
+    split: boolean;
+    visible: boolean;
+  }[] = [
     { next: root.firstChild, split: true, visible: getComputedStyle(root).visibility === 'visible' }
   ];
   while (stack.length && !result.limited) {
     const level = stack.at(-1)!;
-    const node = level.next;
+    const assigned = level.assigned;
+    const node = assigned ? assigned.nodes[assigned.index++] : level.next;
     if (!node) {
       stack.pop();
       if (level.split) flush();
       continue;
     }
-    level.next = node.nextSibling;
+    if (!assigned) level.next = node.nextSibling;
     if (++nodes > nodeLimit) {
       result.limited = true;
       break;
@@ -96,23 +111,32 @@ function markDocument({
         flush();
         continue;
       }
-      const split = style.display !== 'inline' && style.display !== 'contents';
+      const shadow = node.shadowRoot;
+      const slot = node instanceof HTMLSlotElement && node.getRootNode() instanceof ShadowRoot;
+      const slotted = slot ? node.assignedNodes() : [];
+      // Search shadow and slot contents as separate runs from their surrounding text.
+      const split = Boolean(
+        shadow || slot || (style.display !== 'inline' && style.display !== 'contents')
+      );
       if (split) flush();
       stack.push({
-        next: node.localName === 'details' && !node.hasAttribute('open') ? null : node.firstChild,
+        next: (shadow ?? node).firstChild,
+        ...(slotted.length ? { assigned: { nodes: slotted, index: 0 } } : {}),
         split,
         visible: style.visibility === 'visible'
       });
       if (node.localName === 'details' && !node.hasAttribute('open')) {
         const summary = Array.from(node.children).find((child) => child.localName === 'summary');
-        if (summary) stack.at(-1)!.next = summary.firstChild;
+        stack.at(-1)!.next = summary?.firstChild ?? null;
       }
     }
   }
   flush();
-  if (result.ranges.length) {
-    document.adoptedStyleSheets.push(sheet);
-    CSS.highlights.set('mar-page-find', new Highlight(...result.ranges));
+  if (result.matches.length) {
+    for (const scope of result.roots) scope.adoptedStyleSheets.push(sheet);
+    const highlight = new Highlight();
+    for (const ranges of result.matches) for (const range of ranges) highlight.add(range);
+    CSS.highlights.set('mar-page-find', highlight);
   }
   return result;
 }
@@ -162,8 +186,8 @@ export class BrowserPageFind {
               nodeLimit: NODE_LIMIT,
               textLimit: TEXT_LIMIT
             });
-            const { count, limited } = await marks.evaluate(({ ranges, limited }) => ({
-              count: ranges.length,
+            const { count, limited } = await marks.evaluate(({ matches, limited }) => ({
+              count: matches.length,
               limited
             }));
             this.total += count;
@@ -194,19 +218,26 @@ export class BrowserPageFind {
               await element.dispose();
             }
           }
-          await marks.evaluate(({ ranges }, i) => {
-            const range = ranges[i];
-            if (!range?.startContainer.isConnected) {
+          await marks.evaluate(({ matches }, i) => {
+            const ranges = matches[i]?.filter(({ startContainer }) => startContainer.isConnected);
+            const range = ranges?.[0];
+            if (!ranges || !range) {
               CSS.highlights.delete('mar-page-find-current');
               return;
             }
-            const active = new Highlight(range);
+            const active = new Highlight(...ranges);
             active.priority = 1;
             CSS.highlights.set('mar-page-find-current', active);
+            function renderedParent(node: Node): Element | null {
+              if ((node instanceof Element || node instanceof Text) && node.assignedSlot)
+                return node.assignedSlot;
+              const parent = node.parentNode;
+              return parent instanceof ShadowRoot ? parent.host : node.parentElement;
+            }
             for (
-              let parent = range.startContainer.parentElement;
+              let parent = renderedParent(range.startContainer);
               parent;
-              parent = parent.parentElement
+              parent = renderedParent(parent)
             ) {
               if (parent === document.scrollingElement) break;
               if (
@@ -268,12 +299,11 @@ export class BrowserPageFind {
     await Promise.allSettled(
       sections.map(async ({ marks }) => {
         try {
-          await marks.evaluate(({ sheet }) => {
+          await marks.evaluate(({ roots, sheet }) => {
             CSS.highlights.delete('mar-page-find');
             CSS.highlights.delete('mar-page-find-current');
-            document.adoptedStyleSheets = document.adoptedStyleSheets.filter(
-              (item) => item !== sheet
-            );
+            for (const scope of roots)
+              scope.adoptedStyleSheets = scope.adoptedStyleSheets.filter((item) => item !== sheet);
           });
         } finally {
           await marks.dispose();

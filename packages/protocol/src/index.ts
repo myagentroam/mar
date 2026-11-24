@@ -2033,7 +2033,6 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   browserViewportResize: z.literal(true).optional(),
   browserHd: z.literal(true).optional(),
   browserTabIcons: z.literal(true).optional(),
-  browserUse: z.literal(true).optional(),
   browserAgentActivity: z.literal(true).optional(),
   browserForegroundPresence: z.literal(true).optional(),
   browserNativeTouch: z.literal(true).optional(),

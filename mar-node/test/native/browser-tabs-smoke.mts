@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { BROWSER_CONTROL_MAX_BYTES, BROWSER_TAB_LIMIT } from '@myagentroam/protocol';
 import { chromium } from 'playwright';
 import { BrowserTabs } from '../../src/browser/browser-tabs.js';
 
@@ -308,10 +309,11 @@ try {
     assert.equal(await zoom(), '1');
     await assert.rejects(tabs.restore([`${base}/start`]), /BROWSER_RESTORE_NOT_BLANK/);
     await tabs.close(tabs.snapshot().activeId!);
-    await tabs.restore([`${base}/start`, `${base}/popup`]);
+    const longUrl = `${base}/start?padding=${'a'.repeat(1600)}&chapter=kept#section`;
+    await tabs.restore([longUrl, `${base}/popup`]);
     assert.deepEqual(
       tabs.snapshot().tabs.map(({ url }) => url),
-      [`${base}/start`, `${base}/popup`]
+      [longUrl, `${base}/popup`]
     );
     assert.equal(tabs.snapshot().tabs.at(-1)?.id, tabs.snapshot().activeId);
     for (const { id } of tabs.snapshot().tabs) await tabs.close(id);
@@ -324,6 +326,57 @@ try {
       [`${base}/start`, `${base}/popup`]
     );
     assert.equal(tabs.snapshot().tabs.at(-1)?.id, tabs.snapshot().activeId);
+
+    const crowdedContext = await browser.newContext();
+    const crowded = new BrowserTabs(crowdedContext, {
+      directory: workspace,
+      limit: BROWSER_TAB_LIMIT,
+      failed: (error) => errors.push(error)
+    });
+    const expected = Array.from(
+      { length: BROWSER_TAB_LIMIT },
+      (_, i) => `${base}/start?padding=${'a'.repeat(6500)}&tab=${i}#section`
+    );
+    for (const url of expected) await crowded.open(url);
+    const crowdedSnapshot = crowded.snapshot();
+    const projected = crowdedSnapshot.tabs.map(({ url }) => url);
+    const recent = projected.filter(Boolean);
+    assert.equal(projected.length, expected.length);
+    assert(recent.length >= 2 && recent.length < expected.length);
+    assert(projected.every((url, i) => !url || url === expected[i]));
+    assert.equal(projected.at(-1), expected.at(-1));
+    assert(
+      Buffer.byteLength(
+        JSON.stringify({
+          type: 'snapshot',
+          snapshot: { ...crowdedSnapshot, tabControls: crowded.tabControls(), agentActive: true }
+        })
+      ) <= BROWSER_CONTROL_MAX_BYTES
+    );
+    assert(
+      Buffer.byteLength(JSON.stringify({ type: 'tab.restore', addresses: recent })) <=
+        BROWSER_CONTROL_MAX_BYTES
+    );
+    const restoredContext = await browser.newContext();
+    await restoredContext.newPage();
+    const restored = new BrowserTabs(restoredContext, {
+      directory: workspace,
+      limit: BROWSER_TAB_LIMIT,
+      failed: (error) => errors.push(error)
+    });
+    await restored.restore(recent);
+    assert.deepEqual(
+      restoredContext.pages().map((page) => page.url()),
+      recent
+    );
+    await restoredContext.close();
+    await crowdedContext
+      .pages()
+      .at(-1)!
+      .goto(`${base}/start#${'x'.repeat(8192)}`);
+    assert.equal(crowded.snapshot().tabs.at(-1)?.url, '');
+    await crowdedContext.close();
+
     await context.close();
     assert.deepEqual(tabs.snapshot().tabs, []);
     assert(changed > 2);

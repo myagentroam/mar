@@ -83,6 +83,9 @@ const fixedTools = computed(() =>
 const optionalTools = computed(() =>
   availableTools.value.filter((tool) => tool.id === 'node-browser' || tool.id === 'terminal')
 );
+const addToolOptions = computed(() =>
+  ['terminal', 'node-browser'].flatMap((id) => optionalTools.value.filter((tool) => tool.id === id))
+);
 const openedTools = computed(() =>
   optionalTools.value.filter((tool) =>
     tool.id === 'terminal' ? props.state.terminalOpen : props.state.browserOpen
@@ -298,7 +301,7 @@ onBeforeUnmount(() => {
             <template #dropdown>
               <MarDropdownMenu :aria-label="t('browser.addAsideTab')">
                 <MarDropdownItem
-                  v-for="tool in optionalTools"
+                  v-for="tool in addToolOptions"
                   :key="tool.id"
                   :command="tool.id"
                   :icon="tool.id === 'terminal' ? 'terminal' : 'web'"

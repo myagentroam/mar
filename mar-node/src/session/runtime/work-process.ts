@@ -25,9 +25,13 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-/** Classify admitted session-origin markup at the Node projection boundary. */
-export function isAgentCollaborationMessage(item: NodeConversationItem): boolean {
-  if (item.kind !== 'user_message' || item.permissionStop !== undefined) return false;
+/** Classify cross-session follow-ups, not the input that started the Turn. */
+export function isAgentCollaborationMessage(
+  item: NodeConversationItem,
+  userItemId: NodeConversationTurn['userItemId']
+): boolean {
+  if (item.kind !== 'user_message' || item.id === userItemId || item.permissionStop !== undefined)
+    return false;
   const payload = record(item.payload);
   if (payload.source === 'SCHEDULED' || typeof payload.text !== 'string') return false;
   const parts = parseComposerTags(payload.text);
@@ -104,7 +108,7 @@ export function projectConversationWorkProcesses(turn: NodeConversationTurn): No
     let group: string | undefined;
     let isStart = false;
     if (visible(item)) {
-      const collaboration = isAgentCollaborationMessage(item);
+      const collaboration = isAgentCollaborationMessage(item, turn.userItemId);
       const independent =
         !collaboration &&
         (boundaries.has(item.kind) || (item.kind === 'error' && item.parentItemId === null));

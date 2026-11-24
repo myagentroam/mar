@@ -68,6 +68,71 @@ it('keeps a detached browser alive only while a download receives new bytes', as
   }
 });
 
+it('protects background downloads from capacity eviction until they settle', async () => {
+  const profileRoot = await mkdtemp(join(tmpdir(), 'mar-browser-download-capacity-'));
+  function createBrowser(cdp = new EventEmitter()) {
+    const context = Object.assign(new EventEmitter(), { pages: () => [] });
+    return {
+      context: context as unknown as BrowserContext,
+      downloads: { session: cdp as unknown as CDPSession, directory: profileRoot },
+      close: vi.fn(async () => {
+        context.emit('close');
+      })
+    };
+  }
+  const cdp = new EventEmitter();
+  const downloading = createBrowser(cdp);
+  const otherCdp = new EventEmitter();
+  const launch = vi
+    .fn(async () => createBrowser())
+    .mockResolvedValueOnce(downloading)
+    .mockResolvedValueOnce(createBrowser(otherCdp));
+  const runtime = new BrowserRuntime({
+    maxBrowsers: 2,
+    profileRoot,
+    profileUnused: async () => true,
+    launch,
+    encoder: async () => {
+      throw new Error('No attachment expected');
+    },
+    failed: vi.fn()
+  });
+  const idle = { ...scope, workspaceId: 'idle' };
+  const next = { ...scope, workspaceId: 'next' };
+  const guid = 'dc17dcf2-df54-4095-aeb5-5fd7c50e071b';
+  const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+  try {
+    const id = await runtime.open(scope);
+    cdp.emit('Browser.downloadWillBegin', { guid, suggestedFilename: 'large.bin' });
+    cdp.emit('Browser.downloadProgress', { guid, state: 'inProgress', receivedBytes: 1024 });
+    now.mockReturnValue(1);
+    await runtime.open(idle);
+
+    otherCdp.emit('Browser.downloadWillBegin', { guid, suggestedFilename: 'other.bin' });
+    await expect(runtime.open(next)).rejects.toThrow('BROWSER_CAPACITY');
+    otherCdp.emit('Browser.downloadProgress', { guid, state: 'canceled' });
+
+    // The downloading instance is older and has no Web or Playwright connection.
+    now.mockReturnValue(2);
+    await runtime.open(next);
+    expect(runtime.lookup(scope)).toBe(id);
+    expect(runtime.lookup(idle)).toBeUndefined();
+    expect(downloading.close).not.toHaveBeenCalled();
+
+    cdp.emit('Browser.downloadProgress', { guid, state: 'canceled' });
+    await runtime.open(idle);
+    expect(runtime.lookup(scope)).toBeUndefined();
+    expect(downloading.close).toHaveBeenCalledOnce();
+  } finally {
+    try {
+      await runtime.shutdown();
+    } finally {
+      now.mockRestore();
+      await rm(profileRoot, { recursive: true, force: true });
+    }
+  }
+});
+
 it('releases the live slot after confirmed exit even if the profile marker cannot be written', async () => {
   const profileRoot = await mkdtemp(join(tmpdir(), 'mar-browser-close-'));
   const failed = vi.fn();

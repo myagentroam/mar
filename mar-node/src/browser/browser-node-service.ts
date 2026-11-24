@@ -61,7 +61,7 @@ export class BrowserNodeService {
     const profileRoot = join(options.root, 'profiles');
     this.launcher = createBrowserLauncher(join(options.root, 'runs'), profileRoot, options.failed);
     this.browser = new BrowserRuntime({
-      maxBrowsers: 8,
+      maxBrowsers: 16,
       profileRoot,
       profileUnused: async (path) => (await chromiumProfileLock(path)) !== 'live',
       workspacePath: options.workspacePath,

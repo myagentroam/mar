@@ -90,6 +90,16 @@ const previousReconnectTab = {
   canGoBack: false,
   canGoForward: false
 };
+const previousReconnectTabs = [
+  previousReconnectTab,
+  { ...previousReconnectTab, id: 'unavailable-tab', title: '', url: '' },
+  {
+    ...previousReconnectTab,
+    id: 'long-address-tab',
+    title: 'Long address',
+    url: `https://example.test/archive?padding=${'a'.repeat(1600)}&chapter=kept#section`
+  }
+];
 let attemptedResume = false;
 browser.show = async (_scope, _capability, _canvas, action) => {
   if (!reconnect) return;
@@ -98,7 +108,7 @@ browser.show = async (_scope, _capability, _canvas, action) => {
     else {
       browser.snapshot.value = {
         activeId: previousReconnectTab.id,
-        tabs: [previousReconnectTab],
+        tabs: previousReconnectTabs,
         viewVersion: 1
       };
       browser.snapshot.value = undefined;
@@ -115,7 +125,7 @@ browser.show = async (_scope, _capability, _canvas, action) => {
     browser.snapshot.value = {
       activeId: live ? previousReconnectTab.id : 'replacement-tab',
       tabs: live
-        ? [previousReconnectTab]
+        ? previousReconnectTabs
         : [
             {
               id: 'replacement-tab',
