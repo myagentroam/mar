@@ -9,9 +9,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { BrowserFrameStream } from './browser-frame-stream.js';
 import type { BrowserPageCapture, BrowserPageView } from './browser-page-view.js';
 import type { BrowserTabs } from './browser-tabs.js';
-import { browserEncodeSize, type BrowserSize } from './browser-video-config.js';
+import { browserStreamSize, type BrowserSize } from './browser-video-config.js';
 
-type Encoder = ConstructorParameters<typeof BrowserFrameStream>[0]['encode'];
+type Encoder = (
+  jpeg: Buffer,
+  key: boolean,
+  raster: BrowserSize,
+  profile: { bitrate: number; fps: number }
+) => Promise<{ data: Uint8Array; key: boolean }>;
 type Command = Exclude<
   BrowserAttachmentMessage,
   { type: 'ack' | 'dialog.respond' | 'agent.control' }
@@ -89,8 +94,8 @@ export class BrowserAttachment {
     }
   ) {
     this.stream = new BrowserFrameStream({
-      encode: (jpeg, key, viewport, bitrate) =>
-        options.encoder.encode(jpeg, key, browserEncodeSize(viewport, this.stream.hd), bitrate),
+      encode: (jpeg, key, viewport, profile) =>
+        options.encoder.encode(jpeg, key, browserStreamSize(viewport, profile.hd), profile),
       hd: options.encoder.hd === true,
       rasterChanged: () => this.updateRaster(),
       send: options.sendFrame,
@@ -277,7 +282,7 @@ export class BrowserAttachment {
       version: snapshot.viewVersion,
       page: this.borrow.resource.activeView,
       size,
-      raster: browserEncodeSize(size, this.stream.hd)
+      raster: browserStreamSize(size, this.stream.hd)
     };
     this.shown = undefined;
     this.stream.setView(snapshot.viewVersion);
@@ -341,7 +346,7 @@ export class BrowserAttachment {
   private updateRaster(): void {
     const target = this.next;
     if (!target) return;
-    const raster = browserEncodeSize(target.size, this.stream.hd);
+    const raster = browserStreamSize(target.size, this.stream.hd);
     if (raster.width === target.raster.width && raster.height === target.raster.height) return;
     this.next = { ...target, raster };
     this.stream.resetRaster();
@@ -360,7 +365,7 @@ export class BrowserAttachment {
       if (this.closed || target !== this.next) continue;
       const version = target.version;
       this.capture = await target.page.startCapture(
-        { ...target.raster, quality: this.options.quality },
+        { ...target.raster, quality: this.options.quality, hd: this.stream.hd },
         (frame) => {
           if (target !== this.next) return;
           this.options.captured?.(frame.jpeg.byteLength);

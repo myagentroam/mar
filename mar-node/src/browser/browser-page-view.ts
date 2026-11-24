@@ -1,6 +1,7 @@
 import type { BrowserPageInput } from '@myagentroam/protocol';
 import type { CDPSession, Page } from 'playwright';
 import { BrowserContextMenu } from './browser-context-menu.js';
+import { browserJpegSize } from './browser-jpeg.js';
 import { BrowserPageFind } from './browser-page-find.js';
 
 type Frame = { jpeg: Buffer; width: number; height: number };
@@ -189,7 +190,7 @@ export class BrowserPageView {
   }
 
   async startCapture(
-    render: { width: number; height: number; quality: number },
+    render: { width: number; height: number; quality: number; hd?: boolean },
     offer: (frame: Frame) => void
   ): Promise<BrowserPageCapture> {
     const viewport = this.page.viewportSize();
@@ -198,6 +199,15 @@ export class BrowserPageView {
     let stopped = false;
     let receivedFrame = false;
     let stopping: Promise<void> | undefined;
+    const publish = (jpeg: Buffer, width: number, height: number) => {
+      const image = browserJpegSize(jpeg);
+      // CDP can report the new CSS viewport with an old compositor surface.
+      // Allow rounding at the raster edge, but do not present a cropped surface as the full page.
+      if (!image || Math.abs(image.width * height - image.height * width) > 2 * (width + height))
+        return;
+      receivedFrame = true;
+      offer({ jpeg, width, height });
+    };
     const onFrame = (event: {
       data: string;
       metadata: { deviceWidth: number; deviceHeight: number };
@@ -209,8 +219,7 @@ export class BrowserPageView {
         void session.send('Page.screencastFrameAck', { sessionId }).catch(() => undefined);
         // Chromium may queue a frame using the old viewport during resize.
         if (!viewport || (viewport.width === width && viewport.height === height)) {
-          receivedFrame = true;
-          offer({ jpeg: Buffer.from(data, 'base64'), width, height });
+          publish(Buffer.from(data, 'base64'), width, height);
         }
       }
     };
@@ -235,10 +244,15 @@ export class BrowserPageView {
       // repaint. Seed once, without overwriting a newer compositor frame.
       if (viewport && !stopped && !receivedFrame) {
         void this.page
-          .screenshot({ type: 'jpeg', quality: render.quality, scale: 'css', timeout: 3_000 })
+          .screenshot({
+            type: 'jpeg',
+            quality: render.quality,
+            scale: render.hd ? 'device' : 'css',
+            timeout: 3_000
+          })
           .then(
             (jpeg) => {
-              if (!stopped && !receivedFrame) offer({ jpeg, ...viewport });
+              if (!stopped && !receivedFrame) publish(jpeg, viewport.width, viewport.height);
             },
             () => undefined
           );

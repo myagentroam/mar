@@ -6,6 +6,7 @@ import {
 import { BrowserFrameRate } from './browser-frame-rate.js';
 
 type Capture = Omit<BrowserFrame, 'sequence' | 'data' | 'key'> & { jpeg: Buffer };
+type Profile = BrowserFrameRate['profile'];
 type CloseReason =
   'BROWSER_FRAME_TIMEOUT' | 'BROWSER_FRAME_ENCODE_FAILED' | 'BROWSER_FRAME_TRANSPORT_FAILED';
 type Flight = {
@@ -27,7 +28,7 @@ export class BrowserFrameStream {
   private sequence = 0;
   private viewVersion = 0;
   private encodedView: number | undefined;
-  private encodedBitrate: number | undefined;
+  private encodedProfile: Profile | undefined;
   private pending: Capture | undefined;
   private flight: Flight | undefined;
   private lastStartedAt = 0;
@@ -43,7 +44,7 @@ export class BrowserFrameStream {
         jpeg: Buffer,
         key: boolean,
         viewport: Pick<BrowserFrame, 'width' | 'height'>,
-        bitrate: number
+        profile: Profile
       ) => Promise<Pick<BrowserFrame, 'data' | 'key'>>;
       failed: (reason: CloseReason) => void;
       deadlineMs: number;
@@ -107,8 +108,8 @@ export class BrowserFrameStream {
   private flush(): void {
     if (this.flight || !this.pending || this.pacing || this.abort.signal.aborted) return;
     const now = performance.now();
-    const { fps, bitrate } = this.rate.profile;
-    const wait = this.lastStartedAt + 1000 / fps - now;
+    const profile = this.rate.profile;
+    const wait = this.lastStartedAt + 1000 / profile.fps - now;
     if (this.encodedView === this.pending.viewVersion && wait > 0) {
       this.pacing = setTimeout(() => {
         this.pacing = undefined;
@@ -129,7 +130,7 @@ export class BrowserFrameStream {
     this.lastStartedAt = now;
     this.timeout = setTimeout(() => this.fail('BROWSER_FRAME_TIMEOUT'), this.options.deadlineMs);
     this.timeout.unref();
-    void this.encodeAndSend(capture, flight, bitrate).then(
+    void this.encodeAndSend(capture, flight, profile).then(
       () => {
         if (this.flight !== flight) return;
         flight.sentAt = performance.now();
@@ -139,12 +140,12 @@ export class BrowserFrameStream {
     );
   }
 
-  private async encodeAndSend(capture: Capture, flight: Flight, bitrate: number): Promise<void> {
+  private async encodeAndSend(capture: Capture, flight: Flight, profile: Profile): Promise<void> {
     const { jpeg, ...view } = capture;
-    const key = view.viewVersion !== this.encodedView || bitrate !== this.encodedBitrate;
+    const key = view.viewVersion !== this.encodedView || profile !== this.encodedProfile;
     let encoded: Pick<BrowserFrame, 'data' | 'key'>;
     try {
-      encoded = await this.options.encode(jpeg, key, view, bitrate);
+      encoded = await this.options.encode(jpeg, key, view, profile);
     } catch {
       this.fail('BROWSER_FRAME_ENCODE_FAILED');
       return;
@@ -164,7 +165,7 @@ export class BrowserFrameStream {
       return;
     }
     this.encodedView = view.viewVersion;
-    this.encodedBitrate = bitrate;
+    this.encodedProfile = profile;
     flight.bytes = encoded.data.byteLength;
     flight.firstWriteAt = performance.now();
     for (const { bytes, final } of encodeBrowserFrame({

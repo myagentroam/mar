@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
@@ -8,6 +11,7 @@ import { RTCPeerConnection } from 'node-datachannel/polyfill';
 import { cleanup } from 'node-datachannel';
 import WebSocket, { WebSocketServer } from 'ws';
 import { BrowserAttachment } from '../../src/browser/browser-attachment.js';
+import { createBrowserLauncher } from '../../src/browser/browser-launcher.js';
 import { BrowserTabs } from '../../src/browser/browser-tabs.js';
 import { BROWSER_FRAME_MESSAGE_BYTES, browserAttachmentMessageSchema } from '@myagentroam/protocol';
 import { createBrowserVideoEncoder } from '../../src/browser/browser-video-encoder.js';
@@ -36,6 +40,7 @@ declare global {
         size: [number, number];
         viewport?: { width: number; height: number; viewVersion: number };
         raster?: { width: number; height: number };
+        fineDetail: number;
         wheelMessages: number;
         wheelToDrawMs: number;
       };
@@ -72,11 +77,20 @@ function captureRaster(jpeg: Buffer): [number, number] {
 // Runs real Chrome / native ICE or a two-hop loopback WS relay. It measures
 // input and frames without starting MAR routing, authentication or a PTY.
 const mode = process.argv[2];
-assert(mode === 'ice' || mode === 'ice-hd' || mode === 'relay', 'Specify ice, ice-hd or relay.');
-const hd = mode === 'ice-hd';
+assert(
+  mode === 'ice' || mode === 'ice-hd' || mode === 'ice-hd-small' || mode === 'relay',
+  'Specify ice, ice-hd, ice-hd-small or relay.'
+);
+const small = mode === 'ice-hd-small';
+const hd = mode === 'ice-hd' || small;
 const bitrate = hd ? BROWSER_VIDEO_HD_BITRATE : BROWSER_VIDEO_BITRATE;
-const targetSize = hd ? BROWSER_VIDEO_HD_LIMIT : { width: 1600, height: 900 };
-const fullRaster = hd ? [1920, 1080] : [1280, 720];
+const targetSize = small
+  ? { width: 800, height: 450 }
+  : hd
+    ? BROWSER_VIDEO_HD_LIMIT
+    : { width: 1600, height: 900 };
+const fullRaster = small ? [1600, 900] : hd ? [1920, 1080] : [1280, 720];
+const standardRaster = small ? [800, 450] : [1280, 720];
 const quality = Number(process.argv[3] ?? BROWSER_CAPTURE_QUALITY);
 assert(Number.isInteger(quality) && quality >= 1 && quality <= 100, 'JPEG quality must be 1–100.');
 const browser = await chromium.launch({
@@ -86,33 +100,22 @@ const browser = await chromium.launch({
   args: ['--disable-features=WebRtcHideLocalIpsWithMdns']
 });
 const scope = { workspaceId: 'benchmark-workspace', userId: 1 };
+const root = await mkdtemp(join(tmpdir(), 'mar-browser-frame-benchmark-'));
+const launcher = createBrowserLauncher(join(root, 'runs'), join(root, 'profiles'), console.error);
 const sessions = new BrowserSessionService({
   limit: 1,
   onCloseFailed: () => {
     throw new Error('Benchmark session did not close.');
   },
   launch: async () => {
-    const target = await chromium.launch({
-      channel: 'chrome',
-      headless: true,
-      chromiumSandbox: true
-    });
+    const target = await launcher.launch();
     try {
-      const context = await target.newContext({ viewport: BROWSER_VIEWPORT });
+      const { context } = target;
       const resource = {
-        page: await context.newPage(),
+        page: context.pages()[0] ?? (await context.newPage()),
         tabs: new BrowserTabs(context, { limit: 6, failed: console.error })
       };
-      return {
-        resource,
-        close: async () => {
-          try {
-            await context.close();
-          } finally {
-            await target.close();
-          }
-        }
-      };
+      return { resource, close: target.close };
     } catch (error) {
       await target.close();
       throw error;
@@ -140,7 +143,7 @@ try {
   const encoderPage = await browser.newPage();
   await encoderPage.goto(`${site}/encode`);
   const encoder = await createBrowserVideoEncoder(encoderPage, {
-    ...(hd ? targetSize : BROWSER_VIEWPORT),
+    ...(hd ? BROWSER_VIDEO_HD_LIMIT : BROWSER_VIEWPORT),
     bitrate,
     framerate: BROWSER_VIDEO_FRAMERATE,
     hd
@@ -152,8 +155,11 @@ try {
   borrow.resource.tabs.resize(targetSize);
   await target.setContent(`
     <style>body{margin:0}canvas{display:block}aside{position:absolute;top:60px;right:40px;width:460px;
-      height:750px;overflow:auto;background:#fafafa;color:#242936;padding-inline:12px;font:12px/21px monospace}</style>
+      height:${small ? '75vh' : '750px'};overflow:auto;background:#fafafa;color:#242936;padding-inline:12px;font:12px/21px monospace}
+      .detail{position:absolute;left:32px;top:35px;width:160px;height:16px;pointer-events:none;
+        background:repeating-linear-gradient(90deg,#000 0 .5px,#fff .5px 1px)}</style>
     <canvas width="1600" height="900"></canvas>
+    ${small ? '<div class="detail"></div>' : ''}
     <aside>${Array.from({ length: 150 }, (_, i) => `<div>${i + 1}: Render the latest frame at the current viewport.</div>`).join('')}</aside>
     <script>
       const ctx = document.querySelector('canvas').getContext('2d');
@@ -195,7 +201,7 @@ try {
       contents: `
       import { BrowserViewport } from '../../../packages/web-core/src/service/browser-viewport.ts';
       import { BrowserInputScheduler } from '../../../packages/web-core/src/service/browser-input-scheduler.ts';
-      const stats = { first: 0, frames: 0, bytes: 0, clicks: [], sibling: [], size: [], wheelMessages: 0, wheelToDrawMs: 0 };
+      const stats = { first: 0, frames: 0, bytes: 0, clicks: [], sibling: [], size: [], fineDetail: 0, wheelMessages: 0, wheelToDrawMs: 0 };
       const canvas = document.querySelector('canvas');
       const ctx = canvas.getContext('2d');
       const viewport = new BrowserViewport(canvas);
@@ -243,6 +249,12 @@ try {
           const { raster, ...cssViewport } = frame.viewport;
           stats.viewport = cssViewport;
           stats.raster = raster;
+          if (${small} && raster.width === 1600) {
+            const pixels = ctx.getImageData(80, 80, 128, 1).data;
+            let contrast = 0;
+            for (let i = 0; i < pixels.length; i += 8) contrast += pixels[i + 4] - pixels[i];
+            stats.fineDetail = Math.round(contrast / 64);
+          }
           stats.frames++;
           if (!stats.first) stats.first = performance.now() - globalThis.probe.startAt;
           if (clickDone && white === clickTarget) {
@@ -354,6 +366,7 @@ try {
   let capturedBytes = 0;
   const encodeTimes: number[] = [];
   const bitrateChanges: number[] = [];
+  const fpsChanges: number[] = [];
   let peakBuffered = 0;
   let streamError: Error | undefined;
   let rejectClick: ((error: Error) => void) | undefined;
@@ -378,6 +391,7 @@ try {
   // without modifying the host network. It doesn't model packet loss or TCP.
   const sampleKibPerSecond = 125;
   let throttle = false;
+  let firstCaptureRaster: [number, number] | undefined;
   let latestCaptureRaster: [number, number] | undefined;
   await workbench.evaluate(() => {
     window.probe.startAt = performance.now();
@@ -388,18 +402,21 @@ try {
       encoder: {
         ...(hd && { hd: true }),
         close: encoder.close,
-        encode: async (jpeg, key, viewport, bitrate) => {
+        encode: async (jpeg, key, raster, profile) => {
           latestCaptureRaster = captureRaster(jpeg);
+          firstCaptureRaster ??= latestCaptureRaster;
           const started = performance.now();
-          const unit = await encoder
-            .encode(jpeg, key, viewport, bitrate)
-            .catch((error: unknown) => {
-              console.error('Encoder:', error);
-              throw error;
-            });
-          if (bitrateChanges.at(-1) !== bitrate) {
+          const unit = await encoder.encode(jpeg, key, raster, profile).catch((error: unknown) => {
+            console.error('Encoder:', error);
+            throw error;
+          });
+          if (bitrateChanges.at(-1) !== profile.bitrate) {
             assert(unit.key, 'Bitrate must change on a key frame.');
-            bitrateChanges.push(bitrate);
+            bitrateChanges.push(profile.bitrate);
+          }
+          if (fpsChanges.at(-1) !== profile.fps) {
+            assert(unit.key, 'Encoder cadence must change on a key frame.');
+            fpsChanges.push(profile.fps);
           }
           encodeTimes.push(performance.now() - started);
           if (unit.key) {
@@ -461,7 +478,9 @@ try {
     const cpuBefore = process.cpuUsage();
     const started = performance.now();
     let samples = 0;
-    while (samples < 20 || (hd && performance.now() - started < 7_000)) {
+    // The one-frame credit and paced writes put a lower bound on how quickly
+    // a large key frame can finish; give all HD backoff steps time to settle.
+    while (samples < 20 || (hd && performance.now() - started < 12_000)) {
       await workbench.evaluate(() => window.probe.keyboard());
       await delay(110);
       samples++;
@@ -473,16 +492,24 @@ try {
     const delivered = after.frames - before.frames;
     const sampleJpegSize = capturedBytes - capturedBytesBefore;
     if (streamError) throw streamError;
-    assert.deepEqual(after.size, [1280, 720], 'Sustained pressure must use the standard raster.');
-    assert.deepEqual(after.raster, { width: 1280, height: 720 });
+    assert.deepEqual(
+      after.size,
+      standardRaster,
+      'Sustained pressure must use the standard raster.'
+    );
+    assert.deepEqual(after.raster, { width: standardRaster[0], height: standardRaster[1] });
     const pressuredCapture = latestCaptureRaster;
-    assert.deepEqual(pressuredCapture, [1280, 720], 'The capture itself must also downshift.');
+    assert.deepEqual(pressuredCapture, standardRaster, 'The capture itself must also downshift.');
     assert.deepEqual(
       after.viewport,
       first.viewport,
       'Raster changes must not change the CSS view.'
     );
-    assert(bitrateChanges.at(-1)! < BROWSER_VIDEO_BITRATE, 'Expected sustained backoff.');
+    assert(
+      bitrateChanges.at(-1)! < BROWSER_VIDEO_BITRATE,
+      `Expected sustained backoff; bitrate history: ${bitrateChanges.join(', ')}.`
+    );
+    assert(fpsChanges.at(-1)! < BROWSER_VIDEO_FRAMERATE, 'Expected encoder cadence reduction.');
     assert(
       delivered > 2 && captured > delivered + 2,
       `Expected draws and dropped captures in the slow sample (captured ${captured}, drew ${delivered}).`
@@ -515,7 +542,10 @@ try {
     throttle = false;
     const recoveredAt = performance.now();
     await target.evaluate(() => window.animate());
-    while (bitrateChanges.at(-1) !== bitrate && !streamError) {
+    while (
+      (bitrateChanges.at(-1) !== bitrate || fpsChanges.at(-1) !== BROWSER_VIDEO_FRAMERATE) &&
+      !streamError
+    ) {
       assert(performance.now() - recoveredAt < (hd ? 14_000 : 8_000), 'Expected bitrate recovery.');
       await delay(100);
     }
@@ -535,6 +565,16 @@ try {
     assert.deepEqual(recovered.raster, first.raster);
     assert.deepEqual(latestCaptureRaster, fullRaster, 'The capture itself must also recover.');
     assert.deepEqual(recovered.viewport, first.viewport);
+    assert.equal(fpsChanges.at(-1), BROWSER_VIDEO_FRAMERATE);
+    if (small) {
+      assert.equal(first.viewport?.width, 800);
+      assert.equal(first.viewport?.height, 450);
+      assert.deepEqual(firstCaptureRaster, fullRaster, 'The original JPEG must contain HD pixels.');
+      assert(
+        first.fineDetail >= 100 && recovered.fineDetail >= 100,
+        'Expected real sub-CSS-pixel detail, not an upscaled JPEG.'
+      );
+    }
     await borrow.resource.tabs.open();
     const previousKeys = keysSent;
     const drawnBeforeSwitch = await workbench.evaluate(() => window.probe.stats.frames);
@@ -561,11 +601,15 @@ try {
       JSON.stringify({
         mode,
         quality,
+        cssViewport: first.viewport,
+        firstCaptureRaster,
+        ...(small && { fineDetail: first.fineDetail, recoveredFineDetail: recovered.fineDetail }),
         firstRaster: first.size,
         encodedSize: after.size,
         pressuredCapture,
         recoveredRaster: recovered.size,
         bitrateChanges,
+        fpsChanges,
         recoveryMs,
         firstFrameMs: Math.round(after.first),
         switchToDrawMs,
@@ -602,6 +646,7 @@ try {
   if (relay) await new Promise<void>((resolve) => relay!.close(() => resolve()));
   peer?.close();
   await sessions.shutdown();
+  await rm(root, { recursive: true, force: true });
   await browser.close();
   fixtureServer?.close();
   cleanup();

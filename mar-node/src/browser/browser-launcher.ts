@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { installBrowserContextMenu } from './browser-context-menu.js';
 import { attachBrowserProfileData, writeBrowserDataExtension } from './browser-profile-data.js';
-import { BROWSER_VIEWPORT } from './browser-video-config.js';
+import { BROWSER_DEVICE_SCALE_FACTOR, BROWSER_VIEWPORT } from './browser-video-config.js';
 import { recordBrowserRun, retireBrowserRun, sweepBrowserRuns } from './browser-run-directories.js';
 
 const HTTP_CACHE_BYTES = 128 * 1024 * 1024;
@@ -40,10 +40,13 @@ export function createBrowserLauncher(
         headless: true,
         chromiumSandbox: false,
         viewport: BROWSER_VIEWPORT,
+        deviceScaleFactor: BROWSER_DEVICE_SCALE_FACTOR,
         acceptDownloads: true,
         downloadsPath,
         ignoreDefaultArgs: ['--disable-extensions'],
         args: [
+          // Screencast uses the native scale; deviceScaleFactor alone only changes emulation.
+          `--force-device-scale-factor=${BROWSER_DEVICE_SCALE_FACTOR}`,
           `--disk-cache-size=${HTTP_CACHE_BYTES}`,
           `--disable-extensions-except=${extension}`,
           `--load-extension=${extension}`

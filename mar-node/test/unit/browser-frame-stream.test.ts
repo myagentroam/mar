@@ -88,7 +88,7 @@ describe('Browser attachment frame stream', () => {
       Buffer.from([2]),
       true,
       { viewVersion: 2, width: 800, height: 600 },
-      expect.any(Number)
+      { fps: 24, bitrate: 1_500_000, hd: false }
     );
     stream.close();
   });
@@ -220,7 +220,7 @@ describe('Browser attachment frame stream', () => {
     expect(frames).toEqual([1, 3, 5]);
   });
 
-  it('starts a changed bitrate with a key frame without changing the view', async () => {
+  it('starts each changed quality profile with a key frame without changing the view', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const receiver = new BrowserFrameReceiver();
     const encode = vi.fn<ConstructorParameters<typeof BrowserFrameStream>[0]['encode']>(
@@ -249,13 +249,14 @@ describe('Browser attachment frame stream', () => {
       true,
       false,
       false,
-      false,
+      true,
       false,
       false
     ]);
+    expect(calls[3]?.[3]).toEqual({ ...calls[0]![3], fps: 10 });
     expect(calls[6]?.[1]).toBe(true);
     expect(calls[6]?.[2]).toEqual({ viewVersion: 1, width: 800, height: 600 });
-    expect(calls[6]?.[3]).toBeLessThan(calls[0]![3]);
+    expect(calls[6]?.[3]).toEqual({ fps: 10, bitrate: 768_000, hd: false });
     stream.close();
   });
 });

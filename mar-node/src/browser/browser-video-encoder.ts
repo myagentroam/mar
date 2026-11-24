@@ -46,6 +46,7 @@ export async function createBrowserVideoEncoder(
       });
       encoder.configure(config);
       let activeBitrate = config.bitrate;
+      let activeFps = config.framerate;
       let lastTimestamp = -1;
       return {
         async encode({
@@ -53,30 +54,41 @@ export async function createBrowserVideoEncoder(
           key,
           timestamp,
           size,
-          bitrate
+          bitrate,
+          fps
         }: {
           jpeg: string;
           key: boolean;
           timestamp: number;
           size?: { width: number; height: number };
           bitrate: number;
+          fps: number;
         }) {
-          const resized = size && (size.width !== canvas.width || size.height !== canvas.height);
-          if (resized) {
-            canvas.width = size.width;
-            canvas.height = size.height;
-          }
-          if (resized || activeBitrate !== bitrate) {
-            encoder.configure({ ...config, width: canvas.width, height: canvas.height, bitrate });
-            activeBitrate = bitrate;
-            key = true;
-          }
           const binary = atob(jpeg);
           const bytes = new Uint8Array(binary.length);
           for (let index = 0; index < binary.length; index++)
             bytes[index] = binary.charCodeAt(index);
           const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/jpeg' }));
           try {
+            // Fit the decoded JPEG within the requested raster without upscaling it.
+            const scale = size
+              ? Math.min(1, size.width / bitmap.width, size.height / bitmap.height)
+              : 1;
+            const width = size ? 2 * Math.floor((bitmap.width * scale + 1e-6) / 2) : config.width;
+            const height = size
+              ? 2 * Math.floor((bitmap.height * scale + 1e-6) / 2)
+              : config.height;
+            const resized = width !== canvas.width || height !== canvas.height;
+            if (resized) {
+              canvas.width = width;
+              canvas.height = height;
+            }
+            if (resized || activeBitrate !== bitrate || activeFps !== fps) {
+              encoder.configure({ ...config, width, height, bitrate, framerate: fps });
+              activeBitrate = bitrate;
+              activeFps = fps;
+              key = true;
+            }
             context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
           } finally {
             bitmap.close();
@@ -107,12 +119,18 @@ export async function createBrowserVideoEncoder(
 
   let closing: Promise<void> | undefined;
   return {
-    async encode(jpeg: Buffer, key: boolean, viewport?: BrowserSize, bitrate = options.bitrate) {
+    async encode(
+      jpeg: Buffer,
+      key: boolean,
+      raster?: BrowserSize,
+      profile = { bitrate: options.bitrate, fps: options.framerate }
+    ) {
       const value = await handle.evaluate((encoder, input) => encoder.encode(input), {
         jpeg: jpeg.toString('base64'),
         key,
-        bitrate,
-        ...(viewport ? { size: browserEncodeSize(viewport, options.hd) } : {}),
+        bitrate: profile.bitrate,
+        fps: profile.fps,
+        ...(raster ? { size: browserEncodeSize(raster, options.hd) } : {}),
         timestamp: Math.round(performance.now() * 1000)
       });
       return { data: Buffer.from(value.data, 'base64'), key: value.key };
