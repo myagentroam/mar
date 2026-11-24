@@ -5,9 +5,7 @@ for (const [width, theme] of [
   [1280, 'dark'],
   [390, 'daylight']
 ] as const) {
-  test(`Aside add button uses the shared action overlay and opens Browser at ${width}px`, async ({
-    page
-  }) => {
+  test(`Aside add button stays compact and opens Browser at ${width}px`, async ({ page }) => {
     const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
     try {
       await page.setViewportSize({ width, height: 740 });
@@ -19,6 +17,8 @@ for (const [width, theme] of [
       const browserTab = tabs.getByRole('tab', { name: 'Browser', exact: true });
       const browserCommand = page.getByRole('menuitem', { name: 'Browser', exact: true });
       await expect(add).toBeInViewport();
+      await expect(add).toHaveCSS('padding', '2px');
+      await expect(add).toHaveCSS('width', '25px');
       await expect(add).toHaveAttribute('aria-haspopup', 'menu');
       await expect(
         tabs.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u })

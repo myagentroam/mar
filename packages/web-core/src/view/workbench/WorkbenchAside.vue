@@ -4,7 +4,6 @@ import '../../styles/workbench-tab-header.css';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
-import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';
 import { translate as t } from '../../service/locale-preference-service.js';
@@ -278,13 +277,14 @@ onBeforeUnmount(() => {
             placement="bottom-end"
             @command="emit('selectTool', { ...workspace, id: 'node-browser' })"
           >
-            <MarButton
-              class="mar-icon-action"
-              text
-              icon="plus"
-              :aria-label="t('browser.addAsideTab')"
+            <button
               v-tooltip="t('browser.addAsideTab')"
-            />
+              class="mar-icon-button mar-icon-action"
+              type="button"
+              :aria-label="t('browser.addAsideTab')"
+            >
+              <MarIcon name="plus" />
+            </button>
             <template #dropdown>
               <MarDropdownMenu :aria-label="t('browser.addAsideTab')">
                 <MarDropdownItem command="browser" icon="web">{{
