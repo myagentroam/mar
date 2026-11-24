@@ -1,6 +1,8 @@
 import {
   BROWSER_CONTROL_MAX_BYTES,
   BROWSER_VIDEO_CODEC,
+  BROWSER_VIEWPORT_MAX,
+  BROWSER_VIEWPORT_MIN,
   browserAttachmentEventSchema,
   type BrowserAttachmentMessage,
   type BrowserAttachmentOpen,
@@ -9,6 +11,7 @@ import {
 import { BrowserViewport } from './browser-viewport.js';
 
 type Link = WebSocket | RTCDataChannel;
+export type BrowserStreamSample = Readonly<{ bitsPerSecond: number; framesPerSecond: number }>;
 
 export async function supportsBrowserVideo(): Promise<boolean> {
   return (
@@ -18,7 +21,7 @@ export async function supportsBrowserVideo(): Promise<boolean> {
   );
 }
 
-/** Owns one already-selected data path and its decoder. Its caller owns
+/** Owns one already-selected data path, its decoder and local stream counters. Its caller owns
  * authorization, path selection and reconnection. It never queues input.
  */
 export class BrowserAttachmentClient {
@@ -27,16 +30,24 @@ export class BrowserAttachmentClient {
   private closed = false;
   private version: number | undefined;
   private drawn = false;
+  private sampleTimer: ReturnType<typeof setInterval> | undefined;
+  private sampleStart = 0;
+  private receivedBytes = 0;
+  private drawnFrames = 0;
+  private resizeObserver: ResizeObserver | undefined;
+  private resizeTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly link: Link,
-    canvas: HTMLCanvasElement,
+    private readonly canvas: HTMLCanvasElement,
     private readonly open: BrowserAttachmentOpen,
     private readonly options: {
       snapshot(snapshot: BrowserTabSnapshot): void;
       selection?(id: string, text: string): void;
       attached?(): void;
+      resizeViewport?: boolean;
       frame(frame: { viewVersion: number; width: number; height: number }): void;
+      sample(value: BrowserStreamSample): void;
       failed(code: string): void;
       ended(code: string): void;
     }
@@ -60,6 +71,9 @@ export class BrowserAttachmentClient {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    clearInterval(this.sampleTimer);
+    clearTimeout(this.resizeTimer);
+    this.resizeObserver?.disconnect();
     this.link.removeEventListener('open', this.sendOpen);
     this.link.removeEventListener('message', this.onMessage);
     this.link.removeEventListener('close', this.onClose);
@@ -89,6 +103,9 @@ export class BrowserAttachmentClient {
       const event = browserAttachmentEventSchema.parse(JSON.parse(data));
       if (event.type === 'ATTACHED' && !this.ready) {
         this.ready = true;
+        this.sampleStart = performance.now();
+        this.sampleTimer = setInterval(this.publishSample, 1_000);
+        if (this.options.resizeViewport) this.observeSize();
         this.options.attached?.();
         return;
       }
@@ -110,12 +127,47 @@ export class BrowserAttachmentClient {
       return;
     }
     if (!this.ready || !(data instanceof ArrayBuffer)) throw new Error('Unexpected browser frame');
+    this.receivedBytes += data.byteLength;
     const frame = await this.viewport.receive(new Uint8Array(data));
     if (this.closed || !frame || !this.sendText({ type: 'ack', sequence: frame.sequence })) return;
     if (frame.viewport?.viewVersion === this.version && frame.viewport) {
       this.drawn = true;
+      this.drawnFrames++;
       this.options.frame(frame.viewport);
     }
+  }
+
+  private readonly publishSample = (): void => {
+    const now = performance.now();
+    const seconds = (now - this.sampleStart) / 1_000;
+    this.sampleStart = now;
+    const value = {
+      bitsPerSecond: (this.receivedBytes * 8) / seconds,
+      framesPerSecond: this.drawnFrames / seconds
+    };
+    this.receivedBytes = this.drawnFrames = 0;
+    this.options.sample(value);
+  };
+
+  private observeSize(): void {
+    let sent: { width: number; height: number } | undefined;
+    this.resizeObserver = new ResizeObserver(() => {
+      clearTimeout(this.resizeTimer);
+      this.resizeTimer = setTimeout(() => {
+        const { clientWidth, clientHeight } = this.canvas;
+        if (
+          this.closed ||
+          clientWidth < BROWSER_VIEWPORT_MIN ||
+          clientHeight < BROWSER_VIEWPORT_MIN
+        )
+          return;
+        const width = Math.min(clientWidth, BROWSER_VIEWPORT_MAX);
+        const height = Math.min(clientHeight, BROWSER_VIEWPORT_MAX);
+        if (width === sent?.width && height === sent.height) return;
+        if (this.send({ type: 'viewport.resize', width, height })) sent = { width, height };
+      }, 120);
+    });
+    this.resizeObserver.observe(this.canvas);
   }
 
   private linkOpen(): boolean {

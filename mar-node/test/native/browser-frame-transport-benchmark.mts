@@ -313,9 +313,9 @@ try {
     {
       encoder: {
         close: encoder.close,
-        encode: async (jpeg, key) => {
+        encode: async (jpeg, key, viewport) => {
           const started = performance.now();
-          const unit = await encoder.encode(jpeg, key).catch((error: unknown) => {
+          const unit = await encoder.encode(jpeg, key, viewport).catch((error: unknown) => {
             console.error('Encoder:', error);
             throw error;
           });
@@ -327,7 +327,7 @@ try {
           return unit;
         }
       },
-      render: { width: 960, height: 600, quality },
+      quality,
       captured: (size) => {
         captures++;
         capturedBytes += size;

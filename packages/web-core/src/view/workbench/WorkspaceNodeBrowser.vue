@@ -11,25 +11,27 @@ import { MarIcon } from '@myagentroam/mar-ui/icons';
 import {
   BROWSER_TAB_LIMIT,
   isBrowserWorkspacePreview,
-  type BrowserCapability,
   type BrowserPageInput
 } from '@myagentroam/protocol';
 import type { AsideWorkspace } from '../../service/workbench-aside-service.js';
 import type {
   BrowserDestination,
+  WorkbenchBrowserCapability,
   WorkbenchBrowserService
 } from '../../service/workbench-browser-service.js';
 import { browserAddress, isBrowserLoopback } from '../../service/browser-link-routing.js';
 import BrowserDownloadsDialog from './BrowserDownloadsDialog.vue';
+import BrowserPerformanceIndicator from './BrowserPerformanceIndicator.vue';
 import { browserError } from '../../service/browser-presentation.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
 
 const props = defineProps<{
   scope: AsideWorkspace;
-  capability: BrowserCapability;
+  capability: WorkbenchBrowserCapability;
   browser: WorkbenchBrowserService;
   connected: boolean;
+  directDescription?: string | undefined;
   requested?: BrowserDestination | undefined;
   restoreId?: string | undefined;
 }>();
@@ -50,7 +52,12 @@ const preserve = ref(false);
 const answer = ref('');
 const clipboardStatus = ref<'copied' | 'copyFailed'>();
 const downloadsOpen = ref(false);
-const { snapshot, status, frame, path, error, uploadStatus } = props.browser;
+const { snapshot, status, frame, path, streamSample, error, uploadStatus } = props.browser;
+const connection = computed(() => {
+  if (path.value === 'ice') return props.directDescription ?? t('workspaceTabs.directAvailable');
+  if (path.value === 'relay') return t('browser.relay');
+  return status.value === 'connecting' ? t('browser.connecting') : '—';
+});
 const active = computed(() =>
   snapshot.value?.tabs.find((tab) => tab.id === snapshot.value?.activeId)
 );
@@ -250,14 +257,29 @@ function respond(accept: boolean): void {
   });
 }
 
-function point(event: PointerEvent) {
+function paintedPage() {
   if (!frame.value || !canvas.value) return;
-  const box = canvas.value.getBoundingClientRect();
-  const { width, height, viewVersion } = frame.value;
-  const scale = Math.min(box.width / width, box.height / height);
+  const element = canvas.value;
+  const box = element.getBoundingClientRect();
+  const scale = Math.min(box.width / element.width, box.height / element.height);
   if (scale <= 0) return;
-  const x = (event.clientX - box.left - (box.width - width * scale) / 2) / scale;
-  const y = (event.clientY - box.top - (box.height - height * scale) / 2) / scale;
+  // Match the canvas's object-fit: contain, then convert to remote CSS pixels.
+  const width = element.width * scale;
+  const height = element.height * scale;
+  return {
+    left: box.left + (box.width - width) / 2,
+    top: box.top + (box.height - height) / 2,
+    scaleX: width / frame.value.width,
+    scaleY: height / frame.value.height
+  };
+}
+
+function point(event: PointerEvent) {
+  const painted = paintedPage();
+  if (!painted || !frame.value || !canvas.value) return;
+  const { width, height, viewVersion } = frame.value;
+  const x = (event.clientX - painted.left) / painted.scaleX;
+  const y = (event.clientY - painted.top) / painted.scaleY;
   if (
     (x < 0 || x >= width || y < 0 || y >= height) &&
     !canvas.value.hasPointerCapture(event.pointerId)
@@ -315,9 +337,9 @@ function touchPointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
   gesture.scrolling = true;
   gesture.clientX = event.clientX;
   gesture.clientY = event.clientY;
-  const box = canvas.value.getBoundingClientRect();
-  const scale = Math.min(box.width / frame.value.width, box.height / frame.value.height);
-  if (scale > 0 && (dx || dy)) input({ type: 'wheel', viewVersion, x: dx / scale, y: dy / scale });
+  const painted = paintedPage();
+  if (painted && (dx || dy))
+    input({ type: 'wheel', viewVersion, x: dx / painted.scaleX, y: dy / painted.scaleY });
 }
 
 function cancelPointer(id: number): void {
@@ -461,15 +483,18 @@ function insertText(value: string): void {
         :model-value="snapshot.activeId"
         @tab-activate="(id) => browser.send({ type: 'tab.select', tabId: String(id) })"
         @tab-close="(id) => browser.send({ type: 'tab.close', tabId: String(id) })"
-      />
-      <MarButton
-        class="node-browser-icon"
-        icon="plus"
-        :aria-label="t('browser.tab')"
-        v-tooltip="t('browser.tab')"
-        :disabled="!hasCommands || tabs.length >= BROWSER_TAB_LIMIT"
-        @click="browser.send({ type: 'tab.open' })"
-      />
+      >
+        <template #action>
+          <MarButton
+            text
+            icon="plus"
+            :aria-label="t('browser.tab')"
+            v-tooltip="t('browser.tab')"
+            :disabled="!hasCommands || tabs.length >= BROWSER_TAB_LIMIT"
+            @click="browser.send({ type: 'tab.open' })"
+          />
+        </template>
+      </MarTabs>
     </div>
     <form class="node-browser-toolbar" @submit.prevent="navigate">
       <div class="node-browser-nav" role="group" :aria-label="t('browser.navigationControls')">
@@ -491,7 +516,7 @@ function insertText(value: string): void {
         />
         <MarButton
           class="node-browser-icon"
-          :icon="active?.loading ? 'stop' : 'refresh'"
+          :icon="active?.loading ? 'close' : 'refresh'"
           :aria-label="t(active?.loading ? 'browser.stop' : 'browser.reload')"
           v-tooltip="t(active?.loading ? 'browser.stop' : 'browser.reload')"
           :disabled="!hasCommands || !active"
@@ -659,9 +684,9 @@ function insertText(value: string): void {
         >
       </div>
     </div>
-    <p v-if="path" class="node-browser-text" role="status">
-      {{ t(path === 'ice' ? 'browser.ice' : 'browser.relay') }}
-    </p>
+    <footer class="node-browser-status">
+      <BrowserPerformanceIndicator :connection="connection" :frame="frame" :sample="streamSample" />
+    </footer>
     <BrowserDownloadsDialog
       v-if="downloadsOpen"
       :browser="browser"
@@ -771,6 +796,8 @@ function insertText(value: string): void {
   place-items: center;
 }
 .node-browser-body canvas {
+  position: absolute;
+  inset: 0;
   inline-size: 100%;
   block-size: 100%;
   min-block-size: 0;
@@ -840,6 +867,12 @@ function insertText(value: string): void {
 .node-browser-text {
   margin: 0.25rem 0.5rem;
   color: var(--mar-ui-text-secondary);
+}
+.node-browser-status {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  padding: 0.125rem 0.25rem;
 }
 @media (max-width: 420px) {
   .node-browser-toolbar {

@@ -2171,7 +2171,12 @@ export function createWorkbenchPageController<
   return {
     layout: navigationPresentation.layoutView,
     browser,
-    browserCapability: () => nodeManifest.value?.browser,
+    browserCapability: () => {
+      const manifest = nodeManifest.value;
+      return manifest?.browser && manifest.browserViewportResize
+        ? { ...manifest.browser, resizeViewport: true as const }
+        : manifest?.browser;
+    },
     browserConnectionReady: () => workbenchLiveConnection.connected.value,
     tree: proxyRefs({
       draggingWorkspace,

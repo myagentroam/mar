@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { browserPageInputSchema } from '../../src/index.js';
+import { browserAttachmentMessageSchema, browserPageInputSchema } from '../../src/index.js';
 
 describe('Browser page input wire format', () => {
+  it('accepts odd CSS viewport sizes and rejects invalid dimensions', () => {
+    const message = { type: 'viewport.resize', width: 391, height: 655 };
+    expect(browserAttachmentMessageSchema.parse(message)).toEqual(message);
+    expect(browserAttachmentMessageSchema.safeParse({ ...message, height: 0 }).success).toBe(false);
+    expect(browserAttachmentMessageSchema.safeParse({ ...message, width: 100_000 }).success).toBe(
+      false
+    );
+  });
+
   it('preserves committed text separately from key transitions', () => {
     const text = { type: 'text', viewVersion: 1, text: '你好' };
     const key = { type: 'key', viewVersion: 1, edge: 'down', key: 'ArrowDown' };

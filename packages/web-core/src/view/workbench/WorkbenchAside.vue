@@ -4,7 +4,10 @@ import '../../styles/workbench-tab-header.css';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';
+import { translate as t } from '../../service/locale-preference-service.js';
 import {
   consoleKeyboardShortcutService,
   type ConsoleShortcutBinding
@@ -69,11 +72,12 @@ type AsideTab = {
 const fixedTools = computed(() =>
   props.tools.filter((tool) => tool.id !== 'node-browser' && props.state.tools.includes(tool.id))
 );
-const browserTab = computed(() =>
-  props.state.browserOpen && props.state.tools.includes('node-browser')
+const browserTool = computed(() =>
+  props.state.tools.includes('node-browser')
     ? props.tools.find((tool) => tool.id === 'node-browser')
     : undefined
 );
+const browserTab = computed(() => (props.state.browserOpen ? browserTool.value : undefined));
 const entries = computed<AsideTab[]>(() => [
   ...fixedTools.value.map((tool) => ({
     id: `tool:${tool.id}`,
@@ -267,6 +271,27 @@ onBeforeUnmount(() => {
             aria-hidden="true"
             ><i />
           </span>
+        </template>
+        <template v-if="browserTool && !inert" #action>
+          <MarDropdown
+            trigger="click"
+            placement="bottom-end"
+            @command="emit('selectTool', { ...workspace, id: 'node-browser' })"
+          >
+            <MarButton
+              text
+              icon="plus"
+              :aria-label="t('browser.addAsideTab')"
+              v-tooltip="t('browser.addAsideTab')"
+            />
+            <template #dropdown>
+              <MarDropdownMenu :aria-label="t('browser.addAsideTab')">
+                <MarDropdownItem command="browser" icon="web">{{
+                  browserTool.label
+                }}</MarDropdownItem>
+              </MarDropdownMenu>
+            </template>
+          </MarDropdown>
         </template>
       </MarTabs>
     </header>

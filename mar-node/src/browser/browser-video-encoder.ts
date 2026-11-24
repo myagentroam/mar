@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { BROWSER_VIDEO_CODEC } from '@myagentroam/protocol';
 import type { Page } from 'playwright';
+import { browserEncodeSize, type BrowserSize } from './browser-video-config.js';
 
 /** One AVC encoder per attached view stream. The caller supplies a blank page
  * in a trusted encoder context, never a user-controlled navigation target.
@@ -14,7 +15,11 @@ export async function createBrowserVideoEncoder(
   const handle = await page.evaluateHandle(
     async (options) => {
       const config: VideoEncoderConfig = {
-        ...options,
+        bitrate: options.bitrate,
+        framerate: options.framerate,
+        width: options.width,
+        height: options.height,
+        codec: options.codec,
         latencyMode: 'realtime',
         avc: { format: 'annexb' }
       };
@@ -42,7 +47,23 @@ export async function createBrowserVideoEncoder(
       encoder.configure(config);
       let lastTimestamp = -1;
       return {
-        async encode({ jpeg, key, timestamp }: { jpeg: string; key: boolean; timestamp: number }) {
+        async encode({
+          jpeg,
+          key,
+          timestamp,
+          size
+        }: {
+          jpeg: string;
+          key: boolean;
+          timestamp: number;
+          size?: { width: number; height: number };
+        }) {
+          if (size && (size.width !== canvas.width || size.height !== canvas.height)) {
+            canvas.width = size.width;
+            canvas.height = size.height;
+            encoder.configure({ ...config, ...size });
+            key = true;
+          }
           const binary = atob(jpeg);
           const bytes = new Uint8Array(binary.length);
           for (let index = 0; index < binary.length; index++)
@@ -79,10 +100,11 @@ export async function createBrowserVideoEncoder(
 
   let closing: Promise<void> | undefined;
   return {
-    async encode(jpeg: Buffer, key: boolean) {
+    async encode(jpeg: Buffer, key: boolean, viewport?: BrowserSize) {
       const value = await handle.evaluate((encoder, input) => encoder.encode(input), {
         jpeg: jpeg.toString('base64'),
         key,
+        ...(viewport ? { size: browserEncodeSize(viewport) } : {}),
         timestamp: Math.round(performance.now() * 1000)
       });
       return { data: Buffer.from(value.data, 'base64'), key: value.key };

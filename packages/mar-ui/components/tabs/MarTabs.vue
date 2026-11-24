@@ -82,6 +82,9 @@ function activate(name: Name): void {
       @close="emit('tab-close', $event)"
     >
       <template v-if="$slots.label" #label="scope"><slot name="label" v-bind="scope" /></template>
+      <template v-if="mode === 'strip' && appearance === 'workbench' && $slots.action" #action>
+        <slot name="action" />
+      </template>
     </MarTabsHeader>
     <div v-if="mode !== 'strip'" class="mar-ui-tabs__content"><slot /></div>
   </div>

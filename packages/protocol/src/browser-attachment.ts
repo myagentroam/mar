@@ -8,6 +8,9 @@ const id = z.string().uuid();
 const opaque = z.string().min(1).max(512);
 export const BROWSER_CONTROL_MAX_BYTES = 32 * 1024;
 export const BROWSER_TAB_LIMIT = 8;
+export const BROWSER_VIEWPORT_MIN = 16;
+export const BROWSER_VIEWPORT_MAX = 2560;
+const viewportEdge = z.number().int().min(BROWSER_VIEWPORT_MIN).max(BROWSER_VIEWPORT_MAX);
 
 /** The synthetic Workspace preview origin is never a device-browser destination. */
 export const BROWSER_WORKSPACE_PREVIEW_SUFFIX = '.mar-workspace-preview.invalid';
@@ -80,6 +83,7 @@ export type BrowserResourceCommand = z.infer<typeof browserResourceCommandSchema
 
 export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ack'), sequence: positiveUint32 }),
+  z.strictObject({ type: z.literal('viewport.resize'), width: viewportEdge, height: viewportEdge }),
   z.strictObject({ type: z.literal('input'), action: browserPageInputSchema }),
   z.strictObject({ type: z.literal('selection.copy'), id, viewVersion: positiveUint32 }),
   z.strictObject({

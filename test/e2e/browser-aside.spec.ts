@@ -8,7 +8,6 @@ import { expect, test } from '@playwright/test';
 import { NodeConnector } from '../../mar-node/src/connector.js';
 import { unavailableCapabilities } from '../../mar-node/src/capabilities.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
-import { BROWSER_VIEWPORT } from '../../mar-node/src/browser/browser-video-config.js';
 
 test.use({
   viewport: { width: 1600, height: 900 },
@@ -27,12 +26,23 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
   test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), 'mar-browser-aside-'));
   const requests: string[] = [];
+  let remoteViewport: { width: number; height: number; narrow: boolean } | undefined;
   const largeFile = Buffer.alloc(9 * 1024 * 1024 + 17, 0x61);
   let canceledRequests = 0;
   let failPage = true;
   let finishPage: (() => void) | undefined;
   const site = createServer((request, response) => {
     requests.push(request.url ?? '');
+    if (request.url?.startsWith('/viewport-size?')) {
+      const params = new URLSearchParams(request.url.split('?')[1]);
+      remoteViewport = {
+        width: Number(params.get('width')),
+        height: Number(params.get('height')),
+        narrow: params.get('narrow') === 'true'
+      };
+      response.writeHead(204).end();
+      return;
+    }
     if (request.url === '/retry-page' && failPage) {
       response.destroy();
       return;
@@ -65,6 +75,13 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       <style>body{margin:0;background:${request.url === '/relay' ? 'rgb(200,0,0)' : request.url === '/ice' ? 'rgb(0,200,0)' : 'white'}}a{position:absolute;left:76%;top:20%;width:8%;height:10%;background:blue}</style>
       <a href="/clicked" aria-label="Click the Node page"></a>
       ${request.url === '/touch' ? `<input id="touch-field" style="position:absolute;left:24%;top:8%;width:18%;height:8%"><button id="touch-check" style="position:fixed;left:76%;top:8%;width:17%;height:8%">Check draft</button><div style="height:200vh"></div>` : ''}
+      <script>
+        function publishViewport() {
+          fetch('/viewport-size?' + new URLSearchParams({ width: innerWidth, height: innerHeight, narrow: matchMedia('(max-width: 500px)').matches }));
+        }
+        addEventListener('resize', publishViewport);
+        publishViewport();
+      </script>
       <label style="position:absolute;left:20%;top:20%;width:20%;height:10%;background:yellow">
         Choose file <input type="file" multiple hidden>
       </label>
@@ -166,10 +183,43 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const browserTab = page.getByRole('tab', { name: /^(Browser|浏览器)$/u });
     const address = page.getByRole('textbox', { name: /^(Address|地址栏?)$/u });
     const canvas = page.locator('.node-browser canvas');
-    async function openWorkspaceBrowser() {
-      const opener = page.getByRole('button', {
-        name: /^(Open a website in MAR|在 MAR 中打开网址)$/u
-      });
+    async function expectViewportFits() {
+      await expect
+        .poll(() =>
+          canvas
+            .evaluate((element: HTMLCanvasElement) => ({
+              width: element.clientWidth,
+              height: element.clientHeight,
+              ratio: element.width / element.height
+            }))
+            .then(
+              ({ width, height, ratio }) =>
+                width > 0 &&
+                height > 0 &&
+                remoteViewport?.width === width &&
+                remoteViewport.height === height &&
+                Math.abs(ratio - width / height) < 0.02
+            )
+        )
+        .toBe(true);
+    }
+    const performanceInfo = page.getByRole('button', {
+      name: /^(Browser streaming performance|浏览器投屏性能)$/u
+    });
+    const performancePanel = page.getByRole('region', {
+      name: /^(Browser streaming performance|浏览器投屏性能)$/u
+    });
+    const relayLabel = /^(Server relay|Server 中继)$/u;
+    async function checkRelay() {
+      await performanceInfo.click();
+      await expect(performancePanel.getByText(relayLabel)).toBeVisible({ timeout: 15_000 });
+      await performanceInfo.press('Escape');
+      await expect(performancePanel).toBeHidden();
+    }
+    const opener = page.getByRole('button', {
+      name: /^(Open a website in MAR|在 MAR 中打开网址)$/u
+    });
+    async function ensureWorkspace() {
       const noWorkspace = page.getByRole('heading', {
         name: /^(Select a workspace|选择一个工作区)$/iu
       });
@@ -190,6 +240,9 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         if (await expand.isVisible()) await expand.click();
         await workspace.click();
       }
+    }
+    async function openWorkspaceBrowser() {
+      await ensureWorkspace();
       if (!(await browserTab.isVisible())) await opener.click();
       await expect(browserTab).toBeVisible({ timeout: 25_000 });
       await browserTab.click();
@@ -222,7 +275,25 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       };
     });
     await page.goto(route);
-    await openWorkspaceBrowser();
+    await ensureWorkspace();
+    const addAside = page.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u });
+    const expandAside = page.getByRole('button', {
+      name: /^(Open auxiliary workspace|打开辅助工作面)$/u
+    });
+    await expect(addAside.or(expandAside).first()).toBeVisible({ timeout: 15_000 });
+    if (await expandAside.isVisible()) await expandAside.click();
+    await expect(browserTab).toHaveCount(0);
+    await addAside.click();
+    await expect(browserTab).toHaveCount(0);
+    await expect(addAside).toHaveAttribute('aria-expanded', 'true');
+    const addBrowser = page.getByRole('menuitem', { name: /^(Browser|浏览器)$/u });
+    await expect(addBrowser).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath('browser-aside-add.png'),
+      animations: 'disabled'
+    });
+    await addBrowser.click();
+    await expect(browserTab).toHaveAttribute('aria-selected', 'true');
     await page.waitForFunction(
       () => document.documentElement.dataset.iceConnected === 'true',
       undefined,
@@ -230,27 +301,51 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     );
     await page.getByRole('checkbox', { name: /Keep this workspace|保留/u }).check();
     await page.getByRole('button', { name: /^(Open browser|打开浏览器)$/u }).click();
-    await expect(page.getByText(/^(ICE direct|ICE 直连)$/u)).toBeVisible({ timeout: 15_000 });
+    const newWebTab = page.getByRole('button', { name: /^(New tab|新建标签页)$/u });
+    const tabRow = page.locator('.node-browser-tabs').getByRole('tablist');
+    await expect(tabRow.getByRole('tab')).toHaveCount(1);
+    await expect(newWebTab).toBeEnabled();
+    const initialTab = (await tabRow.getByRole('tab').first().boundingBox())!;
+    const newWebTabBox = (await newWebTab.boundingBox())!;
+    expect(newWebTabBox.x - initialTab.x - initialTab.width).toBeLessThan(60);
+    expect(newWebTabBox.x).toBeGreaterThan(initialTab.x + initialTab.width);
+    await newWebTab.click();
+    await expect(tabRow.getByRole('tab')).toHaveCount(2);
+    await expect(tabRow.getByRole('tab').last()).toHaveAttribute('aria-selected', 'true');
     await address.fill(`127.0.0.1:${local.port}/ice`);
     await address.press('Enter');
     await expect(address).toHaveValue(`${origin}/ice`);
     await expect.poll(() => requests.includes('/ice')).toBe(true);
-    await expect(canvas).toHaveAttribute('width', String(BROWSER_VIEWPORT.width));
+    await expectViewportFits();
+    await performanceInfo.click();
+    const directDescription = await page
+      .locator('.workspace-tab [aria-description].direct-available-node:visible')
+      .first()
+      .getAttribute('aria-description', { timeout: 15_000 });
+    expect(directDescription).toBeTruthy();
+    await expect(performancePanel.getByText(directDescription!, { exact: true })).toBeVisible();
+    await expect(performancePanel.getByText('H.264', { exact: true })).toBeVisible();
+    await expect(performancePanel.getByText(/^[\d.,]+ (?:[kM]?bit\/s)$/u)).toBeVisible();
+    await expect(performancePanel.getByText(/^[\d.,]+ fps$/u)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('browser-performance-ice.png') });
+    await performanceInfo.press('Escape');
+    await expect(performancePanel).toBeHidden();
     const navigation = page.getByRole('group', { name: /^(Page navigation|网页导航)$/u });
     await expect(navigation.getByRole('button')).toHaveCount(3);
     await address.fill(`${origin}/loading-page`);
     await address.press('Enter');
     const busy = page.getByRole('status', { name: /^(Loading page…|正在加载网页…)$/u });
     await expect(busy.locator('.mar-busy-indicator')).toBeVisible();
-    await expect(
-      navigation.getByRole('button', { name: /^(Stop loading|停止加载)$/u })
-    ).toBeEnabled();
+    const stop = navigation.getByRole('button', { name: /^(Stop loading|停止加载)$/u });
+    await expect(stop).toBeEnabled();
+    await expect(stop.locator('[data-mar-icon="close"]')).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('browser-loading.png'),
       animations: 'disabled'
     });
-    finishPage?.();
+    await stop.click();
     await expect(busy).toHaveCount(0);
+    finishPage?.();
 
     await address.fill(`${origin}/retry-page`);
     await address.press('Enter');
@@ -276,18 +371,9 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await address.press('Enter');
     await expect(address).toHaveValue(`${origin}/ice`);
     async function canvasPoint(x: number, y: number) {
+      await expectViewportFits();
       const box = (await canvas.boundingBox())!;
-      const scale = Math.min(
-        box.width / BROWSER_VIEWPORT.width,
-        box.height / BROWSER_VIEWPORT.height
-      );
-      const width = BROWSER_VIEWPORT.width * scale;
-      const height = BROWSER_VIEWPORT.height * scale;
-      expect(Math.abs(box.width / box.height - width / height)).toBeGreaterThan(0.1);
-      return {
-        x: box.x + (box.width - width) / 2 + width * x,
-        y: box.y + (box.height - height) / 2 + height * y
-      };
+      return { x: box.x + box.width * x, y: box.y + box.height * y };
     }
     async function upload(label: string) {
       // The address snapshot can arrive before the first frame of the new view.
@@ -391,7 +477,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
             stream.destroy();
           }
           await openWorkspaceBrowser();
-          await expect(page.getByText(/^(Server relay|Server 中继|服务器中继)$/u)).toBeVisible();
+          await checkRelay();
           return;
         }
       } else if (action === 'cancel') {
@@ -426,14 +512,28 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     });
     await page.reload();
     await openWorkspaceBrowser();
-    await expect(page.getByText(/^(Server relay|Server 中继|服务器中继)$/u)).toBeVisible({
-      timeout: 15_000
-    });
+    await checkRelay();
     await expect(address).toHaveValue(`${origin}/clicked`);
     await address.fill(`${origin}/relay`);
     await address.press('Enter');
     await expect.poll(() => requests.includes('/relay')).toBe(true);
     await expect(address).toHaveValue(`${origin}/relay`);
+    await expectViewportFits();
+    const relayWidth = remoteViewport!.width;
+    const divider = page.locator('.workbench-aside').getByRole('separator');
+    const dividerBox = (await divider.boundingBox())!;
+    await page.mouse.move(dividerBox.x + dividerBox.width / 2, dividerBox.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(dividerBox.x + dividerBox.width / 2 + 90, dividerBox.y + 40);
+    await page.mouse.up();
+    await expect.poll(() => remoteViewport?.width).toBeLessThan(relayWidth);
+    await expectViewportFits();
+    expect(requests.filter((path) => path === '/relay')).toHaveLength(1);
+    await performanceInfo.click();
+    await expect(performancePanel.getByText(relayLabel)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('browser-performance-relay.png') });
+    await performanceInfo.press('Escape');
+    await expect(performancePanel).toBeHidden();
     await upload('relay');
     await download('saved', 'relay');
     await download('fail', 'relay');
@@ -444,9 +544,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       );
       await page.evaluate(() => window.dispatchEvent(new Event('test-drop-workbench')));
       await freshRelay;
-      await expect(page.getByText(/^(Server relay|Server 中继)$/u)).toBeVisible({
-        timeout: 15_000
-      });
+      await checkRelay();
       await expect(address).toHaveValue(`${origin}/relay`);
     }
 
@@ -545,6 +643,8 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await address.press('Enter');
     await expect(address).toHaveValue(`${origin}/touch`);
     await expect.poll(() => requests.includes('/touch')).toBe(true);
+    await expectViewportFits();
+    expect(remoteViewport?.narrow).toBe(true);
     const touchInput = page.getByRole('button', { name: /^(Show keyboard|显示键盘)$/u });
     await expect(touchInput).toBeVisible();
     await page.screenshot({
@@ -593,6 +693,8 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect
       .poll(async () => (await canvas.boundingBox())?.width ?? 0)
       .toBeGreaterThan(beforeRotation.width);
+    await expectViewportFits();
+    expect(remoteViewport?.narrow).toBe(false);
     await tapDraftCheck();
     await expect.poll(() => requests.filter((path) => path === draftRequest).length).toBe(1);
     const workspaceURL = page.url();
@@ -604,6 +706,12 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect(canvas).toBeVisible();
     await tapDraftCheck();
     await expect.poll(() => requests.filter((path) => path === draftRequest).length).toBe(2);
+
+    await performanceInfo.click();
+    await expect(performancePanel).toBeVisible();
+    await performanceInfo.press('Escape');
+    await expect(performancePanel).toBeHidden();
+    await expect(canvas).toBeVisible();
 
     await touchInput.click();
     const remoteInput = page.locator('[data-node-browser-input]');

@@ -41,13 +41,18 @@ export function createMobileSurfaceFocusService(options: {
 
   function hasOpenPopup(): boolean {
     return options.regions().some((region) =>
-      [
-        ...(region?.querySelectorAll('[aria-haspopup][aria-expanded="true"][aria-controls]') ?? [])
-      ].some((control) =>
-        control
-          .getAttribute('aria-controls')
-          ?.split(/\s+/)
-          .some((id) => (document.getElementById(id)?.getClientRects().length ?? 0) > 0)
+      [...(region?.querySelectorAll('[aria-expanded="true"][aria-controls]') ?? [])].some(
+        (control) =>
+          control
+            .getAttribute('aria-controls')
+            ?.split(/\s+/)
+            .some((id) => {
+              const content = document.getElementById(id);
+              return (
+                !!content?.getClientRects().length &&
+                (control.hasAttribute('aria-haspopup') || !!content.closest('[popover]'))
+              );
+            })
       )
     );
   }

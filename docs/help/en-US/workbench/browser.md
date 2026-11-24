@@ -5,12 +5,14 @@ lastUpdated: 2026-11-24
 
 # Use the Workspace browser
 
-In Work mode, select **Open a website in MAR** in the Workspace toolbar to open the **Browser** tab in the side pane. Pages run in Chromium on the Node that hosts the Workspace, not on the device running the Console. Browser data for your account is kept separately for each Workspace.
+In Work mode, select **+ → Browser** at the end of the side pane’s tab strip. You can also select **Open a website in MAR** in the Workspace toolbar. Pages run in Chromium on the Node that hosts the Workspace, not on the device running the Console. Browser data for your account is kept separately for each Workspace.
 
 ## Browse pages
 
 - Enter an HTTP(S) address and press Enter to navigate the current tab. With no scheme, normal hosts default to HTTPS; `localhost` and `127.0.0.1` default to HTTP.
-- Use the toolbar to go back or forward, reload, or stop loading. You can also open and close tabs. The external-open button opens the current page's actual URL unchanged in your device browser.
+- Use the toolbar to go back or forward, reload, or stop loading. Select **+** after the last webpage tab to open a new one. The external-open button opens the current page's actual URL unchanged in your device browser.
+- On supported Nodes, webpages reflow to fit the Browser panel when you resize the Workbench, drag the divider, or rotate your device. This does not reload the page.
+- Select the **Info** icon in the bottom-right corner of the browser to see the current connection, receive bitrate, drawn frame rate, viewport size, and codec. A still page may send no new frames; zero does not mean the connection has dropped.
 - In MAR, `localhost` and `127.0.0.1` refer to **the Node's loopback interface**. Open an address for a service started in the Workspace terminal without registering a port. Opening the same URL externally points to **your device** instead.
 - When a site asks for files, choose them on your device. In the browser toolbar, choose **More → Downloads** to see current downloads, cancel one, or save a finished file to your device. Downloaded files remain on the Node until the MAR browser instance closes; save any files you need before closing it.
 - On a touchscreen, tap to click and swipe to scroll the remote page. To type, tap a field on the page, then select **Show keyboard**. Select **Hide keyboard** when finished.

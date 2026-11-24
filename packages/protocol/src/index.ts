@@ -2028,6 +2028,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   directTransfer: workspaceDirectTransferCapabilitySchema.optional(),
   terminalDirect: terminalDirectCapabilitySchema.optional(),
   browser: browserCapabilitySchema.optional(),
+  browserViewportResize: z.literal(true).optional(),
   remoteDesktop: remoteDesktopCapabilitySchema.optional(),
   sessionAside: sessionAsideCapabilitySchema.optional(),
   sessionGroups: z

@@ -8,6 +8,7 @@ import type {
 import { BrowserFrameStream } from './browser-frame-stream.js';
 import type { BrowserPageCapture, BrowserPageView } from './browser-page-view.js';
 import type { BrowserTabs } from './browser-tabs.js';
+import { browserEncodeSize, type BrowserSize } from './browser-video-config.js';
 
 type Encoder = ConstructorParameters<typeof BrowserFrameStream>[0]['encode'];
 type Command = Exclude<BrowserAttachmentMessage, { type: 'ack' | 'dialog.respond' }>;
@@ -40,7 +41,8 @@ export class BrowserAttachment {
   private closing: Promise<void> | undefined;
   private closed = false;
   private shown: number | undefined;
-  private next: { version: number; page: BrowserPageView | undefined } | undefined;
+  private next:
+    { version: number; page: BrowserPageView | undefined; size: Readonly<BrowserSize> } | undefined;
   private captureTarget: typeof this.next;
   private pressed:
     { page: BrowserPageView; version: number; keys: Set<string>; buttons: Set<Button> } | undefined;
@@ -48,7 +50,7 @@ export class BrowserAttachment {
   constructor(
     private readonly borrow: { resource: BrowserTabs; release: () => void },
     private readonly options: {
-      render: { width: number; height: number; quality: number };
+      quality: number;
       encoder: BrowserAttachmentEncoder;
       sendFrame: ConstructorParameters<typeof BrowserFrameStream>[0]['send'];
       sendControl: (event: BrowserAttachmentEvent) => void;
@@ -87,10 +89,9 @@ export class BrowserAttachment {
       return;
     }
     if (message.type === 'navigation' && message.action === 'stop') {
-      const page = this.next?.version === message.viewVersion ? this.next.page : undefined;
-      if (page && !this.stopping) {
-        this.stopping = page
-          .stopLoading()
+      if (!this.stopping) {
+        this.stopping = this.borrow.resource
+          .stopLoading(message.viewVersion)
           .catch((error: unknown) => this.commandFailed(error))
           .finally(() => {
             this.stopping = undefined;
@@ -101,10 +102,11 @@ export class BrowserAttachment {
     if (message.type === 'input' && this.shown !== message.action.viewVersion) return;
     const tail = this.queue.at(-1);
     if (
-      message.type === 'input' &&
-      message.action.type === 'move' &&
-      tail?.type === 'input' &&
-      tail.action.type === 'move'
+      (message.type === 'viewport.resize' && tail?.type === 'viewport.resize') ||
+      (message.type === 'input' &&
+        message.action.type === 'move' &&
+        tail?.type === 'input' &&
+        tail.action.type === 'move')
     ) {
       this.queue[this.queue.length - 1] = message;
     } else {
@@ -165,7 +167,11 @@ export class BrowserAttachment {
       return;
     }
     if (snapshot.viewVersion === this.next?.version) return;
-    this.next = { version: snapshot.viewVersion, page: this.borrow.resource.activeView };
+    this.next = {
+      version: snapshot.viewVersion,
+      page: this.borrow.resource.activeView,
+      size: this.borrow.resource.viewport
+    };
     this.shown = undefined;
     this.stream.setView(snapshot.viewVersion);
     this.updateCapture();
@@ -190,11 +196,16 @@ export class BrowserAttachment {
       this.capture = undefined;
       await capture?.stop();
       if (this.closed || target !== this.next || !target?.page) continue;
+      await target.page.resize(target.size);
+      if (this.closed || target !== this.next) continue;
       const version = target.version;
-      this.capture = await target.page.startCapture(this.options.render, (frame) => {
-        this.options.captured?.(frame.jpeg.byteLength);
-        this.stream.offer({ ...frame, viewVersion: version });
-      });
+      this.capture = await target.page.startCapture(
+        { ...browserEncodeSize(target.size), quality: this.options.quality },
+        (frame) => {
+          this.options.captured?.(frame.jpeg.byteLength);
+          this.stream.offer({ ...frame, viewVersion: version });
+        }
+      );
     }
   }
 
@@ -232,6 +243,8 @@ export class BrowserAttachment {
   private async dispatch(command: Command): Promise<void> {
     const tabs = this.borrow.resource;
     switch (command.type) {
+      case 'viewport.resize':
+        return tabs.resize({ width: command.width, height: command.height });
       case 'tab.open':
         return tabs.open(command.address);
       case 'tab.openHtml':
@@ -275,7 +288,7 @@ export class BrowserAttachment {
       }
       case 'navigate':
       case 'navigation': {
-        const page = this.next?.version === command.viewVersion ? this.next.page : undefined;
+        const page = tabs.navigationView(command.viewVersion);
         if (!page) return;
         if (command.type === 'navigate') return page.navigate(command.address);
         if (command.action === 'reload') return page.reload();

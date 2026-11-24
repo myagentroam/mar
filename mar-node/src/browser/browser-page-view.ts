@@ -44,6 +44,12 @@ export class BrowserPageView {
     await (await this.navigation()).send('Page.stopLoading');
   }
 
+  async resize(size: { width: number; height: number }): Promise<void> {
+    const current = this.page.viewportSize();
+    if (current?.width !== size.width || current.height !== size.height)
+      await this.page.setViewportSize(size);
+  }
+
   async reload(): Promise<void> {
     await this.load(() => this.page.reload({ waitUntil: 'commit' }));
   }

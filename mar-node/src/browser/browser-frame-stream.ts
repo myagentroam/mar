@@ -32,7 +32,11 @@ export class BrowserFrameStream {
   constructor(
     private readonly options: {
       send: (chunk: Uint8Array, signal: AbortSignal) => Promise<void>;
-      encode: (jpeg: Buffer, key: boolean) => Promise<Pick<BrowserFrame, 'data' | 'key'>>;
+      encode: (
+        jpeg: Buffer,
+        key: boolean,
+        viewport: Pick<BrowserFrame, 'width' | 'height'>
+      ) => Promise<Pick<BrowserFrame, 'data' | 'key'>>;
       failed: (reason: CloseReason) => void;
       deadlineMs: number;
     }
@@ -101,7 +105,7 @@ export class BrowserFrameStream {
     const key = view.viewVersion !== this.encodedView;
     let encoded: Pick<BrowserFrame, 'data' | 'key'>;
     try {
-      encoded = await this.options.encode(jpeg, key);
+      encoded = await this.options.encode(jpeg, key, view);
     } catch {
       this.fail('BROWSER_FRAME_ENCODE_FAILED');
       return;

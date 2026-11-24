@@ -115,7 +115,10 @@ try {
       /BROWSER_NAVIGATION_ABORTED/u
     );
     await request;
-    await view.stopLoading();
+    const loadingVersion = tabs.snapshot().viewVersion;
+    tabs.resize({ width: 391, height: 701 });
+    assert.notEqual(tabs.snapshot().viewVersion, loadingVersion);
+    await tabs.stopLoading(loadingVersion);
     await navigation;
     assert.match((await requestFailed).failure()?.errorText ?? '', /ERR_ABORTED/u);
 
@@ -125,6 +128,7 @@ try {
     assert.equal(await popup.opener(), page);
     const popupId = tabs.snapshot().activeId;
     assert(popupId && popupId !== activeId);
+    assert.equal(tabs.navigationView(loadingVersion), undefined);
     assert.equal(tabs.snapshot().tabs[1]?.url, `${base}/popup`);
     await assert.rejects(tabs.open(), /BROWSER_TAB_LIMIT/);
     tabs.select(activeId);

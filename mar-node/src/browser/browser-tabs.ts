@@ -6,6 +6,7 @@ import { BrowserDownloads } from './browser-downloads.js';
 import { BrowserDialogs } from './browser-dialogs.js';
 import { BrowserFileChooser } from './browser-file-chooser.js';
 import { BrowserPageView } from './browser-page-view.js';
+import { BROWSER_VIEWPORT, type BrowserSize } from './browser-video-config.js';
 import { openBrowserWorkspaceHtml } from './browser-workspace-html.js';
 
 type Tab = {
@@ -28,6 +29,8 @@ export class BrowserTabs {
   private readonly tabs = new Map<string, Tab>();
   private activeId: string | undefined;
   private viewVersion = 1;
+  private navigationVersion = 1;
+  private size: BrowserSize = BROWSER_VIEWPORT;
   private readonly events = new EventEmitter<{ changed: [] }>();
   private replacing: Promise<void> | undefined;
   private presenting = false;
@@ -57,6 +60,34 @@ export class BrowserTabs {
 
   get activeView(): BrowserPageView | undefined {
     return this.activeId ? this.tabs.get(this.activeId)?.view : undefined;
+  }
+
+  get viewport(): Readonly<BrowserSize> {
+    return this.size;
+  }
+
+  navigationView(version: number): BrowserPageView | undefined {
+    // Geometry-only versions share the same toolbar target.
+    if (version >= this.navigationVersion && version <= this.viewVersion) return this.activeView;
+  }
+
+  resize(size: BrowserSize): void {
+    if (size.width === this.size.width && size.height === this.size.height) return;
+    this.size = size;
+    this.viewVersion++;
+    this.changed(false);
+  }
+
+  async stopLoading(version: number): Promise<void> {
+    const tab = this.activeId ? this.tabs.get(this.activeId) : undefined;
+    if (!tab || !this.navigationView(version)) return;
+    const request = tab.navigation;
+    await tab.view.stopLoading();
+    // Chromium need not emit Playwright load/requestfailed after stopping a committed response.
+    if (request && tab.navigation === request) {
+      tab.navigation = undefined;
+      this.changed(false);
+    }
   }
 
   snapshot(): BrowserTabSnapshot {
@@ -250,7 +281,7 @@ export class BrowserTabs {
 
   private changed(viewChanged: boolean): void {
     if (viewChanged) {
-      this.viewVersion++;
+      this.navigationVersion = ++this.viewVersion;
       if (this.presenting) void this.presentDialogs(true).catch(this.options.failed);
     }
     this.events.emit('changed');

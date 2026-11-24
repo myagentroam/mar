@@ -84,7 +84,11 @@ describe('Browser attachment frame stream', () => {
     stream.offer(capture(2, 2));
     old.resolve({ data: Buffer.from([1]), key: true });
     await vi.waitFor(() => expect(received).toEqual([2]));
-    expect(encode).toHaveBeenLastCalledWith(Buffer.from([2]), true);
+    expect(encode).toHaveBeenLastCalledWith(Buffer.from([2]), true, {
+      viewVersion: 2,
+      width: 800,
+      height: 600
+    });
     stream.close();
   });
 

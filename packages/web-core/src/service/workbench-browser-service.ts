@@ -10,7 +10,11 @@ import {
   type BrowserTabSnapshot
 } from '@myagentroam/protocol';
 import { createUuid } from '../util/uuid.js';
-import { BrowserAttachmentClient, supportsBrowserVideo } from './browser-attachment-client.js';
+import {
+  BrowserAttachmentClient,
+  supportsBrowserVideo,
+  type BrowserStreamSample
+} from './browser-attachment-client.js';
 import { uploadBrowserFiles } from './browser-upload.js';
 import type { WorkbenchHttpService } from './workbench-http-service.js';
 import { ApiError } from '../util/api-error.js';
@@ -50,6 +54,7 @@ export function createWorkbenchBrowserService(options: {
   const snapshot = shallowRef<BrowserTabSnapshot>();
   const frame = shallowRef<View>();
   const path = shallowRef<Path>();
+  const streamSample = shallowRef<BrowserStreamSample>();
   const status = shallowRef<'idle' | 'connecting' | 'ready' | 'failed'>('idle');
   const uploadStatus = shallowRef<'sending' | 'finishing' | 'canceling'>();
   const visibleBrowserId = shallowRef<string>();
@@ -97,6 +102,7 @@ export function createWorkbenchBrowserService(options: {
     clearTimeout(connection.deadline);
     clearTimeout(connection.renew);
     connection.data?.close();
+    streamSample.value = undefined;
     connection.transport?.release();
     if (connection.attachmentId) {
       const releaseOld = release(connection.attachmentId);
@@ -132,7 +138,7 @@ export function createWorkbenchBrowserService(options: {
 
   async function attach(
     connection: Connection,
-    capability: BrowserCapability,
+    capability: WorkbenchBrowserCapability,
     relayOnly = false
   ): Promise<void> {
     if (current !== connection || !connection.browserId) return;
@@ -217,6 +223,7 @@ export function createWorkbenchBrowserService(options: {
       else fail(connection, 'BROWSER_NO_FRAME');
     }, 10_000);
     connection.data = new BrowserAttachmentClient(link, canvas, open, {
+      resizeViewport: capability.resizeViewport === true,
       attached() {
         path.value = route;
         connection.renew = setTimeout(() => void renew(), 5_000);
@@ -233,6 +240,9 @@ export function createWorkbenchBrowserService(options: {
         frame.value = value;
         status.value = 'ready';
       },
+      sample(value) {
+        streamSample.value = value;
+      },
       failed(code) {
         error.value = code;
       },
@@ -242,7 +252,7 @@ export function createWorkbenchBrowserService(options: {
 
   async function show(
     scope: Scope,
-    capability: BrowserCapability,
+    capability: WorkbenchBrowserCapability,
     canvas: HTMLCanvasElement,
     operation:
       | { action: 'lookup' }
@@ -403,6 +413,7 @@ export function createWorkbenchBrowserService(options: {
     snapshot,
     frame,
     path,
+    streamSample,
     status,
     uploadStatus,
     error,
@@ -431,3 +442,4 @@ export function createWorkbenchBrowserService(options: {
 }
 
 export type WorkbenchBrowserService = ReturnType<typeof createWorkbenchBrowserService>;
+export type WorkbenchBrowserCapability = BrowserCapability & { resizeViewport?: true };

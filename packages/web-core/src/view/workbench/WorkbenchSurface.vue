@@ -1014,6 +1014,11 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :scope="page.selection.workspaceTarget"
                     :capability="browserCapability"
                     :connected="page.browserConnectionReady()"
+                    :direct-description="
+                      page.resources.workspaceDirectDescription(
+                        page.selection.workspaceTarget.nodeId
+                      )
+                    "
                     :browser="page.browser"
                     :requested="
                       atBrowserScope(browserDestination?.scope)

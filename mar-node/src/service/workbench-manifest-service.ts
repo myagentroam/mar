@@ -59,6 +59,7 @@ export class WorkbenchManifestService {
       directTransfer: capabilities.workspaceDirectTransfer,
       terminalDirect: capabilities.terminalDirect,
       browser: capabilities.browser,
+      browserViewportResize: capabilities.browser ? (true as const) : undefined,
       sessionAside: capabilities.sessionAside,
       sessionGroups: capabilities.sessionGroups,
       git: {

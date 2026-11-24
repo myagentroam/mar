@@ -29,7 +29,14 @@ declare global {
     startIce(grant: BrowserAttachmentOpen): Promise<RTCSessionDescriptionInit>;
     receiveAnswer(answer: RTCSessionDescriptionInit): Promise<void>;
     browserClicked: boolean;
-    probe: { frame: number; active?: string; ended?: string; click(): boolean };
+    probe: {
+      frame: number;
+      active?: string;
+      ended?: string;
+      viewport?: { width: number; height: number };
+      click(): boolean;
+      resizeAndNavigate(address: string): boolean;
+    };
   }
 }
 
@@ -268,10 +275,14 @@ try {
           window.probe = { frame: 0, click: () => {
             const action = { type: 'button', button: 'left', x: 20, y: 16, viewVersion: version };
             return client.send({ type: 'input', action: { ...action, edge: 'down' } }) && client.send({ type: 'input', action: { ...action, edge: 'up' } });
-          }};
+          }, resizeAndNavigate: (address) =>
+            client.send({ type: 'viewport.resize', width: 391, height: 701 }) &&
+            client.send({ type: 'navigate', address, viewVersion: version })
+          };
           const client = new BrowserAttachmentClient(link, document.querySelector('canvas'), grant, {
             snapshot: (state) => { window.probe.active = state.activeId; },
-            frame: (drawn) => { version = drawn.viewVersion; window.probe.frame++; },
+            frame: (drawn) => { version = drawn.viewVersion; window.probe.frame++; window.probe.viewport = drawn; },
+            sample: () => {},
             failed: (code) => { throw new Error(code); },
             ended: (code) => { window.probe.ended = code; }
           });
@@ -334,6 +345,15 @@ try {
   assert.equal(ended, undefined, JSON.stringify({ ended, errors: errors.map(String) }));
   assert.equal(await web.evaluate(() => window.probe.click()), true);
   await target.waitForFunction(() => window.browserClicked, undefined, { timeout: 5_000 });
+  const resized = `${http}/after-resize`;
+  assert.equal(await web.evaluate((url) => window.probe.resizeAndNavigate(url), resized), true);
+  await target.waitForURL(resized, { timeout: 5_000 });
+  await web.waitForFunction(
+    () => window.probe.viewport?.width === 391 && window.probe.viewport.height === 701,
+    undefined,
+    { timeout: 5_000 }
+  );
+  assert.deepEqual(await target.evaluate(() => [innerWidth, innerHeight]), [391, 701]);
   await coordinator.renew(identity, open.attachmentId);
   const downloadEvent = target.waitForEvent('download', { timeout: 5_000 });
   await target.setContent(`<a href="${http}/slow-download">Download</a>`);

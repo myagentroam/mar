@@ -10,7 +10,6 @@ import {
 import { BrowserAttachment, type BrowserAttachmentEncoder } from './browser-attachment.js';
 import type { BrowserSessionService } from './browser-session-service.js';
 import type { BrowserTabs } from './browser-tabs.js';
-import { BROWSER_VIEWPORT } from './browser-video-config.js';
 
 export interface BrowserAttachmentChannel {
   sendControl(event: BrowserAttachmentEvent): void;
@@ -220,7 +219,7 @@ export class BrowserAttachmentService {
       if (entry.closing || entry.expiresAt <= Date.now()) throw new Error('BROWSER_LEASE_EXPIRED');
       channel.sendControl({ type: 'ATTACHED' });
       entry.attachment = new BrowserAttachment(borrow, {
-        render: { ...BROWSER_VIEWPORT, quality: 70 },
+        quality: 70,
         encoder,
         sendFrame: (chunk, signal) => channel.sendFrame(chunk, signal),
         sendControl: (event) => channel.sendControl(event),
