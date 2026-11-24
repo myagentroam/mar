@@ -603,6 +603,18 @@ describe('Workbench controller composition behavior', () => {
     expect(captured.waitForReady).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    'notifies Browser when the control socket is ready (resumed=%s)',
+    (resumed) => {
+      const { page } = controller();
+      const controlReady = vi.spyOn(page.browser, 'controlReady');
+
+      captured.live!.onReady!('browser-control-connection', resumed);
+
+      expect(controlReady).toHaveBeenCalledOnce();
+    }
+  );
+
   it.each(['nodes', 'conversations'] as const)(
     'recovers only the active %s Watch after fresh and resumed readiness and a matching Node gap',
     async (view) => {

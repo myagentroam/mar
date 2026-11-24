@@ -380,6 +380,7 @@ export function createWorkbenchPageController<
     onReady: (connectionId, resumed) => {
       workbenchConnectionId.value = connectionId;
       directTransport.connectionReady(connectionId, resumed);
+      browser.controlReady();
       if (resumed) return;
       hostedWatchRecovery.restoreConnection('begin');
       if (view.value !== 'nodes') return;
