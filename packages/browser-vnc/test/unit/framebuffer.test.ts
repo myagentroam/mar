@@ -212,6 +212,21 @@ test('severe sustained motion reduces cadence in two updates before reducing ras
   expect(rate.profile).toMatchObject({ fps: 12, scale: 2 });
 });
 
+test('raises motion cadence only after frame processing fits the faster profile', () => {
+  const rate = new BrowserVncRate(false);
+  const observe = (workMs: number) => rate.observe(4, 20, true, 4_000, workMs);
+
+  expect(observe(254)).toBe(false);
+  expect(observe(254)).toBe(false);
+  expect(observe(254)).toBe(true);
+  expect(rate.profile).toMatchObject({ fps: 12, scale: 2 });
+  // 65 ms fits 12 fps, but even with a fast link it cannot sustain 24 fps.
+  for (let i = 0; i < 12; i++) expect(observe(65)).toBe(false);
+  for (let i = 0; i < 3; i++) expect(observe(28)).toBe(false);
+  expect(observe(28)).toBe(true);
+  expect(rate.profile).toMatchObject({ fps: 24, scale: 2 });
+});
+
 test('quality choices cap the adaptive profile without discarding measured congestion', () => {
   const rate = new BrowserVncRate(false);
   expect(rate.limit('medium')).toBe(true);

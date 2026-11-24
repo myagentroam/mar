@@ -237,6 +237,7 @@ export class BrowserVncStream {
     const signal = this.controller.signal;
     const generation = this.rasterGeneration;
     const currentRaster = () => !signal.aborted && generation === this.rasterGeneration;
+    const processingStarted = performance.now();
     const encoded = await this.encodeCapture(capture, motion, currentRaster).catch(() => {
       if (currentRaster()) this.fail('BROWSER_FRAME_ENCODE_FAILED');
     });
@@ -266,6 +267,7 @@ export class BrowserVncStream {
       }
       const written = performance.now();
       await ack.promise;
+      const confirmed = performance.now();
       if (signal.aborted) return;
       this.dimensions = { width: frame.width, height: frame.height };
       this.sentVersion = capture.viewVersion;
@@ -293,9 +295,10 @@ export class BrowserVncStream {
       if (
         this.rate.observe(
           written - started,
-          performance.now() - started,
+          confirmed - started,
           !!this.pending,
-          update.motion ? update.data.length : 0
+          update.motion ? update.data.length : 0,
+          update.motion ? written - processingStarted : undefined
         )
       )
         this.options.changed(this.quality);

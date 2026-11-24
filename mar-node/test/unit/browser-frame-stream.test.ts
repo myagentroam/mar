@@ -153,6 +153,35 @@ it('times out a stalled encode on an established view and never sends its late r
   expect(frames).toHaveLength(1);
 });
 
+it.each([
+  { label: 'expensive continuous motion', encodeMs: 250, ackMs: 20, pause: 0, expectedFps: 12 },
+  { label: 'expensive isolated stills', encodeMs: 250, ackMs: 20, pause: 600, expectedFps: 24 },
+  { label: 'continuous motion with steady RTT', encodeMs: 5, ackMs: 140, pause: 0, expectedFps: 24 }
+] as const)('selects cadence for $label', async ({ encodeMs, ackMs, pause, expectedFps }) => {
+  const pictures = await Promise.all([capture(1), capture(2), capture(3), capture(4)]);
+  let clock = 0;
+  vi.spyOn(performance, 'now').mockImplementation(() => clock);
+  const encode = vnc.encodeBrowserVncUpdate;
+  vi.spyOn(vnc, 'encodeBrowserVncUpdate').mockImplementation(async (...args) => {
+    const update = await encode(...args);
+    clock += encodeMs;
+    return update;
+  });
+
+  const { stream, frames, next } = fixture();
+  for (const [index, picture] of pictures.entries()) {
+    stream.offer(picture);
+    await vi.waitFor(() => expect(frames).toHaveLength(index + 1));
+    clock += ackMs;
+    expect(stream.acknowledge(index + 1)).toBe(1);
+    await Promise.resolve();
+    clock += pause;
+    next();
+  }
+  expect(stream.fps).toBe(expectedFps);
+  expect(stream.scale).toBe(2);
+});
+
 it('closes on malformed capture or failed writes rather than draining queued updates', async () => {
   const a = await capture(1);
   const send = vi.fn(async () => {

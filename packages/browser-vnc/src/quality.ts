@@ -39,10 +39,20 @@ export class BrowserVncRate {
     return before !== this.profile;
   }
 
-  observe(writeMs: number, confirmedMs: number, superseded: boolean, motionBytes = 0): boolean {
+  observe(
+    writeMs: number,
+    confirmedMs: number,
+    superseded: boolean,
+    motionBytes = 0,
+    motionWorkMs?: number
+  ): boolean {
     const before = this.profile;
     const motionBps = motionBytes * 8 * before.fps;
-    const slow = writeMs >= 100 || (superseded && confirmedMs >= 200) || motionBps > motionBudget;
+    const slow =
+      writeMs >= 100 ||
+      (superseded && confirmedMs >= 200) ||
+      motionBps > motionBudget ||
+      (motionWorkMs !== undefined && motionWorkMs * before.fps > 1_000);
     if (slow) {
       this.cheap = this.fast = 0;
       // Keep the normal debounce, but don't spend three large frames at every
@@ -55,7 +65,14 @@ export class BrowserVncRate {
       this.slow = 0;
       const next = profiles[Math.max(this.ceiling, this.level - 1)]!;
       const projected = motionBps * (next.fps / before.fps) * (next.scale / before.scale) ** 2;
-      if (writeMs <= 45 && confirmedMs <= 150 && projected <= motionBudget * 0.75) {
+      // Leave headroom before recovering to a faster cadence, even when the
+      // current cadence fits and the network is not the bottleneck.
+      if (
+        writeMs <= 45 &&
+        confirmedMs <= 150 &&
+        projected <= motionBudget * 0.75 &&
+        (motionWorkMs === undefined || motionWorkMs * next.fps <= 800)
+      ) {
         this.fast++;
         // A switch from textured motion to cheap updates (e.g. CopyRect) can
         // safely recover sooner. One still/repair or light frame is not enough.
