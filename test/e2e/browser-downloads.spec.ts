@@ -21,7 +21,7 @@ async function update(
   }, detail);
 }
 
-test('Browser confirms a Workspace destination and presents a name conflict without closing downloads', async ({
+test('Browser confirms a Workspace destination and distinguishes conflicts from unknown outcomes', async ({
   page
 }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/browser-downloads.html');
@@ -51,6 +51,12 @@ test('Browser confirms a Workspace destination and presents a name conflict with
       await confirm.click();
       await expect(list.getByText(text, { exact: true })).toBeVisible();
     }
+    await save.click();
+    await path.fill('reports/slow.bin');
+    await confirm.click();
+    await expect(list.getByRole('alert')).toHaveText(
+      'Could not confirm the save. Check whether reports/slow.bin is complete before retrying.'
+    );
     await expect(list.getByRole('link', { name: 'Save to device' })).toBeVisible();
   } finally {
     await fixture.close();

@@ -164,10 +164,12 @@ export class BrowserWorkbenchService {
     download: BrowserDownloadRequest
   ): Promise<unknown> {
     const identity = { userId: user.userId, sessionFingerprint: user.sessionHash, connectionId };
-    const { nodeId, generation } = await this.attachments.fileTarget(
+    const { nodeId, generation, workspaceId } = await this.attachments.fileTarget(
       identity,
       download.attachmentId
     );
+    if (download.command.action === 'workspace')
+      return this.options.request(nodeId, 'download', generation, download, user, workspaceId);
     return this.options.request(nodeId, 'download', generation, download, user);
   }
 

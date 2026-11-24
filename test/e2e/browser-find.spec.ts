@@ -117,7 +117,11 @@ test('Remote find paints literal text and reveals matches across visible frames'
   const other = {};
   const start = await find.update(owner, { action: 'start', query: 'signal light.' });
   expect(start).toEqual({ index: 1, total: 3, limited: false });
-  await expect.poll(() => page.evaluate(() => CSS.highlights.get('mar-page-find')?.size)).toBe(2);
+  expect(await page.evaluate(() => [...CSS.highlights.get('mar-page-find')!].map(String))).toEqual([
+    'Signal ',
+    'light.',
+    'signal light.'
+  ]);
   const next = await find.update(owner, { action: 'next' });
   expect(next?.index).toBe(2);
   expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0);
@@ -159,4 +163,66 @@ test('Remote find caps very large result sets and does not rewrite page text or 
   ).toEqual(['match', 1]);
   await find.update(owner, { action: 'clear' });
   expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(0);
+});
+
+test('Remote find highlights open shadow text and rendered slot contents in composed order', async ({
+  page
+}) => {
+  await page.setContent(`
+    <app-panel>
+      <span id="assigned" slot="content">needle</span>
+      <span slot="not-rendered">needle</span>
+    </app-panel>
+  `);
+  await page.evaluate(() => {
+    const root = document.querySelector('app-panel')!.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <p id="inside">needle</p>
+      <slot name="content"><span>needle</span></slot>
+      <slot name="empty"><span id="fallback">needle</span></slot>
+      <p hidden>needle</p>
+    `;
+    root.adoptedStyleSheets = [new CSSStyleSheet()];
+  });
+  const find = new BrowserPageFind(page);
+  const owner = {};
+  const active = () =>
+    page.evaluate(() =>
+      [...CSS.highlights.get('mar-page-find-current')!].map(
+        (range) => range.startContainer.parentElement!.id
+      )
+    );
+  expect(await find.update(owner, { action: 'start', query: 'needle' })).toEqual({
+    index: 1,
+    total: 3,
+    limited: false
+  });
+  expect(await active()).toEqual(['inside']);
+  expect((await find.update(owner, { action: 'next' }))?.index).toBe(2);
+  expect(await active()).toEqual(['assigned']);
+  expect((await find.update(owner, { action: 'next' }))?.index).toBe(3);
+  expect(await active()).toEqual(['fallback']);
+  expect(
+    await page.evaluate(() => {
+      const root = document.querySelector('app-panel')!.shadowRoot!;
+      const nodes = [
+        root.querySelector('#inside')!,
+        document.querySelector('#assigned')!,
+        root.querySelector('#fallback')!
+      ];
+      return nodes.map((el) => ({
+        background: getComputedStyle(el, '::highlight(mar-page-find)').backgroundColor,
+        text: el.textContent,
+        children: el.childNodes.length
+      }));
+    })
+  ).toEqual(Array(3).fill({ background: 'rgb(255, 228, 91)', text: 'needle', children: 1 }));
+  await find.update(owner, { action: 'clear' });
+  expect(
+    await page.evaluate(() => ({
+      highlights: CSS.highlights.size,
+      documentSheets: document.adoptedStyleSheets.length,
+      shadowSheets: document.querySelector('app-panel')!.shadowRoot!.adoptedStyleSheets.length
+    }))
+  ).toEqual({ highlights: 0, documentSheets: 0, shadowSheets: 1 });
 });

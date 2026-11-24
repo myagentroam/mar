@@ -22,6 +22,8 @@ export const browserEnUS = {
   downloadWorkspaceHint:
     'Enter a path relative to the Workspace, including the filename. The folder must already exist. Existing files are not overwritten.',
   downloadWorkspaceSaved: 'Saved to Workspace: {path}',
+  downloadWorkspaceUnknown:
+    'Could not confirm the save. Check whether {path} is complete before retrying.',
   downloadWorkspaceExists: 'A file already exists at this path. Choose a different name.',
   downloadWorkspaceInvalid: 'Choose a path within an existing Workspace folder.',
   external: 'Open in your device’s browser',

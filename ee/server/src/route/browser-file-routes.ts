@@ -142,7 +142,11 @@ function fileError(reply: FastifyReply, error: unknown, fallback: string) {
   const failure = safePublicError(error, fallback);
   return sendError(
     reply,
-    failure.code === 'BROWSER_NOT_AUTHORIZED' || failure.code === 'BROWSER_LEASE_ENDED' ? 403 : 409,
+    failure.code === 'BROWSER_OUTCOME_UNKNOWN'
+      ? 504
+      : failure.code === 'BROWSER_NOT_AUTHORIZED' || failure.code === 'BROWSER_LEASE_ENDED'
+        ? 403
+        : 409,
     failure.code,
     errorResponseOptions(failure)
   );

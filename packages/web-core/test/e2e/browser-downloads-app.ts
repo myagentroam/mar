@@ -115,6 +115,7 @@ browser.deleteDownload = async (id) => {
 browser.downloadHref = (id) => `/fixture-download/${id}`;
 const saved = new Set<string>();
 browser.saveDownloadToWorkspace = async (_id, path) => {
+  if (path === 'reports/slow.bin') throw new ApiError('BROWSER_OUTCOME_UNKNOWN', 'Not confirmed.');
   if (saved.has(path)) throw new ApiError('FILE_ALREADY_EXISTS', 'File exists.');
   saved.add(path);
 };

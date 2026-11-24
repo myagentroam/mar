@@ -167,7 +167,7 @@ export class NodeRequestChannel {
       const failure = parsed.success
         ? parsed.data
         : { error: 'MESSAGE_INVALID', message: publicErrorMessage('MESSAGE_INVALID') };
-      this.fail(id, new NodeRequestError(failure, id, 'node'));
+      this.fail(id, new NodeRequestError(failure, id, parsed.success ? 'node' : 'transport'));
       return;
     }
     this.pending.delete(id);
