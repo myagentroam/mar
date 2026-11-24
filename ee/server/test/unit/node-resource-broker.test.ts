@@ -109,6 +109,8 @@ describe('Browser download relay', () => {
         operationId: sent.id,
         nodeId: 'n',
         workspaceId: 'w',
+        targetType: 'WORKSPACE',
+        targetId: 'w',
         metadata: JSON.stringify({ action: 'workspace.file.write', relativePath: command.path })
       });
     } finally {
@@ -140,6 +142,8 @@ describe('Browser download relay', () => {
         expect.objectContaining({
           eventType: 'workspace.file.write',
           result: 'FAILED',
+          targetType: 'WORKSPACE',
+          targetId: 'w',
           errorCode: 'BROWSER_OUTCOME_UNKNOWN'
         })
       );

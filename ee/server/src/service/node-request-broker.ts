@@ -229,7 +229,7 @@ export class NodeRequestBroker {
         : undefined;
     if (workspaceId !== undefined && command?.action === 'workspace') {
       const envelope = { generation, payload };
-      const context = { nodeId, workspaceId };
+      const context = auditContext(nodeId, { workspaceId }, workspaceId);
       const eventType = 'workspace.file.write';
       const metadata = safeAuditMetadata(
         JSON.stringify({ action: eventType, relativePath: command.path })
