@@ -203,9 +203,11 @@ export class BrowserTabs {
   private presentDialogs(enabled: boolean): Promise<void> {
     this.presenting = enabled;
     const page = enabled && this.activeId ? this.tabs.get(this.activeId)?.page : undefined;
-    const operation = this.dialogUpdate.then(async () => {
-      await Promise.all([this.files.show(page), this.dialogs.show(page)]);
-    });
+    // Invalidate the old chooser now; an upload finish can arrive before queued dialog work.
+    const operation = Promise.all([
+      this.files.show(page),
+      this.dialogUpdate.then(() => this.dialogs.show(page))
+    ]).then(() => undefined);
     this.dialogUpdate = operation.catch(() => undefined);
     return operation;
   }

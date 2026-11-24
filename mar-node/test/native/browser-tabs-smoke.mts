@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
@@ -115,7 +115,8 @@ try {
     assert.equal(tabs.snapshot().activeId, activeId);
     assert.equal(tabs.snapshot().tabs.length, 1);
 
-    await tabs.presentDialogs(true);
+    const viewer = {};
+    await tabs.attach(viewer);
     const presented =
       Promise.withResolvers<NonNullable<ReturnType<typeof tabs.snapshot>['dialog']>>();
     const unobserve = tabs.observe(() => {
@@ -130,7 +131,7 @@ try {
     await tabs.respondToDialog(dialog.id, true, 'remote response');
     assert.equal(await prompting, 'remote response');
     unobserve();
-    await tabs.presentDialogs(false);
+    await tabs.detach(viewer);
     assert.equal(await page.evaluate(() => window.confirm('Background prompt')), false);
 
     const request = page.waitForRequest(`${base}/stall`);
@@ -168,7 +169,7 @@ try {
       .locator('body')
       .evaluate((body) => body.insertAdjacentHTML('beforeend', '<input type="file">'));
     const fileInput = page.locator('input[type=file]');
-    await tabs.presentDialogs(true);
+    await tabs.attach(viewer);
     await Promise.all([
       popup.waitForEvent('filechooser'),
       popup.locator('input[type=file]').click()
@@ -180,23 +181,46 @@ try {
       assert(chooser);
       return { attachmentId: crypto.randomUUID(), chooserId: chooser.id };
     };
+    async function stage(selection: Awaited<ReturnType<typeof choose>>) {
+      const transferId = crypto.randomUUID();
+      await tabs.upload({ ...selection, command: { action: 'begin', transferId } });
+      await tabs.upload({
+        ...selection,
+        command: { action: 'file', transferId, index: 0, name: 'stale.txt', size: 2 }
+      });
+      await tabs.upload({
+        ...selection,
+        command: { action: 'chunk', transferId, index: 0, offset: 0, data: 'b2s=' }
+      });
+      return { ...selection, command: { action: 'finish' as const, transferId } };
+    }
+    const uploadDirectories = async () =>
+      (await readdir(workspace)).filter((name) => name.startsWith('upload-'));
     const canceled = await choose();
     await tabs.upload({ ...canceled, command: { action: 'cancel' } });
     assert.equal(tabs.snapshot().fileChooser, undefined);
-    const replaced = await choose();
+    const replaced = await stage(await choose());
     tabs.select(popupId);
-    await assert.rejects(
-      tabs.upload({ ...replaced, command: { action: 'cancel' } }),
-      /BROWSER_FILE_CHOOSER_ENDED/
+    await assert.rejects(tabs.upload(replaced), /BROWSER_FILE_CHOOSER_ENDED/);
+    const otherViewer = {};
+    await tabs.attach(otherViewer);
+    assert.deepEqual(await uploadDirectories(), []);
+    assert.equal(await fileInput.evaluate((input: HTMLInputElement) => input.files?.length), 0);
+    assert.equal(
+      await popup
+        .locator('input[type=file]')
+        .evaluate((input: HTMLInputElement) => input.files?.length),
+      0
     );
     tabs.select(activeId);
-    const detached = await choose();
-    await tabs.presentDialogs(false);
-    await assert.rejects(
-      tabs.upload({ ...detached, command: { action: 'cancel' } }),
-      /BROWSER_FILE_CHOOSER_ENDED/
-    );
-    await tabs.presentDialogs(true);
+    const detached = await stage(await choose());
+    await tabs.detach(viewer);
+    assert.equal(tabs.snapshot().fileChooser?.id, detached.chooserId);
+    const closing = tabs.detach(otherViewer);
+    await assert.rejects(tabs.upload(detached), /BROWSER_FILE_CHOOSER_ENDED/);
+    await closing;
+    assert.deepEqual(await uploadDirectories(), []);
+    await tabs.attach(viewer);
     const selection = await choose();
     const oldTransfer = crypto.randomUUID();
     const transferId = crypto.randomUUID();
@@ -229,7 +253,6 @@ try {
       'ok'
     );
     await tabs.close(popupId);
-    await tabs.presentDialogs(true);
     await tabs.openHtml('site/index.html');
     const html = context.pages().at(-1)!;
     await html.waitForFunction(() => document.body.dataset.script === 'loaded');
@@ -238,9 +261,9 @@ try {
     await html.getByRole('link', { name: 'Relative page' }).click();
     await html.getByRole('heading', { name: 'Relative page loaded' }).waitFor();
     const address = html.url();
-    await tabs.presentDialogs(false);
+    await tabs.detach(viewer);
     assert.equal((await html.goto(address))?.status(), 403);
-    await tabs.presentDialogs(true);
+    await tabs.attach(viewer);
     assert.equal((await html.goto(address))?.status(), 200);
     await tabs.close(tabs.snapshot().activeId!);
     await assert.rejects(tabs.openHtml('site/missing.html'), /BROWSER_HTML_UNAVAILABLE/);
