@@ -96,6 +96,11 @@ async function cancel(id: string): Promise<void> {
         >
           {{ t('browser.downloadSave') }}
         </MarButton>
+        <progress
+          v-if="item.state === 'downloading'"
+          class="download-progress"
+          :aria-label="`${t('browser.downloadPending')} ${item.name}`"
+        />
       </li>
     </ul>
     <template #footer>
@@ -133,5 +138,9 @@ async function cancel(id: string): Promise<void> {
   flex: 1 1 10rem;
   min-inline-size: 0;
   overflow-wrap: anywhere;
+}
+.download-progress {
+  inline-size: 100%;
+  accent-color: var(--mar-ui-control-primary-bg);
 }
 </style>

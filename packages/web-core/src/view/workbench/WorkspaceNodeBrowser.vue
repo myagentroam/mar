@@ -24,6 +24,7 @@ import { browserAddress, isBrowserLoopback } from '../../service/browser-link-ro
 import BrowserDownloadsDialog from './BrowserDownloadsDialog.vue';
 import BrowserPerformanceIndicator from './BrowserPerformanceIndicator.vue';
 import BrowserTabLabel from './BrowserTabLabel.vue';
+import WorkspaceFloatingActions from '../common/WorkspaceFloatingActions.vue';
 import { browserError } from '../../service/browser-presentation.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
@@ -57,6 +58,35 @@ const invalid = ref(false);
 const answer = ref('');
 const downloadsOpen = ref(false);
 const { snapshot, status, frame, path, streamSample, error, uploadStatus } = props.browser;
+const downloadRevision = computed(() => snapshot.value?.downloadVersion);
+const downloadBrowserId = computed(() => props.browser.browserId());
+const downloadNotice = ref<number>();
+watch(
+  [downloadRevision, status, downloadBrowserId],
+  ([revision, state, id], [previous, previousState, previousId], cleanup) => {
+    downloadNotice.value = undefined;
+    if (
+      state !== 'ready' ||
+      previousState !== 'ready' ||
+      !id ||
+      id !== previousId ||
+      revision === undefined ||
+      previous === undefined ||
+      revision <= previous ||
+      downloadsOpen.value
+    )
+      return;
+    downloadNotice.value = revision;
+    const timer = setTimeout(() => {
+      downloadNotice.value = undefined;
+    }, 2400);
+    cleanup(() => clearTimeout(timer));
+  }
+);
+function openDownloads(): void {
+  downloadNotice.value = undefined;
+  downloadsOpen.value = true;
+}
 const connection = computed(() => {
   if (path.value === 'ice') return props.directDescription ?? t('workspaceTabs.directAvailable');
   if (path.value === 'relay') return t('browser.relay');
@@ -227,7 +257,6 @@ function command(value: string | number | object): void {
   const id = props.browser.browserId();
   if (value === 'settings') return emit('settings', id);
   if (!id) return;
-  if (value === 'downloads') downloadsOpen.value = true;
   if (value === 'cache' || value === 'history') emit('data', value, id);
   if (value === 'close') {
     const scope = props.scope;
@@ -640,7 +669,11 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         @update:model-value="(value) => edit(String(value))"
       >
         <template v-if="active?.loading" #prefix>
-          <span role="status" :aria-label="t('browser.loadingPage')">
+          <span
+            class="node-browser-address-loading"
+            role="status"
+            :aria-label="t('browser.loadingPage')"
+          >
             <MarBusyIndicator />
           </span>
         </template>
@@ -660,6 +693,26 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         "
         :disabled="!hasCommands || !external"
       />
+      <div class="node-browser-download">
+        <MarButton
+          class="node-browser-icon"
+          icon="download"
+          :aria-label="t('browser.downloads')"
+          aria-haspopup="dialog"
+          v-tooltip="t('browser.downloads')"
+          :disabled="status !== 'ready'"
+          @click="openDownloads"
+        />
+        <span role="status" class="node-browser-download-status">
+          <span
+            v-if="downloadNotice !== undefined"
+            :key="downloadNotice"
+            class="node-browser-download-hint"
+          >
+            {{ t('browser.downloadActivity') }}
+          </span>
+        </span>
+      </div>
       <MarDropdown trigger="click" placement="bottom-end" @command="command">
         <MarButton
           class="node-browser-icon"
@@ -669,9 +722,6 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         />
         <template #dropdown>
           <MarDropdownMenu :aria-label="t('browser.menu')">
-            <MarDropdownItem command="downloads" icon="download" :disabled="status !== 'ready'">{{
-              t('browser.downloads')
-            }}</MarDropdownItem>
             <MarDropdownItem command="history" icon="clock" :disabled="!browser.browserId()">{{
               t('browser.history')
             }}</MarDropdownItem>
@@ -762,11 +812,13 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           @update:model-value="(value) => edit(String(value))"
         />
       </form>
-      <div
+      <WorkspaceFloatingActions
+        v-slot="{ expanded }"
         v-if="status === 'ready'"
-        class="node-browser-actions"
-        role="group"
-        :aria-label="t('browser.pageActions')"
+        :label="t('browser.pageActions')"
+        :collapse-label="t('browser.collapsePageActions')"
+        :expand-label="t('browser.expandPageActions')"
+        contained
       >
         <MarButton
           v-if="!blank"
@@ -788,10 +840,11 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         />
         <BrowserPerformanceIndicator
           :connection="connection"
+          :disabled="!expanded"
           :frame="frame"
           :sample="streamSample"
         />
-      </div>
+      </WorkspaceFloatingActions>
     </div>
     <BrowserDownloadsDialog
       v-if="downloadsOpen"
@@ -938,10 +991,64 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
   padding: 0.25rem;
   border-block-end: 1px solid var(--mar-ui-border);
 }
+.node-browser-address-loading {
+  display: grid;
+  place-items: center;
+}
 .node-browser-icon {
   padding-inline: 0;
   inline-size: var(--mar-ui-compact-control-size, 24px);
   flex: none;
+}
+.node-browser-download {
+  position: relative;
+  flex: none;
+  display: flex;
+}
+.node-browser-download-status {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: calc(100% + 0.45rem);
+  inset-inline-end: 0;
+  pointer-events: none;
+}
+.node-browser-download-hint {
+  position: relative;
+  display: block;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--mar-ui-border-default);
+  border-radius: var(--mar-ui-radius-sm, 4px);
+  background: var(--mar-ui-bg-panel);
+  color: var(--mar-ui-text-primary);
+  font-size: var(--mar-ui-font-size-meta);
+  white-space: nowrap;
+}
+.node-browser-download-hint::before {
+  content: '';
+  position: absolute;
+  inset-block-start: -4px;
+  inset-inline-end: 8px;
+  inline-size: 6px;
+  block-size: 6px;
+  transform: rotate(45deg);
+  border-block-start: 1px solid var(--mar-ui-border-default);
+  border-inline-start: 1px solid var(--mar-ui-border-default);
+  background: inherit;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .node-browser-download-hint {
+    animation: node-browser-download-arrive 180ms ease-out;
+  }
+}
+@keyframes node-browser-download-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .node-browser-nav > :not(:first-child) {
   margin-inline-start: -1px;
@@ -988,7 +1095,14 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 .node-browser-blank :deep(.mar-ui-field-frame) {
   min-block-size: 2.75rem;
   border-radius: 999px;
-  padding-inline: 0.875rem;
+  font-size: max(1rem, var(--mar-ui-font-size-input));
+}
+.node-browser-blank :deep(.mar-ui-input__body) {
+  gap: 0.625em;
+  padding-inline: 1.125em;
+}
+.node-browser-blank :deep(.mar-ui-input__icon) {
+  font-size: 1.25em;
 }
 .node-browser-keyboard {
   display: none;
@@ -1037,24 +1151,5 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
   margin: 0;
   color: var(--mar-ui-text-secondary);
   overflow-wrap: anywhere;
-}
-.node-browser-actions {
-  position: absolute;
-  inset-inline-end: max(0.5rem, env(safe-area-inset-right));
-  inset-block-end: max(0.5rem, env(safe-area-inset-bottom));
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  border: 1px solid var(--mar-ui-border);
-  border-radius: var(--mar-radius-surface);
-  background: color-mix(in srgb, var(--mar-ui-bg-panel) 96%, transparent);
-  box-shadow: var(--mar-ui-overlay-shadow);
-}
-@media (any-pointer: coarse) {
-  .node-browser-actions :deep(.mar-ui-button) {
-    inline-size: 36px;
-    block-size: 36px;
-  }
 }
 </style>

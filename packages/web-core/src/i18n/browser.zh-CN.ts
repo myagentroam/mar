@@ -23,6 +23,8 @@ export const browserZhCN = {
   loadingPage: '正在加载网页…',
   navigationControls: '网页导航',
   pageActions: '远端网页操作',
+  collapsePageActions: '收起网页操作',
+  expandPageActions: '展开网页操作',
   browserUnavailable: '浏览器暂不可用',
   relay: 'Server 中继',
   performance: {
@@ -100,6 +102,7 @@ export const browserZhCN = {
   previous: '上一页',
   next: '下一页',
   downloads: '下载',
+  downloadActivity: '下载列表已更新',
   copySelection: '复制网页所选文本',
   copied: '已复制文本',
   copyFailed: '请在网页中选中文本，并检查剪贴板权限后重试。',

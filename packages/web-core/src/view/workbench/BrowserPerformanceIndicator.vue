@@ -1,20 +1,27 @@
 <script setup lang="ts">
-import { ref, useId } from 'vue';
+import { ref, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarPopover } from '@myagentroam/mar-ui/popover';
 import type { BrowserStreamSample } from '../../service/browser-attachment-client.js';
 import { useI18n } from 'vue-i18n';
 
 // Owns only the local popover and formatting; attachment measurements are read-only.
-defineProps<{
+const props = defineProps<{
   connection: string;
   frame?: { width: number; height: number } | undefined;
   sample?: BrowserStreamSample | undefined;
+  disabled?: boolean;
 }>();
 const { t, n } = useI18n();
 const open = ref(false);
 const panelId = useId();
 const rateFormat = { maximumFractionDigits: 1 } as const;
+watch(
+  () => props.disabled,
+  (disabled) => {
+    if (disabled) open.value = false;
+  }
+);
 
 function bitrate(bits: number): string {
   if (bits >= 1_000_000) return `${n(bits / 1_000_000, rateFormat)} Mbit/s`;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
+import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 
 defineProps<{ label: string; loading: boolean; icon?: string | undefined }>();
@@ -23,7 +24,7 @@ onBeforeUnmount(() => observer?.disconnect());
 <template>
   <span class="browser-tab-label">
     <span class="browser-tab-icon" aria-hidden="true">
-      <MarIcon v-if="loading" name="loading-action" />
+      <MarBusyIndicator v-if="loading" />
       <img v-else-if="icon" :src="`data:image/png;base64,${icon}`" alt="" />
       <MarIcon v-else name="web" />
     </span>

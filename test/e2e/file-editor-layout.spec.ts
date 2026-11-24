@@ -89,7 +89,7 @@ for (const width of [320, 390, 1280]) {
     await menu.getByRole('menuitem', { name: 'Pan left', exact: true }).click();
     await expect(menu).not.toBeVisible();
     if (mobile) {
-      const toggle = actions.locator('.workspace-file-mobile-actions-toggle');
+      const toggle = actions.locator('.workspace-floating-actions-toggle');
       await toggle.click();
       await expect(zoom).toHaveCount(0);
       await expect(download).toHaveCount(0);
@@ -600,11 +600,11 @@ for (const theme of ['light', 'dark']) {
             await page.screenshot({
               path: testInfo.outputPath(`toolbar-${theme}-${mode.split('=')[0]}.png`)
             });
-            const toggle = toolbar.locator('.workspace-file-mobile-actions-toggle');
+            const toggle = toolbar.locator('.workspace-floating-actions-toggle');
             await expect(toggle).toHaveCSS('border-radius', radius);
             await toggle.click();
             await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-            await expect(toolbar.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+            await expect(toolbar.locator('.workspace-floating-actions-body')).toHaveAttribute(
               'inert',
               ''
             );
@@ -621,7 +621,7 @@ for (const theme of ['light', 'dark']) {
             await expect(toggle).toHaveCSS('outline-width', '2px');
             await page.keyboard.press('Enter');
             await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-            await expect(toolbar.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+            await expect(toolbar.locator('.workspace-floating-actions-body')).toHaveAttribute(
               'inert',
               ''
             );

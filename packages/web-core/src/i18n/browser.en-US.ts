@@ -24,6 +24,8 @@ export const browserEnUS = {
   loadingPage: 'Loading page…',
   navigationControls: 'Page navigation',
   pageActions: 'Remote page actions',
+  collapsePageActions: 'Collapse page actions',
+  expandPageActions: 'Expand page actions',
   browserUnavailable: 'Browser unavailable',
   relay: 'Server relay',
   performance: {
@@ -101,6 +103,7 @@ export const browserEnUS = {
   previous: 'Previous page',
   next: 'Next page',
   downloads: 'Downloads',
+  downloadActivity: 'Download list updated',
   copySelection: 'Copy selected text',
   copied: 'Text copied',
   copyFailed: 'Select text on the page and check clipboard access, then try again.',

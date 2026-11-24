@@ -952,12 +952,12 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
     mobilePreviewActionBounds.viewportHeight
   );
   await preview.getByRole('button', { name: '收起文件预览快捷操作' }).click();
-  await expect(preview.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+  await expect(preview.locator('.workspace-floating-actions-body')).toHaveAttribute(
     'aria-hidden',
     'true'
   );
   await preview.getByRole('button', { name: '展开文件预览快捷操作' }).click();
-  await expect(preview.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+  await expect(preview.locator('.workspace-floating-actions-body')).toHaveAttribute(
     'aria-hidden',
     'false'
   );
@@ -1016,12 +1016,12 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   );
   await expect(diffUtilities.getByRole('button', { name: '下载 Diff' })).toBeVisible();
   await diff.getByRole('button', { name: '收起文件预览快捷操作' }).click();
-  await expect(diff.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+  await expect(diff.locator('.workspace-floating-actions-body')).toHaveAttribute(
     'aria-hidden',
     'true'
   );
   await diff.getByRole('button', { name: '展开文件预览快捷操作' }).click();
-  await expect(diff.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+  await expect(diff.locator('.workspace-floating-actions-body')).toHaveAttribute(
     'aria-hidden',
     'false'
   );

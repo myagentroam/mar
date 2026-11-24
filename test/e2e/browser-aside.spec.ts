@@ -385,10 +385,28 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       });
     }
     const blankAddress = page.getByRole('textbox', { name: /^(Enter a web address|输入网址)$/u });
+    const blankForm = page.locator('form').filter({ has: blankAddress });
+    async function checkBlankAddressSizing(name: string) {
+      const icon = blankForm.locator('svg[aria-hidden="true"]');
+      const rootFontSize = await page
+        .locator('html')
+        .evaluate((html) => parseFloat(getComputedStyle(html).fontSize));
+      const fontSize = await blankAddress.evaluate((input) =>
+        parseFloat(getComputedStyle(input).fontSize)
+      );
+      expect(fontSize).toBeGreaterThanOrEqual(rootFontSize);
+      const glyph = (await icon.boundingBox())!;
+      const input = (await blankAddress.boundingBox())!;
+      expect(glyph.width).toBeCloseTo(fontSize * 1.25, 1);
+      expect(Math.abs(glyph.y + glyph.height / 2 - (input.y + input.height / 2))).toBeLessThan(1);
+      await expect(blankForm).toBeInViewport({ ratio: 0.99 });
+      await blankForm.screenshot({ path: testInfo.outputPath(name), animations: 'disabled' });
+    }
     await expect(tabRow.getByRole('tab', { name: /^(Blank|空白页)$/u })).toBeVisible();
     await expect(blankAddress).toBeVisible();
     await expect(canvas).toBeHidden();
     await expect(page.locator('.node-browser-body')).toHaveCSS('background-color', /rgba?\(/u);
+    await checkBlankAddressSizing('browser-blank-address-desktop.png');
     await page.screenshot({ path: testInfo.outputPath('browser-blank.png') });
     await expect(newWebTab).toBeEnabled();
     const initialTab = (await tabRow.getByRole('tab').first().boundingBox())!;
@@ -458,10 +476,29 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await address.fill(`${origin}/loading-page`);
     await address.press('Enter');
     const busy = page.getByRole('status', { name: /^(Loading page…|正在加载网页…)$/u });
-    await expect(busy.locator('.mar-busy-indicator')).toBeVisible();
+    const addressRing = busy.locator('.mar-busy-indicator');
+    const activeTab = tabRow.getByRole('tab', { selected: true });
+    const tabRing = activeTab.locator('.mar-busy-indicator');
+    const ringSize = await page
+      .locator('html')
+      .evaluate((html) => parseFloat(getComputedStyle(html).fontSize) * 0.75);
+    for (const ring of [addressRing, tabRing]) {
+      await expect(ring).toBeVisible();
+      const width = await ring.evaluate((element) => parseFloat(getComputedStyle(element).width));
+      expect(width).toBeCloseTo(ringSize, 1);
+    }
+    for (const [ring, control] of [
+      [addressRing, address],
+      [tabRing, activeTab]
+    ] as const) {
+      const glyph = (await ring.boundingBox())!;
+      const field = (await control.boundingBox())!;
+      expect(Math.abs(glyph.y + glyph.height / 2 - (field.y + field.height / 2))).toBeLessThan(1);
+    }
     const stop = navigation.getByRole('button', { name: /^(Stop loading|停止加载)$/u });
     await expect(stop).toBeEnabled();
     await expect(stop.locator('[data-mar-icon="close"]')).toBeVisible();
+    await captureBrowserChrome('browser-loading-rings.png');
     await page.screenshot({
       path: testInfo.outputPath('browser-loading.png'),
       animations: 'disabled'
@@ -555,8 +592,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       const target = await canvasPoint({ saved: 0.3, cancel: 0.5, fail: 0.7 }[action], 0.415);
       const request = page.request;
       await page.mouse.click(target.x, target.y);
-      await page.getByRole('button', { name: /^(Browser commands|浏览器命令)$/u }).click();
-      await page.getByRole('menuitem', { name: /^(Downloads|下载)$/u }).click();
+      await page.getByRole('button', { name: /^(Downloads|下载)$/u }).click();
       const dialog = page.getByRole('dialog', { name: /^(Downloads|下载)$/u });
       const name = `${action === 'saved' ? route : action}.bin`;
       const row = dialog.getByRole('listitem').filter({ hasText: name });
@@ -614,6 +650,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         }
       } else if (action === 'cancel') {
         const previous = canceledRequests;
+        await expect(row.locator('progress:not([value])')).toBeVisible();
         await row.getByRole('button', { name: /^(Cancel|取消)$/u }).click();
         await expect(row.getByText(/^(Canceled|已取消)$/u)).toBeVisible();
         await expect.poll(() => canceledRequests).toBeGreaterThan(previous);
@@ -636,11 +673,11 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
 
     // Suppress negotiation in the client, rather than simulating a relay socket.
     await page.addInitScript(() => {
-      window.RTCPeerConnection = class extends window.RTCPeerConnection {
-        constructor() {
+      window.RTCPeerConnection = new Proxy(window.RTCPeerConnection, {
+        construct() {
           throw new Error('TEST_ICE_UNAVAILABLE');
         }
-      };
+      });
     });
     await page.reload();
     await openWorkspaceBrowser();
@@ -699,8 +736,9 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await commands.click();
     const browserMenu = page.getByRole('menu', { name: /^(Browser commands|浏览器命令)$/u });
     const browserCommands = browserMenu.getByRole('menuitem');
-    await expect(browserCommands).toHaveCount(5);
-    await expect(browserCommands.locator('svg')).toHaveCount(5);
+    await expect(browserCommands).toHaveCount(4);
+    await expect(browserCommands.locator('svg')).toHaveCount(4);
+    await expect(browserMenu.getByRole('menuitem', { name: /^(Downloads|下载)$/u })).toHaveCount(0);
     await expect(
       browserMenu.getByRole('menuitem', { name: /^(Copy selected text|复制网页所选文本)$/u })
     ).toHaveCount(0);
@@ -890,6 +928,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       await expect(narrowTabs).toHaveCount(4);
       const newest = narrowTabs.last();
       await expect(newest).toHaveAttribute('aria-selected', 'true');
+      await checkBlankAddressSizing('browser-blank-address-mobile.png');
       await newest.press('Home');
       await expect(narrowTabs.first()).toBeFocused();
       await expect(narrowTabs.first()).toBeInViewport({ ratio: 0.99 });
@@ -913,9 +952,56 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect(
       pageActions.getByRole('button', { name: /^(Show keyboard|显示键盘)$/u })
     ).toBeVisible();
-    await expect(pageActions.locator('button')).toHaveCount(3);
+    await expect(pageActions.getByRole('button')).toHaveCount(4);
+    const collapseActions = pageActions.getByRole('button', {
+      name: /^(Collapse page actions|收起网页操作)$/u
+    });
+    const expandActions = pageActions.getByRole('button', {
+      name: /^(Expand page actions|展开网页操作)$/u
+    });
+    const expandedActions = (await pageActions.boundingBox())!;
+    const firstAction = (await touchInput.boundingBox())!;
+    const toggleAction = (await collapseActions.boundingBox())!;
+    expect(firstAction.width).toBe(36);
+    expect(firstAction.height).toBe(36);
+    expect(firstAction.x - expandedActions.x).toBeCloseTo(
+      expandedActions.x + expandedActions.width - (toggleAction.x + toggleAction.width),
+      1
+    );
+    await pageActions.screenshot({
+      path: testInfo.outputPath('browser-floating-actions-expanded.png')
+    });
+    await collapseActions.click();
+    await expect(expandActions).toHaveAttribute('aria-expanded', 'false');
+    await expect(pageActions.getByRole('button')).toHaveCount(1);
+    await expect.poll(async () => (await pageActions.boundingBox())!.width).toBeLessThan(50);
+    await pageActions.screenshot({
+      path: testInfo.outputPath('browser-floating-actions-collapsed.png')
+    });
+    await expandActions.press('Enter');
+    await expect(collapseActions).toHaveAttribute('aria-expanded', 'true');
+    const performanceAction = pageActions.getByRole('button', {
+      name: /^(Browser streaming performance|浏览器投屏性能)$/u
+    });
+    await performanceAction.press('Enter');
+    const performanceSurface = page.locator('.browser-performance');
+    await expect(performanceSurface).toBeVisible();
+    await page.keyboard.press('Tab');
+    await expect(collapseActions).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(performanceSurface).toBeHidden();
+    await expandActions.press('Enter');
+    await expect(performanceAction).toHaveAttribute('aria-expanded', 'false');
     await address.fill(`${origin}/touch?query=${'long-address'.repeat(20)}`);
     const toolbar = page.locator('.node-browser-toolbar');
+    const toolbarDownloads = toolbar.getByRole('button', { name: /^(Downloads|下载)$/u });
+    const toolbarCommands = toolbar.getByRole('button', {
+      name: /^(Browser commands|浏览器命令)$/u
+    });
+    await expect(toolbarDownloads).toBeVisible();
+    expect((await toolbarDownloads.boundingBox())!.x).toBeLessThan(
+      (await toolbarCommands.boundingBox())!.x
+    );
     await expect
       .poll(() =>
         toolbar.evaluate((element) => {
@@ -924,7 +1010,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
             .map((control) => control.getBoundingClientRect())
             .filter(({ width, height }) => width > 0 && height > 0);
           return (
-            controls.length === 6 &&
+            controls.length === 7 &&
             controls.every(
               (rect) =>
                 Math.abs(rect.y + rect.height / 2 - (row.y + row.height / 2)) < 2 &&
