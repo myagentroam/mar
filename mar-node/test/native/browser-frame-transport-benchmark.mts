@@ -32,6 +32,8 @@ declare global {
         clicks: number[];
         sibling: number[];
         size: [number, number];
+        wheelMessages: number;
+        wheelToDrawMs: number;
       };
       ice(): Promise<RTCSessionDescriptionInit>;
       answer(answer: RTCSessionDescriptionInit): Promise<void>;
@@ -39,14 +41,16 @@ declare global {
       ready(): Promise<void>;
       click(): Promise<void>;
       keyboard(): void;
+      wheelBurst(): number;
       slow(milliseconds: number): void;
       select(tabId: string): void;
     };
+    probeWheeledAt?: number;
   }
 }
 
-// Runs real Chrome / native ICE or a two-hop loopback WS relay. It measures the
-// frame layer only; it does not start MAR routing, authentication or a PTY.
+// Runs real Chrome / native ICE or a two-hop loopback WS relay. It measures
+// input and frames without starting MAR routing, authentication or a PTY.
 const mode = process.argv[2];
 assert(mode === 'ice' || mode === 'relay', 'Specify ice or relay.');
 const quality = Number(process.argv[3] ?? BROWSER_CAPTURE_QUALITY);
@@ -165,7 +169,8 @@ try {
       resolveDir: import.meta.dirname,
       contents: `
       import { BrowserViewport } from '../../../packages/web-core/src/service/browser-viewport.ts';
-      const stats = { first: 0, frames: 0, bytes: 0, clicks: [], sibling: [], size: [] };
+      import { BrowserInputScheduler } from '../../../packages/web-core/src/service/browser-input-scheduler.ts';
+      const stats = { first: 0, frames: 0, bytes: 0, clicks: [], sibling: [], size: [], wheelMessages: 0, wheelToDrawMs: 0 };
       const canvas = document.querySelector('canvas');
       const ctx = canvas.getContext('2d');
       const viewport = new BrowserViewport(canvas);
@@ -173,6 +178,12 @@ try {
       const pc = new RTCPeerConnection({ iceServers: [] });
       const opened = {};
       let browserChannel, terminal, sentAt = 0, sampleAt = 0, ackDelay = 0, clickDone, white, clickTarget;
+      let wheelAt;
+      const input = new BrowserInputScheduler((action) => {
+        browserChannel.send(JSON.stringify({ type: 'input', action }));
+        if (action.type === 'wheel') stats.wheelMessages++;
+        return true;
+      });
       function attach(label, channel) {
         channel.binaryType = 'arraybuffer';
         opened[label] = new Promise((resolve, reject) => {
@@ -198,6 +209,10 @@ try {
           if (!frame) return;
           if (!frame.viewport) { browserChannel.send(JSON.stringify({ type: 'ack', sequence: frame.sequence })); return; }
           white = ctx.getImageData(4, 4, 1, 1).data[0] > 128;
+          if (wheelAt && !stats.wheelToDrawMs) {
+            const [r, g, b] = ctx.getImageData(44, 8, 1, 1).data;
+            if (g > 180 && r < 65 && b < 65) stats.wheelToDrawMs = performance.now() - wheelAt;
+          }
           stats.size = [canvas.width, canvas.height];
           stats.frames++;
           if (!stats.first) stats.first = performance.now() - globalThis.probe.startAt;
@@ -225,6 +240,11 @@ try {
           browserChannel.send(JSON.stringify({ type: 'input', action: { ...position, edge: 'up' } }));
           return new Promise(resolve => {clickDone = resolve;}); },
         keyboard() { sampleAt = performance.now(); terminal.send('key'); },
+        wheelBurst() {
+          wheelAt = performance.now();
+          for (let i = 0; i < 100; i++) input.wheel({viewVersion: currentView, x: 1300, y: 120}, 0, 4);
+          return performance.timeOrigin + wheelAt;
+        },
         slow(value) { ackDelay = value; },
         select(tabId) { browserChannel.send(JSON.stringify({ type: 'tab.select', tabId })); }
       };
@@ -424,6 +444,26 @@ try {
     );
     await target.evaluate(() => window.freeze());
     await delay(1_000);
+    await target.evaluate(async () => {
+      const pane = document.querySelector('aside')!;
+      pane.scrollTop = 0;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      pane.addEventListener('scroll', () => {
+        if (pane.scrollTop !== 400 || window.probeWheeledAt !== undefined) return;
+        window.probeWheeledAt = performance.timeOrigin + performance.now();
+        const ctx = document.querySelector('canvas')!.getContext('2d')!;
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(40, 0, 32, 32);
+      });
+    });
+    const wheelAt = await workbench.evaluate(() => window.probe.wheelBurst());
+    await workbench.waitForFunction(() => window.probe.stats.wheelToDrawMs > 0, undefined, {
+      timeout: 5_000
+    });
+    const { wheelMessages, wheelToDrawMs } = await workbench.evaluate(() => window.probe.stats);
+    const wheeledAt = await target.evaluate(() => window.probeWheeledAt);
+    assert.equal(wheelMessages, 2, 'Expected two transmitted wheel commands for one burst.');
+    assert(wheeledAt !== undefined, 'Expected exact scroll distance in the targeted pane.');
     for (let i = 0; i < 6; i++) await measureClick();
     const slowClicks = await workbench.evaluate(() => window.probe.stats.clicks.slice(12));
     await workbench.evaluate(() => window.probe.slow(0));
@@ -479,6 +519,12 @@ try {
         switchToDrawMs,
         inputToDrawP95Ms: p95(after.clicks),
         shapedInputToDrawP95Ms: p95(slowClicks),
+        shapedWheel: {
+          inputEvents: 100,
+          wheelMessages,
+          inputToPageMs: Math.round(wheeledAt - wheelAt),
+          inputToDrawMs: Math.round(wheelToDrawMs)
+        },
         siblingIdleP95Ms: p95(before.sibling),
         siblingBusyP95Ms: p95(after.sibling.slice(12)),
         ackDelayMs,

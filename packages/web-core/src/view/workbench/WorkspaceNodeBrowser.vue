@@ -12,6 +12,8 @@ import {
   isBrowserWorkspacePreview,
   type BrowserPageInput
 } from '@myagentroam/protocol';
+import { BrowserInputScheduler } from '../../service/browser-input-scheduler.js';
+import { BrowserTextInput } from '../../service/browser-text-input.js';
 import type { AsideWorkspace } from '../../service/workbench-aside-service.js';
 import type {
   BrowserDestination,
@@ -182,7 +184,7 @@ onMounted(() => {
     priority: 30,
     owner: () => keyboard.value,
     keys: [{ key: 'Escape' }],
-    when: () => keyboardFocused.value,
+    when: () => keyboardFocused.value && !textInput.active,
     execute: () => {
       keyboard.value?.blur();
       return 'HANDLED';
@@ -265,7 +267,7 @@ function paintedPage() {
   };
 }
 
-function point(event: PointerEvent, captured = false) {
+function point(event: Pick<PointerEvent, 'clientX' | 'clientY'>, captured = false) {
   const painted = paintedPage();
   if (!painted || !frame.value || !canvas.value) return;
   const { width, height, viewVersion } = frame.value;
@@ -278,7 +280,11 @@ function point(event: PointerEvent, captured = false) {
     y: Math.max(0, Math.min(height - 1, y))
   };
 }
-const input = (action: BrowserPageInput) => props.browser.send({ type: 'input', action });
+const inputScheduler = new BrowserInputScheduler((action) =>
+  props.browser.send({ type: 'input', action })
+);
+const input = (action: BrowserPageInput) => inputScheduler.send(action);
+const textInput = new BrowserTextInput(insertText);
 type ButtonPress = Omit<Extract<BrowserPageInput, { type: 'button' }>, 'type' | 'edge'>;
 const pressedPointers = new Map<number, ButtonPress>();
 let nativeTouch: { id: number; position: NonNullable<ReturnType<typeof point>> } | undefined;
@@ -306,11 +312,16 @@ function touchPointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
       return;
     }
     if (nativeTouch?.id !== event.pointerId) return;
+    if (
+      position?.viewVersion === nativeTouch.position.viewVersion &&
+      (position.x !== nativeTouch.position.x || position.y !== nativeTouch.position.y)
+    ) {
+      input({ type: 'touch', phase: 'move', ...position });
+      nativeTouch.position = position;
+    }
     if (edge === 'up') {
       input({ type: 'touch', phase: 'end', ...nativeTouch.position });
       nativeTouch = undefined;
-    } else if (position?.viewVersion === nativeTouch.position.viewVersion) {
-      input({ type: 'touch', phase: 'move', ...position });
     }
     return;
   }
@@ -342,13 +353,13 @@ function touchPointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
     return;
   }
   if (!gesture.scrolling && !moved) return;
-  if (!gesture.scrolling) input({ type: 'move', ...gesture.position });
   gesture.scrolling = true;
   gesture.clientX = event.clientX;
   gesture.clientY = event.clientY;
   const painted = paintedPage();
   if (painted && (dx || dy))
-    input({ type: 'wheel', viewVersion, x: dx / painted.scaleX, y: dy / painted.scaleY });
+    inputScheduler.wheel(gesture.position, dx / painted.scaleX, dy / painted.scaleY);
+  if (edge === 'up') inputScheduler.finish(viewVersion);
 }
 
 function cancelPointer(id: number): void {
@@ -379,11 +390,16 @@ function pointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
   }
   if (!position) return;
   if (edge === 'move') {
+    const pressed = pressedPointers.get(event.pointerId);
+    if (pressed?.viewVersion === position.viewVersion)
+      pressedPointers.set(event.pointerId, { ...pressed, ...position });
     input({ type: 'move', ...position });
     return;
   }
   const button = (['left', 'middle', 'right'] as const)[event.button];
   if (!button || pressedPointers.has(event.pointerId)) return;
+  // The canvas's default pointer focus would blur the text sink and release the drag.
+  event.preventDefault();
   keyboard.value?.focus({ preventScroll: true });
   if (input({ type: 'button', edge, button, ...position })) {
     pressedPointers.set(event.pointerId, { button, ...position });
@@ -391,14 +407,15 @@ function pointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
   }
 }
 function wheel(event: WheelEvent): void {
-  if (!frame.value) return;
-  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? frame.value.height : 1;
-  input({
-    type: 'wheel',
-    viewVersion: frame.value.viewVersion,
-    x: event.deltaX * unit,
-    y: event.deltaY * unit
-  });
+  const target = point(event);
+  if (!target || !frame.value) return;
+  const mode = event.deltaMode;
+  const size = frame.value;
+  inputScheduler.wheel(
+    target,
+    event.deltaX * (mode === 1 ? 16 : mode === 2 ? size.width : 1),
+    event.deltaY * (mode === 1 ? 16 : mode === 2 ? size.height : 1)
+  );
 }
 // Pair releases by physical key: modifiers can change the reported key before keyup.
 const pressedKeys = new Map<string, string>();
@@ -411,6 +428,9 @@ async function copy(): Promise<void> {
   try {
     if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined')
       throw new Error('Clipboard unavailable');
+    const viewVersion = frame.value?.viewVersion;
+    // Read the selection after any final drag sample, not one animation frame behind it.
+    if (viewVersion !== undefined) inputScheduler.finish(viewVersion);
     await navigator.clipboard.write([
       new ClipboardItem({
         // Start within the user gesture. Only the remote bytes arrive asynchronously.
@@ -438,7 +458,14 @@ function key(event: KeyboardEvent, edge: 'up' | 'down'): void {
     input({ type: 'key', edge, viewVersion, key: pressedKey });
     return;
   }
-  if (event.isComposing || event.key === 'Process' || event.key === 'Unidentified') return;
+  if (
+    textInput.active ||
+    event.isComposing ||
+    (event.key === 'Enter' && event.keyCode === 229) ||
+    event.key === 'Process' ||
+    event.key === 'Unidentified'
+  )
+    return;
   if (pressedKey !== undefined) {
     event.preventDefault();
     input({ type: 'key', edge, viewVersion, key: pressedKey });
@@ -469,6 +496,7 @@ function releaseControls(): void {
   touch = undefined;
   for (const id of pressedPointers.keys()) releasePointer(id);
   releaseKeys();
+  resetTransientInput();
 }
 watch(
   () => snapshot.value?.viewVersion,
@@ -480,14 +508,47 @@ watch(
     pressedKeys.clear();
   }
 );
-function text(event: Event): void {
-  if ((event as InputEvent).isComposing) return;
+function resetTransientInput(): void {
+  inputScheduler.reset();
+  textInput.reset();
+  if (keyboard.value) keyboard.value.value = '';
+}
+watch(
+  [() => snapshot.value?.viewVersion, () => frame.value?.viewVersion, status],
+  () => {
+    if (status.value !== 'ready') return resetTransientInput();
+    inputScheduler.reset();
+    textInput.invalidate();
+  },
+  { flush: 'sync' }
+);
+
+function text(event: InputEvent): void {
   const target = event.target as HTMLTextAreaElement;
-  insertText(target.value);
+  if (textInput.read(event, target.value, frame.value?.viewVersion)) target.value = '';
+}
+function endComposition(event: CompositionEvent): void {
+  textInput.end(event.data, frame.value?.viewVersion);
+  const target = event.target as HTMLTextAreaElement;
   target.value = '';
 }
-function insertText(value: string): void {
+function softKey(event: InputEvent): void {
+  if (event.isComposing || textInput.active) return;
   const viewVersion = frame.value?.viewVersion;
+  const key =
+    event.inputType === 'deleteContentBackward'
+      ? 'Backspace'
+      : event.inputType === 'deleteContentForward'
+        ? 'Delete'
+        : event.inputType === 'insertLineBreak' || event.inputType === 'insertParagraph'
+          ? 'Enter'
+          : undefined;
+  if (viewVersion === undefined || key === undefined || !event.cancelable) return;
+  event.preventDefault();
+  if (input({ type: 'key', edge: 'down', viewVersion, key }))
+    input({ type: 'key', edge: 'up', viewVersion, key });
+}
+function insertText(value: string, viewVersion = frame.value?.viewVersion): void {
   if (viewVersion === undefined) return;
   for (let start = 0; start < value.length;) {
     let end = Math.min(start + 4096, value.length);
@@ -504,6 +565,9 @@ function insertText(value: string): void {
       <MarTabs
         mode="strip"
         appearance="workbench"
+        item-class="browser-web-tab"
+        tab-class="browser-web-tab-trigger"
+        close-class="browser-web-tab-close"
         :id-prefix="tabPrefix"
         :tabs="tabs"
         :label="t('browser.title')"
@@ -521,6 +585,7 @@ function insertText(value: string): void {
         <template #action>
           <MarButton
             text
+            circle
             icon="plus"
             :aria-label="t('browser.tab')"
             v-tooltip="t('browser.tab')"
@@ -648,6 +713,9 @@ function insertText(value: string): void {
           keyboardFocused = false;
           releaseControls();
         "
+        @compositionstart="textInput.start(frame?.viewVersion)"
+        @compositionend="endComposition"
+        @beforeinput="softKey"
         @input="text"
         @paste.prevent="insertText($event.clipboardData?.getData('text/plain') ?? '')"
       />
@@ -774,6 +842,7 @@ function insertText(value: string): void {
 
 <style scoped>
 .node-browser {
+  --browser-tab-surface: color-mix(in srgb, var(--mar-ui-bg-panel) 75%, var(--mar-ui-fill-row-hover));
   display: flex;
   flex-direction: column;
   block-size: 100%;
@@ -791,7 +860,68 @@ function insertText(value: string): void {
   flex: 1;
   min-inline-size: 0;
 }
+.node-browser-tabs {
+  --browser-tab-corner: 8px;
+  container-type: inline-size;
+  background: var(--mar-ui-bg-subtle);
+  border-block-end: 1px solid var(--mar-ui-border-default);
+}
+.node-browser-tabs :deep(.mar-tab-strip) {
+  padding-inline: var(--browser-tab-corner);
+}
+.node-browser-tabs :deep(.browser-web-tab) {
+  position: relative;
+  inline-size: clamp(7rem, 36cqi, 13rem);
+  margin-inline-start: 0;
+  border: 0;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+}
+.node-browser-tabs :deep(.browser-web-tab-trigger) {
+  justify-content: start;
+}
+.node-browser-tabs :deep(.browser-web-tab-close) {
+  border-radius: 50%;
+}
+.node-browser-tabs :deep(.browser-web-tab-close:hover:enabled) {
+  background: var(--mar-ui-action-hover-overlay);
+}
+.node-browser-tabs :deep(.browser-web-tab:not(.is-active) + .browser-web-tab:not(.is-active)::before) {
+  content: '';
+  position: absolute;
+  inset: 25% auto 25% 0;
+  border-inline-start: 1px solid var(--mar-ui-border-default);
+  pointer-events: none;
+}
+.node-browser-tabs :deep(.browser-web-tab.is-active) {
+  z-index: 1;
+  background: var(--browser-tab-surface);
+}
+.node-browser-tabs :deep(.browser-web-tab.is-active::before),
+.node-browser-tabs :deep(.browser-web-tab.is-active::after) {
+  content: '';
+  position: absolute;
+  inset-block-end: 0;
+  inline-size: var(--browser-tab-corner);
+  block-size: var(--browser-tab-corner);
+  pointer-events: none;
+}
+.node-browser-tabs :deep(.browser-web-tab.is-active::before) {
+  right: 100%;
+  background: radial-gradient(circle at 0 0, transparent 68%, var(--browser-tab-surface) 72%);
+}
+.node-browser-tabs :deep(.browser-web-tab.is-active::after) {
+  left: 100%;
+  background: radial-gradient(circle at 100% 0, transparent 68%, var(--browser-tab-surface) 72%);
+}
+@media (forced-colors: active) {
+  .node-browser-tabs :deep(.browser-web-tab.is-active) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+}
 .node-browser-toolbar {
+  background: var(--browser-tab-surface);
   gap: 0.25rem;
   padding: 0.25rem;
   border-block-end: 1px solid var(--mar-ui-border);
