@@ -6,7 +6,11 @@ import type {
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BrowserContext, Worker } from 'playwright';
-import { BROWSER_TAB_ICON_BASE64_MAX, isBrowserWorkspacePreview } from '@myagentroam/protocol';
+import {
+  BROWSER_HISTORY_SUGGESTION_LIMIT,
+  BROWSER_TAB_ICON_BASE64_MAX,
+  BROWSER_WORKSPACE_PREVIEW_SUFFIX
+} from '@myagentroam/protocol';
 
 const HOUR_MS = 60 * 60_000;
 const RANGE_HOURS = { hour: 1, day: 24, week: 7 * 24, 'four-weeks': 28 * 24 };
@@ -137,42 +141,60 @@ export class BrowserProfileData {
     );
   }
 
-  search(query: BrowserHistoryQuery): Promise<BrowserHistoryResult> {
-    return this.run(async () => {
-      const native = await this.worker.evaluate(
-        (options) => {
+  search({ suggestions, ...query }: BrowserHistoryQuery): Promise<BrowserHistoryResult> {
+    return this.run(() =>
+      this.worker.evaluate(
+        async ({
+          query: { endTime, ...query },
+          suggestions,
+          limit,
+          ceiling,
+          byteLimit,
+          previewSuffix
+        }) => {
           const api = (globalThis as unknown as { chrome: ExtensionApis }).chrome;
-          const { endTime, ...rest } = options;
-          return api.history.search(endTime === undefined ? rest : { ...rest, endTime });
+          const options = endTime === undefined ? query : { ...query, endTime };
+          const encoder = new TextEncoder();
+          for (let maxResults = limit; ; maxResults = ceiling) {
+            const native = await api.history.search({ ...options, maxResults });
+            const items: BrowserHistoryResult['items'] = [];
+            let bytes = 0;
+            for (const { url, title, lastVisitTime } of native) {
+              if (
+                !url ||
+                url.length > 8192 ||
+                !/^https?:\/\//iu.test(url) ||
+                !Number.isFinite(lastVisitTime)
+              )
+                continue;
+              const parsed = URL.parse(url);
+              if (
+                parsed?.hostname.endsWith(previewSuffix) ||
+                (suggestions && (!parsed || parsed.username || parsed.password || /\s/u.test(url)))
+              )
+                continue;
+              if (items.length === limit) return { items, capped: true };
+              const item = { url, title: title?.slice(0, 512) ?? '', visitedAt: lastVisitTime! };
+              bytes += encoder.encode(JSON.stringify(item)).byteLength + 1;
+              if (bytes > byteLimit) return { items, capped: true };
+              items.push(item);
+            }
+            const capped = native.length >= maxResults;
+            // Expand at most once, and only transfer the filtered results out of the worker.
+            if (!capped || maxResults === ceiling || items.length === limit)
+              return { items, capped };
+          }
         },
-        { ...query, maxResults: MAX_RESULTS }
-      );
-      const items: BrowserHistoryResult['items'] = [];
-      let bytes = 0;
-      let capped = native.length >= MAX_RESULTS;
-      for (const entry of native) {
-        if (
-          !entry.url ||
-          entry.url.length > 8192 ||
-          !/^https?:\/\//iu.test(entry.url) ||
-          isBrowserWorkspacePreview(entry.url) ||
-          !Number.isFinite(entry.lastVisitTime)
-        )
-          continue;
-        const item = {
-          url: entry.url,
-          title: entry.title?.slice(0, 512) ?? '',
-          visitedAt: entry.lastVisitTime!
-        };
-        bytes += Buffer.byteLength(JSON.stringify(item)) + 1;
-        if (bytes > HISTORY_BYTES) {
-          capped = true;
-          break;
+        {
+          query,
+          suggestions,
+          limit: suggestions ? BROWSER_HISTORY_SUGGESTION_LIMIT : MAX_RESULTS,
+          ceiling: MAX_RESULTS,
+          byteLimit: HISTORY_BYTES,
+          previewSuffix: BROWSER_WORKSPACE_PREVIEW_SUFFIX
         }
-        items.push(item);
-      }
-      return { items, capped };
-    });
+      )
+    );
   }
 
   deleteUrls(urls: string[]): Promise<void> {

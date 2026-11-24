@@ -14,6 +14,31 @@ async function respond(page: Page, text: string, ...urls: string[]): Promise<voi
   );
 }
 
+async function expectWorkspaceHistory(page: Page, mode: 'bounded' | 'legacy'): Promise<void> {
+  const fixture = await startCustomThemeFixture(path);
+  try {
+    await page.goto(`${fixture.url}browser-address-history.html?workspace=${mode}`);
+    await page.getByRole('combobox', { name: 'Address' }).fill('site.test');
+    await expect(page.locator('body')).toHaveAttribute(
+      'data-history-query',
+      JSON.stringify({
+        text: 'site.test',
+        startTime: 0,
+        ...(mode === 'bounded' ? { suggestions: true } : {})
+      })
+    );
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(6);
+  } finally {
+    await fixture.close();
+  }
+}
+
+test('Workspace address history uses the bounded Node query contract', ({ page }) =>
+  expectWorkspaceHistory(page, 'bounded'));
+
+test('Workspace address history uses the legacy Node query contract', ({ page }) =>
+  expectWorkspaceHistory(page, 'legacy'));
+
 test('Address history selects with keys or touch and keeps unselected Enter as direct navigation', async ({
   browser
 }) => {

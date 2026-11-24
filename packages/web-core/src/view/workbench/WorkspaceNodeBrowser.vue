@@ -9,7 +9,7 @@ import { MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import {
   BROWSER_TAB_LIMIT,
-  browserProfileTargetSchema,
+  browserProfileDescriptionSchema,
   isBrowserWorkspacePreview,
   type BrowserHistoryResult,
   type BrowserProfileTarget,
@@ -85,7 +85,8 @@ const historyContext = computed(() =>
     ? JSON.stringify([historyBrowserId.value, active.value.id, snapshot.value.viewVersion])
     : undefined
 );
-let historyTarget: Promise<BrowserProfileTarget | undefined> | undefined;
+let historyTarget:
+  Promise<{ target: BrowserProfileTarget; historySuggestions: boolean } | undefined> | undefined;
 watch(historyBrowserId, () => (historyTarget = undefined), { flush: 'sync' });
 
 async function lookupAddressHistory(text: string): Promise<BrowserHistoryResult['items']> {
@@ -95,23 +96,26 @@ async function lookupAddressHistory(text: string): Promise<BrowserHistoryResult[
   const lookup = (historyTarget ??= props.browser
     .profile(props.scope, { action: 'describe' })
     .then((result) => {
-      const target = browserProfileTargetSchema.safeParse(
-        (result as { profile?: unknown })?.profile
-      );
-      return target.success && target.data.kind === 'live' && target.data.id === id
-        ? target.data
-        : undefined;
+      const description = browserProfileDescriptionSchema.safeParse(result);
+      if (!description.success) return;
+      const { profile: target, historySuggestions } = description.data;
+      if (target?.kind === 'live' && target.id === id)
+        return { target, historySuggestions: historySuggestions === true };
     }));
   try {
-    const target = await lookup;
-    if (!target || lookup !== historyTarget || context !== historyContext.value) {
-      if (!target && historyTarget === lookup) historyTarget = undefined;
+    const description = await lookup;
+    if (!description || lookup !== historyTarget || context !== historyContext.value) {
+      if (!description && historyTarget === lookup) historyTarget = undefined;
       return [];
     }
     const result = (await props.browser.profile(props.scope, {
       action: 'history',
-      target,
-      input: { text, startTime: 0 }
+      target: description.target,
+      input: {
+        text,
+        startTime: 0,
+        ...(description.historySuggestions ? { suggestions: true } : {})
+      }
     })) as BrowserHistoryResult;
     return result.items;
   } catch (error) {

@@ -1,8 +1,11 @@
 import { createApp, h, ref } from 'vue';
 import type { BrowserHistoryItem } from '@myagentroam/protocol';
 import BrowserAddressInput from '../../src/view/workbench/BrowserAddressInput.vue';
+import WorkspaceNodeBrowser from '../../src/view/workbench/WorkspaceNodeBrowser.vue';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { createWorkbenchBrowserService } from '../../src/service/workbench-browser-service.js';
+import { createTooltipApp } from './tooltip-app.js';
 import '../../src/styles.css';
 
 const draft = ref('');
@@ -21,7 +24,60 @@ document.addEventListener('fixture-history-context', () => {
 });
 document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 localePreferenceService().setLocale('en-US');
-createApp({
+const workspace = new URLSearchParams(location.search).get('workspace');
+
+function mountWorkspace() {
+  const target = { id: crypto.randomUUID(), kind: 'live', persistent: true } as const;
+  const browser = createWorkbenchBrowserService({
+    send: () => false,
+    connectionId: () => undefined,
+    acquire: () => undefined
+  });
+  browser.status.value = 'ready';
+  browser.browserId = () => target.id;
+  browser.show = async () => {};
+  browser.snapshot.value = {
+    viewVersion: 1,
+    activeId: target.id,
+    tabs: [
+      {
+        id: target.id,
+        url: 'https://site.test/',
+        title: 'Site',
+        loading: false,
+        canGoBack: false,
+        canGoForward: false
+      }
+    ]
+  };
+  browser.profile = async (_scope, command) => {
+    if (command.action === 'describe')
+      return { profile: target, ...(workspace === 'bounded' ? { historySuggestions: true } : {}) };
+    if (command.action !== 'history') throw new Error('Unexpected profile command');
+    document.body.dataset.historyQuery = JSON.stringify(command.input);
+    return {
+      items: Array.from({ length: command.input.suggestions ? 6 : 10 }, (_, index) => ({
+        url: `https://site.test/${index}`,
+        title: `Page ${index + 1}`,
+        visitedAt: 1
+      })),
+      capped: false
+    };
+  };
+  createTooltipApp({
+    setup: () => () =>
+      h(WorkspaceNodeBrowser, {
+        scope: { nodeId: 'node', workspaceId: 'workspace' },
+        browser,
+        connected: true,
+        capability: { apiVersion: 1, nodeGeneration: 'fixture', ice: false }
+      })
+  })
+    .use(i18n)
+    .mount('#app');
+}
+
+const addressFixture = {
   setup() {
     return () =>
       h('main', { style: 'margin: 20px; max-width: 500px' }, [
@@ -55,6 +111,7 @@ createApp({
         h('div', { 'data-testid': 'requested' }, requested.value.join(','))
       ]);
   }
-})
-  .use(i18n)
-  .mount('#app');
+};
+
+if (workspace) mountWorkspace();
+else createApp(addressFixture).use(i18n).mount('#app');

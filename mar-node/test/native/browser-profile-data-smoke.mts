@@ -102,6 +102,10 @@ try {
     (await search()).items.map(({ url }) => url),
     [`${origin}/recent`, `${origin}/earlier`]
   );
+  assert.deepEqual(
+    await data.search({ text: origin, startTime: 0, suggestions: true }),
+    await search()
+  );
   await data.clear({ range: 'hour', categories: ['cache'] });
   assert.equal(await asset('earlier'), '1');
   assert.equal(await asset('recent'), '2');
@@ -122,7 +126,7 @@ try {
   await owned.close();
   assert.deepEqual(await readdir(runs), ['profile-data-extension']);
   console.log(
-    'Browser data: loopback, native history, cutoff, category selection and live page preservation passed.'
+    'Browser data: loopback, native history and suggestions, cutoff, category selection and live page preservation passed.'
   );
 } finally {
   try {

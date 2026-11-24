@@ -51,7 +51,7 @@ export function createBrowserProfileOperation(
     const scope = { workspaceId, userId };
     switch (command.action) {
       case 'describe':
-        return { profile: await browser.describeProfile(scope) };
+        return { profile: await browser.describeProfile(scope), historySuggestions: true };
       case 'history':
         return browser.useProfile(scope, command.target, (profile) =>
           profile.search(command.input)

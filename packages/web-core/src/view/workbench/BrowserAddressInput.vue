@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, useId, watch } from 'vue';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarPopover } from '@myagentroam/mar-ui/popover';
-import type { BrowserHistoryItem } from '@myagentroam/protocol';
+import { BROWSER_HISTORY_SUGGESTION_LIMIT, type BrowserHistoryItem } from '@myagentroam/protocol';
 import { browserAddress } from '../../service/browser-link-routing.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
@@ -46,7 +46,9 @@ watch(
       try {
         const items = await props.lookup(text);
         if (!current) return;
-        results.value = items.filter((item) => browserAddress(item.url)).slice(0, 6);
+        results.value = items
+          .filter((item) => browserAddress(item.url))
+          .slice(0, BROWSER_HISTORY_SUGGESTION_LIMIT);
       } catch {
         // History is supplemental; entering an address must still work if it is unavailable.
       } finally {

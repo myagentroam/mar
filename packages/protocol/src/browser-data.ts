@@ -8,11 +8,14 @@ export const browserDataClearSchema = z.strictObject({
     .max(3)
 });
 
+export const BROWSER_HISTORY_SUGGESTION_LIMIT = 6;
+
 export const browserHistoryQuerySchema = z
   .strictObject({
     text: z.string().max(512),
     startTime: z.number().int().nonnegative().safe(),
-    endTime: z.number().int().positive().safe().optional()
+    endTime: z.number().int().positive().safe().optional(),
+    suggestions: z.literal(true).optional()
   })
   .refine(({ startTime, endTime }) => endTime === undefined || endTime > startTime);
 
@@ -39,6 +42,10 @@ export const browserProfileTargetSchema = z.strictObject({
   id: z.string().uuid(),
   kind: z.enum(['live', 'stored']),
   persistent: z.boolean()
+});
+export const browserProfileDescriptionSchema = z.object({
+  profile: browserProfileTargetSchema.optional(),
+  historySuggestions: z.literal(true).optional()
 });
 export const browserProfileCommandSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('describe') }),
