@@ -222,6 +222,7 @@ onMounted(() => {
     keys: [{ key: 'Escape' }],
     when: () => keyboardFocused.value && !textInput.active,
     execute: () => {
+      ++contextIntent;
       keyboard.value?.blur();
       return 'HANDLED';
     }
@@ -592,6 +593,7 @@ function key(event: KeyboardEvent, edge: 'up' | 'down'): void {
     input({ type: 'key', edge, viewVersion, key: pressedKey });
     return;
   }
+  if (!['Alt', 'AltGraph', 'Control', 'Meta', 'Shift'].includes(event.key)) ++contextIntent;
   if (
     textInput.active ||
     event.isComposing ||
@@ -675,6 +677,10 @@ function text(event: InputEvent): void {
   const target = event.target as HTMLTextAreaElement;
   if (textInput.read(event, target.value, frame.value?.viewVersion)) target.value = '';
 }
+function startComposition(): void {
+  ++contextIntent;
+  textInput.start(frame.value?.viewVersion);
+}
 function endComposition(event: CompositionEvent): void {
   textInput.end(event.data, frame.value?.viewVersion);
   const target = event.target as HTMLTextAreaElement;
@@ -692,12 +698,14 @@ function softKey(event: InputEvent): void {
           ? 'Enter'
           : undefined;
   if (viewVersion === undefined || key === undefined || !event.cancelable) return;
+  ++contextIntent;
   event.preventDefault();
   if (input({ type: 'key', edge: 'down', viewVersion, key }))
     input({ type: 'key', edge: 'up', viewVersion, key });
 }
 function insertText(value: string, viewVersion = frame.value?.viewVersion): void {
-  if (viewVersion === undefined) return;
+  if (!value || viewVersion === undefined) return;
+  ++contextIntent;
   for (let start = 0; start < value.length;) {
     let end = Math.min(start + 4096, value.length);
     if (end < value.length && /[\uD800-\uDBFF]/u.test(value[end - 1]!)) end--;
@@ -893,7 +901,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           keyboardFocused = false;
           releaseControls();
         "
-        @compositionstart="textInput.start(frame?.viewVersion)"
+        @compositionstart="startComposition"
         @compositionend="endComposition"
         @beforeinput="softKey"
         @input="text"

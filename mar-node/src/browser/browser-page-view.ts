@@ -144,7 +144,8 @@ export class BrowserPageView {
       const text = await frame
         .evaluate(() => {
           if (!document.hasFocus()) return '';
-          const field = document.activeElement;
+          let field = document.activeElement;
+          while (field?.shadowRoot?.activeElement) field = field.shadowRoot.activeElement;
           if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) {
             if (field instanceof HTMLInputElement && field.type === 'password') return '';
             const { selectionStart, selectionEnd, value } = field;

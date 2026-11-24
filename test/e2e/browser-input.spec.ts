@@ -12,7 +12,7 @@ test('Browser sends wheel to its pointed scroller and coalesces a burst without 
   context
 }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
-  const remote = await context.newPage({});
+  const remote = await context.newPage();
   try {
     await remote.setViewportSize({ width: 800, height: 600 });
     await remote.setContent(
@@ -438,6 +438,136 @@ test('Browser drops delayed menu paste after a view change and does not paste in
   }
 });
 
+test('Browser discards delayed menu paste after typing or moving the caret in the same field', async ({
+  page,
+  context
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const remote = await context.newPage();
+  let sent = 0;
+  try {
+    await remote.setViewportSize({ width: 800, height: 600 });
+    await setContextPage(remote, '<textarea>ab</textarea>');
+    await attach(page, remote, fixture.url, undefined, () => sent++);
+    const field = remote.locator('textarea');
+    const sink = page.locator('[data-node-browser-input]');
+    const paste = page.getByRole('menuitem', { name: 'Paste', exact: true });
+    await remote.evaluate(() => {
+      const field = document.querySelector('textarea')!;
+      field.focus();
+      field.setSelectionRange(2, 2);
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, 'readText', {
+        value: () =>
+          new Promise<string>((resolve) => {
+            document.documentElement.dataset.pendingClipboard = 'yes';
+            document.addEventListener('finish-fixture-clipboard', () => resolve('late'), {
+              once: true
+            });
+          })
+      });
+    });
+    for (const [key, caret, value] of [
+      ['ArrowLeft', 1, 'ab'],
+      ['x', 2, 'axb']
+    ] as const) {
+      await sink.focus();
+      await page.keyboard.press('Shift+F10');
+      await paste.click();
+      await expect(page.locator('html')).toHaveAttribute('data-pending-clipboard', 'yes');
+      await expect(sink).toBeFocused();
+      await page.keyboard.press(key);
+      await expect
+        .poll(() => field.evaluate((input: HTMLTextAreaElement) => input.selectionStart))
+        .toBe(caret);
+      await page.evaluate(async () => {
+        delete document.documentElement.dataset.pendingClipboard;
+        document.dispatchEvent(new Event('finish-fixture-clipboard'));
+        await new Promise(requestAnimationFrame);
+      });
+      await expect(field).toHaveValue(value);
+    }
+    expect(sent).toBe(0);
+    await page.keyboard.press('Shift+F10');
+    await paste.click();
+    await page.evaluate(() => document.dispatchEvent(new Event('finish-fixture-clipboard')));
+    await expect(field).toHaveValue('axlateb');
+    await expect.poll(() => sent).toBe(1);
+  } finally {
+    await remote.close();
+    await fixture.close();
+  }
+});
+
+test('Browser resolves the context menu inside nested open shadow roots', async ({
+  page,
+  context
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const remote = await context.newPage();
+  try {
+    await remote.setViewportSize({ width: 800, height: 600 });
+    await setContextPage(
+      remote,
+      `<div id="outer"></div><script>
+        const outer = document.getElementById('outer').attachShadow({mode:'open'});
+        const host = document.createElement('div');
+        outer.append(host);
+        const inner = host.attachShadow({mode:'open'});
+        inner.innerHTML = '<input value="Shadow text"><input type="password" value="secret"><a href="https://example.test/shadow"><span>Shadow link</span></a>';
+      </script>`
+    );
+    await attach(page, remote, fixture.url);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: fixture.url });
+    const field = remote.locator('input:not([type])');
+    const password = remote.locator('input[type=password]');
+    const menu = page.getByRole('menu', { name: 'Page context menu' });
+    const copy = menu.getByRole('menuitem', { name: 'Copy', exact: true });
+    const paste = menu.getByRole('menuitem', { name: 'Paste', exact: true });
+    await field.selectText();
+    await page.locator('[data-node-browser-input]').focus();
+    await page.keyboard.press('Shift+F10');
+    await copy.click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe('Shadow text');
+
+    const bounds = (await field.boundingBox())!;
+    const point = await canvasPoint(page, bounds.x + 10, bounds.y + bounds.height / 2);
+    await page.evaluate(() => navigator.clipboard.writeText('Pasted into shadow'));
+    await page.mouse.click(point.clientX, point.clientY, { button: 'right' });
+    await paste.click();
+    await expect(field).toHaveValue('Pasted into shadow');
+
+    const view = new BrowserPageView(remote);
+    await expect(view.contextMenu.open('focus-change')).resolves.toMatchObject({ paste: true });
+    await password.focus();
+    await field.focus();
+    await view.contextMenu.paste('focus-change', 'Stale target');
+    await expect(field).toHaveValue('Pasted into shadow');
+    await page.bringToFront();
+
+    await password.selectText();
+    await page.locator('[data-node-browser-input]').focus();
+    await page.keyboard.press('Shift+F10');
+    await expect(copy).toBeDisabled();
+    await page.keyboard.press('Escape');
+
+    const link = (await remote.locator('a span').boundingBox())!;
+    const linkPoint = await canvasPoint(page, link.x + 5, link.y + 5);
+    await page.mouse.click(linkPoint.clientX, linkPoint.clientY, { button: 'right' });
+    await expect(menu.getByRole('menuitem', { name: 'Open link in new tab' })).toBeEnabled();
+    await menu.getByRole('menuitem', { name: 'Copy link address' }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe('https://example.test/shadow');
+  } finally {
+    await remote.close();
+    await fixture.close();
+  }
+});
+
 test('Browser sends a single-finger swipe as native touch and scrolls remote content', async ({
   page,
   context
@@ -575,7 +705,7 @@ test('Browser flushes the latest drag position before requesting the copied sele
       element.addEventListener(
         'pointerdown',
         (event) => {
-          element.dataset.testPointer = String(event.pointerId);
+          element.dataset.testPointer = String((event as PointerEvent).pointerId);
         },
         { once: true }
       );

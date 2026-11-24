@@ -11,23 +11,23 @@ const probeKey = `marContextMenu_${randomUUID()}`;
 export async function installBrowserContextMenu(context: BrowserContext): Promise<void> {
   await context.addInitScript((key) => {
     let armed: string | undefined;
-    let rightClick: MouseEvent | undefined;
+    let rightClick: { event: MouseEvent; path: EventTarget[] } | undefined;
     let pasteTarget: { id: string; element: Element } | undefined;
 
     window.addEventListener(
       'contextmenu',
       (event) => {
-        if (armed && event.isTrusted && event.button === 2) rightClick = event;
+        // The composed path is only available during dispatch. Keep the event
+        // too, so the later read still respects the page's preventDefault().
+        if (armed && event.isTrusted && event.button === 2)
+          rightClick = { event, path: event.composedPath() };
       },
       { capture: true }
     );
-    window.addEventListener(
-      'focusout',
-      () => {
-        pasteTarget = undefined;
-      },
-      { capture: true }
-    );
+    function clearPasteTarget(): void {
+      pasteTarget?.element.removeEventListener('focusout', clearPasteTarget, true);
+      pasteTarget = undefined;
+    }
 
     function editable(element: Element | null): boolean {
       if (element instanceof HTMLInputElement) {
@@ -47,13 +47,15 @@ export async function installBrowserContextMenu(context: BrowserContext): Promis
       value: (command: ProbeCommand): BrowserContextOptions | boolean | undefined => {
         if (command.type === 'arm') {
           armed = command.id;
-          rightClick = pasteTarget = undefined;
+          rightClick = undefined;
+          clearPasteTarget();
           return;
         }
-        const field = document.activeElement;
+        let field = document.activeElement;
+        while (field?.shadowRoot?.activeElement) field = field.shadowRoot.activeElement;
         if (command.type === 'paste') {
           const target = pasteTarget;
-          pasteTarget = undefined;
+          clearPasteTarget();
           return (
             !!target &&
             target.id === command.id &&
@@ -63,29 +65,38 @@ export async function installBrowserContextMenu(context: BrowserContext): Promis
             insert('insertText', false, command.text)
           );
         }
-        const event = rightClick;
+        const click = rightClick;
         if (command.type === 'read') {
           if (armed !== command.id) return;
           armed = rightClick = undefined;
-          if (!event || event.defaultPrevented) return;
+          if (!click || click.event.defaultPrevented) return;
         } else if (!document.hasFocus() || field?.matches('iframe, frame')) return;
 
-        const target = command.type === 'read' ? event?.target : field;
-        const element = target instanceof Element ? target : null;
+        const path = command.type === 'read' ? click?.path : undefined;
         const password = field instanceof HTMLInputElement && field.type === 'password';
         const fieldSelected =
           (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) &&
           field.selectionStart !== null &&
           field.selectionStart !== field.selectionEnd;
-        const paste = !!field && !!element && field.contains(element) && editable(field);
-        pasteTarget = paste ? { id: command.id, element: field } : undefined;
-        const link = element?.closest<HTMLAnchorElement | HTMLAreaElement>(
-          'a[href], area[href]'
+        clearPasteTarget();
+        if (field && (!path || path.includes(field)) && editable(field)) {
+          pasteTarget = { id: command.id, element: field };
+          // Focus changes within one shadow tree may not reach window.
+          field.addEventListener('focusout', clearPasteTarget, { capture: true });
+        }
+        const link = (
+          path
+            ? path.find(
+                (target): target is HTMLAnchorElement | HTMLAreaElement =>
+                  (target instanceof HTMLAnchorElement || target instanceof HTMLAreaElement) &&
+                  target.hasAttribute('href')
+              )
+            : field?.closest<HTMLAnchorElement | HTMLAreaElement>('a[href], area[href]')
         )?.href;
         const url = link ? URL.parse(link) : null;
         return {
           copy: !password && (fieldSelected || !!selection()?.toString()),
-          paste,
+          paste: !!pasteTarget,
           ...(url &&
           !url.username &&
           !url.password &&
