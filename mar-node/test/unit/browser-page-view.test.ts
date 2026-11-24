@@ -12,7 +12,7 @@ function castSession() {
   return {
     on: vi.fn((_name: string, _receive: (frame: Frame) => void) => {}),
     off: vi.fn(),
-    send: vi.fn(async (_method: string, _params?: object) => {}),
+    send: vi.fn(async (_method: string, _params?: object): Promise<unknown> => undefined),
     detach: vi.fn(async () => {})
   };
 }
@@ -49,7 +49,6 @@ describe('Browser page view', () => {
     const view = new BrowserPageView({
       isClosed: () => false,
       viewportSize: () => ({ width: 1280, height: 800 }),
-      screenshot: () => new Promise(() => {}),
       context: () => ({ newCDPSession: create })
     } as unknown as Page);
     const offer = vi.fn();
@@ -76,42 +75,97 @@ describe('Browser page view', () => {
     await next.stop();
   });
 
-  it.each(['static', 'static-hd', 'live', 'stopped'] as const)(
+  it.each(['static', 'static-hd', 'live', 'stopped', 'resized'] as const)(
     'seeds a new capture only when the current screencast has not painted (%s)',
     async (state) => {
-      const screenshot = Promise.withResolvers<Buffer>();
-      const takeScreenshot = vi.fn(() => screenshot.promise);
+      const screenshot = Promise.withResolvers<{ data: string }>();
       const session = castSession();
+      session.send.mockImplementation(async (method) => {
+        if (method === 'Page.getLayoutMetrics') {
+          return {
+            visualViewport: { pageX: 5, pageY: 30, scale: 1 },
+            contentSize: { width: 1098 },
+            cssContentSize: { width: 549 }
+          };
+        }
+        if (method === 'Page.captureScreenshot') return screenshot.promise;
+      });
+      const viewportSize = vi.fn(() => ({ width: 549, height: 732 }));
       const view = new BrowserPageView({
         isClosed: () => false,
-        viewportSize: () => ({ width: 549, height: 732 }),
-        screenshot: takeScreenshot,
+        viewportSize,
         context: () => ({ newCDPSession: async () => session })
       } as unknown as Page);
       const offer = vi.fn();
       const hd = state === 'static-hd';
-      const capture = await view.startCapture({ width: 550, height: 732, quality: 70, hd }, offer);
-      expect(takeScreenshot).toHaveBeenCalledExactlyOnceWith({
-        type: 'jpeg',
-        quality: 70,
-        scale: hd ? 'device' : 'css',
-        timeout: 3000
+      const render = hd ? { width: 822, height: 1096 } : { width: 550, height: 732 };
+      const capture = await view.startCapture({ ...render, quality: 70 }, offer);
+      await vi.waitFor(() => {
+        expect(session.send).toHaveBeenCalledWith('Page.captureScreenshot', {
+          format: 'jpeg',
+          quality: 70,
+          clip: { x: 5, y: 30, width: 549, height: 732, scale: hd ? 1096 / 1464 : 0.5 }
+        });
       });
       const emit = session.on.mock.calls[0]![1];
       const native = jpegHeader(275, 366);
       emit(frame(native, 639, 732));
       emit(frame(jpegHeader(550, 550), 549, 732));
+      emit(frame(jpegHeader(1098, 1464), 549, 732));
+      emit(frame(jpegHeader(render.width + 1, render.height), 549, 732));
+      emit(frame(jpegHeader(render.width, render.height + 1), 549, 732));
       if (state === 'live') emit(frame(native, 549, 732));
       if (state === 'stopped') await capture.stop();
-      const seed = hd ? jpegHeader(1098, 1464) : jpegHeader(549, 732);
-      screenshot.resolve(seed);
+      if (state === 'resized') viewportSize.mockReturnValue({ width: 700, height: 732 });
+      const seed = hd ? jpegHeader(822, 1096) : jpegHeader(549, 732);
+      screenshot.resolve({ data: seed.toString('base64') });
       await screenshot.promise;
+      await Promise.resolve();
       expect(offer.mock.calls).toEqual(
-        state === 'stopped'
+        state === 'stopped' || state === 'resized'
           ? []
           : [[{ jpeg: state === 'live' ? native : seed, width: 549, height: 732 }]]
       );
       await capture.stop();
     }
   );
+
+  it('serializes the static clip across viewers and continues after the first fails', async () => {
+    const first = castSession();
+    const second = castSession();
+    const blocked = Promise.withResolvers<never>();
+    const metrics = {
+      visualViewport: { pageX: 0, pageY: 0, scale: 1 },
+      contentSize: { width: 1600 },
+      cssContentSize: { width: 800 }
+    };
+    const jpeg = jpegHeader(800, 450);
+    first.send.mockImplementation(async (method) => {
+      if (method === 'Page.getLayoutMetrics') return metrics;
+      if (method === 'Page.captureScreenshot') return blocked.promise;
+    });
+    second.send.mockImplementation(async (method) => {
+      if (method === 'Page.getLayoutMetrics') return metrics;
+      if (method === 'Page.captureScreenshot') return { data: jpeg.toString('base64') };
+    });
+    const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const view = new BrowserPageView({
+      viewportSize: () => ({ width: 800, height: 450 }),
+      context: () => ({ newCDPSession: create })
+    } as unknown as Page);
+    const offer = vi.fn();
+    const render = { width: 800, height: 450, quality: 85 };
+    const a = await view.startCapture(render, vi.fn());
+    const b = await view.startCapture(render, offer);
+    await vi.waitFor(() =>
+      expect(first.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything())
+    );
+    expect(second.send).not.toHaveBeenCalledWith('Page.getLayoutMetrics');
+    blocked.reject(new Error('screenshot failed'));
+    await vi.waitFor(() =>
+      expect(offer).toHaveBeenCalledExactlyOnceWith({ jpeg, width: 800, height: 450 })
+    );
+    await a.stop();
+    await b.stop();
+  });
 });

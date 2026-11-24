@@ -457,6 +457,11 @@ try {
       timeout: 8_000
     });
     const first = await workbench.evaluate(() => window.probe.stats);
+    assert.deepEqual(
+      firstCaptureRaster,
+      fullRaster,
+      'First JPEG obeys the same cap as the stream.'
+    );
     assert.deepEqual(first.size, fullRaster);
     assert.deepEqual(first.raster, { width: fullRaster[0], height: fullRaster[1] });
     assert.equal(bitrateChanges[0], bitrate);
@@ -569,7 +574,6 @@ try {
     if (small) {
       assert.equal(first.viewport?.width, 800);
       assert.equal(first.viewport?.height, 450);
-      assert.deepEqual(firstCaptureRaster, fullRaster, 'The original JPEG must contain HD pixels.');
       assert(
         first.fineDetail >= 100 && recovered.fineDetail >= 100,
         'Expected real sub-CSS-pixel detail, not an upscaled JPEG.'

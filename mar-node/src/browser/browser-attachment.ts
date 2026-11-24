@@ -365,7 +365,7 @@ export class BrowserAttachment {
       if (this.closed || target !== this.next) continue;
       const version = target.version;
       this.capture = await target.page.startCapture(
-        { ...target.raster, quality: this.options.quality, hd: this.stream.hd },
+        { ...target.raster, quality: this.options.quality },
         (frame) => {
           if (target !== this.next) return;
           this.options.captured?.(frame.jpeg.byteLength);

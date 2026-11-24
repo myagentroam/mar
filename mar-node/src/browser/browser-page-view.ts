@@ -15,6 +15,7 @@ export class BrowserPageView {
   private pendingResize: Promise<void> = Promise.resolve();
   private inputOwner: object | undefined;
   private navigationSession: Promise<CDPSession> | undefined;
+  private pendingSeed: Promise<void> = Promise.resolve();
   readonly contextMenu: BrowserContextMenu;
   readonly find: BrowserPageFind;
 
@@ -190,7 +191,7 @@ export class BrowserPageView {
   }
 
   async startCapture(
-    render: { width: number; height: number; quality: number; hd?: boolean },
+    render: { width: number; height: number; quality: number },
     offer: (frame: Frame) => void
   ): Promise<BrowserPageCapture> {
     const viewport = this.page.viewportSize();
@@ -203,7 +204,12 @@ export class BrowserPageView {
       const image = browserJpegSize(jpeg);
       // CDP can report the new CSS viewport with an old compositor surface.
       // Allow rounding at the raster edge, but do not present a cropped surface as the full page.
-      if (!image || Math.abs(image.width * height - image.height * width) > 2 * (width + height))
+      if (
+        !image ||
+        image.width > render.width ||
+        image.height > render.height ||
+        Math.abs(image.width * height - image.height * width) > 2 * (width + height)
+      )
         return;
       receivedFrame = true;
       offer({ jpeg, width, height });
@@ -241,21 +247,45 @@ export class BrowserPageView {
         quality: render.quality
       });
       // A new viewer can subscribe to a static page without triggering a
-      // repaint. Seed once, without overwriting a newer compositor frame.
+      // repaint. Serialize clip captures across viewers; Chromium may temporarily
+      // change its capture viewport while a clipped screenshot is in flight.
       if (viewport && !stopped && !receivedFrame) {
-        void this.page
-          .screenshot({
-            type: 'jpeg',
-            quality: render.quality,
-            scale: render.hd ? 'device' : 'css',
-            timeout: 3_000
-          })
-          .then(
-            (jpeg) => {
-              if (!stopped && !receivedFrame) publish(jpeg, viewport.width, viewport.height);
-            },
-            () => undefined
+        const waiting = () => {
+          const current = this.page.viewportSize();
+          return (
+            !stopped &&
+            !receivedFrame &&
+            current?.width === viewport.width &&
+            current.height === viewport.height
           );
+        };
+        this.pendingSeed = this.pendingSeed
+          .then(async () => {
+            if (!waiting()) return;
+            const { visualViewport, contentSize, cssContentSize } =
+              await session.send('Page.getLayoutMetrics');
+            if (!waiting()) return;
+            // CDP clip scale is relative to device pixels, not CSS pixels.
+            const density = contentSize.width / cssContentSize.width || 1;
+            const scale = Math.min(
+              1,
+              render.width / (viewport.width * density),
+              render.height / (viewport.height * density)
+            );
+            const { data } = await session.send('Page.captureScreenshot', {
+              format: 'jpeg',
+              quality: render.quality,
+              clip: {
+                x: visualViewport.pageX,
+                y: visualViewport.pageY,
+                width: viewport.width / visualViewport.scale,
+                height: viewport.height / visualViewport.scale,
+                scale: scale * visualViewport.scale
+              }
+            });
+            if (waiting()) publish(Buffer.from(data, 'base64'), viewport.width, viewport.height);
+          })
+          .catch(() => undefined);
       }
       return capture;
     } catch (error) {
