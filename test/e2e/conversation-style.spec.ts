@@ -1868,9 +1868,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const collaborationIcon = page.locator('.subagent-group summary > .conversation-record-icon');
       await expect(collaborationIcon).toHaveAttribute('data-mar-icon', 'agent-collaboration');
       await expect(collaborationIcon).toHaveAttribute('aria-hidden', 'true');
+      // The overlapping back face only shows the eye that is not covered by the front face.
+      await expect(collaborationIcon.locator('rect')).toHaveCount(1);
+      await expect(collaborationIcon.locator('circle')).toHaveCount(3);
       await expect(page.locator('.subagent-group .conversation-group-meta')).toHaveText(
         '3 records'
       );
+      const collaborationHeading = collaborationIcon.locator('..');
+      await collaborationHeading.evaluate((element) =>
+        element.scrollIntoView({ block: 'center', behavior: 'instant' })
+      );
+      await collaborationHeading.screenshot({
+        animations: 'disabled',
+        path: testInfo.outputPath(`agent-collaboration-${width}.png`)
+      });
       for (const group of await groups.all()) {
         const heading = group.locator(':scope > summary');
         await heading.click();

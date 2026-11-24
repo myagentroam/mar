@@ -113,7 +113,7 @@ export const iconShapes = {
   reasoning:
     '<path d="M10 7c.8 4.8 2.2 6.2 7 7-4.8.8-6.2 2.2-7 7-.8-4.8-2.2-6.2-7-7 4.8-.8 6.2-2.2 7-7Z"/><path d="M18 2.5c.4 1.9 1.1 2.6 3 3-1.9.4-2.6 1.1-3 3-.4-1.9-1.1-2.6-3-3 1.9-.4 2.6-1.1 3-3Z"/>',
   'agent-collaboration':
-    '<rect x="2.75" y="4.25" width="11" height="8" rx="2.85"/><rect x="10.25" y="14.25" width="11" height="7.75" rx="2.85"/><path d="M8 2v2.25m10.5 7.75v2.25M12 12v.5a1.75 1.75 0 0 0 1.75 1.75"/><g fill="currentColor" stroke="none"><circle cx="6.25" cy="8.25" r="1"/><circle cx="10.25" cy="8.25" r="1"/><circle cx="13.75" cy="18" r="1"/><circle cx="17.75" cy="18" r="1"/></g>',
+    '<path d="M12 5h5.5A3.75 3.75 0 0 1 21.25 8.75v3.75a3.75 3.75 0 0 1-3.1 3.7M17 2.75V5M9.25 6v3.25"/><rect x="2.75" y="9.25" width="13" height="11.5" rx="3.4"/><g fill="currentColor" stroke="none"><circle cx="6.75" cy="14.75" r=".95"/><circle cx="11.75" cy="14.75" r=".95"/><circle cx="18.5" cy="10.5" r=".95"/></g>',
   terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.8"/><path d="m7 9 3 3-3 3m6 0h4" />',
   'file-change':
     '<path d="M14.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5L14.5 3Zm0 0v3A1.5 1.5 0 0 0 16 7.5h3"/><path d="M8.5 9.5H12m-2.25 5.5 4-4 2.5 2.5-4 4-3.5 1 1-3.5Zm2.75-2.75 2.5 2.5"/>',
