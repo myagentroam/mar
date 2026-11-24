@@ -22,6 +22,10 @@ import {
 import { BrowserRuntime } from '../../src/browser/browser-runtime.js';
 import { createBrowserResourceOperation } from '../../src/browser/browser-resource-operations.js';
 import { createBrowserVideoEncoder } from '../../src/browser/browser-video-encoder.js';
+import {
+  BROWSER_VIDEO_HD_BITRATE,
+  BROWSER_VIDEO_HD_LIMIT
+} from '../../src/browser/browser-video-config.js';
 
 declare global {
   interface Window {
@@ -43,7 +47,9 @@ declare global {
 // Uses the actual attachment owners and data adapters. The isolated fixture
 // supplies verified identities and connects the data peers, not product routes.
 const mode = process.argv[2] ?? 'relay';
-assert(mode === 'relay' || mode === 'ice');
+assert(mode === 'relay' || mode === 'ice' || mode === 'ice-hd');
+const hd = mode === 'ice-hd';
+const fixtureViewport = hd ? BROWSER_VIDEO_HD_LIMIT : { width: 960, height: 600 };
 const transportId = 'fixture-transport';
 const fingerprint = 'fixture-fingerprint';
 const server = createServer((request, response) => {
@@ -86,7 +92,7 @@ const runtime = new BrowserRuntime({
         channel: 'chrome',
         headless: true,
         chromiumSandbox: true,
-        viewport: { width: 960, height: 600 }
+        viewport: fixtureViewport
       });
       try {
         targetPage = context.pages()[0] ?? (await context.newPage());
@@ -105,7 +111,7 @@ const runtime = new BrowserRuntime({
       chromiumSandbox: true
     });
     try {
-      const context = await process.newContext({ viewport: { width: 960, height: 600 } });
+      const context = await process.newContext({ viewport: fixtureViewport });
       targetPage = await context.newPage();
       await targetPage.setContent(
         '<button onclick="window.browserClicked = true">Click me</button>'
@@ -125,18 +131,19 @@ const runtime = new BrowserRuntime({
       throw error;
     }
   },
-  encoder: async () => {
+  encoder: async (wantsHd) => {
     if (!chrome) throw new Error('Missing test Chrome');
     const page = await chrome.newPage();
     try {
       await page.goto(fixtureOrigin);
       const codec = await createBrowserVideoEncoder(page, {
-        width: 960,
-        height: 600,
-        bitrate: 384_000,
-        framerate: 24
+        ...fixtureViewport,
+        bitrate: wantsHd ? BROWSER_VIDEO_HD_BITRATE : 384_000,
+        framerate: 24,
+        hd: wantsHd
       });
       return {
+        ...(wantsHd && { hd: true as const }),
         encode: codec.encode,
         close: async () => {
           try {
@@ -231,7 +238,7 @@ try {
     nodeId: 'node',
     workspaceId: scope.workspaceId,
     browserId,
-    ...(mode === 'ice' ? { transportId } : {})
+    ...(mode !== 'relay' ? { transportId } : {})
   });
   assert.equal(
     await coordinator.relayBrowser({ ...identity, connectionId: 'wrong-page' }, open),
@@ -271,6 +278,7 @@ try {
       contents: `import { BrowserAttachmentClient, supportsBrowserVideo } from '../../../packages/web-core/src/service/browser-attachment-client.ts';
         async function start(link, grant) {
           if (!await supportsBrowserVideo()) throw new Error('No H.264 decoder');
+          if (grant.hd && !await supportsBrowserVideo(true)) throw new Error('No HD H.264 decoder');
           let version;
           window.probe = { frame: 0, click: () => {
             const action = { type: 'button', button: 'left', x: 20, y: 16, viewVersion: version };
@@ -280,6 +288,9 @@ try {
             client.send({ type: 'navigate', address, viewVersion: version })
           };
           const client = new BrowserAttachmentClient(link, document.querySelector('canvas'), grant, {
+            attached: () => {
+              if (grant.hd) client.send({ type: 'viewport.resize', width: 1920, height: 1080 });
+            },
             snapshot: (state) => { window.probe.active = state.activeId; },
             frame: (drawn) => { version = drawn.viewVersion; window.probe.frame++; window.probe.viewport = drawn; },
             sample: () => {},
@@ -324,7 +335,9 @@ try {
         { once: true }
       );
     });
-    await peer.setRemoteDescription(await web.evaluate((open) => window.startIce(open), open));
+    await peer.setRemoteDescription(
+      await web.evaluate((open) => window.startIce(open), { ...open, ...(hd && { hd: true }) })
+    );
     if (peer.iceGatheringState !== 'complete')
       await new Promise<void>((resolve) =>
         peer.addEventListener('icegatheringstatechange', () => {
@@ -343,6 +356,17 @@ try {
   );
   const ended = await web.evaluate(() => window.probe.ended);
   assert.equal(ended, undefined, JSON.stringify({ ended, errors: errors.map(String) }));
+  if (hd) {
+    await web.waitForFunction(() => window.probe.viewport?.width === 1920, undefined, {
+      timeout: 5_000
+    });
+    assert.deepEqual(
+      await web
+        .locator('canvas')
+        .evaluate((canvas: HTMLCanvasElement) => [canvas.width, canvas.height]),
+      [1920, 1080]
+    );
+  }
   assert.equal(await web.evaluate(() => window.probe.click()), true);
   await target.waitForFunction(() => window.browserClicked, undefined, { timeout: 5_000 });
   const resized = `${http}/after-resize`;

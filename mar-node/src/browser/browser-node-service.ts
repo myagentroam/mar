@@ -24,6 +24,8 @@ import { createBrowserVideoEncoder } from './browser-video-encoder.js';
 import {
   BROWSER_VIDEO_BITRATE,
   BROWSER_VIDEO_FRAMERATE,
+  BROWSER_VIDEO_HD_BITRATE,
+  BROWSER_VIDEO_HD_LIMIT,
   BROWSER_VIEWPORT
 } from './browser-video-config.js';
 
@@ -60,7 +62,7 @@ export class BrowserNodeService {
       profileUnused: chromiumProfileUnused,
       workspacePath: options.workspacePath,
       launch: createBrowserLauncher(join(options.root, 'runs'), options.failed),
-      encoder: () => this.encoder(),
+      encoder: (hd) => this.encoder(hd),
       failed: options.failed
     });
     this.resource = createBrowserResourceOperation(this.browser, options.requireWorkspace);
@@ -189,7 +191,7 @@ export class BrowserNodeService {
     });
   }
 
-  private async encoder() {
+  private async encoder(hd = false) {
     if (!this.encoderHost) {
       const launch = chromium.launch({
         channel: 'chromium',
@@ -213,20 +215,41 @@ export class BrowserNodeService {
         route.fulfill({ contentType: 'text/html', body: '<!doctype html>' })
       );
       await page.goto(encoderOrigin);
-      const codec = await createBrowserVideoEncoder(page, {
-        ...BROWSER_VIEWPORT,
-        bitrate: BROWSER_VIDEO_BITRATE,
-        framerate: BROWSER_VIDEO_FRAMERATE
-      });
+      const create = (hd: boolean) =>
+        createBrowserVideoEncoder(page, {
+          ...(hd ? BROWSER_VIDEO_HD_LIMIT : BROWSER_VIEWPORT),
+          bitrate: hd ? BROWSER_VIDEO_HD_BITRATE : BROWSER_VIDEO_BITRATE,
+          framerate: BROWSER_VIDEO_FRAMERATE,
+          hd
+        });
+      const probe = async (codec: Awaited<ReturnType<typeof create>>) => {
+        const jpeg = await page.screenshot({
+          type: 'jpeg',
+          clip: { x: 0, y: 0, width: 16, height: 16 },
+          timeout: 5_000
+        });
+        return codec.encode(jpeg, true);
+      };
+      let codec: Awaited<ReturnType<typeof create>> | undefined;
+      if (hd) {
+        try {
+          codec = await create(true);
+          const frame = await probe(codec);
+          if (!frame.key || !frame.data.length) throw new Error('BROWSER_H264_ENCODER_UNAVAILABLE');
+        } catch {
+          await codec?.close();
+          codec = undefined;
+        }
+      }
+      const negotiatedHd = codec !== undefined;
+      const active = codec ?? (await create(false));
       return {
-        encode: codec.encode,
-        probeFrame: async () => {
-          const jpeg = await page.screenshot({ type: 'jpeg', timeout: 5_000 });
-          return codec.encode(jpeg, true);
-        },
+        ...(negotiatedHd && { hd: true as const }),
+        encode: active.encode,
+        probeFrame: () => probe(active),
         close: async () => {
           try {
-            await codec.close();
+            await active.close();
           } finally {
             await page.close();
           }

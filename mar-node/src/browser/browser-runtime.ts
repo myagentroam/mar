@@ -43,7 +43,7 @@ export class BrowserRuntime {
       profileUnused: (path: string) => Promise<boolean>;
       workspacePath?: (workspaceId: string) => string | undefined;
       launch: (profilePath?: string) => Promise<RunningBrowser>;
-      encoder: () => Promise<BrowserAttachmentEncoder>;
+      encoder: (hd: boolean) => Promise<BrowserAttachmentEncoder>;
       failed: (error: unknown) => void;
     }
   ) {

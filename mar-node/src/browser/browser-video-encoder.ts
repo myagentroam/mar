@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { BROWSER_VIDEO_CODEC } from '@myagentroam/protocol';
+import { BROWSER_VIDEO_CODEC, BROWSER_VIDEO_HD_CODEC } from '@myagentroam/protocol';
 import type { Page } from 'playwright';
 import { browserEncodeSize, type BrowserSize } from './browser-video-config.js';
 
@@ -10,7 +10,7 @@ import { browserEncodeSize, type BrowserSize } from './browser-video-config.js';
  */
 export async function createBrowserVideoEncoder(
   page: Page,
-  options: { width: number; height: number; bitrate: number; framerate: number }
+  options: { width: number; height: number; bitrate: number; framerate: number; hd?: boolean }
 ) {
   const handle = await page.evaluateHandle(
     async (options) => {
@@ -102,7 +102,7 @@ export async function createBrowserVideoEncoder(
         }
       };
     },
-    { ...options, codec: BROWSER_VIDEO_CODEC }
+    { ...options, codec: options.hd ? BROWSER_VIDEO_HD_CODEC : BROWSER_VIDEO_CODEC }
   );
 
   let closing: Promise<void> | undefined;
@@ -112,7 +112,7 @@ export async function createBrowserVideoEncoder(
         jpeg: jpeg.toString('base64'),
         key,
         bitrate,
-        ...(viewport ? { size: browserEncodeSize(viewport) } : {}),
+        ...(viewport ? { size: browserEncodeSize(viewport, options.hd) } : {}),
         timestamp: Math.round(performance.now() * 1000)
       });
       return { data: Buffer.from(value.data, 'base64'), key: value.key };

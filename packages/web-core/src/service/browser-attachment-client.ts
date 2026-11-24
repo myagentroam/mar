@@ -1,6 +1,7 @@
 import {
   BROWSER_CONTROL_MAX_BYTES,
   BROWSER_VIDEO_CODEC,
+  BROWSER_VIDEO_HD_CODEC,
   BROWSER_VIEWPORT_MAX,
   BROWSER_VIEWPORT_MIN,
   browserAttachmentEventSchema,
@@ -14,11 +15,16 @@ import { BrowserViewport } from './browser-viewport.js';
 type Link = WebSocket | RTCDataChannel;
 export type BrowserStreamSample = Readonly<{ bitsPerSecond: number; framesPerSecond: number }>;
 
-export async function supportsBrowserVideo(): Promise<boolean> {
+export async function supportsBrowserVideo(hd = false): Promise<boolean> {
   return (
     typeof VideoDecoder !== 'undefined' &&
-    (await VideoDecoder.isConfigSupported({ codec: BROWSER_VIDEO_CODEC, optimizeForLatency: true }))
-      .supported === true
+    (
+      await VideoDecoder.isConfigSupported({
+        codec: hd ? BROWSER_VIDEO_HD_CODEC : BROWSER_VIDEO_CODEC,
+        ...(hd && { codedWidth: 1920, codedHeight: 1080 }),
+        optimizeForLatency: true
+      })
+    ).supported === true
   );
 }
 
@@ -104,6 +110,8 @@ export class BrowserAttachmentClient {
         throw new Error('Browser control limit');
       const event = browserAttachmentEventSchema.parse(JSON.parse(data));
       if (event.type === 'ATTACHED' && !this.ready) {
+        if (event.hd && !this.open.hd) throw new Error('Unexpected browser codec');
+        this.viewport.setHd(event.hd === true);
         this.ready = true;
         this.sampleStart = performance.now();
         this.sampleTimer = setInterval(this.publishSample, 1_000);

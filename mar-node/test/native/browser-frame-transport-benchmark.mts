@@ -16,6 +16,8 @@ import {
   BROWSER_CAPTURE_QUALITY,
   BROWSER_VIDEO_BITRATE,
   BROWSER_VIDEO_FRAMERATE,
+  BROWSER_VIDEO_HD_BITRATE,
+  BROWSER_VIDEO_HD_LIMIT,
   BROWSER_VIEWPORT
 } from '../../src/browser/browser-video-config.js';
 
@@ -32,6 +34,7 @@ declare global {
         clicks: number[];
         sibling: number[];
         size: [number, number];
+        viewport?: { width: number; height: number; viewVersion: number };
         wheelMessages: number;
         wheelToDrawMs: number;
       };
@@ -49,10 +52,30 @@ declare global {
   }
 }
 
+// Inspect the JPEG before encoding: a small decoded frame does not prove that
+// the compositor actually reduced its capture raster.
+function captureRaster(jpeg: Buffer): [number, number] {
+  assert.equal(jpeg.readUInt16BE(0), 0xffd8);
+  for (let offset = 2; offset + 4 <= jpeg.length;) {
+    const marker = jpeg.readUInt16BE(offset);
+    const segmentLength = jpeg.readUInt16BE(offset + 2);
+    if (marker === 0xffc0 || marker === 0xffc2) {
+      return [jpeg.readUInt16BE(offset + 7), jpeg.readUInt16BE(offset + 5)];
+    }
+    assert((marker & 0xff00) === 0xff00 && marker !== 0xffda && segmentLength >= 2);
+    offset += segmentLength + 2;
+  }
+  throw new Error('JPEG capture is missing its frame dimensions.');
+}
+
 // Runs real Chrome / native ICE or a two-hop loopback WS relay. It measures
 // input and frames without starting MAR routing, authentication or a PTY.
 const mode = process.argv[2];
-assert(mode === 'ice' || mode === 'relay', 'Specify ice or relay.');
+assert(mode === 'ice' || mode === 'ice-hd' || mode === 'relay', 'Specify ice, ice-hd or relay.');
+const hd = mode === 'ice-hd';
+const bitrate = hd ? BROWSER_VIDEO_HD_BITRATE : BROWSER_VIDEO_BITRATE;
+const targetSize = hd ? BROWSER_VIDEO_HD_LIMIT : { width: 1600, height: 900 };
+const fullRaster = hd ? [1920, 1080] : [1280, 720];
 const quality = Number(process.argv[3] ?? BROWSER_CAPTURE_QUALITY);
 assert(Number.isInteger(quality) && quality >= 1 && quality <= 100, 'JPEG quality must be 1–100.');
 const browser = await chromium.launch({
@@ -116,15 +139,16 @@ try {
   const encoderPage = await browser.newPage();
   await encoderPage.goto(`${site}/encode`);
   const encoder = await createBrowserVideoEncoder(encoderPage, {
-    ...BROWSER_VIEWPORT,
-    bitrate: BROWSER_VIDEO_BITRATE,
-    framerate: BROWSER_VIDEO_FRAMERATE
+    ...(hd ? targetSize : BROWSER_VIEWPORT),
+    bitrate,
+    framerate: BROWSER_VIDEO_FRAMERATE,
+    hd
   });
   const browserId = await sessions.open(scope);
   const borrow = sessions.pin(scope, browserId);
   const target = borrow.resource.page;
   const originalTab = borrow.resource.tabs.snapshot().activeId!;
-  borrow.resource.tabs.resize({ width: 1600, height: 900 });
+  borrow.resource.tabs.resize(targetSize);
   await target.setContent(`
     <style>body{margin:0}canvas{display:block}aside{position:absolute;top:60px;right:40px;width:460px;
       height:750px;overflow:auto;background:#fafafa;color:#242936;padding-inline:12px;font:12px/21px monospace}</style>
@@ -174,6 +198,7 @@ try {
       const canvas = document.querySelector('canvas');
       const ctx = canvas.getContext('2d');
       const viewport = new BrowserViewport(canvas);
+      viewport.setHd(${hd});
       let currentView;
       const pc = new RTCPeerConnection({ iceServers: [] });
       const opened = {};
@@ -214,6 +239,7 @@ try {
             if (g > 180 && r < 65 && b < 65) stats.wheelToDrawMs = performance.now() - wheelAt;
           }
           stats.size = [canvas.width, canvas.height];
+          stats.viewport = frame.viewport;
           stats.frames++;
           if (!stats.first) stats.first = performance.now() - globalThis.probe.startAt;
           if (clickDone && white === clickTarget) {
@@ -242,7 +268,7 @@ try {
         keyboard() { sampleAt = performance.now(); terminal.send('key'); },
         wheelBurst() {
           wheelAt = performance.now();
-          for (let i = 0; i < 100; i++) input.wheel({viewVersion: currentView, x: 1300, y: 120}, 0, 4);
+          for (let i = 0; i < 100; i++) input.wheel({viewVersion: currentView, x: ${targetSize.width - 300}, y: 120}, 0, 4);
           return performance.timeOrigin + wheelAt;
         },
         slow(value) { ackDelay = value; },
@@ -260,7 +286,7 @@ try {
   let accept: (receive: (message: string) => void) => void;
   let sendText: (text: string) => void;
   let buffered = () => 0;
-  if (mode === 'ice') {
+  if (mode !== 'relay') {
     peer = new RTCPeerConnection({ iceServers: [], maxMessageSize: 64 * 1024 });
     const remote = peer;
     const channelPromise = new Promise<RTCDataChannel>((resolve) => {
@@ -349,6 +375,7 @@ try {
   // without modifying the host network. It doesn't model packet loss or TCP.
   const sampleKibPerSecond = 125;
   let throttle = false;
+  let latestCaptureRaster: [number, number] | undefined;
   await workbench.evaluate(() => {
     window.probe.startAt = performance.now();
   });
@@ -356,8 +383,10 @@ try {
     { resource: borrow.resource.tabs, release: borrow.release },
     {
       encoder: {
+        ...(hd && { hd: true }),
         close: encoder.close,
         encode: async (jpeg, key, viewport, bitrate) => {
+          latestCaptureRaster = captureRaster(jpeg);
           const started = performance.now();
           const unit = await encoder
             .encode(jpeg, key, viewport, bitrate)
@@ -407,7 +436,9 @@ try {
     await workbench.waitForFunction(() => window.probe.stats.frames > 0, undefined, {
       timeout: 8_000
     });
-    assert.deepEqual(await workbench.evaluate(() => window.probe.stats.size), [1280, 720]);
+    const first = await workbench.evaluate(() => window.probe.stats);
+    assert.deepEqual(first.size, fullRaster);
+    assert.equal(bitrateChanges[0], bitrate);
     for (let i = 0; i < 12; i++) {
       const count = await workbench.evaluate(() => window.probe.stats.sibling.length);
       await workbench.evaluate(() => window.probe.keyboard());
@@ -425,9 +456,11 @@ try {
     });
     const cpuBefore = process.cpuUsage();
     const started = performance.now();
-    for (let i = 0; i < 20; i++) {
+    let samples = 0;
+    while (samples < 20 || (hd && performance.now() - started < 7_000)) {
       await workbench.evaluate(() => window.probe.keyboard());
       await delay(110);
+      samples++;
     }
     const seconds = (performance.now() - started) / 1000;
     const cpu = process.cpuUsage(cpuBefore);
@@ -436,7 +469,14 @@ try {
     const delivered = after.frames - before.frames;
     const sampleJpegSize = capturedBytes - capturedBytesBefore;
     if (streamError) throw streamError;
-    assert.deepEqual(after.size, [1280, 720], 'Network shaping must not resize the stream.');
+    assert.deepEqual(after.size, [1280, 720], 'Sustained pressure must use the standard raster.');
+    const pressuredCapture = latestCaptureRaster;
+    assert.deepEqual(pressuredCapture, [1280, 720], 'The capture itself must also downshift.');
+    assert.deepEqual(
+      after.viewport,
+      first.viewport,
+      'Raster changes must not change the CSS view.'
+    );
     assert(bitrateChanges.at(-1)! < BROWSER_VIDEO_BITRATE, 'Expected sustained backoff.');
     assert(
       delivered > 2 && captured > delivered + 2,
@@ -470,8 +510,8 @@ try {
     throttle = false;
     const recoveredAt = performance.now();
     await target.evaluate(() => window.animate());
-    while (bitrateChanges.at(-1) !== BROWSER_VIDEO_BITRATE && !streamError) {
-      assert(performance.now() - recoveredAt < 8_000, 'Expected bitrate recovery.');
+    while (bitrateChanges.at(-1) !== bitrate && !streamError) {
+      assert(performance.now() - recoveredAt < (hd ? 14_000 : 8_000), 'Expected bitrate recovery.');
       await delay(100);
     }
     if (streamError) throw streamError;
@@ -485,7 +525,10 @@ try {
       { timeout: 5_000 }
     );
     await target.evaluate(() => window.freeze());
-    assert.deepEqual(await workbench.evaluate(() => window.probe.stats.size), [1280, 720]);
+    const recovered = await workbench.evaluate(() => window.probe.stats);
+    assert.deepEqual(recovered.size, fullRaster);
+    assert.deepEqual(latestCaptureRaster, fullRaster, 'The capture itself must also recover.');
+    assert.deepEqual(recovered.viewport, first.viewport);
     await borrow.resource.tabs.open();
     const previousKeys = keysSent;
     const drawnBeforeSwitch = await workbench.evaluate(() => window.probe.stats.frames);
@@ -503,7 +546,7 @@ try {
     if (streamError) throw streamError;
     assert.equal(after.clicks.length, 12);
     assert.equal(slowClicks.length, 6);
-    assert.equal(after.sibling.length, 32);
+    assert.equal(after.sibling.length, 12 + samples);
     assert(
       largestKeyBytes > 0 && largestDeltaBytes > 0,
       'Benchmark did not encode key and delta frames.'
@@ -512,7 +555,10 @@ try {
       JSON.stringify({
         mode,
         quality,
+        firstRaster: first.size,
         encodedSize: after.size,
+        pressuredCapture,
+        recoveredRaster: recovered.size,
         bitrateChanges,
         recoveryMs,
         firstFrameMs: Math.round(after.first),

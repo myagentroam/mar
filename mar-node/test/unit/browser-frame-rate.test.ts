@@ -5,6 +5,19 @@ const fast = { bytes: 2048, writeMs: 2, confirmedMs: 12 };
 const slow = { bytes: 12_288, writeMs: 5, confirmedMs: 130 };
 
 describe('Browser frame rate policy', () => {
+  it('starts negotiated ICE in HD, reduces cadence before raster, and recovers by steps', () => {
+    const rate = new BrowserFrameRate(true);
+    expect(rate.profile).toMatchObject({ fps: 24, bitrate: 4_000_000, hd: true });
+    rate.record(fast, 0);
+    for (const at of [150, 300, 450]) rate.record(slow, at);
+    expect(rate.profile).toMatchObject({ fps: 10, bitrate: 4_000_000, hd: true });
+    for (const at of [600, 750, 900]) rate.record(slow, at);
+    expect(rate.profile).toMatchObject({ bitrate: 2_400_000, hd: true });
+    for (const at of [1050, 1200, 1350]) rate.record(slow, at);
+    expect(rate.profile).toMatchObject({ bitrate: 1_500_000, hd: false });
+    for (let at = 1500; at <= 7600; at += 200) rate.record(fast, at);
+    expect(rate.profile).toMatchObject({ fps: 24, bitrate: 4_000_000, hd: true });
+  });
   it('backs off frame rate before bitrate, then probes upward with sustained good samples', () => {
     const rate = new BrowserFrameRate();
     const initial = rate.profile;

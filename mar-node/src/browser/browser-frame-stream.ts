@@ -33,7 +33,7 @@ export class BrowserFrameStream {
   private lastStartedAt = 0;
   private pacing: ReturnType<typeof setTimeout> | undefined;
   private timeout: ReturnType<typeof setTimeout> | undefined;
-  private readonly rate = new BrowserFrameRate();
+  private readonly rate: BrowserFrameRate;
   private readonly abort = new AbortController();
 
   constructor(
@@ -47,12 +47,26 @@ export class BrowserFrameStream {
       ) => Promise<Pick<BrowserFrame, 'data' | 'key'>>;
       failed: (reason: CloseReason) => void;
       deadlineMs: number;
+      hd?: boolean;
+      rasterChanged?: () => void;
     }
-  ) {}
+  ) {
+    this.rate = new BrowserFrameRate(options.hd);
+  }
+
+  get hd(): boolean {
+    return this.rate.profile.hd;
+  }
 
   setView(viewVersion: number): void {
     if (viewVersion === this.viewVersion) return;
     this.viewVersion = viewVersion;
+    this.resetRaster();
+  }
+
+  /** Raster transitions happen at returned credit, before another encode starts. */
+  resetRaster(): void {
+    this.encodedView = undefined;
     this.pending = undefined;
     clearTimeout(this.pacing);
     this.pacing = undefined;
@@ -174,6 +188,7 @@ export class BrowserFrameStream {
       flight.acknowledgedAt !== undefined
     ) {
       const completedAt = Math.max(flight.sentAt, flight.acknowledgedAt);
+      const hd = this.hd;
       this.rate.record(
         {
           bytes: flight.bytes,
@@ -182,6 +197,7 @@ export class BrowserFrameStream {
         },
         completedAt
       );
+      if (hd !== this.hd) this.options.rasterChanged?.();
     }
     this.flight = undefined;
     this.flush();

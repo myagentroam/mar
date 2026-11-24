@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { encodeBrowserFrame } from '@myagentroam/protocol';
+import { BROWSER_VIDEO_HD_CODEC, encodeBrowserFrame } from '@myagentroam/protocol';
 import { BrowserViewport } from '../../src/service/browser-viewport.js';
 
 const chunks = (sequence = 1, viewVersion = 1, key = true) =>
@@ -46,6 +46,7 @@ function fixture() {
     canvas,
     viewport,
     image,
+    configure,
     drawImage,
     clearRect,
     decoded: () => output(image as unknown as VideoFrame)
@@ -108,6 +109,40 @@ describe('Browser viewport', () => {
 
     viewport.setView(4, 'other-tab');
     expect(clearRect).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the old bitmap and the negotiated codec until a same-view raster change is drawn', async () => {
+    const { canvas, viewport, image, configure, drawImage, clearRect, decoded } = fixture();
+    viewport.setHd(true);
+    const receive = async (sequence: number) => {
+      const [first, last] = chunks(sequence);
+      await viewport.receive(first!);
+      return { draw: viewport.receive(last!) };
+    };
+    image.displayWidth = 1920;
+    image.displayHeight = 1080;
+    const first = await receive(1);
+    decoded();
+    await first.draw;
+    clearRect.mockClear();
+
+    const down = await receive(2);
+    expect([canvas.width, canvas.height]).toEqual([1920, 1080]);
+    expect(drawImage).toHaveBeenCalledOnce();
+    expect(clearRect).not.toHaveBeenCalled();
+    image.displayWidth = 1280;
+    image.displayHeight = 720;
+    decoded();
+    expect(await down.draw).toEqual({
+      sequence: 2,
+      viewport: { viewVersion: 1, width: 1280, height: 800 }
+    });
+    expect([canvas.width, canvas.height]).toEqual([1280, 720]);
+    expect(drawImage).toHaveBeenCalledTimes(2);
+    expect(configure).toHaveBeenCalledExactlyOnceWith({
+      codec: BROWSER_VIDEO_HD_CODEC,
+      optimizeForLatency: true
+    });
   });
 
   it('releases a late decoded frame after closing and returns no credit to the old connection', async () => {

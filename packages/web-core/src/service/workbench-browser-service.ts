@@ -156,6 +156,8 @@ export function createWorkbenchBrowserService(options: {
     try {
       const next = admission.then(async () => {
         await cleanup;
+        const hd =
+          transport && capability.hd && (await supportsBrowserVideo(true).catch(() => false));
         if (!active()) return;
         const grant = browserAttachmentOpenSchema.parse(
           await request({
@@ -170,7 +172,7 @@ export function createWorkbenchBrowserService(options: {
           return;
         }
         connection.attachmentId = grant.attachmentId;
-        return grant;
+        return hd ? { ...grant, hd: true as const } : grant;
       });
       admission = next.catch(() => undefined);
       const grant = await next;
@@ -463,6 +465,7 @@ export function createWorkbenchBrowserService(options: {
 export type WorkbenchBrowserService = ReturnType<typeof createWorkbenchBrowserService>;
 export type WorkbenchBrowserCapability = BrowserCapability & {
   resizeViewport?: boolean;
+  hd?: boolean;
   tabIcons?: boolean;
   nativeTouch?: boolean;
 };

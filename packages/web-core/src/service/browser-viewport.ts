@@ -1,4 +1,8 @@
-import { BROWSER_VIDEO_CODEC, BrowserFrameReceiver } from '@myagentroam/protocol';
+import {
+  BROWSER_VIDEO_CODEC,
+  BROWSER_VIDEO_HD_CODEC,
+  BrowserFrameReceiver
+} from '@myagentroam/protocol';
 
 export interface BrowserDrawResult {
   sequence: number;
@@ -12,6 +16,7 @@ export class BrowserViewport {
   private readonly receiver = new BrowserFrameReceiver();
   private readonly context: CanvasRenderingContext2D;
   private readonly decoder: VideoDecoder;
+  private codec: string = BROWSER_VIDEO_CODEC;
   private tabId: string | undefined;
   private viewVersion: number | undefined;
   private decodingView: number | undefined;
@@ -41,6 +46,10 @@ export class BrowserViewport {
     this.viewVersion = viewVersion;
   }
 
+  setHd(hd: boolean): void {
+    this.codec = hd ? BROWSER_VIDEO_HD_CODEC : BROWSER_VIDEO_CODEC;
+  }
+
   async receive(bytes: Uint8Array): Promise<BrowserDrawResult | undefined> {
     if (this.closed) return undefined;
     if (this.pending) throw new Error('Browser frame exceeded credit.');
@@ -52,7 +61,7 @@ export class BrowserViewport {
     if (this.decodingView !== viewVersion) {
       if (!frame.key) throw new Error('Expected a key frame.');
       this.decoder.reset();
-      this.decoder.configure({ codec: BROWSER_VIDEO_CODEC, optimizeForLatency: true });
+      this.decoder.configure({ codec: this.codec, optimizeForLatency: true });
       this.decodingView = viewVersion;
     }
     const pending = Promise.withResolvers<VideoFrame | undefined>();

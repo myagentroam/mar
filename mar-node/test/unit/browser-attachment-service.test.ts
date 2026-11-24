@@ -13,10 +13,11 @@ const ice: BrowserAttachmentRoute = {
 };
 const relay: BrowserAttachmentRoute = { type: 'relay' };
 
-async function fixture() {
+async function fixture(hdSupported = true) {
   const dismiss = vi.fn(async (_present: boolean) => {});
   const tabs = {
     snapshot: () => ({ activeId: undefined, viewVersion: 1, tabs: [] }),
+    viewport: { width: 960, height: 600 },
     observe: () => () => {},
     presentDialogs: dismiss
   } as unknown as BrowserTabs;
@@ -26,9 +27,14 @@ async function fixture() {
     onCloseFailed: vi.fn()
   });
   const browserId = await sessions.open(scope);
+  const encoder = vi.fn(async (hd: boolean) => ({
+    ...(hd && hdSupported && { hd: true as const }),
+    encode: vi.fn(),
+    close: async () => {}
+  }));
   const service = new BrowserAttachmentService({
     sessions,
-    encoder: async () => ({ encode: vi.fn(), close: async () => {} }),
+    encoder,
     failed: vi.fn()
   });
   function grant(
@@ -53,6 +59,7 @@ async function fixture() {
     service,
     sessions,
     browserId,
+    encoder,
     grant,
     dismiss,
     close: async () => {
@@ -71,6 +78,31 @@ function open(grant: BrowserAttachmentPrepare) {
 }
 
 describe('Node Browser attachment admission', () => {
+  it.each([
+    { route: ice, advertised: true, supported: true, request: true, upgraded: true },
+    { route: ice, advertised: false, supported: true, request: false, upgraded: false },
+    { route: ice, advertised: true, supported: false, request: true, upgraded: false },
+    { route: relay, advertised: true, supported: true, request: false, upgraded: false }
+  ])('negotiates HD only when both direct peers support it: %o', async (sample) => {
+    const f = await fixture(sample.supported);
+    try {
+      const grant = f.grant(sample.route);
+      const link = channel();
+      await f.service.open(
+        { ...open(grant), ...(sample.advertised && { hd: true }) },
+        sample.route,
+        link
+      );
+      expect(f.encoder).toHaveBeenCalledWith(sample.request);
+      expect(link.sendControl).toHaveBeenCalledWith({
+        type: 'ATTACHED',
+        ...(sample.upgraded && { hd: true })
+      });
+    } finally {
+      await f.close();
+    }
+  });
+
   it('does not shorten a lease when an older renewal arrives second', async () => {
     const f = await fixture();
     const now = Date.now();

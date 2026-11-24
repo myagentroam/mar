@@ -1,10 +1,20 @@
-import { BROWSER_VIDEO_BITRATE, BROWSER_VIDEO_FRAMERATE } from './browser-video-config.js';
+import {
+  BROWSER_VIDEO_BITRATE,
+  BROWSER_VIDEO_FRAMERATE,
+  BROWSER_VIDEO_HD_BITRATE
+} from './browser-video-config.js';
 
 const profiles = [
-  { fps: BROWSER_VIDEO_FRAMERATE, bitrate: BROWSER_VIDEO_BITRATE },
-  { fps: 10, bitrate: BROWSER_VIDEO_BITRATE },
-  { fps: 10, bitrate: 768_000 },
-  { fps: 6, bitrate: 384_000 }
+  { fps: BROWSER_VIDEO_FRAMERATE, bitrate: BROWSER_VIDEO_BITRATE, hd: false },
+  { fps: 10, bitrate: BROWSER_VIDEO_BITRATE, hd: false },
+  { fps: 10, bitrate: 768_000, hd: false },
+  { fps: 6, bitrate: 384_000, hd: false }
+] as const;
+const directProfiles = [
+  { fps: BROWSER_VIDEO_FRAMERATE, bitrate: BROWSER_VIDEO_HD_BITRATE, hd: true },
+  { fps: 10, bitrate: BROWSER_VIDEO_HD_BITRATE, hd: true },
+  { fps: 10, bitrate: 2_400_000, hd: true },
+  ...profiles.slice(1)
 ] as const;
 const UNKNOWN_ACK_FLOOR_MS = 80;
 type Sample = { bytes: number; writeMs: number; confirmedMs: number };
@@ -13,6 +23,7 @@ type Sample = { bytes: number; writeMs: number; confirmedMs: number };
  * The stream owns timing and credit; this policy never starts probes or timers.
  */
 export class BrowserFrameRate {
+  private readonly profiles;
   private level = 0;
   private smallFrameDelay: number | undefined;
   private lastSampleAt: number | undefined;
@@ -20,8 +31,12 @@ export class BrowserFrameRate {
   private goodFrames = 0;
   private goodSince = 0;
 
+  constructor(hd = false) {
+    this.profiles = hd ? directProfiles : profiles;
+  }
+
   get profile() {
-    return profiles[this.level]!;
+    return this.profiles[this.level]!;
   }
 
   record({ bytes, writeMs, confirmedMs }: Sample, now: number): void {
@@ -44,7 +59,7 @@ export class BrowserFrameRate {
     if (writeMs >= 60 || excessMs >= 70) {
       this.goodFrames = 0;
       if (++this.slowFrames >= 3) {
-        this.level = Math.min(this.level + 1, profiles.length - 1);
+        this.level = Math.min(this.level + 1, this.profiles.length - 1);
         this.slowFrames = 0;
       }
     } else {

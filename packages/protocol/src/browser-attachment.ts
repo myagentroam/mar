@@ -48,7 +48,8 @@ export const browserAttachmentPrepareSchema = z.strictObject({
 export const browserAttachmentOpenSchema = z.strictObject({
   type: z.literal('OPEN'),
   attachmentId: id,
-  ticket: z.string().min(32).max(128)
+  ticket: z.string().min(32).max(128),
+  hd: z.literal(true).optional()
 });
 
 export type BrowserAttachmentPrepare = z.infer<typeof browserAttachmentPrepareSchema>;
@@ -140,7 +141,7 @@ export const browserTabSnapshotSchema = z.strictObject({
 });
 
 export const browserAttachmentEventSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('ATTACHED') }),
+  z.strictObject({ type: z.literal('ATTACHED'), hd: z.literal(true).optional() }),
   z.strictObject({ type: z.literal('snapshot'), snapshot: browserTabSnapshotSchema }),
   z.strictObject({
     type: z.literal('tab.icon'),

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import type {
+  BrowserAttachmentOpen,
   BrowserControlRequest,
   BrowserTabSnapshot,
   BrowserUpload
@@ -9,22 +10,25 @@ import { createWorkbenchBrowserService } from '../../src/service/workbench-brows
 import type { WorkbenchHttpService } from '../../src/service/workbench-http-service.js';
 
 const mock = vi.hoisted(() => ({
+  open: undefined as BrowserAttachmentOpen | undefined,
+  supportsBrowserVideo: vi.fn(async (_hd?: boolean) => true),
   snapshot: undefined as ((value: BrowserTabSnapshot) => void) | undefined,
   ended: undefined as ((code: string) => void) | undefined
 }));
 
 vi.mock('../../src/service/browser-attachment-client.js', () => ({
-  supportsBrowserVideo: async () => true,
+  supportsBrowserVideo: mock.supportsBrowserVideo,
   BrowserAttachmentClient: class {
     constructor(
       _link: unknown,
       _canvas: unknown,
-      _open: unknown,
+      open: BrowserAttachmentOpen,
       callbacks: {
         snapshot: (value: BrowserTabSnapshot) => void;
         ended: (code: string) => void;
       }
     ) {
+      mock.open = open;
       mock.snapshot = callbacks.snapshot;
       mock.ended = callbacks.ended;
     }
@@ -32,7 +36,11 @@ vi.mock('../../src/service/browser-attachment-client.js', () => ({
   }
 }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  mock.supportsBrowserVideo.mockReset();
+  mock.supportsBrowserVideo.mockResolvedValue(true);
+  vi.unstubAllGlobals();
+});
 
 it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
   'waits for the old browser writer to release before %s',
@@ -51,7 +59,12 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
       })
     });
     const scope = { nodeId: 'node', workspaceId: 'workspace' };
-    const capability = { apiVersion: 1, ice: true, nodeGeneration: 'generation' } as const;
+    const capability = {
+      apiVersion: 1,
+      ice: true,
+      hd: transition !== 'reopen',
+      nodeGeneration: 'generation'
+    } as const;
     const view = {} as HTMLCanvasElement;
     const firstId = randomUUID();
     const nextId = randomUUID();
@@ -72,12 +85,17 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
     await vi.waitFor(() => expect(requests).toHaveLength(1));
     attached(0, firstId);
     await first;
+    if (capability.hd) expect(mock.open?.hd).toBe(true);
+    else expect(mock.open).not.toHaveProperty('hd');
     const relaySocket = vi.fn(class {});
     if (transition === 'fallback') {
       vi.stubGlobal('window', { location: { origin: 'https://workbench.test' } });
       vi.stubGlobal('WebSocket', relaySocket);
     }
     if (transition !== 'reopen') mock.ended!('BROWSER_DISCONNECTED');
+    if (transition === 'reopen during fallback') {
+      mock.supportsBrowserVideo.mockImplementation(async (hd) => hd !== true);
+    }
     const next =
       transition === 'fallback' ? undefined : service.show(scope, capability, view, resume);
     expect(requests[1]?.request).toEqual({ action: 'release', attachmentId: firstId });
@@ -94,9 +112,11 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
     if (next) {
       expect(requests[2]?.request).toHaveProperty('transportId', 'transport');
       await next;
+      expect(mock.open).not.toHaveProperty('hd');
     } else {
       expect(requests[2]?.request).not.toHaveProperty('transportId');
       await vi.waitFor(() => expect(relaySocket).toHaveBeenCalledOnce());
+      expect(mock.open).not.toHaveProperty('hd');
     }
     service.hide();
     reply(3);

@@ -40,7 +40,7 @@ export class BrowserAttachmentService {
   constructor(
     private readonly options: {
       sessions: Pick<BrowserSessionService<BrowserTabs>, 'lookup' | 'pin'>;
-      encoder: () => Promise<BrowserAttachmentEncoder>;
+      encoder: (hd: boolean) => Promise<BrowserAttachmentEncoder>;
       failed: (error: unknown) => void;
     }
   ) {
@@ -79,7 +79,8 @@ export class BrowserAttachmentService {
       throw new Error('BROWSER_INVALID_GRANT');
     }
     entry.channel = channel;
-    entry.opening = Promise.resolve().then(() => this.activate(entry, channel));
+    const hd = entry.grant.route.type === 'ice' && open.hd === true;
+    entry.opening = Promise.resolve().then(() => this.activate(entry, channel, hd));
     try {
       await entry.opening;
     } catch (error) {
@@ -183,7 +184,11 @@ export class BrowserAttachmentService {
       if (result.status === 'rejected') this.options.failed(result.reason);
   }
 
-  private async activate(entry: Entry, channel: BrowserAttachmentChannel): Promise<void> {
+  private async activate(
+    entry: Entry,
+    channel: BrowserAttachmentChannel,
+    hd: boolean
+  ): Promise<void> {
     const grant = entry.grant;
     const prior = [...this.entries.values()].find(
       (candidate) =>
@@ -216,9 +221,9 @@ export class BrowserAttachmentService {
     entry.ownsBorrow = true;
     let encoder: BrowserAttachmentEncoder | undefined;
     try {
-      encoder = await this.options.encoder();
+      encoder = await this.options.encoder(hd);
       if (entry.closing || entry.expiresAt <= Date.now()) throw new Error('BROWSER_LEASE_EXPIRED');
-      channel.sendControl({ type: 'ATTACHED' });
+      channel.sendControl({ type: 'ATTACHED', ...(encoder.hd && { hd: true }) });
       entry.attachment = new BrowserAttachment(borrow, {
         quality: BROWSER_CAPTURE_QUALITY,
         encoder,

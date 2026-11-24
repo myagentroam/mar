@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { BrowserAttachmentClient } from '../../src/service/browser-attachment-client.js';
 
-const receive = vi.hoisted(() => vi.fn());
+const { receive, setHd } = vi.hoisted(() => ({ receive: vi.fn(), setHd: vi.fn() }));
 vi.mock('../../src/service/browser-viewport.js', () => ({
   BrowserViewport: class {
     receive = receive;
+    setHd = setHd;
     setView() {}
     close() {}
   }
@@ -14,6 +15,45 @@ vi.mock('../../src/service/browser-viewport.js', () => ({
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it.each([
+  { offered: true, accepted: true },
+  { offered: true, accepted: false },
+  { offered: false, accepted: true }
+])('honors the negotiated decoder profile: %o', ({ offered, accepted }) => {
+  setHd.mockClear();
+  const link = Object.assign(new EventTarget(), {
+    readyState: 'open',
+    send: vi.fn(),
+    close: vi.fn()
+  });
+  const attached = vi.fn();
+  const failed = vi.fn();
+  const client = new BrowserAttachmentClient(
+    link as unknown as RTCDataChannel,
+    {} as HTMLCanvasElement,
+    {
+      type: 'OPEN',
+      attachmentId: randomUUID(),
+      ticket: 'x'.repeat(32),
+      ...(offered && { hd: true })
+    },
+    { attached, failed, snapshot: vi.fn(), frame: vi.fn(), sample: vi.fn(), ended: vi.fn() }
+  );
+  link.dispatchEvent(
+    new MessageEvent('message', {
+      data: JSON.stringify({ type: 'ATTACHED', ...(accepted && { hd: true }) })
+    })
+  );
+  if (accepted && !offered) {
+    expect(setHd).not.toHaveBeenCalled();
+    expect(attached).not.toHaveBeenCalled();
+  } else {
+    expect(setHd).toHaveBeenCalledWith(accepted);
+    expect(attached).toHaveBeenCalledOnce();
+  }
+  client.close();
 });
 
 it('measures received bytes and drawn frames separately, then stops sampling when detached', async () => {

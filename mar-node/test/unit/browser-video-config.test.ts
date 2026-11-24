@@ -26,4 +26,21 @@ describe('Browser encoding size', () => {
   ])('fits %o into the fixed envelope without upscaling', (viewport, expected) => {
     expect(browserEncodeSize(viewport)).toEqual(expected);
   });
+
+  it.each([
+    [
+      { width: 2560, height: 1440 },
+      { width: 1920, height: 1080 }
+    ],
+    [
+      { width: 1440, height: 2560 },
+      { width: 1080, height: 1920 }
+    ],
+    [
+      { width: 960, height: 600 },
+      { width: 960, height: 600 }
+    ]
+  ])('fits %o into the HD envelope without upscaling', (viewport, expected) => {
+    expect(browserEncodeSize(viewport, true)).toEqual(expected);
+  });
 });

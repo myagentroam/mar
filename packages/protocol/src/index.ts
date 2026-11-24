@@ -2029,6 +2029,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   terminalDirect: terminalDirectCapabilitySchema.optional(),
   browser: browserCapabilitySchema.optional(),
   browserViewportResize: z.literal(true).optional(),
+  browserHd: z.literal(true).optional(),
   browserTabIcons: z.literal(true).optional(),
   browserNativeTouch: z.literal(true).optional(),
   remoteDesktop: remoteDesktopCapabilitySchema.optional(),

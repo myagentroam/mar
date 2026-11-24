@@ -14,7 +14,7 @@ import { browserEncodeSize, type BrowserSize } from './browser-video-config.js';
 type Encoder = ConstructorParameters<typeof BrowserFrameStream>[0]['encode'];
 type Command = Exclude<BrowserAttachmentMessage, { type: 'ack' | 'dialog.respond' }>;
 type Button = Extract<BrowserPageInput, { type: 'button' }>['button'];
-export type BrowserAttachmentEncoder = { encode: Encoder; close: () => Promise<void> };
+export type BrowserAttachmentEncoder = { encode: Encoder; close: () => Promise<void>; hd?: true };
 const COMMAND_LIMIT = 64;
 const COMMAND_ERRORS = new Set([
   'BROWSER_TAB_LIMIT',
@@ -44,7 +44,13 @@ export class BrowserAttachment {
   private icons: Map<string, { url: string }> | undefined;
   private shown: number | undefined;
   private next:
-    { version: number; page: BrowserPageView | undefined; size: Readonly<BrowserSize> } | undefined;
+    | {
+        version: number;
+        page: BrowserPageView | undefined;
+        size: Readonly<BrowserSize>;
+        raster: BrowserSize;
+      }
+    | undefined;
   private captureTarget: typeof this.next;
   private pressed:
     | {
@@ -69,7 +75,10 @@ export class BrowserAttachment {
     }
   ) {
     this.stream = new BrowserFrameStream({
-      encode: options.encoder.encode,
+      encode: (jpeg, key, viewport, bitrate) =>
+        options.encoder.encode(jpeg, key, browserEncodeSize(viewport, this.stream.hd), bitrate),
+      hd: options.encoder.hd === true,
+      rasterChanged: () => this.updateRaster(),
       send: options.sendFrame,
       failed: (code) => this.fail(code),
       deadlineMs: options.deadlineMs
@@ -191,10 +200,12 @@ export class BrowserAttachment {
     }
     this.refreshIcons(snapshot);
     if (snapshot.viewVersion === this.next?.version) return;
+    const size = this.borrow.resource.viewport;
     this.next = {
       version: snapshot.viewVersion,
       page: this.borrow.resource.activeView,
-      size: this.borrow.resource.viewport
+      size,
+      raster: browserEncodeSize(size, this.stream.hd)
     };
     this.shown = undefined;
     this.stream.setView(snapshot.viewVersion);
@@ -246,9 +257,20 @@ export class BrowserAttachment {
       });
   }
 
+  private updateRaster(): void {
+    const target = this.next;
+    if (!target) return;
+    const raster = browserEncodeSize(target.size, this.stream.hd);
+    if (raster.width === target.raster.width && raster.height === target.raster.height) return;
+    this.next = { ...target, raster };
+    this.stream.resetRaster();
+    this.updateCapture();
+  }
+
   private async captureLatest(): Promise<void> {
     while (!this.closed && this.captureTarget !== this.next) {
       const target = this.next;
+      const rasterOnly = this.captureTarget?.version === target?.version;
       this.captureTarget = target;
       const capture = this.capture;
       this.capture = undefined;
@@ -258,12 +280,13 @@ export class BrowserAttachment {
       if (this.closed || target !== this.next) continue;
       const version = target.version;
       this.capture = await target.page.startCapture(
-        { ...browserEncodeSize(target.size), quality: this.options.quality },
+        { ...target.raster, quality: this.options.quality },
         (frame) => {
+          if (target !== this.next) return;
           this.options.captured?.(frame.jpeg.byteLength);
           this.stream.offer({ ...frame, viewVersion: version });
         },
-        resized
+        resized || rasterOnly
       );
     }
   }
@@ -320,7 +343,7 @@ export class BrowserAttachment {
           this.options.sendControl({
             type: 'selection',
             id: command.id,
-            text: this.next === view ? text : ''
+            text: this.next?.version === command.viewVersion ? text : ''
           });
         return;
       }

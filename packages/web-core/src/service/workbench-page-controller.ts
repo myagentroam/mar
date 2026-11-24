@@ -2177,6 +2177,7 @@ export function createWorkbenchPageController<
         return {
           ...manifest.browser,
           resizeViewport: manifest.browserViewportResize === true,
+          hd: manifest.browserHd === true,
           tabIcons: manifest.browserTabIcons === true,
           nativeTouch: manifest.browserNativeTouch === true
         };
