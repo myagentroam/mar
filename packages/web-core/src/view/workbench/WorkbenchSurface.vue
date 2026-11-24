@@ -195,6 +195,9 @@ const managementPage = computed(() =>
 const cleanupDialogOpen = ref(false);
 const workspaceGrid = ref<HTMLElement>();
 const terminalMount = ref<HTMLElement>();
+const workspaceTerminalTabs = computed(() =>
+  props.page.selection.workspaceTabs.filter(props.page.aside.terminalTabOpen)
+);
 const asideSurfaceId = `workspace-aside-${useId()}`;
 const asideAvailableWidth = ref(0);
 const mainMinWidth = 360;
@@ -979,6 +982,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 @select-session="page.aside.openAsideSession"
                 @close-session="page.aside.closeAsideSession"
                 @close-browser="page.aside.closeAsideBrowser"
+                @close-terminal="page.aside.closeAsideTerminal"
                 @resize="page.layout.setPanelWidth(asideMode, $event)"
                 @close-surface="page.layout.closeMobileWorkspaceSurface"
               >
@@ -1161,7 +1165,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       </template>
       <Teleport :to="terminalMount ?? 'body'" :disabled="terminalMount === undefined">
         <div
-          v-for="tab in page.selection.workspaceTabs"
+          v-for="tab in workspaceTerminalTabs"
           :key="tab.id"
           v-show="
             terminalVisible &&
@@ -1185,6 +1189,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     instance as unknown as {
                       release(): Promise<void>;
                       toggle(): Promise<void>;
+                      closeAll(): Promise<boolean>;
                     }
                   );
               }
@@ -1213,7 +1218,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :active="
               page.application.view === 'nodes' && tab.id === page.selection.activeWorkspaceTabId
             "
-            @collapse="page.layout.mobileViewport && page.layout.closeMobileWorkspaceSurface()"
+            @collapse="page.aside.terminalSessionsEnded(tab)"
             @notice="page.application.notice"
           />
         </div>

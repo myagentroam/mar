@@ -81,7 +81,9 @@ test.describe('Aside terminal touch interaction', () => {
     await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).tap();
     await page.getByRole('button', { name: '打开辅助工作面' }).tap();
     const aside = page.locator('.workbench-aside');
-    await aside.getByRole('tab', { name: '终端', exact: true }).tap();
+    await expect(aside.getByRole('tab', { name: '终端', exact: true })).toHaveCount(0);
+    await aside.getByRole('button', { name: '添加辅助面标签页' }).tap();
+    await page.getByRole('menuitem', { name: '终端', exact: true }).tap();
     const dock = page.locator('.terminal-dock');
     await expect(dock).toBeVisible();
     await expect(dock).not.toHaveAttribute('inert', '');
@@ -688,14 +690,22 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   });
   await expect(brand).toHaveCSS('border-top-width', '0px');
   await expect(brand).toHaveCSS('border-bottom-width', '1px');
-  await expect(brand).toHaveCSS('border-bottom-color', 'rgb(55, 66, 85)');
+  const themeBorder = await brand.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--mar-border-default)';
+    element.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  await expect(brand).toHaveCSS('border-bottom-color', themeBorder);
   expect(
     await page
       .locator('html')
       .evaluate((element) =>
         getComputedStyle(element).getPropertyValue('--mar-compact-control-size').trim()
       )
-  ).toBe('24px');
+  ).toBe('26px');
   expect(
     await page
       .locator('html')
@@ -925,7 +935,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(
     preview.locator('.mobile-preview-actions').getByRole('button', { name: '下载文件' })
   ).toBeVisible();
-  await expect(preview.getByRole('button', { name: '只读文件', exact: true })).toBeVisible();
+  await expect(preview.getByText(/^只读文件 · /u)).toBeVisible();
   await expect(
     preview.locator('.mobile-preview-actions').getByRole('button', { name: 'Markdown 预览设置' })
   ).toBeVisible();
@@ -1035,7 +1045,8 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.locator('.workspace-aside')).not.toBeVisible();
 
   await page.getByRole('button', { name: '打开辅助工作面' }).click();
-  await page.locator('.workspace-aside').getByRole('tab', { name: '终端', exact: true }).click();
+  await page.locator('.workspace-aside').getByRole('button', { name: '添加辅助面标签页' }).click();
+  await page.getByRole('menuitem', { name: '终端', exact: true }).click();
   await expect(page.locator('.terminal-dock')).toBeVisible();
   const terminalDock = page.locator('.terminal-dock');
   const asidePanel = page.locator('.workspace-aside > .workbench-aside');
@@ -1070,10 +1081,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       const header = dock.querySelector<HTMLElement>('.admin-terminal-header')!;
       const tabs = dock.querySelector<HTMLElement>('.terminal-tabs')!;
       const body = dock.querySelector<HTMLElement>('.admin-terminal-body')!;
-      const title = header.querySelector('h2')!;
       return {
         headerHeight: tabs.getBoundingClientRect().top - header.getBoundingClientRect().top,
-        gap: tabs.getBoundingClientRect().top - title.getBoundingClientRect().bottom,
+        gap: body.getBoundingClientRect().top - tabs.getBoundingClientRect().bottom,
         height: body.getBoundingClientRect().top - header.getBoundingClientRect().top
       };
     });

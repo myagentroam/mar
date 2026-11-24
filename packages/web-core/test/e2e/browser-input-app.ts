@@ -48,6 +48,31 @@ if (fixtureOptions.has('zoom')) {
     ]
   };
 }
+if (fixtureOptions.has('close-pages')) {
+  browser.snapshot.value = {
+    activeId: 'first',
+    viewVersion: 1,
+    tabs: ['first', 'last'].map((id) => ({
+      id,
+      title: id,
+      url: `https://example.test/${id}`,
+      loading: false,
+      canGoBack: false,
+      canGoForward: false
+    }))
+  };
+  document.addEventListener('fixture-close-page', () => {
+    const current = browser.snapshot.value;
+    if (!current) return;
+    const tabs = current.tabs.filter(({ id }) => id !== document.body.dataset.closePage);
+    const activeId = tabs[0]?.id;
+    browser.snapshot.value = {
+      tabs,
+      ...(activeId === undefined ? {} : { activeId }),
+      viewVersion: current.viewVersion + 1
+    };
+  });
+}
 browser.status.value = location.search.includes('offline') ? 'failed' : 'ready';
 const viewportSize = { width: 800, height: 600 };
 browser.frame.value = { viewVersion: 1, ...viewportSize, raster: viewportSize };
@@ -76,6 +101,7 @@ browser.queryContextMenu = async (viewVersion, point) => {
 browser.send = (message) => {
   if (message.type === 'input') void fixtureInput(message.action);
   if (message.type === 'tab.open') document.body.dataset.opened = message.address;
+  if (message.type === 'tab.close') document.body.dataset.closePage = message.tabId;
   if (message.type === 'context.paste') void fixturePaste(message);
   if (message.type === 'page.zoom') {
     const snapshot = browser.snapshot.value;
@@ -109,6 +135,9 @@ createTooltipApp(
         scope,
         browser,
         requested: requested.value,
+        onClosed: () => {
+          document.body.dataset.browserClosed = 'true';
+        },
         onConsumed: () => {
           requested.value = undefined;
           document.body.dataset.consumed = 'true';

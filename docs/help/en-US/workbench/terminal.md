@@ -1,15 +1,15 @@
 ---
 title: Workspace Terminals
-lastUpdated: 2026-11-04
+lastUpdated: 2026-11-24
 ---
 
 # Workspace Terminals
 
-Select **Open terminal** in the conversation title bar or choose the fixed Terminal tab in the auxiliary work surface. On mobile, the auxiliary surface covers the area below the top bar; use its back button or browser Back to return to the conversation without ending the terminal.
+Terminal is not shown by default. Choose **+ → Terminal** in the side pane or press `Ctrl+Shift+Backquote` (`Command+Shift+Backquote` on macOS). The shortcut switches between Terminal and the previous view. On mobile, returning to the conversation does not end a terminal session.
 
 Open Terminal to start a shell on the selected Node, normally with the Workspace as its working directory. The process runs with the Node service account and receives the authorized secret snapshot created at startup.
 
-Opening Terminal for the first time in a Workspace creates a terminal; before it is shown, no terminal is created or connected. Create additional terminal tabs with the plus action. Switching the auxiliary tab, changing Workspaces, or briefly reconnecting Web does not close them. Closing a terminal tab terminates that process; closing the last one leaves the fixed Terminal tab available. Restarting Node ends all terminals.
+Opening Terminal creates a session if none is open. Use the plus button inside Terminal to open another. Switching side-pane tabs, changing Workspaces, or briefly reconnecting the Console does not end a session. Closing an inner tab ends only that session; closing the last one also removes the outer Terminal tab. Closing the outer Terminal tab ends all terminal sessions opened by this page for that Workspace. Reopening Terminal starts a new session. Restarting Node ends all terminals.
 
 A new browser page gets its own terminal when you first open Terminal; it does not take over another page's terminal. A read-only attachment can observe output but cannot type. Never use Terminal as a way to bypass Workspace, host, or organizational policy.
 

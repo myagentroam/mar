@@ -45,7 +45,7 @@ const terminal = {
 const pending = () => deferred<Response>();
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-type Handle = { release(): Promise<void>; toggle(): Promise<void> };
+type Handle = { closeAll(): Promise<boolean>; release(): Promise<void>; toggle(): Promise<void> };
 function fixture(http?: WorkbenchHttpService) {
   const opening = pending();
   const fetch = vi.fn(async (_path: string, init?: RequestInit) => {
@@ -111,6 +111,73 @@ afterEach(() => {
 });
 
 describe('Terminal Dock creation ownership', () => {
+  it.each(['success', 'unknown'])(
+    'does not replay an Aside close with a %s result when Workspace release overlaps it',
+    async (result) => {
+      const f = fixture();
+      const closing = pending();
+      try {
+        await f.expand();
+        f.opening.resolve(response({ terminal }));
+        await flushComponent();
+        f.fetch.mockImplementationOnce(() => closing.promise);
+        const close = f.handle().closeAll();
+        await flushComponent();
+        const release = f.handle().release();
+        await flushComponent();
+        expect(f.requests('DELETE')).toHaveLength(1);
+        if (result === 'unknown') closing.reject(new TypeError('Failed to fetch'));
+        else closing.resolve(response({}));
+        await Promise.all([close, release]);
+        expect(f.requests('DELETE')).toHaveLength(1);
+        expect(f.notice).toHaveBeenCalledTimes(result === 'unknown' ? 1 : 0);
+        expect(f.view.findAll('terminal-view')).toHaveLength(0);
+      } finally {
+        closing.resolve(response({}));
+        f.view.unmount();
+        await flushComponent();
+      }
+    }
+  );
+
+  it.each(['TERMINAL_NOT_FOUND', 'TERMINAL_CLOSED'])(
+    'removes a terminal reported as %s but keeps the Aside open on a partial failure',
+    async (code) => {
+      const f = fixture();
+      try {
+        await f.expand();
+        f.opening.resolve(response({ terminal }));
+        await flushComponent();
+        f.fetch.mockResolvedValueOnce(response({ terminal: { ...terminal, id: 'terminal-b' } }));
+        await trigger(
+          f.view.findAll('button').find((b) => b.props['aria-label'] === 'New terminal')!,
+          'onClick'
+        );
+        await flushComponent();
+
+        f.fetch.mockResolvedValueOnce(response({ error: code }, 404));
+        f.fetch.mockResolvedValueOnce(response({ error: 'PERMISSION_DENIED' }, 403));
+        await expect(f.handle().closeAll()).resolves.toBe(false);
+        await flushComponent();
+        expect(f.view.findAll('terminal-view').map((view) => view.props.terminalId)).toEqual([
+          'terminal-b'
+        ]);
+        expect(f.notice).toHaveBeenCalledTimes(1);
+
+        f.fetch.mockResolvedValueOnce(response({}));
+        await expect(f.handle().closeAll()).resolves.toBe(true);
+        expect(f.requests('DELETE').map(([path]) => path)).toEqual([
+          '/api/terminals/terminal-a',
+          '/api/terminals/terminal-b',
+          '/api/terminals/terminal-b'
+        ]);
+      } finally {
+        f.view.unmount();
+        await flushComponent();
+      }
+    }
+  );
+
   it.each(['NETWORK_UNAVAILABLE', 'PERMISSION_DENIED'])(
     'keeps GET %s feedback in its proper place',
     async (code) => {

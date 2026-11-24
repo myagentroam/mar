@@ -72,6 +72,28 @@ const invalid = ref(false);
 const answer = ref('');
 const downloadsOpen = ref(false);
 const { snapshot, status, frame, path, streamSample, error, uploadStatus } = props.browser;
+const closingTabs = new Set<string>();
+function closePageTab(id: string): void {
+  if (!closingTabs.has(id) && props.browser.send({ type: 'tab.close', tabId: id }))
+    closingTabs.add(id);
+}
+watch(
+  snapshot,
+  (value) => {
+    if (!value) return closingTabs.clear();
+    let closed = false;
+    for (const id of closingTabs) {
+      if (value.tabs.some((tab) => tab.id === id)) continue;
+      closingTabs.delete(id);
+      closed = true;
+    }
+    if (closed && value.tabs.length === 0) emit('closed', props.scope);
+  },
+  { flush: 'sync' }
+);
+watch(error, (value) => {
+  if (value) closingTabs.clear();
+});
 const downloadBrowserId = computed(() => props.browser.browserId());
 const activeDownloads = computed(() =>
   status.value === 'ready' ? (snapshot.value?.activeDownloadCount ?? 0) : 0
@@ -1016,7 +1038,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         :label="t('browser.title')"
         :model-value="snapshot.activeId"
         @tab-activate="(id) => browser.send({ type: 'tab.select', tabId: String(id) })"
-        @tab-close="(id) => browser.send({ type: 'tab.close', tabId: String(id) })"
+        @tab-close="(id) => closePageTab(String(id))"
       >
         <template #label="{ tab }">
           <BrowserTabLabel

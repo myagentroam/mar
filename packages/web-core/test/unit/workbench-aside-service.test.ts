@@ -74,6 +74,31 @@ describe('Workspace Aside metadata', () => {
     expect(service.current(target).active).toEqual({ kind: 'tool', id: 'files' });
   });
 
+  it('opens Terminal on demand and removes only that workspace tab when closed', () => {
+    const service = createWorkbenchAsideService();
+    const workspace = { nodeId: 'node', workspaceId: 'a' };
+    const other = { ...workspace, workspaceId: 'b' };
+    service.ensure(workspace, ['files', 'terminal', 'node-browser']);
+    service.ensure(other, ['terminal']);
+    expect(service.current(other).active).toBeUndefined();
+    expect(service.current(workspace).terminalOpen).toBeFalsy();
+    service.selectTool(workspace, 'node-browser');
+    service.toggleTerminal(workspace);
+    expect(service.current(workspace).terminalOpen).toBe(true);
+    service.toggleTerminal(workspace);
+    expect(service.current(workspace).active).toEqual({ kind: 'tool', id: 'node-browser' });
+    expect(service.current(workspace).terminalOpen).toBe(true);
+    service.selectTool(other, 'terminal');
+    service.selectTool(workspace, 'terminal');
+    service.closeTerminal(workspace);
+    expect(service.current(workspace)).toMatchObject({
+      active: { kind: 'tool', id: 'node-browser' },
+      terminalOpen: false,
+      terminalReturn: undefined
+    });
+    expect(service.current(other).terminalOpen).toBe(true);
+  });
+
   it('releases the complete Workspace, Node and page scope independently', () => {
     const service = createWorkbenchAsideService();
     const a = { nodeId: 'node-a', workspaceId: 'a' };
@@ -159,6 +184,7 @@ describe('Workspace Aside metadata', () => {
     { active: { kind: 'session' as const, sessionId: 'a' }, sessionId: 'a' },
     {
       active: { kind: 'tool' as const, id: 'terminal' as const },
+      terminalOpen: true,
       terminalReturn: { kind: 'session' as const, sessionId: 'b' },
       sessionId: 'b'
     },
@@ -239,7 +265,7 @@ describe('Workspace Aside metadata', () => {
     expect(service.current(b).sessions).toEqual([]);
     service.removeWorkspace(a);
     expect(service.current(a).sessions).toEqual([]);
-    expect(service.current(b).active).toEqual({ kind: 'tool', id: 'terminal' });
+    expect(service.current(b).active).toBeUndefined();
   });
 
   it('removes only authoritatively missing sessions without dropping other Workspace tabs', () => {

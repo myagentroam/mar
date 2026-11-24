@@ -17,6 +17,7 @@ export interface AsideSession extends AsideWorkspace {
 export interface AsideSnapshot {
   readonly sessions: readonly string[];
   readonly browserOpen?: boolean;
+  readonly terminalOpen?: boolean;
   readonly active?: AsideTarget | undefined;
   readonly recentTool?: AsideTool | undefined;
   readonly terminalReturn?: AsideTarget | undefined;
@@ -119,7 +120,8 @@ export function createWorkbenchAsideService({
       target !== undefined &&
       (target.kind === 'tool'
         ? state.tools.includes(target.id) &&
-          (target.id !== 'node-browser' || state.browserOpen === true)
+          (target.id !== 'node-browser' || state.browserOpen === true) &&
+          (target.id !== 'terminal' || state.terminalOpen === true)
         : state.sessions.includes(target.sessionId))
     );
   }
@@ -135,16 +137,17 @@ export function createWorkbenchAsideService({
   function ensure(target: AsideWorkspace, tools: readonly AsideTool[]): void {
     const available = ASIDE_TOOLS.filter((tool) => tools.includes(tool));
     const prior = current(target);
-    const next: AsideState =
-      prior.browserOpen && !available.includes('node-browser')
-        ? { ...prior, tools: available, browserOpen: false }
-        : { ...prior, tools: available };
+    const next: AsideState = {
+      ...prior,
+      tools: available,
+      ...(prior.browserOpen && !available.includes('node-browser') ? { browserOpen: false } : {}),
+      ...(prior.terminalOpen && !available.includes('terminal')
+        ? { terminalOpen: false, terminalReturn: undefined }
+        : {})
+    };
     put(target, {
       ...next,
-      active: valid(next, prior.active)
-        ? prior.active
-        : (fallback(next) ??
-          (available.includes('terminal') ? { kind: 'tool', id: 'terminal' } : undefined))
+      active: valid(next, prior.active) ? prior.active : fallback(next)
     });
   }
   function selectTool(target: AsideWorkspace, id: AsideTool): boolean {
@@ -164,7 +167,7 @@ export function createWorkbenchAsideService({
       ...(id === 'node-browser'
         ? { browserOpen: true }
         : id === 'terminal'
-          ? {}
+          ? { terminalOpen: true }
           : { recentTool: id })
     });
     return true;
@@ -180,10 +183,32 @@ export function createWorkbenchAsideService({
         ...next,
         active: sessionId
           ? { kind: 'session', sessionId }
-          : (fallback(next) ??
-            (state.tools.includes('terminal') ? { kind: 'tool', id: 'terminal' } : undefined))
+          : (fallback(next) ?? (state.terminalOpen ? { kind: 'tool', id: 'terminal' } : undefined))
       });
     } else put(target, next);
+  }
+  function closeTerminal(target: AsideWorkspace): void {
+    const state = current(target);
+    if (!state.terminalOpen) return;
+    const next: AsideState = { ...state, terminalOpen: false, terminalReturn: undefined };
+    put(target, {
+      ...next,
+      active:
+        state.active?.kind === 'tool' && state.active.id === 'terminal'
+          ? terminalFallback(next, state.terminalReturn)
+          : state.active
+    });
+  }
+
+  function terminalFallback(state: AsideState, previous: AsideTarget | undefined) {
+    if (valid(state, previous) && !(previous.kind === 'tool' && previous.id === 'terminal'))
+      return previous;
+    const sessionId = state.sessions.at(-1);
+    return (
+      (sessionId ? ({ kind: 'session', sessionId } as const) : undefined) ??
+      fallback(state) ??
+      (state.browserOpen ? ({ kind: 'tool', id: 'node-browser' } as const) : undefined)
+    );
   }
   function openSession(target: AsideSession): void {
     const state = current(target);
@@ -260,18 +285,20 @@ export function createWorkbenchAsideService({
       return selectTool(target, 'terminal');
     put(target, {
       ...state,
-      active: valid(state, state.terminalReturn) ? state.terminalReturn : fallback(state)
+      active: terminalFallback(state, state.terminalReturn)
     });
     return true;
   }
   function snapshot(target: AsideWorkspace): AsideSnapshot {
-    const { sessions, active, recentTool, terminalReturn, browserOpen } = current(target);
+    const { sessions, active, recentTool, terminalReturn, browserOpen, terminalOpen } =
+      current(target);
     return {
       sessions: [...sessions],
       active,
       recentTool,
       terminalReturn,
-      ...(browserOpen ? { browserOpen } : {})
+      ...(browserOpen ? { browserOpen } : {}),
+      ...(terminalOpen ? { terminalOpen } : {})
     };
   }
   function restore(
@@ -288,7 +315,8 @@ export function createWorkbenchAsideService({
       active: saved.active,
       recentTool: saved.recentTool,
       terminalReturn: saved.terminalReturn,
-      ...(saved.browserOpen ? { browserOpen: true } : {})
+      ...(saved.browserOpen ? { browserOpen: true } : {}),
+      ...(saved.terminalOpen ? { terminalOpen: true } : {})
     });
     ensure(target, tools);
   }
@@ -306,6 +334,7 @@ export function createWorkbenchAsideService({
     readonly mobileSurface: Readonly<Ref<string>>;
     readonly saveSession: () => void;
     readonly openMobile: (surface: 'terminal' | 'inspector') => void;
+    readonly closeMobile?: () => void;
   }) {
     function owns(target: AsideWorkspace): boolean {
       const workspace = options.workspace.value;
@@ -317,8 +346,7 @@ export function createWorkbenchAsideService({
     function select(target: AsideWorkspace & { readonly id: AsideTool }): void {
       if (!owns(target)) return;
       saveActive(target);
-      selectTool(target, target.id);
-      if (mobileViewport?.value)
+      if (selectTool(target, target.id) && mobileViewport?.value)
         options.openMobile(target.id === 'terminal' ? 'terminal' : 'inspector');
     }
     function toggleTerminalSurface(): void {
@@ -334,6 +362,10 @@ export function createWorkbenchAsideService({
       if (!toggleTerminal(target)) return;
       if (mobile) {
         const active = current(target).active;
+        if (!active) {
+          options.closeMobile?.();
+          return;
+        }
         options.openMobile(
           active?.kind === 'tool' && active.id === 'terminal' ? 'terminal' : 'inspector'
         );
@@ -353,6 +385,7 @@ export function createWorkbenchAsideService({
     activateSession,
     closeSession,
     closeBrowser,
+    closeTerminal,
     removeMissing,
     toggleTerminal,
     snapshot,
@@ -383,6 +416,9 @@ export interface WorkbenchAsideView {
   ) => number | undefined;
   closeAsideSession: (target: AsideSession) => void;
   closeAsideBrowser: (target: AsideWorkspace) => void;
+  closeAsideTerminal: (target: AsideWorkspace) => Promise<void>;
+  terminalSessionsEnded: (target: AsideWorkspace) => void;
+  terminalTabOpen: (target: AsideWorkspace) => boolean;
   openAsideSession: (target: AsideSession) => boolean;
   openHtmlAside: (path: string) => void;
   reloadAsideSession: () => void;

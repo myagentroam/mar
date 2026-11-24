@@ -15,6 +15,8 @@ If a task needs your current page, an existing sign-in, or an interactive login,
 
 ## Browse pages
 
+Closing the last page tab also closes the Browser tab in this side pane. It does not shut down the shared Chromium instance.
+
 Press **Ctrl+F** (**⌘F** on macOS) inside the browser, or choose **More → Find in page**. Matches are highlighted and counted. Press **Enter** or **Shift+Enter** to cycle through them, or **Esc** to close. Find searches the remote page, not the local workbench.
 
 - Enter an HTTP(S) address in the address bar or the centered field on a **Blank** tab and press Enter to navigate the current tab. With no scheme, normal hosts default to HTTPS; `localhost` and `127.0.0.1` default to HTTP.

@@ -96,7 +96,11 @@ import { createWorkspaceFileAccessService } from './workspace-file-access-servic
 import { filePreviewErrorMessage } from '../util/error-presentation.js';
 import { createWorkbenchSessionSelection } from './workbench-session-selection-service.js';
 import { createSessionDraftService } from './session-draft-service.js';
-import { asideViewMode, createWorkbenchAsideService } from './workbench-aside-service.js';
+import {
+  asideViewMode,
+  createWorkbenchAsideService,
+  type AsideWorkspace
+} from './workbench-aside-service.js';
 import {
   createSessionNavigationProjection,
   sessionNavigationQuery
@@ -1976,8 +1980,30 @@ export function createWorkbenchPageController<
       workspace: workspaceTarget,
       mobileSurface: mobileWorkspaceSurface,
       saveSession: saveAsideContext,
-      openMobile: openMobileWorkspaceSurface
+      openMobile: openMobileWorkspaceSurface,
+      closeMobile: closeMobileWorkspaceSurface
     });
+
+  async function closeAsideTerminal(target: AsideWorkspace): Promise<void> {
+    if (!workbenchAsideService.current(target).terminalOpen) return;
+    const id = workspaceTabId(target.nodeId, target.workspaceId);
+    const dock = terminalDocks.get(id);
+    if ((dock && !(await dock.closeAll())) || terminalDocks.get(id) !== dock) return;
+    selectAfterTerminalClose(target);
+  }
+
+  function selectAfterTerminalClose(target: AsideWorkspace): void {
+    const active = workbenchAsideService.current(target).active;
+    workbenchAsideService.closeTerminal(target);
+    if (
+      mobileViewport.value &&
+      active?.kind === 'tool' &&
+      active.id === 'terminal' &&
+      workspaceTabId(target.nodeId, target.workspaceId) === activeWorkspaceTabId.value &&
+      (mobileWorkspaceSurface.value === 'terminal' || mobileWorkspaceSurface.value === 'inspector')
+    )
+      closeMobileWorkspaceSurface();
+  }
 
   watch(
     navigationQuery,
@@ -2315,6 +2341,10 @@ export function createWorkbenchPageController<
       asideWidth: workbenchLayoutService.asideWidth,
       closeAsideSession: workbenchSessionSelectionService.closeAsideSession,
       closeAsideBrowser: workbenchAsideService.closeBrowser,
+      closeAsideTerminal,
+      terminalSessionsEnded: selectAfterTerminalClose,
+      terminalTabOpen: (target: AsideWorkspace) =>
+        workbenchAsideService.current(target).terminalOpen === true,
       openAsideSession: workbenchSessionSelectionService.openAsideSession,
       openHtmlAside,
       reloadAsideSession,

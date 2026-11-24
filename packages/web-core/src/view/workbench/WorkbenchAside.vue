@@ -4,7 +4,12 @@ import '../../styles/workbench-tab-header.css';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
-import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
+import {
+  MarDropdown,
+  MarDropdownItem,
+  MarDropdownMenu,
+  type DropdownCommand
+} from '@myagentroam/mar-ui/dropdown';
 import { MarTabs, tabStripIdentity } from '@myagentroam/mar-ui/tabs';
 import { translate as t } from '../../service/locale-preference-service.js';
 import {
@@ -54,6 +59,7 @@ const emit = defineEmits<{
   selectSession: [target: AsideSession];
   closeSession: [target: AsideSession];
   closeBrowser: [target: AsideWorkspace];
+  closeTerminal: [target: AsideWorkspace];
   resize: [width: number];
   closeSurface: [];
 }>();
@@ -68,15 +74,20 @@ type AsideTab = {
   closeLabel?: string;
   separatorBefore?: boolean;
 };
+const availableTools = computed(() =>
+  props.tools.filter((tool) => props.state.tools.includes(tool.id))
+);
 const fixedTools = computed(() =>
-  props.tools.filter((tool) => tool.id !== 'node-browser' && props.state.tools.includes(tool.id))
+  availableTools.value.filter((tool) => tool.id !== 'node-browser' && tool.id !== 'terminal')
 );
-const browserTool = computed(() =>
-  props.state.tools.includes('node-browser')
-    ? props.tools.find((tool) => tool.id === 'node-browser')
-    : undefined
+const optionalTools = computed(() =>
+  availableTools.value.filter((tool) => tool.id === 'node-browser' || tool.id === 'terminal')
 );
-const browserTab = computed(() => (props.state.browserOpen ? browserTool.value : undefined));
+const openedTools = computed(() =>
+  optionalTools.value.filter((tool) =>
+    tool.id === 'terminal' ? props.state.terminalOpen : props.state.browserOpen
+  )
+);
 const entries = computed<AsideTab[]>(() => [
   ...fixedTools.value.map((tool) => ({
     id: `tool:${tool.id}`,
@@ -97,18 +108,16 @@ const entries = computed<AsideTab[]>(() => [
       active: session?.active ?? false
     };
   }),
-  ...(browserTab.value
-    ? [
-        {
-          id: 'tool:node-browser',
-          label: browserTab.value.label,
-          closeLabel: props.closeLabel(browserTab.value.label),
-          separatorBefore: props.state.sessions.length === 0 && fixedTools.value.length > 0,
-          target: { kind: 'tool', id: 'node-browser' } as const,
-          active: false
-        }
-      ]
-    : [])
+  ...openedTools.value.map((tool, index) => ({
+    id: `tool:${tool.id}`,
+    label: tool.label,
+    tooltip: tool.tooltip,
+    closeLabel: props.closeLabel(tool.label),
+    separatorBefore:
+      index === 0 && props.state.sessions.length === 0 && fixedTools.value.length > 0,
+    target: { kind: 'tool', id: tool.id } as const,
+    active: false
+  }))
 ]);
 const tabItems = computed(() =>
   entries.value.map(({ id, label, tooltip, closeLabel, separatorBefore }) => ({
@@ -175,6 +184,12 @@ function close(id: string | number): void {
     emit('closeSession', { ...props.workspace, sessionId: target.sessionId });
   else if (target?.kind === 'tool' && target.id === 'node-browser')
     emit('closeBrowser', props.workspace);
+  else if (target?.kind === 'tool' && target.id === 'terminal')
+    emit('closeTerminal', props.workspace);
+}
+function addTool(command: DropdownCommand): void {
+  const tool = optionalTools.value.find(({ id }) => id === command);
+  if (tool) emit('selectTool', { ...props.workspace, id: tool.id });
 }
 
 // Aside owns only local close intents; its domain owners
@@ -201,8 +216,7 @@ const closeBinding: ConsoleShortcutBinding = {
   execute: (event) => {
     // Fixed tools and bulk/repeated closes must never fall through to Workspace.
     if (!event.repeat && !event.shiftKey && activeId.value !== undefined) {
-      const active = props.state.active;
-      if (active?.kind === 'session' || (active?.kind === 'tool' && active.id === 'node-browser')) {
+      if (entries.value.some((entry) => entry.id === activeId.value && entry.closeLabel)) {
         close(activeId.value);
         void nextTick(() => {
           const root = element.value;
@@ -271,12 +285,8 @@ onBeforeUnmount(() => {
             ><i />
           </span>
         </template>
-        <template v-if="browserTool && !inert" #action>
-          <MarDropdown
-            trigger="click"
-            placement="bottom-end"
-            @command="emit('selectTool', { ...workspace, id: 'node-browser' })"
-          >
+        <template v-if="optionalTools.length && !inert" #action>
+          <MarDropdown trigger="click" placement="bottom-end" @command="addTool">
             <button
               v-tooltip="t('browser.addAsideTab')"
               class="mar-icon-button mar-icon-action"
@@ -287,9 +297,13 @@ onBeforeUnmount(() => {
             </button>
             <template #dropdown>
               <MarDropdownMenu :aria-label="t('browser.addAsideTab')">
-                <MarDropdownItem command="browser" icon="web">{{
-                  browserTool.label
-                }}</MarDropdownItem>
+                <MarDropdownItem
+                  v-for="tool in optionalTools"
+                  :key="tool.id"
+                  :command="tool.id"
+                  :icon="tool.id === 'terminal' ? 'terminal' : 'web'"
+                  >{{ tool.label }}</MarDropdownItem
+                >
               </MarDropdownMenu>
             </template>
           </MarDropdown>

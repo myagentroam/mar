@@ -7,6 +7,26 @@ import { installBrowserContextMenu } from '../../mar-node/src/browser/browser-co
 import { BrowserPageView } from '../../mar-node/src/browser/browser-page-view.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test('Closing the last browser page requests Aside closure only after the page is gone', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  try {
+    await page.goto(`${fixture.url}browser-input.html?close-pages`);
+    const body = page.locator('body');
+    for (const id of ['first', 'last']) {
+      await page.getByRole('button', { name: `Close ${id}`, exact: true }).click();
+      await expect(body).toHaveAttribute('data-close-page', id);
+      await expect(body).not.toHaveAttribute('data-browser-closed', 'true');
+      await page.evaluate(() => document.dispatchEvent(new Event('fixture-close-page')));
+      await expect(page.getByRole('tab', { name: id, exact: true })).toHaveCount(0);
+    }
+    await expect(body).toHaveAttribute('data-browser-closed', 'true');
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('Browser zoom is a single menu row that stays open while adjusting', async ({
   page
 }, testInfo) => {

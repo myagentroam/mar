@@ -107,6 +107,15 @@ test('Browser Aside saves to Workspace, changes page zoom, and reattaches withou
   await browserAsideJourney(page, baseURL, testInfo, 'interaction');
 });
 
+test('Closing the last browser page removes and reopens the outer Aside tab', async ({
+  page,
+  baseURL,
+  browserName
+}, testInfo) => {
+  test.skip(browserName !== 'chromium', 'This journey uses the real Chromium browser.');
+  await browserAsideJourney(page, baseURL, testInfo, 'close-last');
+});
+
 test('Browser Aside projects real Node Chromium over ICE and Server relay', async ({
   page,
   baseURL,
@@ -131,7 +140,7 @@ async function browserAsideJourney(
   page: Page,
   baseURL: string | undefined,
   testInfo: TestInfo,
-  scenario: 'interaction' | 'full'
+  scenario: 'interaction' | 'close-last' | 'full'
 ): Promise<void> {
   test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), 'mar-browser-aside-'));
@@ -559,6 +568,25 @@ async function browserAsideJourney(
     await expect(blankAddress).toHaveCount(0);
     await expect(tabRow.getByRole('tab')).toHaveCount(2);
     await expect.poll(() => requests.includes('/ice')).toBe(true);
+    if (scenario === 'close-last') {
+      await tabRow.locator('.browser-web-tab-close').first().click();
+      await expect(tabRow.getByRole('tab')).toHaveCount(1);
+      await expect(browserTab).toBeVisible();
+      await tabRow.locator('.browser-web-tab-close').click();
+      await expect(browserTab).toHaveCount(0);
+      await openWorkspaceBrowser();
+      await expect(tabRow.getByRole('tab')).toHaveCount(1);
+      await expect(blankAddress).toBeVisible();
+      await page.getByRole('button', { name: /^(Browser commands|浏览器命令)$/u }).click();
+      // Recently closed pages live in the Chromium instance, not in the outer Aside tab.
+      const reopen = page.getByRole('menuitem', {
+        name: /^(Reopen closed tab|重新打开已关闭的标签页)$/u
+      });
+      await expect(reopen).toBeEnabled();
+      await reopen.click();
+      await expect(address).toHaveValue(`${origin}/ice`);
+      return;
+    }
     await expectViewportFits();
     if (scenario === 'interaction') {
       await expect

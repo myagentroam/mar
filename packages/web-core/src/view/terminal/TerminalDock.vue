@@ -88,6 +88,10 @@ const terminalRoot = ref<HTMLElement>();
 let unregisterShortcutRegion: (() => void) | undefined;
 const creating = ref(false);
 const closingId = ref<string>();
+const closingAll = ref(false);
+let pendingOpen: Promise<void> | undefined;
+let pendingClose: Promise<void> | undefined;
+let pendingBatch: Promise<ReadonlySet<string>> | undefined;
 const expanded = ref(false);
 const hasOpened = ref(false);
 const autoCreateAttempted = ref(false);
@@ -203,7 +207,7 @@ async function refreshContext(): Promise<void> {
     const result = await http.request<{ terminals: readonly TerminalSummary[] }>(
       `/api/terminals?nodeId=${encodeURIComponent(props.nodeId)}`
     );
-    if (revision !== refreshRevision) return;
+    if (revision !== refreshRevision || closingAll.value) return;
     const owned = new Set(terminals.value.map((terminal) => terminal.id));
     terminals.value = result.terminals.filter(
       (terminal) =>
@@ -225,7 +229,15 @@ async function refreshContext(): Promise<void> {
     void ensureTerminalForExpandedDock();
   }
 }
-async function openTerminal(): Promise<void> {
+function openTerminal(): void {
+  if (closingAll.value || pendingOpen) return;
+  pendingOpen = createTerminal().finally(() => {
+    pendingOpen = undefined;
+    void ensureTerminalForExpandedDock();
+  });
+}
+
+async function createTerminal(): Promise<void> {
   if (
     released ||
     !props.active ||
@@ -270,7 +282,6 @@ async function openTerminal(): Promise<void> {
     );
   } finally {
     creating.value = false;
-    void ensureTerminalForExpandedDock();
   }
 }
 async function ensureTerminalForExpandedDock(): Promise<void> {
@@ -282,49 +293,69 @@ async function ensureTerminalForExpandedDock(): Promise<void> {
     refreshing.value ||
     creating.value ||
     autoCreateAttempted.value ||
+    closingAll.value ||
     !canUseTerminal.value ||
     props.workspaceId === undefined ||
     terminals.value.length > 0
   )
     return;
-  await openTerminal();
+  openTerminal();
+  await pendingOpen;
 }
 function collapseDock(): void {
   setExpanded(false);
   emit('collapse');
 }
-async function closeTerminal(terminalId: string): Promise<void> {
+function closeTerminal(terminalId: string): void {
+  if (closingAll.value || pendingClose) return;
+  pendingClose = closeOne(terminalId).finally(() => {
+    pendingClose = undefined;
+  });
+}
+
+async function closeOne(terminalId: string): Promise<void> {
   if (props.nodeId === undefined) return;
   const revision = contextRevision;
   closingId.value = terminalId;
+  const hadTerminal = terminals.value.some((item) => item.id === terminalId);
   try {
     await http.request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
       method: 'DELETE',
       body: JSON.stringify({ nodeId: props.nodeId })
     });
-    terminals.value = terminals.value.filter((item) => item.id !== terminalId);
-    if (activeTerminalId.value === terminalId) {
-      activeTerminalId.value = undefined;
-      const next = terminals.value[0];
-      if (next !== undefined) selectTerminal(next.id);
-    }
-    if (terminals.value.length === 0) collapseDock();
   } catch (error) {
     if (released || revision !== contextRevision) return;
-    notifyFailure(
-      translate('generated.terminalDock.unableToCloseTheTerminal', { value0: message(error) }),
-      error,
-      translate('generated.terminalDock.closeResultUnknown', { value0: message(error) })
-    );
+    if (errorCode(error) !== 'TERMINAL_NOT_FOUND' && errorCode(error) !== 'TERMINAL_CLOSED') {
+      notifyFailure(
+        translate('generated.terminalDock.unableToCloseTheTerminal', { value0: message(error) }),
+        error,
+        translate('generated.terminalDock.closeResultUnknown', { value0: message(error) })
+      );
+      return;
+    }
   } finally {
     closingId.value = undefined;
   }
+  if (released || revision !== contextRevision) return;
+  removeTerminal(terminalId);
+  if (hadTerminal && terminals.value.length === 0 && !pendingOpen && !closingAll.value)
+    collapseDock();
 }
-function handleTerminalExited(terminalId: string): void {
+function removeTerminal(terminalId: string): void {
   const wasActive = activeTerminalId.value === terminalId;
   terminals.value = terminals.value.filter((item) => item.id !== terminalId);
   if (wasActive) activeTerminalId.value = terminals.value[0]?.id;
-  if (terminals.value.length === 0 && expanded.value) collapseDock();
+}
+function handleTerminalExited(terminalId: string): void {
+  removeTerminal(terminalId);
+  if (
+    terminals.value.length === 0 &&
+    expanded.value &&
+    !pendingOpen &&
+    !pendingClose &&
+    !closingAll.value
+  )
+    collapseDock();
 }
 function message(error: unknown): string {
   return props.errorMessage(error);
@@ -374,9 +405,17 @@ watch(
   { immediate: true }
 );
 watch(
-  () => [props.mobileMode, props.embedded, props.visible] as const,
-  ([mobileMode, embedded, visible]) => {
-    if ((mobileMode || embedded) && visible) setExpanded(true);
+  () => props.visible,
+  (visible) => {
+    if (!visible) {
+      focusRequested = false;
+      return;
+    }
+    if (props.mobileMode || props.embedded) setExpanded(true);
+    if (props.embedded && !props.mobileMode) {
+      focusRequested = true;
+      void focusSelectedTerminalIfReady();
+    }
   },
   { immediate: true }
 );
@@ -401,33 +440,72 @@ watch(
 async function releaseTerminals(
   nodeId: string | undefined,
   owned: readonly TerminalSummary[]
-): Promise<void> {
-  const results = await Promise.allSettled(
-    owned.map((terminal) =>
-      http.request(`/api/terminals/${encodeURIComponent(terminal.id)}`, {
-        method: 'DELETE',
-        body: JSON.stringify({ nodeId })
-      })
-    )
+): Promise<ReadonlySet<string>> {
+  const closed = new Set<string>();
+  const failed: unknown[] = [];
+  await Promise.all(
+    owned.map(async (terminal) => {
+      try {
+        await http.request(`/api/terminals/${encodeURIComponent(terminal.id)}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ nodeId })
+        });
+      } catch (error) {
+        if (errorCode(error) !== 'TERMINAL_NOT_FOUND' && errorCode(error) !== 'TERMINAL_CLOSED') {
+          failed.push(error);
+          return;
+        }
+      }
+      closed.add(terminal.id);
+    })
   );
-  const failed = results.filter((result) => result.status === 'rejected');
   // Keep obsolete identity causes suppressible before choosing an uncertain aggregate result.
   const firstFailure =
-    failed.find((result) => result.reason instanceof AuthenticationContextChangedError) ??
-    failed.find((result) => errorCode(result.reason) === 'NETWORK_UNAVAILABLE') ??
+    failed.find((error) => error instanceof AuthenticationContextChangedError) ??
+    failed.find((error) => errorCode(error) === 'NETWORK_UNAVAILABLE') ??
     failed[0];
   if (firstFailure !== undefined)
     notifyFailure(
       translate('generated.terminalDock.unableToReleaseTerminals', {
         value0: failed.length,
-        value1: message(firstFailure.reason)
+        value1: message(firstFailure)
       }),
-      firstFailure.reason,
+      firstFailure,
       translate('generated.terminalDock.releaseResultsUnknown', {
         value0: failed.length,
-        value1: message(firstFailure.reason)
+        value1: message(firstFailure)
       })
     );
+  return closed;
+}
+
+async function closeAll(): Promise<boolean> {
+  if (released || closingAll.value) return false;
+  closingAll.value = true;
+  refreshRevision += 1;
+  refreshing.value = false;
+  try {
+    await Promise.all([pendingOpen, pendingClose]);
+    if (released) return false;
+    const owned = terminals.value;
+    pendingBatch = (async () => {
+      const closed = await releaseTerminals(props.nodeId, owned);
+      terminals.value = terminals.value.filter((terminal) => !closed.has(terminal.id));
+      return new Set(owned.map((terminal) => terminal.id));
+    })();
+    await pendingBatch;
+    if (released) return false;
+    if (terminals.value.length === 0) {
+      setExpanded(false);
+      return true;
+    }
+    if (!terminals.value.some((terminal) => terminal.id === activeTerminalId.value))
+      activeTerminalId.value = terminals.value[0]?.id;
+    return false;
+  } finally {
+    pendingBatch = undefined;
+    closingAll.value = false;
+  }
 }
 
 async function release(): Promise<void> {
@@ -437,7 +515,14 @@ async function release(): Promise<void> {
   expanded.value = false;
   focusRequested = false;
   try {
-    await releaseTerminals(props.nodeId, terminals.value);
+    const nodeId = props.nodeId;
+    const owned = terminals.value;
+    // An in-flight explicit batch already owns these DELETEs, including unknown results.
+    const attempted = pendingBatch && (await pendingBatch);
+    await releaseTerminals(
+      nodeId,
+      owned.filter((terminal) => !attempted?.has(terminal.id))
+    );
   } finally {
     terminals.value = [];
     activeTerminalId.value = undefined;
@@ -456,7 +541,7 @@ onBeforeUnmount(() => {
   void release();
 });
 
-defineExpose({ release, toggle: toggleTerminal });
+defineExpose({ closeAll, release, toggle: toggleTerminal });
 </script>
 
 <template>
@@ -495,7 +580,7 @@ defineExpose({ release, toggle: toggleTerminal });
             class="terminal-tab-close mar-icon-button mar-icon-action mar-icon-action--inline mar-tab-close"
             type="button"
             :aria-label="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
-            :disabled="closingId === item.id"
+            :disabled="closingAll || closingId !== undefined"
             @click="closeTerminal(item.id)"
           >
             <MarIcon name="close" />
@@ -506,7 +591,7 @@ defineExpose({ release, toggle: toggleTerminal });
           class="terminal-tab terminal-tab-add mar-icon-action"
           type="button"
           :aria-label="translate('generated.terminalDock.newTerminal2')"
-          :disabled="!canUseTerminal || creating"
+          :disabled="!canUseTerminal || creating || closingAll"
           @click="openTerminal"
         >
           <MarIcon name="plus" />

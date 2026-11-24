@@ -173,7 +173,13 @@ function pageFixture() {
       setAsideSessionFits: vi.fn(),
       asideViewMode: () => 'compact' as const,
       asideWidth: () => 320,
-      asideState: { tools: ['terminal'], sessions: [], active: { kind: 'tool', id: 'terminal' } },
+      terminalTabOpen: () => true,
+      asideState: {
+        tools: ['terminal'],
+        sessions: [],
+        terminalOpen: true,
+        active: { kind: 'tool', id: 'terminal' }
+      },
       asideSessionMetadata: []
     }),
     layout: shallowReactive({
@@ -429,6 +435,7 @@ describe('Workbench surface composition behavior', () => {
           page.aside.asideState = {
             tools: [tool],
             sessions: [],
+            terminalOpen: false,
             active: { kind: 'tool', id: tool }
           };
           const loading = await renderUnavailable();
@@ -460,6 +467,7 @@ describe('Workbench surface composition behavior', () => {
         page.aside.asideState = {
           tools: ['files'],
           sessions: [],
+          terminalOpen: false,
           active: { kind: 'tool', id: 'files' }
         };
         page.resources.nodeManifestLoading = false;
