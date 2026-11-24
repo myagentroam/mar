@@ -22,6 +22,22 @@ const credentials = (response: {
 });
 
 describe('portable authentication HTTP flow', () => {
+  it('defaults Browser Use to enabled and stores changes only for authenticated CSRF-checked requests', async () => {
+    const { app, login } = fixture();
+    const url = '/api/auth/preferences/browser-use';
+    expect((await app.inject(url)).statusCode).toBe(401);
+    const headers = { ...credentials(await login()), origin: 'https://console.example.test' };
+    expect((await app.inject({ url, headers })).json()).toEqual({ enabled: true });
+    const put = (payload: object, token = headers['x-csrf-token']) =>
+      app.inject({ method: 'PUT', url, headers: { ...headers, 'x-csrf-token': token }, payload });
+    expect((await put({ enabled: false }, 'wrong')).statusCode).toBe(403);
+    expect((await put({ enabled: false, userId: 2 })).statusCode).toBe(400);
+    expect((await put({ enabled: false })).statusCode).toBe(204);
+    expect((await app.inject({ url, headers: credentials(await login()) })).json()).toEqual({
+      enabled: false
+    });
+  });
+
   it('provides health and login, records basic audit, persists locale and projects current capabilities', async () => {
     const { app, login, store, audits, localePreferences, productCapabilities } = fixture();
     expect((await app.inject('/health')).json()).toEqual({ status: 'ok' });

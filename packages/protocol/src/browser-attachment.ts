@@ -98,6 +98,10 @@ export type BrowserResourceCommand = z.infer<typeof browserResourceCommandSchema
 export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ack'), sequence: positiveUint32 }),
   z.strictObject({ type: z.literal('tab.icons') }),
+  z.strictObject({
+    type: z.literal('agent.control'),
+    action: z.enum(['observe', 'take', 'resume'])
+  }),
   z.strictObject({ type: z.literal('viewport.resize'), width: viewportEdge, height: viewportEdge }),
   z.strictObject({ type: z.literal('input'), action: browserPageInputSchema }),
   z.strictObject({ type: z.literal('selection.copy'), id, viewVersion: positiveUint32 }),
@@ -138,6 +142,7 @@ export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
 export type BrowserAttachmentMessage = z.infer<typeof browserAttachmentMessageSchema>;
 
 export const browserTabSnapshotSchema = z.strictObject({
+  agentControl: z.enum(['idle', 'agent', 'taking', 'user']).optional(),
   activeId: tabId.optional(),
   viewVersion: positiveUint32,
   tabs: z

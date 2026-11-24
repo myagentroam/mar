@@ -6,6 +6,7 @@ import {
   type BrowserProfileTarget
 } from '@myagentroam/protocol';
 import { BrowserAttachmentService } from './browser-attachment-service.js';
+import type { BrowserAgentAction, BrowserAgentExecution } from './browser-agent-access.js';
 import type { BrowserAttachmentEncoder } from './browser-attachment.js';
 import { BrowserProfiles } from './browser-profiles.js';
 import type { BrowserProfileData } from './browser-profile-data.js';
@@ -82,6 +83,7 @@ export class BrowserRuntime {
             ...(browser.data ? { data: browser.data } : {})
           },
           close: async () => {
+            await tabs.releaseAgent();
             await this.attachments.revokeBrowser(id);
             await browser.close();
             await profile?.release();
@@ -142,6 +144,32 @@ export class BrowserRuntime {
     return this.sessions.use({ userId, workspaceId }, browserId, ({ tabs }) =>
       tabs.download(command)
     );
+  }
+
+  async agentAction(
+    scope: BrowserSessionKey,
+    command: BrowserAgentAction,
+    execution: BrowserAgentExecution,
+    signal: AbortSignal
+  ) {
+    signal.throwIfAborted();
+    const id = command.action === 'acquire' ? await this.open(scope, true) : this.lookup(scope);
+    if (!id)
+      return command.action === 'release'
+        ? { released: true }
+        : { browserResourceId: null, activeTabId: null, tabs: [], control: 'idle' };
+    return this.sessions.use(scope, id, async ({ tabs }) => {
+      signal.throwIfAborted();
+      let accessId: string | undefined;
+      if (command.action === 'acquire')
+        accessId = await tabs.acquireAgent(execution, () => this.sessions.retain(scope, id));
+      else if (command.action === 'select') tabs.selectForAgent(command.tabId, execution);
+      else if (command.action === 'release') {
+        await tabs.releaseAgent(execution);
+        return { released: true };
+      }
+      return { browserResourceId: id, ...tabs.agentTabs(), ...(accessId ? { accessId } : {}) };
+    });
   }
 
   async describeProfile(scope: BrowserSessionKey): Promise<BrowserProfileTarget | undefined> {

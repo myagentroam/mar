@@ -230,6 +230,14 @@ export async function composeServerApplication(
         scheduleAuthorizer: (nodeId, request) =>
           executionPreparation.prepareSchedule(nodeId, request),
         executionPreparer: (nodeId, request) => executionPreparation.prepare(nodeId, request),
+        browserUseAllowed: async (nodeId, { userId, workspaceId }) =>
+          (await authorizeNodeRequest(
+            userId,
+            nodeId,
+            'browser.resource',
+            { workspaceId },
+            workspaceId
+          )) && (await database.browserUseEnabled(userId)),
         marctlExecutionCredential: (nodeId, request) =>
           userCredentials.deriveExecution({
             ...request,
@@ -404,6 +412,7 @@ export async function composeServerApplication(
       now,
       loginRate,
       productCapabilities: product.capabilities,
+      browserUsePreferences: database,
       notifications
     });
     registerManagementRoutes({

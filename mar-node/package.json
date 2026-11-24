@@ -17,6 +17,7 @@
     "dist/marctl/**/*.cjs",
     "dist/marctl/package.json",
     "scripts/install-web-browser.mjs",
+    "scripts/browser-bin/",
     "dist/config.d.ts"
   ],
   "bin": {

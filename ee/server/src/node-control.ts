@@ -13,6 +13,7 @@ import type { RemoteDesktopRelaySockets } from '@myagentroam/server-core/remote-
 import type { WebSocket } from 'ws';
 import {
   MODEL_USAGE_BATCH_BYTES,
+  browserUseCheckSchema,
   directNodeEventSchema,
   marctlExecutionCredentialRequestSchema,
   modelUsageBatchSchema,
@@ -109,6 +110,10 @@ export interface NodeControlConsumers extends NodeMessageConsumers {
   readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
   readonly scheduleAuthorizer: ScheduledRunAuthorizer;
   readonly executionPreparer?: ExecutionPreparer;
+  readonly browserUseAllowed?: (
+    nodeId: string,
+    scope: { userId: number; workspaceId: string }
+  ) => Promise<boolean>;
   readonly marctlExecutionCredential: (
     nodeId: string,
     request: MarctlExecutionCredentialRequest
@@ -126,6 +131,7 @@ export class NodeControl extends NodeIdentityControl {
     return {
       modelUsage: { apiVersion: 1 },
       marctlExecutionCredential: { apiVersion: 2 },
+      ...(this.consumers.browserUseAllowed === undefined ? {} : { browserUse: { apiVersion: 1 } }),
       ...(this.consumers.nodeUpgradeProgress === undefined
         ? {}
         : { nodeUpgradeProgress: { apiVersion: 1 } }),
@@ -596,6 +602,16 @@ export class NodeControl extends NodeIdentityControl {
     socket: WebSocket,
     envelope: NodeEnvelope
   ): Promise<boolean> {
+    if (envelope.type === 'browser.use.check') {
+      const scope = browserUseCheckSchema.safeParse(envelope.payload);
+      const enabled =
+        scope.success && this.consumers.browserUseAllowed !== undefined
+          ? await this.consumers.browserUseAllowed(nodeId, scope.data).catch(() => false)
+          : false;
+      if (this.sockets.get(nodeId) === socket)
+        this.send(socket, 'browser.use.result', { enabled }, envelope.id);
+      return true;
+    }
     if (envelope.type === 'marctl.execution-credential.request') {
       const request = marctlExecutionCredentialRequestSchema.safeParse(envelope.payload);
       let payload: unknown = {

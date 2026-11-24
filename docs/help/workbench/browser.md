@@ -7,6 +7,14 @@ lastUpdated: 2026-11-24
 
 在工作模式下，打开辅助工作面，然后选择标签栏末尾的「+ → 浏览器」。网页运行在当前 Workspace 所属 Node 的 Chromium 中，不是在你操作 Console 的设备上运行。当前账号在不同 Workspace 的浏览器数据分别保存。
 
+## 让 MAR Agent 使用浏览器
+
+「设置 → 浏览器」中的 **Browser Use** 默认开启。网页测试默认在 Node 自带的隔离 Chromium 中运行，不会使用你的登录态。可让 MAR Agent 加载 `mar-browser-use` 做网页验证；内置 `playwright-cli` 命令也可配合可选的 Playwright CLI Skill 使用，无需另外安装命令。项目已有的 Playwright 测试仍使用项目自己的测试入口。
+
+任务需要当前页面、已有登录态或人工登录时，Agent 可以使用 Playwright 操作本工作区的共享浏览器，不必逐个标签确认。Agent 可以先打开登录页，请你在 MAR 浏览器中亲自登录，再请它继续。登录后可以离开浏览器辅助面；Agent 持有共享连接时浏览器不会因你离开而被回收。
+
+通过浏览器工具栏「更多 → 接管浏览器」可断开 Agent 的共享连接，准备好后选「让 Agent 继续」。关闭 Browser Use 也会撤回共享访问。这不会关闭标签、撤销已完成的操作或影响手动浏览。新的 Agent 执行不再获得内置 CLI；已获得 CLI 的执行仍可使用独立浏览器。
+
 ## 浏览网页
 
 - 在地址栏或空白页中央的输入框输入 HTTP(S) 地址并按 Enter，在当前标签导航。省略协议时，普通主机默认使用 HTTPS；`localhost` 和 `127.0.0.1` 默认使用 HTTP。

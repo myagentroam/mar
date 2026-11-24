@@ -6,6 +6,7 @@ import { BrowserDownloads } from './browser-downloads.js';
 import { BrowserDialogs } from './browser-dialogs.js';
 import { BrowserFileChooser } from './browser-file-chooser.js';
 import { BrowserPageView } from './browser-page-view.js';
+import { BrowserAgentAccess, type BrowserAgentExecution } from './browser-agent-access.js';
 import { BROWSER_VIEWPORT, type BrowserSize } from './browser-video-config.js';
 import { openBrowserWorkspaceHtml } from './browser-workspace-html.js';
 
@@ -31,7 +32,53 @@ const ERROR_PAGE = 'chrome-error://chromewebdata/';
 export class BrowserTabs {
   private readonly tabs = new Map<string, Tab>();
   private activeId: string | undefined;
+  private readonly agentAccess: BrowserAgentAccess;
+  private humanControl = false;
   private viewVersion = 1;
+
+  get agentControl(): 'idle' | 'agent' | 'taking' | 'user' {
+    if (this.humanControl) return this.agentAccess.engaged ? 'taking' : 'user';
+    return this.agentAccess.engaged ? 'agent' : 'idle';
+  }
+
+  async setHumanControl(value: boolean): Promise<void> {
+    if (this.humanControl === value || this.agentControl === 'taking') return;
+    this.humanControl = value;
+    this.events.emit('changed');
+    if (value) await this.agentAccess.release();
+  }
+
+  acquireAgent(execution: BrowserAgentExecution, retain: () => () => void): Promise<string> {
+    return this.agentAccess.acquire(execution, retain, () => {
+      if (this.humanControl) throw new Error('BROWSER_USE_HUMAN_CONTROL');
+    });
+  }
+
+  releaseAgent(execution?: BrowserAgentExecution): Promise<void> {
+    return this.agentAccess.release(execution);
+  }
+
+  selectForAgent(id: string, execution: BrowserAgentExecution): void {
+    if (this.humanControl) throw new Error('BROWSER_USE_HUMAN_CONTROL');
+    if (!this.agentAccess.has(execution)) throw new Error('BROWSER_USE_NOT_ATTACHED');
+    this.select(id);
+  }
+
+  agentTabs() {
+    if (this.humanControl) return { activeTabId: null, control: this.agentControl, tabs: [] };
+    const pages = this.context.pages();
+    const { activeId, tabs } = this.snapshot();
+    return {
+      activeTabId: activeId ?? null,
+      control: this.agentControl,
+      tabs: tabs.map(({ id, title, url }) => ({
+        id,
+        title,
+        url,
+        pageIndex: pages.indexOf(this.get(id).page)
+      }))
+    };
+  }
   private navigationVersion = 1;
   private size: BrowserSize = BROWSER_VIEWPORT;
   private readonly events = new EventEmitter<{ changed: [] }>();
@@ -51,6 +98,11 @@ export class BrowserTabs {
       favicon?: ((url: string) => Promise<string | undefined>) | undefined;
     }
   ) {
+    this.agentAccess = new BrowserAgentAccess(
+      () => context.browser(),
+      () => this.events.emit('changed'),
+      options.failed
+    );
     this.dialogs = new BrowserDialogs(context, () => this.events.emit('changed'), options.failed);
     this.files = new BrowserFileChooser(
       () => this.events.emit('changed'),

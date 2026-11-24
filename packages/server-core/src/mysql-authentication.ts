@@ -77,6 +77,21 @@ export class MysqlAuthenticationStorage {
     await writeMysqlUserLocale(this.raw, userId, locale, this.now);
   }
 
+  async browserUseEnabled(userId: number): Promise<boolean> {
+    const [rows] = await this.raw.execute<RowDataPacket[]>(
+      'SELECT browser_use_enabled FROM users WHERE id=? AND enabled=TRUE',
+      [userId]
+    );
+    return rows[0]?.['browser_use_enabled'] === 1;
+  }
+
+  async setBrowserUseEnabled(userId: number, enabled: boolean): Promise<void> {
+    await this.raw.execute(
+      'UPDATE users SET browser_use_enabled=?,updated_at=? WHERE id=? AND enabled=TRUE',
+      [enabled ? 1 : 0, this.now(), userId]
+    );
+  }
+
   async verifyUserPassword(userId: number, password: string): Promise<boolean> {
     const [rows] = await this.raw.execute<RowDataPacket[]>(
       'SELECT password_hash FROM users WHERE id=? AND enabled=TRUE',

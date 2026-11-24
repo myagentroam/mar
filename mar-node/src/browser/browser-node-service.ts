@@ -125,6 +125,15 @@ export class BrowserNodeService {
     openBrowserIceChannel(this.browser.attachments, route, channel, first, this.options.failed);
   }
 
+  agentAction(
+    scope: Parameters<BrowserRuntime['agentAction']>[0],
+    command: Parameters<BrowserRuntime['agentAction']>[1],
+    execution: Parameters<BrowserRuntime['agentAction']>[2],
+    signal: AbortSignal
+  ) {
+    return this.browser.agentAction(scope, command, execution, signal);
+  }
+
   async disconnect(): Promise<void> {
     for (const socket of this.relaySockets) socket.terminate();
     await this.browser.attachments.disconnect('BROWSER_CONTROL_DISCONNECTED');

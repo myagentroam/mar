@@ -7,6 +7,14 @@ lastUpdated: 2026-11-24
 
 In Work mode, open the side pane, then select **+ → Browser** at the end of its tab strip. Pages run in Chromium on the Node that hosts the Workspace, not on the device running the Console. Browser data for your account is kept separately for each Workspace.
 
+## Let MAR Agent use the browser
+
+**Browser Use** is on by default under **Settings → Browser**. Web checks normally run in the Node’s isolated Chromium without using your sign-ins. Ask MAR Agent to load `mar-browser-use` for a web check. The bundled `playwright-cli` command also works with the optional Playwright CLI skill; no separate CLI installation is required. Continue to run existing Playwright test suites with your project’s test commands.
+
+If a task needs your current page, an existing sign-in, or an interactive login, the Agent can use Playwright in this Workspace’s shared browser without asking for access to each tab. It can open the sign-in page for you. Sign in yourself in the MAR browser, then tell the Agent to continue. You can leave the browser side pane after signing in; the browser stays live while the Agent holds its shared connection.
+
+Select **More → Take control** to disconnect the Agent from the shared browser, then **Let Agent resume** when you’re ready. Turning Browser Use off also revokes shared access. Neither action closes your tabs, undoes completed actions, or affects manual browsing. New Agent executions no longer receive the bundled CLI, but executions that already have it can still use their separate browsers.
+
 ## Browse pages
 
 - Enter an HTTP(S) address in the address bar or the centered field on a **Blank** tab and press Enter to navigate the current tab. With no scheme, normal hosts default to HTTPS; `localhost` and `127.0.0.1` default to HTTP.

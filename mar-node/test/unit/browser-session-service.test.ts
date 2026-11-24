@@ -72,6 +72,35 @@ describe('Node Browser live session cache', () => {
     await service.shutdown();
   });
 
+  it('retains the browser after Web detaches until the agent releases its lease', async () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+    const close = vi.fn(async () => {});
+    const service = new BrowserSessionService({
+      launch: async () => ({ resource: {}, close }),
+      limit: 1,
+      idleMs: 1000,
+      onCloseFailed: vi.fn()
+    });
+    try {
+      const id = await service.open(one);
+      const web = service.pin(one, id);
+      const release = service.retain(one, id);
+      web.release();
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(service.lookup(one)).toBe(id);
+      await expect(service.open(two)).rejects.toThrow('BROWSER_CAPACITY');
+      release();
+      await vi.advanceTimersByTimeAsync(999);
+      release();
+      expect(close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(close).toHaveBeenCalledOnce();
+      expect(service.lookup(one)).toBeUndefined();
+    } finally {
+      await service.shutdown();
+    }
+  });
+
   it('does not publish a launch that completes during shutdown', async () => {
     const pending = Promise.withResolvers<{ resource: object; close(): Promise<void> }>();
     const close = vi.fn(async () => {});

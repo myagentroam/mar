@@ -1239,6 +1239,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       <BrowserSettings
         v-if="page.application.settingsSection === 'browser'"
         :user-id="page.identity.admin.userId"
+        :request="page.identity.request"
       />
       <slot v-else name="settings">
         <SettingsContent

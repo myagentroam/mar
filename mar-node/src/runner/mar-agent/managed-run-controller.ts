@@ -50,6 +50,7 @@ import {
 } from './runtime-model-factory.js';
 import { createImageGenerationExtensions } from './image-generation-extensions.js';
 import { createWebToolsExtensions } from './web-tools-extensions.js';
+import { createBrowserUseExtensions } from './browser-use-extensions.js';
 import { combineExecutionExtensions } from './execution-extensions.js';
 import { webSessionScope, type WebFetchHandler } from '../../service/web-fetch-contracts.js';
 import {
@@ -123,6 +124,11 @@ interface MarAgentRunHost {
     signal: AbortSignal
   ): Promise<import('@myagentroam/agent').ToolExecutionResult>;
   webFetch?: WebFetchHandler;
+  browserUse?: (
+    runId: string,
+    cliScope: string,
+    signal: AbortSignal
+  ) => Promise<Parameters<typeof createBrowserUseExtensions>[0]['execute'] | undefined>;
   registerGeneratedImages?(
     runId: string,
     sessionId: string,
@@ -431,6 +437,7 @@ export class MarAgentManagedRunController {
     computerUseEnabled?: boolean;
   }) {
     const controller = new AbortController();
+    const browserUseLifetime = new AbortController();
     const titleController = new AbortController();
     let cancelExecution: (() => void) | undefined;
     // Own cancellation before any asynchronous preparation, not only after SDK admission.
@@ -528,8 +535,26 @@ export class MarAgentManagedRunController {
         homeDirectory: homedir(),
         host: () => runtime!.host
       });
+      const browserCliScope = randomUUID().replaceAll('-', '');
+      const browserUse =
+        input.mode === 'run'
+          ? await this.host.browserUse?.(
+              input.runId,
+              browserCliScope,
+              AbortSignal.any([controller.signal, browserUseLifetime.signal])
+            )
+          : undefined;
+      use.assertUsable();
+      const browserExtensions =
+        browserUse &&
+        createBrowserUseExtensions({
+          runId: input.runId,
+          cliScope: browserCliScope,
+          execute: browserUse
+        });
       const extensions = combineExecutionExtensions(
         imageExtensions,
+        ...(browserExtensions ? [browserExtensions] : []),
         createWebToolsExtensions({
           enabled: true,
           ...(input.searchBackendAvailable === undefined
@@ -556,7 +581,10 @@ export class MarAgentManagedRunController {
       executionMcpBinding = runtime.host.bindExecutionExtensions(
         {
           ...extensions,
-          environment: marctlExecutionEnvironment(input.secretEnvironment),
+          environment: {
+            ...marctlExecutionEnvironment(input.secretEnvironment),
+            ...browserExtensions?.environment
+          },
           skills: [
             ...(extensions.skills ?? []),
             computerUseHostSkill,
@@ -786,6 +814,7 @@ export class MarAgentManagedRunController {
         terminalEvent = { eventType: 'run.failed', payload: projected, status: 'FAILED' };
       }
     } finally {
+      browserUseLifetime.abort();
       titleController.abort();
       const cleanup = [
         async () => {

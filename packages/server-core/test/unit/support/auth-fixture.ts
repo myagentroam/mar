@@ -23,6 +23,7 @@ export function createAuthFixture() {
   let mustChangePassword = true;
   let sequence = 0;
   let locale: UserLocale = 'zh-CN';
+  const browserUse = new Map<number, boolean>();
   const sessions = new Map<
     string,
     { current: CurrentUserSession; csrfToken: string; publicId: string }
@@ -128,6 +129,12 @@ export function createAuthFixture() {
     audit,
     lifecycle,
     localePreferences,
+    browserUsePreferences: {
+      browserUseEnabled: async (userId) => browserUse.get(userId) ?? true,
+      setBrowserUseEnabled: async (userId, enabled) => {
+        browserUse.set(userId, enabled);
+      }
+    },
     productCapabilities,
     now,
     secureCookies: true,

@@ -1,4 +1,5 @@
 import { composeWorkspaceApplication } from './application/workspace-application.js';
+import { BrowserUseControl } from './browser/browser-use-control.js';
 import { composeSessionProjection } from './application/session-projection-composition.js';
 import { composeWorkspaceResources } from './application/workspace-composition.js';
 import { composeRunners } from './application/runner-composition.js';
@@ -262,6 +263,7 @@ export class NodeConnector {
   private readonly marctlExecutionCredentials = new MarctlExecutionCredentialControl((envelope) =>
     this.sendEnvelope(envelope)
   );
+  private readonly browserUse = new BrowserUseControl((envelope) => this.sendEnvelope(envelope));
   private readonly upgradeCredentials = new NodeUpgradeCredentialControl((envelope) =>
     this.sendEnvelope(envelope)
   );
@@ -704,6 +706,28 @@ export class NodeConnector {
         commandStates: (sessionId) => this.commandStates.list(sessionId),
         webSearch: (input, signal) => this.webToolService.webSearch(input, signal),
         webFetch: (input, signal, scope) => this.webToolService.webFetch(input, signal, scope),
+        browserUse: async (runId, cliScope, signal) => {
+          const run = this.runtime.getRun(runId);
+          const browser = this.browserService;
+          if (
+            !browser ||
+            !run?.initiatedByUserId ||
+            run.source === 'SCHEDULED' ||
+            !this.runtime.getAgentSession(run.sessionId)
+          )
+            return;
+          const scope = { workspaceId: run.workspaceId, userId: run.initiatedByUserId };
+          const allowed = async (checkSignal: AbortSignal) =>
+            this.browserService === browser && (await this.browserUse.allowed(scope, checkSignal));
+          if (!(await allowed(signal))) return;
+          const execution = { cliScope, signal, allowed };
+          return async (action, actionSignal) => {
+            if (action.action !== 'release' && !(await allowed(actionSignal)))
+              throw new Error('BROWSER_USE_DISABLED');
+            const result = await browser.agentAction(scope, action, execution, actionSignal);
+            return { content: JSON.stringify(result) };
+          };
+        },
         registerGeneratedImages: (runId, nativeSessionId, images) => {
           const turn = this.runtime.conversationTurnForRun(runId);
           const session =
@@ -1547,6 +1571,7 @@ export class NodeConnector {
         this.scheduledRunAuthorization.disconnected();
         this.mailNotificationControl.disconnected();
         this.marctlExecutionCredentials.disconnected();
+        this.browserUse.disconnect();
         this.upgradeCredentials.disconnect();
         this.terminalChannel.disconnect();
         if (code === 4000 && reason === 'NODE_CONNECTION_REPLACED')
@@ -1565,6 +1590,7 @@ export class NodeConnector {
         await this.configMutations.run(() => this.connectionLifecycle.register(nodeId, credential));
         this.mailNotificationControl.setFeatures(payload);
         this.marctlExecutionCredentials.setFeatures(payload);
+        this.browserUse.setFeatures(payload);
         this.upgradeCredentials.setFeatures(payload);
         this.usageOutbox?.connected(payload);
         for (const change of this.pendingSessionGroups.values())
@@ -1599,6 +1625,7 @@ export class NodeConnector {
           this.send('session.group.changed', change);
         this.mailNotificationControl.setFeatures(payload);
         this.marctlExecutionCredentials.setFeatures(payload);
+        this.browserUse.setFeatures(payload);
         this.upgradeCredentials.setFeatures(payload);
       },
       close: (code, reason) => this.controlChannel.close(code, reason),
@@ -1611,6 +1638,7 @@ export class NodeConnector {
       handleMailNotificationResponse: (envelope) => this.mailNotificationControl.handle(envelope),
       handleMarctlExecutionCredentialResponse: (envelope) =>
         this.marctlExecutionCredentials.handle(envelope),
+      handleBrowserUseResponse: (envelope) => this.browserUse.handle(envelope),
       handleUpgradeCredentialResponse: (envelope) => this.upgradeCredentials.handle(envelope),
       handleDirectTransfer: (envelope) => this.handleDirectTransfer(envelope),
       handleTerminalDirect: (envelope) => this.handleTerminalDirect(envelope),
@@ -2537,6 +2565,7 @@ export class NodeConnector {
     this.scheduledRunAuthorization.close();
     this.mailNotificationControl.close();
     this.marctlExecutionCredentials.disconnected();
+    this.browserUse.disconnect();
     this.upgradeCredentials.disconnect();
     const notificationMcpDrain = this.notificationMcpBridge.close();
     const webToolDrain = this.webToolService.close();

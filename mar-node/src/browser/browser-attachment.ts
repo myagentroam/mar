@@ -12,7 +12,10 @@ import type { BrowserTabs } from './browser-tabs.js';
 import { browserEncodeSize, type BrowserSize } from './browser-video-config.js';
 
 type Encoder = ConstructorParameters<typeof BrowserFrameStream>[0]['encode'];
-type Command = Exclude<BrowserAttachmentMessage, { type: 'ack' | 'dialog.respond' }>;
+type Command = Exclude<
+  BrowserAttachmentMessage,
+  { type: 'ack' | 'dialog.respond' | 'agent.control' }
+>;
 type Button = Extract<BrowserPageInput, { type: 'button' }>['button'];
 export type BrowserAttachmentEncoder = { encode: Encoder; close: () => Promise<void>; hd?: true };
 const COMMAND_LIMIT = 64;
@@ -97,6 +100,17 @@ export class BrowserAttachment {
 
   receive(message: BrowserAttachmentMessage): void {
     if (this.closed) return;
+    if (message.type === 'agent.control') {
+      if (message.action === 'observe') {
+        this.agentControlSubscribed = true;
+        this.refresh();
+      } else if (this.agentControlSubscribed) {
+        void this.borrow.resource
+          .setHumanControl(message.action === 'take')
+          .catch(() => this.fail('BROWSER_USE_REVOKE_FAILED'));
+      }
+      return;
+    }
     if (message.type === 'tab.icons') {
       if (!this.icons) {
         this.icons = new Map();
@@ -109,6 +123,8 @@ export class BrowserAttachment {
       if (version !== undefined && version === this.next?.version) this.shown = version;
       return;
     }
+    if (this.borrow.resource.agentControl === 'taking' && message.type !== 'viewport.resize')
+      return;
     if (message.type === 'dialog.respond') {
       if (!this.answering) {
         this.answering = this.borrow.resource
@@ -204,11 +220,18 @@ export class BrowserAttachment {
     if (failure) throw failure.reason;
   }
 
+  private agentControlSubscribed = false;
+
   private refresh(): void {
     if (this.closed) return;
     const snapshot = this.borrow.resource.snapshot();
     try {
-      this.options.sendControl({ type: 'snapshot', snapshot });
+      this.options.sendControl({
+        type: 'snapshot',
+        snapshot: this.agentControlSubscribed
+          ? { ...snapshot, agentControl: this.borrow.resource.agentControl }
+          : snapshot
+      });
     } catch {
       this.fail('BROWSER_FRAME_TRANSPORT_FAILED');
       return;
@@ -328,6 +351,8 @@ export class BrowserAttachment {
           const command = this.queue.shift();
           if (!command) break;
           if (isPointerCommand(command)) this.queuedPointerCommands--;
+          if (this.borrow.resource.agentControl === 'taking' && command.type !== 'viewport.resize')
+            continue;
           try {
             await this.dispatch(command);
           } catch (error) {

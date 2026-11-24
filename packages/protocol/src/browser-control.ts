@@ -5,6 +5,12 @@ import { browserProfileCommandSchema } from './browser-data.js';
 const scope = { nodeId: z.string().min(1).max(512), workspaceId: z.string().min(1).max(512) };
 const id = z.string().uuid();
 
+export const browserUseCheckSchema = z.strictObject({
+  workspaceId: scope.workspaceId,
+  userId: z.number().int().positive().safe()
+});
+export const browserUsePreferenceSchema = z.strictObject({ enabled: z.boolean() });
+
 export const browserControlRequestSchema = z.strictObject({
   type: z.literal('browser.request'),
   requestId: id,

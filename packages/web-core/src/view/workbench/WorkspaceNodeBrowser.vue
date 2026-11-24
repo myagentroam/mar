@@ -263,6 +263,10 @@ function travel(action: 'back' | 'forward' | 'reload' | 'stop'): void {
 function command(value: string | number | object): void {
   const id = props.browser.browserId();
   if (value === 'settings') return emit('settings', id);
+  if (value === 'take' || value === 'resume') {
+    props.browser.send({ type: 'agent.control', action: value });
+    return;
+  }
   if (!id) return;
   if (value === 'cache' || value === 'history') emit('data', value, id);
   if (value === 'close') {
@@ -842,6 +846,14 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         />
         <template #dropdown>
           <MarDropdownMenu :aria-label="t('browser.menu')">
+            <MarDropdownItem
+              v-if="snapshot?.agentControl !== undefined"
+              :command="snapshot.agentControl === 'user' ? 'resume' : 'take'"
+              :disabled="snapshot.agentControl === 'taking'"
+              >{{
+                t(snapshot.agentControl === 'user' ? 'browser.useResume' : 'browser.useTake')
+              }}</MarDropdownItem
+            >
             <MarDropdownItem command="history" icon="clock" :disabled="!browser.browserId()">{{
               t('browser.history')
             }}</MarDropdownItem>
@@ -858,6 +870,27 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         </template>
       </MarDropdown>
     </form>
+    <div
+      v-if="snapshot?.agentControl && snapshot.agentControl !== 'idle'"
+      class="node-browser-agent-control"
+    >
+      <span role="status">{{
+        t(
+          snapshot.agentControl === 'taking'
+            ? 'browser.useTaking'
+            : snapshot.agentControl === 'agent'
+              ? 'browser.useAgentActive'
+              : 'browser.useUserActive'
+        )
+      }}</span>
+      <MarButton
+        v-if="snapshot.agentControl !== 'taking'"
+        link
+        @click="command(snapshot.agentControl === 'agent' ? 'take' : 'resume')"
+        >{{
+        t(snapshot.agentControl === 'agent' ? 'browser.useTake' : 'browser.useResume')
+      }}</MarButton>
+    </div>
     <span v-if="invalid" :id="`${tabPrefix}-address-error`" hidden>{{ t('browser.invalid') }}</span>
     <div ref="body" class="node-browser-body">
       <canvas
@@ -1039,11 +1072,20 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
   min-block-size: 0;
 }
 .node-browser-tabs,
+.node-browser-agent-control,
 .node-browser-toolbar,
 .node-browser-nav {
   display: flex;
   align-items: center;
   min-inline-size: 0;
+}
+.node-browser-agent-control {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding-inline: 0.75rem;
+  color: var(--mar-text-secondary);
+  border-block-end: 1px solid var(--mar-ui-border-default);
 }
 .node-browser-tabs > :first-child,
 .node-browser-address {

@@ -14,6 +14,54 @@ test.use({
   launchOptions: { args: ['--disable-features=WebRtcHideLocalIpsWithMdns'] }
 });
 
+test('Browser Use defaults to enabled and saves the account preference', async ({
+  page,
+  browserName
+}) => {
+  test.skip(browserName !== 'chromium', 'The account preference is browser-independent.');
+  const password = 'browser-use-test-password-123';
+  const login = await page.request.post('/api/auth/login', {
+    data: { username: 'admin', password: INITIAL_ADMIN_PASSWORD }
+  });
+  expect(login.ok()).toBe(true);
+  const changed = await page.request.post('/api/auth/change-password', {
+    headers: { 'x-csrf-token': (await login.json()).csrfToken },
+    data: { currentPassword: INITIAL_ADMIN_PASSWORD, password }
+  });
+  expect(changed.ok()).toBe(true);
+  const headers = { 'x-csrf-token': (await changed.json()).csrfToken };
+  const endpoint = '/api/auth/preferences/browser-use';
+  try {
+    await page.goto('/console?view=settings');
+    const browserSettings = page.getByRole('button', { name: /^(Browser settings|浏览器设置)$/u });
+    await browserSettings.click();
+    const browserUse = page.getByRole('checkbox', { name: /Browser Use/u });
+    await expect(browserUse).toBeChecked();
+    await expect(browserUse).toHaveAccessibleDescription(/existing sign-ins|已有的网站登录状态/u);
+    const saved = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === endpoint && response.request().method() === 'PUT'
+    );
+    await browserUse.uncheck();
+    expect((await saved).status()).toBe(204);
+    await page.reload();
+    await browserSettings.click();
+    await expect(browserUse).toBeEnabled();
+    await expect(browserUse).not.toBeChecked();
+    const preference = await page.request.get(endpoint);
+    expect(await preference.json()).toEqual({ enabled: false });
+  } finally {
+    try {
+      await page.request.put(endpoint, { headers, data: { enabled: true } });
+    } finally {
+      await page.request.post('/api/auth/change-password', {
+        headers,
+        data: { currentPassword: password, password: INITIAL_ADMIN_PASSWORD }
+      });
+    }
+  }
+});
+
 test('Browser Aside projects real Node Chromium over ICE and Server relay', async ({
   page,
   baseURL,
@@ -762,8 +810,19 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await commands.click();
     const browserMenu = page.getByRole('menu', { name: /^(Browser commands|浏览器命令)$/u });
     const browserCommands = browserMenu.getByRole('menuitem');
-    await expect(browserCommands).toHaveCount(4);
+    await expect(browserCommands).toHaveCount(5);
     await expect(browserCommands.locator('svg')).toHaveCount(4);
+    for (const name of [
+      /^(Browsing history|浏览历史)$/u,
+      /^(Clear browser cache|清理浏览器缓存)$/u,
+      /^(Browser settings|浏览器设置)$/u,
+      /^(Close browser|关闭浏览器)$/u
+    ]) {
+      await expect(browserMenu.getByRole('menuitem', { name }).locator('svg')).toHaveCount(1);
+    }
+    await expect(
+      browserMenu.getByRole('menuitem', { name: /^(Take control|接管浏览器)$/u })
+    ).toBeVisible();
     await expect(browserMenu.getByRole('menuitem', { name: /^(Downloads|下载)$/u })).toHaveCount(0);
     await expect(
       browserMenu.getByRole('menuitem', { name: /^(Copy selected text|复制网页所选文本)$/u })
@@ -884,6 +943,14 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await page.keyboard.press('Escape');
     await expect(historyDialog).toBeHidden();
     await expect(address).toHaveValue(`${origin}/relay`);
+    await commands.click();
+    await page.getByRole('menuitem', { name: /^(Take control|接管浏览器)$/u }).click();
+    const paused = page.getByRole('status').filter({
+      hasText: /^(You control the browser\. The Agent is disconnected\.|你已接管浏览器，Agent 已断开连接。)$/u
+    });
+    await expect(paused).toBeVisible();
+    await page.getByRole('button', { name: /^(Let Agent resume|让 Agent 继续)$/u }).click();
+    await expect(paused).toBeHidden();
     await commands.click();
     await page.getByRole('menuitem', { name: /^(Browser settings|浏览器设置)$/u }).click();
     await expect(

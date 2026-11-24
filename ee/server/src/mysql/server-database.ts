@@ -499,6 +499,12 @@ export class MysqlServerDatabase {
   userDisplayName(userId: number): Promise<string | undefined> {
     return this.authentication.userDisplayName(userId);
   }
+  browserUseEnabled(userId: number): Promise<boolean> {
+    return this.authentication.browserUseEnabled(userId);
+  }
+  setBrowserUseEnabled(userId: number, enabled: boolean): Promise<void> {
+    return this.authentication.setBrowserUseEnabled(userId, enabled);
+  }
   listActiveUserSessions(
     userId: number,
     currentSessionId: string

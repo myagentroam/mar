@@ -300,6 +300,7 @@ export interface NodeWorkbenchManifest {
   readonly browserViewportResize?: true;
   readonly browserHd?: true;
   readonly browserTabIcons?: true;
+  readonly browserUse?: true;
   readonly browserNativeTouch?: true;
   readonly browserContextMenu?: true;
   readonly git?: {

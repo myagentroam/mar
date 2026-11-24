@@ -175,6 +175,10 @@ const CORE_MYSQL_SCHEMA_V19: MysqlSchema = {
   )
 };
 
+const BROWSER_USE_COLUMN = 'browser_use_enabled';
+const BROWSER_USE_COLUMN_SQL =
+  'ALTER TABLE users ADD COLUMN browser_use_enabled tinyint(1) NOT NULL DEFAULT 1';
+
 export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
   ...CORE_MYSQL_SCHEMA_V19,
   nodes: CORE_MYSQL_SCHEMA_V19['nodes']!.replace(
@@ -210,6 +214,10 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
         )
     )
     .join('\n'),
+  users: CORE_MYSQL_SCHEMA_V19['users']!.replace(
+    '  PRIMARY KEY',
+    "  `browser_use_enabled` tinyint(1) NOT NULL DEFAULT '1',\n  PRIMARY KEY"
+  ),
   model_usage_records: MODEL_USAGE_CURRENT_SQL,
   ...MYSQL_PROMPT_COMPLETION_SCHEMA,
   ...MYSQL_WEB_PUSH_SCHEMA,
@@ -656,5 +664,24 @@ export const CORE_MYSQL_MIGRATIONS = [
         throw new Error('SERVER_DATABASE_SCHEMA_INVALID');
     }
   },
-  MODEL_USAGE_CONFIGURATION_MIGRATION
+  MODEL_USAGE_CONFIGURATION_MIGRATION,
+  {
+    version: 38,
+    name: 'user_browser_use_preference',
+    checksum: createHash('sha256').update(BROWSER_USE_COLUMN_SQL).digest('hex'),
+    up: async (connection: MysqlMigrationConnection) => {
+      const [rows] = (await connection.execute(
+        "SELECT COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME=?",
+        [BROWSER_USE_COLUMN]
+      )) as [readonly Record<string, unknown>[], unknown];
+      if (rows.length === 0) await connection.execute(BROWSER_USE_COLUMN_SQL);
+      else if (
+        rows.length !== 1 ||
+        rows[0]?.COLUMN_TYPE !== 'tinyint(1)' ||
+        rows[0]?.IS_NULLABLE !== 'NO' ||
+        String(rows[0]?.COLUMN_DEFAULT) !== '1'
+      )
+        throw new Error('SERVER_DATABASE_SCHEMA_INVALID');
+    }
+  }
 ] as const;

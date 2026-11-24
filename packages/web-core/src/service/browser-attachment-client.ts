@@ -54,6 +54,7 @@ export class BrowserAttachmentClient {
       contextMenu?(event: Extract<BrowserAttachmentEvent, { type: 'context.result' }>): void;
       attached?(): void;
       resizeViewport?: boolean;
+      browserUse?: boolean;
       tabIcon?: (event: Extract<BrowserAttachmentEvent, { type: 'tab.icon' }>) => void;
       frame(frame: { viewVersion: number; width: number; height: number }): void;
       sample(value: BrowserStreamSample): void;
@@ -118,6 +119,7 @@ export class BrowserAttachmentClient {
         this.sampleTimer = setInterval(this.publishSample, 1_000);
         if (this.options.resizeViewport) this.observeSize();
         if (this.options.tabIcon) this.sendText({ type: 'tab.icons' });
+        if (this.options.browserUse) this.sendText({ type: 'agent.control', action: 'observe' });
         this.options.attached?.();
         return;
       }

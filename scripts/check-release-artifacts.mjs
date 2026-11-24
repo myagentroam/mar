@@ -197,7 +197,15 @@ export function unexpectedNpmPackageFiles(packageName, files) {
   return files.filter(
     (path) =>
       !['package.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'NOTICE'].includes(path) &&
-      !(isNode && path === 'scripts/install-web-browser.mjs') &&
+      !(
+        isNode &&
+        [
+          'scripts/install-web-browser.mjs',
+          'scripts/browser-bin/playwright-cli',
+          'scripts/browser-bin/playwright-cli.cmd',
+          'scripts/browser-bin/playwright-isolated.json'
+        ].includes(path)
+      ) &&
       !(isNode && path === 'dist/config.d.ts') &&
       !(binaries && binaries.has(path)) &&
       (!path.startsWith('dist/') ||

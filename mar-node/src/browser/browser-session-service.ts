@@ -14,6 +14,7 @@ type Entry<T> = {
   closing?: Promise<void>;
   idleSince?: number | undefined;
   attached?: boolean;
+  agentHolds?: number;
   dataUse?: Promise<void> | undefined;
 };
 
@@ -98,10 +99,28 @@ export class BrowserSessionService<T> {
       if (released || entry.closing) return;
       released = true;
       entry.attached = false;
-      entry.idleSince = performance.now();
+      if (!entry.agentHolds) entry.idleSince = performance.now();
       this.schedule();
     };
     return { resource: entry.session.resource, release };
+  }
+
+  /** Retains a live instance independently of the exclusive Web attachment. */
+  retain(resource: BrowserSessionKey, id: string): () => void {
+    const entry = this.entries.get(this.key(resource));
+    if (this.stopped || entry?.id !== id || !entry.session || entry.closing || this.expired(entry))
+      throw new Error('BROWSER_SESSION_ENDED');
+    entry.agentHolds = (entry.agentHolds ?? 0) + 1;
+    entry.idleSince = undefined;
+    this.schedule();
+    let released = false;
+    return () => {
+      if (released || entry.closing) return;
+      released = true;
+      entry.agentHolds = (entry.agentHolds ?? 1) - 1;
+      if (!entry.agentHolds && !entry.attached) entry.idleSince = performance.now();
+      this.schedule();
+    };
   }
 
   async close(resource: BrowserSessionKey, id: string): Promise<void> {
