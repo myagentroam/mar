@@ -43,7 +43,10 @@ function save(kind: 'local' | 'web', value: unknown): void {
 
 <template>
   <section class="browser-settings" :aria-label="t('browser.settings')">
-    <h1>{{ t('browser.settings') }}</h1>
+    <header>
+      <h1>{{ t('browser.settings') }}</h1>
+      <p class="browser-settings-summary">{{ t('browser.settingsSummary') }}</p>
+    </header>
     <section>
       <h2>{{ t('browser.preferences') }}</h2>
       <div
@@ -63,7 +66,7 @@ function save(kind: 'local' | 'web', value: unknown): void {
           />
         </MarSelect>
       </div>
-      <p>{{ t('browser.linkHelp') }}</p>
+      <p class="browser-link-help">{{ t('browser.linkHelp') }}</p>
       <p v-if="saveFailed" role="alert">{{ t('browser.saveFailed') }}</p>
     </section>
   </section>
@@ -75,6 +78,24 @@ function save(kind: 'local' | 'web', value: unknown): void {
   min-inline-size: 0;
   overflow: auto;
   padding: clamp(0.75rem, 3vw, 1.5rem);
+}
+.browser-settings > header {
+  margin-block-end: 1rem;
+}
+.browser-settings h1 {
+  margin: 0;
+}
+.browser-settings-summary,
+.browser-link-help {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
+  line-height: 1.5;
+}
+.browser-settings-summary {
+  margin: 0.35rem 0 0;
+}
+.browser-link-help {
+  margin-block-start: 0.75rem;
 }
 .browser-settings > section {
   max-inline-size: 50rem;

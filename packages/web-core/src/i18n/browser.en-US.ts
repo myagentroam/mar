@@ -14,6 +14,7 @@ export const browserEnUS = {
     'Open on this device; the loopback address will point to this device, not the Node',
   menu: 'Browser commands',
   settings: 'Browser settings',
+  settingsSummary: 'Set where links from workspace conversations and terminals open by default.',
   cache: 'Clear browser cache',
   tab: 'New tab',
   addAsideTab: 'Add Aside tab',
@@ -56,8 +57,7 @@ export const browserEnUS = {
   localLinks: 'Local URLs and HTML links',
   mar: 'MAR',
   device: 'This device',
-  linkHelp:
-    'Ctrl or Command reverses the choice. In MAR, localhost and 127.0.0.1 point to the Node. On this device they point here.',
+  linkHelp: 'Hold Ctrl or Command while clicking a link to open it in the other location.',
   workspace: 'Workspace',
   chooseWorkspace: 'Choose a workspace to manage its browser data.',
   live: 'Active browser profile',

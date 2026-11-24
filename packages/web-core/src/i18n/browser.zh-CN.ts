@@ -13,6 +13,7 @@ export const browserZhCN = {
   externalLocal: '在本机打开；此时回环地址指向本机，而不是 Node',
   menu: '浏览器命令',
   settings: '浏览器设置',
+  settingsSummary: '设置工作区会话和终端中链接的默认打开位置。',
   cache: '清理浏览器缓存',
   tab: '新建标签页',
   addAsideTab: '添加辅助面标签页',
@@ -55,8 +56,7 @@ export const browserZhCN = {
   localLinks: '本地 URL 和 HTML 链接',
   mar: 'MAR',
   device: '本机',
-  linkHelp:
-    '按 Ctrl 或 Command 反转打开位置。在 MAR 中，localhost 和 127.0.0.1 指向 Node；在本机浏览器中则指向本机。',
+  linkHelp: '点击链接时按住 Ctrl 或 Command，可临时切换打开位置。',
   workspace: '工作区',
   chooseWorkspace: '请选择要管理浏览数据的工作区。',
   live: '当前浏览器资料',
