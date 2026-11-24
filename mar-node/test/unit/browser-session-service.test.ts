@@ -79,6 +79,37 @@ describe('Node Browser live session cache', () => {
     await service.shutdown();
   });
 
+  it('does not let late activity from a closed browser renew its replacement or another scope', async () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+    const close = vi.fn(async () => {});
+    const service = new BrowserSessionService({
+      launch: async () => ({ resource: {}, close }),
+      limit: 2,
+      idleMs: 1000,
+      onCloseFailed: vi.fn()
+    });
+    try {
+      const retired = await service.open(one);
+      await service.close(one, retired);
+      const replacement = await service.open(one);
+      const other = await service.open(two);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(service.touch(one, retired)).toBe(false);
+      expect(service.touch(two, replacement)).toBe(false);
+      expect(service.touch(one, replacement)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(service.lookup(one)).toBe(replacement);
+      expect(service.lookup(two)).toBeUndefined();
+      expect(service.touch(two, other)).toBe(false);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(service.lookup(one)).toBeUndefined();
+      expect(close).toHaveBeenCalledTimes(3);
+    } finally {
+      await service.shutdown();
+    }
+  });
+
   it('does not publish a launch that completes during shutdown', async () => {
     const pending = Promise.withResolvers<{ resource: object; close(): Promise<void> }>();
     const close = vi.fn(async () => {});

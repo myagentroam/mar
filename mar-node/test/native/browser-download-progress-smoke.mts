@@ -47,7 +47,13 @@ try {
   assert(address && typeof address !== 'string');
   browser = await launcher.launch();
   assert(browser.downloads);
-  const tabs = new BrowserTabs(browser.context, { limit: 8, failed, downloads: browser.downloads });
+  let byteUpdates = 0;
+  const tabs = new BrowserTabs(browser.context, {
+    limit: 8,
+    failed,
+    downloads: browser.downloads,
+    onDownloadBytesReceived: () => byteUpdates++
+  });
   const list = async (progress = true) =>
     browserDownloadPageSchema.parse(
       await tabs.download({ action: 'list', offset: 0, ...(progress && { progress: true }) })
@@ -64,7 +70,14 @@ try {
   assert.equal(known.totalBytes, size);
   const oldClient = (await list(false))[0];
   assert.deepEqual(oldClient, { id: known.id, name: known.name, state: 'downloading' });
-  requests.get('/known')!.end(Buffer.alloc(size - first.length, 2));
+  assert(byteUpdates > 0);
+  const initialUpdates = byteUpdates;
+  requests.get('/known')!.write(first);
+  await until(async () =>
+    (await list()).find((item) => item.id === known.id && item.receivedBytes === 2 * first.length)
+  );
+  assert(byteUpdates > initialUpdates);
+  requests.get('/known')!.end(Buffer.alloc(size - 2 * first.length, 2));
   const ready = await until(async () =>
     (await list()).find((item) => item.id === known.id && item.state === 'ready')
   );

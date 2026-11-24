@@ -109,7 +109,7 @@ export class BrowserSessionService<T> {
     return { resource: entry.session.resource, release, activity: () => this.touch(resource, id) };
   }
 
-  /** Renews a live instance only for operations, not for open connections. */
+  /** Renews an exact live instance for observed activity, not for open connections. */
   touch(resource: BrowserSessionKey, id: string): boolean {
     const entry = this.entries.get(this.key(resource));
     if (this.stopped || entry?.id !== id || !entry.session || entry.closing || this.expired(entry))

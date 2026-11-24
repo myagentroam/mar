@@ -84,6 +84,7 @@ export class BrowserTabs {
       failed: (error: unknown) => void;
       directory?: string | undefined;
       downloads?: { session: CDPSession; directory: string } | undefined;
+      onDownloadBytesReceived?: () => void;
       workspacePath?: () => string | undefined;
       favicon?: ((url: string) => Promise<string | undefined>) | undefined;
     }
@@ -98,7 +99,11 @@ export class BrowserTabs {
       options.failed,
       options.directory
     );
-    this.downloads = new BrowserDownloads(() => this.events.emit('changed'), options.failed);
+    this.downloads = new BrowserDownloads(
+      () => this.events.emit('changed'),
+      options.failed,
+      options.onDownloadBytesReceived
+    );
     if (options.downloads)
       this.downloads.observe(options.downloads.session, options.downloads.directory);
     context.once('close', () => this.downloads.dispose());

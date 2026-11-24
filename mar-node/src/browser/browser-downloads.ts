@@ -19,6 +19,7 @@ type Entry = {
   cancel: () => Promise<void>;
   info: BrowserDownloadInfo;
   progress?: { receivedBytes: number; totalBytes?: number };
+  receivedHighWater?: number;
   location?: { path: string; size: number };
   recentSaveUntil?: number;
   readers?: number;
@@ -48,7 +49,8 @@ export class BrowserDownloads {
 
   constructor(
     private readonly changed: () => void,
-    private readonly failed: (error: unknown) => void
+    private readonly failed: (error: unknown) => void,
+    private readonly onBytesReceived?: () => void
   ) {
     this.retention = setInterval(() => this.scheduleSweep(), HOUR_MS).unref();
   }
@@ -98,6 +100,11 @@ export class BrowserDownloads {
         return;
       }
       if (!Number.isSafeInteger(receivedBytes) || receivedBytes < 0) return;
+      // A regressed counter can update the UI, but must not renew the session twice for the same bytes.
+      if (receivedBytes > (entry.receivedHighWater ?? 0)) {
+        entry.receivedHighWater = receivedBytes;
+        this.onBytesReceived?.();
+      }
       const total =
         Number.isSafeInteger(totalBytes) && totalBytes > 0 && totalBytes >= receivedBytes;
       if (

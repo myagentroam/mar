@@ -92,6 +92,7 @@ export class BrowserRuntime {
           failed: options.failed,
           directory: browser.directory,
           downloads: browser.downloads,
+          onDownloadBytesReceived: () => this.sessions.touch(scope, id),
           favicon: browser.data?.favicon.bind(browser.data),
           workspacePath: () => options.workspacePath?.(scope.workspaceId)
         });

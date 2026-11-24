@@ -11,7 +11,7 @@ In Work mode, open the side pane, then select **+ → Browser** at the end of it
 
 **Browser Use** is on by default under **Settings → Browser**. Web checks normally run in the Node’s isolated Chromium without using your sign-ins. Ask MAR Agent to load `mar-browser-use` for a web check. The bundled `playwright-cli` command also works with the optional Playwright CLI skill; no separate CLI installation is required. Continue to run existing Playwright test suites with your project’s test commands.
 
-If a task needs your current page, an existing sign-in, or an interactive login, the Agent can use Playwright in this Workspace’s shared browser. The Agent can open the sign-in page for you. Sign in directly in the MAR browser, then tell the Agent to continue. You can leave the side pane or keep using the same page alongside the Agent. A brief message shows recent Agent activity without blocking your input. The browser stays live while in use and closes after 15 minutes without an operation. Turning Browser Use off disconnects the Agent without closing your tabs.
+If a task needs your current page, an existing sign-in, or an interactive login, the Agent can use Playwright in this Workspace’s shared browser. The Agent can open the sign-in page for you. Sign in directly in the MAR browser, then tell the Agent to continue. You can leave the side pane or keep using the same page alongside the Agent. A brief message shows recent Agent activity without blocking your input. Turning Browser Use off disconnects the Agent without closing your tabs.
 
 ## Browse pages
 
@@ -35,7 +35,7 @@ Under **Personal settings → Browser**, choose where public and local links ope
 
 ## Sign-in, browsing data, and history
 
-Opening the Browser goes directly to a blank tab or resumes the existing instance. Website sign-ins and site data are saved for your account and Workspace by default. Hiding the pane or closing the Aside tab does not immediately close Chromium; it closes after 15 minutes without browser activity. **More → Close browser** ends the instance and closes its Aside tab. The Node removes retained profile directories after 30 days without use.
+Opening the Browser goes directly to a blank tab or resumes the existing instance. Website sign-ins and site data are saved for your account and Workspace by default. Hiding the pane or closing the Aside tab does not immediately close Chromium. The browser closes after 15 minutes without browser actions or incoming download data. **More → Close browser** ends the instance and closes its Aside tab. The Node removes retained profile directories after 30 days without use.
 
 Choose **More → Clear browser cache** to open the current browser's clear-data dialog without leaving the page. Check the Workspace and profile before choosing a time range and data categories. Only the cache is selected by default. The browser automatically evicts HTTP disk cache entries based on capacity without deleting cookies or site data. Manually deleting cookies and site data can sign you out of websites. It does not delete Workspace files, downloaded files, your MAR sign-in, or data from your device browser.
 
