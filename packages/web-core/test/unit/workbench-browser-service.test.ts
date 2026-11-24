@@ -13,6 +13,8 @@ const mock = vi.hoisted(() => ({
   open: undefined as BrowserAttachmentOpen | undefined,
   supportsBrowserVideo: vi.fn(async (_hd?: boolean) => true),
   snapshot: undefined as ((value: BrowserTabSnapshot) => void) | undefined,
+  frame: undefined as
+    ((value: { viewVersion: number; width: number; height: number }) => void) | undefined,
   ended: undefined as ((code: string) => void) | undefined
 }));
 
@@ -25,11 +27,13 @@ vi.mock('../../src/service/browser-attachment-client.js', () => ({
       open: BrowserAttachmentOpen,
       callbacks: {
         snapshot: (value: BrowserTabSnapshot) => void;
+        frame: NonNullable<typeof mock.frame>;
         ended: (code: string) => void;
       }
     ) {
       mock.open = open;
       mock.snapshot = callbacks.snapshot;
+      mock.frame = callbacks.frame;
       mock.ended = callbacks.ended;
     }
     close() {}
@@ -179,3 +183,54 @@ it('holds the upload state until cancellation settles, not until the aborted upl
   service.hide();
   service.handle({ type: 'browser.response', requestId: requests[1]!.requestId });
 });
+
+it.each(['cancel', 'delete'] as const)(
+  'sends the download %s action in both the URL and body',
+  async (action) => {
+    const requests: BrowserControlRequest[] = [];
+    const http = vi.fn(async () => ({}));
+    const service = createWorkbenchBrowserService({
+      send: (request) => {
+        requests.push(request);
+        return true;
+      },
+      connectionId: () => 'workbench',
+      acquire: () => ({
+        transportSessionId: 'transport',
+        createChannel: () => ({}) as RTCDataChannel,
+        release() {}
+      }),
+      http: http as WorkbenchHttpService['request']
+    });
+    const attachmentId = randomUUID();
+    const id = randomUUID();
+    const opening = service.show(
+      { nodeId: 'node', workspaceId: 'workspace' },
+      { apiVersion: 1, ice: true, nodeGeneration: 'generation' },
+      {} as HTMLCanvasElement,
+      { action: 'resume', browserId: 'browser' }
+    );
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    service.handle({
+      type: 'browser.response',
+      requestId: requests[0]!.requestId,
+      result: { type: 'OPEN', attachmentId, ticket: 'A'.repeat(32) }
+    });
+    await opening;
+    mock.frame!({ viewVersion: 1, width: 800, height: 600 });
+    try {
+      if (action === 'cancel') await service.cancelDownload(id);
+      else await service.deleteDownload(id);
+      expect(http).toHaveBeenCalledExactlyOnceWith(
+        `/api/browser/downloads/${action}?connectionId=workbench`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ attachmentId, command: { action, id } })
+        }
+      );
+    } finally {
+      service.hide();
+      service.handle({ type: 'browser.response', requestId: requests[1]!.requestId });
+    }
+  }
+);

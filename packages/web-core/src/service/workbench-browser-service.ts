@@ -478,7 +478,7 @@ export function createWorkbenchBrowserService(options: {
         method: 'POST',
         body: JSON.stringify({
           attachmentId: target.attachmentId,
-          command: { action: 'cancel', id }
+          command: { action, id }
         })
       }
     );
