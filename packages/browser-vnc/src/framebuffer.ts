@@ -4,16 +4,17 @@ import { RFB_COPY_RECT, RFB_DESKTOP_SIZE, RFB_RAW, RFB_TIGHT } from './rfb.js';
 
 const compress = promisify(deflate);
 export type Raster = Readonly<{ width: number; height: number; rgb: Buffer }>;
-export type BrowserVncArea = { x: number; y: number; width: number; height: number };
-type Area = BrowserVncArea;
+type Area = { x: number; y: number; width: number; height: number };
+type Delta = Area & { repair: boolean };
 export type BrowserVncQuality = 'low' | 'medium' | 'high';
 type Rectangle = Area & { encoding: number; payload: Buffer };
 export interface BrowserVncUpdate {
   data: Buffer;
   lossy: boolean;
-  lossyArea?: Area;
+  lossyTiles: number[];
+  restoredTiles: number[];
   motion: boolean;
-  repaired: boolean;
+  repairBytes: number;
   updates: 1 | 2;
 }
 
@@ -50,9 +51,10 @@ function changedAreas(
   frame: Raster,
   base?: Raster,
   copied: ReadonlyArray<Area> = [],
-  repair?: Area
-): Area[] {
-  const areas: Area[] = [];
+  repairTile?: (area: Area, changed: boolean) => boolean
+) {
+  const areas: Delta[] = [];
+  let changedPixels = 0;
   for (let y = 0, index = 0; y < frame.height;) {
     const copy = copied[index];
     if (copy?.y === y) {
@@ -63,23 +65,25 @@ function changedAreas(
     const height = Math.min(TILE, (copy?.y ?? frame.height) - y);
     for (let x = 0; x < frame.width; x += TILE) {
       const area = { x, y, width: Math.min(TILE, frame.width - x), height };
-      const repairTile =
-        repair &&
-        x < repair.x + repair.width &&
-        x + area.width > repair.x &&
-        y < repair.y + repair.height &&
-        y + height > repair.y;
-      if (!repairTile && base && identical(frame, base, area)) continue;
+      const changed = !base || !identical(frame, base, area);
+      const repair = repairTile?.(area, changed) ?? false;
+      if (!repair && !changed) continue;
+      if (changed) changedPixels += area.width * area.height;
       const left = areas.at(-1);
-      if (left?.y === y && left.x + left.width === x && left.width + area.width <= MAX_RECT_WIDTH)
+      if (
+        left?.y === y &&
+        left.repair === repair &&
+        left.x + left.width === x &&
+        left.width + area.width <= MAX_RECT_WIDTH
+      )
         left.width += area.width;
-      else areas.push(area);
+      else areas.push({ ...area, repair });
     }
     y += height;
   }
   const prior = new Map<string, Area>();
-  return areas.filter((area) => {
-    const key = `${area.x}:${area.width}`;
+  const merged = areas.filter((area) => {
+    const key = `${area.x}:${area.width}:${area.repair}`;
     const above = prior.get(key);
     if (
       above &&
@@ -92,18 +96,47 @@ function changedAreas(
     prior.set(key, area);
     return true;
   });
+  return { areas: merged, changedPixels };
 }
 
-export function browserVncAreaUnion(a: Area | undefined, b: Area): Area {
-  if (!a) return b;
-  const x = Math.min(a.x, b.x),
-    y = Math.min(a.y, b.y);
-  return {
-    x,
-    y,
-    width: Math.max(a.x + a.width, b.x + b.width) - x,
-    height: Math.max(a.y + a.height, b.y + b.height) - y
-  };
+function stillMoving(frame: Raster, base: Raster, area: Area): boolean {
+  // Sample only changed, due tiles. A caret should not prevent an exact refresh.
+  let changed = 0;
+  for (let row = 0; row < 8; row++) {
+    const y = area.y + Math.floor(((row + 0.5) * area.height) / 8);
+    for (let column = 0; column < 8; column++) {
+      const x = area.x + Math.floor(((column + 0.5) * area.width) / 8);
+      if (!identical(frame, base, { x, y, width: 1, height: 1 }) && ++changed >= 8) return true;
+    }
+  }
+  return false;
+}
+
+function collectTileCoverage(
+  frame: Raster,
+  rect: Area & { lossy?: true },
+  reference: ReadonlyMap<number, number> | undefined,
+  lossyTiles: number[],
+  restoredTiles: number[]
+) {
+  if (!rect.lossy && !reference?.size) return;
+  const right = rect.x + rect.width;
+  const bottom = rect.y + rect.height;
+  for (let y = Math.floor(rect.y / TILE) * TILE; y < bottom; y += TILE) {
+    for (let x = Math.floor(rect.x / TILE) * TILE; x < right; x += TILE) {
+      const tile = y * frame.width + x;
+      if (rect.lossy) lossyTiles.push(tile);
+      // A precise delta can overwrite only part of a tile. Don't mark it clean.
+      else if (
+        reference?.has(tile) &&
+        x >= rect.x &&
+        y >= rect.y &&
+        Math.min(x + TILE, frame.width) <= right &&
+        Math.min(y + TILE, frame.height) <= bottom
+      )
+        restoredTiles.push(tile);
+    }
+  }
 }
 
 function scrollAreas(frame: Raster, base: Raster, dy: number): Area[] {
@@ -124,20 +157,6 @@ function scrollAreas(frame: Raster, base: Raster, dy: number): Area[] {
     else if (changed) runs.push({ ...row });
   }
   return runs.filter(({ height }) => height >= 16);
-}
-
-function stillMoving(frame: Raster, base: Raster, area: Area): boolean {
-  // Sample across the region so a small cursor or ticker does not prevent a
-  // larger region from recovering. The actual repair always uses exact pixels.
-  let changed = 0;
-  for (let row = 0; row < 8; row++) {
-    const y = area.y + Math.floor(((row + 0.5) * area.height) / 8);
-    for (let column = 0; column < 8; column++) {
-      const x = area.x + Math.floor(((column + 0.5) * area.width) / 8);
-      if (!identical(frame, base, { x, y, width: 1, height: 1 }) && ++changed >= 8) return true;
-    }
-  }
-  return false;
 }
 
 function pixels(frame: Raster, area: Area): Buffer {
@@ -295,8 +314,9 @@ export async function encodeBrowserVncUpdate(
     scroll?: number;
     motion?: boolean;
     motionResize?: boolean;
-    lossyReference?: Area;
-    repair?: Area;
+    // Keys are 64px tile origins as pixel offsets in the confirmed raster.
+    lossyTiles?: ReadonlyMap<number, number>;
+    repairThrough?: number;
     quality: BrowserVncQuality;
     jpeg?: (
       rgb: Buffer,
@@ -313,16 +333,13 @@ export async function encodeBrowserVncUpdate(
       ? scrollAreas(frame, base, dy)
       : [];
   const scrolling = scroll.reduce((rows, area) => rows + area.height, 0) >= frame.height / 2;
+  const reference = base && options.lossyTiles?.size ? options.lossyTiles : undefined;
   // Matching source pixels can identify a scroll even before the viewer is
   // eligible for CopyRect. Send an exact refresh first so subsequent scrolls
   // can reuse the framebuffer without propagating JPEG artifacts.
-  const repair =
-    (scrolling ? options.lossyReference : undefined) ??
-    (options.repair && !(base && options.motion && stillMoving(frame, base, options.repair))
-      ? options.repair
-      : undefined);
+  const repairScroll = scrolling && !!reference;
   const rects: Rectangle[] = [];
-  const copied = repair || options.lossyReference ? [] : scroll;
+  const copied = reference ? [] : scroll;
   if (copied.length) {
     // Move in source-safe order; an earlier rectangle must not overwrite the
     // source of a later one. Pixel rectangles follow all copies.
@@ -332,33 +349,52 @@ export async function encodeBrowserVncUpdate(
       rects.push({ ...area, encoding: RFB_COPY_RECT, payload });
     }
   }
-  const areas = changedAreas(frame, base, copied, repair);
+  const { areas, changedPixels } = changedAreas(
+    frame,
+    base,
+    copied,
+    base &&
+      reference &&
+      ((area, changed) => {
+        const due = reference.get(area.y * frame.width + area.x);
+        return (
+          due !== undefined &&
+          (repairScroll ||
+            (due <= (options.repairThrough ?? -Infinity) &&
+              (!options.motion || !changed || !stillMoving(frame, base, area))))
+        );
+      })
+  );
   if (!areas.length && !rects.length) return undefined;
   // Coarse tiles make discovery and merging cheap. Trim the merged delta
   // when it is local so a caret does not retransmit the text behind it.
-  const broad =
-    areas.reduce((sum, { width, height }) => sum + width * height, 0) >
-    (frame.width * frame.height) / 4;
-  const pixelsToEncode =
-    base && !repair && !broad ? areas.map((area) => trim(frame, base, area)) : areas;
+  const broad = changedPixels > (frame.width * frame.height) / 4;
   const motion =
-    !repair && options.motion === true && (!!base || options.motionResize === true) && broad;
-  let lossyArea: Area | undefined;
-  for (let i = 0; i < pixelsToEncode.length; i += 4) {
+    !repairScroll && options.motion === true && (!!base || options.motionResize === true) && broad;
+  const lossyTiles: number[] = [];
+  const restoredTiles: number[] = [];
+  let repairBytes = 0;
+  for (let i = 0; i < areas.length; i += 4) {
     const batch = await Promise.all(
-      pixelsToEncode.slice(i, i + 4).map((area) => rectangle(frame, area, options, motion))
+      areas.slice(i, i + 4).map(async (area) => {
+        const bounds = base && !area.repair && !broad ? trim(frame, base, area) : area;
+        const rect = await rectangle(frame, bounds, options, motion && !area.repair);
+        return { rect, repair: area.repair };
+      })
     );
-    rects.push(...batch);
-    for (const { x, y, width, height, lossy } of batch) {
-      if (lossy) lossyArea = browserVncAreaUnion(lossyArea, { x, y, width, height });
+    for (const { rect, repair } of batch) {
+      rects.push(rect);
+      if (repair) repairBytes += 12 + rect.payload.length;
+      collectTileCoverage(frame, rect, reference, lossyTiles, restoredTiles);
     }
   }
   const pixels = update(rects);
   const result = {
-    lossy: !!lossyArea,
-    ...(lossyArea && { lossyArea }),
+    lossy: lossyTiles.length > 0,
+    lossyTiles,
+    restoredTiles,
     motion,
-    repaired: !!repair
+    repairBytes
   };
   if (!options.resize) return { data: pixels, ...result, updates: 1 };
   // RFC 6143 requires DesktopSize to be the last rectangle in its update.

@@ -3,11 +3,9 @@ import {
   BROWSER_VNC_MOTION_BPS,
   BrowserRfbPeer,
   BrowserVncRate,
-  browserVncAreaUnion,
   encodeBrowserVncUpdate,
   RFB_COPY_RECT,
   RFB_TIGHT,
-  type BrowserVncArea,
   type BrowserVncQuality,
   type Raster
 } from '@myagentroam/browser-vnc';
@@ -44,10 +42,10 @@ export class BrowserVncStream {
   private sentScroll: number | undefined;
   private dimensions = { width: 1, height: 1 };
   private wheel = 0;
-  private loss: BrowserVncArea | undefined;
+  private readonly lossyTiles = new Map<number, number>();
   private motionReadyAt = -Infinity;
   private motionResize = false;
-  private repairRequested = false;
+  private repairAt = Infinity;
   private repair: ReturnType<typeof setTimeout> | undefined;
   private latest: Capture | undefined;
 
@@ -115,13 +113,14 @@ export class BrowserVncStream {
       this.lastOfferAt = this.movingUntil = this.motionReadyAt = -Infinity;
     }
     this.pending = this.latest = undefined;
-    this.loss = undefined;
-    this.repairRequested = false;
+    this.lossyTiles.clear();
+    this.repairAt = Infinity;
     this.sentRaster = undefined;
     this.sentScroll = undefined;
     clearTimeout(this.timer);
     clearTimeout(this.repair);
     this.timer = undefined;
+    this.repair = undefined;
   }
 
   offer(capture: Capture) {
@@ -162,7 +161,7 @@ export class BrowserVncStream {
       return;
     const now = performance.now();
     const nextMotion =
-      this.repairRequested || now >= this.movingUntil ? -Infinity : this.motionReadyAt;
+      now >= this.repairAt || now >= this.movingUntil ? -Infinity : this.motionReadyAt;
     const wait = Math.max(this.captureAt + 1000 / this.rate.profile.fps, nextMotion) - now;
     if (wait > 0 && this.version === this.sentVersion) {
       this.timer = setTimeout(() => {
@@ -208,7 +207,6 @@ export class BrowserVncStream {
     this.wheel = 0;
     const previous =
       !resize && this.sentVersion === capture.viewVersion ? this.sentRaster : undefined;
-    const repair = this.repairRequested && previous ? this.loss : undefined;
     const quality = this.quality;
     const update = await encodeBrowserVncUpdate(frame, previous, {
       resize,
@@ -217,8 +215,11 @@ export class BrowserVncStream {
       scroll,
       motion,
       motionResize: this.motionResize && this.sentVersion === capture.viewVersion,
-      ...(previous && this.loss && { lossyReference: this.loss }),
-      ...(repair && { repair }),
+      ...(previous &&
+        this.lossyTiles.size && {
+          lossyTiles: this.lossyTiles,
+          repairThrough: performance.now()
+        }),
       quality,
       ...(this.peer.supportsJpeg && {
         jpeg: (data, size, quality) =>
@@ -230,7 +231,7 @@ export class BrowserVncStream {
     if (!update) return;
     if (!update.data.length || update.data.length > BROWSER_FRAME_MAX_BYTES)
       throw new Error('Invalid encoded Browser frame size.');
-    return { frame, resize, previous, repair, update };
+    return { frame, resize, previous, update };
   }
 
   private async sendUpdate(capture: Capture, motion: boolean) {
@@ -242,7 +243,7 @@ export class BrowserVncStream {
       if (currentRaster()) this.fail('BROWSER_FRAME_ENCODE_FAILED');
     });
     if (!encoded || !currentRaster()) return;
-    const { frame, resize, previous, repair, update } = encoded;
+    const { frame, resize, previous, update } = encoded;
     this.peer.consume();
     const ack = Promise.withResolvers<void>();
     const current: Flight = (this.current = {
@@ -275,30 +276,30 @@ export class BrowserVncStream {
       this.sentRaster = frame;
       this.sentScroll = capture.scrollY;
       this.motionResize = false;
-      if (!previous || update.repaired) {
-        this.loss = undefined;
-        this.repairRequested = false;
-      }
-      if (update.lossyArea) {
-        this.loss = browserVncAreaUnion(this.loss, update.lossyArea);
-        this.repairRequested = false;
-      }
+      const motionBytes = update.motion ? update.data.length - update.repairBytes : 0;
       // Pace broad motion by actual encoded bytes. Bounded debt allows a
       // large still/resize/repair to remain responsive and never queues frames.
       this.motionReadyAt = update.motion
-        ? started + Math.min(450, (update.data.length * 8_000) / BROWSER_VNC_MOTION_BPS)
+        ? started + Math.min(450, (motionBytes * 8_000) / BROWSER_VNC_MOTION_BPS)
         : -Infinity;
-      if (!this.loss || update.lossyArea || repair) {
-        this.repairRequested = false;
-        this.scheduleRepair();
-      }
+      if (!previous) this.lossyTiles.clear();
+      for (const tile of update.restoredTiles) this.lossyTiles.delete(tile);
+      const repairAt = Math.max(
+        confirmed + 350,
+        confirmed + 2_000 / this.fps,
+        this.motionReadyAt + 250
+      );
+      for (const tile of update.lossyTiles) this.lossyTiles.set(tile, repairAt);
+      this.scheduleRepair();
+      // A repair timer can queue this very capture while it awaits draw credit.
+      const superseded = this.pending !== undefined && this.pending !== capture;
       if (
         this.rate.observe(
           written - started,
           confirmed - started,
-          !!this.pending,
-          update.motion ? update.data.length : 0,
-          update.motion ? written - processingStarted : undefined
+          superseded,
+          motionBytes,
+          update.motion && !update.repairBytes ? written - processingStarted : undefined
         )
       )
         this.options.changed(this.quality);
@@ -309,17 +310,26 @@ export class BrowserVncStream {
   }
 
   private scheduleRepair() {
+    let earliest = Infinity;
+    for (const due of this.lossyTiles.values()) earliest = Math.min(earliest, due);
+    if (this.repair && this.repairAt === earliest) return;
     clearTimeout(this.repair);
-    if (!this.loss) return;
+    this.repair = undefined;
+    this.repairAt = earliest;
+    if (!this.lossyTiles.size) return;
     this.repair = setTimeout(
       () => {
-        if (!this.loss || !this.latest) return;
-        this.repairRequested = true;
+        this.repair = undefined;
+        if (!this.latest) return;
+        if (performance.now() < this.repairAt) {
+          this.scheduleRepair();
+          return;
+        }
         clearTimeout(this.timer);
         this.timer = undefined;
         this.offer(this.latest);
       },
-      Math.max(350, 2_000 / this.fps, this.motionReadyAt - performance.now() + 250)
+      Math.max(1, Math.ceil(this.repairAt - performance.now()))
     ).unref();
   }
 

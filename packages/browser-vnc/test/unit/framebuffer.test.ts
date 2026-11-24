@@ -36,13 +36,17 @@ test('writes MSB-first mono rows with padding and exact RGB palette entries', as
 
 test('repairs the lossy tile even if the capture equals the source reference', async () => {
   const frame = raster(256, 128);
-  const repair = { x: 65, y: 17, width: 5, height: 5 };
+  const lossyTiles = new Map([
+    [64, 350],
+    [128, 450]
+  ]);
   const update = (await encodeBrowserVncUpdate(frame, frame, {
     ...options,
-    repair,
+    lossyTiles,
+    repairThrough: 350,
     motion: true
   }))!;
-  expect(update).toMatchObject({ lossy: false, motion: false });
+  expect(update).toMatchObject({ lossy: false, motion: false, restoredTiles: [64] });
   expect(update.data.readUInt16BE(2)).toBe(1);
   expect([...update.data.subarray(4, 12)]).toEqual([0, 64, 0, 0, 0, 64, 0, 64]);
 });
@@ -50,15 +54,44 @@ test('repairs the lossy tile even if the capture equals the source reference', a
 test('defers repairing a region that is still broadly changing', async () => {
   const base = raster(256, 128);
   const frame = raster(256, 128, Buffer.alloc(256 * 128 * 3, 5));
-  const repair = { x: 0, y: 0, width: 256, height: 128 };
-  const active = (await encodeBrowserVncUpdate(frame, base, { ...options, repair, motion: true }))!;
-  expect(active).toMatchObject({ motion: true, repaired: false });
+  const repair = { lossyTiles: new Map([[0, 350]]), repairThrough: 350, motion: true };
+  const active = (await encodeBrowserVncUpdate(frame, base, { ...options, ...repair }))!;
+  // A naturally lossless delta can also restore a fully overwritten tile.
+  expect(active).toMatchObject({ motion: true, repairBytes: 0, restoredTiles: [0] });
   const stopped = (await encodeBrowserVncUpdate(frame, frame, {
     ...options,
-    repair,
-    motion: true
+    ...repair
   }))!;
-  expect(stopped).toMatchObject({ lossy: false, motion: false, repaired: true });
+  expect(stopped).toMatchObject({ lossy: false, motion: false, restoredTiles: [0] });
+  expect(stopped.repairBytes).toBeGreaterThan(0);
+});
+
+test('a trimmed lossless delta does not mark an entire JPEG tile as restored', async () => {
+  const base = raster(256, 128);
+  const frame = raster(256, 128);
+  frame.rgb[0] = 1;
+  const delta = await encodeBrowserVncUpdate(frame, base, {
+    ...options,
+    lossyTiles: new Map([[0, 350]]),
+    repairThrough: 100
+  });
+  expect(delta).toMatchObject({ restoredTiles: [], repairBytes: 0 });
+  expect(delta?.data.readUInt16BE(8)).toBe(1);
+});
+
+test('a small moving caret does not postpone the rest of its JPEG tile repair', async () => {
+  const base = raster(256, 128);
+  const frame = raster(256, 128);
+  for (let y = 8; y < 40; y++) frame.rgb[(y * frame.width + 28) * 3] = 255;
+  const delta = await encodeBrowserVncUpdate(frame, base, {
+    ...options,
+    lossyTiles: new Map([[0, 350]]),
+    repairThrough: 350,
+    motion: true
+  });
+  expect(delta).toMatchObject({ restoredTiles: [0], motion: false });
+  expect(delta!.repairBytes).toBeGreaterThan(0);
+  expect([...delta!.data.subarray(4, 12)]).toEqual([0, 0, 0, 0, 0, 64, 0, 64]);
 });
 
 test('a static surface needs no update and a local change sends only its exact bounds', async () => {
@@ -143,11 +176,14 @@ test('scroll repairs a lossy reference before emitting any CopyRect', async () =
   base.rgb.copy(shifted.rgb, 0, stride * 16);
   const update = await encodeBrowserVncUpdate(shifted, base, {
     ...options,
-    lossyReference: { x: 0, y: 0, width, height },
+    lossyTiles: new Map([
+      [0, Infinity],
+      [64 * width, Infinity]
+    ]),
     scroll: 16,
     motion: true
   });
-  expect(update).toMatchObject({ repaired: true, lossy: false, motion: false });
+  expect(update).toMatchObject({ restoredTiles: [0, 64 * width], lossy: false, motion: false });
   expect(update?.data.readInt32BE(12)).toBe(RFB_TIGHT);
 
   const next = raster(width, height);
