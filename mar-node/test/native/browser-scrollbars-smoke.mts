@@ -24,13 +24,11 @@ try {
     main { width: 300vw; height: 300vh; }
   </style><main></main>`);
   const frames = new EventEmitter();
-  const first = once(frames, 'jpeg', { signal: AbortSignal.timeout(5_000) });
-  const capture = await view.startCapture({ ...BROWSER_VIEWPORT, quality: 85 }, ({ jpeg }) =>
-    frames.emit('jpeg', jpeg)
-  );
+  const first = once(frames, 'png', { signal: AbortSignal.timeout(5_000) });
+  const capture = await view.startCapture(BROWSER_VIEWPORT, ({ png }) => frames.emit('png', png));
   try {
-    const [jpeg] = await first;
-    const { data, info } = await sharp(jpeg)
+    const [png] = await first;
+    const { data, info } = await sharp(png)
       .removeAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
