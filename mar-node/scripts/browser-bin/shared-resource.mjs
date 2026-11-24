@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { rm } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lockLaunch } from './launch-lock.mjs';
@@ -26,6 +26,9 @@ async function available() {
 if (!(await available())) {
   try {
     const lock = await lockLaunch(process.env.MAR_PLAYWRIGHT_CLI_ROOT);
+    const release = () => rmSync(lock, { recursive: true, force: true });
+    // Early IPC cancellation exits before Playwright installs its own signal handler.
+    process.once('exit', release);
     try {
       // Another command may have started the session while this one waited.
       if (!(await available()))
@@ -39,7 +42,8 @@ if (!(await available())) {
           'attach'
         );
     } finally {
-      await rm(lock, { recursive: true, force: true });
+      process.off('exit', release);
+      release();
     }
   } catch {
     // Do not print endpoint details from the native transport.
