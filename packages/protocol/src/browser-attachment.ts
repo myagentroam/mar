@@ -95,7 +95,6 @@ export type BrowserNodeAttachmentCommand = z.infer<typeof browserNodeAttachmentC
 export const browserResourceCommandSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('open'), preserveLogin: z.boolean() }),
   z.strictObject({ action: z.literal('lookup') }),
-  z.strictObject({ action: z.literal('sync-settings') }),
   z.strictObject({ action: z.literal('close'), browserId: id })
 ]);
 

@@ -5,7 +5,6 @@ import {
   type BrowserControlRequest,
   type BrowserCapability,
   type BrowserSettingsSnapshot,
-  browserSettingsSyncResultSchema,
   type BrowserUpload,
   browserDownloadInfoSchema,
   browserDownloadChunkSchema,
@@ -109,25 +108,16 @@ export class BrowserWorkbenchService {
       closeRelay: (id) => this.relay.close(id),
       resource: async (nodeId, generation, { workspaceId, command }, identity) => {
         const settings =
-          command.action === 'open' || command.action === 'sync-settings'
+          command.action === 'open'
             ? await options.settings(nodeId, generation, identity.userId)
             : undefined;
-        if (command.action === 'sync-settings' && !settings)
-          throw new Error('BROWSER_SETTINGS_SYNC_UNAVAILABLE');
-        const result = await options.request(
+        return (await options.request(
           nodeId,
           'resource',
           generation,
           { workspaceId, command, ...(settings && { settings }) },
           browserUser(identity)
-        );
-        if (command.action === 'sync-settings' && settings) {
-          const applied = browserSettingsSyncResultSchema.safeParse(result);
-          if (!applied.success || applied.data.settings.revision < settings.revision)
-            throw new Error('BROWSER_SETTINGS_SYNC_FAILED');
-          return applied.data;
-        }
-        return result as { browserId?: string };
+        )) as { browserId?: string };
       },
       failed: options.failed
     });

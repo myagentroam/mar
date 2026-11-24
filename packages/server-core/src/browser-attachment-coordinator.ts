@@ -1,5 +1,4 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { BrowserSettingsSnapshot } from '@myagentroam/protocol';
 import {
   browserResourceCommandSchema,
   type BrowserResourceCommand,
@@ -76,7 +75,7 @@ export class BrowserAttachmentCoordinator {
         generation: string,
         data: { workspaceId: string; __requestUserId: number; command: BrowserResourceCommand },
         identity: Identity
-      ): Promise<{ browserId?: string; settings?: BrowserSettingsSnapshot }>;
+      ): Promise<{ browserId?: string }>;
       failed(error: unknown): void;
     }
   ) {

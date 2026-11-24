@@ -89,12 +89,6 @@ const browserScopeLabel = computed(
 );
 const browserDestination = props.page.browser.destination;
 const browserCapability = computed(() => props.page.browserCapability());
-const syncBrowserSettings = computed(() => {
-  const scope = props.page.selection.workspaceTarget;
-  if (!scope) return undefined;
-  const { nodeId, workspaceId } = scope;
-  return () => props.page.browser.syncSettings({ nodeId, workspaceId });
-});
 function atBrowserScope(scope: AsideWorkspace | undefined): boolean {
   const current = props.page.selection.workspaceTarget;
   return (
@@ -1246,7 +1240,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         v-if="page.application.settingsSection === 'browser'"
         :user-id="page.identity.admin.userId"
         :request="page.identity.request"
-        :sync-settings="syncBrowserSettings"
       />
       <slot v-else name="settings">
         <SettingsContent

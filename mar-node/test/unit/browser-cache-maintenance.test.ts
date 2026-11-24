@@ -32,7 +32,7 @@ it('uses the default for legacy connections, advances only after a successful cl
   expect(clear).toHaveBeenCalledTimes(3);
 });
 
-it('applies only a trusted connection snapshot to the scoped browser and acknowledges manual sync', async () => {
+it('rejects the former manual sync command and applies only trusted snapshots on open', async () => {
   const settings = { revision: 4, cacheCleanupDays: 21 };
   const scope = { workspaceId: 'workspace', userId: 7 };
   const fixture = {
@@ -52,15 +52,9 @@ it('applies only a trusted connection snapshot to the scoped browser and acknowl
     request({ ...owner, command: { action: 'open', preserveLogin: true }, settings })
   ).resolves.toEqual({ browserId: 'browser' });
   expect(fixture.syncSettings).toHaveBeenLastCalledWith(scope, 'browser', settings);
-  await expect(
-    request({ ...owner, command: { action: 'sync-settings' }, settings })
-  ).resolves.toEqual({ settings });
   expect(requireWorkspace).toHaveBeenLastCalledWith(scope.workspaceId);
   await expect(
-    request({ ...owner, command: { action: 'sync-settings', settings } })
-  ).rejects.toThrow('BROWSER_RESOURCE_INVALID');
-  fixture.lookup.mockReturnValueOnce(undefined);
-  await expect(
     request({ ...owner, command: { action: 'sync-settings' }, settings })
-  ).rejects.toThrow('BROWSER_SESSION_ENDED');
+  ).rejects.toThrow('BROWSER_RESOURCE_INVALID');
+  expect(fixture.syncSettings).toHaveBeenCalledTimes(2);
 });

@@ -7,17 +7,14 @@ import {
   BROWSER_CACHE_CLEANUP_MIN_DAYS as min,
   BROWSER_CACHE_CLEANUP_MAX_DAYS as max,
   browserSettingsInputSchema,
-  browserSettingsSnapshotSchema,
-  type BrowserSettingsSnapshot
+  browserSettingsSnapshotSchema
 } from '@myagentroam/protocol';
 import { translate as t } from '../../service/locale-preference-service.js';
 import type { WorkbenchHttpService } from '../../service/workbench-http-service.js';
-import { errorCode } from '../../util/api-error.js';
 
 const props = defineProps<{
   userId?: number | undefined;
   request: WorkbenchHttpService['request'];
-  sync?: (() => Promise<BrowserSettingsSnapshot>) | undefined;
 }>();
 const endpoint = '/api/auth/preferences/browser-settings';
 const form = ref<InstanceType<typeof MarForm>>();
@@ -25,10 +22,8 @@ const draft = reactive<{ cacheCleanupDays: number | null | undefined }>({
   cacheCleanupDays: undefined
 });
 const saved = ref<number>();
-const pending = ref<'load' | 'save' | 'sync'>();
-const status = ref<
-  'saved' | 'synced' | 'loadFailed' | 'saveFailed' | 'syncFailed' | 'noBrowser' | 'upgradeNode'
->();
+const pending = ref<'load' | 'save'>();
+const status = ref<'saved' | 'loadFailed' | 'saveFailed'>();
 const dirty = computed(() => draft.cacheCleanupDays !== saved.value);
 const rules = computed(() => ({
   cacheCleanupDays: [
@@ -79,33 +74,6 @@ async function save(): Promise<void> {
   }
 }
 
-async function synchronize(): Promise<void> {
-  if (!props.sync || dirty.value || pending.value) return;
-  const sync = props.sync;
-  const { signal } = lifetime;
-  pending.value = 'sync';
-  status.value = undefined;
-  try {
-    const value = await sync();
-    if (!signal.aborted && props.sync === sync) {
-      draft.cacheCleanupDays = saved.value = value.cacheCleanupDays;
-      status.value = 'synced';
-    }
-  } catch (error) {
-    if (!signal.aborted && props.sync === sync) {
-      const code = errorCode(error);
-      status.value =
-        code === 'BROWSER_SESSION_ENDED'
-          ? 'noBrowser'
-          : code === 'BROWSER_SETTINGS_SYNC_UNAVAILABLE'
-            ? 'upgradeNode'
-            : 'syncFailed';
-    }
-  } finally {
-    if (!signal.aborted) pending.value = undefined;
-  }
-}
-
 watch(
   () => props.userId,
   () => {
@@ -116,13 +84,6 @@ watch(
     void load();
   },
   { immediate: true }
-);
-watch(
-  () => props.sync,
-  () => {
-    if (status.value !== 'saved' && status.value !== 'loadFailed' && status.value !== 'saveFailed')
-      status.value = undefined;
-  }
 );
 onBeforeUnmount(() => lifetime.abort());
 </script>
@@ -148,66 +109,27 @@ onBeforeUnmount(() => lifetime.abort());
         :disabled="pending !== undefined"
       />
     </MarFormItem>
-    <div class="browser-cache-actions">
-      <MarButton
-        native-type="submit"
-        :disabled="!dirty || pending === 'sync'"
-        :loading="pending === 'save'"
-        >{{ t('browser.cacheCycleSave') }}</MarButton
-      >
-      <MarButton
-        :disabled="!sync || dirty || pending === 'save'"
-        :loading="pending === 'sync'"
-        @click="synchronize"
-        >{{ t('browser.cacheCycleSync') }}</MarButton
-      >
-    </div>
-    <p class="browser-cache-help">
-      {{ t(sync ? 'browser.cacheCycleSyncHelp' : 'browser.cacheCycleNoBrowser') }}
-    </p>
+    <MarButton native-type="submit" :disabled="!dirty" :loading="pending === 'save'">
+      {{ t('browser.cacheCycleSave') }}
+    </MarButton>
   </MarForm>
-  <p
-    v-if="
-      status === 'loadFailed' ||
-      status === 'saveFailed' ||
-      status === 'syncFailed' ||
-      status === 'noBrowser' ||
-      status === 'upgradeNode'
-    "
-    role="alert"
-  >
+  <p v-if="status === 'loadFailed' || status === 'saveFailed'" role="alert">
     {{
-      t(
-        {
-          loadFailed: 'browser.cacheCycleLoadFailed',
-          saveFailed: 'browser.cacheCycleSaveFailed',
-          syncFailed: 'browser.cacheCycleSyncFailed',
-          noBrowser: 'browser.cacheCycleNoBrowser',
-          upgradeNode: 'browser.cacheCycleUpgradeNode'
-        }[status]
-      )
+      t(status === 'loadFailed' ? 'browser.cacheCycleLoadFailed' : 'browser.cacheCycleSaveFailed')
     }}
     <MarButton v-if="status === 'loadFailed'" link @click="load">{{
       t('browser.useRetry')
     }}</MarButton>
   </p>
-  <p v-else-if="status" role="status">
-    {{ t(status === 'saved' ? 'browser.cacheCycleSaved' : 'browser.cacheCycleSynced') }}
+  <p v-else-if="status === 'saved'" role="status">
+    {{ t('browser.cacheCycleSaved') }}
   </p>
 </template>
 
 <style scoped>
 .browser-cache-help {
   color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
+  font-size: var(--mar-font-size-meta);
   line-height: 1.5;
-}
-.browser-cache-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-.browser-cache-actions :deep(.mar-ui-button + .mar-ui-button) {
-  margin-inline-start: 0;
 }
 </style>

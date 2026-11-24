@@ -17,6 +17,3 @@ export const browserSettingsSnapshotSchema = z.object({
   cacheCleanupDays
 });
 export type BrowserSettingsSnapshot = z.infer<typeof browserSettingsSnapshotSchema>;
-export const browserSettingsSyncResultSchema = z.object({
-  settings: browserSettingsSnapshotSchema
-});

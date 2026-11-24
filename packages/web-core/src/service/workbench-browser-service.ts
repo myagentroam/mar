@@ -2,7 +2,6 @@ import { shallowRef } from 'vue';
 import {
   browserAttachmentOpenSchema,
   browserDownloadPageSchema,
-  browserSettingsSyncResultSchema,
   type BrowserAttachmentMessage,
   type BrowserCapability,
   type BrowserContextOptions,
@@ -526,10 +525,6 @@ export function createWorkbenchBrowserService(options: {
     disconnected,
     closeBrowser,
     browserId: () => visibleBrowserId.value,
-    syncSettings: async (scope: Scope) =>
-      browserSettingsSyncResultSchema.parse(
-        await request({ action: 'resource', ...scope, command: { action: 'sync-settings' } })
-      ).settings,
     profile: ({ nodeId, workspaceId }: Scope, command: BrowserProfileCommand) =>
       request({ action: 'profile', nodeId, workspaceId, command })
   };

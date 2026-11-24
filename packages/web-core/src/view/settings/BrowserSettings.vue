@@ -13,14 +13,12 @@ import {
   writeBrowserUsePreference
 } from '../../service/browser-use-preference.js';
 import type { WorkbenchHttpService } from '../../service/workbench-http-service.js';
-import type { BrowserSettingsSnapshot } from '@myagentroam/protocol';
 import BrowserCacheSettings from './BrowserCacheSettings.vue';
 
 /** Browser Use is an account preference; link destinations are local to this device. */
 const props = defineProps<{
   userId?: number | undefined;
   request: WorkbenchHttpService['request'];
-  syncSettings?: (() => Promise<BrowserSettingsSnapshot>) | undefined;
 }>();
 const preferences = ref(readBrowserLinkPreferences(props.userId));
 const saveFailed = ref(false);
@@ -132,7 +130,7 @@ function save(kind: 'local' | 'web', value: unknown): void {
       </p>
     </section>
     <section>
-      <BrowserCacheSettings :user-id="userId" :request="request" :sync="syncSettings" />
+      <BrowserCacheSettings :user-id="userId" :request="request" />
     </section>
     <section>
       <h2>{{ t('browser.preferences') }}</h2>

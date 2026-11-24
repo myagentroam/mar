@@ -30,23 +30,12 @@ export const browserEnUS = {
   cache: 'Clear browser cache',
   cacheCycleSection: 'Cache cleanup interval',
   cacheCycleDays: 'Cleanup interval (days)',
-  cacheCycleHelp:
-    'Choose {min}–{max} days. Only the HTTP cache is cleared. Sign-ins, history, and downloads are unaffected.',
+  cacheCycleHelp: 'Choose {min}–{max} days. Applies the next time you open the Workspace browser.',
   cacheCycleInvalid: 'Enter a whole number from {min} to {max}.',
   cacheCycleSave: 'Save interval',
-  cacheCycleSaved:
-    'Saved to your account. The browser applies it the next time it opens or connects.',
-  cacheCycleSync: 'Sync browser settings',
-  cacheCycleSyncHelp:
-    'Apply the settings saved in your account to the browser in the current Workspace.',
-  cacheCycleSynced: 'Settings synced to the browser in the current Workspace.',
+  cacheCycleSaved: 'Saved to your account.',
   cacheCycleLoadFailed: 'Could not load browser settings for your account.',
   cacheCycleSaveFailed: 'Could not save the cache cleanup interval.',
-  cacheCycleSyncFailed:
-    'Could not sync browser settings. Check that the Node is online and try again.',
-  cacheCycleNoBrowser: 'Open the browser in the current Workspace before syncing.',
-  cacheCycleUpgradeNode:
-    'This Node does not support syncing browser settings. Upgrade the Node and try again.',
   tab: 'New tab',
   addAsideTab: 'Add Aside tab',
   blank: 'Blank',

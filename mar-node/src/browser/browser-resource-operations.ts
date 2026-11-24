@@ -36,12 +36,6 @@ export function createBrowserResourceOperation(
         await browser.syncSettings(scope, browserId, settings.data);
         return { browserId };
       }
-      case 'sync-settings': {
-        const browserId = browser.lookup(scope);
-        if (!browserId) throw new Error('BROWSER_SESSION_ENDED');
-        if (!settings.data) throw new Error('BROWSER_RESOURCE_INVALID');
-        return { settings: await browser.syncSettings(scope, browserId, settings.data) };
-      }
       case 'lookup': {
         const browserId = browser.lookup(scope);
         return browserId ? { browserId } : {};
