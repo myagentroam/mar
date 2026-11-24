@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbenchWatchCoordinator } from '../../src/service/workbench-watch-coordinator.js';
+import { ref } from 'vue';
+import {
+  createWorkbenchWatchCoordinator,
+  createWorkbenchWatchRecovery
+} from '../../src/service/workbench-watch-coordinator.js';
 
 function fixture(withExtension = false, withSecondary = false) {
   const calls: string[] = [];
@@ -68,6 +72,68 @@ function fixture(withExtension = false, withSecondary = false) {
 }
 
 describe('shared Workbench Watch coordination', () => {
+  it('requests a fresh initial Session Watch only for the Workspace affected by resync', () => {
+    const f = fixture();
+    const resetSession = vi.fn();
+    const refreshSession = vi.fn();
+    const recovery = createWorkbenchWatchRecovery({
+      view: ref('nodes'),
+      workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+      selectedWorkspace: ref(undefined),
+      selectedSessionId: ref('session-1'),
+      coordinator: () => f.coordinator,
+      invalidateManifest: vi.fn(),
+      refreshManifest: vi.fn(async () => {}),
+      reactivate: vi.fn(() => false),
+      discardNodeCache: vi.fn(),
+      resetSession,
+      refreshSession,
+      direct: { connectionLost: vi.fn() },
+      live: { reconnect: vi.fn() }
+    });
+
+    recovery.resync('another-node');
+    expect(f.calls).toEqual([]);
+    expect(resetSession).not.toHaveBeenCalled();
+
+    recovery.resync('node-1');
+    expect(resetSession).toHaveBeenCalledOnce();
+    expect(f.workspace.restart).toHaveBeenCalledWith('workspace-1');
+    expect(f.session.restartSelectedSessionWatch).toHaveBeenCalledExactlyOnceWith('session-1');
+    expect(refreshSession).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    'recovers a failed resync only if the selected session is unchanged (switched=%s)',
+    async (switched) => {
+      const f = fixture();
+      const selectedSessionId = ref('session-1');
+      const refreshSession = vi.fn();
+      const recovery = createWorkbenchWatchRecovery({
+        view: ref('nodes'),
+        workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
+        selectedWorkspace: ref(undefined),
+        selectedSessionId,
+        coordinator: () => f.coordinator,
+        invalidateManifest: vi.fn(),
+        refreshManifest: vi.fn(async () => {}),
+        reactivate: vi.fn(() => false),
+        discardNodeCache: vi.fn(),
+        resetSession: vi.fn(),
+        refreshSession,
+        direct: { connectionLost: vi.fn() },
+        live: { reconnect: vi.fn() }
+      });
+      const failed = Promise.reject(new Error('Initial request failed'));
+      f.session.restartSelectedSessionWatch.mockReturnValueOnce(failed);
+
+      recovery.resync('node-1');
+      if (switched) selectedSessionId.value = 'session-2';
+      await failed.catch(() => undefined);
+      expect(refreshSession).toHaveBeenCalledTimes(switched ? 0 : 1);
+    }
+  );
+
   it('returns each pane’s in-flight initial confirmation to its loader', async () => {
     const f = fixture(false, true);
     let finish!: () => void;

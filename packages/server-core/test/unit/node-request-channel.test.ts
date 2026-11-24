@@ -256,6 +256,7 @@ describe('common authorized Node request channel', () => {
         const result = channel.request('node-1', 'node.metrics', {}, user);
         const assertion = expect(result).rejects.toMatchObject({
           message: 'MESSAGE_INVALID',
+          source: 'transport',
           upstreamRequestId: request().id
         });
         channel.resolve(

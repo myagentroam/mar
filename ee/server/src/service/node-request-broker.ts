@@ -2,10 +2,18 @@ import type { ModelUsageGrants } from '@myagentroam/server-core/model-usage-gran
 import { emitAudit, safeAuditMetadata, type AuditObserver } from '@myagentroam/server-core/audit';
 import { randomUUID } from 'node:crypto';
 import { NodeRequestChannel } from '@myagentroam/server-core/node-request-channel';
-import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
+import {
+  NodeRequestAdmissionError,
+  NodeRequestError
+} from '@myagentroam/server-core/node-request-error';
+import { safeErrorCode } from '@myagentroam/server-core/http-errors';
 import type { GitExecutionForwarding } from '@myagentroam/server-core/git-execution-forwarding';
 import type { WebSocket } from 'ws';
-import { workbenchNodeOperationSchema, type NodeEnvelope } from '@myagentroam/protocol';
+import {
+  browserDownloadRequestSchema,
+  workbenchNodeOperationSchema,
+  type NodeEnvelope
+} from '@myagentroam/protocol';
 import type {
   NodeRequestAuthorization,
   UserNodeAuthorization
@@ -18,6 +26,8 @@ import {
   relayResourceRemoval
 } from './node-resource-scope-index.js';
 import { RelayAuditContextCache } from './relay-audit-context-cache.js';
+
+const BROWSER_WORKSPACE_SAVE_TIMEOUT_MS = 120_000;
 
 const FIXED_ADMIN_NODE_OPERATIONS = new Set<string>([
   'chatgpt.login.start',
@@ -200,17 +210,74 @@ export class NodeRequestBroker {
 
   /** Calls the closed Browser RPC surface after the Browser owner authorizes it.
    * These operations are deliberately not on the generic Workbench allowlist. */
-  requestBrowser(
+  async requestBrowser(
     nodeId: string,
     operation: 'resource' | 'profile' | 'attachment' | 'upload' | 'download',
     generation: string,
     payload: object,
-    user: UserNodeAuthorization
+    user: UserNodeAuthorization,
+    // Only the Browser owner supplies this from the authorized attachment, never the request body.
+    workspaceId?: string
   ): Promise<unknown> {
     const socket = this.socketFor(nodeId);
-    if (socket === undefined) return Promise.reject(new NodeRequestAdmissionError('NODE_OFFLINE'));
+    if (socket === undefined) throw new NodeRequestAdmissionError('NODE_OFFLINE');
     if (!this.connectionPolicy.allows(socket, `browser.${operation}`))
-      return Promise.reject(new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED'));
+      throw new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED');
+    const command =
+      operation === 'download' && workspaceId !== undefined
+        ? browserDownloadRequestSchema.parse(payload).command
+        : undefined;
+    if (workspaceId !== undefined && command?.action === 'workspace') {
+      const envelope = { generation, payload };
+      const context = auditContext(nodeId, { workspaceId }, workspaceId);
+      const eventType = 'workspace.file.write';
+      const metadata = safeAuditMetadata(
+        JSON.stringify({ action: eventType, relativePath: command.path })
+      );
+      let operationId: string | undefined;
+      try {
+        const result = await this.channel.request(
+          nodeId,
+          'browser.download',
+          envelope,
+          user,
+          BROWSER_WORKSPACE_SAVE_TIMEOUT_MS,
+          (phase, id) => {
+            if (phase === 'requested') operationId = id;
+          }
+        );
+        if (operationId !== undefined) {
+          // This operation returns an explicit object only after the copy completes.
+          if (!record(result)) throw unconfirmedWorkspaceSave(operationId);
+          this.auditRelay(
+            eventType,
+            'completed',
+            operationId,
+            user.userId,
+            context,
+            undefined,
+            metadata
+          );
+        }
+        return result;
+      } catch (error) {
+        const failure =
+          error instanceof NodeRequestError && error.source === 'transport'
+            ? unconfirmedWorkspaceSave(error.upstreamRequestId)
+            : error;
+        if (operationId !== undefined)
+          this.auditRelay(
+            eventType,
+            'failed',
+            operationId,
+            user.userId,
+            context,
+            safeErrorCode(failure),
+            metadata
+          );
+        throw failure;
+      }
+    }
     return this.channel.request(
       nodeId,
       `browser.${operation}`,
@@ -464,4 +531,15 @@ export function auditedRelayOperation(operation: string): boolean {
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function unconfirmedWorkspaceSave(requestId: string): NodeRequestError {
+  return new NodeRequestError(
+    {
+      error: 'BROWSER_OUTCOME_UNKNOWN',
+      message:
+        'The Workspace copy could not be confirmed. Check whether the file is complete before retrying.'
+    },
+    requestId
+  );
 }

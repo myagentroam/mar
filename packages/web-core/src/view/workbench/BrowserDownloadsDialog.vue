@@ -10,7 +10,7 @@ import { MarMessageBox } from '../../service/message-box-service.js';
 import type { WorkbenchBrowserService } from '../../service/workbench-browser-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
-import { ApiError } from '../../util/api-error.js';
+import { errorCode } from '../../util/api-error.js';
 
 /** Owns list pagination and row actions for the open Browser download dialog. */
 const props = defineProps<{ browser: WorkbenchBrowserService; saveWorkspace?: boolean }>();
@@ -29,7 +29,18 @@ const loading = ref(false);
 const failed = ref(false);
 const changing = ref<string>();
 const actionFailure = ref<{ id: string; action: 'cancel' | 'delete' }>();
-const saveFeedback = ref<{ id: string; message: string; failed?: true }>();
+const saveFeedback = ref<{
+  id: string;
+  path: string;
+  outcome: keyof typeof saveLabels;
+}>();
+const saveLabels = {
+  saved: 'browser.downloadWorkspaceSaved',
+  unknown: 'browser.downloadWorkspaceUnknown',
+  exists: 'browser.downloadWorkspaceExists',
+  invalid: 'browser.downloadWorkspaceInvalid',
+  failed: 'browser.downloadFailed'
+} as const;
 const labels = {
   downloading: 'browser.downloadPending',
   failed: 'browser.downloadFailure',
@@ -53,7 +64,6 @@ watch(
       loading.value = false;
       failed.value = false;
       actionFailure.value = undefined;
-      saveFeedback.value = undefined;
       return;
     }
     const controller = new AbortController();
@@ -130,45 +140,50 @@ async function change(item: BrowserDownloadInfo, action: 'cancel' | 'delete'): P
 
 async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
   const href = props.browser.downloadHref(item.id);
-  if (!href || changing.value) return;
+  const browserId = props.browser.browserId();
+  if (!href || !browserId || changing.value) return;
   changing.value = item.id;
   saveFeedback.value = undefined;
   try {
-    let path: string;
-    try {
-      const result = await MarMessageBox.prompt(
-        t('browser.downloadWorkspaceHint'),
-        t('browser.downloadWorkspace'),
-        {
-          signal: lifetime.signal,
-          inputValue: item.name,
-          confirmButtonText: t('browser.downloadWorkspace'),
-          cancelButtonText: t('browser.cancel'),
-          inputValidator: (value) => value.trim().length > 0 && value.length <= 4096
-        }
-      );
-      path = result.value;
-    } catch {
-      return;
-    }
+    const { value: path } = await MarMessageBox.prompt(
+      t('browser.downloadWorkspaceHint'),
+      t('browser.downloadWorkspace'),
+      {
+        signal: lifetime.signal,
+        inputValue: item.name,
+        confirmButtonText: t('browser.downloadWorkspace'),
+        cancelButtonText: t('browser.cancel'),
+        inputValidator: (value) => value.trim().length > 0 && value.length <= 4096
+      }
+    );
     if (lifetime.signal.aborted || props.browser.downloadHref(item.id) !== href) return;
-    await props.browser.saveDownloadToWorkspace(item.id, path);
-    if (props.browser.downloadHref(item.id) === href)
-      saveFeedback.value = { id: item.id, message: t('browser.downloadWorkspaceSaved', { path }) };
-  } catch (error) {
-    if (props.browser.downloadHref(item.id) !== href) return;
-    const code = error instanceof ApiError ? error.code : undefined;
-    saveFeedback.value = {
-      id: item.id,
-      failed: true,
-      message: t(
-        code === 'FILE_ALREADY_EXISTS'
-          ? 'browser.downloadWorkspaceExists'
-          : code === 'FILE_NOT_FOUND' || code === 'FILE_PATH_ESCAPE'
-            ? 'browser.downloadWorkspaceInvalid'
-            : 'browser.downloadFailed'
-      )
-    };
+    let outcome: keyof typeof saveLabels = 'saved';
+    try {
+      await props.browser.saveDownloadToWorkspace(item.id, path);
+    } catch (error) {
+      switch (errorCode(error)) {
+        case 'BROWSER_OUTCOME_UNKNOWN':
+        case 'NETWORK_UNAVAILABLE':
+        case 'REQUEST_FAILED_502':
+        case 'REQUEST_FAILED_503':
+        case 'REQUEST_FAILED_504':
+          outcome = 'unknown';
+          break;
+        case 'FILE_ALREADY_EXISTS':
+          outcome = 'exists';
+          break;
+        case 'FILE_NOT_FOUND':
+        case 'FILE_PATH_ESCAPE':
+          outcome = 'invalid';
+          break;
+        default:
+          outcome = 'failed';
+      }
+    }
+    if (!lifetime.signal.aborted && props.browser.browserId() === browserId)
+      saveFeedback.value = { id: item.id, path, outcome };
+  } catch {
+    // Closing the destination prompt does not dispatch a save.
   } finally {
     changing.value = undefined;
   }
@@ -270,10 +285,12 @@ async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
         <p
           v-if="saveFeedback?.id === item.id"
           class="download-action-error"
-          :class="{ 'download-error': saveFeedback.failed }"
-          :role="saveFeedback.failed ? 'alert' : 'status'"
+          :class="{
+            'download-error': saveFeedback.outcome !== 'saved' && saveFeedback.outcome !== 'unknown'
+          }"
+          :role="saveFeedback.outcome === 'saved' ? 'status' : 'alert'"
         >
-          {{ saveFeedback.message }}
+          {{ t(saveLabels[saveFeedback.outcome], { path: saveFeedback.path }) }}
         </p>
         <p
           v-if="actionFailure?.id === item.id"
@@ -373,6 +390,7 @@ async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
   grid-column: 2 / -1;
   margin: 0;
   font-size: var(--mar-ui-font-size-meta);
+  overflow-wrap: anywhere;
 }
 .download-error {
   color: var(--mar-ui-control-color-danger);

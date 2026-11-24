@@ -76,6 +76,151 @@ function gate<T>() {
   return { promise, release };
 }
 
+describe('Browser download relay', () => {
+  const attachmentId = '2fcc6166-ff9d-4f5f-939c-329cc03ae855';
+  const command = {
+    action: 'workspace',
+    id: '768a17e3-0fec-4007-8e08-c7d9520fc53b',
+    path: 'reports/result.bin'
+  };
+
+  it('waits longer for Workspace copies and audits only the authorized destination', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fixture();
+      const request = f.broker.requestBrowser(
+        'n',
+        'download',
+        'g',
+        { attachmentId, command },
+        f.user,
+        'w'
+      );
+      const sent = f.sent[0]!;
+      expect(sent.payload.operation).toBe('browser.download');
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(f.audit).not.toHaveBeenCalled();
+      f.broker.resolve('n', createEnvelope('node.response', { result: {} }, { replyTo: sent.id }));
+      await expect(request).resolves.toEqual({});
+      expect(f.audit).toHaveBeenCalledExactlyOnceWith({
+        eventType: 'workspace.file.write',
+        actorUserId: f.user.userId,
+        result: 'SUCCESS',
+        operationId: sent.id,
+        nodeId: 'n',
+        workspaceId: 'w',
+        targetType: 'WORKSPACE',
+        targetId: 'w',
+        metadata: JSON.stringify({ action: 'workspace.file.write', relativePath: command.path })
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports an unknown copy result when the wait expires, without cancellation or a second audit', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fixture();
+      const request = f.broker.requestBrowser(
+        'n',
+        'download',
+        'g',
+        { attachmentId, command },
+        f.user,
+        'w'
+      );
+      const id = f.sent[0]!.id;
+      const rejected = expect(request).rejects.toMatchObject({
+        code: 'BROWSER_OUTCOME_UNKNOWN',
+        upstreamRequestId: id
+      });
+      await Promise.all([rejected, vi.advanceTimersByTimeAsync(120_000)]);
+      f.broker.resolve('n', createEnvelope('node.response', { result: {} }, { replyTo: id }));
+      expect(f.sent).toHaveLength(1);
+      expect(f.audit).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          eventType: 'workspace.file.write',
+          result: 'FAILED',
+          targetType: 'WORKSPACE',
+          targetId: 'w',
+          errorCode: 'BROWSER_OUTCOME_UNKNOWN'
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('preserves definitive copy errors but treats a lost connection as uncertain after dispatch', async () => {
+    const f = fixture();
+    const save = () =>
+      f.broker.requestBrowser('n', 'download', 'g', { attachmentId, command }, f.user, 'w');
+    const conflict = save();
+    f.broker.resolve(
+      'n',
+      createEnvelope(
+        'node.response',
+        { error: 'FILE_ALREADY_EXISTS', message: 'File already exists.' },
+        { replyTo: f.sent[0]!.id }
+      )
+    );
+    await expect(conflict).rejects.toMatchObject({ code: 'FILE_ALREADY_EXISTS' });
+    expect(f.audit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ result: 'FAILED', errorCode: 'FILE_ALREADY_EXISTS' })
+    );
+    const interrupted = save();
+    f.replaceConnection();
+    await expect(interrupted).rejects.toMatchObject({ code: 'BROWSER_OUTCOME_UNKNOWN' });
+  });
+
+  it.each([{}, { result: null }, { error: 'FILE_ALREADY_EXISTS' }])(
+    'does not confirm a Workspace save from an invalid Node reply %j',
+    async (payload) => {
+      const f = fixture();
+      const pending = f.broker.requestBrowser(
+        'n',
+        'download',
+        'g',
+        { attachmentId, command },
+        f.user,
+        'w'
+      );
+      const id = f.sent[0]!.id;
+      f.broker.resolve('n', createEnvelope('node.response', payload, { replyTo: id }));
+      await expect(pending).rejects.toMatchObject({
+        code: 'BROWSER_OUTCOME_UNKNOWN',
+        upstreamRequestId: id
+      });
+      expect(f.audit).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          result: 'FAILED',
+          errorCode: 'BROWSER_OUTCOME_UNKNOWN'
+        })
+      );
+    }
+  );
+
+  it('keeps the normal timeout for unaudited download reads', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fixture();
+      const request = f.broker.requestBrowser(
+        'n',
+        'download',
+        'g',
+        { attachmentId, command: { action: 'list', offset: 0 } },
+        f.user
+      );
+      const rejected = expect(request).rejects.toMatchObject({ code: 'NODE_REQUEST_TIMEOUT' });
+      await Promise.all([rejected, vi.advanceTimersByTimeAsync(30_000)]);
+      expect(f.audit).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 function activeObservations(broker: NodeRequestBroker): number {
   const scopes = (
     broker as unknown as {

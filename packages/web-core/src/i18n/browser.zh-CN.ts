@@ -20,6 +20,8 @@ export const browserZhCN = {
   downloadWorkspace: '保存到工作区',
   downloadWorkspaceHint: '输入工作区内的相对路径（含文件名）。目录必须已存在；不会覆盖已有文件。',
   downloadWorkspaceSaved: '已保存到工作区：{path}',
+  downloadWorkspaceUnknown:
+    '未能确认是否保存成功。请先检查工作区中的 {path} 是否完整，再决定是否重试。',
   downloadWorkspaceExists: '该路径已有文件，请换一个文件名。',
   downloadWorkspaceInvalid: '请选择工作区内已存在的目录。',
   external: '在本机浏览器中打开',
