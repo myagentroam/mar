@@ -14,7 +14,7 @@ export const browserEnUS = {
     'Open on this device; the loopback address will point to this device, not the Node',
   menu: 'Browser commands',
   settings: 'Browser settings',
-  settingsSummary: 'Set where links from workspace conversations and terminals open by default.',
+  settingsSummary: 'Manage browser preferences for the workbench.',
   cache: 'Clear browser cache',
   tab: 'New tab',
   addAsideTab: 'Add Aside tab',

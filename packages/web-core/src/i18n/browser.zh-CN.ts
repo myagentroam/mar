@@ -13,7 +13,7 @@ export const browserZhCN = {
   externalLocal: '在本机打开；此时回环地址指向本机，而不是 Node',
   menu: '浏览器命令',
   settings: '浏览器设置',
-  settingsSummary: '设置工作区会话和终端中链接的默认打开位置。',
+  settingsSummary: '管理工作台中的浏览器偏好。',
   cache: '清理浏览器缓存',
   tab: '新建标签页',
   addAsideTab: '添加辅助面标签页',
