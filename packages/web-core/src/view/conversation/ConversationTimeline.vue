@@ -796,7 +796,7 @@ function stepDuration(item: ConversationItem): string | undefined {
           >
             <summary class="mar-disclosure-summary conversation-record-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
-              <ConversationRecordIcon kind="tool_call" class="conversation-record-icon" />
+              <MarIcon name="agent-collaboration" class="conversation-record-icon" />
               <strong>{{ translate('generated.conversationPresentation.subagent') }}</strong>
               <span class="conversation-group-meta">{{
                 translate('presentation.agentCollaborationCount', {

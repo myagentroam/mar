@@ -1865,6 +1865,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.locator('[data-process-id="spacing-process"] .process-heading').click();
       const groups = page.locator('.conversation-record-group');
       await expect(groups).toHaveCount(4);
+      const collaborationIcon = page.locator('.subagent-group summary > .conversation-record-icon');
+      await expect(collaborationIcon).toHaveAttribute('data-mar-icon', 'agent-collaboration');
+      await expect(collaborationIcon).toHaveAttribute('aria-hidden', 'true');
       await expect(page.locator('.subagent-group .conversation-group-meta')).toHaveText(
         '3 records'
       );
