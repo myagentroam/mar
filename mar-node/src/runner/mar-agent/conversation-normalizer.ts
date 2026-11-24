@@ -292,7 +292,7 @@ export class MarAgentConversationNormalizer {
           status: 'COMPLETED',
           payload: {
             representation: 'summary',
-            sections: [{ index: 0, text: event.title }]
+            sections: [{ index: 0, text: `✦ ${event.title}` }]
           }
         }
       ];
