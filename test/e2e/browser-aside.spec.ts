@@ -256,7 +256,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const workspaceId = (await registered.json()).workspace.id as string;
     const route = `/console?view=nodes&node=${encodeURIComponent(nodeId)}&workspace=${encodeURIComponent(workspaceId)}`;
     const browserTab = page.getByRole('tab', { name: /^(Browser|浏览器)$/u });
-    const address = page.getByRole('textbox', { name: /^(Address|地址栏?)$/u });
+    const address = page.getByRole('combobox', { name: /^(Address|地址栏?)$/u });
     const canvas = page.locator('.node-browser canvas');
     async function expectContinuousPicture(change: () => Promise<void>) {
       const alpha = (element: HTMLCanvasElement) =>
@@ -429,7 +429,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         }
       });
     }
-    const blankAddress = page.getByRole('textbox', { name: /^(Enter a web address|输入网址)$/u });
+    const blankAddress = page.getByRole('combobox', { name: /^(Enter a web address|输入网址)$/u });
     const blankForm = page.locator('form').filter({ has: blankAddress });
     async function checkBlankAddressSizing(name: string) {
       const icon = blankForm.locator('svg[aria-hidden="true"]');
@@ -804,6 +804,21 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect(address).toHaveValue(longHistoryUrl);
     await page.getByRole('button', { name: /^(Back|后退)$/u }).click();
     await expect(address).toHaveValue(`${origin}/relay`);
+    await address.fill(longHistoryUrl);
+    await address.press('Enter');
+    await expect(address).toHaveValue(longHistoryUrl);
+    const suggestions = page.getByRole('listbox', { name: /^(Browsing history|浏览历史)$/u });
+    const relaySuggestion = suggestions.getByRole('option', {
+      name: `Relay fixture ${origin}/relay`,
+      exact: true
+    });
+    await address.fill('Relay fixture');
+    await expect(relaySuggestion).toBeVisible();
+    await address.press('ArrowDown');
+    await expect(relaySuggestion).toHaveAttribute('aria-selected', 'true');
+    await address.press('Enter');
+    await expect(suggestions).toBeHidden();
+    await expect(address).toHaveValue(`${origin}/relay`);
 
     const commands = page.getByRole('button', { name: /^(Browser commands|浏览器命令)$/u });
     await expect(commands).toBeEnabled();
@@ -943,6 +958,11 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await page.keyboard.press('Escape');
     await expect(historyDialog).toBeHidden();
     await expect(address).toHaveValue(`${origin}/relay`);
+    await address.fill(origin);
+    await expect(suggestions.getByText(longHistoryUrl, { exact: true })).toBeVisible();
+    await expect(relaySuggestion).toHaveCount(0);
+    await address.press('Escape');
+    await expect(suggestions).toBeHidden();
     await commands.click();
     await page.getByRole('menuitem', { name: /^(Take control|接管浏览器)$/u }).click();
     const paused = page.getByRole('status').filter({

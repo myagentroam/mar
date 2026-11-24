@@ -18,6 +18,7 @@ const props = defineProps<{
   canGoBack: boolean;
   canGoForward: boolean;
   canOpenTab: boolean;
+  keyboard: boolean;
 }>();
 const emit = defineEmits<{
   command: [command: Command];
@@ -40,6 +41,7 @@ onMounted(() => menu.value?.handleOpen());
     popper-class="browser-context-menu"
     placement="bottom-start"
     :offset="0"
+    :initial-focus="keyboard ? 'item' : 'menu'"
     @command="emit('command', $event)"
     @visible-change="!$event && emit('close')"
   >
@@ -92,6 +94,10 @@ onMounted(() => menu.value?.handleOpen());
   justify-content: space-between;
   min-block-size: 26px;
   padding-inline: 1rem;
+}
+.browser-context-menu:focus {
+  /* Pointer opening focuses the container only, so arrow keys can enter the menu. */
+  outline: none;
 }
 .browser-context-menu .mar-ui-dropdown-item:disabled {
   cursor: default;

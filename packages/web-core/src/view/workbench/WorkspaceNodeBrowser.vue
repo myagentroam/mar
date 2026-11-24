@@ -9,7 +9,10 @@ import { MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import {
   BROWSER_TAB_LIMIT,
+  browserProfileTargetSchema,
   isBrowserWorkspacePreview,
+  type BrowserHistoryResult,
+  type BrowserProfileTarget,
   type BrowserPageInput
 } from '@myagentroam/protocol';
 import { BrowserInputScheduler } from '../../service/browser-input-scheduler.js';
@@ -21,6 +24,7 @@ import type {
   WorkbenchBrowserService
 } from '../../service/workbench-browser-service.js';
 import { browserAddress, isBrowserLoopback } from '../../service/browser-link-routing.js';
+import BrowserAddressInput from './BrowserAddressInput.vue';
 import BrowserDownloadsDialog from './BrowserDownloadsDialog.vue';
 import BrowserContextMenu from './BrowserContextMenu.vue';
 import BrowserPerformanceIndicator from './BrowserPerformanceIndicator.vue';
@@ -96,6 +100,48 @@ const connection = computed(() => {
 const active = computed(() =>
   snapshot.value?.tabs.find((tab) => tab.id === snapshot.value?.activeId)
 );
+const historyBrowserId = computed(() =>
+  props.connected && status.value === 'ready' ? props.browser.browserId() : undefined
+);
+const historyContext = computed(() =>
+  historyBrowserId.value && active.value && snapshot.value
+    ? JSON.stringify([historyBrowserId.value, active.value.id, snapshot.value.viewVersion])
+    : undefined
+);
+let historyTarget: Promise<BrowserProfileTarget | undefined> | undefined;
+watch(historyBrowserId, () => (historyTarget = undefined), { flush: 'sync' });
+
+async function lookupAddressHistory(text: string): Promise<BrowserHistoryResult['items']> {
+  const id = historyBrowserId.value;
+  const context = historyContext.value;
+  if (!id || !context) return [];
+  const lookup = (historyTarget ??= props.browser
+    .profile(props.scope, { action: 'describe' })
+    .then((result) => {
+      const target = browserProfileTargetSchema.safeParse(
+        (result as { profile?: unknown })?.profile
+      );
+      return target.success && target.data.kind === 'live' && target.data.id === id
+        ? target.data
+        : undefined;
+    }));
+  try {
+    const target = await lookup;
+    if (!target || lookup !== historyTarget || context !== historyContext.value) {
+      if (!target && historyTarget === lookup) historyTarget = undefined;
+      return [];
+    }
+    const result = (await props.browser.profile(props.scope, {
+      action: 'history',
+      target,
+      input: { text, startTime: 0 }
+    })) as BrowserHistoryResult;
+    return result.items;
+  } catch (error) {
+    if (historyTarget === lookup) historyTarget = undefined;
+    throw error;
+  }
+}
 const blank = computed(() => active.value?.url === 'about:blank');
 const dialog = computed(() => snapshot.value?.dialog);
 const chooser = computed(() => snapshot.value?.fileChooser);
@@ -251,7 +297,7 @@ function navigate(): void {
   navigateTo(address);
 }
 function navigateTo(address: string): void {
-  if (!snapshot.value) return;
+  if (!snapshot.value || !hasCommands.value) return;
   if (props.browser.send({ type: 'navigate', viewVersion: snapshot.value.viewVersion, address }))
     showCurrentAddress();
 }
@@ -511,6 +557,7 @@ async function copy(link?: string): Promise<void> {
 const contextMenu = shallowRef<{
   intent: number;
   anchor: DOMRect;
+  keyboard: boolean;
   options: NonNullable<Awaited<ReturnType<WorkbenchBrowserService['queryContextMenu']>>>;
 }>();
 let contextIntent = 0;
@@ -532,7 +579,11 @@ function newFocusIntent(event: FocusEvent): void {
   ++contextIntent;
 }
 
-async function openContext(anchor: DOMRect, target?: ReturnType<typeof point>): Promise<void> {
+async function openContext(
+  anchor: DOMRect,
+  target?: ReturnType<typeof point>,
+  keyboardTriggered = false
+): Promise<void> {
   if (!props.capability.contextMenu || blank.value || status.value !== 'ready') return;
   const viewVersion = frame.value?.viewVersion;
   if (viewVersion === undefined || pressedPointers.size || nativeTouch || touch) return;
@@ -546,7 +597,7 @@ async function openContext(anchor: DOMRect, target?: ReturnType<typeof point>): 
     target && { x: target.x, y: target.y }
   );
   if (options && currentContext(intent, viewVersion) && document.activeElement === sink)
-    contextMenu.value = { intent, anchor, options };
+    contextMenu.value = { intent, anchor, options, keyboard: keyboardTriggered };
 }
 
 function currentContext(intent: number, viewVersion: number): boolean {
@@ -619,7 +670,7 @@ function key(event: KeyboardEvent, edge: 'up' | 'down'): void {
     event.preventDefault();
     const painted = paintedPage();
     if (painted && !event.repeat)
-      void openContext(new DOMRect(painted.left + 12, painted.top + 12));
+      void openContext(new DOMRect(painted.left + 12, painted.top + 12), undefined, true);
     return;
   }
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
@@ -782,15 +833,17 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           @click="travel(active?.loading ? 'stop' : 'reload')"
         />
       </div>
-      <MarInput
+      <BrowserAddressInput
         class="node-browser-address"
         :model-value="draft"
-        :aria-label="t('browser.address')"
-        :placeholder="t('browser.address')"
-        :aria-invalid="invalid || undefined"
-        :aria-describedby="invalid ? `${tabPrefix}-address-error` : undefined"
+        :label="t('browser.address')"
+        :invalid="invalid"
+        :error-id="`${tabPrefix}-address-error`"
+        :history-context="historyContext"
+        :lookup="lookupAddressHistory"
         :disabled="!hasCommands || !active"
-        @update:model-value="(value) => edit(String(value))"
+        @edit="edit"
+        @navigate="navigateTo"
       >
         <template v-if="active?.loading" #prefix>
           <span
@@ -801,7 +854,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
             <MarBusyIndicator />
           </span>
         </template>
-      </MarInput>
+      </BrowserAddressInput>
       <MarButton
         tag="a"
         class="node-browser-icon"
@@ -912,6 +965,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         :key="contextMenu.intent"
         :options="contextMenu.options"
         :anchor="contextMenu.anchor"
+        :keyboard="contextMenu.keyboard"
         :can-go-back="!!active?.canGoBack"
         :can-go-forward="!!active?.canGoForward"
         :can-open-tab="tabs.length < BROWSER_TAB_LIMIT"
@@ -966,14 +1020,16 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         <p role="status">{{ t('browser.disconnected') }}</p>
       </div>
       <form v-else-if="blank" class="node-browser-blank" @submit.prevent="navigate">
-        <MarInput
+        <BrowserAddressInput
           :model-value="draft"
-          prefix-icon="web"
-          :aria-label="t('browser.blankAddress')"
-          :placeholder="t('browser.blankAddress')"
-          :aria-invalid="invalid || undefined"
-          :aria-describedby="invalid ? `${tabPrefix}-address-error` : undefined"
-          @update:model-value="(value) => edit(String(value))"
+          blank
+          :label="t('browser.blankAddress')"
+          :invalid="invalid"
+          :error-id="`${tabPrefix}-address-error`"
+          :history-context="historyContext"
+          :lookup="lookupAddressHistory"
+          @edit="edit"
+          @navigate="navigateTo"
         />
       </form>
       <WorkspaceFloatingActions

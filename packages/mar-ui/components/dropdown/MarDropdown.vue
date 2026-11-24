@@ -29,6 +29,7 @@ const props = withDefaults(
     virtualRef?: PopupAnchor;
     placement?: PopupPlacement;
     offset?: number;
+    initialFocus?: 'item' | 'menu';
     persistent?: boolean;
     popperClass?: string;
     popperStyle?: StyleValue | undefined;
@@ -103,7 +104,8 @@ function expand(anchor: PopupAnchor, origin?: HTMLElement, last = false) {
     if (!open.value || wasOpen) return;
     announcedOpen = true;
     emit('visible-change', true);
-    if (open.value) focusItem(items().at(last ? -1 : 0));
+    if (open.value)
+      focusItem(props.initialFocus === 'menu' ? undefined : items().at(last ? -1 : 0));
   }
 
   if (popup.value) showMenu();

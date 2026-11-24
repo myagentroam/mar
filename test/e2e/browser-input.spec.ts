@@ -316,7 +316,14 @@ test('Browser opens the context menu for text, fields, and links and preserves a
 
     await page.evaluate(() => navigator.clipboard.writeText('Paste from the device'));
     await clickAt(110, 150);
-    await menu.getByRole('menuitem', { name: 'Paste', exact: true }).click();
+    const paste = menu.getByRole('menuitem', { name: 'Paste', exact: true });
+    await expect(menu).toBeFocused();
+    await expect(paste).not.toBeFocused();
+    await expect(paste).toHaveCSS('outline-style', 'none');
+    await page.keyboard.press('ArrowDown');
+    await expect(paste).toBeFocused();
+    await expect(paste).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('Enter');
     await expect(remote.locator('input')).toHaveValue('Paste from the device');
 
     await clickAt(110, 207);

@@ -29,7 +29,7 @@ test('Browser signals download activity at the toolbar without interrupting page
     const commands = page.getByRole('button', { name: 'Browser commands' });
     const hint = page.getByRole('status').filter({ hasText: 'Download list updated' });
     const dialog = page.getByRole('dialog', { name: 'Downloads' });
-    const address = page.getByRole('textbox', { name: 'Address', exact: true });
+    const address = page.getByRole('combobox', { name: 'Address', exact: true });
 
     await expect(button).toBeVisible();
     const buttonRect = (await button.boundingBox())!;
