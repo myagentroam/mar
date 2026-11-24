@@ -52,6 +52,15 @@ const pageCount = computed(() =>
 const page = computed(
   () => history.value?.items.slice(index.value * PAGE_SIZE, (index.value + 1) * PAGE_SIZE) ?? []
 );
+const pageSelected = computed(() => checkedUrls.value.length === page.value.length);
+const selectionDisabled = computed(
+  () =>
+    !props.connected ||
+    removing.value ||
+    loading.value ||
+    queryInvalid.value ||
+    search.value.trim() !== query.value.text
+);
 const dateFormat = computed(
   () => new Intl.DateTimeFormat(i18n.global.locale.value, { dateStyle: 'full' })
 );
@@ -164,7 +173,7 @@ function toggle(url: string, value: boolean): void {
 }
 async function confirmRemoval(urls: string[]): Promise<void> {
   const target = profile.value;
-  if (!target || !urls.length || removing.value || !props.connected || loading.value) return;
+  if (!target || !urls.length || selectionDisabled.value) return;
   const selected = [...urls];
   try {
     await MarMessageBox.confirm(t('browser.deleteConfirm'), t('browser.deleteHistory'), {
@@ -271,19 +280,30 @@ async function confirmRemoval(urls: string[]): Promise<void> {
       <p v-else-if="!profile">{{ t('browser.noProfile') }}</p>
       <p v-else-if="history && !page.length">{{ t('browser.noHistory') }}</p>
       <p v-if="history?.capped">{{ t('browser.capped') }}</p>
-      <div v-if="checkedUrls.length" class="browser-history-selection">
-        <span role="status">{{ t('browser.selectedHistory', { count: checkedUrls.length }) }}</span>
-        <MarButton text :disabled="removing" @click="checkedUrls = []">{{
-          t('browser.cancel')
-        }}</MarButton>
+      <div v-if="page.length" class="browser-history-selection">
         <MarButton
-          type="danger"
-          :loading="removing"
-          :disabled="!connected"
-          @click="confirmRemoval(checkedUrls)"
+          text
+          :disabled="selectionDisabled || pageSelected"
+          @click="checkedUrls = page.map(({ url }) => url)"
         >
-          {{ t('browser.deleteSelected') }}
+          {{ t('browser.selectHistoryPage') }}
         </MarButton>
+        <span role="status">{{
+          checkedUrls.length ? t('browser.selectedHistory', { count: checkedUrls.length }) : ''
+        }}</span>
+        <div v-if="checkedUrls.length" class="browser-history-selection-actions">
+          <MarButton text :disabled="removing" @click="checkedUrls = []">{{
+            t('browser.cancel')
+          }}</MarButton>
+          <MarButton
+            type="danger"
+            :loading="removing"
+            :disabled="selectionDisabled"
+            @click="confirmRemoval(checkedUrls)"
+          >
+            {{ t('browser.deleteSelected') }}
+          </MarButton>
+        </div>
       </div>
       <section v-for="[date, items] in groups" :key="date" class="browser-history-day">
         <h3>{{ date }}</h3>
@@ -292,7 +312,7 @@ async function confirmRemoval(urls: string[]): Promise<void> {
             <MarCheckbox
               :model-value="checkedUrls.includes(item.url)"
               :aria-label="t('browser.selectHistory', { title: item.title || item.url })"
-              :disabled="!connected || removing"
+              :disabled="selectionDisabled"
               @update:model-value="(value) => toggle(item.url, value === true)"
             />
             <time :datetime="new Date(item.visitedAt).toISOString()">{{
@@ -307,11 +327,11 @@ async function confirmRemoval(urls: string[]): Promise<void> {
               <span>{{ item.title || item.url }}</span
               ><small v-if="item.title">{{ item.url }}</small>
             </MarButton>
-            <MarDropdown :disabled="!connected || removing" @command="confirmRemoval([item.url])">
+            <MarDropdown :disabled="selectionDisabled" @command="confirmRemoval([item.url])">
               <MarButton
                 text
                 icon="more"
-                :disabled="!connected || removing"
+                :disabled="selectionDisabled"
                 :aria-label="t('browser.historyActions', { title: item.title || item.url })"
                 v-tooltip="t('browser.historyActions', { title: item.title || item.url })"
               />
@@ -382,14 +402,16 @@ async function confirmRemoval(urls: string[]): Promise<void> {
   min-inline-size: 0;
   max-inline-size: 13rem;
 }
-.browser-history-selection {
+.browser-history-selection,
+.browser-history-selection-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
-.browser-history-selection span {
-  margin-inline-end: auto;
+.browser-history-selection-actions {
+  margin-inline-start: auto;
+  justify-content: end;
 }
 .browser-history-day h3 {
   padding-block: 0.375rem;

@@ -111,6 +111,7 @@ export const browserEnUS = {
   historyActions: 'History actions for {title}',
   removeHistoryEntry: 'Remove from history',
   selectedHistory: 'Selected: {count}',
+  selectHistoryPage: 'Select all on this page',
   from: 'From',
   to: 'Through',
   date: 'Date',

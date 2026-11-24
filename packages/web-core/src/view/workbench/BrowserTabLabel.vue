@@ -67,5 +67,6 @@ onBeforeUnmount(() => observer?.disconnect());
 }
 .browser-tab-text {
   display: inline-block;
+  text-box: trim-both text;
 }
 </style>

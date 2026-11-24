@@ -110,6 +110,7 @@ export const browserZhCN = {
   historyActions: '{title}的历史记录操作',
   removeHistoryEntry: '从历史记录中移除',
   selectedHistory: '已选：{count} 项',
+  selectHistoryPage: '全选本页',
   from: '开始日期',
   to: '结束日期',
   date: '日期',
