@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
@@ -12,6 +12,8 @@ import {
   browserProfileDescriptionSchema,
   isBrowserWorkspacePreview,
   type BrowserHistoryResult,
+  type BrowserFindOperation,
+  type BrowserFindResult,
   type BrowserProfileTarget,
   type BrowserPageInput
 } from '@myagentroam/protocol';
@@ -25,6 +27,7 @@ import type {
 } from '../../service/workbench-browser-service.js';
 import { browserAddress, isBrowserLoopback } from '../../service/browser-link-routing.js';
 import BrowserAddressInput from './BrowserAddressInput.vue';
+import BrowserFindBar from './BrowserFindBar.vue';
 import BrowserDownloadsDialog from './BrowserDownloadsDialog.vue';
 import BrowserContextMenu from './BrowserContextMenu.vue';
 import BrowserPerformanceIndicator from './BrowserPerformanceIndicator.vue';
@@ -52,6 +55,7 @@ const emit = defineEmits<{
   closed: [scope: AsideWorkspace];
 }>();
 const canvas = ref<HTMLCanvasElement>();
+const browserSurface = ref<HTMLElement>();
 const tabPrefix = useId();
 const keyboard = ref<HTMLTextAreaElement>();
 const keyboardFocused = ref(false);
@@ -123,11 +127,109 @@ async function lookupAddressHistory(text: string): Promise<BrowserHistoryResult[
     throw error;
   }
 }
+const findBar = ref<InstanceType<typeof BrowserFindBar>>();
+const findOpen = ref(false);
+const findQuery = ref('');
+const findResult = shallowRef<BrowserFindResult>();
+const findPending = ref(false);
+const findFailed = ref(false);
+const canFind = computed(() =>
+  Boolean(
+    props.capability.find &&
+    status.value === 'ready' &&
+    !blank.value &&
+    active.value &&
+    snapshot.value?.viewVersion === frame.value?.viewVersion &&
+    frame.value &&
+    snapshot.value?.agentControl !== 'taking'
+  )
+);
+let findVersion: number | undefined;
+let findTimer: ReturnType<typeof setTimeout> | undefined;
+let findIntent = 0;
+let findOrigin: HTMLElement | undefined;
+let findRequest: Promise<BrowserFindResult | undefined> | undefined;
+
+async function requestFind(
+  version: number,
+  intent: number,
+  operation: BrowserFindOperation
+): Promise<void> {
+  // Keep at most one expensive scan outstanding. Only the newest edit may follow it.
+  await findRequest;
+  if (intent !== findIntent) return;
+  const request = props.browser.findInPage(version, operation);
+  findRequest = request;
+  const result = await request;
+  if (findRequest === request) findRequest = undefined;
+  if (intent !== findIntent || operation.action === 'clear') return;
+  findResult.value = result;
+  findFailed.value = !result;
+  findPending.value = false;
+}
+
+function editFind(value: string): void {
+  findQuery.value = value;
+  findResult.value = undefined;
+  findFailed.value = false;
+  const version = findVersion;
+  const intent = ++findIntent;
+  clearTimeout(findTimer);
+  findPending.value = !!value.trim();
+  if (version === undefined) return;
+  if (!value.trim()) {
+    void requestFind(version, intent, { action: 'clear' });
+    return;
+  }
+  findTimer = setTimeout(
+    () => void requestFind(version, intent, { action: 'start', query: value }),
+    130
+  );
+}
+
+function stepFind(action: 'previous' | 'next'): void {
+  const version = findVersion;
+  if (version === undefined || findPending.value || !findResult.value?.total) return;
+  const intent = ++findIntent;
+  findPending.value = true;
+  void requestFind(version, intent, { action });
+}
+
+function openFind(): void {
+  if (!canFind.value) return;
+  if (!findOpen.value) {
+    const focused = document.activeElement;
+    findOrigin =
+      focused instanceof HTMLElement && browserSurface.value?.contains(focused)
+        ? focused
+        : undefined;
+    findVersion = frame.value?.viewVersion;
+    findOpen.value = true;
+    if (findQuery.value.trim()) editFind(findQuery.value);
+  }
+  void nextTick(() => findBar.value?.focus());
+}
+
+function closeFind(restore: boolean): void {
+  if (!findOpen.value) return;
+  clearTimeout(findTimer);
+  const intent = ++findIntent;
+  if (findVersion !== undefined) void requestFind(findVersion, intent, { action: 'clear' });
+  findOpen.value = findPending.value = findFailed.value = false;
+  findResult.value = undefined;
+  findVersion = undefined;
+  if (restore)
+    (findOrigin?.isConnected ? findOrigin : browserSurface.value)?.focus({ preventScroll: true });
+  findOrigin = undefined;
+}
 const blank = computed(() => active.value?.url === 'about:blank');
 const takingControl = computed(() => snapshot.value?.agentControl === 'taking');
 const dialog = computed(() => (takingControl.value ? undefined : snapshot.value?.dialog));
 const chooser = computed(() => (takingControl.value ? undefined : snapshot.value?.fileChooser));
 const fileInputId = useId();
+watch([() => snapshot.value?.viewVersion, canFind], () => {
+  if (!canFind.value || findVersion !== snapshot.value?.viewVersion) closeFind(false);
+});
 function chooseFiles(event: Event): void {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files ?? []);
@@ -248,7 +350,36 @@ watch(dialog, (next, previous) => {
   if (next?.id !== previous?.id) answer.value = next?.defaultValue ?? '';
 });
 let unregisterInputEscape: (() => void) | undefined;
+let unregisterFind: (() => void) | undefined;
+let unregisterFindEscape: (() => void) | undefined;
 onMounted(() => {
+  unregisterFind = consoleKeyboardShortcutService.register({
+    command: 'browser.find',
+    scope: 'workspace',
+    priority: 45,
+    owner: () => browserSurface.value,
+    keys: [
+      { key: 'f', ctrl: true },
+      { key: 'f', meta: true }
+    ],
+    when: () => canFind.value,
+    execute: () => {
+      openFind();
+      return 'HANDLED';
+    }
+  });
+  unregisterFindEscape = consoleKeyboardShortcutService.register({
+    command: 'browser.closeFind',
+    scope: 'workspace',
+    priority: 45,
+    owner: () => browserSurface.value,
+    keys: [{ key: 'Escape' }],
+    when: () => findOpen.value && !contextMenu.value,
+    execute: () => {
+      closeFind(true);
+      return 'HANDLED';
+    }
+  });
   document.addEventListener('pointerdown', newPointerIntent, {
     capture: true,
     signal: lifetime.signal
@@ -270,6 +401,9 @@ onMounted(() => {
   });
 });
 onBeforeUnmount(() => {
+  closeFind(false);
+  unregisterFind?.();
+  unregisterFindEscape?.();
   lifetime.abort();
   unregisterInputEscape?.();
   releaseControls();
@@ -302,6 +436,11 @@ function travel(action: 'back' | 'forward' | 'reload' | 'stop'): void {
   props.browser.send({ type: 'navigation', viewVersion: snapshot.value.viewVersion, action });
 }
 function command(value: string | number | object): void {
+  if (value === 'find') {
+    // The command menu restores its trigger immediately after emitting the command.
+    void nextTick(openFind);
+    return;
+  }
   const id = props.browser.browserId();
   if (value === 'settings') return emit('settings', id);
   if (value === 'take' || value === 'resume') {
@@ -794,7 +933,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 </script>
 
 <template>
-  <section class="node-browser" :aria-label="t('browser.title')">
+  <section ref="browserSurface" class="node-browser" :aria-label="t('browser.title')" tabindex="-1">
     <div class="node-browser-tabs" v-if="snapshot">
       <MarTabs
         mode="strip"
@@ -926,6 +1065,13 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
               :command="agentControlAction.command"
               >{{ t(agentControlAction.label) }}</MarDropdownItem
             >
+            <MarDropdownItem
+              v-if="capability.find"
+              command="find"
+              icon="search"
+              :disabled="!canFind"
+              >{{ t('browser.find') }}</MarDropdownItem
+            >
             <MarDropdownItem command="history" icon="clock" :disabled="!browser.browserId()">{{
               t('browser.history')
             }}</MarDropdownItem>
@@ -965,6 +1111,17 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
     </div>
     <span v-if="invalid" :id="`${tabPrefix}-address-error`" hidden>{{ t('browser.invalid') }}</span>
     <div ref="body" class="node-browser-body">
+      <BrowserFindBar
+        v-if="findOpen"
+        ref="findBar"
+        :query="findQuery"
+        :result="findResult"
+        :pending="findPending"
+        :failed="findFailed"
+        @edit="editFind"
+        @step="stepFind"
+        @close="closeFind(true)"
+      />
       <canvas
         ref="canvas"
         v-show="status === 'ready'"

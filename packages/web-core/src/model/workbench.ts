@@ -303,6 +303,7 @@ export interface NodeWorkbenchManifest {
   readonly browserUse?: true;
   readonly browserNativeTouch?: true;
   readonly browserContextMenu?: true;
+  readonly browserFind?: true;
   readonly browserDownloadManagement?: true;
   readonly git?: {
     readonly available: boolean;

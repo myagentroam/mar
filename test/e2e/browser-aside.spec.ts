@@ -142,6 +142,28 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       } else response.end(largeFile);
       return;
     }
+    if (request.url === '/page-find') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(`<!doctype html>
+        <title>Field notes — Find in page demo</title>
+        <style>
+          body { margin: 3rem auto; padding: 0 2rem; max-width: 43rem; background: #f8fafc; color: #192538; font: 18px/1.65 system-ui; }
+          h1 { font-size: 2.2rem; line-height: 1.1; }
+          h2 { font-size: 1.25rem; margin: 1.7rem 0 0.2rem; }
+          p { margin: 0.15rem 0; }
+          header { text-transform: uppercase; letter-spacing: 0.13em; color: #496582; font-size: 0.75rem; font-weight: 700; }
+        </style>
+        <header>North coast journal</header>
+        <h1>Notes from the shoreline</h1>
+        <p>A short walking guide for the calm hours before sunrise.</p>
+        <h2>01 · The harbour path</h2>
+        <p>Follow the lantern past the old boathouse.</p>
+        <h2>02 · The headland</h2>
+        <p>Look for the <strong>Lantern</strong> at the bend in the trail.</p>
+        <h2>03 · The return</h2>
+        <p>At dusk, a lantern marks the way back to the harbour.</p>
+        <p hidden>lantern</p>`);
+      return;
+    }
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(`<!doctype html>
       <title>${request.url === '/relay' ? 'Relay fixture' : request.url === '/ice' ? longTabTitle : 'ICE fixture'}</title>
       <link rel="icon" href="/site-icon.png">
@@ -818,6 +840,63 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       await expect(address).toHaveValue(`${origin}/relay`);
     }
 
+    await test.step('Find remote page text with the browser shortcut and paint both highlights', async () => {
+      await address.fill(`${origin}/page-find`);
+      await address.press('Enter');
+      await expect(address).toHaveValue(`${origin}/page-find`);
+      const finder = page.getByRole('search', { name: /^(Find in page|在网页中查找)$/u });
+      await expect(async () => {
+        await address.press('Control+f');
+        await expect(finder).toBeVisible({ timeout: 500 });
+      }).toPass({ timeout: 12000 });
+      const query = finder.getByRole('textbox');
+      const count = finder.getByRole('status');
+      await expect(query).toBeFocused();
+      await query.fill('lantern');
+      await expect(count).toHaveText('1/3');
+      await query.press('Shift+Enter');
+      await expect(count).toHaveText('3/3');
+      await query.press('Enter');
+      await expect(count).toHaveText('1/3');
+      await finder.getByRole('button', { name: /Next match|下一个匹配/u }).click();
+      await expect(count).toHaveText('2/3');
+      // H.264 alters exact colors; allow small channel variation while requiring both paints.
+      const visibleMarks = () =>
+        canvas.evaluate((element) => {
+          const source = element as HTMLCanvasElement;
+          const copy = document.createElement('canvas');
+          copy.width = source.width;
+          copy.height = source.height;
+          const ctx = copy.getContext('2d')!;
+          ctx.drawImage(source, 0, 0);
+          const pixels = ctx.getImageData(0, 0, copy.width, copy.height).data;
+          let yellow = 0;
+          let orange = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            const [r, g, b] = [pixels[i]!, pixels[i + 1]!, pixels[i + 2]!];
+            if (r > 210 && g > 195 && b < 140) yellow++;
+            if (r > 210 && g >= 110 && g < 185 && b < 120) orange++;
+          }
+          return { yellow: yellow > 30, orange: orange > 30 };
+        });
+      await expect.poll(visibleMarks).toEqual({ yellow: true, orange: true });
+      await page.locator('.node-browser').screenshot({
+        path: testInfo.outputPath('browser-find-in-page.png'),
+        animations: 'disabled'
+      });
+      await query.fill('not-in-the-fixture');
+      await expect(count).toHaveText('0/0');
+      await query.fill('lantern');
+      await expect(count).toHaveText('1/3');
+      await expect.poll(visibleMarks).toEqual({ yellow: true, orange: true });
+      await query.press('Escape');
+      await expect(finder).toBeHidden();
+      await expect(address).toBeFocused();
+      await expect.poll(visibleMarks).toEqual({ yellow: false, orange: false });
+      await page.getByRole('button', { name: /^(Back|后退)$/u }).click();
+      await expect(address).toHaveValue(`${origin}/relay`);
+    });
+
     const longHistoryPath = `/long-history?value=${'a'.repeat(350)}`;
     const longHistoryUrl = origin + longHistoryPath;
     await address.fill(longHistoryUrl);
@@ -847,9 +926,10 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await commands.click();
     const browserMenu = page.getByRole('menu', { name: /^(Browser commands|浏览器命令)$/u });
     const browserCommands = browserMenu.getByRole('menuitem');
-    await expect(browserCommands).toHaveCount(5);
-    await expect(browserCommands.locator('svg')).toHaveCount(4);
+    await expect(browserCommands).toHaveCount(6);
+    await expect(browserCommands.locator('svg')).toHaveCount(5);
     for (const name of [
+      /^(Find in page|在网页中查找)$/u,
       /^(Browsing history|浏览历史)$/u,
       /^(Clear browser cache|清理浏览器缓存)$/u,
       /^(Browser settings|浏览器设置)$/u,

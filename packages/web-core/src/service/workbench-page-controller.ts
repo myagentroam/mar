@@ -2182,7 +2182,8 @@ export function createWorkbenchPageController<
           browserUse: manifest.browserUse === true,
           downloadManagement: manifest.browserDownloadManagement === true,
           nativeTouch: manifest.browserNativeTouch === true,
-          contextMenu: manifest.browserContextMenu === true
+          contextMenu: manifest.browserContextMenu === true,
+          find: manifest.browserFind === true
         };
     },
     browserConnectionReady: () => workbenchLiveConnection.connected.value,

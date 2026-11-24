@@ -56,6 +56,7 @@ export class BrowserAttachment {
   private icons: Map<string, { url: string }> | undefined;
   private shown: number | undefined;
   private contextPasteId: string | undefined;
+  private findPage: BrowserPageView | undefined;
   private next:
     | {
         version: number;
@@ -219,6 +220,7 @@ export class BrowserAttachment {
       this.answering,
       this.uploading?.catch(() => undefined),
       this.capturing,
+      this.clearFind(),
       this.options.encoder.close()
     ]);
     const cleanup = await Promise.allSettled([this.capture?.stop(), this.releaseInput()]);
@@ -251,6 +253,7 @@ export class BrowserAttachment {
       }
     }
     const snapshot = this.borrow.resource.snapshot();
+    if (this.borrow.resource.agentControl === 'taking') void this.clearFind();
     try {
       this.options.sendControl({
         type: 'snapshot',
@@ -267,6 +270,7 @@ export class BrowserAttachment {
     this.refreshIcons(snapshot);
     if (snapshot.viewVersion === this.next?.version) return;
     this.discardStaleInput(snapshot.viewVersion);
+    void this.clearFind();
     const size = this.borrow.resource.viewport;
     this.contextPasteId = undefined;
     this.next = {
@@ -441,6 +445,24 @@ export class BrowserAttachment {
           });
         return;
       }
+      case 'find.update': {
+        const version = command.viewVersion;
+        const page = this.inputView(version);
+        let result;
+        if (command.operation.action === 'clear') {
+          if (this.next?.version === version) await this.clearFind();
+        } else if (page) {
+          this.findPage = page;
+          result = await page.find.update(this, command.operation);
+        }
+        if (!this.closed)
+          this.options.sendControl({
+            type: 'find.result',
+            id: command.id,
+            ...(this.next?.version === version && result ? { result } : {})
+          });
+        return;
+      }
       case 'context.open': {
         this.contextPasteId = undefined;
         return tabs.orderInput(async () => {
@@ -477,6 +499,12 @@ export class BrowserAttachment {
           return page.travel(command.action === 'back' ? -1 : 1);
       }
     }
+  }
+
+  private async clearFind(): Promise<void> {
+    const page = this.findPage;
+    this.findPage = undefined;
+    await page?.find.update(this, { action: 'clear' }).catch(() => undefined);
   }
 
   private inputView(version: number): BrowserPageView | undefined {

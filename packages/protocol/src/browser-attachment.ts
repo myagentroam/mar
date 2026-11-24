@@ -95,6 +95,19 @@ export const browserResourceCommandSchema = z.discriminatedUnion('action', [
 
 export type BrowserResourceCommand = z.infer<typeof browserResourceCommandSchema>;
 
+export const browserFindOperationSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('start'), query: z.string().min(1).max(256) }),
+  z.strictObject({ action: z.enum(['next', 'previous', 'clear']) })
+]);
+export type BrowserFindOperation = z.infer<typeof browserFindOperationSchema>;
+
+const browserFindResultSchema = z.strictObject({
+  index: z.number().int().min(0).max(500),
+  total: z.number().int().min(0).max(500),
+  limited: z.boolean()
+});
+export type BrowserFindResult = z.infer<typeof browserFindResultSchema>;
+
 export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ack'), sequence: positiveUint32 }),
   z.strictObject({ type: z.literal('tab.icons') }),
@@ -106,6 +119,12 @@ export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('viewport.resize'), width: viewportEdge, height: viewportEdge }),
   z.strictObject({ type: z.literal('input'), action: browserPageInputSchema }),
   z.strictObject({ type: z.literal('selection.copy'), id, viewVersion: positiveUint32 }),
+  z.strictObject({
+    type: z.literal('find.update'),
+    id,
+    viewVersion: positiveUint32,
+    operation: browserFindOperationSchema
+  }),
   z.strictObject({
     type: z.literal('context.open'),
     id,
@@ -185,6 +204,11 @@ export const browserAttachmentEventSchema = z.discriminatedUnion('type', [
       .regex(/^[A-Za-z0-9+/]+={0,2}$/u)
   }),
   z.strictObject({ type: z.literal('selection'), id, text: z.string().max(4096) }),
+  z.strictObject({
+    type: z.literal('find.result'),
+    id,
+    result: browserFindResultSchema.optional()
+  }),
   z.strictObject({
     type: z.literal('context.result'),
     id,

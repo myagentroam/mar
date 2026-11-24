@@ -19,6 +19,8 @@ If you’re still waiting to take control, select **Try again** next to the take
 
 ## Browse pages
 
+Press **Ctrl+F** (**⌘F** on macOS) inside the browser, or choose **More → Find in page**. Matches are highlighted and counted. Press **Enter** or **Shift+Enter** to cycle through them, or **Esc** to close. Find searches the remote page, not the local workbench.
+
 - Enter an HTTP(S) address in the address bar or the centered field on a **Blank** tab and press Enter to navigate the current tab. With no scheme, normal hosts default to HTTPS; `localhost` and `127.0.0.1` default to HTTP.
 - As you type, matching titles and URLs appear from the current Node browser’s history. Click a suggestion or select it with the arrow keys and press Enter to open it in the current tab. Press Esc to dismiss suggestions. MAR does not keep a separate history or read your device browser’s history.
 - Use the toolbar to go back or forward, reload, or stop loading. Select **+** after the last webpage tab to open a new one. The external-open button opens the current page's actual URL unchanged in your device browser.

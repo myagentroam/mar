@@ -7,6 +7,8 @@ import {
   type BrowserContextOptions,
   type BrowserControlRequest,
   type BrowserControlResponse,
+  type BrowserFindOperation,
+  type BrowserFindResult,
   type BrowserProfileCommand,
   type BrowserTabSnapshot
 } from '@myagentroam/protocol';
@@ -32,6 +34,7 @@ type View = { viewVersion: number; width: number; height: number };
 type Path = 'ice' | 'relay';
 type Connection = {
   selection?: { id: string; finish: (text: string) => void };
+  find?: { id: string; finish: (result?: BrowserFindResult) => void };
   contextMenu?: { id: string; finish: (options?: BrowserContextOptions) => void };
   scope: Scope;
   canvas: HTMLCanvasElement;
@@ -100,6 +103,7 @@ export function createWorkbenchBrowserService(options: {
 
   function stop(connection: Connection): void {
     connection.selection?.finish('');
+    connection.find?.finish();
     connection.contextMenu?.finish();
     connection.upload?.abort();
     uploadStatus.value = undefined;
@@ -248,6 +252,7 @@ export function createWorkbenchBrowserService(options: {
       snapshot(value) {
         if (snapshot.value?.viewVersion !== value.viewVersion) {
           connection.selection?.finish('');
+          connection.find?.finish();
           connection.contextMenu?.finish();
         }
         const currentIcons = tabIcons.value;
@@ -259,6 +264,9 @@ export function createWorkbenchBrowserService(options: {
       },
       selection(id, text) {
         if (connection.selection?.id === id) connection.selection.finish(text);
+      },
+      find({ id, result }) {
+        if (connection.find?.id === id) connection.find.finish(result);
       },
       contextMenu({ id, options }) {
         if (connection.contextMenu?.id === id) connection.contextMenu.finish(options);
@@ -355,6 +363,27 @@ export function createWorkbenchBrowserService(options: {
       };
       connection.selection = { id, finish };
       if (!send({ type: 'selection.copy', id, viewVersion })) finish('');
+    });
+  }
+
+  function findInPage(
+    viewVersion: number,
+    operation: BrowserFindOperation
+  ): Promise<BrowserFindResult | undefined> {
+    const connection = current;
+    if (!connection || snapshot.value?.viewVersion !== viewVersion)
+      return Promise.resolve(undefined);
+    connection.find?.finish();
+    return new Promise((resolve) => {
+      const id = createUuid();
+      const timer = setTimeout(() => finish(), 5000);
+      const finish = (result?: BrowserFindResult): void => {
+        clearTimeout(timer);
+        delete connection.find;
+        resolve(result);
+      };
+      connection.find = { id, finish };
+      if (!send({ type: 'find.update', id, viewVersion, operation })) finish();
     });
   }
 
@@ -478,6 +507,7 @@ export function createWorkbenchBrowserService(options: {
     },
     send,
     copySelection,
+    findInPage,
     queryContextMenu,
     upload,
     downloads,
@@ -503,5 +533,6 @@ export type WorkbenchBrowserCapability = BrowserCapability & {
   browserUse?: boolean;
   nativeTouch?: boolean;
   contextMenu?: boolean;
+  find?: boolean;
   downloadManagement?: boolean;
 };

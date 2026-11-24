@@ -1,6 +1,7 @@
 import type { BrowserPageInput } from '@myagentroam/protocol';
 import type { CDPSession, Page } from 'playwright';
 import { BrowserContextMenu } from './browser-context-menu.js';
+import { BrowserPageFind } from './browser-page-find.js';
 
 type Frame = { jpeg: Buffer; width: number; height: number };
 export type BrowserPageCapture = { stop: () => Promise<void> };
@@ -14,9 +15,11 @@ export class BrowserPageView {
   private inputOwner: object | undefined;
   private navigationSession: Promise<CDPSession> | undefined;
   readonly contextMenu: BrowserContextMenu;
+  readonly find: BrowserPageFind;
 
   constructor(private readonly page: Page) {
     this.contextMenu = new BrowserContextMenu(page);
+    this.find = new BrowserPageFind(page);
   }
 
   async history(): Promise<
