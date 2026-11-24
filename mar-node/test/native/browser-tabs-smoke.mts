@@ -288,6 +288,42 @@ try {
       tabs.snapshot().tabs.map(({ url }) => url),
       ['about:blank']
     );
+    assert.equal(tabs.tabControls().reopen, true);
+    await tabs.reopen();
+    assert.equal(
+      tabs.snapshot().tabs.find(({ id }) => id === tabs.snapshot().activeId)?.url,
+      `${base}/start`
+    );
+    const reopened = context.pages().at(-1)!;
+    const zoom = () => reopened.locator('html').evaluate((root) => getComputedStyle(root).zoom);
+    const viewport = () => reopened.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
+    const before = await viewport();
+    await tabs.zoom(tabs.snapshot().viewVersion, 'in');
+    assert.equal(tabs.tabControls().zoom, 110);
+    assert.equal(await zoom(), '1.1');
+    assert.deepEqual(await viewport(), before);
+    await reopened.goto(`${base}/popup`);
+    assert.equal(await zoom(), '1.1');
+    await tabs.zoom(tabs.snapshot().viewVersion, 'reset');
+    assert.equal(await zoom(), '1');
+    await assert.rejects(tabs.restore([`${base}/start`]), /BROWSER_RESTORE_NOT_BLANK/);
+    await tabs.close(tabs.snapshot().activeId!);
+    await tabs.restore([`${base}/start`, `${base}/popup`]);
+    assert.deepEqual(
+      tabs.snapshot().tabs.map(({ url }) => url),
+      [`${base}/start`, `${base}/popup`]
+    );
+    assert.equal(tabs.snapshot().tabs.at(-1)?.id, tabs.snapshot().activeId);
+    for (const { id } of tabs.snapshot().tabs) await tabs.close(id);
+    await assert.rejects(
+      tabs.restore([`${base}/start`, `${base}/network-error`, `${base}/popup`]),
+      /BROWSER_TAB_RESTORE_INCOMPLETE/
+    );
+    assert.deepEqual(
+      tabs.snapshot().tabs.map(({ url }) => url),
+      [`${base}/start`, `${base}/popup`]
+    );
+    assert.equal(tabs.snapshot().tabs.at(-1)?.id, tabs.snapshot().activeId);
     await context.close();
     assert.deepEqual(tabs.snapshot().tabs, []);
     assert(changed > 2);

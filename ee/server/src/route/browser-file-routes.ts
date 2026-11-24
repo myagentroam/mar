@@ -96,7 +96,7 @@ export function registerBrowserFileRoutes(
       if (
         !query.success ||
         !body.success ||
-        (action !== 'cancel' && action !== 'delete') ||
+        (action !== 'cancel' && action !== 'delete' && action !== 'workspace') ||
         body.data.command.action !== action
       )
         return sendError(reply, 400, 'BROWSER_DOWNLOAD_INVALID');

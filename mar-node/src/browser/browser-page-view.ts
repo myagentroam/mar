@@ -3,9 +3,11 @@ import type { CDPSession, Page } from 'playwright';
 import { BrowserContextMenu } from './browser-context-menu.js';
 import { browserJpegSize } from './browser-jpeg.js';
 import { BrowserPageFind } from './browser-page-find.js';
+import { BrowserPageZoom } from './browser-page-zoom.js';
 
 type Frame = { jpeg: Buffer; width: number; height: number };
 export type BrowserPageCapture = { stop: () => Promise<void> };
+const STATIC_FRAME_TIMEOUT_MS = 1_000;
 
 /** Adapts a single owned Playwright page. The session owns the page and selects
  * the active view, while the attachment owns input ordering and frame transport.
@@ -16,6 +18,7 @@ export class BrowserPageView {
   private navigationSession: Promise<CDPSession> | undefined;
   readonly contextMenu: BrowserContextMenu;
   readonly find: BrowserPageFind;
+  private readonly layoutZoom = new BrowserPageZoom();
 
   constructor(private readonly page: Page) {
     this.contextMenu = new BrowserContextMenu(page);
@@ -56,6 +59,14 @@ export class BrowserPageView {
 
   async stopLoading(): Promise<void> {
     await (await this.navigation()).send('Page.stopLoading');
+  }
+
+  get zoomPercent(): number {
+    return this.layoutZoom.percent;
+  }
+
+  zoom(direction: 'in' | 'out' | 'reset'): Promise<void> {
+    return this.layoutZoom.change(() => this.navigation(), direction);
   }
 
   resize(size: { width: number; height: number }): Promise<void> {
@@ -185,7 +196,6 @@ export class BrowserPageView {
     const session = await this.page.context().newCDPSession(this.page);
     let stopped = false;
     let receivedFrame = false;
-    let activeSeed: Promise<{ data: string }> | undefined;
     let stopping: Promise<void> | undefined;
     const publish = (jpeg: Buffer, width: number, height: number) => {
       const image = browserJpegSize(jpeg);
@@ -221,8 +231,6 @@ export class BrowserPageView {
         stopped = true;
         session.off('Page.screencastFrame', onFrame);
         return (stopping ??= (async () => {
-          // Keep the CDP session alive until Chromium restores the viewport.
-          if (activeSeed) await activeSeed.catch(() => undefined);
           await session.detach().catch((error: unknown) => {
             if (!this.page.isClosed()) throw error;
           });
@@ -251,42 +259,75 @@ export class BrowserPageView {
           );
         };
         this.pendingViewport = this.pendingViewport
-          .then(async () => {
-            if (!waiting()) return;
-            const { visualViewport, contentSize, cssContentSize } =
-              await session.send('Page.getLayoutMetrics');
-            if (!waiting()) return;
-            // CDP clip scale is relative to device pixels, not CSS pixels.
-            const density = contentSize.width / cssContentSize.width || 1;
-            const scale = Math.min(
-              1,
-              render.width / (viewport.width * density),
-              render.height / (viewport.height * density)
-            );
-            activeSeed = session.send('Page.captureScreenshot', {
-              format: 'jpeg',
-              quality: render.quality,
-              clip: {
-                x: visualViewport.pageX,
-                y: visualViewport.pageY,
-                width: viewport.width / visualViewport.scale,
-                height: viewport.height / visualViewport.scale,
-                scale: scale * visualViewport.scale
-              }
-            });
-            try {
-              const { data } = await activeSeed;
-              if (waiting()) publish(Buffer.from(data, 'base64'), viewport.width, viewport.height);
-            } finally {
-              activeSeed = undefined;
-            }
-          })
+          .then(() =>
+            this.seedFrame(viewport, render, waiting, (jpeg) =>
+              publish(jpeg, viewport.width, viewport.height)
+            )
+          )
           .catch(() => undefined);
       }
       return capture;
     } catch (error) {
       await capture.stop().catch(() => undefined);
       throw error;
+    }
+  }
+
+  private async seedFrame(
+    viewport: { width: number; height: number },
+    render: { width: number; height: number; quality: number },
+    waiting: () => boolean,
+    publish: (jpeg: Buffer) => void
+  ): Promise<void> {
+    if (!waiting()) return;
+    // Navigation can leave the screenshot unanswered. Never make stopping a
+    // screencast wait for its seed; only serialize viewport changes with it.
+    const session = await this.page.context().newCDPSession(this.page);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let restoreViewport = false;
+    let expired = false;
+    try {
+      const seed = async () => {
+        const { visualViewport, contentSize, cssContentSize } =
+          await session.send('Page.getLayoutMetrics');
+        if (expired || !waiting()) return;
+        // CDP clip scale is relative to device pixels, not CSS pixels.
+        const density = contentSize.width / cssContentSize.width || 1;
+        const scale = Math.min(
+          1,
+          render.width / (viewport.width * density),
+          render.height / (viewport.height * density)
+        );
+        restoreViewport = true;
+        const { data } = await session.send('Page.captureScreenshot', {
+          format: 'jpeg',
+          quality: render.quality,
+          clip: {
+            x: visualViewport.pageX,
+            y: visualViewport.pageY,
+            width: viewport.width / visualViewport.scale,
+            height: viewport.height / visualViewport.scale,
+            scale: scale * visualViewport.scale
+          }
+        });
+        restoreViewport = false;
+        return data;
+      };
+      const data = await Promise.race([
+        seed(),
+        new Promise<undefined>((resolve) => {
+          timer = setTimeout(() => {
+            expired = true;
+            resolve(undefined);
+          }, STATIC_FRAME_TIMEOUT_MS);
+        })
+      ]);
+      if (data && waiting()) publish(Buffer.from(data, 'base64'));
+    } finally {
+      clearTimeout(timer);
+      const restore = restoreViewport;
+      await session.detach().catch(() => undefined);
+      if (restore && !this.page.isClosed()) await this.page.setViewportSize(viewport);
     }
   }
 }

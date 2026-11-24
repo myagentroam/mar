@@ -35,6 +35,8 @@ const COMMAND_ERRORS = new Set([
   'BROWSER_HTML_UNAVAILABLE',
   'BROWSER_NAVIGATION_FAILED',
   'BROWSER_TAB_NAVIGATION_FAILED',
+  'BROWSER_RESTORE_NOT_BLANK',
+  'BROWSER_TAB_RESTORE_INCOMPLETE',
   'BROWSER_INVALID_ADDRESS'
 ]);
 
@@ -110,6 +112,11 @@ export class BrowserAttachment {
 
   receive(message: BrowserAttachmentMessage): void {
     if (this.closed) return;
+    if (message.type === 'tab.controls.observe') {
+      this.tabControlsSubscribed = true;
+      this.refresh();
+      return;
+    }
     if (message.type === 'agent.activity.observe') {
       this.agentActivitySubscribed = true;
       this.refresh();
@@ -236,6 +243,7 @@ export class BrowserAttachment {
   private downloadsSubscribed = false;
   private downloadProgressSubscribed = false;
   private agentActivitySubscribed = false;
+  private tabControlsSubscribed = false;
 
   private refresh(): void {
     if (this.closed) return;
@@ -245,6 +253,7 @@ export class BrowserAttachment {
         type: 'snapshot',
         snapshot: {
           ...snapshot,
+          ...(this.tabControlsSubscribed && { tabControls: this.borrow.resource.tabControls() }),
           ...(this.agentActivitySubscribed &&
             this.borrow.resource.agentActive && { agentActive: true }),
           ...(this.downloadsSubscribed && {
@@ -417,6 +426,12 @@ export class BrowserAttachment {
         return tabs.select(command.tabId);
       case 'tab.close':
         return tabs.close(command.tabId);
+      case 'tab.reopen':
+        return tabs.reopen();
+      case 'page.zoom':
+        return tabs.zoom(command.viewVersion, command.direction);
+      case 'tab.restore':
+        return tabs.restore(command.addresses);
       case 'selection.copy': {
         const view = this.next;
         const text =

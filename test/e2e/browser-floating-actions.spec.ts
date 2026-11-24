@@ -18,12 +18,13 @@ test('Desktop browser page actions use compact buttons and matching icons', asyn
     });
     const actions = page.getByRole('group', { name: 'Remote page actions' });
     const copy = actions.getByRole('button', { name: 'Copy selected text' });
+    const keyboard = actions.getByRole('button', { name: 'Page keyboard mode' });
     const paste = actions.getByRole('button', { name: 'Paste plain text' });
     const info = actions.getByRole('button', { name: 'Browser streaming performance' });
     const collapse = actions.getByRole('button', { name: 'Collapse page actions' });
     const expand = actions.getByRole('button', { name: 'Expand page actions' });
-    await expect(actions.getByRole('button')).toHaveCount(4);
-    for (const button of [copy, paste, info, collapse]) {
+    await expect(actions.getByRole('button')).toHaveCount(5);
+    for (const button of [keyboard, copy, paste, info, collapse]) {
       await expectSquare(button, 26);
       await expectSquare(button.locator('svg'), 14);
     }
@@ -33,9 +34,10 @@ test('Desktop browser page actions use compact buttons and matching icons', asyn
     expect(
       await actions.evaluate((element) => parseFloat(getComputedStyle(element).padding))
     ).toBeCloseTo(rootFontSize * 0.1875, 2);
-    const [copyBox, pasteBox, infoBox, collapseBox] = await Promise.all(
-      [copy, paste, info, collapse].map((button) => button.boundingBox())
+    const [keyboardBox, copyBox, pasteBox, infoBox, collapseBox] = await Promise.all(
+      [keyboard, copy, paste, info, collapse].map((button) => button.boundingBox())
     );
+    expect(copyBox!.x - keyboardBox!.x - keyboardBox!.width).toBeCloseTo(rootFontSize * 0.25, 1);
     expect(pasteBox!.x - copyBox!.x - copyBox!.width).toBeCloseTo(rootFontSize * 0.25, 1);
     expect(infoBox!.x - pasteBox!.x - pasteBox!.width).toBeCloseTo(rootFontSize * 0.25, 1);
     expect(collapseBox!.x - infoBox!.x - infoBox!.width).toBeCloseTo(rootFontSize * 0.25, 1);
@@ -66,7 +68,7 @@ test.describe('Browser page actions on a touch device', () => {
       const buttons = actions.getByRole('button');
       for (const width of [390, 960]) {
         await page.setViewportSize({ width, height: 700 });
-        await expect(actions.getByRole('button', { name: 'Show keyboard' })).toBeVisible();
+        await expect(actions.getByRole('button', { name: 'Page keyboard mode' })).toBeVisible();
         await expect(buttons).toHaveCount(5);
         for (const button of await buttons.all()) await expectSquare(button, 36);
       }

@@ -1,11 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   browserAddress,
+  browserAddressDestination,
   routeWorkbenchBrowserLink,
   DEFAULT_BROWSER_LINK_PREFERENCES
 } from '../../src/service/browser-link-routing.js';
 
 describe('Workbench Browser link routing', () => {
+  it('keeps private addresses local to the Node and searches only when explicitly requested', () => {
+    expect(browserAddressDestination('internal-host/status')).toBe('https://internal-host/status');
+    expect(browserAddressDestination('https://internal-host:8443/status')).toBe(
+      'https://internal-host:8443/status'
+    );
+    expect(browserAddressDestination('internal host')).toBeUndefined();
+    expect(browserAddressDestination('? ')).toBeUndefined();
+    expect(browserAddressDestination('? ' + 'a'.repeat(513))).toBeUndefined();
+    const search = new URL(browserAddressDestination('? café & browser')!);
+    expect(search.origin).toBe('https://www.google.com');
+    expect([...search.searchParams]).toEqual([['q', 'café & browser']]);
+  });
   const source = { nodeId: 'original-node', workspaceId: 'original-workspace' };
   it('reverses the selected destination without rewriting the original target or scope', () => {
     const local = { kind: 'url' as const, source, url: 'HTTP://localhost:8080/path?q=1#tab' };

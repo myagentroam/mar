@@ -10,9 +10,10 @@ import { MarMessageBox } from '../../service/message-box-service.js';
 import type { WorkbenchBrowserService } from '../../service/workbench-browser-service.js';
 import { translate as t } from '../../service/locale-preference-service.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
+import { ApiError } from '../../util/api-error.js';
 
 /** Owns list pagination and row actions for the open Browser download dialog. */
-const props = defineProps<{ browser: WorkbenchBrowserService }>();
+const props = defineProps<{ browser: WorkbenchBrowserService; saveWorkspace?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const { snapshot, status } = props.browser;
 const revision = computed(() => snapshot.value?.downloadVersion);
@@ -28,6 +29,7 @@ const loading = ref(false);
 const failed = ref(false);
 const changing = ref<string>();
 const actionFailure = ref<{ id: string; action: 'cancel' | 'delete' }>();
+const saveFeedback = ref<{ id: string; message: string; failed?: true }>();
 const labels = {
   downloading: 'browser.downloadPending',
   failed: 'browser.downloadFailure',
@@ -51,6 +53,7 @@ watch(
       loading.value = false;
       failed.value = false;
       actionFailure.value = undefined;
+      saveFeedback.value = undefined;
       return;
     }
     const controller = new AbortController();
@@ -120,6 +123,52 @@ async function change(item: BrowserDownloadInfo, action: 'cancel' | 'delete'): P
     else await props.browser.deleteDownload(item.id);
   } catch {
     actionFailure.value = { id: item.id, action };
+  } finally {
+    changing.value = undefined;
+  }
+}
+
+async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
+  const href = props.browser.downloadHref(item.id);
+  if (!href || changing.value) return;
+  changing.value = item.id;
+  saveFeedback.value = undefined;
+  try {
+    let path: string;
+    try {
+      const result = await MarMessageBox.prompt(
+        t('browser.downloadWorkspaceHint'),
+        t('browser.downloadWorkspace'),
+        {
+          signal: lifetime.signal,
+          inputValue: item.name,
+          confirmButtonText: t('browser.downloadWorkspace'),
+          cancelButtonText: t('browser.cancel'),
+          inputValidator: (value) => value.trim().length > 0 && value.length <= 4096
+        }
+      );
+      path = result.value;
+    } catch {
+      return;
+    }
+    if (lifetime.signal.aborted || props.browser.downloadHref(item.id) !== href) return;
+    await props.browser.saveDownloadToWorkspace(item.id, path);
+    if (props.browser.downloadHref(item.id) === href)
+      saveFeedback.value = { id: item.id, message: t('browser.downloadWorkspaceSaved', { path }) };
+  } catch (error) {
+    if (props.browser.downloadHref(item.id) !== href) return;
+    const code = error instanceof ApiError ? error.code : undefined;
+    saveFeedback.value = {
+      id: item.id,
+      failed: true,
+      message: t(
+        code === 'FILE_ALREADY_EXISTS'
+          ? 'browser.downloadWorkspaceExists'
+          : code === 'FILE_NOT_FOUND' || code === 'FILE_PATH_ESCAPE'
+            ? 'browser.downloadWorkspaceInvalid'
+            : 'browser.downloadFailed'
+      )
+    };
   } finally {
     changing.value = undefined;
   }
@@ -201,6 +250,13 @@ async function change(item: BrowserDownloadInfo, action: 'cancel' | 'delete'): P
             >{{ t('browser.downloadSave') }}</MarButton
           >
           <MarButton
+            v-if="item.state === 'ready' && saveWorkspace"
+            text
+            :aria-disabled="!!changing"
+            @click="saveToWorkspace(item)"
+            >{{ t('browser.downloadWorkspace') }}</MarButton
+          >
+          <MarButton
             v-if="canDelete && item.state !== 'downloading'"
             text
             icon="delete"
@@ -211,6 +267,14 @@ async function change(item: BrowserDownloadInfo, action: 'cancel' | 'delete'): P
             @click="change(item, 'delete')"
           />
         </div>
+        <p
+          v-if="saveFeedback?.id === item.id"
+          class="download-action-error"
+          :class="{ 'download-error': saveFeedback.failed }"
+          :role="saveFeedback.failed ? 'alert' : 'status'"
+        >
+          {{ saveFeedback.message }}
+        </p>
         <p
           v-if="actionFailure?.id === item.id"
           class="download-action-error download-error"

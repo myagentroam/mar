@@ -45,7 +45,12 @@ describe('Browser page view', () => {
     const first = castSession();
     const second = castSession();
     first.detach.mockReturnValueOnce(pending.promise);
-    const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(castSession())
+      .mockResolvedValueOnce(second)
+      .mockResolvedValueOnce(castSession());
     const view = new BrowserPageView({
       isClosed: () => false,
       viewportSize: () => ({ width: 1280, height: 800 }),
@@ -80,7 +85,8 @@ describe('Browser page view', () => {
     async (state) => {
       const screenshot = Promise.withResolvers<{ data: string }>();
       const session = castSession();
-      session.send.mockImplementation(async (method) => {
+      const seedSession = castSession();
+      seedSession.send.mockImplementation(async (method) => {
         if (method === 'Page.getLayoutMetrics') {
           return {
             visualViewport: { pageX: 5, pageY: 30, scale: 1 },
@@ -91,17 +97,18 @@ describe('Browser page view', () => {
         if (method === 'Page.captureScreenshot') return screenshot.promise;
       });
       const viewportSize = vi.fn(() => ({ width: 549, height: 732 }));
+      const create = vi.fn().mockResolvedValueOnce(session).mockResolvedValueOnce(seedSession);
       const view = new BrowserPageView({
         isClosed: () => false,
         viewportSize,
-        context: () => ({ newCDPSession: async () => session })
+        context: () => ({ newCDPSession: create })
       } as unknown as Page);
       const offer = vi.fn();
       const hd = state === 'static-hd';
       const render = hd ? { width: 822, height: 1096 } : { width: 550, height: 732 };
       const capture = await view.startCapture({ ...render, quality: 70 }, offer);
       await vi.waitFor(() => {
-        expect(session.send).toHaveBeenCalledWith('Page.captureScreenshot', {
+        expect(seedSession.send).toHaveBeenCalledWith('Page.captureScreenshot', {
           format: 'jpeg',
           quality: 70,
           clip: { x: 5, y: 30, width: 549, height: 732, scale: hd ? 1096 / 1464 : 0.5 }
@@ -116,12 +123,14 @@ describe('Browser page view', () => {
       emit(frame(jpegHeader(render.width, render.height + 1), 549, 732));
       if (state === 'live') emit(frame(native, 549, 732));
       const stopping = state === 'stopped' ? capture.stop() : undefined;
-      if (stopping) expect(session.detach).not.toHaveBeenCalled();
+      if (stopping) {
+        await stopping;
+        expect(seedSession.detach).not.toHaveBeenCalled();
+      }
       if (state === 'resized') viewportSize.mockReturnValue({ width: 700, height: 732 });
       const seed = hd ? jpegHeader(822, 1096) : jpegHeader(549, 732);
       screenshot.resolve({ data: seed.toString('base64') });
-      await screenshot.promise;
-      await Promise.resolve();
+      await vi.waitFor(() => expect(seedSession.detach).toHaveBeenCalledOnce());
       expect(offer.mock.calls).toEqual(
         state === 'stopped' || state === 'resized'
           ? []
@@ -150,7 +159,9 @@ describe('Browser page view', () => {
       if (method === 'Page.getLayoutMetrics') return metrics;
       if (method === 'Page.captureScreenshot') return { data: jpeg.toString('base64') };
     });
-    const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const cast = castSession();
+    const create = vi.fn(async () => cast);
+    create.mockResolvedValueOnce(cast).mockResolvedValueOnce(first);
     const view = new BrowserPageView({
       viewportSize: () => ({ width: 800, height: 450 }),
       context: () => ({ newCDPSession: create })
@@ -158,10 +169,11 @@ describe('Browser page view', () => {
     const offer = vi.fn();
     const render = { width: 800, height: 450, quality: 85 };
     const a = await view.startCapture(render, vi.fn());
-    const b = await view.startCapture(render, offer);
     await vi.waitFor(() =>
       expect(first.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything())
     );
+    create.mockResolvedValueOnce(castSession()).mockResolvedValueOnce(second);
+    const b = await view.startCapture(render, offer);
     expect(second.send).not.toHaveBeenCalledWith('Page.getLayoutMetrics');
     blocked.reject(new Error('screenshot failed'));
     await vi.waitFor(() =>
@@ -172,12 +184,12 @@ describe('Browser page view', () => {
   });
 
   it('resizes only after Chromium can restore the static clip viewport', async () => {
-    const session = castSession();
+    const seed = castSession();
     const old = { width: 800, height: 450 };
     const next = { width: 1000, height: 700 };
     let actualViewport = old;
     const screenshot = Promise.withResolvers<void>();
-    session.send.mockImplementation(async (method) => {
+    seed.send.mockImplementation(async (method) => {
       if (method === 'Page.getLayoutMetrics') {
         return {
           visualViewport: { pageX: 0, pageY: 0, scale: 1 },
@@ -191,17 +203,18 @@ describe('Browser page view', () => {
         return { data: jpegHeader(800, 450).toString('base64') };
       }
     });
+    const create = vi.fn().mockResolvedValueOnce(castSession()).mockResolvedValueOnce(seed);
     const view = new BrowserPageView({
       viewportSize: () => actualViewport,
       setViewportSize: async (size: typeof old) => {
         actualViewport = size;
       },
       isClosed: () => false,
-      context: () => ({ newCDPSession: async () => session })
+      context: () => ({ newCDPSession: create })
     } as unknown as Page);
     const capture = await view.startCapture({ ...old, quality: 85 }, vi.fn());
     await vi.waitFor(() =>
-      expect(session.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything())
+      expect(seed.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything())
     );
     const resized = view.resize(next);
     await Promise.resolve();
@@ -209,5 +222,52 @@ describe('Browser page view', () => {
     await resized;
     await capture.stop();
     expect(actualViewport).toEqual(next);
+  });
+
+  it('does not hold a screencast or resize indefinitely when the static clip never answers', async () => {
+    const live = castSession();
+    const seed = castSession();
+    const screenshot = Promise.withResolvers<{ data: string }>();
+    seed.send.mockImplementation(async (method) => {
+      if (method === 'Page.getLayoutMetrics') {
+        return {
+          visualViewport: { pageX: 0, pageY: 0, scale: 1 },
+          contentSize: { width: 1600 },
+          cssContentSize: { width: 800 }
+        };
+      }
+      if (method === 'Page.captureScreenshot') return screenshot.promise;
+    });
+    const viewport = { width: 800, height: 450 };
+    const setViewportSize = vi.fn(async (_size: typeof viewport) => {});
+    const create = vi.fn().mockResolvedValueOnce(live).mockResolvedValueOnce(seed);
+    const view = new BrowserPageView({
+      viewportSize: () => viewport,
+      setViewportSize,
+      isClosed: () => false,
+      context: () => ({ newCDPSession: create })
+    } as unknown as Page);
+    vi.useFakeTimers();
+    try {
+      const offer = vi.fn();
+      const capture = await view.startCapture({ ...viewport, quality: 85 }, offer);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(seed.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.anything());
+      const next = { width: 1000, height: 700 };
+      const resized = view.resize(next);
+      await capture.stop();
+      expect(live.detach).toHaveBeenCalledOnce();
+      expect(seed.detach).not.toHaveBeenCalled();
+      expect(setViewportSize).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await resized;
+      expect(seed.detach).toHaveBeenCalledOnce();
+      expect(setViewportSize.mock.calls).toEqual([[viewport], [next]]);
+      screenshot.resolve({ data: jpegHeader(800, 450).toString('base64') });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(offer).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

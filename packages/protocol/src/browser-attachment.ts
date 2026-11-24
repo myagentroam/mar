@@ -153,6 +153,17 @@ export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('tab.openHtml'), path: z.string().min(1).max(4096) }),
   z.strictObject({ type: z.literal('tab.select'), tabId }),
   z.strictObject({ type: z.literal('tab.close'), tabId }),
+  z.strictObject({ type: z.literal('tab.controls.observe') }),
+  z.strictObject({ type: z.literal('tab.reopen') }),
+  z.strictObject({
+    type: z.literal('page.zoom'),
+    viewVersion: positiveUint32,
+    direction: z.enum(['in', 'out', 'reset'])
+  }),
+  z.strictObject({
+    type: z.literal('tab.restore'),
+    addresses: z.array(z.string().min(1).max(8192)).min(1).max(BROWSER_TAB_LIMIT)
+  }),
   z.strictObject({
     type: z.literal('dialog.respond'),
     id: z.string().uuid(),
@@ -164,6 +175,9 @@ export const browserAttachmentMessageSchema = z.discriminatedUnion('type', [
 export type BrowserAttachmentMessage = z.infer<typeof browserAttachmentMessageSchema>;
 
 export const browserTabSnapshotSchema = z.strictObject({
+  tabControls: z
+    .strictObject({ reopen: z.boolean(), zoom: z.number().int().min(50).max(200) })
+    .optional(),
   agentActive: z.literal(true).optional(),
   activeId: tabId.optional(),
   viewVersion: positiveUint32,

@@ -36,11 +36,16 @@ export function browserError(code: string): string {
     case 'BROWSER_CONTROL_DISCONNECTED':
     case 'BROWSER_DISCONNECTED':
     case 'BROWSER_LEASE_ENDED':
+    case 'BROWSER_LEASE_EXPIRED':
       return translate('browser.disconnected');
     case 'BROWSER_NO_FRAME':
       return translate('browser.noFrame');
     case 'BROWSER_SESSION_ENDED':
       return translate('browser.ended');
+    case 'BROWSER_RESTORE_NOT_BLANK':
+      return translate('browser.restoreNotBlank');
+    case 'BROWSER_TAB_RESTORE_INCOMPLETE':
+      return translate('browser.restoreIncomplete');
     case 'BROWSER_PROFILE_CHANGED':
       return translate('browser.profileChanged');
     case 'BROWSER_ATTACHMENT_BUSY':

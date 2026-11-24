@@ -2408,6 +2408,7 @@ export class NodeConnector {
         this.workspaceCoordinator.require(id);
       },
       workspacePath: (id) => this.database?.getWorkspace(id)?.path,
+      workspaceFilesChanged: (id) => this.invalidateWorkspaceFiles(id),
       relay: () => {
         const current = this.config;
         if (!current?.nodeId || !current.credential) throw new Error('BROWSER_RELAY_UNAVAILABLE');

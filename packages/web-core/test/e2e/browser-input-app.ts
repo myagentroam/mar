@@ -6,6 +6,7 @@ import type {
 } from '@myagentroam/protocol';
 import WorkspaceNodeBrowser from '../../src/view/workbench/WorkspaceNodeBrowser.vue';
 import { createWorkbenchBrowserService } from '../../src/service/workbench-browser-service.js';
+import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { createTooltipApp } from './tooltip-app.js';
 import '../../src/styles.css';
@@ -20,7 +21,9 @@ declare const fixturePaste: (
   message: Extract<BrowserAttachmentMessage, { type: 'context.paste' }>
 ) => Promise<void>;
 
-localePreferenceService().setLocale('en-US');
+const fixtureOptions = new URLSearchParams(location.search);
+localePreferenceService().setLocale(fixtureOptions.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
+document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 const scope = { nodeId: 'test-node', workspaceId: 'test-workspace' };
 const browser = createWorkbenchBrowserService({
   send: () => false,
@@ -28,6 +31,23 @@ const browser = createWorkbenchBrowserService({
   acquire: () => undefined
 });
 browser.snapshot.value = { tabs: [], viewVersion: 1 };
+if (fixtureOptions.has('zoom')) {
+  browser.snapshot.value = {
+    viewVersion: 1,
+    tabControls: { zoom: 100, reopen: false },
+    activeId: 'page',
+    tabs: [
+      {
+        id: 'page',
+        url: 'https://example.test/',
+        title: 'Example page',
+        loading: false,
+        canGoBack: false,
+        canGoForward: false
+      }
+    ]
+  };
+}
 browser.status.value = location.search.includes('offline') ? 'failed' : 'ready';
 const viewportSize = { width: 800, height: 600 };
 browser.frame.value = { viewVersion: 1, ...viewportSize, raster: viewportSize };
@@ -57,6 +77,16 @@ browser.send = (message) => {
   if (message.type === 'input') void fixtureInput(message.action);
   if (message.type === 'tab.open') document.body.dataset.opened = message.address;
   if (message.type === 'context.paste') void fixturePaste(message);
+  if (message.type === 'page.zoom') {
+    const snapshot = browser.snapshot.value;
+    const current = snapshot?.tabControls;
+    if (snapshot && current && snapshot.viewVersion === message.viewVersion) {
+      const levels = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200];
+      const step = levels.indexOf(current.zoom) + (message.direction === 'in' ? 1 : -1);
+      const zoom = message.direction === 'reset' ? 100 : (levels[step] ?? current.zoom);
+      browser.snapshot.value = { ...snapshot, tabControls: { ...current, zoom } };
+    }
+  }
   return true;
 };
 const version = ref(1);

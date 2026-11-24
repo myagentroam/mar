@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import type { BrowserTabSnapshot, BrowserUpload } from '@myagentroam/protocol';
+import {
+  isBrowserWorkspacePreview,
+  type BrowserTabSnapshot,
+  type BrowserUpload
+} from '@myagentroam/protocol';
 import type { BrowserContext, CDPSession, Frame, Page, Request } from 'playwright';
 import { BrowserDownloads } from './browser-downloads.js';
 import { BrowserDialogs } from './browser-dialogs.js';
@@ -23,6 +27,18 @@ type Tab = {
 
 const ERROR_PAGE = 'chrome-error://chromewebdata/';
 
+function restorableAddress(value: string): string | undefined {
+  const url = URL.parse(value);
+  if (
+    url &&
+    (url.protocol === 'http:' || url.protocol === 'https:') &&
+    !url.username &&
+    !url.password &&
+    !isBrowserWorkspacePreview(url.href)
+  )
+    return url.href;
+}
+
 /** Owns tab identities and active selection for one owned browsing context.
  * Playwright remains the source of URLs, history and popup behavior; the
  * session owns context shutdown and the attachment owns calls and snapshots.
@@ -30,6 +46,7 @@ const ERROR_PAGE = 'chrome-error://chromewebdata/';
  */
 export class BrowserTabs {
   private readonly tabs = new Map<string, Tab>();
+  private readonly closedAddresses: string[] = [];
   private activeId: string | undefined;
   private viewVersion = 1;
   private agentActivity: ReturnType<typeof setTimeout> | undefined;
@@ -86,6 +103,7 @@ export class BrowserTabs {
       downloads?: { session: CDPSession; directory: string } | undefined;
       onDownloadBytesReceived?: () => void;
       workspacePath?: () => string | undefined;
+      workspaceFilesChanged?: () => void;
       favicon?: ((url: string) => Promise<string | undefined>) | undefined;
     }
   ) {
@@ -221,8 +239,10 @@ export class BrowserTabs {
     return this.files.receive(request);
   }
 
-  download(command: Parameters<BrowserDownloads['execute']>[0]): Promise<unknown> {
-    return this.downloads.execute(command);
+  async download(command: Parameters<BrowserDownloads['execute']>[0]): Promise<unknown> {
+    const result = await this.downloads.execute(command, this.options.workspacePath);
+    if (command.action === 'workspace') this.options.workspaceFilesChanged?.();
+    return result;
   }
 
   get activeDownloadCount(): number {
@@ -281,8 +301,80 @@ export class BrowserTabs {
   }
 
   async close(id: string): Promise<void> {
-    await this.get(id).page.close();
-    await this.replacing;
+    return this.orderInput(async () => {
+      const tab = this.get(id);
+      const address = restorableAddress(tab.page.url());
+      await tab.page.close();
+      if (address && tab.page.isClosed()) {
+        this.closedAddresses.push(address);
+        if (this.closedAddresses.length > this.options.limit) this.closedAddresses.shift();
+        this.changed(false);
+      }
+      await this.replacing;
+    });
+  }
+
+  tabControls(): NonNullable<BrowserTabSnapshot['tabControls']> {
+    return {
+      reopen: this.closedAddresses.length > 0 && this.tabs.size < this.options.limit,
+      zoom: this.activeView?.zoomPercent ?? 100
+    };
+  }
+
+  async reopen(): Promise<void> {
+    return this.orderInput(async () => {
+      if (!this.tabControls().reopen) return;
+      const address = this.closedAddresses.pop();
+      try {
+        if (address) await this.open(address);
+      } catch (error) {
+        if (address) this.closedAddresses.push(address);
+        throw error;
+      } finally {
+        this.changed(false);
+      }
+    });
+  }
+
+  async restore(addresses: readonly string[]): Promise<void> {
+    return this.orderInput(async () => {
+      const [blank] = this.tabs.values();
+      if (
+        this.tabs.size !== 1 ||
+        !blank ||
+        blank.navigation ||
+        blank.canGoBack ||
+        blank.page.url() !== 'about:blank'
+      )
+        throw new Error('BROWSER_RESTORE_NOT_BLANK');
+      const urls = addresses.map(restorableAddress);
+      if (!urls.every((url) => url !== undefined)) throw new Error('BROWSER_INVALID_ADDRESS');
+      let incomplete = false;
+      for (const [index, url] of urls.entries()) {
+        try {
+          if (index === 0) await blank.view.navigate(url);
+          else await this.open(url);
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            (error.message !== 'BROWSER_NAVIGATION_FAILED' &&
+              error.message !== 'BROWSER_NAVIGATION_ABORTED')
+          )
+            throw error;
+          incomplete = true;
+        }
+      }
+      if (incomplete) throw new Error('BROWSER_TAB_RESTORE_INCOMPLETE');
+    });
+  }
+
+  async zoom(version: number, direction: 'in' | 'out' | 'reset'): Promise<void> {
+    return this.orderInput(async () => {
+      const view = this.navigationView(version);
+      if (!view) return;
+      await view.zoom(direction);
+      if (this.activeView === view) this.changed(false);
+    });
   }
 
   private get(id: string): Tab {

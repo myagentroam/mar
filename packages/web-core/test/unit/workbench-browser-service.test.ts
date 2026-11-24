@@ -15,7 +15,8 @@ const mock = vi.hoisted(() => ({
   snapshot: undefined as ((value: BrowserTabSnapshot) => void) | undefined,
   frame: undefined as
     ((value: { viewVersion: number; width: number; height: number }) => void) | undefined,
-  ended: undefined as ((code: string) => void) | undefined
+  ended: undefined as ((code: string) => void) | undefined,
+  attached: undefined as (() => void) | undefined
 }));
 
 vi.mock('../../src/service/browser-attachment-client.js', () => ({
@@ -29,21 +30,138 @@ vi.mock('../../src/service/browser-attachment-client.js', () => ({
         snapshot: (value: BrowserTabSnapshot) => void;
         frame: NonNullable<typeof mock.frame>;
         ended: (code: string) => void;
+        attached: () => void;
       }
     ) {
       mock.open = open;
       mock.snapshot = callbacks.snapshot;
       mock.frame = callbacks.frame;
       mock.ended = callbacks.ended;
+      mock.attached = callbacks.attached;
     }
     close() {}
   }
 }));
 
 afterEach(() => {
+  vi.useRealTimers();
   mock.supportsBrowserVideo.mockReset();
   mock.supportsBrowserVideo.mockResolvedValue(true);
   vi.unstubAllGlobals();
+});
+
+it.each([
+  'first-frame timeout',
+  'view change timeout',
+  'lease expiration',
+  'control reconnect'
+] as const)('reattaches once to the same browser after %s', async (failure) => {
+  vi.useFakeTimers();
+  vi.stubGlobal('window', { location: { origin: 'https://workbench.test' } });
+  vi.stubGlobal('WebSocket', class {});
+  const requests: BrowserControlRequest['request'][] = [];
+  const service = createWorkbenchBrowserService({
+    connectionId: () => 'workbench',
+    acquire: () => ({
+      transportSessionId: 'direct',
+      createChannel: () => ({}) as RTCDataChannel,
+      release() {}
+    }),
+    send({ requestId, request }) {
+      requests.push(request);
+      queueMicrotask(() =>
+        service.handle({
+          type: 'browser.response',
+          requestId,
+          ...(request.action === 'attach' && {
+            result: { type: 'OPEN', attachmentId: randomUUID(), ticket: 'A'.repeat(32) }
+          }),
+          ...(request.action === 'renew' &&
+            failure === 'lease expiration' && { error: 'BROWSER_LEASE_EXPIRED' })
+        })
+      );
+      return true;
+    }
+  });
+  try {
+    await service.show(
+      { nodeId: 'n', workspaceId: 'w' },
+      { apiVersion: 1, ice: true, nodeGeneration: 'g' },
+      {} as HTMLCanvasElement,
+      { action: 'resume', browserId: 'same-browser' }
+    );
+    if (failure !== 'first-frame timeout') {
+      mock.attached!();
+      mock.snapshot!({ tabs: [], viewVersion: 1 });
+      mock.frame!({ viewVersion: 1, width: 800, height: 600 });
+    }
+    if (failure === 'view change timeout') {
+      mock.snapshot!({ tabs: [], viewVersion: 2 });
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(requests.filter(({ action }) => action === 'attach')).toHaveLength(1);
+      mock.snapshot!({ tabs: [], viewVersion: 3 });
+    }
+    // A subsequent failure from the old attachment must not consume the retry.
+    const oldEnded = mock.ended!;
+    if (failure === 'control reconnect') {
+      service.disconnected();
+      expect(service.status.value).toBe('failed');
+      expect(service.browserId()).toBe('same-browser');
+      expect(requests.filter(({ action }) => action === 'attach')).toHaveLength(1);
+      service.controlReady();
+      service.controlReady();
+      await vi.advanceTimersByTimeAsync(0);
+    } else {
+      await vi.advanceTimersByTimeAsync(
+        failure === 'lease expiration' ? 5_000 : failure === 'view change timeout' ? 4_000 : 10_000
+      );
+    }
+    expect(service.status.value).toBe('connecting');
+    expect(requests.filter(({ action }) => action === 'attach')).toEqual([
+      {
+        action: 'attach',
+        nodeId: 'n',
+        workspaceId: 'w',
+        browserId: 'same-browser',
+        transportId: 'direct'
+      },
+      { action: 'attach', nodeId: 'n', workspaceId: 'w', browserId: 'same-browser' }
+    ]);
+    oldEnded('BROWSER_DISCONNECTED');
+    expect(service.status.value).toBe('connecting');
+    if (failure === 'control reconnect') {
+      mock.attached!();
+      mock.snapshot!({ tabs: [], viewVersion: 1 });
+      mock.frame!({ viewVersion: 1, width: 800, height: 600 });
+      expect(service.status.value).toBe('ready');
+      service.disconnected();
+      service.controlReady();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.status.value).toBe('connecting');
+      expect(requests.filter(({ action }) => action === 'attach')).toHaveLength(3);
+      mock.ended!('BROWSER_DISCONNECTED');
+      expect(service.status.value).toBe('failed');
+      expect(requests.map(({ action }) => action)).toEqual([
+        'attach',
+        'release',
+        'attach',
+        'release',
+        'attach',
+        'release'
+      ]);
+      return;
+    }
+    mock.ended!('BROWSER_DISCONNECTED');
+    expect(service.status.value).toBe('failed');
+    expect(requests.filter(({ action }) => action === 'attach')).toHaveLength(2);
+    expect(requests.map(({ action }) => action)).toEqual(
+      failure === 'lease expiration' || failure === 'view change timeout'
+        ? ['attach', 'renew', 'release', 'attach', 'release']
+        : ['attach', 'release', 'attach', 'release']
+    );
+  } finally {
+    service.hide();
+  }
 });
 
 it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
@@ -184,7 +302,7 @@ it('holds the upload state until cancellation settles, not until the aborted upl
   service.handle({ type: 'browser.response', requestId: requests[1]!.requestId });
 });
 
-it.each(['cancel', 'delete'] as const)(
+it.each(['cancel', 'delete', 'workspace'] as const)(
   'sends the download %s action in both the URL and body',
   async (action) => {
     const requests: BrowserControlRequest[] = [];
@@ -220,12 +338,16 @@ it.each(['cancel', 'delete'] as const)(
     mock.frame!({ viewVersion: 1, width: 800, height: 600 });
     try {
       if (action === 'cancel') await service.cancelDownload(id);
-      else await service.deleteDownload(id);
+      else if (action === 'delete') await service.deleteDownload(id);
+      else await service.saveDownloadToWorkspace(id, 'reports/result.txt');
       expect(http).toHaveBeenCalledExactlyOnceWith(
         `/api/browser/downloads/${action}?connectionId=workbench`,
         {
           method: 'POST',
-          body: JSON.stringify({ attachmentId, command: { action, id } })
+          body: JSON.stringify({
+            attachmentId,
+            command: { action, id, ...(action === 'workspace' && { path: 'reports/result.txt' }) }
+          })
         }
       );
     } finally {

@@ -7,6 +7,110 @@ import { installBrowserContextMenu } from '../../mar-node/src/browser/browser-co
 import { BrowserPageView } from '../../mar-node/src/browser/browser-page-view.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test('Browser zoom is a single menu row that stays open while adjusting', async ({
+  page
+}, testInfo) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  try {
+    await page.goto(`${fixture.url}browser-input.html?zoom&locale=zh-CN`);
+    const trigger = page.getByRole('button', { name: '浏览器命令' });
+    const menu = page.getByRole('menu', { name: '浏览器命令' });
+    const row = menu.getByRole('group', { name: '缩放' });
+    const controls = row.locator('.node-browser-zoom-controls');
+    const zoomIn = row.getByRole('menuitem', { name: '放大网页' });
+    const zoomOut = row.getByRole('menuitem', { name: '缩小网页' });
+    const reset = (percent: number) =>
+      row.getByRole('menuitem', { name: `重置缩放（${percent}%）` });
+    await trigger.press('Enter');
+    await expect(row.locator('[data-mar-icon="search"]')).toBeVisible();
+    await expect(controls.getByRole('menuitem')).toHaveCount(3);
+    await expect(controls).toHaveCSS('border-inline-start-width', '1px');
+    await expect(reset(100)).toHaveCSS('border-inline-start-width', '1px');
+    await expect(zoomIn).toHaveCSS('border-inline-start-width', '1px');
+    await expect(zoomIn).toHaveCSS('margin-inline-start', '0px');
+    await expect(reset(100)).toBeDisabled();
+    await zoomOut.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(reset(100)).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(zoomIn).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(reset(110)).toBeEnabled();
+    await expect(zoomIn).toBeFocused();
+    await reset(110).click();
+    await expect(reset(100)).toBeDisabled();
+    await expect(reset(100)).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await zoomIn.click();
+    await expect(reset(110)).toBeVisible();
+    await page.mouse.move(0, 0);
+    await menu.screenshot({
+      path: testInfo.outputPath('browser-zoom-menu.png'),
+      animations: 'disabled'
+    });
+    await page.evaluate(() => {
+      document.documentElement.dataset.theme = 'vscode-dark-2026';
+    });
+    await menu.screenshot({
+      path: testInfo.outputPath('browser-zoom-menu-dark.png'),
+      animations: 'disabled'
+    });
+    await reset(110).click();
+    const narrow = { width: 390, height: 740 };
+    await page.setViewportSize(narrow);
+    await zoomOut.click();
+    await expect(reset(90)).toBeVisible();
+    const box = (await menu.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(narrow.width);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('Browser page keyboard mode sends Tab in both directions and Escape returns focus', async ({
+  page,
+  context
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const remote = await context.newPage();
+  try {
+    await remote.setContent('<input aria-label="First"><input aria-label="Second">');
+    const first = remote.getByRole('textbox', { name: 'First' });
+    const second = remote.getByRole('textbox', { name: 'Second' });
+    await first.focus();
+    const actions = await attach(page, remote, fixture.url);
+    const keyboard = page.getByRole('button', { name: 'Page keyboard mode' });
+    await keyboard.focus();
+    await page.keyboard.press('Tab');
+    expect(actions).toEqual([]);
+    await keyboard.press('Enter');
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Tab');
+    await expect(second).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(first).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(keyboard).toBeFocused();
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    expect(actions.filter((action) => action.type === 'key').map((action) => action.key)).toEqual([
+      'Tab',
+      'Tab',
+      'Shift',
+      'Tab',
+      'Tab',
+      'Shift'
+    ]);
+  } finally {
+    await remote.close();
+    await fixture.close();
+  }
+});
+
 test('Browser shows Agent activity without changing the viewport or blocking page commands', async ({
   page
 }) => {

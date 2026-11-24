@@ -2184,6 +2184,8 @@ export function createWorkbenchPageController<
           nativeTouch: manifest.browserNativeTouch === true,
           contextMenu: manifest.browserContextMenu === true,
           find: manifest.browserFind === true,
+          tabControls: manifest.browserTabControls === true,
+          downloadWorkspace: manifest.browserDownloadWorkspace === true,
           downloadProgress: manifest.browserDownloadProgress === true
         };
     },

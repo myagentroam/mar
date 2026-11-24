@@ -25,7 +25,10 @@ import type {
   WorkbenchBrowserCapability,
   WorkbenchBrowserService
 } from '../../service/workbench-browser-service.js';
-import { browserAddress, isBrowserLoopback } from '../../service/browser-link-routing.js';
+import {
+  browserAddressDestination,
+  isBrowserLoopback
+} from '../../service/browser-link-routing.js';
 import BrowserAddressInput from './BrowserAddressInput.vue';
 import BrowserFindBar from './BrowserFindBar.vue';
 import BrowserDownloadsDialog from './BrowserDownloadsDialog.vue';
@@ -59,6 +62,8 @@ const browserSurface = ref<HTMLElement>();
 const tabPrefix = useId();
 const keyboard = ref<HTMLTextAreaElement>();
 const keyboardFocused = ref(false);
+const pageKeyboard = ref(false);
+let keyboardOrigin: HTMLElement | undefined;
 const body = ref<HTMLElement>();
 const lifetime = new AbortController();
 const draft = ref('');
@@ -271,6 +276,42 @@ const hasCommands = computed(() => !!snapshot.value && status.value !== 'failed'
 const reconnectId = computed(() =>
   error.value !== 'BROWSER_SESSION_ENDED' ? props.browser.browserId() : undefined
 );
+let recentAddresses: string[] = [];
+let restoreAddresses: string[] | undefined;
+watch(
+  snapshot,
+  (value) => {
+    if (!value) return;
+    const ordered = [
+      ...value.tabs.filter(({ id }) => id !== value.activeId),
+      ...value.tabs.filter(({ id }) => id === value.activeId)
+    ];
+    recentAddresses = ordered.flatMap(({ url }) => {
+      const parsed = URL.parse(url);
+      return parsed &&
+        /^https?:$/u.test(parsed.protocol) &&
+        !parsed.username &&
+        !parsed.password &&
+        !isBrowserWorkspacePreview(url)
+        ? [parsed.href]
+        : [];
+    });
+  },
+  { flush: 'sync' }
+);
+watch([status, snapshot], () => {
+  if (status.value === 'failed') restoreAddresses = undefined;
+  if (!restoreAddresses || status.value !== 'ready' || !snapshot.value?.tabControls) return;
+  const addresses = restoreAddresses;
+  restoreAddresses = undefined;
+  props.browser.send({ type: 'tab.restore', addresses });
+});
+const canRestoreTabs = computed(
+  () =>
+    props.capability.tabControls &&
+    error.value === 'BROWSER_SESSION_ENDED' &&
+    recentAddresses.length > 0
+);
 const canRecover = computed(
   () =>
     error.value !== 'BROWSER_H264_DECODER_UNAVAILABLE' && error.value !== 'BROWSER_NOT_AUTHORIZED'
@@ -291,20 +332,15 @@ function show(action: Parameters<WorkbenchBrowserService['show']>[3]): void {
 
 watch(
   [canvas, () => props.connected],
-  ([element, connected], [, previous]) => {
-    if (!element || !connected) return;
-    if (initial) {
-      initial = false;
-      show(
-        props.restoreId
-          ? { action: 'resume', browserId: props.restoreId }
-          : { action: 'open', preserveLogin: true }
-      );
-      if (props.restoreId) emit('restored');
-    } else if (!previous) {
-      const browserId = props.browser.browserId();
-      if (browserId) show({ action: 'resume', browserId });
-    }
+  ([element, connected]) => {
+    if (!initial || !element || !connected) return;
+    initial = false;
+    show(
+      props.restoreId
+        ? { action: 'resume', browserId: props.restoreId }
+        : { action: 'open', preserveLogin: true }
+    );
+    if (props.restoreId) emit('restored');
   },
   { flush: 'post' }
 );
@@ -393,10 +429,10 @@ onMounted(() => {
     priority: 30,
     owner: () => keyboard.value,
     keys: [{ key: 'Escape' }],
-    when: () => keyboardFocused.value && !textInput.active,
+    when: (event) => keyboardFocused.value && !textInput.active && !event.isComposing,
     execute: () => {
       ++contextIntent;
-      keyboard.value?.blur();
+      exitPageKeyboard();
       return 'HANDLED';
     }
   });
@@ -418,7 +454,7 @@ function edit(value: string): void {
 }
 function navigate(): void {
   if (!snapshot.value || !hasCommands.value) return;
-  const address = browserAddress(draft.value);
+  const address = browserAddressDestination(draft.value);
   if (!address) {
     invalid.value = true;
     feedback(t('browser.invalid'), 'warning');
@@ -436,6 +472,20 @@ function travel(action: 'back' | 'forward' | 'reload' | 'stop'): void {
   showCurrentAddress();
   props.browser.send({ type: 'navigation', viewVersion: snapshot.value.viewVersion, action });
 }
+function zoomUnavailable(direction: 'in' | 'out' | 'reset'): boolean {
+  const zoom = snapshot.value?.tabControls?.zoom;
+  return (
+    !hasCommands.value ||
+    blank.value ||
+    zoom === undefined ||
+    (direction === 'in' ? zoom >= 200 : direction === 'out' ? zoom <= 50 : zoom === 100)
+  );
+}
+function zoomPage(direction: 'in' | 'out' | 'reset'): void {
+  const viewVersion = snapshot.value?.viewVersion;
+  if (viewVersion !== undefined && !zoomUnavailable(direction))
+    props.browser.send({ type: 'page.zoom', viewVersion, direction });
+}
 function command(value: string | number | object): void {
   if (value === 'find') {
     // The command menu restores its trigger immediately after emitting the command.
@@ -445,6 +495,7 @@ function command(value: string | number | object): void {
   const id = props.browser.browserId();
   if (value === 'settings') return emit('settings', id);
   if (!id) return;
+  if (value === 'reopen') props.browser.send({ type: 'tab.reopen' });
   if (value === 'cache' || value === 'history') emit('data', value, id);
   if (value === 'close') {
     const scope = props.scope;
@@ -457,6 +508,11 @@ function command(value: string | number | object): void {
 function recover(): void {
   if (reconnectId.value) show({ action: 'resume', browserId: reconnectId.value });
   else show({ action: 'open', preserveLogin: true });
+}
+function restoreRecentTabs(): void {
+  if (!canRestoreTabs.value) return;
+  restoreAddresses = [...recentAddresses];
+  show({ action: 'open', preserveLogin: true });
 }
 function respond(accept: boolean): void {
   if (!dialog.value) return;
@@ -814,7 +870,11 @@ function key(event: KeyboardEvent, edge: 'up' | 'down'): void {
     input({ type: 'key', edge, viewVersion, key: pressedKey });
     return;
   }
-  if (event.key === 'Escape' || event.key === 'Tab') return;
+  if (
+    event.key === 'Escape' ||
+    (event.key === 'Tab' && (!pageKeyboard.value || event.ctrlKey || event.metaKey || event.altKey))
+  )
+    return;
   if (
     props.capability.contextMenu &&
     (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
@@ -838,6 +898,23 @@ function key(event: KeyboardEvent, edge: 'up' | 'down'): void {
   if (input({ type: 'key', edge, viewVersion, key: event.key }))
     pressedKeys.set(identity, event.key);
 }
+function exitPageKeyboard(): void {
+  const origin = keyboardOrigin;
+  pageKeyboard.value = false;
+  if (keyboardFocused.value) {
+    (origin?.isConnected ? origin : browserSurface.value)?.focus({ preventScroll: true });
+    keyboard.value?.blur();
+  }
+}
+
+function togglePageKeyboard(event: MouseEvent): void {
+  if (pageKeyboard.value) return exitPageKeyboard();
+  if (!frame.value || !keyboard.value) return;
+  if (event.currentTarget instanceof HTMLElement) keyboardOrigin = event.currentTarget;
+  keyboard.value.focus({ preventScroll: true });
+  pageKeyboard.value = document.activeElement === keyboard.value;
+}
+
 function releaseKeys(): void {
   const viewVersion = frame.value?.viewVersion;
   if (viewVersion !== undefined)
@@ -861,6 +938,9 @@ watch(
     pressedKeys.clear();
   }
 );
+watch([() => active.value?.id, status], () => {
+  if (pageKeyboard.value) exitPageKeyboard();
+});
 function resetTransientInput(): void {
   inputScheduler.reset();
   textInput.reset();
@@ -1059,6 +1139,54 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
             <MarDropdownItem command="history" icon="clock" :disabled="!browser.browserId()">{{
               t('browser.history')
             }}</MarDropdownItem>
+            <template v-if="snapshot?.tabControls">
+              <MarDropdownItem
+                command="reopen"
+                icon="retry"
+                :disabled="!snapshot.tabControls.reopen"
+              >
+                {{ t('browser.reopenTab') }}
+              </MarDropdownItem>
+              <div class="node-browser-zoom" role="group" :aria-label="t('browser.zoom')">
+                <span class="node-browser-zoom-label" aria-hidden="true">
+                  <MarIcon name="search" />
+                  {{ t('browser.zoom') }}
+                </span>
+                <div class="node-browser-zoom-controls" role="presentation">
+                  <MarButton
+                    class="node-browser-icon"
+                    text
+                    icon="subtract"
+                    role="menuitem"
+                    tabindex="-1"
+                    :aria-label="t('browser.zoomOut')"
+                    :aria-disabled="zoomUnavailable('out') || undefined"
+                    @click="zoomPage('out')"
+                  />
+                  <MarButton
+                    class="node-browser-zoom-value"
+                    text
+                    role="menuitem"
+                    tabindex="-1"
+                    :aria-label="t('browser.zoomReset', { percent: snapshot.tabControls.zoom })"
+                    :aria-disabled="zoomUnavailable('reset') || undefined"
+                    @click="zoomPage('reset')"
+                  >
+                    {{ snapshot.tabControls.zoom }}%
+                  </MarButton>
+                  <MarButton
+                    class="node-browser-icon"
+                    text
+                    icon="plus"
+                    role="menuitem"
+                    tabindex="-1"
+                    :aria-label="t('browser.zoomIn')"
+                    :aria-disabled="zoomUnavailable('in') || undefined"
+                    @click="zoomPage('in')"
+                  />
+                </div>
+              </div>
+            </template>
             <MarDropdownItem command="cache" icon="clear" :disabled="!browser.browserId()">{{
               t('browser.cache')
             }}</MarDropdownItem>
@@ -1119,6 +1247,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         ref="keyboard"
         data-node-browser-input
         class="node-browser-input"
+        tabindex="-1"
         :aria-label="t('browser.viewport')"
         autocomplete="off"
         autocapitalize="none"
@@ -1128,6 +1257,8 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         @focus="keyboardFocused = true"
         @blur="
           keyboardFocused = false;
+          pageKeyboard = false;
+          keyboardOrigin = undefined;
           releaseControls();
         "
         @compositionstart="startComposition"
@@ -1148,6 +1279,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           <MarIcon name="connection-off" :size="32" aria-hidden="true" />
           <h2>{{ t('browser.browserUnavailable') }}</h2>
           <p>{{ error ? browserError(error) : t('browser.failed') }}</p>
+          <p v-if="canRestoreTabs">{{ t('browser.restoreTabsHint') }}</p>
         </div>
         <MarButton
           v-if="canRecover"
@@ -1155,8 +1287,13 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           icon="retry"
           :disabled="!connected"
           @click="recover"
-          >{{ t('browser.retry') }}</MarButton
+          >{{
+            t(error === 'BROWSER_SESSION_ENDED' ? 'browser.newBrowser' : 'browser.retry')
+          }}</MarButton
         >
+        <MarButton v-if="canRestoreTabs" :disabled="!connected" @click="restoreRecentTabs">
+          {{ t('browser.restoreTabs') }}
+        </MarButton>
       </div>
       <div v-else-if="status === 'idle'" class="node-browser-placeholder">
         <p role="status">{{ t('browser.disconnected') }}</p>
@@ -1185,13 +1322,13 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
       >
         <MarButton
           v-if="!blank"
-          class="node-browser-keyboard"
           circle
           icon="keyboard"
-          :aria-label="t(keyboardFocused ? 'browser.hideKeyboard' : 'browser.showKeyboard')"
-          v-tooltip="t(keyboardFocused ? 'browser.hideKeyboard' : 'browser.showKeyboard')"
+          :aria-label="t('browser.pageKeyboard')"
+          :aria-pressed="pageKeyboard"
+          v-tooltip="t('browser.pageKeyboardHint')"
           @pointerdown.prevent
-          @click="keyboardFocused ? keyboard?.blur() : keyboard?.focus({ preventScroll: true })"
+          @click="togglePageKeyboard"
         />
         <MarButton
           v-if="!blank"
@@ -1222,6 +1359,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
       v-if="downloadsOpen"
       :key="downloadBrowserId ?? ''"
       :browser="browser"
+      :save-workspace="capability.downloadWorkspace === true"
       @close="downloadsOpen = false"
     />
     <MarDialog
@@ -1386,6 +1524,53 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
   inline-size: var(--mar-ui-compact-control-size, 24px);
   flex: none;
 }
+.node-browser-zoom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.125rem 0.75rem;
+  color: var(--mar-ui-text-secondary);
+  font-size: var(--mar-ui-font-size-control);
+}
+.node-browser-zoom-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.node-browser-zoom-controls {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--mar-ui-border-default);
+  border-radius: var(--mar-ui-radius-control);
+}
+.node-browser-zoom-controls > .mar-ui-button {
+  --mar-ui-button-hover-border: var(--mar-ui-border-subtle);
+  border: 0;
+  border-radius: 0;
+  outline-offset: -2px;
+}
+.node-browser-zoom-controls > .mar-ui-button + .mar-ui-button {
+  margin-inline-start: 0;
+  border-inline-start: 1px solid var(--mar-ui-border-subtle);
+}
+.node-browser-zoom-controls > .mar-ui-button:first-child {
+  border-start-start-radius: inherit;
+  border-end-start-radius: inherit;
+}
+.node-browser-zoom-controls > .mar-ui-button:last-child {
+  border-start-end-radius: inherit;
+  border-end-end-radius: inherit;
+}
+.node-browser-zoom-value {
+  min-inline-size: 6ch;
+  padding-inline: 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+.node-browser-zoom-value[aria-disabled='true'] {
+  color: var(--mar-ui-text-secondary);
+  cursor: default;
+}
 .node-browser-download {
   position: relative;
   flex: none;
@@ -1470,14 +1655,6 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 }
 .node-browser-blank :deep(.mar-ui-input__icon) {
   font-size: 1.25em;
-}
-.node-browser-keyboard {
-  display: none;
-}
-@media (any-pointer: coarse) {
-  .node-browser-keyboard {
-    display: inline-flex;
-  }
 }
 .node-browser-input {
   position: absolute;

@@ -38,7 +38,11 @@ type Connection = {
   contextMenu?: { id: string; finish: (options?: BrowserContextOptions) => void };
   scope: Scope;
   canvas: HTMLCanvasElement;
+  capability: WorkbenchBrowserCapability;
+  attempt: number;
   browserId?: string;
+  retried?: true;
+  controlLost?: true;
   attachmentId?: string;
   data?: BrowserAttachmentClient;
   transport?: Transport;
@@ -102,6 +106,9 @@ export function createWorkbenchBrowserService(options: {
   }
 
   function stop(connection: Connection): void {
+    connection.attempt++;
+    const { attachmentId } = connection;
+    delete connection.attachmentId;
     connection.selection?.finish('');
     connection.find?.finish();
     connection.contextMenu?.finish();
@@ -113,13 +120,12 @@ export function createWorkbenchBrowserService(options: {
     tabIcons.value = new Map();
     streamSample.value = undefined;
     connection.transport?.release();
-    if (connection.attachmentId) {
-      const releaseOld = release(connection.attachmentId);
+    if (attachmentId) {
+      const releaseOld = release(attachmentId);
       cleanup = Promise.all([cleanup, releaseOld]).then(() => undefined);
     }
     delete connection.data;
     delete connection.transport;
-    delete connection.attachmentId;
   }
 
   function hide(): void {
@@ -142,7 +148,45 @@ export function createWorkbenchBrowserService(options: {
   function disconnected(): void {
     for (const [requestId, finish] of pending)
       finish({ type: 'browser.response', requestId, error: 'BROWSER_OUTCOME_UNKNOWN' });
-    if (current) fail(current, 'BROWSER_CONTROL_DISCONNECTED');
+    if (!current || status.value === 'failed') return;
+    if (current.browserId && !current.retried) current.controlLost = true;
+    fail(current, 'BROWSER_CONTROL_DISCONNECTED');
+  }
+
+  function controlReady(): void {
+    const connection = current;
+    if (!connection?.controlLost || !options.connectionId()) return;
+    delete connection.controlLost;
+    connection.retried = true;
+    error.value = undefined;
+    status.value = 'connecting';
+    void attach(connection, connection.capability, true);
+  }
+
+  function recoverAttachment(
+    connection: Connection,
+    capability: WorkbenchBrowserCapability,
+    route: Path,
+    code: string
+  ): void {
+    if (current !== connection || status.value === 'failed') return;
+    if (
+      !connection.retried &&
+      connection.browserId &&
+      options.connectionId() &&
+      (code === 'BROWSER_DISCONNECTED' ||
+        code === 'BROWSER_LINK_UNAVAILABLE' ||
+        code === 'BROWSER_NO_FRAME' ||
+        code === 'BROWSER_LEASE_ENDED' ||
+        code === 'BROWSER_LEASE_EXPIRED' ||
+        (route === 'ice' && code === 'BROWSER_ICE_UNAVAILABLE'))
+    ) {
+      connection.retried = true;
+      status.value = 'connecting';
+      snapshot.value = frame.value = path.value = error.value = undefined;
+      stop(connection);
+      void attach(connection, capability, route === 'ice');
+    } else fail(connection, code);
   }
 
   async function attach(
@@ -152,13 +196,15 @@ export function createWorkbenchBrowserService(options: {
   ): Promise<void> {
     if (current !== connection || !connection.browserId) return;
     const { scope, canvas, browserId } = connection;
+    const attempt = ++connection.attempt;
     const transport =
       !relayOnly && capability.ice
         ? options.acquire(scope.nodeId, capability.nodeGeneration)
         : undefined;
     if (transport) connection.transport = transport;
     const route = transport ? 'ice' : 'relay';
-    const active = () => current === connection && status.value !== 'failed';
+    const active = () =>
+      current === connection && connection.attempt === attempt && status.value !== 'failed';
     let open: ReturnType<typeof browserAttachmentOpenSchema.parse>;
     try {
       const next = admission.then(async () => {
@@ -186,23 +232,18 @@ export function createWorkbenchBrowserService(options: {
       if (!grant) return;
       open = grant;
     } catch (cause) {
-      if (current !== connection) return;
+      if (!active()) return;
       const code = cause instanceof Error ? cause.message : 'BROWSER_FAILED';
-      if (transport && code === 'BROWSER_ICE_UNAVAILABLE') {
-        stop(connection);
-        return attach(connection, capability, true);
-      }
-      return fail(connection, code);
+      return recoverAttachment(connection, capability, route, code);
     }
-    if (current !== connection || connection.attachmentId !== open.attachmentId) return;
+    if (!active() || connection.attachmentId !== open.attachmentId) return;
+    const attachedHere = () => active() && connection.attachmentId === open.attachmentId;
     const linkFailed = (code: string) => {
-      if (current !== connection) return;
-      if (route === 'ice' && code === 'BROWSER_DISCONNECTED') {
-        status.value = 'connecting';
-        snapshot.value = frame.value = path.value = undefined;
-        stop(connection);
-        void attach(connection, capability, true);
-      } else fail(connection, code);
+      if (attachedHere()) recoverAttachment(connection, capability, route, code);
+    };
+    const awaitPicture = () => {
+      clearTimeout(connection.deadline);
+      connection.deadline = setTimeout(() => linkFailed('BROWSER_NO_FRAME'), 10_000);
     };
     let link: WebSocket | RTCDataChannel;
     try {
@@ -224,33 +265,38 @@ export function createWorkbenchBrowserService(options: {
         if (current === connection && connection.attachmentId === open.attachmentId)
           connection.renew = setTimeout(() => void renew(), 5_000);
       } catch (cause) {
-        if (connection.attachmentId === open.attachmentId)
-          fail(connection, cause instanceof Error ? cause.message : 'BROWSER_LEASE_ENDED');
+        if (connection.attachmentId === open.attachmentId) {
+          const code = cause instanceof Error ? cause.message : 'BROWSER_LEASE_ENDED';
+          // An unacknowledged renewal is just as unsafe to keep using as an expired lease.
+          linkFailed(code === 'BROWSER_OUTCOME_UNKNOWN' ? 'BROWSER_LEASE_ENDED' : code);
+        }
       }
     };
-    connection.deadline = setTimeout(() => {
-      if (current !== connection) return;
-      if (snapshot.value === undefined && route === 'ice') linkFailed('BROWSER_DISCONNECTED');
-      else fail(connection, 'BROWSER_NO_FRAME');
-    }, 10_000);
+    awaitPicture();
     connection.data = new BrowserAttachmentClient(link, canvas, open, {
       resizeViewport: capability.resizeViewport === true,
       downloadManagement: capability.downloadManagement === true,
+      tabControls: capability.tabControls === true,
       agentActivity: capability.agentActivity === true,
       ...(capability.tabIcons && {
         tabIcon({ tabId, url, png }) {
           if (
+            attachedHere() &&
             snapshot.value?.tabs.some((tab) => tab.id === tabId && tab.url === url && !tab.loading)
           )
             tabIcons.value = new Map(tabIcons.value).set(tabId, { url, png });
         }
       }),
       attached() {
+        if (!attachedHere()) return;
         path.value = route;
         connection.renew = setTimeout(() => void renew(), 5_000);
       },
       snapshot(value) {
+        if (!attachedHere()) return;
         if (snapshot.value?.viewVersion !== value.viewVersion) {
+          if (status.value === 'ready' && frame.value?.viewVersion === snapshot.value?.viewVersion)
+            awaitPicture();
           connection.selection?.finish('');
           connection.find?.finish();
           connection.contextMenu?.finish();
@@ -263,25 +309,30 @@ export function createWorkbenchBrowserService(options: {
         snapshot.value = value;
       },
       selection(id, text) {
-        if (connection.selection?.id === id) connection.selection.finish(text);
+        if (attachedHere() && connection.selection?.id === id) connection.selection.finish(text);
       },
       find({ id, result }) {
-        if (connection.find?.id === id) connection.find.finish(result);
+        if (attachedHere() && connection.find?.id === id) connection.find.finish(result);
       },
       contextMenu({ id, options }) {
-        if (connection.contextMenu?.id === id) connection.contextMenu.finish(options);
+        if (attachedHere() && connection.contextMenu?.id === id)
+          connection.contextMenu.finish(options);
       },
       frame(value) {
+        if (!attachedHere()) return;
         clearTimeout(connection.deadline);
+        // A decoded picture ends this outage. A later, independent outage has
+        // its own retry; a replacement that never paints cannot loop.
+        delete connection.retried;
         frame.value = value;
         status.value = 'ready';
       },
       sample(value) {
-        streamSample.value = value;
+        if (attachedHere()) streamSample.value = value;
       },
       downloadProgress: capability.downloadProgress === true,
       failed(code) {
-        error.value = code;
+        if (attachedHere()) error.value = code;
       },
       ended: linkFailed
     });
@@ -297,7 +348,7 @@ export function createWorkbenchBrowserService(options: {
       | { action: 'resume'; browserId: string }
   ): Promise<void> {
     hide();
-    const connection: Connection = { scope, canvas };
+    const connection: Connection = { scope, canvas, capability, attempt: 0 };
     current = connection;
     status.value = 'connecting';
     try {
@@ -474,7 +525,11 @@ export function createWorkbenchBrowserService(options: {
     );
   }
 
-  async function changeDownload(action: 'cancel' | 'delete', id: string): Promise<void> {
+  async function changeDownload(
+    action: 'cancel' | 'delete' | 'workspace',
+    id: string,
+    path?: string
+  ): Promise<void> {
     const target = downloadTarget();
     if (!options.http || !target) throw new Error('BROWSER_LEASE_ENDED');
     await options.http(
@@ -483,7 +538,7 @@ export function createWorkbenchBrowserService(options: {
         method: 'POST',
         body: JSON.stringify({
           attachmentId: target.attachmentId,
-          command: { action, id }
+          command: { action, id, ...(path !== undefined && { path }) }
         })
       }
     );
@@ -518,11 +573,13 @@ export function createWorkbenchBrowserService(options: {
     downloads,
     cancelDownload: (id: string) => changeDownload('cancel', id),
     deleteDownload: (id: string) => changeDownload('delete', id),
+    saveDownloadToWorkspace: (id: string, path: string) => changeDownload('workspace', id, path),
     downloadHref,
     hide,
     show,
     handle,
     disconnected,
+    controlReady,
     closeBrowser,
     browserId: () => visibleBrowserId.value,
     profile: ({ nodeId, workspaceId }: Scope, command: BrowserProfileCommand) =>
@@ -540,5 +597,7 @@ export type WorkbenchBrowserCapability = BrowserCapability & {
   contextMenu?: boolean;
   find?: boolean;
   downloadManagement?: boolean;
+  tabControls?: boolean;
+  downloadWorkspace?: boolean;
   agentActivity?: boolean;
 };

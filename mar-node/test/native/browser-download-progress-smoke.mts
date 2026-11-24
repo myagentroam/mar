@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer, type ServerResponse } from 'node:http';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -47,12 +47,17 @@ try {
   assert(address && typeof address !== 'string');
   browser = await launcher.launch();
   assert(browser.downloads);
+  const workspace = join(directory, 'workspace');
+  await mkdir(join(workspace, 'downloads'), { recursive: true });
   let byteUpdates = 0;
+  let fileChanges = 0;
   const tabs = new BrowserTabs(browser.context, {
     limit: 8,
     failed,
     downloads: browser.downloads,
-    onDownloadBytesReceived: () => byteUpdates++
+    onDownloadBytesReceived: () => byteUpdates++,
+    workspacePath: () => workspace,
+    workspaceFilesChanged: () => fileChanges++
   });
   const list = async (progress = true) =>
     browserDownloadPageSchema.parse(
@@ -82,6 +87,21 @@ try {
     (await list()).find((item) => item.id === known.id && item.state === 'ready')
   );
   assert.equal(ready.size, size);
+  const save = (path: string) => tabs.download({ action: 'workspace', id: ready.id, path });
+  const target = 'downloads/saved.bin';
+  const concurrent = await Promise.allSettled([save(target), save(target)]);
+  assert.equal(concurrent.filter(({ status }) => status === 'fulfilled').length, 1);
+  const collision = concurrent.find(({ status }) => status === 'rejected');
+  assert.match(String(collision?.reason), /FILE_ALREADY_EXISTS/u);
+  const output = await readFile(join(workspace, target));
+  assert(output.equals(Buffer.concat([first, first, Buffer.alloc(size - 2 * first.length, 2)])));
+  await assert.rejects(save('../outside.bin'), /FILE_PATH_ESCAPE/);
+  await assert.rejects(save('missing/saved.bin'), /FILE_NOT_FOUND/);
+  if (process.platform !== 'win32') {
+    await symlink(directory, join(workspace, 'linked'), 'dir');
+    await assert.rejects(save('linked/saved.bin'), /FILE_PATH_ESCAPE/);
+  }
+  assert.equal(fileChanges, 1);
   assert.deepEqual(await tabs.download({ action: 'chunk', id: ready.id, offset: 0, limit: 3 }), {
     contentBase64: first.subarray(0, 3).toString('base64'),
     offset: 0
@@ -101,7 +121,7 @@ try {
   );
   assert.equal(tabs.activeDownloadCount, 0);
   assert.deepEqual(errors, []);
-  console.log('Browser download byte progress, completion, file reads, and cancellation passed.');
+  console.log('Browser download progress, Workspace copy, file reads, and cancellation passed.');
 } finally {
   try {
     await browser?.close();

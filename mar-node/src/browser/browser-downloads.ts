@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { open, rm, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, open, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   BROWSER_DOWNLOAD_PAGE_SIZE,
@@ -8,6 +9,10 @@ import {
   type BrowserDownloadRequest
 } from '@myagentroam/protocol';
 import type { CDPSession, Page } from 'playwright';
+import {
+  resolveNewWorkspaceEntry,
+  resolveRegisteredWorkspaceRoot
+} from '../workspace/path-access.js';
 
 const HOUR_MS = 60 * 60_000;
 const RETENTION_MS = 30 * 24 * HOUR_MS;
@@ -126,7 +131,8 @@ export class BrowserDownloads {
   }
 
   async execute(
-    command: BrowserDownloadRequest['command'] | BrowserDownloadRead['command']
+    command: BrowserDownloadRequest['command'] | BrowserDownloadRead['command'],
+    workspacePath?: () => string | undefined
   ): Promise<unknown> {
     if (command.action === 'list') {
       const end = Math.max(0, this.ordered.length - command.offset);
@@ -170,6 +176,25 @@ export class BrowserDownloads {
     // Info admits a save. The HTTP response may wait between pull requests.
     entry.recentSaveUntil = performance.now() + SAVE_GRACE_MS;
     if (command.action === 'info') return entry.info;
+    if (command.action === 'workspace') {
+      const registered = workspacePath?.();
+      if (!registered) throw new Error('WORKSPACE_NOT_ALLOWED');
+      entry.readers = (entry.readers ?? 0) + 1;
+      try {
+        const root = await resolveRegisteredWorkspaceRoot(registered);
+        const target = await resolveNewWorkspaceEntry(root, command.path);
+        try {
+          await copyFile(location.path, target, constants.COPYFILE_EXCL);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST')
+            throw new Error('FILE_ALREADY_EXISTS');
+          throw new Error('BROWSER_DOWNLOAD_FAILED');
+        }
+      } finally {
+        entry.readers--;
+      }
+      return {};
+    }
     const content = Buffer.alloc(
       Math.min(command.limit, Math.max(0, location.size - command.offset))
     );

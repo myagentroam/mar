@@ -21,6 +21,42 @@ async function update(
   }, detail);
 }
 
+test('Browser confirms a Workspace destination and presents a name conflict without closing downloads', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-downloads.html');
+  try {
+    await page.goto(`${fixture.url}browser-downloads.html?workspaceSave`);
+    await update(page, {
+      revision: 5,
+      items: [{ id: 'ready', name: 'report.bin', state: 'ready', size: 3 }]
+    });
+    await page.getByRole('button', { name: 'Downloads', exact: true }).click();
+    const list = page.getByRole('dialog', { name: 'Downloads' });
+    const save = list.getByRole('button', { name: 'Save to Workspace' });
+    const prompt = page.getByRole('dialog', { name: 'Save to Workspace' });
+    const path = prompt.getByRole('textbox');
+    const confirm = prompt.getByRole('button', { name: 'Save to Workspace' });
+    await save.click();
+    await expect(path).toHaveValue('report.bin');
+    await prompt.getByRole('button', { name: 'Cancel' }).click();
+    await expect(prompt).toHaveCount(0);
+    await expect(save).toBeFocused();
+    for (const text of [
+      'Saved to Workspace: reports/result.bin',
+      'A file already exists at this path. Choose a different name.'
+    ]) {
+      await save.click();
+      await path.fill('reports/result.bin');
+      await confirm.click();
+      await expect(list.getByText(text, { exact: true })).toBeVisible();
+    }
+    await expect(list.getByRole('link', { name: 'Save to device' })).toBeVisible();
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('Browser signals download activity at the toolbar without interrupting page input', async ({
   page
 }) => {

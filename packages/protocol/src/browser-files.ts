@@ -77,6 +77,7 @@ export const browserDownloadRequestSchema = z.strictObject({
     z.strictObject({ action: z.literal('list'), offset, progress: z.literal(true).optional() }),
     z.strictObject({ action: z.literal('cancel'), id }),
     z.strictObject({ action: z.literal('delete'), id }),
+    z.strictObject({ action: z.literal('workspace'), id, path: z.string().min(1).max(4096) }),
     z.strictObject({ action: z.literal('info'), id })
   ])
 });

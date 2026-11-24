@@ -3,6 +3,7 @@ import type { BrowserDownloadInfo } from '@myagentroam/protocol';
 import WorkspaceNodeBrowser from '../../src/view/workbench/WorkspaceNodeBrowser.vue';
 import { createWorkbenchBrowserService } from '../../src/service/workbench-browser-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { ApiError } from '../../src/util/api-error.js';
 import { createTooltipApp } from './tooltip-app.js';
 import '../../src/styles.css';
 
@@ -27,7 +28,12 @@ type Update = {
 };
 const browserId = ref('browser-a');
 const scope = { nodeId: 'test-node', workspaceId: 'test-workspace' };
-const capability = { apiVersion: 1, nodeGeneration: 'fixture', ice: false };
+const capability = {
+  apiVersion: 1,
+  nodeGeneration: 'fixture',
+  ice: false,
+  downloadWorkspace: new URLSearchParams(location.search).has('workspaceSave')
+};
 const tab = {
   id: 'test-tab',
   url: 'https://example.test/',
@@ -107,6 +113,11 @@ browser.deleteDownload = async (id) => {
   });
 };
 browser.downloadHref = (id) => `/fixture-download/${id}`;
+const saved = new Set<string>();
+browser.saveDownloadToWorkspace = async (_id, path) => {
+  if (saved.has(path)) throw new ApiError('FILE_ALREADY_EXISTS', 'File exists.');
+  saved.add(path);
+};
 browser.frame.value = {
   viewVersion: 1,
   width: 800,

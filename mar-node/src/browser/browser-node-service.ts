@@ -53,6 +53,7 @@ export class BrowserNodeService {
       generation: string;
       requireWorkspace: (id: string) => void;
       workspacePath: (id: string) => string | undefined;
+      workspaceFilesChanged?: (id: string) => void;
       relay: () => { endpoint: string; nodeId: string; credential: string };
       failed: (error: unknown) => void;
     }
@@ -64,6 +65,9 @@ export class BrowserNodeService {
       profileRoot,
       profileUnused: async (path) => (await chromiumProfileLock(path)) !== 'live',
       workspacePath: options.workspacePath,
+      ...(options.workspaceFilesChanged && {
+        workspaceFilesChanged: options.workspaceFilesChanged
+      }),
       launch: this.launcher.launch,
       encoder: (hd) => this.encoder(hd),
       failed: options.failed

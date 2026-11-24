@@ -55,6 +55,7 @@ export class BrowserRuntime {
       profileRoot: string;
       profileUnused: (path: string) => Promise<boolean>;
       workspacePath?: (workspaceId: string) => string | undefined;
+      workspaceFilesChanged?: (workspaceId: string) => void;
       launch: (profilePath?: string) => Promise<RunningBrowser>;
       encoder: (hd: boolean) => Promise<BrowserAttachmentEncoder>;
       failed: (error: unknown) => void;
@@ -94,7 +95,8 @@ export class BrowserRuntime {
           downloads: browser.downloads,
           onDownloadBytesReceived: () => this.sessions.touch(scope, id),
           favicon: browser.data?.favicon.bind(browser.data),
-          workspacePath: () => options.workspacePath?.(scope.workspaceId)
+          workspacePath: () => options.workspacePath?.(scope.workspaceId),
+          workspaceFilesChanged: () => options.workspaceFilesChanged?.(scope.workspaceId)
         });
         const access = new BrowserAgentAccess(
           () => browser.context.browser(),

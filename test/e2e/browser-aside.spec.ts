@@ -4,7 +4,14 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer, get } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type TestInfo
+} from '@playwright/test';
 import { NodeConnector } from '../../mar-node/src/connector.js';
 import { unavailableCapabilities } from '../../mar-node/src/capabilities.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
@@ -88,6 +95,18 @@ test('Browser Use defaults to enabled and saves the account preference', async (
   }
 });
 
+test('Browser Aside saves to Workspace, changes page zoom, and reattaches without reloading', async ({
+  page,
+  baseURL,
+  browserName
+}, testInfo) => {
+  test.skip(
+    browserName !== 'chromium',
+    'This journey verifies the Chromium H.264 and ICE implementation.'
+  );
+  await browserAsideJourney(page, baseURL, testInfo, 'interaction');
+});
+
 test('Browser Aside projects real Node Chromium over ICE and Server relay', async ({
   page,
   baseURL,
@@ -97,6 +116,23 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     browserName !== 'chromium',
     'This journey verifies the Chromium H.264 and ICE implementation.'
   );
+  await browserAsideJourney(page, baseURL, testInfo, 'full');
+});
+
+async function submitWorkspacePath(page: Page, row: Locator, path: string): Promise<void> {
+  const name = /^(Save to Workspace|保存到工作区)$/iu;
+  await row.getByRole('button', { name }).click();
+  const prompt = page.getByRole('dialog', { name });
+  await prompt.getByRole('textbox').fill(path);
+  await prompt.getByRole('button', { name }).click();
+}
+
+async function browserAsideJourney(
+  page: Page,
+  baseURL: string | undefined,
+  testInfo: TestInfo,
+  scenario: 'interaction' | 'full'
+): Promise<void> {
   test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), 'mar-browser-aside-'));
   const requests: string[] = [];
@@ -236,6 +272,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
   let connector: NodeConnector | undefined;
   let headers: { 'x-csrf-token': string } | undefined;
   const password = 'browser-aside-test-password-123';
+  const nodeName = `Browser Aside ${basename(directory)}`;
   try {
     await writeFile(
       join(directory, 'workspace-preview.html'),
@@ -258,7 +295,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     headers = { 'x-csrf-token': (await changed.json()).csrfToken };
     const token = await page.request.post('/api/node-registration-tokens', {
       headers,
-      data: { displayName: 'Browser Aside test Node' }
+      data: { displayName: nodeName }
     });
     expect(token.ok()).toBe(true);
     const serverUrl = new URL(baseURL!);
@@ -288,9 +325,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
           const { nodes } = (await (await page.request.get('/api/nodes')).json()) as {
             nodes: { id: string; connected: boolean; displayName: string }[];
           };
-          nodeId =
-            nodes.find((node) => node.connected && node.displayName === 'Browser Aside test Node')
-              ?.id ?? '';
+          nodeId = nodes.find((node) => node.connected && node.displayName === nodeName)?.id ?? '';
           return nodeId;
         },
         { timeout: 30_000 }
@@ -383,7 +418,10 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       const noWorkspace = page.getByRole('heading', {
         name: /^(Select a workspace|选择一个工作区)$/iu
       });
-      const expand = page.getByRole('button', { name: /^(Expand workspaces|展开工作区)$/iu });
+      const expand = page
+        .locator('.tree-node-row')
+        .filter({ has: page.getByRole('button', { name: nodeName, exact: true }) })
+        .getByRole('button', { name: /^(Expand workspaces|展开工作区)$/iu });
       const workspace = page.getByRole('button', { name: basename(directory), exact: true });
       // On a cold start Workbench may show the picker instead of restoring the route.
       await expect
@@ -422,6 +460,12 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         constructor(url: string | URL, protocols?: string | string[]) {
           super(url, protocols);
           if (new URL(url, location.href).pathname === '/api/workbench/live') {
+            this.addEventListener('open', () => {
+              const root = document.documentElement;
+              root.dataset.workbenchConnections = String(
+                Number(root.dataset.workbenchConnections ?? 0) + 1
+              );
+            });
             const drop = () => this.close(4001, 'test reconnect');
             window.addEventListener('test-drop-workbench', drop, { once: true });
             this.addEventListener('close', () =>
@@ -516,6 +560,68 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect(tabRow.getByRole('tab')).toHaveCount(2);
     await expect.poll(() => requests.includes('/ice')).toBe(true);
     await expectViewportFits();
+    if (scenario === 'interaction') {
+      await expect
+        .poll(() =>
+          canvas.evaluate((element: HTMLCanvasElement) => {
+            const pixel = element.getContext('2d')!.getImageData(5, 5, 1, 1).data;
+            return pixel[1]! > 150 && pixel[0]! < 50;
+          })
+        )
+        .toBe(true);
+      const target = await canvasPoint(0.3, 0.415);
+      await page.mouse.click(target.x, target.y);
+      await expect.poll(() => requests.includes('/files/ice.bin')).toBe(true);
+      await page.getByRole('button', { name: /^(Downloads|下载)$/u }).click();
+      const downloads = page.getByRole('dialog', { name: /^(Downloads|下载)$/u });
+      const row = downloads.getByRole('listitem').filter({ hasText: 'ice.bin' });
+      await expect(
+        row.getByRole('button', { name: /^(Save to Workspace|保存到工作区)$/iu })
+      ).toBeEnabled();
+      await submitWorkspacePath(page, row, 'workspace-copy.bin');
+      await expect(row.getByText(/workspace-copy\.bin/u)).toBeVisible();
+      expect((await readFile(join(directory, 'workspace-copy.bin'))).equals(largeFile)).toBe(true);
+      await submitWorkspacePath(page, row, 'workspace-copy.bin');
+      await expect(row.getByText(/^(A file already exists|该路径已有文件)/u)).toBeVisible();
+      await submitWorkspacePath(page, row, '../outside.bin');
+      await expect(row.getByText(/^(Choose a path|请选择)/u)).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(downloads).toBeHidden();
+
+      const commands = page.getByRole('button', { name: /^(Browser commands|浏览器命令)$/u });
+      const menu = page.getByRole('menu', { name: /^(Browser commands|浏览器命令)$/u });
+      const zoom110 = menu.getByRole('menuitem', { name: /^(Reset zoom|重置缩放).*110%/u });
+      await commands.click();
+      await menu.getByRole('menuitem', { name: /^(Zoom in|放大网页)$/u }).click();
+      await expect(zoom110).toBeEnabled();
+      await page.keyboard.press('Escape');
+
+      const visits = requests.filter((path) => path === '/ice').length;
+      const workbenchConnections = () =>
+        page.locator('html').getAttribute('data-workbench-connections');
+      const connections = Number(await workbenchConnections());
+      await page.evaluate(() => window.dispatchEvent(new Event('test-drop-workbench')));
+      await expect
+        .poll(async () => Number(await workbenchConnections()), { timeout: 20_000 })
+        .toBeGreaterThan(connections);
+      await expect(address).toHaveValue(`${origin}/ice`, { timeout: 20_000 });
+      await expectViewportFits();
+      await commands.click();
+      await expect(zoom110).toBeEnabled();
+      expect(requests.filter((path) => path === '/ice')).toHaveLength(visits);
+      await zoom110.click();
+      await page.keyboard.press('Escape');
+      const closeTab = tabRow.getByRole('button', { name: new RegExp(longTabTitle, 'u') });
+      await closeTab.click();
+      await expect(tabRow.getByRole('tab')).toHaveCount(1);
+      await commands.click();
+      await menu
+        .getByRole('menuitem', { name: /^(Reopen closed tab|重新打开已关闭的标签页)$/u })
+        .click();
+      await expect(tabRow.getByRole('tab', { name: longTabTitle, exact: true })).toBeVisible();
+      await expect(address).toHaveValue(`${origin}/ice`);
+      return;
+    }
     async function expectSiteIcon(tabName: string) {
       const icon = tabRow.getByRole('tab', { name: tabName, exact: true }).locator('img');
       await expect(icon).toHaveAttribute('src', /^data:image\/png;base64,/u);
@@ -947,11 +1053,14 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await commands.click();
     const browserMenu = page.getByRole('menu', { name: /^(Browser commands|浏览器命令)$/u });
     const browserCommands = browserMenu.getByRole('menuitem');
-    await expect(browserCommands).toHaveCount(5);
-    await expect(browserCommands.locator('svg')).toHaveCount(5);
+    await expect(browserCommands).toHaveCount(9);
+    await expect(browserCommands.locator('svg')).toHaveCount(8);
     for (const name of [
       /^(Find in page|在网页中查找)$/u,
       /^(Browsing history|浏览历史)$/u,
+      /^(Reopen closed tab|重新打开已关闭的标签页)$/u,
+      /^(Zoom in|放大网页)$/u,
+      /^(Zoom out|缩小网页)$/u,
       /^(Clear browser cache|清理浏览器缓存)$/u,
       /^(Browser settings|浏览器设置)$/u,
       /^(Close browser|关闭浏览器)$/u
@@ -969,6 +1078,11 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       path: testInfo.outputPath('browser-toolbar-menu.png'),
       animations: 'disabled'
     });
+    await browserMenu.getByRole('menuitem', { name: /^(Zoom in|放大网页)$/u }).click();
+    await browserMenu.getByRole('menuitem', { name: /^(Reset zoom|重置缩放).*110%/u }).click();
+    await expect(
+      browserMenu.getByRole('menuitem', { name: /^(Reset zoom|重置缩放).*100%/u })
+    ).toBeDisabled();
     await page.getByRole('menuitem', { name: /^(Clear browser cache|清理浏览器缓存)$/u }).click();
     const clear = page.getByRole('dialog', { name: /^(Clear browsing data|清除浏览数据)$/u });
     await expect(
@@ -1196,7 +1310,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       await expect(narrowTabs.last()).toBeFocused();
       await expect(address).toHaveValue(`${origin}/touch`);
     });
-    const touchInput = page.getByRole('button', { name: /^(Show keyboard|显示键盘)$/u });
+    const touchInput = page.getByRole('button', { name: /^(Page keyboard mode|网页键盘模式)$/u });
     const pageActions = page.getByRole('group', { name: /^(Remote page actions|远端网页操作)$/u });
     const copySelection = pageActions.getByRole('button', {
       name: /^(Copy selected text|复制网页所选文本)$/u
@@ -1356,7 +1470,8 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect
       .poll(() => requests.includes(`/typed?text=${encodeURIComponent('已粘贴')}`))
       .toBe(true);
-    await page.getByRole('button', { name: /^(Hide keyboard|收起键盘)$/u }).click();
+    await expect(touchInput).toHaveAttribute('aria-pressed', 'true');
+    await touchInput.click();
     await expect(page.locator('[data-node-browser-input]')).not.toBeFocused();
     await touchAt('touchStart', await canvasPoint(0.126, 0.64));
     await touchAt('touchMove', await canvasPoint(0.72, 0.64));
@@ -1421,6 +1536,8 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await page.setViewportSize({ width: 1600, height: 900 });
     await openWorkspaceBrowser();
     await expect(address).toHaveValue(`${origin}/touch`);
+    // The address can be projected before desktop reattachment has drawn its resized view.
+    await expectViewportFits();
     const runs = join(directory, 'browser', 'runs');
     const runningBrowsers = async () =>
       (await readdir(runs)).filter((name) => name.startsWith('browser-'));
@@ -1444,4 +1561,4 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       await rm(directory, { recursive: true, force: true });
     }
   }
-});
+}
