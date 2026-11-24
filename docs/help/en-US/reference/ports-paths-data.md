@@ -1,6 +1,6 @@
 ---
 title: Ports, Paths, and Data
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-24
 ---
 
 # Ports, Paths, and Data
@@ -14,7 +14,7 @@ lastUpdated: 2026-11-12
 | Node data                         | Configured `dataDirectory`                   | Private to Node service account                                       |
 | Workspaces                        | Registered paths below `allowedRoots`        | Authorized access; direct transfer or Server relay                    |
 
-Node data contains SQLite state and structured logs. External Runner credentials and native histories follow each Runner's configuration directories; MAR Agent model credentials configured in the product are stored by Server. Terminal text is transmitted live through an authorized direct connection or Server relay and is not retained as a Server transcript.
+Node data contains SQLite state and structured logs. External Agent credentials and native histories follow each Agent's configuration directories; MAR Agent model credentials configured in the product are stored by Server. Terminal text is transmitted live through an authorized direct connection or Server relay and is not retained as a Server transcript.
 
 Confirm paths from the Node service account's perspective. Linux systemd, Windows Task Scheduler, and macOS launchd often use a different home directory or `PATH` from an interactive shell.
 

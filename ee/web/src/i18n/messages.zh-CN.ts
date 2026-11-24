@@ -221,7 +221,7 @@ export const zhCN = {
       preserveGitConfig: '保留 Git 配置',
       model: '模型',
       effort: '推理强度',
-      runner: 'Runner',
+      runner: 'Agent',
       permissionMode: '权限模式',
       featured: '精选',
       provider: '服务商'

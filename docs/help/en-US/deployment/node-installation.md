@@ -1,6 +1,6 @@
 ---
 title: Install and Register a Node
-lastUpdated: 2026-11-14
+lastUpdated: 2026-11-24
 ---
 
 # Install and Register a Node

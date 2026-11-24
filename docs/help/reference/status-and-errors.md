@@ -1,6 +1,6 @@
 ---
 title: 状态、提示与常见错误
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-24
 ---
 
 # 状态、提示与常见错误
@@ -12,7 +12,7 @@ lastUpdated: 2026-10-29
 | Working                                    | 当前任务正在启动、运行或停止                                    | 等待、查看工具卡或停止                                                        |
 | Idle                                       | 当前会话没有正在执行的任务                                      | 可发送下一条消息                                                              |
 | `EXTERNAL_SESSION_ACTIVE`                  | 外部 Agent 仍在运行，Node 不能安全继续该会话                    | 等待外部任务结束后再发送；不要重复提交                                        |
-| `SESSION_ACTIVATION_REQUIRED`              | 非标准直连请求绕过了首条消息的原子激活路径                      | 通过会话消息入口发送，不能直接启动外部会话的 Run                              |
+| `SESSION_ACTIVATION_REQUIRED`              | 当前操作需要先通过普通消息激活会话                              | 打开会话，发送一条普通消息后再重试；不要从外部历史直接启动 Run                |
 | `SESSION_INVALID`                          | 会话保存的模型配置已不再可用                                    | 刷新会话，重新选择当前模型后重试                                              |
 | `RUNNER_CAPABILITY_UNSUPPORTED`            | 当前 Agent 不支持该操作                                         | 选择页面实际提供的操作或更新 Agent                                            |
 | `CAPABILITY_VERSION_UNSUPPORTED`           | Node 版本不支持请求能力                                         | 升级对应 Node 与 Server/Web                                                   |

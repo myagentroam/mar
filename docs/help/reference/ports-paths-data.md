@@ -1,6 +1,6 @@
 ---
 title: 端口、配置目录与数据位置
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-24
 ---
 
 # 端口、配置目录与数据位置
@@ -13,7 +13,7 @@ lastUpdated: 2026-11-12
 | Node 配置       | 自定义私有 JSON               | 通过 `--config` 或 `MAR_NODE_CONFIG` 指定                                        |
 | Server 数据     | `MAR_DATA_DIR`，默认 `./data` | Skill 位于 `skills/`，日志位于 `logs/`                                           |
 | Node 数据       | 配置旁目录或 `dataDirectory`  | SQLite 位于根目录，日志位于 `logs/`                                              |
-| Agent 配置目录  | Node 服务账号自己的用户目录   | 外部 Runner 的配置与历史按各自规则管理；MAR Server 模型凭据另存于 Server         |
+| Agent 配置目录  | Node 服务账号自己的用户目录   | 外部 Agent 的配置与历史按各自规则管理；MAR Server 模型凭据另存于 Server          |
 
 路径必须以 Node 服务账号的视角确认。Linux systemd、Windows 任务计划和 macOS launchd 经常因为用户目录或 `PATH` 不同而找不到 Agent 或历史。
 

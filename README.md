@@ -24,7 +24,7 @@
 
 - **Step away from the desk, not the task.** Start work from your desktop, then check progress or send guidance from your phone. Closing the browser does not automatically stop an active session on the execution machine.
 - **Review the work beside the conversation.** Inspect project files, Git changes, terminal output, and generated deliverables without relying only on the Agent's final summary.
-- **Use multiple agents in one place.** Manage sessions across supported agents and work machines in one interface. Use separate sessions for implementation and review; each agent's controls follow its Runner's capabilities.
+- **Use multiple agents in one place.** Manage sessions across supported agents and work machines in one interface. Use separate sessions for implementation and review; available controls depend on the Agent.
 
 If a local CLI already covers your workflow, MAR is optional. It is for when you want cross-device access, multiple sessions, and a shared place to inspect results. Remote use requires a reachable self-hosted Server and an online execution machine.
 
@@ -83,7 +83,7 @@ _User-defined session roles coordinate work; Agent Network is not a separate orc
 - **Explicit handoffs** carry the question, scope, and artifact to inspect; a received message is not proof of completion.
 - **Reviewable work** stays in shared files and visible session histories. Concurrent writers still need non-overlapping scopes.
 
-In the product, MAR Agent uses native **`agent_*` collaboration tools** to create, message, inspect, wait for, and stop authorized sessions. Relationships support up to three levels: root, child, and grandchild. Other Runners can coordinate through **marctl**, which also provides on-demand management of models, titles, persistent instructions, and schedules. Session relationships do not expand authorization or imply automatic task ownership or a workflow engine. [Agent collaboration](docs/help/en-US/runners/mar-agent.md#advanced-subagent-control) · [marctl session management](docs/help/en-US/operations/marctl.md#coordinate-workspace-sessions).
+In the product, MAR Agent uses native **`agent_*` collaboration tools** to create, message, inspect, wait for, and stop authorized sessions. Relationships support up to three levels: root, child, and grandchild. Other Agents can coordinate through **marctl**, which also provides on-demand management of models, titles, persistent instructions, and schedules. Session relationships do not expand authorization or imply automatic task ownership or a workflow engine. [Agent collaboration](docs/help/en-US/runners/mar-agent.md#advanced-subagent-control) · [marctl session management](docs/help/en-US/operations/marctl.md#coordinate-workspace-sessions).
 
 <a id="mar-agent"></a>
 

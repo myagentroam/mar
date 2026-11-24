@@ -224,7 +224,7 @@ export const enUS = {
       preserveGitConfig: 'Preserve Git configuration',
       model: 'Model',
       effort: 'Reasoning effort',
-      runner: 'Runner',
+      runner: 'Agent',
       permissionMode: 'Permission mode',
       featured: 'Featured',
       provider: 'Provider'

@@ -185,6 +185,8 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
     [
       'en_US.UTF-8',
       [
+        "Start defaults to the current Session's Agent",
+        '[--runner <runner>]',
         'Send defaults to --steer for timely communication or course correction',
         'Node may interrupt the current execution',
         'Reserve --queue for explicitly requested deferred input',
@@ -199,6 +201,8 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
     [
       'zh_CN.UTF-8',
       [
+        'start 默认使用当前会话的 Agent',
+        '[--runner <runner>]',
         'send 默认使用 --steer，用于即时沟通或纠偏',
         'Node 可能中断当前执行',
         '建议仅将 --queue 用于明确要求延后的输入',

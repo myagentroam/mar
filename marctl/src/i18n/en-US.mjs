@@ -80,7 +80,7 @@ Management:
   {program} history [<id>] [--cursor <cursor>] [--limit <1..100>] [--json]
 
 Input and results:
-  Start defaults to the current Session Runner; a terminal without a current
+  Start defaults to the current Session's Agent; a terminal without a current
   Session must specify --runner or --parent. Start returns without waiting.
   Send defaults to --steer for timely communication or course correction.
   If it cannot deliver in place, Node may interrupt the current execution.

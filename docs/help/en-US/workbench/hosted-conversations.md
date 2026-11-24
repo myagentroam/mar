@@ -1,6 +1,6 @@
 ---
 title: Start a Conversation from a Template
-lastUpdated: 2026-11-22
+lastUpdated: 2026-11-24
 ---
 
 # Start a Conversation from a Template

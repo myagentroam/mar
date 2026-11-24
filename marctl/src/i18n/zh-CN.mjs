@@ -79,7 +79,7 @@ ${configurationHelp}
   {program} history [<id>] [--cursor <cursor>] [--limit <1..100>] [--json]
 
 输入与结果：
-  start 默认当前会话的 Runner；没有当前会话的终端须指定 --runner 或
+  start 默认使用当前会话的 Agent；没有当前会话的终端须指定 --runner 或
   --parent。start 不等待。
   send 默认使用 --steer，用于即时沟通或纠偏。无法在当前执行内交付时，
   Node 可能中断当前执行。--goal 设置或替换目标；--clear-goal 清除目标。

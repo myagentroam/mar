@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-21
+lastUpdated: 2026-11-24
 ---
 
 # 配置和使用 MAR Agent
@@ -49,7 +49,7 @@ MAR Agent 子会话的模型还必须勾选 **支持 Subagent**。子会话的�
 
 ## 输入预测模型
 
-在 **管理 → MAR Agent 模型 → 高级 → Prompt Tab** 单独保存全局开关、模型和思考强度，不改变 Compact 配置。全局默认启用但不预选模型；用户仍须有模型及凭据使用权，可在 **设置 → 外观（Appearance）** 切换“输入预测”（无已保存偏好时默认开启，已保存关闭仍关闭；仅工作模式，选择立即保存到当前浏览器）。工作模式支持四种 Runner；预测通过 Node 调用 MAR Agent SDK 的独立模型接口，通过结果工具 Schema 接收预测数据，不创建 Agent 会话或执行工具。操作方式和数据范围见 [输入预测](../workbench/composer.md#输入预测-prompt-tab)。
+在 **管理 → MAR Agent 模型 → 高级 → Prompt Tab** 单独保存全局开关、模型和思考强度，不改变 Compact 配置。全局默认启用但不预选模型；用户仍须有模型及凭据使用权，可在 **设置 → 外观（Appearance）** 切换“输入预测”（无已保存偏好时默认开启，已保存关闭仍关闭；仅工作模式，选择立即保存到当前浏览器）。工作模式支持四种 Agent；预测通过 Node 调用 MAR Agent SDK 的独立模型接口，通过结果工具 Schema 接收预测数据，不创建 Agent 会话或执行工具。操作方式和数据范围见 [输入预测](../workbench/composer.md#输入预测-prompt-tab)。
 
 ## 专用 Compact 模型
 
@@ -117,7 +117,7 @@ Auto 由当前模型判断：普通工程操作和已明确授权的任务自动
 
 Code Mode 由模型优先在外层 `code_exec` 整体声明 ask/deny。内部 deny 只拒绝该次工具调用，在结果 `data` 中返回 `error: MAR_AGENT_PERMISSION_DENIED` 和简短 `message`，不抛出 JS 异常或结束整段代码；后续依赖步骤应先检查返回结果。该工具仍记录为失败，其他异常保持原有处理方式。
 
-ask 通过 Runner 审批卡在线等待，显示公开原因、命令/参数/代码、工作目录与到期时间。点击允许后执行已捕获的原调用；多个请求分别审批。10 分钟未决定即过期，不执行，也不视为用户拒绝。拒绝、过期和模型 deny 仅使该次调用失败，模型可在剩余授权内继续或自然停止；不能自动重试或绕过用户拒绝。取消后、已决定或过期的卡片不可执行。Goal 与定时任务沿用 Node 现有策略。无在线通道的独立 SDK/CLI 在 ask 时停止；之后的新指令不会重放旧调用。
+ask 通过 工具审批卡在线等待，显示公开原因、命令/参数/代码、工作目录与到期时间。点击允许后执行已捕获的原调用；多个请求分别审批。10 分钟未决定即过期，不执行，也不视为用户拒绝。拒绝、过期和模型 deny 仅使该次调用失败，模型可在剩余授权内继续或自然停止；不能自动重试或绕过用户拒绝。取消后、已决定或过期的卡片不可执行。Goal 与定时任务沿用 Node 现有策略。无在线通道的独立 SDK/CLI 在 ask 时停止；之后的新指令不会重放旧调用。
 
 **Auto 不是操作系统沙箱，也不是独立安全审查器。** Full access 不做 Auto 自评，两种档位都保留 Host 路径与资源校验，工具使用 Node 服务账号的实际权限。请使用低权限专用账号并限制 Workspace 和主机权限。
 
@@ -147,13 +147,13 @@ Node Agent Network 不设置旧的 16 个创建或并发限制；独立 SDK Suba
 
 Node 为每个父子观察关系保留最近 10 条未读更新，跨执行统一计数；超限移除最旧记录，并通过 `omittedUpdates` 报告自上次确认以来的遗漏数量。该计数属于父子观察关系，不表示某一次执行丢失了相同数量的消息。提示随观察结果确认后清除，完整公开历史仍可按需读取；窗口不保证无限保留全部未读内容。
 
-Node 原生 `agent_send` 使用 `delivery` 参数，取值为 `STEER` 或 `QUEUE`。携带正文时默认使用 `STEER`；其他 Runner 的 `marctl agents send <id> -m <text>` 也是如此。纯 Goal 更新或审批操作不涉及消息投递。及时沟通建议使用 STEER；QUEUE 更适合用户或接收方明确要求延后的输入。输入要等当前工作和前面的队列项结束后才消费，有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
+Node 原生 `agent_send` 使用 `delivery` 参数，取值为 `STEER` 或 `QUEUE`。携带正文时默认使用 `STEER`；其他 Agent 的 `marctl agents send <id> -m <text>` 也是如此。纯 Goal 更新或审批操作不涉及消息投递。及时沟通建议使用 STEER；QUEUE 更适合用户或接收方明确要求延后的输入。输入要等当前工作和前面的队列项结束后才消费，有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
 
 消息被接受后，通常无需另外回复或索取收悉确认，也不必仅为确认收到而立即查看会话。主、子 Agent 建议并行推进有意义且不重叠的工作；没有其他本地工作可做，且需要结果解除阻塞或收尾时，再考虑等待。必要的任务结果、澄清、阻塞、冲突和决策信息仍应正常交付。
 
 原生 `agent_list` 只接受 `scope`、可选标题片段 `query` 和 `limit`。省略 `scope` 或选择 `tree` 时，返回当前会话所在的协作树，包括已登记且获授权的根、祖先、同级及后代；空闲及已结束执行的会话也保留。选择 `active` 时，返回当前 Workspace 内正在运行或睡眠的会话，不把最近聊过、Goal 已启用或队列非空当作活跃。已知会话应直接复用其 ID，不按标题自动选址或派发。
 
-`query` 在选定范围内按标题片段过滤，忽略首尾空白及大小写，并统一全角等兼容字符；`limit` 默认 10、上限 100。结果为 `scope`、`currentAgentId`、扁平 `sessions` 和 `truncated`，每项只含 `id`、`parentSessionId`、`title` 和 `status`（`RUNNING`、`SLEEPING` 或 `IDLE`）。两种范围均按活跃优先、最近活动时间倒序排列，通过 parentSessionId 保留树关系；父项可能因过滤或授权不在结果中。无匹配返回空列表，超过 limit 时标记截断，不提供 cursor 或翻页；可用 query 缩小范围。列表不扫描 Runner、不恢复执行、不自动订阅。`marctl agents list` 使用相同参数和返回字段；独立终端没有当前会话时默认 active，currentAgentId 为 null，显式 tree 会报缺少会话上下文。
+`query` 在选定范围内按标题片段过滤，忽略首尾空白及大小写，并统一全角等兼容字符；`limit` 默认 10、上限 100。结果为 `scope`、`currentAgentId`、扁平 `sessions` 和 `truncated`，每项只含 `id`、`parentSessionId`、`title` 和 `status`（`RUNNING`、`SLEEPING` 或 `IDLE`）。两种范围均按活跃优先、最近活动时间倒序排列，通过 parentSessionId 保留树关系；父项可能因过滤或授权不在结果中。无匹配返回空列表，超过 limit 时标记截断，不提供 cursor 或翻页；可用 query 缩小范围。列表不扫描 Agent 的原生会话历史、不恢复执行、不自动订阅。`marctl agents list` 使用相同参数和返回字段；独立终端没有当前会话时默认 active，currentAgentId 为 null，显式 tree 会报缺少会话上下文。
 
 ```js
 await tools.agent_list({});
