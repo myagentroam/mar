@@ -187,21 +187,28 @@ export class BrowserAgentAccess {
     if (!browser) throw new Error('BROWSER_USE_ACCESS_FAILED');
     const directory = privateRegistry();
     const title = randomUUID();
-    const { endpoint } = await browser.bind(title, { host: '127.0.0.1', port: 0 });
-    for (const name of await readdir(directory)) {
-      const path = join(directory, name);
-      const contents = await readFile(path, 'utf8').catch(() => '');
-      if (!contents.includes(JSON.stringify(title))) continue;
-      const descriptor = JSON.parse(contents) as Record<string, unknown>;
-      if (descriptor.title !== title || descriptor.endpoint !== endpoint) continue;
-      // Playwright keeps registry entries for persistent profiles after their
-      // browser closes. Its native endpoint does not need the registry entry.
-      await rm(path, { force: true }).catch(() =>
-        this.failed(new Error('BROWSER_USE_ACCESS_FAILED'))
-      );
-      return { endpoint, descriptor };
+    try {
+      const { endpoint } = await browser.bind(title, { host: '127.0.0.1', port: 0 });
+      for (const name of await readdir(directory)) {
+        const path = join(directory, name);
+        const contents = await readFile(path, 'utf8').catch(() => '');
+        if (!contents.includes(JSON.stringify(title))) continue;
+        const descriptor = JSON.parse(contents) as Record<string, unknown>;
+        if (descriptor.title !== title || descriptor.endpoint !== endpoint) continue;
+        // Playwright keeps registry entries for persistent profiles after their
+        // browser closes. Its native endpoint does not need the registry entry.
+        await rm(path, { force: true }).catch(() =>
+          this.failed(new Error('BROWSER_USE_ACCESS_FAILED'))
+        );
+        return { endpoint, descriptor };
+      }
+      throw new Error('BROWSER_USE_ACCESS_FAILED');
+    } catch (error) {
+      // Playwright may have started listening before publishing the descriptor.
+      // Release that listener so the next lookup can bind the same browser.
+      await browser.unbind().catch(() => this.failed(new Error('BROWSER_USE_ACCESS_FAILED')));
+      throw error;
     }
-    throw new Error('BROWSER_USE_ACCESS_FAILED');
   }
 
   private async recheck(execution: BrowserAgentExecution, stop: AbortController): Promise<void> {

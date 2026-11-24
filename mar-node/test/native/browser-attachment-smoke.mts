@@ -455,12 +455,15 @@ try {
   });
   assert.equal(await web.evaluate(() => window.probe.button('down')), true);
   await target.waitForFunction(() => document.body.dataset.input === 'mousedown:0;');
+  // The second viewer can right-click during the first viewer's gesture, but
+  // its unmatched left-button release must not end that gesture.
   assert.equal(
     await otherWeb.evaluate(() => window.probe.button('up') && window.probe.context()),
     true
   );
   await otherWeb.waitForFunction(() => window.probe.contextReceived, undefined, { timeout: 5_000 });
-  assert.equal(await target.evaluate(() => document.body.dataset.input), 'mousedown:0;');
+  const concurrentInput = 'mousedown:0;mousedown:2;mouseup:2;';
+  assert.equal(await target.evaluate(() => document.body.dataset.input), concurrentInput);
   allowed = false;
   await assert.rejects(coordinator.renew(identity, open.attachmentId), /BROWSER_NOT_AUTHORIZED/);
   const failure = await Promise.race([
@@ -476,7 +479,10 @@ try {
   );
   assert.equal(await otherWeb.evaluate(() => window.probe.ended), undefined);
   assert.deepEqual(await target.evaluate(() => [innerWidth, innerHeight]), [640, 480]);
-  assert.equal(await target.evaluate(() => document.body.dataset.input), 'mousedown:0;mouseup:0;');
+  assert.equal(
+    await target.evaluate(() => document.body.dataset.input),
+    `${concurrentInput}mouseup:0;`
+  );
   await target.setContent('<button onclick="window.browserClicked = true">Click me</button>');
   assert.equal(await otherWeb.evaluate(() => window.probe.click()), true);
   await target.waitForFunction(() => window.browserClicked, undefined, { timeout: 5_000 });

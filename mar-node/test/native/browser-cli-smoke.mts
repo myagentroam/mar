@@ -99,6 +99,23 @@ async function sharedLoginSmoke(url: string, scope: string, otherScope: string):
     (error) => errors.push(error)
   );
   try {
+    // Playwright opens the listener before publishing its registry descriptor.
+    // A publication failure must not poison the next lookup on this browser.
+    const owner = context.browser()!;
+    const bind = owner.bind.bind(owner);
+    const blockedRegistry = join(cwd, 'blocked-registry');
+    await writeFile(blockedRegistry, '');
+    owner.bind = async (title, options) => {
+      const registry = process.env.PWTEST_SERVER_REGISTRY;
+      process.env.PWTEST_SERVER_REGISTRY = blockedRegistry;
+      try {
+        return await bind(title, options);
+      } finally {
+        process.env.PWTEST_SERVER_REGISTRY = registry;
+        owner.bind = bind;
+      }
+    };
+    await assert.rejects(access.describe(execution), /EEXIST|ENOTDIR/u);
     const [first, second] = await Promise.all([
       access.describe(execution),
       access.describe(otherExecution)
