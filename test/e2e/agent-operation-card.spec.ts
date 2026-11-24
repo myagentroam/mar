@@ -34,9 +34,13 @@ for (const [theme, width] of [
     await expect(lastSummary).toHaveText(/Agent collaboration\s*1 record/);
     await expect(page.getByText('Review complete.')).toBeVisible();
     await expect(page.getByText('Thanks for the review.')).toBeVisible();
-    await expect(
-      page.locator('.user_message').filter({ hasText: 'Thanks for the review.' })
-    ).toContainText('Alice');
+    const visitor = page.locator('.user_message').filter({ hasText: 'Thanks for the review.' });
+    await expect(visitor).toContainText('Alice');
+    const ownMessage = page
+      .locator('.user_message')
+      .filter({ hasText: 'Review the implementation.' });
+    await expect(ownMessage.getByRole('button', { name: /Create a session branch/ })).toBeVisible();
+    await expect(ownMessage.getByRole('button', { name: /Permanently delete/ })).toBeVisible();
     await expect(processes.first().locator('.subagent-group')).toHaveCount(1);
     await expect(processes.last().locator('.subagent-group')).toHaveCount(1);
     expect(
@@ -55,34 +59,86 @@ for (const [theme, width] of [
       ':scope > :is(.conversation-tool-detail, .agent-collaboration-message)'
     );
     await expect(records.nth(1)).toContainText('send');
-    await expect(records.nth(2)).toContainText('The review is ready.');
     await expect(records.nth(3)).toContainText('Inspect persistence');
-    await expect(records.nth(2)).toContainText('Review session');
-    const source = records.nth(2).locator('.conversation-item-heading > strong');
-    const metaSize = await source.evaluate((element) =>
-      getComputedStyle(element).getPropertyValue('--mar-font-size-meta').trim()
-    );
-    await expect(source).toHaveCSS('font-size', metaSize);
-    await expect(source).toHaveCSS('font-weight', '400');
-    await expect(records.nth(2).locator('time')).toBeVisible();
+    const message = records.nth(2);
+    const messageSummary = message.locator(':scope > summary');
+    const messageBody = message.locator(':scope > .mar-conversation-detail-body');
+    const fullMessage =
+      'The review is ready.\nThe implementation and browser checks passed. Please review the final conversation layout, including how long messages wrap on smaller screens.';
+    await expect(messageSummary.locator('.collaboration-action')).toHaveText('message');
+    await expect(messageSummary.locator('.collaboration-source')).toHaveText('from child session');
+    await expect(messageSummary).not.toContainText('Review session');
+    const preview = messageSummary.locator('.collaboration-text');
+    await expect(preview).toHaveText(fullMessage);
+    await expect(preview).toHaveCSS('text-overflow', 'ellipsis');
+    await expect(preview).toHaveCSS('white-space', 'nowrap');
+    await expect.poll(() => preview.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expect(messageSummary.locator('time')).toHaveCount(0);
+    await expect(message).not.toHaveAttribute('open');
+    await expect(messageBody).toHaveCount(0);
     await first.screenshot({
       path: testInfo.outputPath(`collaboration-expanded-${width}.png`),
       animations: 'disabled'
     });
-    await records.nth(2).getByRole('button', { name: /Copy/ }).click();
-    await expect(page.getByTestId('copied-record')).toHaveText('The review is ready.');
+    await messageSummary.press('Enter');
+    await expect(messageBody).toBeVisible();
+    const sourceHeading = messageBody.locator('.conversation-item-heading > strong');
+    await expect(sourceHeading).toHaveText('from Review session');
+    const metaSize = await sourceHeading.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue('--mar-font-size-meta').trim()
+    );
+    await expect(sourceHeading).toHaveCSS('font-size', metaSize);
+    await expect(sourceHeading).toHaveCSS('font-weight', '400');
+    const bodyText = messageBody.locator('.conversation-message');
+    await expect(bodyText).toHaveText(fullMessage);
+    await expect(bodyText).toHaveCSS('font-size', '12px');
+    await expect(bodyText).toHaveCSS('white-space', 'pre-wrap');
+    await expect(messageBody.locator('.conversation-message-actions time')).toBeVisible();
+    await expect(messageBody.getByRole('button')).toHaveCount(1);
+    await first.screenshot({
+      path: testInfo.outputPath(`collaboration-message-expanded-${width}.png`),
+      animations: 'disabled'
+    });
+    await messageBody.getByRole('button', { name: 'Copy message', exact: true }).click();
+    await expect.poll(() => page.getByTestId('copied-record').textContent()).toBe(fullMessage);
     await expect(last).not.toHaveAttribute('open');
     await page.getByRole('button', { name: 'Add update' }).click();
     await expect(lastSummary).toHaveText(/Agent collaboration\s*2 records/);
     await expect(last).not.toHaveAttribute('open');
     await lastSummary.click();
-    await expect(last.locator('.agent-collaboration-message')).toHaveText([
-      /Build session.*The isolated build passed\./s,
-      /Test session.*Browser checks passed\./s
+    await expect(last.locator('.collaboration-source')).toHaveText([
+      'from another session',
+      'from parent session'
     ]);
+    const recent = last.locator('.agent-collaboration-message').last();
+    const recentSummary = recent.locator('summary');
+    await expect(recentSummary).not.toContainText('Test session');
+    await recentSummary.click();
+    await expect(recent.locator('.conversation-message')).toHaveText('Browser checks passed.');
+    const recentSource = recent.locator('.conversation-item-heading > strong');
+    await expect(recentSource).toHaveText(`from Test session ${'BrowserChecks'.repeat(10)}`);
+    await expect
+      .poll(() =>
+        recentSource.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return range.getClientRects().length > 1;
+        })
+      )
+      .toBe(true);
+    const heading = recent.locator('.conversation-item-heading');
+    await expect.poll(() => heading.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await expect(recent.locator('time')).toHaveCount(0);
     await expect(first).toHaveAttribute('open', '');
+    await expect(message).toHaveAttribute('open', '');
     await lastSummary.click();
     await expect(last.locator('.agent-collaboration-message')).toHaveCount(0);
+    await firstSummary.click();
+    await expect(message).toHaveCount(0);
+    await firstSummary.click();
+    await expect(messageSummary).toBeVisible();
+    await expect(message).not.toHaveAttribute('open');
+    await expect(messageBody).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );

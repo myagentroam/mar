@@ -11,6 +11,7 @@ import ConversationQuoteMenu from './ConversationQuoteMenu.vue';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { toolPresentation, toolPresentationStatus } from '../../util/tool-presentation.js';
+import { composerMessagePresentation } from '../../util/composer-message.js';
 import { translate } from '../../service/locale-preference-service.js';
 import {
   computed,
@@ -528,8 +529,8 @@ function errorCard(item: ConversationItem) {
   return conversationErrorPresentation(item.payload);
 }
 
-function messageTimestamp(turn: ConversationTurn, item: ConversationItem): number | undefined {
-  for (const value of [item.startedAt, item.completedAt, turn.startedAt, turn.completedAt])
+function messageTimestamp(item: ConversationItem, turn?: ConversationTurn): number | undefined {
+  for (const value of [item.startedAt, item.completedAt, turn?.startedAt, turn?.completedAt])
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
   return undefined;
 }
@@ -542,18 +543,22 @@ function messageTimeTitle(timestamp: number): string {
   return absoluteMessageTime(timestamp);
 }
 
+function collaborationSource(payload: unknown): string | undefined {
+  const origin = composerMessagePresentation(payload).sessionOrigin;
+  if (!origin?.sessionId) return undefined;
+  const relation =
+    origin.relation === 'parent' || origin.relation === 'child' ? origin.relation : 'other';
+  return translate(`presentation.agentCollaborationSource.${relation}`);
+}
+
 function userMessageProps(turn: ConversationTurn, item: ConversationItem) {
   return {
     payload: item.payload,
-    timestamp: messageTimestamp(turn, item),
     sharerName: props.sharerName,
     images: props.imageAttachments(turn.runId, item.payload),
     imageResourceUrl: props.imageResourceUrl,
     openUrl: props.openUrl,
     copied: copiedMessage.value === `${turn.id}:${item.id}`,
-    canRewind: props.rewindEnabled && Boolean(turn.rewind),
-    canRollback:
-      props.rollbackEnabled && Boolean(turn.rewind) && Boolean(rollbackTarget(turn, item)),
     loading: props.loading
   };
 }
@@ -569,9 +574,7 @@ function userMessageActions(turn: ConversationTurn, item: ConversationItem) {
     ) => emit('openFile', path, line, column, external, attachment),
     openImage: (attachment: ImageAttachment) => emit('openImage', attachment),
     imageUnavailable: (source: string) => emit('imageUnavailable', source),
-    copy: () => copyItem(turn, item),
-    rewind: () => emit('rewind', turn, item),
-    rollback: () => emit('rollback', turn, item)
+    copy: () => copyItem(turn, item)
   };
 }
 
@@ -805,36 +808,60 @@ function stepDuration(item: ConversationItem): string | undefined {
               }}</span>
             </summary>
             <template v-if="groupedItemDisclosure[`group:${displayItem.id}`]">
-              <template v-for="item in displayItem.items" :key="item.id">
-                <div v-if="item.kind === 'user_message'" class="agent-collaboration-message">
-                  <ConversationUserMessage
-                    v-bind="userMessageProps(turn, item)"
-                    v-on="userMessageActions(turn, item)"
-                  />
-                </div>
-                <details
-                  v-else
-                  class="conversation-tool-detail"
-                  :open="groupedItemDisclosure[item.id] === true"
-                  @toggle="updateGroupedItemDisclosure(item.id, $event)"
-                  @vue:unmounted="delete groupedItemDisclosure[item.id]"
-                >
-                  <summary class="mar-disclosure-summary">
-                    <MarIcon class="mar-disclosure-icon" name="chevron-right" />
+              <details
+                v-for="item in displayItem.items"
+                :key="item.id"
+                :class="
+                  item.kind === 'user_message'
+                    ? 'agent-collaboration-message'
+                    : 'conversation-tool-detail'
+                "
+                :open="groupedItemDisclosure[item.id] === true"
+                @toggle="updateGroupedItemDisclosure(item.id, $event)"
+                @vue:unmounted="delete groupedItemDisclosure[item.id]"
+              >
+                <summary class="mar-disclosure-summary">
+                  <MarIcon class="mar-disclosure-icon" name="chevron-right" />
+                  <template v-if="item.kind === 'user_message'">
+                    <span class="collaboration-preview">
+                      <span class="collaboration-action">{{
+                        translate('presentation.agentCollaborationMessage')
+                      }}</span>
+                      <span class="collaboration-text">{{
+                        conversationItemText(item.kind, item.payload)
+                      }}</span>
+                    </span>
+                    <span
+                      class="conversation-record-meta collaboration-source"
+                      v-text="collaborationSource(item.payload)"
+                    />
+                  </template>
+                  <template v-else>
                     <span class="conversation-tool-preview">{{
                       conversationItemText(item.kind, item.payload, item.status)
                     }}</span>
                     <span class="conversation-record-meta">{{
                       toolPresentationStatus(item.status)
                     }}</span>
-                  </summary>
-                  <ConversationToolDetail
-                    v-if="groupedItemDisclosure[item.id]"
-                    :item="item"
-                    @copy="(text, done) => emit('copy', text, done)"
+                  </template>
+                </summary>
+                <div
+                  v-if="groupedItemDisclosure[item.id] && item.kind === 'user_message'"
+                  class="mar-conversation-detail-body collaboration-message-content"
+                >
+                  <ConversationUserMessage
+                    collaboration-detail
+                    v-bind="userMessageProps(turn, item)"
+                    :timestamp="messageTimestamp(item)"
+                    v-on="userMessageActions(turn, item)"
                   />
-                </details>
-              </template>
+                </div>
+                <ConversationToolDetail
+                  v-else-if="groupedItemDisclosure[item.id]"
+                  :item="item"
+                  @copy="(text, done) => emit('copy', text, done)"
+                />
+              </details>
             </template>
           </details>
         </template>
@@ -1077,13 +1104,20 @@ function stepDuration(item: ConversationItem): string | undefined {
           v-else-if="displayItem.item.kind === 'user_message'"
           v-bind="userMessageProps(turn, displayItem.item)"
           v-on="userMessageActions(turn, displayItem.item)"
+          :timestamp="messageTimestamp(displayItem.item, turn)"
+          :can-rewind="props.rewindEnabled && Boolean(turn.rewind)"
+          :can-rollback="
+            props.rollbackEnabled && Boolean(turn.rewind) && rollbackTarget(turn, displayItem.item)
+          "
+          @rewind="emit('rewind', turn, displayItem.item)"
+          @rollback="emit('rollback', turn, displayItem.item)"
         />
         <template v-else-if="displayItem.item.kind === 'assistant_message'">
           <div
             :data-quote-message-id="displayItem.item.id"
             :data-quote-timestamp="
-              messageTimestamp(turn, displayItem.item) !== undefined
-                ? new Date(messageTimestamp(turn, displayItem.item)!).toISOString()
+              messageTimestamp(displayItem.item, turn) !== undefined
+                ? new Date(messageTimestamp(displayItem.item, turn)!).toISOString()
                 : undefined
             "
             :data-quote-streaming="
@@ -1104,18 +1138,18 @@ function stepDuration(item: ConversationItem): string | undefined {
           </div>
           <div
             v-if="
-              messageTimestamp(turn, displayItem.item) !== undefined ||
+              messageTimestamp(displayItem.item, turn) !== undefined ||
               conversationItemText(displayItem.item.kind, displayItem.item.payload) ||
               (props.rewindEnabled && turn.rewind)
             "
             class="conversation-message-actions"
           >
             <time
-              v-tooltip="messageTimeTitle(messageTimestamp(turn, displayItem.item)!)"
-              v-if="messageTimestamp(turn, displayItem.item) !== undefined"
+              v-tooltip="messageTimeTitle(messageTimestamp(displayItem.item, turn)!)"
+              v-if="messageTimestamp(displayItem.item, turn) !== undefined"
               class="conversation-message-time"
-              :datetime="new Date(messageTimestamp(turn, displayItem.item)!).toISOString()"
-              >{{ messageTimeLabel(messageTimestamp(turn, displayItem.item)!) }}</time
+              :datetime="new Date(messageTimestamp(displayItem.item, turn)!).toISOString()"
+              >{{ messageTimeLabel(messageTimestamp(displayItem.item, turn)!) }}</time
             >
             <button
               v-tooltip="
@@ -1788,12 +1822,6 @@ function stepDuration(item: ConversationItem): string | undefined {
   color: var(--mar-color-danger-text);
 }
 
-.conversation-item.subagent-group .agent-collaboration-message {
-  margin-block: var(--conversation-record-gap);
-  padding-inline-start: 0.5rem;
-  min-width: 0;
-}
-
 .conversation-reasoning-status {
   display: flex;
   align-items: baseline;
@@ -2164,10 +2192,15 @@ details.conversation-record-group[open] > details:last-child {
   font-size: var(--mar-font-size-body);
 }
 
-.agent-collaboration-message :deep(.conversation-item-heading > strong) {
+.conversation-item .collaboration-message-content :deep(.conversation-message) {
+  margin-block: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.conversation-item .collaboration-message-content :deep(.conversation-item-heading > strong) {
   font-size: var(--mar-font-size-meta);
   font-weight: 400;
-  overflow-wrap: anywhere;
 }
 
 :deep(.conversation-item-heading) {
@@ -2295,6 +2328,24 @@ details.conversation-record-group[open] > details:last-child {
   flex: none;
   margin-inline-start: auto;
   white-space: nowrap;
+}
+
+.collaboration-preview {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.collaboration-action {
+  flex: none;
+}
+
+.collaboration-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversation-item summary > .collaboration-source:empty {
+  display: none;
 }
 
 @media (hover: hover) and (pointer: fine) {

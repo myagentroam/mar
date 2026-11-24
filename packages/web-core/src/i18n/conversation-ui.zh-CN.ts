@@ -332,6 +332,13 @@ export const conversationUiZhCN = {
     result: '结果',
     subagentTask: 'Agent',
     agentCollaborationCount: '{count} 条记录',
+    agentCollaborationMessage: '消息',
+    agentCollaborationMessageFrom: '来自 {name}',
+    agentCollaborationSource: {
+      parent: '来自父会话',
+      child: '来自子会话',
+      other: '来自其他会话'
+    },
     subagentCallFailed: '调用失败',
     noAgentSessions: '没有会话',
     agentGoal: '目标',

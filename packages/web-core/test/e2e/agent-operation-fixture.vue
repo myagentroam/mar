@@ -15,12 +15,12 @@ function fromSession(id: string, name: string, text: string): ConversationItem {
         ? { id: 'process' }
         : { id: 'second-process', ...(id === 'build' ? { isStart: true } : {}) },
     status: 'COMPLETED',
-    startedAt: 1795495200000,
+    ...(id === 'test' ? {} : { startedAt: 1795495200000 }),
     payload: {
       text: `${text}\n${serializeComposerTag('mar_session_origin', {
         sessionId: id,
         name,
-        relation: id === 'reviewer' ? 'child' : 'other'
+        relation: id === 'reviewer' ? 'child' : id === 'test' ? 'parent' : 'other'
       })}`
     }
   };
@@ -47,7 +47,18 @@ const turns = ref<ConversationTurn[]>([
     sessionId: 'root',
     runId: 'run',
     status: 'SUCCEEDED',
+    ...(collaboration ? { rewind: { before: 'before', after: 'after' } } : {}),
     items: [
+      ...(collaboration
+        ? [
+            {
+              id: 'own-input',
+              kind: 'user_message' as const,
+              status: 'COMPLETED' as const,
+              payload: { text: 'Review the implementation.' }
+            }
+          ]
+        : []),
       item(
         'mar-start',
         {
@@ -73,7 +84,15 @@ const turns = ref<ConversationTurn[]>([
         'FAILED',
         'second-code-cell'
       ),
-      ...(collaboration ? [fromSession('reviewer', 'Review session', 'The review is ready.')] : []),
+      ...(collaboration
+        ? [
+            fromSession(
+              'reviewer',
+              'Review session',
+              'The review is ready.\nThe implementation and browser checks passed. Please review the final conversation layout, including how long messages wrap on smaller screens.'
+            )
+          ]
+        : []),
       ...[
         ['codex', 'spawn_agent', 'Inspect persistence'],
         ['claude', 'Agent', 'Check browser interactions'],
@@ -135,6 +154,7 @@ const turns = ref<ConversationTurn[]>([
           turnId: 'turn',
           segmentIndex: 1,
           status: 'SUCCEEDED' as const,
+          startedAt: 1795495200000,
           items: [
             {
               id: 'visitor',
@@ -162,7 +182,10 @@ function addCollaborationMessage() {
     ...turns.value.slice(0, -1),
     {
       ...last,
-      items: [...last.items, fromSession('test', 'Test session', 'Browser checks passed.')]
+      items: [
+        ...last.items,
+        fromSession('test', `Test session ${'BrowserChecks'.repeat(10)}`, 'Browser checks passed.')
+      ]
     }
   ];
 }
@@ -184,8 +207,8 @@ function addCollaborationMessage() {
       :user-input-submitted="() => false"
       :plan-continuation="undefined"
       :node-ready="false"
-      :rewind-enabled="false"
-      :rollback-enabled="false"
+      :rewind-enabled="collaboration"
+      :rollback-enabled="collaboration"
       @copy="
         (text, done) => {
           copied = text;

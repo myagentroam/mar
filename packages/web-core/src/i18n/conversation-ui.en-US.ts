@@ -345,6 +345,13 @@ export const conversationUiEnUS = {
     result: 'Result',
     subagentTask: 'Agent',
     agentCollaborationCount: '{count} record | {count} records',
+    agentCollaborationMessage: 'message',
+    agentCollaborationMessageFrom: 'from {name}',
+    agentCollaborationSource: {
+      parent: 'from parent session',
+      child: 'from child session',
+      other: 'from another session'
+    },
     subagentCallFailed: 'Call failed',
     noAgentSessions: 'No sessions',
     agentGoal: 'Goal',
