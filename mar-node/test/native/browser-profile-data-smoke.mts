@@ -1,17 +1,20 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { attachBrowserProfileData } from '../../src/browser/browser-profile-data.js';
 import { createBrowserLauncher } from '../../src/browser/browser-launcher.js';
+import { chromiumProfileLock } from '../../src/browser/browser-profile-lock.js';
 import { BROWSER_VIEWPORT } from '../../src/browser/browser-video-config.js';
 
 // Local trusted fixtures only. This proves native semantics, not deployment isolation.
 const root = await mkdtemp(join(tmpdir(), 'mar-browser-profile-data-'));
 const runs = join(root, 'runs');
-const launch = createBrowserLauncher(runs, (error) => {
+const profiles = join(root, 'profiles');
+const profile = join(profiles, 'a'.repeat(64), 'data');
+const { launch } = createBrowserLauncher(runs, profiles, (error) => {
   throw error;
 });
 const hits = new Map<string, number>();
@@ -40,13 +43,18 @@ const server = createServer((request, response) => {
 let owned: Awaited<ReturnType<typeof launch>> | undefined;
 try {
   await writeFile(runs, 'temporarily block the run directory');
-  await assert.rejects(launch(join(root, 'profile')));
+  await assert.rejects(launch(profile));
   await rm(runs);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const bound = server.address();
   assert(bound && typeof bound !== 'string');
   const origin = `http://127.0.0.1:${bound.port}`;
-  owned = await launch(join(root, 'profile'));
+  owned = await launch(profile);
+  assert.equal(
+    await readFile(join(owned.directory, 'profile-owner'), 'utf8'),
+    `${'a'.repeat(64)}\n`
+  );
+  assert.equal(await chromiumProfileLock(profile), 'live');
   const { context } = owned;
   const page = context.pages()[0]!;
   assert.deepEqual(page.viewportSize(), BROWSER_VIEWPORT);
@@ -111,6 +119,8 @@ try {
   assert.equal(await page.locator('#draft').inputValue(), 'not reset by deletion');
   await data.deleteUrls([`${origin}/earlier`]);
   assert.deepEqual((await search()).items, []);
+  await owned.close();
+  assert.deepEqual(await readdir(runs), ['profile-data-extension']);
   console.log(
     'Browser data: loopback, native history, cutoff, category selection and live page preservation passed.'
   );

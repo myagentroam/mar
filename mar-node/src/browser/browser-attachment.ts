@@ -16,6 +16,11 @@ type Command = Exclude<BrowserAttachmentMessage, { type: 'ack' | 'dialog.respond
 type Button = Extract<BrowserPageInput, { type: 'button' }>['button'];
 export type BrowserAttachmentEncoder = { encode: Encoder; close: () => Promise<void>; hd?: true };
 const COMMAND_LIMIT = 64;
+// A wheel sample can carry its own pointer move. Budget that burst separately
+// from ordered controls without changing the order in which any command runs.
+const POINTER_COMMAND_LIMIT = 256;
+const isPointerCommand = (command: Command) =>
+  command.type === 'input' && (command.action.type === 'move' || command.action.type === 'wheel');
 const COMMAND_ERRORS = new Set([
   'BROWSER_TAB_LIMIT',
   'BROWSER_TAB_ENDED',
@@ -33,6 +38,7 @@ export class BrowserAttachment {
   private readonly stream: BrowserFrameStream;
   private readonly unobserve: () => void;
   private readonly queue: Command[] = [];
+  private queuedPointerCommands = 0;
   private capture: BrowserPageCapture | undefined;
   private capturing: Promise<void> | undefined;
   private running: Promise<void> | undefined;
@@ -143,8 +149,15 @@ export class BrowserAttachment {
     ) {
       this.queue[this.queue.length - 1] = message;
     } else {
-      if (this.queue.length >= COMMAND_LIMIT) return this.fail('BROWSER_COMMAND_QUEUE_FULL');
+      const pointer = isPointerCommand(message);
+      if (
+        pointer
+          ? this.queuedPointerCommands >= POINTER_COMMAND_LIMIT
+          : this.queue.length - this.queuedPointerCommands >= COMMAND_LIMIT
+      )
+        return this.fail('BROWSER_COMMAND_QUEUE_FULL');
       this.queue.push(message);
+      if (pointer) this.queuedPointerCommands++;
     }
     this.drain();
   }
@@ -170,6 +183,7 @@ export class BrowserAttachment {
     this.unobserve();
     this.stream.close();
     this.queue.length = 0;
+    this.queuedPointerCommands = 0;
     this.closing = this.dispose();
     return this.closing;
   }
@@ -201,6 +215,7 @@ export class BrowserAttachment {
     }
     this.refreshIcons(snapshot);
     if (snapshot.viewVersion === this.next?.version) return;
+    this.discardStaleInput(snapshot.viewVersion);
     const size = this.borrow.resource.viewport;
     this.contextPasteId = undefined;
     this.next = {
@@ -213,6 +228,15 @@ export class BrowserAttachment {
     this.stream.setView(snapshot.viewVersion);
     this.updateCapture();
     this.drain();
+  }
+
+  private discardStaleInput(viewVersion: number): void {
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      const command = this.queue[i];
+      if (command?.type !== 'input' || command.action.viewVersion === viewVersion) continue;
+      this.queue.splice(i, 1);
+      if (isPointerCommand(command)) this.queuedPointerCommands--;
+    }
   }
 
   private refreshIcons(snapshot: ReturnType<BrowserTabs['snapshot']>): void {
@@ -303,6 +327,7 @@ export class BrowserAttachment {
           if (this.closed) break;
           const command = this.queue.shift();
           if (!command) break;
+          if (isPointerCommand(command)) this.queuedPointerCommands--;
           try {
             await this.dispatch(command);
           } catch (error) {

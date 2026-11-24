@@ -1,5 +1,4 @@
-import { access, readdir, readlink } from 'node:fs/promises';
-import { hostname } from 'node:os';
+import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { WebSocket } from 'ws';
@@ -15,6 +14,7 @@ import {
 } from '@myagentroam/protocol';
 import { openBrowserIceChannel, openBrowserRelayChannel } from './browser-data-channel.js';
 import { createBrowserLauncher } from './browser-launcher.js';
+import { chromiumProfileLock } from './browser-profile-lock.js';
 import {
   createBrowserProfileOperation,
   createBrowserResourceOperation
@@ -41,6 +41,7 @@ const nodeRequest = z.object({
  * host; workspace admission, identity and ICE negotiation stay with the Connector. */
 export class BrowserNodeService {
   private readonly browser: BrowserRuntime;
+  private readonly launcher: ReturnType<typeof createBrowserLauncher>;
   private readonly resource;
   private readonly profile;
   private encoderHost?: ReturnType<typeof chromium.launch>;
@@ -56,12 +57,14 @@ export class BrowserNodeService {
       failed: (error: unknown) => void;
     }
   ) {
+    const profileRoot = join(options.root, 'profiles');
+    this.launcher = createBrowserLauncher(join(options.root, 'runs'), profileRoot, options.failed);
     this.browser = new BrowserRuntime({
       maxBrowsers: 8,
-      profileRoot: join(options.root, 'profiles'),
-      profileUnused: chromiumProfileUnused,
+      profileRoot,
+      profileUnused: async (path) => (await chromiumProfileLock(path)) !== 'live',
       workspacePath: options.workspacePath,
-      launch: createBrowserLauncher(join(options.root, 'runs'), options.failed),
+      launch: this.launcher.launch,
       encoder: (hd) => this.encoder(hd),
       failed: options.failed
     });
@@ -71,6 +74,7 @@ export class BrowserNodeService {
 
   async probe(): Promise<boolean> {
     try {
+      await this.launcher.sweepOrphans();
       await access(chromium.executablePath());
       const encoder = await this.encoder();
       try {
@@ -259,31 +263,5 @@ export class BrowserNodeService {
       await page.close();
       throw new Error('BROWSER_H264_ENCODER_UNAVAILABLE');
     }
-  }
-}
-
-/** Chromium's own profile singleton remains the launch authority. Recover an
- * unclean Linux/macOS retention marker only if its local browser PID is gone. */
-async function chromiumProfileUnused(path: string): Promise<boolean> {
-  if (process.platform === 'win32') {
-    // Chromium ProcessSingleton holds this file with DELETE_ON_CLOSE. Check the
-    // directory entry rather than opening a file whose live owner denies access.
-    return !(await readdir(path)).some((name) => name.toLowerCase() === 'lockfile');
-  }
-  let lock: string;
-  try {
-    lock = await readlink(join(path, 'SingletonLock'));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
-    throw error;
-  }
-  const prefix = `${hostname()}-`;
-  const pid = Number(lock.slice(prefix.length));
-  if (!lock.startsWith(prefix) || !Number.isSafeInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ESRCH';
   }
 }
