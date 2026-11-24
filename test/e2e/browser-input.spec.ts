@@ -159,6 +159,103 @@ test('Browser drag cancellation releases at the latest point without replaying t
   }
 });
 
+test('Browser releases a drag when its mouse button is released before another button', async ({
+  page,
+  context
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const remote = await context.newPage();
+  try {
+    await remote.setViewportSize({ width: 800, height: 600 });
+    await remote.setContent(`<output></output><script>
+      document.onmouseup = e => document.querySelector('output').textContent =
+        String(e.button) + ':' + String(e.clientX);
+    </script>`);
+    const actions = await attach(page, remote, fixture.url);
+    const start = await canvasPoint(page, 100, 150);
+    const end = await canvasPoint(page, 400, 150);
+    const canvas = page.locator('canvas');
+    await canvas.evaluate((element) => {
+      element.addEventListener(
+        'pointerdown',
+        (event) => {
+          element.dataset.pointer = String((event as PointerEvent).pointerId);
+        },
+        { once: true }
+      );
+    });
+    await page.mouse.move(start.clientX, start.clientY);
+    await page.mouse.down();
+    await page.mouse.move(end.clientX, end.clientY);
+    // Chorded button changes use pointermove while another button is held.
+    await canvas.evaluate((element, position) => {
+      const pointer = {
+        pointerId: Number(element.dataset.pointer),
+        pointerType: 'mouse',
+        ...position
+      };
+      element.dispatchEvent(new PointerEvent('pointermove', { ...pointer, button: 2, buttons: 3 }));
+      element.dispatchEvent(new PointerEvent('pointermove', { ...pointer, button: 0, buttons: 2 }));
+    }, end);
+    await expect(remote.locator('output')).toHaveText('0:400');
+    await page.mouse.up();
+    await expect(remote.locator('output')).toHaveText('0:400');
+    expect(
+      actions.filter((action) => action.type === 'button').map(({ button, edge }) => [button, edge])
+    ).toEqual([
+      ['left', 'down'],
+      ['left', 'up']
+    ]);
+  } finally {
+    await remote.close();
+    await fixture.close();
+  }
+});
+
+test('Browser drag-selects remote text and delivers a right click to the remote page', async ({
+  page,
+  context
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const remote = await context.newPage();
+  try {
+    await remote.setViewportSize({ width: 800, height: 600 });
+    await remote.setContent(`<style>
+      p { position: absolute; top: 100px; left: 100px; font: 24px monospace; margin: 0; }
+      button { position: absolute; top: 200px; left: 100px; }
+    </style><p>Remote selectable words</p><button>Page menu</button><output></output><script>
+      document.querySelector('button').oncontextmenu = event => {
+        event.preventDefault();
+        document.querySelector('output').textContent = 'Page menu opened';
+      };
+    </script>`);
+    await attach(page, remote, fixture.url);
+    const bounds = (await remote.locator('p').boundingBox())!;
+    const start = await canvasPoint(page, bounds.x + 1, bounds.y + bounds.height / 2);
+    const end = await canvasPoint(page, bounds.x + bounds.width - 1, bounds.y + bounds.height / 2);
+    await page.mouse.move(start.clientX, start.clientY);
+    await page.mouse.down();
+    await page.mouse.move(end.clientX, end.clientY, { steps: 10 });
+    await page.mouse.up();
+    await expect
+      .poll(() => remote.evaluate(() => getSelection()?.toString()))
+      .toBe('Remote selectable words');
+
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: fixture.url });
+    await page.keyboard.press('Control+c');
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe('Remote selectable words');
+
+    const menu = await canvasPoint(page, 120, 211);
+    await page.mouse.click(menu.clientX, menu.clientY, { button: 'right' });
+    await expect(remote.locator('output')).toHaveText('Page menu opened');
+  } finally {
+    await remote.close();
+    await fixture.close();
+  }
+});
+
 test('Browser sends a single-finger swipe as native touch and scrolls remote content', async ({
   page,
   context

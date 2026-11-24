@@ -286,6 +286,7 @@ const inputScheduler = new BrowserInputScheduler((action) =>
 const input = (action: BrowserPageInput) => inputScheduler.send(action);
 const textInput = new BrowserTextInput(insertText);
 type ButtonPress = Omit<Extract<BrowserPageInput, { type: 'button' }>, 'type' | 'edge'>;
+const buttonMask = { left: 1, right: 2, middle: 4 } as const;
 const pressedPointers = new Map<number, ButtonPress>();
 let nativeTouch: { id: number; position: NonNullable<ReturnType<typeof point>> } | undefined;
 let touch:
@@ -391,8 +392,14 @@ function pointer(event: PointerEvent, edge: 'up' | 'down' | 'move'): void {
   if (!position) return;
   if (edge === 'move') {
     const pressed = pressedPointers.get(event.pointerId);
-    if (pressed?.viewVersion === position.viewVersion)
+    if (pressed?.viewVersion === position.viewVersion) {
+      // A chorded button can be released in pointermove while another stays down.
+      if (!(event.buttons & buttonMask[pressed.button])) {
+        releasePointer(event.pointerId, position);
+        return;
+      }
       pressedPointers.set(event.pointerId, { ...pressed, ...position });
+    }
     input({ type: 'move', ...position });
     return;
   }
