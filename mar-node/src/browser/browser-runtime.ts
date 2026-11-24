@@ -6,7 +6,11 @@ import {
   type BrowserProfileTarget
 } from '@myagentroam/protocol';
 import { BrowserAttachmentService } from './browser-attachment-service.js';
-import type { BrowserAgentAction, BrowserAgentExecution } from './browser-agent-access.js';
+import {
+  BrowserAgentAccess,
+  type BrowserAgentAction,
+  type BrowserAgentExecution
+} from './browser-agent-access.js';
 import type { BrowserAttachmentEncoder } from './browser-attachment.js';
 import { BrowserProfiles } from './browser-profiles.js';
 import type { BrowserProfileData } from './browser-profile-data.js';
@@ -20,7 +24,12 @@ type RunningBrowser = {
   /** Resolves only when the process and its writable mounts are released. */
   close: () => Promise<void>;
 };
-type LiveBrowser = { tabs: BrowserTabs; data?: BrowserProfileData; persistent: boolean };
+type LiveBrowser = {
+  tabs: BrowserTabs;
+  access: BrowserAgentAccess;
+  data?: BrowserProfileData;
+  persistent: boolean;
+};
 
 /** Composition of Node Browser owners, installed only with a deployment's
  * verified execution boundary. The boundary launches an isolated context with
@@ -73,17 +82,28 @@ export class BrowserRuntime {
           favicon: browser.data?.favicon.bind(browser.data),
           workspacePath: () => options.workspacePath?.(scope.workspaceId)
         });
+        const access = new BrowserAgentAccess(
+          () => browser.context.browser(),
+          () => {
+            if (!this.sessions.touch(scope, id)) return false;
+            tabs.markAgentActivity();
+            return true;
+          },
+          options.failed
+        );
         browser.context.once('close', () => {
           void this.close(scope, id).catch(options.failed);
         });
         return {
           resource: {
             tabs,
+            access,
             persistent: preserveLogin,
             ...(browser.data ? { data: browser.data } : {})
           },
+          agentConnected: () => access.hasClients(),
           close: async () => {
-            await tabs.releaseAgent();
+            await access.close();
             await this.attachments.revokeBrowser(id);
             await browser.close();
             await profile?.release();
@@ -95,8 +115,8 @@ export class BrowserRuntime {
       sessions: {
         lookup: (scope) => this.sessions.lookup(scope),
         pin: (scope, id) => {
-          const { resource, release } = this.sessions.pin(scope, id);
-          return { resource: resource.tabs, release };
+          const { resource, release, activity } = this.sessions.pin(scope, id);
+          return { resource: resource.tabs, release, activity };
         }
       },
       encoder: options.encoder,
@@ -153,22 +173,19 @@ export class BrowserRuntime {
     signal: AbortSignal
   ) {
     signal.throwIfAborted();
-    const id = command.action === 'acquire' ? await this.open(scope, true) : this.lookup(scope);
-    if (!id)
-      return command.action === 'release'
-        ? { released: true }
-        : { browserResourceId: null, activeTabId: null, tabs: [], control: 'idle' };
-    return this.sessions.use(scope, id, async ({ tabs }) => {
+    const id = command.action === 'describe' ? await this.open(scope, true) : this.lookup(scope);
+    if (!id) throw new Error('BROWSER_SESSION_ENDED');
+    return this.sessions.use(scope, id, async ({ tabs, access }) => {
       signal.throwIfAborted();
-      let accessId: string | undefined;
-      if (command.action === 'acquire')
-        accessId = await tabs.acquireAgent(execution, () => this.sessions.retain(scope, id));
-      else if (command.action === 'select') tabs.selectForAgent(command.tabId, execution);
-      else if (command.action === 'release') {
-        await tabs.releaseAgent(execution);
-        return { released: true };
+      if (command.action === 'select') {
+        tabs.select(command.tabId);
+        if (!this.sessions.touch(scope, id)) throw new Error('BROWSER_SESSION_ENDED');
+        tabs.markAgentActivity();
+        return tabs.agentTabs();
       }
-      return { browserResourceId: id, ...tabs.agentTabs(), ...(accessId ? { accessId } : {}) };
+      const resource = await access.describe(execution);
+      signal.throwIfAborted();
+      return { browserId: id, ...tabs.agentTabs(), ...resource };
     });
   }
 

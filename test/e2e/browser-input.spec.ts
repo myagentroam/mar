@@ -7,84 +7,18 @@ import { installBrowserContextMenu } from '../../mar-node/src/browser/browser-co
 import { BrowserPageView } from '../../mar-node/src/browser/browser-page-view.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
-test('Browser takeover stays attached and offers retry until the Agent disconnects', async ({
+test('Browser shows Agent activity without changing the viewport or blocking page commands', async ({
   page
 }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
   try {
-    await page.goto(`${fixture.url}browser-input.html?takeover`);
-    await page.getByRole('button', { name: 'Take control', exact: true }).click();
-    await expect(
-      page.getByText('The Agent must disconnect before you can take control.')
-    ).toBeVisible();
-    await expect(
-      page.getByText('Could not disconnect the Agent. Select Try again to take control.')
-    ).toBeVisible();
-    await expect(page.getByLabel('Files from this device')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Let Agent resume' })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Try again', exact: true }).dblclick({ delay: 20 });
-    await expect(
-      page.getByText('You control the browser. The Agent is disconnected.')
-    ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
-    const resume = page.getByRole('button', { name: 'Let Agent resume' });
-    await expect(resume).toBeVisible();
-    await resume.press('Enter');
-    await expect(resume).toHaveCount(0);
-  } finally {
-    await fixture.close();
-  }
-});
-
-test('Browser does not resume when disconnection completes before the retry click is released', async ({
-  page
-}) => {
-  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
-  try {
-    await page.goto(`${fixture.url}browser-input.html?takeover`);
-    await page.getByRole('button', { name: 'Take control', exact: true }).click();
-    await page.getByRole('button', { name: 'Try again', exact: true }).hover();
-    await page.mouse.down();
-    await page.evaluate(() => document.dispatchEvent(new Event('fixture-agent-disconnected')));
-    const resume = page.getByRole('button', { name: 'Let Agent resume' });
-    await expect(resume).toBeVisible();
-    await page.mouse.up();
-    await expect(resume).toBeVisible();
-  } finally {
-    await fixture.close();
-  }
-});
-
-test('Browser More menu does not resume on release of a replaced retry item', async ({ page }) => {
-  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
-  try {
-    await page.goto(`${fixture.url}browser-input.html?takeover`);
-    await page.getByRole('button', { name: 'Take control', exact: true }).click();
-    await page.getByRole('button', { name: 'Browser commands', exact: true }).click();
-    const retry = page.getByRole('menuitem', { name: 'Try again' });
-    await retry.hover();
-    await page.mouse.down();
-    await page.evaluate(() => document.dispatchEvent(new Event('fixture-agent-disconnected')));
-    await expect(page.getByRole('button', { name: 'Let Agent resume' })).toBeVisible();
-    await page.mouse.up();
-    await expect(page.getByRole('button', { name: 'Let Agent resume' })).toBeVisible();
-    const commands = page.getByRole('button', { name: 'Browser commands', exact: true });
-    if ((await commands.getAttribute('aria-expanded')) !== 'true') await commands.click();
-    await page.getByRole('menuitem', { name: 'Let Agent resume' }).click();
-    await expect(page.getByRole('button', { name: 'Let Agent resume' })).toHaveCount(0);
-  } finally {
-    await fixture.close();
-  }
-});
-
-test('Browser opens the requested page after takeover is confirmed', async ({ page }) => {
-  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
-  try {
-    await page.goto(`${fixture.url}browser-input.html?takeover`);
-    await page.getByRole('button', { name: 'Take control', exact: true }).click();
+    await page.goto(`${fixture.url}browser-input.html`);
+    const viewport = page.locator('canvas');
+    const size = await viewport.boundingBox();
+    await page.evaluate(() => document.dispatchEvent(new Event('fixture-agent-activity')));
+    await expect(page.getByText('Agent is using this browser')).toBeVisible();
+    expect(await viewport.boundingBox()).toEqual(size);
     await page.evaluate(() => document.dispatchEvent(new Event('fixture-open-page')));
-    await expect(page.locator('body[data-consumed],body[data-opened]')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Try again', exact: true }).click();
     await expect(page.locator('body')).toHaveAttribute('data-opened', 'https://example.test/');
     await expect(page.locator('body')).toHaveAttribute('data-consumed', 'true');
   } finally {

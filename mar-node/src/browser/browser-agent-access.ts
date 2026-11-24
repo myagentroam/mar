@@ -1,17 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
+import WebSocket, { WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { browserCliRoot } from './browser-cli-scope.js';
 
 export const browserAgentActionSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('describe') }),
-  z.strictObject({ action: z.literal('acquire') }),
-  z.strictObject({ action: z.literal('select'), tabId: z.string().uuid() }),
-  z.strictObject({ action: z.literal('release') })
+  z.strictObject({ action: z.literal('select'), tabId: z.string().uuid() })
 ]);
 export type BrowserAgentAction = z.infer<typeof browserAgentActionSchema>;
 export type BrowserAgentExecution = {
@@ -25,8 +25,7 @@ let registry: string | undefined;
 function privateRegistry(): string {
   if (registry !== undefined) return registry;
   const path = mkdtempSync(join(tmpdir(), 'mar-pw-registry-'));
-  // Playwright bind registers even explicit local endpoints. Keep them out of
-  // the public discovery directory used by other Playwright CLI invocations.
+  // Playwright bind publishes a descriptor even for explicit endpoints.
   process.env.PWTEST_SERVER_REGISTRY = path;
   process.once('exit', () => {
     try {
@@ -39,148 +38,189 @@ function privateRegistry(): string {
   return path;
 }
 
-/** Owns exactly one revocable Playwright transport for a live Browser Aside.
- * Web attachment and browser process lifetimes are owned elsewhere. */
+type Resource = { resourceId: string; endpointFile: string };
+type Access = {
+  ready: Promise<Resource>;
+  stop: AbortController;
+  closed: Promise<void>;
+  connected: () => boolean;
+};
+type Binding = { endpoint: string; descriptor: Record<string, unknown> };
+
+/** Publishes per-Execution connections to one native Playwright server. Revoking
+ * a connection does not change the browser, its tabs, or other clients. */
 export class BrowserAgentAccess {
-  private lease:
-    | {
-        execution: BrowserAgentExecution;
-        id: string;
-        stop: AbortController;
-        ready: Promise<void>;
-        revoke: () => Promise<void>;
-      }
-    | undefined;
+  private binding: Promise<Binding> | undefined;
+  private readonly resources = new Map<BrowserAgentExecution, Access>();
+  private closed = false;
 
   constructor(
     private readonly browser: () => Browser | null,
-    private readonly changed: () => void,
+    private readonly activity: () => boolean,
     private readonly failed: (error: unknown) => void
   ) {}
 
-  get active(): boolean {
-    return this.lease !== undefined && !this.lease.stop.signal.aborted;
+  hasClients(): boolean {
+    return [...this.resources.values()].some((access) => access.connected());
   }
 
-  get engaged(): boolean {
-    return this.lease !== undefined;
-  }
+  async describe(execution: BrowserAgentExecution): Promise<Resource> {
+    execution.signal.throwIfAborted();
+    if (this.closed) throw new Error('BROWSER_SESSION_ENDED');
+    const existing = this.resources.get(execution);
+    if (existing && !existing.stop.signal.aborted) return existing.ready;
+    if (existing) await existing.closed;
+    execution.signal.throwIfAborted();
+    if (this.closed) throw new Error('BROWSER_SESSION_ENDED');
+    if (existing) return this.describe(execution);
 
-  async acquire(
-    execution: BrowserAgentExecution,
-    retain: () => () => void,
-    checkControl: () => void
-  ): Promise<string> {
-    execution.signal.throwIfAborted();
-    while (this.lease?.stop.signal.aborted) await this.lease.revoke();
-    execution.signal.throwIfAborted();
-    checkControl();
-    const existing = this.lease;
-    if (existing) {
-      if (existing.execution !== execution) throw new Error('BROWSER_USE_BUSY');
-      await existing.ready;
-      if (existing.stop.signal.aborted) throw new Error('BROWSER_USE_HUMAN_CONTROL');
-      return existing.id;
-    }
-    const browser = this.browser();
-    if (!browser) throw new Error('BROWSER_USE_ACCESS_FAILED');
-    const root = browserCliRoot(execution.cliScope);
-    const releaseHold = retain();
-    const id = randomUUID();
-    const resource = join(root, `shared-${id}`);
     const stop = new AbortController();
     const abort = () => stop.abort();
     execution.signal.addEventListener('abort', abort, { once: true });
-    let bindAttempted = false;
-    const start = async () => {
+    const resourceId = randomUUID();
+    const dir = join(browserCliRoot(execution.cliScope), `shared-${resourceId}`);
+    const endpointFile = join(dir, 'endpoint');
+    const secretPath = `/${randomUUID()}`;
+    let server: WebSocketServer | undefined;
+    const ready = (async () => {
       if (!(await execution.allowed(stop.signal))) throw new Error('BROWSER_USE_DISABLED');
       stop.signal.throwIfAborted();
-      const directory = privateRegistry();
-      bindAttempted = true;
-      const { endpoint } = await browser.bind(id, { host: '127.0.0.1', port: 0 });
-      // Pass the descriptor title to Playwright, not its bearer URL on process argv.
-      stop.signal.throwIfAborted();
-      await mkdir(resource, { mode: 0o700 });
-      for (const name of await readdir(directory)) {
-        const candidate = join(directory, name);
-        const contents = await readFile(candidate, 'utf8').catch(() => '');
-        if (contents.includes(JSON.stringify(endpoint))) {
-          stop.signal.throwIfAborted();
-          await rename(candidate, join(resource, name));
-          return;
-        }
-      }
-      throw new Error('BROWSER_USE_ACCESS_FAILED');
-    };
-    const ready = start();
-    let revoking: Promise<void> | undefined;
-    const revoke = () =>
-      (revoking ??= (async () => {
-        await ready.catch(() => undefined);
-        await rm(resource, { recursive: true, force: true }).catch(this.failed);
-        if (bindAttempted && browser.isConnected()) {
-          try {
-            await browser.unbind();
-          } catch {
-            if (browser.isConnected()) {
-              // If the transport cannot be revoked normally, close the browser.
-              await browser.close().catch(() => undefined);
-              // Retain the lease and hold until closure is confirmed. Later
-              // release calls or the disconnect event can complete cleanup.
-              if (browser.isConnected()) throw new Error('BROWSER_USE_REVOKE_FAILED');
-            }
-          }
-        }
-        execution.signal.removeEventListener('abort', abort);
-        browser.off('disconnected', disconnected);
-        this.lease = undefined;
-        releaseHold();
-        this.changed();
-      })().finally(() => {
-        revoking = undefined;
+      const upstream = await (this.binding ??= this.bind().catch((error: unknown) => {
+        this.binding = undefined;
+        throw error;
       }));
-    const revokeInBackground = () => void revoke().catch(this.failed);
-    const disconnected = () => {
-      if (stop.signal.aborted) revokeInBackground();
-      else stop.abort();
-    };
-    this.lease = { execution, id, stop, ready, revoke };
-    stop.signal.addEventListener('abort', revokeInBackground, { once: true });
-    browser.once('disconnected', disconnected);
-    try {
-      await ready;
-      if (stop.signal.aborted) throw new Error('BROWSER_USE_HUMAN_CONTROL');
-      this.changed();
-      this.recheck(execution, stop);
-      return id;
-    } catch (error) {
-      await this.release(execution);
-      throw error;
+      stop.signal.throwIfAborted();
+      const proxy = (server = new WebSocketServer({
+        host: '127.0.0.1',
+        port: 0,
+        path: secretPath
+      }));
+      proxy.on('error', () => {
+        stop.abort();
+        this.failed(new Error('BROWSER_USE_ACCESS_FAILED'));
+      });
+      proxy.on('connection', (socket, request) => {
+        if (stop.signal.aborted) return socket.terminate();
+        // Keep the transport native; forward Playwright's handshake metadata.
+        const headers = Object.fromEntries(
+          Object.entries(request.headers).filter(
+            ([name]) => name.startsWith('x-playwright-') || name === 'user-agent'
+          )
+        );
+        const remote = new WebSocket(upstream.endpoint, { headers });
+        const end = () => {
+          socket.terminate();
+          remote.terminate();
+        };
+        socket.on('error', end).on('close', end);
+        remote.on('error', end).on('close', end);
+        socket.pause();
+        remote.once('open', () => socket.resume());
+        let firstMessage = true;
+        socket.on('message', (data, binary) => {
+          // Exclude the handshake without decoding every subsequent command.
+          const initializing = firstMessage && isInitialize(data.toString());
+          firstMessage = false;
+          if (!initializing && !this.activity()) return end();
+          if (remote.readyState === WebSocket.OPEN) remote.send(data, { binary });
+        });
+        remote.on('message', (data, binary) => {
+          if (socket.readyState === WebSocket.OPEN) socket.send(data, { binary });
+        });
+      });
+      await once(proxy, 'listening', { signal: stop.signal });
+      const address = proxy.address();
+      if (!address || typeof address !== 'object') throw new Error('BROWSER_USE_ACCESS_FAILED');
+      const endpoint = `ws://127.0.0.1:${address.port}${secretPath}`;
+      const servers = join(dir, 'servers');
+      await mkdir(dir, { mode: 0o700 });
+      await mkdir(servers);
+      await writeFile(
+        join(servers, resourceId),
+        JSON.stringify({
+          ...upstream.descriptor,
+          title: resourceId,
+          endpoint
+        })
+      );
+      await writeFile(endpointFile, endpoint, { mode: 0o600 });
+      stop.signal.throwIfAborted();
+      return { resourceId, endpointFile };
+    })();
+    const closed = (async () => {
+      await once(stop.signal, 'abort');
+      // Wait for publication to settle, then remove the descriptor. Terminate
+      // clients synchronously once cancellation is observed.
+      if (server) for (const socket of server.clients) socket.terminate();
+      await ready.catch(() => undefined);
+      const proxy = server;
+      if (proxy) await new Promise<void>((resolve) => proxy.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true }).catch(() =>
+        this.failed(new Error('BROWSER_USE_ACCESS_FAILED'))
+      );
+      execution.signal.removeEventListener('abort', abort);
+      this.resources.delete(execution);
+    })();
+    this.resources.set(execution, {
+      ready,
+      stop,
+      closed,
+      connected: () => !stop.signal.aborted && !!server?.clients.size
+    });
+    void ready.catch(abort);
+    void this.recheck(execution, stop);
+    return ready;
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    await Promise.all(
+      [...this.resources.values()].map(({ stop, closed }) => {
+        stop.abort();
+        return closed;
+      })
+    );
+  }
+
+  private async bind(): Promise<Binding> {
+    const browser = this.browser();
+    if (!browser) throw new Error('BROWSER_USE_ACCESS_FAILED');
+    const directory = privateRegistry();
+    const title = randomUUID();
+    const { endpoint } = await browser.bind(title, { host: '127.0.0.1', port: 0 });
+    for (const name of await readdir(directory)) {
+      const path = join(directory, name);
+      const contents = await readFile(path, 'utf8').catch(() => '');
+      if (!contents.includes(JSON.stringify(title))) continue;
+      const descriptor = JSON.parse(contents) as Record<string, unknown>;
+      if (descriptor.title !== title || descriptor.endpoint !== endpoint) continue;
+      // Playwright keeps registry entries for persistent profiles after their
+      // browser closes. Its native endpoint does not need the registry entry.
+      await rm(path, { force: true }).catch(() =>
+        this.failed(new Error('BROWSER_USE_ACCESS_FAILED'))
+      );
+      return { endpoint, descriptor };
     }
+    throw new Error('BROWSER_USE_ACCESS_FAILED');
   }
 
-  has(execution: BrowserAgentExecution): boolean {
-    return this.active && this.lease?.execution === execution;
-  }
-
-  async release(execution?: BrowserAgentExecution): Promise<void> {
-    const lease = this.lease;
-    if (!lease || (execution && lease.execution !== execution)) return;
-    lease.stop.abort();
-    await lease.revoke();
-  }
-
-  private recheck(execution: BrowserAgentExecution, stop: AbortController): void {
-    if (stop.signal.aborted) return;
+  private async recheck(execution: BrowserAgentExecution, stop: AbortController): Promise<void> {
     const cancel = () => clearTimeout(timer);
     const timer = setTimeout(async () => {
       stop.signal.removeEventListener('abort', cancel);
-      const allowed = await execution.allowed(stop.signal).catch(() => false);
-      if (stop.signal.aborted) return;
-      if (!allowed) await this.release(execution).catch(this.failed);
-      else this.recheck(execution, stop);
+      if (!(await execution.allowed(stop.signal).catch(() => false))) stop.abort();
+      if (!stop.signal.aborted) void this.recheck(execution, stop);
     }, 3_000);
     timer.unref();
     stop.signal.addEventListener('abort', cancel, { once: true });
+  }
+}
+
+function isInitialize(message: string): boolean {
+  try {
+    const call = JSON.parse(message) as { method?: string; guid?: string } | null;
+    return call?.method === 'initialize' && call.guid === '';
+  } catch {
+    return false;
   }
 }

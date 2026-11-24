@@ -235,8 +235,8 @@ export function createWorkbenchBrowserService(options: {
     }, 10_000);
     connection.data = new BrowserAttachmentClient(link, canvas, open, {
       resizeViewport: capability.resizeViewport === true,
-      browserUse: capability.browserUse === true,
       downloadManagement: capability.downloadManagement === true,
+      agentActivity: capability.agentActivity === true,
       ...(capability.tabIcons && {
         tabIcon({ tabId, url, png }) {
           if (
@@ -530,9 +530,9 @@ export type WorkbenchBrowserCapability = BrowserCapability & {
   resizeViewport?: boolean;
   hd?: boolean;
   tabIcons?: boolean;
-  browserUse?: boolean;
   nativeTouch?: boolean;
   contextMenu?: boolean;
   find?: boolean;
   downloadManagement?: boolean;
+  agentActivity?: boolean;
 };

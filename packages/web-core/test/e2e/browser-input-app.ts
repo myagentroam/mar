@@ -37,18 +37,13 @@ document.addEventListener('fixture-raster-change', () => {
 });
 browser.path.value = 'relay';
 browser.show = async () => {};
-const takeover = location.search.includes('takeover');
 const requested = ref<{ url: string }>();
-const confirmTakeover = () => {
-  browser.snapshot.value = { tabs: [], viewVersion: 1, agentControl: 'user' };
-};
-if (takeover) document.addEventListener('fixture-agent-disconnected', confirmTakeover);
-if (takeover)
-  document.addEventListener('fixture-open-page', () => {
-    requested.value = { url: 'https://example.test/' };
-  });
-let takeAttempts = 0;
-if (takeover) browser.snapshot.value = { tabs: [], viewVersion: 1, agentControl: 'agent' };
+document.addEventListener('fixture-agent-activity', () => {
+  browser.snapshot.value = { tabs: [], viewVersion: 1, agentActive: true };
+});
+document.addEventListener('fixture-open-page', () => {
+  requested.value = { url: 'https://example.test/' };
+});
 browser.copySelection = () => fixtureCopy();
 browser.queryContextMenu = async (viewVersion, point) => {
   const id = crypto.randomUUID();
@@ -59,26 +54,8 @@ browser.queryContextMenu = async (viewVersion, point) => {
   return options && { ...options, id, viewVersion };
 };
 browser.send = (message) => {
-  if (takeover && message.type === 'agent.control') {
-    browser.error.value = undefined;
-    if (message.action === 'take') {
-      if (++takeAttempts === 1) {
-        browser.snapshot.value = {
-          tabs: [],
-          viewVersion: 1,
-          agentControl: 'taking',
-          fileChooser: { id: crypto.randomUUID(), multiple: false }
-        };
-        browser.error.value = 'BROWSER_USE_REVOKE_FAILED';
-      } else {
-        confirmTakeover();
-      }
-    } else if (message.action === 'resume') {
-      browser.snapshot.value = { tabs: [], viewVersion: 1, agentControl: 'idle' };
-    }
-  }
   if (message.type === 'input') void fixtureInput(message.action);
-  if (takeover && message.type === 'tab.open') document.body.dataset.opened = message.address;
+  if (message.type === 'tab.open') document.body.dataset.opened = message.address;
   if (message.type === 'context.paste') void fixturePaste(message);
   return true;
 };

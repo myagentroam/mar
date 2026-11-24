@@ -51,6 +51,9 @@ it('publishes a model-compatible shared tool for access and tab selection, not p
     execute
   });
   const [definition] = extensions.tools!;
+  const [skill] = extensions.skills!;
+  expect(skill!.description).toContain('even if they do not mention a browser');
+  expect(await skill!.load()).toContain('playwright-cli --mar-resource=<resourceId> tab-list');
   expect(extensions.environment?.['PLAYWRIGHT_CLI_SESSION']).toBe('mar-execution-a');
   expect(extensions.skills?.[0]).toMatchObject({
     name: 'mar-browser-use',
@@ -76,16 +79,15 @@ it('publishes a model-compatible shared tool for access and tab selection, not p
   expect(execute).not.toHaveBeenCalled();
   await expect(invoke({ action: 'describe' })).resolves.toEqual({ content: 'current page' });
   expect(execute).toHaveBeenCalledWith({ action: 'describe' }, signal);
-  execute.mockRejectedValueOnce(new Error('BROWSER_USE_HUMAN_CONTROL'));
-  await expect(invoke({ action: 'acquire' })).rejects.toMatchObject({
-    code: 'BROWSER_USE_HUMAN_CONTROL'
-  });
-  execute.mockRejectedValueOnce(new Error('BROWSER_USE_NOT_ATTACHED'));
+  for (const action of ['acquire', 'release']) {
+    await expect(invoke({ action })).rejects.toMatchObject({
+      code: 'MAR_AGENT_TOOL_INPUT_INVALID'
+    });
+  }
+  execute.mockRejectedValueOnce(new Error('BROWSER_TAB_ENDED'));
   await expect(
     invoke({ action: 'select', tabId: 'c102fe42-e5ac-47ee-abf4-ed84ce4f3b83' })
-  ).rejects.toMatchObject({
-    code: 'BROWSER_USE_NOT_ATTACHED'
-  });
+  ).rejects.toMatchObject({ code: 'BROWSER_TAB_ENDED' });
 });
 
 it('exposes mar_browser and its skill through the execution Host only while bound', async () => {

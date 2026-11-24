@@ -19,7 +19,7 @@ type Encoder = (
 ) => Promise<{ data: Uint8Array; key: boolean }>;
 type Command = Exclude<
   BrowserAttachmentMessage,
-  { type: 'ack' | 'dialog.respond' | 'agent.control' }
+  { type: 'ack' | 'dialog.respond' | 'agent.activity.observe' }
 >;
 type Button = Extract<BrowserPageInput, { type: 'button' }>['button'];
 export type BrowserAttachmentEncoder = { encode: Encoder; close: () => Promise<void>; hd?: true };
@@ -35,9 +35,7 @@ const COMMAND_ERRORS = new Set([
   'BROWSER_HTML_UNAVAILABLE',
   'BROWSER_NAVIGATION_FAILED',
   'BROWSER_TAB_NAVIGATION_FAILED',
-  'BROWSER_INVALID_ADDRESS',
-  'BROWSER_USE_REVOKE_FAILED',
-  'BROWSER_USE_TAKING'
+  'BROWSER_INVALID_ADDRESS'
 ]);
 
 /** One interactive borrower of a browser session. Owns in-flight commands,
@@ -52,7 +50,6 @@ export class BrowserAttachment {
   private capture: BrowserPageCapture | undefined;
   private capturing: Promise<void> | undefined;
   private running: Promise<void> | undefined;
-  private resetInputForTakeover = false;
   private stopping: Promise<void> | undefined;
   private answering: Promise<void> | undefined;
   private uploading: Promise<void> | undefined;
@@ -82,7 +79,11 @@ export class BrowserAttachment {
     | undefined;
 
   constructor(
-    private readonly borrow: { resource: BrowserTabs; release: () => void },
+    private readonly borrow: {
+      resource: BrowserTabs;
+      release: () => void;
+      activity: () => boolean;
+    },
     private readonly options: {
       quality: number;
       encoder: BrowserAttachmentEncoder;
@@ -109,20 +110,14 @@ export class BrowserAttachment {
 
   receive(message: BrowserAttachmentMessage): void {
     if (this.closed) return;
-    if (message.type === 'downloads.observe') {
-      this.downloadsSubscribed = true;
+    if (message.type === 'agent.activity.observe') {
+      this.agentActivitySubscribed = true;
       this.refresh();
       return;
     }
-    if (message.type === 'agent.control') {
-      if (message.action === 'observe') {
-        this.agentControlSubscribed = true;
-        this.refresh();
-      } else if (this.agentControlSubscribed) {
-        void this.borrow.resource
-          .setHumanControl(message.action === 'take')
-          .catch((error: unknown) => this.commandFailed(error));
-      }
+    if (message.type === 'downloads.observe') {
+      this.downloadsSubscribed = true;
+      this.refresh();
       return;
     }
     if (message.type === 'tab.icons') {
@@ -137,9 +132,8 @@ export class BrowserAttachment {
       if (version !== undefined && version === this.next?.version) this.shown = version;
       return;
     }
-    if (this.blockForTakeover(message.type)) return;
     if (message.type === 'dialog.respond') {
-      if (!this.answering) {
+      if (!this.answering && this.borrow.activity()) {
         this.answering = this.borrow.resource
           .respondToDialog(message.id, message.accept, message.text)
           .catch((error: unknown) => this.commandFailed(error))
@@ -150,7 +144,7 @@ export class BrowserAttachment {
       return;
     }
     if (message.type === 'navigation' && message.action === 'stop') {
-      if (!this.stopping) {
+      if (!this.stopping && this.borrow.activity()) {
         this.stopping = this.borrow.resource
           .stopLoading(message.viewVersion)
           .catch((error: unknown) => this.commandFailed(error))
@@ -192,12 +186,13 @@ export class BrowserAttachment {
   }
 
   download(request: BrowserDownloadRequest): Promise<unknown> {
-    if (this.closed) return Promise.reject(new Error('BROWSER_LEASE_ENDED'));
+    if (this.closed || !this.borrow.activity())
+      return Promise.reject(new Error('BROWSER_LEASE_ENDED'));
     return this.borrow.resource.download(request.command);
   }
 
   upload(request: BrowserUpload): Promise<void> {
-    if (this.closed || this.uploading || this.borrow.resource.agentControl === 'taking')
+    if (this.closed || this.uploading || !this.borrow.activity())
       return Promise.reject(new Error('BROWSER_UPLOAD_INVALID'));
     if (request.command.action !== 'finish') return this.borrow.resource.upload(request);
     const operation = this.borrow.resource.upload(request).finally(() => {
@@ -237,35 +232,22 @@ export class BrowserAttachment {
     if (failure) throw failure.reason;
   }
 
-  private agentControlSubscribed = false;
   private downloadsSubscribed = false;
+  private agentActivitySubscribed = false;
 
   private refresh(): void {
     if (this.closed) return;
-    if (this.borrow.resource.agentControl === 'taking') {
-      for (let i = 0; i < this.queue.length;) {
-        const command = this.queue[i];
-        if (!command || !this.blockForTakeover(command.type)) {
-          i++;
-          continue;
-        }
-        this.queue.splice(i, 1);
-        if (isPointerCommand(command)) this.queuedPointerCommands--;
-      }
-      if (this.pressed || this.running) {
-        this.resetInputForTakeover = true;
-        this.drain();
-      }
-    }
     const snapshot = this.borrow.resource.snapshot();
-    if (this.borrow.resource.agentControl === 'taking') void this.clearFind();
     try {
       this.options.sendControl({
         type: 'snapshot',
         snapshot: {
           ...snapshot,
-          ...(this.agentControlSubscribed && { agentControl: this.borrow.resource.agentControl }),
-          ...(this.downloadsSubscribed && { activeDownloadCount: this.borrow.resource.activeDownloadCount })
+          ...(this.agentActivitySubscribed &&
+            this.borrow.resource.agentActive && { agentActive: true }),
+          ...(this.downloadsSubscribed && {
+            activeDownloadCount: this.borrow.resource.activeDownloadCount
+          })
         }
       });
     } catch {
@@ -375,30 +357,26 @@ export class BrowserAttachment {
     }
   }
 
-  private blockForTakeover(type: BrowserAttachmentMessage['type']): boolean {
-    if (type === 'viewport.resize' || this.borrow.resource.agentControl !== 'taking') return false;
-    if (type === 'tab.open' || type === 'tab.openHtml')
-      this.commandFailed(new Error('BROWSER_USE_TAKING'));
-    return true;
-  }
-
   private drain(): void {
     if (this.running || this.closed || (!this.queue.length && !this.pressed)) return;
     this.running = Promise.resolve()
       .then(async () => {
         while (!this.closed) {
-          const reset = this.resetInputForTakeover;
-          this.resetInputForTakeover = false;
-          if (this.pressed && (reset || this.pressed.version !== this.next?.version)) {
+          if (this.pressed && this.pressed.version !== this.next?.version) {
             await this.releaseInput();
-            // Recheck takeover state before dispatching any new input.
             continue;
           }
           if (this.closed) break;
           const command = this.queue.shift();
           if (!command) break;
           if (isPointerCommand(command)) this.queuedPointerCommands--;
-          if (this.blockForTakeover(command.type)) continue;
+          if (
+            command.type !== 'viewport.resize' &&
+            command.type !== 'input' &&
+            command.type !== 'find.update' &&
+            !this.borrow.activity()
+          )
+            continue;
           try {
             await this.dispatch(command);
           } catch (error) {
@@ -416,11 +394,7 @@ export class BrowserAttachment {
       .catch(() => this.fail('BROWSER_INPUT_RELEASE_FAILED'))
       .finally(() => {
         this.running = undefined;
-        if (
-          this.queue.length ||
-          (this.pressed &&
-            (this.resetInputForTakeover || this.pressed.version !== this.next?.version))
-        )
+        if (this.queue.length || (this.pressed && this.pressed.version !== this.next?.version))
           this.drain();
       });
   }
@@ -456,7 +430,7 @@ export class BrowserAttachment {
         let result;
         if (command.operation.action === 'clear') {
           if (this.next?.version === version) await this.clearFind();
-        } else if (page) {
+        } else if (page && this.borrow.activity()) {
           this.findPage = page;
           result = await page.find.update(this, command.operation);
         }
@@ -513,15 +487,8 @@ export class BrowserAttachment {
   }
 
   private inputView(version: number): BrowserPageView | undefined {
-    if (
-      this.closed ||
-      this.borrow.resource.agentControl === 'taking' ||
-      version !== this.shown ||
-      version !== this.next?.version
-    )
-      return;
-    const page = this.next.page;
-    if (page?.acceptsInput(this)) return page;
+    if (this.closed || version !== this.shown || version !== this.next?.version) return;
+    return this.next.page;
   }
 
   private async dispatchInput(action: BrowserPageInput): Promise<void> {
@@ -536,8 +503,8 @@ export class BrowserAttachment {
       !this.pressed?.buttons.has(action.button)
     )
       return;
+    if (!this.borrow.activity()) return;
     if (action.type === 'key' || action.type === 'button' || action.type === 'touch') {
-      page.holdInput(this);
       const pressed = (this.pressed ??= {
         page,
         version: action.viewVersion,
@@ -560,7 +527,6 @@ export class BrowserAttachment {
       }
       if (!pressed.keys.size && !pressed.buttons.size && !pressed.touch) {
         this.pressed = undefined;
-        page.clearInputHold(this);
       }
       return;
     }
@@ -571,13 +537,9 @@ export class BrowserAttachment {
     const pressed = this.pressed;
     this.pressed = undefined;
     if (!pressed) return;
-    await this.borrow.resource.orderInput(async () => {
-      try {
-        await pressed.page.releaseInput(pressed.keys, pressed.buttons, pressed.touch);
-      } finally {
-        pressed.page.clearInputHold(this);
-      }
-    });
+    await this.borrow.resource.orderInput(() =>
+      pressed.page.releaseInput(pressed.keys, pressed.buttons, pressed.touch)
+    );
   }
 
   private commandFailed(error: unknown): void {

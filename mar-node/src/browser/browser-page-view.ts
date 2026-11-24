@@ -13,7 +13,6 @@ export type BrowserPageCapture = { stop: () => Promise<void> };
  */
 export class BrowserPageView {
   private pendingResize: Promise<void> = Promise.resolve();
-  private inputOwner: object | undefined;
   private navigationSession: Promise<CDPSession> | undefined;
   private pendingSeed: Promise<void> = Promise.resolve();
   readonly contextMenu: BrowserContextMenu;
@@ -103,18 +102,6 @@ export class BrowserPageView {
   }
 
   /** The attachment owns input ordering, view fencing and synthetic releases. */
-  acceptsInput(owner: object): boolean {
-    return !this.inputOwner || this.inputOwner === owner;
-  }
-
-  holdInput(owner: object): void {
-    this.inputOwner = owner;
-  }
-
-  clearInputHold(owner: object): void {
-    if (this.inputOwner === owner) this.inputOwner = undefined;
-  }
-
   async input(action: BrowserPageInput): Promise<void> {
     const { mouse, keyboard } = this.page;
     switch (action.type) {

@@ -722,7 +722,7 @@ export class NodeConnector {
           if (!(await allowed(signal))) return;
           const execution = { cliScope, signal, allowed };
           return async (action, actionSignal) => {
-            if (action.action !== 'release' && !(await allowed(actionSignal)))
+            if (!(await allowed(actionSignal)))
               throw new Error('BROWSER_USE_DISABLED');
             const result = await browser.agentAction(scope, action, execution, actionSignal);
             return { content: JSON.stringify(result) };

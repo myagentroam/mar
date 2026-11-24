@@ -397,7 +397,7 @@ try {
     window.probe.startAt = performance.now();
   });
   const attachment = new BrowserAttachment(
-    { resource: borrow.resource.tabs, release: borrow.release },
+    { resource: borrow.resource.tabs, release: borrow.release, activity: borrow.activity },
     {
       encoder: {
         ...(hd && { hd: true }),

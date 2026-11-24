@@ -12,6 +12,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { browserCliRoot, openBrowserCliScope } from '../../src/browser/browser-cli-scope.js';
+import { BrowserAgentAccess } from '../../src/browser/browser-agent-access.js';
 import { BrowserTabs } from '../../src/browser/browser-tabs.js';
 
 const execute = promisify(execFile);
@@ -71,138 +72,108 @@ function cliEnvironment(scope: string): NodeJS.ProcessEnv {
   };
 }
 
-async function sharedLoginSmoke(url: string, scope: string): Promise<void> {
+async function sharedLoginSmoke(url: string, scope: string, otherScope: string): Promise<void> {
   const context = await chromium.launchPersistentContext(join(cwd, 'shared-profile'), {
     channel: 'chromium',
     headless: true
   });
   const lifetime = new AbortController();
-  let holds = 0;
+  const otherLifetime = new AbortController();
   let allowed = true;
+  let actions = 0;
   const execution = { cliScope: scope, signal: lifetime.signal, allowed: async () => allowed };
+  const otherExecution = {
+    cliScope: otherScope,
+    signal: otherLifetime.signal,
+    allowed: async () => true
+  };
   const errors: unknown[] = [];
   const tabs = new BrowserTabs(context, { limit: 8, failed: (error) => errors.push(error) });
-  const retain = () => {
-    holds++;
-    return () => {
-      holds--;
-    };
-  };
-  const attach = (id: string) => cli(scope, 'attach', `--mar-resource=${id}`);
+  const access = new BrowserAgentAccess(
+    () => context.browser(),
+    () => {
+      actions++;
+      tabs.markAgentActivity();
+      return true;
+    },
+    (error) => errors.push(error)
+  );
   try {
-    const id = await tabs.acquireAgent(execution, retain);
-    assert.equal(holds, 1);
-    const attachOutput = await attach(id);
-    assert.doesNotMatch(attachOutput, /ws:\/\/127\.0\.0\.1/u);
-    await assert.rejects(tabs.acquireAgent({ ...execution }, retain), /BROWSER_USE_BUSY/);
-    assert.equal(await tabs.acquireAgent(execution, retain), id);
-    await cli(scope, 'tab-new', url);
+    const [first, second] = await Promise.all([
+      access.describe(execution),
+      access.describe(otherExecution)
+    ]);
+    assert.deepEqual(await access.describe(execution), first);
+    const browser = await chromium.connect(await readFile(second.endpointFile, 'utf8'), {
+      timeout: 5_000
+    });
+    assert.equal(actions, 0, 'Discovery and connection initialization do not renew the lifetime');
+    assert.equal(tabs.agentActive, false);
+    assert.equal(access.hasClients(), true);
+    const flag = `--mar-resource=${first.resourceId}`;
+    await Promise.all([cli(scope, flag, 'tab-list'), cli(scope, flag, 'tab-list')]);
+    const opened = await cli(scope, flag, 'tab-new', url);
+    assert.doesNotMatch(opened, /ws:\/\/127\.0\.0\.1/u);
     const page = context.pages()[1];
     assert(page);
     const loginTab = tabs.agentTabs().tabs.find(({ url: address }) => address === `${url}/`);
     assert(loginTab);
-    tabs.selectForAgent(loginTab.id, execution);
+    tabs.select(loginTab.id);
     assert.equal(tabs.snapshot().activeId, loginTab.id);
-    await tabs.releaseAgent(execution);
-    assert.equal(holds, 0);
-    await assert.rejects(attach(id), /Shared access is no longer available/);
-    // The simulated user signs in on the same page, without delegating credentials.
-    await page.getByRole('textbox').fill('signed in by the user');
+    await cli(scope, flag, 'tab-select', String(loginTab.pageIndex));
+    const sdkPage = browser
+      .contexts()[0]!
+      .pages()
+      .find((candidate) => candidate.url() === `${url}/`);
+    assert(sdkPage);
+    const cdp = await sdkPage.context().newCDPSession(sdkPage);
+    assert.match((await cdp.send('Browser.getVersion')).product, /Chrome/u);
+    await cdp.detach();
+    // A user and two independent Playwright clients share the same live page.
+    await Promise.all([
+      page.getByRole('textbox').fill('signed in by the user'),
+      sdkPage.locator('button').waitFor(),
+      cli(scope, flag, 'snapshot')
+    ]);
     await page.getByRole('button', { name: 'Save' }).click();
-    const next = await tabs.acquireAgent(execution, retain);
-    assert.notEqual(next, id);
-    await attach(next);
-    await cli(scope, 'tab-select', String(loginTab.pageIndex));
     assert.equal(
-      JSON.parse(await cli(scope, '--raw', 'eval', 'localStorage.getItem("message")')),
+      JSON.parse(await cli(scope, flag, '--raw', 'eval', 'localStorage.getItem("message")')),
       'signed in by the user'
     );
-    const registry = join(browserCliRoot(scope), `shared-${next}`);
-    const descriptors = await readdir(registry);
-    assert.equal(descriptors.length, 1);
-    const { endpoint } = JSON.parse(await readFile(join(registry, descriptors[0]!), 'utf8'));
-    assert.equal(typeof endpoint, 'string');
-    const client = await chromium.connect(endpoint, { timeout: 5_000 });
-    const disconnected = once(client, 'disconnected');
-    const releasing = tabs.releaseAgent(execution);
-    const reacquiring = assert.rejects(
-      tabs.acquireAgent(execution, retain),
-      /BROWSER_USE_HUMAN_CONTROL/
-    );
-    const takeover = tabs.setHumanControl(true);
-    assert.equal(tabs.agentControl, 'taking');
-    await Promise.all([disconnected, releasing, reacquiring, takeover]);
-    assert.equal(tabs.agentControl, 'user');
-    await assert.rejects(attach(next), /Shared access is no longer available/);
+    assert(actions > 0, 'Playwright operations renew the same live browser');
+    assert.equal(tabs.agentActive, true);
     await assert.rejects(
-      async () => tabs.acquireAgent(execution, retain),
-      /BROWSER_USE_HUMAN_CONTROL/
+      cli(scope, flag, 'snapshot', '--session=isolated'),
+      /Put the session flag before/u
     );
-    assert.equal(context.pages().length, 2);
-    assert.equal(page.isClosed(), false);
-    await tabs.setHumanControl(false);
-    const last = await tabs.acquireAgent(execution, retain);
-    allowed = false;
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        stop();
-        reject(new Error('Shared access not revoked'));
-      }, 8_000);
-      const stop = tabs.observe(() => {
-        if (holds !== 0) return;
-        stop();
-        clearTimeout(timeout);
-        resolve();
-      });
+    const alsoConnected = await chromium.connect(await readFile(first.endpointFile, 'utf8'), {
+      timeout: 5_000
     });
-    await assert.rejects(attach(last), /Shared access is no longer available/);
+    await cli(scope, flag, 'close');
+    assert.equal(alsoConnected.isConnected(), true);
     assert.equal(page.isClosed(), false);
-    allowed = true;
-
-    const failed = await tabs.acquireAgent(execution, retain);
-    const owner = context.browser()!;
-    const { unbind, close } = owner;
-    try {
-      const unavailable = async () => {
-        throw new Error('Simulated transport failure');
-      };
-      owner.unbind = unavailable;
-      owner.close = unavailable;
-      await assert.rejects(tabs.setHumanControl(true), /BROWSER_USE_REVOKE_FAILED/);
-      assert.equal(tabs.agentControl, 'taking');
-      assert.equal(holds, 1);
-      await assert.rejects(attach(failed), /Shared access is no longer available/);
-    } finally {
-      owner.unbind = unbind;
-      owner.close = close;
-    }
-    await tabs.setHumanControl(false);
-    assert.equal(tabs.agentControl, 'taking');
-    assert.equal(holds, 1);
-    await tabs.setHumanControl(true);
-    assert.equal(holds, 0);
-    assert.equal(tabs.agentControl, 'user');
-    assert.equal(page.isClosed(), false);
-    await tabs.setHumanControl(false);
-    const terminal = await tabs.acquireAgent(execution, retain);
-    await attach(terminal);
-    await lifetimes.get(scope)!.close();
-    assert.equal(page.isClosed(), false);
+    const disconnected = once(alsoConnected, 'disconnected');
+    allowed = false;
+    await Promise.race([
+      disconnected,
+      delay(8_000, undefined, { ref: false }).then(() => {
+        throw new Error('Shared Playwright client was not disconnected after revocation');
+      })
+    ]);
+    await assert.rejects(access.describe(execution), /BROWSER_USE_DISABLED/);
     assert.equal(
-      await page.evaluate(() => localStorage.getItem('message')),
+      await sdkPage.evaluate(() => localStorage.getItem('message')),
       'signed in by the user'
     );
-    lifetime.abort();
-    await tabs.releaseAgent(execution);
-    assert.equal(holds, 0);
-    await assert.rejects(attach(terminal), /requires an active MAR Browser Use environment/);
-    assert.deepEqual(
-      errors.map((error) => (error as Error).message),
-      ['BROWSER_USE_REVOKE_FAILED']
-    );
+    const otherDisconnected = once(browser, 'disconnected');
+    otherLifetime.abort();
+    await otherDisconnected;
+    assert.equal(page.isClosed(), false);
+    assert.deepEqual(errors, []);
   } finally {
     lifetime.abort();
-    await tabs.releaseAgent();
+    otherLifetime.abort();
+    await access.close();
     await context.close();
   }
 }
@@ -237,7 +208,7 @@ try {
     JSON.parse(await cli(a, '--raw', 'eval', 'localStorage.getItem("message")')),
     'kill-all'
   );
-  await sharedLoginSmoke(url, shared);
+  await sharedLoginSmoke(url, shared, b);
   await cli(b, '-s=same-named-session', '--config', 'explicit.json', 'open', url);
   assert.equal(await cli(b, '--raw', 'eval', 'innerWidth'), '777');
   assert.equal(await cli(b, '--raw', 'eval', 'localStorage.getItem("message")'), 'null');
@@ -310,7 +281,7 @@ try {
     'kill-all'
   );
   console.log(
-    'Verified Run-scoped Playwright cleanup, isolated sessions, and shared login handoff and takeover.'
+    'Verified Run-scoped Playwright cleanup, isolated sessions, and concurrent shared login and revocation.'
   );
 } finally {
   try {

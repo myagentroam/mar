@@ -6,7 +6,6 @@ import { BrowserDownloads } from './browser-downloads.js';
 import { BrowserDialogs } from './browser-dialogs.js';
 import { BrowserFileChooser } from './browser-file-chooser.js';
 import { BrowserPageView } from './browser-page-view.js';
-import { BrowserAgentAccess, type BrowserAgentExecution } from './browser-agent-access.js';
 import { BROWSER_VIEWPORT, type BrowserSize } from './browser-video-config.js';
 import { openBrowserWorkspaceHtml } from './browser-workspace-html.js';
 
@@ -32,49 +31,32 @@ const ERROR_PAGE = 'chrome-error://chromewebdata/';
 export class BrowserTabs {
   private readonly tabs = new Map<string, Tab>();
   private activeId: string | undefined;
-  private readonly agentAccess: BrowserAgentAccess;
-  private humanControl = false;
   private viewVersion = 1;
+  private agentActivity: ReturnType<typeof setTimeout> | undefined;
 
-  get agentControl(): 'idle' | 'agent' | 'taking' | 'user' {
-    if (this.humanControl) return this.agentAccess.engaged ? 'taking' : 'user';
-    return this.agentAccess.engaged ? 'agent' : 'idle';
+  get agentActive(): boolean {
+    return this.agentActivity !== undefined;
   }
 
-  async setHumanControl(value: boolean): Promise<void> {
-    if (!value && this.agentControl === 'taking') return;
-    if (this.humanControl === value) {
-      if (value) await this.agentAccess.release();
+  markAgentActivity(): void {
+    const previous = this.agentActivity;
+    if (previous) {
+      previous.refresh();
       return;
     }
-    this.humanControl = value;
+    this.agentActivity = setTimeout(() => {
+      this.agentActivity = undefined;
+      this.events.emit('changed');
+    }, 3_000);
+    this.agentActivity.unref();
     this.events.emit('changed');
-    if (value) await this.agentAccess.release();
-  }
-
-  acquireAgent(execution: BrowserAgentExecution, retain: () => () => void): Promise<string> {
-    return this.agentAccess.acquire(execution, retain, () => {
-      if (this.humanControl) throw new Error('BROWSER_USE_HUMAN_CONTROL');
-    });
-  }
-
-  releaseAgent(execution?: BrowserAgentExecution): Promise<void> {
-    return this.agentAccess.release(execution);
-  }
-
-  selectForAgent(id: string, execution: BrowserAgentExecution): void {
-    if (this.humanControl) throw new Error('BROWSER_USE_HUMAN_CONTROL');
-    if (!this.agentAccess.has(execution)) throw new Error('BROWSER_USE_NOT_ATTACHED');
-    this.select(id);
   }
 
   agentTabs() {
-    if (this.humanControl) return { activeTabId: null, control: this.agentControl, tabs: [] };
     const pages = this.context.pages();
     const { activeId, tabs } = this.snapshot();
     return {
       activeTabId: activeId ?? null,
-      control: this.agentControl,
       tabs: tabs.map(({ id, title, url }) => ({
         id,
         title,
@@ -105,11 +87,10 @@ export class BrowserTabs {
       favicon?: ((url: string) => Promise<string | undefined>) | undefined;
     }
   ) {
-    this.agentAccess = new BrowserAgentAccess(
-      () => context.browser(),
-      () => this.events.emit('changed'),
-      options.failed
-    );
+    context.once('close', () => {
+      clearTimeout(this.agentActivity);
+      this.agentActivity = undefined;
+    });
     this.dialogs = new BrowserDialogs(context, () => this.events.emit('changed'), options.failed);
     this.files = new BrowserFileChooser(
       () => this.events.emit('changed'),

@@ -5,23 +5,26 @@ export interface BrowserSessionKey {
   userId: number;
 }
 
-type Session<T> = { resource: T; close: () => Promise<void> };
+type Session<T> = {
+  resource: T;
+  close: () => Promise<void>;
+  agentConnected?: () => boolean;
+};
 
 type Entry<T> = {
   id: string;
   opening: Promise<string>;
   session?: Session<T>;
   closing?: Promise<void>;
-  idleSince?: number | undefined;
+  lastActivity?: number | undefined;
   attachments?: number;
-  agentHolds?: number;
   dataUse?: Promise<void> | undefined;
 };
 
 /** Owns live, isolated browser instances on this Node; the caller establishes
  * the execution boundary and supplies an already-authorized resource key.
- * An attachment borrows the interaction resource, not its close handle, and
- * keeps it alive until release. Runtime close resolves only after actual exit.
+ * An attachment borrows the interaction resource, not its close handle.
+ * Runtime close resolves only after actual exit.
  */
 export class BrowserSessionService<T> {
   private readonly entries = new Map<string, Entry<T>>();
@@ -63,8 +66,7 @@ export class BrowserSessionService<T> {
     return entry?.session && !entry.closing && !this.expired(entry) ? entry.id : undefined;
   }
 
-  /** Uses an exact live instance without taking over its interactive writer or
-   * renewing its idle period. Close waits for admitted operations to drain. */
+  /** Uses an exact live instance without renewing its idle period. Close waits for admitted operations to drain. */
   async use<R>(resource: BrowserSessionKey, id: string, run: (value: T) => Promise<R>): Promise<R> {
     const entry = this.entries.get(this.key(resource));
     if (this.stopped || !entry?.session || entry.id !== id || entry.closing || this.expired(entry))
@@ -79,7 +81,14 @@ export class BrowserSessionService<T> {
     return result;
   }
 
-  pin(resource: BrowserSessionKey, id: string): { resource: T; release: () => void } {
+  pin(
+    resource: BrowserSessionKey,
+    id: string
+  ): {
+    resource: T;
+    release: () => void;
+    activity: () => boolean;
+  } {
     const entry = this.entries.get(this.key(resource));
     if (
       this.stopped ||
@@ -91,35 +100,22 @@ export class BrowserSessionService<T> {
       throw new Error('BROWSER_SESSION_ENDED');
     }
     entry.attachments = (entry.attachments ?? 0) + 1;
-    entry.idleSince = undefined;
-    this.schedule();
     let released = false;
     const release = () => {
       if (released) return;
       released = true;
       entry.attachments = (entry.attachments ?? 1) - 1;
-      if (!entry.attachments && !entry.agentHolds) entry.idleSince = performance.now();
-      this.schedule();
     };
-    return { resource: entry.session.resource, release };
+    return { resource: entry.session.resource, release, activity: () => this.touch(resource, id) };
   }
 
-  /** Retains a live instance independently of Web attachments. */
-  retain(resource: BrowserSessionKey, id: string): () => void {
+  /** Renews a live instance only for operations, not for open connections. */
+  touch(resource: BrowserSessionKey, id: string): boolean {
     const entry = this.entries.get(this.key(resource));
     if (this.stopped || entry?.id !== id || !entry.session || entry.closing || this.expired(entry))
-      throw new Error('BROWSER_SESSION_ENDED');
-    entry.agentHolds = (entry.agentHolds ?? 0) + 1;
-    entry.idleSince = undefined;
-    this.schedule();
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      entry.agentHolds = (entry.agentHolds ?? 1) - 1;
-      if (!entry.agentHolds && !entry.attachments) entry.idleSince = performance.now();
-      this.schedule();
-    };
+      return false;
+    entry.lastActivity = performance.now();
+    return true;
   }
 
   async close(resource: BrowserSessionKey, id: string): Promise<void> {
@@ -147,7 +143,9 @@ export class BrowserSessionService<T> {
   }
 
   private expired(entry: Entry<T>): boolean {
-    return entry.idleSince !== undefined && performance.now() - entry.idleSince >= this.idleMs;
+    return (
+      entry.lastActivity !== undefined && performance.now() - entry.lastActivity >= this.idleMs
+    );
   }
 
   private async start(
@@ -165,11 +163,14 @@ export class BrowserSessionService<T> {
         if (this.stopped || entry.closing) throw new Error('BROWSER_STOPPED');
         let oldest: [string, Entry<T>] | undefined;
         for (const candidate of this.entries) {
-          const idle = candidate[1].idleSince;
+          const idle = candidate[1].lastActivity;
           if (
             idle !== undefined &&
             !candidate[1].closing &&
-            (!oldest || idle < oldest[1].idleSince!)
+            !candidate[1].attachments &&
+            !candidate[1].session?.agentConnected?.() &&
+            !candidate[1].dataUse &&
+            (!oldest || idle < oldest[1].lastActivity!)
           )
             oldest = candidate;
         }
@@ -186,7 +187,7 @@ export class BrowserSessionService<T> {
       throw error;
     }
     if (entry.closing) throw new Error('BROWSER_SESSION_ENDED');
-    entry.idleSince = performance.now();
+    entry.lastActivity = performance.now();
     this.schedule();
     return id;
   }
@@ -196,17 +197,7 @@ export class BrowserSessionService<T> {
       await entry.opening.catch(() => undefined);
       if (entry.session) {
         await entry.dataUse;
-        try {
-          await entry.session.close();
-        } catch (error) {
-          // Runtime has not detached or closed anything if Agent revocation fails.
-          if (error instanceof Error && error.message === 'BROWSER_USE_REVOKE_FAILED') {
-            delete entry.closing;
-            if (entry.idleSince !== undefined) entry.idleSince = performance.now();
-            this.schedule();
-          }
-          throw error;
-        }
+        await entry.session.close();
         this.occupied--;
       }
       this.entries.delete(key);
@@ -220,7 +211,8 @@ export class BrowserSessionService<T> {
     if (this.stopped) return;
     let next = Infinity;
     for (const entry of this.entries.values()) {
-      if (entry.idleSince !== undefined && !entry.closing) next = Math.min(next, entry.idleSince);
+      if (entry.lastActivity !== undefined && !entry.closing)
+        next = Math.min(next, entry.lastActivity);
     }
     if (!Number.isFinite(next)) return;
     this.timer = setTimeout(

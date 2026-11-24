@@ -4,7 +4,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer, get } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
 import { NodeConnector } from '../../mar-node/src/connector.js';
 import { unavailableCapabilities } from '../../mar-node/src/capabilities.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
@@ -13,6 +13,25 @@ test.use({
   viewport: { width: 1600, height: 900 },
   launchOptions: { args: ['--disable-features=WebRtcHideLocalIpsWithMdns'] }
 });
+
+async function currentAdminHeaders(request: APIRequestContext, password: string) {
+  // A Console reload can rotate the CSRF token issued during setup.
+  const login = await request.post('/api/auth/login', { data: { username: 'admin', password } });
+  expect(login.ok()).toBe(true);
+  return { 'x-csrf-token': (await login.json()).csrfToken };
+}
+
+async function resetAdminPassword(
+  request: APIRequestContext,
+  headers: { 'x-csrf-token': string },
+  password: string
+) {
+  const reset = await request.post('/api/auth/change-password', {
+    headers,
+    data: { currentPassword: password, password: INITIAL_ADMIN_PASSWORD }
+  });
+  expect(reset.ok()).toBe(true);
+}
 
 test('Browser Use defaults to enabled and saves the account preference', async ({
   page,
@@ -29,7 +48,6 @@ test('Browser Use defaults to enabled and saves the account preference', async (
     data: { currentPassword: INITIAL_ADMIN_PASSWORD, password }
   });
   expect(changed.ok()).toBe(true);
-  const headers = { 'x-csrf-token': (await changed.json()).csrfToken };
   const endpoint = '/api/auth/preferences/browser-use';
   try {
     await page.goto('/console?view=settings');
@@ -60,13 +78,12 @@ test('Browser Use defaults to enabled and saves the account preference', async (
     const preference = await page.request.get(endpoint);
     expect(await preference.json()).toEqual({ enabled: false });
   } finally {
+    const headers = await currentAdminHeaders(page.request, password);
     try {
-      await page.request.put(endpoint, { headers, data: { enabled: true } });
+      const restored = await page.request.put(endpoint, { headers, data: { enabled: true } });
+      expect(restored.status()).toBe(204);
     } finally {
-      await page.request.post('/api/auth/change-password', {
-        headers,
-        data: { currentPassword: password, password: INITIAL_ADMIN_PASSWORD }
-      });
+      await resetAdminPassword(page.request, headers, password);
     }
   }
 });
@@ -926,7 +943,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await commands.click();
     const browserMenu = page.getByRole('menu', { name: /^(Browser commands|浏览器命令)$/u });
     const browserCommands = browserMenu.getByRole('menuitem');
-    await expect(browserCommands).toHaveCount(6);
+    await expect(browserCommands).toHaveCount(5);
     await expect(browserCommands.locator('svg')).toHaveCount(5);
     for (const name of [
       /^(Find in page|在网页中查找)$/u,
@@ -939,7 +956,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     }
     await expect(
       browserMenu.getByRole('menuitem', { name: /^(Take control|接管浏览器)$/u })
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(browserMenu.getByRole('menuitem', { name: /^(Downloads|下载)$/u })).toHaveCount(0);
     await expect(
       browserMenu.getByRole('menuitem', { name: /^(Copy selected text|复制网页所选文本)$/u })
@@ -1066,14 +1083,6 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await address.press('Escape');
     await expect(suggestions).toBeHidden();
     await commands.click();
-    await page.getByRole('menuitem', { name: /^(Take control|接管浏览器)$/u }).click();
-    const paused = page.getByRole('status').filter({
-      hasText: /^(You control the browser\. The Agent is disconnected\.|你已接管浏览器，Agent 已断开连接。)$/u
-    });
-    await expect(paused).toBeVisible();
-    await page.getByRole('button', { name: /^(Let Agent resume|让 Agent 继续)$/u }).click();
-    await expect(paused).toBeHidden();
-    await commands.click();
     await page.getByRole('menuitem', { name: /^(Browser settings|浏览器设置)$/u }).click();
     await expect(
       page.getByRole('heading', { name: /^(Browser settings|浏览器设置)$/u })
@@ -1163,16 +1172,20 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const copySelection = pageActions.getByRole('button', {
       name: /^(Copy selected text|复制网页所选文本)$/u
     });
-    await expect(
-      pageActions.getByRole('button', { name: /^(Show keyboard|显示键盘)$/u })
-    ).toBeVisible();
-    await expect(pageActions.getByRole('button')).toHaveCount(4);
+    const pasteText = pageActions.getByRole('button', {
+      name: /^(Paste plain text|粘贴纯文本)$/u
+    });
+    const performanceAction = pageActions.getByRole('button', {
+      name: /^(Browser streaming performance|浏览器投屏性能)$/u
+    });
     const collapseActions = pageActions.getByRole('button', {
       name: /^(Collapse page actions|收起网页操作)$/u
     });
     const expandActions = pageActions.getByRole('button', {
       name: /^(Expand page actions|展开网页操作)$/u
     });
+    for (const action of [touchInput, copySelection, pasteText, performanceAction, collapseActions])
+      await expect(action).toBeVisible();
     const expandedActions = (await pageActions.boundingBox())!;
     const firstAction = (await touchInput.boundingBox())!;
     const toggleAction = (await collapseActions.boundingBox())!;
@@ -1194,9 +1207,6 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     });
     await expandActions.press('Enter');
     await expect(collapseActions).toHaveAttribute('aria-expanded', 'true');
-    const performanceAction = pageActions.getByRole('button', {
-      name: /^(Browser streaming performance|浏览器投屏性能)$/u
-    });
     await performanceAction.press('Enter');
     const performanceSurface = page.locator('.browser-performance');
     await expect(performanceSurface).toBeVisible();
@@ -1394,10 +1404,11 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     try {
       await connector?.stop();
       if (headers) {
-        await page.request.post('/api/auth/change-password', {
-          headers,
-          data: { currentPassword: password, password: INITIAL_ADMIN_PASSWORD }
-        });
+        await resetAdminPassword(
+          page.request,
+          await currentAdminHeaders(page.request, password),
+          password
+        );
       }
     } finally {
       site.close();

@@ -32,7 +32,7 @@ describe('Node Browser live session cache', () => {
     await service.shutdown();
   });
 
-  it('closes the process 15 minutes after the last release, not after the last input', async () => {
+  it('uses the latest operation, not concurrent connections or release, for its idle deadline', async () => {
     vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
     const close = vi.fn(async () => {});
     const service = new BrowserSessionService({
@@ -41,16 +41,21 @@ describe('Node Browser live session cache', () => {
       onCloseFailed: vi.fn()
     });
     const id = await service.open(one);
-    const { release } = service.pin(one, id);
-    await vi.advanceTimersByTimeAsync(16 * 60_000);
-    expect(service.lookup(one)).toBe(id);
-    release();
+    const web = service.pin(one, id);
+    const other = service.pin(one, id);
+    await vi.advanceTimersByTimeAsync(14 * 60_000);
+    expect(web.activity()).toBe(true);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    other.release();
+    expect(service.touch(one, id)).toBe(true); // Playwright, even without the panel.
     await vi.advanceTimersByTimeAsync(15 * 60_000 - 1);
     expect(service.lookup(one)).toBe(id);
     await vi.advanceTimersByTimeAsync(1);
-    expect(close).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledOnce();
+    expect(web.activity()).toBe(false);
+    expect(service.touch(two, id)).toBe(false);
     expect(service.lookup(one)).toBeUndefined();
-    expect(() => service.pin(one, id)).toThrow('BROWSER_SESSION_ENDED');
+    web.release();
     await service.shutdown();
   });
 
@@ -71,68 +76,6 @@ describe('Node Browser live session cache', () => {
     exit.resolve();
     expect(await next).not.toBe(id);
     expect(launch).toHaveBeenCalledTimes(2);
-    await service.shutdown();
-  });
-
-  it('retains the browser after Web detaches until the agent releases its lease', async () => {
-    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
-    const close = vi.fn(async () => {});
-    const service = new BrowserSessionService({
-      launch: async () => ({ resource: {}, close }),
-      limit: 1,
-      idleMs: 1000,
-      onCloseFailed: vi.fn()
-    });
-    try {
-      const id = await service.open(one);
-      const web = service.pin(one, id);
-      const release = service.retain(one, id);
-      web.release();
-      await vi.advanceTimersByTimeAsync(2000);
-      expect(service.lookup(one)).toBe(id);
-      await expect(service.open(two)).rejects.toThrow('BROWSER_CAPACITY');
-      release();
-      await vi.advanceTimersByTimeAsync(999);
-      release();
-      expect(close).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1);
-      expect(close).toHaveBeenCalledOnce();
-      expect(service.lookup(one)).toBeUndefined();
-    } finally {
-      await service.shutdown();
-    }
-  });
-
-  it('can retry closing after an Agent revocation failure without losing released borrows', async () => {
-    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
-    const failure = Promise.withResolvers<void>();
-    const close = vi.fn(async () => {}).mockReturnValueOnce(failure.promise);
-    const service = new BrowserSessionService({
-      launch: async () => ({ resource: {}, close }),
-      limit: 1,
-      idleMs: 1000,
-      onCloseFailed: vi.fn()
-    });
-    const id = await service.open(one);
-    const web = service.pin(one, id);
-    const agent = service.retain(one, id);
-    const pending = service.close(one, id);
-    const duplicate = service.close(one, id);
-    web.release();
-    const failed = Promise.all([
-      expect(pending).rejects.toThrow('BROWSER_USE_REVOKE_FAILED'),
-      expect(duplicate).rejects.toThrow('BROWSER_USE_REVOKE_FAILED')
-    ]);
-    failure.reject(new Error('BROWSER_USE_REVOKE_FAILED'));
-    await failed;
-    expect(close).toHaveBeenCalledOnce();
-    expect(service.lookup(one)).toBe(id);
-    await expect(service.open(two)).rejects.toThrow('BROWSER_CAPACITY');
-    agent();
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(close).toHaveBeenCalledTimes(2);
-    expect(service.lookup(one)).toBeUndefined();
-    await expect(service.open(two)).resolves.not.toBe(id);
     await service.shutdown();
   });
 

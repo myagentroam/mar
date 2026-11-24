@@ -69,7 +69,7 @@ const downloadsOpen = ref(false);
 const { snapshot, status, frame, path, streamSample, error, uploadStatus } = props.browser;
 const downloadBrowserId = computed(() => props.browser.browserId());
 const activeDownloads = computed(() =>
-  status.value === 'ready' ? snapshot.value?.activeDownloadCount ?? 0 : 0
+  status.value === 'ready' ? (snapshot.value?.activeDownloadCount ?? 0) : 0
 );
 const downloadStatusId = `${tabPrefix}-download-status`;
 watch(downloadBrowserId, () => (downloadsOpen.value = false));
@@ -140,8 +140,7 @@ const canFind = computed(() =>
     !blank.value &&
     active.value &&
     snapshot.value?.viewVersion === frame.value?.viewVersion &&
-    frame.value &&
-    snapshot.value?.agentControl !== 'taking'
+    frame.value
   )
 );
 let findVersion: number | undefined;
@@ -223,9 +222,8 @@ function closeFind(restore: boolean): void {
   findOrigin = undefined;
 }
 const blank = computed(() => active.value?.url === 'about:blank');
-const takingControl = computed(() => snapshot.value?.agentControl === 'taking');
-const dialog = computed(() => (takingControl.value ? undefined : snapshot.value?.dialog));
-const chooser = computed(() => (takingControl.value ? undefined : snapshot.value?.fileChooser));
+const dialog = computed(() => snapshot.value?.dialog);
+const chooser = computed(() => snapshot.value?.fileChooser);
 const fileInputId = useId();
 watch([() => snapshot.value?.viewVersion, canFind], () => {
   if (!canFind.value || findVersion !== snapshot.value?.viewVersion) closeFind(false);
@@ -257,16 +255,6 @@ const tabs = computed(
     }) ?? []
 );
 const hasCommands = computed(() => !!snapshot.value && status.value !== 'failed');
-const agentControlAction = computed(() => {
-  switch (snapshot.value?.agentControl) {
-    case 'user':
-      return { command: 'resume', label: 'browser.useResume' } as const;
-    case 'taking':
-      return { command: 'take', label: 'browser.useRetry' } as const;
-    default:
-      return { command: 'take', label: 'browser.useTake' } as const;
-  }
-});
 const reconnectId = computed(() =>
   error.value !== 'BROWSER_SESSION_ENDED' ? props.browser.browserId() : undefined
 );
@@ -316,10 +304,10 @@ watch(
   { immediate: true }
 );
 watch(
-  [status, () => !!snapshot.value, takingControl, () => props.requested],
+  [status, () => !!snapshot.value, () => props.requested],
   () => {
     if (!desired) return;
-    if (status.value === 'ready' && snapshot.value && !takingControl.value) {
+    if (status.value === 'ready' && snapshot.value) {
       if (
         !props.browser.send(
           'url' in desired
@@ -443,10 +431,6 @@ function command(value: string | number | object): void {
   }
   const id = props.browser.browserId();
   if (value === 'settings') return emit('settings', id);
-  if (value === 'take' || value === 'resume') {
-    props.browser.send({ type: 'agent.control', action: value });
-    return;
-  }
   if (!id) return;
   if (value === 'cache' || value === 'history') emit('data', value, id);
   if (value === 'close') {
@@ -455,13 +439,6 @@ function command(value: string | number | object): void {
       if (closed && !lifetime.signal.aborted) emit('closed', scope);
     });
   }
-}
-
-function changeAgentControl(event: MouseEvent): void {
-  const action = agentControlAction.value.command;
-  // A second click that started as a takeover must not restore Agent access.
-  if (action === 'resume' && event.detail > 1) return;
-  command(action);
 }
 
 function recover(): void {
@@ -1060,12 +1037,6 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         <template #dropdown>
           <MarDropdownMenu :aria-label="t('browser.menu')">
             <MarDropdownItem
-              v-if="snapshot?.agentControl !== undefined"
-              :key="agentControlAction.command"
-              :command="agentControlAction.command"
-              >{{ t(agentControlAction.label) }}</MarDropdownItem
-            >
-            <MarDropdownItem
               v-if="capability.find"
               command="find"
               icon="search"
@@ -1088,27 +1059,6 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         </template>
       </MarDropdown>
     </form>
-    <div
-      v-if="snapshot?.agentControl && snapshot.agentControl !== 'idle'"
-      class="node-browser-agent-control"
-    >
-      <span role="status">{{
-        t(
-          snapshot.agentControl === 'taking'
-            ? 'browser.useTaking'
-            : snapshot.agentControl === 'agent'
-              ? 'browser.useAgentActive'
-              : 'browser.useUserActive'
-        )
-      }}</span>
-      <MarButton
-        :key="agentControlAction.command"
-        link
-        @click="changeAgentControl"
-        @keydown.enter="(event: KeyboardEvent) => event.repeat && event.preventDefault()"
-        >{{ t(agentControlAction.label) }}</MarButton
-      >
-    </div>
     <span v-if="invalid" :id="`${tabPrefix}-address-error`" hidden>{{ t('browser.invalid') }}</span>
     <div ref="body" class="node-browser-body">
       <BrowserFindBar
@@ -1136,6 +1086,9 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         @wheel.prevent="wheel"
         @contextmenu.prevent
       />
+      <p class="node-browser-activity" role="status">
+        <span v-if="status === 'ready' && snapshot?.agentActive">{{ t('browser.useActive') }}</span>
+      </p>
       <BrowserContextMenu
         v-if="contextMenu"
         :key="contextMenu.intent"
@@ -1314,21 +1267,29 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
   block-size: 100%;
   min-block-size: 0;
 }
+.node-browser-activity {
+  position: absolute;
+  inset-inline-start: 0.75rem;
+  inset-block-end: 0.75rem;
+  z-index: 1;
+  margin: 0;
+  pointer-events: none;
+}
+.node-browser-activity span {
+  display: block;
+  padding: 0.25rem 0.5rem;
+  color: var(--mar-text-secondary);
+  background: var(--mar-ui-bg-panel);
+  border: 1px solid var(--mar-ui-border-default);
+  border-radius: var(--mar-ui-radius-control);
+  font-size: var(--mar-ui-font-size-meta);
+}
 .node-browser-tabs,
-.node-browser-agent-control,
 .node-browser-toolbar,
 .node-browser-nav {
   display: flex;
   align-items: center;
   min-inline-size: 0;
-}
-.node-browser-agent-control {
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-  padding-inline: 0.75rem;
-  color: var(--mar-text-secondary);
-  border-block-end: 1px solid var(--mar-ui-border-default);
 }
 .node-browser-tabs > :first-child,
 .node-browser-address {
