@@ -363,17 +363,19 @@ try {
   primaryRenewal = setInterval(() => {
     void coordinator.renew(identity, open.attachmentId).catch(failed);
   }, 5_000).unref();
-  if (hd) {
-    await web.waitForFunction(() => window.probe.viewport?.width === 1920, undefined, {
-      timeout: 5_000
-    });
-    assert.deepEqual(
-      await web
-        .locator('canvas')
-        .evaluate((canvas: HTMLCanvasElement) => [canvas.width, canvas.height]),
-      [1920, 1080]
-    );
-  }
+  await web.waitForFunction(
+    ({ width, height }) =>
+      window.probe.viewport?.width === width && window.probe.viewport.height === height,
+    fixtureViewport,
+    { timeout: 5_000 }
+  );
+  assert.deepEqual(
+    await web
+      .locator('canvas')
+      .evaluate((canvas: HTMLCanvasElement) => [canvas.width, canvas.height]),
+    [fixtureViewport.width, fixtureViewport.height],
+    'The first idle page must draw at 1× even with Chromium rendering at 2×'
+  );
   assert.equal(await web.evaluate(() => window.probe.click()), true);
   await target.waitForFunction(() => window.browserClicked, undefined, { timeout: 5_000 });
   const readKeys = await target.evaluateHandle(() => {
@@ -405,14 +407,15 @@ try {
     { type: 'keyup', key: 'Y', ctrlKey: false, shiftKey: false }
   ]);
   await readKeys.dispose();
-  await target.setContent(`<!doctype html><style>
+  const scrollFixture = `<!doctype html><style>
     body{margin:0;background:#141f59;color:white} header{position:fixed;inset:0 0 auto;height:48px;background:#9a2855}
     section{box-sizing:border-box;height:160px;padding:62px 16px;font:22px monospace}
     </style><header></header>${Array.from(
       { length: 30 },
       (_, index) =>
         `<section style="background:rgb(${20 + index * 6},${40 + index * 3},89)">Section ${index}</section>`
-    ).join('')}`);
+    ).join('')}`;
+  await target.setContent(scrollFixture);
   const scrollPixel = (red: number) =>
     web.waitForFunction(
       (expected) => {
@@ -467,6 +470,7 @@ try {
       return {
         frames: window.probe.frame - frame,
         fixed: Array.from(fixed),
+        quality: window.probe.quality,
         samples: window.probe.samples.slice(samples)
       };
     }, start);
@@ -479,6 +483,25 @@ try {
     };
   };
   const continuousScroll = [await continuous(16, 1440, 74), await continuous(-16, 0, 20)];
+  // The text fixture must stop drawing and consuming bytes after the final paint.
+  // Wait for two full sampling windows so the final legitimate frame isn't counted.
+  const waitForScrollSilence = async () => {
+    const scrollSamples = await web.evaluate(() => window.probe.samples.length);
+    await web.waitForFunction(
+      (sampleCount) => {
+        const samples = window.probe.samples;
+        return (
+          samples.length >= sampleCount + 3 &&
+          samples
+            .slice(-2)
+            .every((sample) => sample.framesPerSecond === 0 && sample.bitsPerSecond === 0)
+        );
+      },
+      scrollSamples,
+      { timeout: 5_000 }
+    );
+  };
+  await waitForScrollSilence();
 
   assert(await web.evaluate(() => window.probe.selectQuality('high')));
   const highRaster = browserStreamSize(fixtureViewport, BROWSER_DEVICE_SCALE_FACTOR);
@@ -670,6 +693,34 @@ try {
       restoredHighMs: Math.round(performance.now() - settleStarted)
     })
   );
+  if (mode === 'ice') {
+    // The original feedback loop occurred with paced capture and an odd-sized viewport.
+    assert(
+      await web.evaluate(() => window.probe.resize(660, 839) && window.probe.selectQuality('low'))
+    );
+    await web.waitForFunction(
+      () =>
+        window.probe.quality === 'low' &&
+        window.probe.viewport?.width === 660 &&
+        window.probe.viewport.height === 839,
+      undefined,
+      { timeout: 5_000 }
+    );
+    await target.setContent(scrollFixture);
+    await scrollPixel(20);
+    assert(
+      await web.evaluate(async () => {
+        for (let i = 0; i < 24; i++) {
+          if (!window.probe.wheel(39)) return false;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        return true;
+      })
+    );
+    await target.waitForFunction(() => scrollY === 936, undefined, { timeout: 5_000 });
+    await scrollPixel(56);
+    await waitForScrollSilence();
+  }
   const resized = `${http}/after-resize`;
   assert.equal(await web.evaluate((url) => window.probe.resizeAndNavigate(url), resized), true);
   await target.waitForURL(resized, { timeout: 5_000 });

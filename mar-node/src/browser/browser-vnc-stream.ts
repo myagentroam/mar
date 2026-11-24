@@ -1,6 +1,5 @@
 import sharp from 'sharp';
 import {
-  BROWSER_VNC_MOTION_BPS,
   BrowserRfbPeer,
   BrowserVncRate,
   encodeBrowserVncUpdate,
@@ -280,7 +279,7 @@ export class BrowserVncStream {
       // Pace broad motion by actual encoded bytes. Bounded debt allows a
       // large still/resize/repair to remain responsive and never queues frames.
       this.motionReadyAt = update.motion
-        ? started + Math.min(450, (motionBytes * 8_000) / BROWSER_VNC_MOTION_BPS)
+        ? started + Math.min(450, (motionBytes * 8_000) / this.rate.motionBudget)
         : -Infinity;
       if (!previous) this.lossyTiles.clear();
       for (const tile of update.restoredTiles) this.lossyTiles.delete(tile);

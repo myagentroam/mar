@@ -69,8 +69,6 @@ function bitrate(bits: number): string {
         <dd>{{ frame ? `${frame.width} × ${frame.height}` : '—' }}</dd>
         <dt>{{ t('browser.performance.decodedResolution') }}</dt>
         <dd>{{ frame ? `${frame.raster.width} × ${frame.raster.height}` : '—' }}</dd>
-        <dt>{{ t('browser.performance.codec') }}</dt>
-        <dd>{{ frame ? t('browser.performance.rfbTight') : '—' }}</dd>
         <dt>{{ t('browser.performance.quality') }}</dt>
         <dd>{{ quality ? t(`browser.performance.${quality}`) : '—' }}</dd>
       </dl>
@@ -93,14 +91,19 @@ function bitrate(bits: number): string {
 
 <style scoped>
 .browser-performance {
+  display: grid;
+  row-gap: 0.25rem;
   color: var(--mar-ui-text-primary);
   font-size: var(--mar-font-size-meta);
+}
+.browser-performance > strong {
+  margin-block-end: 0.375rem;
 }
 .browser-performance dl {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   gap: 0.375rem 0.625rem;
-  margin: 0.625rem 0;
+  margin: 0;
 }
 .browser-performance dt,
 .browser-performance p {

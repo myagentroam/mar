@@ -1,19 +1,17 @@
 import type { BrowserVncQuality } from './framebuffer.js';
 
 const profiles = [
-  { quality: 'high', fps: 24, scale: 2 },
-  { quality: 'high', fps: 12, scale: 2 },
-  { quality: 'medium', fps: 10, scale: 1.5 },
+  { quality: 'high', fps: 24, scale: 1 },
+  { quality: 'high', fps: 12, scale: 1 },
+  { quality: 'medium', fps: 10, scale: 1 },
   { quality: 'low', fps: 6, scale: 1 },
   { quality: 'low', fps: 4, scale: 0.65 }
 ] as const satisfies ReadonlyArray<{ quality: BrowserVncQuality; fps: number; scale: number }>;
-// Soft budget for consecutive expensive motion updates. A single static
-// refresh is never reduced just because it is large.
-export const BROWSER_VNC_MOTION_BPS = 12_000_000;
-const motionBudget = BROWSER_VNC_MOTION_BPS;
-
 /** Hysteresis driven by complete updates, not by idle time or raw RTT. */
 export class BrowserVncRate {
+  // Direct data paths get more headroom. This is not a bandwidth estimate;
+  // observed write, draw and encoding pressure still applies.
+  readonly motionBudget: number;
   private level: number;
   private slow = 0;
   private fast = 0;
@@ -22,6 +20,7 @@ export class BrowserVncRate {
 
   constructor(relay: boolean) {
     this.level = relay ? 1 : 0;
+    this.motionBudget = relay ? 12_000_000 : 24_000_000;
   }
 
   get profile() {
@@ -47,6 +46,7 @@ export class BrowserVncRate {
     motionWorkMs?: number
   ): boolean {
     const before = this.profile;
+    const motionBudget = this.motionBudget;
     const motionBps = motionBytes * 8 * before.fps;
     const slow =
       writeMs >= 100 ||

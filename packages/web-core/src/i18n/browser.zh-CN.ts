@@ -73,8 +73,6 @@ export const browserZhCN = {
     fps: '绘制帧率',
     viewport: '网页 CSS 视口',
     decodedResolution: '解码分辨率',
-    codec: '编码',
-    rfbTight: 'RFB (Tight)',
     quality: '当前画质',
     qualityMode: '画质偏好',
     auto: '自动',

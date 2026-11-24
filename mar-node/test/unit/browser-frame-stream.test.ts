@@ -300,7 +300,7 @@ it.each([
     next();
   }
   expect(stream.fps).toBe(expectedFps);
-  expect(stream.scale).toBe(2);
+  expect(stream.scale).toBe(1);
 });
 
 it('closes on malformed capture or failed writes rather than draining queued updates', async () => {

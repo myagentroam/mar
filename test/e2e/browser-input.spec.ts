@@ -1240,21 +1240,53 @@ function canvasPoint(page: Page, x: number, y: number) {
   );
 }
 
-test('Browser performance separates the CSS viewport from the decoded resolution', async ({
-  page
-}) => {
-  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
-  try {
-    await page.goto(`${fixture.url}browser-input.html`);
-    await page.getByRole('button', { name: 'Browser streaming performance' }).click();
-    const panel = page.getByRole('region', { name: 'Browser streaming performance' });
-    const value = (label: string) => panel.getByText(label, { exact: true }).locator('+ dd');
-    await expect(value('CSS viewport')).toHaveText('800 × 600');
-    await expect(value('Decoded resolution')).toHaveText('800 × 600');
-    await page.evaluate(() => document.dispatchEvent(new Event('fixture-raster-change')));
-    await expect(value('Decoded resolution')).toHaveText('640 × 480');
-    await expect(value('CSS viewport')).toHaveText('800 × 600');
-  } finally {
-    await fixture.close();
-  }
-});
+for (const [locale, width, title, viewport, raster, codec, preference] of [
+  [
+    'en-US',
+    390,
+    'Browser streaming performance',
+    'CSS viewport',
+    'Decoded resolution',
+    'Codec',
+    'Picture quality preference'
+  ],
+  ['zh-CN', 960, '浏览器投屏性能', '网页 CSS 视口', '解码分辨率', '编码', '画质偏好']
+] as const) {
+  test(`Browser performance shows distinct raster sizes and compact quality controls (${locale})`, async ({
+    page
+  }, testInfo) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+    try {
+      await page.setViewportSize({ width, height: 700 });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto(`${fixture.url}browser-input.html?locale=${locale}`);
+      if (locale === 'zh-CN') {
+        await page.evaluate(() => {
+          document.documentElement.dataset.theme = 'vscode-dark-2026';
+        });
+      }
+      await page.getByRole('button', { name: title }).click();
+      const panel = page.getByRole('region', { name: title });
+      const value = (label: string) => panel.getByText(label, { exact: true }).locator('+ dd');
+      await expect(value(viewport)).toHaveText('800 × 600');
+      await expect(value(raster)).toHaveText('800 × 600');
+      await page.evaluate(() => document.dispatchEvent(new Event('fixture-raster-change')));
+      await expect(value(raster)).toHaveText('640 × 480');
+      await expect(value(viewport)).toHaveText('800 × 600');
+      const facts = (await panel.locator('dl').boundingBox())!;
+      const select = (await panel.getByRole('combobox', { name: preference }).boundingBox())!;
+      const hint = (await panel.locator('p').boundingBox())!;
+      const rootFontSize = await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.documentElement).fontSize)
+      );
+      const gap = select.y - (facts.y + facts.height);
+      expect(gap).toBeGreaterThan(0);
+      expect(gap).toBeLessThanOrEqual(rootFontSize * 0.375);
+      expect(hint.y - (select.y + select.height)).toBeCloseTo(gap, 1);
+      await expect(panel.getByText(codec, { exact: true })).toHaveCount(0);
+      await panel.screenshot({ path: testInfo.outputPath('browser-performance.png') });
+    } finally {
+      await fixture.close();
+    }
+  });
+}

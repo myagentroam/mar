@@ -222,14 +222,15 @@ test('automatic quality first reduces cadence, then scale, and can recover withi
   const fast = () => {
     for (let i = 0; i < 4; i++) rate.observe(4, 35, true);
   };
+  expect(rate.profile).toEqual({ quality: 'high', fps: 24, scale: 1 });
   slow();
-  expect(rate.profile).toEqual({ quality: 'high', fps: 12, scale: 2 });
+  expect(rate.profile).toEqual({ quality: 'high', fps: 12, scale: 1 });
   slow();
-  expect(rate.profile.quality).toBe('medium');
+  expect(rate.profile).toEqual({ quality: 'medium', fps: 10, scale: 1 });
   slow();
-  expect(rate.profile.quality).toBe('low');
+  expect(rate.profile).toEqual({ quality: 'low', fps: 6, scale: 1 });
   slow();
-  expect(rate.profile).toMatchObject({ quality: 'low', fps: 4 });
+  expect(rate.profile).toEqual({ quality: 'low', fps: 4, scale: 0.65 });
   fast();
   fast();
   expect(rate.profile.quality).toBe('medium');
@@ -243,9 +244,24 @@ test('automatic quality first reduces cadence, then scale, and can recover withi
 
 test('severe sustained motion reduces cadence in two updates before reducing raster', () => {
   const rate = new BrowserVncRate(false);
-  expect(rate.observe(4, 35, true, 300_000)).toBe(false);
-  expect(rate.observe(4, 35, true, 300_000)).toBe(true);
-  expect(rate.profile).toMatchObject({ fps: 12, scale: 2 });
+  expect(rate.observe(4, 35, true, 400_000)).toBe(false);
+  expect(rate.observe(4, 35, true, 400_000)).toBe(true);
+  expect(rate.profile).toMatchObject({ fps: 12, scale: 1 });
+});
+
+test('fast direct motion has more headroom than relay but still adapts to delayed draws', () => {
+  const direct = new BrowserVncRate(false);
+  const relay = new BrowserVncRate(true);
+  for (let i = 0; i < 9; i++) {
+    direct.observe(4, 35, true, 90_000, 28);
+    relay.observe(4, 35, true, 90_000, 28);
+  }
+  expect(direct.profile).toMatchObject({ fps: 24, quality: 'high' });
+  expect(relay.profile).toMatchObject({ fps: 12, quality: 'high' });
+  for (let i = 0; i < 9; i++) direct.observe(4, 230, true, 90_000, 28);
+  expect(direct.profile).toMatchObject({ fps: 6, quality: 'low', scale: 1 });
+  for (let i = 0; i < 12; i++) direct.observe(4, 35, true, 4_000, 15);
+  expect(direct.profile).toMatchObject({ fps: 24, quality: 'high', scale: 1 });
 });
 
 test('raises motion cadence only after frame processing fits the faster profile', () => {
@@ -255,12 +271,12 @@ test('raises motion cadence only after frame processing fits the faster profile'
   expect(observe(254)).toBe(false);
   expect(observe(254)).toBe(false);
   expect(observe(254)).toBe(true);
-  expect(rate.profile).toMatchObject({ fps: 12, scale: 2 });
+  expect(rate.profile).toMatchObject({ fps: 12, scale: 1 });
   // 65 ms fits 12 fps, but even with a fast link it cannot sustain 24 fps.
   for (let i = 0; i < 12; i++) expect(observe(65)).toBe(false);
   for (let i = 0; i < 3; i++) expect(observe(28)).toBe(false);
   expect(observe(28)).toBe(true);
-  expect(rate.profile).toMatchObject({ fps: 24, scale: 2 });
+  expect(rate.profile).toMatchObject({ fps: 24, scale: 1 });
 });
 
 test('quality choices cap the adaptive profile without discarding measured congestion', () => {
@@ -285,7 +301,7 @@ test('recovering sooner requires consecutive cheap updates and still respects th
   expect(rate.profile.fps).toBe(12);
   for (let i = 0; i < 3; i++) expect(rate.observe(4, 35, true, 4_000)).toBe(false);
   // Fits the 75% threshold but interrupts the four-update cheap streak.
-  expect(rate.observe(4, 35, true, 30_000)).toBe(false);
+  expect(rate.observe(4, 35, true, 60_000)).toBe(false);
   for (let i = 0; i < 3; i++) expect(rate.observe(4, 35, true, 4_000)).toBe(false);
   expect(rate.observe(4, 35, true, 4_000)).toBe(true);
   expect(rate.profile.fps).toBe(24);
@@ -297,7 +313,7 @@ test('adapts costly motion on a fast link without interpreting steady RTT as con
   expect(rate.profile.fps).toBe(24);
   for (let i = 0; i < 9; i++) rate.observe(3, 25, true, 750_000);
   expect(rate.profile.quality).toBe('low');
-  for (let i = 0; i < 12; i++) rate.observe(3, 25, true, 400_000);
+  for (let i = 0; i < 12; i++) rate.observe(3, 25, true, 550_000);
   expect(rate.profile.fps).toBe(4);
   for (let i = 0; i < 32; i++) rate.observe(3, 25, true, 8_000);
   expect(rate.profile.fps).toBe(24);
