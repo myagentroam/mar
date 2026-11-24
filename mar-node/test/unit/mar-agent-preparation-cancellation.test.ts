@@ -1,11 +1,12 @@
 import { executionActivity } from './support/execution-activity.js';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import * as operational from '../../src/operational.js';
 import type { ExecutionHandle } from '@myagentroam/agent';
 import { createEnvelope, type MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
+import { browserCliRoot } from '../../src/browser/browser-cli-scope.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import { NodeControlMessageService } from '../../src/service/node-control-message-service.js';
@@ -100,8 +101,12 @@ async function fixture(phase: Phase, mode: 'run' | 'plan' | 'compact' = 'run') {
     });
   }
   const activity = executionActivity();
+  type BrowserUse = NonNullable<
+    ConstructorParameters<typeof MarAgentManagedRunController>[1]['browserUse']
+  >;
   const host = {
     ...activity,
+    browserUse: vi.fn<BrowserUse>().mockResolvedValue(undefined),
     adopt: vi.fn(),
     promote: vi.fn(),
     syncTitle: vi.fn(async () => undefined),
@@ -207,6 +212,39 @@ async function fixture(phase: Phase, mode: 'run' | 'plan' | 'compact' = 'run') {
     }
   };
 }
+
+it.each(['SUCCEEDED', 'FAILED', 'CANCELLED'] as const)(
+  'closes the Playwright scope when a Run ends as %s',
+  async (status) => {
+    const f = await fixture('metadata');
+    f.host.browserUse.mockResolvedValue(vi.fn());
+    const running = f.run('browser-scope');
+    try {
+      await f.reached;
+      const [, scope, signal] = f.host.browserUse.mock.calls[0]!;
+      const root = browserCliRoot(scope);
+      await access(join(root, 'active'));
+      if (status === 'CANCELLED') expect(f.controller.cancel('browser-scope', 'CANCEL')).toBe(true);
+      if (status === 'FAILED')
+        f.session.run.mockImplementationOnce(() => {
+          throw new Error('FIXTURE_EXECUTION_FAILED');
+        });
+      f.unblock();
+      await running;
+      await expect(access(root)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(signal.aborted).toBe(true);
+      expect(f.host.emit).toHaveBeenCalledWith(
+        'browser-scope',
+        expect.any(String),
+        expect.anything(),
+        status
+      );
+    } finally {
+      await f.close();
+      await running;
+    }
+  }
+);
 
 it.each(['idle expiry', 'session release', 'controller disposal'] as const)(
   'retains the environment until Runtime %s and releases it exactly once',

@@ -122,7 +122,7 @@ function save(kind: 'local' | 'web', value: unknown): void {
       >
       <p :id="helpId" class="browser-link-help">{{ t('browser.useHelp') }}</p>
       <p v-if="useError" role="alert">
-        {{ t(useError === 'load' ? 'browser.useLoadFailed' : 'browser.saveFailed') }}
+        {{ t(useError === 'load' ? 'browser.useLoadFailed' : 'browser.useSaveFailed') }}
         <MarButton v-if="useError === 'load'" link @click="loadBrowserUse">{{
           t('browser.useRetry')
         }}</MarButton>

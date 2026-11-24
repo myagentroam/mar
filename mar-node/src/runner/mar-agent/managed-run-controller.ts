@@ -51,6 +51,7 @@ import {
 import { createImageGenerationExtensions } from './image-generation-extensions.js';
 import { createWebToolsExtensions } from './web-tools-extensions.js';
 import { createBrowserUseExtensions } from './browser-use-extensions.js';
+import { openBrowserCliScope } from '../../browser/browser-cli-scope.js';
 import { combineExecutionExtensions } from './execution-extensions.js';
 import { webSessionScope, type WebFetchHandler } from '../../service/web-fetch-contracts.js';
 import {
@@ -438,6 +439,7 @@ export class MarAgentManagedRunController {
   }) {
     const controller = new AbortController();
     const browserUseLifetime = new AbortController();
+    let browserCli: Awaited<ReturnType<typeof openBrowserCliScope>> | undefined;
     const titleController = new AbortController();
     let cancelExecution: (() => void) | undefined;
     // Own cancellation before any asynchronous preparation, not only after SDK admission.
@@ -544,6 +546,8 @@ export class MarAgentManagedRunController {
               AbortSignal.any([controller.signal, browserUseLifetime.signal])
             )
           : undefined;
+      use.assertUsable();
+      if (browserUse) browserCli = await openBrowserCliScope(browserCliScope);
       use.assertUsable();
       const browserExtensions =
         browserUse &&
@@ -817,6 +821,9 @@ export class MarAgentManagedRunController {
       browserUseLifetime.abort();
       titleController.abort();
       const cleanup = [
+        async () => {
+          await browserCli?.close();
+        },
         async () => {
           await computerUseBinding?.close();
         },

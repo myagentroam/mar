@@ -15,6 +15,7 @@ export const browserZhCN = {
   useHelp:
     '允许 MAR Agent 使用隔离浏览器，也允许它在任务需要时通过 Playwright 操作本工作区的共享浏览器并使用已有的网站登录状态。你可以随时接管或关闭此选项。',
   useLoadFailed: '无法加载 Browser Use 设置。',
+  useSaveFailed: '无法保存账号的 Browser Use 设置。',
   useRetry: '重试',
   useTake: '接管浏览器',
   useResume: '让 Agent 继续',

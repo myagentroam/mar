@@ -16,6 +16,7 @@ export const browserEnUS = {
   useHelp:
     'Allow MAR Agent to use an isolated browser and, when a task needs it, use Playwright in this Workspace’s shared browser with your existing sign-ins. You can take control or turn this option off at any time.',
   useLoadFailed: 'Could not load the Browser Use setting.',
+  useSaveFailed: 'Could not save the Browser Use setting for your account.',
   useRetry: 'Try again',
   useTake: 'Take control',
   useResume: 'Let Agent resume',

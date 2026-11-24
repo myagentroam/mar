@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { z } from 'zod';
+import { browserCliRoot } from './browser-cli-scope.js';
 
 export const browserAgentActionSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('describe') }),
@@ -83,9 +84,9 @@ export class BrowserAgentAccess {
     }
     const browser = this.browser();
     if (!browser) throw new Error('BROWSER_USE_ACCESS_FAILED');
+    const root = browserCliRoot(execution.cliScope);
     const releaseHold = retain();
     const id = randomUUID();
-    const root = join(tmpdir(), `mpw-${execution.cliScope}`);
     const resource = join(root, `shared-${id}`);
     const stop = new AbortController();
     const abort = () => stop.abort();
@@ -98,7 +99,7 @@ export class BrowserAgentAccess {
       bindAttempted = true;
       const { endpoint } = await browser.bind(id, { host: '127.0.0.1', port: 0 });
       // Pass the descriptor title to Playwright, not its bearer URL on process argv.
-      await mkdir(root, { recursive: true, mode: 0o700 });
+      stop.signal.throwIfAborted();
       await mkdir(resource, { mode: 0o700 });
       for (const name of await readdir(directory)) {
         const candidate = join(directory, name);

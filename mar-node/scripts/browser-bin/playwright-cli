@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setTimeout } from 'node:timers/promises';
 
-const scope = process.env.MAR_PLAYWRIGHT_CLI_SCOPE;
-if (!scope || !/^[a-f0-9]{32}$/u.test(scope)) {
-  console.error('The bundled playwright-cli requires an active MAR Browser Use environment.');
-  process.exit(1);
-}
+const inactive = 'The bundled playwright-cli requires an active MAR Browser Use environment.';
+const root = process.env.MAR_PLAYWRIGHT_CLI_ROOT;
+if (!root || !isAbsolute(root) || !/^mpw-[a-f0-9]{32}$/u.test(basename(root))) usageError(inactive);
+const active = join(root, 'active');
+if (!existsSync(active)) usageError(inactive);
 const args = process.argv.slice(2);
 // Keep the command unambiguous before delegating command-specific options to Playwright.
 let command;
@@ -50,8 +50,7 @@ const env = { ...process.env };
 delete env.MAR_CTL_USER_TOKEN;
 // Default runs must not silently reuse an externally configured profile or endpoint.
 for (const key of Object.keys(env)) if (/^PLAYWRIGHT_MCP_/iu.test(key)) delete env[key];
-const root = join(tmpdir(), `mpw-${scope}`);
-mkdirSync(root, { recursive: true, mode: 0o700 });
+env.PWTEST_SERVER_REGISTRY = join(root, 'servers');
 const resourceIndex =
   command === 'attach' ? args.findIndex((arg) => arg.startsWith('--mar-resource=')) : -1;
 if (resourceIndex !== -1) {
@@ -80,10 +79,71 @@ if (
   const defaultConfig = new URL('./playwright-isolated.json', import.meta.url);
   args.unshift(`--config=${fileURLToPath(defaultConfig)}`);
 }
-const result = spawnSync(process.execPath, [cli, 'cli', ...args], {
-  stdio: 'inherit',
-  env
-});
-if (result.error) console.error(result.error.message);
-if (result.signal) process.kill(process.pid, result.signal);
-process.exitCode = result.status ?? 1;
+// A Run may finish while a background open/attach is publishing its daemon.
+const opensSession = command === 'open' || command === 'attach';
+let marker;
+let launchLock;
+try {
+  if (opensSession) launchLock = await lockLaunch();
+  if (opensSession || command === 'show') marker = mkdtempSync(join(root, `start-${process.pid}-`));
+  if (!existsSync(active)) throw new Error(inactive);
+  if (command === 'show') writeFileSync(join(root, 'dashboard-used'), '');
+  const preload = new URL('./cancel-launch.mjs', import.meta.url).href;
+  const child = spawn(
+    process.execPath,
+    [...(opensSession ? ['--import', preload] : []), cli, 'cli', ...args],
+    { stdio: opensSession ? ['inherit', 'inherit', 'inherit', 'ipc'] : 'inherit', env }
+  );
+  let cancelled = false;
+  const cancelLaunch = () => {
+    if (!cancelled && child.connected) {
+      cancelled = true;
+      child.send('cancel', () => {});
+    }
+  };
+  const check = opensSession
+    ? setInterval(() => {
+        if (!existsSync(active)) cancelLaunch();
+      }, 100)
+    : undefined;
+  check?.unref();
+  const interrupt = () => (opensSession ? cancelLaunch() : child.kill('SIGINT'));
+  const terminate = () => (opensSession ? cancelLaunch() : child.kill('SIGTERM'));
+  process.on('SIGINT', interrupt);
+  process.on('SIGTERM', terminate);
+  try {
+    const status = await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', (code) => resolve(code ?? 1));
+    });
+    process.exitCode = cancelled ? 1 : status;
+  } finally {
+    clearInterval(check);
+    process.off('SIGINT', interrupt);
+    process.off('SIGTERM', terminate);
+  }
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+} finally {
+  if (marker) rmSync(marker, { force: true, recursive: true });
+  if (launchLock) rmSync(launchLock, { force: true, recursive: true });
+}
+
+async function lockLaunch() {
+  // Playwright checks and publishes its session entry separately; concurrent
+  // starts must not create two daemons under the same name.
+  const path = join(root, 'launch');
+  const deadline = Date.now() + 30_000;
+  while (existsSync(active)) {
+    try {
+      mkdirSync(path, { mode: 0o700 });
+      return path;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      if (Date.now() >= deadline) throw new Error('Another Playwright launch did not finish.');
+      await setTimeout(50);
+    }
+  }
+  throw new Error(inactive);
+}

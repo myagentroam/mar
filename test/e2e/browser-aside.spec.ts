@@ -38,6 +38,15 @@ test('Browser Use defaults to enabled and saves the account preference', async (
     const browserUse = page.getByRole('checkbox', { name: /Browser Use/u });
     await expect(browserUse).toBeChecked();
     await expect(browserUse).toHaveAccessibleDescription(/existing sign-ins|已有的网站登录状态/u);
+    await page.route(`**${endpoint}`, (route) => route.fulfill({ status: 500 }), { times: 1 });
+    await browserUse.click();
+    await expect(
+      page.getByRole('alert').filter({
+        hasText:
+          /Could not save the Browser Use setting for your account|无法保存账号的 Browser Use 设置/u
+      })
+    ).toBeVisible();
+    await expect(browserUse).toBeChecked();
     const saved = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === endpoint && response.request().method() === 'PUT'

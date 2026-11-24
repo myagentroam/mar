@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createServer, type ServerResponse } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
+import { browserCliRoot, openBrowserCliScope } from '../../src/browser/browser-cli-scope.js';
 import { BrowserTabs } from '../../src/browser/browser-tabs.js';
 
 const execute = promisify(execFile);
@@ -18,12 +20,21 @@ const { version } = createRequire(import.meta.url)('playwright/package.json') as
 };
 const bin = fileURLToPath(new URL('../../scripts/browser-bin', import.meta.url));
 const cwd = await mkdtemp(join(tmpdir(), 'mar-pw-'));
-const scopes = Array.from({ length: 3 }, () => randomUUID().replaceAll('-', '')) as [
+const scopes = Array.from({ length: 5 }, () => randomUUID().replaceAll('-', '')) as [
+  string,
+  string,
   string,
   string,
   string
 ];
-const server = createServer((_request, response) => {
+const lifetimes = new Map<string, Awaited<ReturnType<typeof openBrowserCliScope>>>();
+let observeCdpRequest: ((response: ServerResponse) => void) | undefined;
+const server = createServer((request, response) => {
+  if (request.url?.startsWith('/json/version')) {
+    observeCdpRequest?.(response);
+    return;
+  }
+  if (request.url === '/pending') return;
   response.writeHead(200, { 'Content-Type': 'text/html' }).end(`
     <label>Message <input /></label>
     <button onclick="localStorage.setItem('message', document.querySelector('input').value)">
@@ -32,24 +43,32 @@ const server = createServer((_request, response) => {
 }).listen(0, '127.0.0.1');
 
 async function cli(scope: string, ...args: string[]): Promise<string> {
+  return cliIn(cwd, scope, ...args);
+}
+
+async function cliIn(directory: string, scope: string, ...args: string[]): Promise<string> {
   const windows = process.platform === 'win32';
   const { stdout } = await execute(
     windows ? process.execPath : 'playwright-cli',
     windows ? [join(bin, 'playwright-cli'), ...args] : args,
     {
-      cwd,
+      cwd: directory,
       timeout: 10_000,
-      env: {
-        ...process.env,
-        PATH: [bin, process.env.PATH].filter(Boolean).join(delimiter),
-        MAR_PLAYWRIGHT_CLI_SCOPE: scope,
-        PLAYWRIGHT_CLI_SESSION: 'same-named-session',
-        PLAYWRIGHT_MCP_CDP_ENDPOINT: 'http://127.0.0.1:1',
-        PWTEST_CLI_GLOBAL_CONFIG: cwd
-      }
+      env: cliEnvironment(scope)
     }
   );
   return stdout.trim();
+}
+
+function cliEnvironment(scope: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PATH: [bin, process.env.PATH].filter(Boolean).join(delimiter),
+    MAR_PLAYWRIGHT_CLI_ROOT: browserCliRoot(scope),
+    PLAYWRIGHT_CLI_SESSION: 'same-named-session',
+    PLAYWRIGHT_MCP_CDP_ENDPOINT: 'http://127.0.0.1:1',
+    PWTEST_CLI_GLOBAL_CONFIG: cwd
+  };
 }
 
 async function sharedLoginSmoke(url: string, scope: string): Promise<void> {
@@ -98,7 +117,7 @@ async function sharedLoginSmoke(url: string, scope: string): Promise<void> {
       JSON.parse(await cli(scope, '--raw', 'eval', 'localStorage.getItem("message")')),
       'signed in by the user'
     );
-    const registry = join(tmpdir(), `mpw-${scope}`, `shared-${next}`);
+    const registry = join(browserCliRoot(scope), `shared-${next}`);
     const descriptors = await readdir(registry);
     assert.equal(descriptors.length, 1);
     const { endpoint } = JSON.parse(await readFile(join(registry, descriptors[0]!), 'utf8'));
@@ -166,10 +185,17 @@ async function sharedLoginSmoke(url: string, scope: string): Promise<void> {
     assert.equal(page.isClosed(), false);
     await tabs.setHumanControl(false);
     const terminal = await tabs.acquireAgent(execution, retain);
+    await attach(terminal);
+    await lifetimes.get(scope)!.close();
+    assert.equal(page.isClosed(), false);
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem('message')),
+      'signed in by the user'
+    );
     lifetime.abort();
     await tabs.releaseAgent(execution);
     assert.equal(holds, 0);
-    await assert.rejects(attach(terminal), /Shared access is no longer available/);
+    await assert.rejects(attach(terminal), /requires an active MAR Browser Use environment/);
     assert.deepEqual(
       errors.map((error) => (error as Error).message),
       ['BROWSER_USE_REVOKE_FAILED']
@@ -186,7 +212,8 @@ try {
   const address = server.address();
   assert(address && typeof address !== 'string');
   const url = `http://127.0.0.1:${address.port}`;
-  const [a, b, shared] = scopes;
+  const [a, b, shared, cancelled, pending] = scopes;
+  for (const scope of scopes) lifetimes.set(scope, await openBrowserCliScope(scope));
   await mkdir(join(cwd, '.playwright'));
   await writeFile(join(cwd, '.playwright', 'cli.config.json'), 'invalid JSON');
   await writeFile(
@@ -215,22 +242,82 @@ try {
   assert.equal(await cli(b, '--raw', 'eval', 'innerWidth'), '777');
   assert.equal(await cli(b, '--raw', 'eval', 'localStorage.getItem("message")'), 'null');
   await assert.rejects(cli(b, '--json', 'kill-all'), /kill-all is not available/u);
-  await cli(b, 'close-all');
+  // close-all only sees sessions associated with the current working directory.
+  const other = join(cwd, 'other');
+  const profiles = [join(cwd, 'explicit-profile-a'), join(cwd, 'explicit-profile-b')];
+  await mkdir(join(other, '.playwright'), { recursive: true });
+  await Promise.all(
+    profiles.map((profile) => cliIn(other, b, 'open', url, `--profile=${profile}`))
+  );
+  const dashboard = cli(b, 'show', '--port=0').then(
+    (output) => ({ output }),
+    (error: unknown) => ({ error })
+  );
+  const deadline = Date.now() + 5_000;
+  while (!(await readdir(browserCliRoot(b))).includes('dashboard-used')) {
+    assert(Date.now() < deadline, 'The dashboard command did not start');
+    await delay(20);
+  }
+  await lifetimes.get(b)!.close();
+  const result = await dashboard;
+  assert('output' in result, 'Run cleanup did not stop the Playwright dashboard');
+  await assert.rejects(access(browserCliRoot(b)), { code: 'ENOENT' });
+  await assert.rejects(cli(b, 'open', url), /requires an active MAR Browser Use environment/);
+  // Both profiles must be free even if concurrent commands used the same session name.
+  for (const profile of profiles) {
+    const reopened = await chromium.launchPersistentContext(profile, { channel: 'chromium' });
+    await reopened.close();
+  }
+  const reached = once(server, 'request', { signal: AbortSignal.timeout(10_000) });
+  const starting = spawn(
+    process.execPath,
+    [join(bin, 'playwright-cli'), 'open', `${url}/pending`],
+    {
+      cwd,
+      env: cliEnvironment(cancelled),
+      stdio: 'ignore'
+    }
+  );
+  const stopped = once(starting, 'exit');
+  await reached;
+  starting.kill('SIGKILL');
+  await stopped;
+  const startedClose = Date.now();
+  await lifetimes.get(cancelled)!.close();
+  assert(Date.now() - startedClose < 10_000, 'A dead launcher delayed Run cleanup');
+  await assert.rejects(access(browserCliRoot(cancelled)), { code: 'ENOENT' });
+  // A daemon cannot register until its CDP connection completes. Ending the
+  // Run must cancel startup, not merely wait for a registry entry to appear.
+  const cdpClosed = new Promise<void>((resolve) => {
+    observeCdpRequest = (response) => response.once('close', resolve);
+  });
+  const cdpStarted = once(server, 'request', { signal: AbortSignal.timeout(10_000) });
+  const attachment = cli(pending, 'attach', `--cdp=${url}`).then(
+    () => 'completed',
+    () => 'cancelled'
+  );
+  await cdpStarted;
+  const registryFiles = await readdir(join(browserCliRoot(pending), 'd'), { recursive: true });
+  assert(!registryFiles.some((name) => name.endsWith('.session')));
+  const cancelling = Date.now();
+  await lifetimes.get(pending)!.close();
+  assert(Date.now() - cancelling < 8_000, 'A pending attach delayed Run cleanup');
+  await cdpClosed;
+  assert.equal(await attachment, 'cancelled');
+  await assert.rejects(access(browserCliRoot(pending)), { code: 'ENOENT' });
   assert.equal(
     JSON.parse(await cli(a, '--raw', 'eval', 'localStorage.getItem("message")')),
     'kill-all'
   );
   console.log(
-    'Verified isolated Playwright sessions and shared login handoff, takeover, and revocation.'
+    'Verified Run-scoped Playwright cleanup, isolated sessions, and shared login handoff and takeover.'
   );
 } finally {
   try {
-    await Promise.all(scopes.map((scope) => cli(scope, 'close-all')));
+    await Promise.all([...lifetimes.values()].map((lifetime) => lifetime.close()));
   } finally {
+    server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(cwd, { recursive: true, force: true });
-    await Promise.all(
-      scopes.map((scope) => rm(join(tmpdir(), `mpw-${scope}`), { recursive: true }))
-    );
   }
 }

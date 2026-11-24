@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { AgentError, type ToolExecutionResult } from '@myagentroam/agent';
 import type { ClientToolDefinition, LocalAgentExecutionExtensions } from '@myagentroam/agent/host';
 import { z } from 'zod';
+import { browserCliRoot } from '../../browser/browser-cli-scope.js';
 import {
   browserAgentActionSchema,
   type BrowserAgentAction
@@ -32,13 +33,14 @@ export function createBrowserUseExtensions(input: {
         .filter(Boolean)
         .join(delimiter),
       PLAYWRIGHT_CLI_SESSION: `mar-${input.runId}`,
-      MAR_PLAYWRIGHT_CLI_SCOPE: input.cliScope
+      MAR_PLAYWRIGHT_CLI_ROOT: browserCliRoot(input.cliScope)
     },
     tools: [tool],
     skills: [
       {
         name: 'mar-browser-use',
-        description: 'Test and debug webpages with the bundled Playwright CLI. Use the shared MAR browser for the user’s current page, existing sign-in, or interactive authentication, even if they do not mention a browser.',
+        description:
+          'Test and debug webpages with the bundled Playwright CLI. Use the shared MAR browser for the user’s current page, existing sign-in, or interactive authentication, even if they do not mention a browser.',
         requiredTools: ['exec', name],
         load: async () => `# MAR Browser Use
 
