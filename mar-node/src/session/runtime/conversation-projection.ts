@@ -42,7 +42,9 @@ export function projectConversationEvent(
           : undefined;
       const stableItemId =
         nativeItemId === undefined ? undefined : `${event.runId}:${nativeItemId}`;
-      const lastItem = turn.items.findLast((item) => !isAgentCollaborationMessage(item));
+      const lastItem = turn.items.findLast(
+        (item) => !isAgentCollaborationMessage(item, turn.userItemId)
+      );
       const existing =
         stableItemId === undefined
           ? lastItem?.kind === 'assistant_message' && activeConversationItem(lastItem.status)
@@ -87,7 +89,9 @@ export function projectConversationEvent(
     const projected = conversationItemFromEvent(event);
     if (projected !== undefined) {
       const itemId = runConversationItemId(event.runId, projected.itemId, projected.kind);
-      const trailingItem = turn.items.findLast((item) => !isAgentCollaborationMessage(item));
+      const trailingItem = turn.items.findLast(
+        (item) => !isAgentCollaborationMessage(item, turn.userItemId)
+      );
       const orderedItems =
         projected.kind !== 'user_message' &&
         trailingItem?.kind === 'assistant_message' &&

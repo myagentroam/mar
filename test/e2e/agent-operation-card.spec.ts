@@ -20,6 +20,18 @@ for (const [theme, width] of [
     await page.goto(`${fixture.url}agent-operation.html?theme=${theme}&collaboration`);
     const processes = page.locator('.conversation-process.is-group');
     await expect(processes).toHaveCount(2);
+    const initialTask = page
+      .locator('.user_message')
+      .filter({ hasText: 'Review the implementation.' });
+    await expect(initialTask.locator('.conversation-item-heading')).toHaveText(
+      'From parent session Planning session'
+    );
+    await expect(initialTask.locator('.conversation-message')).toHaveText(
+      'Review the implementation.'
+    );
+    const firstEntry = page.locator('.user_message, .conversation-process.is-group').first();
+    await expect(firstEntry).toHaveClass(/\buser_message\b/);
+    await expect(firstEntry).toContainText('Review the implementation.');
     for (const process of await processes.all()) {
       const heading = process.locator('.process-heading');
       if ((await heading.getAttribute('aria-expanded')) === 'false') await heading.click();
@@ -36,12 +48,9 @@ for (const [theme, width] of [
     await expect(page.getByText('Thanks for the review.')).toBeVisible();
     const visitor = page.locator('.user_message').filter({ hasText: 'Thanks for the review.' });
     await expect(visitor).toContainText('Alice');
-    const ownMessage = page
-      .locator('.user_message')
-      .filter({ hasText: 'Review the implementation.' });
     const reply = page.locator('.assistant_message').filter({ hasText: 'Review complete.' });
     for (const [entry, actionCount] of [
-      [ownMessage, 3],
+      [initialTask, 3],
       [reply, 2]
     ] as const) {
       const footer = entry.locator('.conversation-message-actions');
@@ -65,9 +74,11 @@ for (const [theme, width] of [
       expect(alignment.gap).toBeGreaterThanOrEqual(0);
       expect(alignment.gap).toBeLessThanOrEqual(12);
     }
-    await expect(ownMessage.getByRole('button', { name: /Create a session branch/ })).toBeVisible();
-    await expect(ownMessage.getByRole('button', { name: /Permanently delete/ })).toBeVisible();
-    const narrowFooter = await ownMessage
+    await initialTask.getByRole('button', { name: /Create a session branch/ }).click();
+    await expect(page.getByTestId('history-action')).toHaveText('rewind:turn:initial-task');
+    await initialTask.getByRole('button', { name: /Permanently delete/ }).click();
+    await expect(page.getByTestId('history-action')).toHaveText('rollback:turn:initial-task');
+    const narrowFooter = await initialTask
       .locator('.conversation-message-actions')
       .evaluate((footer: HTMLElement) => {
         const time = footer.querySelector('time')!;

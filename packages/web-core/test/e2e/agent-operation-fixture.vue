@@ -4,6 +4,7 @@ import { serializeComposerTag } from '@myagentroam/protocol';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 const copied = ref('');
+const historyAction = ref('');
 const collaboration = new URLSearchParams(location.search).has('collaboration');
 
 function fromSession(id: string, name: string, text: string): ConversationItem {
@@ -47,16 +48,22 @@ const turns = ref<ConversationTurn[]>([
     sessionId: 'root',
     runId: 'run',
     status: 'SUCCEEDED',
-    ...(collaboration ? { rewind: { before: 'before', after: 'after' } } : {}),
+    ...(collaboration ? { rewind: { before: null, after: 'after' } } : {}),
     items: [
       ...(collaboration
         ? [
             {
-              id: 'own-input',
+              id: 'initial-task',
               kind: 'user_message' as const,
               status: 'COMPLETED' as const,
               startedAt: 1795495140000,
-              payload: { text: 'Review the implementation.' }
+              payload: {
+                text: `Review the implementation.\n${serializeComposerTag('mar_session_origin', {
+                  sessionId: 'parent',
+                  name: 'Planning session',
+                  relation: 'parent'
+                })}`
+              }
             }
           ]
         : []),
@@ -211,6 +218,8 @@ function addCollaborationMessage() {
       :node-ready="false"
       :rewind-enabled="collaboration"
       :rollback-enabled="collaboration"
+      @rewind="(turn, item) => (historyAction = `rewind:${turn.id}:${item.id}`)"
+      @rollback="(turn, item) => (historyAction = `rollback:${turn.id}:${item.id}`)"
       @copy="
         (text, done) => {
           copied = text;
@@ -219,6 +228,7 @@ function addCollaborationMessage() {
       "
     />
     <output data-testid="copied-record" hidden>{{ copied }}</output>
+    <output data-testid="history-action" hidden>{{ historyAction }}</output>
   </main>
 </template>
 

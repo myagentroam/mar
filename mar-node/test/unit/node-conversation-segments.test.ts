@@ -13,6 +13,9 @@ import {
 } from '../../src/service/conversation-segment-service.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
+import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
+import type { NodeConversationTurn } from '../../src/runtime-model.js';
+import type { NodeAgentSession } from '../../src/session/contracts.js';
 import { capabilities, captureSocket } from './support/codex-connector.js';
 import { createTestSessionWatch } from './support/conversation-watch.js';
 
@@ -381,6 +384,58 @@ describe('Node Conversation Segment', () => {
     ).toEqual({ id: 'turn-agent-then-tool:segment:1', index: 1 });
   });
 
+  it('shows the Turn input before work and keeps subsequent messages from the same session grouped', () => {
+    const nativeTurnId = 'native-turn';
+    const source = serializeComposerTag('mar_session_origin', {
+      sessionId: 'parent-session',
+      name: 'Parent task',
+      relation: 'parent'
+    });
+    const [native] = projectMarAgentHistory(
+      { id: 'session-1' } as NodeAgentSession,
+      ['Initial task', 'Follow-up'].map((text, index) => ({
+        kind: 'user' as const,
+        sessionId: 'session-1',
+        executionId: 'execution-1',
+        turnId: nativeTurnId,
+        sequence: index + 1,
+        timestamp: new Date(1_000 * (index + 1)).toISOString(),
+        text: `${text}\n${source}`
+      }))
+    );
+    const [opener, update] = native!.items;
+    const work = item('tool', 'tool_call');
+    const reply = item('reply', 'assistant_message');
+    const next = item('next-tool', 'tool_call');
+    const input = {
+      ...native!,
+      items: [opener!, work, reply, update!, next].map((entry) => ({
+        ...entry,
+        turnId: nativeTurnId,
+        runId: null
+      }))
+    };
+    const segments = conversationSegments(input);
+    expect(segments.map(({ items }) => items.map(({ id }) => id))).toEqual([
+      [opener?.id, work.id, reply.id, update?.id],
+      [next.id]
+    ]);
+    const [initial, tool, , followUp] = segments[0]!.items;
+    expect(initial?.processGroup).toBeUndefined();
+    expect(initial?.payload).toMatchObject({ text: `Initial task\n${source}` });
+    expect(tool?.processGroup).toEqual({ id: expect.any(String), isStart: true });
+    expect(followUp?.processGroup).toEqual({ id: tool?.processGroup?.id });
+    expect(segments[0]?.rewind).toEqual({ before: null, after: nativeTurnId });
+    for (const segment of segments) {
+      for (const entry of segment.items) {
+        expect(conversationSegmentIdentityForItem(input, entry.id, entry.kind)).toEqual({
+          id: segment.id,
+          index: segment.index
+        });
+      }
+    }
+  });
+
   it('projects cross-session messages into work without changing reply Segment boundaries', () => {
     const base = turn('collaboration', [
       'tool_call',
@@ -489,6 +544,7 @@ describe('Node Conversation Segment', () => {
       runtime: {
         createAgentSession(input: Record<string, unknown>): { readonly id: string };
         createMessageRun(input: Record<string, unknown>): { readonly run: { readonly id: string } };
+        conversationTurnForRun(runId: string): NodeConversationTurn | undefined;
         createQueueItem(input: Record<string, unknown>): unknown;
         claimNextQueueItem(sessionId: string): { turn: { id: string } } | undefined;
       };
@@ -513,7 +569,10 @@ describe('Node Conversation Segment', () => {
     const run = internals.runtime.createMessageRun({
       sessionId: session.id,
       clientMessageId: 'segment-item-patch',
-      content: 'Test Item delta'
+      content: `Test Item delta\n${serializeComposerTag('mar_session_origin', {
+        sessionId: 'peer',
+        name: 'Peer'
+      })}`
     }).run;
     internals.emitRunEvent(run.id, 'run.started', {}, 'STARTING');
     internals.emitRunEvent(run.id, 'run.running', {}, 'RUNNING');
@@ -529,6 +588,14 @@ describe('Node Conversation Segment', () => {
       }
     ).item?.processGroup;
     expect(workGroup).toEqual({ id: expect.any(String), isStart: true });
+    const liveTurn = internals.runtime.conversationTurnForRun(run.id)!;
+    const initialInput = conversationSegments(liveTurn)[0]?.items[0];
+    expect(initialInput).toMatchObject({
+      id: liveTurn.userItemId,
+      kind: 'user_message',
+      segmentIndex: 0
+    });
+    expect(initialInput?.processGroup).toBeUndefined();
     emitRealtime.mockClear();
 
     internals.emitRunEvent(run.id, 'text.delta', { text: 'Continue' });

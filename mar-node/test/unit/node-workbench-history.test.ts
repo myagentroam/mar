@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { serializeComposerTag } from '@myagentroam/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JsonlSessionStore } from '../../../mar-agent/dist/session/store/index.js';
 import { NodeConnector } from '../../src/connector.js';
@@ -461,13 +462,22 @@ describe('Node Workbench history projection and pagination', () => {
       if (runner === 'codex')
         vi.spyOn(internals.codexClient, 'supportsRollback').mockReturnValue(true);
       const source = createSession(runner);
+      const initialText =
+        runner === 'mar-agent'
+          ? `${serializeComposerTag('mar_session_origin', {
+              sessionId: 'parent-session',
+              name: 'Parent session',
+              relation: 'parent'
+            })}\nInitial task`
+          : 'message to restore';
+      const before = runner === 'mar-agent' ? null : `before-${source.id}`;
       const activeSource = createSession(runner);
       const queuedSource = createSession(runner);
       const otherRunner = createSession('claude-code');
       const terminalRun = internals.runtime.createMessageRun({
         sessionId: source.id,
         clientMessageId: 'terminal-message',
-        content: 'message to restore'
+        content: initialText
       }).run;
       internals.runtime.finishRun(terminalRun.id, 'SUCCEEDED');
       internals.runtime.createMessageRun({
@@ -494,7 +504,10 @@ describe('Node Workbench history projection and pagination', () => {
               model: null,
               effort: null,
               access: null,
-              rewind: { before: `before-${session.id}`, after: `after-${session.id}` },
+              rewind: {
+                before: session.id === source.id ? before : `before-${session.id}`,
+                after: `after-${session.id}`
+              },
               items: [
                 {
                   id: `user-${session.id}`,
@@ -506,7 +519,7 @@ describe('Node Workbench history projection and pagination', () => {
                   revision: 0,
                   kind: 'user_message',
                   status: 'COMPLETED',
-                  payload: { text: 'message to restore' },
+                  payload: { text: session.id === source.id ? initialText : 'message to restore' },
                   startedAt: 1,
                   completedAt: 1
                 }
@@ -563,7 +576,8 @@ describe('Node Workbench history projection and pagination', () => {
         const pending = operation(connector, 'session.rollback', {
           sessionId: source.id,
           turnId: `turn-${source.id}`,
-          boundary: `before-${source.id}`
+          itemId: `user-${source.id}`,
+          boundary: before
         });
         await vi.waitFor(() => expect(rollback).toHaveBeenCalledOnce());
         expect(() =>
@@ -580,7 +594,7 @@ describe('Node Workbench history projection and pagination', () => {
         });
         expect(rollback).toHaveBeenCalledWith(
           expect.objectContaining({ id: source.id, runner }),
-          `before-${source.id}`,
+          before,
           `after-${source.id}`,
           undefined
         );

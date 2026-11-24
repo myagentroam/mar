@@ -33,11 +33,11 @@ interface SegmentCursor {
 }
 
 /** Use the same boundaries for snapshot and realtime delivery. */
-function* segmentItemPositions(items: readonly NodeConversationItem[]) {
+function* segmentItemPositions(turn: NodeConversationTurn) {
   let index = 0;
   let previousKind: string | undefined;
-  for (const item of items) {
-    if (!isAgentCollaborationMessage(item)) {
+  for (const item of turn.items) {
+    if (!isAgentCollaborationMessage(item, turn.userItemId)) {
       if (previousKind === 'assistant_message' && item.kind !== 'assistant_message') index++;
       previousKind = item.kind;
     }
@@ -49,7 +49,7 @@ export function conversationSegments(turn: NodeConversationTurn): ConversationSe
   turn = projectConversationWorkProcesses(turn);
   const prefix = conversationSegmentPrefix(turn);
   const groups: NodeConversationItem[][] = [];
-  for (const { item, index } of segmentItemPositions(turn.items)) {
+  for (const { item, index } of segmentItemPositions(turn)) {
     (groups[index] ??= []).push(item);
   }
   if (groups.length === 0) groups.push([]);
@@ -88,7 +88,7 @@ export function conversationSegmentIdentityForItem(
   let index = 0;
   let previousKind: string | undefined;
   const runtimeItemId = turn.runId === null ? itemId : `${turn.runId}:${itemId}`;
-  for (const position of segmentItemPositions(turn.items)) {
+  for (const position of segmentItemPositions(turn)) {
     ({ index, previousKind } = position);
     if (position.item.id === itemId || position.item.id === runtimeItemId)
       return { id: `${prefix}:segment:${index}`, index };
