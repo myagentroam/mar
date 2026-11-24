@@ -53,7 +53,7 @@
         : 'Child';
       const aside = createWorkbenchAsideService();
       const tools = ['files', 'search', 'changes', 'history', 'terminal'];
-      if (new URLSearchParams(location.search).has('browser')) tools.push('node-browser');
+      if (new URLSearchParams(location.search).has('browser')) tools.unshift('node-browser');
       aside.ensure(workspace, tools);
       aside.openSession({ ...workspace, sessionId: 'child' });
       if (!new URLSearchParams(location.search).has('active-child'))

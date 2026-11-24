@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+const addAsideLabel = /^(Add Aside tab|添加辅助面标签页)$/u;
+
 for (const [width, theme] of [
   [1280, 'dark'],
   [390, 'daylight']
@@ -12,17 +14,17 @@ for (const [width, theme] of [
       await page.goto(
         `${fixture.url}workbench-aside.html?browser&theme=${theme}${width < 768 ? '&mobile' : ''}`
       );
-      const add = page.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u });
+      const add = page.getByRole('button', { name: addAsideLabel });
       const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
       const browserTab = tabs.getByRole('tab', { name: 'Browser', exact: true });
-      const browserCommand = page.getByRole('menuitem', { name: 'Browser', exact: true });
+      const menu = page.getByRole('menu', { name: addAsideLabel });
+      const browserCommand = menu.getByRole('menuitem', { name: 'Browser', exact: true });
+      const terminalCommand = menu.getByRole('menuitem', { name: 'Terminal', exact: true });
       await expect(add).toBeInViewport();
       await expect(add).toHaveCSS('padding', '2px');
       await expect(add).toHaveCSS('width', '25px');
       await expect(add).toHaveAttribute('aria-haspopup', 'menu');
-      await expect(
-        tabs.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u })
-      ).toHaveCount(0);
+      await expect(tabs.getByRole('button', { name: addAsideLabel })).toHaveCount(0);
       await expect(add).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const overlay = await add.evaluate((button) => {
         const swatch = document.createElement('span');
@@ -38,6 +40,7 @@ for (const [width, theme] of [
       }
       await add.click();
       await expect(add).toHaveAttribute('aria-expanded', 'true');
+      await expect(menu.getByRole('menuitem')).toHaveText(['Terminal', 'Browser']);
       await expect(browserCommand).toBeVisible();
       await expect(browserTab).toHaveCount(0);
       await page.mouse.move(width - 1, 739);
@@ -46,9 +49,22 @@ for (const [width, theme] of [
       await expect(browserCommand).toBeHidden();
       await expect(add).toBeFocused();
       await add.press('ArrowDown');
+      await expect(terminalCommand).toBeFocused();
+      await terminalCommand.press('ArrowDown');
       await expect(browserCommand).toBeFocused();
       await browserCommand.press('Enter');
       await expect(browserTab).toHaveAttribute('aria-selected', 'true');
+
+      await add.click();
+      await terminalCommand.click();
+      await expect(tabs.getByRole('tab', { name: /^(Terminal|Browser)$/u })).toHaveText([
+        'Terminal',
+        'Browser'
+      ]);
+      await expect(tabs.getByRole('tab', { name: 'Terminal', exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
     } finally {
       await fixture.close();
     }
@@ -112,7 +128,8 @@ test('Aside close shortcuts stay in the focused layer and preserve the session d
     await expect(tabs.getByRole('tab', { name: 'Files', exact: true })).toHaveCount(1);
     await expect(workspaceCloses).toHaveText('0');
 
-    await tabs.getByRole('tab', { name: 'Terminal', exact: true }).click();
+    await page.getByRole('button', { name: addAsideLabel }).click();
+    await page.getByRole('menuitem', { name: 'Terminal', exact: true }).click();
     await page.locator('#terminal').focus();
     expect(
       await page.locator('#terminal').evaluate((element) => {
@@ -490,6 +507,21 @@ test('Aside uses shared tabs for tool, session and stable Terminal surfaces', as
     await page.goto(`${fixture.url}workbench-aside.html`);
     const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
     await expect(tabs.locator('.mar-tab-strip-separator')).toHaveCount(1);
+    await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
+    const files = page.getByTestId('tool-files');
+    const search = page.getByTestId('tool-search');
+    await expect(files).toContainText('Tool files');
+    await files.getByLabel('Inspector draft').fill('unsaved edit');
+    const childIds = await tabs.getByRole('tab', { name: 'Child' }).evaluate((el) => ({
+      id: el.id,
+      controls: el.getAttribute('aria-controls')
+    }));
+    await tabs.getByRole('tab', { name: 'Child' }).click();
+    await expect(page.locator('#session')).toHaveText('Session child');
+    await page.getByRole('button', { name: addAsideLabel }).click();
+    await page.getByRole('menuitem', { name: 'Terminal', exact: true }).click();
+    await expect(page.locator('#terminal')).toBeVisible();
+    await expect(page.locator('#terminal')).toHaveAttribute('data-mounts', '1');
     for (const tab of await tabs.getByRole('tab').all()) {
       expect(
         await tab.evaluate((el) => {
@@ -502,20 +534,6 @@ test('Aside uses shared tabs for tool, session and stable Terminal surfaces', as
         })
       ).toBe(true);
     }
-    await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
-    const files = page.getByTestId('tool-files');
-    const search = page.getByTestId('tool-search');
-    await expect(files).toContainText('Tool files');
-    await files.getByLabel('Inspector draft').fill('unsaved edit');
-    const childIds = await tabs.getByRole('tab', { name: 'Child' }).evaluate((el) => ({
-      id: el.id,
-      controls: el.getAttribute('aria-controls')
-    }));
-    await tabs.getByRole('tab', { name: 'Child' }).click();
-    await expect(page.locator('#session')).toHaveText('Session child');
-    await tabs.getByRole('tab', { name: 'Terminal' }).click();
-    await expect(page.locator('#terminal')).toBeVisible();
-    await expect(page.locator('#terminal')).toHaveAttribute('data-mounts', '1');
     await tabs.getByRole('tab', { name: 'Search' }).click();
     await expect(search).toHaveAttribute('data-mounts', '1');
     await expect(page.locator('#terminal')).toBeHidden();
@@ -666,7 +684,7 @@ test('Aside tool tabs keep balanced label spacing on touch screens', async ({ br
           `${fixture.url}workbench-aside.html?mobile&lang=${language}&theme=${theme}`
         );
         const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
-        await expect(tabs.getByRole('tab')).toHaveCount(6);
+        await expect(tabs.getByRole('tab')).toHaveCount(5);
         for (const width of [320, 390, 430]) {
           await page.setViewportSize({ width, height: 844 });
           const back = page.locator('.workbench-aside-back');
@@ -702,7 +720,7 @@ test('Aside tool tabs keep balanced label spacing on touch screens', async ({ br
               ];
             })
           );
-          expect(spacing).toHaveLength(5);
+          expect(spacing).toHaveLength(4);
           for (const { label, left, right } of spacing) {
             expect(
               Math.abs(left - right),
@@ -710,9 +728,13 @@ test('Aside tool tabs keep balanced label spacing on touch screens', async ({ br
             ).toBeLessThanOrEqual(0.5);
           }
         }
-        await tabs
-          .getByRole('tab', { name: language === 'zh' ? '终端' : 'Terminal', exact: true })
-          .tap();
+        const terminalLabel = language === 'zh' ? '终端' : 'Terminal';
+        await page.getByRole('button', { name: addAsideLabel }).tap();
+        await page.getByRole('menuitem', { name: terminalLabel, exact: true }).tap();
+        await expect(tabs.getByRole('tab', { name: terminalLabel, exact: true })).toHaveAttribute(
+          'aria-selected',
+          'true'
+        );
         await expect(page.locator('#terminal')).toBeVisible();
         await tabs.getByRole('button', { name: 'Close Child' }).tap();
         await expect(tabs.getByRole('tab', { name: 'Child', exact: true })).toHaveCount(0);
