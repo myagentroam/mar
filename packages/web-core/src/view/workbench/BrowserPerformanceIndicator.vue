@@ -3,12 +3,13 @@ import { ref, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarPopover } from '@myagentroam/mar-ui/popover';
 import type { BrowserStreamSample } from '../../service/browser-attachment-client.js';
+import type { BrowserDrawnView } from '../../service/browser-viewport.js';
 import { useI18n } from 'vue-i18n';
 
 // Owns only the local popover and formatting; attachment measurements are read-only.
 const props = defineProps<{
   connection: string;
-  frame?: { width: number; height: number } | undefined;
+  frame?: BrowserDrawnView | undefined;
   sample?: BrowserStreamSample | undefined;
   disabled?: boolean;
 }>();
@@ -58,8 +59,10 @@ function bitrate(bits: number): string {
         <dd>{{ sample ? bitrate(sample.bitsPerSecond) : '—' }}</dd>
         <dt>{{ t('browser.performance.fps') }}</dt>
         <dd>{{ sample ? `${n(sample.framesPerSecond, rateFormat)} fps` : '—' }}</dd>
-        <dt>{{ t('browser.performance.resolution') }}</dt>
+        <dt>{{ t('browser.performance.viewport') }}</dt>
         <dd>{{ frame ? `${frame.width} × ${frame.height}` : '—' }}</dd>
+        <dt>{{ t('browser.performance.decodedResolution') }}</dt>
+        <dd>{{ frame ? `${frame.raster.width} × ${frame.raster.height}` : '—' }}</dd>
         <dt>{{ t('browser.performance.codec') }}</dt>
         <dd>{{ frame ? 'H.264' : '—' }}</dd>
       </dl>

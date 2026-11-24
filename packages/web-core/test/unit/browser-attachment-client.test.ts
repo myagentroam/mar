@@ -83,13 +83,15 @@ it('measures received bytes and drawn frames separately, then stops sampling whe
       snapshot: { viewVersion: 1, tabs: [] }
     })
   );
+  const drawn = { viewVersion: 1, width: 960, height: 600, raster: { width: 768, height: 480 } };
   receive
     .mockResolvedValueOnce({ sequence: 1 })
-    .mockResolvedValueOnce({ sequence: 2, viewport: { viewVersion: 1, width: 960, height: 600 } });
+    .mockResolvedValueOnce({ sequence: 2, viewport: drawn });
   message(new ArrayBuffer(400));
   message(new ArrayBuffer(600));
   await vi.advanceTimersByTimeAsync(1_000);
   expect(frame).toHaveBeenCalledOnce();
+  expect(frame).toHaveBeenCalledWith(drawn);
   expect(sample).toHaveBeenLastCalledWith({ bitsPerSecond: 8_000, framesPerSecond: 1 });
   const press = {
     type: 'input',
@@ -104,7 +106,7 @@ it('measures received bytes and drawn frames separately, then stops sampling whe
   expect(sample).toHaveBeenLastCalledWith({ bitsPerSecond: 0, framesPerSecond: 0 });
   receive.mockResolvedValueOnce({
     sequence: 3,
-    viewport: { viewVersion: 2, width: 960, height: 600 }
+    viewport: { ...drawn, viewVersion: 2 }
   });
   message(new ArrayBuffer(200));
   await vi.advanceTimersByTimeAsync(0);

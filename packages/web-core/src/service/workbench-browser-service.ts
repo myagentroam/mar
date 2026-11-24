@@ -18,6 +18,7 @@ import {
   supportsBrowserVideo,
   type BrowserStreamSample
 } from './browser-attachment-client.js';
+import type { BrowserDrawnView } from './browser-viewport.js';
 import { uploadBrowserFiles } from './browser-upload.js';
 import type { WorkbenchHttpService } from './workbench-http-service.js';
 import { ApiError } from '../util/api-error.js';
@@ -30,7 +31,6 @@ type Transport = {
   createChannel(label: string): RTCDataChannel;
   release(): void;
 };
-type View = { viewVersion: number; width: number; height: number };
 type Path = 'ice' | 'relay';
 type Connection = {
   selection?: { id: string; finish: (text: string) => void };
@@ -57,7 +57,7 @@ export function createWorkbenchBrowserService(options: {
 }) {
   const pending = new Map<string, (message: BrowserControlResponse) => void>();
   const snapshot = shallowRef<BrowserTabSnapshot>();
-  const frame = shallowRef<View>();
+  const frame = shallowRef<BrowserDrawnView>();
   const tabIcons = shallowRef(new Map<string, { url: string; png: string }>());
   const path = shallowRef<Path>();
   const streamSample = shallowRef<BrowserStreamSample>();

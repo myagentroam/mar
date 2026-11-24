@@ -4,9 +4,16 @@ import {
   BrowserFrameReceiver
 } from '@myagentroam/protocol';
 
+export type BrowserDrawnView = {
+  viewVersion: number;
+  width: number;
+  height: number;
+  raster: { width: number; height: number };
+};
+
 export interface BrowserDrawResult {
   sequence: number;
-  viewport?: { viewVersion: number; width: number; height: number };
+  viewport?: BrowserDrawnView;
 }
 
 /** Owns reassembly and local drawing for one attachment. The caller owns the
@@ -79,10 +86,11 @@ export class BrowserViewport {
       try {
         if (this.closed) return undefined;
         if (viewVersion !== this.viewVersion) return { sequence };
-        if (this.canvas.width !== image.displayWidth) this.canvas.width = image.displayWidth;
-        if (this.canvas.height !== image.displayHeight) this.canvas.height = image.displayHeight;
+        const raster = { width: image.displayWidth, height: image.displayHeight };
+        if (this.canvas.width !== raster.width) this.canvas.width = raster.width;
+        if (this.canvas.height !== raster.height) this.canvas.height = raster.height;
         this.context.drawImage(image, 0, 0);
-        return { sequence, viewport: { viewVersion, width, height } };
+        return { sequence, viewport: { viewVersion, width, height, raster } };
       } finally {
         image.close();
       }

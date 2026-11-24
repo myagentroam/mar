@@ -974,3 +974,22 @@ function canvasPoint(page: Page, x: number, y: number) {
     { x, y }
   );
 }
+
+test('Browser performance separates the CSS viewport from the decoded resolution', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  try {
+    await page.goto(`${fixture.url}browser-input.html`);
+    await page.getByRole('button', { name: 'Browser streaming performance' }).click();
+    const panel = page.getByRole('region', { name: 'Browser streaming performance' });
+    const value = (label: string) => panel.getByText(label, { exact: true }).locator('+ dd');
+    await expect(value('CSS viewport')).toHaveText('800 × 600');
+    await expect(value('Decoded resolution')).toHaveText('800 × 600');
+    await page.evaluate(() => document.dispatchEvent(new Event('fixture-raster-change')));
+    await expect(value('Decoded resolution')).toHaveText('640 × 480');
+    await expect(value('CSS viewport')).toHaveText('800 × 600');
+  } finally {
+    await fixture.close();
+  }
+});

@@ -56,7 +56,7 @@ function fixture() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Browser viewport', () => {
-  it('draws the complete H.264 access unit but reports remote CSS coordinates', async () => {
+  it('reports both remote CSS coordinates and the decoded raster after drawing', async () => {
     const { canvas, viewport, image, drawImage, decoded } = fixture();
     const [first, last] = chunks();
     expect(await viewport.receive(first!)).toBeUndefined();
@@ -65,7 +65,7 @@ describe('Browser viewport', () => {
     decoded();
     expect(await draw).toEqual({
       sequence: 1,
-      viewport: { viewVersion: 1, width: 1280, height: 800 }
+      viewport: { viewVersion: 1, width: 1280, height: 800, raster: { width: 960, height: 600 } }
     });
     expect(canvas.width).toBe(960);
     expect(drawImage).toHaveBeenCalledOnce();
@@ -123,7 +123,7 @@ describe('Browser viewport', () => {
     image.displayHeight = 1080;
     const first = await receive(1);
     decoded();
-    await first.draw;
+    expect(await first.draw).toMatchObject({ viewport: { raster: { width: 1920, height: 1080 } } });
     clearRect.mockClear();
 
     const down = await receive(2);
@@ -135,7 +135,7 @@ describe('Browser viewport', () => {
     decoded();
     expect(await down.draw).toEqual({
       sequence: 2,
-      viewport: { viewVersion: 1, width: 1280, height: 800 }
+      viewport: { viewVersion: 1, width: 1280, height: 800, raster: { width: 1280, height: 720 } }
     });
     expect([canvas.width, canvas.height]).toEqual([1280, 720]);
     expect(drawImage).toHaveBeenCalledTimes(2);

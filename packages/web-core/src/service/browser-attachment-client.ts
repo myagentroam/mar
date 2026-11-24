@@ -10,7 +10,7 @@ import {
   type BrowserAttachmentOpen,
   type BrowserTabSnapshot
 } from '@myagentroam/protocol';
-import { BrowserViewport } from './browser-viewport.js';
+import { BrowserViewport, type BrowserDrawnView } from './browser-viewport.js';
 
 type Link = WebSocket | RTCDataChannel;
 export type BrowserStreamSample = Readonly<{ bitsPerSecond: number; framesPerSecond: number }>;
@@ -58,7 +58,7 @@ export class BrowserAttachmentClient {
       browserUse?: boolean;
       downloadManagement?: boolean;
       tabIcon?: (event: Extract<BrowserAttachmentEvent, { type: 'tab.icon' }>) => void;
-      frame(frame: { viewVersion: number; width: number; height: number }): void;
+      frame(frame: BrowserDrawnView): void;
       sample(value: BrowserStreamSample): void;
       failed(code: string): void;
       ended(code: string): void;

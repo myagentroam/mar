@@ -35,6 +35,7 @@ declare global {
         sibling: number[];
         size: [number, number];
         viewport?: { width: number; height: number; viewVersion: number };
+        raster?: { width: number; height: number };
         wheelMessages: number;
         wheelToDrawMs: number;
       };
@@ -239,7 +240,9 @@ try {
             if (g > 180 && r < 65 && b < 65) stats.wheelToDrawMs = performance.now() - wheelAt;
           }
           stats.size = [canvas.width, canvas.height];
-          stats.viewport = frame.viewport;
+          const { raster, ...cssViewport } = frame.viewport;
+          stats.viewport = cssViewport;
+          stats.raster = raster;
           stats.frames++;
           if (!stats.first) stats.first = performance.now() - globalThis.probe.startAt;
           if (clickDone && white === clickTarget) {
@@ -438,6 +441,7 @@ try {
     });
     const first = await workbench.evaluate(() => window.probe.stats);
     assert.deepEqual(first.size, fullRaster);
+    assert.deepEqual(first.raster, { width: fullRaster[0], height: fullRaster[1] });
     assert.equal(bitrateChanges[0], bitrate);
     for (let i = 0; i < 12; i++) {
       const count = await workbench.evaluate(() => window.probe.stats.sibling.length);
@@ -470,6 +474,7 @@ try {
     const sampleJpegSize = capturedBytes - capturedBytesBefore;
     if (streamError) throw streamError;
     assert.deepEqual(after.size, [1280, 720], 'Sustained pressure must use the standard raster.');
+    assert.deepEqual(after.raster, { width: 1280, height: 720 });
     const pressuredCapture = latestCaptureRaster;
     assert.deepEqual(pressuredCapture, [1280, 720], 'The capture itself must also downshift.');
     assert.deepEqual(
@@ -527,6 +532,7 @@ try {
     await target.evaluate(() => window.freeze());
     const recovered = await workbench.evaluate(() => window.probe.stats);
     assert.deepEqual(recovered.size, fullRaster);
+    assert.deepEqual(recovered.raster, first.raster);
     assert.deepEqual(latestCaptureRaster, fullRaster, 'The capture itself must also recover.');
     assert.deepEqual(recovered.viewport, first.viewport);
     await borrow.resource.tabs.open();

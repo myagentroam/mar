@@ -33,7 +33,12 @@ browser.snapshot.value = {
   viewVersion: 1
 };
 browser.status.value = 'ready';
-browser.frame.value = { viewVersion: 1, width: 800, height: 600 };
+browser.frame.value = {
+  viewVersion: 1,
+  width: 800,
+  height: 600,
+  raster: { width: 800, height: 600 }
+};
 browser.findInPage = (_view, operation) => fixtureFind(operation);
 browser.show = async () => {};
 

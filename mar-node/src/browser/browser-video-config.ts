@@ -5,7 +5,7 @@ export const BROWSER_VIDEO_HD_LIMIT = { width: 1920, height: 1080 } as const;
 export const BROWSER_CAPTURE_QUALITY = 85;
 export const BROWSER_VIDEO_FRAMERATE = 24;
 export const BROWSER_VIDEO_BITRATE = 1_500_000;
-export const BROWSER_VIDEO_HD_BITRATE = 4_000_000;
+export const BROWSER_VIDEO_HD_BITRATE = 3_000_000;
 
 export type BrowserSize = { width: number; height: number };
 

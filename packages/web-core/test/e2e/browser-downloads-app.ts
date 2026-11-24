@@ -89,7 +89,12 @@ browser.deleteDownload = async (id) => {
   });
 };
 browser.downloadHref = (id) => `/fixture-download/${id}`;
-browser.frame.value = { viewVersion: 1, width: 800, height: 600 };
+browser.frame.value = {
+  viewVersion: 1,
+  width: 800,
+  height: 600,
+  raster: { width: 800, height: 600 }
+};
 update({ revision: 4, status: 'ready' });
 document.addEventListener('fixture-download-update', (event) =>
   update((event as CustomEvent<Update>).detail)

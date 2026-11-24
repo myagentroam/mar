@@ -52,7 +52,8 @@ export const browserZhCN = {
     connection: '连接方式',
     bitrate: '接收码率',
     fps: '绘制帧率',
-    resolution: '网页视口',
+    viewport: '网页 CSS 视口',
+    decodedResolution: '解码分辨率',
     codec: '编码',
     hint: '按约一秒内的实际活动统计；网页静止时可能没有新画面。'
   },

@@ -29,7 +29,12 @@ const browser = createWorkbenchBrowserService({
 });
 browser.snapshot.value = { tabs: [], viewVersion: 1 };
 browser.status.value = location.search.includes('offline') ? 'failed' : 'ready';
-browser.frame.value = { viewVersion: 1, width: 800, height: 600 };
+const viewportSize = { width: 800, height: 600 };
+browser.frame.value = { viewVersion: 1, ...viewportSize, raster: viewportSize };
+document.addEventListener('fixture-raster-change', () => {
+  const frame = browser.frame.value;
+  if (frame) browser.frame.value = { ...frame, raster: { width: 640, height: 480 } };
+});
 browser.path.value = 'relay';
 browser.show = async () => {};
 const takeover = location.search.includes('takeover');
@@ -87,7 +92,7 @@ document.addEventListener('fixture-view-change', () => {
     tabs: [],
     viewVersion: version.value
   };
-  browser.frame.value = { viewVersion: version.value, width: 800, height: 600 };
+  browser.frame.value = { viewVersion: version.value, ...viewportSize, raster: viewportSize };
 });
 const nativeTouch = !location.search.includes('legacy');
 createTooltipApp(

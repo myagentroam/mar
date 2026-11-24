@@ -53,7 +53,8 @@ export const browserEnUS = {
     connection: 'Connection',
     bitrate: 'Receive bitrate',
     fps: 'Drawn frame rate',
-    resolution: 'Viewport',
+    viewport: 'CSS viewport',
+    decodedResolution: 'Decoded resolution',
     codec: 'Codec',
     hint: 'Measured over about one second. A still page may send no frames.'
   },
