@@ -2,6 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Page } from 'playwright';
 import { BrowserPageView } from '../../src/browser/browser-page-view.js';
 
+type Frame = {
+  data: string;
+  metadata: { deviceWidth: number; deviceHeight: number };
+  sessionId: number;
+};
+
+function castSession() {
+  return {
+    on: vi.fn((_name: string, _receive: (frame: Frame) => void) => {}),
+    off: vi.fn(),
+    send: vi.fn(async (_method: string, _params?: object) => {}),
+    detach: vi.fn(async () => {})
+  };
+}
+
+function frame(data: Buffer, deviceWidth: number, deviceHeight: number): Frame {
+  return { data: data.toString('base64'), metadata: { deviceWidth, deviceHeight }, sessionId: 1 };
+}
+
 describe('Browser page view', () => {
   it('dispatches HTTP navigation only and does not wait for the full page load', async () => {
     const goto = vi.fn(async () => null);
@@ -14,63 +33,59 @@ describe('Browser page view', () => {
     expect(goto).toHaveBeenCalledExactlyOnceWith('https://example.com/', { waitUntil: 'commit' });
   });
 
-  it('drops old callbacks after capture stops and serializes a replacement behind stop', async () => {
-    type Handler = (frame: { data: Buffer; viewportWidth: number; viewportHeight: number }) => void;
-    const start = vi.fn(async (_: { onFrame: Handler }) => {});
+  it('keeps two capture subscriptions independent when the first stops', async () => {
     const pending = Promise.withResolvers<void>();
-    const stop = vi.fn(() => pending.promise);
+    const first = castSession();
+    const second = castSession();
+    first.detach.mockReturnValueOnce(pending.promise);
+    const create = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
     const view = new BrowserPageView({
       isClosed: () => false,
       viewportSize: () => ({ width: 1280, height: 800 }),
-      screencast: { start, stop }
+      screenshot: () => new Promise(() => {}),
+      context: () => ({ newCDPSession: create })
     } as unknown as Page);
     const offer = vi.fn();
+    const other = vi.fn();
     const size = { width: 640, height: 480, quality: 70 };
     const capture = await view.startCapture(size, offer);
-    const oldCallback = start.mock.calls[0]![0].onFrame;
-    const frame = { data: Buffer.from([42]), viewportWidth: 1280, viewportHeight: 800 };
-    oldCallback({ ...frame, viewportWidth: 960, viewportHeight: 600 });
+    const next = await view.startCapture({ ...size, width: 800 }, other);
+    const oldCallback = first.on.mock.calls[0]![1];
+    const currentCallback = second.on.mock.calls[0]![1];
+    const jpeg = Buffer.from([42]);
+    oldCallback(frame(jpeg, 960, 600));
     expect(offer).not.toHaveBeenCalled();
-    oldCallback(frame);
-    expect(offer).toHaveBeenCalledExactlyOnceWith({ jpeg: frame.data, width: 1280, height: 800 });
+    oldCallback(frame(jpeg, 1280, 800));
+    expect(offer).toHaveBeenCalledExactlyOnceWith({ jpeg, width: 1280, height: 800 });
+    expect(first.send).toHaveBeenCalledWith('Page.screencastFrameAck', { sessionId: 1 });
     const stopping = capture.stop();
-    await expect(view.startCapture(size, offer)).rejects.toThrow('BROWSER_CAPTURE_BUSY');
-    oldCallback(frame);
+    oldCallback(frame(jpeg, 1280, 800));
+    currentCallback(frame(jpeg, 1280, 800));
     expect(offer).toHaveBeenCalledOnce();
+    expect(other).toHaveBeenCalledOnce();
+    expect(second.detach).not.toHaveBeenCalled();
     pending.resolve();
     await stopping;
-    const next = await view.startCapture(size, offer);
-    oldCallback(frame);
-    expect(offer).toHaveBeenCalledOnce();
     await next.stop();
   });
 
   it.each(['static', 'live', 'stopped'] as const)(
-    'seeds a resized view only when a current screencast has not painted (%s)',
+    'seeds a new capture only when the current screencast has not painted (%s)',
     async (state) => {
       const screenshot = Promise.withResolvers<Buffer>();
-      type Handler = (frame: {
-        data: Buffer;
-        viewportWidth: number;
-        viewportHeight: number;
-      }) => void;
-      const start = vi.fn(async (_: { onFrame: Handler }) => {});
+      const session = castSession();
       const view = new BrowserPageView({
         isClosed: () => false,
         viewportSize: () => ({ width: 549, height: 732 }),
         screenshot: () => screenshot.promise,
-        screencast: { start, stop: async () => {} }
+        context: () => ({ newCDPSession: async () => session })
       } as unknown as Page);
       const offer = vi.fn();
-      const capture = await view.startCapture(
-        { width: 550, height: 732, quality: 70 },
-        offer,
-        true
-      );
-      const emit = start.mock.calls[0]![0].onFrame;
+      const capture = await view.startCapture({ width: 550, height: 732, quality: 70 }, offer);
+      const emit = session.on.mock.calls[0]![1];
       const native = Buffer.from([1]);
-      emit({ data: native, viewportWidth: 639, viewportHeight: 732 });
-      if (state === 'live') emit({ data: native, viewportWidth: 549, viewportHeight: 732 });
+      emit(frame(native, 639, 732));
+      if (state === 'live') emit(frame(native, 549, 732));
       if (state === 'stopped') await capture.stop();
       const seed = Buffer.from([2]);
       screenshot.resolve(seed);

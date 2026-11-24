@@ -23,6 +23,7 @@ async function fixture() {
   const upload = vi.fn<(request: BrowserUpload) => Promise<void>>().mockResolvedValue(undefined);
   let agentControl: BrowserTabs['agentControl'] = 'agent';
   const releaseInput = vi.fn(async () => {});
+  const clearInputHold = vi.fn();
   const input = vi.fn(async (action: BrowserPageInput) => {
     if (action.type === 'key' && action.edge === 'down') await blocked.promise;
   });
@@ -35,6 +36,9 @@ async function fixture() {
       offer({ ...size, jpeg: Buffer.from([1]) });
       return { stop: async () => {} };
     },
+    acceptsInput: () => true,
+    holdInput: () => {},
+    clearInputHold,
     input,
     releaseInput
   } as unknown as BrowserPageView;
@@ -51,7 +55,9 @@ async function fixture() {
       refresh = callback;
       return () => {};
     },
-    presentDialogs: async () => {}
+    attach: async () => {},
+    detach: async () => {},
+    orderInput: (action: () => Promise<void>) => action()
   } as unknown as BrowserTabs;
   const attachment = new BrowserAttachment(
     { resource: tabs, release: vi.fn() },
@@ -83,6 +89,7 @@ async function fixture() {
     },
     blocked,
     releaseInput,
+    clearInputHold,
     nextView: async () => {
       ready = Promise.withResolvers<void>();
       viewVersion++;
@@ -252,6 +259,28 @@ it('reclaims stale input budget immediately on a view change while Chromium is s
     await vi.waitFor(() => expect(input).toHaveBeenLastCalledWith(current));
     expect(input.mock.calls).toEqual([[key('down')], [current]]);
     expect(releaseInput).toHaveBeenCalledWith(new Set(['Shift']), new Set(), false);
+  } finally {
+    blocked.resolve();
+    await attachment.close();
+  }
+});
+
+it('releases the input hold if a page operation fails while a key is down', async () => {
+  const { attachment, send, input, blocked, failed, releaseInput, clearInputHold, sendControl } =
+    await fixture();
+  try {
+    input.mockRejectedValueOnce(new Error('Chromium input failed'));
+    send({ type: 'move', viewVersion: 1, x: 20, y: 30 });
+    blocked.resolve();
+    await vi.waitFor(() => expect(clearInputHold).toHaveBeenCalledWith(attachment));
+    expect(releaseInput).toHaveBeenCalledWith(new Set(['Shift']), new Set(), false);
+    await vi.waitFor(() =>
+      expect(sendControl).toHaveBeenCalledWith({
+        type: 'command.failed',
+        code: 'BROWSER_COMMAND_FAILED'
+      })
+    );
+    expect(failed).not.toHaveBeenCalled();
   } finally {
     blocked.resolve();
     await attachment.close();

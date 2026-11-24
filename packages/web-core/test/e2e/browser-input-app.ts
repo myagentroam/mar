@@ -27,7 +27,8 @@ const browser = createWorkbenchBrowserService({
   connectionId: () => undefined,
   acquire: () => undefined
 });
-browser.status.value = 'ready';
+browser.snapshot.value = { tabs: [], viewVersion: 1 };
+browser.status.value = location.search.includes('offline') ? 'failed' : 'ready';
 browser.frame.value = { viewVersion: 1, width: 800, height: 600 };
 browser.path.value = 'relay';
 browser.show = async () => {};
@@ -77,6 +78,9 @@ browser.send = (message) => {
   return true;
 };
 const version = ref(1);
+document.addEventListener('fixture-snapshot-ahead', () => {
+  browser.snapshot.value = { tabs: [], viewVersion: version.value + 1 };
+});
 document.addEventListener('fixture-view-change', () => {
   version.value++;
   browser.snapshot.value = {

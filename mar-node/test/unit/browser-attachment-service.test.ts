@@ -19,7 +19,8 @@ async function fixture(hdSupported = true) {
     snapshot: () => ({ activeId: undefined, viewVersion: 1, tabs: [] }),
     viewport: { width: 960, height: 600 },
     observe: () => () => {},
-    presentDialogs: dismiss
+    attach: () => dismiss(true),
+    detach: () => dismiss(false)
   } as unknown as BrowserTabs;
   const sessions = new BrowserSessionService({
     launch: async () => ({ resource: tabs, close: async () => {} }),
@@ -143,15 +144,19 @@ describe('Node Browser attachment admission', () => {
     }
   });
 
-  it('keeps the same browser during handoff, and does not grant another page its writer', async () => {
+  it('supports independent viewers and restricts handoff to the same logical page', async () => {
     const f = await fixture();
     try {
       const first = f.grant(ice);
       const initialLink = channel();
       await f.service.open(open(first), ice, initialLink);
+      const other = f.grant(relay, { connectionId: 'another-page' });
+      const otherLink = channel();
+      await f.service.open(open(other), relay, otherLink);
+      expect(otherLink.sendControl).toHaveBeenCalledWith({ type: 'ATTACHED' });
       const wrong = f.grant(relay, { replaces: first.attachmentId, connectionId: 'another-page' });
       await expect(f.service.open(open(wrong), relay, channel())).rejects.toThrow(
-        'BROWSER_ATTACHMENT_BUSY'
+        'BROWSER_INVALID_GRANT'
       );
       expect(initialLink.close).not.toHaveBeenCalled();
       const next = f.grant(relay, { replaces: first.attachmentId });
@@ -168,6 +173,7 @@ describe('Node Browser attachment admission', () => {
         dismissed.resolve();
       }
       await switched;
+      expect(otherLink.close).not.toHaveBeenCalled();
       expect(nextLink.sendControl).toHaveBeenNthCalledWith(1, { type: 'ATTACHED' });
       expect(f.sessions.lookup(scope)).toBe(f.browserId);
     } finally {

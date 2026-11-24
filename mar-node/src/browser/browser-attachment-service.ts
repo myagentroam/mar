@@ -23,7 +23,6 @@ type Entry = {
   expiresAt: number;
   channel?: BrowserAttachmentChannel;
   attachment?: BrowserAttachment;
-  ownsBorrow?: true;
   opening?: Promise<void>;
   closing?: Promise<void>;
 };
@@ -190,18 +189,17 @@ export class BrowserAttachmentService {
     hd: boolean
   ): Promise<void> {
     const grant = entry.grant;
-    const prior = [...this.entries.values()].find(
-      (candidate) =>
-        candidate !== entry && candidate.ownsBorrow && candidate.grant.browserId === grant.browserId
-    );
+    const prior = grant.replaces ? this.entries.get(grant.replaces) : undefined;
     if (prior) {
       if (
-        prior.grant.attachmentId !== grant.replaces ||
+        prior === entry ||
+        prior.grant.browserId !== grant.browserId ||
+        prior.grant.userId !== grant.userId ||
+        prior.grant.workspaceId !== grant.workspaceId ||
         prior.grant.sessionId !== grant.sessionId ||
-        prior.grant.connectionId !== grant.connectionId ||
-        !prior.attachment
+        prior.grant.connectionId !== grant.connectionId
       )
-        throw new Error('BROWSER_ATTACHMENT_BUSY');
+        throw new Error('BROWSER_INVALID_GRANT');
       const closing = this.revoke(prior.grant.attachmentId, 'BROWSER_ATTACHMENT_REPLACED');
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -218,7 +216,6 @@ export class BrowserAttachmentService {
     }
     if (entry.closing || entry.expiresAt <= Date.now()) throw new Error('BROWSER_LEASE_EXPIRED');
     const borrow = this.options.sessions.pin(grant, grant.browserId);
-    entry.ownsBorrow = true;
     let encoder: BrowserAttachmentEncoder | undefined;
     try {
       encoder = await this.options.encoder(hd);

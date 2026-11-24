@@ -22,7 +22,9 @@ describe('Node Browser live session cache', () => {
     expect(new Set([a, b, c]).size).toBe(3);
     expect(service.lookup(one)).toBe(a);
     const first = service.pin(one, a);
-    expect(() => service.pin(one, a)).toThrow('BROWSER_ATTACHMENT_BUSY');
+    const second = service.pin(one, a);
+    expect(second.resource).toBe(first.resource);
+    second.release();
     expect(() => service.pin(two, a)).toThrow('BROWSER_SESSION_ENDED');
     first.release();
     expect(service.pin(one, a).resource).toBe(first.resource);

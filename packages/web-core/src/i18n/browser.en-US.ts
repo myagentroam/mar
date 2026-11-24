@@ -116,6 +116,8 @@ export const browserEnUS = {
   downloads: 'Downloads',
   downloadActivity: 'Download list updated',
   copySelection: 'Copy selected text',
+  pasteText: 'Paste plain text',
+  pasteFailed: 'Could not paste. Focus the field and use your paste shortcut.',
   contextMenu: 'Page context menu',
   contextCopy: 'Copy',
   contextPaste: 'Paste',

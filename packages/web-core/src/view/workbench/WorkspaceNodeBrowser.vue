@@ -658,6 +658,26 @@ async function contextCommand(
   }
 }
 
+async function pasteFromDevice(): Promise<void> {
+  const viewVersion = frame.value?.viewVersion;
+  if (
+    viewVersion === undefined ||
+    snapshot.value?.viewVersion !== viewVersion ||
+    blank.value ||
+    status.value !== 'ready'
+  )
+    return;
+  const intent = ++contextIntent;
+  const current = () =>
+    currentContext(intent, viewVersion) && snapshot.value?.viewVersion === viewVersion;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text && current()) insertText(text, viewVersion);
+  } catch {
+    if (current()) feedback(t('browser.pasteFailed'), 'warning');
+  }
+}
+
 function key(event: KeyboardEvent, edge: 'up' | 'down'): void {
   const viewVersion = frame.value?.viewVersion;
   if (viewVersion === undefined) return;
@@ -1023,7 +1043,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
       </div>
       <div v-else-if="status === 'failed'" class="node-browser-placeholder">
         <div class="node-browser-error" role="alert">
-          <MarIcon name="connection" :size="32" aria-hidden="true" />
+          <MarIcon name="connection-off" :size="32" aria-hidden="true" />
           <h2>{{ t('browser.browserUnavailable') }}</h2>
           <p>{{ error ? browserError(error) : t('browser.failed') }}</p>
         </div>
@@ -1059,6 +1079,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         :collapse-label="t('browser.collapsePageActions')"
         :expand-label="t('browser.expandPageActions')"
         contained
+        compact-on-desktop
       >
         <MarButton
           v-if="!blank"
@@ -1077,6 +1098,15 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           :aria-label="t('browser.copySelection')"
           v-tooltip="t('browser.copySelection')"
           @click="copy()"
+        />
+        <MarButton
+          v-if="!blank"
+          circle
+          icon="paste"
+          :aria-label="t('browser.pasteText')"
+          v-tooltip="t('browser.pasteText')"
+          @pointerdown.prevent
+          @click="pasteFromDevice"
         />
         <BrowserPerformanceIndicator
           :connection="connection"
@@ -1190,6 +1220,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 }
 .node-browser-tabs :deep(.browser-web-tab-close) {
   border-radius: 50%;
+  margin-inline-end: 2px;
 }
 .node-browser-tabs :deep(.browser-web-tab-close:hover:enabled) {
   background: var(--mar-ui-action-hover-overlay);

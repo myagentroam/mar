@@ -87,6 +87,9 @@ export class BrowserTabs {
   private size: BrowserSize = BROWSER_VIEWPORT;
   private readonly events = new EventEmitter<{ changed: [] }>();
   private replacing: Promise<void> | undefined;
+  private readonly endpoints = new Map<object, BrowserSize | undefined>();
+  private pendingInput: Promise<void> = Promise.resolve();
+  private dialogUpdate: Promise<void> = Promise.resolve();
   private presenting = false;
   private readonly dialogs: BrowserDialogs;
   private readonly downloads: BrowserDownloads;
@@ -184,10 +187,42 @@ export class BrowserTabs {
     return this.options.favicon?.(url);
   }
 
-  async presentDialogs(enabled: boolean): Promise<void> {
+  attach(endpoint: object): Promise<void> {
+    this.endpoints.set(endpoint, undefined);
+    return this.endpoints.size === 1 ? this.presentDialogs(true) : this.dialogUpdate;
+  }
+
+  detach(endpoint: object): Promise<void> {
+    const wasFirst = this.endpoints.keys().next().value === endpoint;
+    if (!this.endpoints.delete(endpoint)) return this.dialogUpdate;
+    if (!this.endpoints.size) return this.presentDialogs(false);
+    if (wasFirst) {
+      const size = this.endpoints.values().next().value;
+      if (size) this.resize(size);
+    }
+    return this.dialogUpdate;
+  }
+
+  resizeFor(endpoint: object, size: BrowserSize): void {
+    if (!this.endpoints.has(endpoint)) return;
+    this.endpoints.set(endpoint, size);
+    if (this.endpoints.keys().next().value === endpoint) this.resize(size);
+  }
+
+  orderInput(action: () => Promise<void>): Promise<void> {
+    const operation = this.pendingInput.then(action);
+    this.pendingInput = operation.catch(() => undefined);
+    return operation;
+  }
+
+  private presentDialogs(enabled: boolean): Promise<void> {
     this.presenting = enabled;
     const page = enabled && this.activeId ? this.tabs.get(this.activeId)?.page : undefined;
-    await Promise.all([this.files.show(page), this.dialogs.show(page)]);
+    const operation = this.dialogUpdate.then(async () => {
+      await Promise.all([this.files.show(page), this.dialogs.show(page)]);
+    });
+    this.dialogUpdate = operation.catch(() => undefined);
+    return operation;
   }
 
   upload(request: BrowserUpload): Promise<void> {

@@ -11,6 +11,7 @@ const props = withDefaults(
     layout?: 'row' | 'compact' | 'wrap' | 'stacked' | 'image';
     mobileOnly?: boolean;
     contained?: boolean;
+    compactOnDesktop?: boolean;
   }>(),
   { layout: 'row' }
 );
@@ -24,7 +25,12 @@ const toggleLabel = computed(() => (expanded.value ? props.collapseLabel : props
     class="workspace-floating-actions"
     :class="[
       `is-${layout}`,
-      { 'is-collapsed': !expanded, 'is-mobile-only': mobileOnly, 'is-contained': contained }
+      {
+        'is-collapsed': !expanded,
+        'is-mobile-only': mobileOnly,
+        'is-contained': contained,
+        'is-desktop-compact': compactOnDesktop
+      }
     ]"
     role="group"
     :aria-label="label"
@@ -53,6 +59,9 @@ const toggleLabel = computed(() => (expanded.value ? props.collapseLabel : props
 
 <style scoped>
 .workspace-floating-actions {
+  --floating-action-size: 36px;
+  --floating-action-gap: 0.35rem;
+  --floating-toggle-gap: 0.2rem;
   position: fixed;
   z-index: 3;
   right: max(0.75rem, env(safe-area-inset-right));
@@ -71,17 +80,17 @@ const toggleLabel = computed(() => (expanded.value ? props.collapseLabel : props
 }
 .workspace-floating-actions :deep(.mar-ui-button) {
   border-radius: var(--mar-radius-control);
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  min-height: 36px;
+  width: var(--floating-action-size);
+  min-width: var(--floating-action-size);
+  height: var(--floating-action-size);
+  min-height: var(--floating-action-size);
 }
 .workspace-floating-actions-body {
   display: flex;
   align-items: center;
   min-width: 0;
   max-height: 6rem;
-  gap: 0.35rem;
+  gap: var(--floating-action-gap);
   justify-content: flex-end;
   overflow: hidden;
   opacity: 1;
@@ -143,13 +152,13 @@ const toggleLabel = computed(() => (expanded.value ? props.collapseLabel : props
 .workspace-floating-actions-toggle {
   display: grid;
   align-self: flex-end;
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  min-height: 36px;
+  width: var(--floating-action-size);
+  min-width: var(--floating-action-size);
+  height: var(--floating-action-size);
+  min-height: var(--floating-action-size);
   place-items: center;
   border-radius: var(--mar-radius-control);
-  margin-inline-start: 0.2rem;
+  margin-inline-start: var(--floating-toggle-gap);
   border: 0;
   background: transparent;
   color: var(--mar-text-secondary);
@@ -172,6 +181,21 @@ const toggleLabel = computed(() => (expanded.value ? props.collapseLabel : props
 @media (min-width: 768px) {
   .workspace-floating-actions.is-mobile-only {
     display: none;
+  }
+}
+@media (min-width: 768px) and (pointer: fine) and (not (any-pointer: coarse)) {
+  .workspace-floating-actions.is-desktop-compact {
+    --floating-action-size: var(--mar-ui-compact-control-size);
+    --floating-action-gap: 0.25rem;
+    --floating-toggle-gap: var(--floating-action-gap);
+    --mar-ui-action-icon-size: 14px;
+    padding: 0.1875rem;
+  }
+  .workspace-floating-actions.is-desktop-compact :deep(.mar-ui-button) {
+    --mar-ui-button-icon-size: var(--mar-ui-action-icon-size);
+  }
+  .is-desktop-compact .workspace-floating-actions-toggle {
+    font-size: var(--mar-ui-action-icon-size);
   }
 }
 @media (prefers-reduced-motion: reduce) {

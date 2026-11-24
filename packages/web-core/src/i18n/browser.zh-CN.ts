@@ -115,6 +115,8 @@ export const browserZhCN = {
   downloads: '下载',
   downloadActivity: '下载列表已更新',
   copySelection: '复制网页所选文本',
+  pasteText: '粘贴纯文本',
+  pasteFailed: '无法粘贴。请选中输入框并使用粘贴快捷键。',
   contextMenu: '网页右键菜单',
   contextCopy: '复制',
   contextPaste: '粘贴',

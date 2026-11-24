@@ -36,6 +36,12 @@ test('Browser page tabs use the shared selection fill without highlighting the t
       await expect(firstTab).toHaveAttribute('aria-selected', 'true');
       const activeSurface = firstTab.locator('..');
       await expect(activeSurface).toHaveCSS('background-color', selection);
+      const firstClose = activeSurface.getByRole('button', { name: /^Close /u });
+      const [tabBox, closeBox] = await Promise.all([
+        activeSurface.boundingBox(),
+        firstClose.boundingBox()
+      ]);
+      expect(tabBox!.x + tabBox!.width - closeBox!.x - closeBox!.width).toBeGreaterThanOrEqual(2);
       const cornerFills = await activeSurface.evaluate((element) =>
         ['::before', '::after'].map((corner) => getComputedStyle(element, corner).backgroundImage)
       );
@@ -43,6 +49,7 @@ test('Browser page tabs use the shared selection fill without highlighting the t
       await expect(secondTab.locator('..')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(toolbar).not.toHaveCSS('background-color', selection);
       if (theme === 'dark') {
+        await firstClose.hover();
         await page.locator('.node-browser-tabs').screenshot({
           path: testInfo.outputPath('browser-tabs-dark.png')
         });

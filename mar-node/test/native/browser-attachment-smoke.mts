@@ -38,7 +38,11 @@ declare global {
       active?: string;
       ended?: string;
       viewport?: { width: number; height: number };
+      contextReceived: boolean;
       click(): boolean;
+      button(edge: 'down' | 'up'): boolean;
+      context(): boolean;
+      resize(width: number, height: number): boolean;
       resizeAndNavigate(address: string): boolean;
     };
   }
@@ -78,6 +82,7 @@ const identity = {
 const generation = 'test-generation';
 let chrome: Browser | undefined;
 let wsNode: WebSocket | undefined;
+let wsOther: WebSocket | undefined;
 let nativePeer: RTCPeerConnection | undefined;
 let fixtureOrigin: string;
 let targetPage: Page | undefined;
@@ -137,7 +142,7 @@ const runtime = new BrowserRuntime({
     try {
       await page.goto(fixtureOrigin);
       const codec = await createBrowserVideoEncoder(page, {
-        ...fixtureViewport,
+        ...(wantsHd ? BROWSER_VIDEO_HD_LIMIT : { width: 960, height: 600 }),
         bitrate: wantsHd ? BROWSER_VIDEO_HD_BITRATE : 384_000,
         framerate: 24,
         hd: wantsHd
@@ -169,7 +174,7 @@ let allowed = true;
 const coordinator = new BrowserAttachmentCoordinator({
   authorize: async (who, target) => {
     if (
-      who.connectionId !== identity.connectionId ||
+      ![identity.connectionId, 'other-workbench'].includes(who.connectionId) ||
       who.sessionFingerprint !== identity.sessionFingerprint ||
       target.workspaceId !== scope.workspaceId
     )
@@ -280,10 +285,14 @@ try {
           if (!await supportsBrowserVideo()) throw new Error('No H.264 decoder');
           if (grant.hd && !await supportsBrowserVideo(true)) throw new Error('No HD H.264 decoder');
           let version;
-          window.probe = { frame: 0, click: () => {
-            const action = { type: 'button', button: 'left', x: 20, y: 16, viewVersion: version };
-            return client.send({ type: 'input', action: { ...action, edge: 'down' } }) && client.send({ type: 'input', action: { ...action, edge: 'up' } });
-          }, resizeAndNavigate: (address) =>
+          const button = (edge) => client.send({ type: 'input', action: {
+            type: 'button', button: 'left', x: 20, y: 16, viewVersion: version, edge
+          } });
+          window.probe = { frame: 0, contextReceived: false, button,
+            click: () => button('down') && button('up'),
+            context: () => client.send({ type: 'context.open', id: crypto.randomUUID(), viewVersion: version, point: { x: 20, y: 16 } }),
+            resize: (width, height) => client.send({ type: 'viewport.resize', width, height }),
+          resizeAndNavigate: (address) =>
             client.send({ type: 'viewport.resize', width: 391, height: 701 }) &&
             client.send({ type: 'navigate', address, viewVersion: version })
           };
@@ -292,6 +301,7 @@ try {
               if (grant.hd) client.send({ type: 'viewport.resize', width: 1920, height: 1080 });
             },
             snapshot: (state) => { window.probe.active = state.activeId; },
+            contextMenu: () => { window.probe.contextReceived = true; },
             frame: (drawn) => { version = drawn.viewVersion; window.probe.frame++; window.probe.viewport = drawn; },
             sample: () => {},
             failed: (code) => { throw new Error(code); },
@@ -378,11 +388,79 @@ try {
     { timeout: 5_000 }
   );
   assert.deepEqual(await target.evaluate(() => [innerWidth, innerHeight]), [391, 701]);
+  const other = { ...identity, connectionId: 'other-workbench' };
+  const otherGrant = await coordinator.prepare(other, { ...targetScope, browserId });
+  const otherNode = once(wss, 'connection');
+  wsOther = new WebSocket(ws, { maxPayload: BROWSER_CONTROL_MAX_BYTES });
+  await once(wsOther, 'open');
+  openBrowserRelayChannel(service, otherGrant.attachmentId, wsOther, failed);
+  const [otherSocket] = (await otherNode) as [WebSocket];
+  assert.equal(relay.node(otherGrant.attachmentId, 'node', generation, otherSocket), true);
+  wss.once('connection', (webSocket) => {
+    webSocket.once('message', (data, binary) => {
+      if (binary) webSocket.terminate();
+      else void relay.browser(other, webSocket, data.toString()).catch(failed);
+    });
+  });
+  const otherWeb = await chrome.newPage();
+  otherWeb.on('pageerror', failed);
+  await otherWeb.goto(http);
+  await otherWeb.addScriptTag({ content: bundle.outputFiles[0]!.text });
+  await otherWeb.evaluate(({ ws, grant }) => window.startProbe(ws, grant), {
+    ws,
+    grant: otherGrant
+  });
+  try {
+    await otherWeb.waitForFunction(
+      () => window.probe.frame > 0 || !!window.probe.ended,
+      undefined,
+      { timeout: 8_000 }
+    );
+  } catch (cause) {
+    throw new Error(`No frame for second viewer: ${errors.map(String).join('; ')}`, { cause });
+  }
+  assert.equal(
+    await otherWeb.evaluate(() => window.probe.ended),
+    undefined,
+    errors.map(String).join('; ')
+  );
+  assert.equal(await otherWeb.evaluate(() => window.probe.resize(640, 480)), true);
+  assert.equal(await web.evaluate(() => window.probe.ended), undefined);
+  const frames = await Promise.all(
+    [web, otherWeb].map((view) => view.evaluate(() => window.probe.frame))
+  );
+  await target.evaluate(() => {
+    document.body.style.backgroundColor = 'rgb(123, 45, 67)';
+  });
+  await Promise.all(
+    [web, otherWeb].map((view, index) =>
+      view.waitForFunction((frame) => window.probe.frame > frame!, frames[index], {
+        timeout: 5_000
+      })
+    )
+  );
+  assert.deepEqual(await target.evaluate(() => [innerWidth, innerHeight]), [391, 701]);
   await coordinator.renew(identity, open.attachmentId);
   const downloadEvent = target.waitForEvent('download', { timeout: 5_000 });
   await target.setContent(`<a href="${http}/slow-download">Download</a>`);
   await target.getByRole('link', { name: 'Download' }).click();
   const download = await downloadEvent;
+  await target.evaluate(() => {
+    document.body.dataset.input = '';
+    for (const type of ['mousedown', 'mouseup'] as const) {
+      document.addEventListener(type, (event) => {
+        document.body.dataset.input += `${event.type}:${event.button};`;
+      });
+    }
+  });
+  assert.equal(await web.evaluate(() => window.probe.button('down')), true);
+  await target.waitForFunction(() => document.body.dataset.input === 'mousedown:0;');
+  assert.equal(
+    await otherWeb.evaluate(() => window.probe.button('up') && window.probe.context()),
+    true
+  );
+  await otherWeb.waitForFunction(() => window.probe.contextReceived, undefined, { timeout: 5_000 });
+  assert.equal(await target.evaluate(() => document.body.dataset.input), 'mousedown:0;');
   allowed = false;
   await assert.rejects(coordinator.renew(identity, open.attachmentId), /BROWSER_NOT_AUTHORIZED/);
   const failure = await Promise.race([
@@ -391,6 +469,19 @@ try {
   ]);
   assert.equal(failure, 'canceled');
   await web.waitForFunction(() => !!window.probe.ended, undefined, { timeout: 5_000 });
+  await otherWeb.waitForFunction(
+    () => window.probe.viewport?.width === 640 && window.probe.viewport.height === 480,
+    undefined,
+    { timeout: 5_000 }
+  );
+  assert.equal(await otherWeb.evaluate(() => window.probe.ended), undefined);
+  assert.deepEqual(await target.evaluate(() => [innerWidth, innerHeight]), [640, 480]);
+  assert.equal(await target.evaluate(() => document.body.dataset.input), 'mousedown:0;mouseup:0;');
+  await target.setContent('<button onclick="window.browserClicked = true">Click me</button>');
+  assert.equal(await otherWeb.evaluate(() => window.probe.click()), true);
+  await target.waitForFunction(() => window.browserClicked, undefined, { timeout: 5_000 });
+  await coordinator.release(other, otherGrant.attachmentId);
+  await otherWeb.close();
   assert.equal(runtime.lookup(scope), browserId);
   await assert.rejects(
     coordinator.resource(identity, targetScope, { action: 'close', browserId }),
@@ -412,12 +503,13 @@ try {
   await runtime.close(scope, reopened);
   assert.deepEqual(errors, []);
   console.log(
-    `Browser ${mode} attachment: actual H.264 decode, click, lease renewal and authorization loss passed.`
+    `Browser ${mode} attachment: H.264 decode, concurrent relay viewer, viewport handoff, click and lease revocation passed.`
   );
 } finally {
   await coordinator.shutdown();
   await runtime.shutdown();
   wsNode?.terminate();
+  wsOther?.terminate();
   nativePeer?.close();
   for (const socket of wss.clients) socket.terminate();
   await chrome?.close();

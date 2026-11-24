@@ -607,7 +607,7 @@ test('Browser resolves the context menu inside nested open shadow roots', async 
         const host = document.createElement('div');
         outer.append(host);
         const inner = host.attachShadow({mode:'open'});
-        inner.innerHTML = '<input value="Shadow text"><input type="password" value="secret"><a href="https://example.test/shadow"><span>Shadow link</span></a>';
+        inner.innerHTML = '<input value="Shadow text"><input type="password" value="secret"><p style="margin-top: 4rem"><a href="https://example.test/shadow"><span>Shadow link</span></a></p>';
       </script>`
     );
     await attach(page, remote, fixture.url);
@@ -832,6 +832,68 @@ test('Browser flushes the latest drag position before requesting the copied sele
     await expect.poll(() => atCopy.length).toBe(1);
     expect(atCopy[0]).toMatchObject({ type: 'move', x: 105 });
     await page.mouse.up();
+  } finally {
+    await remote.close();
+    await fixture.close();
+  }
+});
+
+test('Browser toolbar pastes only into the current remote view', async ({ page, context }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/browser-input.html');
+  const remote = await context.newPage();
+  try {
+    await remote.setContent('<input aria-label="Remote field">');
+    const actions = await attach(page, remote, fixture.url);
+    await remote.getByRole('textbox').focus();
+    const paste = page.getByRole('button', { name: 'Paste plain text', exact: true });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, 'readText', {
+        configurable: true,
+        value: async () => 'From the toolbar'
+      });
+    });
+    await paste.click();
+    await expect(remote.getByRole('textbox')).toHaveValue('From the toolbar');
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, 'readText', {
+        configurable: true,
+        value: async () => {
+          throw new DOMException('Denied', 'NotAllowedError');
+        }
+      });
+    });
+    await paste.click();
+    await expect(
+      page.getByText('Could not paste. Focus the field and use your paste shortcut.')
+    ).toBeVisible();
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, 'readText', {
+        configurable: true,
+        value: () =>
+          new Promise<string>((resolve) => {
+            document.addEventListener('fixture-finish-toolbar-paste', () => resolve('Stale text'), {
+              once: true
+            });
+            document.documentElement.dataset.pastePending = 'true';
+          })
+      });
+    });
+    await paste.click();
+    await expect(page.locator('html')).toHaveAttribute('data-paste-pending', 'true');
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event('fixture-view-change'));
+      document.dispatchEvent(new Event('fixture-finish-toolbar-paste'));
+    });
+    await paste.press('Tab');
+    expect(actions.filter((action) => action.type === 'text')).toEqual([
+      { type: 'text', text: 'From the toolbar', viewVersion: 1 }
+    ]);
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event('fixture-snapshot-ahead'));
+      delete document.documentElement.dataset.pastePending;
+    });
+    await paste.click();
+    await expect(page.locator('html')).not.toHaveAttribute('data-paste-pending', 'true');
   } finally {
     await remote.close();
     await fixture.close();

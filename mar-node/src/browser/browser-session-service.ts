@@ -13,7 +13,7 @@ type Entry<T> = {
   session?: Session<T>;
   closing?: Promise<void>;
   idleSince?: number | undefined;
-  attached?: boolean;
+  attachments?: number;
   agentHolds?: number;
   dataUse?: Promise<void> | undefined;
 };
@@ -90,22 +90,21 @@ export class BrowserSessionService<T> {
     ) {
       throw new Error('BROWSER_SESSION_ENDED');
     }
-    if (entry.attached) throw new Error('BROWSER_ATTACHMENT_BUSY');
-    entry.attached = true;
+    entry.attachments = (entry.attachments ?? 0) + 1;
     entry.idleSince = undefined;
     this.schedule();
     let released = false;
     const release = () => {
       if (released) return;
       released = true;
-      entry.attached = false;
-      if (!entry.agentHolds) entry.idleSince = performance.now();
+      entry.attachments = (entry.attachments ?? 1) - 1;
+      if (!entry.attachments && !entry.agentHolds) entry.idleSince = performance.now();
       this.schedule();
     };
     return { resource: entry.session.resource, release };
   }
 
-  /** Retains a live instance independently of the exclusive Web attachment. */
+  /** Retains a live instance independently of Web attachments. */
   retain(resource: BrowserSessionKey, id: string): () => void {
     const entry = this.entries.get(this.key(resource));
     if (this.stopped || entry?.id !== id || !entry.session || entry.closing || this.expired(entry))
@@ -118,7 +117,7 @@ export class BrowserSessionService<T> {
       if (released) return;
       released = true;
       entry.agentHolds = (entry.agentHolds ?? 1) - 1;
-      if (!entry.agentHolds && !entry.attached) entry.idleSince = performance.now();
+      if (!entry.agentHolds && !entry.attachments) entry.idleSince = performance.now();
       this.schedule();
     };
   }

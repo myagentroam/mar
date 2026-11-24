@@ -97,7 +97,7 @@ export class BrowserAttachment {
       deadlineMs: options.deadlineMs
     });
     this.unobserve = borrow.resource.observe(() => this.refresh());
-    void borrow.resource.presentDialogs(true).catch(() => this.fail('BROWSER_DIALOG_FAILED'));
+    void borrow.resource.attach(this).catch(() => this.fail('BROWSER_DIALOG_FAILED'));
     this.refresh();
   }
 
@@ -214,12 +214,14 @@ export class BrowserAttachment {
       this.answering,
       this.uploading?.catch(() => undefined),
       this.capturing,
-      this.options.encoder.close(),
-      this.borrow.resource.presentDialogs(false)
+      this.options.encoder.close()
     ]);
     const cleanup = await Promise.allSettled([this.capture?.stop(), this.releaseInput()]);
+    const detached = await Promise.allSettled([this.borrow.resource.detach(this)]);
     this.borrow.release();
-    const failure = [...operations, ...cleanup].find((value) => value.status === 'rejected');
+    const failure = [...operations, ...cleanup, ...detached].find(
+      (value) => value.status === 'rejected'
+    );
     if (failure) throw failure.reason;
   }
 
@@ -337,13 +339,12 @@ export class BrowserAttachment {
   private async captureLatest(): Promise<void> {
     while (!this.closed && this.captureTarget !== this.next) {
       const target = this.next;
-      const rasterOnly = this.captureTarget?.version === target?.version;
       this.captureTarget = target;
       const capture = this.capture;
       this.capture = undefined;
       await capture?.stop();
       if (this.closed || target !== this.next || !target?.page) continue;
-      const resized = await target.page.resize(target.size);
+      await target.page.resize(target.size);
       if (this.closed || target !== this.next) continue;
       const version = target.version;
       this.capture = await target.page.startCapture(
@@ -352,8 +353,7 @@ export class BrowserAttachment {
           if (target !== this.next) return;
           this.options.captured?.(frame.jpeg.byteLength);
           this.stream.offer({ ...frame, viewVersion: version });
-        },
-        resized || rasterOnly
+        }
       );
     }
   }
@@ -385,6 +385,7 @@ export class BrowserAttachment {
           try {
             await this.dispatch(command);
           } catch (error) {
+            if (command.type === 'input') await this.releaseInput();
             this.commandFailed(
               command.type === 'tab.open' &&
                 error instanceof Error &&
@@ -411,7 +412,7 @@ export class BrowserAttachment {
     const tabs = this.borrow.resource;
     switch (command.type) {
       case 'viewport.resize':
-        return tabs.resize({ width: command.width, height: command.height });
+        return tabs.resizeFor(this, { width: command.width, height: command.height });
       case 'tab.open':
         return tabs.open(command.address);
       case 'tab.openHtml':
@@ -434,12 +435,12 @@ export class BrowserAttachment {
       }
       case 'context.open': {
         this.contextPasteId = undefined;
-        const view = this.next;
-        const options =
-          view?.version === command.viewVersion && this.shown === command.viewVersion
-            ? await view.page?.contextMenu.open(command.id, command.point)
-            : undefined;
-        if (!this.closed) {
+        return tabs.orderInput(async () => {
+          const options = await this.inputView(command.viewVersion)?.contextMenu.open(
+            command.id,
+            command.point
+          );
+          if (this.closed) return;
           const current = this.next?.version === command.viewVersion;
           if (current && options?.paste) this.contextPasteId = command.id;
           this.options.sendControl({
@@ -447,44 +448,17 @@ export class BrowserAttachment {
             id: command.id,
             ...(current && options ? { options } : {})
           });
-        }
-        return;
+        });
       }
       case 'context.paste': {
         if (this.contextPasteId !== command.id) return;
         this.contextPasteId = undefined;
-        if (this.next?.version === command.viewVersion && this.shown === command.viewVersion)
-          await this.next.page?.contextMenu.paste(command.id, command.text);
-        return;
+        return tabs.orderInput(async () => {
+          await this.inputView(command.viewVersion)?.contextMenu.paste(command.id, command.text);
+        });
       }
-      case 'input': {
-        const action = command.action;
-        const page = this.next?.page;
-        if (!page || action.viewVersion !== this.shown || action.viewVersion !== this.next?.version)
-          return;
-        if (action.type === 'touch' && (action.phase === 'start') === !!this.pressed?.touch) return;
-        if (action.type === 'key' || action.type === 'button' || action.type === 'touch') {
-          await page.input(action);
-          const pressed = (this.pressed ??= {
-            page,
-            version: action.viewVersion,
-            keys: new Set(),
-            buttons: new Set(),
-            touch: false
-          });
-          if (action.type === 'touch')
-            pressed.touch = action.phase === 'start' || action.phase === 'move';
-          else {
-            const method = action.edge === 'down' ? 'add' : 'delete';
-            if (action.type === 'key') pressed.keys[method](action.key);
-            else pressed.buttons[method](action.button);
-          }
-          if (!pressed.keys.size && !pressed.buttons.size && !pressed.touch)
-            this.pressed = undefined;
-          return;
-        }
-        return page.input(action);
-      }
+      case 'input':
+        return tabs.orderInput(() => this.dispatchInput(command.action));
       case 'navigate':
       case 'navigation': {
         const page = tabs.navigationView(command.viewVersion);
@@ -497,10 +471,72 @@ export class BrowserAttachment {
     }
   }
 
+  private inputView(version: number): BrowserPageView | undefined {
+    if (
+      this.closed ||
+      this.borrow.resource.agentControl === 'taking' ||
+      version !== this.shown ||
+      version !== this.next?.version
+    )
+      return;
+    const page = this.next.page;
+    if (page?.acceptsInput(this)) return page;
+  }
+
+  private async dispatchInput(action: BrowserPageInput): Promise<void> {
+    const page = this.inputView(action.viewVersion);
+    if (!page) return;
+    if (action.type === 'touch' && (action.phase === 'start') === !!this.pressed?.touch) return;
+    if (action.type === 'key' && action.edge === 'up' && !this.pressed?.keys.has(action.key))
+      return;
+    if (
+      action.type === 'button' &&
+      action.edge === 'up' &&
+      !this.pressed?.buttons.has(action.button)
+    )
+      return;
+    if (action.type === 'key' || action.type === 'button' || action.type === 'touch') {
+      page.holdInput(this);
+      const pressed = (this.pressed ??= {
+        page,
+        version: action.viewVersion,
+        keys: new Set(),
+        buttons: new Set(),
+        touch: false
+      });
+      if (action.type === 'touch') {
+        if (action.phase === 'start') pressed.touch = true;
+      } else if (action.edge === 'down') {
+        if (action.type === 'key') pressed.keys.add(action.key);
+        else pressed.buttons.add(action.button);
+      }
+      await page.input(action);
+      if (action.type === 'touch')
+        pressed.touch = action.phase === 'start' || action.phase === 'move';
+      else if (action.edge === 'up') {
+        if (action.type === 'key') pressed.keys.delete(action.key);
+        else pressed.buttons.delete(action.button);
+      }
+      if (!pressed.keys.size && !pressed.buttons.size && !pressed.touch) {
+        this.pressed = undefined;
+        page.clearInputHold(this);
+      }
+      return;
+    }
+    await page.input(action);
+  }
+
   private async releaseInput(): Promise<void> {
     const pressed = this.pressed;
     this.pressed = undefined;
-    if (pressed) await pressed.page.releaseInput(pressed.keys, pressed.buttons, pressed.touch);
+    if (!pressed) return;
+    await this.borrow.resource.orderInput(async () => {
+      try {
+        await pressed.page.releaseInput(pressed.keys, pressed.buttons, pressed.touch);
+      } finally {
+        pressed.page.clearInputHold(this);
+      }
+    });
   }
 
   private commandFailed(error: unknown): void {

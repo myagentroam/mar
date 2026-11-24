@@ -10,7 +10,8 @@ export type BrowserPageCapture = { stop: () => Promise<void> };
  * Construct only for a browser launched within the Node's execution boundary.
  */
 export class BrowserPageView {
-  private active: BrowserPageCapture | undefined;
+  private pendingResize: Promise<void> = Promise.resolve();
+  private inputOwner: object | undefined;
   private navigationSession: Promise<CDPSession> | undefined;
   readonly contextMenu: BrowserContextMenu;
 
@@ -54,11 +55,14 @@ export class BrowserPageView {
     await (await this.navigation()).send('Page.stopLoading');
   }
 
-  async resize(size: { width: number; height: number }): Promise<boolean> {
-    const current = this.page.viewportSize();
-    if (current?.width === size.width && current.height === size.height) return false;
-    await this.page.setViewportSize(size);
-    return true;
+  resize(size: { width: number; height: number }): Promise<void> {
+    const operation = this.pendingResize.then(async () => {
+      const current = this.page.viewportSize();
+      if (current?.width !== size.width || current.height !== size.height)
+        await this.page.setViewportSize(size);
+    });
+    this.pendingResize = operation.catch(() => undefined);
+    return operation;
   }
 
   async reload(): Promise<void> {
@@ -94,6 +98,18 @@ export class BrowserPageView {
   }
 
   /** The attachment owns input ordering, view fencing and synthetic releases. */
+  acceptsInput(owner: object): boolean {
+    return !this.inputOwner || this.inputOwner === owner;
+  }
+
+  holdInput(owner: object): void {
+    this.inputOwner = owner;
+  }
+
+  clearInputHold(owner: object): void {
+    if (this.inputOwner === owner) this.inputOwner = undefined;
+  }
+
   async input(action: BrowserPageInput): Promise<void> {
     const { mouse, keyboard } = this.page;
     switch (action.type) {
@@ -134,9 +150,18 @@ export class BrowserPageView {
     touch = false
   ) {
     if (this.page.isClosed()) return;
-    if (touch) await this.touch('cancel');
-    for (const key of keys) await this.page.keyboard.up(key);
-    for (const button of buttons) await this.page.mouse.up({ button });
+    let failure: unknown;
+    const release = async (action: () => Promise<void>) => {
+      try {
+        await action();
+      } catch (error) {
+        failure ??= error;
+      }
+    };
+    if (touch) await release(() => this.touch('cancel'));
+    for (const key of keys) await release(() => this.page.keyboard.up(key));
+    for (const button of buttons) await release(() => this.page.mouse.up({ button }));
+    if (failure) throw failure;
   }
 
   async selectedText(): Promise<string> {
@@ -162,47 +187,50 @@ export class BrowserPageView {
 
   async startCapture(
     render: { width: number; height: number; quality: number },
-    offer: (frame: Frame) => void,
-    resized = false
+    offer: (frame: Frame) => void
   ): Promise<BrowserPageCapture> {
-    if (this.active) throw new Error('BROWSER_CAPTURE_BUSY');
     const viewport = this.page.viewportSize();
+    // A separate CDP session gives each attachment its own size and frame credit.
+    const session = await this.page.context().newCDPSession(this.page);
     let stopped = false;
     let receivedFrame = false;
     let stopping: Promise<void> | undefined;
+    const onFrame = (event: {
+      data: string;
+      metadata: { deviceWidth: number; deviceHeight: number };
+      sessionId: number;
+    }) => {
+      const { data, metadata, sessionId } = event;
+      const { deviceWidth: width, deviceHeight: height } = metadata;
+      if (!stopped) {
+        void session.send('Page.screencastFrameAck', { sessionId }).catch(() => undefined);
+        // Chromium may queue a frame using the old viewport during resize.
+        if (!viewport || (viewport.width === width && viewport.height === height)) {
+          receivedFrame = true;
+          offer({ jpeg: Buffer.from(data, 'base64'), width, height });
+        }
+      }
+    };
     const capture = {
       stop: () => {
         stopped = true;
-        return (stopping ??= (
-          this.page.isClosed() ? Promise.resolve() : this.page.screencast.stop()
-        )
-          .catch((error: unknown) => {
-            if (!this.page.isClosed()) throw error;
-          })
-          .finally(() => {
-            this.active = undefined;
-          }));
+        session.off('Page.screencastFrame', onFrame);
+        return (stopping ??= session.detach().catch((error: unknown) => {
+          if (!this.page.isClosed()) throw error;
+        }));
       }
     };
-    this.active = capture;
     try {
-      await this.page.screencast.start({
-        size: { width: render.width, height: render.height },
-        quality: render.quality,
-        onFrame: ({ data, viewportWidth, viewportHeight }) => {
-          // Chromium may deliver a queued frame from before setViewportSize to the new capture.
-          if (
-            !stopped &&
-            (!viewport || (viewport.width === viewportWidth && viewport.height === viewportHeight))
-          ) {
-            receivedFrame = true;
-            offer({ jpeg: data, width: viewportWidth, height: viewportHeight });
-          }
-        }
+      session.on('Page.screencastFrame', onFrame);
+      await session.send('Page.startScreencast', {
+        format: 'jpeg',
+        maxWidth: render.width,
+        maxHeight: render.height,
+        quality: render.quality
       });
-      // A static page may repaint before the new screencast subscribes. Seed that
-      // resized view once, without overwriting a newer compositor frame.
-      if (resized && viewport && !stopped && !receivedFrame) {
+      // A new viewer can subscribe to a static page without triggering a
+      // repaint. Seed once, without overwriting a newer compositor frame.
+      if (viewport && !stopped && !receivedFrame) {
         void this.page
           .screenshot({ type: 'jpeg', quality: render.quality, scale: 'css', timeout: 3_000 })
           .then(
@@ -214,8 +242,7 @@ export class BrowserPageView {
       }
       return capture;
     } catch (error) {
-      stopped = true;
-      this.active = undefined;
+      await capture.stop().catch(() => undefined);
       throw error;
     }
   }
