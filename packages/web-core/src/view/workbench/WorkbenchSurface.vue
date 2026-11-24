@@ -1700,11 +1700,14 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   .session-layout {
     height: auto;
     flex: 1 1 auto;
-    padding: 0 0 8px;
   }
 
   .workspace-grid {
     border-bottom: 0;
+  }
+
+  .workspace-grid > .conversation-panel {
+    padding-block-end: 8px;
   }
 
   .workbench :deep(.workbench-header),

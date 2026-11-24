@@ -6,6 +6,7 @@ import { json, mockConsoleApi } from './support/web-console-api.js';
 // @test-covers packages/web-core/src/styles/theme.css
 // @test-covers packages/web-core/src/styles/mar-ui-theme.css
 // @test-covers packages/web-core/src/view/workbench/WorkbenchAside.vue
+// @test-covers packages/web-core/src/view/workbench/WorkbenchSurface.vue
 // @test-covers packages/mar-ui/components/segmented/MarSegmented.vue
 
 function luminance(color: string): number {
@@ -51,8 +52,13 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
 
     const aside = page.locator('.workspace-aside .workbench-aside');
     await expect(aside).toBeVisible();
+    const bottom = ({ y, height }: { y: number; height: number }) => y + height;
+    const frameBottom = bottom((await page.locator('.workbench').boundingBox())!);
     const primary = await aside.evaluate((element) => getComputedStyle(element).borderLeftColor);
     await expect(aside).toHaveCSS('border-left-width', '1px');
+    for (const panel of [page.locator('.conversation-sidebar'), aside]) {
+      expect(bottom((await panel.boundingBox())!)).toBeCloseTo(frameBottom, 1);
+    }
     for (const [divider, edge] of [
       [page.locator('.mar-workbench-sidebar'), 'right'],
       [page.locator('.conversation-sidebar'), 'right'],
@@ -168,6 +174,15 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     expect(contrast(focusColor)).toBeGreaterThanOrEqual(3);
     await expect(textbox).toHaveCSS('outline-style', 'none');
     await textbox.blur();
+
+    await page.locator('.conversation-sidebar .session-row').first().click();
+    const conversation = page.locator('.workspace-grid > .conversation-panel');
+    await expect(conversation.getByText('正在同步对话', { exact: true })).toBeVisible();
+    const composer = conversation.locator('.composer-host');
+    await expect
+      .poll(async () => bottom((await composer.boundingBox())!))
+      .toBeCloseTo(frameBottom - 8, 1);
+
     await page.screenshot({
       path: info.outputPath('workbench-boundaries.png'),
       animations: 'disabled'
