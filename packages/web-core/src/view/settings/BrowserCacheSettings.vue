@@ -10,7 +10,9 @@ import {
   browserSettingsSnapshotSchema
 } from '@myagentroam/protocol';
 import { translate as t } from '../../service/locale-preference-service.js';
+import { showMessage } from '../../service/message-feedback-service.js';
 import type { WorkbenchHttpService } from '../../service/workbench-http-service.js';
+import { errorMessage } from '../../util/error-presentation.js';
 
 const props = defineProps<{
   userId?: number | undefined;
@@ -23,7 +25,7 @@ const draft = reactive<{ cacheCleanupDays: number | null | undefined }>({
 });
 const saved = ref<number>();
 const pending = ref<'load' | 'save'>();
-const status = ref<'saved' | 'loadFailed' | 'saveFailed'>();
+const loadFailed = ref(false);
 const dirty = computed(() => draft.cacheCleanupDays !== saved.value);
 const rules = computed(() => ({
   cacheCleanupDays: [
@@ -41,12 +43,17 @@ async function load(): Promise<void> {
   if (props.userId === undefined || pending.value) return;
   const { signal } = lifetime;
   pending.value = 'load';
-  status.value = undefined;
   try {
     const value = browserSettingsSnapshotSchema.parse(await props.request(endpoint, { signal }));
-    if (!signal.aborted) draft.cacheCleanupDays = saved.value = value.cacheCleanupDays;
-  } catch {
-    if (!signal.aborted) status.value = 'loadFailed';
+    if (!signal.aborted) {
+      draft.cacheCleanupDays = saved.value = value.cacheCleanupDays;
+      loadFailed.value = false;
+    }
+  } catch (error) {
+    if (!signal.aborted) {
+      loadFailed.value = true;
+      showMessage(errorMessage(error, t('browser.cacheCycleLoadFailed')), 'error', error);
+    }
   } finally {
     if (!signal.aborted) pending.value = undefined;
   }
@@ -60,15 +67,15 @@ async function save(): Promise<void> {
   const input = browserSettingsInputSchema.safeParse(draft);
   if (!input.success) return;
   pending.value = 'save';
-  status.value = undefined;
   try {
     await props.request(endpoint, { method: 'PUT', body: JSON.stringify(input.data), signal });
     if (!signal.aborted) {
       saved.value = input.data.cacheCleanupDays;
-      status.value = 'saved';
+      showMessage(t('browser.cacheCycleSaved'), 'success');
     }
-  } catch {
-    if (!signal.aborted) status.value = 'saveFailed';
+  } catch (error) {
+    if (!signal.aborted)
+      showMessage(errorMessage(error, t('browser.cacheCycleSaveFailed')), 'error', error);
   } finally {
     if (!signal.aborted) pending.value = undefined;
   }
@@ -79,7 +86,8 @@ watch(
   () => {
     lifetime.abort();
     lifetime = new AbortController();
-    pending.value = status.value = undefined;
+    pending.value = undefined;
+    loadFailed.value = false;
     draft.cacheCleanupDays = saved.value = undefined;
     void load();
   },
@@ -99,31 +107,35 @@ onBeforeUnmount(() => lifetime.abort());
     label-position="top"
     @submit.prevent="save"
   >
-    <MarFormItem :label="t('browser.cacheCycleDays')" prop="cacheCleanupDays">
-      <MarInputNumber
-        v-model="draft.cacheCleanupDays"
-        :min="min"
-        :max="max"
-        :step="1"
-        step-strictly
-        :disabled="pending !== undefined"
-      />
+    <MarFormItem
+      class="browser-cache-field"
+      :label="t('browser.cacheCycleDays')"
+      prop="cacheCleanupDays"
+    >
+      <div class="browser-cache-controls">
+        <MarInputNumber
+          v-model="draft.cacheCleanupDays"
+          :min="min"
+          :max="max"
+          :step="1"
+          step-strictly
+          :disabled="pending !== undefined"
+        />
+        <MarButton
+          icon="check"
+          type="primary"
+          native-type="submit"
+          :disabled="!dirty"
+          :loading="pending === 'save'"
+        >
+          {{ t('common.save') }}
+        </MarButton>
+      </div>
     </MarFormItem>
-    <MarButton native-type="submit" :disabled="!dirty" :loading="pending === 'save'">
-      {{ t('browser.cacheCycleSave') }}
-    </MarButton>
   </MarForm>
-  <p v-if="status === 'loadFailed' || status === 'saveFailed'" role="alert">
-    {{
-      t(status === 'loadFailed' ? 'browser.cacheCycleLoadFailed' : 'browser.cacheCycleSaveFailed')
-    }}
-    <MarButton v-if="status === 'loadFailed'" link @click="load">{{
-      t('browser.useRetry')
-    }}</MarButton>
-  </p>
-  <p v-else-if="status === 'saved'" role="status">
-    {{ t('browser.cacheCycleSaved') }}
-  </p>
+  <MarButton v-else-if="loadFailed" link :loading="pending === 'load'" @click="load">
+    {{ t('browser.useRetry') }}
+  </MarButton>
 </template>
 
 <style scoped>
@@ -131,5 +143,15 @@ onBeforeUnmount(() => lifetime.abort());
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.5;
+}
+.browser-cache-field {
+  margin-block-end: 0;
+}
+.browser-cache-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-inline-size: 0;
 }
 </style>

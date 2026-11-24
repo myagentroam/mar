@@ -9,6 +9,96 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Browser cache interval saves beside the input and reports results in Feedback', async ({
+  page
+}, info) => {
+  await page.setViewportSize({ width: 320, height: 660 });
+  const endpoint = '**/api/auth/preferences/browser-settings';
+  let reads = 0;
+  const writes: unknown[] = [];
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === 'PUT') {
+      writes.push(route.request().postDataJSON());
+      if (writes.length === 1) {
+        await route.fulfill({
+          status: 500,
+          json: { error: { code: 'INTERNAL_ERROR', requestId: 'cache-save-failure' } }
+        });
+      } else {
+        await route.fulfill({ status: 204 });
+      }
+    } else if (++reads === 1) {
+      await route.fulfill({ status: 500 });
+    } else {
+      await route.fulfill({ json: { revision: 1, cacheCleanupDays: 30 } });
+    }
+  });
+  await page.goto(`${fixture.url}settings-layout.html?section=browser&locale=zh-CN`);
+
+  const settings = page.getByRole('region', { name: '浏览器设置' });
+  const errors = page.locator('.mar-message--error');
+  await expect(errors).toHaveText(/无法加载账号的浏览器设置/);
+  await expect(settings.getByText(/无法加载账号的浏览器设置/)).toHaveCount(0);
+  await errors.getByRole('button', { name: '关闭' }).click();
+  const retry = settings.getByRole('button', { name: '重试', exact: true });
+  await retry.click();
+
+  const interval = settings.getByRole('spinbutton', { name: '清理间隔（天）' });
+  const save = settings.getByRole('button', { name: '保存', exact: true });
+  await expect(interval).toHaveValue('30');
+  await expect(retry).toHaveCount(0);
+  await expect(save).toBeDisabled();
+  await expect(save.locator('svg')).toBeVisible();
+  const groupBoundaries = [
+    [settings.getByText('管理工作台中的浏览器偏好。'), settings.getByRole('checkbox')],
+    [
+      settings.getByText(/允许 MAR Agent 使用隔离浏览器/),
+      settings.getByRole('heading', { name: '缓存清理周期' })
+    ],
+    [save, settings.getByRole('heading', { name: '链接打开方式' })]
+  ] as const;
+  for (const width of [320, 1280]) {
+    await page.setViewportSize({ width, height: 660 });
+    await expect(save).toBeInViewport({ ratio: 1 });
+    const inputBox = (await settings.locator('.mar-ui-input-number').boundingBox())!;
+    const saveBox = (await save.boundingBox())!;
+    expect(saveBox.x).toBeGreaterThan(inputBox.x + inputBox.width);
+    expect(saveBox.y + saveBox.height / 2).toBeCloseTo(inputBox.y + inputBox.height / 2, 0);
+    for (const [previous, next] of groupBoundaries) {
+      const previousBox = (await previous.boundingBox())!;
+      const nextBox = (await next.boundingBox())!;
+      const gap = nextBox.y - (previousBox.y + previousBox.height);
+      expect(gap).toBeGreaterThan(0);
+      expect(gap).toBeLessThanOrEqual(28);
+    }
+  }
+  await interval.fill('');
+  await save.click();
+  await expect(settings.getByRole('alert')).toHaveText('请输入 1–60 之间的整数。');
+  expect(writes).toEqual([]);
+
+  await interval.fill('7');
+  await save.click();
+  const saveError = errors.filter({ hasText: '无法保存缓存清理周期。' });
+  await expect(saveError).toBeVisible();
+  await expect(saveError).toContainText('请求 ID：cache-save-failure');
+  await expect(settings.getByRole('alert')).toHaveCount(0);
+  await expect(interval).toHaveValue('7');
+  await saveError.getByRole('button', { name: '关闭' }).click();
+  await expect(errors).toHaveCount(0);
+  await save.click();
+  const success = page.locator('.mar-message--success');
+  await expect(success).toContainText('已保存到账号。');
+  await expect(settings.getByText('已保存到账号。')).toHaveCount(0);
+  await expect(save).toBeDisabled();
+  expect(writes).toEqual([{ cacheCleanupDays: 7 }, { cacheCleanupDays: 7 }]);
+  await expect(success).toHaveCSS('opacity', '1');
+  await page.screenshot({
+    path: info.outputPath('browser-cache-settings.png'),
+    animations: 'disabled'
+  });
+});
+
 const sections = [
   { id: 'appearance', selector: '.full', title: 'h2' },
   { id: 'account', selector: '.full', title: 'h2' },

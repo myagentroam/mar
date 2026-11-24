@@ -1095,10 +1095,11 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await expect(page.getByRole('button', { name: /Back to browser|返回浏览器/u })).toHaveCount(0);
     await test.step('Save the account cache cleanup interval for the next browser open', async () => {
       const endpoint = '/api/auth/preferences/browser-settings';
-      const interval = page.getByRole('spinbutton', {
+      const settings = page.getByRole('region', { name: /^(Browser settings|浏览器设置)$/u });
+      const interval = settings.getByRole('spinbutton', {
         name: /Cleanup interval \(days\)|清理间隔（天）/u
       });
-      const save = page.getByRole('button', { name: /Save interval|保存周期/u });
+      const save = settings.getByRole('button', { name: /^(Save|保存)$/u });
       await expect(
         page.getByText(/next time you open the Workspace browser|下次打开工作区浏览器时自动生效/u)
       ).toBeVisible();
@@ -1109,7 +1110,9 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       await interval.fill('7');
       await save.click();
       await expect(
-        page.getByRole('status').filter({ hasText: /Saved to your account|已保存到账号/u })
+        page
+          .locator('.mar-message--success')
+          .filter({ hasText: /Saved to your account|已保存到账号/u })
       ).toBeVisible();
       const account = await page.request.get(endpoint);
       expect(await account.json()).toMatchObject({ cacheCleanupDays: 7 });

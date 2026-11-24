@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // Renders production settings and navigation with isolated data; no shared services or database.
 import { computed, onBeforeUnmount, ref } from 'vue';
+import BrowserSettings from '../../src/view/settings/BrowserSettings.vue';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
 import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
+import { createWorkbenchHttpService } from '../../src/service/workbench-http-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 import { formatDateTime } from '../../src/util/time-presentation.js';
 import type { SettingsSection } from '../../src/model/settings.js';
@@ -33,6 +35,7 @@ const settingsItems = computed(() => [
   { id: 'quick-prompts' as const, label: translate('quickPrompts.title') },
   { id: 'personal-instructions' as const, label: translate('navigation.personalInstructions') },
   { id: 'git' as const, label: translate('personalGit.title') },
+  { id: 'browser' as const, label: translate('browser.settings') },
   { id: 'shortcuts' as const, label: translate('navigation.shortcuts') },
   { id: 'about' as const, label: translate('navigation.about') }
 ]);
@@ -40,7 +43,15 @@ const initial = new URL(location.href).searchParams.get('section');
 if (initial === 'registration' || settingsItems.value.some((item) => item.id === initial))
   navigation.selectSettings(initial as SettingsSection);
 
-async function request<T>(path: string): Promise<T> {
+const browserSettingsHttp = createWorkbenchHttpService({
+  csrfToken: ref('settings-layout-fixture'),
+  csrfStorageKey: 'settings-layout-fixture-csrf',
+  onUnauthenticated: () => {}
+});
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (path === '/api/auth/preferences/browser-use') return { enabled: true } as T;
+  if (path === '/api/auth/preferences/browser-settings')
+    return browserSettingsHttp.request<T>(path, init);
   if (path.startsWith('/api/me/usage/records?'))
     return { total: '0', records: [], nextCursor: null } as T;
   if (path.startsWith('/api/me/usage/overview?')) {
@@ -154,7 +165,9 @@ onBeforeUnmount(() => {
         :conversation-title="undefined"
         @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
       />
+      <BrowserSettings v-if="settingsSection === 'browser'" :user-id="1" :request="request" />
       <SettingsContent
+        v-else
         :section="settingsSection"
         web-version="0.13.20"
         :sessions="[

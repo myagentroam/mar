@@ -165,7 +165,7 @@ function save(kind: 'local' | 'web', value: unknown): void {
   padding: clamp(0.75rem, 3vw, 1.5rem);
 }
 .browser-settings > header {
-  margin-block-end: 1rem;
+  margin-block-end: 0.5rem;
 }
 .browser-settings h1 {
   margin: 0;
@@ -180,11 +180,11 @@ function save(kind: 'local' | 'web', value: unknown): void {
   margin: 0.35rem 0 0;
 }
 .browser-link-help {
-  margin-block-start: 0.75rem;
+  margin-block: 0.75rem 0;
 }
 .browser-settings > section {
   max-inline-size: 50rem;
-  padding-block: 1rem;
+  padding-block: 0.5rem;
   border-block-start: 1px solid var(--mar-ui-border);
 }
 .browser-form-row {

@@ -32,7 +32,6 @@ export const browserEnUS = {
   cacheCycleDays: 'Cleanup interval (days)',
   cacheCycleHelp: 'Choose {min}–{max} days. Applies the next time you open the Workspace browser.',
   cacheCycleInvalid: 'Enter a whole number from {min} to {max}.',
-  cacheCycleSave: 'Save interval',
   cacheCycleSaved: 'Saved to your account.',
   cacheCycleLoadFailed: 'Could not load browser settings for your account.',
   cacheCycleSaveFailed: 'Could not save the cache cleanup interval.',

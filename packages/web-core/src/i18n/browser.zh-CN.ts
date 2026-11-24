@@ -31,7 +31,6 @@ export const browserZhCN = {
   cacheCycleDays: '清理间隔（天）',
   cacheCycleHelp: '可设为 {min}–{max} 天，下次打开工作区浏览器时自动生效。',
   cacheCycleInvalid: '请输入 {min}–{max} 之间的整数。',
-  cacheCycleSave: '保存周期',
   cacheCycleSaved: '已保存到账号。',
   cacheCycleLoadFailed: '无法加载账号的浏览器设置。',
   cacheCycleSaveFailed: '无法保存缓存清理周期。',
