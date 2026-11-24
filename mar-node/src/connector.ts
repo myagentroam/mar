@@ -2431,9 +2431,10 @@ export class NodeConnector {
     this.capabilities = { ...capabilities, ...this.browserCapability() };
   }
 
-  private browserCapability(): Pick<NodeCapabilities, 'browser'> {
+  private browserCapability(): Pick<NodeCapabilities, 'browser' | 'browserSettings'> {
     return this.browserService
       ? {
+          browserSettings: true,
           browser: {
             apiVersion: 1,
             nodeGeneration: this.nodeGeneration,

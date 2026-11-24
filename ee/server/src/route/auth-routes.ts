@@ -28,6 +28,7 @@ export function registerAuthRoutes(input: {
   readonly productCapabilities?: ProductCapabilityProvider;
   readonly notifications?: UserLocalePreferences;
   readonly browserUsePreferences?: AuthenticationRoutesOptions['browserUsePreferences'];
+  readonly browserSettings?: AuthenticationRoutesOptions['browserSettings'];
 }): void {
   const { nodeControl } = input;
   registerAuthenticationRoutes({
@@ -51,6 +52,7 @@ export function registerAuthRoutes(input: {
     ...(input.browserUsePreferences === undefined
       ? {}
       : { browserUsePreferences: input.browserUsePreferences }),
+    ...(input.browserSettings === undefined ? {} : { browserSettings: input.browserSettings }),
     ...(input.productCapabilities === undefined
       ? {}
       : { productCapabilities: input.productCapabilities }),

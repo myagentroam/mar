@@ -24,6 +24,7 @@ export function createAuthFixture() {
   let sequence = 0;
   let locale: UserLocale = 'zh-CN';
   const browserUse = new Map<number, boolean>();
+  const browserSettings = new Map<number, { cacheCleanupDays: number; revision: number }>();
   const sessions = new Map<
     string,
     { current: CurrentUserSession; csrfToken: string; publicId: string }
@@ -133,6 +134,16 @@ export function createAuthFixture() {
       browserUseEnabled: async (userId) => browserUse.get(userId) ?? true,
       setBrowserUseEnabled: async (userId, enabled) => {
         browserUse.set(userId, enabled);
+      }
+    },
+    browserSettings: {
+      browserSettings: async (userId) =>
+        browserSettings.get(userId) ?? { cacheCleanupDays: 30, revision: 0 },
+      setBrowserCacheCleanupDays: async (userId, cacheCleanupDays) => {
+        browserSettings.set(userId, {
+          cacheCleanupDays,
+          revision: (browserSettings.get(userId)?.revision ?? 0) + 1
+        });
       }
     },
     productCapabilities,

@@ -29,6 +29,7 @@ export * from './browser-input.js';
 export * from './browser-attachment.js';
 export * from './browser-data.js';
 export * from './browser-control.js';
+export * from './browser-settings.js';
 export * from './browser-files.js';
 export * from './mail-notification.js';
 export * from './marctl-execution-credential.js';
@@ -412,6 +413,7 @@ export const nodeCapabilitiesSchema = z
     workspaceDirectTransfer: workspaceDirectTransferCapabilitySchema.optional(),
     terminalDirect: terminalDirectCapabilitySchema.optional(),
     browser: browserCapabilitySchema.optional(),
+    browserSettings: z.literal(true).optional(),
     remoteDesktop: remoteDesktopCapabilitySchema.optional(),
     sessionAside: sessionAsideCapabilitySchema.optional(),
     sessionGroups: z

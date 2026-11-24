@@ -43,6 +43,17 @@ function profiles(isUnused = vi.fn(async () => false)) {
 }
 
 describe('Browser persistent profiles', () => {
+  it('preserves the cache cleanup timestamp across profile closures and reacquisition', async () => {
+    const first = await profiles().acquire(scope);
+    expect(first.lastCacheCleanupAt).toBe(DAY);
+    today += 2 * DAY;
+    await first.recordCacheCleanup(today);
+    await first.release();
+    today += 4 * DAY;
+    const reopened = await profiles().acquire(scope);
+    expect(reopened.lastCacheCleanupAt).toBe(3 * DAY);
+    await reopened.release();
+  });
   it('can retry initial creation after failing to publish the retention marker', async () => {
     const store = profiles();
     const error = Object.assign(new Error('Disk full'), { code: 'ENOSPC' });

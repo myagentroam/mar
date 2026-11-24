@@ -158,6 +158,11 @@ export class BrowserNodeService {
     const { grant } = command;
     if (grant.userId !== userId) throw new Error('BROWSER_NOT_AUTHORIZED');
     this.options.requireWorkspace(grant.workspaceId);
+    await this.browser.syncSettings(
+      { userId, workspaceId: grant.workspaceId },
+      grant.browserId,
+      command.settings
+    );
     this.browser.attachments.prepare(grant);
     if (grant.route.type === 'relay') {
       try {

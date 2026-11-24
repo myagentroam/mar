@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { browserPageInputSchema } from './browser-input.js';
 import { browserFileChooserSchema } from './browser-files.js';
+import { browserSettingsSnapshotSchema } from './browser-settings.js';
 
 const positiveUint32 = z.number().int().positive().max(0xffffffff);
 const tabId = z.string().uuid();
@@ -70,7 +71,11 @@ export type BrowserAttachmentRoute = z.infer<typeof browserAttachmentRouteSchema
 
 // Internal Node operations, not part of the generic Workbench operation allowlist.
 export const browserNodeAttachmentCommandSchema = z.discriminatedUnion('action', [
-  z.strictObject({ action: z.literal('prepare'), grant: browserAttachmentPrepareSchema }),
+  z.strictObject({
+    action: z.literal('prepare'),
+    grant: browserAttachmentPrepareSchema,
+    settings: browserSettingsSnapshotSchema.optional()
+  }),
   z.strictObject({
     action: z.literal('renew'),
     attachmentId: id,
@@ -90,6 +95,7 @@ export type BrowserNodeAttachmentCommand = z.infer<typeof browserNodeAttachmentC
 export const browserResourceCommandSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('open'), preserveLogin: z.boolean() }),
   z.strictObject({ action: z.literal('lookup') }),
+  z.strictObject({ action: z.literal('sync-settings') }),
   z.strictObject({ action: z.literal('close'), browserId: id })
 ]);
 

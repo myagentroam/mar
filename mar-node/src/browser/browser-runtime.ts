@@ -3,7 +3,8 @@ import {
   BROWSER_TAB_LIMIT,
   type BrowserDownloadRead,
   type BrowserNodeAttachmentCommand,
-  type BrowserProfileTarget
+  type BrowserProfileTarget,
+  type BrowserSettingsSnapshot
 } from '@myagentroam/protocol';
 import { BrowserAttachmentService } from './browser-attachment-service.js';
 import {
@@ -12,6 +13,7 @@ import {
   type BrowserAgentExecution
 } from './browser-agent-access.js';
 import type { BrowserAttachmentEncoder } from './browser-attachment.js';
+import { BrowserCacheMaintenance } from './browser-cache-maintenance.js';
 import { BrowserProfiles } from './browser-profiles.js';
 import type { BrowserProfileData } from './browser-profile-data.js';
 import { BrowserSessionService, type BrowserSessionKey } from './browser-session-service.js';
@@ -39,7 +41,7 @@ type LiveBrowser = {
 export class BrowserRuntime {
   readonly attachments: BrowserAttachmentService;
   private readonly profiles: BrowserProfiles;
-  private readonly sessions: BrowserSessionService<LiveBrowser>;
+  private readonly sessions: BrowserSessionService<BrowserWithCache>;
   private readonly retention: ReturnType<typeof setInterval>;
   private profileSweep: Promise<void> | undefined;
   private readonly maintenance = new Map<string, Promise<void>>();
@@ -62,7 +64,7 @@ export class BrowserRuntime {
       isUnused: options.profileUnused,
       failed: options.failed
     });
-    this.sessions = new BrowserSessionService<LiveBrowser>({
+    this.sessions = new BrowserSessionService<BrowserWithCache>({
       limit: options.maxBrowsers,
       onCloseFailed: () => options.failed(new Error('BROWSER_CLOSE_FAILED')),
       launch: async (scope, id, preserveLogin) => {
@@ -75,6 +77,15 @@ export class BrowserRuntime {
           await profile?.release();
           throw error;
         }
+        const data = browser.data;
+        const cache =
+          data &&
+          new BrowserCacheMaintenance({
+            lastCleanupAt: profile?.lastCacheCleanupAt,
+            record: profile?.recordCacheCleanup,
+            clear: () => data.clear({ range: 'all', categories: ['cache'] }),
+            failed: options.failed
+          });
         const tabs = new BrowserTabs(browser.context, {
           limit: BROWSER_TAB_LIMIT,
           failed: options.failed,
@@ -99,12 +110,14 @@ export class BrowserRuntime {
             tabs,
             access,
             persistent: preserveLogin,
+            ...(cache && { cache }),
             ...(browser.data ? { data: browser.data } : {})
           },
           agentConnected: () => access.hasClients(),
           close: async () => {
             await access.close();
             await this.attachments.revokeBrowser(id);
+            await cache?.close();
             await browser.close();
             await profile?.release();
           }
@@ -134,6 +147,13 @@ export class BrowserRuntime {
 
   lookup(scope: BrowserSessionKey): string | undefined {
     return this.stopped ? undefined : this.sessions.lookup(scope);
+  }
+
+  syncSettings(scope: BrowserSessionKey, id: string, settings?: BrowserSettingsSnapshot) {
+    return this.sessions.use(scope, id, async ({ cache }) => {
+      if (!cache && settings) throw new Error('BROWSER_SETTINGS_SYNC_UNAVAILABLE');
+      return cache?.sync(settings);
+    });
   }
 
   async revokeAttachment(
@@ -271,3 +291,5 @@ export class BrowserRuntime {
       });
   }
 }
+
+type BrowserWithCache = LiveBrowser & { cache?: BrowserCacheMaintenance };

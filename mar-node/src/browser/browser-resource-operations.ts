@@ -1,4 +1,8 @@
-import { browserProfileCommandSchema, browserResourceCommandSchema } from '@myagentroam/protocol';
+import {
+  browserProfileCommandSchema,
+  browserResourceCommandSchema,
+  browserSettingsSnapshotSchema
+} from '@myagentroam/protocol';
 import { z } from 'zod';
 import type { BrowserRuntime } from './browser-runtime.js';
 
@@ -7,16 +11,19 @@ const resource = z.strictObject({
   __requestUserId: z.number().int().positive().safe(),
   command: z.unknown()
 });
+const resourceWithSettings = resource.extend({ settings: z.unknown().optional() });
 
 /** The authenticated Node request dispatcher supplies the relayed user ID.
  * Neither the browser resource command nor a data link chooses this identity. */
 export function createBrowserResourceOperation(
-  browser: Pick<BrowserRuntime, 'open' | 'lookup' | 'close'>,
+  browser: Pick<BrowserRuntime, 'open' | 'lookup' | 'close' | 'syncSettings'>,
   requireWorkspace: (workspaceId: string) => void
 ) {
-  return async (data: unknown): Promise<{ browserId?: string }> => {
-    const parsed = resource.safeParse(data);
+  return async (data: unknown) => {
+    const parsed = resourceWithSettings.safeParse(data);
     if (!parsed.success) throw new Error('BROWSER_RESOURCE_INVALID');
+    const settings = browserSettingsSnapshotSchema.optional().safeParse(parsed.data.settings);
+    if (!settings.success) throw new Error('BROWSER_RESOURCE_INVALID');
     const { workspaceId, __requestUserId: userId } = parsed.data;
     const request = browserResourceCommandSchema.safeParse(parsed.data.command);
     if (!request.success) throw new Error('BROWSER_RESOURCE_INVALID');
@@ -24,8 +31,17 @@ export function createBrowserResourceOperation(
     requireWorkspace(workspaceId);
     const scope = { workspaceId, userId };
     switch (command.action) {
-      case 'open':
-        return { browserId: await browser.open(scope, command.preserveLogin) };
+      case 'open': {
+        const browserId = await browser.open(scope, command.preserveLogin);
+        await browser.syncSettings(scope, browserId, settings.data);
+        return { browserId };
+      }
+      case 'sync-settings': {
+        const browserId = browser.lookup(scope);
+        if (!browserId) throw new Error('BROWSER_SESSION_ENDED');
+        if (!settings.data) throw new Error('BROWSER_RESOURCE_INVALID');
+        return { settings: await browser.syncSettings(scope, browserId, settings.data) };
+      }
       case 'lookup': {
         const browserId = browser.lookup(scope);
         return browserId ? { browserId } : {};

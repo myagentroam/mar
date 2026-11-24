@@ -261,7 +261,11 @@ export async function composeServerApplication(
           await Promise.all([recentRuns.reclassify(change), notifications.reclassify(change)]);
         }
       },
-      { usageGrants: modelUsage.grants, gitForwarding: new GitExecutionForwarding(personalGit) },
+      {
+        usageGrants: modelUsage.grants,
+        gitForwarding: new GitExecutionForwarding(personalGit),
+        browserSettings: (userId) => database.browserSettings(userId)
+      },
       (event, fields) => app.log.info({ event, ...fields }),
       traffic
     );
@@ -413,6 +417,7 @@ export async function composeServerApplication(
       loginRate,
       productCapabilities: product.capabilities,
       browserUsePreferences: database,
+      browserSettings: database,
       notifications
     });
     registerManagementRoutes({

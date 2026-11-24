@@ -22,6 +22,34 @@ const credentials = (response: {
 });
 
 describe('portable authentication HTTP flow', () => {
+  it('stores a bounded cache interval as the signed-in account configuration', async () => {
+    const { app, login } = fixture();
+    const url = '/api/auth/preferences/browser-settings';
+    expect((await app.inject(url)).statusCode).toBe(401);
+    const headers = { ...credentials(await login()), origin: 'https://console.example.test' };
+    expect((await app.inject({ url, headers })).json()).toEqual({
+      cacheCleanupDays: 30,
+      revision: 0
+    });
+    const put = (payload: object, token = headers['x-csrf-token']) =>
+      app.inject({ method: 'PUT', url, headers: { ...headers, 'x-csrf-token': token }, payload });
+    expect((await put({ cacheCleanupDays: 1 }, 'wrong')).statusCode).toBe(403);
+    for (const payload of [
+      { cacheCleanupDays: 0 },
+      { cacheCleanupDays: 61 },
+      { cacheCleanupDays: 1.5 },
+      { cacheCleanupDays: 30, userId: 2 },
+      { cacheCleanupDays: 30, revision: 500 }
+    ])
+      expect((await put(payload)).statusCode).toBe(400);
+    expect((await put({ cacheCleanupDays: 1 })).statusCode).toBe(204);
+    expect((await put({ cacheCleanupDays: 60 })).statusCode).toBe(204);
+    expect((await app.inject({ url, headers: credentials(await login()) })).json()).toEqual({
+      cacheCleanupDays: 60,
+      revision: 2
+    });
+  });
+
   it('defaults Browser Use to enabled and stores changes only for authenticated CSRF-checked requests', async () => {
     const { app, login } = fixture();
     const url = '/api/auth/preferences/browser-use';

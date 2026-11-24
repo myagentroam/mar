@@ -16,6 +16,7 @@ import { TerminalRelayService } from '@myagentroam/server-core/terminal-relay-se
 import { WorkbenchRelayService } from '@myagentroam/server-core/workbench-relay-service';
 import { NodeMessageProjector } from '@myagentroam/server-core/node-message-projector';
 import { BrowserWorkbenchService } from '../service/browser-workbench-service.js';
+import type { BrowserSettingsSnapshot } from '@myagentroam/protocol';
 
 /** Compose the connection owner with its request, relay, projection and transfer owners. */
 export function createNodeControl(
@@ -25,6 +26,7 @@ export function createNodeControl(
   brokerServices: {
     readonly usageGrants: Pick<ModelUsageGrants, 'issue'>;
     readonly gitForwarding: Pick<GitExecutionForwarding, 'prepare'>;
+    readonly browserSettings: (userId: number) => Promise<BrowserSettingsSnapshot>;
   },
   log?: (event: string, fields: Record<string, unknown>) => void,
   traffic?: ServerTrafficMetrics
@@ -245,6 +247,11 @@ export function createNodeControl(
           },
           authenticateNode: async (nodeId, credential) =>
             Boolean(await database.authenticateNode(nodeId, credential)),
+          settings: (nodeId, generation, userId) => {
+            const capability = transport.capabilities(nodeId);
+            if (capability?.browserSettings && capability.browser?.nodeGeneration === generation)
+              return brokerServices.browserSettings(userId);
+          },
           failed: () => log?.('browser.relay.failed', {})
         });
         constructed.push(() => browser.close());

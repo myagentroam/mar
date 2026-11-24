@@ -5,7 +5,13 @@ import type { BrowserSessionKey } from './browser-session-service.js';
 
 const RETENTION_MS = 30 * 24 * 60 * 60_000;
 const PROFILE_ENTRY = /^[0-9a-f]{64}$/u;
-type Metadata = { id: string; open: boolean; lastUsedAt: number };
+type Metadata = { id: string; open: boolean; lastUsedAt: number; lastCacheCleanupAt?: number };
+type ProfileLease = {
+  path: string;
+  lastCacheCleanupAt: number;
+  recordCacheCleanup: (timestamp: number) => Promise<void>;
+  release: () => Promise<void>;
+};
 
 /** Owns managed persistent profile directories and their retention metadata.
  * The deployment provides a private root and proves post-crash quiescence;
@@ -24,7 +30,7 @@ export class BrowserProfiles {
     }
   ) {}
 
-  acquire(scope: BrowserSessionKey): Promise<{ path: string; release: () => Promise<void> }> {
+  acquire(scope: BrowserSessionKey): Promise<ProfileLease> {
     return this.acquireEntry(scope);
   }
 
@@ -44,17 +50,11 @@ export class BrowserProfiles {
     });
   }
 
-  maintain(
-    scope: BrowserSessionKey,
-    id: string
-  ): Promise<{ path: string; release: () => Promise<void> }> {
+  maintain(scope: BrowserSessionKey, id: string): Promise<ProfileLease> {
     return this.acquireEntry(scope, id);
   }
 
-  private acquireEntry(
-    scope: BrowserSessionKey,
-    expectedId?: string
-  ): Promise<{ path: string; release: () => Promise<void> }> {
+  private acquireEntry(scope: BrowserSessionKey, expectedId?: string): Promise<ProfileLease> {
     const name = this.name(scope);
     return this.serial(async () => {
       const entry = join(this.options.root, name);
@@ -84,9 +84,10 @@ export class BrowserProfiles {
       }
       const id = metadata?.id ?? randomUUID();
       const lastUsedAt = expectedId ? metadata!.lastUsedAt : this.now();
+      let cleanupAt = metadata?.lastCacheCleanupAt ?? metadata?.lastUsedAt ?? lastUsedAt;
       try {
         if (!existing) await mkdir(path, { mode: 0o700 });
-        await this.mark(entry, { id, open: true, lastUsedAt });
+        await this.mark(entry, { id, open: true, lastUsedAt, lastCacheCleanupAt: cleanupAt });
       } catch (error) {
         // Only this call's new entry can be rolled back; existing data is retained.
         if (!existing) await rm(entry, { recursive: true, force: true }).catch(this.options.failed);
@@ -96,6 +97,13 @@ export class BrowserProfiles {
       let released = false;
       return {
         path,
+        lastCacheCleanupAt: cleanupAt,
+        recordCacheCleanup: (timestamp) =>
+          this.serial(async () => {
+            if (released) return;
+            cleanupAt = timestamp;
+            await this.mark(entry, { id, open: true, lastUsedAt, lastCacheCleanupAt: cleanupAt });
+          }),
         release: () =>
           this.serial(async () => {
             if (released) return;
@@ -106,7 +114,8 @@ export class BrowserProfiles {
             await this.mark(entry, {
               id,
               open: false,
-              lastUsedAt: expectedId ? lastUsedAt : this.now()
+              lastUsedAt: expectedId ? lastUsedAt : this.now(),
+              lastCacheCleanupAt: cleanupAt
             }).catch(this.options.failed);
           })
       };
@@ -126,7 +135,7 @@ export class BrowserProfiles {
           if (!metadata || !(await this.stat(path))?.isDirectory()) continue;
           if (metadata.open) {
             if (await this.options.isUnused(path))
-              await this.mark(entry, { id: metadata.id, open: false, lastUsedAt: this.now() });
+              await this.mark(entry, { ...metadata, open: false, lastUsedAt: this.now() });
           } else if (this.now() - metadata.lastUsedAt >= RETENTION_MS) {
             await rm(entry, { recursive: true });
           }
@@ -183,7 +192,15 @@ export class BrowserProfiles {
       value.lastUsedAt < 0
     )
       return undefined;
-    return { id: value.id, open: value.open, lastUsedAt: value.lastUsedAt };
+    const cleanupAt = 'lastCacheCleanupAt' in value && value.lastCacheCleanupAt;
+    return {
+      id: value.id,
+      open: value.open,
+      lastUsedAt: value.lastUsedAt,
+      ...(typeof cleanupAt === 'number' && Number.isSafeInteger(cleanupAt) && cleanupAt >= 0
+        ? { lastCacheCleanupAt: cleanupAt }
+        : {})
+    };
   }
 
   private async mark(entry: string, metadata: Metadata): Promise<void> {

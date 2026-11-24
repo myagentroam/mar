@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { attachBrowserProfileData } from '../../src/browser/browser-profile-data.js';
+import { BrowserCacheMaintenance } from '../../src/browser/browser-cache-maintenance.js';
 import { createBrowserLauncher } from '../../src/browser/browser-launcher.js';
 import { chromiumProfileLock } from '../../src/browser/browser-profile-lock.js';
 import { BROWSER_VIEWPORT } from '../../src/browser/browser-video-config.js';
@@ -111,6 +112,33 @@ try {
   assert.equal(await asset('recent'), '2');
   assert.equal((await search()).items.length, 2);
   assert.equal((await context.cookies(origin)).length, 2);
+
+  const now = Date.now();
+  const recorded: number[] = [];
+  const maintenance = new BrowserCacheMaintenance({
+    lastCleanupAt: now - 2 * 86_400_000,
+    now: () => now,
+    clear: () => data.clear({ range: 'all', categories: ['cache'] }),
+    record: async (timestamp) => {
+      recorded.push(timestamp);
+    },
+    failed: (error) => {
+      throw error;
+    }
+  });
+  try {
+    assert.equal(maintenance.sync().cacheCleanupDays, 30);
+    assert.equal(await asset('earlier'), '1');
+    maintenance.sync({ revision: 1, cacheCleanupDays: 1 });
+  } finally {
+    await maintenance.close();
+  }
+  assert.deepEqual(recorded, [now]);
+  assert.equal(await asset('earlier'), '2');
+  assert.equal((await search()).items.length, 2);
+  assert.equal((await context.cookies(origin)).length, 2);
+  assert.equal(await page.locator('#draft').inputValue(), 'not reset by deletion');
+
   await data.clear({ range: 'hour', categories: ['history', 'site-data'] });
   assert.deepEqual(
     (await search()).items.map(({ url }) => url),

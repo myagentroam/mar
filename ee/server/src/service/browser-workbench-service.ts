@@ -4,6 +4,8 @@ import {
   BROWSER_RELAY_READY,
   type BrowserControlRequest,
   type BrowserCapability,
+  type BrowserSettingsSnapshot,
+  browserSettingsSyncResultSchema,
   type BrowserUpload,
   browserDownloadInfoSchema,
   browserDownloadChunkSchema,
@@ -46,6 +48,11 @@ export class BrowserWorkbenchService {
       request: NodeRequestBroker['requestBrowser'];
       authorize: NodeRequestAuthorization;
       capability: (nodeId: string) => BrowserCapability | undefined;
+      settings: (
+        nodeId: string,
+        generation: string,
+        userId: number
+      ) => Promise<BrowserSettingsSnapshot> | undefined;
       authenticateNode: (nodeId: string, credential: string) => Promise<boolean>;
       failed: (error: unknown) => void;
     }
@@ -68,7 +75,13 @@ export class BrowserWorkbenchService {
         )?.browserFingerprint;
       },
       prepare: async (nodeId, generation, grant, identity) => {
-        await attachment(nodeId, generation, { action: 'prepare', grant }, identity);
+        const settings = await options.settings(nodeId, generation, identity.userId);
+        await attachment(
+          nodeId,
+          generation,
+          { action: 'prepare', grant, ...(settings && { settings }) },
+          identity
+        );
       },
       renew: async (nodeId, generation, attachmentId, expiresAt, identity) =>
         (await attachment(
@@ -94,14 +107,28 @@ export class BrowserWorkbenchService {
         }
       },
       closeRelay: (id) => this.relay.close(id),
-      resource: async (nodeId, generation, { workspaceId, command }, identity) =>
-        (await options.request(
+      resource: async (nodeId, generation, { workspaceId, command }, identity) => {
+        const settings =
+          command.action === 'open' || command.action === 'sync-settings'
+            ? await options.settings(nodeId, generation, identity.userId)
+            : undefined;
+        if (command.action === 'sync-settings' && !settings)
+          throw new Error('BROWSER_SETTINGS_SYNC_UNAVAILABLE');
+        const result = await options.request(
           nodeId,
           'resource',
           generation,
-          { workspaceId, command },
+          { workspaceId, command, ...(settings && { settings }) },
           browserUser(identity)
-        )) as { browserId?: string },
+        );
+        if (command.action === 'sync-settings' && settings) {
+          const applied = browserSettingsSyncResultSchema.safeParse(result);
+          if (!applied.success || applied.data.settings.revision < settings.revision)
+            throw new Error('BROWSER_SETTINGS_SYNC_FAILED');
+          return applied.data;
+        }
+        return result as { browserId?: string };
+      },
       failed: options.failed
     });
     this.relay = new BrowserRelayService(this.attachments, options.failed);

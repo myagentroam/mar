@@ -3,6 +3,11 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { hashPassword, verifyPassword, INITIAL_ADMIN_PASSWORD } from './password.js';
 import type { CurrentUserSession } from './session.js';
+import {
+  BROWSER_CACHE_CLEANUP_DEFAULT_DAYS,
+  browserSettingsSnapshotSchema,
+  type BrowserSettingsSnapshot
+} from '@myagentroam/protocol';
 import type {
   UserSession,
   UserSessionSummary,
@@ -89,6 +94,28 @@ export class MysqlAuthenticationStorage {
     await this.raw.execute(
       'UPDATE users SET browser_use_enabled=?,updated_at=? WHERE id=? AND enabled=TRUE',
       [enabled ? 1 : 0, this.now(), userId]
+    );
+  }
+
+  async browserSettings(userId: number): Promise<BrowserSettingsSnapshot> {
+    const [rows] = await this.raw.execute<RowDataPacket[]>(
+      'SELECT browser_settings FROM users WHERE id=? AND enabled=TRUE',
+      [userId]
+    );
+    if (!rows[0]) throw new Error('USER_NOT_FOUND');
+    const value: unknown = rows[0]['browser_settings'];
+    return value == null
+      ? { revision: 0, cacheCleanupDays: BROWSER_CACHE_CLEANUP_DEFAULT_DAYS }
+      : browserSettingsSnapshotSchema.parse(typeof value === 'string' ? JSON.parse(value) : value);
+  }
+
+  async setBrowserCacheCleanupDays(userId: number, days: number): Promise<void> {
+    await this.raw.execute(
+      `UPDATE users SET browser_settings=JSON_SET(COALESCE(browser_settings, JSON_OBJECT()),
+        '$.cacheCleanupDays', ?, '$.revision',
+        COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(browser_settings, '$.revision')) AS UNSIGNED), 0) + 1),
+        updated_at=? WHERE id=? AND enabled=TRUE`,
+      [days, this.now(), userId]
     );
   }
 

@@ -1089,6 +1089,28 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     ).toBeVisible();
     await expect(page.getByRole('combobox', { name: /^(Web links|网页链接)$/u })).toBeVisible();
     await expect(page.getByRole('button', { name: /Back to browser|返回浏览器/u })).toHaveCount(0);
+    await test.step('Save account cache cleanup settings and synchronize the live Node browser', async () => {
+      const endpoint = '/api/auth/preferences/browser-settings';
+      const interval = page.getByRole('spinbutton', {
+        name: /Cleanup interval \(days\)|清理间隔（天）/u
+      });
+      const save = page.getByRole('button', { name: /Save interval|保存周期/u });
+      const sync = page.getByRole('button', { name: /Sync browser settings|同步浏览器设置/u });
+      await expect(interval).toHaveValue('30');
+      await interval.fill('7');
+      await expect(sync).toBeDisabled();
+      await save.click();
+      await expect(
+        page.getByRole('status').filter({ hasText: /Saved to your account|已保存到账号/u })
+      ).toBeVisible();
+      const account = await page.request.get(endpoint);
+      expect(await account.json()).toMatchObject({ cacheCleanupDays: 7 });
+      await sync.click();
+      await expect(
+        page.getByRole('status').filter({ hasText: /Settings synced|已同步到当前工作区/u })
+      ).toBeVisible();
+      await expect(interval).toHaveValue('7');
+    });
     await page.screenshot({
       path: testInfo.outputPath('browser-personal-settings.png'),
       animations: 'disabled'

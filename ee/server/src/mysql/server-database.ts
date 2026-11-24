@@ -505,6 +505,12 @@ export class MysqlServerDatabase {
   setBrowserUseEnabled(userId: number, enabled: boolean): Promise<void> {
     return this.authentication.setBrowserUseEnabled(userId, enabled);
   }
+  browserSettings(userId: number) {
+    return this.authentication.browserSettings(userId);
+  }
+  setBrowserCacheCleanupDays(userId: number, days: number): Promise<void> {
+    return this.authentication.setBrowserCacheCleanupDays(userId, days);
+  }
   listActiveUserSessions(
     userId: number,
     currentSessionId: string

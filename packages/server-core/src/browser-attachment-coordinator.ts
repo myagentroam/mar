@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import type { BrowserSettingsSnapshot } from '@myagentroam/protocol';
 import {
   browserResourceCommandSchema,
   type BrowserResourceCommand,
@@ -75,7 +76,7 @@ export class BrowserAttachmentCoordinator {
         generation: string,
         data: { workspaceId: string; __requestUserId: number; command: BrowserResourceCommand },
         identity: Identity
-      ): Promise<{ browserId?: string }>;
+      ): Promise<{ browserId?: string; settings?: BrowserSettingsSnapshot }>;
       failed(error: unknown): void;
     }
   ) {
@@ -88,7 +89,7 @@ export class BrowserAttachmentCoordinator {
     this.sweep.unref();
   }
 
-  async resource(identity: Identity, scope: Scope, data: unknown): Promise<{ browserId?: string }> {
+  async resource(identity: Identity, scope: Scope, data: unknown) {
     const parsed = browserResourceCommandSchema.safeParse(data);
     if (!parsed.success) throw new Error('BROWSER_RESOURCE_INVALID');
     const { generation } = await this.authorize(identity, scope);
