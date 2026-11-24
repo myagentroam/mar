@@ -17,7 +17,11 @@ export interface ExtensionToolRuntime {
           call: ExtensionOperationContext,
           definition: ClientToolDefinition
         ): ToolCall;
-        authorize(input: ToolCall, call: ExtensionOperationContext): Promise<ToolCall>;
+        authorize(
+          input: ToolCall,
+          call: ExtensionOperationContext,
+          publicInputFields?: readonly string[]
+        ): Promise<ToolCall>;
       }
     | undefined;
   normalizeInput(input: unknown, schema: unknown): unknown;

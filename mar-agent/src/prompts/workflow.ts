@@ -1,3 +1,5 @@
+import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
+
 export function toolUsagePrompt(
   tools: readonly string[],
   directTools: readonly string[] = tools
@@ -25,5 +27,14 @@ export function toolUsagePrompt(
       'You can use the built-in rg through exec to search file contents or rg --files to list file paths.'
     );
 
-  return clauses.join(' ');
+  const execution = clauses.join(' ');
+  if (!directTools.includes(THOUGHT_TOOL_NAME)) return execution;
+
+  return `${execution}
+
+<reasoning>
+During complex or extended tasks, use \`thought\` as significant intermediate insights accumulate, rather than waiting until the task is complete.
+
+Avoid recording trivial observations or repeating existing conclusions.
+</reasoning>`;
 }

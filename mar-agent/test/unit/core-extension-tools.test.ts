@@ -23,6 +23,25 @@ const spec = (value: number): ExtensionToolSpec => ({
 const call = { name: 'value', arguments: {} };
 
 describe('Extension tool source registry', () => {
+  it.each([undefined, 'replace', 'wrap'] as const)(
+    'reserves the SDK Thought tool (override=%s)',
+    async (override) => {
+      const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
+      const scope = new ExtensionResourceScope();
+      try {
+        expect(() =>
+          tools.register(scope, 'owner', {
+            ...spec(1),
+            name: 'thought',
+            ...(override === undefined ? {} : { override })
+          })
+        ).toThrowError(expect.objectContaining({ code: 'MAR_AGENT_EXTENSION_TOOL_CONFLICT' }));
+      } finally {
+        await scope.dispose();
+      }
+    }
+  );
+
   it('preserves dual exposure in native definitions and inherited wrappers', async () => {
     const tools = new ExtensionTools(undefined, undefined, extensionToolRuntime.validateCallers);
     const scope = new ExtensionResourceScope();

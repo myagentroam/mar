@@ -282,6 +282,21 @@ export class MarAgentConversationNormalizer {
           payload: { explanation: event.text, steps: [] }
         }
       ];
+    if (event.type === 'thought.recorded') {
+      // Historical Thought events may have no public title. Never show their body instead.
+      if (typeof event.title !== 'string') return [];
+      return [
+        {
+          itemId: itemId('reasoning', `thought:${event.callId}`),
+          kind: 'reasoning',
+          status: 'COMPLETED',
+          payload: {
+            representation: 'summary',
+            sections: [{ index: 0, text: event.title }]
+          }
+        }
+      ];
+    }
     if (event.type === 'reasoning.completed')
       return [
         {
@@ -299,6 +314,10 @@ export class MarAgentConversationNormalizer {
       event.type === 'tool.completed' ||
       event.type === 'tool.failed'
     ) {
+      if (event.toolName === 'thought')
+        return event.type === 'tool.failed'
+          ? withPermissionStop([], permissionStopForToolEvent(event))
+          : [];
       if (
         event.parentCallId !== undefined &&
         (event.toolName === 'exec' || event.toolName === 'exec_wait')

@@ -140,6 +140,99 @@ async function persistedToolResult(home: string, sessionId: string, callId: stri
 }
 
 describe('Auto execution and ordinary-message continuation', () => {
+  it('omits Auto permission in the Code Mode directory for SDK coordination tools only', async () => {
+    const f = await fixture(
+      [
+        [
+          call(
+            'cell',
+            {
+              code: `observe.result(await tools.todo({action:'read'}));
+observe.result(await tools.effect({target:'blocked',permission:{action:'deny',reason:'Out of scope.'}}));`
+            },
+            'code_exec'
+          ),
+          { type: 'completed', reason: 'tool_use' }
+        ],
+        final
+      ],
+      [{ ...effect, autoPermission: 'omit' }]
+    );
+    expect(await f.session.run({ prompt: 'Work.', permissionMode: 'auto' }).result()).toMatchObject(
+      {
+        status: 'completed',
+        finalAnswer: 'done'
+      }
+    );
+    const code = f.requests[0]!.tools.find((tool) => tool.name === 'code_exec')!;
+    const directory = JSON.parse(code.description.split('\nProgrammatic tools: ')[1]!);
+    expect(
+      directory.tools.find((tool: ClientToolDefinition) => tool.name === 'todo').inputSchema
+        .properties
+    ).not.toHaveProperty('permission');
+    expect(
+      directory.tools.find((tool: ClientToolDefinition) => tool.name === 'effect').inputSchema
+        .properties
+    ).toHaveProperty('permission');
+    expect(code.inputSchema.properties).toHaveProperty('permission');
+    expect(await persistedToolResult(f.home, f.session.id, 'cell')).toEqual(
+      expect.objectContaining({ content: expect.stringContaining('MAR_AGENT_PERMISSION_DENIED') })
+    );
+    expect(await persistedToolResult(f.home, f.session.id, 'cell')).toEqual(
+      expect.objectContaining({ content: expect.stringContaining('revision') })
+    );
+    expect(f.effects).toEqual([]);
+  });
+
+  it.each(['replace', 'wrap'] as const)(
+    'does not inherit Auto omission on an extension %s of an SDK tool',
+    async (override) => {
+      const execute = vi.fn(() => ({ content: 'unexpected' }));
+      const f = await fixture(
+        [
+          [
+            call(
+              'sleep',
+              { target: 'blocked', permission: { action: 'deny', reason: 'Out of scope.' } },
+              'sleep'
+            ),
+            { type: 'completed', reason: 'tool_use' }
+          ],
+          final
+        ],
+        [],
+        [
+          {
+            id: 'sleep-override',
+            apiVersion: '1.0',
+            attachSession(context) {
+              context.tools.register({
+                ...effect,
+                name: 'sleep',
+                override,
+                autoPermission: 'omit',
+                execute
+              });
+            }
+          }
+        ]
+      );
+      expect(
+        await f.session.run({ prompt: 'Work.', permissionMode: 'auto' }).result()
+      ).toMatchObject({
+        status: 'completed',
+        finalAnswer: 'done'
+      });
+      expect(
+        f.requests[0]!.tools.find((tool) => tool.name === 'sleep')?.inputSchema.properties
+      ).toHaveProperty('permission');
+      expect(await persistedToolResult(f.home, f.session.id, 'sleep')).toEqual(
+        expect.objectContaining({ content: expect.stringContaining('MAR_AGENT_PERMISSION_DENIED') })
+      );
+      expect(execute).not.toHaveBeenCalled();
+    }
+  );
+
   it.each([
     { permissionMode: 'auto', codeMode: false, hostedWebSearch: true, transport: 'HTTP' },
     { permissionMode: 'auto', codeMode: true, hostedWebSearch: true, transport: 'HTTP' },
@@ -402,7 +495,7 @@ describe('Auto execution and ordinary-message continuation', () => {
         ],
         final
       ],
-      [effect],
+      [{ ...effect, eventInputFields: [] }],
       [],
       (request, signal) => {
         approvalCalls++;
@@ -464,6 +557,46 @@ describe('Auto execution and ordinary-message continuation', () => {
         code: 'MAR_AGENT_APPROVAL_REJECTED'
       })
     );
+  });
+
+  it('keeps the Thought body out of a host approval for an unsolicited ask', async () => {
+    const title = 'Verified the routing rule';
+    const content = 'AX:q2(E/E)>q1(O/E); q1 rejected';
+    const approval = vi.fn<ToolApprovalHandler>(async () => 'APPROVED');
+    const f = await fixture(
+      [
+        [
+          call(
+            'thought-ask',
+            {
+              title,
+              content,
+              permission: { action: 'ask', reason: 'Confirm recording this note.' }
+            },
+            'thought'
+          ),
+          { type: 'completed', reason: 'tool_use' }
+        ],
+        final
+      ],
+      [effect],
+      [],
+      approval
+    );
+    await f.agent.reconfigureModels({ models: [{ ...model, contextGcMode: 'with_thought' }] });
+    const handle = f.session.run({ prompt: 'Review the route.', permissionMode: 'auto' });
+    const events: AgentEvent[] = [];
+    for await (const event of handle) events.push(event);
+
+    expect(await handle.result()).toMatchObject({ status: 'completed' });
+    expect(approval).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        source: expect.objectContaining({ toolName: 'thought' }),
+        input: {}
+      }),
+      expect.any(AbortSignal)
+    );
+    expect(events).toContainEqual(expect.objectContaining({ type: 'thought.recorded', title }));
   });
 
   it('rejects a late approval after expiry without executing that call and continues the run', async () => {

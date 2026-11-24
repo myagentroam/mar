@@ -62,6 +62,7 @@ export type AgentEvent = AgentEventBase &
         tokensPerSecond?: number | undefined;
       }
     | { type: 'plan.completed'; itemId: string; text: string }
+    | { type: 'thought.recorded'; callId: string; title: string }
     | {
         type: 'reasoning.completed';
         itemId: string;

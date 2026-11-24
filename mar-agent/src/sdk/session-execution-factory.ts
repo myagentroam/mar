@@ -1,4 +1,5 @@
 import type { ModelImage } from '../model/image.js';
+import { resolveContextGcMode } from '../model/configuration.js';
 import { restoreMessages } from '../runtime/context/restore.js';
 import { latestModelUsage, reasoningEffortBaseline } from '../runtime/context/usage.js';
 import { publicModelUsage } from '../runtime/event-projection.js';
@@ -947,6 +948,7 @@ export function createSessionExecutionFactory(ports: {
             executionId,
             turnId
           });
+          const contextGcMode = resolveContextGcMode(selectedModel);
           const contextCoordinator = new ExecutionContextCoordinator({
             initialBoundary: restoredMessageCount,
             messages,
@@ -958,7 +960,7 @@ export function createSessionExecutionFactory(ports: {
             requests: compactRequests,
             signal: controller.signal,
             window: selectedModel.contextWindowTokens,
-            gcEnabled: selectedModel.gcEnabled ?? true,
+            contextGcMode,
             gc: contextGc,
             gcBase: {
               store,
@@ -1187,17 +1189,18 @@ export function createSessionExecutionFactory(ports: {
                 return { retry: true as const };
               resourceInput.observe(candidateRequest.messages);
               const media =
-                selectedModel.gcEnabled === false
+                contextGcMode === 'off'
                   ? undefined
                   : await resourceInput.gcCandidate(request, candidateRequest.images);
-              if (media?.reason === 'HARD_LIMIT') {
-                const committed = await contextCoordinator.gc(
+              if (
+                await contextCoordinator.prepareRequestGc(
                   { request, toolScope },
+                  request.messages,
                   modelLifecycle.usage,
                   media
-                );
-                if (committed) return { retry: true as const };
-              }
+                )
+              )
+                return { retry: true as const };
               const prepared = await resourceInput.prepare(
                 request,
                 candidateRequest.images,
@@ -1268,7 +1271,8 @@ export function createSessionExecutionFactory(ports: {
               modelLifecycle.afterModel(closedPrefixLength, request),
             observeContextTokens: (tokens) => modelLifecycle.observeTokens(tokens),
             observeUsage: (usage) => modelLifecycle.observeUsage(usage),
-            checkpoint: (round, latestUsage) => contextCoordinator.checkpoint(round, latestUsage),
+            checkpoint: (round, latestUsage, thoughtCallIds) =>
+              contextCoordinator.checkpoint(round, latestUsage, thoughtCallIds),
             mailbox: {
               hasPending: () => inputs.hasBoundaryPending && !inputs.executing,
               append: appendMailboxMessages,

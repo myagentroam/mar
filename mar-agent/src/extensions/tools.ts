@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { AgentError } from '../error.js';
+import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
 import type {
   ClientToolDefinition,
   McpCatalogTool,
@@ -134,6 +135,11 @@ export class ExtensionTools {
     id: string,
     spec: ExtensionToolSpec
   ): ExtensionResourceRegistration {
+    if (spec.name === THOUGHT_TOOL_NAME)
+      throw new AgentError(
+        'MAR_AGENT_EXTENSION_TOOL_CONFLICT',
+        'Thought is reserved for SDK context management.'
+      );
     if (
       typeof spec.name !== 'string' ||
       !spec.name.trim() ||
@@ -198,7 +204,9 @@ export class ExtensionTools {
     for (const original of [...base, ...sources]) {
       const binding = Object.freeze({
         ...original,
-        definition: deepFreeze(copyDefinition(original.definition)),
+        definition: deepFreeze(
+          copyDefinition(original.definition, original.source.kind === 'builtin')
+        ),
         source: Object.freeze({ ...original.source }),
         ...(original.mcp === undefined ? {} : { mcp: deepFreeze(structuredClone(original.mcp)) })
       });
@@ -439,7 +447,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function copyDefinition(spec: ClientToolDefinition): ClientToolDefinition {
+function copyDefinition(spec: ClientToolDefinition, builtin = false): ClientToolDefinition {
   return {
     name: spec.name,
     description: spec.description,
@@ -451,6 +459,7 @@ function copyDefinition(spec: ClientToolDefinition): ClientToolDefinition {
     ...(spec.codeModeExposure !== undefined ? { codeModeExposure: spec.codeModeExposure } : {}),
     ...(spec.inputMode ? { inputMode: spec.inputMode } : {}),
     ...(spec.parallelSafety ? { parallelSafety: spec.parallelSafety } : {}),
+    ...(builtin && spec.autoPermission === 'omit' ? { autoPermission: spec.autoPermission } : {}),
     ...(spec.agentScope ? { agentScope: spec.agentScope } : {})
   };
 }

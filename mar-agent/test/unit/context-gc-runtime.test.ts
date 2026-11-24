@@ -578,6 +578,14 @@ describe('context GC runtime integration', () => {
     runtime.reset();
     await runtime.run(input);
     expect(readState).toHaveBeenCalledTimes(14);
+    // Rounds without a Thought age the same backoff without reading history.
+    runtime.skipRollout(input.usage, input.contextWindowTokens);
+    expect(readState).toHaveBeenCalledTimes(14);
+    await runtime.run(input);
+    expect(readState).toHaveBeenCalledTimes(15);
+    runtime.skipRollout({ contextInputTokens: 4_000 }, input.contextWindowTokens);
+    await runtime.run(input);
+    expect(readState).toHaveBeenCalledTimes(16);
     await store.close();
   });
 

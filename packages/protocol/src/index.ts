@@ -78,6 +78,7 @@ export const marAgentRuntimeCredentialCapabilitySchema = z
     responsesOptionalParameters: z.boolean().optional(),
     responsesHttpContinuation: z.boolean().optional(),
     contextGcControl: z.boolean().optional(),
+    contextGcWithThought: z.boolean().optional(),
     modelSocks5Proxy: z.boolean().optional(),
     unifiedCompactControl: z.boolean().optional(),
     smartCompactControl: z.boolean().optional(),
@@ -894,6 +895,16 @@ export const imageGenerationCatalogSchema = z
     if (new Set(models.map((model) => model.id)).size !== models.length)
       context.addIssue({ code: 'custom', message: 'Image model IDs must be unique.' });
   });
+export const marAgentContextGcModeSchema = z.enum(['off', 'auto', 'with_thought']);
+export type MarAgentContextGcMode = z.infer<typeof marAgentContextGcModeSchema>;
+
+export function resolveMarAgentContextGcMode(model: {
+  contextGcMode?: MarAgentContextGcMode | undefined;
+  gcEnabled?: boolean | undefined;
+}): MarAgentContextGcMode {
+  return model.contextGcMode ?? (model.gcEnabled === false ? 'off' : 'auto');
+}
+
 const marAgentModelShape = {
   metadata: z
     .object({ useResourceUrl: z.boolean().default(false) })
@@ -914,6 +925,7 @@ const marAgentModelShape = {
   unifiedCompact: z.boolean().default(false),
   titleGeneration: z.boolean().default(false),
   codeMode: z.boolean().default(false),
+  contextGcMode: marAgentContextGcModeSchema.optional(),
   gcEnabled: z.boolean().default(true),
   serviceTier: marAgentResponsesServiceTierSchema.optional(),
   hostedWebSearch: z.boolean(),
@@ -1005,6 +1017,7 @@ export interface MarAgentModelSummary {
   unifiedCompact?: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
+  contextGcMode?: MarAgentContextGcMode;
   gcEnabled?: boolean;
   serviceTier?: MarAgentResponsesServiceTier;
   hostedWebSearch: boolean;

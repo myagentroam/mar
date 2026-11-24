@@ -130,7 +130,12 @@ export const modelManagementEnUS = {
     unifiedCompact: 'Unified Compact',
     titleGeneration: 'Session title generation',
     codeMode: 'Code Mode',
-    gcEnabled: 'Context GC',
+    contextGc: 'Context GC',
+    contextGcOff: 'Off',
+    contextGcAuto: 'Automatic',
+    contextGcWithThought: 'GC with thought',
+    contextGcHint:
+      'GC with thought waits for a fresh summary unless the request exceeds the image hard limit.',
     serviceTier: 'Speed',
     serviceTierDefault: 'Default',
     serviceTierFast: 'Fast',

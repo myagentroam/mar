@@ -29,6 +29,7 @@ import { failedToolResultExtensions } from './result-extensions.js';
 import { permissionStopFromError } from './permissions.js';
 import { scheduleToolCallBatch, type createSessionToolScheduler } from './scheduler.js';
 import type { ToolCall } from './contracts.js';
+import { readThoughtInput, THOUGHT_TOOL_NAME, thoughtToolDefinition } from './agent/thought.js';
 
 /** One immutable model round's catalog; execution resources remain owned by the SDK/Host. */
 export interface RoundToolScope {
@@ -145,7 +146,10 @@ export async function executeRoundTools(
     caller: ToolCaller = 'direct',
     parentCallId?: string
   ): Promise<ExecutedToolCall> => {
-    const inputFields = scope.tools.find((tool) => tool.name === call.name)?.eventInputFields;
+    const inputFields =
+      call.name === THOUGHT_TOOL_NAME
+        ? thoughtToolDefinition.eventInputFields
+        : scope.tools.find((tool) => tool.name === call.name)?.eventInputFields;
     const publicInput =
       inputFields === undefined
         ? call.arguments
@@ -165,10 +169,16 @@ export async function executeRoundTools(
           'MAR_AGENT_TOOL_NOT_AVAILABLE',
           'Tool is unavailable in this execution.'
         );
+      // Invocation hooks may edit their input; keep the recorded model argument intact.
+      let arguments_ = call.arguments;
+      if (call.name === THOUGHT_TOOL_NAME) {
+        readThoughtInput(arguments_);
+        arguments_ = structuredClone(arguments_);
+      }
       const context = await createRoundToolRuntimeContext(scope, call, signal);
       const runTool = () => {
         signal.throwIfAborted();
-        return executeRegisteredTool(call.name, call.arguments, call.callId, context);
+        return executeRegisteredTool(call.name, arguments_, call.callId, context);
       };
       const rawOutput =
         call.name === 'code_exec' || call.name === 'code_exec_wait'

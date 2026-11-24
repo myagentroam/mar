@@ -321,7 +321,26 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('resolve pending work needed for this task');
     expect(normalized).not.toContain('terminal caches need no cleanup');
     expect(normalized).not.toContain('# output and communication style');
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.77');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.78');
+  });
+
+  it('adds the reasoning guidance only when Thought is directly available', () => {
+    const input = { mode: 'run', platform: 'linux', workspace: '/workspace' } as const;
+    const guidance =
+      '<reasoning>\nDuring complex or extended tasks, use `thought` as significant intermediate insights accumulate, rather than waiting until the task is complete.\n\nAvoid recording trivial observations or repeating existing conclusions.\n</reasoning>';
+    const prompt = buildSystemPrompt({
+      ...input,
+      tools: ['code_exec', 'thought', 'exec'],
+      directTools: ['code_exec', 'thought']
+    });
+    expect(prompt).toContain(guidance);
+    expect(buildSystemPrompt({ ...input, tools: ['exec'] })).not.toContain('<reasoning>');
+    expect(
+      buildSystemPrompt({ ...input, tools: ['thought', 'code_exec'], directTools: ['code_exec'] })
+    ).not.toContain('<reasoning>');
+    expect(buildSystemPrompt({ ...input, mode: 'compact', tools: [] })).not.toContain(
+      '<reasoning>'
+    );
   });
 
   it('leaves Skill usage to its catalog without prescribing a Core-owned loading sequence', () => {

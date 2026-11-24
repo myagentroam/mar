@@ -6,6 +6,7 @@ import type { AgentModelConfiguration } from '../model/configuration.js';
 import type { ModelEvent, ModelRetryState, ModelUsage } from '../model/contracts.js';
 import { isProviderContextOverflow, recoverModelStream } from '../model/recovery.js';
 import { modelStreamEventObservedAt } from '../model/sse.js';
+import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
 import type { ClientToolCall, ExecutedToolCall } from './tool-round-contract.js';
 import type { AuthoritativeModelUsage } from './context/usage.js';
 import type { ExecutionMode } from './contracts.js';
@@ -50,7 +51,8 @@ export interface ExecutionLoopInput<TScope = unknown> {
   ) => Promise<void>;
   readonly checkpoint: (
     round: PreparedExecutionRound<TScope>,
-    usage: ModelUsage | undefined
+    usage: ModelUsage | undefined,
+    thoughtCallIds: readonly string[]
   ) => Promise<void>;
   readonly mailbox: {
     hasPending(): boolean;
@@ -420,7 +422,15 @@ export class ExecutionLoop<TScope = unknown> {
         modelRetryState.attempts = 0;
         if (input.sourceType === 'subagent') this.finalAnswer = '';
       }
-      await input.checkpoint(round, latestUsage);
+      const thoughtCallIds: string[] = [];
+      for (const result of toolResults) {
+        if (result.call.name !== THOUGHT_TOOL_NAME || result.failed) continue;
+        const title = (result.call.arguments as { title?: unknown } | undefined)?.title;
+        if (typeof title !== 'string') continue;
+        await input.publish({ type: 'thought.recorded', callId: result.call.callId, title });
+        thoughtCallIds.push(result.call.callId);
+      }
+      await input.checkpoint(round, latestUsage, thoughtCallIds);
       if (input.signal.aborted) {
         const aborted = toolResults.find(
           (result): result is Extract<ExecutedToolCall, { failed: true }> => result.failed

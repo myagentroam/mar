@@ -201,13 +201,14 @@ describe('Server MAR Agent runtime model service', () => {
       ]
     });
   });
-  it('requires explicit Node capability only when GC is disabled', async () => {
-    const configured = {
+  it('requires the corresponding Node capability for Off and GC with thought', async () => {
+    const configured: MarAgentStoredModelConfiguration = {
       ...model('api', { type: 'INLINE_API_KEY', value: 'key' }),
       responsesPreviousResponseId: false,
       gcEnabled: false
     };
     let supported = false;
+    let thoughtSupported = false;
     const service = new MarAgentRuntimeModelService({
       models: {
         storedConfigurationsForUser: vi.fn(async () => [configured]),
@@ -219,7 +220,8 @@ describe('Server MAR Agent runtime model service', () => {
         smartCompactControl: true,
         websocket: true,
         httpVersions: ['1.1'],
-        contextGcControl: supported
+        contextGcControl: supported,
+        contextGcWithThought: thoughtSupported
       })
     });
     const context = { userId: 1, nodeId: 'node', workspaceId: 'workspace' };
@@ -232,6 +234,16 @@ describe('Server MAR Agent runtime model service', () => {
     configured.gcEnabled = true;
     await expect(service.prepare(context)).resolves.toMatchObject({
       models: [{ gcEnabled: true }]
+    });
+    configured.contextGcMode = 'with_thought';
+    supported = true;
+    await expect(service.prepare(context)).rejects.toMatchObject({
+      message: 'CAPABILITY_VERSION_UNSUPPORTED',
+      publicMessage: 'Upgrade this Node to use GC with thought.'
+    });
+    thoughtSupported = true;
+    await expect(service.prepare(context)).resolves.toMatchObject({
+      models: [{ contextGcMode: 'with_thought', gcEnabled: true }]
     });
   });
   it('requires Node SOCKS5 capability before projecting a configured model proxy', async () => {

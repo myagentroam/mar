@@ -215,7 +215,11 @@ export class ExtensionSessionTools {
       this.assertToolAvailable(original, context);
       call = permissionPolicy.prepare(call, context, original.definition);
       const requestedApproval = call.permission?.action === 'ask';
-      call = await permissionPolicy.authorize(call, context);
+      call = await permissionPolicy.authorize(
+        call,
+        context,
+        original.source.kind === 'builtin' ? original.definition.eventInputFields : undefined
+      );
       if (requestedApproval) approved = structuredClone(call);
     } else if (call.permission !== undefined && call.permission !== null)
       throw new AgentError(

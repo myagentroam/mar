@@ -17,6 +17,8 @@ import type { SessionModelMessage } from '../session/model-request.js';
 import type { ExecutionMode } from './types.js';
 import type { ResolvedModelConfiguration } from './model-runtime.js';
 import { ExecutionToolSources } from './extension-tools.js';
+import { resolveContextGcMode } from '../model/configuration.js';
+import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
 
 /** Initializes one Execution's catalog before Extension attachment owns its bindings. */
 export async function initializeExecutionToolCatalog(input: {
@@ -96,6 +98,10 @@ export class ExecutionToolCatalog {
     toolCallers(tool);
     if (this.input.child && (tool.agentScope === 'ROOT_ONLY' || tool.name === 'question'))
       return false;
+    if (tool.name === THOUGHT_TOOL_NAME)
+      return (
+        this.input.mode !== 'compact' && resolveContextGcMode(this.input.model) === 'with_thought'
+      );
     if (tool.name === 'tool_search') return this.input.registry.hasDeferred;
     return tool.name === 'code_exec' || tool.name === 'code_exec_wait'
       ? this.input.model.codeMode && this.input.codeExecute

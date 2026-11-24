@@ -835,6 +835,7 @@ for (const english of [false, true]) {
       defaultReasoningEffort: 'high',
       conversationModel: true,
       titleGeneration: true,
+      contextGcMode: 'with_thought',
       unifiedCompact: true,
       codeMode: true,
       responsesTransport: { transport: 'HTTP', httpVersion: '2' },
@@ -887,6 +888,19 @@ for (const english of [false, true]) {
       return page.getByRole('dialog', { name: duplicateLabel, exact: true });
     };
     const firstCopy = await openCopy();
+    const gcField = firstCopy
+      .locator('.mar-ui-form-item')
+      .filter({ hasText: english ? 'Context GC' : '上下文回收' });
+    await expect(gcField.getByRole('combobox')).toContainText(
+      english ? 'GC with thought' : '带思考摘要的 GC'
+    );
+    await gcField.getByRole('combobox').click();
+    for (const label of english
+      ? ['Off', 'Automatic', 'GC with thought']
+      : ['关闭', '自动', '带思考摘要的 GC']) {
+      await expect(page.getByRole('option', { name: label, exact: true })).toBeVisible();
+    }
+    await page.keyboard.press('Escape');
     await expect(
       firstCopy.getByRole('checkbox', {
         name: english ? 'Unified Compact' : '统一 Compact',
@@ -956,6 +970,7 @@ for (const english of [false, true]) {
     expect(duplicateBodies[0]).toMatchObject({
       name: copyName,
       protocol: 'OPENAI_RESPONSES',
+      contextGcMode: 'with_thought',
       unifiedCompact: true,
       baseUrl: 'https://gateway.example/v1',
       modelId: 'source-model-id',

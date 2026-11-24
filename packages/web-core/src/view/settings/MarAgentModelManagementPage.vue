@@ -31,6 +31,7 @@ import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
   modelSocks5UrlSchema,
+  resolveMarAgentContextGcMode,
   resolveMarAgentDefaultReasoningEffort
 } from '@myagentroam/protocol';
 import type {
@@ -40,6 +41,7 @@ import type {
   CodexCredentialUsage,
   CodexLoginAttempt,
   CodexModelImportResult,
+  MarAgentContextGcMode,
   MarAgentModelSummary,
   MarAgentModelTransportTestResult,
   MarAgentResponsesTransport,
@@ -103,7 +105,7 @@ interface ModelDraft {
   unifiedCompact: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
-  gcEnabled: boolean;
+  contextGcMode: MarAgentContextGcMode;
   serviceTier: NonNullable<MarAgentModelSummary['serviceTier']>;
   hostedWebSearch: boolean;
   useResourceUrl: boolean;
@@ -564,7 +566,7 @@ function emptyDraft(): ModelDraft {
     unifiedCompact: false,
     titleGeneration: false,
     codeMode: false,
-    gcEnabled: true,
+    contextGcMode: 'off',
     serviceTier: 'default',
     hostedWebSearch: false,
     useResourceUrl: false,
@@ -785,7 +787,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
     unifiedCompact: model.unifiedCompact ?? false,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
-    gcEnabled: model.gcEnabled ?? true,
+    contextGcMode: resolveMarAgentContextGcMode(model),
     serviceTier: model.serviceTier ?? 'default',
     hostedWebSearch: model.hostedWebSearch,
     useResourceUrl: model.metadata?.useResourceUrl ?? false,
@@ -873,7 +875,7 @@ function modelSaveBody(): Record<string, unknown> {
     unifiedCompact: draft.unifiedCompact,
     titleGeneration: draft.titleGeneration,
     codeMode: draft.codeMode,
-    gcEnabled: draft.gcEnabled,
+    contextGcMode: draft.contextGcMode,
     ...(oauth && !grok ? { serviceTier: draft.serviceTier } : {}),
     hostedWebSearch: draft.hostedWebSearch,
     metadata: { useResourceUrl: draft.useResourceUrl },
@@ -2047,6 +2049,21 @@ onBeforeUnmount(() => {
         <MarFormItem class="model-enabled" :label="translate('marAgentModels.enabled')">
           <MarSwitch v-model="draft.enabled" />
         </MarFormItem>
+        <MarFormItem :label="translate('marAgentModels.contextGc')" prop="contextGcMode">
+          <MarSelect
+            v-model="draft.contextGcMode"
+            :aria-label="translate('marAgentModels.contextGc')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
+            <MarOption :label="translate('marAgentModels.contextGcOff')" value="off" />
+            <MarOption :label="translate('marAgentModels.contextGcAuto')" value="auto" />
+            <MarOption
+              :label="translate('marAgentModels.contextGcWithThought')"
+              value="with_thought"
+            />
+          </MarSelect>
+          <p class="form-hint">{{ translate('marAgentModels.contextGcHint') }}</p>
+        </MarFormItem>
         <MarFormItem :label="translate('marAgentModels.capabilities')">
           <div class="model-capabilities">
             <MarCheckbox
@@ -2071,9 +2088,6 @@ onBeforeUnmount(() => {
             }}</MarCheckbox>
             <MarCheckbox v-model="draft.codeMode">{{
               translate('marAgentModels.codeMode')
-            }}</MarCheckbox>
-            <MarCheckbox v-model="draft.gcEnabled">{{
-              translate('marAgentModels.gcEnabled')
             }}</MarCheckbox>
             <MarCheckbox v-model="draft.useResourceUrl">{{
               translate('marAgentModels.useResourceUrl')

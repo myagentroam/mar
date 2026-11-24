@@ -47,6 +47,8 @@ interface ScriptedReply {
 interface RequestSnapshot {
   imageHashes: string[];
   messages: Array<Pick<ModelMessage, 'role' | 'content'>>;
+  thoughtInputs: unknown[];
+  thoughtSchema?: Record<string, unknown>;
 }
 
 class ScriptedAdapter implements ModelAdapter {
@@ -71,7 +73,9 @@ class ScriptedAdapter implements ModelAdapter {
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     assertInlineMediaBudget(request);
     const index = this.requests.length;
+    const thought = request.tools.find((tool) => tool.name === 'thought');
     this.requests.push({
+      ...(thought === undefined ? {} : { thoughtSchema: thought.inputSchema }),
       imageHashes: request.messages
         .flatMap((message) => message.images ?? [])
         .map((image) => {
@@ -79,7 +83,10 @@ class ScriptedAdapter implements ModelAdapter {
             throw new Error('The SDK did not resolve an inline image before adapter dispatch.');
           return createHash('sha256').update(Buffer.from(image.dataBase64, 'base64')).digest('hex');
         }),
-      messages: request.messages.map(({ role, content }) => ({ role, content }))
+      messages: request.messages.map(({ role, content }) => ({ role, content })),
+      thoughtInputs: request.messages.flatMap((message) =>
+        message.role === 'tool_call' && message.name === 'thought' ? [message.arguments] : []
+      )
     });
 
     const diagnostic = {
@@ -642,24 +649,127 @@ describe('SDK inline media lifecycle', () => {
     }
   );
 
-  it.each(['usage', 'no-usage', 'model-switch', 'compact-model-switch', 'reopen-no-usage'])(
+  it.each(['valid', 'oversize', 'denied'] as const)(
+    'uses only successful, originally validated Thoughts for soft image GC (%s)',
+    async (variant) => {
+      const { home } = await fixture();
+      const first = await imagePng('thought-soft-first');
+      const second = await imagePng('thought-soft-second');
+      const oversized = 'x'.repeat(32 * 1024 + 1);
+      const title = 'The second image supersedes the first';
+      const content = 'evid: img2 > img1; img1 superseded';
+      const adapter = new ScriptedAdapter({ ...modelBase, contextGcMode: 'with_thought' }, [
+        { events: [{ type: 'text.completed', itemId: 'seed', text: 'history' }] },
+        {
+          events: [
+            toolCall('thought-1', 'thought', {
+              title,
+              content: variant === 'oversize' ? oversized : content,
+              ...(variant === 'denied'
+                ? { permission: { action: 'deny', reason: 'Do not record this note.' } }
+                : {})
+            })
+          ],
+          reason: 'tool_use'
+        },
+        { events: [{ type: 'text.completed', itemId: 'answer', text: 'done' }] }
+      ]);
+      const agent = await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+          models: [adapter.configuration],
+          extensions: [
+            {
+              id: 'thought-short-circuit',
+              apiVersion: '1.0',
+              attachSession(context) {
+                context.hooks.intercept('tool.invoke', (input) => {
+                  Object.assign(input.arguments as object, {
+                    title: 'Altered',
+                    content: oversized
+                  });
+                  return { content: '{"status":"recorded"}' };
+                });
+              }
+            }
+          ]
+        },
+        () => adapter
+      );
+      try {
+        const session = await agent.createSession({ workspace: home, title: 'Thought validation' });
+        expect(
+          (
+            await session
+              .run({
+                prompt: 'Seed historical images.',
+                images: [imageInput('first.png', first), imageInput('second.png', second)]
+              })
+              .result()
+          ).status
+        ).toBe('completed');
+        expect(
+          (await session.run({ prompt: 'Continue.', permissionMode: 'auto' }).result()).status
+        ).toBe('completed');
+        expect(adapter.requests).toHaveLength(3);
+        expect(adapter.requests[1]!.thoughtSchema?.properties).toEqual({
+          title: expect.objectContaining({ type: 'string' }),
+          content: expect.objectContaining({ type: 'string' })
+        });
+        const records = await readRecords(home, session.id);
+        const thought = records.find((record) => record.type === 'thought.recorded');
+        if (variant === 'valid') {
+          expect(thought?.payload).toMatchObject({ title });
+          expect(JSON.stringify(thought?.payload)).not.toContain(content);
+          expect(adapter.requests[2]!.thoughtInputs).toEqual([{ title, content }]);
+          expect(adapter.requests[2]!.imageHashes).toEqual([imageHash(second)]);
+          expectSingleInlineGcCheckpoint(records, 'SOFT_LIMIT');
+        } else {
+          expect(thought).toBeUndefined();
+          expect(adapter.requests[2]!.imageHashes).toEqual([imageHash(first), imageHash(second)]);
+          expect(records.some((record) => record.type === 'context.gc.completed')).toBe(false);
+          expect(records.find((record) => record.type === 'tool.failed')?.payload).toMatchObject({
+            toolName: 'thought',
+            code:
+              variant === 'denied' ? 'MAR_AGENT_PERMISSION_DENIED' : 'MAR_AGENT_TOOL_INPUT_INVALID'
+          });
+        }
+      } finally {
+        await agent.dispose();
+      }
+    }
+  );
+
+  const hardGcModes = [
+    'usage',
+    'no-usage',
+    'model-switch',
+    'compact-model-switch',
+    'reopen-no-usage',
+    'thought-mode'
+  ] as const;
+  it.each(hardGcModes)(
     'hard-GCs history before dispatch while preserving fresh media (%s)',
     async (mode) => {
-      const emitUsage = mode !== 'no-usage';
+      const emitUsage = mode !== 'no-usage' && mode !== 'thought-mode';
       const { home, create } = await fixture();
       const firstImage = await imagePng('hard-first');
       const secondImage = await imagePng('hard-second');
       const freshImage = await imagePng('hard-fresh');
-      let adapter = new ScriptedAdapter(modelBase, [
-        {
-          events: [{ type: 'text.completed', itemId: 'seed', text: 'protected history' }],
-          noUsage: !emitUsage
-        },
-        {
-          events: [{ type: 'text.completed', itemId: 'hard', text: 'fresh image retained' }],
-          noUsage: !emitUsage
-        }
-      ]);
+      let adapter = new ScriptedAdapter(
+        mode === 'thought-mode' ? { ...modelBase, contextGcMode: 'with_thought' } : modelBase,
+        [
+          {
+            events: [{ type: 'text.completed', itemId: 'seed', text: 'protected history' }],
+            noUsage: !emitUsage
+          },
+          {
+            events: [{ type: 'text.completed', itemId: 'hard', text: 'fresh image retained' }],
+            noUsage: !emitUsage
+          }
+        ]
+      );
       let agent = await create(adapter);
       let sessionId = '';
       try {

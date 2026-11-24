@@ -7,6 +7,7 @@ import type { TodoItem } from './todo.js';
 /** Owns the model-facing Todo contract; Session state and restoration belong to TodoStore. */
 export const todoToolDefinition: ClientToolDefinition = {
   name: 'todo',
+  autoPermission: 'omit',
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:

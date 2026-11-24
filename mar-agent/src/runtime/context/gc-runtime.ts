@@ -58,6 +58,12 @@ export class ContextGcRuntime {
     this.#remaining = 0;
   }
 
+  /** Age ordinary GC backoff without evaluating a round that did not trigger GC. */
+  skipRollout(usage: ModelUsage | undefined, window: number): void {
+    this.#observeUsage(contextGcEligibleUsage(usage ?? {}, window), window);
+    if (this.#remaining > 0) this.#remaining--;
+  }
+
   async run(input: ContextGcRuntimeInput): Promise<ContextGcCommitResult | false> {
     const scope = JSON.stringify([
       input.sessionId,
@@ -73,19 +79,8 @@ export class ContextGcRuntime {
     const usage = mediaRequired
       ? (input.usage.contextInputTokens ?? input.usage.inputTokens ?? 0)
       : contextGcEligibleUsage(input.usage, input.contextWindowTokens);
-    if (usage === undefined) {
-      this.#lastUsage = undefined;
-      this.#failures = 0;
-      this.#remaining = 0;
-      return false;
-    }
-    if (this.#lastUsage !== undefined && usage < this.#lastUsage) {
-      this.#failures = 0;
-      this.#remaining = 0;
-    }
-    this.#lastUsage = usage;
-    const maximumInterval = usage / input.contextWindowTokens >= 0.8 ? 2 : 8;
-    this.#remaining = Math.min(this.#remaining, maximumInterval - 1);
+    const maximumInterval = this.#observeUsage(usage, input.contextWindowTokens);
+    if (maximumInterval === undefined) return false;
     if (this.#remaining > 0 && !mediaRequired) {
       this.#remaining--;
       return false;
@@ -100,6 +95,18 @@ export class ContextGcRuntime {
         Math.min(2 ** this.#failures, maximumInterval, attempt.retryAfterRollouts ?? Infinity) - 1;
     }
     return attempt.result;
+  }
+
+  #observeUsage(usage: number | undefined, window: number): number | undefined {
+    if (usage === undefined || (this.#lastUsage !== undefined && usage < this.#lastUsage)) {
+      this.#failures = 0;
+      this.#remaining = 0;
+    }
+    this.#lastUsage = usage;
+    if (usage === undefined) return undefined;
+    const maximumInterval = usage / window >= 0.8 ? 2 : 8;
+    this.#remaining = Math.min(this.#remaining, maximumInterval - 1);
+    return maximumInterval;
   }
 }
 

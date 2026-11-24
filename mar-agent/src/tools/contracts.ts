@@ -19,6 +19,8 @@ export interface ClientToolDefinition extends ModelToolDefinition {
   parallelSafety?: 'safe' | 'serial';
   /** Preserved business-schema eligibility after framework metadata projection. */
   parameterless?: boolean;
+  /** SDK built-ins only: omit the Auto permission field from a flat JSON model schema. */
+  autoPermission?: 'omit';
   /** Runtime-only Agent catalog scope; never forwarded as an upstream tool field. */
   agentScope?: 'ROOT_AND_SUBAGENTS' | 'ROOT_ONLY';
 }

@@ -203,6 +203,54 @@ async function fixture(
 }
 
 describe('MCP discovery runtime', () => {
+  it('omits Auto permission from search itself, but not from a discovered MCP tool', async () => {
+    const f = await fixture();
+    try {
+      const value = catalog();
+      f.update({
+        ...value,
+        tools: value.tools.map((tool) => ({
+          ...tool,
+          definition: { ...tool.definition, autoPermission: 'omit' }
+        }))
+      });
+      f.adapter.batches.push(
+        [{ name: 'tool_search', arguments: { query: externalName } }],
+        [
+          {
+            name: externalName,
+            arguments: {
+              input: { record: 'blocked' },
+              permission: { action: 'deny', reason: 'Out of scope.' }
+            }
+          }
+        ]
+      );
+      expect(
+        await f.session.run({ prompt: 'Discover a lookup.', permissionMode: 'auto' }).result()
+      ).toMatchObject({
+        status: 'completed',
+        finalAnswer: 'Done.'
+      });
+      expect(
+        f.adapter.requests[0]!.tools.find((tool) => tool.name === 'tool_search')?.inputSchema
+          .properties
+      ).not.toHaveProperty('permission');
+      const search = f.adapter.requests[1]!.messages.find((message) => message.toolSearchTools);
+      const discovered = search?.toolSearchTools?.find((tool) => tool.name === externalName);
+      expect(discovered?.inputSchema.properties).toHaveProperty('permission');
+      expect(discovered?.inputSchema.properties).toHaveProperty('input');
+      expect(
+        f.adapter.requests[2]!.messages.find(
+          (message) => message.role === 'tool' && message.callId === 'call-2-0'
+        )?.content
+      ).toContain('MAR_AGENT_PERMISSION_DENIED');
+      expect(f.calls).toEqual([]);
+    } finally {
+      await f.agent.dispose();
+    }
+  });
+
   it.each([false, true])(
     'delivers a large deferred definition to the model with Code Mode=%s',
     async (codeMode) => {

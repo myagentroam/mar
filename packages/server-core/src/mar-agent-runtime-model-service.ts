@@ -4,6 +4,7 @@ import {
   XAI_SUBSCRIPTION_BASE_URL,
   marAgentRuntimeModelConfigurationSchema,
   resolveMarAgentDefaultReasoningEffort,
+  resolveMarAgentContextGcMode,
   type MarAgentRuntimeCredentialCapability,
   type MarAgentRuntimeModelConfiguration,
   type MarAgentStoredModelConfiguration,
@@ -96,8 +97,7 @@ export class MarAgentRuntimeModelService {
         publicMessage:
           'Upgrade this Node to apply the Smart Compact setting to MAR Agent executions.'
       });
-    if (capability?.contextGcControl !== true && stored.some((model) => model.gcEnabled === false))
-      throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
+    for (const model of stored) assertContextGcCapability(model, capability);
     if (
       stored.some((model) => model.conversationModel === false) &&
       capability?.conversationModels !== true
@@ -305,6 +305,19 @@ function assertTransportAvailable(
     );
 }
 
+function assertContextGcCapability(
+  model: MarAgentStoredModelConfiguration,
+  capability: MarAgentRuntimeCredentialCapability | undefined
+): void {
+  const mode = resolveMarAgentContextGcMode(model);
+  if (mode === 'off' && capability?.contextGcControl !== true)
+    throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
+  if (mode === 'with_thought' && capability?.contextGcWithThought !== true)
+    throw Object.assign(new Error('CAPABILITY_VERSION_UNSUPPORTED'), {
+      publicMessage: 'Upgrade this Node to use GC with thought.'
+    });
+}
+
 function runtimeModel(
   model: MarAgentStoredModelConfiguration,
   ticket: RuntimeCredentialTicket | undefined,
@@ -315,8 +328,7 @@ function runtimeModel(
 ): MarAgentRuntimeModelConfiguration {
   if (model.socks5Url !== undefined && capability?.modelSocks5Proxy !== true)
     throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
-  if (model.gcEnabled === false && capability?.contextGcControl !== true)
-    throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
+  assertContextGcCapability(model, capability);
   if (model.inputCapabilities.includes('IMAGE') && capability?.resourceInput !== true)
     throw new Error('MAR_AGENT_MODEL_RESOURCE_INPUT_UNAVAILABLE');
   const responses = model.protocol === 'OPENAI_RESPONSES';
@@ -371,7 +383,8 @@ function runtimeModel(
     subagentModel: model.subagentModel ?? false,
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
-    gcEnabled: model.gcEnabled ?? true,
+    ...(model.contextGcMode === undefined ? {} : { contextGcMode: model.contextGcMode }),
+    gcEnabled: resolveMarAgentContextGcMode(model) !== 'off',
     smartCompactEnabled,
     unifiedCompact: model.unifiedCompact ?? false,
     ...(supportsTier ? { serviceTier } : {}),

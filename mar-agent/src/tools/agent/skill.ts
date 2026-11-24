@@ -6,6 +6,7 @@ import type { ToolRuntimeContext } from '../runtime-context.js';
 
 export const skillToolDefinition: ClientToolDefinition = {
   name: 'skill_load',
+  autoPermission: 'omit',
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:

@@ -261,8 +261,8 @@ describe('Model management component behavior', () => {
   );
 
   it.each([
-    { locale: 'zh-CN', initial: undefined, expected: true },
-    { locale: 'en-US', initial: false, expected: false }
+    { locale: 'zh-CN', initial: undefined, expected: 'auto' },
+    { locale: 'en-US', initial: false, expected: 'off' }
   ] as const)('edits the model GC setting in $locale', async ({ locale, initial, expected }) => {
     i18n.global.locale.value = locale;
     const labels = commonMessages[locale].marAgentModels;
@@ -278,14 +278,12 @@ describe('Model management component behavior', () => {
     try {
       await flushComponent();
       await trigger(button(view, labels.edit), 'onClick');
-      const setting = view
-        .findAll('MarCheckbox')
-        .find((node) => textContent(node).trim() === labels.gcEnabled)!;
+      const setting = control(view, labels.contextGc, 'MarSelect');
       expect(setting.props['modelValue']).toBe(expected);
-      await trigger(setting, 'onUpdate:modelValue', !expected);
+      await trigger(setting, 'onUpdate:modelValue', 'with_thought');
       await trigger(button(view, labels.save), 'onClick');
       const saved = request.mock.calls.find(([, init]) => init?.method === 'PUT');
-      expect(JSON.parse(String(saved?.[1]?.body))).toMatchObject({ gcEnabled: !expected });
+      expect(JSON.parse(String(saved?.[1]?.body))).toMatchObject({ contextGcMode: 'with_thought' });
     } finally {
       view.unmount();
     }
@@ -576,7 +574,7 @@ describe('Model management component behavior', () => {
         enabled: false,
         titleGeneration: true,
         codeMode: true,
-        gcEnabled: true,
+        contextGcMode: 'off',
         metadata: { useResourceUrl: false },
         reasoningEfforts: [],
         defaultReasoningEffort: 'high',

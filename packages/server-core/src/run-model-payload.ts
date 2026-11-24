@@ -3,13 +3,16 @@ import type { MarAgentModelService, MarAgentRuntimeModelService } from './sessio
 /** Legacy delivery cannot relay model options that require explicit Node capability evidence. */
 export function assertLegacyModelCompatibility(models: readonly unknown[]): void {
   if (
-    models.some(
-      (model) =>
-        model !== null &&
-        typeof model === 'object' &&
-        (('gcEnabled' in model && model.gcEnabled === false) ||
-          ('socks5Url' in model && model.socks5Url !== undefined))
-    )
+    models.some((model) => {
+      if (model === null || typeof model !== 'object') return false;
+      if ('socks5Url' in model && model.socks5Url !== undefined) return true;
+      const mode = 'contextGcMode' in model ? model.contextGcMode : undefined;
+      return (
+        mode === 'off' ||
+        mode === 'with_thought' ||
+        (mode === undefined && 'gcEnabled' in model && model.gcEnabled === false)
+      );
+    })
   )
     throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
 }

@@ -13,6 +13,7 @@ import { executeToolSearch, toolSearchToolDefinition } from './mcp/tool-search.j
 import { viewImageToolDefinition } from './local/view-image.js';
 import { smartCompactToolDefinition, executeSmartCompact } from './agent/smart-compact.js';
 import { executeSleep, sleepToolDefinition } from './agent/sleep.js';
+import { executeThought, thoughtToolDefinition } from './agent/thought.js';
 
 export const BUILTIN_TOOL_DEFINITIONS: readonly ClientToolDefinition[] = [
   skillToolDefinition,
@@ -26,6 +27,7 @@ export const BUILTIN_TOOL_DEFINITIONS: readonly ClientToolDefinition[] = [
   applyPatchToolDefinition,
   questionToolDefinition,
   todoToolDefinition,
+  thoughtToolDefinition,
   smartCompactToolDefinition,
   sleepToolDefinition
 ];
@@ -45,5 +47,6 @@ export const AGENT_TOOL_HANDLERS: ReadonlyMap<string, RuntimeHandler> = new Map<
   ['smart_compact', executeSmartCompact],
   ['tool_search', executeToolSearch],
   ['todo', executeTodo],
+  [thoughtToolDefinition.name, executeThought],
   ['question', executeQuestion]
 ]);

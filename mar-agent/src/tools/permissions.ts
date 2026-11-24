@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { AgentError } from '../error.js';
 import type { ClientToolDefinition, ToolCall } from './contracts.js';
+import { publicToolEventInput } from './output-projection.js';
 
 import type {
   PermissionMode,
@@ -73,6 +74,7 @@ function flatInput(tool: ClientToolDefinition): boolean {
 
 export function projectPermissionTool(tool: ClientToolDefinition): ClientToolDefinition {
   const flat = flatInput(tool);
+  if (flat && tool.inputMode !== 'freeform' && tool.autoPermission === 'omit') return tool;
   const parameterless =
     flat &&
     Object.keys(tool.inputSchema.properties as object).length === 0 &&
@@ -208,7 +210,11 @@ export class ExecutionToolPermissions {
     return prepared;
   }
 
-  async authorize(call: ToolCall, context: InvocationContext): Promise<ToolCall> {
+  async authorize(
+    call: ToolCall,
+    context: InvocationContext,
+    publicInputFields?: readonly string[]
+  ): Promise<ToolCall> {
     if (call.permission?.action !== 'ask' || !this.approval) return call;
     const { permission, ...captured } = structuredClone(call);
     const timeout = new AbortController();
@@ -227,7 +233,10 @@ export class ExecutionToolPermissions {
         toolName: call.name,
         ...(context.parentToolCallId ? { parentCallId: context.parentToolCallId } : {})
       },
-      input: structuredClone(captured.arguments),
+      input:
+        publicInputFields === undefined
+          ? structuredClone(captured.arguments)
+          : publicToolEventInput(captured.arguments, publicInputFields),
       expiresAt: Date.now() + 10 * 60_000
     };
     const timer = setTimeout(

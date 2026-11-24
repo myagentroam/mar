@@ -326,7 +326,9 @@ export class MarAgentModelService {
         ? { type: 'INLINE_API_KEY', value: record.apiKey }
         : source.credential);
     return this.create(userId, {
+      gcEnabled: source.gcEnabled,
       ...record,
+      contextGcMode: inheritedContextGcMode(source, record),
       socks5Url:
         record.socks5Url !== undefined
           ? record.socks5Url
@@ -359,6 +361,7 @@ export class MarAgentModelService {
       {
         ...existing,
         ...record,
+        contextGcMode: inheritedContextGcMode(existing, record),
         credential,
         socks5Url:
           record.socks5Url !== undefined
@@ -752,6 +755,7 @@ export class MarAgentModelService {
           'OPENAI_RESPONSES',
           modelSettingsFromInput({
             protocol: 'OPENAI_RESPONSES',
+            contextGcMode: 'off',
             serviceTier: model.serviceTier ?? 'default',
             hostedWebSearch: model.hostedWebSearch,
             responsesTransport: model.responsesTransport,
@@ -910,6 +914,7 @@ interface ParsedModel {
   subagentModel: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
+  contextGcMode?: MarAgentModelSummary['contextGcMode'];
   gcEnabled: boolean;
   unifiedCompact: boolean;
   serviceTier?: MarAgentModelSummary['serviceTier'];
@@ -918,6 +923,16 @@ interface ParsedModel {
   responsesPreviousResponseId: boolean;
   enabled: boolean;
   sortOrder: number;
+}
+
+function inheritedContextGcMode(
+  model: MarAgentStoredModelConfiguration,
+  input: Record<string, unknown>
+): unknown {
+  if (Object.hasOwn(input, 'contextGcMode')) return input.contextGcMode;
+  if (model.contextGcMode === 'with_thought' || !Object.hasOwn(input, 'gcEnabled'))
+    return model.contextGcMode;
+  return undefined;
 }
 
 function parseInput(raw: unknown, requireKey: boolean): ParsedModel {
@@ -949,7 +964,11 @@ function parseInput(raw: unknown, requireKey: boolean): ParsedModel {
     subagentModel: record.subagentModel ?? false,
     titleGeneration: record.titleGeneration ?? false,
     codeMode: record.codeMode ?? false,
-    gcEnabled: record.gcEnabled ?? true,
+    contextGcMode:
+      record.contextGcMode === undefined && record.gcEnabled === undefined
+        ? 'off'
+        : record.contextGcMode,
+    gcEnabled: record.gcEnabled,
     unifiedCompact: record.unifiedCompact ?? false,
     metadata: record.metadata,
     serviceTier: record.serviceTier,
@@ -977,6 +996,7 @@ function parseInput(raw: unknown, requireKey: boolean): ParsedModel {
       : 0;
   return {
     ...data,
+    gcEnabled: data.contextGcMode === undefined ? data.gcEnabled : data.contextGcMode !== 'off',
     name:
       typeof record.name === 'string' && record.name.trim()
         ? record.name.trim()
@@ -1030,6 +1050,7 @@ function runtimeConfiguration(
     subagentModel: value.subagentModel,
     titleGeneration: value.titleGeneration,
     codeMode: value.codeMode,
+    ...(value.contextGcMode === undefined ? {} : { contextGcMode: value.contextGcMode }),
     gcEnabled: value.gcEnabled ?? true,
     unifiedCompact: value.unifiedCompact ?? false,
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
@@ -1071,6 +1092,7 @@ function storedConfiguration(
     subagentModel: value.subagentModel,
     titleGeneration: value.titleGeneration,
     codeMode: value.codeMode,
+    ...(value.contextGcMode === undefined ? {} : { contextGcMode: value.contextGcMode }),
     gcEnabled: value.gcEnabled ?? true,
     unifiedCompact: value.unifiedCompact ?? false,
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
@@ -1187,6 +1209,7 @@ function summary(row: RowDataPacket, settings: ModelSettings): MarAgentModelSumm
     subagentModel: row.subagent_model === undefined ? false : Boolean(row.subagent_model),
     titleGeneration: Boolean(row.title_generation),
     codeMode: Boolean(row.code_mode),
+    ...(settings.contextGcMode === undefined ? {} : { contextGcMode: settings.contextGcMode }),
     gcEnabled: settings.gcEnabled ?? true,
     unifiedCompact: settings.unifiedCompact ?? false,
     ...(serviceTier === undefined ? {} : { serviceTier }),

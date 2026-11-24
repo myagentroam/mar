@@ -17,6 +17,7 @@ const runtimeCredentialCapability = (): NonNullable<
   responsesOptionalParameters: true,
   responsesHttpContinuation: true,
   contextGcControl: true,
+  contextGcWithThought: true,
   unifiedCompactControl: true,
   smartCompactControl: true,
   modelSocks5Proxy: true,

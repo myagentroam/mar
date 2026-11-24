@@ -1,6 +1,7 @@
 export { AgentError } from './error.js';
 export type {
   AgentModelConfiguration,
+  ContextGcMode,
   AgentReasoningEffort,
   ModelCatalog,
   ModelCredential,

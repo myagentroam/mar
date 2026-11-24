@@ -10,6 +10,7 @@ export type { SleepResult } from '../contracts.js';
 
 export const sleepToolDefinition: ClientToolDefinition = {
   name: 'sleep',
+  autoPermission: 'omit',
   allowedCallers: ['direct'],
   parallelSafety: 'safe',
   description:

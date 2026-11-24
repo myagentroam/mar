@@ -10,10 +10,19 @@ import type { SessionExecution } from './session-execution.js';
 import type { ExecutionModelLifecycle } from './execution-model-lifecycle.js';
 import type { createExecutionModelContext } from './execution-model-context.js';
 import type { ResourceInputProjection } from './resource-input.js';
+import type { ContextGcMode } from '../model/configuration.js';
+import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
+
+type GcRound = {
+  readonly request: Pick<PreparedExecutionRound<RoundToolScope>['request'], 'system'>;
+  readonly toolScope: Pick<RoundToolScope, 'tools'>;
+};
+type GcUsage = ContextGcRuntimeInput['usage'] | undefined;
 
 /** Coordinates safe-point adoption of Compact and GC without owning Session state. */
 export class ExecutionContextCoordinator {
   #boundary: number;
+  #thought: { readonly callIds: readonly string[]; readonly usage: GcUsage } | undefined;
   constructor(
     private readonly ports: {
       readonly initialBoundary: number;
@@ -32,8 +41,8 @@ export class ExecutionContextCoordinator {
       readonly requests: Pick<CompactRequests, 'drain'>;
       readonly signal: AbortSignal;
       readonly window: number;
-      readonly gcEnabled?: boolean;
-      readonly gc: Pick<ContextGcRuntime, 'run'>;
+      readonly contextGcMode: ContextGcMode;
+      readonly gc: Pick<ContextGcRuntime, 'run' | 'skipRollout'>;
       readonly gcBase: Omit<
         ContextGcRuntimeInput,
         'system' | 'tools' | 'usage' | 'inlineMedia' | 'mediaView' | 'getActiveProcessIds'
@@ -118,7 +127,8 @@ export class ExecutionContextCoordinator {
   }
   async checkpoint(
     round: PreparedExecutionRound<RoundToolScope>,
-    usage: ContextGcRuntimeInput['usage'] | undefined
+    usage: GcUsage,
+    thoughtCallIds: readonly string[] = []
   ): Promise<void> {
     this.advanceBoundary();
     const blocking = this.drainRequests();
@@ -128,19 +138,45 @@ export class ExecutionContextCoordinator {
         this.ports.signal.throwIfAborted();
         this.ports.execution.assertContextValid();
       });
-    if (this.ports.gcEnabled !== false && !this.ports.compact.pending)
+    if (this.ports.contextGcMode === 'auto' && !this.ports.compact.pending)
       await this.gc(round, usage, await this.ports.resources.gcCandidate(), true);
+    if (this.ports.contextGcMode === 'with_thought') {
+      this.#thought = thoughtCallIds.length === 0 ? undefined : { callIds: thoughtCallIds, usage };
+      if (this.#thought === undefined && !this.ports.compact.pending)
+        this.ports.gc.skipRollout(usage, this.ports.window);
+    }
+  }
+  /** Merge a one-round Thought trigger with the existing dispatch-time hard limit. */
+  async prepareRequestGc(
+    round: GcRound,
+    messages: readonly SessionModelMessage[],
+    usage: GcUsage,
+    media: ContextGcRuntimeInput['inlineMedia']
+  ): Promise<boolean> {
+    const pending = this.#thought;
+    this.#thought = undefined;
+    const thought =
+      pending !== undefined &&
+      messages.some(
+        (message) =>
+          message.role === 'tool_call' &&
+          message.name === THOUGHT_TOOL_NAME &&
+          message.callId !== undefined &&
+          pending.callIds.includes(message.callId)
+      );
+    const hardLimit = media?.reason === 'HARD_LIMIT';
+    if (!thought && !hardLimit) return false;
+    // The image hard limit keeps its own usage source even when a Thought also triggers GC.
+    return this.gc(round, hardLimit ? usage : pending?.usage, media, thought);
   }
   async gc(
-    round: {
-      readonly request: Pick<PreparedExecutionRound<RoundToolScope>['request'], 'system'>;
-      readonly toolScope: Pick<RoundToolScope, 'tools'>;
-    },
-    usage: ContextGcRuntimeInput['usage'] | undefined,
+    round: GcRound,
+    usage: GcUsage,
     media: ContextGcRuntimeInput['inlineMedia'],
     includeProcesses = false
   ): Promise<boolean> {
-    if (this.ports.gcEnabled === false || this.ports.compact.pending) return false;
+    if (this.ports.contextGcMode === 'off' || this.ports.compact.pending) return false;
+    this.ports.signal.throwIfAborted();
     const appendBoundary = this.ports.execution.appendBoundary;
     const committed = await this.ports.gc.run({
       ...this.ports.gcBase,

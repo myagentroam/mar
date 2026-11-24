@@ -47,6 +47,18 @@ describe('model settings documents', () => {
           gcEnabled
         );
       }
+      for (const contextGcMode of ['off', 'auto', 'with_thought'] as const) {
+        const settings = modelSettingsFromInput({
+          protocol,
+          hostedWebSearch: false,
+          contextGcMode,
+          gcEnabled: contextGcMode === 'off'
+        });
+        expect(parseStoredModelSettings(protocol, JSON.stringify(settings))).toMatchObject({
+          contextGcMode,
+          gcEnabled: contextGcMode !== 'off'
+        });
+      }
       const legacy =
         protocol === 'ANTHROPIC_MESSAGES'
           ? { version: 1 }

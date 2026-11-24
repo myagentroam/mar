@@ -1241,15 +1241,20 @@ describe('Execution tool sources outside model tool handlers', () => {
                   arguments: {
                     title: 'retained delegation',
                     description: 'retained delegation',
-                    prompt: 'RETAINED_NATIVE_CHILD',
+                    content: 'RETAINED_NATIVE_CHILD',
                     role: 'general-purpose'
                   }
                 });
-                const child = result.data as { agentId: string; executionId: string };
+                expect(result.data).toMatchObject({ start: { status: 'accepted' } });
+                const child = result.data as { agentId: string };
                 childId = child.agentId;
                 const childSession = await agent.openSession(child.agentId);
-                const completion = childSession.joinExecution(child.executionId);
-                if (completion) expect((await completion).status).toBe('completed');
+                const subscription = childSession.subscribe(() => {});
+                subscription.unsubscribe();
+                if (subscription.activeExecutionId !== undefined) {
+                  const completion = childSession.joinExecution(subscription.activeExecutionId);
+                  expect((await completion)?.status).toBe('completed');
+                }
                 const history = await agent.sessionHistory(child.agentId);
                 expect(history.entries).toEqual(
                   expect.arrayContaining([

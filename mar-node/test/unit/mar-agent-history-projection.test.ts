@@ -12,6 +12,26 @@ const session = {
 } as NodeAgentSession;
 
 describe('MAR Agent history projection', () => {
+  it('replays only a Thought title and never a legacy summary', () => {
+    const title = '确认单写入者约束';
+    const legacy = {
+      ...eventBase(2, 'thought-turn'),
+      type: 'thought.recorded',
+      callId: 'legacy',
+      summary: 'Old body is not a title'
+    } as unknown as AgentEvent;
+    const turns = projectMarAgentHistory(session, [
+      entry({ ...eventBase(1, 'thought-turn'), type: 'thought.recorded', callId: 'new', title }),
+      entry(legacy)
+    ]);
+    expect(turns[0]?.items.map(({ kind, payload }) => ({ kind, payload }))).toEqual([
+      {
+        kind: 'reasoning',
+        payload: { representation: 'summary', sections: [{ index: 0, text: title }] }
+      }
+    ]);
+  });
+
   it('bounds lookup and copy work as distinct items accumulate in a long Turn', () => {
     const size = 4_000;
     const entries = Array.from({ length: size }, (_, index) =>

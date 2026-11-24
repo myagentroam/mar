@@ -115,6 +115,7 @@ test('model settings follow transactional create, duplicate, update and deletion
       responsesTransport: { transport: 'HTTP', httpVersion: '2' },
       responsesPreviousResponseId: true,
       unifiedCompact: true,
+      contextGcMode: 'with_thought',
       enabled: true,
       sortOrder: 0
     };
@@ -122,21 +123,28 @@ test('model settings follow transactional create, duplicate, update and deletion
     expect(created).toMatchObject({
       id: 'm'.repeat(128),
       unifiedCompact: true,
+      contextGcMode: 'with_thought',
       modelId: input.modelId,
       serviceTier: 'priority'
     });
-    const { socks5Url: _proxy, ...duplicateInput } = input;
+    const { socks5Url: _proxy, contextGcMode: _mode, ...duplicateInput } = input;
     const copy = await models.duplicate(userId, created.id, {
       ...duplicateInput,
+      gcEnabled: true,
       name: 'Settings Copy'
     });
     expect(copy).toMatchObject({
       id: 'copy-model',
       unifiedCompact: true,
+      contextGcMode: 'with_thought',
       modelId: input.modelId,
       serviceTier: 'priority'
     });
-    await models.update(userId, created.id, { name: 'Updated Source', serviceTier: 'flex' });
+    await models.update(userId, created.id, {
+      name: 'Updated Source',
+      serviceTier: 'flex',
+      gcEnabled: true
+    });
     expect(JSON.stringify(await models.listManagedForUser(userId))).not.toContain(input.socks5Url);
     expect(await models.connectionDetails(userId, created.id)).toEqual({
       socks5Url: input.socks5Url
@@ -147,6 +155,7 @@ test('model settings follow transactional create, duplicate, update and deletion
     expect(await models.stored(created.id)).toMatchObject({
       name: 'Updated Source',
       unifiedCompact: true,
+      contextGcMode: 'with_thought',
       serviceTier: 'flex'
     });
 
