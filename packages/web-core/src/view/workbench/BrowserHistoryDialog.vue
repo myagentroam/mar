@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
+import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
@@ -31,8 +32,9 @@ const profile = ref<BrowserProfileTarget>();
 const loading = ref(false);
 const failure = ref<string>();
 const search = ref('');
-const from = ref('');
-const through = ref('');
+const from = ref<Date | null>(null);
+const through = ref<Date | null>(null);
+const dateFields = useId();
 const query = ref<BrowserHistoryQuery>({ text: '', startTime: 0 });
 const queryInvalid = ref(false);
 const history = ref<BrowserHistoryResult>();
@@ -131,10 +133,10 @@ watch([profile, query, () => props.connected], ([target, input, connected], _, o
     });
 });
 function searchHistory(): void {
-  const startTime = from.value ? new Date(`${from.value}T00:00:00`).getTime() : 0;
-  const nextDay = through.value ? new Date(`${through.value}T00:00:00`) : undefined;
+  const startTime = from.value?.getTime() ?? 0;
+  const nextDay = through.value ? new Date(through.value) : undefined;
   nextDay?.setDate(nextDay.getDate() + 1);
-  const endTime = nextDay?.getTime();
+  const endTime = nextDay?.setHours(0, 0, 0, 0);
   queryInvalid.value =
     !Number.isFinite(startTime) ||
     startTime < 0 ||
@@ -230,24 +232,28 @@ async function confirmRemoval(urls: string[]): Promise<void> {
           {{ t('browser.dateFilter') }}
         </MarButton>
         <div v-if="showDates" class="browser-history-dates">
-          <label
-            >{{ t('browser.from') }}
-            <input
+          <div class="browser-history-date">
+            <label :for="`${dateFields}-from`">{{ t('browser.from') }}</label>
+            <MarDatePicker
+              :id="`${dateFields}-from`"
               v-model="from"
               type="date"
-              class="mar-ui-field-frame"
+              placeholder="YYYY-MM-DD"
               :disabled="removing"
               @change="searchHistory"
-          /></label>
-          <label
-            >{{ t('browser.to') }}
-            <input
+            />
+          </div>
+          <div class="browser-history-date">
+            <label :for="`${dateFields}-through`">{{ t('browser.to') }}</label>
+            <MarDatePicker
+              :id="`${dateFields}-through`"
               v-model="through"
               type="date"
-              class="mar-ui-field-frame"
+              placeholder="YYYY-MM-DD"
               :disabled="removing"
               @change="searchHistory"
-          /></label>
+            />
+          </div>
         </div>
       </form>
       <p v-if="queryInvalid" role="alert">{{ t('browser.invalidDates') }}</p>
@@ -338,6 +344,7 @@ async function confirmRemoval(urls: string[]): Promise<void> {
 <style scoped>
 .browser-history-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
 }
 .browser-history-content :is(p, h3) {
@@ -368,14 +375,12 @@ async function confirmRemoval(urls: string[]): Promise<void> {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.browser-history-dates label {
+.browser-history-date {
   display: grid;
   gap: 0.25rem;
-}
-.browser-history-dates input {
-  padding: 0.25rem 0.5rem;
-  font: inherit;
-  color: inherit;
+  flex: 1 1 10rem;
+  min-inline-size: 0;
+  max-inline-size: 13rem;
 }
 .browser-history-selection {
   display: flex;
@@ -415,10 +420,14 @@ async function confirmRemoval(urls: string[]): Promise<void> {
   justify-content: start;
   text-align: start;
 }
+.browser-history-entry :deep(.mar-ui-button__label) {
+  flex: 1;
+}
 .browser-history-entry span,
 .browser-history-entry small {
   display: block;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
 .browser-history-entry small {

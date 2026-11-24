@@ -303,18 +303,21 @@ export function createWorkbenchBrowserService(options: {
     }
   }
 
-  async function closeBrowser(): Promise<void> {
+  async function closeBrowser(): Promise<boolean> {
     const old = current;
-    if (!old?.browserId) return;
+    if (!old?.browserId) return false;
     try {
       await request({
         action: 'resource',
         ...old.scope,
         command: { action: 'close', browserId: old.browserId }
       });
-      if (current === old) hide();
+      if (current !== old) return false;
+      hide();
+      return true;
     } catch (cause) {
       if (current === old) error.value = cause instanceof Error ? cause.message : 'BROWSER_FAILED';
+      return false;
     }
   }
 

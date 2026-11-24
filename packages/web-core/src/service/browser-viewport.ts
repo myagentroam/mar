@@ -12,6 +12,7 @@ export class BrowserViewport {
   private readonly receiver = new BrowserFrameReceiver();
   private readonly context: CanvasRenderingContext2D;
   private readonly decoder: VideoDecoder;
+  private tabId: string | undefined;
   private viewVersion: number | undefined;
   private decodingView: number | undefined;
   private pending: ReturnType<typeof Promise.withResolvers<VideoFrame | undefined>> | undefined;
@@ -31,10 +32,13 @@ export class BrowserViewport {
     });
   }
 
-  setView(viewVersion: number): void {
+  setView(viewVersion: number, tabId: string | undefined): void {
     if (this.closed || this.viewVersion === viewVersion) return;
+    // Keep the last drawing for the same tab. Replacing its bitmap and drawing
+    // the new decoded frame happen together, with no empty paint in between.
+    if (tabId !== this.tabId) this.clear();
+    this.tabId = tabId;
     this.viewVersion = viewVersion;
-    this.clear();
   }
 
   async receive(bytes: Uint8Array): Promise<BrowserDrawResult | undefined> {

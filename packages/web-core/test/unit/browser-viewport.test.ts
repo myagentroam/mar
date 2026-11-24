@@ -16,6 +16,7 @@ const chunks = (sequence = 1, viewVersion = 1, key = true) =>
 
 function fixture() {
   const drawImage = vi.fn();
+  const clearRect = vi.fn();
   const configure = vi.fn();
   const decode = vi.fn();
   let output: VideoDecoderInit['output'];
@@ -37,15 +38,16 @@ function fixture() {
       constructor(public readonly init: EncodedVideoChunkInit) {}
     }
   );
-  const canvas = { width: 0, height: 0, getContext: () => ({ drawImage, clearRect: vi.fn() }) };
+  const canvas = { width: 0, height: 0, getContext: () => ({ drawImage, clearRect }) };
   const viewport = new BrowserViewport(canvas as unknown as HTMLCanvasElement);
   const image = { displayWidth: 960, displayHeight: 600, close: vi.fn() };
-  viewport.setView(1);
+  viewport.setView(1, 'first-tab');
   return {
     canvas,
     viewport,
     image,
     drawImage,
+    clearRect,
     decoded: () => output(image as unknown as VideoFrame)
   };
 }
@@ -74,22 +76,51 @@ describe('Browser viewport', () => {
     const [first, last] = chunks();
     await viewport.receive(first!);
     const draw = viewport.receive(last!);
-    viewport.setView(2);
+    viewport.setView(2, 'first-tab');
     decoded();
     expect(await draw).toEqual({ sequence: 1 });
     expect(drawImage).not.toHaveBeenCalled();
     expect(image.close).toHaveBeenCalledOnce();
   });
 
+  it('retains the last picture within a tab until its next view is drawn', async () => {
+    const { canvas, viewport, image, drawImage, clearRect, decoded } = fixture();
+    const render = async (sequence: number, viewVersion: number) => {
+      const [first, last] = chunks(sequence, viewVersion);
+      await viewport.receive(first!);
+      const draw = viewport.receive(last!);
+      decoded();
+      return draw;
+    };
+    await render(1, 1);
+    clearRect.mockClear();
+
+    viewport.setView(2, 'first-tab');
+    viewport.setView(3, 'first-tab');
+    expect(clearRect).not.toHaveBeenCalled();
+    expect(canvas.width).toBe(960);
+    expect(drawImage).toHaveBeenCalledOnce();
+
+    image.displayWidth = 800;
+    expect(await render(2, 3)).toMatchObject({ viewport: { viewVersion: 3 } });
+    expect(canvas.width).toBe(800);
+    expect(drawImage).toHaveBeenCalledTimes(2);
+
+    viewport.setView(4, 'other-tab');
+    expect(clearRect).toHaveBeenCalledOnce();
+  });
+
   it('releases a late decoded frame after closing and returns no credit to the old connection', async () => {
-    const { viewport, image, drawImage, decoded } = fixture();
+    const { viewport, image, drawImage, clearRect, decoded } = fixture();
     const [first, last] = chunks();
     await viewport.receive(first!);
     const draw = viewport.receive(last!);
+    clearRect.mockClear();
     viewport.close();
     decoded();
     expect(await draw).toBeUndefined();
     expect(drawImage).not.toHaveBeenCalled();
+    expect(clearRect).toHaveBeenCalledOnce();
     expect(image.close).toHaveBeenCalledOnce();
   });
 

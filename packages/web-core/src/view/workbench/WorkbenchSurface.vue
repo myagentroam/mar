@@ -1030,6 +1030,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     "
                     @consumed="page.browser.clearDestination"
                     @restored="browserReturn = undefined"
+                    @closed="page.aside.closeAsideBrowser"
                     @settings="openBrowserSettings"
                     @data="openBrowserData"
                   />

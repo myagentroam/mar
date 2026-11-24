@@ -51,8 +51,24 @@ it('measures received bytes and drawn frames separately, then stops sampling whe
   await vi.advanceTimersByTimeAsync(1_000);
   expect(frame).toHaveBeenCalledOnce();
   expect(sample).toHaveBeenLastCalledWith({ bitsPerSecond: 8_000, framesPerSecond: 1 });
+  const press = {
+    type: 'input',
+    action: { type: 'key', viewVersion: 1, edge: 'down', key: 'Enter' }
+  } as const;
+  expect(client.send(press)).toBe(true);
+  message(JSON.stringify({ type: 'snapshot', snapshot: { viewVersion: 2, tabs: [] } }));
+  expect(client.send(press)).toBe(false);
+  const nextPress = { ...press, action: { ...press.action, viewVersion: 2 } };
+  expect(client.send(nextPress)).toBe(false);
   await vi.advanceTimersByTimeAsync(1_000);
   expect(sample).toHaveBeenLastCalledWith({ bitsPerSecond: 0, framesPerSecond: 0 });
+  receive.mockResolvedValueOnce({
+    sequence: 3,
+    viewport: { viewVersion: 2, width: 960, height: 600 }
+  });
+  message(new ArrayBuffer(200));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(client.send(nextPress)).toBe(true);
   client.close();
   await vi.advanceTimersByTimeAsync(1_000);
   expect(sample).toHaveBeenCalledTimes(2);

@@ -56,6 +56,12 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       response.destroy();
       return;
     }
+    if (request.url === '/retry-page') {
+      response
+        .writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        .end('<title>Retry fixture</title><body style="background:rgb(0,0,200)"></body>');
+      return;
+    }
     if (request.url === '/loading-page') {
       response.writeHead(200, { 'content-type': 'text/html' });
       response.write('<title>Loading fixture</title><p>Loading fixture</p>');
@@ -114,9 +120,13 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
         document.addEventListener('mouseup', ({ clientX }) => {
           if (clientX > innerWidth * 0.7) fetch('/released');
         });
-        document.addEventListener('keydown', ({ key, altKey, ctrlKey }) => {
+        document.addEventListener('keydown', ({ code, key, altKey, ctrlKey }) => {
           if ((altKey || ctrlKey) && key.toLowerCase() === 'w') fetch('/unexpected-close');
           if (key === 'ArrowRight') fetch('/key-next');
+          if (code === 'KeyY') fetch('/key-press');
+        });
+        document.addEventListener('keyup', ({ code }) => {
+          if (code === 'KeyY') fetch('/key-release');
         });
         document.querySelector('input').addEventListener('change', async ({ target }) => {
           const file = target.files[0];
@@ -197,6 +207,38 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const browserTab = page.getByRole('tab', { name: /^(Browser|浏览器)$/u });
     const address = page.getByRole('textbox', { name: /^(Address|地址栏?)$/u });
     const canvas = page.locator('.node-browser canvas');
+    async function expectContinuousPicture(change: () => Promise<void>) {
+      const alpha = (element: HTMLCanvasElement) =>
+        element.getContext('2d')!.getImageData(0, 0, 1, 1).data[3];
+      await expect.poll(() => canvas.evaluate(alpha)).toBe(255);
+      const watch = await canvas.evaluateHandle((element: HTMLCanvasElement) => {
+        const context = element.getContext('2d')!;
+        let empty = 0;
+        let samples = 0;
+        let request: number;
+        function tick() {
+          samples++;
+          if (!context.getImageData(0, 0, 1, 1).data[3]) empty++;
+          request = requestAnimationFrame(tick);
+        }
+        request = requestAnimationFrame(tick);
+        return {
+          stop() {
+            cancelAnimationFrame(request);
+            return { samples, empty };
+          }
+        };
+      });
+      let picture: { samples: number; empty: number };
+      try {
+        await change();
+      } finally {
+        picture = await watch.evaluate((sample) => sample.stop());
+        await watch.dispose();
+      }
+      expect(picture.samples).toBeGreaterThan(0);
+      expect(picture.empty).toBe(0);
+    }
     async function expectViewportFits() {
       await expect
         .poll(async () => {
@@ -326,11 +368,14 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       undefined,
       { timeout: 15_000 }
     );
-    await page.getByRole('checkbox', { name: /Keep this workspace|保留/u }).check();
-    await page.getByRole('button', { name: /^(Open browser|打开浏览器)$/u }).click();
     const newWebTab = page.getByRole('button', { name: /^(New tab|新建标签页)$/u });
     const tabRow = page.locator('.node-browser-tabs').getByRole('tablist');
-    await expect(tabRow.getByRole('tab')).toHaveCount(1);
+    const blankAddress = page.getByRole('textbox', { name: /^(Enter a web address|输入网址)$/u });
+    await expect(tabRow.getByRole('tab', { name: /^(Blank|空白页)$/u })).toBeVisible();
+    await expect(blankAddress).toBeVisible();
+    await expect(canvas).toBeHidden();
+    await expect(page.locator('.node-browser-body')).toHaveCSS('background-color', /rgba?\(/u);
+    await page.screenshot({ path: testInfo.outputPath('browser-blank.png') });
     await expect(newWebTab).toBeEnabled();
     const initialTab = (await tabRow.getByRole('tab').first().boundingBox())!;
     const newWebTabBox = (await newWebTab.boundingBox())!;
@@ -339,9 +384,11 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await newWebTab.click();
     await expect(tabRow.getByRole('tab')).toHaveCount(2);
     await expect(tabRow.getByRole('tab').last()).toHaveAttribute('aria-selected', 'true');
-    await address.fill(`127.0.0.1:${local.port}/ice`);
-    await address.press('Enter');
+    await blankAddress.fill(`127.0.0.1:${local.port}/ice`);
+    await blankAddress.press('Enter');
     await expect(address).toHaveValue(`${origin}/ice`);
+    await expect(blankAddress).toHaveCount(0);
+    await expect(tabRow.getByRole('tab')).toHaveCount(2);
     await expect.poll(() => requests.includes('/ice')).toBe(true);
     await expectViewportFits();
     async function expectSiteIcon(tabName: string) {
@@ -411,11 +458,22 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await address.fill(`${origin}/unsubmitted`);
     const attempts = requests.filter((path) => path === '/retry-page').length;
     failPage = false;
-    await navigation.getByRole('button', { name: /^(Reload|刷新)$/u }).click();
-    await expect
-      .poll(() => requests.filter((path) => path === '/retry-page').length)
-      .toBeGreaterThan(attempts);
-    await expect(address).toHaveValue(`${origin}/retry-page`);
+    const reload = navigation.getByRole('button', { name: /^(Reload|刷新)$/u });
+    await expectContinuousPicture(async () => {
+      await reload.click();
+      await expect
+        .poll(() => requests.filter((path) => path === '/retry-page').length)
+        .toBeGreaterThan(attempts);
+      await expect(address).toHaveValue(`${origin}/retry-page`);
+      await expect
+        .poll(() =>
+          canvas.evaluate((element: HTMLCanvasElement) => {
+            const [r, g, b] = element.getContext('2d')!.getImageData(0, 0, 1, 1).data;
+            return r! < 30 && g! < 30 && b! > 150;
+          })
+        )
+        .toBe(true);
+    });
     await expect(canvas).toBeVisible();
     expect(requests).not.toContain('/unsubmitted');
     await address.fill(`${origin}/ice`);
@@ -574,12 +632,16 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     const relayWidth = remoteViewport!.width;
     const divider = page.locator('.workbench-aside').getByRole('separator');
     const dividerBox = (await divider.boundingBox())!;
-    await page.mouse.move(dividerBox.x + dividerBox.width / 2, dividerBox.y + 40);
-    await page.mouse.down();
-    await page.mouse.move(dividerBox.x + dividerBox.width / 2 + 90, dividerBox.y + 40);
-    await page.mouse.up();
-    await expect.poll(() => remoteViewport?.width).toBeLessThan(relayWidth);
-    await expectViewportFits();
+    await expectContinuousPicture(async () => {
+      await page.mouse.move(dividerBox.x + dividerBox.width / 2, dividerBox.y + 40);
+      await page.mouse.down();
+      await page.mouse.move(dividerBox.x + dividerBox.width / 2 + 90, dividerBox.y + 40, {
+        steps: 8
+      });
+      await page.mouse.up();
+      await expect.poll(() => remoteViewport?.width).toBeLessThan(relayWidth);
+      await expectViewportFits();
+    });
     expect(requests.filter((path) => path === '/relay')).toHaveLength(1);
     await performanceInfo.click();
     await expect(performancePanel.getByText(relayLabel)).toBeVisible();
@@ -599,6 +661,15 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       await checkRelay();
       await expect(address).toHaveValue(`${origin}/relay`);
     }
+
+    const longHistoryPath = `/long-history?value=${'a'.repeat(350)}`;
+    const longHistoryUrl = origin + longHistoryPath;
+    await address.fill(longHistoryUrl);
+    await address.press('Enter');
+    await expect.poll(() => requests.includes(longHistoryPath)).toBe(true);
+    await expect(address).toHaveValue(longHistoryUrl);
+    await page.getByRole('button', { name: /^(Back|后退)$/u }).click();
+    await expect(address).toHaveValue(`${origin}/relay`);
 
     const commands = page.getByRole('button', { name: /^(Browser commands|浏览器命令)$/u });
     await expect(commands).toBeEnabled();
@@ -648,12 +719,57 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
       exact: true
     });
     await expect(history).toBeVisible();
+    await expect(historyDialog.getByText(/Active persistent profile|当前持久资料/u)).toBeVisible();
     await expect(history).toContainText(`${origin}/relay`);
+    const longUrl = historyDialog.getByText(longHistoryUrl, { exact: true });
+    await expect(longUrl).toBeVisible();
+    expect(
+      await longUrl.evaluate((element) => {
+        const text = document.createRange();
+        text.selectNodeContents(element);
+        const style = getComputedStyle(element);
+        return {
+          clipped: element.scrollWidth > element.clientWidth,
+          lines: new Set(Array.from(text.getClientRects(), (rect) => rect.top)).size,
+          overflow: style.textOverflow
+        };
+      })
+    ).toEqual({ clipped: true, lines: 1, overflow: 'ellipsis' });
     await expect(historyDialog.getByText('false', { exact: true })).toHaveCount(0);
     await expect(canvas).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('browser-history.png'),
       animations: 'disabled'
+    });
+    await test.step('Filter by a local day using the MAR calendar', async () => {
+      await historyDialog.getByRole('button', { name: /^(Filter by date|按日期筛选)$/u }).click();
+      const through = historyDialog.getByRole('textbox', { name: /^(Through|结束日期)$/u });
+      const calendar = historyDialog.getByRole('dialog', { name: /^(Calendar|日历)$/u });
+      const confirm = calendar.getByRole('button', { name: /^(Confirm|确定)$/u });
+      const day = await page.evaluate(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      });
+      await through.click();
+      await expect(calendar).toBeVisible();
+      await expect(calendar.locator('input[type=time]')).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath('browser-history-calendar.png') });
+      await calendar.getByRole('button', { name: day, exact: true }).click();
+      await confirm.click();
+      await expect(calendar).toBeHidden();
+      await expect(through).toHaveValue(day);
+      await expect(history).toBeVisible();
+      await through.fill('2000-01-01');
+      await through.press('Enter');
+      await expect(history).toHaveCount(0);
+      await expect(
+        historyDialog.getByText(/No matching browsing history|没有匹配的浏览历史/u)
+      ).toBeVisible();
+      await through
+        .locator('..')
+        .getByRole('button', { name: /^(Clear|清空)$/u })
+        .click();
+      await expect(history).toBeVisible();
     });
     const outsideMatch = historyDialog.getByRole('button', { name: /^ICE fixture/u }).first();
     await expect(outsideMatch).toBeVisible();
@@ -709,6 +825,18 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     await keyboard.press('ArrowRight');
     await expect.poll(() => requests.filter((path) => path === '/key-next').length).toBe(2);
     expect(requests).not.toContain('/unexpected-close');
+
+    await test.step('Release a remote key even when its modifiers were released first', async () => {
+      await page.keyboard.down('Control');
+      await page.keyboard.down('Shift');
+      // Playwright takes the literal key value. Both events still have code KeyY.
+      await page.keyboard.down('Y');
+      await page.keyboard.up('Shift');
+      await page.keyboard.up('Control');
+      await page.keyboard.up('y');
+      await expect.poll(() => requests.includes('/key-press')).toBe(true);
+      await expect.poll(() => requests.includes('/key-release')).toBe(true);
+    });
 
     const aside = page.locator('.workspace-aside');
     await aside.getByRole('tab', { name: /^(Files|文件)$/u }).click();
@@ -912,6 +1040,7 @@ test('Browser Aside projects real Node Chromium over ICE and Server relay', asyn
     expect(await runningBrowsers()).toHaveLength(1);
     await page.getByRole('button', { name: /^(Browser commands|浏览器命令)$/u }).click();
     await page.getByRole('menuitem', { name: /^(Close browser|关闭浏览器)$/u }).click();
+    await expect(browserTab).toHaveCount(0);
     await expect.poll(runningBrowsers).toEqual([]);
   } finally {
     try {

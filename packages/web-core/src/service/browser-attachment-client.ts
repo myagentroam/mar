@@ -118,7 +118,7 @@ export class BrowserAttachmentClient {
         const version = event.snapshot.viewVersion;
         if (version !== this.version) {
           this.drawn = false;
-          this.viewport.setView(version);
+          this.viewport.setView(version, event.snapshot.activeId);
           this.version = version;
         }
         this.options.snapshot(event.snapshot);

@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
-import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -42,6 +41,7 @@ const emit = defineEmits<{
   data: [kind: 'cache' | 'history', browserId: string];
   consumed: [];
   restored: [];
+  closed: [scope: AsideWorkspace];
 }>();
 const canvas = ref<HTMLCanvasElement>();
 const tabPrefix = useId();
@@ -52,7 +52,6 @@ const lifetime = new AbortController();
 const draft = ref('');
 const edited = ref(false);
 const invalid = ref(false);
-const preserve = ref(false);
 const answer = ref('');
 const downloadsOpen = ref(false);
 const { snapshot, status, frame, path, streamSample, error, uploadStatus } = props.browser;
@@ -64,6 +63,7 @@ const connection = computed(() => {
 const active = computed(() =>
   snapshot.value?.tabs.find((tab) => tab.id === snapshot.value?.activeId)
 );
+const blank = computed(() => active.value?.url === 'about:blank');
 const dialog = computed(() => snapshot.value?.dialog);
 const chooser = computed(() => snapshot.value?.fileChooser);
 const fileInputId = useId();
@@ -85,7 +85,7 @@ const external = computed(() => {
 const tabs = computed(
   () =>
     snapshot.value?.tabs.map((tab) => {
-      const label = tab.title || (tab.url === 'about:blank' ? '' : tab.url) || t('browser.blank');
+      const label = tab.url === 'about:blank' ? t('browser.blank') : tab.title || tab.url;
       return {
         name: tab.id,
         label,
@@ -122,7 +122,9 @@ watch(
     if (initial) {
       initial = false;
       show(
-        props.restoreId ? { action: 'resume', browserId: props.restoreId } : { action: 'lookup' }
+        props.restoreId
+          ? { action: 'resume', browserId: props.restoreId }
+          : { action: 'open', preserveLogin: true }
       );
       if (props.restoreId) emit('restored');
     } else if (!previous) {
@@ -144,9 +146,7 @@ watch(
   [status, () => props.requested],
   () => {
     if (!desired) return;
-    if (status.value === 'idle' && !initial && props.connected) {
-      show({ action: 'open', preserveLogin: preserve.value });
-    } else if (status.value === 'ready' && snapshot.value) {
+    if (status.value === 'ready' && snapshot.value) {
       props.browser.send(
         'url' in desired
           ? { type: 'tab.open', address: desired.url }
@@ -227,11 +227,16 @@ function command(value: string | number | object): void {
   if (!id) return;
   if (value === 'downloads') downloadsOpen.value = true;
   if (value === 'cache' || value === 'history') emit('data', value, id);
-  if (value === 'close') void props.browser.closeBrowser();
+  if (value === 'close') {
+    const scope = props.scope;
+    void props.browser.closeBrowser().then((closed) => {
+      if (closed && !lifetime.signal.aborted) emit('closed', scope);
+    });
+  }
 }
 function recover(): void {
   if (reconnectId.value) show({ action: 'resume', browserId: reconnectId.value });
-  else show({ action: 'open', preserveLogin: preserve.value });
+  else show({ action: 'open', preserveLogin: true });
 }
 function respond(accept: boolean): void {
   if (!dialog.value) return;
@@ -395,7 +400,8 @@ function wheel(event: WheelEvent): void {
     y: event.deltaY * unit
   });
 }
-const keys = new Set<string>();
+// Pair releases by physical key: modifiers can change the reported key before keyup.
+const pressedKeys = new Map<string, string>();
 function feedback(message: string, type: 'info' | 'warning' | 'error'): void {
   if (body.value)
     showMessage(message, type, undefined, { owner: body.value, signal: lifetime.signal });
@@ -421,35 +427,42 @@ async function copy(): Promise<void> {
 }
 
 function key(event: KeyboardEvent, edge: 'up' | 'down'): void {
-  if (!frame.value || event.isComposing || event.key === 'Process' || event.key === 'Unidentified')
+  const viewVersion = frame.value?.viewVersion;
+  if (viewVersion === undefined) return;
+  const identity = event.code || event.key;
+  const pressedKey = pressedKeys.get(identity);
+  if (edge === 'up') {
+    if (pressedKey === undefined) return;
+    event.preventDefault();
+    pressedKeys.delete(identity);
+    input({ type: 'key', edge, viewVersion, key: pressedKey });
     return;
+  }
+  if (event.isComposing || event.key === 'Process' || event.key === 'Unidentified') return;
+  if (pressedKey !== undefined) {
+    event.preventDefault();
+    input({ type: 'key', edge, viewVersion, key: pressedKey });
+    return;
+  }
   if (event.key === 'Escape' || event.key === 'Tab') return;
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
     if (event.key.toLowerCase() === 'v') return;
     if (event.key.toLowerCase() === 'c') {
       event.preventDefault();
-      if (edge === 'down' && !event.repeat) void copy();
+      if (!event.repeat) void copy();
       return;
     }
   }
-  if (
-    event.key.length === 1 &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.altKey &&
-    !keys.has(event.key)
-  )
-    return;
+  if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) return;
   event.preventDefault();
-  if (edge === 'down') keys.add(event.key);
-  else keys.delete(event.key);
-  input({ type: 'key', edge, viewVersion: frame.value.viewVersion, key: event.key });
+  if (input({ type: 'key', edge, viewVersion, key: event.key }))
+    pressedKeys.set(identity, event.key);
 }
 function releaseKeys(): void {
   const viewVersion = frame.value?.viewVersion;
   if (viewVersion !== undefined)
-    for (const key of keys) input({ type: 'key', edge: 'up', viewVersion, key });
-  keys.clear();
+    for (const key of pressedKeys.values()) input({ type: 'key', edge: 'up', viewVersion, key });
+  pressedKeys.clear();
 }
 function releaseControls(): void {
   if (nativeTouch) cancelPointer(nativeTouch.id);
@@ -464,7 +477,7 @@ watch(
     pressedPointers.clear();
     touch = undefined;
     nativeTouch = undefined;
-    keys.clear();
+    pressedKeys.clear();
   }
 );
 function text(event: Event): void {
@@ -608,6 +621,8 @@ function insertText(value: string): void {
       <canvas
         ref="canvas"
         v-show="status === 'ready'"
+        :class="{ 'node-browser-blank-canvas': blank }"
+        :aria-hidden="blank || undefined"
         :aria-label="t('browser.viewport')"
         @pointerdown="pointer($event, 'down')"
         @pointerup="pointer($event, 'up')"
@@ -618,7 +633,7 @@ function insertText(value: string): void {
         @contextmenu.prevent
       />
       <textarea
-        v-if="status === 'ready'"
+        v-if="status === 'ready' && !blank"
         ref="keyboard"
         data-node-browser-input
         class="node-browser-input"
@@ -636,7 +651,11 @@ function insertText(value: string): void {
         @input="text"
         @paste.prevent="insertText($event.clipboardData?.getData('text/plain') ?? '')"
       />
-      <div v-if="status === 'connecting'" class="node-browser-loading" role="status">
+      <div
+        v-if="status === 'connecting' || (status === 'idle' && connected)"
+        class="node-browser-loading"
+        role="status"
+      >
         <MarBusyIndicator />{{ t('browser.connecting') }}
       </div>
       <div v-else-if="status === 'failed'" class="node-browser-placeholder">
@@ -648,22 +667,26 @@ function insertText(value: string): void {
         <MarButton
           v-if="canRecover"
           type="primary"
-          :icon="reconnectId ? 'retry' : 'web'"
+          icon="retry"
           :disabled="!connected"
           @click="recover"
-          >{{ t(reconnectId ? 'browser.retry' : 'browser.open') }}</MarButton
+          >{{ t('browser.retry') }}</MarButton
         >
       </div>
       <div v-else-if="status === 'idle'" class="node-browser-placeholder">
-        <MarCheckbox v-model="preserve">{{ t('browser.preserve') }}</MarCheckbox>
-        <MarButton
-          type="primary"
-          icon="web"
-          :disabled="!connected"
-          @click="show({ action: 'open', preserveLogin: preserve })"
-          >{{ t('browser.open') }}</MarButton
-        >
+        <p role="status">{{ t('browser.disconnected') }}</p>
       </div>
+      <form v-else-if="blank" class="node-browser-blank" @submit.prevent="navigate">
+        <MarInput
+          :model-value="draft"
+          prefix-icon="web"
+          :aria-label="t('browser.blankAddress')"
+          :placeholder="t('browser.blankAddress')"
+          :aria-invalid="invalid || undefined"
+          :aria-describedby="invalid ? `${tabPrefix}-address-error` : undefined"
+          @update:model-value="(value) => edit(String(value))"
+        />
+      </form>
       <div
         v-if="status === 'ready'"
         class="node-browser-actions"
@@ -671,6 +694,7 @@ function insertText(value: string): void {
         :aria-label="t('browser.pageActions')"
       >
         <MarButton
+          v-if="!blank"
           class="node-browser-keyboard"
           circle
           icon="keyboard"
@@ -680,6 +704,7 @@ function insertText(value: string): void {
           @click="keyboardFocused ? keyboard?.blur() : keyboard?.focus({ preventScroll: true })"
         />
         <MarButton
+          v-if="!blank"
           circle
           icon="copy"
           :aria-label="t('browser.copySelection')"
@@ -801,6 +826,7 @@ function insertText(value: string): void {
   min-block-size: 0;
   display: grid;
   place-items: center;
+  background: var(--mar-ui-bg-panel);
 }
 .node-browser-body canvas {
   position: absolute;
@@ -810,6 +836,17 @@ function insertText(value: string): void {
   min-block-size: 0;
   object-fit: contain;
   touch-action: none;
+}
+.node-browser-blank-canvas {
+  visibility: hidden;
+}
+.node-browser-blank {
+  inline-size: min(28rem, calc(100% - 2rem));
+}
+.node-browser-blank :deep(.mar-ui-field-frame) {
+  min-block-size: 2.75rem;
+  border-radius: 999px;
+  padding-inline: 0.875rem;
 }
 .node-browser-keyboard {
   display: none;

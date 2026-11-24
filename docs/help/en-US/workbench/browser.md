@@ -9,7 +9,7 @@ In Work mode, select **+ → Browser** at the end of the side pane’s tab strip
 
 ## Browse pages
 
-- Enter an HTTP(S) address and press Enter to navigate the current tab. With no scheme, normal hosts default to HTTPS; `localhost` and `127.0.0.1` default to HTTP.
+- Enter an HTTP(S) address in the address bar or the centered field on a **Blank** tab and press Enter to navigate the current tab. With no scheme, normal hosts default to HTTPS; `localhost` and `127.0.0.1` default to HTTP.
 - Use the toolbar to go back or forward, reload, or stop loading. Select **+** after the last webpage tab to open a new one. The external-open button opens the current page's actual URL unchanged in your device browser.
 - On supported Nodes, webpages reflow to fit the Browser panel when you resize the Workbench, drag the divider, or rotate your device. This does not reload the page.
 - The stream adjusts its bitrate and frame rate automatically. On a constrained connection, scrolling and animation may look less smooth, but the page layout does not change.
@@ -25,7 +25,7 @@ Under **Personal settings → Browser**, choose where public and local links ope
 
 ## Sign-in, browsing data, and history
 
-Choose whether to keep website sign-ins when you open the browser. Hiding the pane or closing the Aside tab does not immediately close Chromium; it closes after 15 minutes without an attached view. The Node removes retained profile directories after 30 days without use.
+Opening the Browser goes directly to a blank tab or resumes the existing instance. Website sign-ins and site data are saved for your account and Workspace by default. Hiding the pane or closing the Aside tab does not immediately close Chromium; it closes after 15 minutes without an attached view. **More → Close browser** ends the instance and closes its Aside tab. The Node removes retained profile directories after 30 days without use.
 
 Choose **More → Clear browser cache** to open the current browser's clear-data dialog without leaving the page. Check the Workspace and profile before choosing a time range and data categories. Only the cache is selected by default. Deleting cookies and site data can sign you out of websites. It does not delete Workspace files, downloaded files, your MAR sign-in, or data from your device browser.
 

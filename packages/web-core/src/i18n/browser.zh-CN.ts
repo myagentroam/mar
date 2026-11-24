@@ -1,9 +1,7 @@
 export const browserZhCN = {
   title: '浏览器',
-  open: '打开浏览器',
   close: '关闭浏览器',
   openAddress: '在 MAR 中打开网址',
-  preserve: '保留此工作区的浏览器登录状态和站点数据',
   back: '后退',
   forward: '前进',
   reload: '刷新',
@@ -18,6 +16,7 @@ export const browserZhCN = {
   tab: '新建标签页',
   addAsideTab: '添加辅助面标签页',
   blank: '空白页',
+  blankAddress: '输入网址',
   closeTab: '关闭 {tab}',
   viewport: '远程浏览器页面',
   connecting: '正在连接浏览器…',
