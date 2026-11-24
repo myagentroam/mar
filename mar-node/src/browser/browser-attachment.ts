@@ -30,7 +30,9 @@ const COMMAND_ERRORS = new Set([
   'BROWSER_HTML_UNAVAILABLE',
   'BROWSER_NAVIGATION_FAILED',
   'BROWSER_TAB_NAVIGATION_FAILED',
-  'BROWSER_INVALID_ADDRESS'
+  'BROWSER_INVALID_ADDRESS',
+  'BROWSER_USE_REVOKE_FAILED',
+  'BROWSER_USE_TAKING'
 ]);
 
 /** One interactive borrower of a browser session. Owns in-flight commands,
@@ -45,6 +47,7 @@ export class BrowserAttachment {
   private capture: BrowserPageCapture | undefined;
   private capturing: Promise<void> | undefined;
   private running: Promise<void> | undefined;
+  private resetInputForTakeover = false;
   private stopping: Promise<void> | undefined;
   private answering: Promise<void> | undefined;
   private uploading: Promise<void> | undefined;
@@ -107,7 +110,7 @@ export class BrowserAttachment {
       } else if (this.agentControlSubscribed) {
         void this.borrow.resource
           .setHumanControl(message.action === 'take')
-          .catch(() => this.fail('BROWSER_USE_REVOKE_FAILED'));
+          .catch((error: unknown) => this.commandFailed(error));
       }
       return;
     }
@@ -123,8 +126,7 @@ export class BrowserAttachment {
       if (version !== undefined && version === this.next?.version) this.shown = version;
       return;
     }
-    if (this.borrow.resource.agentControl === 'taking' && message.type !== 'viewport.resize')
-      return;
+    if (this.blockForTakeover(message.type)) return;
     if (message.type === 'dialog.respond') {
       if (!this.answering) {
         this.answering = this.borrow.resource
@@ -184,7 +186,8 @@ export class BrowserAttachment {
   }
 
   upload(request: BrowserUpload): Promise<void> {
-    if (this.closed || this.uploading) return Promise.reject(new Error('BROWSER_UPLOAD_INVALID'));
+    if (this.closed || this.uploading || this.borrow.resource.agentControl === 'taking')
+      return Promise.reject(new Error('BROWSER_UPLOAD_INVALID'));
     if (request.command.action !== 'finish') return this.borrow.resource.upload(request);
     const operation = this.borrow.resource.upload(request).finally(() => {
       this.uploading = undefined;
@@ -224,6 +227,21 @@ export class BrowserAttachment {
 
   private refresh(): void {
     if (this.closed) return;
+    if (this.borrow.resource.agentControl === 'taking') {
+      for (let i = 0; i < this.queue.length;) {
+        const command = this.queue[i];
+        if (!command || !this.blockForTakeover(command.type)) {
+          i++;
+          continue;
+        }
+        this.queue.splice(i, 1);
+        if (isPointerCommand(command)) this.queuedPointerCommands--;
+      }
+      if (this.pressed || this.running) {
+        this.resetInputForTakeover = true;
+        this.drain();
+      }
+    }
     const snapshot = this.borrow.resource.snapshot();
     try {
       this.options.sendControl({
@@ -340,19 +358,30 @@ export class BrowserAttachment {
     }
   }
 
+  private blockForTakeover(type: BrowserAttachmentMessage['type']): boolean {
+    if (type === 'viewport.resize' || this.borrow.resource.agentControl !== 'taking') return false;
+    if (type === 'tab.open' || type === 'tab.openHtml')
+      this.commandFailed(new Error('BROWSER_USE_TAKING'));
+    return true;
+  }
+
   private drain(): void {
     if (this.running || this.closed || (!this.queue.length && !this.pressed)) return;
     this.running = Promise.resolve()
       .then(async () => {
         while (!this.closed) {
-          if (this.pressed && this.pressed.version !== this.next?.version)
+          const reset = this.resetInputForTakeover;
+          this.resetInputForTakeover = false;
+          if (this.pressed && (reset || this.pressed.version !== this.next?.version)) {
             await this.releaseInput();
+            // Recheck takeover state before dispatching any new input.
+            continue;
+          }
           if (this.closed) break;
           const command = this.queue.shift();
           if (!command) break;
           if (isPointerCommand(command)) this.queuedPointerCommands--;
-          if (this.borrow.resource.agentControl === 'taking' && command.type !== 'viewport.resize')
-            continue;
+          if (this.blockForTakeover(command.type)) continue;
           try {
             await this.dispatch(command);
           } catch (error) {
@@ -369,7 +398,11 @@ export class BrowserAttachment {
       .catch(() => this.fail('BROWSER_INPUT_RELEASE_FAILED'))
       .finally(() => {
         this.running = undefined;
-        if (this.queue.length || (this.pressed && this.pressed.version !== this.next?.version))
+        if (
+          this.queue.length ||
+          (this.pressed &&
+            (this.resetInputForTakeover || this.pressed.version !== this.next?.version))
+        )
           this.drain();
       });
   }

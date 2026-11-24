@@ -101,6 +101,39 @@ describe('Node Browser live session cache', () => {
     }
   });
 
+  it('can retry closing after an Agent revocation failure without losing released borrows', async () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+    const failure = Promise.withResolvers<void>();
+    const close = vi.fn(async () => {}).mockReturnValueOnce(failure.promise);
+    const service = new BrowserSessionService({
+      launch: async () => ({ resource: {}, close }),
+      limit: 1,
+      idleMs: 1000,
+      onCloseFailed: vi.fn()
+    });
+    const id = await service.open(one);
+    const web = service.pin(one, id);
+    const agent = service.retain(one, id);
+    const pending = service.close(one, id);
+    const duplicate = service.close(one, id);
+    web.release();
+    const failed = Promise.all([
+      expect(pending).rejects.toThrow('BROWSER_USE_REVOKE_FAILED'),
+      expect(duplicate).rejects.toThrow('BROWSER_USE_REVOKE_FAILED')
+    ]);
+    failure.reject(new Error('BROWSER_USE_REVOKE_FAILED'));
+    await failed;
+    expect(close).toHaveBeenCalledOnce();
+    expect(service.lookup(one)).toBe(id);
+    await expect(service.open(two)).rejects.toThrow('BROWSER_CAPACITY');
+    agent();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(service.lookup(one)).toBeUndefined();
+    await expect(service.open(two)).resolves.not.toBe(id);
+    await service.shutdown();
+  });
+
   it('does not publish a launch that completes during shutdown', async () => {
     const pending = Promise.withResolvers<{ resource: object; close(): Promise<void> }>();
     const close = vi.fn(async () => {});

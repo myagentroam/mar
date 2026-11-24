@@ -42,7 +42,11 @@ export class BrowserTabs {
   }
 
   async setHumanControl(value: boolean): Promise<void> {
-    if (this.humanControl === value || this.agentControl === 'taking') return;
+    if (!value && this.agentControl === 'taking') return;
+    if (this.humanControl === value) {
+      if (value) await this.agentAccess.release();
+      return;
+    }
     this.humanControl = value;
     this.events.emit('changed');
     if (value) await this.agentAccess.release();

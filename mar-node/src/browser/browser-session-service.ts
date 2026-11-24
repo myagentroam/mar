@@ -96,7 +96,7 @@ export class BrowserSessionService<T> {
     this.schedule();
     let released = false;
     const release = () => {
-      if (released || entry.closing) return;
+      if (released) return;
       released = true;
       entry.attached = false;
       if (!entry.agentHolds) entry.idleSince = performance.now();
@@ -115,7 +115,7 @@ export class BrowserSessionService<T> {
     this.schedule();
     let released = false;
     return () => {
-      if (released || entry.closing) return;
+      if (released) return;
       released = true;
       entry.agentHolds = (entry.agentHolds ?? 1) - 1;
       if (!entry.agentHolds && !entry.attached) entry.idleSince = performance.now();
@@ -197,7 +197,17 @@ export class BrowserSessionService<T> {
       await entry.opening.catch(() => undefined);
       if (entry.session) {
         await entry.dataUse;
-        await entry.session.close();
+        try {
+          await entry.session.close();
+        } catch (error) {
+          // Runtime has not detached or closed anything if Agent revocation fails.
+          if (error instanceof Error && error.message === 'BROWSER_USE_REVOKE_FAILED') {
+            delete entry.closing;
+            if (entry.idleSince !== undefined) entry.idleSince = performance.now();
+            this.schedule();
+          }
+          throw error;
+        }
         this.occupied--;
       }
       this.entries.delete(key);

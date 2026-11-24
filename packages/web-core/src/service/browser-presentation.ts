@@ -15,6 +15,10 @@ export function browserError(code: string): string {
   switch (code) {
     case 'BROWSER_NOT_AUTHORIZED':
       return translate('browser.denied');
+    case 'BROWSER_USE_REVOKE_FAILED':
+      return translate('browser.useTakeFailed');
+    case 'BROWSER_USE_TAKING':
+      return translate('browser.useOpenAfterTake');
     case 'BROWSER_OUTCOME_UNKNOWN':
       return translate('browser.unknown');
     case 'BROWSER_H264_DECODER_UNAVAILABLE':

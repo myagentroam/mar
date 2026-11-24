@@ -157,7 +157,10 @@ async function sharedLoginSmoke(url: string, scope: string): Promise<void> {
       owner.unbind = unbind;
       owner.close = close;
     }
-    await tabs.releaseAgent(execution);
+    await tabs.setHumanControl(false);
+    assert.equal(tabs.agentControl, 'taking');
+    assert.equal(holds, 1);
+    await tabs.setHumanControl(true);
     assert.equal(holds, 0);
     assert.equal(tabs.agentControl, 'user');
     assert.equal(page.isClosed(), false);

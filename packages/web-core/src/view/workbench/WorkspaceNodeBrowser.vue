@@ -143,8 +143,9 @@ async function lookupAddressHistory(text: string): Promise<BrowserHistoryResult[
   }
 }
 const blank = computed(() => active.value?.url === 'about:blank');
-const dialog = computed(() => snapshot.value?.dialog);
-const chooser = computed(() => snapshot.value?.fileChooser);
+const takingControl = computed(() => snapshot.value?.agentControl === 'taking');
+const dialog = computed(() => (takingControl.value ? undefined : snapshot.value?.dialog));
+const chooser = computed(() => (takingControl.value ? undefined : snapshot.value?.fileChooser));
 const fileInputId = useId();
 function chooseFiles(event: Event): void {
   const input = event.target as HTMLInputElement;
@@ -173,6 +174,16 @@ const tabs = computed(
     }) ?? []
 );
 const hasCommands = computed(() => !!snapshot.value && status.value !== 'failed');
+const agentControlAction = computed(() => {
+  switch (snapshot.value?.agentControl) {
+    case 'user':
+      return { command: 'resume', label: 'browser.useResume' } as const;
+    case 'taking':
+      return { command: 'take', label: 'browser.useRetry' } as const;
+    default:
+      return { command: 'take', label: 'browser.useTake' } as const;
+  }
+});
 const reconnectId = computed(() =>
   error.value !== 'BROWSER_SESSION_ENDED' ? props.browser.browserId() : undefined
 );
@@ -222,15 +233,18 @@ watch(
   { immediate: true }
 );
 watch(
-  [status, () => props.requested],
+  [status, () => !!snapshot.value, takingControl, () => props.requested],
   () => {
     if (!desired) return;
-    if (status.value === 'ready' && snapshot.value) {
-      props.browser.send(
-        'url' in desired
-          ? { type: 'tab.open', address: desired.url }
-          : { type: 'tab.openHtml', path: desired.htmlPath }
-      );
+    if (status.value === 'ready' && snapshot.value && !takingControl.value) {
+      if (
+        !props.browser.send(
+          'url' in desired
+            ? { type: 'tab.open', address: desired.url }
+            : { type: 'tab.openHtml', path: desired.htmlPath }
+        )
+      )
+        return;
       desired = undefined;
       emit('consumed');
     } else if (status.value === 'failed') {
@@ -322,6 +336,14 @@ function command(value: string | number | object): void {
     });
   }
 }
+
+function changeAgentControl(event: MouseEvent): void {
+  const action = agentControlAction.value.command;
+  // A second click that started as a takeover must not restore Agent access.
+  if (action === 'resume' && event.detail > 1) return;
+  command(action);
+}
+
 function recover(): void {
   if (reconnectId.value) show({ action: 'resume', browserId: reconnectId.value });
   else show({ action: 'open', preserveLogin: true });
@@ -901,11 +923,9 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
           <MarDropdownMenu :aria-label="t('browser.menu')">
             <MarDropdownItem
               v-if="snapshot?.agentControl !== undefined"
-              :command="snapshot.agentControl === 'user' ? 'resume' : 'take'"
-              :disabled="snapshot.agentControl === 'taking'"
-              >{{
-                t(snapshot.agentControl === 'user' ? 'browser.useResume' : 'browser.useTake')
-              }}</MarDropdownItem
+              :key="agentControlAction.command"
+              :command="agentControlAction.command"
+              >{{ t(agentControlAction.label) }}</MarDropdownItem
             >
             <MarDropdownItem command="history" icon="clock" :disabled="!browser.browserId()">{{
               t('browser.history')
@@ -937,12 +957,12 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
         )
       }}</span>
       <MarButton
-        v-if="snapshot.agentControl !== 'taking'"
+        :key="agentControlAction.command"
         link
-        @click="command(snapshot.agentControl === 'agent' ? 'take' : 'resume')"
-        >{{
-        t(snapshot.agentControl === 'agent' ? 'browser.useTake' : 'browser.useResume')
-      }}</MarButton>
+        @click="changeAgentControl"
+        @keydown.enter="(event: KeyboardEvent) => event.repeat && event.preventDefault()"
+        >{{ t(agentControlAction.label) }}</MarButton
+      >
     </div>
     <span v-if="invalid" :id="`${tabPrefix}-address-error`" hidden>{{ t('browser.invalid') }}</span>
     <div ref="body" class="node-browser-body">

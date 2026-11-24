@@ -13,7 +13,9 @@ In Work mode, open the side pane, then select **+ → Browser** at the end of it
 
 If a task needs your current page, an existing sign-in, or an interactive login, the Agent can use Playwright in this Workspace’s shared browser without asking for access to each tab. It can open the sign-in page for you. Sign in yourself in the MAR browser, then tell the Agent to continue. You can leave the browser side pane after signing in; the browser stays live while the Agent holds its shared connection.
 
-Select **More → Take control** to disconnect the Agent from the shared browser, then **Let Agent resume** when you’re ready. Turning Browser Use off also revokes shared access. Neither action closes your tabs, undoes completed actions, or affects manual browsing. New Agent executions no longer receive the bundled CLI, but executions that already have it can still use their separate browsers.
+Select **More → Take control** to disconnect the Agent from the shared browser, then **Let Agent resume** when you’re ready. Turning Browser Use off also revokes shared access. Your tabs normally stay open. If MAR cannot disconnect the Agent on its own, it may close the shared browser instead. This does not undo completed actions. New Agent executions no longer receive the bundled CLI, but executions that already have it can still use their separate browsers.
+
+If you’re still waiting to take control, select **Try again** next to the takeover status. Wait for confirmation that the Agent is disconnected before continuing on the page.
 
 ## Browse pages
 
