@@ -2210,14 +2210,14 @@ details.conversation-record-group[open] > details:last-child {
 :deep(.conversation-message-actions) {
   display: flex;
   min-height: 24px;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 2px;
   margin-top: 4px;
 }
 
 :deep(.conversation-message-time) {
-  align-self: center;
-  margin-right: auto;
+  margin-inline-end: 4px;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
@@ -2226,6 +2226,7 @@ details.conversation-record-group[open] > details:last-child {
 
 :deep(.conversation-message-action) {
   display: inline-flex;
+  flex: none;
   width: var(--mar-utility-control-size);
   height: var(--mar-utility-control-size);
   align-items: center;

@@ -39,8 +39,54 @@ for (const [theme, width] of [
     const ownMessage = page
       .locator('.user_message')
       .filter({ hasText: 'Review the implementation.' });
+    const reply = page.locator('.assistant_message').filter({ hasText: 'Review complete.' });
+    for (const [entry, actionCount] of [
+      [ownMessage, 3],
+      [reply, 2]
+    ] as const) {
+      const footer = entry.locator('.conversation-message-actions');
+      await expect(footer.locator('time')).toBeVisible();
+      await expect(footer.getByRole('button')).toHaveCount(actionCount);
+      const alignment = await footer.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const time = element.querySelector('time')!.getBoundingClientRect();
+        const buttons = [...element.querySelectorAll('button')].map((button) =>
+          button.getBoundingClientRect()
+        );
+        const centerY = (rect: DOMRect) => rect.top + rect.height / 2;
+        return {
+          startsAtLeft: Math.abs(time.left - bounds.left) < 1,
+          gap: buttons[0]!.left - time.right,
+          aligned: buttons.every((button) => Math.abs(centerY(button) - centerY(time)) < 1),
+          fits: buttons.every((button) => button.right <= bounds.right + 1)
+        };
+      });
+      expect(alignment).toMatchObject({ startsAtLeft: true, aligned: true, fits: true });
+      expect(alignment.gap).toBeGreaterThanOrEqual(0);
+      expect(alignment.gap).toBeLessThanOrEqual(12);
+    }
     await expect(ownMessage.getByRole('button', { name: /Create a session branch/ })).toBeVisible();
     await expect(ownMessage.getByRole('button', { name: /Permanently delete/ })).toBeVisible();
+    const narrowFooter = await ownMessage
+      .locator('.conversation-message-actions')
+      .evaluate((footer: HTMLElement) => {
+        const time = footer.querySelector('time')!;
+        const buttons = [...footer.querySelectorAll('button')];
+        const originalWidths = buttons.map((button) => button.getBoundingClientRect().width);
+        // Leave room for the timestamp, but not a button beside it.
+        const timeWidth = time.getBoundingClientRect().width;
+        footer.style.inlineSize = `${Math.ceil(timeWidth) + 4}px`;
+        const bounds = footer.getBoundingClientRect();
+        const timeBottom = time.getBoundingClientRect().bottom;
+        const buttonBounds = buttons.map((button) => button.getBoundingClientRect());
+        footer.style.removeProperty('inline-size');
+        return {
+          wraps: buttonBounds[0]!.top >= timeBottom,
+          fits: buttonBounds.every((button) => button.right <= bounds.right + 1),
+          keepsSizes: buttonBounds.every((button, i) => button.width === originalWidths[i])
+        };
+      });
+    expect(narrowFooter).toEqual({ wraps: true, fits: true, keepsSizes: true });
     await expect(processes.first().locator('.subagent-group')).toHaveCount(1);
     await expect(processes.last().locator('.subagent-group')).toHaveCount(1);
     expect(
@@ -137,6 +183,16 @@ for (const [theme, width] of [
     const heading = recent.locator('.conversation-item-heading');
     await expect.poll(() => heading.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await expect(recent.locator('time')).toHaveCount(0);
+    const untimedFooter = recent.locator('.conversation-message-actions');
+    await expect(
+      untimedFooter.getByRole('button', { name: 'Copy message', exact: true })
+    ).toBeVisible();
+    expect(
+      await untimedFooter.evaluate((footer) => {
+        const button = footer.querySelector('button')!;
+        return button.getBoundingClientRect().left - footer.getBoundingClientRect().left;
+      })
+    ).toBeCloseTo(0);
     await expect(first).toHaveAttribute('open', '');
     await expect(message).toHaveAttribute('open', '');
     await lastSummary.click();

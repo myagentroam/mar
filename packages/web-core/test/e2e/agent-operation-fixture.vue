@@ -55,6 +55,7 @@ const turns = ref<ConversationTurn[]>([
               id: 'own-input',
               kind: 'user_message' as const,
               status: 'COMPLETED' as const,
+              startedAt: 1795495140000,
               payload: { text: 'Review the implementation.' }
             }
           ]
@@ -141,6 +142,7 @@ const turns = ref<ConversationTurn[]>([
         id: 'answer',
         kind: 'assistant_message',
         status: 'COMPLETED',
+        startedAt: 1795495260000,
         payload: { text: 'Review complete.', format: 'markdown' }
       }
     ]
