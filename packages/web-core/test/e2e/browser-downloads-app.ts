@@ -29,6 +29,7 @@ const tab = {
   canGoBack: false,
   canGoForward: false
 };
+const tabs = [tab, { ...tab, id: 'second-tab', title: 'Second page' }];
 let items: BrowserDownloadInfo[] = [];
 
 function update({ revision, id, status, items: nextItems }: Update): void {
@@ -36,13 +37,19 @@ function update({ revision, id, status, items: nextItems }: Update): void {
   if (status !== undefined) browser.status.value = status;
   if (nextItems !== undefined) items = nextItems;
   browser.snapshot.value = {
-    activeId: tab.id,
-    tabs: [tab],
+    activeId: browser.snapshot.value?.activeId ?? tab.id,
+    tabs,
     viewVersion: 1,
     downloadVersion: revision
   };
 }
 
+browser.send = (message) => {
+  const snapshot = browser.snapshot.value;
+  if (message.type !== 'tab.select' || !snapshot) return false;
+  browser.snapshot.value = { ...snapshot, activeId: message.tabId };
+  return true;
+};
 browser.browserId = () => browserId.value;
 browser.downloads = async () => ({ items, more: false });
 browser.cancelDownload = async (id) => {

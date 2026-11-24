@@ -902,11 +902,6 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 
 <style scoped>
 .node-browser {
-  --browser-tab-surface: color-mix(
-    in srgb,
-    var(--mar-ui-bg-panel) 75%,
-    var(--mar-ui-fill-row-hover)
-  );
   display: flex;
   flex-direction: column;
   block-size: 100%;
@@ -960,7 +955,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 }
 .node-browser-tabs :deep(.browser-web-tab.is-active) {
   z-index: 1;
-  background: var(--browser-tab-surface);
+  background: var(--mar-ui-fill-selection);
 }
 .node-browser-tabs :deep(.browser-web-tab.is-active::before),
 .node-browser-tabs :deep(.browser-web-tab.is-active::after) {
@@ -973,11 +968,11 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
 }
 .node-browser-tabs :deep(.browser-web-tab.is-active::before) {
   right: 100%;
-  background: radial-gradient(circle at 0 0, transparent 68%, var(--browser-tab-surface) 72%);
+  background: radial-gradient(circle at 0 0, transparent 68%, var(--mar-ui-fill-selection) 72%);
 }
 .node-browser-tabs :deep(.browser-web-tab.is-active::after) {
   left: 100%;
-  background: radial-gradient(circle at 100% 0, transparent 68%, var(--browser-tab-surface) 72%);
+  background: radial-gradient(circle at 100% 0, transparent 68%, var(--mar-ui-fill-selection) 72%);
 }
 @media (forced-colors: active) {
   .node-browser-tabs :deep(.browser-web-tab.is-active) {
@@ -986,7 +981,7 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
   }
 }
 .node-browser-toolbar {
-  background: var(--browser-tab-surface);
+  background: color-mix(in srgb, var(--mar-ui-bg-panel) 75%, var(--mar-ui-fill-row-hover));
   gap: 0.25rem;
   padding: 0.25rem;
   border-block-end: 1px solid var(--mar-ui-border);
