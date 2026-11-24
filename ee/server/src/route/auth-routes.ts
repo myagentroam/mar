@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { registerAuthenticationRoutes } from '@myagentroam/server-core/auth-routes';
+import {
+  registerAuthenticationRoutes,
+  type AuthenticationRoutesOptions
+} from '@myagentroam/server-core/auth-routes';
 import type {
   AuthenticationAuditSink,
   AuthenticationStore,
@@ -24,6 +27,8 @@ export function registerAuthRoutes(input: {
   readonly loginRate: Map<string, LoginRateRecord>;
   readonly productCapabilities?: ProductCapabilityProvider;
   readonly notifications?: UserLocalePreferences;
+  readonly browserUsePreferences?: AuthenticationRoutesOptions['browserUsePreferences'];
+  readonly browserSettings?: AuthenticationRoutesOptions['browserSettings'];
 }): void {
   const { nodeControl } = input;
   registerAuthenticationRoutes({
@@ -44,6 +49,10 @@ export function registerAuthRoutes(input: {
     secureCookies: input.secureCookies,
     now: input.now,
     loginRate: input.loginRate,
+    ...(input.browserUsePreferences === undefined
+      ? {}
+      : { browserUsePreferences: input.browserUsePreferences }),
+    ...(input.browserSettings === undefined ? {} : { browserSettings: input.browserSettings }),
     ...(input.productCapabilities === undefined
       ? {}
       : { productCapabilities: input.productCapabilities }),

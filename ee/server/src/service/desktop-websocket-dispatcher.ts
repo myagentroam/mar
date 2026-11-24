@@ -4,16 +4,16 @@ import { WebSocketServer } from 'ws';
 /** Routes marked desktop upgrades through a bounded server without adding an upgrade listener. */
 export class DesktopWebSocketDispatcher {
   readonly #marked = new WeakSet<IncomingMessage>();
-  readonly #desktop = new WebSocketServer({
-    noServer: true,
-    maxPayload: 16_384,
-    perMessageDeflate: false
-  });
+  readonly #desktop: WebSocketServer;
   readonly #original: WebSocketServer['handleUpgrade'];
   readonly #dispatch: WebSocketServer['handleUpgrade'];
   #closed = false;
 
-  constructor(private readonly shared: WebSocketServer) {
+  constructor(
+    private readonly shared: WebSocketServer,
+    maxPayload = 16_384
+  ) {
+    this.#desktop = new WebSocketServer({ noServer: true, maxPayload, perMessageDeflate: false });
     this.#original = shared.handleUpgrade;
     this.#dispatch = (request, socket, head, callback) => {
       if (this.#marked.has(request)) this.#desktop.handleUpgrade(request, socket, head, callback);

@@ -519,7 +519,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 <style scoped>
 .git-fetch-notice {
-  margin: 0 6px 4px;
+  margin-block-end: 4px;
   inline-size: auto;
   flex: none;
   padding: 6px 8px;
@@ -540,7 +540,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 .git-worktrees {
   flex: 0 0 auto;
   border-bottom: 1px solid var(--mar-border-subtle);
-  padding: 0.15rem 2px 0.4rem;
+  padding-block: 0.15rem 0.4rem;
 }
 
 .git-worktree-heading {
@@ -649,7 +649,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   grid-template-columns: minmax(0, 1fr);
   margin-top: 0.5rem;
   border-top: 1px solid var(--mar-border-default);
-  padding: 0.35rem 0.25rem 0;
+  padding: 0.35rem 0 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
@@ -809,6 +809,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   flex-direction: column;
   overflow: auto;
   overscroll-behavior: contain;
+  padding-inline: var(--mar-inspector-content-inset);
 }
 
 @media (max-width: 767px) {

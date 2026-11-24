@@ -1,6 +1,6 @@
 ---
 title: Messages and Composer
-lastUpdated: 2026-11-21
+lastUpdated: 2026-11-24
 ---
 
 # Messages and Composer
@@ -52,7 +52,7 @@ With an empty draft, a visible and focused browser page, and Node support, the c
 
 Overlapping signals are coalesced and rate-limited; continuous updates do not restart the conversation-entry delay. Each entry checks once, and a different conversation does not inherit the previous conversation's request cooldown. Eligible context changes during generation retain at most one follow-up refresh without interrupting or overlapping requests. Automatic refresh preserves a still-valid candidate until the new result is ready, without changing the draft or taking focus. Existing suggestions do not block new reply or ending events. History loading establishes a baseline rather than replaying old events; focusing before history is ready does not lose the entry check. Starting another turn discards the previous queued ending, but not the current conversation's entry or focus check. Manual generation, editing and cancellation clear the pending automatic batch; the Cancel button returning focus does not immediately retry. Later eligible events can still trigger prediction. The entry delay determines when generation starts, not when a suggestion is guaranteed to appear.
 
-All four Work-mode Runners share this capability; hosted conversations do not support Prompt Tab. You can request it while the Agent is running. Requests send the draft, current conversation, a bounded execution snapshot, and authorized Workspace user-message references to the configured model. References are not filtered by author. Node maintains bounded in-memory caches; refreshing references does not call the model. Actual model usage belongs to the requesting user as prompt-prediction usage. Review suggestions before accepting; they are not evidence that work has finished.
+All four Work-mode Agents share this capability; hosted conversations do not support Prompt Tab. You can request it while the Agent is running. Requests send the draft, current conversation, a bounded execution snapshot, and authorized Workspace user-message references to the configured model. References are not filtered by author. Node maintains bounded in-memory caches; refreshing references does not call the model. Actual model usage belongs to the requesting user as prompt-prediction usage. Review suggestions before accepting; they are not evidence that work has finished.
 
 Each Node stores local UTC daily analysis records under `prompt-completion/` in its data directory, including input drafts, bounded context, prediction output, status, and duration. Only the current day and previous six days are retained. Records are not uploaded to Server or added to conversation history. They can contain sensitive text and should be treated as private data.
 
@@ -88,7 +88,7 @@ MAR Agent, Codex, Claude Code, and OpenCode support Goals with no execution-coun
 3. Hover or focus a shortened objective to read its tooltip, or select **View** for the full objective, execution count, and revision.
 
 The first execution, or a restart after editing the objective, shows `Goal Start` followed by the full objective on the next line. Automatic continuation shows only `Goal Continue`, without repeating the objective. Working time continues accumulating during handoffs and failed-run retry waits.
-A Goal's wall-clock time starts with its first objective and does not reset on edits; it includes waiting and retries, not just model or tool execution. When the Agent marks it completed or finally blocked, it receives the elapsed time through that status update and should summarize the work, verification, and remaining issues in the same turn. The subsequent summary and Run shutdown are not included in that measurement. Automatic blocking after Runner failures may leave no Agent available to summarize.
+A Goal's wall-clock time starts with its first objective and does not reset on edits; it includes waiting and retries, not just model or tool execution. When the Agent marks it completed or finally blocked, it receives the elapsed time through that status update and should summarize the work, verification, and remaining issues in the same turn. The subsequent summary and Run shutdown are not included in that measurement. Automatic blocking after Agent execution failures may leave no Agent available to summarize.
 
 ### Steer, update, and exit
 

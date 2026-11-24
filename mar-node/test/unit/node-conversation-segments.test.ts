@@ -5,6 +5,7 @@ vi.mock('ws', async (importOriginal) => {
 });
 import { connectTestSocket, disconnectTestSocket } from './support/control-socket.js';
 import { describe, expect, it, vi } from 'vitest';
+import { serializeComposerTag } from '@myagentroam/protocol';
 import {
   ConversationSegmentService,
   conversationSegmentIdentityForItem,
@@ -380,6 +381,98 @@ describe('Node Conversation Segment', () => {
     ).toEqual({ id: 'turn-agent-then-tool:segment:1', index: 1 });
   });
 
+  it('projects cross-session messages into work without changing reply Segment boundaries', () => {
+    const base = turn('collaboration', [
+      'tool_call',
+      'user_message',
+      'tool_call',
+      'assistant_message',
+      'user_message',
+      'assistant_message',
+      'user_message',
+      'tool_call',
+      'user_message',
+      'tool_call'
+    ]);
+    const items = base.items.map((entry, index) => {
+      if (index === 8)
+        return {
+          ...entry,
+          payload: {
+            ...entry.payload,
+            text: serializeComposerTag('mar_channel', {
+              source: 'WEB_SHARE',
+              channelId: 'share',
+              senderId: 'reader',
+              name: 'Reader'
+            })
+          }
+        };
+      if (index !== 1 && index !== 4 && index !== 6) return entry;
+      return {
+        ...entry,
+        payload: {
+          ...entry.payload,
+          text: [
+            serializeComposerTag('mar_steer', { message: 'An update' }),
+            serializeComposerTag('mar_session_origin', {
+              sessionId: `source-${index}`,
+              name: 'Collaborator',
+              relation: index === 1 ? 'parent' : index === 4 ? 'child' : 'other'
+            })
+          ].join('\n')
+        }
+      };
+    });
+    const input = { ...base, items };
+    const segments = conversationSegments(input);
+    expect(segments.map(({ items }) => items.map(({ id }) => id))).toEqual([
+      items.slice(0, 7).map(({ id }) => id),
+      items.slice(7).map(({ id }) => id)
+    ]);
+    const projected = segments.flatMap(({ items }) => items);
+    expect(projected[0]?.processGroup?.isStart).toBe(true);
+    expect(projected[1]?.processGroup).toEqual({ id: projected[0]?.processGroup?.id });
+    expect(projected[2]?.processGroup).toEqual(projected[1]?.processGroup);
+    expect(projected[4]?.processGroup).toEqual(projected[1]?.processGroup);
+    expect(projected[6]?.processGroup).toEqual(projected[1]?.processGroup);
+    expect(projected[7]?.processGroup?.id).not.toBe(projected[6]?.processGroup?.id);
+    expect(projected[8]?.processGroup).toBeUndefined();
+    expect(projected[9]?.processGroup?.id).not.toBe(projected[7]?.processGroup?.id);
+    for (const entry of projected) {
+      expect(conversationSegmentIdentityForItem(input, entry.id, entry.kind)).toEqual({
+        id: entry.segmentId,
+        index: entry.segmentIndex
+      });
+    }
+  });
+
+  it('does not fold control messages or inputs without a different source session', () => {
+    const origin = serializeComposerTag('mar_session_origin', {
+      sessionId: 'peer',
+      name: 'Collaborator'
+    });
+    for (const text of [
+      serializeComposerTag('mar_session_origin', {}),
+      `${origin}\n${serializeComposerTag('mar_goal_start', { objective: 'Work' })}`,
+      `${origin}\n${serializeComposerTag('mar_restart', {})}`,
+      `${origin}\n${serializeComposerTag('mar_schedule', { objective: 'Work' })}`,
+      `${origin}\n${serializeComposerTag('mar_channel', {
+        source: 'WEB_SHARE',
+        channelId: 'share',
+        senderId: 'reader',
+        name: 'Reader'
+      })}`,
+      serializeComposerTag('mar_session_origin', { sessionId: 'session-1', name: 'Self' })
+    ]) {
+      const base = turn('controls', ['tool_call', 'user_message', 'tool_call']);
+      base.items[1]!.payload.text = text;
+      const [first, user, next] = conversationSegments(base)[0]!.items;
+      expect(user?.processGroup).toBeUndefined();
+      expect(next?.processGroup?.id).not.toBe(first?.processGroup?.id);
+    }
+  });
+
   it('sends only the normalized realtime Item without repeating the existing large Turn', () => {
     const database = new NodeDatabase(':memory:', 'conversation-segment-item-patch');
     const workspace = database.saveWorkspace({
@@ -430,6 +523,12 @@ describe('Node Conversation Segment', () => {
       status: 'COMPLETED',
       payload: { outputSummary: 'x'.repeat(256 * 1024) }
     });
+    const workGroup = (
+      emitRealtime.mock.lastCall?.[1].payload as {
+        item?: { processGroup?: { id: string } };
+      }
+    ).item?.processGroup;
+    expect(workGroup).toEqual({ id: expect.any(String), isStart: true });
     emitRealtime.mockClear();
 
     internals.emitRunEvent(run.id, 'text.delta', { text: 'Continue' });
@@ -455,6 +554,40 @@ describe('Node Conversation Segment', () => {
     emitRealtime.mockClear();
 
     internals.emitConversationItem(run.id, {
+      itemId: 'collaboration-update',
+      kind: 'user_message',
+      status: 'COMPLETED',
+      payload: {
+        text: `Agent update\n${serializeComposerTag('mar_session_origin', {
+          sessionId: 'peer',
+          name: 'Peer'
+        })}`,
+        clientMessageId: null,
+        delivery: 'STEERED'
+      }
+    });
+    expect(emitRealtime).toHaveBeenCalledOnce();
+    expect(emitRealtime.mock.calls[0]?.[1].payload).toMatchObject({
+      item: {
+        itemId: 'collaboration-update',
+        kind: 'user_message',
+        segmentIndex: 0,
+        processGroup: { id: workGroup?.id }
+      }
+    });
+    emitRealtime.mockClear();
+    internals.emitRunEvent(run.id, 'text.delta', { text: ' the reply' });
+    internals.runEventService.flushPendingText(run.id);
+    expect(emitRealtime.mock.calls[0]?.[1].payload).toMatchObject({
+      delta: {
+        itemId: (deltaPayload.delta as Record<string, unknown>).itemId,
+        segmentIndex: 0,
+        text: ' the reply'
+      }
+    });
+    emitRealtime.mockClear();
+
+    internals.emitConversationItem(run.id, {
       itemId: 'small-tool',
       kind: 'tool_call',
       status: 'COMPLETED',
@@ -474,7 +607,7 @@ describe('Node Conversation Segment', () => {
           kind: 'tool_call',
           status: 'COMPLETED',
           segmentId: expect.stringContaining(':segment:'),
-          segmentIndex: expect.any(Number),
+          segmentIndex: 1,
           payload: { outputSummary: 'Completed' }
         })
       })

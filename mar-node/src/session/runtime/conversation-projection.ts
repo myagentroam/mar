@@ -6,7 +6,7 @@ import {
   type PermissionStop,
   type AgentRunStatus
 } from '@myagentroam/protocol';
-import { projectConversationWorkProcesses } from './work-process.js';
+import { isAgentCollaborationMessage, projectConversationWorkProcesses } from './work-process.js';
 import type {
   NodeAgentRun,
   NodeConversationItem,
@@ -42,7 +42,7 @@ export function projectConversationEvent(
           : undefined;
       const stableItemId =
         nativeItemId === undefined ? undefined : `${event.runId}:${nativeItemId}`;
-      const lastItem = turn.items.at(-1);
+      const lastItem = turn.items.findLast((item) => !isAgentCollaborationMessage(item));
       const existing =
         stableItemId === undefined
           ? lastItem?.kind === 'assistant_message' && activeConversationItem(lastItem.status)
@@ -87,7 +87,7 @@ export function projectConversationEvent(
     const projected = conversationItemFromEvent(event);
     if (projected !== undefined) {
       const itemId = runConversationItemId(event.runId, projected.itemId, projected.kind);
-      const trailingItem = turn.items.at(-1);
+      const trailingItem = turn.items.findLast((item) => !isAgentCollaborationMessage(item));
       const orderedItems =
         projected.kind !== 'user_message' &&
         trailingItem?.kind === 'assistant_message' &&
@@ -124,6 +124,8 @@ export function projectConversationEvent(
         projected.kind === 'context_compaction' ||
         existing.parentItemId !== parentItemId ||
         existing.sourceItemId !== sourceItemId ||
+        (projected.kind === 'user_message' &&
+          readableText(existing.payload) !== readableText(projected.payload)) ||
         (projected.kind === 'assistant_message' &&
           !!readableText(existing.payload).trim() !== !!readableText(projected.payload).trim()) ||
         (projected.kind === 'reasoning' && existing.processGroup === undefined);

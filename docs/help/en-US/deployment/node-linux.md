@@ -1,6 +1,6 @@
 ---
 title: Linux Node and systemd
-lastUpdated: 2026-11-14
+lastUpdated: 2026-11-24
 ---
 
 # Linux Node and systemd
@@ -34,7 +34,7 @@ sudo journalctl -u myagentroam-node.service -f
 
 The example PATH includes the service account's `~/.local/bin`, matching the user-level npm prefix in the installation guide. If you use a different installation directory, adjust both the unit and diagnostic commands so that they check the same environment.
 
-Ordinary Nodes, Runners, and terminals use the service account's OS permissions. The default unit does not set `ProtectSystem`, `ReadWritePaths`, `NoNewPrivileges`, or `PrivateTmp`, so it adds no restrictions on symlink targets, tool caches, or the system temporary directory; hosted conversations retain their separate sandbox. Use an unprivileged account with write access to Node data, Workspaces, Agent configuration, and real symlink targets. Administrators can explicitly configure additional host isolation for their deployment. Supervisor runs as the same account and does not invoke sudo. After changing configuration or manually upgrading the npm package, regenerate and install the unit, then reload and restart it. For existing services, also inspect local drop-ins shown by `systemctl cat` for leftover restrictions; remote upgrades do not modify the unit automatically.
+Ordinary Nodes, Agents, and terminals use the service account's OS permissions. The default unit does not set `ProtectSystem`, `ReadWritePaths`, `NoNewPrivileges`, or `PrivateTmp`, so it adds no restrictions on symlink targets, tool caches, or the system temporary directory; hosted conversations retain their separate sandbox. Use an unprivileged account with write access to Node data, Workspaces, Agent configuration, and real symlink targets. Administrators can explicitly configure additional host isolation for their deployment. Supervisor runs as the same account and does not invoke sudo. After changing configuration or manually upgrading the npm package, regenerate and install the unit, then reload and restart it. For existing services, also inspect local drop-ins shown by `systemctl cat` for leftover restrictions; remote upgrades do not modify the unit automatically.
 
 Inspect `systemctl cat myagentroam-node.service` and `systemctl show myagentroam-node.service -p User -p ExecStart -p Environment`: verify the account, `supervise --config`, `HOME`, `PATH`, and write access to Node data, Workspaces, Agent configuration, and real symlink targets. Ensure old units or drop-ins do not impose unintended read-only mounts. Check required executables under that same account and environment; unused optional Agents and tools need not be installed. If discovery differs from an interactive shell, check the unit environment and sign-in configuration rather than switching to root.
 

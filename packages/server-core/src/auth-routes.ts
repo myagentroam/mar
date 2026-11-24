@@ -1,5 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  browserSettingsInputSchema,
+  browserUsePreferenceSchema,
+  type BrowserSettingsSnapshot
+} from '@myagentroam/protocol';
+import {
   boundedUserAgent,
   clearSessionCookie,
   isAllowedOrigin,
@@ -48,6 +53,14 @@ export interface AuthenticationRoutesOptions {
   readonly loginRate: Map<string, LoginRateRecord>;
   readonly productCapabilities?: ProductCapabilityProvider;
   readonly localePreferences?: UserLocalePreferences;
+  readonly browserUsePreferences?: {
+    browserUseEnabled(userId: number): Promise<boolean>;
+    setBrowserUseEnabled(userId: number, enabled: boolean): Promise<void>;
+  };
+  readonly browserSettings?: {
+    browserSettings(userId: number): Promise<BrowserSettingsSnapshot>;
+    setBrowserCacheCleanupDays(userId: number, days: number): Promise<void>;
+  };
 }
 
 export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions): void {
@@ -61,7 +74,9 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
     now,
     loginRate,
     productCapabilities,
-    localePreferences
+    localePreferences,
+    browserUsePreferences,
+    browserSettings
   } = input;
 
   app.get('/health', async () => ({ status: 'ok' as const }));
@@ -155,6 +170,49 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
       return reply.code(204).send();
     }
   );
+
+  if (browserUsePreferences !== undefined) {
+    const endpoint = '/api/auth/preferences/browser-use';
+    app.get(endpoint, async (request, reply) => {
+      const current = currentSession(store, request);
+      if (current === undefined) return sendError(reply, 401, 'UNAUTHENTICATED');
+      return reply.send({ enabled: await browserUsePreferences.browserUseEnabled(current.userId) });
+    });
+    app.put(endpoint, async (request, reply) => {
+      if (!isAllowedOrigin(request, publicOrigin))
+        return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
+      const current = currentSession(store, request);
+      if (current === undefined) return sendError(reply, 401, 'UNAUTHENTICATED');
+      if (!validCsrf(request, current)) return sendError(reply, 403, 'CSRF_INVALID');
+      const result = browserUsePreferenceSchema.safeParse(request.body);
+      if (!result.success) return sendError(reply, 400, 'BROWSER_USE_PREFERENCE_INVALID');
+      await browserUsePreferences.setBrowserUseEnabled(current.userId, result.data.enabled);
+      return reply.code(204).send();
+    });
+  }
+
+  if (browserSettings !== undefined) {
+    const endpoint = '/api/auth/preferences/browser-settings';
+    app.get(endpoint, async (request, reply) => {
+      const current = currentSession(store, request);
+      if (current === undefined) return sendError(reply, 401, 'UNAUTHENTICATED');
+      return reply.send(await browserSettings.browserSettings(current.userId));
+    });
+    app.put(endpoint, async (request, reply) => {
+      if (!isAllowedOrigin(request, publicOrigin))
+        return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
+      const current = currentSession(store, request);
+      if (current === undefined) return sendError(reply, 401, 'UNAUTHENTICATED');
+      if (!validCsrf(request, current)) return sendError(reply, 403, 'CSRF_INVALID');
+      const result = browserSettingsInputSchema.safeParse(request.body);
+      if (!result.success) return sendError(reply, 400, 'BROWSER_SETTINGS_INVALID');
+      await browserSettings.setBrowserCacheCleanupDays(
+        current.userId,
+        result.data.cacheCleanupDays
+      );
+      return reply.code(204).send();
+    });
+  }
 
   app.get('/api/auth/sessions', async (request, reply) => {
     const sessionId = parseCookies(request)[SESSION_COOKIE_NAME];

@@ -174,7 +174,7 @@ export const conversationUiZhCN = {
       messageFromMarctl: '来自 marctl',
       sessionSourceDetails: '来源：会话\n会话 ID：{sessionId}',
       webShareSourceDetails: '来源：网页分享',
-      subagent: 'Agent 操作',
+      subagent: 'Agent 协作',
       you: '你',
       reasoning: '思考',
       plan: '计划',
@@ -331,7 +331,13 @@ export const conversationUiZhCN = {
     yes: '是',
     result: '结果',
     subagentTask: 'Agent',
-    subagentOperationCount: '{count} 次操作',
+    agentCollaborationCount: '{count} 条记录',
+    agentCollaborationMessage: '消息',
+    agentCollaborationSource: {
+      parent: '父会话',
+      child: '子会话',
+      other: '其他会话'
+    },
     subagentCallFailed: '调用失败',
     noAgentSessions: '没有会话',
     agentGoal: '目标',

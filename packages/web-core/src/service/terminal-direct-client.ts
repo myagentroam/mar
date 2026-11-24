@@ -12,6 +12,7 @@ import type { createWorkspaceDirectTransferService } from './workspace-direct-tr
 export interface TerminalDockHandle {
   toggle(): Promise<void>;
   release(): Promise<void>;
+  closeAll(): Promise<boolean>;
 }
 
 type Transport = NonNullable<

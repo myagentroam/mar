@@ -41,6 +41,7 @@ async function renderOfflineSurface() {
     },
     identity: { admin: {} },
     layout: { mobileViewport: false, sidebarCollapsed: true },
+    browser: { destination: undefined },
     registration: { workspaceRegistrationNodeId: undefined },
     hosted: {
       hostedConversationWorkspace: {

@@ -7,6 +7,7 @@ import { resourceOwnershipSchema, type ResourceOwnership } from './enterprise.js
 import { workspaceDirectTransferCapabilitySchema } from './direct-transfer.js';
 import { terminalDirectCapabilitySchema } from './terminal-direct.js';
 import { remoteDesktopCapabilitySchema } from './remote-desktop.js';
+import { browserCapabilitySchema } from './browser-attachment.js';
 import { chatgptLoginCapabilitySchema } from './chatgpt-oauth.js';
 import { modelSocks5UrlSchema } from './model-connection.js';
 export * from './model-connection.js';
@@ -23,6 +24,13 @@ export * from './git-identity.js';
 export * from './direct-transfer.js';
 export * from './terminal-direct.js';
 export * from './remote-desktop.js';
+export * from './browser-frame.js';
+export * from './browser-input.js';
+export * from './browser-attachment.js';
+export * from './browser-data.js';
+export * from './browser-control.js';
+export * from './browser-settings.js';
+export * from './browser-files.js';
 export * from './mail-notification.js';
 export * from './marctl-execution-credential.js';
 export * from './notification-channels.js';
@@ -404,6 +412,8 @@ export const nodeCapabilitiesSchema = z
     chatgptLogin: chatgptLoginCapabilitySchema.optional(),
     workspaceDirectTransfer: workspaceDirectTransferCapabilitySchema.optional(),
     terminalDirect: terminalDirectCapabilitySchema.optional(),
+    browser: browserCapabilitySchema.optional(),
+    browserSettings: z.literal(true).optional(),
     remoteDesktop: remoteDesktopCapabilitySchema.optional(),
     sessionAside: sessionAsideCapabilitySchema.optional(),
     sessionGroups: z
@@ -2019,6 +2029,20 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   }),
   directTransfer: workspaceDirectTransferCapabilitySchema.optional(),
   terminalDirect: terminalDirectCapabilitySchema.optional(),
+  browser: browserCapabilitySchema.optional(),
+  browserViewportResize: z.literal(true).optional(),
+  browserHd: z.literal(true).optional(),
+  browserTabIcons: z.literal(true).optional(),
+  browserUse: z.literal(true).optional(),
+  browserAgentActivity: z.literal(true).optional(),
+  browserForegroundPresence: z.literal(true).optional(),
+  browserNativeTouch: z.literal(true).optional(),
+  browserContextMenu: z.literal(true).optional(),
+  browserFind: z.literal(true).optional(),
+  browserDownloadManagement: z.literal(true).optional(),
+  browserDownloadProgress: z.literal(true).optional(),
+  browserTabControls: z.literal(true).optional(),
+  browserDownloadWorkspace: z.literal(true).optional(),
   remoteDesktop: remoteDesktopCapabilitySchema.optional(),
   sessionAside: sessionAsideCapabilitySchema.optional(),
   sessionGroups: z

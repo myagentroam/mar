@@ -141,8 +141,8 @@ export function createWorkbenchPageShortcuts(
       allowedInBlockedScopes: ['terminal'],
       keys: workspaceKeys.terminal,
       when: () => options.terminalReady.value,
-      execute: () => {
-        options.toggleTerminal();
+      execute: (event) => {
+        if (!event.repeat) options.toggleTerminal();
         return 'HANDLED';
       }
     }

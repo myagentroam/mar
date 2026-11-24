@@ -84,7 +84,7 @@ onBeforeUnmount(pause);
   align-items: start;
   inline-size: fit-content;
   max-inline-size: min(520px, 100%);
-  padding: 8px 12px;
+  padding: 8px;
   border: 1px solid var(--mar-ui-message-border);
   border-radius: var(--mar-ui-radius-control);
   color: var(--mar-ui-text-primary);

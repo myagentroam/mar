@@ -1,6 +1,6 @@
 ---
 title: Linux Node 与 systemd
-lastUpdated: 2026-11-14
+lastUpdated: 2026-11-24
 ---
 
 # Linux Node 与 systemd
@@ -17,7 +17,7 @@ chmod 700 "$HOME/.config/myagentroam" "$HOME/.local/share/myagentroam"
 chmod 600 "$HOME/.config/myagentroam/mar-node.json"
 ```
 
-先由 `ubuntu` 用户生成 unit 临时文件，再由 root 安装。`mar-node install` 还会准备 Web Fetch 浏览器，可能需要网络下载，见[浏览器准备](node-installation.md#web-fetch-浏览器准备)。`node_bin_dir` 必须在服务账号环境中取得；unit 显式设置 `HOME`、`PATH` 并关闭 systemd 的登录环境覆盖，避免服务进程回落到系统默认 PATH 而无法发现用户级 npm 安装的 Runner：
+先由 `ubuntu` 用户生成 unit 临时文件，再由 root 安装。`mar-node install` 还会准备 Web Fetch 浏览器，可能需要网络下载，见[浏览器准备](node-installation.md#web-fetch-浏览器准备)。`node_bin_dir` 必须在服务账号环境中取得；unit 显式设置 `HOME`、`PATH` 并关闭 systemd 的登录环境覆盖，避免服务进程回落到系统默认 PATH 而无法发现用户级 npm 安装的 Agent CLI：
 
 ```bash
 unit_file=$(mktemp)
@@ -41,7 +41,7 @@ sudo journalctl -u myagentroam-node.service -f
 
 示例 PATH 包含服务账号的 `~/.local/bin`，与安装页的用户级 npm 前缀一致。如果使用其他安装目录，请同时调整 unit 和下方诊断命令，确保验证的是同一环境。
 
-`mar-node install` 只生成以 `mar-node supervise` 为入口的 unit；`systemctl enable --now` 才注册并启动服务。普通 Node、Runner 和终端使用服务账号本身的系统权限，默认 unit 不设置 `ProtectSystem`、`ReadWritePaths`、`NoNewPrivileges` 或 `PrivateTmp`，不额外限制软链接目标、工具缓存和系统临时目录；托管对话仍使用独立沙箱。请使用非 root 账号，并确保其能写入 Node 数据目录、Workspace、Agent 配置及软链接的真实目标；需要额外主机隔离时由管理员按用途显式配置。Supervisor 与 Node 使用同一账号，Supervisor 不会调用 sudo。修改配置或手工升级 npm 包后，重新生成/安装 unit，再执行 `daemon-reload` 和 `restart`。旧服务需要同时检查 `systemctl cat` 显示的本地 drop-in，避免遗留限制继续生效；远程升级不会自动修改 unit。
+`mar-node install` 只生成以 `mar-node supervise` 为入口的 unit；`systemctl enable --now` 才注册并启动服务。普通 Node、Agent 和终端使用服务账号本身的系统权限，默认 unit 不设置 `ProtectSystem`、`ReadWritePaths`、`NoNewPrivileges` 或 `PrivateTmp`，不额外限制软链接目标、工具缓存和系统临时目录；托管对话仍使用独立沙箱。请使用非 root 账号，并确保其能写入 Node 数据目录、Workspace、Agent 配置及软链接的真实目标；需要额外主机隔离时由管理员按用途显式配置。Supervisor 与 Node 使用同一账号，Supervisor 不会调用 sudo。修改配置或手工升级 npm 包后，重新生成/安装 unit，再执行 `daemon-reload` 和 `restart`。旧服务需要同时检查 `systemctl cat` 显示的本地 drop-in，避免遗留限制继续生效；远程升级不会自动修改 unit。
 
 ## 自启动与远程升级验收
 

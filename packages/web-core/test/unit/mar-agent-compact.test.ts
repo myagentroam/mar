@@ -149,7 +149,7 @@ describe('MAR Agent compact settings form', () => {
               {
                 id: 'other-model',
                 enabled: true,
-                reasoningEfforts: ['low', 'medium'],
+                reasoningEfforts: ['medium', 'low'],
                 defaultReasoningEffort: 'medium'
               }
             ]
@@ -173,7 +173,13 @@ describe('MAR Agent compact settings form', () => {
         const model = view.findAll('MarSelect')[0]!;
         await trigger(model, 'onUpdate:modelValue', 'other-model');
         await trigger(model, 'onChange', 'other-model');
-        expect(view.findAll('MarSelect')[1]!.props.modelValue).toBe('medium');
+        const effort = view.findAll('MarSelect')[1]!;
+        expect(effort.props.modelValue).toBe('medium');
+        expect(
+          effort.children
+            .filter((option) => option.type === 'MarOption')
+            .map((option) => option.props.value)
+        ).toEqual(['low', 'medium']);
         const save = view.findAll('MarButton').find((button) => button.props.type === 'primary')!;
         await trigger(save, 'onClick');
         const writes = request.mock.calls.filter(([, init]) => init?.method === 'PUT');

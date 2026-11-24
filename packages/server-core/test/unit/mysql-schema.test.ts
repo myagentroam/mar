@@ -354,6 +354,52 @@ describe('Core MySQL schema', () => {
       'SERVER_DATABASE_SCHEMA_INVALID'
     );
   });
+  it('adds the default-on Browser Use preference only once and rejects incompatible columns', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(
+      ({ name }) => name === 'user_browser_use_preference'
+    )!;
+    let column: Record<string, string> | undefined;
+    const connection = {
+      execute: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT')) return [column === undefined ? [] : [column], []];
+        column = { COLUMN_TYPE: 'tinyint(1)', IS_NULLABLE: 'NO', COLUMN_DEFAULT: '1' };
+        return [[], []];
+      })
+    };
+    await migration.up(connection as never);
+    await migration.up(connection as never);
+    expect(connection.execute.mock.calls.filter(([sql]) => sql.startsWith('ALTER'))).toEqual([
+      ['ALTER TABLE users ADD COLUMN browser_use_enabled tinyint(1) NOT NULL DEFAULT 1']
+    ]);
+    expect(CORE_MYSQL_SCHEMA.users).toContain(
+      "`browser_use_enabled` tinyint(1) NOT NULL DEFAULT '1'"
+    );
+    column = { COLUMN_TYPE: 'tinyint(1)', IS_NULLABLE: 'NO', COLUMN_DEFAULT: '0' };
+    await expect(migration.up(connection as never)).rejects.toThrow(
+      'SERVER_DATABASE_SCHEMA_INVALID'
+    );
+  });
+  it('adds account browser settings once and rejects an incompatible JSON column', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ name }) => name === 'user_browser_settings')!;
+    let column: Record<string, unknown> | undefined;
+    const connection = {
+      execute: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT')) return [column === undefined ? [] : [column], []];
+        column = { COLUMN_TYPE: 'json', IS_NULLABLE: 'YES', COLUMN_DEFAULT: null };
+        return [[], []];
+      })
+    };
+    await migration.up(connection as never);
+    await migration.up(connection as never);
+    expect(connection.execute.mock.calls.filter(([sql]) => sql.startsWith('ALTER'))).toEqual([
+      ['ALTER TABLE users ADD COLUMN browser_settings json DEFAULT NULL']
+    ]);
+    expect(CORE_MYSQL_SCHEMA.users).toContain('`browser_settings` json DEFAULT NULL');
+    column = { COLUMN_TYPE: 'text', IS_NULLABLE: 'YES', COLUMN_DEFAULT: null };
+    await expect(migration.up(connection as never)).rejects.toThrow(
+      'SERVER_DATABASE_SCHEMA_INVALID'
+    );
+  });
   it('adds subagent usage disabled by default without overwriting later changes on retry', async () => {
     const migration = CORE_MYSQL_MIGRATIONS.find(({ name }) => name === 'subagent_model_usage')!;
     let columnExists = false;
@@ -682,7 +728,7 @@ describe('Core MySQL schema', () => {
     );
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
       9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-      33, 34, 35, 36, 37
+      33, 34, 35, 36, 37, 38, 39
     ]);
     expect(CORE_MYSQL_SCHEMA.mail_templates).toContain('`kind` enum');
     expect(CORE_MYSQL_SCHEMA.mail_deliveries).toContain('`payload_hash` char(64)');

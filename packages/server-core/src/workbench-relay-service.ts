@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
   directBrowserMessageSchema,
+  browserControlRequestSchema,
+  type BrowserControlRequest,
   terminalDirectBrowserMessageSchema,
   remoteDesktopDirectBrowserMessageSchema,
   remoteDesktopRelayBrowserMessageSchema,
@@ -96,6 +98,11 @@ export interface WorkbenchDesktopRelayHandler {
   readonly revoked?: (connectionId: string, code: string) => void;
 }
 
+export interface WorkbenchBrowserHandler {
+  message(identity: WorkbenchDirectTransferIdentity, message: BrowserControlRequest): Promise<void>;
+  revoked(connectionId: string): void;
+}
+
 export class WorkbenchRelayService {
   private readonly attached = new Map<WebSocket, UserNodeAuthorization>();
   private readonly shareSockets = new Map<WebSocket, ShareWorkbenchAccess>();
@@ -114,6 +121,7 @@ export class WorkbenchRelayService {
   private terminalDirectHandler: WorkbenchTerminalDirectHandler | undefined;
   private desktopDirectHandler: WorkbenchDesktopDirectHandler | undefined;
   private desktopRelayHandler: WorkbenchDesktopRelayHandler | undefined;
+  private browserHandler: WorkbenchBrowserHandler | undefined;
 
   constructor(private readonly options: WorkbenchRelayOptions) {
     this.authorizeHostedConversation = options.authorizeHostedConversation;
@@ -133,6 +141,10 @@ export class WorkbenchRelayService {
 
   setDesktopRelayHandler(handler: WorkbenchDesktopRelayHandler): void {
     this.desktopRelayHandler = handler;
+  }
+
+  setBrowserHandler(handler: WorkbenchBrowserHandler): void {
+    this.browserHandler = handler;
   }
 
   attach(socket: WebSocket, user: UserNodeAuthorization, share?: ShareWorkbenchAccess): void {
@@ -185,6 +197,17 @@ export class WorkbenchRelayService {
 
   ownsConnection(sessionHash: string, connectionId: string): boolean {
     return this.connections.get(connectionId)?.user.sessionHash === sessionHash;
+  }
+
+  ownsActiveConnection(user: UserNodeAuthorization, id: string): boolean {
+    const connection = this.connections.get(id);
+    return (
+      connection?.share === undefined &&
+      connection?.user.userId === user.userId &&
+      connection.user.sessionHash === user.sessionHash &&
+      connection.socket !== undefined &&
+      connection.socket.readyState === connection.socket.OPEN
+    );
   }
 
   async sendConnection(
@@ -387,6 +410,19 @@ export class WorkbenchRelayService {
               current.visitor = visitor.data;
           this.publishShareParticipants(share.target);
         } else socket.close(4002, 'WORKBENCH_MESSAGE_INVALID');
+        return;
+      }
+      if (record(message) && message.type === 'browser.request') {
+        const browser = browserControlRequestSchema.safeParse(message);
+        const connection = this.socketConnections.get(socket);
+        if (!browser.success || !connection || !this.browserHandler) {
+          socket.close(4002, 'WORKBENCH_MESSAGE_INVALID');
+          return;
+        }
+        await this.browserHandler.message(
+          { ...connection.user, workbenchConnectionId: connection.id },
+          browser.data
+        );
         return;
       }
       const direct = directBrowserMessageSchema.safeParse(message);
@@ -624,6 +660,7 @@ export class WorkbenchRelayService {
     this.directTransferHandler?.disconnected?.(connection.id);
     this.desktopDirectHandler?.revoked?.(connection.id, 'DESKTOP_PAGE_CONNECTION_CLOSED');
     this.desktopRelayHandler?.revoked?.(connection.id, 'DESKTOP_PAGE_CONNECTION_CLOSED');
+    this.browserHandler?.revoked(connection.id);
   }
 
   private revokeConnection(connection: WorkbenchConnection, reason: string): void {
@@ -633,6 +670,7 @@ export class WorkbenchRelayService {
     this.terminalDirectHandler?.revoked?.(connection.id, 'TERMINAL_PAGE_CONNECTION_CLOSED');
     this.desktopDirectHandler?.revoked?.(connection.id, 'DESKTOP_PAGE_CONNECTION_CLOSED');
     this.desktopRelayHandler?.revoked?.(connection.id, 'DESKTOP_PAGE_CONNECTION_CLOSED');
+    this.browserHandler?.revoked(connection.id);
     const socket = connection.socket;
     delete connection.socket;
     if (socket === undefined) return;

@@ -1,8 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { ref } from 'vue';
 import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
+import type { RunnerProfile, Session } from '../../src/model/workbench.js';
 
 describe('Web Composer Configuration State', () => {
+  it('orders MAR reasoning options without changing the supported subset or selected effort', () => {
+    const supportedEfforts = Object.freeze(['xhigh', 'high', 'max', 'low']);
+    const model = { id: 'model', label: 'Model', supportedEfforts, defaultEffort: 'high' };
+    const profiles = ref<RunnerProfile[]>([
+      { runner: 'mar-agent', models: [model], accessOptions: [], commands: [], capabilities: [] },
+      { runner: 'opencode', models: [model], accessOptions: [], commands: [], capabilities: [] }
+    ]);
+    const state = createComposerConfigurationService({
+      selectedSession: ref<Session>(),
+      profiles,
+      effortLabel: String
+    });
+
+    state.apply({ runner: 'mar-agent', modelId: model.id, effort: 'xhigh', access: '' });
+    expect(state.efforts.value).toEqual(['low', 'high', 'xhigh', 'max']);
+    expect(state.effort.value).toBe('xhigh');
+
+    state.apply({ runner: 'mar-agent', modelId: model.id, effort: 'medium', access: '' });
+    expect(state.effort.value).toBe('high');
+
+    state.apply({ runner: 'opencode', modelId: model.id, effort: 'high', access: '' });
+    expect(state.efforts.value).toEqual(['xhigh', 'high', 'max', 'low']);
+  });
+
   it('keeps the saved child model visible without granting it selectable status', () => {
     const selectedSession = ref({
       id: 'child',
@@ -190,6 +215,7 @@ describe('Web Composer Configuration State', () => {
     });
 
     expect(state.effort.value).toBe('medium');
+    expect(state.efforts.value).toEqual([]);
   });
 
   it('Uses the selected session to determine the displayed runner', () => {

@@ -2,7 +2,7 @@
   "name": "my-agent-roam",
   "private": true,
   "license": "LicenseRef-MAR-ESAL-1.0",
-  "version": "0.14.31",
+  "version": "0.14.32",
   "packageManager": "pnpm@11.21.0",
   "scripts": {
     "build": "pnpm --filter @myagentroam/server... --filter @myagentroam/web-console... --filter @myagentroam/node... --filter @myagentroam/agent-extension-subagent... build",
@@ -13,7 +13,7 @@
     "dev:web": "pnpm --filter @myagentroam/web-console dev",
     "test:e2e": "node --import tsx scripts/test-e2e.mjs",
     "test:integration": "node --import tsx scripts/test-e2e.mjs --integration",
-    "test:smoke": "node --import tsx scripts/test-e2e.mjs --smoke",
+    "test:smoke": "pnpm --filter @myagentroam/node lint:tool-schemas && node --import tsx scripts/test-e2e.mjs --smoke",
     "test": "pnpm test:unit && pnpm test:e2e",
     "check:versions": "node scripts/product-versions.mjs",
     "computer-runtime:prepare": "node scripts/prepare-computer-use-runtime.mjs",

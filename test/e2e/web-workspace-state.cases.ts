@@ -2181,7 +2181,9 @@ test('Main and Aside keep independent session watches through width constraints 
   await expect(asideComposer).toHaveValue('retained Aside draft');
   await expect(aside.locator('.composer-attachments')).toContainText('aside-note.txt');
   await expect(aside.getByRole('tab', { name: '文件', exact: true })).toBeVisible();
-  await expect(aside.getByRole('tab', { name: '终端', exact: true })).toBeVisible();
+  await expect(aside.getByRole('tab', { name: '终端', exact: true })).toHaveCount(0);
+  await aside.getByRole('button', { name: '添加辅助面标签页' }).click();
+  await expect(page.getByRole('menuitem', { name: '终端', exact: true })).toBeVisible();
 });
 
 test('Workspace tab direct Link icon preserves hover and compact status layout', async ({
@@ -3915,8 +3917,9 @@ test('Node reconnection and page realtime recovery resynchronize Node facts and 
   const initialCapabilityRequests = capabilityRequests;
   await expect(page.locator('.readonly-banner')).toHaveCount(0);
   const terminalDock = page.locator('.terminal-dock');
-  await expect(terminalDock).toHaveCount(1);
-  await page.locator('.workspace-aside').getByRole('tab', { name: '终端', exact: true }).click();
+  await expect(terminalDock).toHaveCount(0);
+  await page.locator('.workspace-aside').getByRole('button', { name: '添加辅助面标签页' }).click();
+  await page.getByRole('menuitem', { name: '终端', exact: true }).click();
   await expect(terminalDock).toBeVisible();
 
   await page.evaluate(() => {

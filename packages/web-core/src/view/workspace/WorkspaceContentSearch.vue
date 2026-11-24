@@ -228,7 +228,7 @@ defineExpose({
 
 .content-search-toolbar,
 .content-search-body {
-  padding-inline: 0.375rem;
+  padding-inline: var(--mar-inspector-content-inset);
 }
 
 .content-search-toolbar form {

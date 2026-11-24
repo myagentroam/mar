@@ -111,7 +111,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       try {
         await page.setViewportSize({ width, height: 900 });
         const toolbar =
-          width >= 768 ? '.file-preview-desktop-actions' : '.workspace-file-mobile-actions-body';
+          width >= 768 ? '.file-preview-desktop-actions' : '.workspace-floating-actions-body';
         for (const kind of ['text', 'video']) {
           await page.goto(`${fixture.url}file-tabs.html?toolbar-loading=${kind}&theme=${theme}`);
           await expect(page.locator(`#toolbar-${kind}`)).toBeVisible();

@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, useTemplateRef } from 'vue';
 import { MarIcon } from '../../icons/index.js';
 import { useMarUiLocale } from '../../locale/index.js';
-import { formatLocalDateTime } from './local-date-time.js';
+import { formatLocalDate } from './local-date-time.js';
 
 const props = defineProps<{
   month: Date;
@@ -27,7 +27,7 @@ const dates = computed(() =>
     return day;
   })
 );
-const key = (date?: Date) => formatLocalDateTime(date).slice(0, 10);
+const key = formatLocalDate;
 const selection = computed(() => props.dates.map(key));
 const grid = useTemplateRef<HTMLElement>('days');
 const focusedDay = ref('');

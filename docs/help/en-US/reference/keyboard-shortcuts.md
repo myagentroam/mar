@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-lastUpdated: 2026-11-13
+lastUpdated: 2026-11-24
 ---
 
 # Keyboard Shortcuts
@@ -9,7 +9,9 @@ Session shortcuts apply to the focused Main or Aside conversation. An open dialo
 
 With an Aside or file tab focused, use the arrow keys or Home/End to move focus, then press Enter or Space to activate it. Moving focus alone does not switch the content.
 
-With focus in the Aside tab strip, content, or Composer, `Ctrl+W` / `Alt+W` (`Control+W` / `Option+W` on macOS) closes only the active session or Browser, not the Workspace. Fixed tools stay open, and the Shift variants do not close background Workspaces. Closing a session preserves its draft and running task. Native inputs, editors, terminals, and dialogs retain their own key handling. Single-tab close also works inside same-origin HTML previews; for cross-origin previews, focus the preview toolbar first.
+With focus in the Aside tab strip, content, or Composer, `Ctrl+W` / `Alt+W` (`Control+W` / `Option+W` on macOS) closes only the active session, Browser, or Terminal tab, not the Workspace. Fixed tools stay open, and the Shift variants do not close background Workspaces. Closing a session tab preserves its draft and running task. Closing the Terminal tab ends the terminal sessions opened by this page for the Workspace. Native inputs, editors, terminal input, and dialogs retain their own key handling. The close shortcut also works while the Node browser page has focus and is not sent to that page. Closing the Browser tab does not close Chromium.
+
+While typing into a page in the [Workspace browser](../workbench/browser.md), `Esc` exits text input without closing the side pane. On a narrow screen, press `Esc` again to close the pane. Reopen it to continue on the same page.
 
 | Scope                         | Windows/Linux                                               | macOS                                                             | Action                                                                         | Available when                                                                                              |
 | ----------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
@@ -50,7 +52,7 @@ With focus in the Aside tab strip, content, or Composer, `Ctrl+W` / `Alt+W` (`Co
 | Embedded find in text or Diff | `Enter` / `Shift+Enter`                                     | `Enter` / `Shift+Enter`                                           | Move to the next / previous match                                              | Embedded find is open                                                                                       |
 | Embedded find in text or Diff | `Esc`                                                       | `Esc`                                                             | Close embedded find                                                            | Embedded find is open                                                                                       |
 | Tab-free rendered preview     | `Esc` / `Ctrl+W` / `Alt+W` / `Ctrl+Shift+W` / `Alt+Shift+W` | `Esc` / `Ctrl+W` / `Option+W` / `Ctrl+Shift+W` / `Option+Shift+W` | Request to close the preview window                                            | The browser may block closing a manually opened tab                                                         |
-| Workspace terminal            | `Ctrl+Shift+\``                                             | `Cmd+Shift+\``                                                    | Expand or collapse the selected Workspace terminal                             | A Workspace is selected                                                                                     |
+| Workspace terminal            | `Ctrl+Shift+\``                                             | `Cmd+Shift+\``                                                    | Open Terminal or switch back to the previous view                              | A Workspace is selected                                                                                     |
 | Workspace terminal            | Right-click                                                 | Right-click                                                       | Open the Copy, Paste, and Clear menu                                           | The desktop terminal is open                                                                                |
 
 Mobile Enter always inserts a newline; use the send button to submit. `Ctrl/Cmd+F` and `Ctrl/Cmd+A` are intercepted only when the focused or active page explicitly provides internal Find or Select All; ordinary pages, forms, and native controls keep their browser or native behavior. `Shift+Tab` always retains its native focus or menu behavior. Shortcuts are disabled while an input method editor is composing text and may be unavailable while an operation is loading.

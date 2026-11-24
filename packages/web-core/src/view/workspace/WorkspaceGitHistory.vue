@@ -589,7 +589,8 @@ function toggleHistoryDirectory(commitHash: string, path: string): void {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px;
+  padding-block: 6px;
+  padding-inline: var(--mar-inspector-content-inset);
 }
 
 .history-toolbar {

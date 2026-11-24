@@ -1,6 +1,60 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+for (const [width, theme] of [
+  [1280, 'dark'],
+  [390, 'daylight']
+] as const) {
+  test(`Aside add button stays compact and opens Browser at ${width}px`, async ({ page }) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+    try {
+      await page.setViewportSize({ width, height: 740 });
+      await page.goto(
+        `${fixture.url}workbench-aside.html?browser&theme=${theme}${width < 768 ? '&mobile' : ''}`
+      );
+      const add = page.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u });
+      const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+      const browserTab = tabs.getByRole('tab', { name: 'Browser', exact: true });
+      const browserCommand = page.getByRole('menuitem', { name: 'Browser', exact: true });
+      await expect(add).toBeInViewport();
+      await expect(add).toHaveCSS('padding', '2px');
+      await expect(add).toHaveCSS('width', '25px');
+      await expect(add).toHaveAttribute('aria-haspopup', 'menu');
+      await expect(
+        tabs.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u })
+      ).toHaveCount(0);
+      await expect(add).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const overlay = await add.evaluate((button) => {
+        const swatch = document.createElement('span');
+        swatch.style.backgroundColor = 'var(--mar-ui-action-hover-overlay)';
+        button.append(swatch);
+        const color = getComputedStyle(swatch).backgroundColor;
+        swatch.remove();
+        return color;
+      });
+      if (width === 1280) {
+        await add.hover();
+        await expect(add).toHaveCSS('background-color', overlay);
+      }
+      await add.click();
+      await expect(add).toHaveAttribute('aria-expanded', 'true');
+      await expect(browserCommand).toBeVisible();
+      await expect(browserTab).toHaveCount(0);
+      await page.mouse.move(width - 1, 739);
+      await expect(add).toHaveCSS('background-color', overlay);
+      await page.keyboard.press('Escape');
+      await expect(browserCommand).toBeHidden();
+      await expect(add).toBeFocused();
+      await add.press('ArrowDown');
+      await expect(browserCommand).toBeFocused();
+      await browserCommand.press('Enter');
+      await expect(browserTab).toHaveAttribute('aria-selected', 'true');
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('Aside close shortcuts stay in the focused layer and preserve the session draft', async ({
   page
 }) => {
@@ -101,381 +155,6 @@ test('Closing an Aside tab by shortcut preserves focus on a surviving control', 
     await expect(search).toBeFocused();
   } finally {
     await fixture.close();
-  }
-});
-
-test('Browser close shortcuts work in its toolbar and same-origin frame without closing Workspace', async ({
-  page
-}) => {
-  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
-  const replacement = Promise.withResolvers<void>();
-  try {
-    let version = 0;
-    await page.route('**/api/html-preview/grants', (route) =>
-      route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ url: new URL(`/shortcut-preview/${++version}`, fixture.url).href })
-      })
-    );
-    await page.route('**/shortcut-preview/*', async (route) => {
-      if (route.request().url().endsWith('/2')) await replacement.promise;
-      await route.fulfill({ contentType: 'text/html', body: '<input aria-label="Preview input">' });
-    });
-    await page.goto(`${fixture.url}workbench-aside.html?shortcuts`);
-    const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
-    const browser = tabs.getByRole('tab', { name: 'Browser', exact: true });
-    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
-    const activeFrame = 'iframe.html-preview-frame:not([inert])';
-    const input = page.frameLocator(activeFrame).getByRole('textbox', { name: 'Preview input' });
-    await input.fill('Preview draft');
-    // Reopening a target keeps the current page until the replacement is ready.
-    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
-    await expect(page.locator('iframe[src$="/2"]')).toHaveAttribute('inert', '');
-    await expect(input).toHaveValue('Preview draft');
-    replacement.resolve();
-    await expect(page.locator(activeFrame)).toHaveAttribute('src', /\/shortcut-preview\/2$/);
-    await input.press('Alt+w');
-    await expect(browser).toHaveCount(0);
-    await expect(page.locator('iframe')).toHaveCount(0);
-    await expect(tabs.getByRole('tab', { name: 'Child', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
-    await expect(tabs.getByRole('tab', { name: 'Child', exact: true })).toBeFocused();
-    await expect(page.locator('#workspace-closes')).toHaveText('0');
-
-    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
-    await expect(input).toBeVisible();
-    // Reload replaces the frame document and must rebind the shortcut.
-    await page.getByRole('button', { name: '重新加载', exact: true }).click();
-    await expect(page.locator(activeFrame)).toHaveAttribute('src', /\/shortcut-preview\/4$/);
-    await expect(input).toBeVisible();
-    expect(
-      await page.locator(activeFrame).evaluate((frame: HTMLIFrameElement) => {
-        const input = frame.contentDocument!.querySelector('input')!;
-        return input.dispatchEvent(
-          new KeyboardEvent('keydown', {
-            key: 'w',
-            code: 'KeyW',
-            ctrlKey: true,
-            bubbles: true,
-            cancelable: true
-          })
-        );
-      })
-    ).toBe(false);
-    await expect(browser).toHaveCount(0);
-
-    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
-    const reload = page.getByRole('button', { name: '重新加载', exact: true });
-    await expect(reload).toBeEnabled();
-    await reload.focus();
-    await expect(reload).toBeFocused();
-    await page.keyboard.press('Alt+w');
-    await expect(browser).toHaveCount(0);
-    await expect(page.locator('#workspace-closes')).toHaveText('0');
-  } finally {
-    replacement.resolve();
-    await fixture.close();
-  }
-});
-
-test('Cross-origin Browser previews retain isolation and close from the Aside toolbar', async ({
-  page
-}) => {
-  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
-  try {
-    const previewUrl = new URL('/cross-origin-preview', fixture.url);
-    previewUrl.hostname = 'localhost';
-    await page.route('**/api/html-preview/grants', (route) =>
-      route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ url: previewUrl.href })
-      })
-    );
-    await page.route('**/cross-origin-preview', (route) =>
-      route.fulfill({ contentType: 'text/html', body: '<input aria-label="Isolated preview">' })
-    );
-    await page.goto(`${fixture.url}workbench-aside.html?shortcuts`);
-    const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
-    const browser = tabs.getByRole('tab', { name: 'Browser', exact: true });
-    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
-    const input = page.frameLocator('iframe').getByRole('textbox', { name: 'Isolated preview' });
-    await input.fill('Isolated content');
-    await expect(page.getByRole('button', { name: '后退', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '前进', exact: true })).toBeDisabled();
-    expect(
-      await page.locator('iframe').evaluate((frame: HTMLIFrameElement) => frame.contentDocument)
-    ).toBeNull();
-    await input.dispatchEvent('keydown', { key: 'w', code: 'KeyW', ctrlKey: true });
-    await expect(browser).toHaveCount(1);
-    await expect(page.locator('#workspace-closes')).toHaveText('0');
-    await page.getByRole('button', { name: '重新加载', exact: true }).focus();
-    await page.keyboard.press('Alt+w');
-    await expect(browser).toHaveCount(0);
-    await expect(page.locator('#workspace-closes')).toHaveText('0');
-  } finally {
-    await fixture.close();
-  }
-});
-
-test.describe('HTML Browser content', () => {
-  test.use({ locale: 'en-US' });
-  test('navigates image and fragment history without leaving the workbench', async ({ page }) => {
-    const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
-    try {
-      let version = 0;
-      await page.route('**/api/html-preview/grants', (route) =>
-        route.fulfill({
-          json: { url: new URL(`/preview-history/${++version}/index.html`, fixture.url).href }
-        })
-      );
-      await page.route('**/preview-history/*/index.html', (route) =>
-        route.fulfill({
-          contentType: 'text/html',
-          body: `<h1>Screenshot index</h1><a href="#images">Images</a>
-            <section id="images"><a href="sample.png">Open screenshot</a></section>`
-        })
-      );
-      await page.route('**/preview-history/*/sample.png', (route) =>
-        route.fulfill({
-          contentType: 'image/png',
-          body: Buffer.from(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jg1sAAAAASUVORK5CYII=',
-            'base64'
-          )
-        })
-      );
-      const workbenchUrl = `${fixture.url}workbench-aside.html?html-file=index.html&mobile`;
-      await page.setViewportSize({ width: 390, height: 800 });
-      await page.goto(workbenchUrl);
-      await page.evaluate(() => window.history.pushState({ workbench: true }, ''));
-      await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
-      const panel = page.locator('.html-browser');
-      const iframe = panel.locator('iframe:not([inert])');
-      const preview = iframe.contentFrame();
-      const previewUrl = () =>
-        iframe.evaluate((element: HTMLIFrameElement) => element.contentDocument?.URL);
-      const back = panel.getByRole('button', { name: 'Back', exact: true });
-      const forward = panel.getByRole('button', { name: 'Forward', exact: true });
-      await expect(preview.getByRole('heading', { name: 'Screenshot index' })).toBeVisible();
-      await expect(back).toBeDisabled();
-      await expect(forward).toBeDisabled();
-
-      await preview.getByRole('link', { name: 'Images', exact: true }).click();
-      await expect(back).toBeEnabled();
-      await page.evaluate(() => window.history.replaceState({ workbench: 'updated' }, ''));
-      await expect(back).toBeEnabled();
-      await preview.getByRole('link', { name: 'Open screenshot' }).click();
-      await expect.poll(previewUrl).toMatch(/\/sample\.png$/);
-      await back.press('Enter');
-      await expect.poll(previewUrl).toMatch(/\/index\.html#images$/);
-      await expect(forward).toBeEnabled();
-      await back.click();
-      await expect.poll(previewUrl).toMatch(/\/index\.html$/);
-      await expect(back).toBeDisabled();
-      await forward.click();
-      await expect.poll(previewUrl).toMatch(/\/index\.html#images$/);
-      await forward.click();
-      await expect.poll(previewUrl).toMatch(/\/sample\.png$/);
-      await expect(forward).toBeDisabled();
-      await expect(page).toHaveURL(workbenchUrl);
-      expect(await page.evaluate(() => window.history.state)).toEqual({ workbench: 'updated' });
-
-      await back.click();
-      await expect.poll(previewUrl).toMatch(/\/index\.html#images$/);
-      await expect(back).toBeEnabled();
-      await expect(forward).toBeEnabled();
-      await page.evaluate(() => window.history.pushState({ workbenchOverlay: true }, ''));
-      await expect(back).toBeDisabled();
-      await expect(forward).toBeDisabled();
-      await expect.poll(previewUrl).toMatch(/\/index\.html#images$/);
-      expect(await page.evaluate(() => window.history.state)).toEqual({ workbenchOverlay: true });
-
-      await panel.getByRole('button', { name: 'Reload', exact: true }).click();
-      await expect(iframe).toHaveAttribute('src', /\/preview-history\/2\/index\.html$/);
-      await expect(back).toBeDisabled();
-      await expect(forward).toBeDisabled();
-      await preview.getByRole('link', { name: 'Images', exact: true }).click();
-      await expect(back).toBeEnabled();
-      await back.click();
-      await expect.poll(previewUrl).toMatch(/\/preview-history\/2\/index\.html$/);
-      expect(await page.evaluate(() => window.history.state)).toEqual({ workbenchOverlay: true });
-      expect(version).toBe(2);
-    } finally {
-      await fixture.close();
-    }
-  });
-  test('can replace a stalled HTML reload without losing the displayed preview', async ({
-    page
-  }) => {
-    const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
-    const stalled = Promise.withResolvers<void>();
-    try {
-      let version = 0;
-      await page.route('**/api/html-preview/grants', (route) =>
-        route.fulfill({
-          json: { url: new URL(`/html-preview-retry/${++version}`, fixture.url).href }
-        })
-      );
-      await page.route('**/html-preview-retry/*', async (route) => {
-        const revision = new URL(route.request().url()).pathname.split('/').at(-1);
-        await route.fulfill({
-          contentType: 'text/html',
-          body: `<h1>Preview ${revision}</h1>${revision === '2' ? '<img src="/stalled.png">' : ''}`
-        });
-      });
-      await page.route('**/stalled.png', async (route) => {
-        await stalled.promise;
-        await route.abort();
-      });
-      await page.goto(`${fixture.url}workbench-aside.html?html-file=index.html`);
-      await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
-      const panel = page.locator('.html-browser');
-      const reload = panel.getByRole('button', { name: 'Reload', exact: true });
-      const first = panel
-        .frameLocator('iframe[src$="/1"]')
-        .getByRole('heading', { name: 'Preview 1' });
-      await expect(first).toBeVisible();
-      const stalledRequest = page.waitForRequest('**/stalled.png');
-      await reload.click();
-      await stalledRequest;
-      await expect(first).toBeVisible();
-      await expect(reload).toHaveAttribute('aria-busy', 'true');
-      await expect(reload).toBeEnabled();
-      await reload.click();
-      await expect(panel.locator('iframe[src$="/2"]')).toHaveCount(0);
-      await expect(
-        panel.frameLocator('iframe[src$="/3"]').getByRole('heading', { name: 'Preview 3' })
-      ).toBeVisible();
-      await expect(panel.locator('iframe')).toHaveCount(1);
-      await expect(reload).not.toHaveAttribute('aria-busy', 'true');
-    } finally {
-      stalled.resolve();
-      await fixture.close();
-    }
-  });
-  for (const width of [1280, 390]) {
-    for (const theme of ['light', 'dark']) {
-      test(`Browser is closable content with a compact toolbar (${theme}, ${width}px)`, async ({
-        page
-      }, testInfo) => {
-        const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
-        try {
-          await page.setViewportSize({ width, height: 900 });
-          const filename = `${'workspace-html-preview-'.repeat(7)}index.html`;
-          const grants: string[] = [];
-          let releaseGrant!: () => void;
-          let releaseFrame!: () => void;
-          const grantGate = new Promise<void>((resolve) => (releaseGrant = resolve));
-          const frameGate = new Promise<void>((resolve) => (releaseFrame = resolve));
-          await page.route('**/api/html-preview/grants', async (route) => {
-            grants.push(route.request().postDataJSON().path);
-            const version = grants.length;
-            if (version === 2) await grantGate;
-            await route.fulfill({
-              contentType: 'application/json',
-              body: JSON.stringify({
-                url: new URL(`/html-preview-test/${version}`, fixture.url).href
-              })
-            });
-          });
-          await page.route('**/html-preview-test/*', async (route) => {
-            const version = new URL(route.request().url()).pathname.split('/').at(-1);
-            if (version === '2') await frameGate;
-            await route.fulfill({
-              contentType: 'text/html',
-              body: `<h1>HTML content ${version}</h1>`
-            });
-          });
-          await page.goto(
-            `${fixture.url}workbench-aside.html?theme=${theme}&html-file=${encodeURIComponent(filename)}${width < 768 ? '&mobile' : ''}`
-          );
-          const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
-          const browser = tabs.getByRole('tab', { name: 'Browser', exact: true });
-          const files = tabs.getByRole('tab', { name: 'Files', exact: true });
-          await expect(browser).toHaveCount(0);
-          const open = page.getByRole('button', { name: 'Preview HTML', exact: true });
-          await open.click();
-          await expect(browser).toHaveAttribute('aria-selected', 'true');
-          await expect(tabs.getByRole('tab').last()).toHaveText('Browser');
-          await expect(
-            tabs.getByRole('button', { name: 'Close Browser', exact: true })
-          ).toBeVisible();
-          const panel = page.locator('.html-browser');
-          const heading = (version: number) =>
-            panel.frameLocator(`iframe[src$="/${version}"]`).getByRole('heading', {
-              name: `HTML content ${version}`
-            });
-          await expect(heading(1)).toBeVisible();
-          await expect(panel.locator('.warning')).toHaveCount(0);
-          await expect(panel.getByText(/Trusted code:|Isolated preview/)).toHaveCount(0);
-          const name = panel.locator('.html-browser-file-name');
-          await expect(name).toHaveText(filename);
-          expect(
-            await name.evaluate((element) => ({
-              overflow: element.scrollWidth > element.clientWidth,
-              ellipsis: getComputedStyle(element).textOverflow === 'ellipsis'
-            }))
-          ).toEqual({ overflow: false, ellipsis: false });
-          for (const label of ['Back', 'Forward', 'Reload', 'Open source', 'Open in browser']) {
-            const button = panel.getByRole('button', { name: label, exact: true });
-            await expect(button).toHaveCSS('min-block-size', '26px');
-            await expect(button.locator('svg')).toHaveCount(1);
-            await expect(button).toHaveText('');
-          }
-          const reload = panel.getByRole('button', { name: 'Reload', exact: true });
-          await reload.focus();
-          await page.keyboard.press('Enter');
-          try {
-            await expect.poll(() => grants.length).toBe(2);
-            await expect(heading(1)).toBeVisible();
-            await expect(panel.locator('.file-preview-loading')).toHaveCount(0);
-            releaseGrant();
-            const nextFrame = panel.locator('iframe[src$="/2"]');
-            await expect(nextFrame).toHaveCount(1);
-            await expect(nextFrame).toBeHidden();
-            await expect(heading(1)).toBeVisible();
-            await expect(reload).toHaveAttribute('aria-busy', 'true');
-            await expect(panel.locator('.file-preview-loading')).toHaveCount(0);
-          } finally {
-            releaseGrant();
-            releaseFrame();
-          }
-          await expect(heading(2)).toBeVisible();
-          await expect(panel.locator('iframe')).toHaveCount(1);
-          await open.click();
-          await expect(heading(3)).toBeVisible();
-          expect(grants).toEqual([filename, filename, filename]);
-          await panel.getByRole('button', { name: 'Open source', exact: true }).hover();
-          await expect(page.locator('.mar-tooltip:visible')).toHaveText('Open source');
-          await page.locator('.workbench-aside').screenshot({
-            path: testInfo.outputPath(`html-browser-${theme}-${width}.png`),
-            animations: 'disabled'
-          });
-          await files.click();
-          await expect(page.locator('.html-browser')).toHaveCount(0);
-          await expect(browser).toHaveCount(1);
-          await browser.click();
-          await expect(heading(4)).toBeVisible();
-          await tabs.getByRole('button', { name: 'Close Browser', exact: true }).click();
-          await expect(browser).toHaveCount(0);
-          await expect(page.locator('iframe')).toHaveCount(0);
-          await expect(tabs.getByRole('tab', { name: 'Child', exact: true })).toHaveAttribute(
-            'aria-selected',
-            'true'
-          );
-          await open.click();
-          await expect(heading(5)).toBeVisible();
-          await files.click();
-          await tabs.getByRole('button', { name: 'Close Browser', exact: true }).click();
-          await expect(files).toHaveAttribute('aria-selected', 'true');
-          await expect(browser).toHaveCount(0);
-        } finally {
-          await fixture.close();
-        }
-      });
-    }
   }
 });
 

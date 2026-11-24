@@ -1,0 +1,231 @@
+import { randomUUID } from 'node:crypto';
+
+export interface BrowserSessionKey {
+  workspaceId: string;
+  userId: number;
+}
+
+type Session<T> = {
+  resource: T;
+  close: () => Promise<void>;
+  agentConnected?: () => boolean;
+};
+
+type Entry<T> = {
+  id: string;
+  opening: Promise<string>;
+  session?: Session<T>;
+  closing?: Promise<void>;
+  lastActivity?: number | undefined;
+  attachments?: number;
+  dataUse?: Promise<void> | undefined;
+};
+
+/** Owns live, isolated browser instances on this Node; the caller establishes
+ * the execution boundary and supplies an already-authorized resource key.
+ * An attachment borrows the interaction resource, not its close handle.
+ * Runtime close resolves only after actual exit.
+ */
+export class BrowserSessionService<T> {
+  private readonly entries = new Map<string, Entry<T>>();
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private stopped = false;
+  private occupied = 0;
+
+  constructor(
+    private readonly options: {
+      launch: (
+        resource: BrowserSessionKey,
+        browserId: string,
+        preserveLogin: boolean
+      ) => Promise<Session<T>>;
+      limit: number;
+      idleMs?: number;
+      onCloseFailed: () => void;
+    }
+  ) {}
+
+  async open(resource: BrowserSessionKey, preserveLogin = false): Promise<string> {
+    if (this.stopped) throw new Error('BROWSER_STOPPED');
+    const key = this.key(resource);
+    const current = this.entries.get(key);
+    if (current && (current.closing || this.expired(current))) {
+      await this.stopEntry(key, current);
+      return this.open(resource, preserveLogin);
+    }
+    if (current) return current.opening;
+
+    const id = randomUUID();
+    const opening = Promise.resolve().then(() => this.start(resource, key, id, preserveLogin));
+    this.entries.set(key, { id, opening });
+    return opening;
+  }
+
+  lookup(resource: BrowserSessionKey): string | undefined {
+    const entry = this.entries.get(this.key(resource));
+    return entry?.session && !entry.closing && !this.expired(entry) ? entry.id : undefined;
+  }
+
+  /** Uses an exact live instance without renewing its idle period. Close waits for admitted operations to drain. */
+  async use<R>(resource: BrowserSessionKey, id: string, run: (value: T) => Promise<R>): Promise<R> {
+    const entry = this.entries.get(this.key(resource));
+    if (this.stopped || !entry?.session || entry.id !== id || entry.closing || this.expired(entry))
+      throw new Error('BROWSER_SESSION_ENDED');
+    const value = entry.session.resource;
+    const result = Promise.resolve().then(() => run(value));
+    const drained = Promise.allSettled([entry.dataUse, result]).then(() => undefined);
+    entry.dataUse = drained;
+    void drained.then(() => {
+      if (entry.dataUse === drained) entry.dataUse = undefined;
+    });
+    return result;
+  }
+
+  pin(
+    resource: BrowserSessionKey,
+    id: string
+  ): {
+    resource: T;
+    release: () => void;
+    activity: () => boolean;
+  } {
+    const entry = this.entries.get(this.key(resource));
+    if (
+      this.stopped ||
+      entry?.id !== id ||
+      !entry.session ||
+      entry.closing ||
+      this.expired(entry)
+    ) {
+      throw new Error('BROWSER_SESSION_ENDED');
+    }
+    entry.attachments = (entry.attachments ?? 0) + 1;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      entry.attachments = (entry.attachments ?? 1) - 1;
+    };
+    return { resource: entry.session.resource, release, activity: () => this.touch(resource, id) };
+  }
+
+  /** Renews an exact live instance for observed activity, not for open connections. */
+  touch(resource: BrowserSessionKey, id: string): boolean {
+    const entry = this.entries.get(this.key(resource));
+    if (this.stopped || entry?.id !== id || !entry.session || entry.closing || this.expired(entry))
+      return false;
+    entry.lastActivity = performance.now();
+    return true;
+  }
+
+  async close(resource: BrowserSessionKey, id: string): Promise<void> {
+    const key = this.key(resource);
+    const entry = this.entries.get(key);
+    if (entry?.id === id) await this.stopEntry(key, entry);
+  }
+
+  async shutdown(): Promise<void> {
+    this.stopped = true;
+    clearTimeout(this.timer);
+    const stopped = await Promise.allSettled(
+      [...this.entries].map(([key, entry]) => this.stopEntry(key, entry))
+    );
+    const failure = stopped.find((result) => result.status === 'rejected');
+    if (failure) throw failure.reason;
+  }
+
+  private key({ workspaceId, userId }: BrowserSessionKey): string {
+    return JSON.stringify([workspaceId, userId]);
+  }
+
+  private get idleMs(): number {
+    return this.options.idleMs ?? 15 * 60_000;
+  }
+
+  private expired(entry: Entry<T>): boolean {
+    return (
+      entry.lastActivity !== undefined && performance.now() - entry.lastActivity >= this.idleMs
+    );
+  }
+
+  private async start(
+    resource: BrowserSessionKey,
+    key: string,
+    id: string,
+    preserveLogin: boolean
+  ): Promise<string> {
+    const entry = this.entries.get(key)!;
+    let reserved = false;
+    try {
+      // Closing still owns its slot. If another opener took a freed slot while
+      // awaiting exit, admission is decided against the current registry again.
+      while (this.occupied >= this.options.limit) {
+        if (this.stopped || entry.closing) throw new Error('BROWSER_STOPPED');
+        let oldest: [string, Entry<T>] | undefined;
+        for (const candidate of this.entries) {
+          const idle = candidate[1].lastActivity;
+          if (
+            idle !== undefined &&
+            !candidate[1].closing &&
+            !candidate[1].attachments &&
+            !candidate[1].session?.agentConnected?.() &&
+            !candidate[1].dataUse &&
+            (!oldest || idle < oldest[1].lastActivity!)
+          )
+            oldest = candidate;
+        }
+        if (!oldest) throw new Error('BROWSER_CAPACITY');
+        await this.stopEntry(...oldest);
+      }
+      if (this.stopped || entry.closing) throw new Error('BROWSER_STOPPED');
+      this.occupied++;
+      reserved = true;
+      entry.session = await this.options.launch(resource, id, preserveLogin);
+    } catch (error) {
+      if (reserved) this.occupied--;
+      if (!entry.closing) this.entries.delete(key);
+      throw error;
+    }
+    if (entry.closing) throw new Error('BROWSER_SESSION_ENDED');
+    entry.lastActivity = performance.now();
+    this.schedule();
+    return id;
+  }
+
+  private stopEntry(key: string, entry: Entry<T>): Promise<void> {
+    entry.closing ??= (async () => {
+      await entry.opening.catch(() => undefined);
+      if (entry.session) {
+        await entry.dataUse;
+        await entry.session.close();
+        this.occupied--;
+      }
+      this.entries.delete(key);
+    })();
+    this.schedule();
+    return entry.closing;
+  }
+
+  private schedule(): void {
+    clearTimeout(this.timer);
+    if (this.stopped) return;
+    let next = Infinity;
+    for (const entry of this.entries.values()) {
+      if (entry.lastActivity !== undefined && !entry.closing)
+        next = Math.min(next, entry.lastActivity);
+    }
+    if (!Number.isFinite(next)) return;
+    this.timer = setTimeout(
+      () => {
+        for (const [key, entry] of this.entries) {
+          if (!entry.closing && this.expired(entry)) {
+            void this.stopEntry(key, entry).catch(this.options.onCloseFailed);
+          }
+        }
+        this.schedule();
+      },
+      Math.max(1, Math.ceil(next + this.idleMs - performance.now()))
+    );
+    this.timer.unref();
+  }
+}

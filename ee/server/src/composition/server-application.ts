@@ -230,6 +230,14 @@ export async function composeServerApplication(
         scheduleAuthorizer: (nodeId, request) =>
           executionPreparation.prepareSchedule(nodeId, request),
         executionPreparer: (nodeId, request) => executionPreparation.prepare(nodeId, request),
+        browserUseAllowed: async (nodeId, { userId, workspaceId }) =>
+          (await authorizeNodeRequest(
+            userId,
+            nodeId,
+            'browser.resource',
+            { workspaceId },
+            workspaceId
+          )) && (await database.browserUseEnabled(userId)),
         marctlExecutionCredential: (nodeId, request) =>
           userCredentials.deriveExecution({
             ...request,
@@ -253,7 +261,11 @@ export async function composeServerApplication(
           await Promise.all([recentRuns.reclassify(change), notifications.reclassify(change)]);
         }
       },
-      { usageGrants: modelUsage.grants, gitForwarding: new GitExecutionForwarding(personalGit) },
+      {
+        usageGrants: modelUsage.grants,
+        gitForwarding: new GitExecutionForwarding(personalGit),
+        browserSettings: (userId) => database.browserSettings(userId)
+      },
       (event, fields) => app.log.info({ event, ...fields }),
       traffic
     );
@@ -404,6 +416,8 @@ export async function composeServerApplication(
       now,
       loginRate,
       productCapabilities: product.capabilities,
+      browserUsePreferences: database,
+      browserSettings: database,
       notifications
     });
     registerManagementRoutes({

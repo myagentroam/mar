@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="Mode extends 'datetime' | 'datetimerange'">
+<script setup lang="ts" generic="Mode extends 'date' | 'datetime' | 'datetimerange'">
 import {
   computed,
   nextTick,
@@ -18,7 +18,13 @@ import '../form/field-frame.css';
 import { usePopup } from '../popup/use-popup.js';
 import '../popup/surface.css';
 import MarCalendarMonth from './MarCalendarMonth.vue';
-import { dateAtMonth, formatLocalDateTime, parseLocalDateTime } from './local-date-time.js';
+import {
+  dateAtMonth,
+  formatLocalDate,
+  formatLocalDateTime,
+  parseLocalDate,
+  parseLocalDateTime
+} from './local-date-time.js';
 
 type Value = (Mode extends 'datetimerange' ? [Date, Date] : Date) | null;
 defineOptions({ inheritAttrs: false });
@@ -55,11 +61,14 @@ const field = useMarFormControl({
   validateModelChange: false
 });
 const range = computed(() => props.type === 'datetimerange');
+const hasTime = computed(() => props.type !== 'date');
 const twoMonths = computed(() => range.value && !props.singlePanel);
+const formatValue = (date?: Date) => (hasTime.value ? formatLocalDateTime : formatLocalDate)(date);
+const parseValue = (text: string) => (hasTime.value ? parseLocalDateTime : parseLocalDate)(text);
 const formatted = () =>
   Array.isArray(props.modelValue)
     ? props.modelValue.map(formatLocalDateTime)
-    : [formatLocalDateTime(props.modelValue ?? undefined), ''];
+    : [formatValue(props.modelValue ?? undefined), ''];
 const draft = ref(formatted());
 let published = formatted();
 let valueOnOpen = published;
@@ -83,7 +92,7 @@ const popup = usePopup(() => {
   draft.value = [...published];
   if (differs(published, valueOnOpen)) notifyChange(parse(published));
 });
-const dates = computed(() => draft.value.map(parseLocalDateTime));
+const dates = computed(() => draft.value.map(parseValue));
 const valid = computed(
   () => !!dates.value[0] && (!range.value || (!!dates.value[1] && dates.value[0] <= dates.value[1]))
 );
@@ -127,7 +136,7 @@ async function focusCalendar(date?: Date) {
   await nextTick();
   if (!popup.open.value) return;
   const selector = date
-    ? `[data-day="${formatLocalDateTime(date).slice(0, 10)}"][data-outside="false"]`
+    ? `[data-day="${formatLocalDate(date)}"][data-outside="false"]`
     : 'button[data-day][tabindex="0"]';
   panel.value?.querySelector<HTMLButtonElement>(selector)?.focus();
 }
@@ -149,7 +158,7 @@ function differs(left: string[], right: string[]) {
 }
 
 function parse(parts: string[]): Value {
-  const [first, second] = parts.map(parseLocalDateTime);
+  const [first, second] = parts.map(parseValue);
   return (range.value ? (first && second ? [first, second] : null) : (first ?? null)) as Value;
 }
 
@@ -161,7 +170,7 @@ function notifyChange(value: Value) {
 function publish(value: Value) {
   const normalized = Array.isArray(value)
     ? value.map(formatLocalDateTime)
-    : [formatLocalDateTime(value ?? undefined), ''];
+    : [formatValue(value ?? undefined), ''];
   if (!differs(normalized, published)) return false;
   published = normalized;
   emit('update:modelValue', value);
@@ -210,8 +219,8 @@ function pick(day: Date) {
   const date = new Date(day);
   if (!range.value) {
     const old = dates.value[0];
-    if (old) date.setHours(old.getHours(), old.getMinutes(), old.getSeconds());
-    draft.value[0] = formatLocalDateTime(date);
+    if (old && hasTime.value) date.setHours(old.getHours(), old.getMinutes(), old.getSeconds());
+    draft.value[0] = formatValue(date);
   } else if (!picked.value) {
     picked.value = date;
     draft.value = [formatLocalDateTime(date), ''];
@@ -361,22 +370,24 @@ function onFocusOut(event: FocusEvent) {
           </MarCalendarMonth>
         </div>
         <div class="mar-ui-date-picker__footer">
-          <input
-            v-for="index in range ? [0, 1] : [0]"
-            :key="index"
-            type="time"
-            step="1"
-            :value="formatLocalDateTime(dates[index]).slice(11)"
-            :disabled="!dates[index]"
-            :aria-label="
-              range
-                ? index
-                  ? locale.datePicker.endTime
-                  : locale.datePicker.startTime
-                : locale.datePicker.time
-            "
-            @change="setTime(index, $event)"
-          />
+          <template v-if="hasTime">
+            <input
+              v-for="index in range ? [0, 1] : [0]"
+              :key="index"
+              type="time"
+              step="1"
+              :value="formatLocalDateTime(dates[index]).slice(11)"
+              :disabled="!dates[index]"
+              :aria-label="
+                range
+                  ? index
+                    ? locale.datePicker.endTime
+                    : locale.datePicker.startTime
+                  : locale.datePicker.time
+              "
+              @change="setTime(index, $event)"
+            />
+          </template>
           <button type="button" :disabled="!valid" @click="confirm">
             {{ locale.datePicker.confirm }}
           </button>

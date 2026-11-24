@@ -518,7 +518,8 @@ defineExpose({
   gap: 0.25rem;
   align-items: center;
   border-bottom: 1px solid var(--mar-border-subtle);
-  padding: 0.375rem;
+  padding-block: 0.375rem;
+  padding-inline: var(--mar-inspector-content-inset);
 }
 
 .file-display-filter {

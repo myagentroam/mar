@@ -3,6 +3,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 
 // @test-covers packages/web-core/src/view/composer/ComposerToolbar.vue
+// @test-covers packages/web-core/src/service/composer-configuration-service.ts
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/composer-options.html');
@@ -32,6 +33,20 @@ async function expectMenuInsideViewport(menu: Locator) {
     )
     .toBe(true);
 }
+
+test('Composer lists MAR reasoning options from low to high regardless of profile order', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}composer-options.html?short&unordered-efforts&locale=en-US`);
+  await page.locator('.composer-model-effort-select').click();
+  const menu = page.locator('[role="listbox"].composer-model-effort-popper:visible');
+  const reasoning = menu.getByRole('group', { name: 'Reasoning' });
+  await expect(reasoning.getByRole('option')).toHaveText(['low', 'medium', 'high', 'xhigh', 'max']);
+  await expect(reasoning.locator('.composer-model-effort-option-selected')).toHaveText('high');
+  await expect(page.getByTestId('selected-effort')).toHaveText('high');
+  await reasoning.getByRole('option', { name: 'low', exact: true }).click();
+  await expect(page.getByTestId('selected-effort')).toHaveText('low');
+});
 
 for (const locale of ['en-US', 'zh-CN']) {
   for (const running of [false, true]) {

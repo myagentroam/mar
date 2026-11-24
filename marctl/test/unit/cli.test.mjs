@@ -185,6 +185,10 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
     [
       'en_US.UTF-8',
       [
+        "From an Agent, omit --runner to use the calling Agent's type.",
+        'From a terminal, specify --runner or --parent.',
+        'Without --runner, the parent Session supplies the Agent type.',
+        '[--runner <runner>]',
         'Send defaults to --steer for timely communication or course correction',
         'Node may interrupt the current execution',
         'Reserve --queue for explicitly requested deferred input',
@@ -199,6 +203,10 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
     [
       'zh_CN.UTF-8',
       [
+        'Agent 内调用 start 时，省略 --runner 则沿用调用方的 Agent 类型。',
+        '从终端调用时须指定 --runner 或 --parent。',
+        '省略 --runner 时继承父会话的 Agent 类型。',
+        '[--runner <runner>]',
         'send 默认使用 --steer，用于即时沟通或纠偏',
         'Node 可能中断当前执行',
         '建议仅将 --queue 用于明确要求延后的输入',

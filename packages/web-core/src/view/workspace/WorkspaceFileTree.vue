@@ -689,7 +689,8 @@ defineExpose({ reveal });
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 4px 0.375rem 8px;
+  padding-block: 4px 8px;
+  padding-inline: var(--mar-inspector-content-inset);
   outline: none;
 }
 

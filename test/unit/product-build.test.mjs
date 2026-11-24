@@ -80,11 +80,15 @@ test('Node packages allow only the declared public config type and reject other 
       'package.json',
       'dist/main.js',
       'dist/config.d.ts',
+      'scripts/browser-bin/playwright-cli',
+      'scripts/browser-bin/playwright-cli.cmd',
+      'scripts/browser-bin/playwright-isolated.json',
+      'scripts/browser-bin/other-tool',
       'dist/internal.d.ts',
       'dist/config.ts',
       'dist/main.js.map'
     ]),
-    ['dist/internal.d.ts', 'dist/config.ts', 'dist/main.js.map']
+    ['scripts/browser-bin/other-tool', 'dist/internal.d.ts', 'dist/config.ts', 'dist/main.js.map']
   );
   assert.deepEqual(unexpectedNpmPackageFiles('@myagentroam/server', ['dist/config.d.ts']), [
     'dist/config.d.ts'

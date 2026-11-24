@@ -16,7 +16,6 @@
       import zhCn from '/packages/mar-ui/locale/zh-cn.ts';
       import { localePreferenceService } from '/packages/web-core/src/service/locale-preference-service.ts';
       import WorkbenchAside from '/packages/web-core/src/view/workbench/WorkbenchAside.vue';
-      import WorkspaceHtmlBrowser from '/packages/web-core/src/view/workspace/WorkspaceHtmlBrowser.vue';
       import {
         MarTabs,
         MarTabPane,
@@ -53,7 +52,9 @@
         ? (longTitle === 'zh' ? chineseLongTitle : 'A long readable session title ').repeat(8)
         : 'Child';
       const aside = createWorkbenchAsideService();
-      aside.ensure(workspace, ['files', 'search', 'changes', 'history', 'terminal']);
+      const tools = ['files', 'search', 'changes', 'history', 'terminal'];
+      if (new URLSearchParams(location.search).has('browser')) tools.push('node-browser');
+      aside.ensure(workspace, tools);
       aside.openSession({ ...workspace, sessionId: 'child' });
       if (!new URLSearchParams(location.search).has('active-child'))
         aside.selectTool(workspace, 'files');
@@ -154,27 +155,18 @@
                 ]
               : []),
             h(
-              'button',
-              {
-                id: 'open-browser',
-                onClick: () =>
-                  aside.openHtml(
-                    workspace,
-                    new URLSearchParams(location.search).get('html-file') ?? 'index.html'
-                  )
-              },
-              'Preview HTML'
-            ),
-            h(
               WorkbenchAside,
               {
                 workspace,
                 state: state.value,
-                browserLabel: 'Browser',
-                tools: ['files', 'search', 'changes', 'history', 'terminal'].map((id) => ({
+                tools: tools.map((id) => ({
                   id,
                   label:
-                    language === 'zh' ? chineseToolLabels[id] : id[0].toUpperCase() + id.slice(1)
+                    id === 'node-browser'
+                      ? 'Browser'
+                      : language === 'zh'
+                        ? chineseToolLabels[id]
+                        : id[0].toUpperCase() + id.slice(1)
                 })),
                 sessions: [{ sessionId: 'child', title: childTitle, active: true }],
                 tabLabel: 'Workbench Aside',
@@ -188,24 +180,11 @@
                 maxWidth: 800,
                 mode: 'content',
                 onSelectTool: (target) => aside.selectTool(target, target.id),
-                onSelectBrowser: (target) => aside.activateHtml(target),
-                onCloseBrowser: (target) => aside.clearHtmlWorkspace(target),
                 onSelectSession: (target) => aside.activateSession(target),
                 onCloseSession: (target) => aside.closeSession(target)
               },
               {
                 tool: ({ tool }) => h(Inspector, { tool }),
-                browser: () =>
-                  state.value.htmlPath !== undefined && state.value.active?.kind === 'browser'
-                    ? h(WorkspaceHtmlBrowser, {
-                        nodeId: workspace.nodeId,
-                        workspaceId: workspace.workspaceId,
-                        path: state.value.htmlPath,
-                        openVersion: state.value.htmlOpenVersion,
-                        csrfToken: '',
-                        renewCsrfToken: async () => ''
-                      })
-                    : undefined,
                 terminal: ({ visible }) => h(Terminal, { visible }),
                 session: ({ target }) =>
                   h('div', { id: 'session' }, [

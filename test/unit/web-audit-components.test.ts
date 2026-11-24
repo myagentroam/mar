@@ -230,6 +230,7 @@ describe('Audit management behavior', () => {
         const event = events.find((entry) => path.endsWith(encodeURIComponent(entry.id)))!;
         return {
           ...event,
+          metadata: { before: { runner: 'codex' }, after: { runner: 'mar-agent' } },
           conversationPayload: {
             conversationTitle: 'Review result',
             userMessage: 'Original user content'
@@ -264,6 +265,9 @@ describe('Audit management behavior', () => {
           expect(textContent(dialog)).toContain(label);
           expect(textContent(dialog)).toContain('Original user content');
           expect(textContent(dialog)).not.toContain('MUST_NOT_DISPLAY');
+          expect(view.findAll('MarTable').at(-1)?.props.data).toEqual([
+            { field: 'Agent', before: 'codex', after: 'mar-agent' }
+          ]);
           const labels = view.findAll('MarDescriptionsItem').map((item) => item.props.label);
           expect(labels.length).toBeGreaterThan(0);
           expect(labels).not.toContain(i18n.global.t('generated.auditManagementPage.requestID'));

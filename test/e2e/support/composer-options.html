@@ -12,6 +12,7 @@
       import { createTooltipApp } from '/packages/web-core/test/e2e/tooltip-app.ts';
       import '/packages/web-core/src/styles.css';
       import ComposerToolbar from '/packages/web-core/src/view/composer/ComposerToolbar.vue';
+      import { createComposerConfigurationService } from '/packages/web-core/src/service/composer-configuration-service.ts';
       import { localePreferenceService } from '/packages/web-core/src/service/locale-preference-service.ts';
 
       const query = new URLSearchParams(location.search);
@@ -36,6 +37,31 @@
           })
         )
       );
+      const configuration = query.has('unordered-efforts')
+        ? createComposerConfigurationService({
+            selectedSession: ref(),
+            profiles: ref([
+              {
+                runner: 'mar-agent',
+                models: models.value.map((model) => ({
+                  ...model,
+                  supportedEfforts: ['xhigh', 'high', 'max', 'low', 'medium'],
+                  defaultEffort: 'high'
+                })),
+                accessOptions,
+                commands: [],
+                capabilities: []
+              }
+            ]),
+            effortLabel: String
+          })
+        : undefined;
+      configuration?.apply({
+        runner: 'mar-agent',
+        modelId: selected.value,
+        effort: '',
+        access: 'auto'
+      });
       createTooltipApp({
         setup: () => () =>
           h(
@@ -57,12 +83,13 @@
                 modelEffortLabel:
                   models.value.find((model) => model.id === selected.value)?.label ?? effort.value,
                 selectedModel: selected.value,
-                selectedEffort: effort.value,
+                selectedEffort: configuration?.effort.value ?? effort.value,
                 models: models.value,
                 efforts:
-                  query.get('single') === 'model'
+                  configuration?.efforts.value ??
+                  (query.get('single') === 'model'
                     ? []
-                    : ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+                    : ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']),
                 access: access.value,
                 accessLabel: accessOptions.find((option) => option.id === access.value)?.label,
                 accessOptions,
@@ -92,12 +119,21 @@
                 onUpdateAccess: (value) => (access.value = value),
                 onUpdateModelEffort(value) {
                   selection.value = value;
-                  if (value.startsWith('model:')) selected.value = value.slice(6);
-                  else effort.value = value.slice(7);
+                  if (value.startsWith('model:')) {
+                    selected.value = value.slice(6);
+                    configuration?.selectModel(selected.value, 'high');
+                  } else {
+                    effort.value = value.slice(7);
+                    configuration?.selectEffort(effort.value);
+                  }
                 }
               }),
               h('output', { 'data-testid': 'selected-model' }, selected.value),
-              h('output', { 'data-testid': 'selected-effort' }, effort.value),
+              h(
+                'output',
+                { 'data-testid': 'selected-effort' },
+                configuration?.effort.value ?? effort.value
+              ),
               query.has('dynamic')
                 ? h(
                     'button',

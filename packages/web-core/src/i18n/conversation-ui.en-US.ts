@@ -185,7 +185,7 @@ export const conversationUiEnUS = {
       messageFromMarctl: 'From marctl',
       sessionSourceDetails: 'Source: Session\nSession ID: {sessionId}',
       webShareSourceDetails: 'Source: Web share',
-      subagent: 'Agent operations',
+      subagent: 'Agent collaboration',
       you: 'You',
       reasoning: 'Reasoning',
       plan: 'Plan',
@@ -344,7 +344,13 @@ export const conversationUiEnUS = {
     yes: 'Yes',
     result: 'Result',
     subagentTask: 'Agent',
-    subagentOperationCount: '{count} operation | {count} operations',
+    agentCollaborationCount: '{count} record | {count} records',
+    agentCollaborationMessage: 'message',
+    agentCollaborationSource: {
+      parent: 'parent session',
+      child: 'child session',
+      other: 'another session'
+    },
     subagentCallFailed: 'Call failed',
     noAgentSessions: 'No sessions',
     agentGoal: 'Goal',

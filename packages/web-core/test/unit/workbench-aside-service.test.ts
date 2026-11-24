@@ -11,7 +11,7 @@ describe('Workspace Aside metadata', () => {
     const service = createWorkbenchAsideService({ mobileViewport });
     const target = { nodeId: 'node', workspaceId: 'workspace' };
     const session = { ...target, sessionId: 'session' };
-    service.ensure(target, ['files', 'search']);
+    service.ensure(target, ['files', 'search', 'node-browser']);
     service.setCollapsed(target, true);
 
     service.selectTool(target, 'search');
@@ -19,15 +19,15 @@ describe('Workspace Aside metadata', () => {
     service.openSession(session);
     service.openSession(session);
     expect(service.current(target).collapsed).toBe(true);
-    service.openHtml(target, 'index.html');
+    service.selectTool(target, 'node-browser');
     expect(service.current(target).collapsed).toBe(true);
     service.selectTool(target, 'files');
-    service.activateHtml(target);
+    service.selectTool(target, 'node-browser');
     expect(service.current(target).collapsed).toBe(true);
-    expect(service.current(target).active).toEqual({ kind: 'browser' });
+    expect(service.current(target).active).toEqual({ kind: 'tool', id: 'node-browser' });
 
     mobileViewport.value = false;
-    service.activateHtml(target);
+    service.selectTool(target, 'node-browser');
     expect(service.current(target).collapsed).toBe(false);
   });
 
@@ -35,11 +35,11 @@ describe('Workspace Aside metadata', () => {
     const service = createWorkbenchAsideService();
     const a = { nodeId: 'node', workspaceId: 'a' };
     const b = { nodeId: 'node', workspaceId: 'b' };
-    service.ensure(a, ['files', 'search']);
+    service.ensure(a, ['files', 'search', 'node-browser']);
     service.ensure(b, ['files']);
     service.selectTool(a, 'search');
     service.setCollapsed(a, true);
-    service.ensure(a, ['files', 'search']);
+    service.ensure(a, ['files', 'search', 'node-browser']);
     expect(service.current(a).collapsed).toBe(true);
     expect(service.current(b).collapsed).toBeFalsy();
     expect(service.snapshot(a)).not.toHaveProperty('collapsed');
@@ -47,11 +47,11 @@ describe('Workspace Aside metadata', () => {
     expect(service.current(a).active).toEqual({ kind: 'tool', id: 'search' });
 
     service.setCollapsed(a, true);
-    service.openHtml(a, 'index.html');
+    service.selectTool(a, 'node-browser');
     expect(service.current(a).collapsed).toBeFalsy();
     service.setCollapsed(a, true);
     service.removeWorkspace(a);
-    service.ensure(a, ['files', 'search']);
+    service.ensure(a, ['files', 'search', 'node-browser']);
     expect(service.current(a).collapsed).toBeFalsy();
   });
 
@@ -74,19 +74,44 @@ describe('Workspace Aside metadata', () => {
     expect(service.current(target).active).toEqual({ kind: 'tool', id: 'files' });
   });
 
+  it('opens Terminal on demand and removes only that workspace tab when closed', () => {
+    const service = createWorkbenchAsideService();
+    const workspace = { nodeId: 'node', workspaceId: 'a' };
+    const other = { ...workspace, workspaceId: 'b' };
+    service.ensure(workspace, ['files', 'terminal', 'node-browser']);
+    service.ensure(other, ['terminal']);
+    expect(service.current(other).active).toBeUndefined();
+    expect(service.current(workspace).terminalOpen).toBeFalsy();
+    service.selectTool(workspace, 'node-browser');
+    service.toggleTerminal(workspace);
+    expect(service.current(workspace).terminalOpen).toBe(true);
+    service.toggleTerminal(workspace);
+    expect(service.current(workspace).active).toEqual({ kind: 'tool', id: 'node-browser' });
+    expect(service.current(workspace).terminalOpen).toBe(true);
+    service.selectTool(other, 'terminal');
+    service.selectTool(workspace, 'terminal');
+    service.closeTerminal(workspace);
+    expect(service.current(workspace)).toMatchObject({
+      active: { kind: 'tool', id: 'node-browser' },
+      terminalOpen: false,
+      terminalReturn: undefined
+    });
+    expect(service.current(other).terminalOpen).toBe(true);
+  });
+
   it('releases the complete Workspace, Node and page scope independently', () => {
     const service = createWorkbenchAsideService();
     const a = { nodeId: 'node-a', workspaceId: 'a' };
     const b = { nodeId: 'node-a', workspaceId: 'b' };
     const c = { nodeId: 'node-b', workspaceId: 'c' };
     for (const target of [a, b, c]) {
-      service.ensure(target, ['files']);
+      service.ensure(target, ['files', 'node-browser']);
       service.openSession({ ...target, sessionId: 'session' });
-      service.openHtml(target, 'index.html');
+      service.selectTool(target, 'node-browser');
     }
     service.removeWorkspace(a);
     expect(service.current(a)).toEqual({ tools: [], sessions: [] });
-    expect(service.current(b).htmlPath).toBe('index.html');
+    expect(service.current(b).active).toEqual({ kind: 'tool', id: 'node-browser' });
     service.removeNode('node-a');
     expect(service.current(b)).toEqual({ tools: [], sessions: [] });
     expect(service.current(c).sessions).toEqual(['session']);
@@ -94,82 +119,41 @@ describe('Workspace Aside metadata', () => {
     expect(service.current(c)).toEqual({ tools: [], sessions: [] });
   });
 
-  it('owns one browser target per workspace and clears it with its scope', () => {
-    const service = createWorkbenchAsideService();
-    const a = { nodeId: 'node', workspaceId: 'a' };
-    const b = { nodeId: 'node', workspaceId: 'b' };
-    service.ensure(a, ['files', 'terminal']);
-    service.ensure(b, ['files']);
-    service.openSession({ ...a, sessionId: 'session-a' });
-    service.openHtml(a, 'first.html');
-    service.openHtml(a, 'next.htm');
-    service.openHtml(b, 'other.html');
-    expect(service.current(a).htmlPath).toBe('next.htm');
-    expect(asideViewMode(service.current(a).active)).toBe('content');
-    service.toggleTerminal(a);
-    service.toggleTerminal(a);
-    expect(service.current(a).active).toEqual({ kind: 'browser' });
-    const restored = createWorkbenchAsideService();
-    restored.restore(a, service.snapshot(a), ['files']);
-    expect(restored.current(a).htmlPath).toBe('next.htm');
-    restored.restore(a, { sessions: [] }, ['files']);
-    expect(restored.current(a).htmlPath).toBeUndefined();
-    service.clearHtmlWorkspace(a);
-    expect(service.current(a).htmlPath).toBeUndefined();
-    expect(service.current(a).sessions).toEqual(['session-a']);
-    expect(service.current(b).htmlPath).toBe('other.html');
-    service.clearHtmlNode('node');
-    expect(service.current(b).htmlPath).toBeUndefined();
-    service.ensure(a, ['files']);
-    service.openHtml(a, 'again.html');
-    service.clearHtml();
-    expect(service.current(a).htmlPath).toBeUndefined();
-  });
-  it('opens Browser as content only with file access and returns to the adjacent session on close', () => {
+  it('exposes a single Browser tool independently of Files and clears a revoked Terminal return', () => {
     const service = createWorkbenchAsideService();
     const workspace = { nodeId: 'node', workspaceId: 'workspace' };
     service.ensure(workspace, ['search', 'terminal']);
-    expect(service.openHtml(workspace, 'index.html')).toBe(false);
-    expect(service.current(workspace).htmlPath).toBeUndefined();
-    service.ensure(workspace, ['files', 'search', 'terminal']);
-    service.selectTool(workspace, 'search');
-    service.openSession({ ...workspace, sessionId: 'one' });
-    expect(service.openHtml(workspace, 'index.html')).toBe(true);
-    expect(service.current(workspace)).toMatchObject({
-      tools: ['files', 'search', 'terminal'],
-      active: { kind: 'browser' },
-      recentTool: 'search'
-    });
-    service.clearHtmlWorkspace(workspace);
-    expect(service.current(workspace).active).toEqual({ kind: 'session', sessionId: 'one' });
-    expect(service.current(workspace).htmlPath).toBeUndefined();
-    service.openHtml(workspace, 'again.html');
-    service.closeSession({ ...workspace, sessionId: 'one' });
-    expect(service.current(workspace).active).toEqual({ kind: 'browser' });
-    service.clearHtmlWorkspace(workspace);
-    expect(service.current(workspace).active).toEqual({ kind: 'tool', id: 'search' });
-  });
-  it('closes background Browser without changing selection or reviving a stale Terminal return', () => {
-    const service = createWorkbenchAsideService();
-    const workspace = { nodeId: 'node', workspaceId: 'workspace' };
-    service.ensure(workspace, ['files', 'search', 'terminal']);
-    service.selectTool(workspace, 'search');
-    service.openHtml(workspace, 'index.html');
+    expect(service.selectTool(workspace, 'node-browser')).toBe(false);
+    service.ensure(workspace, ['search', 'terminal', 'node-browser']);
+    expect(service.selectTool(workspace, 'node-browser')).toBe(true);
+    expect(asideViewMode(service.current(workspace).active)).toBe('content');
     service.toggleTerminal(workspace);
-    expect(service.current(workspace).terminalReturn).toEqual({ kind: 'browser' });
-    service.clearHtmlWorkspace(workspace);
+    expect(service.current(workspace).terminalReturn).toEqual({ kind: 'tool', id: 'node-browser' });
+    service.ensure(workspace, ['search', 'terminal']);
     expect(service.current(workspace).active).toEqual({ kind: 'tool', id: 'terminal' });
     expect(service.current(workspace).terminalReturn).toBeUndefined();
     service.toggleTerminal(workspace);
     expect(service.current(workspace).active).toEqual({ kind: 'tool', id: 'search' });
-    service.openHtml(workspace, 'again.html');
-    service.openSession({ ...workspace, sessionId: 'one' });
-    service.clearHtmlWorkspace(workspace);
-    expect(service.current(workspace).active).toEqual({ kind: 'session', sessionId: 'one' });
-    service.openHtml(workspace, 'last.html');
-    service.openSession({ ...workspace, sessionId: 'two' });
-    service.closeSession({ ...workspace, sessionId: 'two' });
-    expect(service.current(workspace).active).toEqual({ kind: 'browser' });
+  });
+  it('closes only the Browser content tab and selects a remaining session or fixed tool', () => {
+    const service = createWorkbenchAsideService();
+    const workspace = { nodeId: 'node', workspaceId: 'workspace' };
+    const session = { ...workspace, sessionId: 'session' };
+    service.ensure(workspace, ['files', 'node-browser']);
+    expect(service.current(workspace).browserOpen).toBeFalsy();
+    service.openSession(session);
+    service.selectTool(workspace, 'node-browser');
+    expect(service.snapshot(workspace).browserOpen).toBe(true);
+    service.closeBrowser(workspace);
+    expect(service.current(workspace)).toMatchObject({
+      active: { kind: 'session', sessionId: session.sessionId },
+      browserOpen: false,
+      sessions: [session.sessionId]
+    });
+    service.closeSession(session);
+    service.selectTool(workspace, 'node-browser');
+    service.closeBrowser(workspace);
+    expect(service.current(workspace).active).toEqual({ kind: 'tool', id: 'files' });
   });
   it('replaces the sole session tab without removing tools or retaining a stale Terminal return', () => {
     const service = createWorkbenchAsideService();
@@ -200,6 +184,7 @@ describe('Workspace Aside metadata', () => {
     { active: { kind: 'session' as const, sessionId: 'a' }, sessionId: 'a' },
     {
       active: { kind: 'tool' as const, id: 'terminal' as const },
+      terminalOpen: true,
       terminalReturn: { kind: 'session' as const, sessionId: 'b' },
       sessionId: 'b'
     },
@@ -280,7 +265,7 @@ describe('Workspace Aside metadata', () => {
     expect(service.current(b).sessions).toEqual([]);
     service.removeWorkspace(a);
     expect(service.current(a).sessions).toEqual([]);
-    expect(service.current(b).active).toEqual({ kind: 'tool', id: 'terminal' });
+    expect(service.current(b).active).toBeUndefined();
   });
 
   it('removes only authoritatively missing sessions without dropping other Workspace tabs', () => {

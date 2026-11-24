@@ -13,6 +13,7 @@ import type { RemoteDesktopRelaySockets } from '@myagentroam/server-core/remote-
 import type { WebSocket } from 'ws';
 import {
   MODEL_USAGE_BATCH_BYTES,
+  browserUseCheckSchema,
   directNodeEventSchema,
   marctlExecutionCredentialRequestSchema,
   modelUsageBatchSchema,
@@ -40,6 +41,8 @@ import type {
 } from '@myagentroam/server-core/node-message-projector';
 import { ServerTrafficMetrics } from './service/server-traffic-metrics.js';
 import type { RuntimeCredentialService } from '@myagentroam/server-core/runtime-credential-service';
+import type { BrowserWorkbenchService } from './service/browser-workbench-service.js';
+import type { IncomingHttpHeaders } from 'node:http';
 import {
   resolveScheduledRunAuthorization,
   resolveExecutionPreparation,
@@ -84,6 +87,7 @@ export interface NodeControlComponents {
   readonly desktopRelay: RemoteDesktopRelayCoordinator;
   readonly desktopPairing: RemoteDesktopRelayPairing;
   readonly desktopRelaySockets: RemoteDesktopRelaySockets;
+  readonly browser?: BrowserWorkbenchService;
   readonly messageProjector: NodeMessageProjector;
 }
 
@@ -106,6 +110,10 @@ export interface NodeControlConsumers extends NodeMessageConsumers {
   readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
   readonly scheduleAuthorizer: ScheduledRunAuthorizer;
   readonly executionPreparer?: ExecutionPreparer;
+  readonly browserUseAllowed?: (
+    nodeId: string,
+    scope: { userId: number; workspaceId: string }
+  ) => Promise<boolean>;
   readonly marctlExecutionCredential: (
     nodeId: string,
     request: MarctlExecutionCredentialRequest
@@ -123,6 +131,7 @@ export class NodeControl extends NodeIdentityControl {
     return {
       modelUsage: { apiVersion: 1 },
       marctlExecutionCredential: { apiVersion: 2 },
+      ...(this.consumers.browserUseAllowed === undefined ? {} : { browserUse: { apiVersion: 1 } }),
       ...(this.consumers.nodeUpgradeProgress === undefined
         ? {}
         : { nodeUpgradeProgress: { apiVersion: 1 } }),
@@ -139,6 +148,7 @@ export class NodeControl extends NodeIdentityControl {
   private readonly desktopRelay: RemoteDesktopRelayCoordinator;
   private readonly desktopPairing: RemoteDesktopRelayPairing;
   private readonly desktopRelaySockets: RemoteDesktopRelaySockets;
+  private readonly browser: BrowserWorkbenchService | undefined;
   private readonly terminalRelay: TerminalRelayService;
   private readonly messageProjector: NodeMessageProjector;
 
@@ -184,6 +194,7 @@ export class NodeControl extends NodeIdentityControl {
     this.desktopRelay = components.desktopRelay;
     this.desktopPairing = components.desktopPairing;
     this.desktopRelaySockets = components.desktopRelaySockets;
+    this.browser = components.browser;
     this.messageProjector = components.messageProjector;
   }
 
@@ -215,6 +226,7 @@ export class NodeControl extends NodeIdentityControl {
       this.requestBroker.rejectNode(nodeId, new Error('NODE_CONNECTION_REPLACED'));
       this.desktopDirect.revokeNode(nodeId, 'NODE_CONNECTION_REPLACED');
       this.desktopRelay.revokeNode(nodeId);
+      this.browser?.revokeNode(nodeId);
     }
     this.runtimeCredentials.activateNodeConnection(nodeId);
     this.workbenchRelay.broadcast({
@@ -273,6 +285,7 @@ export class NodeControl extends NodeIdentityControl {
       );
   }
   protected override onNodeDisconnected(nodeId: string): void {
+    this.browser?.revokeNode(nodeId);
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
     this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
     this.desktopDirect.revokeNode(nodeId, 'NODE_OFFLINE');
@@ -287,6 +300,7 @@ export class NodeControl extends NodeIdentityControl {
   }
 
   protected override onBusinessAdmissionRevoked(nodeId: string): void {
+    this.browser?.revokeNode(nodeId);
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
     this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
     this.desktopDirect.revokeNode(nodeId, 'NODE_OFFLINE');
@@ -332,6 +346,39 @@ export class NodeControl extends NodeIdentityControl {
 
   attachNodeDesktopRelay(socket: WebSocket): void {
     this.desktopRelaySockets.attachNode(socket);
+  }
+
+  attachNodeBrowserRelay(socket: WebSocket, headers: IncomingHttpHeaders): void {
+    if (this.browser) this.browser.attachNode(socket, headers);
+    else socket.terminate();
+  }
+
+  attachBrowserRelay(socket: WebSocket, user: UserNodeAuthorization, connectionId: string): void {
+    if (this.browser) this.browser.attachBrowser(socket, user, connectionId);
+    else socket.terminate();
+  }
+
+  uploadBrowserFile(
+    user: UserNodeAuthorization,
+    connectionId: string,
+    upload: Parameters<BrowserWorkbenchService['upload']>[2]
+  ): Promise<void> {
+    if (!this.browser) return Promise.reject(new Error('BROWSER_UNAVAILABLE'));
+    return this.browser.upload(user, connectionId, upload);
+  }
+
+  downloadBrowserFile(
+    user: UserNodeAuthorization,
+    connectionId: string,
+    download: Parameters<BrowserWorkbenchService['download']>[2]
+  ): Promise<unknown> {
+    if (!this.browser) return Promise.reject(new Error('BROWSER_UNAVAILABLE'));
+    return this.browser.download(user, connectionId, download);
+  }
+
+  openBrowserDownload(...args: Parameters<BrowserWorkbenchService['openDownload']>) {
+    if (!this.browser) throw new Error('BROWSER_UNAVAILABLE');
+    return this.browser.openDownload(...args);
   }
 
   /** Called only after Browser Origin/Cookie validation. */
@@ -432,6 +479,7 @@ export class NodeControl extends NodeIdentityControl {
   override close(): void {
     const errors: unknown[] = [];
     for (const close of [
+      () => this.browser?.close(),
       () => this.directTransfers.close(),
       () => this.terminalDirect.close(),
       () => this.desktopRelaySockets.close(),
@@ -554,6 +602,16 @@ export class NodeControl extends NodeIdentityControl {
     socket: WebSocket,
     envelope: NodeEnvelope
   ): Promise<boolean> {
+    if (envelope.type === 'browser.use.check') {
+      const scope = browserUseCheckSchema.safeParse(envelope.payload);
+      const enabled =
+        scope.success && this.consumers.browserUseAllowed !== undefined
+          ? await this.consumers.browserUseAllowed(nodeId, scope.data).catch(() => false)
+          : false;
+      if (this.sockets.get(nodeId) === socket)
+        this.send(socket, 'browser.use.result', { enabled }, envelope.id);
+      return true;
+    }
     if (envelope.type === 'marctl.execution-credential.request') {
       const request = marctlExecutionCredentialRequestSchema.safeParse(envelope.payload);
       let payload: unknown = {

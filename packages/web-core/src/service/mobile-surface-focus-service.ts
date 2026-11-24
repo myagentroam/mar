@@ -41,13 +41,18 @@ export function createMobileSurfaceFocusService(options: {
 
   function hasOpenPopup(): boolean {
     return options.regions().some((region) =>
-      [
-        ...(region?.querySelectorAll('[aria-haspopup][aria-expanded="true"][aria-controls]') ?? [])
-      ].some((control) =>
-        control
-          .getAttribute('aria-controls')
-          ?.split(/\s+/)
-          .some((id) => (document.getElementById(id)?.getClientRects().length ?? 0) > 0)
+      [...(region?.querySelectorAll('[aria-expanded="true"][aria-controls]') ?? [])].some(
+        (control) =>
+          control
+            .getAttribute('aria-controls')
+            ?.split(/\s+/)
+            .some((id) => {
+              const content = document.getElementById(id);
+              return (
+                !!content?.getClientRects().length &&
+                (control.hasAttribute('aria-haspopup') || !!content.closest('[popover]'))
+              );
+            })
       )
     );
   }
@@ -132,8 +137,9 @@ export function createMobileSurfaceFocusService(options: {
         keys: [{ key: 'Escape' }],
         // Owned popups retain their native Escape handling before the surface closes.
         when: () => options.isOpen() && !options.terminal?.() && !hasModal() && !hasOpenPopup(),
-        execute: () => {
-          options.close?.();
+        execute: (event) => {
+          // Holding Escape must not close a surface after dismissing an inner control.
+          if (!event.repeat) options.close?.();
           return 'HANDLED';
         }
       });

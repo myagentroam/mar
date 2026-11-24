@@ -22,6 +22,7 @@ import type { createTerminalDirectClient } from '../../service/terminal-direct-c
 
 const props = defineProps<{
   readonly terminalId: string;
+  readonly openUrl?: ((url: string, alternate: boolean) => boolean) | undefined;
   readonly nodeId: string;
   readonly direct: Pick<ReturnType<typeof createTerminalDirectClient>, 'attach'> | undefined;
   readonly workspaceId: string | undefined;
@@ -220,7 +221,11 @@ onMounted(() => {
   xterm.unicode.activeVersion = '11';
   xterm.loadAddon(
     new WebLinksAddon((event, uri) => {
-      if (!event.ctrlKey && !event.metaKey) return;
+      if (event.button !== 0 || xterm?.hasSelection() || xterm?.modes.mouseTrackingMode !== 'none')
+        return;
+      const alternate = event.ctrlKey || event.metaKey;
+      if (props.openUrl?.(uri, alternate)) return;
+      if (!alternate) return;
       window.open(uri, '_blank', 'noopener,noreferrer');
     })
   );

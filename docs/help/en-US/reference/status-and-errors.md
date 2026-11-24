@@ -1,6 +1,6 @@
 ---
 title: Statuses and Common Errors
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-24
 ---
 
 # Statuses and Common Errors
@@ -15,7 +15,7 @@ Errors written in uppercase with underscores are stable diagnostic codes. Before
 
 `EXTERNAL_SESSION_ACTIVE` means the external Agent is still running and Node cannot safely continue that Session. Wait for external work to end before sending again; do not repeatedly submit the message.
 
-`SESSION_ACTIVATION_REQUIRED` means a nonstandard direct Runner request bypassed first-message activation. Send through the Session message entry point instead of directly starting a Run for external history.
+`SESSION_ACTIVATION_REQUIRED` means the requested operation needs a Session that has been activated by a regular message. Open the Session, send a regular message, and then retry the operation. Do not start a Run directly from external history.
 
 Never work around path, identity, CSRF, OAuth state, or permission errors by editing browser storage or private credentials.
 

@@ -636,7 +636,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     );
     await expect(page.locator('.workbench')).toHaveCSS('border-radius', '0px 11px 11px 0px');
     await expect(page.locator('.workbench')).toHaveCSS('border-left-width', '0px');
-    await expect(page.locator('.session-layout')).toHaveCSS('padding-bottom', '8px');
+    await expect(page.locator('.workspace-grid > .conversation-panel')).toHaveCSS(
+      'padding-bottom',
+      '8px'
+    );
     await expect(page.locator('.session-layout')).toHaveCSS('padding-left', '0px');
     await expect(page.locator('.session-layout')).toHaveCSS('padding-right', '0px');
     const asideTabs = page.locator('.workbench-aside-header');

@@ -13,26 +13,31 @@ interface Feedback {
   readonly message: string;
 }
 
+export type MessageSurface = Readonly<{ owner: HTMLElement; signal: AbortSignal }>;
+
 const surfaces = new Map<HTMLElement, { add(feedback: Feedback): void; dispose(): void }>();
 let sequence = 0;
 
-/** Owns only mounted transient surfaces, one per currently active dialog or the main document. */
-function mount(owner: HTMLElement) {
+/** Owns transient rendering in the document, a dialog, or a caller-owned local surface. */
+function mount(owner: HTMLElement, signal?: AbortSignal) {
   const entries = shallowReactive<Feedback[]>([]);
   const container = owner.ownerDocument.createElement('div');
   container.className = 'mar-feedback-stack';
+  if (signal) container.classList.add('mar-feedback-stack--local');
   const observer =
-    owner === owner.ownerDocument.body
+    signal || owner === owner.ownerDocument.body
       ? undefined
       : new MutationObserver(() => {
           if (!owner.isConnected || !owner.matches('dialog[open]')) dispose();
         });
   observer?.observe(owner.ownerDocument.body, { subtree: true, childList: true });
   observer?.observe(owner, { attributes: true, attributeFilter: ['open'] });
+  signal?.addEventListener('abort', dispose, { once: true });
   owner.append(container);
 
   function dispose() {
     if (!surfaces.delete(owner)) return;
+    signal?.removeEventListener('abort', dispose);
     observer?.disconnect();
     render(null, container);
     container.remove();
@@ -69,12 +74,14 @@ function mount(owner: HTMLElement) {
   return surface;
 }
 
-export function presentMessage(message: string, type: MessageType): void {
+export function presentMessage(message: string, type: MessageType, surface?: MessageSurface): void {
   if (typeof document === 'undefined' || !document.body) return;
+  if (surface && (surface.signal.aborted || !surface.owner.isConnected)) return;
   const owner =
+    surface?.owner ??
     document.activeElement?.closest<HTMLElement>('dialog[open]:not([data-closing])') ??
     document.body;
-  (surfaces.get(owner) ?? mount(owner)).add({ id: ++sequence, type, message });
+  (surfaces.get(owner) ?? mount(owner, surface?.signal)).add({ id: ++sequence, type, message });
 }
 
 export function dismissMessages(): void {

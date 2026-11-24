@@ -17,6 +17,7 @@ interface NodeControlMessageServiceOptions {
   readonly handleScheduledRunAuthorizeResponse?: (envelope: NodeEnvelope) => boolean;
   readonly handleMailNotificationResponse?: (envelope: NodeEnvelope) => boolean;
   readonly handleMarctlExecutionCredentialResponse?: (envelope: NodeEnvelope) => boolean;
+  readonly handleBrowserUseResponse?: (envelope: NodeEnvelope) => boolean;
   readonly handleUpgradeCredentialResponse?: (envelope: NodeEnvelope) => boolean;
   readonly handleDirectTransfer?: (envelope: NodeEnvelope) => boolean;
   readonly handleTerminalDirect?: (envelope: NodeEnvelope) => boolean;
@@ -69,6 +70,7 @@ export class NodeControlMessageService {
     if (this.options.handleScheduledRunAuthorizeResponse?.(envelope) === true) return;
     if (this.options.handleMailNotificationResponse?.(envelope) === true) return;
     if (this.options.handleMarctlExecutionCredentialResponse?.(envelope) === true) return;
+    if (this.options.handleBrowserUseResponse?.(envelope) === true) return;
     if (this.options.handleUpgradeCredentialResponse?.(envelope) === true) return;
     if (
       envelope.type.startsWith('direct.') &&

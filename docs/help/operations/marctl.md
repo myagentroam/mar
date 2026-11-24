@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-11-18
+lastUpdated: 2026-11-24
 ---
 
 # 使用 marctl 管理节点
@@ -11,7 +11,7 @@ lastUpdated: 2026-11-18
 
 ## Agent 按需加载指南
 
-在具备 marctl 执行上下文的受管 Workspace 中，MAR Agent 使用内建 `marctl` Skill；Codex、Claude Code 和 OpenCode 使用内建 `mar_cli` MCP 的 `load_guide` 工具按需读取同一份指南。服务与工具描述提供简短提示，客户端是否展示服务描述取决于对应 Runner。
+在具备 marctl 执行上下文的受管 Workspace 中，MAR Agent 使用内建 `marctl` Skill；Codex、Claude Code 和 OpenCode 使用内建 `mar_cli` MCP 的 `load_guide` 工具按需读取同一份指南。服务与工具描述提供简短提示，客户端是否展示服务描述取决于对应 Agent。
 
 加载指南只返回说明，不执行命令；Agent 仍通过自己的 Shell 工具运行 marctl，必要时查询本地命令帮助。已经加载且仍在上下文中的指南可以直接复用。该入口不增加权限，也不改变协作消息来源或现有定时任务工具。
 
@@ -54,7 +54,7 @@ Server 在每次请求中复核用户凭证、账号、登录 Session（适用�
 
 使用 `marctl agents rename [<session-id>] --title 'fixer#42 Updated title' --json` 修改标题，首尾空白会去除，标题须非空且最多 160 字符。不限制 parent 关系，沿用 Web 改名链路，不启动或打断执行。查询当前标题使用 `agents current --json`。
 
-定时任务与内置 MCP 共用数据和修改规则：修改同一用户保存的任务直接生效，修改其他用户的任务返回 `PENDING` 提议，由原保存者确认，不转移执行身份。定时执行与手动执行使用相同的用户权限和任务修改规则。更新必须先读取当前 `revision`，再传 `--expected-revision`；冲突或写入结果不明时不自动重试。MAR Agent 的 marctl 内置技能可用时隐藏重复的定时 MCP；不可用及其他 Runner 保留原 MCP。
+定时任务与内置 MCP 共用数据和修改规则：修改同一用户保存的任务直接生效，修改其他用户的任务返回 `PENDING` 提议，由原保存者确认，不转移执行身份。定时执行与手动执行使用相同的用户权限和任务修改规则。更新必须先读取当前 `revision`，再传 `--expected-revision`；冲突或写入结果不明时不自动重试。MAR Agent 的 marctl 内置技能可用时隐藏重复的定时 MCP；不可用及其他 Agent 保留原 MCP。
 
 ```text
 marctl agents schedule list --limit 20 --json
@@ -64,19 +64,19 @@ marctl agents schedule update --expected-revision 1 --message-file task.txt --js
 marctl agents schedule get <session-id> --json
 ```
 
-`schedule list` 分页查询 Node SQLite，返回 `tasks[]`（含 `sessionTitle`）和 `nextCursor`，不扫描 Runner。其他任务操作可显式指定目标会话；创建要求 cron 和正文，更新至少指定一项。正文沿用 `-m` / `--message-file`（支持 stdin），最多 20,000 字符；时区由 Node 确定。CLI 不提供任务启停、删除或提议审批操作。
+`schedule list` 分页查询 Node SQLite，返回 `tasks[]`（含 `sessionTitle`）和 `nextCursor`，不扫描 Agent 的原生会话历史。其他任务操作可显式指定目标会话；创建要求 cron 和正文，更新至少指定一项。正文沿用 `-m` / `--message-file`（支持 stdin），最多 20,000 字符；时区由 Node 确定。CLI 不提供任务启停、删除或提议审批操作。
 
 `view [<session-id>] --json` 只返回状态、当前 Goal 和有界最近活动，不附历史或接受历史分页参数。完整记录通过独立的 `history [<session-id>] --cursor <cursor> --limit <1..100> --json` 按需分页读取；首次读取可省略 cursor。`history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
 
-已有会话可用 `marctl agents config <session-id> --model-id <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Runner 原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`agents start` 也支持 `--effort`。
+已有会话可用 `marctl agents config <session-id> --model-id <id> --effort high --json` 切换模型和思考强度，两个选项也可单独使用；未指定字段和权限保持不变，`--effort ""` 使用 Agent 的原生默认值。配置只影响既有链路中的后续执行，不重启当前执行；`agents start` 也支持 `--effort`。
 
-`--model-id` 使用目标 Runner 配置中的 `models[].id`。MAR Agent 对应内部模型配置 ID，不是显示名或上游模型 ID。请求和会话摘要使用 `modelId`；旧 `--model` 选项及请求字段 `model` 均拒绝。
+`--model-id` 使用目标 Agent 配置中的 `models[].id`。MAR Agent 对应内部模型配置 ID，不是显示名或上游模型 ID。请求和会话摘要使用 `modelId`；旧 `--model` 选项及请求字段 `model` 均拒绝。
 
 通过 `start`、`send` 或 `goal set` 派发的任务默认抑制自动通知，避免协作会话反复推送。该规则适用于后续任务轮次和 Goal 续作；运行状态和历史仍可正常查看。后续人工输入恢复普通通知规则。显式通知工具仍可按授权发送。
 
 `sessions` 由 MAR 授权绑定当前 Node 和 Workspace，不接受 `--node`、`--workspace` 或其他范围覆盖；已知其他范围的会话 ID 或 cursor 不代表获得访问权。Workspace 终端可能没有当前会话；缺少可信工作区上下文时明确报错。既有 `nodes`、`ssh`、`scp` 的跨 Node 行为不变。
 
-会话列表、ID 定位及 `list --query <名称片段>` 只查询当前 Node 已登记或缓存的会话，不主动扫描 Runner。MAR 创建的正式会话和成功发现的外部会话会登记；尚未发现的外部会话需先由工作台发现。查询不恢复执行。列表按所选范围排序并限量；超出的匹配通过 `truncated` 标记，不提供翻页。错填 ID 时，`SESSION_NOT_FOUND` 的 `details` 可返回同一 Workspace 内最多 3 个 `<sessionId> <name>` 近似候选，不会自动替换 ID 或重发操作。`wait` 失败时，JSON 错误保留目标会话、Run、失败阶段及可用的上游诊断。
+会话列表、ID 定位及 `list --query <名称片段>` 只查询当前 Node 已登记或缓存的会话，不主动扫描 Agent 的原生会话历史。MAR 创建的正式会话和成功发现的外部会话会登记；尚未发现的外部会话需先由工作台发现。查询不恢复执行。列表按所选范围排序并限量；超出的匹配通过 `truncated` 标记，不提供翻页。错填 ID 时，`SESSION_NOT_FOUND` 的 `details` 可返回同一 Workspace 内最多 3 个 `<sessionId> <name>` 近似候选，不会自动替换 ID 或重发操作。`wait` 失败时，JSON 错误保留目标会话、Run、失败阶段及可用的上游诊断。
 
 `list` 仅接受 `--scope tree|active`、`--query <标题片段>`、`--limit <1..100>`。有当前会话时默认返回所在协作树，包含空闲会话；独立终端默认 active，显式 tree 需要会话上下文。active 返回当前 Workspace 中运行或睡眠的会话，不按更新时间、Goal 或队列推断。query 在所选范围内按标题过滤，忽略首尾空白、大小写及全角字母等兼容差异，再应用 limit（默认 10、上限 100）。活跃会话优先，其后按最近活动时间倒序。结果仅含 `scope`、`currentAgentId`（无会话时为 null）、扁平 `sessions` 和 `truncated`；每项仅含 `id`、`parentSessionId`、`title`、`status`。无匹配返回空列表，超出 limit 标记截断，无 cursor 或翻页；已知 ID 直接复用。`show` 返回精简 `session`，保留相同身份与状态，另带 `modelId`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。modelId/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
 
@@ -119,11 +119,11 @@ marctl agents goal clear <session-id> --json
 
 `start`、`send` 和 `goal set` 可用 `-m` / `--message` 直接传文本，也可用 `--message-file` 读取 UTF-8 文件或 stdin，两种选项互斥。文本中的文件路径指向目标获授权可访问的资源，不会自动上传 CLI 主机上的文件。`goal set` 拒绝保留目标 `--clear`；清除目标请显式使用 `goal clear`。
 
-`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以实际 Runner 能力为准。省略 `--model-id` 时使用目标 Runner 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
+`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以各 Agent 实际支持的能力为准。Agent 内调用时，省略 `--runner` 则沿用调用方的 Agent 类型。从终端调用时，须指定 `--runner` 或 `--parent`；省略 `--runner` 时继承父会话的 Agent 类型。省略 `--model-id` 时使用目标 Agent 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
 
-Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来源；终端用户可用 `--parent` 指定合法父会话，Node 校验同一 Workspace 后保存正式 `parentSessionId`。没有父会话则为空，创建后不能修改。`list --scope tree` 返回当前会话所在协作树，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Runner。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它。删除父会话会按 Node 的关系树删除后代；旧会话不从消息或标题推断关系。
+Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来源；终端用户可用 `--parent` 指定合法父会话，Node 校验同一 Workspace 后保存正式 `parentSessionId`。没有父会话则为空，创建后不能修改。`list --scope tree` 返回当前会话所在协作树，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Agent 的原生会话历史。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它。删除父会话会按 Node 的关系树删除后代；旧会话不从消息或标题推断关系。
 
-按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池；角色、范围和验收条件可放入首条普通消息，持久指令通过 `prompt` 设置。各 Runner 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
+按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池；角色、范围和验收条件可放入首条普通消息，持久指令通过 `prompt` 设置。各 Agent 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
 
 `send` 有正文时默认使用 `--steer`，与 `agent_send` 一致。STEER 可使受管等待提前返回，后台任务继续运行。若无法在当前执行内交付，Node 可能中断该执行以交付新输入。`--queue` 用于明确要求延后处理的输入：在当前工作及前面的队列项结束后才消费，有活动 Goal 时还需等到 Goal 退出；后来的显式停止仍有效。纯 Goal 更新或审批不涉及消息投递。冲突、重复或旧选项在读取输入或发送请求前本地拒绝。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。消息回执在 `message.status` 和 `message.result` 中报告接受及投递事实，接受不保证立即处理。消息被接受后，通常无需另外回复或索取收悉确认，也无需仅为确认收到而立即检查历史。投递结果未知时先查看历史再重试；排队消息可通过 `queueItemId`/`clientMessageId` 关联。
 

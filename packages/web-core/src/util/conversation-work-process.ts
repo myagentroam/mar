@@ -213,7 +213,7 @@ export function conversationWorkProcessProjection(
           facts.set(key, { first: item, last: item, turn, executing: false });
         }
         const state = facts.get(key)!;
-        state.last = item;
+        if (item.kind !== 'user_message') state.last = item;
         state.turn = turn;
         state.executing ||= itemFacts.executing;
         if (turn.runId != null) group.runId = turn.runId;

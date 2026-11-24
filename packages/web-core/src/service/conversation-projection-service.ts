@@ -339,11 +339,12 @@ export function createConversationProjectionService(options: {
     )
       return false;
     const eventAt = validConversationTime(createdAt) ? createdAt : Date.now();
-    const trailingItem = turn.items.at(-1);
+    const collaboration = kind === 'user_message' && event.processGroup !== undefined;
+    const trailingItem = collaboration
+      ? undefined
+      : turn.items.findLast((item) => item.kind !== 'user_message' || !item.processGroup);
     const items = turn.items.map((item) =>
-      item.id === trailingItem?.id &&
-      item.kind === 'assistant_message' &&
-      item.status === 'IN_PROGRESS'
+      item === trailingItem && item.kind === 'assistant_message' && item.status === 'IN_PROGRESS'
         ? { ...item, status: 'COMPLETED', completedAt: eventAt }
         : item
     );
@@ -401,15 +402,14 @@ export function createConversationProjectionService(options: {
     if (target === undefined) return false;
     const { turnIndex, turn } = target;
     const nativeItemId = typeof payload?.itemId === 'string' ? payload.itemId : undefined;
-    const lastItem = turn.items.at(-1);
-    const continuing =
-      nativeItemId === undefined &&
-      lastItem?.kind === 'assistant_message' &&
-      lastItem.status === 'IN_PROGRESS';
+    const lastIndex = turn.items.findLastIndex(
+      (item) => item.kind !== 'user_message' || !item.processGroup
+    );
+    const lastItem = turn.items[lastIndex];
     const existingIndex =
       nativeItemId === undefined
-        ? continuing
-          ? turn.items.length - 1
+        ? lastItem?.kind === 'assistant_message' && lastItem.status === 'IN_PROGRESS'
+          ? lastIndex
           : -1
         : turn.items.findIndex(
             (item) => item.id === nativeItemId && item.kind === 'assistant_message'

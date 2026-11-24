@@ -80,8 +80,11 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await tree.getByRole('button', { name: /node-1/ }).click();
       await tree.getByRole('button', { name: 'project', exact: true }).click();
       await expect(
-        page.getByRole('tab', { name: locale === 'zh-CN' ? '终端' : 'Terminal', exact: true })
-      ).toBeVisible();
+        page.locator('.workspace-aside').getByRole('tab', {
+          name: locale === 'zh-CN' ? '终端' : 'Terminal',
+          exact: true
+        })
+      ).toHaveCount(0);
       await page.keyboard.press('Control+Shift+Backquote');
       if (method === 'DELETE') {
         await expect(page.locator('.terminal-tab-close')).toBeVisible();
@@ -110,13 +113,21 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
   }
 }
 
-for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
+for (const scenario of [
+  'cached',
+  'evicted',
+  'navigation',
+  'close-terminal-tab',
+  'evict-during-terminal-close'
+] as const) {
   const evicted = scenario === 'evicted';
-  test(`Terminal pending creation ${scenario === 'navigation' ? 'survives temporary settings and conversation navigation' : evicted ? 'closes after Workspace Tab eviction' : 'stays with its cached Workspace Tab without stealing focus'}`, async ({
+  test(`Terminal pending creation ${scenario === 'evict-during-terminal-close' ? 'does not send duplicate closes when evicted during Aside close' : scenario === 'close-terminal-tab' ? 'closes with its outer Aside tab' : scenario === 'navigation' ? 'survives temporary settings and conversation navigation' : evicted ? 'closes after Workspace Tab eviction' : 'stays with its cached Workspace Tab without stealing focus'}`, async ({
     page
   }) => {
     let resolveOpen!: () => void;
     const openGate = new Promise<void>((resolve) => (resolveOpen = resolve));
+    let resolveClose!: () => void;
+    const closeGate = new Promise<void>((resolve) => (resolveClose = resolve));
     let opens = 0;
     const closes: { terminalId: string; nodeId: string }[] = [];
     const terminals = new Map<
@@ -195,6 +206,7 @@ for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
       if (route.request().method() === 'DELETE') {
         const terminalId = path.split('/').at(-1)!;
         closes.push({ terminalId, ...(route.request().postDataJSON() as { nodeId: string }) });
+        if (scenario === 'evict-during-terminal-close') await closeGate;
         terminals.delete(terminalId);
         return json(route, {});
       }
@@ -209,10 +221,28 @@ for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
       const tree = page.locator('.workspace-tree');
       await tree.getByRole('button', { name: /node-1/ }).click();
       await tree.getByRole('button', { name: 'project-1', exact: true }).click();
-      await expect(page.getByRole('tab', { name: '终端', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '添加辅助面标签页' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: '终端', exact: true })).toHaveCount(0);
       await page.keyboard.press('Control+Shift+Backquote');
       await expect.poll(() => opens).toBe(1);
       const first = page.locator('.workspace-tab[data-tab-id="node-1:workspace-1"]');
+      if (scenario === 'close-terminal-tab' || scenario === 'evict-during-terminal-close') {
+        const aside = page.locator('.workspace-aside');
+        await aside.getByRole('button', { name: '关闭 终端', exact: true }).click();
+        resolveOpen();
+        if (scenario === 'evict-during-terminal-close') {
+          await expect.poll(() => closes.length).toBe(1);
+          await first.hover();
+          await first.locator('.tab-close').click();
+          await expect(first).toHaveCount(0);
+          resolveClose();
+          await expect.poll(() => terminals.size).toBe(0);
+        }
+        await expect(aside.getByRole('tab', { name: '终端', exact: true })).toHaveCount(0);
+        expect(closes).toEqual([{ terminalId: 'terminal-pending', nodeId: 'node-1' }]);
+        expect(terminals.size).toBe(0);
+        return;
+      }
       if (scenario === 'navigation') {
         for (const name of ['设置', '对话']) {
           await page.getByRole('button', { name, exact: true }).click();
@@ -282,6 +312,7 @@ for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
       );
     } finally {
       resolveOpen();
+      resolveClose();
     }
   });
 }
@@ -289,6 +320,7 @@ for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
 test('Terminal creation, attachment, resizing, and closure require explicit Node capability', async ({
   page
 }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
   let terminalModuleRequested = false;
   let releaseTerminalModule!: () => void;
   const pendingTerminalModule = new Promise<void>((resolve) => (releaseTerminalModule = resolve));
@@ -565,13 +597,25 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
   await expect(registration).toBeHidden();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.getByRole('tab', { name: /project/ }).click();
-  await expect(page.getByRole('button', { name: '展开终端' })).toBeVisible();
   expect(terminals.size).toBe(0);
   await expect(page.locator('.xterm-host')).toHaveCount(0);
   expect(terminalModuleRequested).toBe(false);
-  await toggleTerminalShortcut();
+  const aside = page.locator('.workspace-aside');
+  const terminalTab = aside.getByRole('tab', { name: '终端', exact: true });
+  const addAsideTab = aside.getByRole('button', { name: '添加辅助面标签页' });
+  async function openTerminalFromAside(): Promise<void> {
+    await addAsideTab.click();
+    await page.getByRole('menuitem', { name: '终端', exact: true }).click();
+    await expect(terminalTab).toHaveAttribute('aria-selected', 'true');
+  }
+  await expect(terminalTab).toHaveCount(0);
+  await expect(addAsideTab).toBeVisible();
+  await addAsideTab.click();
+  await expect(page.getByRole('menuitem', { name: '终端', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+Shift+Backquote');
+  await expect(terminalTab).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => terminalModuleRequested).toBe(true);
-  await expect(page.getByRole('button', { name: '收起终端' })).toBeVisible();
   releaseTerminalModule();
   await expect(page.locator('.xterm-helper-textarea')).toBeAttached();
   await expect
@@ -580,11 +624,12 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
     )
     .toBe(true);
   await expect(page.locator('.terminal-tab-add')).toBeEnabled();
-  await page.getByRole('button', { name: '收起终端' }).click();
+  await toggleTerminalShortcut(true);
   await expect(page.locator('.xterm-host')).toBeHidden();
+  await expect(terminalTab).toHaveAttribute('aria-selected', 'false');
+  expect(terminals.size).toBe(1);
   await toggleTerminalShortcut();
-  await expect(page.getByRole('heading', { name: '终端' })).toHaveCSS('font-weight', '500');
-  await expect(page.getByRole('heading', { name: '终端' })).toHaveCSS('font-size', '14px');
+  await expect(terminalTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.admin-terminal-header')).toHaveCSS('min-height', '32px');
   await expect(page.getByRole('button', { name: '重新连接' })).toHaveCount(0);
   await expect(page.locator('.xterm-host')).toBeVisible();
@@ -607,7 +652,7 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
     'background-color',
     'rgb(14, 17, 22)'
   );
-  await expect(page.locator('.xterm-host')).toHaveCSS('height', '220px');
+  await expect(page.locator('.xterm-host')).toBeVisible();
   await expect(page.locator('.xterm-host')).toHaveJSProperty(
     'clientWidth',
     await page.locator('.admin-terminal-body').evaluate((element) => element.clientWidth - 8)
@@ -983,7 +1028,7 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
       ).__terminalWebSockets.instances.length
   );
   await toggleTerminalShortcut(true);
-  await expect(page.getByRole('button', { name: '展开终端' })).toBeVisible();
+  await expect(terminalTab).toHaveAttribute('aria-selected', 'false');
   await expect(page.locator('.xterm-host')).toBeHidden();
   await page.evaluate(() => {
     const sockets = (
@@ -1047,19 +1092,27 @@ test('Terminal creation, attachment, resizing, and closure require explicit Node
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(2);
   await page.getByRole('button', { name: '关闭终端 2' }).click();
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
-  await expect(page.getByRole('button', { name: '收起终端' })).toBeVisible();
+  await expect(terminalTab).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: '关闭终端 1' }).click();
-  await expect(page.getByRole('button', { name: '展开终端' })).toBeVisible();
+  await expect(terminalTab).toHaveCount(0);
   await expect(page.locator('.xterm-host')).toBeHidden();
-  await page.getByRole('button', { name: '展开终端' }).click();
+  await openTerminalFromAside();
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
   await expect(page.locator('.admin-terminal-status')).toHaveCount(0);
+  await page.locator('.terminal-tab-add').click();
+  await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(2);
+  await aside.getByRole('button', { name: '关闭 终端', exact: true }).click();
+  await expect(terminalTab).toHaveCount(0);
+  expect(terminals.size).toBe(0);
+  await openTerminalFromAside();
+  await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
   const previousTerminalId = [...terminals.keys()][0];
   await page.reload();
-  await expect(page.getByRole('button', { name: '展开终端' })).toBeVisible();
+  await expect(addAsideTab).toBeVisible();
+  await expect(terminalTab).toHaveCount(0);
   await expect(page.locator('.xterm-host')).toHaveCount(0);
   expect([...terminals.keys()]).toEqual([previousTerminalId]);
-  await page.getByRole('button', { name: '展开终端' }).click();
+  await openTerminalFromAside();
   await expect(page.locator('.terminal-tab:not(.terminal-tab-add)')).toHaveCount(1);
   expect(terminals.size).toBe(2);
   expect(terminals.has(previousTerminalId!)).toBe(true);

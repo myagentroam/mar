@@ -8,7 +8,8 @@ function revisionFor(capabilities: NodeCapabilities): number {
     architecture: capabilities.architecture,
     codex: capabilities.codex,
     claudeCode: capabilities.claudeCode,
-    openCode: capabilities.openCode
+    openCode: capabilities.openCode,
+    browser: capabilities.browser
   });
   let hash = 2_166_136_261;
   for (const character of source) hash = Math.imul(hash ^ character.charCodeAt(0), 16_777_619);
@@ -57,6 +58,19 @@ export class WorkbenchManifestService {
       },
       directTransfer: capabilities.workspaceDirectTransfer,
       terminalDirect: capabilities.terminalDirect,
+      browser: capabilities.browser,
+      browserViewportResize: capabilities.browser ? (true as const) : undefined,
+      browserHd: capabilities.browser ? (true as const) : undefined,
+      browserTabIcons: capabilities.browser ? (true as const) : undefined,
+      browserAgentActivity: capabilities.browser ? (true as const) : undefined,
+      browserForegroundPresence: capabilities.browser ? (true as const) : undefined,
+      browserNativeTouch: capabilities.browser ? (true as const) : undefined,
+      browserContextMenu: capabilities.browser ? (true as const) : undefined,
+      browserFind: capabilities.browser ? (true as const) : undefined,
+      browserDownloadManagement: capabilities.browser ? (true as const) : undefined,
+      browserDownloadProgress: capabilities.browser ? (true as const) : undefined,
+      browserTabControls: capabilities.browser ? (true as const) : undefined,
+      browserDownloadWorkspace: capabilities.browser ? (true as const) : undefined,
       sessionAside: capabilities.sessionAside,
       sessionGroups: capabilities.sessionGroups,
       git: {

@@ -160,6 +160,7 @@ function groupType(
   | undefined {
   if (item === undefined) return undefined;
   if (item.permissionStop !== undefined) return undefined;
+  if (item.kind === 'user_message' && item.processGroup !== undefined) return 'subagent_group';
   if (item.kind === 'reasoning') return 'reasoning_group';
   if (item.kind === 'command_execution') return 'command_group';
   if (item.kind === 'file_change') return 'file_change_group';
@@ -280,11 +281,13 @@ export function aggregateConversationDisplayItems(
   const result: (ConversationDisplayItem | undefined)[] = [];
   const anchors = new Map<string, number>();
   let groupId: string | undefined;
+  let collaborationAnchor: number | undefined;
   let taskListIndex: number | undefined;
   for (const entry of projected) {
     const item = 'items' in entry ? entry.items[0]! : entry.item;
     if (item.processGroup?.id !== groupId) {
       anchors.clear();
+      collaborationAnchor = undefined;
       taskListIndex = undefined;
     }
     groupId = item.processGroup?.id;
@@ -312,7 +315,8 @@ export function aggregateConversationDisplayItems(
       entry.type,
       entry.type === 'reasoning_group' ? conversationPayload(item.payload)?.representation : null
     ]);
-    const index = anchors.get(key);
+    // Standalone display rows can interrupt other categories, but not Agent collaboration.
+    const index = entry.type === 'subagent_group' ? collaborationAnchor : anchors.get(key);
     const previous = index === undefined ? undefined : result[index];
     if (previous && 'items' in previous && index !== undefined) {
       const members = [...previous.items, ...entry.items];
@@ -326,12 +330,12 @@ export function aggregateConversationDisplayItems(
             }
           : { ...previous, items: members };
       result[index] = undefined;
-      anchors.set(key, result.length);
       result.push(merged);
     } else {
-      anchors.set(key, result.length);
       result.push(entry);
     }
+    if (entry.type === 'subagent_group') collaborationAnchor = result.length - 1;
+    else anchors.set(key, result.length - 1);
   }
   return result.filter((entry): entry is ConversationDisplayItem => entry !== undefined);
 }

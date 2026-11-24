@@ -149,7 +149,7 @@ export function createWorkspaceDirectTransferService(
     return result(nodeId, nodeGeneration) === 'DIRECT_AVAILABLE';
   }
 
-  function acquireTerminalTransport(
+  function acquireClientTransport(
     nodeId: string,
     nodeGeneration: string
   ):
@@ -174,7 +174,7 @@ export function createWorkspaceDirectTransferService(
       nodeGeneration: transport.request.nodeGeneration,
       createChannel: (label) => {
         if (!transportReady(transport) || transportsByNode.get(nodeId) !== transport)
-          throw new Error('TERMINAL_DIRECT_UNAVAILABLE');
+          throw new Error('DIRECT_TRANSPORT_UNAVAILABLE');
         return transport.peer.createDataChannel(label, { ordered: true });
       },
       release: () => {
@@ -1018,7 +1018,8 @@ export function createWorkspaceDirectTransferService(
     result,
     transportNodeIds: (): string[] => [...transportsByNode.keys()],
     isConnected,
-    acquireTerminalTransport,
+    acquireTerminalTransport: acquireClientTransport,
+    acquireBrowserTransport: acquireClientTransport,
     acquireDesktopTransport,
     networkInfo,
     probe,

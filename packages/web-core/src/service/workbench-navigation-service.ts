@@ -241,6 +241,7 @@ export function createWorkbenchNavigationPresentation<ManagementSection extends 
     { id: 'quick-prompts', label: translate('quickPrompts.title') },
     { id: 'personal-instructions', label: translate('navigation.personalInstructions') },
     { id: 'git', label: translate('personalGit.title') },
+    { id: 'browser', label: translate('browser.settings') },
     { id: 'shortcuts', label: translate('navigation.shortcuts') },
     { id: 'about', label: translate('navigation.about') }
   ]);

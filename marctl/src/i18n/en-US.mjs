@@ -80,8 +80,10 @@ Management:
   {program} history [<id>] [--cursor <cursor>] [--limit <1..100>] [--json]
 
 Input and results:
-  Start defaults to the current Session Runner; a terminal without a current
-  Session must specify --runner or --parent. Start returns without waiting.
+  From an Agent, omit --runner to use the calling Agent's type.
+  From a terminal, specify --runner or --parent.
+  Without --runner, the parent Session supplies the Agent type.
+  Start returns without waiting.
   Send defaults to --steer for timely communication or course correction.
   If it cannot deliver in place, Node may interrupt the current execution.
   --goal sets or replaces a Goal; --clear-goal clears it. Send can update a Goal

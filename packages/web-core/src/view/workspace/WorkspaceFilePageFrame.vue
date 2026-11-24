@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import './file-tooltip-trigger.css';
 import './file-preview.css';
-import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { translate } from '../../service/locale-preference-service.js';
+import WorkspaceFloatingActions from '../common/WorkspaceFloatingActions.vue';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 import FilePreviewState from './FilePreviewState.vue';
 
@@ -50,17 +50,12 @@ async function retryRead(): Promise<void> {
   await nextTick();
   if (!props.loading) retrying.value = false;
 }
-const mobileActionsExpanded = ref(true);
 const slots = useSlots();
 const focus = createMobileSurfaceFocusService({
   isOpen: () => props.fullscreen === true && !props.contained,
   regions: () => [root.value]
 });
 onBeforeUnmount(focus.dispose);
-
-function toggleMobileActions(): void {
-  mobileActionsExpanded.value = !mobileActionsExpanded.value;
-}
 
 defineExpose({ root });
 </script>
@@ -103,40 +98,19 @@ defineExpose({ root });
       />
       <slot v-else-if="!props.loadError" />
     </div>
-    <div
+    <WorkspaceFloatingActions
       v-if="slots['mobile-actions']"
       class="mobile-preview-actions workspace-file-mobile-actions"
-      :class="[`is-${props.mobileActionsLayout}`, { 'is-collapsed': !mobileActionsExpanded }]"
-      :aria-label="
+      :layout="props.mobileActionsLayout"
+      :label="
         props.mobileActionsLabel ?? translate('generated.filePreviewDialog.filePreviewActions')
       "
+      :collapse-label="translate('filePreviewDialog.collapseMobileActions')"
+      :expand-label="translate('filePreviewDialog.expandMobileActions')"
+      mobile-only
     >
-      <div
-        class="workspace-file-mobile-actions-body"
-        :aria-hidden="!mobileActionsExpanded"
-        :inert="!mobileActionsExpanded"
-      >
-        <slot name="mobile-actions" />
-      </div>
-      <button
-        v-tooltip="
-          mobileActionsExpanded
-            ? translate('filePreviewDialog.collapseMobileActions')
-            : translate('filePreviewDialog.expandMobileActions')
-        "
-        class="workspace-file-mobile-actions-toggle mar-icon-button mar-icon-action"
-        type="button"
-        :aria-expanded="mobileActionsExpanded"
-        :aria-label="
-          mobileActionsExpanded
-            ? translate('filePreviewDialog.collapseMobileActions')
-            : translate('filePreviewDialog.expandMobileActions')
-        "
-        @click="toggleMobileActions"
-      >
-        <MarIcon name="menu" />
-      </button>
-    </div>
+      <slot name="mobile-actions" />
+    </WorkspaceFloatingActions>
   </section>
 </template>
 
@@ -186,10 +160,6 @@ defineExpose({ root });
   font-weight: 500;
 }
 
-.workspace-file-mobile-actions {
-  display: none;
-}
-
 .workspace-file-page-frame-heading > h2,
 .workspace-file-page-frame-title > small {
   display: block;
@@ -223,9 +193,7 @@ defineExpose({ root });
   flex-direction: column;
 }
 
-.workspace-file-page-frame :deep(.mar-file-preview-actions .mar-ui-button.mar-ui-button--circle),
-.workspace-file-mobile-actions :deep(.mar-ui-button),
-.workspace-file-mobile-actions-toggle {
+.workspace-file-page-frame :deep(.mar-file-preview-actions .mar-ui-button.mar-ui-button--circle) {
   border-radius: var(--mar-radius-control);
 }
 
@@ -271,118 +239,12 @@ defineExpose({ root });
   .workspace-file-page-frame-header > .file-preview-desktop-actions {
     display: none;
   }
-  .workspace-file-mobile-actions {
-    position: fixed;
-    z-index: 3;
-    right: max(0.75rem, env(safe-area-inset-right));
-    bottom: calc(0.75rem + env(safe-area-inset-bottom));
-    display: flex;
-    align-items: center;
-    gap: 0;
-    border: 1px solid var(--mar-border-default);
-    border-radius: var(--mar-radius-surface);
-    background: color-mix(in srgb, var(--mar-bg-panel) 96%, transparent);
-    box-shadow: 0 4px 14px var(--mar-shadow-medium);
-    padding: 0.25rem 0.2rem 0.25rem 0.25rem;
-  }
-  .workspace-file-mobile-actions :deep(.mar-ui-button) {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
-  }
   .workspace-file-page-frame-header {
     align-items: flex-start;
   }
 
   .workspace-file-page-frame .mar-file-preview-actions {
     min-height: 36px;
-  }
-
-  .workspace-file-mobile-actions-body {
-    display: flex;
-    min-width: 0;
-    max-height: 6rem;
-    gap: 0.35rem;
-    justify-content: flex-end;
-    overflow: hidden;
-    opacity: 1;
-    transform: translateX(0) scaleX(1);
-    transform-origin: right center;
-    transition:
-      max-width 0.18s ease,
-      max-height 0.18s ease,
-      opacity 0.14s ease,
-      transform 0.18s ease;
-  }
-
-  .workspace-file-mobile-actions.is-compact .workspace-file-mobile-actions-body {
-    max-width: min(4.9rem, calc(100vw - 4.5rem));
-  }
-
-  .workspace-file-mobile-actions.is-wrap .workspace-file-mobile-actions-body {
-    max-width: min(10.4rem, calc(100vw - 4.5rem));
-    flex-wrap: wrap;
-  }
-
-  .workspace-file-mobile-actions.is-image {
-    --image-action-gap: 0.25rem;
-    position: relative;
-    inset: auto;
-    align-self: flex-end;
-    flex: none;
-    max-inline-size: calc(100% - 1.5rem);
-    margin-inline-end: max(0.75rem, env(safe-area-inset-right));
-    margin-block-end: calc(0.75rem + env(safe-area-inset-bottom));
-  }
-
-  .workspace-file-mobile-actions.is-image .workspace-file-mobile-actions-body {
-    gap: var(--image-action-gap);
-    flex-wrap: wrap;
-    max-width: 100%;
-    align-items: center;
-  }
-
-  .workspace-file-mobile-actions.is-image .workspace-file-mobile-actions-toggle {
-    margin-inline-start: var(--image-action-gap);
-  }
-
-  .workspace-file-mobile-actions.is-stacked .workspace-file-mobile-actions-body {
-    max-width: min(16rem, calc(100vw - 4.5rem));
-    flex-direction: column;
-    gap: 0.25rem;
-    justify-content: center;
-  }
-
-  .workspace-file-mobile-actions-body :deep(.mar-ui-button + .mar-ui-button) {
-    margin-left: 0;
-  }
-
-  .workspace-file-mobile-actions-toggle {
-    display: grid;
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
-    place-items: center;
-    margin-left: 0.2rem;
-    border: 0;
-    background: transparent;
-    color: var(--mar-text-secondary);
-    cursor: pointer;
-    font-size: 1.1rem;
-  }
-
-  .workspace-file-mobile-actions.is-collapsed .workspace-file-mobile-actions-body {
-    max-width: 0;
-    max-height: 0;
-    opacity: 0;
-    transform: translateX(0.45rem) scaleX(0.92);
-    pointer-events: none;
-  }
-
-  .workspace-file-mobile-actions.is-collapsed .workspace-file-mobile-actions-toggle {
-    margin-inline-start: 0;
   }
 }
 </style>

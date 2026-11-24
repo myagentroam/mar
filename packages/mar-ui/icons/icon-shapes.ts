@@ -54,6 +54,8 @@ export const iconShapes = {
   image:
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2.8"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4" />',
   key: '<circle cx="8" cy="8" r="4.5"/><path d="m11.3 11.3 9.2 9.2m-5.8-5.8 2.5-2.5m.3 5.3 2.5-2.5" />',
+  keyboard:
+    '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M7 10h.1m4.9 0h.1m4.9 0h.1M8 14.5h8"/>',
   connection: '<path d="M8 3.5v4m8-4v4M6 7.5h12v4a6 6 0 0 1-12 0v-4Zm6 10v3" />',
   // Tabler Icons link-off (MIT); see icon-shapes.NOTICE.txt.
   'connection-off':
@@ -110,6 +112,8 @@ export const iconShapes = {
     '<path d="M4 7h3m5 0h8M4 17h8m5 0h3" /><circle cx="9.5" cy="7" r="2.5"/><circle cx="14.5" cy="17" r="2.5"/>',
   reasoning:
     '<path d="M10 7c.8 4.8 2.2 6.2 7 7-4.8.8-6.2 2.2-7 7-.8-4.8-2.2-6.2-7-7 4.8-.8 6.2-2.2 7-7Z"/><path d="M18 2.5c.4 1.9 1.1 2.6 3 3-1.9.4-2.6 1.1-3 3-.4-1.9-1.1-2.6-3-3 1.9-.4 2.6-1.1 3-3Z"/>',
+  'agent-collaboration':
+    '<path d="M12 5h5.5A3.75 3.75 0 0 1 21.25 8.75v3.75a3.75 3.75 0 0 1-3.1 3.7M17 2.75V5M9.25 6v3.25"/><rect x="2.75" y="9.25" width="13" height="11.5" rx="3.4"/><g fill="currentColor" stroke="none"><circle cx="6.75" cy="14.75" r=".95"/><circle cx="11.75" cy="14.75" r=".95"/><circle cx="18.5" cy="10.5" r=".95"/></g>',
   terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.8"/><path d="m7 9 3 3-3 3m6 0h4" />',
   'file-change':
     '<path d="M14.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5L14.5 3Zm0 0v3A1.5 1.5 0 0 0 16 7.5h3"/><path d="M8.5 9.5H12m-2.25 5.5 4-4 2.5 2.5-4 4-3.5 1 1-3.5Zm2.75-2.75 2.5 2.5"/>',

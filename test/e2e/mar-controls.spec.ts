@@ -166,6 +166,10 @@ for (const [theme, width] of [
       await expect(second).toHaveCSS('border-block-start-width', '0px');
     }
     const checkbox = page.getByRole('checkbox', { name: 'Read' });
+    const rowCheckbox = page.getByRole('checkbox', { name: 'Select row' });
+    await expect(rowCheckbox.locator('xpath=../..')).toHaveText('');
+    await rowCheckbox.check();
+    await expect(rowCheckbox).toBeChecked();
     const checkboxContrast = async () => {
       const colors = await checkbox.evaluate((input) => {
         const style = getComputedStyle(input);

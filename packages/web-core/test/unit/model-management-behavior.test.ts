@@ -578,6 +578,7 @@ describe('Model management component behavior', () => {
         codeMode: true,
         gcEnabled: true,
         metadata: { useResourceUrl: false },
+        reasoningEfforts: [],
         defaultReasoningEffort: 'high',
         hostedWebSearch: false,
         responsesPreviousResponseId: false,
@@ -646,6 +647,59 @@ describe('Model management component behavior', () => {
       }
     }
   );
+
+  it('orders the default reasoning options without changing the configured subset or default', async () => {
+    const request = requestFixture();
+    const view = renderComponent(
+      Page,
+      { request, canManageModels: true, writable: true, nodes: [] },
+      {},
+      { validate: async () => true }
+    );
+    try {
+      await flushComponent();
+      await trigger(button(view, messages.add), 'onClick');
+      await trigger(
+        control(view, messages.name, 'MarInput'),
+        'onUpdate:modelValue',
+        'Ordered model'
+      );
+      await trigger(
+        control(view, messages.model, 'MarInput'),
+        'onUpdate:modelValue',
+        'ordered-model'
+      );
+
+      const checkboxes = view.findAll('input').filter((node) => node.props.type === 'checkbox');
+      for (const effort of ['high', 'low']) {
+        const label = view.findAll('label').find((node) => textContent(node).trim() === effort)!;
+        await trigger(
+          checkboxes.find((node) => node.props.id === label.props.for)!,
+          'onChange',
+          {
+            currentTarget: { checked: true }
+          }
+        );
+      }
+      const defaultEffort = control(view, messages.defaultReasoningEffort, 'MarSelect');
+      expect(
+        defaultEffort.children
+          .filter((option) => option.type === 'MarOption')
+          .map((option) => option.props.value)
+      ).toEqual(['low', 'high']);
+      expect(defaultEffort.props.modelValue).toBe('high');
+
+      await trigger(button(view, messages.save), 'onClick');
+      const write = request.mock.calls.find(([, init]) => init?.method === 'POST');
+      expect(write?.[1]?.body).toEqual(expect.any(String));
+      expect(JSON.parse(write![1]!.body as string)).toMatchObject({
+        reasoningEfforts: ['high', 'low'],
+        defaultReasoningEffort: 'high'
+      });
+    } finally {
+      view.unmount();
+    }
+  });
 
   it('shows mixed OAuth types and keeps ChatGPT usage available in read-only details', async () => {
     const request = requestFixture();

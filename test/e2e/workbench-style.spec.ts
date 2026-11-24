@@ -666,6 +666,41 @@ test('Pane model shortcut uses the focused Composer and preserves the draft', as
   await expect(composer).toHaveValue('kept draft');
 });
 
+test('Browser is available in the Aside menu without a conversation header shortcut', async ({
+  page
+}) => {
+  const shortcut = page.getByRole('button', {
+    name: 'Open a website in MAR',
+    exact: true,
+    includeHidden: true
+  });
+  for (const width of [1600, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${fixture.url}workbench-style.html?composer=1&browser=1`);
+    const tools = page.getByRole('group', { name: 'Workspace tools', exact: true });
+    const add = page.getByRole('button', { name: 'Add Aside tab' });
+    const toggle = tools.getByRole('button', { name: 'Open auxiliary workspace' });
+    await expect(tools).toBeVisible();
+    await expect(tools.getByRole('button', { name: 'Open session list', exact: true })).toHaveCount(
+      width === 390 ? 1 : 0
+    );
+    await expect(add.or(toggle).first()).toBeVisible();
+    if (width === 1600 && (await add.isVisible())) {
+      await tools.getByRole('button', { name: 'Collapse auxiliary workspace' }).click();
+      await expect(add).toBeHidden();
+    }
+    await toggle.click();
+    await expect(add).toBeVisible();
+    await expect(shortcut).toHaveCount(0);
+    await add.click();
+    await page.getByRole('menuitem', { name: 'Browser', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Browser', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  }
+});
+
 test('Manual session dragging immediately takes over activity reorder motion', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: 'no-preference' });

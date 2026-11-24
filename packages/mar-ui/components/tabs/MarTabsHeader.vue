@@ -24,6 +24,7 @@ const vTooltip = inject(marUiTooltipDirectiveKey, {});
 const workbench = computed(() => props.appearance === 'workbench');
 const root = ref<HTMLElement>();
 const container = ref<HTMLElement>();
+const action = ref<HTMLElement>();
 const hasOverflow = ref(false);
 const canScrollPrevious = ref(false);
 const canScrollNext = ref(false);
@@ -66,7 +67,7 @@ function updateOverflow(): void {
   if (list === undefined || host === undefined) return;
   // Measure against the full host so removing the controls cannot retain false overflow.
   if (!workbench.value) return;
-  hasOverflow.value = list.scrollWidth > host.clientWidth + 1;
+  hasOverflow.value = list.scrollWidth + (action.value?.offsetWidth ?? 0) > host.clientWidth + 1;
   canScrollPrevious.value = hasOverflow.value && list.scrollLeft > 1;
   canScrollNext.value =
     hasOverflow.value && list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
@@ -77,6 +78,7 @@ function observeTabs(): void {
   if (resizeObserver === undefined || list === undefined) return;
   resizeObserver.disconnect();
   resizeObserver.observe(list);
+  if (action.value) resizeObserver.observe(action.value);
   for (const item of list.querySelectorAll('[data-tab-item]')) resizeObserver.observe(item);
 }
 
@@ -151,7 +153,10 @@ function close(id: Name, event: MouseEvent): void {
 }
 
 watch(
-  () => props.tabs.map((item) => [item.name, item.label, item.separatorBefore, item.closeLabel]),
+  [
+    () => props.tabs.map((item) => [item.name, item.label, item.separatorBefore, item.closeLabel]),
+    action
+  ],
   () => {
     void nextTick(() => {
       if (resizeObserver === undefined) return;
@@ -194,6 +199,7 @@ function activate(name: Name): void {
     class="mar-ui-tabs__header"
     :class="{
       'mar-tab': workbench,
+      'mar-tab--with-action': $slots.action,
       'mar-ui-tabs__header--workbench-panels': workbench && withPanels,
       'can-scroll-previous': canScrollPrevious,
       'can-scroll-next': canScrollNext
@@ -281,6 +287,7 @@ function activate(name: Name): void {
     >
       <MarIcon name="chevron-right" />
     </button>
+    <div v-if="$slots.action" ref="action" class="mar-tab-strip-action"><slot name="action" /></div>
   </div>
 </template>
 
@@ -362,6 +369,17 @@ function activate(name: Name): void {
   gap: 0;
   padding: 3px 4px 0;
   font-weight: var(--mar-tab-font-weight, 500);
+}
+
+.mar-tab--with-action .mar-tab-strip {
+  flex: 0 1 auto;
+}
+
+.mar-tab-strip-action {
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding: 2px 4px 0 0;
 }
 
 .mar-tab-strip-item {
