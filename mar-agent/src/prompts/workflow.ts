@@ -33,7 +33,9 @@ export function toolUsagePrompt(
   return `${execution}
 
 <reasoning>
-During complex or extended tasks, use \`thought\` to capture reusable insights as they accumulate, rather than waiting until the task is complete.
+During extended reasoning, earlier unrecorded insights may be lost as context evolves.
+
+Use \`thought\` to capture reusable insights as they accumulate, rather than waiting until the task is complete.
 
 Avoid recording trivial observations or repeating existing conclusions.
 </reasoning>`;
