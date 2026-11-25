@@ -157,6 +157,7 @@ export const iconShapes = {
   empty:
     '<path d="m3.5 10 3-5h11l3 5v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V10Zm0 0H8l1.5 4h5L16 10h4.5" />',
   'source-code': '<path d="m8 6-5 6 5 6m8-12 5 6-5 6M14 4l-4 16" />',
+  tag: '<path d="M4 6a2 2 0 0 1 2-2h5.2a2 2 0 0 1 1.4.6l7 7a2 2 0 0 1 0 2.8l-5.2 5.2a2 2 0 0 1-2.8 0l-7-7A2 2 0 0 1 4 11.2V6Z"/><circle cx="8.25" cy="8.25" r="1.2" fill="currentColor" stroke="none"/>',
   symbols:
     '<path d="M9 5.5h11M9 12h11M9 18.5h8"/><rect x="3.5" y="4.25" width="2.5" height="2.5" rx=".65" fill="currentColor" stroke="none"/><rect x="3.5" y="10.75" width="2.5" height="2.5" rx=".65" fill="currentColor" stroke="none"/><rect x="3.5" y="17.25" width="2.5" height="2.5" rx=".65" fill="currentColor" stroke="none"/>',
   user: '<circle cx="12" cy="7.5" r="3.5"/><path d="M4.5 20v-1.5a5 5 0 0 1 5-5h5a5 5 0 0 1 5 5V20" />',

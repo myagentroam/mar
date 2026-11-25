@@ -39,7 +39,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(menu.getByRole('menuitem')).toHaveText(['v0.10.1', '性能指示器', '帮助文档']);
       const version = menu.getByRole('menuitem', { name: 'v0.10.1，刷新当前页面' });
       const icons = menu.getByRole('menuitem').locator('svg.mar-icon');
-      for (const [index, icon] of ['source-code', 'info', 'document'].entries()) {
+      for (const [index, icon] of ['tag', 'info', 'document'].entries()) {
         await expect(icons.nth(index)).toBeVisible();
         await expect(icons.nth(index)).toHaveAttribute('data-mar-icon', icon);
         await expect(icons.nth(index)).toHaveAttribute('aria-hidden', 'true');
