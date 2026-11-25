@@ -2246,13 +2246,13 @@ test('filled primary controls and the preview use their respective active palett
   const options = page.locator('.theme-option');
   const sample = page.locator('.mar-theme-preview .preview-button.primary');
   await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await expect(sample).toHaveCSS('background-color', 'rgb(11, 112, 219)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(0, 117, 209)');
   await page.getByRole('button', { name: 'Inspect Light', exact: true }).click();
   await expect(sample).toHaveCSS('background-color', 'rgb(0, 87, 219)');
   await useThemeMenu(page, options.first(), 'Duplicate');
   const save = page.getByRole('button', { name: 'Save theme', exact: true });
   await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await expect(sample).toHaveCSS('background-color', 'rgb(11, 112, 219)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(0, 117, 209)');
   expect(JSON.parse(await editor.inputValue()).colors).toMatchObject({
     '--mar-button-primary-fg': '#ffffff',
     '--mar-control-primary-fg': '#181818'
@@ -2674,18 +2674,18 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(11, 112, 219)' : 'rgb(0, 87, 219)'
+        scheme === 'Dark' ? 'rgb(0, 117, 209)' : 'rgb(0, 87, 219)'
       );
       const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
       await primary.scrollIntoViewIfNeeded();
       const primaryBounds = await primary.boundingBox();
       await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
       await primary.hover();
-      const hoverColor = scheme === 'Dark' ? 'rgb(16, 116, 222)' : 'rgb(0, 76, 195)';
+      const hoverColor = scheme === 'Dark' ? 'rgb(0, 111, 197)' : 'rgb(0, 76, 195)';
       await expect(primary).toHaveCSS('background-color', hoverColor);
       await expect(primary).toHaveCSS(
         'border-top-color',
-        scheme === 'Dark' ? 'rgb(23, 137, 252)' : 'rgba(0, 0, 0, 0)'
+        scheme === 'Dark' ? 'rgb(42, 136, 205)' : 'rgba(0, 0, 0, 0)'
       );
       await expect(primary).toHaveCSS('color', primaryForeground);
       await expect(primary).toHaveCSS('transform', 'none');
@@ -2695,7 +2695,7 @@ for (const scheme of ['Light', 'Dark']) {
       try {
         await expect(primary).toHaveCSS(
           'background-color',
-          scheme === 'Dark' ? 'rgb(9, 107, 210)' : 'rgb(0, 66, 170)'
+          scheme === 'Dark' ? 'rgb(0, 102, 183)' : 'rgb(0, 66, 170)'
         );
         await expect(primary).toHaveCSS('color', primaryForeground);
       } finally {
