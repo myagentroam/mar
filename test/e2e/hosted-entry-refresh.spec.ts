@@ -295,7 +295,7 @@ test.describe('Mobile hosted draft', () => {
   });
 
   // @test-covers packages/web-core/src/view/conversation/HostedConversationEntryPage.vue
-  test('shows the new conversation guidance just above the bottom composer', async ({
+  test('centers the new conversation guidance and Composer when space allows', async ({
     page
   }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 860 });
@@ -321,6 +321,8 @@ test.describe('Mobile hosted draft', () => {
     await expect(draft.locator('.hosted-model-trigger')).toHaveText('Model One');
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 860 });
+      const area = (await draft.boundingBox())!;
+      const title = (await heading.boundingBox())!;
       const hintBox = (await hint.boundingBox())!;
       const composer = (await draft.locator('.composer').boundingBox())!;
       expect(hintBox.x).toBeGreaterThanOrEqual(0);
@@ -328,7 +330,9 @@ test.describe('Mobile hosted draft', () => {
       const gap = composer.y - (hintBox.y + hintBox.height);
       expect(gap).toBeGreaterThan(0);
       expect(gap).toBeLessThanOrEqual(24);
-      expect(composer.y + composer.height).toBe(860);
+      expect(
+        Math.abs((title.y + composer.y + composer.height) / 2 - area.y - area.height / 2)
+      ).toBeLessThan(8);
     }
     await page.screenshot({
       path: testInfo.outputPath('mobile-hosted-welcome.png'),
@@ -351,6 +355,19 @@ test.describe('Mobile hosted draft', () => {
       guidanceBox.y + guidanceBox.height
     );
     expect(composer.y + composer.height).toBe(240);
+
+    await draft.locator('.hosted-file-input').setInputFiles(
+      Array.from({ length: 4 }, (_, index) => ({
+        name: `draft-${index}.txt`,
+        mimeType: 'text/plain',
+        buffer: Buffer.from('draft attachment')
+      }))
+    );
+    await expect(draft.locator('.hosted-attachments li')).toHaveCount(4);
+    const scrollArea = page.locator('.conversation-draft');
+    await expect(scrollArea).toHaveCSS('overflow-y', 'auto');
+    await scrollArea.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+    await expect(draft.locator('.hosted-send-button')).toBeInViewport({ ratio: 1 });
   });
 });
 

@@ -167,7 +167,9 @@ const emit = defineEmits<{
 <template>
   <form
     class="composer-host"
-    :style="mobileViewport ? { height: `${mobileComposerHeight}px` } : undefined"
+    :style="
+      mobileViewport ? { '--mobile-composer-height': `${mobileComposerHeight}px` } : undefined
+    "
     @submit.prevent="emit('submit')"
   >
     <div ref="composerElement" class="composer">
@@ -504,11 +506,20 @@ const emit = defineEmits<{
 @media (max-width: 767px) {
   .composer-host {
     width: 100%;
+    block-size: var(--mobile-composer-height, auto);
+  }
+
+  :global(.conversation-scroll-region.is-workspace-welcome + .composer-host),
+  :global(.conversation-create-panel > .composer-host) {
+    /* New conversations keep the Composer in flow and share the spare space with the welcome. */
+    --mobile-composer-position: relative;
+    block-size: auto;
+    margin-block-end: auto;
   }
 
   .composer {
     --composer-padding-inline: 0.6rem;
-    position: fixed;
+    position: var(--mobile-composer-position, fixed);
     z-index: 6;
     right: 0;
     bottom: 0;

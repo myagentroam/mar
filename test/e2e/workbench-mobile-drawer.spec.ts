@@ -1006,7 +1006,11 @@ test.describe('Touch image preview', () => {
     const pan = dialog.getByRole('button', { name: 'Pan image', exact: true });
     await expect(pan).toBeDisabled();
     await dialog.getByRole('button', { name: 'Zoom in', exact: true }).tap();
+    await expect(pan).toBeEnabled();
     const before = (await image.boundingBox())!;
+    const toolbarGap = (await pan.boundingBox())!.y - (before.y + before.height);
+    expect(toolbarGap).toBeGreaterThanOrEqual(0);
+    expect(toolbarGap).toBeLessThanOrEqual(8);
     await pan.tap();
     const menu = page.getByRole('menu', { name: 'Pan image', exact: true });
     await expect(menu.getByRole('menuitem', { name: 'Pan up', exact: true })).toBeDisabled();

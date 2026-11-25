@@ -43,7 +43,6 @@ import { rm } from 'node:fs/promises';
 import {
   toolResultResourceInputSchema,
   toolResultResourcePageSchema,
-  conversationTurnSchema,
   conversationTemplateSummarySchema,
   hostedConversationConfigUpdateInputSchema,
   hostedConversationTemplateSwitchInputSchema,
@@ -92,6 +91,7 @@ import type {
 } from './hosted-conversation-store.js';
 
 const DEFAULT_HOSTED_CONVERSATION_TITLE = 'New conversation';
+const RECENT_HISTORY_TURN_LIMIT = 6;
 
 interface HostedConversationNodeServiceOptions {
   readonly modelUsage?: (
@@ -568,7 +568,7 @@ export class HostedConversationNodeService {
         sessionId: conversation.sessionId,
         homeDirectory: paths.homeDirectory,
         modelId: conversation.modelId,
-        limit: 6
+        limit: RECENT_HISTORY_TURN_LIMIT
       }));
     const current = this.options.store.requireConversation(userId, conversationId);
     if (current.templateId !== templateId || current.activeVersionId !== activeVersionId)
@@ -787,9 +787,7 @@ export class HostedConversationNodeService {
     input: ReturnType<typeof hostedConversationRollbackInputSchema.parse>
   ): Promise<unknown> {
     const paths = this.options.store.pathsForConversation(payload.userId, conversation.id);
-    const turns = await this.readAllHistory(conversation, paths);
-    const targetIndex = turns.findIndex((turn) => turn.id === input.turnId);
-    const target = turns[targetIndex];
+    const target = await this.findHistoryTurn(conversation, paths, input.turnId);
     const selectedInput =
       target === undefined ? undefined : resolveSessionRollbackTarget(target, input.itemId);
     if (
@@ -837,25 +835,27 @@ export class HostedConversationNodeService {
     return snapshot;
   }
 
-  private async readAllHistory(
+  private async findHistoryTurn(
     conversation: HostedConversationManifest,
-    paths: HostedConversationPaths
+    paths: HostedConversationPaths,
+    turnId: string
   ) {
-    const turns = [];
     let cursor: string | undefined;
     do {
-      const page = await this.options.runtime.history({
-        conversationId: conversation.id,
-        sessionId: conversation.sessionId,
-        homeDirectory: paths.homeDirectory,
-        modelId: conversation.modelId,
-        limit: 100,
-        ...(cursor === undefined ? {} : { cursor })
-      });
-      turns.unshift(...page.turns.map((turn) => conversationTurnSchema.parse(turn)));
+      const page = hostedConversationHistoryPageSchema.parse(
+        await this.options.runtime.history({
+          conversationId: conversation.id,
+          sessionId: conversation.sessionId,
+          homeDirectory: paths.homeDirectory,
+          modelId: conversation.modelId,
+          ...(cursor === undefined ? { limit: RECENT_HISTORY_TURN_LIMIT } : { cursor, limit: 100 })
+        })
+      );
+      const turn = page.turns.find((candidate) => candidate.id === turnId);
+      if (turn !== undefined) return turn;
       cursor = page.nextCursor ?? undefined;
     } while (cursor !== undefined);
-    return turns;
+    return undefined;
   }
 
   private interrupt(raw: unknown): unknown {

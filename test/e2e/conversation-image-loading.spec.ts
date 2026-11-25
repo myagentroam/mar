@@ -4,6 +4,7 @@ import { expect, test, type Locator } from '@playwright/test';
 import { ImagePreviewService } from '../../mar-node/src/service/image-preview-service.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/web-core/src/view/common/ImagePreviewViewport.vue
 // @test-covers packages/web-core/src/view/conversation/DecodedPreviewImage.vue
 // @test-covers packages/web-core/src/view/conversation/ConversationImageThumbnail.vue
 // @test-covers packages/web-core/src/view/conversation/ImagePreviewDialogs.vue
@@ -194,11 +195,16 @@ async function expectOriginalActionPosition(action: Locator): Promise<void> {
   const { gap, centerOffset, rowOffset } = await action.evaluate((button: HTMLElement) => {
     const row = button.closest('.mar-image-preview-actions')!;
     const rowBox = row.getBoundingClientRect();
-    const imageBox = row.parentElement!.querySelector('img')!.getBoundingClientRect();
+    const image = row.parentElement!.querySelector('img')!;
+    const imageBox = image.getBoundingClientRect();
+    const visibleBottom = Math.min(
+      imageBox.bottom,
+      image.parentElement!.getBoundingClientRect().bottom
+    );
     const actionBox = button.getBoundingClientRect();
     const zoomBox = row.querySelector('.mar-image-preview-controls')!.getBoundingClientRect();
     return {
-      gap: actionBox.top - imageBox.bottom,
+      gap: actionBox.top - visibleBottom,
       centerOffset: rowBox.x + rowBox.width / 2 - (imageBox.x + imageBox.width / 2),
       rowOffset: actionBox.y + actionBox.height / 2 - (zoomBox.y + zoomBox.height / 2)
     };
@@ -268,6 +274,21 @@ for (const viewport of [
     expect(bounds!.width).toBeLessThan(viewport.width);
     expect(bounds!.height).toBeLessThan(viewport.height);
     await page.screenshot({ path: info.outputPath('ready.png'), animations: 'disabled' });
+
+    const zoomIn = dialog.getByRole('button', { name: 'Zoom in', exact: true });
+    const fit = dialog.getByRole('button', { name: 'Fit image', exact: true });
+    await zoomIn.click();
+    await expect(fit).toBeEnabled();
+    expect((await image.boundingBox())!.height).toBeGreaterThan(bounds!.height);
+    await expectOriginalActionPosition(original);
+    await page.screenshot({ path: info.outputPath('zoomed.png'), animations: 'disabled' });
+    await zoomIn.click();
+    await dialog.getByRole('button', { name: 'Zoom out', exact: true }).click();
+    await expectOriginalActionPosition(original);
+    await fit.click();
+    await expect(fit).toBeDisabled();
+    await expectOriginalActionPosition(original);
+
     halfSent = false;
     await original.click();
     await expect.poll(() => halfSent).toBe(true);
@@ -326,6 +347,7 @@ for (const [name, width, height] of [
       const fit = dialog.getByRole('button', { name: 'Fit image', exact: true });
       await dialog.getByRole('button', { name: 'Zoom in', exact: true }).click();
       await expect(fit).toBeEnabled();
+      await expectOriginalActionPosition(original);
       await original.click();
       await expect(image).toBeVisible();
       await expect(fit).toBeDisabled();

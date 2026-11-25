@@ -508,6 +508,13 @@ onBeforeUnmount(() => {
   background: var(--mar-conversation-canvas);
 }
 
+@media (max-width: 767px) {
+  .conversation-panel:has(> :deep(.is-workspace-welcome)) {
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 .draft-session-description {
   max-width: 100%;
   color: var(--mar-text-secondary);

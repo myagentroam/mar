@@ -60,9 +60,10 @@ const controls = computed<ImagePreviewControlState | undefined>(() =>
 defineExpose({ controls });
 
 const actionStyle = computed(() => {
-  const blankHeight = viewportSize.value.height - fitted.value.height;
-  const y = transform.value.scale === 1 ? -blankHeight / 2 : 0;
-  return { transform: `translateY(${y}px)` };
+  const { scale, y } = transform.value;
+  // The action row starts below the viewport; move it up to the visible image edge.
+  const imageBottomOffset = y + (fitted.value.height * scale - viewportSize.value.height) / 2;
+  return { transform: `translateY(${Math.min(0, imageBottomOffset)}px)` };
 });
 
 function updateTransform(value: ImagePreviewTransform): void {

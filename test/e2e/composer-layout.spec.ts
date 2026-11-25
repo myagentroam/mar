@@ -213,7 +213,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             const gap = composerHost.y - (description.y + description.height);
             expect(gap).toBeGreaterThan(0);
             expect(gap).toBeLessThanOrEqual(24);
-            expect(composer.y + composer.height).toBe(844);
+            if (mode === 'workspace') {
+              const header = (await page.locator('header').boundingBox())!;
+              const availableCenter = (header.y + header.height + 844) / 2;
+              const startupCenter = (title.y + composer.y + composer.height) / 2;
+              expect(Math.abs(startupCenter - availableCenter)).toBeLessThan(8);
+            } else {
+              expect(composer.y + composer.height).toBe(844);
+            }
           } else {
             const header = (await page.locator('header').boundingBox())!;
             const availableCenter = (header.y + header.height + 844) / 2;
@@ -351,8 +358,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       }, testInfo) => {
         await page.goto(`${fixture.url}workbench-style.html?composer=1&theme=${theme}`);
         const composer = page.locator('.composer');
+        await expect(page.locator('.conversation-empty')).toBeVisible();
         await expect(composer).toBeVisible();
-        await expect(composer).toHaveCSS('position', width < 768 ? 'fixed' : 'relative');
+        await expect(composer).toHaveCSS('position', 'relative');
         await expect(page.locator('.workspace-grid')).toHaveCSS('border-bottom-width', '0px');
         for (const height of [844, 560]) {
           await page.setViewportSize({ width, height });

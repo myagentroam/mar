@@ -440,8 +440,20 @@ test('Mobile Composer anchors to the visual viewport bottom with matching conver
     .locator('.workspace-tree')
     .getByRole('button', { name: /node-1/ })
     .click();
-  await nodesButton.click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+
+  await page.getByRole('button', { name: '打开会话列表' }).click();
+  await page.locator('.session-list button').first().click();
+  await expect(page.locator('.conversation-empty')).toHaveCount(0);
+  await expect(page.locator('.composer')).toHaveCSS('position', 'fixed');
+  const reservedHeightDifference = () =>
+    page.locator('.composer-host').evaluate((host) => {
+      const composer = host.querySelector('.composer')!;
+      return Math.abs(
+        host.getBoundingClientRect().height - composer.getBoundingClientRect().height
+      );
+    });
+  await expect.poll(reservedHeightDifference).toBeLessThanOrEqual(1);
 
   const layout = await page.evaluate(() => {
     const composerHost = document.querySelector<HTMLElement>('.composer-host');
@@ -479,17 +491,7 @@ test('Mobile Composer anchors to the visual viewport bottom with matching conver
       page.locator('.composer').evaluate((element) => element.getBoundingClientRect().bottom)
     )
     .toBeCloseTo(600, 2);
-  await expect
-    .poll(() =>
-      page.locator('.composer-host').evaluate((element) => {
-        const hostHeight = element.getBoundingClientRect().height;
-        const composerHeight = document
-          .querySelector<HTMLElement>('.composer')
-          ?.getBoundingClientRect().height;
-        return Math.abs(hostHeight - (composerHeight ?? 0));
-      })
-    )
-    .toBeLessThanOrEqual(1);
+  await expect.poll(reservedHeightDifference).toBeLessThanOrEqual(1);
   expect(
     await page
       .getByTestId('workbench-brand')

@@ -321,13 +321,13 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('resolve pending work needed for this task');
     expect(normalized).not.toContain('terminal caches need no cleanup');
     expect(normalized).not.toContain('# output and communication style');
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.78');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.81');
   });
 
   it('adds the reasoning guidance only when Thought is directly available', () => {
     const input = { mode: 'run', platform: 'linux', workspace: '/workspace' } as const;
     const guidance =
-      '<reasoning>\nDuring complex or extended tasks, use `thought` as significant intermediate insights accumulate, rather than waiting until the task is complete.\n\nAvoid recording trivial observations or repeating existing conclusions.\n</reasoning>';
+      '<reasoning>\nDuring extended reasoning, earlier insights may be lost if left unrecorded.\n\nUse `thought` to capture reusable insights as they accumulate, rather than waiting until the task is complete.\n\nAvoid recording trivial observations or repeating existing conclusions.\n</reasoning>';
     const prompt = buildSystemPrompt({
       ...input,
       tools: ['code_exec', 'thought', 'exec'],

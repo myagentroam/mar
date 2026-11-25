@@ -473,11 +473,12 @@ if (historyActionsFixture) {
       ...turns.value[0]!,
       rewind: { before: null, after: 'turn' },
       items: [
-        items[0]!,
+        { ...items[0]!, startedAt: Date.UTC(2026, 10, 25, 0, 0, 3) },
         {
           id: 'reply',
           kind: 'assistant_message',
           status: 'COMPLETED',
+          startedAt: Date.UTC(2026, 10, 25, 0, 0, 10),
           payload: { text: 'Fixture reply' }
         }
       ]

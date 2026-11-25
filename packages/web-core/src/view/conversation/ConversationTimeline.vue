@@ -2235,6 +2235,10 @@ details.conversation-record-group[open] > details:last-child {
   padding: 0;
 }
 
+:deep(.conversation-message-action > .mar-icon) {
+  font-size: var(--mar-font-size-body);
+}
+
 @media (prefers-reduced-motion: reduce) {
   :deep(.conversation-message-action) {
     transition: none;

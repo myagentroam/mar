@@ -241,8 +241,12 @@ for (const width of [1280, 390]) {
         const list = queue.locator('.composer-work-list');
         if (width < 768)
           await expect
-            .poll(() => page.locator('.composer-host').evaluate((element) => element.style.height))
-            .not.toBe('');
+            .poll(() =>
+              page
+                .locator('.composer-host')
+                .evaluate((element) => element.getBoundingClientRect().height)
+            )
+            .toBeGreaterThan(0);
         await expect(list.locator('.queue-item')).toHaveCount(8);
         await expect(list.locator('.goal-card')).toHaveCount(0);
         await expect(queue.locator('.composer-queue-heading')).toHaveCount(0);
@@ -309,7 +313,7 @@ for (const width of [1280, 390]) {
                 .locator('.composer-host')
                 .evaluate((element) =>
                   Math.abs(
-                    parseFloat(element.style.height) -
+                    element.getBoundingClientRect().height -
                       element.querySelector('.composer')!.getBoundingClientRect().height
                   )
                 )
