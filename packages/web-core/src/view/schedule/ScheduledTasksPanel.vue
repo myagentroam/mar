@@ -74,7 +74,17 @@ const summary = computed(() =>
     : msg(`${props.section}Summary`)
 );
 const tasks = ref<ScheduleCard[]>([]);
-const nodes = ref<ScheduleNode[]>([]);
+const globalNodes = shallowRef<ScheduleNode[]>();
+const sessionNodes = shallowRef<{ scope: ScheduleSessionScope; nodes: ScheduleNode[] }>();
+const nodes = computed(() => {
+  const scope = sessionScope.value;
+  if (!scope) return globalNodes.value;
+  const confirmed = sessionNodes.value;
+  return confirmed?.scope === scope ? confirmed.nodes : undefined;
+});
+const canCreate = computed(
+  () => nodes.value?.some((node) => node.connected && node.supported !== false) === true
+);
 const workspace = shallowRef<ScheduleScope>();
 const workspaces = shallowRef<ScheduleWorkspaceOption[]>([]);
 const page = ref(1);
@@ -131,7 +141,8 @@ async function load(next: number, reset = false, incremental = props.mobile === 
     total.value = 0;
     hasMore.value = false;
   }
-  const target = sessionScope.value ?? workspace.value;
+  const fixedSession = sessionScope.value;
+  const target = fixedSession ?? workspace.value;
   const filters = { mine: props.section === 'mine', ...(target ? { target } : {}) };
   const readContext = context.value;
   const current = () => !read.signal.aborted && readContext === context.value;
@@ -150,7 +161,8 @@ async function load(next: number, reset = false, incremental = props.mobile === 
       const seen = new Set(tasks.value.map(identity));
       tasks.value = [...tasks.value, ...result.items.filter((task) => !seen.has(identity(task)))];
     } else tasks.value = result.items;
-    if (sessionScope.value || !target) nodes.value = result.nodes;
+    if (fixedSession) sessionNodes.value = { scope: fixedSession, nodes: result.nodes };
+    else if (!target) globalNodes.value = result.nodes;
     if (result.workspaces) workspaces.value = result.workspaces;
     page.value = result.page;
     pageSize.value = result.pageSize;
@@ -352,7 +364,11 @@ watch(
 </script>
 
 <template>
-  <section class="mar-management-page schedule-panel" :aria-labelledby="panelTitleId">
+  <section
+    class="mar-management-page schedule-panel"
+    :class="{ 'schedule-panel--tasks': section !== 'history' }"
+    :aria-labelledby="panelTitleId"
+  >
     <header>
       <h2 :id="panelTitleId" class="mar-settings-page-title">{{ title }}</h2>
       <p class="mar-settings-page-summary">{{ summary }}</p>
@@ -366,28 +382,30 @@ watch(
       @open="openOccurrence"
     />
     <template v-else>
-      <ScheduledWorkspaceFilter
-        v-if="!sessionContext"
-        v-model="workspace"
-        :workspaces="workspaces"
-      />
-      <div class="mar-table-actions">
+      <div class="mar-table-actions schedule-toolbar">
+        <ScheduledWorkspaceFilter
+          v-if="!sessionContext"
+          v-model="workspace"
+          :workspaces="workspaces"
+        />
         <MarButton
           v-if="sessionContext"
           :icon="marIcon('chevron-left')"
           @click="emit('backToAll')"
           >{{ msg('backToAll') }}</MarButton
         >
-        <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="reload()">{{
+        <MarButton text :icon="marIcon('refresh')" :disabled="loading" @click="reload()">{{
           msg('refresh')
         }}</MarButton>
-        <MarButton
-          type="primary"
-          :icon="marIcon('plus')"
-          :disabled="nodes.length === 0"
-          @click="editor = 'new'"
-          >{{ msg('create') }}</MarButton
-        >
+        <div class="schedule-create" :class="{ 'schedule-create--pending': nodes === undefined }">
+          <MarButton
+            type="primary"
+            :icon="marIcon('plus')"
+            :disabled="!canCreate"
+            @click="editor = 'new'"
+            >{{ msg('create') }}</MarButton
+          >
+        </div>
       </div>
       <p v-if="failure && !failure.incremental" role="alert" class="notice">
         {{ errorSummary(failure.error, msg('loadFailed')) }}
@@ -418,6 +436,7 @@ watch(
       </template>
       <ManagementPagination
         v-if="tasks.length"
+        class="schedule-pagination"
         :page="page"
         :page-size="pageSize"
         :total="total"
@@ -438,7 +457,7 @@ watch(
     <ScheduledTaskEditor
       v-if="editor"
       :client="client"
-      :nodes="nodes"
+      :nodes="nodes ?? []"
       :locked-session="editor === 'new' ? sessionContext : undefined"
       :editing="editor === 'new' ? undefined : editor"
       @close="closeEditor"
@@ -530,10 +549,44 @@ watch(
 .schedule-panel {
   color: var(--mar-text-primary);
 }
+.schedule-panel--tasks {
+  background: var(--mar-bg-page);
+}
+.schedule-panel--tasks > header {
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.schedule-panel--tasks .mar-settings-page-title {
+  font-size: var(--mar-font-size-page-title);
+}
+.schedule-panel--tasks .mar-settings-page-summary {
+  margin-block-start: 0;
+}
+.schedule-panel--tasks
+  > :is(
+    header,
+    .schedule-toolbar,
+    .cards,
+    .notice,
+    .panel-empty,
+    .schedule-pagination,
+    .mar-page-loading-state
+  ) {
+  max-inline-size: 1560px;
+}
+.schedule-create {
+  margin-inline-start: auto;
+}
+.schedule-create--pending {
+  visibility: hidden;
+}
+.schedule-panel--tasks .schedule-pagination {
+  background: transparent;
+}
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  gap: 1rem;
   padding: 0;
   margin: 0;
   list-style: none;

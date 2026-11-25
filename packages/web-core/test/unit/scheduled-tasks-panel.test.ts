@@ -89,6 +89,31 @@ function deferred<T>() {
 }
 
 describe('Scheduled tasks workbench', () => {
+  it('enables creation only after the target catalog includes an online supported node', async () => {
+    const first = deferred<ReturnType<typeof taskPage>>();
+    const second = deferred<ReturnType<typeof taskPage>>();
+    const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const view = renderComponent(ScheduledTasksPanel, { request, section: 'mine' });
+    try {
+      expect(button(view, 'New schedule').props.disabled).toBe(true);
+      first.resolve({
+        ...taskPage([]),
+        nodes: [
+          { ...node, connected: false },
+          { ...node, id: 'b', supported: false }
+        ]
+      });
+      await flushComponent();
+      expect(button(view, 'New schedule').props.disabled).toBe(true);
+      const refresh = trigger(button(view, 'Refresh'), 'onClick');
+      second.resolve(taskPage([]));
+      await refresh;
+      expect(button(view, 'New schedule').props.disabled).toBe(false);
+    } finally {
+      view.unmount();
+    }
+  });
+
   it.each([
     ['mine', false, 'My schedules', 'View and manage your scheduled tasks.'],
     ['all', false, 'All schedules', 'View all scheduled tasks you have access to.'],
