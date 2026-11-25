@@ -58,6 +58,13 @@ const client = scheduledTaskClient(props.request);
 const panelTitleId = useId();
 const msg = (key: string, args?: Record<string, number | string>) =>
   translate(`generated.scheduledSession.${key}`, args);
+const summary = computed(() =>
+  msg(
+    props.initial && props.section !== 'history'
+      ? `${props.section}SessionSummary`
+      : `${props.section}Summary`
+  )
+);
 const tasks = ref<ScheduleCard[]>([]);
 const nodes = ref<ScheduleNode[]>([]);
 const cursor = ref<string | null>(null);
@@ -291,7 +298,8 @@ watch(
 <template>
   <section class="mar-management-page schedule-panel" :aria-labelledby="panelTitleId">
     <header>
-      <h2 :id="panelTitleId">{{ msg(section === 'history' ? 'history' : 'panelTitle') }}</h2>
+      <h2 :id="panelTitleId" class="mar-settings-page-title">{{ msg(section) }}</h2>
+      <p class="mar-settings-page-summary">{{ summary }}</p>
     </header>
     <ScheduledExecutionHistory
       v-if="section === 'history'"
@@ -484,6 +492,9 @@ watch(
 </template>
 
 <style scoped>
+.schedule-panel > header {
+  display: block;
+}
 .schedule-panel {
   color: var(--mar-text-primary);
 }

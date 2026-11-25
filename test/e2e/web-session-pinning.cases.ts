@@ -151,6 +151,54 @@ function session(id: string, runnerTitle: string, pinOrder: number | null) {
   };
 }
 
+test('Scheduled tasks show scope-specific page titles and summaries', async ({ page }, info) => {
+  await mockConsoleApi(page, 'MANAGED', ['session.schedule'], []);
+  await page.route(/\/api\/scheduled-tasks(?:\?.*)?$/, (route) =>
+    json(route, { items: [], nodes: [], nextCursor: null, unavailableNodeIds: [] })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  const clock = page.getByRole('button', { name: '定时任务', exact: true });
+  const menu = page.getByRole('navigation', { name: '定时任务', exact: true });
+  await clock.click();
+
+  const mine = page.getByRole('region', { name: '我的定时', exact: true });
+  const mineSummary = mine.getByText('查看和管理你拥有的定时任务。', { exact: true });
+  await expect(mine.getByRole('heading', { name: '我的定时', level: 2 })).toBeVisible();
+  await expect(mineSummary).toBeVisible();
+
+  await menu.getByRole('button', { name: '全部定时', exact: true }).click();
+  await expect(mine).toHaveCount(0);
+  const all = page.getByRole('region', { name: '全部定时', exact: true });
+  const title = all.getByRole('heading', { name: '全部定时', level: 2 });
+  const summary = all.getByText('查看你有权访问的所有定时任务。', { exact: true });
+  await expect(title).toBeVisible();
+  await expect(summary).toBeVisible();
+  const refresh = all.getByRole('button', { name: '刷新', exact: true });
+  // Measure in one frame while the Workbench sidebar can still be animating.
+  const [titleBox, summaryBox, refreshBox] = await title
+    .or(summary)
+    .or(refresh)
+    .evaluateAll((elements) =>
+      elements.map((element) => {
+        const { x, top, bottom } = element.getBoundingClientRect();
+        return { x, top, bottom };
+      })
+    );
+  expect(Math.abs(titleBox!.x - summaryBox!.x)).toBeLessThan(1);
+  expect(Math.abs(titleBox!.x - refreshBox!.x)).toBeLessThan(1);
+  expect(summaryBox!.top).toBeGreaterThanOrEqual(titleBox!.bottom);
+  expect(refreshBox!.top).toBeGreaterThanOrEqual(summaryBox!.bottom);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(summary).toBeInViewport();
+  await clock.click();
+  await menu.getByRole('button', { name: '我的定时', exact: true }).click();
+  await expect(menu).toBeHidden();
+  await expect(mineSummary).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('schedule-heading-mobile.png') });
+});
+
 test('Scheduled tasks select a node, save multiple time combinations, and open execution records', async ({
   page
 }, info) => {
@@ -337,14 +385,14 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '定时任务', exact: true }).click();
-  const panel = page.getByRole('region', { name: '定时任务', exact: true });
+  const panel = page.getByRole('region', { name: /^(我的定时|全部定时)$/ });
   const scheduleMenu = page.getByRole('navigation', { name: '定时任务', exact: true });
   const header = page.locator('.workbench-header');
   const toggle = header.locator('.workbench-tree-toggle');
   await expect(panel.locator('.card')).toHaveCount(2);
   expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('true');
   expect([...listRequests.at(-1)!.searchParams.keys()]).toEqual(['mine']);
-  await expect(panel.getByRole('heading', { name: '定时任务', level: 2 })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: '我的定时', level: 2 })).toBeVisible();
   await expect(panel.getByRole('heading', { name: '检查构建', level: 3 })).toBeVisible();
   await expect(panel.getByRole('heading', { name: '接下来', exact: true })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
@@ -365,17 +413,6 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await expect(panel.locator('.card')).toHaveCount(3);
   expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('false');
   await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'daylight'));
-  const title = panel.getByRole('heading', { name: '定时任务', exact: true });
-  const refresh = panel.getByRole('button', { name: '刷新', exact: true });
-  // Read both boxes in one frame while the Workbench sidebar can still be animating.
-  const [titleBox, refreshBox] = await title.or(refresh).evaluateAll((elements) =>
-    elements.map((element) => {
-      const { x, y, bottom } = element.getBoundingClientRect();
-      return { x, y, bottom };
-    })
-  );
-  expect(Math.abs(titleBox!.x - refreshBox!.x)).toBeLessThan(1);
-  expect(refreshBox!.y).toBeGreaterThanOrEqual(titleBox!.bottom);
   await page.screenshot({ path: info.outputPath('scheduled-tasks-desktop.png') });
 
   await panel.getByRole('button', { name: '新建定时', exact: true }).click();

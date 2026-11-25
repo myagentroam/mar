@@ -75,6 +75,43 @@ function deferred<T>() {
 }
 
 describe('Scheduled tasks workbench', () => {
+  it.each([
+    ['mine', false, 'My schedules', 'View and manage your scheduled tasks.'],
+    ['all', false, 'All schedules', 'View all scheduled tasks you have access to.'],
+    ['mine', true, 'My schedules', 'View and manage your scheduled tasks for this session.'],
+    [
+      'all',
+      true,
+      'All schedules',
+      'View all scheduled tasks for this session that you have access to.'
+    ],
+    ['history', true, 'Execution records', 'See when scheduled tasks ran and how they ended.']
+  ] as const)(
+    'identifies the %s section with a title and summary (session context: %s)',
+    async (section, sessionScoped, title, summary) => {
+      const request = vi
+        .fn()
+        .mockResolvedValue({ ...historyPage([]), nodes: [node], nextCursor: null });
+      const view = renderComponent(ScheduledTasksPanel, {
+        request,
+        section,
+        initial: sessionScoped ? { ...scope, sessionId: 'session' } : undefined
+      });
+      try {
+        await flushComponent();
+        const [header] = view.findAll('header');
+        const [heading, description] = header!.children;
+        expect(heading?.type).toBe('h2');
+        expect(textContent(heading!)).toBe(title);
+        expect(description?.type).toBe('p');
+        expect(textContent(description!)).toBe(summary);
+        expect(header!.parent?.props['aria-labelledby']).toBe(heading?.props.id);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it('keeps dates paired with their own times and validates unfinished edits', () => {
     const a = timeDraft(1);
     a.dayKind = 'weekdays';

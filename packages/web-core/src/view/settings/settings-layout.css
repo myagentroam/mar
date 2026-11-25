@@ -7,24 +7,6 @@
   background: var(--mar-bg-panel);
 }
 
-.settings-content :is(.settings-panel > h2, .mar-settings-page-title) {
-  margin: 0;
-  font-size: var(--mar-font-size-title);
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.settings-content .mar-settings-page-title {
-  letter-spacing: normal;
-}
-
-.settings-content :is(.settings-panel > p, .mar-settings-page-summary) {
-  margin: 5px 0 0;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
-  line-height: 1.5;
-}
-
 .settings-content .mar-settings-option-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
