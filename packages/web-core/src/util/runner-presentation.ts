@@ -1,6 +1,17 @@
 import type { Session, RunnerCommandState, RunnerProfile } from '../model/workbench.js';
 import { translate } from '../service/locale-preference-service.js';
 
+const runnerPreference: Readonly<Record<Session['runner'], number>> = {
+  'mar-agent': 0,
+  codex: 1,
+  'claude-code': 2,
+  opencode: 3
+};
+
+export function compareRunners(left: Session['runner'], right: Session['runner']): number {
+  return runnerPreference[left] - runnerPreference[right];
+}
+
 export function runnerModelCandidates(
   profile: RunnerProfile | undefined,
   session: Session | undefined

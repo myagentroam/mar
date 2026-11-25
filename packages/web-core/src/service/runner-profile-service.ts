@@ -3,6 +3,7 @@ import type { WorkspaceTarget } from '../model/workbench.js';
 import type { RunnerDefaultConfiguration, RunnerProfile, Session } from '../model/workbench.js';
 import { computed, ref, watch } from 'vue';
 import { localePreferenceService, translate } from './locale-preference-service.js';
+import { compareRunners } from '../util/runner-presentation.js';
 
 interface RunnerProfileServiceOptions {
   readonly workspaceTarget: Readonly<ValueRef<WorkspaceTarget | undefined>>;
@@ -14,13 +15,6 @@ interface RunnerProfileServiceOptions {
 interface ValueRef<T> {
   value: T;
 }
-
-const runnerPreference: Readonly<Record<Session['runner'], number>> = {
-  'mar-agent': 0,
-  codex: 1,
-  'claude-code': 2,
-  opencode: 3
-};
 
 function preferredProfiles(profiles: readonly RunnerProfile[]): readonly RunnerProfile[] {
   return profiles
@@ -67,7 +61,7 @@ function preferredProfiles(profiles: readonly RunnerProfile[]): readonly RunnerP
           };
         })
     }))
-    .sort((left, right) => runnerPreference[left.runner] - runnerPreference[right.runner]);
+    .sort((left, right) => compareRunners(left.runner, right.runner));
 }
 
 const runnerProfileDescriptionKeys: Readonly<Record<string, string>> = {

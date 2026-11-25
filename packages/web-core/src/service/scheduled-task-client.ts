@@ -19,6 +19,10 @@ export interface ScheduleScope {
   nodeId: string;
   workspaceId: string;
 }
+export interface ScheduleWorkspaceOption extends ScheduleScope {
+  nodeName: string;
+  workspaceName: string;
+}
 export interface ScheduleSessionScope extends ScheduleScope {
   sessionId: string;
 }
@@ -139,21 +143,21 @@ export function scheduledTaskClient(request: ScheduleRequest) {
       filters: {
         mine: boolean;
         cursor?: string;
-        session?: ScheduleSessionScope;
+        target?: ScheduleScope & { sessionId?: string };
       },
       signal: AbortSignal
     ) =>
-      request<Page<ScheduleCard> & { nodes: ScheduleNode[] }>(
-        `${tasks}${query({ ...filters.session, mine: filters.mine, cursor: filters.cursor })}`,
-        { signal }
-      ),
+      request<
+        Page<ScheduleCard> & { nodes: ScheduleNode[]; workspaces?: ScheduleWorkspaceOption[] }
+      >(`${tasks}${query({ ...filters.target, mine: filters.mine, cursor: filters.cursor })}`, {
+        signal
+      }),
     detail: (key: ScheduleTaskKey, signal: AbortSignal) =>
       request<ScheduleDetail>(`${taskPath(key.id)}${query(scope(key))}`, { signal }),
     history: (
       filters: {
-        mine: boolean;
         task?: ScheduleTaskKey;
-        nodeId?: string;
+        workspace?: ScheduleScope;
         page: number;
       },
       signal: AbortSignal
@@ -162,10 +166,10 @@ export function scheduledTaskClient(request: ScheduleRequest) {
         ManagementPageMetadata & {
           items: ScheduleOccurrence[];
           unavailableNodeIds: string[];
-          nodes?: Pick<ScheduleNode, 'id' | 'name'>[];
+          workspaces?: ScheduleWorkspaceOption[];
         }
       >(
-        `${occurrences}${query({ ...(filters.task === undefined ? { nodeId: filters.nodeId } : { ...scope(filters.task), taskId: filters.task.id }), mine: filters.mine, page: String(filters.page) })}`,
+        `${occurrences}${query({ ...(filters.task ? { ...scope(filters.task), taskId: filters.task.id } : filters.workspace ? scope(filters.workspace) : {}), mine: false, page: String(filters.page) })}`,
         { signal }
       ),
     occurrence: (item: ScheduleScope & { occurrenceId: string }, signal: AbortSignal) =>

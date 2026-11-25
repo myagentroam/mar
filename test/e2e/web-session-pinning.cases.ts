@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
 test('Pinned sessions support menu movement and dragging across multiple rows', async ({
@@ -213,6 +213,12 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     { id: 'node-2', name: 'Node B', connected: true, supported: true }
   ];
   const scope = { nodeId: 'node-2', workspaceId: 'workspace-1' };
+  const workspaces = nodes.map((node) => ({
+    ...scope,
+    nodeId: node.id,
+    nodeName: node.name,
+    workspaceName: 'project'
+  }));
   const targetSession = {
     ...session('scheduled', '定时会话', 0),
     externalSessionId: 'mock-native:scheduled'
@@ -222,14 +228,18 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     times: { kind: 'times', times: ['10:00', '20:00'] }
   };
   const grid = {
-    days: { kind: 'monthDays', monthDays: [31], months: [1, 12] },
+    days: { kind: 'monthDays', monthDays: [15, 31], months: [1, 12] },
     times: { kind: 'grid', hours: [0, 20], minutes: [0, 59] }
   };
   const groups = [explicitTimes, grid];
+  const promptPreview =
+    '检查最近一次构建的结果，汇总失败的步骤、相关日志和下一步建议。若没有失败，请记录这次构建的状态和可复查的运行编号。'.repeat(
+      3
+    );
   const task = {
     id: 'task',
     name: '检查构建',
-    objective: 'Inspect status',
+    objective: promptPreview,
     groups,
     enabled: true,
     notifyOnTerminal: false,
@@ -269,7 +279,30 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     json(route, {
       profiles: ['opencode', 'mar-agent', 'codex', 'claude-code'].map((runner) => ({
         runner,
-        models: [{ id: 'model', label: 'Test model', supportedEfforts: [] }],
+        models: [
+          ...(runner === 'mar-agent'
+            ? [
+                {
+                  id: 'dual',
+                  label: 'Dual-purpose model',
+                  supportedEfforts: [],
+                  subagentModel: true
+                }
+              ]
+            : []),
+          {
+            id: 'model',
+            label: 'Test model',
+            supportedEfforts: ['medium', 'high'],
+            defaultEffort: 'high'
+          },
+          {
+            id: 'another',
+            label: 'Another model',
+            supportedEfforts: ['medium', 'high'],
+            defaultEffort: 'medium'
+          }
+        ],
         accessOptions: [],
         commands: [],
         capabilities: []
@@ -287,16 +320,36 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
       return json(route, { task });
     }
     listRequests.push(url);
+    const filtered = url.searchParams.get('nodeId');
     return json(route, {
-      nodes,
+      nodes: filtered ? nodes.filter((item) => item.id === filtered) : nodes,
+      ...(!filtered ? { workspaces } : {}),
       items: [
         makeCard(task, 'node-2', true),
-        makeCard(otherTask, 'node-2', true),
+        {
+          ...makeCard(otherTask, 'node-2', true),
+          enabled: false,
+          nextRunAt: null,
+          targetKind: 'newSession',
+          sessionTitle: null,
+          sessionId: null,
+          objectivePreview: '整理失败报告并汇总待跟进项。'
+        },
         ...(url.searchParams.get('mine') === 'false'
-          ? [makeCard({ ...task, name: '另一节点的相同任务 ID' }, 'node-1', false)]
+          ? [
+              {
+                ...makeCard({ ...task, name: '另一节点的相同任务 ID' }, 'node-1', false),
+                sessionId: 'session-1',
+                sessionTitle: '既有会话'
+              }
+            ]
           : [])
-      ],
-      unavailableNodeIds: [],
+      ].filter(
+        (item) =>
+          !filtered ||
+          (item.nodeId === filtered && item.workspaceId === url.searchParams.get('workspaceId'))
+      ),
+      unavailableNodeIds: ['node-offline'],
       nextCursor: null
     });
   });
@@ -337,8 +390,10 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     const scoped = url.searchParams.has('taskId');
     const requestedPage = Number(url.searchParams.get('page'));
     const filtered = url.searchParams.get('nodeId');
-    const mine = url.searchParams.get('mine') === 'true';
-    if (requestedPage === 2 && ((scoped && failTaskPage) || (!scoped && mine && failMobilePage))) {
+    if (
+      requestedPage === 2 &&
+      ((scoped && failTaskPage) || (!scoped && filtered === 'node-2' && failMobilePage))
+    ) {
       if (scoped) failTaskPage = false;
       else failMobilePage = false;
       return json(route, { error: 'INTERNAL_ERROR' }, 500);
@@ -347,7 +402,7 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
       ...record,
       nodeId: 'node-1',
       nodeName: 'Node A',
-      workspaceName: 'other project',
+      workspaceName: 'project',
       occurrenceId: 'other-record',
       name: '另一个任务的记录',
       state: 'FAILED'
@@ -363,7 +418,7 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
       ? [record, ...older]
       : [
           ...(!filtered || filtered === 'node-2' ? [record] : []),
-          ...(!mine && (!filtered || filtered === 'node-1') ? [another] : []),
+          ...(!filtered || filtered === 'node-1' ? [another] : []),
           ...(!filtered || filtered === 'node-2' ? older : [])
         ];
     const responsePage = Math.min(requestedPage, Math.max(1, Math.ceil(all.length / pageSize)));
@@ -374,7 +429,7 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
       total: all.length,
       hasMore: responsePage * pageSize < all.length,
       unavailableNodeIds: [],
-      ...(!scoped ? { nodes } : {})
+      ...(!scoped && !filtered ? { workspaces } : {})
     });
   });
   await page.route(/\/api\/scheduled-occurrences\/record\?.*$/, (route) => {
@@ -389,6 +444,17 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   const scheduleMenu = page.getByRole('navigation', { name: '定时任务', exact: true });
   const header = page.locator('.workbench-header');
   const toggle = header.locator('.workbench-tree-toggle');
+  const filterWorkspace = async (surface: Locator, option: string) => {
+    await surface.getByRole('combobox', { name: '工作区', exact: true }).click();
+    await page.getByRole('option', { name: option, exact: true }).click();
+  };
+  const clearWorkspace = async (surface: Locator) => {
+    await surface.getByRole('button', { name: '清空', exact: true }).click();
+    await expect(surface.getByRole('combobox', { name: '工作区', exact: true })).toHaveAttribute(
+      'placeholder',
+      '全部工作区'
+    );
+  };
   await expect(panel.locator('.card')).toHaveCount(2);
   expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('true');
   expect([...listRequests.at(-1)!.searchParams.keys()]).toEqual(['mine']);
@@ -397,6 +463,15 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await expect(panel.getByRole('heading', { name: '接下来', exact: true })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
   await expect(panel.getByText('下次执行', { exact: true })).toHaveCount(2);
+  await filterWorkspace(panel, 'project · Node A');
+  await expect(panel.getByText('暂无可显示的定时任务。')).toBeVisible();
+  expect([...listRequests.at(-1)!.searchParams]).toEqual([
+    ['nodeId', 'node-1'],
+    ['workspaceId', 'workspace-1'],
+    ['mine', 'true']
+  ]);
+  await clearWorkspace(panel);
+  await expect(panel.locator('.card')).toHaveCount(2);
   await expect(header.getByRole('heading', { name: '我的定时' })).toBeVisible();
   await expect(scheduleMenu.getByRole('button', { name: '我的定时' })).toHaveAttribute(
     'aria-current',
@@ -412,8 +487,27 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await expect(panel.getByRole('tablist')).toHaveCount(0);
   await expect(panel.locator('.card')).toHaveCount(3);
   expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('false');
+  await expect(panel.getByText(/节点不可用/)).toHaveCount(0);
+  await filterWorkspace(panel, 'project · Node A');
+  await expect(panel.locator('.card')).toHaveCount(1);
+  expect([...listRequests.at(-1)!.searchParams]).toEqual([
+    ['nodeId', 'node-1'],
+    ['workspaceId', 'workspace-1'],
+    ['mine', 'false']
+  ]);
+  await clearWorkspace(panel);
+  await expect(panel.locator('.card')).toHaveCount(3);
   await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'daylight'));
   await page.screenshot({ path: info.outputPath('scheduled-tasks-desktop.png') });
+  await page
+    .locator('html')
+    .evaluate((element) => element.setAttribute('data-theme', 'vscode-dark-2026'));
+  await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-desktop.png') });
+  await panel.locator('.card').filter({ hasText: '检查构建' }).locator('.objective').hover();
+  await expect(page.getByRole('tooltip')).toHaveText(promptPreview);
+  await page.screenshot({ path: info.outputPath('scheduled-card-tooltip.png') });
+  await page.keyboard.press('Escape');
+  await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'daylight'));
 
   await panel.getByRole('button', { name: '新建定时', exact: true }).click();
   const editor = page.getByRole('dialog').and(page.locator('dialog'));
@@ -421,6 +515,9 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     await editor.getByRole('combobox', { name, exact: true }).click();
     await page.getByRole('option', { name: option, exact: true }).click();
   };
+  await expect(editor.getByRole('combobox', { name: '执行节点', exact: true })).toHaveText(
+    '选择执行节点'
+  );
   await expect(editor.getByRole('combobox', { name: '工作区', exact: true })).toBeDisabled();
   await editor.getByRole('combobox', { name: '执行节点', exact: true }).click();
   await expect(page.getByRole('option', { name: 'Node B', exact: true })).toBeVisible();
@@ -457,6 +554,7 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await editor.getByRole('tab', { name: '时间组合', exact: true }).click();
   const first = editor.locator('fieldset').first();
   const firstTime = first.getByRole('textbox', { name: '时刻 1', exact: true });
+  await expect(firstTime).toHaveAttribute('placeholder', '选择时刻');
   await firstTime.fill('10:00,');
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor.getByText('检查这组的日期和时刻。')).toBeVisible();
@@ -499,6 +597,7 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await second.getByRole('combobox', { name: '日期规则' }).click();
   await page.getByRole('option', { name: '指定日期', exact: true }).click();
   const firstDate = second.getByRole('textbox', { name: '日期 1', exact: true });
+  await expect(firstDate).toHaveAttribute('placeholder', '选择日期');
   await firstDate.fill('2028-02-29');
   await firstDate.press('ArrowDown');
   const calendar = page.getByRole('dialog', { name: '日历', exact: true });
@@ -516,17 +615,29 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   const third = editor.locator('fieldset').nth(2);
   await third.getByRole('combobox', { name: '日期规则', exact: true }).click();
   await page.getByRole('option', { name: '按月中的日期', exact: true }).click();
-  await third.getByRole('combobox', { name: '按月中的日期', exact: true }).click();
+  const monthDays = third.getByRole('combobox', { name: '按月中的日期', exact: true });
+  const months = third.getByRole('combobox', { name: '限定月份（可选）', exact: true });
+  await expect(monthDays).toHaveText('选择每月几号（可多选）');
+  await expect(months).toHaveText('全年');
+  await monthDays.click();
+  await page.getByRole('option', { name: '15', exact: true }).click();
   await page.getByRole('option', { name: '31', exact: true }).click();
   await page.keyboard.press('Escape');
-  await third.getByRole('combobox', { name: '限定月份（可选）', exact: true }).click();
+  await months.click();
   await page.getByRole('option', { name: '1 月', exact: true }).click();
   await page.getByRole('option', { name: '12 月', exact: true }).click();
   await page.keyboard.press('Escape');
+  expect(
+    Math.abs((await months.boundingBox())!.y - (await monthDays.boundingBox())!.y)
+  ).toBeLessThan(1);
+  await expect(third.getByRole('button', { name: /清空 12 月/ })).toBeVisible();
+  await expect(third.getByRole('button', { name: /清空 31/ })).toBeVisible();
   await third.getByRole('combobox', { name: '时间', exact: true }).click();
   await page.getByRole('option', { name: '组合小时和分钟', exact: true }).click();
   const hours = third.getByRole('combobox', { name: '小时（可多选）', exact: true });
   const minutes = third.getByRole('combobox', { name: '分钟（可多选）', exact: true });
+  await expect(hours).toHaveText('选择小时');
+  await expect(minutes).toHaveText('选择分钟');
   await hours.click();
   await page.getByRole('option', { name: '00', exact: true }).click();
   await page.getByRole('option', { name: '20', exact: true }).click();
@@ -538,13 +649,15 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await page.getByRole('option', { name: '00', exact: true }).click();
   await page.getByRole('option', { name: '59', exact: true }).click();
   await page.keyboard.press('Escape');
+  await expect(third.getByRole('button', { name: /清空 20/ })).toBeVisible();
+  await expect(third.getByRole('button', { name: /清空 59/ })).toBeVisible();
   await expect(editor.getByText('按节点时区执行：Asia/Shanghai')).toBeVisible();
   await expect(third.getByText(/每个选中的小时搭配所有选中的分钟/)).toBeVisible();
   await expect(editor.getByText('Cron', { exact: true })).toHaveCount(0);
   await addGroup.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath('scheduled-editor-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
-  await grace.scrollIntoViewIfNeeded();
+  await minutes.scrollIntoViewIfNeeded();
   await expect(hours).toBeInViewport();
   await page.screenshot({ path: info.outputPath('scheduled-editor-mobile.png') });
   await page.setViewportSize(desktopViewport);
@@ -576,6 +689,9 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
       .getByRole('button', { name: '编辑' })
   ).toHaveCount(0);
   await card.getByRole('button', { name: '编辑', exact: true }).click();
+  const deleteTask = editor.getByRole('button', { name: '删除任务', exact: true });
+  await expect(deleteTask.locator('svg')).toBeVisible();
+  await expect(deleteTask).toHaveCSS('border-top-width', '1px');
   await editor.getByRole('textbox', { name: '任务提示词' }).fill('New prompt');
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).not.toBeVisible();
@@ -592,9 +708,17 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await select('运行目标', '每次新建会话');
   const model = editor.getByRole('combobox', { name: '模型', exact: true });
   await expect(model).toBeDisabled();
+  await expect(model).toHaveAttribute('placeholder', '搜索或选择模型');
   await expect(editor.getByRole('combobox', { name: '模型选择', exact: true })).toHaveCount(0);
-  const runner = editor.getByRole('combobox', { name: '运行器', exact: true });
+  const runner = editor.getByRole('combobox', { name: 'Agent', exact: true });
+  await expect(runner).toHaveText('选择 Agent');
   await runner.click();
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveText([
+    'MAR Agent',
+    'Codex',
+    'Claude Code',
+    'OpenCode'
+  ]);
   const codex = page.getByRole('option', { name: 'Codex', exact: true });
   await expect(codex.locator('img')).toBeVisible();
   await expect(
@@ -604,6 +728,11 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     path: info.outputPath('scheduled-runner-desktop.png'),
     animations: 'disabled'
   });
+  await page.getByRole('option', { name: 'MAR Agent', exact: true }).click();
+  await model.click();
+  await expect(page.getByRole('option', { name: 'Dual-purpose model', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await runner.click();
   await codex.click();
   await expect(runner).toHaveText('Codex');
   await expect(editor.locator('img.mar-ui-select__icon[data-runner="codex"]')).toBeVisible();
@@ -612,7 +741,32 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor.getByText('请选择一个固定模型。')).toBeVisible();
   expect(writes).toHaveLength(2);
+  await model.click();
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveText([
+    'Test model',
+    'Another model'
+  ]);
+  await page.getByRole('option', { name: 'Another model', exact: true }).click();
+  const effort = editor.getByRole('combobox', { name: '推理强度', exact: true });
+  await expect(effort).toHaveText('Medium');
   await select('模型', 'Test model');
+  await expect(effort).toHaveText('High');
+  await runner.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath('scheduled-agent-model-desktop.png') });
+  // The searchable model has an input trigger; measure the visible Select frames, not their triggers.
+  const [runnerTop, modelTop, effortTop] = await runner
+    .or(model)
+    .or(effort)
+    .evaluateAll((triggers) =>
+      triggers.map((trigger) => trigger.closest('.mar-ui-field-frame')!.getBoundingClientRect().top)
+    );
+  expect(Math.abs(modelTop! - runnerTop!)).toBeLessThan(1);
+  expect(Math.abs(effortTop! - runnerTop!)).toBeLessThan(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await effort.scrollIntoViewIfNeeded();
+  expect((await effort.boundingBox())!.y).toBeGreaterThan((await runner.boundingBox())!.y);
+  await page.screenshot({ path: info.outputPath('scheduled-agent-model-mobile.png') });
+  await page.setViewportSize(desktopViewport);
   await editor.getByRole('tab', { name: '时间组合', exact: true }).click();
   await firstTime.fill('08:00');
   await firstTime.press('Enter');
@@ -622,7 +776,12 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   expect(writes[2]?.body).toMatchObject({
     ...scope,
     graceMinutes: 15,
-    target: { kind: 'newSession', runner: 'codex', model: { kind: 'fixed', modelId: 'model' } }
+    target: {
+      kind: 'newSession',
+      runner: 'codex',
+      model: { kind: 'fixed', modelId: 'model' },
+      effort: 'high'
+    }
   });
 
   const recordsButton = card.getByRole('button', { name: '执行记录', exact: true });
@@ -673,29 +832,22 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   expect(query().get('page')).toBe('2');
   await expect(globalPager).toBeInViewport();
   await page.screenshot({ path: info.outputPath('scheduled-global-history-desktop.png') });
-  const filter = async (name: string, option: string) => {
-    await globalHistory.getByRole('combobox', { name, exact: true }).click();
-    await page.getByRole('option', { name: option, exact: true }).click();
-  };
-  await filter('执行节点', 'Node A');
+  await expect(globalHistory.getByRole('combobox')).toHaveCount(1);
+  await filterWorkspace(globalHistory, 'project · Node A');
   await expect(globalTable.getByRole('button', { name: '检查构建' })).toHaveCount(0);
   await expect(globalTable.getByRole('button', { name: '另一个任务的记录' })).toBeVisible();
   expect([...query()]).toEqual([
     ['nodeId', 'node-1'],
+    ['workspaceId', 'workspace-1'],
     ['mine', 'false'],
     ['page', '1']
   ]);
-  await filter('任务归属', '我的定时');
-  await expect(globalTable.getByText('此范围暂无执行记录。')).toBeVisible();
-  expect([...query()]).toEqual([
-    ['nodeId', 'node-1'],
-    ['mine', 'true'],
-    ['page', '1']
-  ]);
-  await filter('执行节点', '全部节点');
+  await filterWorkspace(globalHistory, 'project · Node B');
   await expect(globalTable.getByRole('button', { name: '检查构建' })).toBeVisible();
   expect([...query()]).toEqual([
-    ['mine', 'true'],
+    ['nodeId', 'node-2'],
+    ['workspaceId', 'workspace-1'],
+    ['mine', 'false'],
     ['page', '1']
   ]);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -749,6 +901,23 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await scheduleMenu.getByRole('button', { name: '我的定时' }).click();
   await expect(header.getByRole('heading', { name: '我的定时' })).toBeVisible();
   await expect(scheduleMenu).toBeHidden();
+  await page.screenshot({ path: info.outputPath('scheduled-tasks-mobile.png') });
   await page.getByRole('button', { name: '工作', exact: true }).click();
   await expect(panel.or(globalHistory)).toBeHidden();
+
+  await page.setViewportSize(desktopViewport);
+  const openAllSchedules = async () => {
+    await clock.click();
+    if (!(await scheduleMenu.isVisible())) await toggle.click();
+    await scheduleMenu.getByRole('button', { name: '全部定时', exact: true }).click();
+  };
+  const navigationCard = panel.locator('.card').filter({ hasText: '另一节点的相同任务 ID' });
+  await openAllSchedules();
+  await navigationCard.getByRole('button', { name: 'project', exact: true }).click();
+  await expect(panel).toBeHidden();
+  await expect(header.getByText('project', { exact: true })).toBeVisible();
+  await openAllSchedules();
+  await navigationCard.getByRole('button', { name: '既有会话', exact: true }).click();
+  await expect(panel).toBeHidden();
+  await expect(page.getByText('较早的对话', { exact: true })).toBeVisible();
 });

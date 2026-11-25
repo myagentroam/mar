@@ -217,7 +217,7 @@ export function registerScheduledTaskRoutes({
         }
       })
     );
-    return { nodes, visibleNodes, unavailable, scopes: slices.flat() };
+    return { nodes, unavailable, scopes: slices.flat() };
   };
 
   app.get('/api/scheduled-tasks', async (request, reply) => {
@@ -248,27 +248,29 @@ export function registerScheduledTaskRoutes({
       };
       const offline = async (scope: Scope) => {
         const { comparison, conditions } = context(scope);
-        if (comparison < 0 || !(await canUse(actor, scope))) return [];
+        if (comparison < 0 || !(await canUse(actor, scope))) return undefined;
         const tasks = await index.list(
           scope.nodeId,
           scope.workspaceId,
           { ...conditions, ...(mine ? { ownerUserId: actor.userId } : {}) },
           pageSize + 1
         );
-        if (!(await canUse(actor, scope))) return [];
-        return tasks.map((task) => ({
-          ...task,
-          ...scope,
-          offline: true,
-          mine: task.ownerUserId === actor.userId
-        }));
+        if (!(await canUse(actor, scope))) return undefined;
+        return {
+          scope,
+          tasks: tasks.map((task) => ({
+            ...task,
+            ...scope,
+            offline: true,
+            mine: task.ownerUserId === actor.userId
+          }))
+        };
       };
-      const offlineNodes = nodes.filter((node) => !node.connected);
       const [live, cached] = await Promise.all([
         Promise.all(
           scopes.map(async (scope) => {
             const { comparison, conditions } = context(scope);
-            if (comparison < 0) return [];
+            if (comparison < 0) return undefined;
             let result: z.infer<typeof taskPage>;
             try {
               result = taskPage.parse(
@@ -288,34 +290,42 @@ export function registerScheduledTaskRoutes({
                 throw new Error('NODE_RESPONSE_INVALID');
             } catch {
               unavailable.add(scope.nodeId);
-              return [];
+              return undefined;
             }
-            if (!(await canUse(actor, scope))) return [];
-            return result.tasks.map((task) => ({
-              ...task,
-              ...scope,
-              mine: task.ownerUserId === actor.userId
-            }));
+            if (!(await canUse(actor, scope))) return undefined;
+            return {
+              scope,
+              tasks: result.tasks.map((task) => ({
+                ...task,
+                ...scope,
+                mine: task.ownerUserId === actor.userId
+              }))
+            };
           })
         ),
         Promise.all(
-          offlineNodes.map(async (node) => {
-            const ids = await index.workspaceIds(node.id);
-            const visible = await project(
-              actor,
-              node,
-              ids.map((id) => ({ id })),
-              'index',
-              query.workspaceId
-            );
-            return (await Promise.all(visible.map(offline))).flat();
-          })
+          nodes
+            .filter((node) => !node.connected)
+            .map(async (node) => {
+              const ids = await index.workspaceIds(node.id);
+              const scopes = await project(
+                actor,
+                node,
+                ids.map((id) => ({ id })),
+                'index',
+                query.workspaceId
+              );
+              return Promise.all(scopes.map(offline));
+            })
         )
       ]);
-      const candidates = [...live.flat(), ...cached.flat()].sort(
-        (a, b) =>
-          binary(a.nodeId, b.nodeId) || binary(a.workspaceId, b.workspaceId) || binary(a.id, b.id)
-      );
+      const readable = [...live, ...cached.flat()].filter((slice) => slice !== undefined);
+      const candidates = readable
+        .flatMap(({ tasks }) => tasks)
+        .sort(
+          (a, b) =>
+            binary(a.nodeId, b.nodeId) || binary(a.workspaceId, b.workspaceId) || binary(a.id, b.id)
+        );
       const items = await Promise.all(
         candidates.slice(0, pageSize).map(async ({ ownerUserId, ...task }) => ({
           ...task,
@@ -326,6 +336,12 @@ export function registerScheduledTaskRoutes({
       return reply.send({
         items,
         nodes,
+        ...(query.nodeId === undefined &&
+        query.workspaceId === undefined &&
+        query.sessionId === undefined &&
+        cursor === undefined
+          ? { workspaces: readable.map(({ scope }) => scope) }
+          : {}),
         unavailableNodeIds: [...unavailable].sort(binary),
         nextCursor:
           last !== undefined && candidates.length > pageSize
@@ -369,7 +385,7 @@ export function registerScheduledTaskRoutes({
         !(await canUse(actor, { nodeId: query.nodeId, workspaceId: query.workspaceId }))
       )
         return sendError(reply, 404, 'SCHEDULE_NOT_FOUND');
-      const { scopes, visibleNodes, unavailable } = await directory(actor, query);
+      const { scopes, unavailable } = await directory(actor, query);
       if (query.taskId !== undefined && scopes.length === 0 && unavailable.size === 0)
         return sendError(reply, 404, 'SCHEDULE_NOT_FOUND');
       const read = async (scope: Scope, offset: number) => {
@@ -395,7 +411,7 @@ export function registerScheduledTaskRoutes({
           items: result.data.items.map((item) => ({ ...item, ...scope }))
         };
       };
-      const batches = (
+      const readable = (
         await Promise.all(
           scopes.map(async (scope) => {
             try {
@@ -407,7 +423,8 @@ export function registerScheduledTaskRoutes({
             }
           })
         )
-      ).filter((batch): batch is HistoryBatch => batch !== undefined && batch.total > 0);
+      ).filter((batch) => batch !== undefined);
+      const batches = readable.filter((batch) => batch.total > 0);
       const total = batches.reduce((sum, batch) => sum + batch.total, 0);
       const actualPage = Math.min(page, Math.max(1, Math.ceil(total / limit)));
       const items = await mergeHistoryPage(
@@ -424,8 +441,8 @@ export function registerScheduledTaskRoutes({
         return sendError(reply, 404, 'SCHEDULE_NOT_FOUND');
       return reply.send({
         items,
-        ...(query.taskId === undefined && query.sessionId === undefined
-          ? { nodes: visibleNodes.map(({ id, name }) => ({ id, name })) }
+        ...(query.nodeId === undefined && query.workspaceId === undefined
+          ? { workspaces: readable.map(({ scope }) => scope) }
           : {}),
         unavailableNodeIds: [...unavailable].sort(binary),
         page: actualPage,

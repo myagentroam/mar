@@ -3,7 +3,6 @@ import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { marIcon } from '@myagentroam/mar-ui/icons';
-import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MANAGEMENT_DEFAULT_LIMIT } from '@myagentroam/protocol';
@@ -11,13 +10,15 @@ import { translate } from '../../service/locale-preference-service.js';
 import {
   scheduledTaskClient,
   type ScheduleInvalidation,
-  type ScheduleNode,
   type ScheduleOccurrence,
-  type ScheduleTaskKey
+  type ScheduleScope,
+  type ScheduleTaskKey,
+  type ScheduleWorkspaceOption
 } from '../../service/scheduled-task-client.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import ManagementPagination from '../settings/ManagementPagination.vue';
+import ScheduledWorkspaceFilter from './ScheduledWorkspaceFilter.vue';
 
 // Owns one paged history query. The panel owns the task scope and occurrence detail.
 const props = defineProps<{
@@ -29,9 +30,8 @@ const props = defineProps<{
 const emit = defineEmits<{ open: [record: ScheduleOccurrence] }>();
 const msg = (key: string, args?: Record<string, number>) =>
   translate(`generated.scheduledSession.${key}`, args);
-const nodeId = ref('');
-const ownership = ref<'all' | 'mine'>('all');
-const nodes = ref<Pick<ScheduleNode, 'id' | 'name'>[]>([]);
+const workspace = shallowRef<ScheduleScope>();
+const workspaces = shallowRef<ScheduleWorkspaceOption[]>([]);
 const rows = shallowRef<(ScheduleOccurrence & { key: string })[]>([]);
 const page = ref(1);
 const pageSize = ref(MANAGEMENT_DEFAULT_LIMIT);
@@ -62,10 +62,11 @@ async function load(target: number, reset = false, incremental = props.mobile &&
   let requestPage = target;
   let appendPage = append;
   try {
-    const filters = {
-      mine: !props.task && ownership.value === 'mine',
-      ...(props.task ? { task: props.task } : nodeId.value ? { nodeId: nodeId.value } : {})
-    };
+    const filters = props.task
+      ? { task: props.task }
+      : workspace.value
+        ? { workspace: workspace.value }
+        : {};
     let result = await props.client.history({ ...filters, page: requestPage }, read.signal);
     if (read.signal.aborted) return;
     if (appendPage && result.page < target) {
@@ -83,7 +84,7 @@ async function load(target: number, reset = false, incremental = props.mobile &&
       const seen = new Set(rows.value.map((item) => item.key));
       rows.value = [...rows.value, ...items.filter((item) => !seen.has(item.key))];
     } else rows.value = items;
-    if (result.nodes) nodes.value = result.nodes;
+    if (result.workspaces) workspaces.value = result.workspaces;
     unavailable.value = result.unavailableNodeIds;
     page.value = result.page;
     pageSize.value = result.pageSize;
@@ -106,14 +107,14 @@ const loadMore = () => {
 const retry = () => {
   if (failure.value) void load(failure.value.retryPage, false, failure.value.incremental);
 };
-watch([nodeId, ownership, () => props.mobile], reload, { immediate: true });
+watch([workspace, () => props.mobile], reload, { immediate: true });
 watch(
   () => props.invalidation,
   (change) => {
     if (!change || change.connectionOnly) return;
-    const node = props.task?.nodeId || nodeId.value;
-    if (node && change.nodeId && node !== change.nodeId) return;
-    if (props.task && change.workspaceId && props.task.workspaceId !== change.workspaceId) return;
+    const scope = props.task ?? workspace.value;
+    if (scope && change.nodeId && scope.nodeId !== change.nodeId) return;
+    if (scope && change.workspaceId && scope.workspaceId !== change.workspaceId) return;
     clearTimeout(refresh);
     refresh = setTimeout(reload, 120);
   }
@@ -127,22 +128,7 @@ defineExpose({ reload });
 
 <template>
   <div class="execution-history">
-    <div v-if="!task" class="mar-filter-row">
-      <label class="mar-filter-field">
-        <span>{{ msg('node') }}</span>
-        <MarSelect v-model="nodeId" :aria-label="msg('node')" :placeholder="msg('allNodes')">
-          <MarOption :label="msg('allNodes')" value="" />
-          <MarOption v-for="node in nodes" :key="node.id" :label="node.name" :value="node.id" />
-        </MarSelect>
-      </label>
-      <label class="mar-filter-field">
-        <span>{{ msg('historyOwnership') }}</span>
-        <MarSelect v-model="ownership" :aria-label="msg('historyOwnership')">
-          <MarOption :label="msg('all')" value="all" />
-          <MarOption :label="msg('mine')" value="mine" />
-        </MarSelect>
-      </label>
-    </div>
+    <ScheduledWorkspaceFilter v-if="!task" v-model="workspace" :workspaces="workspaces" />
     <div class="mar-table-actions">
       <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="reload()">{{
         msg('refresh')
@@ -201,7 +187,7 @@ defineExpose({ reload });
       :incremental-failed="failure?.incremental === true"
       :error="failure?.error"
       :has-more="hasMore"
-      :context-key="JSON.stringify([nodeId, ownership, mobile])"
+      :context-key="JSON.stringify([workspace, mobile])"
       @page="load"
       @load-more="loadMore"
       @retry="retry"

@@ -38,7 +38,7 @@ import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue'
 import WorkspaceSessionActionsMenu from '../workspace/WorkspaceSessionActionsMenu.vue';
 import SessionPromptDialog from '../workspace/SessionPromptDialog.vue';
 import ScheduledTasksPanel from '../schedule/ScheduledTasksPanel.vue';
-import type { ScheduleSessionScope } from '../../service/scheduled-task-client.js';
+import type { ScheduleScope, ScheduleSessionScope } from '../../service/scheduled-task-client.js';
 import type {
   ScheduledTasksLocation,
   ScheduleSection
@@ -88,18 +88,23 @@ const emit = defineEmits<{
   closeSchedules: [];
   selectScheduleSection: [section: ScheduleSection];
 }>();
-async function openScheduledRun(target: ScheduleSessionScope & { runId: string }): Promise<void> {
+async function openScheduledTarget(
+  target: ScheduleScope & { sessionId?: string; runId?: string }
+): Promise<void> {
   const source = props.schedules;
-  await props.page.selection.openSessionGroupTarget(target);
+  const { selection } = props.page;
+  if (target.sessionId === undefined)
+    await selection.openWorkspaceTarget(target.nodeId, target.workspaceId);
+  else await selection.openSessionGroupTarget({ ...target, sessionId: target.sessionId });
   if (props.schedules !== source) return;
-  const selected = props.page.selection.workspaceTarget;
+  const selected = selection.workspaceTarget;
   const pane = props.page.mainPaneController;
   if (
     selected?.nodeId === target.nodeId &&
     selected.workspaceId === target.workspaceId &&
-    pane.selectedSessionId.value === target.sessionId
+    (target.sessionId === undefined || pane.selectedSessionId.value === target.sessionId)
   ) {
-    pane.selectRun(target.runId);
+    if (target.runId !== undefined) pane.selectRun(target.runId);
     emit('closeSchedules');
   }
 }
@@ -705,7 +710,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       :linked-task="schedules.link"
       :request="page.identity.request"
       :invalidation="page.application.scheduleInvalidation"
-      @open-run="openScheduledRun"
+      @open-target="openScheduledTarget"
     />
     <section
       v-show="schedules === undefined && page.application.view === 'nodes'"

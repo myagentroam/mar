@@ -266,6 +266,44 @@ it('reconciles the complete live Workspace list before filtering a schedule read
   ).toEqual([expect.objectContaining({ workspaceId: 'a1' })]);
 });
 
+it('offers authorized Workspace filters independently of the current page and task ownership', async () => {
+  const { app, connections } = fixture();
+  const workspaceOptions = [
+    { nodeId: 'a', workspaceId: 'a1', nodeName: 'Node a', workspaceName: 'Workspace a1' },
+    { nodeId: 'b', workspaceId: 'b1', nodeName: 'Node b', workspaceName: 'Workspace b1' }
+  ];
+  connections.delete('b');
+  const mine = (await app.inject({ url: '/api/scheduled-tasks?mine=true', headers })).json();
+  expect(mine.items).toHaveLength(1);
+  expect(mine.workspaces).toEqual(workspaceOptions);
+  const records = (
+    await app.inject({ url: '/api/scheduled-occurrences?mine=false', headers })
+  ).json();
+  expect(records.items).toEqual([]);
+  expect(records.workspaces).toEqual(workspaceOptions.slice(0, 1));
+});
+
+it.each([
+  ['/api/scheduled-tasks', 'schedule.task.list'],
+  ['/api/scheduled-occurrences', 'schedule.occurrence.list']
+])(
+  'does not return a Workspace filter whose grant was revoked during %s',
+  async (url, operation) => {
+    const { app, visible, requestNode } = fixture();
+    const read = requestNode.getMockImplementation()!;
+    requestNode.mockImplementation(async (...args) => {
+      const result = await read(...args);
+      if (args[0] === 'a' && args[1] === operation) visible.delete('a:a1');
+      return result;
+    });
+    const result = await app.inject({ url: `${url}?mine=false`, headers });
+    expect(result.statusCode).toBe(200);
+    expect(result.json().workspaces).toMatchObject([{ nodeId: 'b', workspaceId: 'b1' }]);
+    expect(result.json().workspaces).toHaveLength(1);
+    expect(result.json().items.every((item: { nodeId: string }) => item.nodeId === 'b')).toBe(true);
+  }
+);
+
 it('merges live and offline cards, retaining only the authorized offline index projection', async () => {
   const { app, connections, visible, store, database, requestNode } = fixture();
   const first = await app.inject({ url: '/api/scheduled-tasks?mine=false', headers });
@@ -437,9 +475,12 @@ it('returns real totals and arbitrary history pages across same-time Nodes after
   history.get('b:b1')![0]!.ownerUserId = 7;
   requestNode.mockClear();
   const filtered = (
-    await app.inject({ url: `${url.replace('false', 'true')}&nodeId=b&page=2`, headers })
+    await app.inject({
+      url: `${url.replace('false', 'true')}&nodeId=b&workspaceId=b1&page=2`,
+      headers
+    })
   ).json();
-  expect(filtered.nodes.map((node: { id: string }) => node.id)).toEqual(['a', 'b']);
+  expect(filtered).not.toHaveProperty('workspaces');
   expect(filtered).toMatchObject({
     page: 2,
     total: 12,

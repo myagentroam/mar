@@ -371,16 +371,31 @@ describe('Scheduled tasks workbench', () => {
     }
   });
 
-  it.each([
-    ['mine', 'No scheduled tasks in this scope.'],
-    ['history', 'No execution records in this scope.']
-  ] as const)('only reports an empty %s list after a complete read', async (section, empty) => {
+  it('shows a neutral task empty state without listing unavailable nodes', async () => {
+    const request = vi.fn().mockResolvedValue({
+      items: [],
+      nodes: [node],
+      nextCursor: null,
+      unavailableNodeIds: ['b']
+    });
+    const view = renderComponent(ScheduledTasksPanel, { request, section: 'mine' });
+    try {
+      await flushComponent();
+      expect(textContent(view.root)).toContain('No scheduled tasks to show.');
+      expect(textContent(view.root)).not.toContain('Unavailable nodes');
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it('only reports an empty history list after a complete read', async () => {
+    const empty = 'No execution records in this scope.';
     const result = { ...historyPage([]), nodes: [node], nextCursor: null };
     const request = vi
       .fn()
       .mockResolvedValueOnce({ ...result, unavailableNodeIds: ['b'] })
       .mockResolvedValueOnce({ ...result, unavailableNodeIds: [] });
-    const view = renderComponent(ScheduledTasksPanel, { request, section });
+    const view = renderComponent(ScheduledTasksPanel, { request, section: 'history' });
     try {
       await flushComponent();
       expect(textContent(view.root)).toContain(
@@ -390,6 +405,29 @@ describe('Scheduled tasks workbench', () => {
       await trigger(button(view, 'Refresh'), 'onClick');
       expect(textContent(view.root)).toContain(empty);
       expect(textContent(view.root)).not.toContain('Unavailable nodes');
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it('opens the exact Workspace or bound session only from an online card', async () => {
+    const request = vi.fn().mockResolvedValue({
+      items: [task, { ...task, nodeId: 'b', offline: true }],
+      nodes: [node],
+      nextCursor: null,
+      unavailableNodeIds: ['b']
+    });
+    const onOpenTarget = vi.fn();
+    const view = renderComponent(ScheduledTasksPanel, { request, onOpenTarget, section: 'all' });
+    try {
+      await flushComponent();
+      const controls = (label: string) =>
+        view.findAll('MarButton').filter((item) => textContent(item).trim() === label);
+      expect(controls('project')).toHaveLength(1);
+      expect(controls('session')).toHaveLength(1);
+      await trigger(controls('project')[0]!, 'onClick');
+      await trigger(controls('session')[0]!, 'onClick');
+      expect(onOpenTarget.mock.calls).toEqual([[scope], [{ ...scope, sessionId: 'session' }]]);
     } finally {
       view.unmount();
     }
@@ -451,10 +489,10 @@ describe('Scheduled tasks workbench', () => {
         };
       throw new Error(`Unexpected request: ${path}`);
     });
-    const onOpenRun = vi.fn();
+    const onOpenTarget = vi.fn();
     const view = renderComponent(ScheduledTasksPanel, {
       request,
-      onOpenRun,
+      onOpenTarget,
       section: 'history',
       initial: { ...scope, sessionId: 'session' }
     });
@@ -473,7 +511,7 @@ describe('Scheduled tasks workbench', () => {
         ['/api/agent-runs/run-1?nodeId=b&workspaceId=work', expect.anything()],
         ['/api/agent-runs/run-1?nodeId=b&workspaceId=work', expect.anything()]
       ]);
-      expect(onOpenRun).toHaveBeenCalledExactlyOnceWith({ ...scope, nodeId: 'b', ...run });
+      expect(onOpenTarget).toHaveBeenCalledExactlyOnceWith({ ...scope, nodeId: 'b', ...run });
     } finally {
       view.unmount();
     }

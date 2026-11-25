@@ -34,12 +34,16 @@ import {
   type ScheduleOccurrenceDetail,
   type ScheduleRequest,
   type ScheduleRunReceipt,
+  type ScheduleScope,
   type ScheduleSessionScope,
   type ScheduleTaskKey,
-  type ScheduleTaskLink
+  type ScheduleTaskLink,
+  type ScheduleWorkspaceOption
 } from '../../service/scheduled-task-client.js';
+import ScheduledTaskCard from './ScheduledTaskCard.vue';
 import ScheduledTaskEditor from './ScheduledTaskEditor.vue';
 import ScheduledExecutionHistory from './ScheduledExecutionHistory.vue';
+import ScheduledWorkspaceFilter from './ScheduledWorkspaceFilter.vue';
 import type { ScheduleSection } from './scheduled-task-navigation.js';
 
 // Owns task cards and modal selection. History owns its paged reads; the editor owns its draft.
@@ -52,7 +56,7 @@ const props = defineProps<{
   invalidation?: ScheduleInvalidation | undefined;
 }>();
 const emit = defineEmits<{
-  openRun: [target: ScheduleSessionScope & { runId: string }];
+  openTarget: [target: ScheduleScope & { sessionId?: string; runId?: string }];
 }>();
 const client = scheduledTaskClient(props.request);
 const panelTitleId = useId();
@@ -67,11 +71,12 @@ const summary = computed(() =>
 );
 const tasks = ref<ScheduleCard[]>([]);
 const nodes = ref<ScheduleNode[]>([]);
+const workspace = shallowRef<ScheduleScope>();
+const workspaces = shallowRef<ScheduleWorkspaceOption[]>([]);
 const cursor = ref<string | null>(null);
-const unavailable = ref<string[]>([]);
 const failure = shallowRef<unknown>();
 const loading = ref(false);
-const listComplete = computed(() => !loading.value && !failure.value && !unavailable.value.length);
+const listComplete = computed(() => !loading.value && !failure.value);
 const selectedTask = shallowRef<ScheduleTaskKey>();
 const taskHistory = shallowRef<ScheduleTaskKey & { name: string }>();
 const historyView = useTemplateRef('historyView');
@@ -90,14 +95,6 @@ let refresh: ReturnType<typeof setTimeout> | undefined;
 const identity = (nodeId: string, id: string) => JSON.stringify([nodeId, id]);
 const date = (time: number | null) =>
   time === null ? msg('notRecorded') : managementDateTime(time);
-const cardState = (item: ScheduleCard) =>
-  item.targetKind === 'unbound'
-    ? 'unbound'
-    : !item.enabled
-      ? 'paused'
-      : item.nextRunAt === null
-        ? 'finished'
-        : 'enabled';
 
 async function load(next?: string) {
   if (props.section === 'history') return;
@@ -110,21 +107,21 @@ async function load(next?: string) {
   if (!next) {
     tasks.value = [];
     cursor.value = null;
-    unavailable.value = [];
   }
+  const target = props.initial ?? workspace.value;
   try {
     const result = await client.list(
       {
         mine: props.section === 'mine',
         ...(next === undefined ? {} : { cursor: next }),
-        ...(props.initial ? { session: props.initial } : {})
+        ...(target ? { target } : {})
       },
       read.signal
     );
     if (read.signal.aborted) return;
     tasks.value = next ? [...tasks.value, ...result.items] : result.items;
-    nodes.value = result.nodes;
-    unavailable.value = result.unavailableNodeIds;
+    if (props.initial || !target) nodes.value = result.nodes;
+    if (result.workspaces) workspaces.value = result.workspaces;
     cursor.value = result.nextCursor;
   } catch (error) {
     if (!read.signal.aborted) failure.value = error;
@@ -148,7 +145,7 @@ function closeDetail() {
   historyRow = undefined;
 }
 watch(
-  () => props.section,
+  [() => props.section, workspace],
   () => {
     closeDetail();
     cancelRefresh();
@@ -254,7 +251,7 @@ function openRun() {
   const item = selectedOccurrence.value;
   const run = occurrence.value?.run;
   if (item && run && runReceipt.value)
-    emit('openRun', { nodeId: item.nodeId, workspaceId: item.workspaceId, ...run });
+    emit('openTarget', { nodeId: item.nodeId, workspaceId: item.workspaceId, ...run });
 }
 function openTaskHistory({ nodeId, workspaceId, id, name }: ScheduleCard) {
   closeDetail();
@@ -310,6 +307,7 @@ watch(
       @open="openOccurrence"
     />
     <template v-else>
+      <ScheduledWorkspaceFilter v-if="!initial" v-model="workspace" :workspaces="workspaces" />
       <div class="mar-table-actions">
         <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="load()">{{
           msg('refresh')
@@ -322,9 +320,6 @@ watch(
           >{{ msg('create') }}</MarButton
         >
       </div>
-      <p v-if="unavailable.length" role="status" class="notice">
-        {{ msg('partial', { count: unavailable.length }) }}
-      </p>
       <p v-if="failure" role="alert" class="notice">
         {{ errorSummary(failure, msg('loadFailed')) }}
       </p>
@@ -339,59 +334,14 @@ watch(
       <template v-else>
         <p v-if="!tasks.length && listComplete" class="panel-empty">{{ msg('emptyTasks') }}</p>
         <ul v-else-if="tasks.length" class="cards" :aria-label="msg('tasks')">
-          <li v-for="item in tasks" :key="identity(item.nodeId, item.id)" class="card">
-            <div class="card-heading">
-              <h3>
-                <MarButton v-if="!item.mine && !item.offline" link @click="openTask(item)">{{
-                  item.name
-                }}</MarButton>
-                <template v-else>{{ item.name }}</template>
-              </h3>
-              <MarTag :type="cardState(item) === 'enabled' ? 'success' : 'info'">{{
-                msg(item.offline ? 'offline' : cardState(item))
-              }}</MarTag>
-            </div>
-            <p class="secondary">{{ item.nodeName }} · {{ item.workspaceName }}</p>
-            <p>
-              {{
-                item.sessionTitle ??
-                item.sessionId ??
-                msg(item.targetKind === 'newSession' ? 'newSession' : 'unbound')
-              }}
-            </p>
-            <p v-if="item.objectivePreview" class="objective">{{ item.objectivePreview }}</p>
-            <dl>
-              <div>
-                <dt>{{ msg('owner') }}</dt>
-                <dd>{{ item.ownerName ?? msg('notRecorded') }}</dd>
-              </div>
-              <div>
-                <dt>{{ msg('nextRun') }}</dt>
-                <dd>{{ item.nextRunAt === null ? msg('noUpcoming') : date(item.nextRunAt) }}</dd>
-              </div>
-              <div v-if="item.offline && item.syncedAt">
-                <dt>{{ msg('lastSynced') }}</dt>
-                <dd>{{ date(item.syncedAt) }}</dd>
-              </div>
-            </dl>
-            <div class="mar-row-actions mar-row-actions--wrap">
-              <MarButton
-                v-if="item.mine"
-                link
-                :disabled="item.offline === true"
-                :icon="marIcon('edit')"
-                @click="openTask(item)"
-                >{{ msg('editTask') }}</MarButton
-              >
-              <MarButton
-                link
-                :disabled="item.offline === true"
-                :icon="marIcon('clock')"
-                @click="openTaskHistory(item)"
-                >{{ msg('history') }}</MarButton
-              >
-            </div>
-          </li>
+          <ScheduledTaskCard
+            v-for="item in tasks"
+            :key="identity(item.nodeId, item.id)"
+            :task="item"
+            @open="openTask(item)"
+            @history="openTaskHistory(item)"
+            @open-target="emit('openTarget', $event)"
+          />
         </ul>
       </template>
       <MarButton
@@ -498,75 +448,16 @@ watch(
 .schedule-panel {
   color: var(--mar-text-primary);
 }
-.card-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-.secondary {
-  color: var(--mar-text-secondary);
-}
-p {
-  margin: 0.375rem 0;
-}
-ul {
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
   gap: 0.75rem;
-}
-.card {
-  min-width: 0;
-  border: 1px solid var(--mar-border-default);
-  border-radius: var(--mar-radius-control);
-  padding: 1rem;
-  overflow-wrap: anywhere;
-}
-.card-heading {
-  flex-wrap: nowrap;
-  align-items: flex-start;
-}
-.card-heading h3 {
-  min-width: 0;
+  padding: 0;
   margin: 0;
+  list-style: none;
 }
-.card-heading h3 :deep(button) {
-  font-size: inherit;
-  font-weight: inherit;
-  white-space: normal;
-  text-align: start;
-}
-.card-heading h3 :deep(button:enabled) {
-  color: var(--mar-text-primary);
-}
-.objective {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.card dl,
 .occurrence-facts {
   margin: 0.75rem 0;
-}
-.card dl div {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: space-between;
-  margin: 0.375rem 0;
-}
-.card dt {
-  color: var(--mar-text-secondary);
-}
-.card dd {
-  margin: 0;
-  text-align: end;
 }
 .history-task-title {
   margin: 0 0 0.75rem;
