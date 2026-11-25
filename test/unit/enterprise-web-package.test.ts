@@ -13,7 +13,7 @@ describe('enterprise Web package boundary', () => {
       expect(script).toBeDefined();
 
       for (const pathname of ['/', '/index.html', '/console', '/console/']) {
-        for (const stored of [null, '', 'unknown-theme', 'daylight', 'vscode-dark-2026']) {
+        for (const stored of [null, '', 'unknown-theme', 'daylight', 'dark']) {
           const attributes = new Map<string, string>();
           const classes = new Set<string>();
           const themeColor = {
@@ -32,7 +32,7 @@ describe('enterprise Web package boundary', () => {
           });
 
           const dark = stored !== 'daylight';
-          expect(attributes.get('data-theme')).toBe(dark ? 'vscode-dark-2026' : undefined);
+          expect(attributes.get('data-theme')).toBe(dark ? 'dark' : undefined);
           expect(classes.has('dark')).toBe(dark);
           expect(themeColor.content).toBe(dark ? '#1a1a1a' : '#f8f8f8');
         }

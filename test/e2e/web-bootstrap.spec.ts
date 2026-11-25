@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 390, height: 844 }

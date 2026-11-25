@@ -39,7 +39,7 @@ async function edit(page: Page, phrase: string) {
 }
 
 for (const viewport of [
-  { width: 1440, height: 900, theme: 'vscode-dark-2026' },
+  { width: 1440, height: 900, theme: 'dark' },
   { width: 390, height: 844, theme: 'daylight' }
 ]) {
   test(`Quick prompt settings keep compact rows and reachable actions at ${viewport.width}px`, async ({

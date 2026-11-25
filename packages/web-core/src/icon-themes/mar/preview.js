@@ -54,7 +54,7 @@ export function startPreview(mapping, resolveMarIconId) {
     const query = filename.value.trim();
     const extension = query.startsWith('*.');
     const normalized = (extension ? query.slice(1) : query).toLowerCase();
-    const scheme = appearance.value === 'vscode-dark-2026' ? 'dark' : 'light';
+    const scheme = appearance.value === 'dark' ? 'dark' : 'light';
     document.documentElement.dataset['theme'] = appearance.value;
 
     lookup.hidden = query.length === 0;

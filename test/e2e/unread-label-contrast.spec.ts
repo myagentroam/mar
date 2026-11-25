@@ -51,7 +51,7 @@ async function unreadContrast(tab: Locator) {
 for (const width of [1280, 390]) {
   test.describe(`Unread label at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, hasTouch: width === 390 });
-    for (const theme of ['daylight', 'vscode-dark-2026']) {
+    for (const theme of ['daylight', 'dark']) {
       test(`stays visible on normal and selected surfaces in ${theme}`, async ({
         page
       }, testInfo) => {

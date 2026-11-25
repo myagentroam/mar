@@ -9,9 +9,7 @@ import { createConversationImageService } from '../../src/service/conversation-i
 
 const query = new URLSearchParams(location.search);
 localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
-themePreferenceService().setTheme(
-  query.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
-);
+themePreferenceService().setTheme(query.get('theme') === 'daylight' ? 'daylight' : 'dark');
 const source = (name: string) => `/api/agent-runs/fixture/images/${name}?nodeId=node`;
 const first = source(query.get('first') ?? 'slow');
 const second = source('fast');

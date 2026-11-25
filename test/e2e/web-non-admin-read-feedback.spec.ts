@@ -29,7 +29,7 @@ async function setup(page: Page, width: number, enterprise = false): Promise<voi
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.addInitScript((mobile) => {
     localStorage.setItem('mar.locale.v2', 'en-US');
-    localStorage.setItem('mar.theme', mobile ? 'daylight' : 'vscode-dark-2026');
+    localStorage.setItem('mar.theme', mobile ? 'daylight' : 'dark');
   }, width < 768);
   await page.route('**/api/auth/me', (route) =>
     json(route, {

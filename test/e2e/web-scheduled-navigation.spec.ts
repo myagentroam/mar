@@ -31,7 +31,7 @@ const cardFixtures = [
   nextRunAt: time ? Date.parse(`2026-11-26T${time}:00+08:00`) : null
 }));
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Scheduled cards fit the panel and reveal the ready create action in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -124,7 +124,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         path: testInfo.outputPath('cards-desktop.png'),
         animations: 'disabled'
       });
-      if (theme === 'vscode-dark-2026') {
+      if (theme === 'dark') {
         await page.setViewportSize({ width: 2060, height: 960 });
         await expectColumns(3);
         expect((await grid.boundingBox())!.width).toBe(1560);

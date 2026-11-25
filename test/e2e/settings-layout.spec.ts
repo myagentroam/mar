@@ -144,7 +144,7 @@ const sections = [
   { id: 'about', selector: '.about-settings', title: '.system-brand' }
 ] as const;
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const { width, locale } of [
     { width: 1920, locale: 'en-US' },
     { width: 1440, locale: 'zh-CN' },
@@ -302,7 +302,7 @@ test('Settings navigation and theme editor respond to the available content widt
     .toBe(true);
 });
 
-for (const theme of ['vscode-dark-2026', 'daylight']) {
+for (const theme of ['dark', 'daylight']) {
   test(`System notification settings keep status and action clear in ${theme}`, async ({
     page
   }) => {

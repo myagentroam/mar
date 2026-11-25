@@ -1361,7 +1361,7 @@ for (const english of [false, true]) {
   }, testInfo) => {
     test.setTimeout(60_000);
     if (english) await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
-    else await page.addInitScript(() => localStorage.setItem('mar.theme', 'vscode-dark-2026'));
+    else await page.addInitScript(() => localStorage.setItem('mar.theme', 'dark'));
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
     await mockManagementShell(page);
     let catalog: ImageGenerationModel[] = [

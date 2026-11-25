@@ -468,12 +468,9 @@ test('Quick Open filters match Workspace Tab selection and tab labels keep their
       path: testInfo.outputPath('workspace-descenders-' + width + '.png')
     });
 
-    for (const scheme of ['daylight', 'vscode-dark-2026', 'custom']) {
+    for (const scheme of ['daylight', 'dark', 'custom']) {
       await page.evaluate((value) => {
-        document.documentElement.setAttribute(
-          'data-theme',
-          value === 'custom' ? 'vscode-dark-2026' : value
-        );
+        document.documentElement.setAttribute('data-theme', value === 'custom' ? 'dark' : value);
         document.documentElement.classList.toggle('dark', value !== 'daylight');
         if (value === 'custom') {
           document.documentElement.style.setProperty('--mar-fill-selection', '#294039');
@@ -533,7 +530,7 @@ test('Quick Open filters match Workspace Tab selection and tab labels keep their
   }
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Workbench shell unifies navigation and the inset work surface in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -600,7 +597,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       bottom: '8px',
       left: '60px'
     });
-    if (theme === 'vscode-dark-2026') {
+    if (theme === 'dark') {
       expect(colors.body).toBe('rgb(26, 26, 26)');
       expect(colors.panel).toBe('rgb(30, 30, 30)');
       expect(colors.canvas).toBe('rgb(22, 22, 22)');
@@ -822,7 +819,7 @@ test('File navigation uses rounded selection and the editor fills its surface wi
   const editor = preview.locator('.cm-content');
   await expect(editor).toBeVisible();
   await expect(editor).toContainText('export const answer = 42;');
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     await page.evaluate(
       (value) => document.documentElement.setAttribute('data-theme', value),
       theme
@@ -1781,9 +1778,7 @@ test('Text files default to read-only and support editing, saving, replacement, 
     document.documentElement.setAttribute('data-theme', 'vscode-light-2026')
   );
   await expect(preview.locator('.cm-editor')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-  await page.evaluate(() =>
-    document.documentElement.setAttribute('data-theme', 'vscode-dark-2026')
-  );
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
   await expect(preview.locator('.cm-editor')).toHaveCSS('background-color', 'rgb(26, 26, 26)');
   await editor.click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: '复制' })).toBeVisible();
@@ -2228,7 +2223,7 @@ test('Ctrl+Shift+O opens Workspace files from fuzzy results', async ({ page }) =
 
 test('Standalone Markdown previews render Mermaid and allow HTTP images', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('mar.theme', 'vscode-dark-2026');
+    localStorage.setItem('mar.theme', 'dark');
     localStorage.setItem(
       'mar.markdown-preview',
       JSON.stringify({ watermarkEnabled: false, watermarkText: '', theme: 'light' })
@@ -2286,7 +2281,7 @@ test('Standalone Markdown previews render Mermaid and allow HTTP images', async 
   const popupPromise = page.waitForEvent('popup');
   await page.keyboard.press('Control+Shift+v');
   const popup = await popupPromise;
-  await expect(popup.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(popup.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(popup.getByRole('heading', { name: 'Preview' })).toBeVisible({ timeout: 2_500 });
   releaseCapabilities?.();
   await expect(popup.locator('img[src="https://example.test/image.png"]')).toHaveCount(1);

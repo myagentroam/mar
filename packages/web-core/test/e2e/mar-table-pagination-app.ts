@@ -3,5 +3,5 @@ import { themePreferenceService } from '../../src/service/theme-preference-servi
 import '../../src/styles.css';
 import Fixture from './mar-table-pagination-fixture.vue';
 
-themePreferenceService().setTheme('vscode-dark-2026');
+themePreferenceService().setTheme('dark');
 createApp(Fixture).mount('#app');

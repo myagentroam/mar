@@ -27,7 +27,7 @@ function contrast(first: string, second: string) {
 
 for (const [name, theme, width] of [
   ['light', 'daylight', 1280],
-  ['dark', 'vscode-dark-2026', 1280],
+  ['dark', 'dark', 1280],
   ['mobile', 'daylight', 390]
 ] as const) {
   test(`Conversation Markdown reading hierarchy: ${name}`, async ({ page }, testInfo) => {
@@ -161,7 +161,7 @@ test('copying a user message with an image only copies the message text', async 
 test('Conversation binary attachment renders its own file icon in both color themes', async ({
   page
 }, testInfo) => {
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     await page.goto(`${fixture.url}conversation-style.html?binary-attachment&theme=${theme}`);
     const attachments = page.locator('.conversation-timeline .conversation-file-attachments');
     for (const width of [390, 1280]) {
@@ -207,7 +207,7 @@ const source = [
   ''
 ].join('\n');
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`Conversation code headers, original copy and local scrolling at ${width}px ${theme}`, async ({
       page

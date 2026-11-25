@@ -339,7 +339,7 @@ test('tree and node icon badges retain surface isolation on desktop and mobile',
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     if (width < 768) await expect(page.locator('.workspace-aside')).toBeHidden();
-    for (const theme of ['daylight', 'vscode-dark-2026']) {
+    for (const theme of ['daylight', 'dark']) {
       await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
       await page.mouse.move(width - 10, 850);
       const colors: string[] = [];
@@ -2223,7 +2223,7 @@ test('Workspace tab direct Link icon preserves hover and compact status layout',
     );
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      for (const theme of ['daylight', 'vscode-dark-2026']) {
+      for (const theme of ['daylight', 'dark']) {
         await page.evaluate(
           (value) => document.documentElement.setAttribute('data-theme', value),
           theme
@@ -3002,7 +3002,7 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
     'true'
   );
   await page.mouse.move(800, 500);
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
     await tree.screenshot({ path: test.info().outputPath(`workspace-tree-${theme}.png`) });
   }
@@ -4484,7 +4484,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
+for (const theme of ['daylight', 'dark'] as const) {
   test(`Pinned Workspace Tabs use ordinary colors without dividers: ${theme}`, async ({ page }) => {
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'DIRECTORY');
     await mockEmptyWorkspaceFiles(page, ['workspace-2', 'workspace-3']);
@@ -5140,7 +5140,7 @@ test('Workspace registration uses an independent action target and cancellation 
   });
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    for (const theme of ['daylight', 'vscode-dark-2026']) {
+    for (const theme of ['daylight', 'dark']) {
       await page.evaluate((theme) => {
         document.documentElement.dataset.theme = theme;
         document.documentElement.classList.toggle('dark', theme !== 'daylight');

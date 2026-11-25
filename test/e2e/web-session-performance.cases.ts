@@ -249,7 +249,7 @@ async function openSessionPerformancePage(
   );
 }
 
-for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
+for (const theme of ['dark', 'daylight'] as const) {
   test(`Session performance follows the latest Run and keeps independent metrics: ${theme}`, async ({
     browser,
     page

@@ -9,7 +9,7 @@ import {
 } from '../../src/service/pwa-application-service.js';
 
 themePreferenceService().setTheme(
-  new URLSearchParams(location.search).get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+  new URLSearchParams(location.search).get('theme') === 'daylight' ? 'daylight' : 'dark'
 );
 createApp(StandaloneFilePreviewPage)
   .provide(

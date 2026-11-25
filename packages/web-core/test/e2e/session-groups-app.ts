@@ -14,5 +14,5 @@ if (params.get('theme') === 'custom') {
   source.colors['--mar-color-success-text'] = '#175836';
   const custom = themes.saveCustomTheme(JSON.stringify(source));
   themes.setTheme(custom.id);
-} else themes.setTheme(params.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026');
+} else themes.setTheme(params.get('theme') === 'daylight' ? 'daylight' : 'dark');
 createTooltipApp(Fixture).use(i18n).mount('#app');

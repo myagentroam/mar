@@ -32,7 +32,7 @@ const navigationTargets = ref<WorkspaceNavigationTarget[]>(
     ? [{ source: 'DEFINITION', path: 'src/target.ts', line: 4, preview: 'const target = true;' }]
     : []
 );
-themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026');
+themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'dark');
 const longContent = query.has('long');
 const handle = ref<{ selectAll(): boolean; openFind(): boolean }>();
 const restoreDraft = query.has('draft');

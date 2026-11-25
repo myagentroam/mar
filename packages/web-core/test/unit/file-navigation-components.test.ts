@@ -100,7 +100,7 @@ function colorFromIconMarkup(html: string): string | undefined {
   return /style="color:([^;"]+)/u.exec(html)?.[1];
 }
 
-async function renderFileTypeIcon(surfaceTheme: 'daylight' | 'vscode-dark-2026'): Promise<string> {
+async function renderFileTypeIcon(surfaceTheme: 'daylight' | 'dark'): Promise<string> {
   vi.resetModules();
   const { default: FileTypeIcon } = await import('../../src/view/workspace/FileTypeIcon.vue');
   const { iconThemePreferenceService } =
@@ -289,7 +289,7 @@ describe('public file navigation components', () => {
 
       vi.unstubAllGlobals();
       const darkBrowser = stubBrowserEnvironment();
-      const dark = await renderFileTypeIcon('vscode-dark-2026');
+      const dark = await renderFileTypeIcon('dark');
       expect(dark).toContain('mar-file-icon');
       expect(colorFromIconMarkup(dark)).toBeDefined();
       expect(colorFromIconMarkup(dark)).not.toBe(colorFromIconMarkup(daylight));
@@ -703,7 +703,10 @@ describe('public file navigation components', () => {
         try {
           const file = new File(['data'], 'notes.txt');
           const preventDefault = vi.fn();
-          const event = { dataTransfer: { files: [file] }, preventDefault };
+          const event = {
+            dataTransfer: { types: ['Files'], items: [{ kind: 'file' }], files: [file] },
+            preventDefault
+          };
           const scrollRoot = view.findAll('div')[0]!;
           await trigger(scrollRoot, 'onDragenter', event);
           await trigger(scrollRoot, 'onDragover', event);

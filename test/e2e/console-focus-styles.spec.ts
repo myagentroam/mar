@@ -79,7 +79,7 @@ test('Console focus and link colors are independent in built-in and custom theme
     await expect(link).toHaveCSS('color', 'rgb(23, 78, 158)');
 
     const root = page.locator('html');
-    await root.evaluate((element) => element.setAttribute('data-theme', 'vscode-dark-2026'));
+    await root.evaluate((element) => element.setAttribute('data-theme', 'dark'));
     await expect(button).toHaveCSS('outline-color', 'rgb(117, 183, 255)');
     await expect(link).toHaveCSS('color', 'rgb(117, 183, 255)');
     await root.evaluate((element) => {

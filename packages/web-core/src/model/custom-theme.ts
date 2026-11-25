@@ -1,4 +1,4 @@
-export type BuiltinTheme = 'daylight' | 'vscode-dark-2026';
+export type BuiltinTheme = 'daylight' | 'dark';
 export type ThemePreference = BuiltinTheme | `custom:${string}`;
 
 export interface CustomTheme {
@@ -46,6 +46,11 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-control-primary-fg',
   '--mar-control-primary-hover',
   '--mar-control-primary-active',
+  '--mar-button-primary-bg',
+  '--mar-button-primary-fg',
+  '--mar-button-primary-hover',
+  '--mar-button-primary-active',
+  '--mar-button-primary-border',
   '--mar-control-focus',
   '--mar-control-color-success',
   '--mar-control-color-warning',

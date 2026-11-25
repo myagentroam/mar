@@ -10,7 +10,7 @@ localePreferenceService().setLocale(
   new URL(location.href).searchParams.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );
 themePreferenceService().setTheme(
-  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'dark'
 );
 createTooltipApp(Fixture)
   .use(i18n)

@@ -439,7 +439,7 @@ for (const theme of ['dark', 'light']) {
       const controls = page.locator(selector);
       await expect(controls.first()).toBeVisible();
       await page.locator('html').evaluate((element, selectedTheme) => {
-        element.dataset.theme = selectedTheme === 'light' ? 'daylight' : 'vscode-dark-2026';
+        element.dataset.theme = selectedTheme === 'light' ? 'daylight' : 'dark';
         element.classList.toggle('dark', selectedTheme === 'dark');
       }, theme);
       for (const width of [320, 390]) {
@@ -665,7 +665,7 @@ for (const theme of ['dark', 'light']) {
         await page.goto(`${fixture.url}workspace-tabs.html?locale=${locale}`);
         await page.evaluate(
           (value) => document.documentElement.setAttribute('data-theme', value),
-          theme === 'light' ? 'daylight' : 'vscode-dark-2026'
+          theme === 'light' ? 'daylight' : 'dark'
         );
         const tabs = page.locator('.workspace-tab');
         const badge = tabs.first().locator('.workspace-tab-unread');
@@ -1433,7 +1433,7 @@ test('Quick-open disclosures replace browser markers without losing keyboard acc
   await expect(details).not.toHaveAttribute('open');
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`Terminal and workspace session close controls match in ${theme} at ${width}px`, async ({
       page

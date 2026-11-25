@@ -977,7 +977,7 @@ test('Hosted conversation entry aligns compact controls across languages and vie
       if (locale === 'zh-CN' && width === 1280) {
         await page.evaluate(() => {
           document.documentElement.classList.add('dark');
-          document.documentElement.dataset.theme = 'vscode-dark-2026';
+          document.documentElement.dataset.theme = 'dark';
         });
         await page.screenshot({
           path: testInfo.outputPath('entry-zh-CN-1280-dark.png'),
@@ -1745,7 +1745,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   const historyRows = history.locator('.history-list article');
   const captureHostedThemes = async (layout: 'desktop' | 'mobile') => {
     const originalTheme = await page.locator('html').getAttribute('data-theme');
-    for (const theme of ['daylight', 'vscode-dark-2026']) {
+    for (const theme of ['daylight', 'dark']) {
       await page.locator('html').evaluate((element, value) => {
         element.dataset.theme = value;
       }, theme);

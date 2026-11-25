@@ -8,6 +8,6 @@ localePreferenceService().setLocale(
   new URLSearchParams(location.search).get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );
 themePreferenceService().setTheme(
-  new URLSearchParams(location.search).get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+  new URLSearchParams(location.search).get('theme') === 'daylight' ? 'daylight' : 'dark'
 );
 createTooltipApp(DialogLayoutFixture).use(i18n).mount('#app');

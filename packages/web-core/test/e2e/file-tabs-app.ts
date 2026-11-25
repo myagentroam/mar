@@ -27,9 +27,7 @@ import '../../src/styles.css';
 localePreferenceService().setLocale('en-US');
 const query = new URLSearchParams(window.location.search);
 if (query.has('toolbar-loading') || query.has('tab-style-preview')) {
-  themePreferenceService().setTheme(
-    query.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
-  );
+  themePreferenceService().setTheme(query.get('theme') === 'daylight' ? 'daylight' : 'dark');
 }
 const presentation = query.get('presentation') === 'window' ? 'window' : 'overlay';
 const previewKind = query.get('kind') as WorkspaceFileTab['kind'] | null;

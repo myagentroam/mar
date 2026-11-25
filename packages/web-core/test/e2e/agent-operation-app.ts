@@ -6,5 +6,5 @@ import AgentOperationFixture from './agent-operation-fixture.vue';
 
 const query = new URLSearchParams(location.search);
 localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
-themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'vscode-dark-2026' : 'daylight');
+themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'dark' : 'daylight');
 createTooltipApp(AgentOperationFixture).use(i18n).mount('#app');

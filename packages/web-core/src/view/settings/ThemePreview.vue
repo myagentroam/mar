@@ -8,7 +8,6 @@ import { themeColorScheme } from '../../util/custom-theme.js';
 defineProps<{
   name: string;
   colors: Record<string, string>;
-  builtin: boolean;
   expanded?: boolean;
 }>();
 const { t } = useI18n();
@@ -20,7 +19,6 @@ const sampleInput = ref('');
     class="mar-theme-preview"
     :class="{ expanded }"
     :data-theme="themeColorScheme(colors)"
-    :data-custom-theme="builtin ? undefined : ''"
     :style="colors"
     role="group"
     :aria-label="t('customThemes.preview')"

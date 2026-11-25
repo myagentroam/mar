@@ -5,7 +5,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 for (const [width, theme] of [
   [1280, 'daylight'],
-  [390, 'vscode-dark-2026']
+  [390, 'dark']
 ] as const) {
   test(`Session list watch loading uses the shared spinner and retains rows at ${width}px ${theme}`, async ({
     page
@@ -55,7 +55,7 @@ test('Session rows keep their desktop and mobile density', async ({ page }, test
   try {
     await page.setViewportSize({ width: 1280, height: 850 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto(`${fixture.url}session-groups.html?locale=en-US&theme=vscode-dark-2026`);
+    await page.goto(`${fixture.url}session-groups.html?locale=en-US&theme=dark`);
     const groups = page.locator('.conversation-sidebar').getByRole('radiogroup');
     await expect(groups).toHaveCSS('height', '26px');
     const row = page.locator('.conversation-sidebar .session-row').first();
@@ -137,14 +137,14 @@ test('Mobile session rows remain selectable by touch', async ({ browser }) => {
 });
 
 for (const [width, theme, locale] of [
-  [1280, 'vscode-dark-2026', 'en-US'],
-  [320, 'vscode-dark-2026', 'en-US'],
+  [1280, 'dark', 'en-US'],
+  [320, 'dark', 'en-US'],
   [390, 'daylight', 'en-US'],
   [390, 'daylight', 'zh-CN'],
   [1280, 'daylight', 'zh-CN'],
   [1280, 'custom', 'zh-CN'],
-  [1280, 'vscode-dark-2026', 'zh-CN'],
-  [390, 'vscode-dark-2026', 'zh-CN']
+  [1280, 'dark', 'zh-CN'],
+  [390, 'dark', 'zh-CN']
 ] as const) {
   test(`Plain session categories keep selection, unread rows and tree interaction at ${width}px ${theme} ${locale}`, async ({
     page
@@ -361,8 +361,8 @@ test('Session categories retain a visible selection in forced colors', async ({ 
 
 for (const [width, theme, locale] of [
   [1280, 'daylight', 'en-US'],
-  [390, 'vscode-dark-2026', 'en-US'],
-  [1280, 'vscode-dark-2026', 'zh-CN'],
+  [390, 'dark', 'en-US'],
+  [1280, 'dark', 'zh-CN'],
   [390, 'daylight', 'zh-CN']
 ] as const) {
   test(`Recent session stops distinguish Canceled from Interrupted at ${width}px ${locale}`, async ({

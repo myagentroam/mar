@@ -26,7 +26,7 @@ function sessionListColors(list: Locator) {
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Content search checkbox uses the shared control appearance in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -117,9 +117,9 @@ test('Workspace tree rows reserve their background for hover and selection', asy
 
 for (const { theme, width } of [
   { theme: 'daylight', width: 1280 },
-  { theme: 'vscode-dark-2026', width: 1280 },
+  { theme: 'dark', width: 1280 },
   { theme: 'daylight', width: 390 },
-  { theme: 'vscode-dark-2026', width: 390 }
+  { theme: 'dark', width: 390 }
 ]) {
   test(`Session list shows enabled schedule before pin in ${theme} at ${width}px`, async ({
     page
@@ -248,7 +248,7 @@ for (const { theme, width } of [
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   // @test-covers packages/web-core/src/view/workspace/WorkspaceSessionList.vue
   test(`Workspace session rows use Console keyboard focus in ${theme}`, async ({ page }) => {
     await page.goto(
@@ -272,9 +272,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
 for (const [theme, width] of [
   ['daylight', 1280],
-  ['vscode-dark-2026', 1280],
+  ['dark', 1280],
   ['daylight', 390],
-  ['vscode-dark-2026', 390]
+  ['dark', 390]
 ] as const) {
   test(`Hosted history follows session title, pin and time colors in ${theme} at ${width}px`, async ({
     page
@@ -397,7 +397,7 @@ for (const [theme, width] of [
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`Workbench filters use standard controls in ${theme} at ${width}px`, async ({
       page
@@ -433,7 +433,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       });
       const inspector = page.getByRole('region', { name: 'Inspector fixture' });
       const files = inspector.locator('.file-display-filter');
-      if (theme === 'vscode-dark-2026' && width === 1280) {
+      if (theme === 'dark' && width === 1280) {
         await page.goto(
           `${fixture.url}workbench-style.html?theme=${theme}&content-search=1&locale=zh-CN`
         );
@@ -606,7 +606,7 @@ for (const width of [1280, 390]) {
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Terminal capability is not confused with temporary unavailability in ${theme}`, async ({
     page
   }) => {
@@ -805,7 +805,7 @@ for (const { sourceId, targetId, after, expected } of [
     page
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    const theme = after ? 'vscode-dark-2026' : 'daylight';
+    const theme = after ? 'dark' : 'daylight';
     await page.goto(`${fixture.url}workbench-style.html?session-reorder=1&theme=${theme}`);
     const list = page.getByRole('region', { name: 'Session fixture' });
     const source = list.locator('li').filter({ hasText: `pinned-${sourceId}` });
@@ -842,7 +842,7 @@ for (const { sourceId, targetId, after, expected } of [
 test('Pinned session markers clear outside a valid row without canceling the drag', async ({
   page
 }) => {
-  await page.goto(`${fixture.url}workbench-style.html?session-reorder=1&theme=vscode-dark-2026`);
+  await page.goto(`${fixture.url}workbench-style.html?session-reorder=1&theme=dark`);
   const list = page.getByRole('region', { name: 'Session fixture' });
   const source = list.locator('li').filter({ hasText: 'pinned-one' });
   const target = list.locator('li').filter({ hasText: 'pinned-three' });
@@ -886,7 +886,7 @@ for (const scenario of [
   {
     width: 390,
     locale: 'zh-CN',
-    theme: 'vscode-dark-2026',
+    theme: 'dark',
     copy: '复制绝对路径',
     relative: '复制相对路径',
     refresh: '刷新文件'
@@ -1013,7 +1013,7 @@ for (const scenario of [
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`List empty and initial loading states are centered in ${theme} at ${width}px`, async ({
       page
@@ -1135,7 +1135,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Unread labels share typography, color and geometry in ${theme}`, async ({ page }) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 900 });
@@ -1763,7 +1763,7 @@ test('Desktop Workspace overflow hides and restores unread while the menu stays 
   await expect(tabUnread).toBeVisible();
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`Workspace connection feedback is singular and restrictions stay neutral in ${theme} at ${width}px`, async ({
       page
@@ -2212,7 +2212,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Files Watch and refresh share one visible loading feedback in ${theme}`, async ({
     page
   }, testInfo) => {

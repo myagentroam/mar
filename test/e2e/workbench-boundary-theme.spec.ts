@@ -24,7 +24,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => await fixture?.close());
 
-for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
+for (const theme of ['dark', 'daylight'] as const) {
   test(`Workbench divider and input boundaries stay distinct in ${theme}`, async ({
     page
   }, info) => {

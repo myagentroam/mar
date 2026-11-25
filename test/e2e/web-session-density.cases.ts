@@ -38,7 +38,7 @@ async function measureRows(page: Page) {
 }
 
 for (const locale of ['zh-CN', 'en-US']) {
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     test(
       'Session list desktop density preserves states and mobile bounds: ' + locale + ', ' + theme,
       async ({ page }, testInfo) => {

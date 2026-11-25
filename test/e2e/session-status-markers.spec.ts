@@ -22,9 +22,7 @@ for (const { width, locale, description, count } of [
     page
   }) => {
     await page.setViewportSize({ width, height: 850 });
-    await page.goto(
-      `${fixture.url}session-groups.html?locale=${locale}&theme=vscode-dark-2026&transitioning`
-    );
+    await page.goto(`${fixture.url}session-groups.html?locale=${locale}&theme=dark&transitioning`);
     const activity = page.locator('.activity-center-trigger');
     await expect(activity).toHaveAccessibleDescription(new RegExp(`^${count},`));
     await expect(activity.locator('.activity-entry-running')).toHaveCSS(
@@ -46,7 +44,7 @@ for (const { width, locale, description, count } of [
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026', 'custom']) {
+for (const theme of ['daylight', 'dark', 'custom']) {
   test(`Session and Workspace running markers match the static activity badge: ${theme}`, async ({
     page
   }, testInfo) => {

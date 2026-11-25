@@ -275,7 +275,7 @@ for (const [view, field, selector, searchPlaceholder] of [
       page.screenshot({ path: info.outputPath(`${view}-${name}.png`), animations: 'disabled' });
     try {
       await page.goto(
-        `${fixture.url}visual-alignment.html?list-hierarchy=${view}&controlled-reads&locale=en-US&theme=${mobile ? 'daylight' : 'vscode-dark-2026'}`
+        `${fixture.url}visual-alignment.html?list-hierarchy=${view}&controlled-reads&locale=en-US&theme=${mobile ? 'daylight' : 'dark'}`
       );
       const table = page.locator(selector);
       const ring = table.getByRole('progressbar');
@@ -317,7 +317,7 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
   for (const width of [1920, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(
-      `${fixture.url}visual-alignment.html?list-hierarchy=skills&scope-columns&theme=vscode-dark-2026`
+      `${fixture.url}visual-alignment.html?list-hierarchy=skills&scope-columns&theme=dark`
     );
     for (const [tab, placeholder] of [
       ['Skill', 'Search skill names or descriptions'],
@@ -434,11 +434,11 @@ for (const [view, tab, tableSelector, entry] of [
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Skill and MCP source management search fields stay compact in ${theme}`, async ({
     page
   }, testInfo) => {
-    const locale = theme === 'vscode-dark-2026' ? 'zh-CN' : 'en-US';
+    const locale = theme === 'dark' ? 'zh-CN' : 'en-US';
     for (const width of [1620, 1280, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       for (const view of ['sources', 'mcp-sources']) {

@@ -12,7 +12,7 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Mobile brand menu keeps version, diagnostics and documentation in order in ${theme}`, async ({
     browser
   }, testInfo) => {
@@ -212,7 +212,7 @@ test('Touch highlights stay transparent on menus, scrims and preview overlays', 
     const supportsTapHighlight = await page.evaluate(() =>
       CSS.supports('-webkit-tap-highlight-color', 'transparent')
     );
-    for (const theme of ['daylight', 'vscode-dark-2026']) {
+    for (const theme of ['daylight', 'dark']) {
       await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
       const activity = page.getByRole('button', {
         name: 'Sessions & notifications',

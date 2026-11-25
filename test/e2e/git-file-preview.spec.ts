@@ -11,7 +11,7 @@ test.afterAll(async () => {
 
 for (const [locale, theme, width, historyLabel, filesLabel, copyLabel, copiedLabel] of [
   ['en-US', 'daylight', 1280, 'Git History', 'Files', 'Copy commit ID', 'Commit ID copied.'],
-  ['zh-CN', 'vscode-dark-2026', 390, 'Git 历史', '文件', '复制 Commit ID', '已复制 Commit ID。']
+  ['zh-CN', 'dark', 390, 'Git 历史', '文件', '复制 Commit ID', '已复制 Commit ID。']
 ] as const) {
   test.describe(`Git History menu in ${locale}`, () => {
     test.use({ locale, viewport: { width, height: 900 } });
@@ -115,7 +115,7 @@ for (const [locale, theme, width, historyLabel, filesLabel, copyLabel, copiedLab
 for (const width of [1280, 390]) {
   test.describe(`Git preview at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, isMobile: width < 768, hasTouch: width < 768 });
-    for (const theme of ['daylight', 'vscode-dark-2026']) {
+    for (const theme of ['daylight', 'dark']) {
       test(`Git History expansions share the list surface in ${theme} at ${width}px`, async ({
         page
       }) => {

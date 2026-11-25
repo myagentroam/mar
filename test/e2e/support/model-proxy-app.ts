@@ -34,8 +34,7 @@ const nodes: NodeSummary[] = testNode
   : [];
 localePreferenceService().setLocale(parameters.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
 document.documentElement.classList.toggle('dark', parameters.get('theme') === 'dark');
-if (parameters.get('theme') === 'dark')
-  document.documentElement.setAttribute('data-theme', 'vscode-dark-2026');
+if (parameters.get('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) throw new Error('Fixture request failed');

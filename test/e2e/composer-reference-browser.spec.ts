@@ -244,7 +244,7 @@ test('mixed reference tags serialize as XML and support click and Backspace remo
 
 for (const [width, theme] of [
   [390, 'daylight'],
-  [320, 'vscode-dark-2026'],
+  [320, 'dark'],
   [1280, 'daylight']
 ] as const) {
   test(`Composer candidate popups align with the input edges (${width}px, ${theme})`, async ({
@@ -309,9 +309,9 @@ for (const [width, theme] of [
 
 for (const [theme, width] of [
   ['daylight', 1280],
-  ['vscode-dark-2026', 1280],
+  ['dark', 1280],
   ['daylight', 390],
-  ['vscode-dark-2026', 390]
+  ['dark', 390]
 ] as const) {
   test(`candidate groups remain readable in ${theme} at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
@@ -392,7 +392,7 @@ test('long mixed candidate names stay bounded at mobile width', async ({ page },
   await expect(picker.locator('[role=option]')).toHaveCount(2);
   await page.evaluate(() => {
     document.documentElement.classList.add('console-ui');
-    document.documentElement.dataset.theme = 'vscode-dark-2026';
+    document.documentElement.dataset.theme = 'dark';
   });
   expect(await picker.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   const names = picker.locator('.candidate-name');

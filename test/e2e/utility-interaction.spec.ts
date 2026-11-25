@@ -95,7 +95,7 @@ for (const theme of ['light', 'dark', 'custom']) {
   }) => {
     await page.setViewportSize({ width: 1280, height: 844 });
     await page.goto(
-      `${fixture.url}visual-alignment.html?utility-interaction&queue-count=3&theme=${theme === 'light' ? 'daylight' : 'vscode-dark-2026'}`
+      `${fixture.url}visual-alignment.html?utility-interaction&queue-count=3&theme=${theme === 'light' ? 'daylight' : 'dark'}`
     );
     const colors = theme === 'custom' ? await customPalette(page) : await palette(page);
     if (theme === 'custom') expect(colors.drop).not.toBe(colors.focus);
@@ -231,7 +231,7 @@ for (const width of [1280, 390]) {
     });
     try {
       const page = await context.newPage();
-      for (const theme of ['vscode-dark-2026', 'daylight']) {
+      for (const theme of ['dark', 'daylight']) {
         await page.goto(
           `${fixture.url}visual-alignment.html?utility-interaction&composer-layout&work-item-editing&queue-count=8&theme=${theme}`
         );
@@ -362,7 +362,7 @@ for (const width of [1280, 390]) {
     });
     try {
       const page = await context.newPage();
-      for (const theme of ['vscode-dark-2026', 'daylight']) {
+      for (const theme of ['dark', 'daylight']) {
         for (const count of [3, 8]) {
           await page.goto(
             `${fixture.url}visual-alignment.html?utility-interaction&queue-count=${count}&theme=${theme}`
@@ -633,7 +633,7 @@ for (const width of [1280, 390]) {
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Queue and Goal inline edits keep their display typography in ${theme}`, async ({
     browser
   }, testInfo) => {

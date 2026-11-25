@@ -39,7 +39,7 @@ localePreferenceService().setLocale(
   new URLSearchParams(location.search).get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );
 themePreferenceService().setTheme(
-  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'dark'
 );
 let notificationRemoved = false;
 const service = createWorkbenchNotificationService(ref('fixture'), {

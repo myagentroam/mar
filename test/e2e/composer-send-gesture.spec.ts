@@ -187,7 +187,7 @@ test('Multiline drafts allow a swipe past 60px and cancel only above the Compose
   await expect(ui.draft).toBeFocused();
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Sliding up inside the Composer steers once on release (${theme})`, async ({
     page
   }, info) => {

@@ -305,7 +305,7 @@ test('Composer image paste prevents default rich-text insertion', async ({ page,
 });
 
 test('Dark theme keeps new sessions in the neutral control hierarchy', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('mar.theme', 'vscode-dark-2026'));
+  await page.addInitScript(() => localStorage.setItem('mar.theme', 'dark'));
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
 
   await page.goto('/console');

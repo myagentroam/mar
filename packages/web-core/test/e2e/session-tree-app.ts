@@ -23,7 +23,7 @@ const query = new URLSearchParams(location.search);
 const rootOnly = query.get('rootOnly') === '1';
 const sleepingOnly = query.has('sleeping-only');
 localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
-themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'vscode-dark-2026' : 'daylight');
+themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'dark' : 'daylight');
 const session = {
   id: query.has('long-id') ? 'session-'.repeat(40) : rootOnly ? 'parent' : 'child',
   externalSessionId: rootOnly ? 'parent' : 'child',

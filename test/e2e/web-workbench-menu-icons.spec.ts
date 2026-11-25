@@ -59,7 +59,7 @@ const menus = [
   }
 ] as const;
 
-for (const theme of ['vscode-dark-2026', 'daylight']) {
+for (const theme of ['dark', 'daylight']) {
   for (const mobile of [false, true]) {
     test.describe(`${theme}, ${mobile ? 'mobile' : 'desktop'}`, () => {
       test.use({

@@ -660,7 +660,7 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
   );
   await page.route('**/src/main.ts', (route) => route.abort());
   const light = { themeId: 'custom:light', scheme: 'daylight', background: '#f1f5e9' };
-  const dark = { themeId: 'custom:dark', scheme: 'vscode-dark-2026', background: '#242d38' };
+  const dark = { themeId: 'custom:dark', scheme: 'dark', background: '#242d38' };
   const cases = [
     { themeId: 'custom:light', snapshot: null },
     { themeId: 'custom:light', snapshot: '{' },
@@ -1093,7 +1093,7 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   );
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.locator('.theme-option')).toHaveCount(3);
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(
     await page.evaluate(() => document.documentElement.style.getPropertyValue('--mar-bg-panel'))
   ).toBe('');
@@ -1127,7 +1127,7 @@ test('duplicate, draft protection and formatting work without changing the activ
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
   await expect(page.locator('.theme-options')).toContainText('Untitled theme');
   await expect(page.locator('.validation')).toContainText('saving is allowed');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
 test('PWA update reloads an unsaved theme without a leave confirmation', async ({ page }) => {
@@ -1246,8 +1246,10 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   await expect(page.locator('.validation')).toContainText('No detected warnings.');
   const light = JSON.parse(await editor.inputValue());
   expect(light).not.toHaveProperty('base');
-  for (const token of CUSTOM_THEME_TOKENS)
+  for (const token of CUSTOM_THEME_TOKENS) {
+    expect(dark.colors[token]).toMatch(/^#[0-9a-f]{6}([0-9a-f]{2})?$/u);
     expect(light.colors[token]).toMatch(/^#[0-9a-f]{6}([0-9a-f]{2})?$/u);
+  }
   expect(light.colors['--mar-bg-panel']).toBe('#ffffff');
   expect(light.colors['--mar-control-color-warning']).toBe('#a56000');
   expect(light.colors['--mar-color-warning-accent']).toBe('#a56000');
@@ -1504,15 +1506,17 @@ for (const scheme of ['Light', 'Dark']) {
               return colors;
             })
           : [];
-      const checkButtonBoundary = (border: string) => {
+      const checkButtonBoundary = (fill: string, border: string) => {
+        // The underlying button fill also paints the border box when the border is transparent.
+        const boundary = resolvedColorToHex(border) === '#00000000' ? fill : border;
         for (const surface of surfaces) {
-          expect(colorContrast(border, surface)).toBeGreaterThanOrEqual(3);
+          expect(colorContrast(boundary, surface)).toBeGreaterThanOrEqual(3);
         }
       };
       await page.mouse.move(0, 0);
       const normal = await appearance();
       expect(resolvedColorToHex(normal.color)).toBe(expectedText);
-      checkButtonBoundary(normal.borderTopColor);
+      checkButtonBoundary(normal.backgroundColor, normal.borderTopColor);
       expect(
         colorContrast(normal.color, normal.backgroundColor),
         `${name}, rest`
@@ -1520,7 +1524,7 @@ for (const scheme of ['Light', 'Dark']) {
       await button.hover();
       const hover = await appearance();
       expect(resolvedColorToHex(hover.color)).toBe(expectedText);
-      checkButtonBoundary(hover.borderTopColor);
+      checkButtonBoundary(hover.backgroundColor, hover.borderTopColor);
       expect(hover.backgroundColor).not.toBe(normal.backgroundColor);
       expect(
         colorContrast(hover.color, hover.backgroundColor),
@@ -1530,7 +1534,7 @@ for (const scheme of ['Light', 'Dark']) {
       try {
         const active = await appearance();
         expect(resolvedColorToHex(active.color)).toBe(expectedText);
-        checkButtonBoundary(active.borderTopColor);
+        checkButtonBoundary(active.backgroundColor, active.borderTopColor);
         expect(active.backgroundColor).not.toBe(hover.backgroundColor);
         expect(
           colorContrast(active.color, active.backgroundColor),
@@ -1940,7 +1944,7 @@ test('theme choices apply immediately without replacing an unsaved draft', async
     .nth(1)
     .getByRole('button', { name: /^Inspect /u })
     .click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expectChromeOnPage();
   await options.nth(1).getByRole('button', { name: 'Apply theme', exact: true }).click();
   await expect(page.locator('html')).not.toHaveClass(/dark/u);
@@ -1972,7 +1976,7 @@ test('theme choices apply immediately without replacing an unsaved draft', async
   await options.first().getByRole('button', { name: 'Apply theme', exact: true }).click();
   await expect(editor).toHaveValue(saved + ' ');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem('mar.theme'))).toBe('vscode-dark-2026');
+  expect(await page.evaluate(() => localStorage.getItem('mar.theme'))).toBe('dark');
   await expectChromeOnPage();
   await page.screenshot({
     path: testInfo.outputPath('theme-selector.png'),
@@ -2218,10 +2222,10 @@ test('solid and inset field frames retain invalid and keyboard focus cues', asyn
 test('theme preview input uses its own palette independently of the active theme', async ({
   page
 }) => {
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   const preview = page.locator('.mar-theme-preview');
   const input = preview.locator('.preview-label .mar-ui-input');
-  await expect(preview).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(preview).toHaveAttribute('data-theme', 'dark');
   const realInput = page
     .getByRole('region', { name: 'Real theme controls' })
     .locator('.mar-ui-input')
@@ -2231,7 +2235,7 @@ test('theme preview input uses its own palette independently of the active theme
   await page.getByRole('button', { name: 'Inspect Light', exact: true }).click();
   await expect(preview).toHaveAttribute('data-theme', 'daylight');
   await expect(input).toHaveCSS('box-shadow', 'rgb(185, 202, 223) 0px 0px 0px 1px inset');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(realInput).toHaveCSS('box-shadow', inputShadow);
 });
 
@@ -2247,17 +2251,24 @@ test('filled primary controls and the preview use their respective active palett
   await expect(sample).toHaveCSS('background-color', 'rgb(0, 87, 219)');
   await useThemeMenu(page, options.first(), 'Duplicate');
   const save = page.getByRole('button', { name: 'Save theme', exact: true });
-  await expect(sample).toHaveCSS('color', 'rgb(24, 24, 24)');
+  await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(11, 112, 219)');
+  expect(JSON.parse(await editor.inputValue()).colors).toMatchObject({
+    '--mar-button-primary-fg': '#ffffff',
+    '--mar-control-primary-fg': '#181818'
+  });
   await expect(save).toHaveCSS('color', 'rgb(255, 255, 255)');
   const custom = JSON.stringify({
     version: 1,
     name: 'Palenight sample',
     colors: {
       '--mar-conversation-activity-fg': '#c792ea',
-      '--mar-control-primary-bg': '#bdd6c8',
-      '--mar-control-primary-fg': '#202331',
-      '--mar-control-primary-active': '#bbccaa',
-      '--mar-control-primary-hover': '#abcdef'
+      '--mar-control-primary-bg': '#1789fc',
+      '--mar-button-primary-bg': '#bdd6c8',
+      '--mar-button-primary-fg': '#202331',
+      '--mar-button-primary-active': '#bbccaa',
+      '--mar-button-primary-hover': '#abcdef',
+      '--mar-button-primary-border': '#95b8ae'
     }
   });
   await editor.fill(custom);
@@ -2276,19 +2287,19 @@ test('filled primary controls and the preview use their respective active palett
   );
   await sample.hover();
   await expect(sample).toHaveCSS('background-color', 'rgb(171, 205, 239)');
-  await expect(sample).toHaveCSS('border-color', 'rgb(171, 205, 239)');
+  await expect(sample).toHaveCSS('border-color', 'rgb(149, 184, 174)');
   await page.mouse.down();
   await expect(sample).toHaveCSS('background-color', 'rgb(187, 204, 170)');
-  await expect(sample).toHaveCSS('border-color', 'rgb(187, 204, 170)');
+  await expect(sample).toHaveCSS('border-color', 'rgb(149, 184, 174)');
   await page.mouse.up();
   await save.hover();
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
   await expect(save).toHaveCSS('background-color', 'rgb(171, 205, 239)');
-  await expect(save).toHaveCSS('border-color', 'rgb(171, 205, 239)');
+  await expect(save).toHaveCSS('border-color', 'rgb(149, 184, 174)');
   await page.mouse.down();
   await expect(save).toHaveCSS('color', 'rgb(32, 35, 49)');
   await expect(save).toHaveCSS('background-color', 'rgb(187, 204, 170)');
-  await expect(save).toHaveCSS('border-color', 'rgb(187, 204, 170)');
+  await expect(save).toHaveCSS('border-color', 'rgb(149, 184, 174)');
   await page.mouse.up();
 });
 
@@ -2461,7 +2472,7 @@ for (const scheme of ['Light', 'Dark']) {
       for (const [index, token] of [...new Set(Object.values(aliases))].entries())
         source.colors[token] = '#' + (0x203040 + index * 0x030507).toString(16).padStart(6, '0');
       source.colors['--mar-conversation-activity-fg'] = '#654321';
-      source.colors['--mar-control-primary-bg'] = '#abcdef';
+      source.colors['--mar-button-primary-bg'] = '#abcdef';
       source.colors['--mar-control-bg-color-overlay'] = '#34567880';
       source.colors['--mar-bg-panel'] = '#123456';
       source.colors['--mar-bg-page'] = scheme === 'Light' ? '#ffffff' : '#000000';
@@ -2674,7 +2685,7 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(primary).toHaveCSS('background-color', hoverColor);
       await expect(primary).toHaveCSS(
         'border-top-color',
-        scheme === 'Dark' ? 'rgb(23, 137, 252)' : hoverColor
+        scheme === 'Dark' ? 'rgb(23, 137, 252)' : 'rgba(0, 0, 0, 0)'
       );
       await expect(primary).toHaveCSS('color', primaryForeground);
       await expect(primary).toHaveCSS('transform', 'none');
@@ -2781,8 +2792,9 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-bg-panel': '#123456',
         '--mar-table-header-bg': '#234567',
         '--mar-table-row-hover-bg': '#345678',
-        '--mar-control-primary-fg': '#fedcba',
-        '--mar-control-primary-hover': '#234567',
+        '--mar-button-primary-fg': '#fedcba',
+        '--mar-button-primary-hover': '#234567',
+        '--mar-button-primary-border': '#234567',
         '--mar-text-primary': '#d5c4af',
         '--mar-text-disabled': '#969696',
         '--mar-fill-soft': '#434343',
@@ -2880,7 +2892,7 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(option).toBeVisible();
       if (scheme === 'Light')
         await option.getByRole('button', { name: 'Apply theme', exact: true }).click();
-      else await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+      else await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
       const aliases = componentAliases;
       // Include both breakpoint edges and resize back to mobile to catch stale overrides.
       for (const width of [390, 767, 768, 860, 861, 1440, 420]) {

@@ -13,7 +13,7 @@ const sidebarCollapsed = ref(false);
 const parameters = new URLSearchParams(location.search);
 const locale = parameters.get('locale');
 const theme = parameters.get('theme');
-if (theme === 'daylight' || theme === 'vscode-dark-2026') themePreferenceService().setTheme(theme);
+if (theme === 'daylight' || theme === 'dark') themePreferenceService().setTheme(theme);
 const boundaryLayout = parameters.get('layout') === 'boundary';
 const dynamicLayout = boundaryLayout || parameters.get('layout') === 'dynamic';
 const inHeader = parameters.get('placement') === 'header';

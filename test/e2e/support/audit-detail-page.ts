@@ -74,7 +74,7 @@ const request = async <T>(path: string): Promise<T> => {
 i18n.global.locale.value = 'en-US';
 if (new URLSearchParams(location.search).get('theme') === 'dark') {
   document.documentElement.classList.add('dark', 'console-ui');
-  document.documentElement.dataset.theme = 'vscode-dark-2026';
+  document.documentElement.dataset.theme = 'dark';
 }
 createApp({ render: () => (mounted.value ? h(AuditManagementPage, { request }) : null) })
   .use(i18n)

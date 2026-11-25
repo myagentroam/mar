@@ -551,9 +551,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(panel.locator('.card')).toHaveCount(3);
   await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'daylight'));
   await page.screenshot({ path: info.outputPath('scheduled-tasks-desktop.png') });
-  await page
-    .locator('html')
-    .evaluate((element) => element.setAttribute('data-theme', 'vscode-dark-2026'));
+  await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'dark'));
   await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-desktop.png') });
   const hoverCard = panel.locator('.card').filter({ hasText: '检查构建' });
   const restingBackground = await hoverCard.evaluate(
@@ -917,9 +915,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   expect(await tableScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
     true
   );
-  await page
-    .locator('html')
-    .evaluate((element) => element.setAttribute('data-theme', 'vscode-dark-2026'));
+  await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'dark'));
   await page.screenshot({ path: info.outputPath('scheduled-global-history-mobile.png') });
   await expect(globalPager).toHaveCount(0);
   await globalTable.getByRole('row').last().scrollIntoViewIfNeeded();

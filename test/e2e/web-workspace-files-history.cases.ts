@@ -158,7 +158,7 @@ for (const language of [
     try {
       for (const [theme, blue] of [
         ['daylight', 'rgb(39, 103, 173)'],
-        ['vscode-dark-2026', 'rgb(82, 155, 238)']
+        ['dark', 'rgb(82, 155, 238)']
       ] as const) {
         await root.evaluate((element, name) => (element.dataset.theme = name), theme);
         await expect(mainNode).toHaveCSS('fill', blue);

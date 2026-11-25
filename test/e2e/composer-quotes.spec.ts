@@ -548,7 +548,7 @@ test('a long draft quote stays compact while preserving its full snapshot', asyn
   });
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`quote removal preserves its brand foreground in ${theme}`, async ({ page }) => {
     await page.goto(`${fixture.url}composer-quotes.html?theme=${theme}`);
     if (theme === 'daylight') await expect(page.locator('html')).not.toHaveClass(/dark/u);

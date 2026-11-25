@@ -23,7 +23,7 @@ async function expectLoadingSize(status: Locator, fontSize: string) {
   expect.soft(sizes).toEqual({ fontSize, iconWidth: fontSize, iconHeight: fontSize });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`Git loading shares list text and icon sizes in ${theme} at ${width}px`, async ({
       page

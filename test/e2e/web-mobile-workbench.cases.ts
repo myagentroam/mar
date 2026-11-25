@@ -687,7 +687,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   const brand = page.getByTestId('workbench-brand');
   await expect(page.locator('html')).toHaveCSS('font-size', '16px');
   await page.locator('html').evaluate((element) => {
-    element.setAttribute('data-theme', 'vscode-dark-2026');
+    element.setAttribute('data-theme', 'dark');
     element.classList.add('dark');
   });
   await expect(brand).toHaveCSS('border-top-width', '0px');
@@ -1509,7 +1509,7 @@ for (const labels of [
     help: '帮助',
     brand: 'MyAgentRoam 菜单',
     activity: '会话与通知',
-    theme: 'vscode-dark-2026'
+    theme: 'dark'
   },
   {
     locale: 'en-US',

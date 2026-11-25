@@ -86,7 +86,7 @@ test('MAR icon development preview opens as one offline HTML file', async ({ pag
   await resolved.locator('.icon-sample').screenshot({ path: testInfo.outputPath('svg-light.png') });
   await search.fill('AGENTS.md');
   await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(0, 105, 232)');
-  await page.getByLabel('Color theme').selectOption('vscode-dark-2026');
+  await page.getByLabel('Color theme').selectOption('dark');
   await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(89, 169, 255)');
   await search.fill('CLAUDE.local.md');
   await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(189, 150, 255)');

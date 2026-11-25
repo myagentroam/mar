@@ -8,7 +8,5 @@ import { themePreferenceService } from '../../src/service/theme-preference-servi
 const query = new URL(location.href).searchParams;
 document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
-themePreferenceService().setTheme(
-  query.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
-);
+themePreferenceService().setTheme(query.get('theme') === 'daylight' ? 'daylight' : 'dark');
 createTooltipApp(Fixture).use(i18n).mount('#app');

@@ -4,7 +4,7 @@ import Fixture from './composer-quotes-fixture.vue';
 import { localePreferenceService } from '../../../packages/web-core/src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../../packages/web-core/src/service/theme-preference-service.js';
 themePreferenceService().setTheme(
-  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'dark'
 );
 localePreferenceService().setLocale('en-US');
 createTooltipApp(Fixture).mount('#app');

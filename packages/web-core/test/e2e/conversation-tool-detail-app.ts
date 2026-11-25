@@ -8,6 +8,6 @@ localePreferenceService().setLocale(
   new URL(location.href).searchParams.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );
 themePreferenceService().setTheme(
-  new URL(location.href).searchParams.get('theme') === 'dark' ? 'vscode-dark-2026' : 'daylight'
+  new URL(location.href).searchParams.get('theme') === 'dark' ? 'dark' : 'daylight'
 );
 createTooltipApp(ConversationToolDetailFixture).use(i18n).mount('#app');

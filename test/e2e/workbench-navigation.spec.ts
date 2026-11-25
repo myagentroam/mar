@@ -9,7 +9,7 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-for (const theme of ['vscode-dark-2026', 'daylight']) {
+for (const theme of ['dark', 'daylight']) {
   test(`Navigation hierarchy preserves selection, focus and actions in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -153,7 +153,7 @@ test('Touch navigation keeps close controls available and long titles bounded', 
 });
 
 for (const [width, theme] of [
-  [1280, 'vscode-dark-2026'],
+  [1280, 'dark'],
   [390, 'daylight']
 ] as const) {
   test(`Wide conversation content stays readable without widening the work surface at ${width}px`, async ({

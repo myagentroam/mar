@@ -360,7 +360,7 @@ test('Workbench controls preserve selection, neutral action feedback, focus, and
   };
   const refresh = page.getByRole('button', { name: '刷新文件', exact: true });
   await expect(refresh).toBeEnabled();
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value;
     }, theme);

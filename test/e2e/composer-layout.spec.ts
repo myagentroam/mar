@@ -28,7 +28,7 @@ async function composerActionStyle(button: Locator) {
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [390, 1280]) {
     test(`Hosted Composer matches Workspace toolbar and actions at ${width} in ${theme}`, async ({
       page
@@ -129,7 +129,7 @@ test('Workspace context indicator stays visible without a usage snapshot', async
 
 for (const [theme, fill] of [
   ['daylight', /^conic-gradient\(rgb\(0, 95, 214\) 42%,/u],
-  ['vscode-dark-2026', /^conic-gradient\(rgb\(77, 163, 255\) 42%,/u]
+  ['dark', /^conic-gradient\(rgb\(77, 163, 255\) 42%,/u]
 ] as const) {
   test(`Workspace context indicator uses activity blue in ${theme}`, async ({ page }) => {
     for (const width of [390, 1280]) {
@@ -145,7 +145,7 @@ for (const [theme, fill] of [
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Composer actions have a single visible circle: ${theme}`, async ({ page }, testInfo) => {
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 844 });

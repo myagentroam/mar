@@ -817,7 +817,7 @@ for (const theme of ['dark', 'daylight']) {
 
 for (const [width, theme] of [
   [390, 'daylight'],
-  [1280, 'vscode-dark-2026']
+  [1280, 'dark']
 ] as const) {
   test(`session tree menu icon at ${width}px in ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 850 });

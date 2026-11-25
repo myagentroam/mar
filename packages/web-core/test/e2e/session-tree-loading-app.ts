@@ -23,7 +23,7 @@ declare global {
 
 const query = new URLSearchParams(location.search);
 localePreferenceService().setLocale('en-US');
-themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'vscode-dark-2026' : 'daylight');
+themePreferenceService().setTheme(query.get('theme') === 'dark' ? 'dark' : 'daylight');
 
 function makeTree(): NonNullable<NavigationSnapshot['tree']> {
   const now = Date.now();
