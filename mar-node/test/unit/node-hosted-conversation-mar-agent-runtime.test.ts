@@ -474,8 +474,9 @@ describe('MAR Agent hosted conversation runtime', () => {
     expect(close).toHaveBeenCalledTimes(2);
   });
 
-  it('pages complete hosted turns with a Session-bound opaque cursor', async () => {
+  it('keeps hosted Turns and rollback boundaries intact when the next page uses a wider limit', async () => {
     const close = vi.fn(async () => undefined);
+    const entries = Array.from({ length: 8 }, (_, index) => historyEntries(index + 1)).flat();
     const history = vi.fn(
       async (
         _sessionId: string,
@@ -483,10 +484,11 @@ describe('MAR Agent hosted conversation runtime', () => {
       ) => {
         if (input.cursor === undefined)
           return {
-            entries: [...historyEntries(2), ...historyEntries(3)],
-            nextCursor: '3'
+            entries: entries.slice(5),
+            nextCursor: '6'
           };
-        if (input.cursor === '3') return { entries: historyEntries(1) };
+        if (input.cursor === '6') return { entries: entries.slice(3, 5), nextCursor: '4' };
+        if (input.cursor === '5') return { entries: entries.slice(0, 4) };
         throw new Error(`unexpected cursor: ${input.cursor}`);
       }
     );
@@ -501,15 +503,25 @@ describe('MAR Agent hosted conversation runtime', () => {
       sessionId: 'session-1',
       homeDirectory: '/private/home',
       modelId: 'model-1',
-      limit: 2
+      limit: 6
     });
-    expect(recent.turns.map((turn) => conversationTurnSchema.parse(turn).id)).toEqual([
-      'turn-2',
-      'turn-3'
+    const recentTurns = recent.turns.map((turn) => conversationTurnSchema.parse(turn));
+    expect(recentTurns.map((turn) => turn.id)).toEqual([
+      'turn-3',
+      'turn-4',
+      'turn-5',
+      'turn-6',
+      'turn-7',
+      'turn-8'
     ]);
+    expect(recentTurns[0]).toMatchObject({
+      status: 'SUCCEEDED',
+      userItemId: 'turn-3:user',
+      rewind: { before: 'turn-2', after: 'turn-3' }
+    });
     expect(recent.nextCursor).toEqual(expect.any(String));
-    expect(history).toHaveBeenNthCalledWith(1, 'session-1', { limit: 100 });
-    expect(history).toHaveBeenNthCalledWith(2, 'session-1', { limit: 100, cursor: '3' });
+    expect(history).toHaveBeenNthCalledWith(1, 'session-1', { limit: 120 });
+    expect(history).toHaveBeenNthCalledWith(2, 'session-1', { limit: 120, cursor: '6' });
 
     history.mockClear();
     const older = await runtime.history({
@@ -517,12 +529,18 @@ describe('MAR Agent hosted conversation runtime', () => {
       sessionId: 'session-1',
       homeDirectory: '/private/home',
       modelId: 'model-1',
-      limit: 2,
+      limit: 100,
       cursor: recent.nextCursor!
     });
-    expect(older.turns.map((turn) => conversationTurnSchema.parse(turn).id)).toEqual(['turn-1']);
+    const olderTurns = older.turns.map((turn) => conversationTurnSchema.parse(turn));
+    expect(olderTurns.map((turn) => turn.id)).toEqual(['turn-1', 'turn-2']);
+    expect(olderTurns[1]).toMatchObject({
+      status: 'SUCCEEDED',
+      userItemId: 'turn-2:user',
+      rewind: { before: 'turn-1', after: 'turn-2' }
+    });
     expect(older.nextCursor).toBeNull();
-    expect(history).toHaveBeenCalledWith('session-1', { limit: 100, cursor: '3' });
+    expect(history).toHaveBeenCalledExactlyOnceWith('session-1', { limit: 1000, cursor: '5' });
 
     await expect(
       runtime.history({

@@ -73,6 +73,55 @@ describe('Node hosted conversation runtime', () => {
     });
   });
 
+  it.each(['recent', 'older', 'stale'] as const)(
+    'stops reading history at the page containing the rollback target (%s)',
+    async (position) => {
+      const fixture = await runtimeFixture();
+      const conversation = await createConversation(fixture);
+      const retained = hostedTurn('turn-1', 'Keep this message.', null);
+      const target = hostedTurn('turn-2', 'Remove this message.', retained.id);
+      const newer = hostedTurn('turn-3', 'Remove this too.', target.id);
+      fixture.runtime.history.mockClear();
+      fixture.runtime.history.mockImplementation(async ({ cursor }) => {
+        if (fixture.runtime.rollback.mock.calls.length > 0)
+          return hostedHistoryPage([retained], 'retained-history');
+        if (cursor === undefined)
+          return hostedHistoryPage(position === 'recent' ? [target, newer] : [newer], 'older-page');
+        if (cursor === 'older-page' && position !== 'recent')
+          return hostedHistoryPage([retained, target], 'unneeded-page');
+        throw new Error('Rollback read history older than the target');
+      });
+
+      const rollback = fixture.service.operations()['conversation.hosted.rollback']!({
+        conversationId: conversation.id,
+        turnId: target.id,
+        itemId: target.userItemId,
+        boundary: position === 'stale' ? 'stale-boundary' : target.rewind.before,
+        __requestUserId: 7,
+        __marAgentModels: [modelOne]
+      });
+      if (position === 'stale') {
+        await expect(rollback).rejects.toThrow('HOSTED_CONVERSATION_ROLLBACK_TARGET_INVALID');
+        expect(fixture.runtime.rollback).not.toHaveBeenCalled();
+      } else {
+        await expect(rollback).resolves.toMatchObject({
+          turns: [{ id: retained.id }],
+          historyNextCursor: 'retained-history'
+        });
+        expect(fixture.runtime.rollback).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ boundaryTurnId: retained.id })
+        );
+      }
+      expect(
+        fixture.runtime.history.mock.calls.map(([{ cursor, limit }]) => [cursor, limit])
+      ).toEqual([
+        [undefined, 6],
+        ...(position === 'recent' ? [] : [['older-page', 100]]),
+        ...(position === 'stale' ? [] : [[undefined, 6]])
+      ]);
+    }
+  );
+
   it('forwards the selected steered user identity to the Hosted SDK runtime', async () => {
     const fixture = await runtimeFixture();
     const conversation = await createConversation(fixture);
