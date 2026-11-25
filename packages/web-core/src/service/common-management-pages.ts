@@ -30,6 +30,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'resource-nodes',
       order: 30,
       labelKey: 'navigation.nodeManagement',
+      icon: 'node',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/NodeManagementPage.vue'),
         loadingComponent,
@@ -48,6 +49,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'resource-workspaces',
       order: 40,
       labelKey: 'navigation.workspaceManagement',
+      icon: 'folder',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/WorkspaceManagementPage.vue'),
         loadingComponent,
@@ -60,6 +62,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'skill-config',
       order: 50,
       labelKey: 'navigation.skillConfiguration',
+      icon: 'skill',
       component: defineAsyncComponent({
         loader: () => import('../view/skill/SkillCenterPage.vue'),
         loadingComponent,
@@ -72,6 +75,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'skill-sources',
       order: 60,
       labelKey: 'navigation.skillSources',
+      icon: 'skill-source',
       component: defineAsyncComponent({
         loader: () => import('../view/skill/SkillSourceManagementPage.vue'),
         loadingComponent,
@@ -84,6 +88,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'mcp-sources',
       order: 70,
       labelKey: 'navigation.mcpSources',
+      icon: 'connection',
       component: defineAsyncComponent({
         loader: () => import('../view/skill/McpSourceManagementPage.vue'),
         loadingComponent,
@@ -96,6 +101,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'secrets',
       order: 80,
       labelKey: 'navigation.secrets',
+      icon: 'secret',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/SecretManagementPage.vue'),
         loadingComponent,
@@ -108,6 +114,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'mar-agent-models',
       order: 90,
       labelKey: 'navigation.marAgentModels',
+      icon: 'model',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/MarAgentModelManagementPage.vue'),
         loadingComponent,
@@ -124,6 +131,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'conversation-templates',
       order: 110,
       labelKey: 'navigation.conversationTemplates',
+      icon: 'collection',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/ConversationTemplateManagementPage.vue'),
         loadingComponent,
@@ -140,6 +148,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'configuration',
       order: 130,
       labelKey: 'navigation.configuration',
+      icon: 'adjustments',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/SystemConfigurationPage.vue'),
         loadingComponent,
@@ -152,6 +161,7 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
       id: 'system',
       order: 140,
       labelKey: 'navigation.system',
+      icon: 'system',
       component: defineAsyncComponent({
         loader: () => import('../view/SystemInformationPage.vue'),
         loadingComponent,

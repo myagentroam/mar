@@ -6,7 +6,7 @@ import {
   MarDropdownMenu,
   type MarDropdownInstance
 } from '@myagentroam/mar-ui/dropdown';
-import { marIcon } from '@myagentroam/mar-ui/icons';
+import { MarIcon, marIcon, type MarIconName } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import logoIcon from '../../assets/logo-icon.png';
@@ -22,7 +22,6 @@ import type {
 } from '../../service/workbench-notification-service.js';
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
-import { MarIcon } from '@myagentroam/mar-ui/icons';
 import WorkbenchActivityCenter from './WorkbenchActivityCenter.vue';
 import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
 import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
@@ -38,6 +37,27 @@ import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbe
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
 import { scheduleSections, type ScheduleSection } from '../schedule/scheduled-task-navigation.js';
+
+const settingsIcons = {
+  account: 'user',
+  usage: 'bar-chart',
+  appearance: 'sun',
+  'custom-themes': 'palette',
+  notifications: 'notification',
+  'quick-prompts': 'quote',
+  'personal-instructions': 'document',
+  git: 'branch',
+  browser: 'web',
+  registration: 'desktop',
+  shortcuts: 'keyboard',
+  about: 'info'
+} as const satisfies Record<SettingsSection, MarIconName>;
+
+const scheduleIcons = {
+  mine: 'calendar-check',
+  all: 'calendar',
+  history: 'clock'
+} as const satisfies Record<ScheduleSection, MarIconName>;
 
 const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;
@@ -58,7 +78,11 @@ const props = defineProps<{
   readonly settingsSection: SettingsSection;
   readonly settingsItems: readonly { readonly id: SettingsSection; readonly label: string }[];
   readonly managementSection: ManagementSection;
-  readonly managementItems: readonly { readonly id: ManagementSection; readonly label: string }[];
+  readonly managementItems: readonly {
+    readonly id: ManagementSection;
+    readonly label: string;
+    readonly icon: MarIconName;
+  }[];
   readonly sidebarCollapsed: boolean;
   readonly mobileSidebarOpen: boolean;
   readonly sidebarContentVisible: boolean;
@@ -472,7 +496,8 @@ function runBlankMenuCommand(command: string): void {
           type="button"
           @click="emit('selectScheduleSection', section)"
         >
-          {{ $t(`generated.scheduledSession.${section}`) }}
+          <MarIcon :name="scheduleIcons[section]" size="1rem" />
+          <span>{{ $t(`generated.scheduledSession.${section}`) }}</span>
         </button>
       </nav>
       <template v-else-if="displayUtility === undefined && displayView === 'nodes'">
@@ -545,7 +570,8 @@ function runBlankMenuCommand(command: string): void {
             type="button"
             @click="emit('selectSettings', item.id)"
           >
-            {{ item.label }}
+            <MarIcon :name="settingsIcons[item.id]" size="1rem" />
+            <span>{{ item.label }}</span>
           </button>
         </nav>
         <nav
@@ -562,7 +588,8 @@ function runBlankMenuCommand(command: string): void {
             type="button"
             @click="emit('selectManagement', item.id)"
           >
-            {{ item.label }}
+            <MarIcon :name="item.icon" size="1rem" />
+            <span>{{ item.label }}</span>
           </button>
         </nav>
       </template>
@@ -838,8 +865,10 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   min-height: var(--mar-settings-row-height);
-  width: 100%;
   border: 0;
   border-radius: var(--mar-radius-control);
   background: transparent;
