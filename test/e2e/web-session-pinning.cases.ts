@@ -760,6 +760,12 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await minuteOption('15').click();
   await minuteOption('45').click();
   await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 390, height: 844 });
+  const minuteTags = active().locator('.mar-ui-select__tag .mar-ui-select__label');
+  await expect(minuteTags).toHaveText(['15', '45']);
+  await minuteTags.first().scrollIntoViewIfNeeded();
+  await expect(minuteTags.nth(1)).toBeInViewport();
+  await page.setViewportSize(desktopViewport);
   await editor.getByRole('button', { name: '收起执行时间 6' }).click();
   await expect(editor.getByText('第 15, 45 分钟', { exact: true })).toBeVisible();
   await editor.getByRole('button', { name: '保存', exact: true }).click();

@@ -1,6 +1,8 @@
 import type { RunnerExecutionContext } from '../runner/execution-context.js';
 import type { NodeAgentRun } from '../runtime-model.js';
 import type { RunnerExecutionStatus } from '../runner/contracts.js';
+import { nodeLog } from '../operational.js';
+import { safeErrorCode } from '../util/safe-error.js';
 import type { ScheduledSessionTask } from './scheduled-session-store.js';
 import {
   ScheduledSessionStore,
@@ -21,6 +23,12 @@ export interface ScheduledRunContext {
 
 export type BeginScheduledSubmission = () => void;
 
+export interface ScheduledSubmissionReceipt {
+  readonly runId: string;
+  // A new session may still be awaiting promotion; an identity failure does not invalidate the receipt.
+  readonly sessionIdentity?: Promise<string | undefined>;
+}
+
 interface ScheduledSessionCoordinatorOptions {
   readonly store: () => ScheduledSessionStore;
   readonly busy: (task: ScheduledSessionTask) => boolean;
@@ -34,7 +42,7 @@ interface ScheduledSessionCoordinatorOptions {
     occurrenceId: string,
     context: ScheduledRunContext,
     begin: BeginScheduledSubmission
-  ) => Promise<{ readonly runId: string; readonly sessionId?: string }>;
+  ) => Promise<ScheduledSubmissionReceipt>;
   readonly sessionTitle: (sessionId: string) => string;
   readonly registeredSession?: (sessionId: string, workspaceId: string) => boolean;
   readonly sessionGroup?: (
@@ -46,14 +54,16 @@ interface ScheduledSessionCoordinatorOptions {
   readonly now?: () => number;
 }
 
-/** Owns the single clock and the retry-on-availability lifecycle of durable occurrences. */
+/** Owns the clock, ordered admission and identity writeback for durable occurrences. */
 export class ScheduledSessionCoordinator {
   readonly #now: () => number;
   #timer: NodeJS.Timeout | undefined;
   #running: Promise<void> | undefined;
+  #stopping: Promise<void> | undefined;
   #closed = true;
   #startupAt = 0;
   #wake = false;
+  readonly #identityBindings = new Set<Promise<void>>();
   readonly #recovered: { task: ScheduledSessionTask; occurrenceId: string }[] = [];
 
   constructor(private readonly options: ScheduledSessionCoordinatorOptions) {
@@ -206,6 +216,7 @@ export class ScheduledSessionCoordinator {
 
   start(): void {
     if (!this.#closed) return;
+    this.#stopping = undefined;
     this.#closed = false;
     this.#startupAt = this.#now();
     this.#tick();
@@ -218,10 +229,49 @@ export class ScheduledSessionCoordinator {
   }
 
   stop(): Promise<void> | undefined {
+    if (this.#closed) return this.#stopping;
     this.#closed = true;
     if (this.#timer !== undefined) clearTimeout(this.#timer);
     this.#timer = undefined;
-    return this.#running;
+    if (this.#running !== undefined || this.#identityBindings.size > 0) {
+      this.#stopping = this.#drain();
+      // Freeze does not await the drain; disposal later joins the original result.
+      void this.#stopping.catch(() => undefined);
+    }
+    return this.#stopping;
+  }
+
+  async #drain(): Promise<void> {
+    try {
+      await this.#running;
+    } finally {
+      // An in-flight receipt may add a binding after the clock has stopped.
+      await Promise.all(this.#identityBindings);
+    }
+  }
+
+  #bindIdentity(
+    task: ScheduledSessionTask,
+    occurrenceId: string,
+    identity: Promise<string | undefined>
+  ): void {
+    const binding = identity
+      .then((sessionId) => {
+        if (
+          sessionId !== undefined &&
+          this.options.store().bindExecutionSession(occurrenceId, sessionId)
+        )
+          this.options.occurrenceChanged?.(task.workspaceId);
+      })
+      .catch((error) => {
+        nodeLog('schedule.identity.bind.failed', {
+          occurrenceId,
+          errorCode: safeErrorCode(error, 'SCHEDULE_IDENTITY_BIND_FAILED')
+        });
+      })
+      .finally(() => this.#identityBindings.delete(binding));
+    // Track writeback for shutdown, not as part of the next task's admission.
+    this.#identityBindings.add(binding);
   }
 
   #arm(): void {
@@ -331,11 +381,10 @@ export class ScheduledSessionCoordinator {
           submitting = true;
           this.options.occurrenceChanged?.(task.workspaceId);
         });
-        const bound =
-          submitted.sessionId !== undefined &&
-          store.bindExecutionSession(occurrenceId, submitted.sessionId);
-        if (store.finish(occurrenceId, 'SUBMITTED', undefined, submitted.runId) || bound)
-          this.options.occurrenceChanged?.(task.workspaceId);
+        const finished = store.finish(occurrenceId, 'SUBMITTED', undefined, submitted.runId);
+        if (submitted.sessionIdentity !== undefined)
+          this.#bindIdentity(task, occurrenceId, submitted.sessionIdentity);
+        if (finished) this.options.occurrenceChanged?.(task.workspaceId);
       }
     } catch (error) {
       if (submitting) {

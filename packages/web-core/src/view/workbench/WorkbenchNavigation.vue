@@ -332,7 +332,7 @@ function runBlankMenuCommand(command: string): void {
           <MarDropdownItem command="performance" icon="info">{{
             $t('navigation.performanceIndicator')
           }}</MarDropdownItem>
-          <MarDropdownItem v-if="documentationAvailable" command="help" icon="document">{{
+          <MarDropdownItem v-if="documentationAvailable" command="help" icon="help">{{
             $t('navigation.help')
           }}</MarDropdownItem>
         </MarDropdownMenu>

@@ -59,6 +59,10 @@ describe('scheduled Node session flow', () => {
         lifecycle: {} as never
       });
       const release = vi.fn();
+      const awaitIdentity = vi.fn(async () => {
+        expect(begin).toHaveBeenCalledOnce();
+        throw new Error('SESSION_NATIVE_ID_TIMEOUT');
+      });
       const receipt = service.submit(
         {
           id: 'task-1',
@@ -83,18 +87,18 @@ describe('scheduled Node session flow', () => {
         {
           sessionId: 'bootstrap',
           release,
-          awaitIdentity: async () => {
-            expect(begin).toHaveBeenCalledOnce();
-            throw new Error('SESSION_NATIVE_ID_TIMEOUT');
-          },
+          awaitIdentity,
           secretEnvironment: {},
           executionContext: { runner: 'codex' }
         },
         begin
       );
-      if (outcome === 'identity-timeout')
-        await expect(receipt).resolves.toEqual({ runId: 'accepted-run' });
-      else await expect(receipt).rejects.toThrow('RECEIPT_FAILED');
+      if (outcome === 'identity-timeout') {
+        const { runId, sessionIdentity } = await receipt;
+        expect(runId).toBe('accepted-run');
+        await expect(sessionIdentity).resolves.toBeUndefined();
+      } else await expect(receipt).rejects.toThrow('RECEIPT_FAILED');
+      expect(awaitIdentity).toHaveBeenCalledOnce();
       expect(submitScheduled).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
           sessionId: 'bootstrap',
@@ -983,6 +987,125 @@ describe('scheduled Node session flow', () => {
       ]);
     } finally {
       await pool?.close();
+      await connector.stop();
+    }
+  });
+
+  it('submits same-minute one-off tasks before their native session IDs arrive', async () => {
+    const directory = await realpath(await mkdtemp(join(tmpdir(), 'schedule-parallel-identity-')));
+    temporaryDirectories.push(directory);
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
+    const database = new NodeDatabase(':memory:', 'schedule-parallel-identity');
+    const workspace = database.saveWorkspace({
+      path: directory,
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const executions: ReturnType<typeof Promise.withResolvers<void>>[] = [];
+    const startChannel = vi.fn((input: { onMessage(message: unknown): void }) => {
+      const execution = Promise.withResolvers<void>();
+      const nativeId = `scheduled-native-${executions.push(execution)}`;
+      const promote = setTimeout(() => {
+        input.onMessage({ type: 'system', subtype: 'init', session_id: nativeId });
+      }, 21_000);
+      return {
+        completed: execution.promise,
+        deliver: async () => undefined,
+        interrupt: async () => undefined,
+        cancel: () => {
+          clearTimeout(promote);
+          execution.resolve();
+        }
+      };
+    });
+    const connector = new NodeConnector({
+      database,
+      reconnect: false,
+      claudeClient: { startChannel } as never,
+      capabilities: {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: process.version,
+        codex: { available: false },
+        claudeCode: { available: true }
+      }
+    });
+    const node = connector as unknown as {
+      controlChannel: { connected(): boolean };
+      scheduledSessions: ScheduledSessionCoordinator;
+      scheduledRunAuthorization: {
+        authorize(): Promise<{ secretEnvironment: Record<string, string> }>;
+      };
+    };
+    try {
+      vi.spyOn(node.controlChannel, 'connected').mockReturnValue(true);
+      vi.spyOn(node.scheduledRunAuthorization, 'authorize').mockResolvedValue({
+        secretEnvironment: {}
+      });
+      const store = new ScheduledSessionStore(database.raw);
+      const tasks = Array.from({ length: 4 }, (_, i) =>
+        store.create({
+          workspaceId: workspace.id,
+          ownerUserId: 17,
+          sessionId: null,
+          runner: 'claude-code',
+          newSession: {
+            runner: 'claude-code',
+            model: { kind: 'fixed', modelId: 'scheduled-test-model' }
+          },
+          name: `Run once ${i + 1}`,
+          objective: 'Submit before identity promotion',
+          timezone: 'UTC',
+          graceMinutes: 0,
+          triggers: [{ kind: 'once', date: '2025-01-01', time: '00:01' }]
+        })
+      );
+      const occurrences = () =>
+        tasks.map(({ id, nextRunAt }) => store.occurrence(`${id}:${nextRunAt}`));
+      node.scheduledSessions.start();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.waitFor(
+        () => {
+          expect(startChannel).toHaveBeenCalledTimes(4);
+          expect(occurrences()).toEqual(
+            tasks.map(() =>
+              expect.objectContaining({
+                status: 'SUBMITTED',
+                run_id: expect.any(String),
+                execution_session_id: null
+              })
+            )
+          );
+        },
+        { timeout: 1_000, interval: 10 }
+      );
+      const runIds = occurrences().map((entry) => entry?.run_id);
+      expect(new Set(runIds).size).toBe(4);
+
+      let drained = false;
+      const draining = Promise.resolve(node.scheduledSessions.stop()).then(() => {
+        drained = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(drained).toBe(false);
+      await vi.advanceTimersByTimeAsync(21_000);
+      expect(drained).toBe(true);
+      await draining;
+      const nativeIds = occurrences().map((entry) => entry?.execution_session_id);
+      expect([...nativeIds].sort()).toEqual(tasks.map((_, i) => `scheduled-native-${i + 1}`));
+      expect(occurrences().map((entry) => entry?.run_id)).toEqual(runIds);
+      expect(occurrences().map((entry) => entry?.status)).toEqual(tasks.map(() => 'SUBMITTED'));
+
+      for (const execution of executions) execution.resolve();
+      await vi.waitFor(() => {
+        expect(occurrences().map((entry) => entry?.status)).toEqual(tasks.map(() => 'SUCCEEDED'));
+      });
+      expect(occurrences().map((entry) => entry?.execution_session_id)).toEqual(nativeIds);
+      expect(occurrences().map((entry) => entry?.run_id)).toEqual(runIds);
+      expect(startChannel).toHaveBeenCalledTimes(4);
+    } finally {
+      for (const execution of executions) execution.resolve();
       await connector.stop();
     }
   });
