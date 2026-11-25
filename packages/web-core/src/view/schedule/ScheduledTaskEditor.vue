@@ -124,8 +124,20 @@ const targetReady = computed(
   () => node.value?.connected && node.value.supported !== false && form.workspaceId !== ''
 );
 const profile = computed(() => profiles.value.find((item) => item.runner === form.runner));
+const modelOptions = computed(() => runnerModelCandidates(profile.value, undefined));
+const model = computed(() => modelOptions.value.find((item) => item.id === form.model));
+const savedModel = computed(() => {
+  const config = saved?.newSession;
+  if (config?.runner !== form.runner || config.model.kind !== 'fixed') return undefined;
+  const id = config.model.modelId;
+  return modelOptions.value.some((item) => item.id === id) ? undefined : id;
+});
+// Keep the saved target editable when its Agent has no selectable models.
+const retainedRunner = computed(() =>
+  !profile.value && form.model === savedModel.value ? saved?.newSession?.runner : undefined
+);
 const selectedRunnerIcon = computed(() => {
-  const runner = profile.value?.runner;
+  const runner = profile.value?.runner ?? retainedRunner.value;
   return runner
     ? () =>
         h('img', {
@@ -135,14 +147,6 @@ const selectedRunnerIcon = computed(() => {
           alt: ''
         })
     : undefined;
-});
-const modelOptions = computed(() => runnerModelCandidates(profile.value, undefined));
-const model = computed(() => modelOptions.value.find((item) => item.id === form.model));
-const savedModel = computed(() => {
-  const config = saved?.newSession;
-  if (config?.runner !== form.runner || config.model.kind !== 'fixed') return undefined;
-  const id = config.model.modelId;
-  return modelOptions.value.some((item) => item.id === id) ? undefined : id;
 });
 const efforts = computed(() => {
   const supported = model.value?.supportedEfforts ?? [];
@@ -201,7 +205,8 @@ const rules: FormRules = {
   runner: [
     {
       validator: () =>
-        (newSessionSupported.value && profile.value !== undefined) ||
+        (newSessionSupported.value &&
+          (profile.value !== undefined || retainedRunner.value !== undefined)) ||
         new Error(msg('runnerRequired'))
     }
   ],
@@ -668,6 +673,11 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 :loading="loadingProfiles"
                 @change="clearModel"
               >
+                <MarOption
+                  v-if="retainedRunner"
+                  :label="runnerLabel(retainedRunner)"
+                  :value="retainedRunner"
+                />
                 <MarOption
                   v-for="item in profiles"
                   :key="item.runner"

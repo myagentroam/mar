@@ -417,9 +417,19 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
       proposals: [{ id: 'proposal', baseRevision: task.revision, name: '建议名称' }]
     });
   });
-  await page.route(/\/api\/scheduled-tasks\/other-task\?.*$/, (route) =>
-    json(route, { task: { ...otherTask, sessionId: null, newSession }, mine: true, proposals: [] })
-  );
+  await page.route(/\/api\/scheduled-tasks\/other-task(?:\?.*)?$/, (route) => {
+    if (route.request().method() === 'PUT')
+      writes.push({
+        url: new URL(route.request().url()),
+        body: route.request().postDataJSON(),
+        csrf: route.request().headers()['x-csrf-token']
+      });
+    return json(route, {
+      task: { ...otherTask, sessionId: null, newSession },
+      mine: true,
+      proposals: []
+    });
+  });
   const record = {
     ...scope,
     nodeName: 'Node B',
@@ -1037,6 +1047,25 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(editor.getByRole('combobox', { name: '推理强度', exact: true })).toHaveText('High');
   await page.keyboard.press('Escape');
   await expect(editor).toBeHidden();
+
+  // Editing the objective must also work when none of the saved Agent's models are available.
+  await page.route(/\/api\/runner-profiles\?nodeId=node-2(?:&.*)?$/, (route) =>
+    json(route, { profiles: [] })
+  );
+  await unboundCard.locator('.objective').click();
+  await expect(editor.getByRole('combobox', { name: 'Agent', exact: true })).toHaveText(
+    'MAR Agent'
+  );
+  await editor.getByRole('textbox', { name: '任务提示词' }).fill('Update without changing Agent');
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor).toBeHidden();
+  expect(writes.at(-1)?.body).toMatchObject({
+    expectedRevision: otherTask.revision,
+    patch: {
+      objective: 'Update without changing Agent',
+      target: { kind: 'newSession', ...newSession }
+    }
+  });
   const objective = navigationCard.locator('.objective');
   await objective.evaluate((text) => {
     const range = document.createRange();
@@ -1078,6 +1107,10 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
     patch: { objective: 'Workspace member update' }
   });
   await expect(navigationCard.getByText('李四', { exact: true })).toBeVisible();
+  await scheduleMenu.getByRole('button', { name: '我的定时', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: '我的定时', level: 2 })).toBeVisible();
+  await expect(navigationCard.getByText('李四', { exact: true })).toBeVisible();
+  expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('true');
   const openSession = navigationCard.getByRole('button', { name: '既有会话：打开会话' });
   await openSession.click();
   await expect(panel).toBeHidden();
