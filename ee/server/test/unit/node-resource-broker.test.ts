@@ -270,41 +270,43 @@ function activeObservations(broker: NodeRequestBroker): number {
 }
 
 describe('Node broker resource scope lifecycle', () => {
-  it('never dispatches a schedule operation without an exact Workspace grant', async () => {
-    const f = fixture();
-    const operation = 'schedule.task.update';
-    await expect(f.broker.request('n', operation, { taskId: 'task' }, f.user)).rejects.toThrow(
-      'NODE_ACCESS_DENIED'
-    );
-    await expect(
-      f.broker.request(
-        'n',
-        operation,
-        { workspaceId: 'other', taskId: 'task' },
-        { ...f.user, workspaceId: 'w' }
-      )
-    ).rejects.toThrow('NODE_ACCESS_DENIED');
-    expect(f.authorize).not.toHaveBeenCalled();
-    expect(f.sent).toHaveLength(0);
-    const data = {
-      workspaceId: 'w',
-      taskId: 'task',
-      expectedRevision: 2,
-      patch: { objective: 'not audit metadata' }
-    };
-    f.authorize.mockResolvedValue(false);
-    await expect(f.broker.request('n', operation, data, f.user)).rejects.toThrow(
-      'NODE_ACCESS_DENIED'
-    );
-    expect(f.authorize).toHaveBeenCalledExactlyOnceWith(2, 'n', operation, data, 'w');
-    expect(f.sent).toHaveLength(0);
-    await vi.waitFor(() => expect(f.audit).toHaveBeenCalledTimes(3));
-    expect(f.audit.mock.calls.at(-1)?.[0]).toMatchObject({
-      eventType: operation,
-      result: 'DENIED'
-    });
-    expect(JSON.stringify(f.audit.mock.calls)).not.toContain(data.patch.objective);
-  });
+  it.each(['schedule.task.update', 'schedule.task.remove', 'schedule.task.resolveProposal'])(
+    'never dispatches %s without an exact Workspace grant',
+    async (operation) => {
+      const f = fixture();
+      await expect(f.broker.request('n', operation, { taskId: 'task' }, f.user)).rejects.toThrow(
+        'NODE_ACCESS_DENIED'
+      );
+      await expect(
+        f.broker.request(
+          'n',
+          operation,
+          { workspaceId: 'other', taskId: 'task' },
+          { ...f.user, workspaceId: 'w' }
+        )
+      ).rejects.toThrow('NODE_ACCESS_DENIED');
+      expect(f.authorize).not.toHaveBeenCalled();
+      expect(f.sent).toHaveLength(0);
+      const data = {
+        workspaceId: 'w',
+        taskId: 'task',
+        expectedRevision: 2,
+        patch: { objective: 'not audit metadata' }
+      };
+      f.authorize.mockResolvedValue(false);
+      await expect(f.broker.request('n', operation, data, f.user)).rejects.toThrow(
+        'NODE_ACCESS_DENIED'
+      );
+      expect(f.authorize).toHaveBeenCalledExactlyOnceWith(2, 'n', operation, data, 'w');
+      expect(f.sent).toHaveLength(0);
+      await vi.waitFor(() => expect(f.audit).toHaveBeenCalledTimes(3));
+      expect(f.audit.mock.calls.at(-1)?.[0]).toMatchObject({
+        eventType: operation,
+        result: 'DENIED'
+      });
+      expect(JSON.stringify(f.audit.mock.calls)).not.toContain(data.patch.objective);
+    }
+  );
 
   it('rejects business requests before authorization or forwarding on an upgrade-only connection', async () => {
     const f = fixture();

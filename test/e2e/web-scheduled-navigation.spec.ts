@@ -138,7 +138,10 @@ for (const theme of ['daylight', 'dark']) {
         const heading = (await first.getByRole('heading').boundingBox())!;
         const time = (await first.locator('time').boundingBox())!;
         expect(time.y).toBeGreaterThan(heading.y + heading.height);
-        await expect(first.getByRole('button', { name: '编辑' })).toBeVisible();
+        await expect(first.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0);
+        await expect(
+          first.getByRole('button', { name: cardFixtures[0]!.name, exact: true })
+        ).toHaveAttribute('aria-haspopup', 'dialog');
         await page.screenshot({
           path: testInfo.outputPath('cards-mobile.png'),
           animations: 'disabled'

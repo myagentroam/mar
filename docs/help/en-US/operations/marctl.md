@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-11-25
+lastUpdated: 2026-11-26
 ---
 
 # Manage Nodes with marctl
@@ -101,7 +101,7 @@ marctl agents schedule runs --task "$TASK_ID" --page 1 --json
 
 `weekly.weekdays` uses 0 (Sunday) through 6 (Saturday); `monthly.monthDays` uses 1 through 31. Invalid dates in shorter months do not trigger. Supplying `--triggers-file` on update replaces the entire trigger list; omit it to retain the current schedule. Pass the task prompt with `-m` or `--message-file`, up to 20,000 characters. Either `--triggers-file` or `--message-file` can read stdin using `-`, but not both in the same command.
 
-An update must specify a name, triggers, or a task prompt. Updating your own task applies directly. Updating someone else's returns `proposalId` and `baseRevision` for the creator to resolve without transferring execution identity. Re-read after a revision conflict. If a write result is unknown, check the task before retrying. Use the [Scheduled tasks page](../workbench/sessions.md#scheduled-tasks) to pause, resume, delete, or resolve proposals; these actions are not available in the CLI.
+An update must specify a name, triggers, or a task prompt. Updating your own task applies directly. Updating someone else's returns `proposalId` and `baseRevision`. Authorized Workspace members can resolve the proposal on the web; accepting it makes the approver the owner for subsequent runs. Re-read after a revision conflict. If a write result is unknown, check the task before retrying. Use the [Scheduled tasks page](../workbench/sessions.md#scheduled-tasks) to pause, resume, delete, or resolve proposals; these actions are not available in the CLI.
 
 ## Persistent instructions and approvals
 

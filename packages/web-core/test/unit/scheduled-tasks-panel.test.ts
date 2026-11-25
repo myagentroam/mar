@@ -523,12 +523,16 @@ describe('Scheduled tasks workbench', () => {
     }
   });
 
-  it('opens online card details separately from editing and linked session navigation', async () => {
+  it('opens another member’s online task for editing while keeping session navigation separate', async () => {
     const request = vi.fn(async (path: string) =>
       path.includes('/same-id?')
-        ? { task: { ...task, triggers: [] }, mine: true, proposals: [] }
+        ? {
+            task: { ...task, triggers: [{ kind: 'daily', time: '08:00' }] },
+            mine: false,
+            proposals: []
+          }
         : taskPage([
-            task,
+            { ...task, mine: false },
             { ...task, nodeId: 'b', name: 'Offline', offline: true },
             {
               ...task,
@@ -547,6 +551,7 @@ describe('Scheduled tasks workbench', () => {
         view.findAll('MarButton').filter((item) => textContent(item).trim() === label);
       expect(controls('project')).toHaveLength(0);
       expect(controls('Offline')).toHaveLength(0);
+      expect(controls('Edit')).toHaveLength(0);
       expect(controls('New session')).toHaveLength(1);
       expect(controls('session')).toHaveLength(1);
       expect(controls('Task A')).toHaveLength(1);
@@ -558,7 +563,8 @@ describe('Scheduled tasks workbench', () => {
         '/api/scheduled-tasks/same-id?nodeId=a&workspaceId=work'
       );
       expect(onOpenTarget).toHaveBeenCalledTimes(1);
-      expect(controls('Save')).toHaveLength(0);
+      expect(controls('Save')).toHaveLength(1);
+      expect(controls('Delete task')).toHaveLength(1);
     } finally {
       view.unmount();
     }

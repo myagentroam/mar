@@ -169,7 +169,11 @@ function fixture() {
       if (operation === 'schedule.task.get') {
         const task = tasks.find((item) => item.id === input.taskId);
         if (!task) throw new Error('SCHEDULE_NOT_FOUND');
-        return { task, proposals: [], canResolveProposals: task.ownerUserId === 1 };
+        return {
+          task,
+          proposals: task.ownerUserId !== 1 ? [{ id: 'pending', baseRevision: 1 }] : [],
+          canResolveProposals: true
+        };
       }
       if (operation === 'schedule.occurrence.get') {
         const { occurrenceId } = input as { occurrenceId?: string };
@@ -599,7 +603,12 @@ it('binds detail, writes and preview to the authenticated Workspace and rejects 
     (
       await app.inject({ url: '/api/scheduled-tasks/b-task?nodeId=b&workspaceId=b1', headers })
     ).json()
-  ).toMatchObject({ mine: false, ownerName: 'Owner nickname' });
+  ).toMatchObject({
+    mine: false,
+    ownerName: 'Owner nickname',
+    canResolveProposals: true,
+    proposals: [{ id: 'pending' }]
+  });
   expect(
     (await app.inject({ url: '/api/scheduled-tasks/b-task?nodeId=a&workspaceId=a1', headers }))
       .statusCode
@@ -630,6 +639,7 @@ it('binds detail, writes and preview to the authenticated Workspace and rejects 
   expect((await update({ ...payload, expectedRevision: 0 })).statusCode).toBe(400);
   expect((await update({ ...payload, timezone: 'UTC' })).statusCode).toBe(400);
   expect((await update({ ...payload, ownerUserId: 7 })).statusCode).toBe(400);
+  expect((await update({ ...payload, patch: { ownerUserId: 7 } })).statusCode).toBe(400);
   expect(requestNode).not.toHaveBeenCalled();
   expect((await update(payload)).statusCode).toBe(200);
   expect(requestNode).toHaveBeenCalledWith(
@@ -667,6 +677,48 @@ it('binds detail, writes and preview to the authenticated Workspace and rejects 
     'schedule.preview',
     { workspaceId: 'a1', taskId: 'a-task' },
     { userId: 1, sessionHash: 'fingerprint', workspaceId: 'a1' },
+    undefined
+  );
+});
+
+it('uses the Workspace grant and authenticated actor when deleting or resolving another member’s task', async () => {
+  const { app, requestNode } = fixture();
+  const address = { nodeId: 'b', workspaceId: 'b1' };
+  const path = '/api/scheduled-tasks/b-task';
+  const actor = { userId: 1, sessionHash: 'fingerprint', workspaceId: 'b1' };
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `${path}/proposals/pending/resolve`,
+        headers,
+        payload: { ...address, accept: true }
+      })
+    ).statusCode
+  ).toBe(200);
+  expect(requestNode).toHaveBeenCalledExactlyOnceWith(
+    'b',
+    'schedule.task.resolveProposal',
+    { taskId: 'b-task', workspaceId: 'b1', proposalId: 'pending', accept: true },
+    actor,
+    undefined
+  );
+  requestNode.mockClear();
+  expect(
+    (
+      await app.inject({
+        method: 'DELETE',
+        url: path,
+        headers,
+        payload: { ...address, expectedRevision: 2 }
+      })
+    ).statusCode
+  ).toBe(200);
+  expect(requestNode).toHaveBeenCalledExactlyOnceWith(
+    'b',
+    'schedule.task.remove',
+    { taskId: 'b-task', workspaceId: 'b1', expectedRevision: 2 },
+    actor,
     undefined
   );
 });

@@ -268,6 +268,8 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
     nextRunAt: Date.parse('2027-01-01T02:00:00Z')
   };
   const otherTask = { ...task, id: 'other-task', name: '复盘失败' };
+  let sharedTask = { ...task, name: '另一节点的相同任务 ID', sessionId: 'session-1' };
+  let ownsSharedTask = false;
   const newSession = {
     runner: 'mar-agent',
     model: { kind: 'fixed', modelId: 'retired-model' },
@@ -355,11 +357,10 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
         sessionId: null,
         objectivePreview: '整理失败报告并汇总待跟进项。'
       },
-      ...(url.searchParams.get('mine') === 'false'
+      ...(ownsSharedTask || url.searchParams.get('mine') === 'false'
         ? [
             {
-              ...makeCard({ ...task, name: '另一节点的相同任务 ID' }, 'node-1', false),
-              sessionId: 'session-1',
+              ...makeCard(sharedTask, 'node-1', ownsSharedTask),
               sessionTitle: '既有会话'
             }
           ]
@@ -392,19 +393,23 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   });
   await page.route(/\/api\/scheduled-tasks\/task(?:\?.*)?$/, async (route) => {
     const url = new URL(route.request().url());
+    const saving = route.request().method() === 'PUT';
+    const body = saving ? route.request().postDataJSON() : undefined;
+    if (saving) writes.push({ url, body, csrf: route.request().headers()['x-csrf-token'] });
+    if (saving && body.nodeId === 'node-1') {
+      ownsSharedTask = true;
+      sharedTask = { ...sharedTask, objective: body.patch.objective, revision: task.revision + 1 };
+      return json(route, { task: sharedTask });
+    }
     if (url.searchParams.get('nodeId') === 'node-1')
       return json(route, {
-        task: { ...task, name: '另一节点的相同任务 ID', sessionId: 'session-1' },
-        mine: false,
-        proposals: []
+        task: sharedTask,
+        mine: ownsSharedTask,
+        proposals: ownsSharedTask
+          ? []
+          : [{ id: 'shared', baseRevision: task.revision, name: '共享提议' }]
       });
-    if (route.request().method() === 'PUT')
-      writes.push({
-        url,
-        body: route.request().postDataJSON(),
-        csrf: route.request().headers()['x-csrf-token']
-      });
-    else expect(url.searchParams.get('nodeId')).toBe('node-2');
+    if (!saving) expect(url.searchParams.get('nodeId')).toBe('node-2');
     return json(route, {
       task,
       mine: true,
@@ -512,6 +517,18 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(panel.getByRole('heading', { name: /检查构建/, level: 3 })).toBeVisible();
   await expect(panel.getByRole('heading', { name: '接下来', exact: true })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
+  const refreshSchedules = panel.getByRole('button', { name: '刷新', exact: true });
+  const createSchedule = panel.getByRole('button', { name: '新建定时', exact: true });
+  const workspaceFilter = panel.getByRole('combobox', { name: '工作区', exact: true });
+  await expect(refreshSchedules).toHaveCSS('border-top-width', '1px');
+  const [refreshBox, createBox, filterBox] = await Promise.all([
+    refreshSchedules.boundingBox(),
+    createSchedule.boundingBox(),
+    workspaceFilter.boundingBox()
+  ]);
+  expect(refreshBox!.y).toBeGreaterThan(filterBox!.y + filterBox!.height);
+  expect(Math.abs(createBox!.y - refreshBox!.y)).toBeLessThan(1);
+  expect(createBox!.x).toBeGreaterThan(refreshBox!.x);
   await expect(panel.getByText('下次执行', { exact: true })).toHaveCount(2);
   await filterWorkspace(panel, 'project · Node A');
   await expect(panel.getByText('暂无可显示的定时任务。')).toBeVisible();
@@ -562,7 +579,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(hoverCard).not.toHaveCSS('background-color', restingBackground);
   await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-hover.png') });
   const linkedSession = hoverCard.getByRole('button', { name: '定时会话：打开会话' });
-  await expect(hoverCard.getByText('创建者', { exact: true })).toBeVisible();
+  await expect(hoverCard.getByText('所有者', { exact: true })).toBeVisible();
   await expect(linkedSession).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   const restingSessionColor = await linkedSession.evaluate(
     (button) => getComputedStyle(button).color
@@ -620,7 +637,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   const enabled = editor.getByRole('switch', { name: '已启用', exact: true });
   const notification = editor.getByRole('switch', { name: '任务通知', exact: true });
   await expect(notification).not.toBeChecked();
-  const notificationHint = '任务以创建者身份执行。开启后，任务结束时通知创建者。';
+  const notificationHint = '任务以所有者身份执行。开启后，任务结束时通知所有者。';
   await expect(notification).toHaveAccessibleDescription(notificationHint);
   await editor.getByText(notificationHint).scrollIntoViewIfNeeded();
   const enabledBox = (await enabled.boundingBox())!;
@@ -727,13 +744,8 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   expect(writes[0]?.body).not.toHaveProperty('timezone');
 
   const card = panel.locator('.card').filter({ hasText: '检查构建' });
-  await expect(
-    panel
-      .locator('.card')
-      .filter({ hasText: '另一节点的相同任务 ID' })
-      .getByRole('button', { name: '编辑' })
-  ).toHaveCount(0);
-  await card.getByRole('button', { name: '编辑', exact: true }).click();
+  await expect(panel.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0);
+  await card.locator('.objective').click();
   await expectTargetLayout();
   const deleteTask = editor.getByRole('button', { name: '删除任务', exact: true });
   await expect(deleteTask).toHaveText('删除任务');
@@ -975,16 +987,17 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   // The existing binding can be outside the session picker's first page.
   readerSessionPage = [];
   await hoverCard.getByText('Node B · project', { exact: true }).click();
-  await expect(editor.getByRole('tablist', { name: '任务详情' })).toBeVisible();
+  await expect(editor.getByRole('tablist', { name: '编辑定时任务' })).toBeVisible();
   await expect(editor.getByRole('combobox', { name: '运行会话', exact: true })).toHaveAttribute(
     'placeholder',
     '定时会话'
   );
   await expectTargetLayout();
-  await expect(editor.getByRole('button', { name: /^(保存|删除任务|接受|拒绝)$/ })).toHaveCount(0);
+  for (const name of ['保存', '删除任务', '接受', '拒绝'])
+    await expect(editor.getByRole('button', { name, exact: true })).toBeVisible();
   await expect(editor.getByText('建议名称', { exact: true })).toBeVisible();
-  await expect(editor.getByRole('textbox', { name: '任务提示词' })).toHaveAttribute('readonly', '');
-  await page.screenshot({ path: info.outputPath('scheduled-card-readonly-detail.png') });
+  await expect(editor.getByRole('textbox', { name: '任务提示词' })).toBeEditable();
+  await page.screenshot({ path: info.outputPath('scheduled-card-editor.png') });
   await page.keyboard.press('Escape');
   await expect(editor).toBeHidden();
   await expect(cardTitle).toBeFocused();
@@ -1015,10 +1028,32 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await navigationCard
     .getByRole('button', { name: '另一节点的相同任务 ID', exact: true })
     .press('Enter');
-  await expect(editor.getByRole('tablist', { name: '任务详情' })).toBeVisible();
-  await expect(editor.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  await expect(editor.getByRole('tablist', { name: '编辑定时任务' })).toBeVisible();
+  await expect(editor.getByText('共享提议', { exact: true })).toBeVisible();
+  await expect(editor.getByText('保存修改或接受提议后，你将成为任务的所有者。')).toBeVisible();
+  await expect(editor.getByRole('button', { name: '删除任务', exact: true })).toBeVisible();
+  await expect(editor.getByRole('button', { name: '接受', exact: true })).toBeVisible();
+  await editor.getByText('保存修改或接受提议后，你将成为任务的所有者。').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath('scheduled-shared-task-editor.png') });
+  await editor.getByRole('textbox', { name: '任务提示词' }).fill('Workspace member update');
+  await editor.getByRole('button', { name: '接受', exact: true }).click();
+  await expect(page.getByText('放弃当前未保存的修改？', { exact: true })).toBeVisible();
+  await page
+    .getByRole('dialog', { name: '放弃修改', exact: true })
+    .getByRole('button', { name: '取消', exact: true })
+    .click();
+  await expect(editor.getByRole('textbox', { name: '任务提示词' })).toHaveValue(
+    'Workspace member update'
+  );
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).toBeHidden();
+  expect(writes.at(-1)?.body).toMatchObject({
+    nodeId: 'node-1',
+    workspaceId: 'workspace-1',
+    expectedRevision: task.revision,
+    patch: { objective: 'Workspace member update' }
+  });
+  await expect(navigationCard.getByText('李四', { exact: true })).toBeVisible();
   const openSession = navigationCard.getByRole('button', { name: '既有会话：打开会话' });
   await openSession.click();
   await expect(panel).toBeHidden();

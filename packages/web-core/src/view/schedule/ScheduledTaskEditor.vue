@@ -59,7 +59,6 @@ const props = defineProps<{
     | {
         key: ScheduleTaskKey;
         detail: ScheduleDetail;
-        mode?: 'view' | 'edit';
         sessionTitle?: string;
       }
     | undefined;
@@ -75,7 +74,6 @@ const editing = props.editing;
 const saved = editing?.detail.task;
 const lockedSession = editing ? undefined : props.lockedSession;
 const lockedScope = lockedSession?.scope;
-const readOnly = editing?.mode === 'view' || editing?.detail.mine === false;
 let nextId = 1;
 const form = reactive({
   nodeId: editing?.key.nodeId ?? lockedScope?.nodeId ?? '',
@@ -92,9 +90,7 @@ const form = reactive({
   graceMinutes: saved?.graceMinutes ?? 0,
   triggers: saved?.triggers.length
     ? saved.triggers.map((trigger) => triggerDraft(nextId++, trigger))
-    : readOnly
-      ? []
-      : [triggerDraft(nextId++)]
+    : [triggerDraft(nextId++)]
 });
 const savedSessionTitle = computed(() =>
   form.sessionId === saved?.sessionId ? editing?.sessionTitle : undefined
@@ -139,6 +135,12 @@ const selectedRunnerIcon = computed(() => {
 });
 const modelOptions = computed(() => runnerModelCandidates(profile.value, undefined));
 const model = computed(() => modelOptions.value.find((item) => item.id === form.model));
+const savedModel = computed(() => {
+  const config = saved?.newSession;
+  if (config?.runner !== form.runner || config.model.kind !== 'fixed') return undefined;
+  const id = config.model.modelId;
+  return modelOptions.value.some((item) => item.id === id) ? undefined : id;
+});
 const efforts = computed(() => {
   const supported = model.value?.supportedEfforts ?? [];
   return form.runner === 'mar-agent' ? orderMarAgentReasoningEfforts(supported) : supported;
@@ -197,7 +199,12 @@ const rules: FormRules = {
         new Error(msg('runnerRequired'))
     }
   ],
-  model: [{ validator: () => model.value !== undefined || new Error(msg('modelRequired')) }],
+  model: [
+    {
+      validator: () =>
+        !!model.value || form.model === savedModel.value || new Error(msg('modelRequired'))
+    }
+  ],
   name: [
     {
       validator: () =>
@@ -407,7 +414,7 @@ function target(): ScheduledTarget {
       };
 }
 async function submit() {
-  if (pending.value || readOnly) return;
+  if (pending.value) return;
   pending.value = 'save';
   error.value = undefined;
   try {
@@ -446,6 +453,7 @@ async function submit() {
 }
 async function resolve(id: string, accept: boolean) {
   if (!editing || pending.value) return;
+  if (!(await confirmDiscard()) || !alive.value || pending.value) return;
   pending.value = `${id}:${accept}`;
   error.value = undefined;
   try {
@@ -478,16 +486,17 @@ async function remove() {
     pending.value = undefined;
   }
 }
-async function beforeClose(done: (cancel?: boolean) => void) {
-  if (pending.value) return;
-  if (!readOnly && initialDraft !== serializeDraft()) {
-    try {
-      await MarMessageBox.confirm(msg('discardConfirm'), msg('discard'), { type: 'warning' });
-    } catch {
-      return;
-    }
+async function confirmDiscard(): Promise<boolean> {
+  if (initialDraft === serializeDraft()) return true;
+  try {
+    await MarMessageBox.confirm(msg('discardConfirm'), msg('discard'), { type: 'warning' });
+    return true;
+  } catch {
+    return false;
   }
-  if (alive.value) done();
+}
+async function beforeClose(done: (cancel?: boolean) => void) {
+  if (!pending.value && (await confirmDiscard()) && alive.value) done();
 }
 onBeforeUnmount(() => {
   alive.value = false;
@@ -518,13 +527,13 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
   >
-    <MarTabs v-model="tab" :label="msg(readOnly ? 'taskDetails' : 'editorSections')">
+    <MarTabs v-model="tab" :label="msg('editorSections')">
       <MarTabPane name="task" :label="msg('taskTab')" class="editor-section">
         <MarForm
           ref="taskForm"
           :model="form"
           :rules="rules"
-          :disabled="readOnly || !!pending"
+          :disabled="!!pending"
           label-position="top"
           :aria-label="msg('taskTab')"
           @submit.prevent="submit"
@@ -617,7 +626,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 />
               </MarSelect>
               <MarButton
-                v-if="sessionCursor && !readOnly"
+                v-if="sessionCursor"
                 link
                 :disabled="loadingTargets"
                 @click="loadSessions(sessionCursor)"
@@ -666,6 +675,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 :disabled="profile ? undefined : true"
                 @change="selectModel"
               >
+                <MarOption v-if="savedModel" :label="savedModel" :value="savedModel" />
                 <MarOption
                   v-for="item in modelOptions"
                   :key="item.id"
@@ -674,10 +684,10 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 />
               </MarSelect>
             </MarFormItem>
-            <MarFormItem v-if="efforts.length || (readOnly && form.effort)" :label="msg('effort')">
+            <MarFormItem v-if="efforts.length || form.effort" :label="msg('effort')">
               <MarSelect v-model="form.effort" :placeholder="msg('chooseEffort')" clearable>
                 <MarOption
-                  v-if="readOnly && form.effort && !efforts.includes(form.effort)"
+                  v-if="form.effort && !efforts.includes(form.effort)"
                   :label="effortPresentation(form.effort)"
                   :value="form.effort"
                 />
@@ -697,8 +707,6 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
             ><MarInput
               v-model="form.objective"
               :placeholder="msg('enterObjective')"
-              :readonly="readOnly"
-              :disabled="readOnly ? false : undefined"
               type="textarea"
               :rows="5"
               maxlength="20000"
@@ -710,6 +718,9 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               <small :id="notificationHintId">{{ msg('notifyUserHint') }}</small>
             </MarFormItem>
           </div>
+          <p v-if="editing && !editing.detail.mine" class="ownership-hint">
+            {{ msg('ownershipHint') }}
+          </p>
           <section
             v-if="editing?.detail.proposals.length"
             class="proposals"
@@ -722,21 +733,19 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               <p v-if="proposal.triggers" class="multiline">
                 {{ triggersFromProposal(proposal.triggers) }}
               </p>
-              <template v-if="!readOnly">
-                <MarButton
-                  :disabled="!!pending"
-                  :loading="pending === `${proposal.id}:false`"
-                  @click="resolve(proposal.id, false)"
-                  >{{ msg('reject') }}</MarButton
-                >
-                <MarButton
-                  type="primary"
-                  :disabled="!!pending"
-                  :loading="pending === `${proposal.id}:true`"
-                  @click="resolve(proposal.id, true)"
-                  >{{ msg('accept') }}</MarButton
-                >
-              </template>
+              <MarButton
+                :disabled="!!pending"
+                :loading="pending === `${proposal.id}:false`"
+                @click="resolve(proposal.id, false)"
+                >{{ msg('reject') }}</MarButton
+              >
+              <MarButton
+                type="primary"
+                :disabled="!!pending"
+                :loading="pending === `${proposal.id}:true`"
+                @click="resolve(proposal.id, true)"
+                >{{ msg('accept') }}</MarButton
+              >
             </article>
           </section>
         </MarForm>
@@ -746,7 +755,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
           ref="timeForm"
           :model="form"
           :rules="timeRules"
-          :disabled="readOnly || !!pending"
+          :disabled="!!pending"
           label-position="top"
           :aria-label="msg('timeTab')"
           @submit.prevent="submit"
@@ -771,7 +780,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                       : msg('incompleteTrigger')
                   }}
                 </span>
-                <div v-if="!readOnly" class="mar-row-actions trigger-actions">
+                <div class="mar-row-actions trigger-actions">
                   <MarButton
                     link
                     :icon="activeTriggerId === trigger.id ? 'check' : 'edit'"
@@ -869,7 +878,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               </div>
             </MarFormItem>
           </div>
-          <div v-if="!readOnly" class="add-trigger">
+          <div class="add-trigger">
             <MarButton
               icon="plus"
               :disabled="form.triggers.length >= scheduledTriggerLimit || !!pending"
@@ -916,7 +925,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
     <p v-if="error" role="alert" class="failure">{{ errorSummary(error, msg('saveFailed')) }}</p>
     <template #footer>
       <MarButton
-        v-if="saved && !readOnly"
+        v-if="saved"
         type="danger"
         plain
         :loading="pending === 'delete'"
@@ -925,10 +934,9 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
         >{{ msg('remove') }}</MarButton
       >
       <MarButton :disabled="!!pending" @click="dialog?.handleClose()">{{
-        msg(readOnly ? 'close' : 'cancel')
+        msg('cancel')
       }}</MarButton>
       <MarButton
-        v-if="!readOnly"
         type="primary"
         :loading="pending === 'save'"
         :disabled="!!pending"
@@ -1036,6 +1044,11 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
 }
 .catch-up :deep(.mar-ui-form-item__content) {
   gap: 0.375rem 0.75rem;
+}
+.ownership-hint {
+  margin: 0;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
 }
 .preview,
 .proposals {

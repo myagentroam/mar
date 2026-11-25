@@ -292,10 +292,11 @@ describe('scheduled session store', () => {
       timezone: 'UTC'
     });
     const proposal = store.propose(task, 2, { objective: 'Updated' });
-    expect(() => store.resolveProposal(task.id, proposal, 2, true)).toThrow(
-      'SCHEDULE_OWNER_REQUIRED'
-    );
-    expect(store.resolveProposal(task.id, proposal, 1, true).objective).toBe('Updated');
+    expect(store.resolveProposal(task.id, proposal, 3, true)).toMatchObject({
+      objective: 'Updated',
+      ownerUserId: 3,
+      revision: 2
+    });
     expect(store.pendingProposals(task.id)).toEqual([]);
     for (let index = 0; index < 50; index++)
       store.propose(store.getById(task.id)!, 2, { objective: `Proposal ${index}` });
@@ -306,12 +307,10 @@ describe('scheduled session store', () => {
     store.update(task.id, 2, { objective: 'Third' });
     expect(store.pendingProposals(task.id)).toEqual([]);
     const edited = store.update(task.id, 3, { name: 'Renamed' });
-    expect(edited).toMatchObject({ ownerUserId: 1 });
+    expect(edited).toMatchObject({ ownerUserId: 3 });
     const nextProposal = store.propose(edited, 2, { objective: 'Fourth' });
-    expect(() => store.resolveProposal(task.id, nextProposal, 2, true)).toThrow(
-      'SCHEDULE_OWNER_REQUIRED'
-    );
-    expect(store.resolveProposal(task.id, nextProposal, 1, true).objective).toBe('Fourth');
+    expect(store.resolveProposal(task.id, nextProposal, 1, false)).toEqual(edited);
+    expect(store.pendingProposals(task.id)).toEqual([]);
     database.close();
   });
 
