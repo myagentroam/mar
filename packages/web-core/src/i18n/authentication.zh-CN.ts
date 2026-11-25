@@ -2,7 +2,7 @@ export const authenticationZhCN = {
   common: { productName: 'MyAgentRoam' },
   auth: {
     title: '继续你的 Agent 工作。',
-    summary: '登录后查看已验证的节点、工作区与会话。',
+    summary: '登录后查看节点、工作区与会话。',
     username: '账户',
     password: '密码',
     login: '进入控制台',

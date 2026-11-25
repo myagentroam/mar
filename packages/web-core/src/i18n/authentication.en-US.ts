@@ -2,7 +2,7 @@ export const authenticationEnUS = {
   common: { productName: 'MyAgentRoam' },
   auth: {
     title: 'Continue working with your Agent.',
-    summary: 'Sign in to access verified nodes, workspaces, and sessions.',
+    summary: 'Sign in to access nodes, workspaces, and sessions.',
     username: 'Account',
     password: 'Password',
     login: 'Open console',
