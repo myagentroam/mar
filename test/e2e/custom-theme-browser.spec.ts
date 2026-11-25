@@ -2190,6 +2190,38 @@ for (const [scheme, width] of [
   });
 }
 
+for (const [scheme, width, background] of [
+  ['Dark', 1280, 'rgb(0, 117, 209)'],
+  ['Light', 390, 'rgb(0, 87, 219)']
+] as const) {
+  test(`Selected calendar dates use the readable Primary text pair in ${scheme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    if (scheme === 'Light') {
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    }
+    const input = page.getByPlaceholder('Single date field', { exact: true });
+    await input.click();
+    const calendar = page.getByRole('dialog', { name: 'Calendar', exact: true });
+    const day = calendar.locator('[data-day][data-outside="false"]').first();
+    await day.click();
+    const selection = calendar.getByRole('button', { pressed: true });
+    await expect(selection).toHaveAttribute('aria-label', await input.inputValue());
+    const number = selection.locator('.mar-ui-calendar-month__day-number');
+    await expect(number).toHaveCSS('background-color', background);
+    await expect(number).toHaveCSS('color', 'rgb(255, 255, 255)');
+    expect(colorContrast('rgb(255, 255, 255)', background)).toBeGreaterThanOrEqual(4.5);
+    await calendar.screenshot({
+      path: testInfo.outputPath(`calendar-${scheme.toLowerCase()}.png`)
+    });
+  });
+}
+
 test('solid and inset field frames retain invalid and keyboard focus cues', async ({ page }) => {
   const date = page.getByPlaceholder('Invalid start date', { exact: true });
   const frame = page.locator('.mar-ui-date-picker__field').filter({ has: date });
@@ -2293,7 +2325,7 @@ test('filled primary controls and the preview use their respective active palett
   await expect(sample).toHaveCSS('background-color', 'rgb(0, 117, 209)');
   expect(JSON.parse(await editor.inputValue()).colors).toMatchObject({
     '--mar-button-primary-fg': '#ffffff',
-    '--mar-control-primary-fg': '#181818'
+    '--mar-control-primary-fg': '#ffffff'
   });
   await expect(save).toHaveCSS('color', 'rgb(255, 255, 255)');
   const custom = JSON.stringify({

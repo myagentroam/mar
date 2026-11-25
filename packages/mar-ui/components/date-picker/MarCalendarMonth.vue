@@ -191,8 +191,8 @@ button[data-outside='true'] {
   border-radius: 50%;
 }
 .mar-ui-calendar-month__day[aria-pressed='true'] .mar-ui-calendar-month__day-number {
-  background: var(--mar-ui-control-primary-bg);
-  color: var(--mar-ui-control-primary-fg);
+  background: var(--mar-ui-primary-button-bg, var(--mar-ui-control-primary-bg));
+  color: var(--mar-ui-primary-button-fg, var(--mar-ui-control-primary-fg));
   font-weight: 700;
 }
 button:focus-visible {

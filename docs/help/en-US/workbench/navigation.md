@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-25
+lastUpdated: 2026-11-26
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -69,7 +69,7 @@ Readable text has three levels: primary (`--mar-text-primary`), secondary (`--ma
 
 `--mar-conversation-activity-fg` sets the color of the current conversation phase ring and the status strip above the composer. `--mar-conversation-activity-fill` sets the solid background of the send button and unread notification count badges. The icon and count automatically use black or white for contrast. If a custom theme only sets the activity foreground, its color also supplies the solid fill.
 
-Search for `--mar-button-primary-` in the color field help to set the text, fill, or border of solid primary buttons without affecting checked controls or loading rings. Unset fields use the corresponding button colors from the default dark theme. Keyboard focus uses `--mar-control-focus`.
+Search for `--mar-button-primary-` in the color field help to set the text, fill, or border of solid primary buttons. Selected calendar dates and browser download counts share the button's default fill and text color. Checked controls and loading rings use a separate palette. Unset fields use the corresponding colors from the default dark theme. Keyboard focus uses `--mar-control-focus`.
 
 Only **invalid JSON syntax** blocks saving or exporting. Missing names, unknown fields or tokens, invalid colors, and low contrast produce advisory warnings. Saved and exported JSON retains unknown and invalid content, but it is ignored when applied. An old `base` field is also retained with an unknown-field warning; it no longer changes the dark fallback rule. Arbitrary CSS, URLs, and scripts are not executed. Contrast checks cover only explicit opaque color pairs, not a complete accessibility audit.
 

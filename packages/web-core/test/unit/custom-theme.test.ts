@@ -341,6 +341,22 @@ describe('Custom theme validation', () => {
     expect(warnings('#777')).toEqual([]);
   });
 
+  it('distinguishes Primary marks from text on solid Primary fills', () => {
+    const { warnings } = analyzeCustomTheme(
+      source({
+        '--mar-control-primary-bg': '#1789fc',
+        '--mar-control-primary-hover': '#2f96ff',
+        '--mar-control-primary-active': '#1782f8',
+        '--mar-control-primary-fg': '#fff',
+        '--mar-button-primary-bg': '#1789fc',
+        '--mar-button-primary-fg': '#fff'
+      })
+    );
+    expect(warnings).toEqual([
+      { code: 'contrast', field: '--mar-button-primary-fg / --mar-button-primary-bg' }
+    ]);
+  });
+
   it('blocks syntax errors but accepts every syntactically valid JSON value with advisory warnings', () => {
     expect(analyzeCustomTheme('{').validJson).toBe(false);
     for (const text of ['null', 'true', '42', '[]', '{}']) {

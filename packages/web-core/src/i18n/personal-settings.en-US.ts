@@ -253,11 +253,13 @@ export const personalSettingsEnUS = {
         'Solid fill for the send button and unread notification count badges, with automatic foreground contrast',
       'scrollbar-thumb': 'Scrollbar handles',
       'control-primary-bg': 'Shared fill for checked controls, progress, and loading rings',
-      'control-primary-fg': 'Shared text and icons on filled controls',
+      'control-primary-fg': 'Checkmarks and switch thumbs on filled controls',
       'control-primary-hover': 'Shared hover fill of primary controls',
       'control-primary-active': 'Shared pressed fill of primary controls',
-      'button-primary-bg': 'Default fill of solid primary buttons',
-      'button-primary-fg': 'Text and icons on solid primary buttons',
+      'button-primary-bg':
+        'Default fill of solid primary buttons, selected dates and download counts',
+      'button-primary-fg':
+        'Foreground of solid primary buttons, selected dates and download counts',
       'button-primary-hover': 'Hover fill of solid primary buttons',
       'button-primary-active': 'Pressed fill of solid primary buttons',
       'button-primary-border': 'Border of solid primary buttons',
