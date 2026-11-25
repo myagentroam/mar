@@ -399,7 +399,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           }}</MarButton>
         </div>
         <p class="summary">{{ t('customThemes.previewHint') }}</p>
-        <ThemePreview :name="analysis.name ?? t('customThemes.untitled')" :colors="previewColors" />
+        <ThemePreview
+          :name="analysis.name ?? t('customThemes.untitled')"
+          :colors="previewColors"
+          :builtin="isBuiltin"
+        />
       </aside>
     </div>
     <MarDialog
@@ -414,6 +418,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
       <ThemePreview
         :name="analysis.name ?? t('customThemes.untitled')"
         :colors="previewColors"
+        :builtin="isBuiltin"
         expanded
       />
     </MarDialog>

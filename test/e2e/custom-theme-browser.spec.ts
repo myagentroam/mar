@@ -1479,7 +1479,7 @@ for (const scheme of ['Light', 'Dark']) {
     ] as const) {
       const button = controls.getByRole('button', { name, exact: true });
       const expectedText =
-        scheme === 'Light' && tone !== 'primary-fg'
+        scheme === 'Light' || tone === 'primary-fg'
           ? '#ffffff'
           : await button.evaluate(
               (element, token) =>
@@ -1488,12 +1488,31 @@ for (const scheme of ['Light', 'Dark']) {
             );
       const appearance = () =>
         button.evaluate((element) => {
-          const { color, backgroundColor } = getComputedStyle(element);
-          return { color, backgroundColor };
+          const { color, backgroundColor, borderTopColor } = getComputedStyle(element);
+          return { color, backgroundColor, borderTopColor };
         });
+      const surfaces =
+        tone === 'primary-fg'
+          ? await button.evaluate((element) => {
+              const probe = document.createElement('span');
+              element.append(probe);
+              const colors = ['--mar-bg-panel', '--mar-fill-selection'].map((token) => {
+                probe.style.color = `var(${token})`;
+                return getComputedStyle(probe).color;
+              });
+              probe.remove();
+              return colors;
+            })
+          : [];
+      const checkButtonBoundary = (border: string) => {
+        for (const surface of surfaces) {
+          expect(colorContrast(border, surface)).toBeGreaterThanOrEqual(3);
+        }
+      };
       await page.mouse.move(0, 0);
       const normal = await appearance();
       expect(resolvedColorToHex(normal.color)).toBe(expectedText);
+      checkButtonBoundary(normal.borderTopColor);
       expect(
         colorContrast(normal.color, normal.backgroundColor),
         `${name}, rest`
@@ -1501,6 +1520,7 @@ for (const scheme of ['Light', 'Dark']) {
       await button.hover();
       const hover = await appearance();
       expect(resolvedColorToHex(hover.color)).toBe(expectedText);
+      checkButtonBoundary(hover.borderTopColor);
       expect(hover.backgroundColor).not.toBe(normal.backgroundColor);
       expect(
         colorContrast(hover.color, hover.backgroundColor),
@@ -1510,6 +1530,7 @@ for (const scheme of ['Light', 'Dark']) {
       try {
         const active = await appearance();
         expect(resolvedColorToHex(active.color)).toBe(expectedText);
+        checkButtonBoundary(active.borderTopColor);
         expect(active.backgroundColor).not.toBe(hover.backgroundColor);
         expect(
           colorContrast(active.color, active.backgroundColor),
@@ -1645,8 +1666,8 @@ for (const scheme of ['Light', 'Dark']) {
         const previewColors = await preview.evaluate((element) => {
           const probe = document.createElement('span');
           element.append(probe);
-          const color = (token: string) => {
-            probe.style.color = `var(${token})`;
+          const color = (token: string, fallback?: string) => {
+            probe.style.color = fallback ? `var(${token}, var(${fallback}))` : `var(${token})`;
             return getComputedStyle(probe).color;
           };
           const palette = {
@@ -1656,8 +1677,8 @@ for (const scheme of ['Light', 'Dark']) {
             border: color('--mar-border-medium'),
             disabledFill: color('--mar-bg-panel'),
             disabledBorder: color('--mar-border-subtle'),
-            foreground: color('--mar-control-primary-fg'),
-            primaryHover: color('--mar-control-primary-hover')
+            foreground: color('--mar-ui-primary-button-fg', '--mar-control-primary-fg'),
+            primaryHover: color('--mar-ui-primary-button-hover', '--mar-control-primary-hover')
           };
           probe.remove();
           return palette;
@@ -2214,14 +2235,20 @@ test('theme preview input uses its own palette independently of the active theme
   await expect(realInput).toHaveCSS('box-shadow', inputShadow);
 });
 
-test('filled primary controls use the same foreground as the theme preview', async ({ page }) => {
+test('filled primary controls and the preview use their respective active palettes', async ({
+  page
+}) => {
   const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
   const options = page.locator('.theme-option');
+  const sample = page.locator('.mar-theme-preview .preview-button.primary');
+  await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(11, 112, 219)');
+  await page.getByRole('button', { name: 'Inspect Light', exact: true }).click();
+  await expect(sample).toHaveCSS('background-color', 'rgb(0, 87, 219)');
   await useThemeMenu(page, options.first(), 'Duplicate');
   const save = page.getByRole('button', { name: 'Save theme', exact: true });
-  const sample = page.locator('.mar-theme-preview .preview-button.primary');
   await expect(sample).toHaveCSS('color', 'rgb(24, 24, 24)');
-  await expect(save).toHaveCSS('color', 'rgb(24, 24, 24)');
+  await expect(save).toHaveCSS('color', 'rgb(255, 255, 255)');
   const custom = JSON.stringify({
     version: 1,
     name: 'Palenight sample',
@@ -2629,23 +2656,26 @@ for (const scheme of ['Light', 'Dark']) {
         'background-color',
         scheme === 'Dark' ? 'rgb(34, 34, 34)' : 'rgb(248, 251, 255)'
       );
-      const primaryForeground = scheme === 'Dark' ? 'rgb(24, 24, 24)' : 'rgb(255, 255, 255)';
+      const primaryForeground = 'rgb(255, 255, 255)';
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'color',
         primaryForeground
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(23, 137, 252)' : 'rgb(0, 87, 219)'
+        scheme === 'Dark' ? 'rgb(11, 112, 219)' : 'rgb(0, 87, 219)'
       );
       const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
       await primary.scrollIntoViewIfNeeded();
       const primaryBounds = await primary.boundingBox();
       await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
       await primary.hover();
-      const hoverColor = scheme === 'Dark' ? 'rgb(47, 150, 255)' : 'rgb(0, 76, 195)';
+      const hoverColor = scheme === 'Dark' ? 'rgb(16, 116, 222)' : 'rgb(0, 76, 195)';
       await expect(primary).toHaveCSS('background-color', hoverColor);
-      await expect(primary).toHaveCSS('border-top-color', hoverColor);
+      await expect(primary).toHaveCSS(
+        'border-top-color',
+        scheme === 'Dark' ? 'rgb(23, 137, 252)' : hoverColor
+      );
       await expect(primary).toHaveCSS('color', primaryForeground);
       await expect(primary).toHaveCSS('transform', 'none');
       expect(await primary.boundingBox()).toEqual(primaryBounds);
@@ -2654,7 +2684,7 @@ for (const scheme of ['Light', 'Dark']) {
       try {
         await expect(primary).toHaveCSS(
           'background-color',
-          scheme === 'Dark' ? 'rgb(23, 130, 248)' : 'rgb(0, 66, 170)'
+          scheme === 'Dark' ? 'rgb(9, 107, 210)' : 'rgb(0, 66, 170)'
         );
         await expect(primary).toHaveCSS('color', primaryForeground);
       } finally {

@@ -149,14 +149,20 @@ function handleClick(event: MouseEvent): void {
 }
 
 .mar-ui-button--primary {
-  --mar-ui-button-fg: var(--mar-ui-control-primary-fg);
-  --mar-ui-button-bg: var(--mar-ui-control-primary-bg);
-  --mar-ui-button-border: var(--mar-ui-button-bg);
-  --mar-ui-button-hover-bg: var(--mar-ui-control-primary-hover);
-  --mar-ui-button-hover-border: var(--mar-ui-button-hover-bg);
+  --mar-ui-button-fg: var(--mar-ui-primary-button-fg, var(--mar-ui-control-primary-fg));
+  --mar-ui-button-bg: var(--mar-ui-primary-button-bg, var(--mar-ui-control-primary-bg));
+  --mar-ui-button-border: var(--mar-ui-primary-button-border, var(--mar-ui-button-bg));
+  --mar-ui-button-hover-bg: var(--mar-ui-primary-button-hover, var(--mar-ui-control-primary-hover));
+  --mar-ui-button-hover-border: var(--mar-ui-primary-button-border, var(--mar-ui-button-hover-bg));
   --mar-ui-button-hover-fg: var(--mar-ui-button-fg);
-  --mar-ui-button-active-bg: var(--mar-ui-control-primary-active);
-  --mar-ui-button-active-border: var(--mar-ui-button-active-bg);
+  --mar-ui-button-active-bg: var(
+    --mar-ui-primary-button-active,
+    var(--mar-ui-control-primary-active)
+  );
+  --mar-ui-button-active-border: var(
+    --mar-ui-primary-button-border,
+    var(--mar-ui-button-active-bg)
+  );
   --mar-ui-button-disabled-bg: var(--mar-ui-fill-soft);
 }
 

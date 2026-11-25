@@ -22,6 +22,11 @@
   --mar-ui-control-primary-fg: var(--mar-control-primary-fg);
   --mar-ui-control-primary-hover: var(--mar-control-primary-hover);
   --mar-ui-control-primary-active: var(--mar-control-primary-active);
+  --mar-ui-primary-button-bg: initial;
+  --mar-ui-primary-button-fg: initial;
+  --mar-ui-primary-button-hover: initial;
+  --mar-ui-primary-button-active: initial;
+  --mar-ui-primary-button-border: initial;
   --mar-ui-control-intent-fg: var(--mar-control-intent-fg);
   --mar-ui-control-intent-fill-base: var(--mar-control-intent-fill-base);
   --mar-ui-control-intent-fill-strength: var(--mar-control-intent-fill-strength);
@@ -76,4 +81,14 @@
   --mar-ui-text-muted: var(--mar-text-muted);
   --mar-ui-text-primary: var(--mar-text-primary);
   --mar-ui-text-secondary: var(--mar-text-secondary);
+}
+
+html.console-ui[data-theme='vscode-dark-2026']:not([data-custom-theme]),
+.mar-theme-preview[data-theme='vscode-dark-2026']:not([data-custom-theme]) {
+  /* Keep filled button text readable without changing the shared control and loading accent. */
+  --mar-ui-primary-button-bg: #0b70db;
+  --mar-ui-primary-button-fg: #ffffff;
+  --mar-ui-primary-button-hover: #1074de;
+  --mar-ui-primary-button-active: #096bd2;
+  --mar-ui-primary-button-border: var(--mar-control-primary-bg);
 }

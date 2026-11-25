@@ -110,19 +110,18 @@ export function createThemePreferenceService(
   );
   let appliedTokens: string[] = [];
   function apply(): void {
-    for (const token of appliedTokens) document.documentElement.style.removeProperty(token);
+    const root = document.documentElement;
+    for (const token of appliedTokens) root.style.removeProperty(token);
     const colors = activeColors.value;
     appliedTokens = Object.keys(colors);
     applyThemePreference(baseTheme.value);
-    for (const [token, color] of Object.entries(colors))
-      document.documentElement.style.setProperty(token, color);
+    if (active.value) root.setAttribute('data-custom-theme', '');
+    else root.removeAttribute('data-custom-theme');
+    for (const [token, color] of Object.entries(colors)) root.style.setProperty(token, color);
     document
       .querySelector?.('meta[name="theme-color"]')
-      ?.setAttribute(
-        'content',
-        getComputedStyle(document.documentElement).getPropertyValue('--mar-bg-page').trim()
-      );
-    document.documentElement.style.removeProperty('--mar-bootstrap-bg');
+      ?.setAttribute('content', getComputedStyle(root).getPropertyValue('--mar-bg-page').trim());
+    root.style.removeProperty('--mar-bootstrap-bg');
   }
   function refreshBootstrapTheme(): void {
     // The next page follows the shared preference, which may differ from this tab's theme.
