@@ -63,6 +63,7 @@ import SystemNotificationControl from './SystemNotificationControl.vue';
 import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
 import type { PwaApplicationState } from '../../service/pwa-application-service.js';
 import type { QuickPrompt } from '../../model/workbench.js';
+import './settings-layout.css';
 
 const documentationAvailable = useDocumentationAvailability();
 const uiLocale = useMarUiLocale();
@@ -415,14 +416,13 @@ async function confirmLogout(): Promise<void> {
       <h2>{{ t('settings.appearance') }}</h2>
       <p class="account-summary">{{ t('settings.appearanceSummary') }}</p>
       <div class="appearance-options">
-        <div class="theme-row">
-          <label id="appearance-theme-label" class="theme-label" for="appearance-theme">{{
+        <div class="mar-settings-option-row">
+          <label id="appearance-theme-label" for="appearance-theme">{{
             t('settings.theme')
           }}</label>
           <MarSelect
             id="appearance-theme"
             :model-value="theme"
-            class="theme-select"
             aria-labelledby="appearance-theme-label"
             @update:model-value="setTheme($event as ThemePreference)"
           >
@@ -436,17 +436,13 @@ async function confirmLogout(): Promise<void> {
             />
           </MarSelect>
         </div>
-        <div class="theme-row">
-          <label
-            id="appearance-file-editor-label"
-            class="theme-label"
-            for="appearance-file-editor"
-            >{{ t('settings.defaultFileMode') }}</label
-          >
+        <div class="mar-settings-option-row">
+          <label id="appearance-file-editor-label" for="appearance-file-editor">{{
+            t('settings.defaultFileMode')
+          }}</label>
           <MarSelect
             id="appearance-file-editor"
             :model-value="fileEditorMode"
-            class="theme-select"
             aria-labelledby="appearance-file-editor-label"
             @update:model-value="fileEditorService.setMode($event as FileEditorDefaultMode)"
           >
@@ -454,14 +450,13 @@ async function confirmLogout(): Promise<void> {
             <MarOption :label="t('settings.fileModeReadOnly')" value="read-only" />
           </MarSelect>
         </div>
-        <div class="theme-row">
-          <label id="appearance-icon-theme-label" class="theme-label" for="appearance-icon-theme">{{
+        <div class="mar-settings-option-row">
+          <label id="appearance-icon-theme-label" for="appearance-icon-theme">{{
             t('settings.iconTheme')
           }}</label>
           <MarSelect
             id="appearance-icon-theme"
             :model-value="iconTheme"
-            class="theme-select"
             aria-labelledby="appearance-icon-theme-label"
             @update:model-value="setIconTheme($event as IconThemeId)"
           >
@@ -473,14 +468,13 @@ async function confirmLogout(): Promise<void> {
             />
           </MarSelect>
         </div>
-        <div class="theme-row">
-          <label id="appearance-language-label" class="theme-label" for="appearance-language">{{
+        <div class="mar-settings-option-row">
+          <label id="appearance-language-label" for="appearance-language">{{
             t('common.language')
           }}</label>
           <MarSelect
             id="appearance-language"
             :model-value="locale"
-            class="theme-select"
             aria-labelledby="appearance-language-label"
             @update:model-value="updateLocale($event as AppLocale)"
           >
@@ -977,15 +971,6 @@ async function confirmLogout(): Promise<void> {
 </style>
 
 <style scoped>
-.settings-content {
-  --mar-settings-page-padding: 0.875rem 1rem;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 0;
-  background: var(--mar-bg-panel);
-}
-
 .settings-content .full {
   width: 100%;
   min-width: 0;
@@ -1016,19 +1001,6 @@ async function confirmLogout(): Promise<void> {
   flex: 1 1 auto;
 }
 
-.settings-panel > h2 {
-  margin: 0;
-  font-size: var(--mar-font-size-title);
-  line-height: 1.4;
-}
-
-.settings-panel > p {
-  margin: 5px 0 0;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
-  line-height: 1.5;
-}
-
 .shortcut-group {
   margin-top: 1.25rem;
 }
@@ -1049,28 +1021,9 @@ async function confirmLogout(): Promise<void> {
   font-size: var(--mar-font-size-body);
 }
 
-.theme-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
-  align-items: center;
-  gap: 1rem;
-  padding-block: 0.875rem;
-  border-bottom: 1px solid var(--mar-border-subtle);
-}
-
 .appearance-options {
   max-width: 34rem;
   margin-top: 0.5rem;
-}
-
-.theme-label {
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-body);
-  font-weight: 400;
-}
-
-.theme-select {
-  width: min(18rem, 100%);
 }
 
 .shortcut-list > div {
@@ -1208,15 +1161,6 @@ async function confirmLogout(): Promise<void> {
 }
 
 @media (max-width: 520px) {
-  .theme-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.35rem;
-  }
-
-  .theme-select {
-    width: 100%;
-  }
-
   .admin-sessions li {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -1232,12 +1176,6 @@ async function confirmLogout(): Promise<void> {
   .admin-sessions li > span,
   .admin-sessions li > small {
     grid-column: 1;
-  }
-}
-
-@media (max-width: 767px) {
-  .settings-content {
-    --mar-settings-page-padding: 0.75rem;
   }
 }
 

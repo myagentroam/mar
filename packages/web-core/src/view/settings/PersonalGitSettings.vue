@@ -263,7 +263,8 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
     <div class="mar-management-page">
       <header>
         <div>
-          <h2>{{ t('personalGit.title') }}</h2>
+          <h1 class="mar-settings-page-title">{{ t('personalGit.title') }}</h1>
+          <p class="git-page-hint mar-settings-page-summary">{{ t('personalGit.summary') }}</p>
         </div>
       </header>
       <MarRegionStatus v-if="failed || retrying" class="git-read-status">
@@ -281,7 +282,6 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
         </MarButton>
       </MarRegionStatus>
       <template v-else>
-        <p class="git-page-hint">{{ t('personalGit.summary') }}</p>
         <div class="mar-table-actions">
           <MarButton
             type="primary"
@@ -515,10 +515,8 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
   line-height: 1.6;
 }
 .git-page-hint {
-  margin: 0;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
-  line-height: 1.5;
+  display: block;
+  max-inline-size: 46rem;
 }
 .clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;

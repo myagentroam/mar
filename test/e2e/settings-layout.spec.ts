@@ -36,6 +36,7 @@ test('Browser cache interval saves beside the input and reports results in Feedb
   await page.goto(`${fixture.url}settings-layout.html?section=browser&locale=zh-CN`);
 
   const settings = page.getByRole('region', { name: '浏览器设置' });
+  await expect(settings.getByRole('heading', { name: '浏览器设置', level: 1 })).toBeVisible();
   const errors = page.locator('.mar-message--error');
   await expect(errors).toHaveText(/无法加载账号的浏览器设置/);
   await expect(settings.getByText(/无法加载账号的浏览器设置/)).toHaveCount(0);
@@ -53,9 +54,9 @@ test('Browser cache interval saves beside the input and reports results in Feedb
     [settings.getByText('管理工作台中的浏览器偏好。'), settings.getByRole('checkbox')],
     [
       settings.getByText(/允许 MAR Agent 使用隔离浏览器/),
-      settings.getByRole('heading', { name: '缓存清理周期' })
+      settings.getByRole('heading', { name: '缓存清理周期', level: 2 })
     ],
-    [save, settings.getByRole('heading', { name: '链接打开方式' })]
+    [save, settings.getByRole('heading', { name: '链接打开方式', level: 2 })]
   ] as const;
   for (const width of [320, 1280]) {
     await page.setViewportSize({ width, height: 660 });
@@ -99,6 +100,35 @@ test('Browser cache interval saves beside the input and reports results in Feedb
   });
 });
 
+test('Browser link destinations keep their labels and save independently on mobile', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.route('**/api/auth/preferences/browser-settings', (route) =>
+    route.fulfill({ json: { revision: 1, cacheCleanupDays: 30 } })
+  );
+  await page.goto(`${fixture.url}settings-layout.html?section=browser&locale=en-US`);
+
+  const settings = page.getByRole('region', { name: 'Browser settings' });
+  const web = settings.getByRole('combobox', { name: 'Web links', exact: true });
+  const local = settings.getByRole('combobox', { name: 'Local URLs and HTML links', exact: true });
+  await expect(web).toHaveText('This device');
+  await expect(local).toHaveText('MAR');
+  await settings.getByText('Web links', { exact: true }).click();
+  await expect(web).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('option', { name: 'MAR', exact: true }).click();
+  await expect(web).toHaveText('MAR');
+  await page.reload();
+  await expect(web).toHaveText('MAR');
+  await expect(local).toHaveText('MAR');
+  await local.click();
+  await page.getByRole('option', { name: 'This device', exact: true }).click();
+  await expect(local).toHaveText('This device');
+  await page.reload();
+  await expect(web).toHaveText('MAR');
+  await expect(local).toHaveText('This device');
+});
+
 const sections = [
   { id: 'appearance', selector: '.full', title: 'h2' },
   { id: 'account', selector: '.full', title: 'h2' },
@@ -107,7 +137,8 @@ const sections = [
   { id: 'notifications', selector: '.full', title: 'h2' },
   { id: 'quick-prompts', selector: '.quick-prompts-content', title: 'h2' },
   { id: 'personal-instructions', selector: '.personal-instructions', title: 'h2' },
-  { id: 'git', selector: '.mar-management-page', title: 'h2' },
+  { id: 'browser', selector: '.browser-settings', title: 'h1' },
+  { id: 'git', selector: '.mar-management-page', title: 'h1' },
   { id: 'registration', selector: '.full', title: 'h2' },
   { id: 'shortcuts', selector: '.full', title: 'h2' },
   { id: 'about', selector: '.about-settings', title: '.system-brand' }
@@ -127,6 +158,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
       await page.setViewportSize({ width, height: 900 });
+      await page.route('**/api/auth/preferences/browser-settings', (route) =>
+        route.fulfill({ json: { revision: 1, cacheCleanupDays: 30 } })
+      );
       for (const section of sections) {
         await test.step(section.id, async () => {
           await page.goto(
@@ -158,8 +192,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             })
             .toEqual({ left: 0, right: 0, textInset: inset, overflow: false });
 
-          if (section.id === 'appearance') {
-            const row = content.locator('.theme-row').first();
+          if (section.id === 'appearance' || section.id === 'browser') {
+            const rows = panel.locator('.mar-settings-option-row');
+            const row = rows.first();
             await expect(row.getByRole('combobox')).toBeVisible();
             const control = row.locator('.mar-ui-select');
             const label = row.locator('label');
@@ -176,9 +211,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               const text = (await label.boundingBox())!;
               expect(input.y).toBeGreaterThanOrEqual(text.y + text.height);
             }
-            for (const select of await content.locator('.theme-row .mar-ui-select').all()) {
+            for (const select of await rows.locator('.mar-ui-select').all()) {
               expect((await select.boundingBox())!.width).toBeCloseTo(input.width, 0);
             }
+          }
+          if (section.id === 'browser') {
+            await expect(panel.getByRole('spinbutton')).toHaveValue('30');
+            await expect(panel.getByRole('checkbox')).toHaveAccessibleDescription(/MAR Agent/);
+          }
+          if (section.id === 'git') {
+            await expect(panel.locator('header .git-page-hint')).toBeVisible();
+            await expect(
+              panel.getByRole('cell', { name: 'Example Git', exact: true })
+            ).toBeVisible();
           }
           if (section.id === 'custom-themes') {
             const editor = content.locator('.json-editor');

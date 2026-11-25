@@ -91,7 +91,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         openCode: ''
       }
     } as T;
-  if (path === '/api/personal-git') return { configuration: { credentials: [] } } as T;
+  if (path === '/api/personal-git')
+    return {
+      configuration: {
+        credentials: [
+          {
+            id: 'fixture-git',
+            name: 'Example Git',
+            protocol: 'SSH',
+            host: 'git.example.test',
+            port: 22,
+            pathPrefix: '',
+            username: 'git',
+            commitName: 'Example Author',
+            commitEmail: 'author@example.test',
+            hasSecret: true,
+            hasPassphrase: false
+          }
+        ]
+      }
+    } as T;
   throw new Error(`Unexpected fixture request: ${path}`);
 }
 const notifications = createWorkbenchNotificationService(ref('settings-layout-fixture'));
