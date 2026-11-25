@@ -154,9 +154,7 @@ const submitting = computed(
 );
 const activeRun = computed(() => {
   const run = snapshot.value?.run;
-  return run !== null &&
-    run !== undefined &&
-    ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
+  return run !== null && run !== undefined && ['RUNNING', 'CANCELLING'].includes(run.status)
     ? run
     : undefined;
 });

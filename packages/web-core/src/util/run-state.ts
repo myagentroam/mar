@@ -3,7 +3,6 @@ import type { AgentRun } from '../model/workbench.js';
 const TERMINAL_RUN_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'LOST']);
 
 export function runStatusRank(status: string): number {
-  if (status === 'STARTING') return 1;
   if (status === 'RUNNING') return 2;
   if (status === 'CANCELLING') return 3;
   return TERMINAL_RUN_STATUSES.has(status) ? 4 : -1;

@@ -234,7 +234,7 @@ test('Idle transitions preserve input and late responses cannot switch back to t
         id: 'run-session-1',
         sessionId: 'session-1',
         workspaceId: 'workspace-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE'
       },
       delivery: 'STARTED'
@@ -568,7 +568,7 @@ test('Earlier first-message responses cannot overwrite pushed running state', as
         id: 'run-response-race',
         sessionId: 'session-1',
         workspaceId: 'workspace-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         version: 0,
         clientMessageId: 'response-race'
@@ -968,7 +968,7 @@ test('Ordinary sends show only submission state until Node returns STARTED', asy
         id: 'run-delayed-start',
         sessionId: 'session-1',
         workspaceId: 'workspace-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'delayed-start'
       },

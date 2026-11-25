@@ -35,7 +35,7 @@ Use `Ctrl+W` or `Alt+W` to close the active normal tab and `Ctrl+Shift+W` or `Al
 
 An offline or disabled Node keeps its registered resources visible but blocks live operations. Existing tabs still activate immediately; reconnect or enable the host before using files, sessions, or terminals. Closing a Workspace tab changes only the browser layout; it does not unregister the Workspace or stop Node work.
 
-A green dot next to a Node means it is available. In workspace tabs and session lists, a green dot means a task is running; the dot is neutral when tasks are only starting or stopping. A green dot on the session tree button means it has a running or sleeping descendant. In the open tree, amber marks sleeping sessions.
+A green dot next to a Node means it is available. In workspace tabs and session lists, a green dot means a task is active, including while stopping; no active tasks means no dot. A green dot on the session tree button means it has a running or sleeping descendant. In the open tree, amber marks sleeping sessions.
 
 On mobile, tap the active **Work** icon in the top bar to open the resource tree. Selecting a Workspace closes the drawer and returns to the Agent conversation. Tap the active **Chat** icon to open the chat-history drawer. Admin no longer has a separate Skill Center entry. Skill Configuration, Skill Sources, and Environment Secrets appear consecutively, while MCP Sources remains a separate Admin section; Skill Configuration switches between Skill and MCP in the page.
 

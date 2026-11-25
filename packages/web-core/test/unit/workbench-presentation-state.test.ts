@@ -275,7 +275,7 @@ describe('Workbench mutually exclusive controls', () => {
     expect(f.state.composerConfigurationDisabled.value).toBe(false);
   });
 
-  it.each(['STARTING', 'RUNNING', 'CANCELLING'])(
+  it.each(['RUNNING', 'CANCELLING'])(
     'locks controls during %s even before session activity updates',
     (status) => {
       const f = controlsFixture();

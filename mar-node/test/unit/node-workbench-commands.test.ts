@@ -1225,7 +1225,7 @@ describe('Node Workbench Manifest and command control', () => {
       pending: false
     });
     internals.sessionContextService.read = contextRead;
-    expect(internals.runtime.getRun(result.run.id)?.status).toBe('STARTING');
+    expect(internals.runtime.getRun(result.run.id)?.status).toBe('RUNNING');
     notify?.({
       method: 'turn/started',
       params: { threadId: 'thread-compact', turn: { id: 'turn-compact' } }

@@ -44,7 +44,6 @@ export const conversationUiZhCN = {
   },
   conversationActivity: {
     running: '运行中',
-    preparing: '正在准备',
     stopping: '正在停止',
     approval: '等待你的确认',
     answer: '等待你的回答',

@@ -119,7 +119,7 @@ describe('Node Run notification attachment events', () => {
     });
     f.service.emit(execution.id, 'run.completed', {}, 'SUCCEEDED');
     expect(observations).toEqual([
-      { eventType: 'conversation.item', terminalStatus: undefined, status: 'STARTING' },
+      { eventType: 'conversation.item', terminalStatus: undefined, status: 'RUNNING' },
       { eventType: 'run.completed', terminalStatus: 'SUCCEEDED', status: 'SUCCEEDED' }
     ]);
   });
@@ -547,7 +547,7 @@ describe('Node Run notification attachment events', () => {
 
     service.emit(execution.id, 'run.completed', {}, 'SUCCEEDED');
 
-    expect(runtime.getRun(run.id)).toMatchObject({ status: 'STARTING', completedAt: null });
+    expect(runtime.getRun(run.id)).toMatchObject({ status: 'RUNNING', completedAt: null });
     expect(runtime.conversationTurnForRun(run.id)?.status).toBe('SUCCEEDED');
     expect(dispatchQueue).toHaveBeenCalledWith(run.sessionId, 0);
   });

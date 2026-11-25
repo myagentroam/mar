@@ -192,9 +192,7 @@ export function createWorkspaceSessionPaneLoader(options: {
     input.onResolved(result.session);
     if (!input.isCurrent()) return undefined;
     const active = options.runs.value.find(
-      (run) =>
-        run.sessionId === result.session.id &&
-        ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
+      (run) => run.sessionId === result.session.id && ['RUNNING', 'CANCELLING'].includes(run.status)
     );
     options.replaceSession(input.sessionId, result.session);
     options.applyComposerConfiguration(result.session, true);

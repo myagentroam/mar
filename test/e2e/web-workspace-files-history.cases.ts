@@ -1601,7 +1601,7 @@ for (const mobile of [false, true]) {
       await trigger.click();
       await expect(panel).toBeHidden();
       for (const [status, label] of [
-        ['STARTING', '启动中'],
+        ['RUNNING', '运行中'],
         ['CANCELLING', '停止中'],
         ['SUCCEEDED', '已完成'],
         ['FAILED', '失败'],
@@ -1612,7 +1612,7 @@ for (const mobile of [false, true]) {
         await trigger.click();
         await expect(tasks).toHaveCount(1);
         await expect(tasks.first().locator('.mar-ui-tag')).toHaveText(label);
-        const active = status === 'STARTING' || status === 'CANCELLING';
+        const active = status === 'RUNNING' || status === 'CANCELLING';
         await expect(trigger).toHaveAccessibleDescription(
           `活动任务：${active ? 1 : 0}, 0 条未读通知`
         );

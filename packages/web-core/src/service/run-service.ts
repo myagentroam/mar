@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue';
 import type { AgentRun } from '../model/workbench.js';
 
-const ACTIVE_RUN_STATUSES = new Set(['STARTING', 'RUNNING', 'CANCELLING']);
+const ACTIVE_RUN_STATUSES = new Set(['RUNNING', 'CANCELLING']);
 import { isTerminalRunStatus, newestRunSnapshot } from '../util/run-state.js';
 
 export function createRunService(selectedSessionId: Ref<string | undefined>) {

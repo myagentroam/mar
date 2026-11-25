@@ -36,7 +36,6 @@ async function retry(): Promise<void> {
   }
 }
 const RUN_STATUS_KEYS = {
-  STARTING: 'workbenchNotificationCenter.runStatus.STARTING',
   RUNNING: 'workbenchNotificationCenter.runStatus.RUNNING',
   CANCELLING: 'workbenchNotificationCenter.runStatus.CANCELLING',
   SUCCEEDED: 'workbenchNotificationCenter.runStatus.SUCCEEDED',

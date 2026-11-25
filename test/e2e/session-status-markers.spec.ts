@@ -13,27 +13,27 @@ for (const { width, locale, description, count } of [
   {
     width: 1280,
     locale: 'en-US',
-    description: 'Workspace has tasks starting or stopping',
+    description: 'Workspace has an active task',
     count: 'Active tasks: 2'
   },
-  { width: 390, locale: 'zh-CN', description: '工作区有正在启动或停止的任务', count: '活动任务：2' }
+  { width: 390, locale: 'zh-CN', description: '工作区有活动任务', count: '活动任务：2' }
 ]) {
-  test(`Transitioning tasks use neutral activity markers and accurate descriptions: ${locale}`, async ({
+  test(`Stopping tasks use green activity markers and accurate descriptions: ${locale}`, async ({
     page
   }) => {
     await page.setViewportSize({ width, height: 850 });
-    await page.goto(`${fixture.url}session-groups.html?locale=${locale}&theme=dark&transitioning`);
+    await page.goto(`${fixture.url}session-groups.html?locale=${locale}&theme=dark&cancelling`);
     const activity = page.locator('.activity-center-trigger');
     await expect(activity).toHaveAccessibleDescription(new RegExp(`^${count},`));
     await expect(activity.locator('.activity-entry-running')).toHaveCSS(
       'background-color',
-      'rgb(194, 194, 194)'
+      'rgb(53, 213, 110)'
     );
     const workspace = page.getByRole('tab', { name: 'Project', exact: true });
     await expect(workspace).toHaveAccessibleDescription(description);
     await expect(workspace.locator('.workspace-tab-running i')).toHaveCSS(
       'background-color',
-      'rgb(194, 194, 194)'
+      'rgb(53, 213, 110)'
     );
     await activity.click();
     await page
@@ -41,6 +41,10 @@ for (const { width, locale, description, count } of [
       .getByRole('tab', { name: locale === 'zh-CN' ? '最近会话' : 'Recent Sessions', exact: true })
       .click();
     await expect(page.locator('.activity-running-count')).toHaveText(count);
+
+    await page.goto(`${fixture.url}session-groups.html?locale=${locale}&theme=dark&stop-statuses`);
+    await expect(activity.locator('.activity-entry-running')).toHaveCount(0);
+    await expect(workspace.locator('.workspace-tab-running')).toHaveCount(0);
   });
 }
 
@@ -57,7 +61,7 @@ for (const theme of ['daylight', 'dark', 'custom']) {
       await expect(session).toHaveAttribute('aria-label', 'Working');
       await expect(
         page.getByRole('tab', { name: 'Project', exact: true })
-      ).toHaveAccessibleDescription('Workspace has a running task');
+      ).toHaveAccessibleDescription('Workspace has an active task');
       await expect(badge).toBeVisible();
 
       if (theme === 'custom') {

@@ -83,13 +83,13 @@ export interface ExecutionTerminalInput {
   readonly sequence: number;
   readonly eventType: string;
   readonly payload: unknown;
-  readonly status: RunnerExecutionStatus;
+  readonly status: Exclude<RunnerExecutionStatus, 'STARTING' | 'RUNNING'>;
   readonly permissionStop?: PermissionStop;
 }
 
 export interface ExecutionTerminalResult {
   readonly recorded: ReturnType<NodeRuntimeState['appendRunEvent']>;
-  readonly finalStatus?: RunnerExecutionStatus;
+  readonly finalStatus?: 'SUCCEEDED' | 'FAILED' | 'INTERRUPTED';
   readonly manuallyInterrupted: boolean;
   readonly goalUpdate?: { readonly session: NodeAgentSession; readonly goal: GoalState };
   readonly queueChangedSessionId?: string;
@@ -205,12 +205,11 @@ export class ContinuousRunCoordinator<TAttachment> {
       run.status !== 'CANCELLING' &&
       input.permissionStop === undefined &&
       ((!queue.paused && queue.itemIds.length > 0) || this.options.keepRunActive(run.sessionId));
-    let finalStatus: RunnerExecutionStatus | undefined;
+    let finalStatus: ExecutionTerminalResult['finalStatus'];
     if (!continues) {
       finalStatus =
         input.status === 'CANCELLED' || manuallyInterrupted ? 'INTERRUPTED' : input.status;
-      if (finalStatus === 'SUCCEEDED' || finalStatus === 'FAILED' || finalStatus === 'INTERRUPTED')
-        this.options.runtime.finishRun(run.id, finalStatus);
+      this.options.runtime.finishRun(run.id, finalStatus);
     }
     return {
       recorded,

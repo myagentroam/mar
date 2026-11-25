@@ -19,7 +19,7 @@ export function createWorkbenchConversationRealtimeService(options: {
 }) {
   function syncTurnStatus(runId: string, runStatus: string, sessionId?: string): void {
     const status = (
-      ['STARTING', 'RUNNING', 'CANCELLING'].includes(runStatus) ? 'RUNNING' : runStatus
+      ['RUNNING', 'CANCELLING'].includes(runStatus) ? 'RUNNING' : runStatus
     ) as ConversationTurn['status'];
     options.syncTurnStatus(runId, status);
     if (sessionId === undefined) return;

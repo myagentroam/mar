@@ -29,7 +29,6 @@ export const enUS = {
     recentRunTitle: notificationsEnUS.workbenchNotificationCenter.recentRunTitle,
     runningElapsed: notificationsEnUS.workbenchNotificationCenter.runningElapsed,
     runStatus: {
-      STARTING: notificationsEnUS.workbenchNotificationCenter.runStatus.STARTING,
       RUNNING: notificationsEnUS.workbenchNotificationCenter.runStatus.RUNNING,
       CANCELLING: notificationsEnUS.workbenchNotificationCenter.runStatus.CANCELLING,
       SUCCEEDED: notificationsEnUS.workbenchNotificationCenter.runStatus.SUCCEEDED,

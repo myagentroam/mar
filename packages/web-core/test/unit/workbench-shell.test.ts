@@ -250,8 +250,8 @@ describe('Shared workbench shell', () => {
   );
 
   it.each([
-    ['en-US', 'Unread', 'Workspace has a running task'],
-    ['zh-CN', '未读', '工作区有正在运行的任务']
+    ['en-US', 'Unread', 'Workspace has an active task'],
+    ['zh-CN', '未读', '工作区有活动任务']
   ] as const)(
     'shows independent state on an inactive Workspace tab and direct context only on the selected tab: %s',
     async (locale, unread, running) => {

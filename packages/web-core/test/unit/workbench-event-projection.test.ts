@@ -678,9 +678,7 @@ describe('Workbench Event Projection', () => {
           order.push('merge');
           const next = incoming[0]!;
           const hasActiveRun = runs.value.some(
-            (run) =>
-              run.sessionId === next.id &&
-              ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
+            (run) => run.sessionId === next.id && ['RUNNING', 'CANCELLING'].includes(run.status)
           );
           sessions.value = [
             selectedSessionId === next.id &&

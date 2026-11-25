@@ -585,7 +585,7 @@ describe('Bootstrap Session identity retirement', () => {
     const waiting = expect(identity.wait(bootstrap.id)).rejects.toThrow('SESSION_START_FAILED');
     identity.reject(bootstrap.id, 'SESSION_START_FAILED');
     await waiting;
-    expect(runtime.getRun(run.id)?.status).toBe('STARTING');
+    expect(runtime.getRun(run.id)?.status).toBe('RUNNING');
     runtime.transitionRun(run.id, 'FAILED');
     identity.reject(bootstrap.id, 'SESSION_START_FAILED');
     await Promise.resolve();
@@ -763,7 +763,6 @@ it.each(['success', 'validation failure', 'persistence failure'] as const)(
       runAttachmentService: RunAttachmentService;
       goalRuntime: GoalRuntime;
       goalCoordinator: { migrateSession(previousId: string, nextId: string): void };
-      goalMcpBridge: { migrateSession(previousId: string, nextId: string): void };
       commandStates: CommandStateStore;
       continuousRunCoordinator: { migrateSession(previousId: string, nextId: string): void };
       modelUsage: { promoteSession(previousId: string, nextId: string): void };
@@ -798,11 +797,6 @@ it.each(['success', 'validation failure', 'persistence failure'] as const)(
           label: 'goal',
           call: node.goalCoordinator.migrateSession.bind(node.goalCoordinator),
           spy: vi.spyOn(node.goalCoordinator, 'migrateSession')
-        },
-        {
-          label: 'goal-mcp',
-          call: node.goalMcpBridge.migrateSession.bind(node.goalMcpBridge),
-          spy: vi.spyOn(node.goalMcpBridge, 'migrateSession')
         },
         {
           label: 'commands',
@@ -864,18 +858,17 @@ it.each(['success', 'validation failure', 'persistence failure'] as const)(
       await expect(waiting).resolves.toBe('native-attachments');
       for (const stage of stages)
         expect(stage.spy).toHaveBeenCalledExactlyOnceWith(session.id, 'native-attachments');
-      expect(timeline.slice(0, 8)).toEqual([
+      expect(timeline.slice(0, 7)).toEqual([
         'runtime',
         'attachments',
         'goal',
-        'goal-mcp',
         'commands',
         'queue',
         'usage',
         'runners'
       ]);
-      expect(timeline.slice(8)).not.toHaveLength(0);
-      expect(timeline.slice(8).every((step) => step === 'publish')).toBe(true);
+      expect(timeline.slice(7)).not.toHaveLength(0);
+      expect(timeline.slice(7).every((step) => step === 'publish')).toBe(true);
       expect(attachments.state.sessionRetentions.has(session.id)).toBe(false);
       expect(attachments.state.sessionRetentions.get('native-attachments')).toBe(retained);
       expect(attachments.state.runFileDirectories.get('input')).toBe(paths);

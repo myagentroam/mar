@@ -48,7 +48,7 @@ describe('Server hosted conversation activity service', () => {
       templateId: 'template-1',
       conversationId: 'conversation-1',
       activity: {
-        status: 'STARTING',
+        status: 'RUNNING',
         version: 1,
         updatedAt: 2
       }

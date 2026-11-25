@@ -55,12 +55,5 @@
 }
 .mar-session-activity i {
   display: inline-block;
-  background: var(--mar-text-secondary);
-}
-
-.mar-session-activity.running i {
   background: var(--mar-control-color-success);
-}
-.mar-session-activity.node-offline i {
-  background: var(--mar-text-disabled);
 }

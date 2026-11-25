@@ -5,7 +5,6 @@ export const sessionPresentationZhCN = {
       running: '运行中',
       ready: '可继续',
       unavailable: '暂不可用',
-      starting: '正在启动',
       running2: '正在执行',
       completed: '已完成',
       failed: '执行失败',

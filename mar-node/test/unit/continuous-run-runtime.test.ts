@@ -3218,7 +3218,7 @@ describe('Node continuous Run lifecycle', () => {
     );
     expect(clearGoal).not.toHaveBeenCalled();
     expect(control).not.toHaveBeenCalled();
-    expect(runtime.getRun(run.id)?.status).toBe('STARTING');
+    expect(runtime.getRun(run.id)?.status).toBe('RUNNING');
     expect(service.stopAgentSession({ sessionId: session.id, requestUserId: 7 })).toMatchObject({
       goalExit: { status: 'stopped' }
     });
@@ -3453,7 +3453,7 @@ describe('Node continuous Run lifecycle', () => {
     expect(runtime.latestSessionExecution(session.id)).toMatchObject({
       executionId: current.id,
       runId: run.id,
-      status: 'STARTING'
+      status: 'RUNNING'
     });
     expect(runtime.executionSnapshot(first.id)).toMatchObject({
       executionId: first.id,

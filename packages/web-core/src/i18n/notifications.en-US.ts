@@ -49,7 +49,6 @@ export const notificationsEnUS = {
     recentRunTitle: '{value0}: {value1}',
     runningElapsed: 'Running for {duration} started {startedAt}',
     runStatus: {
-      STARTING: 'Starting',
       RUNNING: 'Running',
       CANCELLING: 'Stopping',
       SUCCEEDED: 'Completed',

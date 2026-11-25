@@ -199,7 +199,7 @@ it('rejects foreign Run cancellation before changing its state or pausing its qu
   expect(() =>
     service.operations()['run.cancel']!({ runId: run.id, workspaceId: 'local', __requestUserId: 7 })
   ).toThrow('RUN_NOT_FOUND');
-  expect(runtime.getRun(run.id)?.status).toBe('STARTING');
+  expect(runtime.getRun(run.id)?.status).toBe('RUNNING');
   expect(pauseQueue).not.toHaveBeenCalled();
   expect(control).not.toHaveBeenCalled();
 });

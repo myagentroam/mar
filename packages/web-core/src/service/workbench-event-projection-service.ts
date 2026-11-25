@@ -142,7 +142,7 @@ export function createWorkbenchEventProjectionService(options: {
         event.nodeId === options.workspaceTarget.value?.nodeId
       ) {
         const latest = options.acceptRun(run);
-        if (['STARTING', 'RUNNING', 'CANCELLING'].includes(latest.status)) options.openRun(run.id);
+        if (['RUNNING', 'CANCELLING'].includes(latest.status)) options.openRun(run.id);
       }
       return;
     }

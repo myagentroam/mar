@@ -109,9 +109,7 @@ export function createWorkspaceSessionPresentationStateService(
     const runId = options.selectedRunId.value;
     if (runId === undefined) return undefined;
     const run = options.runs.value.find((candidate) => candidate.id === runId);
-    return run !== undefined && ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
-      ? run
-      : undefined;
+    return run !== undefined && ['RUNNING', 'CANCELLING'].includes(run.status) ? run : undefined;
   });
   const { workspaceHost, nodeReady } = createWorkspaceEnvironment(options);
   const selectedSessionActivity = computed(() =>
@@ -209,8 +207,7 @@ export function createWorkspaceSessionPresentationStateService(
       sessionActivity(current) === 'IDLE' &&
       !sessionHasActiveGoal(current.commandStates) &&
       !options.runs.value.some(
-        (run) =>
-          run.sessionId === session.id && ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
+        (run) => run.sessionId === session.id && ['RUNNING', 'CANCELLING'].includes(run.status)
       )
     );
   }

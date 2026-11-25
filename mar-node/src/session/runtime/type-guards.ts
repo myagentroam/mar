@@ -2,7 +2,9 @@ import type { AgentRunStatus } from '@myagentroam/protocol';
 import type { NodeAgentRun, NodeConversationTurn } from '../../runtime-model.js';
 import { isPlainRecord } from '../../util/records.js';
 
-export function isTerminalRunStatus(status: AgentRunStatus): boolean {
+export function isTerminalRunStatus(
+  status: string
+): status is Extract<AgentRunStatus, 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED'> {
   return (
     status === 'SUCCEEDED' ||
     status === 'FAILED' ||

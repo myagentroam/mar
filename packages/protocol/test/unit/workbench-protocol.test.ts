@@ -422,6 +422,8 @@ describe('Workbench protocol contracts', () => {
 
   it('distinguishes continuous Runs, Turns, and pending QueueItems', () => {
     expect(runnerNameSchema.parse('mar-agent')).toBe('mar-agent');
+    expect(agentRunStatusSchema.parse('RUNNING')).toBe('RUNNING');
+    expect(agentRunStatusSchema.safeParse('STARTING').success).toBe(false);
     expect(agentRunStatusSchema.safeParse('QUEUED').success).toBe(false);
     expect(
       workspaceQueueSchema.safeParse({
@@ -1395,9 +1397,11 @@ describe('Workbench protocol contracts', () => {
 
   it('keeps Workbench Node operations a closed allowlist', () => {
     expect(workbenchNodeOperationSchema.safeParse('session.graph').success).toBe(true);
-    expect(workbenchNodeOperationSchema.safeParse('session.schedule.list').success).toBe(true);
+    expect(workbenchNodeOperationSchema.safeParse('schedule.task.list').success).toBe(true);
+    expect(workbenchNodeOperationSchema.safeParse('schedule.task.create').success).toBe(true);
+    expect(workbenchNodeOperationSchema.safeParse('session.schedule.list').success).toBe(false);
     expect(workbenchNodeOperationSchema.safeParse('session.schedule.agent.save').success).toBe(
-      true
+      false
     );
     expect(workbenchNodeOperationSchema.safeParse('session.schedule.agent.delete').success).toBe(
       false

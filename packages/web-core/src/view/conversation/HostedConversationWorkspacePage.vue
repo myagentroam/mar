@@ -1132,8 +1132,7 @@ onBeforeUnmount(() => {
               <span
                 v-if="workspace.conversationHasActiveRun(conversation)"
                 v-tooltip="historyActivityLabel(conversation.activity.status)"
-                class="history-run-indicator mar-session-activity"
-                :class="{ running: conversation.activity.status === 'RUNNING' }"
+                class="history-run-indicator mar-session-activity running"
                 aria-hidden="true"
                 ><i
               /></span>

@@ -39,7 +39,7 @@ export function withPredictionTaskState(
     ? 'WAITING_APPROVAL'
     : waiting.some((item) => item.kind === 'user_input_request')
       ? 'WAITING_INPUT'
-      : ['RUNNING', 'STARTING', 'QUEUED', 'IN_PROGRESS'].includes(runStatus)
+      : ['RUNNING', 'QUEUED', 'IN_PROGRESS'].includes(runStatus)
         ? 'RUNNING'
         : ['COMPLETED', 'SUCCEEDED'].includes(runStatus)
           ? 'COMPLETED'

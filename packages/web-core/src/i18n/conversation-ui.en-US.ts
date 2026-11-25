@@ -44,7 +44,6 @@ export const conversationUiEnUS = {
   },
   conversationActivity: {
     running: 'Running',
-    preparing: 'Preparing',
     stopping: 'Stopping',
     approval: 'Waiting for your confirmation',
     answer: 'Waiting for your answer',

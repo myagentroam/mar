@@ -817,13 +817,13 @@ export function registerMarctlSessionRoutes(
                 (value) =>
                   isObject(value) &&
                   (body.runId === undefined
-                    ? ['STARTING', 'RUNNING', 'CANCELLING'].includes(String(value.status))
+                    ? ['RUNNING', 'CANCELLING'].includes(String(value.status))
                     : value.id === body.runId)
               )
             : undefined;
           if (!isObject(run) || run.sessionId !== sessionId)
             return sendError(reply, 404, 'RUN_NOT_FOUND');
-          if (!['STARTING', 'RUNNING', 'CANCELLING'].includes(String(run.status)))
+          if (!['RUNNING', 'CANCELLING'].includes(String(run.status)))
             return sendError(reply, 409, 'RUN_STATE_CONFLICT', {
               message: 'The specified Run is no longer active.'
             });

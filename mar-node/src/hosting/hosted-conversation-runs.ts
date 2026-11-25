@@ -35,7 +35,8 @@ import type { HostedConversationWatch } from './hosted-conversation-watch.js';
 import type {
   HostedConversationRuntimeEvent,
   HostedConversationRuntimeHandle,
-  HostedConversationRuntimeRun
+  HostedConversationRuntimeRun,
+  HostedConversationRuntimeRunInput
 } from './runtime-contracts.js';
 
 class HostedRunEvents {
@@ -103,7 +104,6 @@ export class HostedConversationRuns {
   }): void {
     const { conversation, handle, userId } = input;
     this.accept(conversation.id, handle);
-    this.publishActivity(userId, conversation, 'RUNNING', handle.run.startedAt);
     if (input.titleChanged)
       this.options.hostedWatch.publishEvent(conversation.id, {
         conversationId: conversation.id,
@@ -222,10 +222,11 @@ export class HostedConversationRuns {
       generatedImagesLogicalPath,
       temporaryDirectory
     );
-    this.publishActivity(payload.userId, conversation, 'STARTING', this.options.now());
     const runtimeEvents = this.runtimeEvents(conversation.id);
-    const handle = await this.options.runtime
-      .startRun({
+    let handle: HostedConversationRuntimeHandle;
+    let activityPublished = false;
+    try {
+      const runInput: HostedConversationRuntimeRunInput = {
         ...(payload.usageGrant === undefined || this.options.modelUsage === undefined
           ? {}
           : { onModelUsage: (usage) => this.options.modelUsage!(payload.usageGrant!, usage) }),
@@ -260,20 +261,24 @@ export class HostedConversationRuns {
         ).map((server) => ({ ...server, authorizationIdentity: `user:${payload.userId}` })),
         webAccess: version.draft.networkMode !== 'NONE',
         onEvent: runtimeEvents.emit
-      })
-      .catch((error) => {
+      };
+      activityPublished = true;
+      this.publishActivity(payload.userId, conversation, 'RUNNING', this.options.now());
+      handle = await this.options.runtime.startRun(runInput);
+    } catch (error) {
+      if (activityPublished)
         this.publishActivity(payload.userId, conversation, 'IDLE', this.options.now());
-        if (upgrade !== undefined) {
-          this.publishUpgradeFailure(
-            conversation,
-            upgrade.previousVersionId,
-            upgrade.targetVersionId,
-            error
-          );
-          throw new Error('HOSTED_CONVERSATION_UPGRADE_FAILED');
-        }
-        throw error;
-      });
+      if (upgrade !== undefined) {
+        this.publishUpgradeFailure(
+          conversation,
+          upgrade.previousVersionId,
+          upgrade.targetVersionId,
+          error
+        );
+        throw new Error('HOSTED_CONVERSATION_UPGRADE_FAILED');
+      }
+      throw error;
+    }
     const startedAt = handle.run.startedAt;
     let messageCreated = false;
     let accepted: {

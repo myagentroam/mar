@@ -40,7 +40,7 @@ export function projectSessionQueue(
 ): WorkspaceQueue {
   const activeIds = new Set(
     runs
-      .filter((run) => ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status))
+      .filter((run) => ['RUNNING', 'CANCELLING'].includes(run.status))
       .map((run) => run.clientMessageId)
   );
   const snapshot = reconcileWorkspaceQueueSnapshot(current, next, source);

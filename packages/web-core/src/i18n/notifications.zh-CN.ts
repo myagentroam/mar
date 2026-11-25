@@ -44,7 +44,6 @@ export const notificationsZhCN = {
     recentRunTitle: '{value0}: {value1}',
     runningElapsed: '运行时间 {duration} 启动于 {startedAt}',
     runStatus: {
-      STARTING: '启动中',
       RUNNING: '运行中',
       CANCELLING: '停止中',
       SUCCEEDED: '已完成',

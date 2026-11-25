@@ -11,7 +11,7 @@ export function elapsedDurationLabel(elapsedMs: number): string {
 }
 
 export function activeRecentRunStatus(status: string): boolean {
-  return status === 'STARTING' || status === 'RUNNING' || status === 'CANCELLING';
+  return status === 'RUNNING' || status === 'CANCELLING';
 }
 
 export function recentRunTimeReference(run: {

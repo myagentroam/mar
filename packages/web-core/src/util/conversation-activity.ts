@@ -74,7 +74,7 @@ function conversationActivityState(
     if (pending.some((item) => item.kind === 'approval_request')) return 'approval';
     if (pending.some((item) => item.kind === 'user_input_request')) return 'answer';
   }
-  return run.status === 'STARTING' ? 'preparing' : 'running';
+  return 'running';
 }
 
 export function conversationActivityLabel(
@@ -89,7 +89,7 @@ export function conversationActivityBusy(
   run: Pick<AgentRun, 'id' | 'status'> | undefined,
   turns: readonly ConversationTurn[]
 ): boolean {
-  return ['running', 'preparing', 'stopping'].includes(conversationActivityState(run, turns));
+  return ['running', 'stopping'].includes(conversationActivityState(run, turns));
 }
 
 export function conversationElapsedLabel(start: number | undefined, now: number): string {

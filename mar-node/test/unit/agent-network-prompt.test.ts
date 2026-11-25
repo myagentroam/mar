@@ -481,7 +481,7 @@ it.each([false, true])(
         result: {
           agentId: 'child',
           start: {
-            run: { id: 'internal-run', status: 'STARTING' },
+            run: { id: 'internal-run', status: 'RUNNING' },
             auditReceipt: { inputMode: 'REPLACE_CURRENT' },
             idempotent: false
           },
@@ -489,7 +489,7 @@ it.each([false, true])(
         },
         expected: {
           agentId: 'child',
-          start: { executionStatus: 'STARTING', idempotent: false },
+          start: { executionStatus: 'RUNNING', idempotent: false },
           observation: { status: 'failed', code: 'OBSERVATION_FAILED' }
         }
       },

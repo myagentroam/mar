@@ -741,6 +741,11 @@ describe('Node hosted conversation runtime', () => {
       })
     ).rejects.toThrow('CONVERSATION_TEMPLATE_MCP_INVALID');
     expect(fixture.runtime.startRun).not.toHaveBeenCalled();
+    const page = (await fixture.service.operations()['conversation.hosted.list']!({
+      limit: 20,
+      __requestUserId: 7
+    })) as { items: HostedConversationSummary[] };
+    expect(page.items[0]?.activity).toMatchObject({ status: 'IDLE', version: 0 });
   });
 
   it('advances last activity when a message is accepted and when its settlement completes', async () => {
@@ -957,8 +962,7 @@ describe('Node hosted conversation runtime', () => {
 
     await send('message-activity-success');
     expect(activityPayloads().map((payload) => payload.activity)).toEqual([
-      { status: 'STARTING', version: 1, updatedAt: 2_000 },
-      { status: 'RUNNING', version: 2, updatedAt: 2_000 }
+      { status: 'RUNNING', version: 1, updatedAt: 2_000 }
     ]);
     expect(
       (
@@ -977,7 +981,7 @@ describe('Node hosted conversation runtime', () => {
     await vi.waitFor(() =>
       expect(activityPayloads().at(-1)?.activity).toEqual({
         status: 'IDLE',
-        version: 3,
+        version: 2,
         updatedAt: 3_000
       })
     );
@@ -1005,7 +1009,7 @@ describe('Node hosted conversation runtime', () => {
     expect(activityPayloads().at(-1)?.activity).toMatchObject({ status: 'CANCELLING' });
     fixture.pendingRuns[1]!.complete({ status: 'INTERRUPTED', completedAt: 4_000 });
     await vi.waitFor(() =>
-      expect(activityPayloads().at(-1)?.activity).toMatchObject({ status: 'IDLE', version: 7 })
+      expect(activityPayloads().at(-1)?.activity).toMatchObject({ status: 'IDLE', version: 5 })
     );
     expect(notifications()).toHaveLength(1);
 
@@ -1316,6 +1320,43 @@ describe('Node hosted conversation runtime', () => {
       for (const run of fixture.pendingRuns)
         run.complete({ status: 'SUCCEEDED', completedAt: 6_000 });
     }
+  });
+
+  it('projects running while startup is pending and clears it when startup fails', async () => {
+    const fixture = await runtimeFixture();
+    const conversation = await createConversation(fixture);
+    const operations = fixture.service.operations();
+    const entered = Promise.withResolvers<void>();
+    const startup = Promise.withResolvers<never>();
+    fixture.runtime.startRun.mockImplementationOnce(() => {
+      entered.resolve();
+      return startup.promise;
+    });
+    const message = operations['conversation.hosted.message']!({
+      conversationId: conversation.id,
+      clientMessageId: 'message-startup-failure',
+      prompt: 'Start once.',
+      attachmentIds: [],
+      __requestUserId: 7,
+      __marAgentModel: modelOne,
+      __marAgentModels: [modelOne]
+    });
+    const outcome = expect(message).rejects.toThrow('TEST_STARTUP_FAILED');
+    const activity = async () => {
+      const page = (await operations['conversation.hosted.list']!({
+        limit: 20,
+        __requestUserId: 7
+      })) as { items: HostedConversationSummary[] };
+      return page.items[0]?.activity;
+    };
+    await entered.promise;
+    try {
+      expect(await activity()).toMatchObject({ status: 'RUNNING', version: 1 });
+    } finally {
+      startup.reject(new Error('TEST_STARTUP_FAILED'));
+      await outcome;
+    }
+    expect(await activity()).toMatchObject({ status: 'IDLE', version: 2 });
   });
 
   it('waits for an admitted start, cancels its eventual handle and joins settlement during dispose', async () => {

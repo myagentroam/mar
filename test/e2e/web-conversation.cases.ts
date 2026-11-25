@@ -260,7 +260,7 @@ test('Sending an image in an idle session follows the latest message after its t
     id: 'image-run',
     sessionId: session.id,
     workspaceId: session.workspaceId,
-    status: 'STARTING',
+    status: 'RUNNING',
     recoveryState: 'ACTIVE'
   };
   await page.route('**/api/agent-sessions/session-1/messages', (route) => {

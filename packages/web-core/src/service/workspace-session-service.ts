@@ -168,7 +168,7 @@ export function createWorkspaceSessionService(options: {
     const withStablePresentation = preserveStablePresentation(current, next);
     const hasActiveRun = options.runs.value.some(
       (run) =>
-        ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status) &&
+        ['RUNNING', 'CANCELLING'].includes(run.status) &&
         (run.sessionId === current?.id || run.sessionId === next.id)
     );
     if (current?.activity !== 'RUNNING' || next.activity === 'RUNNING' || !hasActiveRun)

@@ -1410,16 +1410,15 @@ describe('Web Workbench notification state', () => {
 
   it('accumulates elapsed time for active states and uses completion time for terminal states', () => {
     const base = { startedAt: 100, completedAt: null, updatedAt: 300 };
-    expect(activeRecentRunStatus('STARTING')).toBe(true);
+    expect(activeRecentRunStatus('RUNNING')).toBe(true);
     expect(activeRecentRunStatus('CANCELLING')).toBe(true);
     expect(recentRunTimeReference({ ...base, status: 'CANCELLING' })).toBe(100);
     expect(recentRunTimeReference({ ...base, status: 'SUCCEEDED', completedAt: 250 })).toBe(250);
   });
 
   it.each([
-    ['STARTING', 'transitioning'],
     ['RUNNING', 'running'],
-    ['CANCELLING', 'transitioning'],
+    ['CANCELLING', 'running'],
     ['SUCCEEDED', undefined],
     ['FAILED', undefined],
     ['CANCELLED', undefined],
@@ -1516,7 +1515,7 @@ describe('Web Workbench notification state', () => {
       { ...workspaceRun(), nodeId: 'node-2', runId: 'other-node', sortAt: 400 },
       { ...workspaceRun(), workspaceId: 'workspace-2', runId: 'other-workspace', sortAt: 300 },
       {
-        ...workspaceRun('STARTING'),
+        ...workspaceRun('RUNNING'),
         runId: 'first',
         sessionId: 'first-session',
         startedAt: 200,
@@ -1542,14 +1541,14 @@ describe('Web Workbench notification state', () => {
       run.sessionId === 'first-session' ? { ...run, status: 'SUCCEEDED' as const } : run
     );
     await state.load();
-    expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBe('transitioning');
+    expect(state.workspaceRunActivity('node-1', 'workspace-1')).toBe('running');
     expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
     recentRuns = [];
     await state.load();
     expect(state.workspaceTabSession('node-1', 'workspace-1')).toBeUndefined();
   });
 
-  it.each(['STARTING', 'RUNNING', 'CANCELLING'] as const)(
+  it.each(['RUNNING', 'CANCELLING'] as const)(
     'does not choose a %s Run without unread notifications',
     async (status) => {
       const f = recoveryFixture([]);
@@ -1717,7 +1716,7 @@ describe('Web Workbench notification state', () => {
       ['completed-early', 'SUCCEEDED', 900, 300, 1000],
       ['running', 'RUNNING', 100, null, 100],
       ['completed-late', 'FAILED', 200, 600, 600],
-      ['starting', 'STARTING', 150, null, 150],
+      ['second-running', 'RUNNING', 150, null, 150],
       ['cancelling', 'CANCELLING', 50, null, 50],
       ['no-completion', 'INTERRUPTED', 300, null, 500],
       ['cancelled', 'CANCELLED', 800, 400, 400]
@@ -1742,7 +1741,7 @@ describe('Web Workbench notification state', () => {
     });
     await state.load();
     expect(state.recentRuns.value.map((run) => run.runId)).toEqual([
-      'starting',
+      'second-running',
       'running',
       'cancelling',
       'completed-late',

@@ -103,7 +103,8 @@ describe('Shared Run State Convergence', () => {
     expect(newestRunSnapshot(current, { ...current, status: 'SUCCEEDED', version: 2 })).toBe(
       current
     );
-    expect(newestRunSnapshot(current, { ...current, status: 'STARTING' })).toBe(current);
+    const stopping = { ...current, status: 'CANCELLING' };
+    expect(newestRunSnapshot(stopping, current)).toBe(stopping);
     expect(newestRunSnapshot(current, { ...current, status: 'SUCCEEDED' }).status).toBe(
       'SUCCEEDED'
     );
@@ -135,8 +136,8 @@ describe('Shared Run State Convergence', () => {
 
     expect(state.runs.value.map((run) => run.id)).toEqual(['run-live', 'run-old']);
     expect(
-      newestRunSnapshot(state.runs.value[0], { ...state.runs.value[0]!, status: 'STARTING' }).status
-    ).toBe('RUNNING');
+      newestRunSnapshot(state.runs.value[0], { ...state.runs.value[0]!, version: 1 }).version
+    ).toBe(2);
   });
 
   it('An authoritative Session snapshot silently removes an active Run that existed before refresh but is no longer returned by Node', () => {
@@ -192,7 +193,7 @@ describe('Shared Run State Convergence', () => {
       {
         id: 'run-1',
         sessionId: 'session-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'message-1',
         version: 1

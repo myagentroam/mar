@@ -153,11 +153,12 @@ const template = {
 };
 const alternate = { ...template, id: 'template-2', name: 'Second template' };
 
-test('Hosted history uses green for running and neutral dots for transitions', async ({ page }) => {
+test('Hosted history uses green dots for running and stopping, with no idle dot', async ({
+  page
+}) => {
   const states = [
     { status: 'RUNNING', label: 'Running', color: 'rgb(53, 213, 110)' },
-    { status: 'STARTING', label: 'Starting', color: 'rgb(194, 194, 194)' },
-    { status: 'CANCELLING', label: 'Stopping', color: 'rgb(194, 194, 194)' },
+    { status: 'CANCELLING', label: 'Stopping', color: 'rgb(53, 213, 110)' },
     { status: 'IDLE', label: undefined, color: undefined }
   ] as const;
   await page.setViewportSize({ width: 1280, height: 850 });
@@ -559,7 +560,7 @@ async function openHostedSend(
   const prompt = 'Display this only from Hosted Watch.';
   const message = page.locator('.hosted-timeline-scroll').getByText(prompt, { exact: true });
 
-  async function emitRun(status: 'STARTING' | 'RUNNING' | 'CANCELLING' | 'SUCCEEDED' = 'RUNNING') {
+  async function emitRun(status: 'RUNNING' | 'CANCELLING' | 'SUCCEEDED' = 'RUNNING') {
     const { clientMessageId } = requests.at(-1)!;
     async function emit(payload: object) {
       await page.evaluate(
@@ -923,11 +924,6 @@ test('Hosted send shows Watch activity immediately and does not revive a termina
     await expect.poll(() => f.requests.length).toBe(1);
     const ring = f.working.locator('.mar-busy-indicator');
     const activityColor = 'rgb(77, 163, 255)';
-    await f.emitRun('STARTING');
-    await expect(f.working.getByRole('status')).toHaveText('Preparing');
-    await expect(f.working).toHaveCSS('color', activityColor);
-    await expect(ring).toHaveCSS('color', activityColor);
-
     await f.emitRun();
     await expect(f.sending).toBeVisible();
     await expect(f.message).toBeVisible();

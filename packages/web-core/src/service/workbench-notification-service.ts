@@ -85,8 +85,7 @@ export interface RecentRun {
   readonly sessionTitle: string;
   readonly userMessage?: string;
   readonly runner: string;
-  readonly status:
-    'STARTING' | 'RUNNING' | 'CANCELLING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
+  readonly status: 'RUNNING' | 'CANCELLING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
   readonly interruptionReason?: 'USER_STOP';
   readonly createdAt: number;
   readonly startedAt: number;
@@ -95,8 +94,6 @@ export interface RecentRun {
   readonly updatedAt: number;
   readonly version: number;
 }
-
-export type WorkspaceRunActivity = 'running' | 'transitioning';
 
 export type WorkbenchNotificationInput = (
   | Omit<
@@ -125,7 +122,7 @@ export interface WorkbenchNotificationService {
   readonly systemNotifications: ReturnType<typeof createWorkbenchSystemNotificationService>;
   readonly recentRuns: Readonly<Ref<RecentRun[]>>;
   readonly snapshotState: Readonly<Ref<'loading' | 'ready' | 'failed'>>;
-  workspaceRunActivity(nodeId: string, workspaceId: string): WorkspaceRunActivity | undefined;
+  workspaceRunActivity(nodeId: string, workspaceId: string): 'running' | undefined;
   hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean;
   workspaceTabSession(nodeId: string, workspaceId: string): string | undefined;
   hasUnreadSession(nodeId: string, workspaceId: string, sessionId: string): boolean;
@@ -838,17 +835,15 @@ export function createWorkbenchNotificationService(
     persist();
   }
 
-  function workspaceRunActivity(
-    nodeId: string,
-    workspaceId: string
-  ): WorkspaceRunActivity | undefined {
-    let activity: WorkspaceRunActivity | undefined;
-    for (const run of recentRuns.value) {
-      if (run.nodeId !== nodeId || run.workspaceId !== workspaceId) continue;
-      if (run.status === 'RUNNING') return 'running';
-      if (activeRecentRunStatus(run.status)) activity = 'transitioning';
-    }
-    return activity;
+  function workspaceRunActivity(nodeId: string, workspaceId: string): 'running' | undefined {
+    return recentRuns.value.some(
+      (run) =>
+        run.nodeId === nodeId &&
+        run.workspaceId === workspaceId &&
+        activeRecentRunStatus(run.status)
+    )
+      ? 'running'
+      : undefined;
   }
 
   function hasUnreadWorkspace(nodeId: string, workspaceId: string): boolean {
@@ -1190,15 +1185,9 @@ function isRecentRun(value: unknown): value is RecentRun {
       value.sessionGroup === 'CHILD') &&
     (value.userMessage === undefined || typeof value.userMessage === 'string') &&
     typeof value.runner === 'string' &&
-    [
-      'STARTING',
-      'RUNNING',
-      'CANCELLING',
-      'SUCCEEDED',
-      'FAILED',
-      'CANCELLED',
-      'INTERRUPTED'
-    ].includes(String(value.status)) &&
+    ['RUNNING', 'CANCELLING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(
+      String(value.status)
+    ) &&
     (value.interruptionReason === undefined || value.interruptionReason === 'USER_STOP') &&
     typeof value.createdAt === 'number' &&
     typeof value.startedAt === 'number' &&
