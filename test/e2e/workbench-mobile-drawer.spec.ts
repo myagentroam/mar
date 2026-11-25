@@ -39,7 +39,7 @@ for (const theme of ['daylight', 'dark']) {
       await expect(menu.getByRole('menuitem')).toHaveText(['版本 v0.10.1', 'Web性能', '帮助']);
       const version = menu.getByRole('menuitem', { name: '版本 v0.10.1，刷新当前页面' });
       const icons = menu.getByRole('menuitem').locator('svg.mar-icon');
-      for (const [index, icon] of ['tag', 'info', 'document'].entries()) {
+      for (const [index, icon] of ['tag', 'info', 'help'].entries()) {
         await expect(icons.nth(index)).toBeVisible();
         await expect(icons.nth(index)).toHaveAttribute('data-mar-icon', icon);
         await expect(icons.nth(index)).toHaveAttribute('aria-hidden', 'true');
