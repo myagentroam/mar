@@ -4029,7 +4029,10 @@ test('New session drafts ignore late history pagination responses from the previ
   await page.locator('.session-list .session-link').first().click();
   await expect.poll(() => receivedWatchRequest).toBe(true);
 
-  await page.getByRole('button', { name: '新建会话', exact: true }).click();
+  await page
+    .getByLabel('工作区会话', { exact: true })
+    .getByRole('button', { name: '新建会话', exact: true })
+    .click();
   releaseWatchRequest?.();
 
   await expect(page.getByRole('heading', { name: '新建会话' })).toBeVisible();

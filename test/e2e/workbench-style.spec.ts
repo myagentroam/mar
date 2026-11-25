@@ -1570,9 +1570,7 @@ for (const theme of ['daylight', 'dark']) {
     await expect(
       inspector.getByRole('button', { name: 'Refresh Git changes', exact: true })
     ).toBeEnabled();
-    await list.evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
+    await list.locator('.change-append-state').scrollIntoViewIfNeeded();
     await expect(list.locator('.change-path')).toHaveCount(205);
     expect(reads).toBe(3);
     await expect(inspector.getByRole('button', { name: 'Load more' })).toHaveCount(0);

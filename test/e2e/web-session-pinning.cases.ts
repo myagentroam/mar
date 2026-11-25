@@ -195,18 +195,16 @@ test('Scheduled tasks show scope-specific page titles and summaries', async ({ p
     .or(refresh)
     .evaluateAll((elements) =>
       elements.map((element) => {
-        const { x, top, bottom, right } = element.getBoundingClientRect();
-        return { x, top, bottom, right };
+        const { x, top, bottom } = element.getBoundingClientRect();
+        return { x, top, bottom };
       })
     );
   expect(Math.abs(titleBox!.x - summaryBox!.x)).toBeLessThan(1);
   expect(Math.abs(titleBox!.x - labelBox!.x)).toBeLessThan(1);
   expect(summaryBox!.top).toBeGreaterThanOrEqual(titleBox!.bottom);
   expect(filterBox!.top).toBeGreaterThanOrEqual(summaryBox!.bottom);
-  expect(refreshBox!.x).toBeGreaterThanOrEqual(filterBox!.right);
-  expect(
-    Math.abs(refreshBox!.top + refreshBox!.bottom - filterBox!.top - filterBox!.bottom)
-  ).toBeLessThan(2);
+  expect(refreshBox!.top).toBeGreaterThanOrEqual(filterBox!.bottom);
+  expect(Math.abs(titleBox!.x - refreshBox!.x)).toBeLessThan(1);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(summary).toBeInViewport();
