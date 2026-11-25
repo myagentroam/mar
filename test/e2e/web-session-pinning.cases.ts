@@ -284,8 +284,9 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
       ]
     })
   );
+  let readerSessionPage: (typeof targetSession)[] = [targetSession];
   await page.route(/\/api\/agent-sessions\?nodeId=node-2(?:&.*)?$/, (route) =>
-    json(route, { sessions: [targetSession], nextCursor: null })
+    json(route, { sessions: readerSessionPage, nextCursor: null })
   );
   await page.route(/\/api\/runner-profiles\?nodeId=node-2(?:&.*)?$/, (route) =>
     json(route, {
@@ -959,8 +960,14 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(navigationCard.getByRole('link')).toHaveCount(0);
   await expect(navigationCard.getByRole('button', { name: 'project', exact: true })).toHaveCount(0);
   const cardTitle = hoverCard.getByRole('button', { name: '检查构建', exact: true });
+  // The existing binding can be outside the session picker's first page.
+  readerSessionPage = [];
   await hoverCard.locator('.workspace-label').click();
   await expect(editor.getByRole('tablist', { name: '任务详情' })).toBeVisible();
+  await expect(editor.getByRole('combobox', { name: '运行会话', exact: true })).toHaveAttribute(
+    'placeholder',
+    '定时会话'
+  );
   await expectTargetLayout();
   await expect(editor.getByRole('button', { name: /^(保存|删除任务|接受|拒绝)$/ })).toHaveCount(0);
   await expect(editor.getByText('建议名称', { exact: true })).toBeVisible();

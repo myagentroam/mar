@@ -55,7 +55,14 @@ const props = defineProps<{
   client: ReturnType<typeof scheduledTaskClient>;
   nodes: ScheduleNode[];
   lockedSession?: ScheduleSessionContext | undefined;
-  editing?: { key: ScheduleTaskKey; detail: ScheduleDetail; mode?: 'view' | 'edit' } | undefined;
+  editing?:
+    | {
+        key: ScheduleTaskKey;
+        detail: ScheduleDetail;
+        mode?: 'view' | 'edit';
+        sessionTitle?: string;
+      }
+    | undefined;
 }>();
 const emit = defineEmits<{ close: []; changed: [] }>();
 const notificationHintId = useId();
@@ -89,6 +96,9 @@ const form = reactive({
       ? []
       : [triggerDraft(nextId++)]
 });
+const savedSessionTitle = computed(() =>
+  form.sessionId === saved?.sessionId ? editing?.sessionTitle : undefined
+);
 const dialog = ref<{ handleClose(): void }>();
 const taskForm = ref<FormInstance & { $el: HTMLElement }>();
 const timeForm = ref<FormInstance & { $el: HTMLElement }>();
@@ -596,7 +606,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                     form.sessionId &&
                     !sessions.some((item) => (item.externalSessionId ?? item.id) === form.sessionId)
                   "
-                  :label="lockedSession?.title ?? form.sessionId"
+                  :label="lockedSession?.title ?? savedSessionTitle ?? form.sessionId"
                   :value="form.sessionId"
                 />
                 <MarOption

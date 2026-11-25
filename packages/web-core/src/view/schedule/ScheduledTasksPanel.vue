@@ -96,7 +96,13 @@ const detailFailure = shallowRef<unknown>();
 const detailLoading = ref(false);
 const runReceipt = shallowRef<ScheduleRunReceipt>();
 const editor = shallowRef<
-  | { key: ScheduleTaskKey; detail: ScheduleDetail; mode: 'view' | 'edit'; invoker?: HTMLElement }
+  | {
+      key: ScheduleTaskKey;
+      detail: ScheduleDetail;
+      mode: 'view' | 'edit';
+      sessionTitle?: string;
+      invoker?: HTMLElement;
+    }
   | 'new'
 >();
 let listRead: AbortController | undefined;
@@ -221,7 +227,12 @@ onBeforeUnmount(() => {
   detailRead?.abort();
 });
 
-async function openTask(key: ScheduleTaskKey, mode: 'view' | 'edit', proposalId?: string) {
+async function openTask(
+  key: ScheduleTaskKey & Partial<Pick<ScheduleCard, 'sessionId' | 'sessionTitle'>>,
+  mode: 'view' | 'edit',
+  proposalId?: string
+) {
+  const { sessionId, sessionTitle } = key;
   const active = globalThis.document?.activeElement;
   const invoker =
     active && active instanceof HTMLElement && active !== active.ownerDocument.body
@@ -241,7 +252,15 @@ async function openTask(key: ScheduleTaskKey, mode: 'view' | 'edit', proposalId?
         detail = { ...detail, proposals: [proposal] };
       }
       selectedTask.value = undefined;
-      editor.value = { key, detail, mode, ...(invoker ? { invoker } : {}) };
+      editor.value = {
+        key,
+        detail,
+        mode,
+        ...(sessionId && sessionId === detail.task.sessionId && sessionTitle
+          ? { sessionTitle }
+          : {}),
+        ...(invoker ? { invoker } : {})
+      };
     }
   } catch (error) {
     if (!read.signal.aborted) {

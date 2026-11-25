@@ -539,6 +539,35 @@ describe('Scheduled tasks workbench', () => {
     }
   });
 
+  it.each([
+    { sessionId: 'session', label: 'Build checks' },
+    { sessionId: 'replacement', label: 'replacement' }
+  ])(
+    'labels the detail binding $sessionId without looking beyond the first session page',
+    async ({ sessionId, label }) => {
+      const request = vi.fn(async (path: string) => {
+        if (path.startsWith('/api/agent-sessions?')) return { sessions: [], nextCursor: 'next' };
+        if (path.startsWith('/api/workspaces?')) return { workspaces: [] };
+        if (path.includes('/same-id?'))
+          return { task: { ...task, sessionId, triggers: [] }, mine: true, proposals: [] };
+        return taskPage([{ ...task, sessionTitle: 'Build checks' }]);
+      });
+      const view = renderComponent(ScheduledTasksPanel, { request, section: 'all' });
+      try {
+        await flushComponent();
+        await trigger(button(view, 'Task A'), 'onClick');
+        expect(
+          view.findAll('MarOption').find((option) => option.props.value === sessionId)?.props.label
+        ).toBe(label);
+        expect(
+          request.mock.calls.filter(([path]) => path.startsWith('/api/agent-sessions?'))
+        ).toHaveLength(1);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it('keeps a scheduled refresh when a different Workspace changes and releases it on unmount', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const request = vi.fn(async (path: string) =>
