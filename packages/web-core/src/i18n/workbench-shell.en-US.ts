@@ -152,7 +152,7 @@ export const workbenchShellEnUS = {
       offline: 'Offline',
       unsupported: 'Scheduling unavailable',
       lastSynced: 'Last synced',
-      owner: 'Runs as',
+      owner: 'Created by',
       unbound: 'Session needs rebinding',
       finished: 'Schedule finished',
       editTask: 'Edit',

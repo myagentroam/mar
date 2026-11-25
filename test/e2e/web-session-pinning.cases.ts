@@ -554,11 +554,17 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(hoverCard).not.toHaveCSS('background-color', restingBackground);
   await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-hover.png') });
   const linkedSession = hoverCard.getByRole('button', { name: '定时会话：打开会话' });
+  await expect(hoverCard.getByText('创建者', { exact: true })).toBeVisible();
   await expect(linkedSession).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const restingSessionColor = await linkedSession.evaluate(
+    (button) => getComputedStyle(button).color
+  );
   const bodyColor = await hoverCard.evaluate((card) => getComputedStyle(card).color);
-  await expect(linkedSession).toHaveCSS('color', bodyColor);
+  expect(restingSessionColor).not.toBe(bodyColor);
   await linkedSession.hover();
-  await expect(linkedSession).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(hoverCard).toHaveCSS('background-color', restingBackground);
+  await expect(linkedSession).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(linkedSession).toHaveCSS('color', bodyColor);
   await page.screenshot({ path: info.outputPath('scheduled-card-session-hover.png') });
   await panel.locator('.card').filter({ hasText: '检查构建' }).locator('.objective').hover();
   await expect(page.getByRole('tooltip')).toHaveText(promptPreview);

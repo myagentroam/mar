@@ -170,7 +170,7 @@ function onCardClick(event: MouseEvent): void {
   cursor: pointer;
 }
 @media (hover: hover) {
-  .card--interactive:hover {
+  .card--interactive:hover:not(:has(.card-session-action:hover)) {
     background: color-mix(in srgb, var(--mar-bg-panel), var(--mar-fill-row-hover) 42%);
     border-block-start-color: var(--mar-border-medium);
   }
@@ -204,11 +204,11 @@ h3 {
   letter-spacing: inherit;
   text-align: start;
 }
-@media (hover: hover) {
-  .card .card-session-action:hover {
-    background: var(--mar-fill-row-hover);
-    color: var(--mar-text-primary);
-  }
+.card-session-action {
+  --mar-ui-button-hover-bg: transparent;
+  --mar-ui-button-active-bg: transparent;
+  --mar-ui-button-hover-fg: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
 }
 .card-title-action:focus-visible {
   outline: none;

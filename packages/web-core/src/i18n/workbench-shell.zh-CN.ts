@@ -149,7 +149,7 @@ export const workbenchShellZhCN = {
       offline: '离线',
       unsupported: '不支持定时',
       lastSynced: '上次同步',
-      owner: '执行人',
+      owner: '创建者',
       unbound: '需重新绑定会话',
       finished: '排期已结束',
       editTask: '编辑',
