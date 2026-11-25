@@ -498,16 +498,13 @@ describe('Scheduled tasks workbench', () => {
     }
   });
 
-  it('opens the exact Workspace or bound session only from an online card', async () => {
+  it('offers card navigation only for an online task with a bound session', async () => {
     const request = vi.fn().mockResolvedValue({
-      items: [task, { ...task, nodeId: 'b', offline: true }],
-      nodes: [node],
-      page: 1,
-      pageSize: 20,
-      get total() {
-        return this.items.length;
-      },
-      hasMore: false,
+      ...taskPage([
+        task,
+        { ...task, nodeId: 'b', offline: true },
+        { ...task, id: 'new-session', sessionId: null, targetKind: 'newSession' }
+      ]),
       unavailableNodeIds: ['b']
     });
     const onOpenTarget = vi.fn();
@@ -516,11 +513,11 @@ describe('Scheduled tasks workbench', () => {
       await flushComponent();
       const controls = (label: string) =>
         view.findAll('MarButton').filter((item) => textContent(item).trim() === label);
-      expect(controls('project')).toHaveLength(1);
-      expect(controls('session')).toHaveLength(1);
-      await trigger(controls('project')[0]!, 'onClick');
-      await trigger(controls('session')[0]!, 'onClick');
-      expect(onOpenTarget.mock.calls).toEqual([[scope], [{ ...scope, sessionId: 'session' }]]);
+      expect(controls('project')).toHaveLength(0);
+      expect(controls('session')).toHaveLength(0);
+      expect(controls('Task A')).toHaveLength(1);
+      await trigger(controls('Task A')[0]!, 'onClick');
+      expect(onOpenTarget).toHaveBeenCalledExactlyOnceWith({ ...scope, sessionId: 'session' });
     } finally {
       view.unmount();
     }

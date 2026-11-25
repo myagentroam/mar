@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, useTemplateRef } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { MarIconGraphic } from '@myagentroam/mar-ui/icons';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { readOverflowText } from '@myagentroam/mar-ui/tooltip';
 import { translate } from '../../service/locale-preference-service.js';
-import type { ScheduleCard, ScheduleScope } from '../../service/scheduled-task-client.js';
+import type { ScheduleCard, ScheduleSessionScope } from '../../service/scheduled-task-client.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 
 // Presents one summary and emits navigation or task actions; it does not fetch or mutate a task.
@@ -13,13 +12,14 @@ const props = defineProps<{ task: ScheduleCard }>();
 const emit = defineEmits<{
   open: [];
   history: [];
-  openTarget: [target: ScheduleScope & { sessionId?: string }];
+  openTarget: [target: ScheduleSessionScope];
 }>();
 const msg = (key: string, args?: Record<string, string>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const title = useTemplateRef<HTMLElement>('title');
 const preview = useTemplateRef<HTMLElement>('preview');
-const nodeName = useTemplateRef<HTMLElement>('nodeName');
+const workspaceLabel = useTemplateRef<HTMLElement>('workspaceLabel');
+const sessionLabel = useTemplateRef<HTMLElement>('sessionLabel');
 const session = computed(() =>
   props.task.targetKind === 'existing' ? props.task.sessionId : null
 );
@@ -28,6 +28,11 @@ const targetLabel = computed(() =>
     ? (props.task.sessionTitle ?? session.value)
     : msg(props.task.targetKind === 'newSession' ? 'newSession' : 'unbound')
 );
+const sessionTarget = computed<ScheduleSessionScope | undefined>(() => {
+  const { offline, nodeId, workspaceId } = props.task;
+  const sessionId = session.value;
+  if (!offline && sessionId !== null) return { nodeId, workspaceId, sessionId };
+});
 const state = computed(() => {
   const { offline, targetKind, enabled, nextRunAt } = props.task;
   if (offline) return 'offline';
@@ -42,22 +47,31 @@ const previewTooltip = () => {
     : undefined;
 };
 
-function openTarget(sessionId?: string): void {
-  const { nodeId, workspaceId } = props.task;
-  emit('openTarget', { nodeId, workspaceId, ...(sessionId === undefined ? {} : { sessionId }) });
+function openSession(): void {
+  const target = sessionTarget.value;
+  if (target) emit('openTarget', target);
+}
+
+function onCardClick(event: MouseEvent): void {
+  if (!sessionTarget.value || (event.target as Element).closest('button')) return;
+  const card = event.currentTarget as HTMLElement;
+  const selection = card.ownerDocument.getSelection();
+  if (selection && !selection.isCollapsed && selection.containsNode(card, true)) return;
+  openSession();
 }
 </script>
 
 <template>
-  <li class="card">
+  <li class="card" :class="{ 'card--interactive': sessionTarget }" @click="onCardClick">
     <header class="card-heading">
-      <span class="schedule-icon"><MarIconGraphic name="calendar-check" aria-hidden="true" /></span>
       <h3>
         <MarButton
-          v-if="!task.mine && !task.offline"
+          v-if="sessionTarget"
+          class="card-title-action"
+          :aria-label="msg('openTaskSession', { name: task.name })"
           v-tooltip="() => readOverflowText(title)"
           link
-          @click="emit('open')"
+          @click="openSession"
         >
           <span ref="title" class="clip">{{ task.name }}</span>
         </MarButton>
@@ -68,55 +82,37 @@ function openTarget(sessionId?: string): void {
       <MarTag :type="state === 'enabled' ? 'success' : 'info'">{{ msg(state) }}</MarTag>
     </header>
 
-    <div class="resource">
-      <MarIconGraphic name="folder" aria-hidden="true" />
-      <MarButton
-        v-if="!task.offline"
-        v-tooltip="msg('openTaskWorkspace', { name: task.workspaceName })"
-        class="resource-link"
-        link
-        @click="openTarget()"
-        >{{ task.workspaceName }}</MarButton
-      >
-      <span v-else class="wrap">{{ task.workspaceName }}</span>
-      <span aria-hidden="true">·</span>
-      <span ref="nodeName" v-tooltip="() => readOverflowText(nodeName)" class="clip">{{
-        task.nodeName
-      }}</span>
-    </div>
-    <div class="resource">
-      <MarIconGraphic name="conversation" aria-hidden="true" />
-      <MarButton
-        v-if="session !== null && !task.offline"
-        v-tooltip="msg('openTaskSession', { name: targetLabel })"
-        class="resource-link"
-        link
-        @click="openTarget(session)"
-        >{{ targetLabel }}</MarButton
-      >
-      <span v-else class="wrap">{{ targetLabel }}</span>
-    </div>
+    <p
+      ref="workspaceLabel"
+      v-tooltip="() => readOverflowText(workspaceLabel)"
+      class="workspace-label clip"
+    >
+      {{ task.nodeName }} · {{ task.workspaceName }}
+    </p>
+    <p ref="sessionLabel" v-tooltip="() => readOverflowText(sessionLabel)" class="clip">
+      {{ targetLabel }}
+    </p>
     <p v-if="task.objectivePreview" ref="preview" v-tooltip="previewTooltip" class="objective">
       {{ task.objectivePreview }}
     </p>
 
     <dl class="card-facts">
-      <div class="next-run">
-        <dt><MarIconGraphic name="clock" aria-hidden="true" />{{ msg('nextRun') }}</dt>
-        <dd>
-          {{ task.nextRunAt === null ? msg('noUpcoming') : managementDateTime(task.nextRunAt) }}
-        </dd>
-      </div>
       <div>
         <dt>{{ msg('owner') }}</dt>
         <dd>{{ task.ownerName ?? msg('notRecorded') }}</dd>
+      </div>
+      <div>
+        <dt>{{ msg('nextRun') }}</dt>
+        <dd class="next-run">
+          {{ task.nextRunAt === null ? msg('noUpcoming') : managementDateTime(task.nextRunAt) }}
+        </dd>
       </div>
       <div v-if="task.offline && task.syncedAt">
         <dt>{{ msg('lastSynced') }}</dt>
         <dd>{{ managementDateTime(task.syncedAt) }}</dd>
       </div>
     </dl>
-    <div class="card-actions mar-row-actions mar-row-actions--wrap">
+    <footer class="mar-row-actions mar-row-actions--wrap">
       <MarButton
         v-if="task.mine"
         link
@@ -125,10 +121,13 @@ function openTarget(sessionId?: string): void {
         @click="emit('open')"
         >{{ msg('editTask') }}</MarButton
       >
+      <MarButton v-else-if="!task.offline" link icon="info" @click="emit('open')">{{
+        msg('taskDetails')
+      }}</MarButton>
       <MarButton link :disabled="task.offline === true" icon="clock" @click="emit('history')">{{
         msg('history')
       }}</MarButton>
-    </div>
+    </footer>
   </li>
 </template>
 
@@ -138,76 +137,70 @@ function openTarget(sessionId?: string): void {
   flex-direction: column;
   gap: 0.375rem;
   min-inline-size: 0;
-  padding: 0.875rem;
-  border: 1px solid var(--mar-border-default);
-  border-radius: var(--mar-radius-surface);
+  padding: 1rem;
   background: var(--mar-bg-panel);
+  border: 1px solid var(--mar-border-default);
+  border-block-start-color: color-mix(
+    in srgb,
+    var(--mar-border-default),
+    var(--mar-text-primary) 14%
+  );
+  border-radius: var(--mar-radius-control);
+  box-shadow: inset 0 -2px var(--mar-shadow-soft);
+}
+.card--interactive {
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .card--interactive:hover {
+    background: color-mix(in srgb, var(--mar-bg-panel), var(--mar-fill-row-hover) 42%);
+    border-block-start-color: var(--mar-border-medium);
+  }
+}
+.card--interactive:active {
+  box-shadow: inset 0 1px var(--mar-shadow-soft);
+}
+.card:has(.card-title-action:focus-visible) {
+  outline: 2px solid var(--mar-control-focus);
+  outline-offset: 2px;
 }
 .card-heading {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.5rem;
-  margin-block-end: 0.125rem;
-}
-.schedule-icon {
-  display: grid;
-  place-items: center;
-  inline-size: 2rem;
-  block-size: 2rem;
-  border-radius: var(--mar-radius-control);
-  background: var(--mar-bg-subtle);
-  color: var(--mar-text-secondary);
-}
-.schedule-icon svg {
-  inline-size: 1rem;
-  block-size: 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 h3 {
+  min-inline-size: 0;
   margin: 0;
   font-size: var(--mar-font-size-title);
 }
-h3 :deep(button) {
+.card-title-action {
+  display: block;
+  min-block-size: var(--mar-ui-compact-control-size, 24px);
   max-inline-size: 100%;
-  padding-inline: 0;
+  padding: 0;
+  border: 0;
   color: inherit;
-  font-size: inherit;
-  font-weight: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: start;
 }
-.resource,
-.next-run dt {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
+.card-title-action:focus-visible {
+  outline: none;
 }
-.resource {
+p {
+  margin: 0;
+}
+.workspace-label,
+dt {
   color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
 }
-.resource > svg,
-.next-run dt > svg {
-  flex: none;
-  inline-size: 1rem;
-  block-size: 1rem;
-}
-.resource-link {
-  min-inline-size: 0;
-  padding-inline: 0;
-  color: var(--mar-link-text);
-  font-size: inherit;
-  text-decoration: underline;
-  text-underline-offset: 0.16em;
-}
-.resource-link :deep(.mar-ui-button__label),
 .clip {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.wrap {
-  min-inline-size: 0;
-  overflow-wrap: anywhere;
 }
 .objective {
   display: -webkit-box;
@@ -216,14 +209,12 @@ h3 :deep(button) {
   overflow: hidden;
   overflow-wrap: anywhere;
   white-space: pre-line;
-  margin: 0.125rem 0 0.5rem;
 }
 .card-facts {
   display: grid;
   gap: 0.375rem;
   margin: auto 0 0;
-  padding-block-start: 0.375rem;
-  font-size: var(--mar-font-size-meta);
+  padding-block: 0.375rem;
 }
 .card-facts > div {
   display: flex;
@@ -232,24 +223,11 @@ h3 :deep(button) {
   align-items: baseline;
   gap: 0.125rem 0.5rem;
 }
-.card-facts .next-run {
-  border-radius: var(--mar-radius-control);
-  padding: 0.5rem;
-  background: var(--mar-bg-subtle);
-}
-dt {
-  color: var(--mar-text-secondary);
-}
 dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
-.next-run dd {
+.next-run {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-.card-actions {
-  padding-block-start: 0.375rem;
-  border-block-start: 1px solid var(--mar-border-subtle);
 }
 </style>

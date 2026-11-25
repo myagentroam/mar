@@ -10,6 +10,21 @@ export interface ScheduledTime {
   readonly matchedTriggers: readonly number[];
 }
 
+/** Compare calendar rules without changing the persisted row order used by execution snapshots. */
+export function scheduledRulesKey(triggers: readonly ScheduledTrigger[]): string {
+  const canonicalDays = (days: readonly number[]) => [...new Set(days)].sort((a, b) => a - b);
+  const ruleKeys = triggers.map((trigger) => {
+    const base = [trigger.kind, trigger.time];
+    if (trigger.kind === 'once') return JSON.stringify([...base, trigger.date]);
+    if (trigger.kind === 'weekly')
+      return JSON.stringify([...base, canonicalDays(trigger.weekdays)]);
+    if (trigger.kind === 'monthly')
+      return JSON.stringify([...base, canonicalDays(trigger.monthDays)]);
+    return JSON.stringify(base);
+  });
+  return JSON.stringify(ruleKeys.sort());
+}
+
 /** Node's wall-clock evaluator. Reads no runtime state; callers provide the clock and stored zone. */
 export function scheduledTimesAfter(
   triggers: readonly ScheduledTrigger[],

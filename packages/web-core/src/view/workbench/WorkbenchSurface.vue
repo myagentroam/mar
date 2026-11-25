@@ -38,7 +38,7 @@ import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue'
 import WorkspaceSessionActionsMenu from '../workspace/WorkspaceSessionActionsMenu.vue';
 import SessionPromptDialog from '../workspace/SessionPromptDialog.vue';
 import ScheduledTasksPanel from '../schedule/ScheduledTasksPanel.vue';
-import type { ScheduleScope, ScheduleSessionScope } from '../../service/scheduled-task-client.js';
+import type { ScheduleSessionScope } from '../../service/scheduled-task-client.js';
 import type {
   ScheduleSessionContext,
   ScheduledTasksLocation,
@@ -90,20 +90,18 @@ const emit = defineEmits<{
   selectScheduleSection: [section: ScheduleSection];
 }>();
 async function openScheduledTarget(
-  target: ScheduleScope & { sessionId?: string; runId?: string }
+  target: ScheduleSessionScope & { runId?: string }
 ): Promise<void> {
   const source = props.schedules;
   const { selection } = props.page;
-  if (target.sessionId === undefined)
-    await selection.openWorkspaceTarget(target.nodeId, target.workspaceId);
-  else await selection.openSessionGroupTarget({ ...target, sessionId: target.sessionId });
+  await selection.openSessionGroupTarget(target);
   if (props.schedules !== source) return;
   const selected = selection.workspaceTarget;
   const pane = props.page.mainPaneController;
   if (
     selected?.nodeId === target.nodeId &&
     selected.workspaceId === target.workspaceId &&
-    (target.sessionId === undefined || pane.selectedSessionId.value === target.sessionId)
+    pane.selectedSessionId.value === target.sessionId
   ) {
     if (target.runId !== undefined) pane.selectRun(target.runId);
     emit('closeSchedules');

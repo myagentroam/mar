@@ -2335,7 +2335,6 @@ export function createWorkbenchPageController<
         if (workspaceTarget.value !== undefined) void selectWorkspace(workspaceTarget.value);
       },
       selectedSessionId,
-      openWorkspaceTarget: openWorkspaceFromTree,
       openSessionFromList,
       openSessionGroupTarget,
       openNewSessionComposer,

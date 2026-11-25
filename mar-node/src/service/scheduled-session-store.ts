@@ -9,7 +9,11 @@ import {
   type ScheduledTaskState,
   type ScheduledTrigger
 } from '@myagentroam/protocol';
-import { assertScheduleTimezone, scheduledTimesAfter } from './scheduled-session-recurrence.js';
+import {
+  assertScheduleTimezone,
+  scheduledRulesKey,
+  scheduledTimesAfter
+} from './scheduled-session-recurrence.js';
 
 type SqlRow = Record<string, string | number | bigint | Uint8Array | null>;
 
@@ -384,7 +388,8 @@ export class ScheduledSessionStore {
       const now = this.now();
       const nextRunAt = enabled
         ? !current.enabled ||
-          JSON.stringify(triggers) !== JSON.stringify(current.triggers) ||
+          (triggers !== current.triggers &&
+            scheduledRulesKey(triggers) !== scheduledRulesKey(current.triggers)) ||
           timezone !== current.timezone
           ? requireNext(triggers, timezone, now)
           : current.nextRunAt

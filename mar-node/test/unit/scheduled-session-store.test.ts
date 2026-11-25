@@ -115,6 +115,51 @@ describe('scheduled session store', () => {
     }
   });
 
+  it('keeps an unclaimed due time when only trigger and calendar selection order changes', () => {
+    let now = Date.parse('2026-11-23T08:00:00Z');
+    const database = new NodeDatabase(':memory:', 'schedule-rule-order', () => now);
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/schedule-order',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'order',
+        workspaceId: workspace.id
+      });
+      const store = new ScheduledSessionStore(database.raw, () => now);
+      let task = store.create({
+        sessionId: 'order',
+        workspaceId: workspace.id,
+        runner: 'codex',
+        ownerUserId: 1,
+        name: 'Calendar rules',
+        objective: 'Check',
+        triggers: [
+          { kind: 'weekly', time: '09:00', weekdays: [1, 5] },
+          { kind: 'monthly', time: '10:00', monthDays: [23, 30] }
+        ],
+        timezone: 'UTC'
+      });
+      const dueAt = Date.parse('2026-11-23T09:00:00Z');
+      expect(task.nextRunAt).toBe(dueAt);
+      now = dueAt + 1;
+      task = store.update(task.id, task.revision, {
+        objective: 'Renamed instructions',
+        triggers: [
+          { kind: 'monthly', time: '10:00', monthDays: [30, 23] },
+          { kind: 'weekly', time: '09:00', weekdays: [5, 1, 5] }
+        ]
+      });
+      expect(task.nextRunAt).toBe(dueAt);
+      expect(store.claim(task.id, dueAt, task.revision)).toBeDefined();
+    } finally {
+      database.close();
+    }
+  });
+
   it('advances a delayed DST claim and re-enabled task beyond the repeated local minute', () => {
     let now = Date.parse('2025-11-02T05:00:00Z');
     const database = new NodeDatabase(':memory:', 'node-dst', () => now);

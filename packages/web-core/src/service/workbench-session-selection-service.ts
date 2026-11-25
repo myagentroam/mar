@@ -293,7 +293,6 @@ export interface WorkbenchSelectionView {
   workspaceSelectionLoading: boolean;
   retryWorkspaceSelection: () => void;
   selectedSessionId: string | undefined;
-  openWorkspaceTarget: (nodeId: string, workspaceId: string) => Promise<void>;
   openSessionFromList: (sessionId: string) => Promise<void>;
   openSessionGroupTarget: (target: {
     nodeId: string;

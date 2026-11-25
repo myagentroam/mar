@@ -376,6 +376,12 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   });
   await page.route(/\/api\/scheduled-tasks\/task(?:\?.*)?$/, async (route) => {
     const url = new URL(route.request().url());
+    if (url.searchParams.get('nodeId') === 'node-1')
+      return json(route, {
+        task: { ...task, name: '另一节点的相同任务 ID', sessionId: 'session-1' },
+        mine: false,
+        proposals: []
+      });
     if (route.request().method() === 'PUT')
       writes.push({
         url,
@@ -480,7 +486,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
     ['page', '1']
   ]);
   await expect(panel.getByRole('heading', { name: '我的定时', level: 2 })).toBeVisible();
-  await expect(panel.getByRole('heading', { name: '检查构建', level: 3 })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: /检查构建/, level: 3 })).toBeVisible();
   await expect(panel.getByRole('heading', { name: '接下来', exact: true })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
   await expect(panel.getByText('下次执行', { exact: true })).toHaveCount(2);
@@ -526,6 +532,14 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
     .locator('html')
     .evaluate((element) => element.setAttribute('data-theme', 'vscode-dark-2026'));
   await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-desktop.png') });
+  const hoverCard = panel.locator('.card').filter({ hasText: '检查构建' });
+  const restingBackground = await hoverCard.evaluate(
+    (card) => getComputedStyle(card).backgroundColor
+  );
+  await hoverCard.hover({ position: { x: 8, y: 8 } });
+  await expect(hoverCard).toHaveCSS('cursor', 'pointer');
+  await expect(hoverCard).not.toHaveCSS('background-color', restingBackground);
+  await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-hover.png') });
   await panel.locator('.card').filter({ hasText: '检查构建' }).locator('.objective').hover();
   await expect(page.getByRole('tooltip')).toHaveText(promptPreview);
   await page.screenshot({ path: info.outputPath('scheduled-card-tooltip.png') });
@@ -905,11 +919,38 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   };
   const navigationCard = panel.locator('.card').filter({ hasText: '另一节点的相同任务 ID' });
   await openAllSchedules();
-  await navigationCard.getByRole('button', { name: 'project', exact: true }).click();
+  await expect(navigationCard.getByRole('link')).toHaveCount(0);
+  await expect(navigationCard.getByRole('button', { name: 'project', exact: true })).toHaveCount(0);
+  await expect(navigationCard.getByRole('button', { name: '既有会话', exact: true })).toHaveCount(
+    0
+  );
+  await navigationCard.getByRole('button', { name: '任务详情', exact: true }).click();
+  await expect(editor).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect(editor.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
+  const unboundCard = panel.locator('.card').filter({ hasText: '复盘失败' });
+  await expect(unboundCard).toHaveCSS('cursor', 'auto');
+  await unboundCard.locator('.objective').click();
+  await expect(panel).toBeVisible();
+  const objective = navigationCard.locator('.objective');
+  await objective.evaluate((text) => {
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    document.getSelection()!.addRange(range);
+  });
+  await objective.dispatchEvent('click');
+  await expect(panel).toBeVisible();
+  await objective.evaluate(() => document.getSelection()!.removeAllRanges());
+  await objective.click();
   await expect(panel).toBeHidden();
-  await expect(header.getByText('project', { exact: true })).toBeVisible();
+  await expect(page.getByText('较早的对话', { exact: true })).toBeVisible();
   await openAllSchedules();
-  await navigationCard.getByRole('button', { name: '既有会话', exact: true }).click();
+  const openSession = navigationCard.getByRole('button', {
+    name: '另一节点的相同任务 ID：打开绑定会话'
+  });
+  await openSession.press('Enter');
   await expect(panel).toBeHidden();
   await expect(page.getByText('较早的对话', { exact: true })).toBeVisible();
 });

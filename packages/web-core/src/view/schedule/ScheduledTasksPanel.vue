@@ -58,7 +58,7 @@ const props = defineProps<{
   invalidation?: ScheduleInvalidation | undefined;
 }>();
 const emit = defineEmits<{
-  openTarget: [target: ScheduleScope & { sessionId?: string; runId?: string }];
+  openTarget: [target: ScheduleSessionScope & { runId?: string }];
   backToAll: [];
 }>();
 const client = scheduledTaskClient(props.request);
