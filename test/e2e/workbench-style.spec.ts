@@ -58,7 +58,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(checkbox).toBeChecked();
     await expect(checkbox).toHaveCSS(
       'background-color',
-      theme === 'daylight' ? 'rgb(0, 87, 219)' : 'rgb(222, 222, 222)'
+      theme === 'daylight' ? 'rgb(0, 87, 219)' : 'rgb(23, 137, 252)'
     );
     await expect(option.locator('svg')).toBeVisible();
     await option.screenshot({ path: testInfo.outputPath('regex-checked.png') });

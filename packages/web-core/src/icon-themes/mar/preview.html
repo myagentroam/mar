@@ -96,6 +96,7 @@
         --mar-control-intent-border-strength: 100%;
         --mar-control-intent-hover-border-strength: 90%;
         --mar-control-focus: #174e9e;
+        --mar-drop-indicator: #174e9e;
         --mar-control-link-text: #174e9e;
         --mar-control-link-hover: #123a78;
         --mar-link-text: #174e9e;
@@ -153,6 +154,7 @@
         --mar-workbench-header-height: 44px;
         --mar-session-sidebar-width: 238px;
         --mar-inspector-min-width: 250px;
+        --mar-inspector-content-inset: 0.375rem;
         --mar-terminal-font-size: 12;
         --mar-terminal-background: #0e1116;
         --mar-terminal-surface: #131922;
@@ -210,10 +212,10 @@
         --mar-conversation-activity-fg: var(--mar-palette-blue-activity);
         --mar-conversation-activity-fill: #2472d4;
 
-        --mar-control-primary-bg: #dedede;
+        --mar-control-primary-bg: #1789fc;
         --mar-control-primary-fg: #181818;
-        --mar-control-primary-hover: #eeeeee;
-        --mar-control-primary-active: #c4c4c4;
+        --mar-control-primary-hover: #2f96ff;
+        --mar-control-primary-active: #1782f8;
         --mar-control-intent-fg: initial;
         --mar-control-intent-fill-base: var(--mar-bg-panel);
         --mar-control-intent-fill-strength: 8%;
@@ -222,6 +224,7 @@
         --mar-control-intent-border-strength: 64%;
         --mar-control-intent-hover-border-strength: 64%;
         --mar-control-focus: #75b7ff;
+        --mar-drop-indicator: #75b7ff;
         --mar-control-link-text: #eaeaea;
         --mar-control-link-hover: #f0f0f0;
         --mar-link-text: #75b7ff;
@@ -259,6 +262,15 @@
         );
 
         --mar-scrollbar-thumb: #707070;
+      }
+
+      @media (forced-colors: active) {
+        :root,
+        html.console-ui[data-theme],
+        .mar-theme-preview,
+        .mar-theme-preview[data-theme] {
+          --mar-drop-indicator: Highlight;
+        }
       }
 
       /* Keep anchored overlays readable over any workspace surface without changing the palette. */

@@ -688,7 +688,7 @@ test('console bootstrap ignores missing, invalid, and mismatched theme snapshots
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', expected);
     await expect(page.locator('.mar-bootstrap__trace')).toHaveCSS(
       'color',
-      themeId === 'daylight' ? 'rgb(0, 87, 219)' : 'rgb(222, 222, 222)'
+      themeId === 'daylight' ? 'rgb(0, 87, 219)' : 'rgb(23, 137, 252)'
     );
     expect(await page.locator('html').evaluate((root) => root.classList.contains('dark'))).toBe(
       themeId !== 'daylight'
@@ -2636,14 +2636,14 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(222, 222, 222)' : 'rgb(0, 87, 219)'
+        scheme === 'Dark' ? 'rgb(23, 137, 252)' : 'rgb(0, 87, 219)'
       );
       const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
       await primary.scrollIntoViewIfNeeded();
       const primaryBounds = await primary.boundingBox();
       await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
       await primary.hover();
-      const hoverColor = scheme === 'Dark' ? 'rgb(238, 238, 238)' : 'rgb(0, 76, 195)';
+      const hoverColor = scheme === 'Dark' ? 'rgb(47, 150, 255)' : 'rgb(0, 76, 195)';
       await expect(primary).toHaveCSS('background-color', hoverColor);
       await expect(primary).toHaveCSS('border-top-color', hoverColor);
       await expect(primary).toHaveCSS('color', primaryForeground);
@@ -2654,7 +2654,7 @@ for (const scheme of ['Light', 'Dark']) {
       try {
         await expect(primary).toHaveCSS(
           'background-color',
-          scheme === 'Dark' ? 'rgb(196, 196, 196)' : 'rgb(0, 66, 170)'
+          scheme === 'Dark' ? 'rgb(23, 130, 248)' : 'rgb(0, 66, 170)'
         );
         await expect(primary).toHaveCSS('color', primaryForeground);
       } finally {

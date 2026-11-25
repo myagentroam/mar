@@ -318,10 +318,28 @@ test('Dark theme keeps new sessions in the neutral control hierarchy', async ({ 
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
 
   const newSession = page.getByRole('button', { name: '新建会话', exact: true });
-  await expect(newSession).toHaveCSS('background-color', 'rgb(222, 222, 222)');
-  await expect(newSession).toHaveCSS('color', 'rgb(24, 24, 24)');
+  const [neutralFill, text, primaryFill, primaryHover] = await newSession.evaluate((button) => {
+    const probe = document.createElement('span');
+    button.append(probe);
+    const colors = [
+      '--mar-session-create-fill',
+      '--mar-text-primary',
+      '--mar-control-primary-bg',
+      '--mar-control-primary-hover'
+    ].map((token) => {
+      probe.style.color = `var(${token})`;
+      return getComputedStyle(probe).color;
+    });
+    probe.remove();
+    return colors;
+  });
+  await expect(newSession).toHaveCSS('background-color', neutralFill!);
+  await expect(newSession).not.toHaveCSS('background-color', primaryFill!);
+  await expect(newSession).toHaveCSS('color', text!);
   await newSession.hover();
-  await expect(newSession).toHaveCSS('background-color', 'rgb(238, 238, 238)');
+  await expect(newSession).not.toHaveCSS('background-color', neutralFill!);
+  await expect(newSession).not.toHaveCSS('background-color', primaryHover!);
+  await expect(newSession).toHaveCSS('color', text!);
 });
 
 test('Composer Alt+M opens the model menu and delegates arrow keys to it', async ({ page }) => {

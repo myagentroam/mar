@@ -2572,6 +2572,10 @@ test('uses neutral near-black surfaces with clear text and distinct semantic fee
   expect(dark['--mar-fill-row-hover']).toBe('#2e2e2e');
   expect(dark).not.toHaveProperty('--mar-color-brand');
   expect(dark).toMatchObject({
+    '--mar-control-primary-bg': '#1789fc',
+    '--mar-control-primary-fg': '#181818',
+    '--mar-control-primary-hover': '#2f96ff',
+    '--mar-control-primary-active': '#1782f8',
     '--mar-text-primary': '#eaeaea',
     '--mar-text-secondary': '#c2c2c2',
     '--mar-text-muted': '#a0a0a0',
@@ -2653,11 +2657,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const colors = await paletteColors(page);
     for (const fill of ['bg', 'hover', 'active']) {
       const background = colors[`--mar-control-primary-${fill}`]!;
-      if (theme === 'vscode-dark-2026') expect(background).toMatch(/^#([\da-f]{2})\1\1$/u);
       expect(
         contrast(colors['--mar-control-primary-fg']!, background),
         fill
       ).toBeGreaterThanOrEqual(4.5);
+      for (const surface of ['--mar-bg-panel', '--mar-fill-selection']) {
+        expect(
+          contrast(background, colors[surface]!),
+          `${fill} on ${surface}`
+        ).toBeGreaterThanOrEqual(3);
+      }
     }
     for (const surface of [
       '--mar-bg-panel',

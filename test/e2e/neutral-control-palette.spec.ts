@@ -13,9 +13,9 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-for (const [scheme, width, background, foreground, loading] of [
-  ['Dark', 1280, 'rgb(222, 222, 222)', 'rgb(24, 24, 24)', 'rgb(194, 194, 194)'],
-  ['Light', 390, 'rgb(0, 87, 219)', 'rgb(255, 255, 255)', 'rgb(67, 83, 107)']
+for (const [scheme, width, background, foreground, focus] of [
+  ['Dark', 1280, 'rgb(23, 137, 252)', 'rgb(24, 24, 24)', 'rgb(117, 183, 255)'],
+  ['Light', 390, 'rgb(0, 87, 219)', 'rgb(255, 255, 255)', 'rgb(23, 78, 158)']
 ] as const) {
   test(`Confirmation controls and loading are independent of the running accent in ${scheme}`, async ({
     page
@@ -34,7 +34,7 @@ for (const [scheme, width, background, foreground, loading] of [
       document.documentElement.style.setProperty('--mar-conversation-activity-fg', '#ff00ff')
     );
     const indicator = page.locator('.page-loading-panel .mar-ui-loading__indicator');
-    await expect(indicator).toHaveCSS('color', loading);
+    await expect(indicator).toHaveCSS('color', background);
     await page.getByTestId('open-close-confirmation').click();
     const dialog = page.getByRole('dialog', { name: 'Action confirmation' });
     const confirm = dialog.locator('.mar-ui-button--primary');
@@ -52,10 +52,7 @@ for (const [scheme, width, background, foreground, loading] of [
     await page.keyboard.press('Tab');
     await expect(confirm).toBeFocused();
     await expect(confirm).toHaveCSS('outline-style', 'solid');
-    await expect(confirm).toHaveCSS(
-      'outline-color',
-      scheme === 'Dark' ? 'rgb(160, 160, 160)' : 'rgb(80, 105, 135)'
-    );
+    await expect(confirm).toHaveCSS('outline-color', focus);
     await cancel.click();
     await expect(dialog).toBeHidden();
   });
