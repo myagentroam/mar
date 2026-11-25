@@ -1,7 +1,10 @@
 import { AgentError } from '../error.js';
 import { AGENT_EXECUTION_POLICY } from '../runtime/execution-policy.js';
 import type { ContextGcRuntime, ContextGcRuntimeInput } from '../runtime/context/gc-runtime.js';
+import { modelContextUsage } from '../runtime/context/gc-admission.js';
 import type { SessionModelMessage } from '../session/model-request.js';
+import type { SessionRecord } from '../session/record-contract.js';
+import { isAgentEvent } from '../session/record-projection.js';
 import type { PreparedExecutionRound } from '../runtime/execution.js';
 import type { RoundToolScope } from '../tools/execution.js';
 import type { CompactCoordinator, CompactFlight } from '../runtime/compaction/coordinator.js';
@@ -18,11 +21,78 @@ type GcRound = {
   readonly toolScope: Pick<RoundToolScope, 'tools'>;
 };
 type GcUsage = ContextGcRuntimeInput['usage'] | undefined;
+type NaturalTurnGc = { readonly usage: GcUsage };
+
+/** Restore the preceding natural Turn's GC trigger without extending request calibration. */
+export function previousNaturalTurnGc(
+  records: readonly SessionRecord[],
+  model: { readonly id: string; readonly contextWindowTokens: number }
+): NaturalTurnGc | undefined {
+  const terminalIndex = records.findLastIndex(
+    (record) =>
+      record.type === 'execution.started' ||
+      record.type === 'execution.completed' ||
+      record.type === 'execution.cancelled' ||
+      record.type === 'execution.failed'
+  );
+  const terminal = records[terminalIndex];
+  const event = terminal?.payload;
+  if (
+    terminal?.type !== 'execution.completed' ||
+    !terminal.executionId ||
+    !isAgentEvent(event) ||
+    event.type !== 'execution.completed' ||
+    event.permissionStop !== undefined
+  )
+    return undefined;
+
+  let hasAnswer = false;
+  let usage: GcUsage;
+  let canUseUsage = true;
+  for (let index = terminalIndex - 1; index >= 0; index--) {
+    const record = records[index]!;
+    if (record.type === 'context.gc.completed') canUseUsage = false;
+    if (record.executionId !== terminal.executionId) continue;
+    const payload = record.payload;
+    if (record.type === 'execution.started') break;
+    // A Compact base can replace the execution header in restored context records.
+    if (record.type === 'execution.header' || record.type === 'compact.completed') {
+      const header = payload as
+        { mode?: string; modelId?: string; contextWindowTokens?: number } | undefined;
+      if (!hasAnswer || header?.mode === 'compact') return undefined;
+      return {
+        usage:
+          header?.modelId === model.id && header.contextWindowTokens === model.contextWindowTokens
+            ? usage
+            : undefined
+      };
+    }
+    if (!isAgentEvent(payload)) continue;
+    if (
+      payload.type === 'message.completed' &&
+      payload.phase === 'final_answer' &&
+      typeof payload.text === 'string' &&
+      payload.text.trim()
+    )
+      hasAnswer = true;
+    if (
+      canUseUsage &&
+      !usage &&
+      payload.type === 'usage.updated' &&
+      payload.purpose !== 'compact'
+    ) {
+      const tokens = modelContextUsage(payload);
+      if (tokens !== undefined) usage = { contextInputTokens: tokens };
+    }
+  }
+  return undefined;
+}
 
 /** Coordinates safe-point adoption of Compact and GC without owning Session state. */
 export class ExecutionContextCoordinator {
   #boundary: number;
   #thoughtCallIds: readonly string[] = [];
+  #naturalTurnGc: NaturalTurnGc | undefined;
   constructor(
     private readonly ports: {
       readonly initialBoundary: number;
@@ -42,6 +112,7 @@ export class ExecutionContextCoordinator {
       readonly signal: AbortSignal;
       readonly window: number;
       readonly contextGcMode: ContextGcMode;
+      readonly naturalTurnGc?: NaturalTurnGc | undefined;
       readonly gc: Pick<ContextGcRuntime, 'run' | 'skipRollout'>;
       readonly gcBase: Omit<
         ContextGcRuntimeInput,
@@ -53,6 +124,7 @@ export class ExecutionContextCoordinator {
     }
   ) {
     this.#boundary = ports.initialBoundary;
+    this.#naturalTurnGc = ports.naturalTurnGc;
   }
 
   get boundary(): number {
@@ -146,7 +218,10 @@ export class ExecutionContextCoordinator {
         this.ports.gc.skipRollout(usage, this.ports.window);
     }
   }
-  /** Merge a one-round Thought trigger with the existing dispatch-time hard limit. */
+  invalidateNaturalTurnGc(): void {
+    this.#naturalTurnGc = undefined;
+  }
+  /** Combine one-shot regular triggers with the dispatch-time image hard limit. */
   async prepareRequestGc(
     round: GcRound,
     messages: readonly SessionModelMessage[],
@@ -155,6 +230,8 @@ export class ExecutionContextCoordinator {
   ): Promise<boolean> {
     const pending = this.#thoughtCallIds;
     this.#thoughtCallIds = [];
+    const naturalTurn = this.#naturalTurnGc;
+    this.invalidateNaturalTurnGc();
     const thought =
       pending.length > 0 &&
       messages.some(
@@ -165,8 +242,9 @@ export class ExecutionContextCoordinator {
           pending.includes(message.callId)
       );
     const hardLimit = media?.reason === 'HARD_LIMIT';
-    if (!thought && !hardLimit) return false;
-    return this.gc(round, latestUsage, media, thought);
+    if (!thought && !naturalTurn && !hardLimit) return false;
+    const usage = naturalTurn && !thought ? naturalTurn.usage : latestUsage;
+    return this.gc(round, usage, media, thought || naturalTurn?.usage !== undefined);
   }
   async gc(
     round: GcRound,

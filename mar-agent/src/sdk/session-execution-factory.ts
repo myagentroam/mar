@@ -24,7 +24,10 @@ import { createExecutionCompactExtension } from './execution-compact-extension.j
 import { generateExecutionCompaction } from './execution-compact-generation.js';
 import { createExecutionCompactionFlight } from './execution-compaction-flight.js';
 import { createExecutionCompaction } from './execution-compaction.js';
-import { ExecutionContextCoordinator } from './execution-context-coordinator.js';
+import {
+  ExecutionContextCoordinator,
+  previousNaturalTurnGc
+} from './execution-context-coordinator.js';
 import { createExecutionInput } from './execution-input.js';
 import { createExecutionModelContext } from './execution-model-context.js';
 import { ExecutionModelLifecycle } from './execution-model-lifecycle.js';
@@ -960,6 +963,10 @@ export function createSessionExecutionFactory(ports: {
             signal: controller.signal,
             window: selectedModel.contextWindowTokens,
             contextGcMode,
+            naturalTurnGc:
+              contextGcMode !== 'off' && mode !== 'compact' && internal.inputSource === undefined
+                ? previousNaturalTurnGc(contextRecords, selectedModel)
+                : undefined,
             gc: contextGc,
             gcBase: {
               store,
@@ -983,6 +990,7 @@ export function createSessionExecutionFactory(ports: {
           });
           applyCompactBoundary = (value) => contextCoordinator.setBoundary(value);
           const invalidateCompactUsage = () => {
+            contextCoordinator.invalidateNaturalTurnGc();
             modelLifecycle.invalidate();
             requestReasoningEffort = prepareModelConfiguration(selectedModel, reasoningEffort, {
               checkpointAdopted: true

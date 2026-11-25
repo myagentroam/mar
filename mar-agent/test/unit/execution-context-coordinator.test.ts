@@ -1,6 +1,10 @@
 import { expect, it, vi } from 'vitest';
-import { ExecutionContextCoordinator } from '../../src/sdk/execution-context-coordinator.js';
+import {
+  ExecutionContextCoordinator,
+  previousNaturalTurnGc
+} from '../../src/sdk/execution-context-coordinator.js';
 import type { PreparedExecutionRound } from '../../src/runtime/execution.js';
+import type { SessionRecord } from '../../src/session/record-contract.js';
 import type { RoundToolScope } from '../../src/tools/execution.js';
 
 const unused = (): never => {
@@ -41,6 +45,41 @@ function basePorts(): ConstructorParameters<typeof ExecutionContextCoordinator>[
     activeProcesses: async () => new Set()
   };
 }
+
+it('does not treat a missing final answer or a more recent cancellation as a natural boundary', () => {
+  const model = { id: 'm', contextWindowTokens: 100 };
+  const record = (
+    sequence: number,
+    executionId: string,
+    type: string,
+    fields: Record<string, unknown> = {}
+  ): SessionRecord => {
+    const metadata = { sequence, executionId, sessionId: 's', timestamp: '2026-11-25T00:00:00Z' };
+    return {
+      ...metadata,
+      recordId: `record-${sequence}`,
+      type,
+      payload: { ...metadata, eventId: `event-${sequence}`, type, ...fields }
+    };
+  };
+  const header = record(1, 'first', 'execution.header', {
+    mode: 'run',
+    modelId: model.id,
+    contextWindowTokens: model.contextWindowTokens
+  });
+  const usage = record(2, 'first', 'usage.updated', { contextInputTokens: 60 });
+  const completed = record(4, 'first', 'execution.completed');
+  const answer = record(3, 'first', 'message.completed', { phase: 'final_answer', text: 'Done' });
+  expect(previousNaturalTurnGc([header, usage, answer, completed], model)).toEqual({
+    usage: { contextInputTokens: 60 }
+  });
+  const withoutText = record(3, 'first', 'message.completed', { phase: 'final_answer' });
+  expect(previousNaturalTurnGc([header, usage, withoutText, completed], model)).toBeUndefined();
+  const cancelled = record(5, 'second', 'execution.cancelled');
+  expect(
+    previousNaturalTurnGc([header, usage, answer, completed, cancelled], model)
+  ).toBeUndefined();
+});
 
 it('does not adopt a GC candidate without a durable checkpoint', async () => {
   const adoptGcCheckpoint = vi.fn();
@@ -104,6 +143,49 @@ it('uses a successful Thought only at the next request boundary without restrict
   await coordinator.prepareRequestGc(round, [thought], usage, soft);
   expect(run).toHaveBeenCalledTimes(3);
   expect(run).toHaveBeenLastCalledWith(expect.objectContaining({ inlineMedia: soft, usage }));
+});
+
+it.each(['auto', 'with_thought'] as const)(
+  'combines the first request of a new Turn and image pressure in %s',
+  async (contextGcMode) => {
+    const ports = basePorts();
+    const run = vi.fn(async () => false);
+    const usage = { contextInputTokens: 60 };
+    const coordinator = new ExecutionContextCoordinator({
+      ...ports,
+      contextGcMode,
+      naturalTurnGc: { usage },
+      gc: { ...ports.gc, run }
+    });
+    const round = { request: { system: 's' }, toolScope: { tools: [] } };
+    const hard = { reason: 'HARD_LIMIT' } as NonNullable<Parameters<typeof coordinator.gc>[2]>;
+    const soft = { ...hard, reason: 'SOFT_LIMIT' } as const;
+    await coordinator.prepareRequestGc(round, [], undefined, hard);
+    expect(run).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ inlineMedia: hard, usage })
+    );
+    await coordinator.prepareRequestGc(round, [], undefined, soft);
+    expect(run).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('drops the cross-Turn trigger after Compact adoption without disabling image hard-limit GC', async () => {
+  const ports = basePorts();
+  const run = vi.fn(async () => false);
+  const coordinator = new ExecutionContextCoordinator({
+    ...ports,
+    naturalTurnGc: { usage: { contextInputTokens: 60 } },
+    gc: { ...ports.gc, run }
+  });
+  const round = { request: { system: 's' }, toolScope: { tools: [] } };
+  coordinator.invalidateNaturalTurnGc();
+  await coordinator.prepareRequestGc(round, [], undefined, undefined);
+  expect(run).not.toHaveBeenCalled();
+  const hard = { reason: 'HARD_LIMIT' } as NonNullable<Parameters<typeof coordinator.gc>[2]>;
+  await coordinator.prepareRequestGc(round, [], undefined, hard);
+  expect(run).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ inlineMedia: hard, usage: {} })
+  );
 });
 
 it.each([
