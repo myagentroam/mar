@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/web-console",
-  "version": "0.15.7",
+  "version": "0.15.8",
   "private": true,
   "type": "module",
   "scripts": {
