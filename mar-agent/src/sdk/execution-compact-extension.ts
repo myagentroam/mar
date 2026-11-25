@@ -7,7 +7,7 @@ import {
   type ExtensionCompactResult
 } from '../extensions/compaction.js';
 import type { SessionModelMessage } from '../session/model-request.js';
-import { buildCompactionMessages } from '../runtime/compaction/history.js';
+import { compactionPrompt } from '../prompts/compact.js';
 import type { CompactionOperation } from '../runtime/compaction/operation.js';
 import type { ModelRequestUsage } from '../model/usage-observer.js';
 
@@ -46,7 +46,7 @@ export function createExecutionCompactExtension(ports: {
             messages: compactExtensionMessages(history),
             ...(focus === undefined ? {} : { focus }),
             summaryTokenBudget,
-            getPrompt: () => buildCompactionMessages('')[1]!.content,
+            getPrompt: compactionPrompt,
             reportModelUsage: ports.reportUsage,
             reportDiagnostic: async (value: ExtensionCompactDiagnostic) => {
               if (!acceptsDiagnostics || ++diagnosticReports > 8) return;

@@ -107,7 +107,7 @@ describe('compaction task retention', () => {
       { role: 'user', content: 'image conclusion' }
     ]);
     expect(compact.at(-1)?.content).toContain('Compaction focus: preserve exact state');
-    expect(compact.at(-1)?.content).toContain('# Compaction contract');
+    expect(compact.at(-1)?.content).toContain('Leave enough to continue reasoning correctly');
   });
 
   it('puts the current compaction instruction after unchanged historical evidence', () => {
@@ -116,8 +116,10 @@ describe('compaction task retention', () => {
     expect(messages).toHaveLength(2);
     expect(messages[0]).toEqual({ role: 'user', content: evidence, contextKind: 'contextual' });
     expect(messages[1]).toMatchObject({ role: 'user' });
-    expect(messages[1]!.content).toContain('Do not continue implementation');
-    expect(messages[1]!.content).toContain('Output only the handoff.');
+    expect(messages[1]!.content).toContain(
+      'Do not address the user, continue the task, call tools'
+    );
+    expect(messages[1]!.content).toContain('Output only the notes in compact Markdown.');
     expect(messages[1]!.content).not.toContain('Tests failed');
   });
 

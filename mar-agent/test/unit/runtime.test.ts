@@ -2700,7 +2700,9 @@ describe('agent runtime', () => {
       role: 'assistant',
       content: 'answer-2'
     });
-    expect(adapter.requests[2]?.messages.at(-1)?.content).toContain('Output only the handoff.');
+    expect(adapter.requests[2]?.messages.at(-1)?.content).toContain(
+      'Output only the notes in compact Markdown.'
+    );
     expect(adapter.requests[2]?.promptCacheKey).toBe(sessionId);
     const persisted = await import('../../src/session/store/index.js').then(
       async ({ JsonlSessionStore }) => {
@@ -2713,7 +2715,9 @@ describe('agent runtime', () => {
     const compactRecords = persisted.filter(
       (record) => record.executionId === compactResult.executionId
     );
-    expect(JSON.stringify(compactRecords)).not.toContain('Output only the handoff.');
+    expect(JSON.stringify(compactRecords)).not.toContain(
+      'Output only the notes in compact Markdown.'
+    );
     expect(compactRecords).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -3847,7 +3851,9 @@ describe('agent runtime', () => {
     const compactRequest = adapter.requests.find((request) => request.toolChoice === 'none');
     expect(compactRequest?.tools.map((tool) => tool.name)).toContain('read');
     expect(compactRequest?.system).not.toContain('Textual Continuation IR');
-    expect(compactRequest?.messages.at(-1)?.content).toContain('# Compaction contract');
+    expect(compactRequest?.messages.at(-1)?.content).toContain(
+      'Leave enough to continue reasoning correctly'
+    );
     expect(compactRequest?.toolChoice).toBe('none');
     expect(compactRequest?.reasoningEffort).toBe('high');
     expect(compactRequest?.images).toBeUndefined();
@@ -4820,7 +4826,9 @@ describe('agent runtime', () => {
     ).toBe('completed');
     const compactRequest = adapter.requests.at(-1)!;
     expect(compactRequest.system).not.toContain('Textual Continuation IR');
-    expect(compactRequest.messages.at(-1)?.content).toContain('# Compaction contract');
+    expect(compactRequest.messages.at(-1)?.content).toContain(
+      'Leave enough to continue reasoning correctly'
+    );
     expect(compactRequest.tools.map((tool) => tool.name)).toContain('read');
     expect(compactRequest.toolChoice).toBe('none');
     expect(compactRequest.messages[0]?.content).toContain('durable objective');

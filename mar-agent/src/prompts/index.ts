@@ -11,7 +11,7 @@ import {
 import { modePrompt } from './modes.js';
 import { toolUsagePrompt } from './workflow.js';
 
-export const MAR_AGENT_PROMPT_VERSION = '1.81';
+export const MAR_AGENT_PROMPT_VERSION = '1.82';
 
 interface SystemPromptInput {
   mode: ExecutionMode;

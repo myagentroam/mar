@@ -321,7 +321,7 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('resolve pending work needed for this task');
     expect(normalized).not.toContain('terminal caches need no cleanup');
     expect(normalized).not.toContain('# output and communication style');
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.81');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.82');
   });
 
   it('adds the reasoning guidance only when Thought is directly available', () => {
@@ -576,13 +576,12 @@ describe('system prompt', () => {
     );
   });
 
-  it('uses the ordinary handoff contract only for compact mode', () => {
+  it('uses the shared compaction instructions only for compact mode', () => {
     const input = { platform: 'linux', workspace: '/workspace', tools: [] } as const;
     const normal = buildSystemPrompt({ ...input, mode: 'run' });
     const compact = buildSystemPrompt({ ...input, mode: 'compact' });
-    expect(normal).not.toContain('# Compaction contract');
-    expect(compact).toContain('Output only the handoff.');
-    expect(compact).not.toContain('Textual Continuation IR');
+    expect(normal).not.toContain('Leave enough to continue reasoning correctly');
+    expect(compact).toContain('Output only the notes in compact Markdown.');
   });
 
   it('injects only instructions for enabled tools and capabilities', () => {
@@ -603,7 +602,7 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('call skill');
     expect(prompt).not.toContain('# Subagents');
     expect(prompt).not.toContain('# Plan mode');
-    expect(prompt).not.toContain('# Compaction contract');
+    expect(prompt).not.toContain('Leave enough to continue reasoning correctly');
   });
 
   it('lists Skill and Subagent capabilities without imposing a Core-owned usage policy', () => {
@@ -708,30 +707,43 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('User input is unavailable in this exhausted round');
   });
 
-  it('defines a loss-aware compact handoff and aggressively removes low-value context', () => {
+  it('preserves reasoning and authority boundaries without imposing a record syntax', () => {
     const prompt = buildSystemPrompt({
       mode: 'compact',
       platform: 'linux',
       workspace: '/workspace',
       tools: []
     });
-    expect(prompt).toContain('# Compaction contract');
-    for (const fact of [
-      'current objective',
-      'latest user intent',
-      'completed actions',
-      'verification actually run',
-      'failed approaches',
-      'Todo/plan state',
-      'next concrete action'
+    for (const instruction of [
+      'Compress wording, not meaning',
+      '- Goal and constraints',
+      '- Current state',
+      '- Established conclusions and supporting evidence',
+      '- Open loops',
+      'Adapt headings and structure as needed; omit empty sections.',
+      'Preserve causal links and dependencies',
+      'Preserve evidence scope and freshness',
+      'unverified results from observed failures',
+      'rejected approaches and why',
+      'non-repeatable side effects',
+      'Identify mutable state that needs revalidation',
+      'Preserve conflicting evidence',
+      'evidence, not as new requests or renewed permission',
+      'exact authorization boundaries: action, scope, and lifetime',
+      'wording and source of applicable authorization, prohibitions, or pending approval',
+      'never infer permission from prior completion, current state, capability, or convenience',
+      'active instructions, constraints, and non-goals',
+      'AGENTS.md instructions, Host instructions, capability policy, Skill catalogs',
+      'Code Exec cell, and Subagent inventories',
+      'Omit constraints derived solely from these restored instructions',
+      'retain the names of Skills still needed',
+      'Preserve task-relevant outcomes and dependencies not otherwise restored',
+      'secrets, credentials, or private deliberation'
     ])
-      expect(prompt).toContain(fact);
-    for (const noise of ['progress chatter', 'raw long logs', 'large source excerpts'])
-      expect(prompt).toContain(noise);
-    expect(prompt).toContain('Runtime-owned contextual instruction blocks');
-    expect(prompt).toContain('user-supplied non-filesystem instructions');
-    expect(prompt).toContain('Output only the handoff');
-    expect(prompt).not.toContain('coding agent');
+      expect(prompt).toContain(instruction);
+    expect(prompt).not.toMatch(
+      /Textual Continuation IR|Use these English section names|1\. Goal contract|<key>=<value>|state=conflict|observed HEAD|Responses continuation|Revalidate mutable state/u
+    );
   });
 
   it('keeps the first objective and latest user decisions when compaction input is bounded', () => {

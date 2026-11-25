@@ -28,7 +28,7 @@ export interface ExtensionCompactContext {
   readonly messages: readonly ExtensionCompactMessage[];
   readonly focus?: string;
   readonly summaryTokenBudget: number;
-  /** Return the Core's default structured handoff contract, independent of model configuration. */
+  /** Return the default compaction instructions used by Core, independent of model configuration. */
   readonly getPrompt: () => string;
   /** Private, bounded telemetry only; reporting never changes the generation result. */
   readonly reportDiagnostic?: (diagnostic: ExtensionCompactDiagnostic) => Promise<void>;
