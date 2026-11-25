@@ -545,6 +545,18 @@ onBeforeUnmount(() => {
   .conversation-empty {
     margin-block-start: auto;
   }
+
+  .conversation-scroll-region.is-workspace-welcome {
+    display: flex;
+    flex: 0 1 auto;
+    margin-block-start: auto;
+  }
+
+  .conversation-scroll-region.is-workspace-welcome .conversation-scroll {
+    flex: 1;
+    height: auto;
+    padding-block-start: 0;
+  }
 }
 
 @media (min-width: 768px) {

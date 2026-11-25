@@ -226,7 +226,9 @@ test.describe('Mobile workspace welcome', () => {
   });
 
   // @test-covers packages/web-core/src/view/workbench/WorkspaceSessionPane.vue
-  test('aligns the MAR Agent icon with the name and arrow', async ({ page }, testInfo) => {
+  test('centers the startup group and aligns the Agent icon with the name and arrow', async ({
+    page
+  }, testInfo) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.addInitScript(() => {
       localStorage.setItem('mar.locale.v2', 'en-US');
@@ -249,6 +251,12 @@ test.describe('Mobile workspace welcome', () => {
         const gap = composer.y - (description.y + description.height);
         expect(gap).toBeGreaterThan(0);
         expect(gap).toBeLessThanOrEqual(24);
+        const pane = (await page.locator('.conversation-panel').boundingBox())!;
+        const header = (await page.locator('.conversation-header').boundingBox())!;
+        const title = (await welcome.getByRole('heading').boundingBox())!;
+        const startupCenter = (title.y + composer.y + composer.height) / 2;
+        const availableCenter = (header.y + header.height + pane.y + pane.height) / 2;
+        expect(Math.abs(startupCenter - availableCenter)).toBeLessThan(8);
         const alignment = await agent.evaluate((button) => {
           const centerY = (element: Element) => {
             const { top, height } = element.getBoundingClientRect();
@@ -292,6 +300,25 @@ test.describe('Mobile workspace welcome', () => {
       path: testInfo.outputPath('mobile-workspace-welcome.png'),
       animations: 'disabled'
     });
+
+    await page.setViewportSize({ width: 320, height: 300 });
+    await expect(page.locator('.composer-input')).toBeInViewport({ ratio: 1 });
+    await expect(page.locator('.composer-send-button')).toBeInViewport({ ratio: 1 });
+
+    await page.locator('.composer-toolbar input[type=file]').setInputFiles(
+      Array.from({ length: 4 }, (_, index) => ({
+        name: `draft-${index}.txt`,
+        mimeType: 'text/plain',
+        buffer: Buffer.from('draft attachment')
+      }))
+    );
+    await expect(page.locator('.composer-attachments li')).toHaveCount(4);
+    await page.setViewportSize({ width: 320, height: 240 });
+    const send = page.locator('.composer-send-button');
+    const panel = page.locator('.conversation-panel');
+    await expect(panel).toHaveCSS('overflow-y', 'auto');
+    await panel.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+    await expect(send).toBeInViewport({ ratio: 1 });
   });
 });
 

@@ -153,13 +153,15 @@ onBeforeUnmount(() => {
   }
 
   .conversation-create-panel {
+    display: flex;
+    flex-direction: column;
     width: 100%;
     min-height: 0;
-    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .conversation-create-heading {
-    align-content: safe end;
+    min-block-size: 0;
+    margin-block-start: auto;
     overflow: auto;
     padding-inline: 1rem;
   }
