@@ -521,15 +521,11 @@ function selectFiles(event: Event): void {
     var(--mar-conversation-activity-fg) var(--context-usage),
     color-mix(in srgb, var(--mar-text-secondary) 30%, transparent) 0
   );
-  position: relative;
-}
-
-.composer-context-button i::after {
-  position: absolute;
-  inset: 0.18rem;
-  border-radius: inherit;
-  background: var(--mar-bg-panel);
-  content: '';
+  mask-image: radial-gradient(
+    circle closest-side,
+    transparent calc(100% - 0.18rem),
+    #000 calc(100% - 0.18rem + 0.5px)
+  );
 }
 
 @media (max-width: 767px) {
