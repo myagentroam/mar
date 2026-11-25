@@ -43,7 +43,7 @@ describe('Codex Run lifecycle and control', () => {
       runtime: {
         createAgentSession(input: Record<string, unknown>): { readonly id: string };
         createMessageRun(input: Record<string, unknown>): { readonly run: { readonly id: string } };
-        transitionRun(runId: string, status: 'STARTING'): unknown;
+        transitionRun(runId: string, status: 'RUNNING'): unknown;
       };
       executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
     };
@@ -57,7 +57,7 @@ describe('Codex Run lifecycle and control', () => {
       clientMessageId: 'session-interrupt',
       content: 'stop me'
     }).run;
-    internals.runtime.transitionRun(run.id, 'STARTING');
+    internals.runtime.transitionRun(run.id, 'RUNNING');
 
     await expect(
       internals.executeNodeOperation('session.interrupt', { sessionId: session.id })
@@ -66,7 +66,7 @@ describe('Codex Run lifecycle and control', () => {
     connector.stop();
   });
 
-  it('marks the session as running when the Run enters STARTING without waiting for a native Turn ID', () => {
+  it('publishes RUNNING from admission before a Runner startup event or native Turn ID', () => {
     const database = new NodeDatabase(':memory:', 'node-session-activity');
     const workspace = database.saveWorkspace({
       path: '/workspace-session-activity',
@@ -83,7 +83,9 @@ describe('Codex Run lifecycle and control', () => {
     const internals = connector as unknown as {
       runtime: {
         createAgentSession(input: Record<string, unknown>): { readonly id: string };
-        createMessageRun(input: Record<string, unknown>): { readonly run: { readonly id: string } };
+        createMessageRun(input: Record<string, unknown>): {
+          readonly run: { readonly id: string; readonly status: string };
+        };
       };
       emitRunEvent(runId: string, eventType: string, payload: unknown, status: 'STARTING'): void;
     };
@@ -97,7 +99,10 @@ describe('Codex Run lifecycle and control', () => {
       clientMessageId: 'session-activity-message',
       content: 'start running'
     }).run;
+    expect(run.status).toBe('RUNNING');
+    sent.length = 0;
     internals.emitRunEvent(run.id, 'run.started', {}, 'STARTING');
+    expectRunProjection(sent, 'RUNNING');
 
     expect(sent).toContainEqual(
       expect.objectContaining({
@@ -308,7 +313,7 @@ describe('Codex Run lifecycle and control', () => {
         runtime: {
           createAgentSession(input: Record<string, unknown>): { id: string };
           createMessageRun(input: Record<string, unknown>): { run: { id: string } };
-          transitionRun(id: string, state: 'STARTING' | 'RUNNING'): unknown;
+          transitionRun(id: string, state: 'RUNNING'): unknown;
           getRun(id: string): { status: string } | undefined;
         };
       }
@@ -323,7 +328,7 @@ describe('Codex Run lifecycle and control', () => {
       clientMessageId: 'cancel-message',
       content: 'long running'
     });
-    runtime.transitionRun(created.run.id, 'STARTING');
+    runtime.transitionRun(created.run.id, 'RUNNING');
     runtime.transitionRun(created.run.id, 'RUNNING');
     (
       connector as unknown as { codexClient: { execution: { runs: Map<string, unknown> } } }
@@ -364,7 +369,7 @@ describe('Codex Run lifecycle and control', () => {
         runtime: {
           createAgentSession(input: Record<string, unknown>): { id: string };
           createMessageRun(input: Record<string, unknown>): { run: { id: string } };
-          transitionRun(id: string, state: 'STARTING'): unknown;
+          transitionRun(id: string, state: 'RUNNING'): unknown;
           getRun(id: string): { status: string } | undefined;
         };
       }
@@ -379,7 +384,7 @@ describe('Codex Run lifecycle and control', () => {
       clientMessageId: 'early-cancel-message',
       content: 'cancel before turn/start'
     });
-    runtime.transitionRun(created.run.id, 'STARTING');
+    runtime.transitionRun(created.run.id, 'RUNNING');
     (
       connector as unknown as { codexClient: { execution: { runs: Map<string, unknown> } } }
     ).codexClient.execution.runs.set(created.run.id, {
@@ -436,7 +441,7 @@ describe('Codex Run lifecycle and control', () => {
         runtime: {
           createAgentSession(input: Record<string, unknown>): { id: string };
           createMessageRun(input: Record<string, unknown>): { run: { id: string } };
-          transitionRun(id: string, state: 'STARTING'): unknown;
+          transitionRun(id: string, state: 'RUNNING'): unknown;
           getRun(id: string): { status: string } | undefined;
         };
       }
@@ -451,7 +456,7 @@ describe('Codex Run lifecycle and control', () => {
       clientMessageId: 'early-interrupt-message',
       content: 'interrupt before turn/start'
     });
-    runtime.transitionRun(created.run.id, 'STARTING');
+    runtime.transitionRun(created.run.id, 'RUNNING');
     (
       connector as unknown as { codexClient: { execution: { runs: Map<string, unknown> } } }
     ).codexClient.execution.runs.set(created.run.id, {

@@ -191,10 +191,12 @@ export class RunEventService {
     executionId: string,
     eventType: string,
     payload: unknown,
-    status?: RunnerExecutionStatus
+    executionStatus?: RunnerExecutionStatus
   ): void {
     const run = this.options.runtime.getRun(executionId);
     if (run === undefined) return;
+    // A Runner's startup acknowledgement is not a separate public Run state.
+    const status = executionStatus === 'STARTING' ? 'RUNNING' : executionStatus;
     const runId = run.id;
     const targetTurn = this.options.runtime.conversationTurnForExecution(executionId);
     const currentTurn = this.options.runtime.conversationTurnForRun(runId);
@@ -228,7 +230,7 @@ export class RunEventService {
     }
     if (status === 'FAILED') this.options.metrics.runnerFailed();
     let recorded: ReturnType<NodeRuntimeState['appendRunEvent']> = undefined;
-    let finalStatus: RunnerExecutionStatus | undefined;
+    let finalStatus: ExecutionTerminalResult['finalStatus'];
     let observedTerminalStatus: RunnerExecutionStatus | undefined;
     let manuallyInterrupted = false;
     if (terminalExecution) {
@@ -240,7 +242,7 @@ export class RunEventService {
         sequence: event.sequence,
         eventType,
         payload,
-        status: status as RunnerExecutionStatus,
+        status,
         ...(parsedStop?.success ? { permissionStop: parsedStop.data } : {})
       });
       recorded = result.recorded;
@@ -277,7 +279,13 @@ export class RunEventService {
         this.options.onRunStarted?.(run, recorded.createdAt);
     }
     if (!terminalExecution) this.options.refreshAttachments?.(run.sessionId);
-    const publicStatus = terminalExecution ? finalStatus : status;
+    const currentRun = status === undefined ? undefined : this.options.runtime.getRun(runId);
+    // A late Runner acknowledgement must not override the Run's public stop state.
+    const publicStatus = terminalExecution
+      ? finalStatus
+      : recorded === undefined
+        ? undefined
+        : currentRun?.status;
     if (recorded !== undefined && targetsCurrentTurn)
       this.options.observeAgentEvent?.({
         run,
@@ -291,11 +299,10 @@ export class RunEventService {
       runId,
       eventType,
       payload,
-      publicStatus,
+      finalStatus,
       manuallyInterrupted || !targetsCurrentTurn
     );
     if (publicStatus !== undefined) {
-      const currentRun = this.options.runtime.getRun(runId);
       this.emitWorkbench('run', { run: currentRun });
       const session =
         currentRun === undefined

@@ -96,9 +96,10 @@ ${configurationHelp}
   -m 与 --message-file 互斥；文件使用 UTF-8，- 从 stdin 读取。
   定时列表默认查询工作区；--current 仅查询当前会话，须有会话上下文。
   创建定时任务默认绑定当前会话；--new-session 在每次触发时新建会话。
-  --triggers-file 读取 JSON 数组，每项指定一个 HH:mm；创建用 Node 时区，
-  更新用已保存时区。once 必须明确 date；另支持 daily、weekly（weekdays 为 0..6）
-  和 monthly（monthDays 为 1..31）。更新提供该文件时会整体替换所有触发规则；
+  --triggers-file 读取 JSON 数组。hourly 使用 minutes（0..59）；
+  其他方式指定 HH:mm。创建用 Node 时区，更新沿用已保存时区。
+  once 要求 date；weekly 用 weekdays（0..6），monthly 用 monthDays（1..31）。
+  更新时提供该文件会替换所有触发规则；
   触发文件与任务正文只能有一项从 stdin 读取。
   list 默认查询所在会话树，包含空闲会话；
   没有当前会话时默认 active，显式 tree 须有会话上下文。active 包含当前

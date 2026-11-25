@@ -41,7 +41,6 @@ export function sessionActivityLabel(session: Session): string {
 export function runStatusLabel(value: string): string {
   return (
     {
-      STARTING: translate('generated.sessionPresentation.starting'),
       RUNNING: translate('generated.sessionPresentation.running2'),
       SUCCEEDED: translate('generated.sessionPresentation.completed'),
       FAILED: translate('generated.sessionPresentation.failed'),

@@ -3,6 +3,7 @@ import { json, mockConsoleApi } from './support/web-console-api.js';
 
 // @test-covers packages/web-core/src/view/schedule/ScheduledTasksPanel.vue
 // @test-covers packages/web-core/src/view/schedule/ScheduledTaskCard.vue
+// @test-covers packages/web-core/src/view/schedule/ScheduledExecutionHistory.vue
 
 test.use({ timezoneId: 'Asia/Shanghai' });
 
@@ -138,7 +139,10 @@ for (const theme of ['daylight', 'dark']) {
         const heading = (await first.getByRole('heading').boundingBox())!;
         const time = (await first.locator('time').boundingBox())!;
         expect(time.y).toBeGreaterThan(heading.y + heading.height);
-        await expect(first.getByRole('button', { name: '编辑' })).toBeVisible();
+        await expect(first.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0);
+        await expect(
+          first.getByRole('button', { name: cardFixtures[0]!.name, exact: true })
+        ).toHaveAttribute('aria-haspopup', 'dialog');
         await page.screenshot({
           path: testInfo.outputPath('cards-mobile.png'),
           animations: 'disabled'
@@ -149,6 +153,75 @@ for (const theme of ['daylight', 'dark']) {
     }
   });
 }
+
+test('Scheduled execution records open the matching details by row click or keyboard', async ({
+  page
+}) => {
+  const { nodeId, nodeName, workspaceId, workspaceName, id: taskId, name } = cardFixtures[0]!;
+  const items = ['latest', 'previous'].map((occurrenceId, index) => ({
+    nodeId,
+    nodeName,
+    workspaceId,
+    workspaceName,
+    taskId,
+    name,
+    occurrenceId,
+    dueAt: Date.parse('2026-11-26T09:30:00+08:00') - index * 3_600_000,
+    state: 'SUCCEEDED',
+    reason: null,
+    startedAt: null,
+    endedAt: null,
+    run: null
+  }));
+  await mockConsoleApi(page, 'MANAGED', ['session.schedule'], []);
+  await page.route(/\/api\/scheduled-tasks(?:\?.*)?$/, (route) =>
+    json(route, {
+      items: [],
+      nodes: [],
+      unavailableNodeIds: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      hasMore: false
+    })
+  );
+  await page.route(/\/api\/scheduled-occurrences\?/, (route) =>
+    json(route, {
+      items,
+      unavailableNodeIds: [],
+      page: 1,
+      pageSize: 20,
+      total: items.length,
+      hasMore: false
+    })
+  );
+  for (const record of items) {
+    await page.route(`**/api/scheduled-occurrences/${record.occurrenceId}?**`, (route) =>
+      json(route, { ...record, snapshot: { objective: `Prompt for ${record.occurrenceId}` } })
+    );
+  }
+
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '定时任务', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: '定时任务', exact: true })
+    .getByRole('button', { name: '执行记录', exact: true })
+    .click();
+
+  const table = page.getByRole('table', { name: '执行记录列表' });
+  const dialog = page.getByRole('dialog', { name: '执行记录详情' });
+  const recordButtons = table.getByRole('button', { name, exact: true });
+  await table.getByRole('cell', { name: '成功', exact: true }).first().click();
+  await expect(dialog.getByText('Prompt for latest')).toBeVisible();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(recordButtons.first()).toBeFocused();
+
+  await page.keyboard.press('Tab');
+  await expect(recordButtons.last()).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByText('Prompt for previous')).toBeVisible();
+});
 
 test('Mobile scheduled task navigation switches pages before opening their menus', async ({
   page

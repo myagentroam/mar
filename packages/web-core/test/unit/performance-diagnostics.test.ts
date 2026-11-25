@@ -311,7 +311,7 @@ describe('WebPerformanceDiagnosticService', () => {
     });
 
     diagnostics.observeFrame(frame('run-1', 'session-1', 'RUNNING', 'node-1'));
-    diagnostics.observeFrame(frame('run-2', 'session-1', 'STARTING', 'node-1'));
+    diagnostics.observeFrame(frame('run-2', 'session-1', 'RUNNING', 'node-1'));
     diagnostics.observeFrame(frame('run-3', 'session-2', 'CANCELLING', 'node-2'));
     diagnostics.refresh();
     expect(diagnostics.snapshot.value.activeRunSessions).toBe(2);

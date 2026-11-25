@@ -113,7 +113,7 @@ export function createSessionShareConversationService(options: {
     }
   };
   const activeRun = computed(() =>
-    runState.runs.value.find((run) => ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status))
+    runState.runs.value.find((run) => ['RUNNING', 'CANCELLING'].includes(run.status))
   );
   const busy = computed(
     () => activeRun.value !== undefined || selectedSession.value?.activity === 'RUNNING'
@@ -154,7 +154,7 @@ export function createSessionShareConversationService(options: {
     syncTurnStatus: (id, status) => {
       projection.syncRunStatus(
         id,
-        (['STARTING', 'RUNNING', 'CANCELLING'].includes(status)
+        (['RUNNING', 'CANCELLING'].includes(status)
           ? 'RUNNING'
           : status) as (typeof state.turns.value)[number]['status']
       );

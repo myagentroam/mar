@@ -494,7 +494,7 @@ describe('Node Workbench external session observation', () => {
     service.emitRealtime(session.id, {
       sequence: 1,
       category: 'run',
-      payload: { run: { status: 'STARTING' } }
+      payload: { run: { status: 'RUNNING' } }
     });
     await vi.waitFor(() => expect(runtimeReads).toBe(1));
     hasActiveRun = false;
@@ -676,7 +676,7 @@ describe('Node Workbench external session observation', () => {
         service.emitRealtime(session.id, {
           sequence: 1,
           category: 'run',
-          payload: { run: { status: 'STARTING' } }
+          payload: { run: { status: 'RUNNING' } }
         });
         expect(readPage).toHaveBeenCalledTimes(2);
         activeRun = undefined;
@@ -689,7 +689,7 @@ describe('Node Workbench external session observation', () => {
         service.emitRealtime(session.id, {
           sequence: 3,
           category: 'run',
-          payload: { run: { status: 'STARTING' } }
+          payload: { run: { status: 'RUNNING' } }
         });
         service.emitRealtime(session.id, { sequence: 4, category: 'conversation', payload: {} });
         releaseOldRead();
@@ -819,7 +819,7 @@ describe('Node Workbench external session observation', () => {
     service.emitRealtime(session.id, {
       sequence: 1,
       category: 'run',
-      payload: { run: { status: 'STARTING' } }
+      payload: { run: { status: 'RUNNING' } }
     });
     await vi.waitFor(() =>
       expect(emitted.map((event) => [event.type, event.event?.sequence])).toEqual([
@@ -885,7 +885,7 @@ describe('Node Workbench external session observation', () => {
       service.emitRealtime(session.id, {
         sequence: 1,
         category: 'run',
-        payload: { run: { status: 'STARTING' } }
+        payload: { run: { status: 'RUNNING' } }
       });
       await vi.waitFor(() =>
         expect(emitted.filter((event) => event.type === 'watch.session.snapshot')).toHaveLength(2)

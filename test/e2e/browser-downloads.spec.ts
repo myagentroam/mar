@@ -65,13 +65,14 @@ test('Browser confirms a Workspace destination and distinguishes conflicts from 
 
 test('Browser signals download activity at the toolbar without interrupting page input', async ({
   page
-}) => {
+}, testInfo) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/browser-downloads.html');
   try {
     await page.setViewportSize({ width: 390, height: 700 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.clock.install();
     await page.goto(`${fixture.url}browser-downloads.html`);
+    await page.locator('html').evaluate((root) => root.setAttribute('data-theme', 'dark'));
     const button = page.getByRole('button', { name: 'Downloads', exact: true });
     const commands = page.getByRole('button', { name: 'Browser commands' });
     const badge = page.locator('.node-browser-download-badge');
@@ -95,11 +96,14 @@ test('Browser signals download activity at the toolbar without interrupting page
     await update(page, { revision: 6, activeCount: 2, startedCount: 5 });
     await expect(started).toHaveCount(1);
     await expect(badge).toHaveText('2');
+    await expect(badge).toHaveCSS('background-color', 'rgb(0, 117, 209)');
+    await expect(badge).toHaveCSS('color', 'rgb(255, 255, 255)');
     await expect(button).toHaveAccessibleDescription('2 active downloads');
     const badgeRect = (await badge.boundingBox())!;
     expect(badgeRect.x).toBeGreaterThan(buttonRect.x);
     expect(badgeRect.y).toBeLessThan(buttonRect.y);
     expect(badgeRect.x + badgeRect.width).toBeLessThanOrEqual(390);
+    await badge.screenshot({ path: testInfo.outputPath('download-count-dark.png') });
     await expect(address).toBeFocused();
     await expect(dialog).toHaveCount(0);
 

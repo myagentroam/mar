@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-11-25
+lastUpdated: 2026-11-26
 ---
 
 # Manage Nodes with marctl
@@ -88,11 +88,12 @@ marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" 
 marctl agents schedule runs --task "$TASK_ID" --page 1 --json
 ```
 
-`--triggers-file` reads a UTF-8 JSON array, not a Cron expression. Each entry has one `HH:mm` time. New tasks use the Node time zone; updates retain the task's saved time zone. A `once` trigger requires an explicit future date; the CLI does not suggest one. This `triggers.json` demonstrates the one-time, daily, weekly, and monthly forms:
+`--triggers-file` reads a UTF-8 JSON array, not a Cron expression. An `hourly` rule takes a non-empty `minutes` array (integers from 0 to 59) instead of `time`; other rules each take one `HH:mm` time. New tasks use the Node time zone; updates retain the task's saved time zone. A `once` trigger requires an explicit future date; the CLI does not suggest one. The hourly rule in this `triggers.json` runs at :15 and :45 past each hour:
 
 ```json
 [
   { "kind": "once", "date": "2030-03-21", "time": "14:30" },
+  { "kind": "hourly", "minutes": [15, 45] },
   { "kind": "daily", "time": "10:00" },
   { "kind": "weekly", "time": "09:00", "weekdays": [1, 2, 3, 4, 5] },
   { "kind": "monthly", "time": "09:00", "monthDays": [1, 15] }
@@ -101,7 +102,7 @@ marctl agents schedule runs --task "$TASK_ID" --page 1 --json
 
 `weekly.weekdays` uses 0 (Sunday) through 6 (Saturday); `monthly.monthDays` uses 1 through 31. Invalid dates in shorter months do not trigger. Supplying `--triggers-file` on update replaces the entire trigger list; omit it to retain the current schedule. Pass the task prompt with `-m` or `--message-file`, up to 20,000 characters. Either `--triggers-file` or `--message-file` can read stdin using `-`, but not both in the same command.
 
-An update must specify a name, triggers, or a task prompt. Updating your own task applies directly. Updating someone else's returns `proposalId` and `baseRevision` for the creator to resolve without transferring execution identity. Re-read after a revision conflict. If a write result is unknown, check the task before retrying. Use the [Scheduled tasks page](../workbench/sessions.md#scheduled-tasks) to pause, resume, delete, or resolve proposals; these actions are not available in the CLI.
+An update must specify a name, triggers, or a task prompt. Updating your own task applies directly. Updating someone else's returns `proposalId` and `baseRevision`. Authorized Workspace members can resolve the proposal on the web; accepting it makes the approver the owner for subsequent runs. Re-read after a revision conflict. If a write result is unknown, check the task before retrying. Use the [Scheduled tasks page](../workbench/sessions.md#scheduled-tasks) to pause, resume, delete, or resolve proposals; these actions are not available in the CLI.
 
 ## Persistent instructions and approvals
 

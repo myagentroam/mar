@@ -466,7 +466,7 @@ test('New Codex sessions enable the service tier with /fast without adding it to
         id: 'fast-run',
         sessionId: 'fast-thread',
         workspaceId: 'workspace-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'fast-message'
       }
@@ -1741,7 +1741,7 @@ test('Composer displays Node-reported context usage and compacts only after conf
         id: 'compact-run',
         sessionId: session.id,
         workspaceId: session.workspaceId,
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'compact'
       }
@@ -1817,7 +1817,7 @@ test('Composer @ selects file and directory tags and submits hidden XML referenc
         id: 'run-1',
         sessionId: 'session-1',
         workspaceId: 'workspace-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'reference-message'
       }
@@ -1963,7 +1963,7 @@ test('Composer sends a file reference and a Session mention together without loa
         id: 'run-1',
         sessionId: 'session-1',
         workspaceId: 'workspace-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'mixed-reference'
       }

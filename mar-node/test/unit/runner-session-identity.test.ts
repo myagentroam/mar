@@ -63,7 +63,7 @@ async function fixture(runner: 'codex' | 'claude-code' | 'opencode', modelId?: s
     content: 'Inspect the workspace'
   }).run;
   const execution = node.runtime.createExecution(run.id);
-  node.runtime.transitionRun(run.id, 'STARTING');
+  node.runtime.transitionRun(run.id, 'RUNNING');
   node.runtime.transitionRun(run.id, 'RUNNING');
   node.runtime.executionAccepted(execution.id);
   return { node, database, session, run, execution, root, interrupt, respond };

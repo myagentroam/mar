@@ -420,6 +420,7 @@ export const nodeCapabilitiesSchema = z
     remoteDesktop: remoteDesktopCapabilitySchema.optional(),
     sessionAside: sessionAsideCapabilitySchema.optional(),
     scheduledTasks: scheduledTasksCapabilitySchema.optional(),
+    scheduledHourly: z.literal(true).optional(),
     sessionGroups: z
       .object({ apiVersion: z.literal(1) })
       .strict()
@@ -1640,7 +1641,6 @@ export const codexModelImportResultSchema = z
 export type CodexModelImportResult = z.infer<typeof codexModelImportResultSchema>;
 
 export const agentRunStatusSchema = z.enum([
-  'STARTING',
   'RUNNING',
   'CANCELLING',
   'SUCCEEDED',
@@ -3057,12 +3057,7 @@ export type ConversationTemplatePublishResult = z.infer<
 >;
 
 export const hostedConversationStatusSchema = z.literal('ACTIVE');
-export const hostedConversationActivityStatusSchema = z.enum([
-  'STARTING',
-  'RUNNING',
-  'CANCELLING',
-  'IDLE'
-]);
+export const hostedConversationActivityStatusSchema = z.enum(['RUNNING', 'CANCELLING', 'IDLE']);
 export const hostedConversationActivitySchema = z
   .object({
     status: hostedConversationActivityStatusSchema,

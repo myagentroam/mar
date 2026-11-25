@@ -205,7 +205,7 @@ describe('Runner error projection', () => {
         ...executionActivity(),
         parseAttachments: () => [],
         adopt: () => undefined,
-        run: () => ({ status: 'STARTING' }),
+        run: () => ({ status: 'RUNNING' }),
         completeCancelled: () => false,
         emitItem: (_runId: string, item: unknown) => calls.push({ type: 'item', value: item }),
         emit: (_runId: string, eventType: string, payload: unknown) =>

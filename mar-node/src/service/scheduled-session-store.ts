@@ -396,7 +396,7 @@ export class ScheduledSessionStore {
         : null;
       const result = this.database
         .prepare(
-          `UPDATE scheduled_session_tasks SET session_id=?,new_session=?,runner=?,name=?,objective=?,triggers=?,timezone=?,enabled=?,notify_on_terminal=?,grace_minutes=?,revision=?,next_run_at=?,updated_at=?
+          `UPDATE scheduled_session_tasks SET session_id=?,new_session=?,runner=?,name=?,objective=?,triggers=?,timezone=?,enabled=?,notify_on_terminal=?,grace_minutes=?,owner_user_id=?,revision=?,next_run_at=?,updated_at=?
         WHERE id=? AND revision=?`
         )
         .run(
@@ -410,6 +410,7 @@ export class ScheduledSessionStore {
           enabled ? 1 : 0,
           (patch.notifyOnTerminal ?? current.notifyOnTerminal) ? 1 : 0,
           patch.graceMinutes ?? current.graceMinutes,
+          patch.ownerUserId ?? current.ownerUserId,
           expectedRevision + 1,
           nextRunAt,
           now,
@@ -908,12 +909,11 @@ export class ScheduledSessionStore {
   resolveProposal(
     taskId: string,
     proposalId: string,
-    ownerUserId: number,
+    actorUserId: number,
     accept: boolean
   ): ScheduledSessionTask {
     const task = this.getById(taskId);
     if (task === undefined) throw new Error('SCHEDULE_NOT_FOUND');
-    if (task.ownerUserId !== ownerUserId) throw new Error('SCHEDULE_OWNER_REQUIRED');
     const proposal = this.database
       .prepare('SELECT * FROM scheduled_session_proposals WHERE id=? AND task_id=?')
       .get(proposalId, task.id) as SqlRow | undefined;
@@ -924,6 +924,7 @@ export class ScheduledSessionStore {
     try {
       const updated = accept
         ? this.update(taskId, task.revision, {
+            ownerUserId: actorUserId,
             ...(proposal['name'] === null ? {} : { name: proposal['name'] as string }),
             ...(proposal['objective'] === null
               ? {}
@@ -954,6 +955,7 @@ export interface AgentTaskPatch {
 }
 
 interface TaskPatch extends AgentTaskPatch {
+  readonly ownerUserId?: number;
   readonly binding?: Pick<ScheduledSessionTask, 'sessionId' | 'runner' | 'newSession'>;
   readonly timezone?: string;
   readonly enabled?: boolean | undefined;

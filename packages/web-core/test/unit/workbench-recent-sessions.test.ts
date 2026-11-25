@@ -70,10 +70,9 @@ describe('Workbench recent session groups', () => {
     }
   );
 
-  it('keeps starting and completed neutral, running green, and preserves other status semantics', () => {
+  it('keeps completed neutral, running green, and preserves other status semantics', () => {
     localePreferenceService().setLocale('en-US');
     const statuses: RecentRun['status'][] = [
-      'STARTING',
       'RUNNING',
       'SUCCEEDED',
       'FAILED',
@@ -94,7 +93,6 @@ describe('Workbench recent session groups', () => {
       (node) => node.type === 'span' && node.props.get('class') === 'mar-ui-tag'
     );
     expect(tags.map((node) => node.props.get('data-type'))).toEqual([
-      'info',
       'success',
       'info',
       'danger',
@@ -103,7 +101,6 @@ describe('Workbench recent session groups', () => {
       'info'
     ]);
     expect(tags.map((node) => node.textContent)).toEqual([
-      'Starting',
       'Running',
       'Completed',
       'Failed',

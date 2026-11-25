@@ -2,6 +2,7 @@ import { scheduledTriggerLimit, scheduledTriggersSchema } from '@myagentroam/pro
 import { describe, expect, it } from 'vitest';
 import { legacyCronTimeGroups } from '../../src/migrations/v024-cron.js';
 import {
+  scheduledRulesKey,
   scheduledTimesAfter,
   suggestedScheduleDate
 } from '../../src/service/scheduled-session-recurrence.js';
@@ -36,11 +37,43 @@ describe('scheduled triggers', () => {
       [{ kind: 'weekly', weekdays: [7], time: '10:00' }],
       [{ kind: 'monthly', monthDays: [1], time: '10:00', months: [1] }],
       [{ kind: 'daily', time: '10:00', date: '2028-01-01' }],
+      [{ kind: 'hourly', minutes: [] }],
+      [{ kind: 'hourly', minutes: [-1] }],
+      [{ kind: 'hourly', minutes: [60] }],
+      [{ kind: 'hourly', minutes: [1.5] }],
+      [{ kind: 'hourly', minutes: [0], time: '10:00' }],
       [{ days: { kind: 'anyDay' }, times: { kind: 'grid', hours: [1], minutes: [0] } }],
       Array.from({ length: scheduledTriggerLimit + 1 }, () => once('2028-02-29', '10:00'))
     ]) {
       expect(scheduledTriggersSchema.safeParse(triggers).success).toBe(false);
     }
+  });
+
+  it('runs selected hourly minutes in order and coalesces overlapping rules', () => {
+    const hourly = { kind: 'hourly' as const, minutes: [45, 15, 15] };
+    expect(scheduledRulesKey([hourly])).toBe(
+      scheduledRulesKey([{ kind: 'hourly', minutes: [15, 45] }])
+    );
+    expect(
+      times([hourly, ...dailyTriggers('23:45')], 'Asia/Kathmandu', '2026-11-25T17:30:00Z', 4)
+    ).toEqual([
+      { dueAt: at('2026-11-25T18:00:00Z'), matchedTriggers: [0, 1] },
+      { dueAt: at('2026-11-25T18:30:00Z'), matchedTriggers: [0] },
+      { dueAt: at('2026-11-25T19:00:00Z'), matchedTriggers: [0] },
+      { dueAt: at('2026-11-25T19:30:00Z'), matchedTriggers: [0] }
+    ]);
+  });
+
+  it.each([
+    ['2026-03-08T06:15:00Z', ['2026-03-08T06:45:00Z', '2026-03-08T07:15:00Z']],
+    ['2026-11-01T05:15:00Z', ['2026-11-01T05:45:00Z', '2026-11-01T07:15:00Z']],
+    ['2026-11-01T06:00:00Z', ['2026-11-01T07:15:00Z', '2026-11-01T07:45:00Z']]
+  ])('skips hourly clock gaps and repeated times after %s', (after, expected) => {
+    expect(
+      times([{ kind: 'hourly', minutes: [15, 45] }], 'America/New_York', after, 2).map(
+        ({ dueAt }) => dueAt
+      )
+    ).toEqual(expected.map(at));
   });
 
   it('finds far-future dates and returns no successor after the exact one-time date', () => {

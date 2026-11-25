@@ -114,6 +114,20 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
   });
 }
 
+test('MAR switch uses a white thumb on the dark Primary track', async ({ page }, testInfo) => {
+  await page.goto(`${fixture.url}mar-switch.html`);
+  const draft = page.getByRole('switch', { name: 'Draft setting' });
+  await draft.press('Space');
+  await expect(draft).toBeChecked();
+  const track = page.locator('#draft + .mar-ui-switch__track');
+  await expect(track).toHaveCSS('background-color', 'rgb(23, 137, 252)');
+  await expect(track.locator('.mar-ui-switch__thumb')).toHaveCSS(
+    'background-color',
+    'rgb(255, 255, 255)'
+  );
+  await page.locator('main').screenshot({ path: testInfo.outputPath('switch-dark-checked.png') });
+});
+
 test.describe('390px touch viewport', () => {
   test.use({
     hasTouch: true,
@@ -132,7 +146,12 @@ test.describe('390px touch viewport', () => {
     const track = page.locator('#draft + .mar-ui-switch__track');
     await expect(track).toHaveCSS('height', '24px');
     await expect(track).toHaveCSS('width', '40px');
+    await expect(track).toHaveCSS('background-color', 'rgb(0, 87, 219)');
     await expect(track.locator('.mar-ui-switch__thumb')).toHaveCSS('height', '16px');
+    await expect(track.locator('.mar-ui-switch__thumb')).toHaveCSS(
+      'background-color',
+      'rgb(255, 255, 255)'
+    );
     await page.getByRole('switch', { name: 'Controlled setting' }).tap();
     const spinner = page.locator(
       '#remote + .mar-ui-switch__track [data-mar-icon="loading-action"]'

@@ -443,7 +443,7 @@ describe('Claude Run queue, Channel, and lifecycle', () => {
       content: 'current task'
     }).run;
     const execution = internals.runtime.createExecution(active.id);
-    internals.runtime.transitionRun(active.id, 'STARTING');
+    internals.runtime.transitionRun(active.id, 'RUNNING');
     internals.runtime.transitionRun(active.id, 'RUNNING');
     const startedAt = internals.runtime.getRun(active.id)!.startedAt;
     vi.spyOn(internals.continuousRunCoordinator, 'schedule').mockImplementation(() => undefined);

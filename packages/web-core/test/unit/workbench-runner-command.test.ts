@@ -249,7 +249,7 @@ describe('Workbench runner command', () => {
     const runs = runService.runs;
     const request = vi
       .fn()
-      .mockResolvedValue({ session, run: { ...run, status: 'STARTING', version: 2 } });
+      .mockResolvedValue({ session, run: { ...run, status: 'RUNNING', version: 2 } });
     const configure = vi.fn();
     const openRun = vi.fn();
     let revision = 1;

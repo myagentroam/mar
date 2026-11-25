@@ -109,7 +109,6 @@ const editor = shallowRef<
   | {
       key: ScheduleTaskKey;
       detail: ScheduleDetail;
-      mode: 'view' | 'edit';
       sessionTitle?: string;
       invoker?: HTMLElement;
     }
@@ -241,7 +240,6 @@ onBeforeUnmount(() => {
 
 async function openTask(
   key: ScheduleTaskKey & Partial<Pick<ScheduleCard, 'sessionId' | 'sessionTitle'>>,
-  mode: 'view' | 'edit',
   proposalId?: string
 ) {
   const { sessionId, sessionTitle } = key;
@@ -267,7 +265,6 @@ async function openTask(
       editor.value = {
         key,
         detail,
-        mode,
         ...(sessionId && sessionId === detail.task.sessionId && sessionTitle
           ? { sessionTitle }
           : {}),
@@ -350,7 +347,7 @@ watch(
   () => props.linkedTask,
   (task) => {
     if (!task) return;
-    if (task.reference.kind === 'proposal') void openTask(task, 'edit', task.reference.id);
+    if (task.reference.kind === 'proposal') void openTask(task, task.reference.id);
     else
       void openOccurrence({
         nodeId: task.nodeId,
@@ -382,30 +379,29 @@ watch(
       @open="openOccurrence"
     />
     <template v-else>
+      <ScheduledWorkspaceFilter
+        v-if="!sessionContext"
+        v-model="workspace"
+        :workspaces="workspaces"
+      />
       <div class="mar-table-actions schedule-toolbar">
-        <ScheduledWorkspaceFilter
-          v-if="!sessionContext"
-          v-model="workspace"
-          :workspaces="workspaces"
-        />
         <MarButton
           v-if="sessionContext"
           :icon="marIcon('chevron-left')"
           @click="emit('backToAll')"
           >{{ msg('backToAll') }}</MarButton
         >
-        <MarButton text :icon="marIcon('refresh')" :disabled="loading" @click="reload()">{{
+        <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="reload()">{{
           msg('refresh')
         }}</MarButton>
-        <div class="schedule-create" :class="{ 'schedule-create--pending': nodes === undefined }">
-          <MarButton
-            type="primary"
-            :icon="marIcon('plus')"
-            :disabled="!canCreate"
-            @click="editor = 'new'"
-            >{{ msg('create') }}</MarButton
-          >
-        </div>
+        <MarButton
+          :class="{ 'schedule-create--pending': nodes === undefined }"
+          type="primary"
+          :icon="marIcon('plus')"
+          :disabled="!canCreate"
+          @click="editor = 'new'"
+          >{{ msg('create') }}</MarButton
+        >
       </div>
       <p v-if="failure && !failure.incremental" role="alert" class="notice">
         {{ errorSummary(failure.error, msg('loadFailed')) }}
@@ -427,8 +423,7 @@ watch(
             v-for="item in tasks"
             :key="identity(item)"
             :task="item"
-            @details="openTask(item, 'view')"
-            @edit="openTask(item, 'edit')"
+            @edit="openTask(item)"
             @history="openTaskHistory(item)"
             @open-target="emit('openTarget', $event)"
           />
@@ -565,6 +560,7 @@ watch(
 .schedule-panel--tasks
   > :is(
     header,
+    .mar-filter-row,
     .schedule-toolbar,
     .cards,
     .notice,
@@ -573,9 +569,6 @@ watch(
     .mar-page-loading-state
   ) {
   max-inline-size: 1560px;
-}
-.schedule-create {
-  margin-inline-start: auto;
 }
 .schedule-create--pending {
   visibility: hidden;

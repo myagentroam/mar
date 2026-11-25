@@ -16,13 +16,15 @@ const position = shallowRef<{ x: number; width: number }>();
 function placeIndicator(): void {
   const element = track.value;
   if (!element?.clientWidth) return;
-  const selected = element.querySelector<HTMLElement>('.is-selected');
-  const width = selected?.offsetWidth ?? 0;
-  if (!selected || !width) {
+  const selected = element.querySelector('.is-selected')?.getBoundingClientRect();
+  if (!selected?.width) {
     position.value = undefined;
     return;
   }
-  const x = selected.offsetLeft;
+  // Preserve fractional flex widths so the indicator stays flush with either option.
+  const { width } = selected;
+  const borderLeft = parseFloat(getComputedStyle(element).borderLeftWidth);
+  const x = selected.left - element.getBoundingClientRect().left - borderLeft;
   if (position.value?.x !== x || position.value.width !== width) position.value = { x, width };
 }
 
@@ -89,13 +91,15 @@ function navigateToEdge(event: KeyboardEvent): void {
 
 <style scoped>
 .mar-segmented {
+  --mar-segmented-inset: 1px;
+  --mar-segmented-border-width: 1px;
   position: relative;
   display: inline-flex;
   width: max-content;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--mar-ui-border-default);
+  padding: var(--mar-segmented-inset);
+  border: var(--mar-segmented-border-width) solid var(--mar-ui-border-default);
   border-radius: var(--mar-ui-radius-control);
   background: var(--mar-ui-bg-subtle);
   color: var(--mar-ui-text-secondary);
@@ -107,13 +111,18 @@ function navigateToEdge(event: KeyboardEvent): void {
   width: 100%;
   min-width: 0;
 }
+.mar-segmented-option,
+.mar-segmented-indicator {
+  border-radius: calc(
+    var(--mar-ui-radius-control) - var(--mar-segmented-border-width) - var(--mar-segmented-inset)
+  );
+}
 .mar-segmented-option {
   position: relative;
   display: grid;
   place-items: center;
   min-width: 0;
   padding-inline: var(--mar-ui-compact-option-padding-inline);
-  border-radius: calc(var(--mar-ui-radius-control) - 2px);
   color: inherit;
   font-size: inherit;
   font-weight: 400;
@@ -123,7 +132,8 @@ function navigateToEdge(event: KeyboardEvent): void {
   flex: 1 1 0;
 }
 .is-compact .mar-segmented-option {
-  min-block-size: var(--mar-ui-compact-control-size);
+  /* Keep the same outer height after reducing the track padding. */
+  min-block-size: calc(var(--mar-ui-compact-control-size) + 2px);
   padding-inline: 0.25rem;
 }
 .mar-segmented-option input {
@@ -152,12 +162,10 @@ function navigateToEdge(event: KeyboardEvent): void {
 }
 .mar-segmented-indicator {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  inset-block: var(--mar-segmented-inset);
   left: 0;
   width: var(--segment-width, 0px);
   transform: translateX(var(--segment-x, 0px));
-  border-radius: calc(var(--mar-ui-radius-control) - 2px);
   pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {

@@ -68,7 +68,7 @@ for (const { width, theme, lateSuccess } of [
       id: 'feedback-run',
       sessionId: session.id,
       workspaceId: session.workspaceId,
-      status: 'STARTING',
+      status: 'RUNNING',
       recoveryState: 'ACTIVE',
       startedAt: Date.now(),
       clientMessageId: 'feedback-message'

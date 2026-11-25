@@ -73,9 +73,9 @@ if (new URL(location.href).searchParams.has('stop-statuses')) {
     }
   ];
 }
-if (new URL(location.href).searchParams.has('transitioning')) {
+if (new URL(location.href).searchParams.has('cancelling')) {
   service.recentRuns.value = [
-    { ...service.recentRuns.value[0]!, status: 'STARTING' },
+    { ...service.recentRuns.value[0]!, status: 'CANCELLING' },
     {
       ...service.recentRuns.value[1]!,
       sessionGroup: 'MAIN',

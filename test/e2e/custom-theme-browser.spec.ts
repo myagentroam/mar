@@ -1989,6 +1989,40 @@ for (const [scheme, width] of [
   ['Dark', 1280],
   ['Light', 390]
 ] as const) {
+  test(`Calendar confirmation uses a text button and restores focus in ${scheme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    if (scheme === 'Light') {
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    }
+    const input = page.getByPlaceholder('Single date field', { exact: true });
+    await input.click();
+    const calendar = page.getByRole('dialog', { name: 'Calendar', exact: true });
+    const confirm = calendar.getByRole('button', { name: 'Confirm', exact: true });
+    await expect(confirm).toBeDisabled();
+    await expect(confirm).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(confirm).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    const day = calendar.locator('[data-day][data-outside="false"]').first();
+    await day.click();
+    await expect(confirm).toBeEnabled();
+    await expect(confirm).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(confirm).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    await calendar.screenshot({
+      path: testInfo.outputPath(`calendar-confirm-${scheme.toLowerCase()}.png`)
+    });
+    await day.press('Tab');
+    await expect(confirm).toBeFocused();
+    await expect(confirm).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('Enter');
+    await expect(calendar).toBeHidden();
+    await expect(input).toBeFocused();
+  });
+
   test(`Standard fields share their boundary and preserve states in ${scheme} at ${width}px`, async ({
     page
   }, testInfo) => {
@@ -2077,6 +2111,10 @@ for (const [scheme, width] of [
         await wrapper(field).hover();
         await expect(wrapper(field)).toHaveCSS('border-top-color', disabledColors.border);
       }
+      await expect(fields.getByPlaceholder('Disabled single date', { exact: true })).toHaveCSS(
+        'cursor',
+        'not-allowed'
+      );
       const enabledInput = fields.getByRole('textbox', { name: 'Text field', exact: true });
       await enabledInput.hover();
       await expect(wrapper(enabledInput)).toHaveCSS(
@@ -2149,6 +2187,38 @@ for (const [scheme, width] of [
       await page.keyboard.press('Escape');
       await expect(popup).toBeHidden();
     }
+  });
+}
+
+for (const [scheme, width, background] of [
+  ['Dark', 1280, 'rgb(0, 117, 209)'],
+  ['Light', 390, 'rgb(0, 87, 219)']
+] as const) {
+  test(`Selected calendar dates use the readable Primary text pair in ${scheme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    if (scheme === 'Light') {
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    }
+    const input = page.getByPlaceholder('Single date field', { exact: true });
+    await input.click();
+    const calendar = page.getByRole('dialog', { name: 'Calendar', exact: true });
+    const day = calendar.locator('[data-day][data-outside="false"]').first();
+    await day.click();
+    const selection = calendar.getByRole('button', { pressed: true });
+    await expect(selection).toHaveAttribute('aria-label', await input.inputValue());
+    const number = selection.locator('.mar-ui-calendar-month__day-number');
+    await expect(number).toHaveCSS('background-color', background);
+    await expect(number).toHaveCSS('color', 'rgb(255, 255, 255)');
+    expect(colorContrast('rgb(255, 255, 255)', background)).toBeGreaterThanOrEqual(4.5);
+    await calendar.screenshot({
+      path: testInfo.outputPath(`calendar-${scheme.toLowerCase()}.png`)
+    });
   });
 }
 
@@ -2246,16 +2316,16 @@ test('filled primary controls and the preview use their respective active palett
   const options = page.locator('.theme-option');
   const sample = page.locator('.mar-theme-preview .preview-button.primary');
   await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await expect(sample).toHaveCSS('background-color', 'rgb(11, 112, 219)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(0, 117, 209)');
   await page.getByRole('button', { name: 'Inspect Light', exact: true }).click();
   await expect(sample).toHaveCSS('background-color', 'rgb(0, 87, 219)');
   await useThemeMenu(page, options.first(), 'Duplicate');
   const save = page.getByRole('button', { name: 'Save theme', exact: true });
   await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await expect(sample).toHaveCSS('background-color', 'rgb(11, 112, 219)');
+  await expect(sample).toHaveCSS('background-color', 'rgb(0, 117, 209)');
   expect(JSON.parse(await editor.inputValue()).colors).toMatchObject({
     '--mar-button-primary-fg': '#ffffff',
-    '--mar-control-primary-fg': '#181818'
+    '--mar-control-primary-fg': '#ffffff'
   });
   await expect(save).toHaveCSS('color', 'rgb(255, 255, 255)');
   const custom = JSON.stringify({
@@ -2674,18 +2744,18 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'background-color',
-        scheme === 'Dark' ? 'rgb(11, 112, 219)' : 'rgb(0, 87, 219)'
+        scheme === 'Dark' ? 'rgb(0, 117, 209)' : 'rgb(0, 87, 219)'
       );
       const primary = controls.getByRole('button', { name: 'Sample primary', exact: true });
       await primary.scrollIntoViewIfNeeded();
       const primaryBounds = await primary.boundingBox();
       await primary.screenshot({ path: testInfo.outputPath('primary-default.png') });
       await primary.hover();
-      const hoverColor = scheme === 'Dark' ? 'rgb(16, 116, 222)' : 'rgb(0, 76, 195)';
+      const hoverColor = scheme === 'Dark' ? 'rgb(0, 111, 197)' : 'rgb(0, 76, 195)';
       await expect(primary).toHaveCSS('background-color', hoverColor);
       await expect(primary).toHaveCSS(
         'border-top-color',
-        scheme === 'Dark' ? 'rgb(23, 137, 252)' : 'rgba(0, 0, 0, 0)'
+        scheme === 'Dark' ? 'rgb(42, 136, 205)' : 'rgba(0, 0, 0, 0)'
       );
       await expect(primary).toHaveCSS('color', primaryForeground);
       await expect(primary).toHaveCSS('transform', 'none');
@@ -2695,7 +2765,7 @@ for (const scheme of ['Light', 'Dark']) {
       try {
         await expect(primary).toHaveCSS(
           'background-color',
-          scheme === 'Dark' ? 'rgb(9, 107, 210)' : 'rgb(0, 66, 170)'
+          scheme === 'Dark' ? 'rgb(0, 102, 183)' : 'rgb(0, 66, 170)'
         );
         await expect(primary).toHaveCSS('color', primaryForeground);
       } finally {

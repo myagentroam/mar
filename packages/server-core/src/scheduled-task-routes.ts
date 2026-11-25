@@ -78,6 +78,7 @@ interface DirectoryNode {
   connected: boolean;
   supported: boolean;
   newSessionSupported: boolean;
+  hourlySupported?: boolean;
 }
 interface DirectoryWorkspace {
   id: string;

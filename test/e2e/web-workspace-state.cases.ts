@@ -2343,8 +2343,7 @@ for (const language of [
     browseNext: '向右浏览工作区标签',
     unread: '未读',
     running: '运行中',
-    workspaceRunning: '工作区有正在运行的任务',
-    workspaceTransitioning: '工作区有正在启动或停止的任务'
+    workspaceRunning: '工作区有活动任务'
   },
   {
     locale: 'en-US',
@@ -2354,8 +2353,7 @@ for (const language of [
     browseNext: 'Browse next workspace tabs',
     unread: 'Unread',
     running: 'Running',
-    workspaceRunning: 'Workspace has a running task',
-    workspaceTransitioning: 'Workspace has tasks starting or stopping'
+    workspaceRunning: 'Workspace has an active task'
   }
 ] as const) {
   test(
@@ -2486,9 +2484,7 @@ for (const language of [
         element.append(probe);
         try {
           probe.style.color = 'var(--mar-control-color-success)';
-          const running = getComputedStyle(probe).color;
-          probe.style.color = 'var(--mar-text-secondary)';
-          return { running, transitioning: getComputedStyle(probe).color };
+          return getComputedStyle(probe).color;
         } finally {
           probe.remove();
         }
@@ -2507,8 +2503,8 @@ for (const language of [
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       const workspaceDot = first.locator('.workspace-tab-running');
       const sessionDot = page.locator('.session-list .mar-session-activity').first();
-      await expectActivityIndicator(workspaceDot, language.workspaceRunning, palette.running);
-      await expectActivityIndicator(sessionDot, language.running, palette.running);
+      await expectActivityIndicator(workspaceDot, language.workspaceRunning, palette);
+      await expectActivityIndicator(sessionDot, language.running, palette);
       await page.emulateMedia({ reducedMotion: 'reduce' });
       for (const dot of [workspaceDot, sessionDot])
         await expect(dot.locator('i')).toHaveCSS('animation-name', 'none');
@@ -2532,10 +2528,8 @@ for (const language of [
       await expect(first.locator('.workspace-tab-running')).toBeVisible();
       recentRuns = [run('first-task', 'SUCCEEDED'), run('second-task', 'CANCELLING')];
       await invalidate({ type: 'recent-run.updated', run: recentRuns[0] });
-      await expect(first.getByRole('tab')).toHaveAccessibleDescription(
-        language.workspaceTransitioning
-      );
-      await expect(workspaceDot.locator('i')).toHaveCSS('background-color', palette.transitioning);
+      await expect(first.getByRole('tab')).toHaveAccessibleDescription(language.workspaceRunning);
+      await expect(workspaceDot.locator('i')).toHaveCSS('background-color', palette);
       recentRuns = [];
       await invalidate({ type: 'recent-run.removed', nodeId: 'node-1', runId: 'second-task' });
       await expect(first.locator('.workspace-tab-running')).toHaveCount(0);
@@ -2544,7 +2538,7 @@ for (const language of [
         await tree.getByRole('button', { name: 'project-' + i, exact: true }).click();
       }
       notifications = [entry('menu-unread', 'unloaded-session')];
-      recentRuns = [run('menu-task', 'STARTING')];
+      recentRuns = [run('menu-task', 'CANCELLING')];
       await invalidate({ type: 'recent-run.updated', run: recentRuns[0] });
       await expect(first.locator('.workspace-tab-unread')).toBeVisible();
       await page.setViewportSize({ width: 1024, height: 900 });
@@ -2557,11 +2551,11 @@ for (const language of [
         .locator('.workspace-tab-menu-list [role="menuitem"]')
         .filter({ hasText: 'project-1' });
       await expect(menuItem.locator('.workspace-tab-unread')).toHaveText(language.unread);
-      await expect(menuItem).toHaveAccessibleDescription(language.workspaceTransitioning);
+      await expect(menuItem).toHaveAccessibleDescription(language.workspaceRunning);
       await expectActivityIndicator(
         menuItem.locator('.workspace-tab-running'),
-        language.workspaceTransitioning,
-        palette.transitioning
+        language.workspaceRunning,
+        palette
       );
       await page.keyboard.press('Escape');
       await expect(menuItem).toBeHidden();
@@ -2571,14 +2565,8 @@ for (const language of [
       await first.scrollIntoViewIfNeeded();
       await expect(first.locator('.workspace-tab-unread')).toBeVisible();
       await expect(first.locator('.workspace-tab-running')).toHaveCSS('flex-shrink', '0');
-      await expect(first.getByRole('tab')).toHaveAccessibleDescription(
-        language.workspaceTransitioning
-      );
-      await expectActivityIndicator(
-        workspaceDot,
-        language.workspaceTransitioning,
-        palette.transitioning
-      );
+      await expect(first.getByRole('tab')).toHaveAccessibleDescription(language.workspaceRunning);
+      await expectActivityIndicator(workspaceDot, language.workspaceRunning, palette);
       const bounds = await first.locator('.workspace-tab-unread').boundingBox();
       const tabBounds = await first.boundingBox();
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(tabBounds!.x + tabBounds!.width);

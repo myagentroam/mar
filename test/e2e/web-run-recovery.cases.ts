@@ -316,7 +316,7 @@ test('First messages immediately mark new sessions as managed runs and merge rea
         id: 'run-created',
         sessionId: 'session-created',
         workspaceId: 'workspace-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'first-message'
       },
@@ -355,7 +355,7 @@ test('First messages immediately mark new sessions as managed runs and merge rea
           id: 'run-created',
           sessionId: 'session-created',
           workspaceId: 'workspace-1',
-          status: 'STARTING',
+          status: 'RUNNING',
           recoveryState: 'ACTIVE',
           clientMessageId: 'first-message'
         }
@@ -681,7 +681,7 @@ test('Older session snapshots cannot overwrite newly pushed messages', async ({ 
         id: 'run-late-turns',
         sessionId: 'session-1',
         workspaceId: 'workspace-1',
-        status: 'STARTING',
+        status: 'RUNNING',
         recoveryState: 'ACTIVE',
         clientMessageId: 'late-1'
       },

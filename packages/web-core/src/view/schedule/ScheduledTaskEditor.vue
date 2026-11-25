@@ -59,7 +59,6 @@ const props = defineProps<{
     | {
         key: ScheduleTaskKey;
         detail: ScheduleDetail;
-        mode?: 'view' | 'edit';
         sessionTitle?: string;
       }
     | undefined;
@@ -67,15 +66,16 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; changed: [] }>();
 const notificationHintId = useId();
 const monthDayOptions = Array.from({ length: 31 }, (_, index) => index + 1);
+const minuteOptions = Array.from({ length: 60 }, (_, minute) => minute);
 const graceOptions = Array.from({ length: 60 }, (_, minute) => minute + 1);
-const repeatOptions = ['once', 'daily', 'weekly', 'monthly'] as const;
+const repeatOptions = ['once', 'hourly', 'daily', 'weekly', 'monthly'] as const;
+const minuteLabel = (minute: number) => String(minute).padStart(2, '0');
 const msg = (key: string, args?: Record<string, string | number>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const editing = props.editing;
 const saved = editing?.detail.task;
 const lockedSession = editing ? undefined : props.lockedSession;
 const lockedScope = lockedSession?.scope;
-const readOnly = editing?.mode === 'view' || editing?.detail.mine === false;
 let nextId = 1;
 const form = reactive({
   nodeId: editing?.key.nodeId ?? lockedScope?.nodeId ?? '',
@@ -92,9 +92,7 @@ const form = reactive({
   graceMinutes: saved?.graceMinutes ?? 0,
   triggers: saved?.triggers.length
     ? saved.triggers.map((trigger) => triggerDraft(nextId++, trigger))
-    : readOnly
-      ? []
-      : [triggerDraft(nextId++)]
+    : [triggerDraft(nextId++)]
 });
 const savedSessionTitle = computed(() =>
   form.sessionId === saved?.sessionId ? editing?.sessionTitle : undefined
@@ -121,12 +119,25 @@ const preview = ref<{ timezone: string; times: { dueAt: number }[] }>();
 const timezone = ref(saved?.timezone);
 const selection = computed(() => ({ nodeId: form.nodeId, workspaceId: form.workspaceId }));
 const node = computed(() => props.nodes.find((item) => item.id === form.nodeId));
+const hourlySupported = computed(() => node.value?.hourlySupported === true);
 const targetReady = computed(
   () => node.value?.connected && node.value.supported !== false && form.workspaceId !== ''
 );
 const profile = computed(() => profiles.value.find((item) => item.runner === form.runner));
+const modelOptions = computed(() => runnerModelCandidates(profile.value, undefined));
+const model = computed(() => modelOptions.value.find((item) => item.id === form.model));
+const savedModel = computed(() => {
+  const config = saved?.newSession;
+  if (config?.runner !== form.runner || config.model.kind !== 'fixed') return undefined;
+  const id = config.model.modelId;
+  return modelOptions.value.some((item) => item.id === id) ? undefined : id;
+});
+// Keep the saved target editable when its Agent has no selectable models.
+const retainedRunner = computed(() =>
+  !profile.value && form.model === savedModel.value ? saved?.newSession?.runner : undefined
+);
 const selectedRunnerIcon = computed(() => {
-  const runner = profile.value?.runner;
+  const runner = profile.value?.runner ?? retainedRunner.value;
   return runner
     ? () =>
         h('img', {
@@ -137,8 +148,6 @@ const selectedRunnerIcon = computed(() => {
         })
     : undefined;
 });
-const modelOptions = computed(() => runnerModelCandidates(profile.value, undefined));
-const model = computed(() => modelOptions.value.find((item) => item.id === form.model));
 const efforts = computed(() => {
   const supported = model.value?.supportedEfforts ?? [];
   return form.runner === 'mar-agent' ? orderMarAgentReasoningEfforts(supported) : supported;
@@ -146,10 +155,13 @@ const efforts = computed(() => {
 const parsedTriggers = computed(() => form.triggers.map(parseTriggerDraft));
 const checkedTriggers = () =>
   parsedTriggers.value.flatMap((result) => (result.success ? [result.data] : []));
+function triggerError(row: TriggerDraft, index: number): string | undefined {
+  if (row.kind === 'hourly' && !hourlySupported.value) return 'hourlyUnavailable';
+  if (row.kind === 'hourly' && !row.minutes.length) return 'hourlyMinutesRequired';
+  return parsedTriggers.value[index]?.success ? undefined : 'triggerInvalid';
+}
 const previewTriggers = computed(() =>
-  form.triggers.length && parsedTriggers.value.every((result) => result.success)
-    ? checkedTriggers()
-    : undefined
+  form.triggers.length && !form.triggers.some(triggerError) ? checkedTriggers() : undefined
 );
 const suggestionTarget = computed(() =>
   form.triggers.find(
@@ -193,11 +205,17 @@ const rules: FormRules = {
   runner: [
     {
       validator: () =>
-        (newSessionSupported.value && profile.value !== undefined) ||
+        (newSessionSupported.value &&
+          (profile.value !== undefined || retainedRunner.value !== undefined)) ||
         new Error(msg('runnerRequired'))
     }
   ],
-  model: [{ validator: () => model.value !== undefined || new Error(msg('modelRequired')) }],
+  model: [
+    {
+      validator: () =>
+        !!model.value || form.model === savedModel.value || new Error(msg('modelRequired'))
+    }
+  ],
   name: [
     {
       validator: () =>
@@ -225,11 +243,14 @@ const rules: FormRules = {
 const timeRules = computed<FormRules>(() => ({
   graceMinutes: rules.graceMinutes,
   ...Object.fromEntries(
-    form.triggers.map((_, index) => [
+    form.triggers.map((row, index) => [
       `triggers.${index}`,
       [
         {
-          validator: () => parsedTriggers.value[index]?.success || new Error(msg('triggerInvalid'))
+          validator: () => {
+            const errorKey = triggerError(row, index);
+            return errorKey ? new Error(msg(errorKey)) : true;
+          }
         }
       ]
     ])
@@ -407,7 +428,7 @@ function target(): ScheduledTarget {
       };
 }
 async function submit() {
-  if (pending.value || readOnly) return;
+  if (pending.value) return;
   pending.value = 'save';
   error.value = undefined;
   try {
@@ -419,7 +440,7 @@ async function submit() {
     }
     if (!(await timeForm.value?.validate().catch(() => false))) {
       tab.value = 'time';
-      const invalid = parsedTriggers.value.findIndex((result) => !result.success);
+      const invalid = form.triggers.findIndex(triggerError);
       if (invalid !== -1) activeTriggerId.value = form.triggers[invalid]?.id;
       await nextTick();
       timeForm.value?.$el.querySelector('[role="alert"]')?.scrollIntoView({ block: 'nearest' });
@@ -446,6 +467,7 @@ async function submit() {
 }
 async function resolve(id: string, accept: boolean) {
   if (!editing || pending.value) return;
+  if (!(await confirmDiscard()) || !alive.value || pending.value) return;
   pending.value = `${id}:${accept}`;
   error.value = undefined;
   try {
@@ -478,22 +500,30 @@ async function remove() {
     pending.value = undefined;
   }
 }
-async function beforeClose(done: (cancel?: boolean) => void) {
-  if (pending.value) return;
-  if (!readOnly && initialDraft !== serializeDraft()) {
-    try {
-      await MarMessageBox.confirm(msg('discardConfirm'), msg('discard'), { type: 'warning' });
-    } catch {
-      return;
-    }
+async function confirmDiscard(): Promise<boolean> {
+  if (initialDraft === serializeDraft()) return true;
+  try {
+    await MarMessageBox.confirm(msg('discardConfirm'), msg('discard'), { type: 'warning' });
+    return true;
+  } catch {
+    return false;
   }
-  if (alive.value) done();
+}
+async function beforeClose(done: (cancel?: boolean) => void) {
+  if (!pending.value && (await confirmDiscard()) && alive.value) done();
 }
 onBeforeUnmount(() => {
   alive.value = false;
 });
 function triggerLabel(trigger: ScheduledTrigger): string {
   if (trigger.kind === 'once') return `${trigger.date} · ${msg('once')}`;
+  if (trigger.kind === 'hourly')
+    return msg('hourlySummary', {
+      minutes: [...new Set(trigger.minutes)]
+        .sort((a, b) => a - b)
+        .map(minuteLabel)
+        .join(', ')
+    });
   if (trigger.kind === 'weekly') {
     const days = [1, 2, 3, 4, 5, 6, 0].filter((day) => trigger.weekdays.includes(day));
     return msg('weeklySummary', { days: days.map((day) => msg(`weekday${day}`)).join(', ') });
@@ -503,7 +533,13 @@ function triggerLabel(trigger: ScheduledTrigger): string {
   return msg('daily');
 }
 const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
-  triggers.map((trigger) => `${trigger.time} · ${triggerLabel(trigger)}`).join('\n');
+  triggers
+    .map((trigger) =>
+      trigger.kind === 'hourly'
+        ? `${msg('hourly')} · ${triggerLabel(trigger)}`
+        : `${trigger.time} · ${triggerLabel(trigger)}`
+    )
+    .join('\n');
 </script>
 
 <template>
@@ -518,13 +554,13 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
   >
-    <MarTabs v-model="tab" :label="msg(readOnly ? 'taskDetails' : 'editorSections')">
+    <MarTabs v-model="tab" :label="msg('editorSections')">
       <MarTabPane name="task" :label="msg('taskTab')" class="editor-section">
         <MarForm
           ref="taskForm"
           :model="form"
           :rules="rules"
-          :disabled="readOnly || !!pending"
+          :disabled="!!pending"
           label-position="top"
           :aria-label="msg('taskTab')"
           @submit.prevent="submit"
@@ -617,7 +653,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 />
               </MarSelect>
               <MarButton
-                v-if="sessionCursor && !readOnly"
+                v-if="sessionCursor"
                 link
                 :disabled="loadingTargets"
                 @click="loadSessions(sessionCursor)"
@@ -637,6 +673,11 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 :loading="loadingProfiles"
                 @change="clearModel"
               >
+                <MarOption
+                  v-if="retainedRunner"
+                  :label="runnerLabel(retainedRunner)"
+                  :value="retainedRunner"
+                />
                 <MarOption
                   v-for="item in profiles"
                   :key="item.runner"
@@ -666,6 +707,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 :disabled="profile ? undefined : true"
                 @change="selectModel"
               >
+                <MarOption v-if="savedModel" :label="savedModel" :value="savedModel" />
                 <MarOption
                   v-for="item in modelOptions"
                   :key="item.id"
@@ -674,10 +716,10 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 />
               </MarSelect>
             </MarFormItem>
-            <MarFormItem v-if="efforts.length || (readOnly && form.effort)" :label="msg('effort')">
+            <MarFormItem v-if="efforts.length || form.effort" :label="msg('effort')">
               <MarSelect v-model="form.effort" :placeholder="msg('chooseEffort')" clearable>
                 <MarOption
-                  v-if="readOnly && form.effort && !efforts.includes(form.effort)"
+                  v-if="form.effort && !efforts.includes(form.effort)"
                   :label="effortPresentation(form.effort)"
                   :value="form.effort"
                 />
@@ -697,8 +739,6 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
             ><MarInput
               v-model="form.objective"
               :placeholder="msg('enterObjective')"
-              :readonly="readOnly"
-              :disabled="readOnly ? false : undefined"
               type="textarea"
               :rows="5"
               maxlength="20000"
@@ -710,6 +750,9 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               <small :id="notificationHintId">{{ msg('notifyUserHint') }}</small>
             </MarFormItem>
           </div>
+          <p v-if="editing && !editing.detail.mine" class="ownership-hint">
+            {{ msg('ownershipHint') }}
+          </p>
           <section
             v-if="editing?.detail.proposals.length"
             class="proposals"
@@ -722,21 +765,19 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               <p v-if="proposal.triggers" class="multiline">
                 {{ triggersFromProposal(proposal.triggers) }}
               </p>
-              <template v-if="!readOnly">
-                <MarButton
-                  :disabled="!!pending"
-                  :loading="pending === `${proposal.id}:false`"
-                  @click="resolve(proposal.id, false)"
-                  >{{ msg('reject') }}</MarButton
-                >
-                <MarButton
-                  type="primary"
-                  :disabled="!!pending"
-                  :loading="pending === `${proposal.id}:true`"
-                  @click="resolve(proposal.id, true)"
-                  >{{ msg('accept') }}</MarButton
-                >
-              </template>
+              <MarButton
+                :disabled="!!pending"
+                :loading="pending === `${proposal.id}:false`"
+                @click="resolve(proposal.id, false)"
+                >{{ msg('reject') }}</MarButton
+              >
+              <MarButton
+                type="primary"
+                :disabled="!!pending"
+                :loading="pending === `${proposal.id}:true`"
+                @click="resolve(proposal.id, true)"
+                >{{ msg('accept') }}</MarButton
+              >
             </article>
           </section>
         </MarForm>
@@ -746,7 +787,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
           ref="timeForm"
           :model="form"
           :rules="timeRules"
-          :disabled="readOnly || !!pending"
+          :disabled="!!pending"
           label-position="top"
           :aria-label="msg('timeTab')"
           @submit.prevent="submit"
@@ -763,7 +804,9 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               class="trigger-item"
             >
               <div class="trigger-row">
-                <span class="trigger-clock">{{ trigger.time || '—' }}</span>
+                <span class="trigger-clock">{{
+                  trigger.kind === 'hourly' ? msg('hourly') : trigger.time || '—'
+                }}</span>
                 <span class="trigger-description">
                   {{
                     parsedTriggers[index]?.success
@@ -771,7 +814,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                       : msg('incompleteTrigger')
                   }}
                 </span>
-                <div v-if="!readOnly" class="mar-row-actions trigger-actions">
+                <div class="mar-row-actions trigger-actions">
                   <MarButton
                     link
                     :icon="activeTriggerId === trigger.id ? 'check' : 'edit'"
@@ -807,6 +850,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                     {{ msg('triggerEditor', { number: index + 1 }) }}
                   </legend>
                   <MarFormItem
+                    v-if="trigger.kind !== 'hourly'"
                     :label="msg('timeEntry', { number: index + 1 })"
                     class="trigger-time"
                   >
@@ -819,9 +863,14 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                   </MarFormItem>
                   <MarFormItem :label="msg('repeatLabel')">
                     <MarRadioGroup v-model="trigger.kind" :aria-label="msg('repeatLabel')">
-                      <MarRadio v-for="kind in repeatOptions" :key="kind" :value="kind">{{
-                        msg(kind)
-                      }}</MarRadio>
+                      <template v-for="kind in repeatOptions" :key="kind">
+                        <MarRadio
+                          v-if="kind !== 'hourly' || hourlySupported || trigger.kind === 'hourly'"
+                          :value="kind"
+                          :disabled="kind === 'hourly' && !hourlySupported"
+                          >{{ msg(kind) }}</MarRadio
+                        >
+                      </template>
                     </MarRadioGroup>
                   </MarFormItem>
                   <MarFormItem
@@ -836,6 +885,29 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                       :clearable="false"
                       @update:model-value="trigger.date = $event"
                     />
+                  </MarFormItem>
+                  <MarFormItem
+                    v-else-if="trigger.kind === 'hourly'"
+                    :label="msg('hourlyMinuteField')"
+                  >
+                    <MarSelect
+                      v-model="trigger.minutes"
+                      :placeholder="msg('chooseHourlyMinutes')"
+                      :disabled="!hourlySupported"
+                      multiple
+                      collapse-tags
+                      collapse-tags-tooltip
+                    >
+                      <MarOption
+                        v-for="minute in minuteOptions"
+                        :key="minute"
+                        :label="minuteLabel(minute)"
+                        :value="minute"
+                      />
+                    </MarSelect>
+                    <p v-if="!hourlySupported" class="schedule-timezone">
+                      {{ msg('hourlyUnavailable') }}
+                    </p>
                   </MarFormItem>
                   <MarFormItem v-else-if="trigger.kind === 'weekly'" :label="msg('weekdayField')">
                     <MarSelect
@@ -869,7 +941,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               </div>
             </MarFormItem>
           </div>
-          <div v-if="!readOnly" class="add-trigger">
+          <div class="add-trigger">
             <MarButton
               icon="plus"
               :disabled="form.triggers.length >= scheduledTriggerLimit || !!pending"
@@ -916,7 +988,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
     <p v-if="error" role="alert" class="failure">{{ errorSummary(error, msg('saveFailed')) }}</p>
     <template #footer>
       <MarButton
-        v-if="saved && !readOnly"
+        v-if="saved"
         type="danger"
         plain
         :loading="pending === 'delete'"
@@ -925,10 +997,9 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
         >{{ msg('remove') }}</MarButton
       >
       <MarButton :disabled="!!pending" @click="dialog?.handleClose()">{{
-        msg(readOnly ? 'close' : 'cancel')
+        msg('cancel')
       }}</MarButton>
       <MarButton
-        v-if="!readOnly"
         type="primary"
         :loading="pending === 'save'"
         :disabled="!!pending"
@@ -1036,6 +1107,11 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
 }
 .catch-up :deep(.mar-ui-form-item__content) {
   gap: 0.375rem 0.75rem;
+}
+.ownership-hint {
+  margin: 0;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
 }
 .preview,
 .proposals {

@@ -29,7 +29,6 @@ export const zhCN = {
     recentRunTitle: notificationsZhCN.workbenchNotificationCenter.recentRunTitle,
     runningElapsed: notificationsZhCN.workbenchNotificationCenter.runningElapsed,
     runStatus: {
-      STARTING: notificationsZhCN.workbenchNotificationCenter.runStatus.STARTING,
       RUNNING: notificationsZhCN.workbenchNotificationCenter.runStatus.RUNNING,
       CANCELLING: notificationsZhCN.workbenchNotificationCenter.runStatus.CANCELLING,
       SUCCEEDED: notificationsZhCN.workbenchNotificationCenter.runStatus.SUCCEEDED,

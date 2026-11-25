@@ -973,7 +973,6 @@ function normalizeRun(
 function hostedRunStatusRank(
   status: NonNullable<HostedConversationSnapshot['run']>['status']
 ): number {
-  if (status === 'STARTING') return 0;
   if (status === 'RUNNING') return 1;
   if (status === 'CANCELLING') return 2;
   return 3;
@@ -983,7 +982,6 @@ function hostedRunStatus(
   value: unknown
 ): NonNullable<HostedConversationSnapshot['run']>['status'] | undefined {
   if (
-    value === 'STARTING' ||
     value === 'RUNNING' ||
     value === 'CANCELLING' ||
     value === 'SUCCEEDED' ||

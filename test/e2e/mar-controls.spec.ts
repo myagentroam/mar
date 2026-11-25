@@ -4,7 +4,9 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/button/MarButton.vue
 // @test-covers packages/mar-ui/components/checkbox/MarCheckbox.vue
+// @test-covers packages/mar-ui/components/date-picker/MarDatePicker.vue
 // @test-covers packages/mar-ui/components/segmented/MarSegmented.vue
+// @test-covers packages/mar-ui/components/time-picker/MarTimePicker.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/mar-controls.html');
@@ -504,11 +506,17 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   const days = calendar.locator('.mar-ui-calendar-month__days button');
   // The calendar grid retains its reading size; only the footer controls are compact.
   await expect(days.nth(3)).toHaveCSS('font-size', '14px');
-  await expect(calendar.getByLabel('Start time', { exact: true })).toHaveCSS('font-size', '12px');
-  await expect(calendar.getByRole('button', { name: 'Confirm' })).toHaveCSS('font-size', '12px');
+  const startTime = calendar.getByLabel('Start time', { exact: true });
+  const confirm = calendar.getByRole('button', { name: 'Confirm', exact: true });
+  await expect(startTime).toHaveCSS('font-size', '12px');
+  await expect(startTime).toHaveCSS('border-top-style', 'solid');
+  await expect(confirm).toHaveCSS('font-size', '12px');
+  await expect(confirm).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+  await expect(confirm).toBeDisabled();
   await days.nth(3).click();
   await expect(page.getByLabel('Range changes')).toHaveText('0');
   await days.nth(6).click();
+  await expect(confirm).toBeEnabled();
   await expect(page.getByLabel('Range value')).toHaveText('0,0');
   await expect(page.getByLabel('Range changes')).toHaveText('0');
   await page.screenshot({ path: testInfo.outputPath('mobile-calendar.png') });
@@ -570,6 +578,86 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   await page.getByRole('button', { name: 'Chinese controls' }).click();
   await expect(page.getByRole('button', { name: '日历' }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: '清空' }).first()).toBeVisible();
+});
+
+test('MAR time picker aligns and separates its footer actions at desktop and mobile widths', async ({
+  page
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const { width, theme, time, clear, cancel, confirm, hours, minutes, surface } of [
+    {
+      width: 1280,
+      theme: 'light',
+      time: 'Time',
+      clear: 'Clear',
+      cancel: 'Cancel',
+      confirm: 'Confirm',
+      hours: 'Hours',
+      minutes: 'Minutes',
+      surface: '#ffffff'
+    },
+    {
+      width: 390,
+      theme: 'dark',
+      time: '时间',
+      clear: '清空',
+      cancel: '取消',
+      confirm: '确定',
+      hours: '小时',
+      minutes: '分钟',
+      surface: '#2b2b2b'
+    }
+  ]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(`${fixture.url}mar-controls.html?theme=${theme}`);
+    if (theme === 'dark') await page.getByRole('button', { name: 'Chinese controls' }).click();
+    const input = page.getByRole('textbox', { name: 'Time', exact: true });
+    await page
+      .locator('.mar-ui-time-picker')
+      .getByRole('button', { name: clear, exact: true })
+      .click();
+    await input.click();
+    const panel = page.getByRole('dialog', { name: time, exact: true });
+    const cancelAction = panel.getByRole('button', { name: cancel, exact: true });
+    const confirmAction = panel.getByRole('button', { name: confirm, exact: true });
+    await expect(confirmAction).toBeDisabled();
+    for (const action of [cancelAction, confirmAction]) {
+      await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(action).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    }
+    expect(
+      resolvedColorToHex(await panel.evaluate((el) => getComputedStyle(el).backgroundColor))
+    ).toBe(surface);
+    const cancelBox = (await cancelAction.boundingBox())!;
+    const confirmBox = (await confirmAction.boundingBox())!;
+    const panelBox = (await panel.boundingBox())!;
+    expect(confirmBox.x - (cancelBox.x + cancelBox.width)).toBeGreaterThanOrEqual(6);
+    expect(confirmBox.y).toBe(cancelBox.y);
+    expect(confirmBox.height).toBe(cancelBox.height);
+    expect(confirmBox.height).toBeGreaterThanOrEqual(26);
+    expect(panelBox.x + panelBox.width - (confirmBox.x + confirmBox.width)).toBeGreaterThanOrEqual(
+      6
+    );
+
+    const hourColumn = panel.getByRole('group', { name: hours });
+    const minuteColumn = panel.getByRole('group', { name: minutes });
+    expect((await hourColumn.boundingBox())!.width).toBeCloseTo(
+      (await minuteColumn.boundingBox())!.width,
+      0
+    );
+    const hourChoice = hourColumn.getByRole('button', { name: '03', exact: true });
+    const minuteChoice = minuteColumn.getByRole('button', { name: '03', exact: true });
+    await expect(hourChoice).toHaveCSS('font-variant-numeric', 'tabular-nums');
+    expect((await hourChoice.boundingBox())!.y).toBe((await minuteChoice.boundingBox())!.y);
+    await hourChoice.click();
+    await expect(confirmAction).toBeEnabled();
+    await expect(confirmAction).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(confirmAction).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    await panel.screenshot({ path: testInfo.outputPath(`time-picker-${theme}.png`) });
+    await confirmAction.click();
+    await expect(input).toHaveValue('03:00');
+    await expect(input).toBeFocused();
+  }
 });
 
 test('MAR single datetime commits local dates and clears to null', async ({ page }) => {

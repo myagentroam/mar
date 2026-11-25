@@ -593,7 +593,7 @@ describe('Node Workbench external session observation', () => {
       service.emitRealtime(session.id, {
         sequence: 1,
         category: 'run',
-        payload: { run: { status: 'STARTING' } }
+        payload: { run: { status: 'RUNNING' } }
       });
       await vi.waitFor(() => expect(readPage).toHaveBeenCalledOnce());
       expect(emitted).toHaveLength(0);
@@ -672,7 +672,7 @@ describe('Node Workbench external session observation', () => {
       service.emitRealtime(session.id, {
         sequence: 1,
         category: 'run',
-        payload: { run: { status: 'STARTING' } }
+        payload: { run: { status: 'RUNNING' } }
       });
       await vi.waitFor(() => expect(readPage).toHaveBeenCalledOnce());
       expect(emitted).toHaveLength(0);
@@ -892,7 +892,7 @@ describe('Node Workbench external session observation', () => {
       service.emitRealtime(session.id, {
         sequence: 1,
         category: 'run',
-        payload: { run: { status: 'STARTING' } }
+        payload: { run: { status: 'RUNNING' } }
       });
       await vi.waitFor(() => expect(runtimeReads).toBe(2));
       service.emitRealtime(session.id, {
@@ -1595,7 +1595,7 @@ describe('Node Workbench external session observation', () => {
     service.emitRealtime(session.id, {
       sequence: 1,
       category: 'run',
-      payload: { run: { status: 'STARTING' } }
+      payload: { run: { status: 'RUNNING' } }
     });
     await Promise.all([
       initial('connection-three', 'watch-three'),

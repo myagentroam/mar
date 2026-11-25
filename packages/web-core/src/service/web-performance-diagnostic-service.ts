@@ -171,7 +171,7 @@ interface RetainedRecord<T> {
   readonly value: T;
 }
 
-const ACTIVE_RUN_STATUSES = new Set(['STARTING', 'RUNNING', 'CANCELLING']);
+const ACTIVE_RUN_STATUSES = new Set(['RUNNING', 'CANCELLING']);
 const FRAME_WINDOW_MS = 10_000;
 const RATE_WINDOW_MS = 1_000;
 const STARTUP_GRACE_MS = 5_000;

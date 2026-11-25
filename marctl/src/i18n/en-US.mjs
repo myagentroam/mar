@@ -101,9 +101,9 @@ Input and results:
   Schedule list covers the Workspace by default. --current requires a Session.
   Schedule creation defaults to the current Session; --new-session creates a
   Session at each trigger. Specify at least one field when updating a task.
-  --triggers-file reads a JSON array; each entry has one HH:mm in the Node
-  time zone on create and the saved time zone on update. once requires a date;
-  Also supported: weekly (weekdays 0..6) and monthly (monthDays 1..31).
+  --triggers-file reads a JSON array. hourly uses minutes (0..59); other
+  entries use one HH:mm. Creation uses the Node time zone; updates keep it.
+  once requires a date; weekly uses weekdays (0..6), monthly monthDays (1..31).
   Supplying it on update replaces all triggers. Only one input may read stdin.
   List defaults to the containing tree, including idle Sessions. Without a
   current Session it defaults to active; explicit tree requires a Session.

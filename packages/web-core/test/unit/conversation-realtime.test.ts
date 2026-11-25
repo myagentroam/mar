@@ -85,7 +85,6 @@ describe('Public Conversation Real-Time Coordination', () => {
   });
 
   it.each([
-    ['STARTING', 'RUNNING'],
     ['CANCELLING', 'RUNNING'],
     ['SUCCEEDED', 'SUCCEEDED'],
     ['FAILED', 'FAILED']

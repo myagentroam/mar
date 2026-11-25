@@ -3,6 +3,7 @@ import { nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch, type Comp
 import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
 import { useMarUiLocale } from '../../locale/index.js';
+import MarButton from '../button/MarButton.vue';
 import { useMarFormControl } from '../form/form-context.js';
 import '../form/field-frame.css';
 import { usePopup } from '../popup/use-popup.js';
@@ -259,10 +260,10 @@ function onFocusOut(event: FocusEvent) {
           </div>
         </div>
         <div class="mar-ui-time-picker__footer">
-          <button type="button" @click="cancel">{{ locale.datePicker.cancel }}</button>
-          <button type="button" :disabled="!timePattern.test(draft)" @click="confirm">
+          <MarButton text @click="cancel">{{ locale.datePicker.cancel }}</MarButton>
+          <MarButton text :disabled="!timePattern.test(draft)" @click="confirm">
             {{ locale.datePicker.confirm }}
-          </button>
+          </MarButton>
         </div>
       </div>
     </div>
@@ -298,7 +299,8 @@ input {
 input:disabled {
   color: var(--mar-ui-text-disabled);
 }
-button {
+.mar-ui-time-picker__field > button,
+.mar-ui-time-picker__column > button {
   display: grid;
   place-items: center;
   border: 0;
@@ -312,10 +314,10 @@ button {
   font-size: var(--mar-ui-font-size-control);
 }
 .mar-ui-time-picker__columns {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .mar-ui-time-picker__column {
-  flex: 1;
   max-block-size: 10rem;
   overflow: auto;
 }
@@ -326,6 +328,7 @@ button {
   inline-size: 100%;
   min-block-size: var(--mar-ui-compact-control-size, 24px);
   font: inherit;
+  font-variant-numeric: tabular-nums;
 }
 .mar-ui-time-picker__column button:hover {
   background: var(--mar-ui-fill-row-hover);
@@ -335,15 +338,18 @@ button {
 }
 .mar-ui-time-picker__footer {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
-  padding: 0.375rem 0.625rem 0;
+  gap: 0.5rem;
+  padding-block-start: 0.375rem;
+  padding-inline: 0.5rem;
   border-block-start: 1px solid var(--mar-ui-border-subtle);
 }
-.mar-ui-time-picker__footer button {
-  color: var(--mar-ui-control-link-text);
-  font: inherit;
+.mar-ui-time-picker__footer > .mar-ui-button + .mar-ui-button {
+  margin-inline-start: 0;
 }
-button:disabled {
+.mar-ui-time-picker__field > button:disabled {
   color: var(--mar-ui-text-disabled);
   cursor: not-allowed;
 }

@@ -19,9 +19,7 @@ import { nodeLog } from '../operational.js';
 export function hasActiveRun(runtime: NodeRuntimeState, session: NodeAgentSession): boolean {
   return runtime
     .listRunsForSession(session.id)
-    .some(
-      (run) => run.status === 'STARTING' || run.status === 'RUNNING' || run.status === 'CANCELLING'
-    );
+    .some((run) => run.status === 'RUNNING' || run.status === 'CANCELLING');
 }
 
 export function convergeConversationWatchPage(

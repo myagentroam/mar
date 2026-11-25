@@ -127,11 +127,13 @@ test('Workspace context indicator stays visible without a usage snapshot', async
   }
 });
 
-for (const [theme, fill] of [
-  ['daylight', /^conic-gradient\(rgb\(0, 95, 214\) 42%,/u],
-  ['dark', /^conic-gradient\(rgb\(77, 163, 255\) 42%,/u]
+for (const [theme, activityBlue] of [
+  ['daylight', [0, 95, 214]],
+  ['dark', [77, 163, 255]]
 ] as const) {
-  test(`Workspace context indicator uses activity blue in ${theme}`, async ({ page }) => {
+  test(`Workspace context indicator uses activity blue and a transparent center in ${theme}`, async ({
+    page
+  }) => {
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(
@@ -140,7 +142,34 @@ for (const [theme, fill] of [
       const indicator = page.locator('.composer-context-button');
       await expect(indicator).toBeVisible();
       await expect(indicator).toHaveText('42%');
-      await expect(indicator.locator('i')).toHaveCSS('background-image', fill);
+      const ring = indicator.locator('i');
+      expect(await ring.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain(
+        `rgb(${activityBlue.join(', ')}) 42%,`
+      );
+      await indicator.evaluate((element) => {
+        element.style.backgroundColor = '#ff00ff';
+      });
+      await expect(indicator).toHaveCSS('background-color', 'rgb(255, 0, 255)');
+      const screenshot = await ring.screenshot();
+      const { center, arc, track } = await page.evaluate(async (png) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${png}`;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(image, 0, 0);
+        const sample = (x: number) =>
+          Array.from(
+            ctx.getImageData(Math.floor(canvas.width * x), Math.floor(canvas.height / 2), 1, 1).data
+          );
+        return { center: sample(0.5), arc: sample(0.9), track: sample(0.1) };
+      }, screenshot.toString('base64'));
+      expect(center).toEqual([255, 0, 255, 255]);
+      expect(arc).toEqual([...activityBlue, 255]);
+      expect(track).not.toEqual(center);
+      expect(track).not.toEqual(arc);
     }
   });
 }

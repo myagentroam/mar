@@ -21,7 +21,7 @@ const darkPalette = {
   '--mar-conversation-activity-fill': '#2472d4',
   '--mar-control-primary-bg': '#dedede',
   '--mar-control-primary-fg': '#181818',
-  '--mar-button-primary-bg': '#0b70db',
+  '--mar-button-primary-bg': '#0075d1',
   '--mar-button-primary-fg': '#ffffff',
   '--mar-control-focus': '#a0a0a0',
   '--mar-text-primary': '#e7eaf0',
@@ -74,13 +74,13 @@ describe('Custom theme validation', () => {
     const partial = source({ '--mar-control-primary-fg': '#17243a' });
     expect(service.resolveColors(partial)).toMatchObject({
       '--mar-control-primary-fg': '#17243a',
-      '--mar-button-primary-bg': '#0b70db',
+      '--mar-button-primary-bg': '#0075d1',
       '--mar-button-primary-fg': '#ffffff'
     });
     const builtin = service.builtinSource('dark', 'Dark');
     const copy = service.duplicateSource(builtin, 'Copy');
     expect(analyzeCustomTheme(copy).colors).toMatchObject({
-      '--mar-button-primary-bg': '#0b70db',
+      '--mar-button-primary-bg': '#0075d1',
       '--mar-button-primary-fg': '#ffffff',
       '--mar-control-primary-fg': '#181818'
     });
@@ -339,6 +339,22 @@ describe('Custom theme validation', () => {
       field: '--mar-conversation-activity-fg / --mar-fill-subtle'
     });
     expect(warnings('#777')).toEqual([]);
+  });
+
+  it('distinguishes Primary marks from text on solid Primary fills', () => {
+    const { warnings } = analyzeCustomTheme(
+      source({
+        '--mar-control-primary-bg': '#1789fc',
+        '--mar-control-primary-hover': '#2f96ff',
+        '--mar-control-primary-active': '#1782f8',
+        '--mar-control-primary-fg': '#fff',
+        '--mar-button-primary-bg': '#1789fc',
+        '--mar-button-primary-fg': '#fff'
+      })
+    );
+    expect(warnings).toEqual([
+      { code: 'contrast', field: '--mar-button-primary-fg / --mar-button-primary-bg' }
+    ]);
   });
 
   it('blocks syntax errors but accepts every syntactically valid JSON value with advisory warnings', () => {

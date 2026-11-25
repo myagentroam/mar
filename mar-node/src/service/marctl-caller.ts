@@ -114,7 +114,7 @@ export function resolveMarctlCaller(input: {
     prepared.sessionId !== session.id ||
     prepared.workspaceId !== session.workspaceId ||
     run.initiatedByUserId !== input.userId ||
-    !['STARTING', 'RUNNING'].includes(execution.status) ||
+    execution.status !== 'RUNNING' ||
     input.runtime.activeSessionRun(session.id)?.id !== run.id ||
     input.runtime.currentExecutionId(run.id) !== execution.executionId
   )

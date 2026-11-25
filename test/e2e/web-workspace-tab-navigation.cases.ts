@@ -245,7 +245,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         entry('cached', 'session-1')
       ];
       recentRuns = [
-        run('active-first', 'STARTING', now + 2),
+        run('active-first', 'RUNNING', now + 2),
         run('active-second', 'CANCELLING', now + 1),
         run('terminal', 'SUCCEEDED', now + 3)
       ];

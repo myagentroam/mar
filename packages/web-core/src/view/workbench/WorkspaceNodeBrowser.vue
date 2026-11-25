@@ -1667,8 +1667,8 @@ function insertText(value: string, viewVersion = frame.value?.viewVersion): void
   box-sizing: border-box;
   border: 1px solid var(--mar-ui-bg-panel);
   border-radius: 999px;
-  background: var(--mar-ui-control-primary-bg);
-  color: var(--mar-ui-control-primary-fg);
+  background: var(--mar-ui-primary-button-bg);
+  color: var(--mar-ui-primary-button-fg);
   font-size: var(--mar-ui-font-size-meta);
   font-weight: 600;
   line-height: 1.05;

@@ -58,7 +58,7 @@ export function executionAgentActor(input: {
     prepared.sessionId !== sessionId ||
     input.runtime.activeSessionRun(sessionId)?.id !== run.id ||
     input.runtime.currentExecutionId(run.id) !== executionId ||
-    !['STARTING', 'RUNNING'].includes(execution.status) ||
+    execution.status !== 'RUNNING' ||
     !Number.isSafeInteger(run.initiatedByUserId)
   )
     throw new AgentError(

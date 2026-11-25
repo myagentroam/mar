@@ -115,6 +115,10 @@ describe('conversation hosting protocol', () => {
       })
     ).toEqual({ status: 'RUNNING', version: 2, updatedAt: 3 });
     expect(
+      hostedConversationActivitySchema.safeParse({ status: 'STARTING', version: 2, updatedAt: 3 })
+        .success
+    ).toBe(false);
+    expect(
       hostedConversationActivityProjectionSchema.parse({
         userId: 7,
         templateId: 'template-1',

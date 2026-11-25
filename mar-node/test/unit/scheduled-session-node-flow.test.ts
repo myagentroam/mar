@@ -317,15 +317,12 @@ describe('scheduled Node session flow', () => {
           __requestUserId: 1
         };
         await expect(
-          save({
-            ...scope,
-            __requestUserId: 2,
-            expectedRevision: 1,
-            patch: { objective: 'Not mine' }
-          })
-        ).rejects.toThrow('SCHEDULE_OWNER_REQUIRED');
+          save({ ...scope, __requestUserId: 2, expectedRevision: 2, patch: { objective: 'Stale' } })
+        ).rejects.toThrow('SCHEDULE_REVISION_CONFLICT');
+        expect(store.getById(task.id)?.ownerUserId).toBe(1);
         await save({
           ...scope,
+          __requestUserId: 2,
           expectedRevision: task.revision,
           patch: {
             objective: 'Updated',
@@ -338,11 +335,20 @@ describe('scheduled Node session flow', () => {
           nextRunAt: dueAt,
           revision: 2,
           objective: 'Updated',
-          ownerUserId: 1,
+          ownerUserId: 2,
           notifyOnTerminal: true
         });
-        await save({ ...scope, expectedRevision: 2, patch: { objective: 'Partial edit' } });
-        expect(store.getById(task.id)).toMatchObject({ nextRunAt: dueAt, revision: 3 });
+        await save({
+          ...scope,
+          __requestUserId: 2,
+          expectedRevision: 2,
+          patch: { objective: 'Partial edit' }
+        });
+        expect(store.getById(task.id)).toMatchObject({
+          nextRunAt: dueAt,
+          revision: 3,
+          ownerUserId: 2
+        });
         vi.setSystemTime(dueAt + 1000);
         expect(store.listDue(Date.now()).map((entry) => entry.sessionId)).toEqual([session.id]);
         const occurrenceId = store.claim(task.id, dueAt, 3);
@@ -649,6 +655,29 @@ describe('scheduled Node session flow', () => {
       expect(
         database.raw.prepare('SELECT COUNT(*) AS n FROM scheduled_session_proposals').get()
       ).toMatchObject({ n: 1 });
+      const memberScope = { ...taskScope, __requestUserId: 9 };
+      const detail = (await handlers['schedule.task.get']!(memberScope)) as {
+        proposals: { id: string }[];
+      };
+      expect(detail.proposals).toMatchObject([{ objective: 'Proposed', baseRevision: 2 }]);
+      const resolve = handlers['schedule.task.resolveProposal']!;
+      const proposal = { ...memberScope, proposalId: detail.proposals[0]!.id, accept: true };
+      await expect(resolve({ ...proposal, workspaceId: foreign.id })).rejects.toThrow(
+        'SCHEDULE_NOT_FOUND'
+      );
+      await expect(resolve(proposal)).resolves.toMatchObject({
+        task: { ownerUserId: 9, revision: 3, objective: 'Proposed' },
+        proposals: []
+      });
+      const remove = handlers['schedule.task.remove']!;
+      const removal = { ...taskScope, __requestUserId: 8, expectedRevision: 3 };
+      await expect(remove({ ...removal, expectedRevision: 2 })).rejects.toThrow(
+        'SCHEDULE_REVISION_CONFLICT'
+      );
+      await expect(remove({ ...removal, workspaceId: foreign.id })).rejects.toThrow(
+        'SCHEDULE_NOT_FOUND'
+      );
+      await expect(remove(removal)).resolves.toEqual({ removed: true });
       await expect(create('pending', foreign.id)).rejects.toThrow('SESSION_NOT_FOUND');
       await expect(create('pending')).rejects.toThrow('SESSION_NOT_FOUND');
     } finally {
@@ -1521,11 +1550,12 @@ describe('scheduled Node session flow', () => {
         expect(
           database.getNativeSessionMetadata('claude-code', session.id, workspace.id)?.pinOrder
         ).toBe(0);
+        const ownerUserId = notifyOnTerminal ? 8 : 7;
         if (notifyOnTerminal)
           await internals.executeNodeOperation('schedule.task.update', {
             taskId: saved.task.id,
             workspaceId: workspace.id,
-            __requestUserId: 7,
+            __requestUserId: ownerUserId,
             expectedRevision: 1,
             patch: { notifyOnTerminal: true }
           });
@@ -1549,7 +1579,7 @@ describe('scheduled Node session flow', () => {
           submittedRunId = submitted['run_id'] as string;
           expect(observedRuns.find((run) => run.id === submittedRunId)).toMatchObject({
             source: 'SCHEDULED',
-            initiatedByUserId: 7
+            initiatedByUserId: ownerUserId
           });
           expect(
             internals.runtime
@@ -1572,7 +1602,7 @@ describe('scheduled Node session flow', () => {
         );
         const occurrence = new ScheduledSessionStore(database.raw).recent(task.id)[0]!;
         expect(internals.scheduledRunAuthorization.authorize).toHaveBeenCalledWith(
-          expect.objectContaining({ ownerUserId: 7 })
+          expect.objectContaining({ ownerUserId })
         );
         expect(prepared).toHaveBeenCalledWith(
           serializeComposerTag('mar_schedule', { objective: 'Inspect the repository' }),
@@ -1605,7 +1635,7 @@ describe('scheduled Node session flow', () => {
           );
         expect(notifications).toEqual(
           notifyOnTerminal
-            ? [expect.objectContaining({ userId: 7, kind: 'SCHEDULE_TERMINAL' })]
+            ? [expect.objectContaining({ userId: ownerUserId, kind: 'SCHEDULE_TERMINAL' })]
             : []
         );
       } finally {

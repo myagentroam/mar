@@ -107,6 +107,17 @@ const loadMore = () => {
 const retry = () => {
   if (failure.value) void load(failure.value.retryPage, false, failure.value.incremental);
 };
+const openRecord = (record: ScheduleOccurrence) => emit('open', record);
+function openRow(record: ScheduleOccurrence, _column: unknown, event: MouseEvent) {
+  // Give the detail view the same focus return target for pointer and keyboard entry.
+  if (event.currentTarget instanceof Element) {
+    event.currentTarget
+      .closest('tr')
+      ?.querySelector<HTMLButtonElement>('[data-history-record-trigger]')
+      ?.focus({ preventScroll: true });
+  }
+  openRecord(record);
+}
 watch([workspace, () => props.mobile], reload, { immediate: true });
 watch(
   () => props.invalidation,
@@ -150,14 +161,16 @@ defineExpose({ reload });
     </div>
     <MarTable
       v-else-if="rows.length || (!failure && !unavailable.length)"
+      class="clickable-rows"
       :data="rows"
       row-key="key"
       :aria-label="msg('historyTable')"
       :aria-busy="loading"
+      @row-click="openRow"
     >
       <MarTableColumn :label="task ? msg('dueAt') : msg('name')" :min-width="task ? 185 : 150">
         <template #default="{ row }">
-          <MarButton link @click="emit('open', row)">{{
+          <MarButton link data-history-record-trigger @click.stop="openRecord(row)">{{
             task ? managementDateTime(row.dueAt) : (row.name ?? row.taskId)
           }}</MarButton>
         </template>
@@ -206,5 +219,8 @@ defineExpose({ reload });
 .notice {
   margin: 0;
   color: var(--mar-text-secondary);
+}
+.clickable-rows :deep(.mar-ui-table__row) {
+  cursor: pointer;
 }
 </style>

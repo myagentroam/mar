@@ -262,7 +262,7 @@ export function createWorkspaceSessionPaneState(options: {
         : run.runs.value.find(
             (candidate) =>
               candidate.sessionId === target.sessionId &&
-              ['STARTING', 'RUNNING', 'CANCELLING'].includes(candidate.status)
+              ['RUNNING', 'CANCELLING'].includes(candidate.status)
           );
     return { restored: detail !== undefined, activeRunId: active?.id };
   }
@@ -565,7 +565,7 @@ export function createWorkspaceSessionPaneState(options: {
           const active = snapshots.find(
             (candidate) =>
               candidate.sessionId === sessionId.value &&
-              ['STARTING', 'RUNNING', 'CANCELLING'].includes(candidate.status)
+              ['RUNNING', 'CANCELLING'].includes(candidate.status)
           );
           if (active !== undefined) watch.openRun(active.id);
         }

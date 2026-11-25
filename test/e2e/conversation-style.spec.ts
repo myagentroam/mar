@@ -2573,7 +2573,7 @@ test('uses neutral near-black surfaces with clear text and distinct semantic fee
   expect(dark).not.toHaveProperty('--mar-color-brand');
   expect(dark).toMatchObject({
     '--mar-control-primary-bg': '#1789fc',
-    '--mar-control-primary-fg': '#181818',
+    '--mar-control-primary-fg': '#ffffff',
     '--mar-control-primary-hover': '#2f96ff',
     '--mar-control-primary-active': '#1782f8',
     '--mar-text-primary': '#eaeaea',
@@ -2659,6 +2659,10 @@ for (const theme of ['daylight', 'dark']) {
       const background = colors[`--mar-control-primary-${fill}`]!;
       expect(
         contrast(colors['--mar-control-primary-fg']!, background),
+        fill
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        contrast(colors['--mar-button-primary-fg']!, colors[`--mar-button-primary-${fill}`]!),
         fill
       ).toBeGreaterThanOrEqual(4.5);
       for (const surface of ['--mar-bg-panel', '--mar-fill-selection']) {

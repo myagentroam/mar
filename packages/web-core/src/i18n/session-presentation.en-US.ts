@@ -5,7 +5,6 @@ export const sessionPresentationEnUS = {
       running: 'Running',
       ready: 'Ready',
       unavailable: 'Unavailable',
-      starting: 'Starting',
       running2: 'Running',
       completed: 'Completed',
       failed: 'Failed',

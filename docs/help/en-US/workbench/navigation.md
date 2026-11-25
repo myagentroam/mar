@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-25
+lastUpdated: 2026-11-26
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -35,7 +35,7 @@ Use `Ctrl+W` or `Alt+W` to close the active normal tab and `Ctrl+Shift+W` or `Al
 
 An offline or disabled Node keeps its registered resources visible but blocks live operations. Existing tabs still activate immediately; reconnect or enable the host before using files, sessions, or terminals. Closing a Workspace tab changes only the browser layout; it does not unregister the Workspace or stop Node work.
 
-A green dot next to a Node means it is available. In workspace tabs and session lists, a green dot means a task is running; the dot is neutral when tasks are only starting or stopping. A green dot on the session tree button means it has a running or sleeping descendant. In the open tree, amber marks sleeping sessions.
+A green dot next to a Node means it is available. In workspace tabs and session lists, a green dot means a task is active, including while stopping; no active tasks means no dot. A green dot on the session tree button means it has a running or sleeping descendant. In the open tree, amber marks sleeping sessions.
 
 On mobile, tap the active **Work** icon in the top bar to open the resource tree. Selecting a Workspace closes the drawer and returns to the Agent conversation. Tap the active **Chat** icon to open the chat-history drawer. Admin no longer has a separate Skill Center entry. Skill Configuration, Skill Sources, and Environment Secrets appear consecutively, while MCP Sources remains a separate Admin section; Skill Configuration switches between Skill and MCP in the page.
 
@@ -69,7 +69,7 @@ Readable text has three levels: primary (`--mar-text-primary`), secondary (`--ma
 
 `--mar-conversation-activity-fg` sets the color of the current conversation phase ring and the status strip above the composer. `--mar-conversation-activity-fill` sets the solid background of the send button and unread notification count badges. The icon and count automatically use black or white for contrast. If a custom theme only sets the activity foreground, its color also supplies the solid fill.
 
-Search for `--mar-button-primary-` in the color field help to set the text, fill, or border of solid primary buttons without affecting checked controls or loading rings. Unset fields use the corresponding button colors from the default dark theme. Keyboard focus uses `--mar-control-focus`.
+Search for `--mar-button-primary-` in the color field help to set the text, fill, or border of solid primary buttons. Selected calendar dates and browser download counts share the button's default fill and text color. Checked controls and loading rings use a separate palette. Unset fields use the corresponding colors from the default dark theme. Keyboard focus uses `--mar-control-focus`.
 
 Only **invalid JSON syntax** blocks saving or exporting. Missing names, unknown fields or tokens, invalid colors, and low contrast produce advisory warnings. Saved and exported JSON retains unknown and invalid content, but it is ignored when applied. An old `base` field is also retained with an unknown-field warning; it no longer changes the dark fallback rule. Arbitrary CSS, URLs, and scripts are not executed. Contrast checks cover only explicit opaque color pairs, not a complete accessibility audit.
 

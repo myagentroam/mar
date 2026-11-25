@@ -598,13 +598,14 @@ it.each(
         expect(scheduledTool?.description).toContain('system cron');
         if (action === 'create') {
           expect(scheduledTool?.description).toContain('Daily at 10:00 and 20:00');
+          expect(scheduledTool?.description).toContain('{"kind":"hourly","minutes":[15,45]}');
           expect(scheduledTool?.description).toContain('Once on a chosen date');
         } else {
           expect(scheduledTool?.description).toContain('triggers replaces the full schedule');
         }
         const metadata = JSON.stringify(scheduledTool);
         expect(metadata).toContain('Instructions to execute at each trigger');
-        expect(metadata).toContain('One HH:mm per entry in the task time zone');
+        expect(metadata).toContain('Hourly takes minutes 0–59 instead of time');
         expect(metadata).toContain('Once requires a concrete date');
         expect(metadata).not.toContain('"groups"');
         expect(metadata).not.toContain('verbatim as a user message');

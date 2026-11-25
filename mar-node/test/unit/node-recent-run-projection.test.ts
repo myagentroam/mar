@@ -101,7 +101,7 @@ describe('Node recent Run lightweight projection', () => {
           content: 'Continue',
           initiatedByUserId: 7
         });
-        expect(service.snapshot()[0]?.status).toBe('STARTING');
+        expect(service.snapshot()[0]?.status).toBe('RUNNING');
         expect(service.snapshot()[0]).not.toHaveProperty('interruptionReason');
       } finally {
         service.dispose();
@@ -173,7 +173,7 @@ describe('Node recent Run lightweight projection', () => {
     const emit = vi.fn();
     const service = new RecentRunProjectionService(emit, () => 1_000);
     try {
-      service.record(run('STARTING', 1, 100), session(), input);
+      service.record(run('RUNNING', 1, 100), session(), input);
       expect(service.snapshot()[0]).not.toHaveProperty('userMessage');
       expect(emit.mock.lastCall?.[0].run).not.toHaveProperty('userMessage');
 
@@ -199,7 +199,7 @@ describe('Node recent Run lightweight projection', () => {
   it('locks in the start time when a Run accepts input and does not reorder on terminal update', () => {
     const emit = vi.fn();
     const service = new RecentRunProjectionService(emit, () => 1_000);
-    service.record(run('STARTING', 1, 100), session());
+    service.record(run('RUNNING', 1, 100), session());
     expect(service.snapshot()[0]).toMatchObject({ startedAt: 100, sortAt: 100 });
     service.record(run('RUNNING', 3, 300), session());
     service.record(run('SUCCEEDED', 4, 400), session());
@@ -226,7 +226,7 @@ describe('Node recent Run lightweight projection', () => {
   it('ignores temporary sessions without a native Runner identity', () => {
     const emit = vi.fn();
     const service = new RecentRunProjectionService(emit);
-    service.record(run('STARTING', 1, 100), { ...session(), externalSessionId: null });
+    service.record(run('RUNNING', 1, 100), { ...session(), externalSessionId: null });
     expect(service.snapshot()).toEqual([]);
     expect(emit).not.toHaveBeenCalled();
     service.dispose();

@@ -143,10 +143,11 @@ describe('scheduled task MCP capability', () => {
         ['taskId', 'revision', 'nextRunAt', 'name', 'state'],
         ['taskId', 'revision', 'nextRunAt', 'name', 'state']
       ]);
+      const hourly = [{ kind: 'hourly', minutes: [15, 45] }];
       const updated = await call(owner, 'update_scheduled_task', {
         taskId: b.taskId,
         expectedRevision: 1,
-        patch: { objective: 'Updated', triggers: dailyTriggers('10:00') }
+        patch: { objective: 'Updated', triggers: hourly }
       });
       expect(updated).toEqual({
         taskId: b.taskId,
@@ -166,7 +167,7 @@ describe('scheduled task MCP capability', () => {
         name: 'B',
         state: 'SCHEDULED',
         objective: 'Updated',
-        triggers: dailyTriggers('10:00'),
+        triggers: hourly,
         timezone: b.timezone
       });
       expect(await call(owner, 'get_scheduled_task', { taskId: a.taskId })).toHaveProperty(

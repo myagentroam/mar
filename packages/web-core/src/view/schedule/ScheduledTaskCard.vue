@@ -9,7 +9,6 @@ import { managementDateTime } from '../../util/time-presentation.js';
 // Presents one summary and emits navigation or task actions; it does not fetch or mutate a task.
 const props = defineProps<{ task: ScheduleCard }>();
 const emit = defineEmits<{
-  details: [];
   edit: [];
   history: [];
   openTarget: [target: ScheduleSessionScope];
@@ -74,7 +73,7 @@ function onCardClick(event: MouseEvent): void {
   )
     return;
   titleAction.value?.focus({ preventScroll: true });
-  emit('details');
+  emit('edit');
 }
 </script>
 
@@ -90,7 +89,7 @@ function onCardClick(event: MouseEvent): void {
             aria-haspopup="dialog"
             v-tooltip="() => readOverflowText(title)"
             text
-            @click="emit('details')"
+            @click="emit('edit')"
           >
             <span ref="title" class="clip">{{ task.name }}</span>
           </MarButton>
@@ -161,14 +160,6 @@ function onCardClick(event: MouseEvent): void {
       </dl>
 
       <footer class="card-actions mar-row-actions mar-row-actions--wrap">
-        <MarButton
-          v-if="task.mine"
-          link
-          :disabled="task.offline === true"
-          icon="edit"
-          @click="emit('edit')"
-          >{{ msg('editTask') }}</MarButton
-        >
         <MarButton link :disabled="task.offline === true" icon="clock" @click="emit('history')">{{
           msg('history')
         }}</MarButton>

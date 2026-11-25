@@ -292,9 +292,7 @@ function sessionActivity(event: WorkbenchEvent): 'RUNNING' | 'IDLE' | undefined 
   if (!isPlainRecord(event.payload)) return undefined;
   if (event.category === 'run' && isPlainRecord(event.payload.run)) {
     const status = event.payload.run.status;
-    return status === 'STARTING' || status === 'RUNNING' || status === 'CANCELLING'
-      ? 'RUNNING'
-      : undefined;
+    return status === 'RUNNING' || status === 'CANCELLING' ? 'RUNNING' : undefined;
   }
   if (event.category !== 'session' || !isPlainRecord(event.payload.session)) return undefined;
   const activity = event.payload.session.activity;

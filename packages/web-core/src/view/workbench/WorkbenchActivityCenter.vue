@@ -64,7 +64,6 @@ const popoverOpen = computed({
 const activeRuns = computed(() =>
   props.service.recentRuns.value.filter((run) => activeRecentRunStatus(run.status))
 );
-const hasRunning = computed(() => activeRuns.value.some((run) => run.status === 'RUNNING'));
 const entryDescription = computed(() =>
   [
     translate('activityCenter.activeTaskCount', { count: activeRuns.value.length }),
@@ -199,7 +198,6 @@ onBeforeUnmount(() => {
         <span
           v-if="activeRuns.length > 0"
           class="activity-entry-running mar-icon-status-badge"
-          :class="{ running: hasRunning }"
           aria-hidden="true"
         />
       </button>
@@ -313,12 +311,8 @@ onBeforeUnmount(() => {
 }
 .activity-entry-running {
   --mar-icon-status-surface: var(--activity-marker-surface);
-  background: var(--mar-text-secondary);
   bottom: calc(50% - 13px);
   right: calc(50% - 13px);
-}
-.activity-entry-running.running {
-  background: var(--mar-control-color-success);
 }
 .workbench-activity-center.mobile-mode {
   --activity-marker-surface: var(--mar-bg-chrome);

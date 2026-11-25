@@ -959,7 +959,6 @@ describe('Conversation work process blocks', () => {
   });
 
   it.each([
-    ['STARTING', 'executing'],
     ['RUNNING', 'executing'],
     ['CANCELLING', 'stopping']
   ] as const)('keeps the current process active for %s', (status, label) => {

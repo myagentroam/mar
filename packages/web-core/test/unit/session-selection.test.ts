@@ -160,8 +160,7 @@ function createSelection(
       if (detail) options.installCachedDetail(detail);
       else options.clearActiveContent();
       const active = detail?.runs.find(
-        (run) =>
-          run.sessionId === sessionId && ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status)
+        (run) => run.sessionId === sessionId && ['RUNNING', 'CANCELLING'].includes(run.status)
       );
       return { restored: detail !== undefined, activeRunId: active?.id };
     },

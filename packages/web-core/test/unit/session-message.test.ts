@@ -587,7 +587,7 @@ const acceptedResult = {
     id: 'run-1',
     sessionId: session.id,
     workspaceId: session.workspaceId,
-    status: 'STARTING',
+    status: 'RUNNING',
     recoveryState: 'ACTIVE',
     clientMessageId: 'server-id'
   },

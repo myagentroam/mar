@@ -252,15 +252,10 @@ export class SessionScheduleService {
   }
 
   private get(input: Record<string, unknown>): unknown {
+    actorId(input);
     const task = this.taskCommand(input);
     if (input.view === 'marctl') return marctl({ task: modelDetail(task) });
-    const store = this.store();
-    const canResolveProposals = input.__requestUserId === task.ownerUserId;
-    return {
-      task,
-      canResolveProposals,
-      proposals: canResolveProposals ? proposals(store, task.id) : []
-    };
+    return { task, canResolveProposals: true, proposals: proposals(this.store(), task.id) };
   }
 
   private history(input: Record<string, unknown>): unknown {
@@ -317,7 +312,6 @@ export class SessionScheduleService {
   private async save(input: Record<string, unknown>): Promise<unknown> {
     const actor = actorId(input);
     const current = this.taskCommand(input);
-    requireOwner(current, actor);
     const expectedRevision = revision(input);
     if (current.revision !== expectedRevision) throw new Error('SCHEDULE_REVISION_CONFLICT');
     const { target, ...patch } = parse(scheduledTaskOwnerPatchSchema, input.patch);
@@ -325,6 +319,7 @@ export class SessionScheduleService {
       target === undefined ? undefined : await this.resolveTarget(current.workspaceId, target);
     const updated = this.store().update(current.id, expectedRevision, {
       ...patch,
+      ownerUserId: actor,
       ...(binding === undefined ? {} : { binding })
     });
     await this.publish(updated);
@@ -369,8 +364,8 @@ export class SessionScheduleService {
   }
 
   private async remove(input: Record<string, unknown>): Promise<unknown> {
+    actorId(input);
     const task = this.taskCommand(input);
-    requireOwner(task, actorId(input));
     this.store().remove(task.id, revision(input));
     await this.publish({ ...task, nextRunAt: null });
     return { removed: true };
@@ -599,7 +594,4 @@ function actorId(input: Record<string, unknown>): number {
 }
 function revision(input: Record<string, unknown>): number {
   return parse(scheduledTaskRevisionSchema, input.expectedRevision);
-}
-function requireOwner(task: ScheduledSessionTask, actor: number): void {
-  if (task.ownerUserId !== actor) throw new Error('SCHEDULE_OWNER_REQUIRED');
 }

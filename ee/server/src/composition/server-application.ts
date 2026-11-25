@@ -636,7 +636,9 @@ export async function composeServerApplication(
                 name: node.displayName ?? node.id,
                 connected: node.connected,
                 supported,
-                newSessionSupported: supported
+                newSessionSupported: supported,
+                hourlySupported:
+                  supported && nodeControl.nodeCapabilities(node.id)?.scheduledHourly === true
               };
             })
           );

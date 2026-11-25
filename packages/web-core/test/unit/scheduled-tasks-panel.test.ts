@@ -203,6 +203,27 @@ describe('Scheduled tasks workbench', () => {
     expect(saved.monthDays).toEqual([15, 31]);
   });
 
+  it('defaults hourly to the hour and round-trips multiple minutes without a clock field', () => {
+    const draft = triggerDraft(1);
+    draft.kind = 'hourly';
+    draft.time = '10:30';
+    expect(parseTriggerDraft(draft)).toEqual({
+      success: true,
+      data: { kind: 'hourly', minutes: [0] }
+    });
+
+    const saved = { kind: 'hourly' as const, minutes: [15, 45, 15] };
+    const restored = triggerDraft(1, saved);
+    expect(restored.minutes).toEqual([15, 45]);
+    expect(parseTriggerDraft(restored)).toEqual({
+      success: true,
+      data: { kind: 'hourly', minutes: [15, 45] }
+    });
+    restored.minutes.splice(0);
+    expect(parseTriggerDraft(restored).success).toBe(false);
+    expect(saved.minutes).toEqual([15, 45, 15]);
+  });
+
   it('addresses colliding task and occurrence IDs using their originating nodes', async () => {
     const request = vi.fn().mockResolvedValue({});
     const client = scheduledTaskClient(request);
@@ -523,12 +544,16 @@ describe('Scheduled tasks workbench', () => {
     }
   });
 
-  it('opens online card details separately from editing and linked session navigation', async () => {
+  it('opens another member’s online task for editing while keeping session navigation separate', async () => {
     const request = vi.fn(async (path: string) =>
       path.includes('/same-id?')
-        ? { task: { ...task, triggers: [] }, mine: true, proposals: [] }
+        ? {
+            task: { ...task, triggers: [{ kind: 'daily', time: '08:00' }] },
+            mine: false,
+            proposals: []
+          }
         : taskPage([
-            task,
+            { ...task, mine: false },
             { ...task, nodeId: 'b', name: 'Offline', offline: true },
             {
               ...task,
@@ -547,6 +572,7 @@ describe('Scheduled tasks workbench', () => {
         view.findAll('MarButton').filter((item) => textContent(item).trim() === label);
       expect(controls('project')).toHaveLength(0);
       expect(controls('Offline')).toHaveLength(0);
+      expect(controls('Edit')).toHaveLength(0);
       expect(controls('New session')).toHaveLength(1);
       expect(controls('session')).toHaveLength(1);
       expect(controls('Task A')).toHaveLength(1);
@@ -558,7 +584,8 @@ describe('Scheduled tasks workbench', () => {
         '/api/scheduled-tasks/same-id?nodeId=a&workspaceId=work'
       );
       expect(onOpenTarget).toHaveBeenCalledTimes(1);
-      expect(controls('Save')).toHaveLength(0);
+      expect(controls('Save')).toHaveLength(1);
+      expect(controls('Delete task')).toHaveLength(1);
     } finally {
       view.unmount();
     }
@@ -726,12 +753,12 @@ describe('Scheduled tasks workbench', () => {
     try {
       await flushComponent();
       expect(request.mock.calls[0]?.[0]).toBe('/api/scheduled-occurrences?mine=false&page=1');
-      await trigger(button(view, 'Task A'), 'onClick');
+      await trigger(button(view, 'Task A'), 'onClick', new Event('click'));
       expect(textContent(view.root)).toContain('Frozen prompt');
       expect(button(view, 'Open run’s session')).toBeUndefined();
       expect(textContent(view.root)).not.toContain('run-1');
       runWorkspace = record.workspaceId;
-      await trigger(button(view, 'Task A'), 'onClick');
+      await trigger(button(view, 'Task A'), 'onClick', new Event('click'));
       expect(textContent(view.root)).toContain('run-1');
       await trigger(button(view, 'Open run’s session'), 'onClick');
       expect(request.mock.calls.filter(([path]) => path.startsWith('/api/agent-runs/'))).toEqual([
@@ -753,7 +780,7 @@ describe('Scheduled tasks workbench', () => {
     const view = renderComponent(ScheduledTasksPanel, { request, section: 'history' });
     try {
       await flushComponent();
-      await trigger(button(view, task.name), 'onClick');
+      await trigger(button(view, task.name), 'onClick', new Event('click'));
       expect(request.mock.calls.map(([path]) => path)).toEqual([
         '/api/scheduled-occurrences?mine=false&page=1',
         '/api/scheduled-occurrences/record?nodeId=a&workspaceId=work',

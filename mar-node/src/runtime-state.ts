@@ -248,7 +248,7 @@ export class NodeRuntimeState {
       nodeId: this.nodeId(),
       workspaceId: session.workspaceId,
       runner: session.runner,
-      status: 'STARTING',
+      status: 'RUNNING',
       recoveryState: 'ACTIVE',
       version: 0,
       clientMessageId: input.clientMessageId ?? input.runId,
@@ -541,7 +541,7 @@ export class NodeRuntimeState {
       nodeId: this.nodeId(),
       workspaceId: session.workspaceId,
       runner: session.runner,
-      status: 'STARTING',
+      status: 'RUNNING',
       recoveryState: 'ACTIVE',
       version: 0,
       clientMessageId: input.clientMessageId,
@@ -920,7 +920,7 @@ export class NodeRuntimeState {
       terminalExecution(execution.status) ||
       this.isExecutionInterruptRequested(execution.id) ||
       run === undefined ||
-      (run.status !== 'STARTING' && run.status !== 'RUNNING') ||
+      run.status !== 'RUNNING' ||
       this.currentExecutionId(run.id) !== execution.id ||
       session === undefined ||
       session.id !== run.sessionId ||
@@ -1071,6 +1071,8 @@ export class NodeRuntimeState {
     this.emitRunChanged(value, this.requireSession(value.sessionId));
     if (terminal(next) && this.leases.get(value.sessionId) === value.id)
       this.leases.delete(value.sessionId);
+    // Cancellation belongs to the Run; the Turn keeps its phase until settlement.
+    if (next === 'CANCELLING') return value;
     this.updateCurrentTurnForRun(value.id, (turn) => ({
       ...turn,
       status: next,
@@ -1185,7 +1187,7 @@ export class NodeRuntimeState {
             executionId,
             runId: run.id,
             sessionId: run.sessionId,
-            status: execution.status
+            status: execution.status === 'STARTING' ? 'RUNNING' : execution.status
           };
     }
     const retained = this.retainedExecutionTurns.get(executionId);

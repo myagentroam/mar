@@ -140,7 +140,7 @@ describe('Agent Network wait diagnostics', () => {
     expect(await f.service.wait(f.actor, { agentId: f.child.id, waitMs: 0 })).toMatchObject({
       agentId: f.child.id,
       runId: run.id,
-      status: 'STARTING',
+      status: 'RUNNING',
       waitOutcome: 'snapshot'
     });
   });

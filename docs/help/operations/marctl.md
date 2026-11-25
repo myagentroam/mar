@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-11-25
+lastUpdated: 2026-11-26
 ---
 
 # 使用 marctl 管理节点
@@ -88,11 +88,12 @@ marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" 
 marctl agents schedule runs --task "$TASK_ID" --page 1 --json
 ```
 
-`--triggers-file` 读取 UTF-8 JSON 数组，不接收 Cron 表达式；每项只指定一个 `HH:mm` 时刻。新任务使用 Node 时区，更新沿用任务已保存的时区。`once` 必须填写明确的未来日期；CLI 不代为建议日期。以下 `triggers.json` 展示仅一次、每天、每周和每月四种形式：
+`--triggers-file` 读取 UTF-8 JSON 数组，不接收 Cron 表达式。每小时规则 `hourly` 使用非空的 `minutes` 数组（整数 0–59），不填 `time`；其他规则各填一个 `HH:mm` 时刻。新任务使用 Node 时区，更新沿用任务已保存的时区。`once` 必须填写明确的未来日期；CLI 不代为建议日期。以下 `triggers.json` 中的每小时规则在每小时的第 15 和 45 分钟触发：
 
 ```json
 [
   { "kind": "once", "date": "2030-03-21", "time": "14:30" },
+  { "kind": "hourly", "minutes": [15, 45] },
   { "kind": "daily", "time": "10:00" },
   { "kind": "weekly", "time": "09:00", "weekdays": [1, 2, 3, 4, 5] },
   { "kind": "monthly", "time": "09:00", "monthDays": [1, 15] }
@@ -101,7 +102,7 @@ marctl agents schedule runs --task "$TASK_ID" --page 1 --json
 
 `weekly.weekdays` 使用 0（周日）至 6（周六），`monthly.monthDays` 使用 1 至 31；不存在的月日不会触发。更新时传入 `--triggers-file` 会整体替换所有触发时间，省略它则保留现有时间。用 `-m` 或 `--message-file` 提供任务正文，最多 20,000 字符。`--triggers-file` 与 `--message-file` 都支持 `-` 读 stdin，但同一命令只能有一个读取 stdin。
 
-更新至少指定名称、触发时间或正文之一。更新自己创建的任务直接生效；更新他人任务返回 `proposalId` 和 `baseRevision`，由创建者确认，不会转移执行身份。版本冲突时重新读取；写入结果未知时先核对任务，不要盲目重试。CLI 不提供启停、删除或提议审批；请在[定时任务页面](../workbench/sessions.md#定时任务)操作。
+更新至少指定名称、触发时间或正文之一。更新自己持有的任务直接生效；更新他人任务返回 `proposalId` 和 `baseRevision`。有工作区权限的成员可在 Web 中处理提议；接受后任务归接受者，后续按其身份执行。版本冲突时重新读取；写入结果未知时先核对任务，不要盲目重试。CLI 不提供启停、删除或提议审批；请在[定时任务页面](../workbench/sessions.md#定时任务)操作。
 
 ## 持久指令与审批
 

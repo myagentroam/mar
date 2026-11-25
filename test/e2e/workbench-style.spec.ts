@@ -60,7 +60,9 @@ for (const theme of ['daylight', 'dark']) {
       'background-color',
       theme === 'daylight' ? 'rgb(0, 87, 219)' : 'rgb(23, 137, 252)'
     );
-    await expect(option.locator('svg')).toBeVisible();
+    const check = option.locator('.mar-ui-checkbox__check');
+    await expect(check).toBeVisible();
+    await expect(check).toHaveCSS('color', 'rgb(255, 255, 255)');
     await option.screenshot({ path: testInfo.outputPath('regex-checked.png') });
     await input.getByRole('textbox').press('Tab');
     await expect(search).toBeFocused();
