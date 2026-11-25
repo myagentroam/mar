@@ -8,6 +8,7 @@ import { projectWorkbenchPayload } from '../../src/service/workbench-event-proje
 import { marctlSessionProgress } from '../../src/service/session-recent-activity.js';
 import { conversationSegments } from '../../src/service/conversation-segment-service.js';
 import { WorkbenchEventService } from '../../src/service/workbench-event-service.js';
+import { conversationTurnSchema } from '@myagentroam/protocol';
 import type { NodeEnvelope, WorkbenchEvent } from '@myagentroam/protocol';
 
 function fixture(
@@ -203,7 +204,7 @@ describe('Node Run notification attachment events', () => {
   );
 
   it.each(['STARTING', 'RUNNING'] as const)(
-    'keeps the user stop reason when a late Runner %s event arrives before completion',
+    'keeps the Run stopping when a late Runner %s event arrives before completion',
     (status) => {
       const { runtime, service, createRun, startExecution, notifications, events } = fixture();
       const run = createRun('stopped-before-runner-start');
@@ -211,8 +212,30 @@ describe('Node Run notification attachment events', () => {
       runtime.transitionRun(run.id, 'CANCELLING');
       runtime.requestExecutionInterrupt(execution.id);
 
+      expect(
+        conversationTurnSchema.safeParse(runtime.conversationTurnForRun(run.id))
+      ).toMatchObject({
+        success: true,
+        data: { status: 'PREPARING' }
+      });
       service.emit(execution.id, status === 'STARTING' ? 'run.started' : 'run.running', {}, status);
       expect(runtime.getRun(run.id)?.status).toBe('CANCELLING');
+      expect(
+        conversationTurnSchema.safeParse(runtime.conversationTurnForRun(run.id))
+      ).toMatchObject({
+        success: true,
+        data: { status: 'RUNNING' }
+      });
+      expect(events).toContainEqual({
+        category: 'conversation',
+        payload: {
+          event: expect.objectContaining({
+            runId: run.id,
+            eventType: status === 'STARTING' ? 'run.started' : 'run.running',
+            status: 'CANCELLING'
+          })
+        }
+      });
 
       service.emit(execution.id, 'run.completed', {}, 'CANCELLED');
       expect(events).toContainEqual({

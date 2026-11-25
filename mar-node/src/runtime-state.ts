@@ -1071,6 +1071,8 @@ export class NodeRuntimeState {
     this.emitRunChanged(value, this.requireSession(value.sessionId));
     if (terminal(next) && this.leases.get(value.sessionId) === value.id)
       this.leases.delete(value.sessionId);
+    // Cancellation belongs to the Run; the Turn keeps its phase until settlement.
+    if (next === 'CANCELLING') return value;
     this.updateCurrentTurnForRun(value.id, (turn) => ({
       ...turn,
       status: next,

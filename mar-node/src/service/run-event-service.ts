@@ -279,7 +279,13 @@ export class RunEventService {
         this.options.onRunStarted?.(run, recorded.createdAt);
     }
     if (!terminalExecution) this.options.refreshAttachments?.(run.sessionId);
-    const publicStatus = terminalExecution ? finalStatus : status;
+    const currentRun = status === undefined ? undefined : this.options.runtime.getRun(runId);
+    // A late Runner acknowledgement must not override the Run's public stop state.
+    const publicStatus = terminalExecution
+      ? finalStatus
+      : recorded === undefined
+        ? undefined
+        : currentRun?.status;
     if (recorded !== undefined && targetsCurrentTurn)
       this.options.observeAgentEvent?.({
         run,
@@ -293,11 +299,10 @@ export class RunEventService {
       runId,
       eventType,
       payload,
-      publicStatus,
+      finalStatus,
       manuallyInterrupted || !targetsCurrentTurn
     );
     if (publicStatus !== undefined) {
-      const currentRun = this.options.runtime.getRun(runId);
       this.emitWorkbench('run', { run: currentRun });
       const session =
         currentRun === undefined
