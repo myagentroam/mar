@@ -216,16 +216,24 @@ test('Scheduled tasks run through the real Server, Node and execution history', 
     const at = (timestamp: number) => {
       const iso = new Date(timestamp).toISOString();
       return {
-        days: { kind: 'dates', dates: [iso.slice(0, 10)] },
-        times: { kind: 'times', times: [iso.slice(11, 16)] }
+        kind: 'once',
+        date: iso.slice(0, 10),
+        time: iso.slice(11, 16)
       };
     };
-    const schedule = async (name: string, objective: string, groups: ReturnType<typeof at>[]) =>
+    const preview = await read<{ timezone: string; times: { dueAt: number }[] }>(
+      await request.post('/api/scheduled-tasks/preview', {
+        headers,
+        data: { ...scope, triggers: [at(dueAt)] }
+      })
+    );
+    expect(preview).toMatchObject({ timezone: 'UTC', times: [{ dueAt }] });
+    const schedule = async (name: string, objective: string, triggers: ReturnType<typeof at>[]) =>
       (
         await read<{ task: { id: string; revision: number } }>(
           await request.post('/api/scheduled-tasks', {
             headers,
-            data: { ...scope, target: { kind: 'existing', sessionId }, name, objective, groups }
+            data: { ...scope, target: { kind: 'existing', sessionId }, name, objective, triggers }
           })
         )
       ).task;
@@ -249,6 +257,7 @@ test('Scheduled tasks run through the real Server, Node and execution history', 
         pageSize: number;
         total: number;
         hasMore: boolean;
+        nodes: { id: string; supported: boolean }[];
       }>(
         await request.get('/api/scheduled-tasks', {
           params: { ...scope, sessionId, page, limit: 1 }
@@ -256,6 +265,7 @@ test('Scheduled tasks run through the real Server, Node and execution history', 
       );
     const [firstId, secondId] = [a.id, b.id].sort();
     expect(await taskPage(1)).toMatchObject({
+      nodes: [{ id: nodeId, supported: true }],
       items: [{ id: firstId }],
       page: 1,
       pageSize: 1,

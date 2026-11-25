@@ -4,7 +4,7 @@ import type {
   ScheduledNewSession,
   ScheduledTarget,
   ScheduledTaskTargetKind,
-  ScheduledTimeGroup
+  ScheduledTrigger
 } from '@myagentroam/protocol';
 import type { RunnerProfile, Session, Workspace } from '../model/workbench.js';
 
@@ -58,7 +58,7 @@ export interface ScheduleTask {
   id: string;
   name: string;
   objective: string;
-  groups: ScheduledTimeGroup[];
+  triggers: ScheduledTrigger[];
   timezone: string;
   sessionId: string | null;
   newSession: ScheduledNewSession | null;
@@ -72,7 +72,7 @@ export interface ScheduleProposal {
   baseRevision: number;
   name: string | null;
   objective: string | null;
-  groups: ScheduledTimeGroup[] | null;
+  triggers: ScheduledTrigger[] | null;
 }
 export interface ScheduleDetail {
   task: ScheduleTask;
@@ -100,7 +100,7 @@ export interface ScheduleOccurrenceDetail extends Omit<
     name?: string;
     revision?: number;
     objective?: string;
-    matchedGroups?: number[];
+    matchedTriggers?: number[];
   } | null;
 }
 export interface ScheduleRunReceipt {
@@ -110,7 +110,7 @@ export interface ScheduleRunReceipt {
 export interface ScheduleDraft {
   name: string;
   objective: string;
-  groups: ScheduledTimeGroup[];
+  triggers: ScheduledTrigger[];
   target: ScheduledTarget;
   enabled: boolean;
   notifyOnTerminal: boolean;
@@ -210,14 +210,20 @@ export function scheduledTaskClient(request: ScheduleRequest) {
       }),
     preview: (
       target: ScheduleScope,
-      groups: ScheduledTimeGroup[],
-      signal: AbortSignal,
-      taskId?: string
+      fields: {
+        triggers?: ScheduledTrigger[] | undefined;
+        taskId?: string | undefined;
+        suggestTime?: string | undefined;
+      },
+      signal: AbortSignal
     ) =>
-      request<{ timezone: string; times: { dueAt: number }[] }>(`${tasks}/preview`, {
-        ...json('POST', { ...scope(target), groups, taskId }),
-        signal
-      }),
+      request<{ timezone: string; times: { dueAt: number }[]; suggestedDate?: string }>(
+        `${tasks}/preview`,
+        {
+          ...json('POST', { ...scope(target), ...fields }),
+          signal
+        }
+      ),
     create: (target: ScheduleScope, draft: ScheduleDraft) =>
       request(tasks, json('POST', { ...scope(target), ...draft })),
     update: (key: ScheduleTaskKey, expectedRevision: number, patch: Partial<ScheduleDraft>) =>

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
   scheduleToolInputs,
-  scheduledTimeGroupsSchema,
+  scheduledPreviewFields,
   scheduledTaskOwnerPatchSchema,
   scheduledTaskWriteSchema,
   scheduledTaskIdSchema,
@@ -14,14 +14,17 @@ import {
 import {
   scheduledTargetSchema,
   type ScheduledTarget,
-  type ScheduledTimeGroup
+  type ScheduledTrigger
 } from '@myagentroam/protocol';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { NodeAgentSession } from './contracts.js';
 import type { NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { NativeSessionProjectionService } from './native-session-projection-service.js';
-import { scheduledTimesAfter } from '../service/scheduled-session-recurrence.js';
+import {
+  scheduledTimesAfter,
+  suggestedScheduleDate
+} from '../service/scheduled-session-recurrence.js';
 import {
   occurrenceState,
   occurrenceSummary,
@@ -51,7 +54,7 @@ const pageSchema = z.object({
 interface CreateFields {
   readonly name: string;
   readonly objective: string;
-  readonly groups: readonly ScheduledTimeGroup[];
+  readonly triggers: readonly ScheduledTrigger[];
   readonly enabled?: boolean | undefined;
   readonly notifyOnTerminal?: boolean | undefined;
   readonly graceMinutes?: number | undefined;
@@ -384,10 +387,23 @@ export class SessionScheduleService {
   }
 
   private preview(input: Record<string, unknown>): unknown {
-    this.workspace(input);
-    const timezone = input.taskId === undefined ? nodeTimezone() : this.taskCommand(input).timezone;
-    const groups = parse(scheduledTimeGroupsSchema, input.groups);
-    return { timezone, times: scheduledTimesAfter(groups, timezone, Date.now(), 5) };
+    let timezone: string;
+    if (input.taskId === undefined) {
+      this.workspace(input);
+      timezone = nodeTimezone();
+    } else {
+      timezone = this.taskCommand(input).timezone;
+    }
+    const triggers = parse(scheduledPreviewFields.triggers, input.triggers);
+    const suggestTime = parse(scheduledPreviewFields.suggestTime, input.suggestTime);
+    const now = Date.now();
+    return {
+      timezone,
+      times: triggers ? scheduledTimesAfter(triggers, timezone, now, 5) : [],
+      ...(suggestTime === undefined
+        ? {}
+        : { suggestedDate: suggestedScheduleDate(suggestTime, timezone, now) })
+    };
   }
 
   private taskCommand(input: Record<string, unknown>): ScheduledSessionTask {
@@ -530,7 +546,7 @@ function modelDetail(task: ScheduledSessionTask) {
   return {
     ...summary(task),
     objective: task.objective,
-    groups: task.groups,
+    triggers: task.triggers,
     timezone: task.timezone
   };
 }
@@ -556,7 +572,7 @@ function proposals(store: ScheduledSessionStore, taskId: string) {
     baseRevision: row.base_revision,
     name: row.name,
     objective: row.objective,
-    groups: row.time_groups === null ? null : JSON.parse(String(row.time_groups))
+    triggers: row.triggers === null ? null : JSON.parse(String(row.triggers))
   }));
 }
 function nodeTimezone(): string {

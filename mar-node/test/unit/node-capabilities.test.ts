@@ -142,7 +142,7 @@ describe('Node capability version reporting', () => {
         payload: {
           nodeAppVersion: initial.nodeAppVersion,
           codex: initial.codex,
-          scheduledTasks: { apiVersion: 1 }
+          scheduledTasks: { apiVersion: 2 }
         }
       });
       sent.length = 0;
@@ -158,7 +158,7 @@ describe('Node capability version reporting', () => {
       );
       expect(sent.find((message) => message.type === 'capabilities')?.payload).toMatchObject({
         browser: { apiVersion: 1, nodeGeneration: browserOwner.nodeGeneration, ice: false },
-        scheduledTasks: { apiVersion: 1 }
+        scheduledTasks: { apiVersion: 2 }
       });
 
       await vi.advanceTimersByTimeAsync(60_000);
@@ -171,7 +171,7 @@ describe('Node capability version reporting', () => {
         expect.objectContaining({
           type: 'capabilities',
           payload: expect.objectContaining({
-            scheduledTasks: { apiVersion: 1 },
+            scheduledTasks: { apiVersion: 2 },
             codex: current.codex
           })
         })
@@ -230,7 +230,7 @@ describe('Node capability version reporting', () => {
         expect(sent).toHaveLength(1);
         expect(sent[0]?.payload).toEqual({
           ...initial,
-          scheduledTasks: { apiVersion: 1 },
+          scheduledTasks: { apiVersion: 2 },
           metadata: {
             ...initial.metadata,
             ...(supervised === '1' ? { supervisedUpgrade: true } : {})

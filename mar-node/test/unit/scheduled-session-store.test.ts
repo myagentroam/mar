@@ -1,72 +1,7 @@
-import { hourlyGroups, dailyGroups } from './scheduled-task-fixtures.js';
+import { hourlyTriggers, dailyTriggers } from './scheduled-task-fixtures.js';
 import { describe, expect, it } from 'vitest';
 import { NodeDatabase } from '../../src/database.js';
-import { scheduledTimesAfter } from '../../src/service/scheduled-session-recurrence.js';
-import { legacyCronTimeGroups } from '../../src/migrations/v024-cron.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
-
-const nextScheduledAt = (cron: string, zone: string, after: number) =>
-  scheduledTimesAfter(legacyCronTimeGroups(cron), zone, after, 1)[0]?.dueAt;
-
-describe('scheduled session recurrence', () => {
-  it('preserves field sets for legacy simple and compound expressions', () => {
-    expect(legacyCronTimeGroups('0 8 * * 1')).toEqual([
-      {
-        days: { kind: 'weekdays', weekdays: [1] },
-        times: { kind: 'grid', hours: [8], minutes: [0] }
-      }
-    ]);
-    expect(legacyCronTimeGroups('0 0 1,15 */2 *')).toEqual([
-      {
-        days: { kind: 'monthDays', monthDays: [1, 15], months: [1, 3, 5, 7, 9, 11] },
-        times: { kind: 'grid', hours: [0], minutes: [0] }
-      }
-    ]);
-    for (const value of ['*/0 * * * *', '0 0 * * 8', `${'0,'.repeat(33)}0 * * * *`]) {
-      expect(() => legacyCronTimeGroups(value)).toThrow('SCHEDULE_CRON_INVALID');
-    }
-  });
-
-  it('skips a missing local time and runs a repeated local time once', () => {
-    const spring = Date.parse('2025-03-09T06:00:00Z');
-    expect(nextScheduledAt('30 2 * * *', 'America/New_York', spring)).toBe(
-      Date.parse('2025-03-10T06:30:00Z')
-    );
-    const firstFall = Date.parse('2025-11-02T05:30:00Z');
-    expect(nextScheduledAt('30 1 * * *', 'America/New_York', firstFall)).toBe(
-      Date.parse('2025-11-03T06:30:00Z')
-    );
-  });
-
-  it('supports ranges, steps and standard day-of-month/day-of-week matching', () => {
-    expect(nextScheduledAt('*/15 9-17 * * 1-5', 'UTC', Date.parse('2025-01-03T16:50:00Z'))).toBe(
-      Date.parse('2025-01-03T17:00:00Z')
-    );
-    expect(nextScheduledAt('0 9 1 * 1', 'UTC', Date.parse('2025-02-02T10:00:00Z'))).toBe(
-      Date.parse('2025-02-03T09:00:00Z')
-    );
-  });
-
-  it.each([
-    ['30 1 * * *', 'America/New_York', '2025-11-02T05:31:00Z', '2025-11-03T06:30:00Z'],
-    ['* * * * *', 'America/New_York', '2025-11-02T05:59:00Z', '2025-11-02T07:00:00Z'],
-    ['*/15 * * * *', 'America/New_York', '2025-11-02T06:10:00Z', '2025-11-02T07:00:00Z'],
-    ['45 1 * * *', 'Australia/Lord_Howe', '2025-04-05T14:46:00Z', '2025-04-06T15:15:00Z'],
-    ['15 2 * * *', 'Australia/Lord_Howe', '2025-10-04T15:00:00Z', '2025-10-05T15:15:00Z'],
-    ['0 9 * * *', 'Asia/Kathmandu', '2025-01-01T03:14:00Z', '2025-01-01T03:15:00Z'],
-    ['0 0 1 1 *', 'UTC', '2026-01-01T00:00:00Z', '2027-01-01T00:00:00Z'],
-    ['0 0 29 2 *', 'UTC', '2096-03-01T00:00:00Z', '2104-02-29T00:00:00Z'],
-    ['0 0 31 2 1', 'UTC', '2025-02-01T00:00:00Z', '2025-02-03T00:00:00Z']
-  ])('selects one local occurrence for %s in %s after %s', (cron, zone, after, expected) => {
-    expect(nextScheduledAt(cron, zone, Date.parse(after))).toBe(Date.parse(expected));
-  });
-
-  it('rejects an impossible date without reducing the search horizon', () => {
-    expect(
-      nextScheduledAt('0 0 31 2 *', 'UTC', Date.parse('2025-01-01T00:00:00Z'))
-    ).toBeUndefined();
-  });
-});
 
 describe('scheduled session store', () => {
   it('filters schedule state before paging and binds the cursor to that filter', () => {
@@ -94,7 +29,7 @@ describe('scheduled session store', () => {
           runner: 'codex',
           ownerUserId,
           objective: 'Check',
-          groups: dailyGroups('09:00'),
+          triggers: dailyTriggers('09:00'),
           timezone: 'UTC'
         });
       const scheduled = [create('Active A', 'existing'), create('Active B', 'existing')];
@@ -155,14 +90,14 @@ describe('scheduled session store', () => {
         ownerUserId: 1,
         objective: 'Original',
         name: 'Schedule',
-        groups: hourlyGroups,
+        triggers: hourlyTriggers,
         timezone: 'UTC'
       });
       const dueAt = task.nextRunAt;
       now = Date.parse('2026-10-23T01:00:01Z');
       task = store.update(task.id, task.revision, { timezone: 'UTC' });
       expect(task.nextRunAt).toBe(dueAt);
-      task = store.update(task.id, task.revision, { groups: dailyGroups('02:30') });
+      task = store.update(task.id, task.revision, { triggers: dailyTriggers('02:30') });
       expect(task.nextRunAt).toBe(Date.parse('2026-10-23T02:30:00Z'));
       task = store.update(task.id, task.revision, { timezone: 'Asia/Shanghai' });
       expect(task.nextRunAt).toBe(Date.parse('2026-10-23T18:30:00Z'));
@@ -170,7 +105,7 @@ describe('scheduled session store', () => {
       expect(task.nextRunAt).toBeNull();
       task = store.update(task.id, task.revision, {
         objective: 'Paused edit',
-        groups: hourlyGroups
+        triggers: hourlyTriggers
       });
       expect(task.nextRunAt).toBeNull();
       task = store.update(task.id, task.revision, { enabled: true });
@@ -202,7 +137,7 @@ describe('scheduled session store', () => {
         ownerUserId: 1,
         objective: 'Inspect',
         name: 'Schedule',
-        groups: dailyGroups('01:30'),
+        triggers: dailyTriggers('01:30'),
         timezone: 'America/New_York'
       });
       expect(task.nextRunAt).toBe(Date.parse('2025-11-02T05:30:00Z'));
@@ -242,7 +177,7 @@ describe('scheduled session store', () => {
         ownerUserId: 1,
         objective: 'Inspect',
         name: 'Schedule',
-        groups: hourlyGroups,
+        triggers: hourlyTriggers,
         timezone: 'UTC'
       });
       expect(store.getById(task.id)?.graceMinutes).toBe(0);
@@ -308,7 +243,7 @@ describe('scheduled session store', () => {
       ownerUserId: 1,
       objective: 'Original',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     const proposal = store.propose(task, 2, { objective: 'Updated' });
@@ -365,7 +300,7 @@ describe('scheduled session store', () => {
       ownerUserId: 1,
       objective: 'Inspect',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     };
 
@@ -415,7 +350,7 @@ describe('scheduled session store', () => {
       ownerUserId: 1,
       objective: 'Inspect',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     const proposal = store.propose(task, 2, { objective: 'Inspect later' });
@@ -457,7 +392,7 @@ describe('scheduled session store', () => {
       ownerUserId: 1,
       objective: 'Original',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     const current = store.update(task.id, task.revision, { objective: 'Updated' });
@@ -493,7 +428,7 @@ describe('scheduled session store', () => {
       ownerUserId: 1,
       objective: 'Inspect the project',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     expect(task.nextRunAt).toBe(Date.parse('2025-01-01T01:00:00Z'));

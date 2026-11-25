@@ -1,15 +1,41 @@
-import type { ScheduledTimeGroup } from '@myagentroam/protocol';
+type LegacyDays =
+  | { readonly kind: 'dates'; readonly dates: readonly string[] }
+  | { readonly kind: 'anyDay'; readonly months?: readonly number[] }
+  | {
+      readonly kind: 'weekdays';
+      readonly weekdays: readonly number[];
+      readonly months?: readonly number[];
+    }
+  | {
+      readonly kind: 'monthDays';
+      readonly monthDays: readonly number[];
+      readonly months?: readonly number[];
+    };
+
+type LegacyTimes =
+  | { readonly kind: 'times'; readonly times: readonly string[] }
+  | {
+      readonly kind: 'grid';
+      readonly hours: readonly number[];
+      readonly minutes: readonly number[];
+    };
+
+/** Persisted v24 format; keep independent of the current runtime schedule contract. */
+export interface LegacyScheduledTimeGroup {
+  readonly days: LegacyDays;
+  readonly times: LegacyTimes;
+}
 
 /** Translate V23's parsed field sets without reinterpreting the old expression. */
-export function legacyCronTimeGroups(cron: string): readonly ScheduledTimeGroup[] {
+export function legacyCronTimeGroups(cron: string): readonly LegacyScheduledTimeGroup[] {
   const parsed = parseCronExpression(cron);
   const months = parsed.monthWildcard ? {} : { months: [...parsed.month] };
-  const times: ScheduledTimeGroup['times'] = {
+  const times: LegacyTimes = {
     kind: 'grid',
     hours: [...parsed.hour],
     minutes: [...parsed.minute]
   };
-  const days: ScheduledTimeGroup['days'][] = [];
+  const days: LegacyDays[] = [];
   if (!parsed.dayOfMonthWildcard)
     days.push({ kind: 'monthDays', monthDays: [...parsed.dayOfMonth], ...months });
   if (!parsed.dayOfWeekWildcard)

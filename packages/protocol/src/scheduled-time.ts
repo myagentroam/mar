@@ -5,29 +5,26 @@ const integers = (min: number, max: number) =>
     .array(z.number().int().min(min).max(max))
     .min(1)
     .max(max - min + 1);
-const months = integers(1, 12).optional();
+export const scheduledClockTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+const time = scheduledClockTimeSchema;
+export const scheduledTriggerSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('once'), time, date: z.string().date() }),
+  z.strictObject({ kind: z.literal('daily'), time }),
+  z.strictObject({ kind: z.literal('weekly'), time, weekdays: integers(0, 6) }),
+  z.strictObject({ kind: z.literal('monthly'), time, monthDays: integers(1, 31) })
+]);
+export const scheduledTriggerLimit = 1024;
+export const scheduledTriggersSchema = z
+  .array(scheduledTriggerSchema)
+  .min(1)
+  .max(scheduledTriggerLimit);
+export type ScheduledTrigger = z.infer<typeof scheduledTriggerSchema>;
 
-export const scheduledTimeGroupSchema = z.strictObject({
-  days: z.discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('dates'), dates: z.array(z.string().date()).min(1).max(64) }),
-    z.strictObject({ kind: z.literal('anyDay'), months }),
-    z.strictObject({ kind: z.literal('weekdays'), weekdays: integers(0, 6), months }),
-    z.strictObject({ kind: z.literal('monthDays'), monthDays: integers(1, 31), months })
-  ]),
-  times: z.discriminatedUnion('kind', [
-    z.strictObject({
-      kind: z.literal('times'),
-      times: z
-        .array(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/))
-        .min(1)
-        .max(64)
-    }),
-    z.strictObject({ kind: z.literal('grid'), hours: integers(0, 23), minutes: integers(0, 59) })
-  ])
-});
-
-export const scheduledTimeGroupsSchema = z.array(scheduledTimeGroupSchema).min(1).max(16);
-export type ScheduledTimeGroup = z.infer<typeof scheduledTimeGroupSchema>;
+export const scheduledPreviewFields = {
+  taskId: z.string().min(1).max(512).optional(),
+  triggers: scheduledTriggersSchema.optional(),
+  suggestTime: scheduledClockTimeSchema.optional()
+};
 
 export const scheduledTaskIdSchema = z.string().min(1).max(512);
 export const scheduledTaskRevisionSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -49,7 +46,10 @@ export const scheduleInvalidationSchema = z.discriminatedUnion('topic', [
   scheduledOccurrenceChangedSchema
 ]);
 
-export const scheduledTasksCapabilitySchema = z.strictObject({ apiVersion: z.literal(1) });
+export const scheduledTasksApiVersion = 2;
+export const scheduledTasksCapabilitySchema = z.strictObject({
+  apiVersion: z.number().int().positive()
+});
 export const scheduledTaskFields = {
   name: z.string().trim().min(1).max(160).describe('Short name for this task.'),
   objective: z
@@ -60,8 +60,8 @@ export const scheduledTaskFields = {
     .describe(
       'Instructions to execute at each trigger, not instructions to configure the schedule.'
     ),
-  groups: scheduledTimeGroupsSchema.describe(
-    'Union of date and time combinations in the Node time zone. Weekdays are 0 (Sunday) to 6 (Saturday).'
+  triggers: scheduledTriggersSchema.describe(
+    'One HH:mm per entry in the task time zone (Node time zone on creation). Once requires a concrete date. Weekdays are 0 (Sunday) to 6 (Saturday).'
   )
 };
 export const scheduledTaskFieldsSchema = z.strictObject(scheduledTaskFields);

@@ -15,7 +15,7 @@ import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { NodeRunEventBridge } from '../../src/service/node-run-event-bridge.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import type { RunnerInteractionService } from '../../src/service/runner-interaction-service.js';
-import { dailyGroups, hourlyGroups } from './scheduled-task-fixtures.js';
+import { dailyTriggers, hourlyTriggers } from './scheduled-task-fixtures.js';
 import type { ScheduledSessionCoordinator } from '../../src/service/scheduled-session-coordinator.js';
 import type { SessionMessageService } from '../../src/session/session-message-service.js';
 import type { GitOperationService } from '../../src/service/git-operation-service.js';
@@ -71,7 +71,7 @@ describe('scheduled Node session flow', () => {
           graceMinutes: 60,
           name: 'Check',
           objective: 'Send once',
-          groups: hourlyGroups,
+          triggers: hourlyTriggers,
           timezone: 'UTC',
           enabled: true,
           revision: 1,
@@ -106,6 +106,63 @@ describe('scheduled Node session flow', () => {
     }
   );
 
+  it('reads schedule time zones before an execution time is complete without relaxing Workspace scope', async () => {
+    const database = new NodeDatabase(':memory:', 'schedule-preview');
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/preview',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const other = database.saveWorkspace({
+        path: '/other-preview',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const store = new ScheduledSessionStore(database.raw);
+      const task = store.create({
+        workspaceId: workspace.id,
+        runner: 'codex',
+        ownerUserId: 7,
+        sessionId: null,
+        newSession: { runner: 'codex', model: { kind: 'fixed', modelId: 'test-model' } },
+        name: 'Preview',
+        objective: 'Preview only',
+        timezone: 'Pacific/Auckland',
+        enabled: false,
+        triggers: dailyTriggers('10:00')
+      });
+      const service = new SessionScheduleService({
+        database: () => database,
+        runtime: {} as never,
+        projection: {} as never,
+        emitSession: vi.fn()
+      });
+      const preview = service.operations()['schedule.preview']!;
+      const scope = { workspaceId: workspace.id, __requestUserId: 7 };
+      expect(await preview(scope)).toEqual({
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        times: []
+      });
+      expect(await preview({ ...scope, taskId: task.id })).toEqual({
+        timezone: 'Pacific/Auckland',
+        times: []
+      });
+      expect(() => preview({ ...scope, workspaceId: other.id, taskId: task.id })).toThrow(
+        'SCHEDULE_NOT_FOUND'
+      );
+      expect(() => preview({ ...scope, triggers: [] })).toThrow('SCHEDULE_INVALID');
+      expect(await preview({ ...scope, taskId: task.id, suggestTime: '04:30' })).toEqual({
+        timezone: 'Pacific/Auckland',
+        times: [],
+        suggestedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u)
+      });
+      expect(() => preview({ ...scope, suggestTime: '24:00' })).toThrow('SCHEDULE_INVALID');
+    } finally {
+      database.close();
+    }
+  });
+
   it('returns only the bounded, Workspace-scoped system index projection', async () => {
     const database = new NodeDatabase(':memory:', 'schedule-index');
     try {
@@ -132,15 +189,15 @@ describe('scheduled Node session flow', () => {
       });
       const index = service.operations()['schedule.index.list']!;
       const insert = database.raw.prepare(`INSERT INTO scheduled_session_tasks
-        (id,workspace_id,runner,owner_user_id,name,objective,time_groups,timezone,enabled,revision,created_at,updated_at,session_id,new_session)
+        (id,workspace_id,runner,owner_user_id,name,objective,triggers,timezone,enabled,revision,created_at,updated_at,session_id,new_session)
         VALUES (?,?,'codex',7,'Task','Do not index',?,'UTC',0,1,0,0,?,?)`);
-      const groups = JSON.stringify(hourlyGroups);
-      insert.run('050-other', other.id, groups, null, null);
+      const triggers = JSON.stringify(hourlyTriggers);
+      insert.run('050-other', other.id, triggers, null, null);
       for (let i = 0; i <= 100; i++)
         insert.run(
           String(i).padStart(3, '0'),
           workspace.id,
-          groups,
+          triggers,
           i === 98 ? 'thread' : null,
           i === 99
             ? JSON.stringify({
@@ -241,7 +298,7 @@ describe('scheduled Node session flow', () => {
           ownerUserId: 1,
           objective: 'Original',
           name: 'Hourly check',
-          groups: hourlyGroups,
+          triggers: hourlyTriggers,
           timezone: 'UTC'
         });
         const dueAt = task.nextRunAt!;
@@ -272,7 +329,7 @@ describe('scheduled Node session flow', () => {
           expectedRevision: task.revision,
           patch: {
             objective: 'Updated',
-            groups: task.groups,
+            triggers: task.triggers,
             enabled: true,
             notifyOnTerminal: true
           }
@@ -400,7 +457,7 @@ describe('scheduled Node session flow', () => {
         __requestUserId: 7,
         objective: 'Inspect the repository',
         name: 'Hourly check',
-        groups: hourlyGroups,
+        triggers: hourlyTriggers,
         enabled: true
       })) as { task: { id: string } };
       const store = new ScheduledSessionStore(database.raw);
@@ -512,7 +569,7 @@ describe('scheduled Node session flow', () => {
           target: { kind: 'existing', sessionId },
           name: 'Daily check',
           objective: 'Check tests',
-          groups: dailyGroups('09:00')
+          triggers: dailyTriggers('09:00')
         }) as Promise<{ task: { id: string } }>;
       const first = (await create('first')).task;
       const second = (await create('first')).task;
@@ -530,7 +587,7 @@ describe('scheduled Node session flow', () => {
         targetKind: 'existing',
         objectivePreview: 'Check tests'
       });
-      for (const field of ['objective', 'groups', 'newSession', 'revision'])
+      for (const field of ['objective', 'triggers', 'newSession', 'revision'])
         expect(page.tasks[0]).not.toHaveProperty(field);
       expect(next.tasks).toHaveLength(2);
       expect(new Set([...page.tasks, ...next.tasks].map((task) => task.id)).size).toBe(3);
@@ -637,7 +694,7 @@ describe('scheduled Node session flow', () => {
         ownerUserId: 1,
         objective: 'Check',
         name: 'Hourly check',
-        groups: hourlyGroups,
+        triggers: hourlyTriggers,
         timezone: 'UTC'
       });
       const input = {
@@ -737,7 +794,7 @@ describe('scheduled Node session flow', () => {
         target: { kind: 'existing', sessionId: 'old-target' },
         name: 'Keep time',
         objective: 'Original private objective',
-        groups: hourlyGroups
+        triggers: hourlyTriggers
       })) as { taskId: string; nextRunAt: number };
       expect(created).toEqual({
         view: 'marctl',
@@ -804,7 +861,7 @@ describe('scheduled Node session flow', () => {
           nextRunAt: expect.any(Number),
           state: 'SCHEDULED',
           objective: 'Current private objective',
-          groups: hourlyGroups,
+          triggers: hourlyTriggers,
           timezone: expect.any(String)
         }
       });
@@ -886,7 +943,7 @@ describe('scheduled Node session flow', () => {
       const creating = pool.call('mcp__mar_schedule__create_scheduled_task', {
         name: 'Review',
         objective: 'Review every day',
-        groups: dailyGroups('09:00')
+        triggers: dailyTriggers('09:00')
       });
       await vi.waitFor(() => expect(wait).toHaveBeenCalledWith(session.id));
       internals.sessionIdentityService.promote(session.id, 'native-new-session');
@@ -966,7 +1023,7 @@ describe('scheduled Node session flow', () => {
       };
       try {
         const events = vi.spyOn(node, 'emitWorkbenchEvent');
-        expect(node.capabilities.scheduledTasks).toEqual({ apiVersion: 1 });
+        expect(node.capabilities.scheduledTasks).toEqual({ apiVersion: 2 });
         const scope = { workspaceId: workspace.id, __requestUserId: 17 };
         const { task } = (await node.executeNodeOperation('schedule.task.create', {
           ...scope,
@@ -979,7 +1036,7 @@ describe('scheduled Node session flow', () => {
           name: 'New every hour',
           objective: 'This is the first and only message',
           notifyOnTerminal: true,
-          groups: hourlyGroups
+          triggers: hourlyTriggers
         })) as { task: { id: string; nextRunAt: number } };
         expect(startChannel).not.toHaveBeenCalled();
         expect(events).toHaveBeenCalledExactlyOnceWith('workspace', {
@@ -1067,7 +1124,13 @@ describe('scheduled Node session flow', () => {
         expect(database.getRunnerDefaults()).toEqual([defaults('at-trigger-model')]);
         expect(detail()?.snapshot).toMatchObject({
           objective: 'This is the first and only message',
-          matchedGroups: [0]
+          matchedTriggers: [
+            Number(
+              new Intl.DateTimeFormat('en-US', { hour: '2-digit', hourCycle: 'h23' }).format(
+                task.nextRunAt
+              )
+            )
+          ]
         });
         const changes = events.mock.calls.filter(([category]) => category === 'workspace');
         const taskChanges = [
@@ -1265,7 +1328,7 @@ describe('scheduled Node session flow', () => {
         __requestUserId: 7,
         objective: 'Review changes',
         name: 'Hourly check',
-        groups: hourlyGroups,
+        triggers: hourlyTriggers,
         enabled: true
       })) as { task: { id: string } };
       internals.scheduledRunAuthorization.authorize = vi.fn(async () => ({
@@ -1448,7 +1511,7 @@ describe('scheduled Node session flow', () => {
           __requestUserId: 7,
           objective: 'Inspect the repository',
           name: 'Hourly check',
-          groups: hourlyGroups,
+          triggers: hourlyTriggers,
           enabled: true
         })) as {
           task: { readonly id: string; readonly nextRunAt: number; readonly timezone: string };

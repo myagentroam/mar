@@ -6,7 +6,7 @@ import { GoalMcpBridge } from '../../src/service/goal-mcp-bridge.js';
 import { GoalRuntime } from '../../src/service/goal-runtime.js';
 import { ScheduleMcpBridge } from '../../src/service/schedule-mcp-bridge.js';
 import { scheduleIpcFrameLimit } from '../../src/service/schedule-mcp-contract.js';
-import { hourlyGroups } from './scheduled-task-fixtures.js';
+import { hourlyTriggers } from './scheduled-task-fixtures.js';
 import { SessionScheduleService } from '../../src/session/session-schedule-service.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
 
@@ -65,7 +65,7 @@ const cases = [
         ownerUserId: 1,
         objective: 'Original',
         name: 'Hourly check',
-        groups: hourlyGroups,
+        triggers: hourlyTriggers,
         timezone: 'UTC'
       });
       const authorize = vi.fn(async (capability: { sessionId: string }) => capability.sessionId);

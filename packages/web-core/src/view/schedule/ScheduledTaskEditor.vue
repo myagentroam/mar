@@ -5,12 +5,18 @@ import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarRadio, MarRadioGroup } from '@myagentroam/mar-ui/radio';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarTimePicker } from '@myagentroam/mar-ui/time-picker';
 import { MarMessageBox } from '../../service/message-box-service.js';
-import type { ScheduledTarget, ScheduledTimeGroup } from '@myagentroam/protocol';
+import {
+  scheduledClockTimeSchema,
+  scheduledTriggerLimit,
+  type ScheduledTarget,
+  type ScheduledTrigger
+} from '@myagentroam/protocol';
 import type { RunnerProfile, Session, Workspace } from '../../model/workbench.js';
 import { defaultEffortForModel } from '../../service/runner-profile-service.js';
 import { errorSummary } from '../../util/error-presentation.js';
@@ -36,7 +42,12 @@ import type {
   ScheduleTaskKey,
   scheduledTaskClient
 } from '../../service/scheduled-task-client.js';
-import { addPickerRow, parseTimeDraft, timeDraft } from './scheduled-time-draft.js';
+import {
+  parseTriggerDraft,
+  pickerDate,
+  triggerDraft,
+  type TriggerDraft
+} from './scheduled-time-draft.js';
 import '../session/runner-brand-icon.css';
 
 // One dialog owns one draft and cancels its dependent reads when the scope or dialog changes.
@@ -48,12 +59,9 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: []; changed: [] }>();
 const notificationHintId = useId();
-const hourOptions = Array.from({ length: 24 }, (_, hour) => hour);
-const minuteOptions = Array.from({ length: 60 }, (_, minute) => minute);
-const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1);
 const monthDayOptions = Array.from({ length: 31 }, (_, index) => index + 1);
-const graceOptions = Array.from({ length: 61 }, (_, minute) => minute);
-const explicitValueLimit = 64;
+const graceOptions = Array.from({ length: 60 }, (_, minute) => minute + 1);
+const repeatOptions = ['once', 'daily', 'weekly', 'monthly'] as const;
 const msg = (key: string, args?: Record<string, string | number>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const editing = props.editing;
@@ -75,12 +83,17 @@ const form = reactive({
   enabled: saved?.enabled ?? true,
   notifyOnTerminal: saved?.notifyOnTerminal ?? false,
   graceMinutes: saved?.graceMinutes ?? 0,
-  groups: saved?.groups.map((group) => timeDraft(nextId++, group)) ?? [timeDraft(nextId++)]
+  triggers: saved?.triggers.length
+    ? saved.triggers.map((trigger) => triggerDraft(nextId++, trigger))
+    : readOnly
+      ? []
+      : [triggerDraft(nextId++)]
 });
 const dialog = ref<{ handleClose(): void }>();
 const taskForm = ref<FormInstance & { $el: HTMLElement }>();
 const timeForm = ref<FormInstance & { $el: HTMLElement }>();
 const tab = ref('task');
+const activeTriggerId = ref(saved?.triggers.length ? undefined : form.triggers[0]?.id);
 const alive = ref(true);
 const pending = ref<string>();
 const error = ref<unknown>();
@@ -95,6 +108,7 @@ const loadingWorkspaces = ref(false);
 const loadingTargets = ref(false);
 const loadingPreview = ref(false);
 const preview = ref<{ timezone: string; times: { dueAt: number }[] }>();
+const timezone = ref(saved?.timezone);
 const selection = computed(() => ({ nodeId: form.nodeId, workspaceId: form.workspaceId }));
 const node = computed(() => props.nodes.find((item) => item.id === form.nodeId));
 const targetReady = computed(
@@ -119,11 +133,36 @@ const efforts = computed(() => {
   const supported = model.value?.supportedEfforts ?? [];
   return form.runner === 'mar-agent' ? orderMarAgentReasoningEfforts(supported) : supported;
 });
-const parsedGroups = computed(() => form.groups.map(parseTimeDraft));
-const checkedGroups = () =>
-  parsedGroups.value.flatMap((group) => (group.success ? [group.data] : []));
+const parsedTriggers = computed(() => form.triggers.map(parseTriggerDraft));
+const checkedTriggers = () =>
+  parsedTriggers.value.flatMap((result) => (result.success ? [result.data] : []));
+const previewTriggers = computed(() =>
+  form.triggers.length && parsedTriggers.value.every((result) => result.success)
+    ? checkedTriggers()
+    : undefined
+);
+const suggestionTarget = computed(() =>
+  form.triggers.find(
+    (trigger) =>
+      trigger.kind === 'once' &&
+      trigger.date === null &&
+      trigger.suggestedDate === null &&
+      scheduledClockTimeSchema.safeParse(trigger.time).success
+  )
+);
+const suggestionTime = computed(() => suggestionTarget.value?.time ?? undefined);
+const hasSpecificDates = computed(() =>
+  parsedTriggers.value.some((result) => result.success && result.data.kind === 'once')
+);
+const allowCatchUp = computed({
+  get: () => form.graceMinutes > 0,
+  set: (enabled: boolean) => {
+    form.graceMinutes = enabled ? 15 : 0;
+  }
+});
 const newSessionSupported = computed(() => node.value?.newSessionSupported !== false);
-const initialDraft = JSON.stringify(form);
+const serializeDraft = () => JSON.stringify(form);
+const initialDraft = serializeDraft();
 
 const rules: FormRules = {
   nodeId: [
@@ -176,9 +215,13 @@ const rules: FormRules = {
 const timeRules = computed<FormRules>(() => ({
   graceMinutes: rules.graceMinutes,
   ...Object.fromEntries(
-    form.groups.map((_, index) => [
-      `groups.${index}`,
-      [{ validator: () => parsedGroups.value[index]?.success || new Error(msg('groupInvalid')) }]
+    form.triggers.map((_, index) => [
+      `triggers.${index}`,
+      [
+        {
+          validator: () => parsedTriggers.value[index]?.success || new Error(msg('triggerInvalid'))
+        }
+      ]
     ])
   )
 }));
@@ -282,25 +325,41 @@ watch(
   { immediate: true }
 );
 
+watch(selection, () => {
+  for (const row of form.triggers) row.suggestedDate = null;
+});
+
 watch(
-  () => ({ target: selection.value, available: targetReady.value, groups: parsedGroups.value }),
-  ({ target, available, groups }, _, onCleanup) => {
+  [selection, targetReady, previewTriggers, suggestionTarget, suggestionTime],
+  ([target, available, triggers, row, suggestTime], [previousTarget], onCleanup) => {
     preview.value = undefined;
     previewError.value = undefined;
     loadingPreview.value = false;
-    if (!available || groups.some((group) => !group.success)) return;
+    if (previousTarget !== target || !available) timezone.value = saved?.timezone;
+    if (!available || (!triggers && !suggestTime && timezone.value !== undefined)) return;
     const read = new AbortController();
-    const timer = setTimeout(async () => {
-      loadingPreview.value = true;
-      try {
-        const result = await props.client.preview(target, checkedGroups(), read.signal, saved?.id);
-        if (!read.signal.aborted) preview.value = result;
-      } catch (failure) {
-        if (!read.signal.aborted) previewError.value = failure;
-      } finally {
-        if (!read.signal.aborted) loadingPreview.value = false;
-      }
-    }, 250);
+    loadingPreview.value = true;
+    const timer = setTimeout(
+      async () => {
+        try {
+          const result = await props.client.preview(
+            target,
+            { triggers, suggestTime, taskId: saved?.id },
+            read.signal
+          );
+          if (read.signal.aborted) return;
+          timezone.value = result.timezone;
+          if (result.suggestedDate && row?.date === null)
+            row.suggestedDate = pickerDate(result.suggestedDate);
+          if (triggers) preview.value = result;
+        } catch (failure) {
+          if (!read.signal.aborted) previewError.value = failure;
+        } finally {
+          if (!read.signal.aborted) loadingPreview.value = false;
+        }
+      },
+      triggers ? 250 : 0
+    );
     onCleanup(() => {
       clearTimeout(timer);
       read.abort();
@@ -308,6 +367,23 @@ watch(
   },
   { immediate: true }
 );
+
+function addTrigger(): void {
+  const row = triggerDraft(nextId++);
+  form.triggers.push(row);
+  activeTriggerId.value = row.id;
+}
+
+function setTriggerTime(row: TriggerDraft, value: string | null): void {
+  if (row.time === value) return;
+  row.time = value;
+  row.suggestedDate = null;
+}
+
+function removeTrigger(index: number): void {
+  const [removed] = form.triggers.splice(index, 1);
+  if (activeTriggerId.value === removed?.id) activeTriggerId.value = undefined;
+}
 
 function target(): ScheduledTarget {
   if (lockedScope) return { kind: 'existing', sessionId: lockedScope.sessionId };
@@ -333,6 +409,8 @@ async function submit() {
     }
     if (!(await timeForm.value?.validate().catch(() => false))) {
       tab.value = 'time';
+      const invalid = parsedTriggers.value.findIndex((result) => !result.success);
+      if (invalid !== -1) activeTriggerId.value = form.triggers[invalid]?.id;
       await nextTick();
       timeForm.value?.$el.querySelector('[role="alert"]')?.scrollIntoView({ block: 'nearest' });
       return;
@@ -342,7 +420,7 @@ async function submit() {
       name: form.name,
       objective: form.objective,
       target: target(),
-      groups: checkedGroups(),
+      triggers: checkedTriggers(),
       enabled: form.enabled,
       notifyOnTerminal: form.notifyOnTerminal,
       graceMinutes: form.graceMinutes
@@ -392,7 +470,7 @@ async function remove() {
 }
 async function beforeClose(done: (cancel?: boolean) => void) {
   if (pending.value) return;
-  if (!readOnly && initialDraft !== JSON.stringify(form)) {
+  if (!readOnly && initialDraft !== serializeDraft()) {
     try {
       await MarMessageBox.confirm(msg('discardConfirm'), msg('discard'), { type: 'warning' });
     } catch {
@@ -404,18 +482,18 @@ async function beforeClose(done: (cancel?: boolean) => void) {
 onBeforeUnmount(() => {
   alive.value = false;
 });
-function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
-  return groups
-    .map((group, i) => {
-      const draft = timeDraft(i, group);
-      const dates =
-        draft.dayKind === 'weekdays'
-          ? draft.weekdays.map((day) => msg(`weekday${day}`)).join(', ')
-          : draft.dates || draft.monthDays || msg('anyDay');
-      return `${dates} · ${draft.times || `${draft.hours} × ${draft.minutes}`}`;
-    })
-    .join('\n');
+function triggerLabel(trigger: ScheduledTrigger): string {
+  if (trigger.kind === 'once') return `${trigger.date} · ${msg('once')}`;
+  if (trigger.kind === 'weekly') {
+    const days = [1, 2, 3, 4, 5, 6, 0].filter((day) => trigger.weekdays.includes(day));
+    return msg('weeklySummary', { days: days.map((day) => msg(`weekday${day}`)).join(', ') });
+  }
+  if (trigger.kind === 'monthly')
+    return msg('monthlySummary', { days: [...trigger.monthDays].sort((a, b) => a - b).join(', ') });
+  return msg('daily');
 }
+const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
+  triggers.map((trigger) => `${trigger.time} · ${triggerLabel(trigger)}`).join('\n');
 </script>
 
 <template>
@@ -622,8 +700,8 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
             <article v-for="proposal in editing.detail.proposals" :key="proposal.id">
               <strong v-if="proposal.name">{{ proposal.name }}</strong>
               <p v-if="proposal.objective" class="multiline">{{ proposal.objective }}</p>
-              <p v-if="proposal.groups" class="multiline">
-                {{ groupsFromProposal(proposal.groups) }}
+              <p v-if="proposal.triggers" class="multiline">
+                {{ triggersFromProposal(proposal.triggers) }}
               </p>
               <MarButton
                 :disabled="!!pending"
@@ -652,180 +730,155 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
           :aria-label="msg('timeTab')"
           @submit.prevent="submit"
         >
-          <fieldset v-for="(group, index) in form.groups" :key="group.id" class="time-group">
-            <legend>{{ msg('group', { number: index + 1 }) }}</legend>
-            <div class="wrapping-fields">
-              <MarFormItem :label="msg('days')">
-                <MarSelect v-model="group.dayKind">
-                  <MarOption
-                    v-for="kind in ['anyDay', 'weekdays', 'monthDays', 'dates']"
-                    :key="kind"
-                    :value="kind"
-                    :label="msg(kind)"
-                  />
-                </MarSelect>
-              </MarFormItem>
-              <MarFormItem :label="msg('time')">
-                <MarSelect v-model="group.timeKind">
-                  <MarOption :label="msg('explicitTimes')" value="times" />
-                  <MarOption :label="msg('timeGrid')" value="grid" />
-                </MarSelect>
-              </MarFormItem>
-            </div>
-            <div v-if="group.dayKind !== 'dates'" class="wrapping-fields">
-              <MarFormItem v-if="group.dayKind === 'weekdays'" :label="msg('weekdays')">
-                <MarSelect v-model="group.weekdays" :placeholder="msg('chooseWeekdays')" multiple>
-                  <MarOption
-                    v-for="day in [1, 2, 3, 4, 5, 6, 0]"
-                    :key="day"
-                    :label="msg(`weekday${day}`)"
-                    :value="day"
-                  />
-                </MarSelect>
-              </MarFormItem>
-              <MarFormItem v-if="group.dayKind === 'monthDays'" :label="msg('monthDays')">
-                <MarSelect v-model="group.monthDays" :placeholder="msg('chooseMonthDays')" multiple>
-                  <MarOption
-                    v-for="day in monthDayOptions"
-                    :key="day"
-                    :value="day"
-                    :label="String(day)"
-                  />
-                </MarSelect>
-              </MarFormItem>
-              <MarFormItem :label="msg('months')">
-                <MarSelect v-model="group.months" :placeholder="msg('allMonths')" multiple>
-                  <MarOption
-                    v-for="month in monthOptions"
-                    :key="month"
-                    :value="month"
-                    :label="msg('monthOption', { number: month })"
-                  />
-                </MarSelect>
-              </MarFormItem>
-            </div>
-            <div v-if="group.dayKind === 'dates'" class="picker-list">
-              <MarFormItem
-                v-for="(row, rowIndex) in group.dates"
-                :key="row.id"
-                class="picker-item"
-                :label="msg('dateEntry', { number: rowIndex + 1 })"
-              >
-                <div class="picker-row">
-                  <MarDatePicker
-                    v-model="row.value"
-                    :placeholder="msg('chooseDate')"
-                    type="date"
-                    :clearable="false"
-                  />
+          <p v-if="timezone" class="schedule-timezone">{{ msg('nodeTimezone', { timezone }) }}</p>
+          <p v-if="saved && saved.triggers.length === 0" class="schedule-timezone">
+            {{ msg('needsRunTimes') }}
+          </p>
+          <div class="schedule-triggers">
+            <MarFormItem
+              v-for="(trigger, index) in form.triggers"
+              :key="trigger.id"
+              :prop="`triggers.${index}`"
+              class="trigger-item"
+            >
+              <div class="trigger-row">
+                <span class="trigger-clock">{{ trigger.time || '—' }}</span>
+                <span class="trigger-description">
+                  {{
+                    parsedTriggers[index]?.success
+                      ? triggerLabel(parsedTriggers[index].data)
+                      : msg('incompleteTrigger')
+                  }}
+                </span>
+                <div v-if="!readOnly" class="mar-row-actions trigger-actions">
                   <MarButton
-                    v-if="!readOnly && group.dates.length > 1"
-                    text
+                    link
+                    :icon="activeTriggerId === trigger.id ? 'check' : 'edit'"
+                    :aria-expanded="activeTriggerId === trigger.id"
+                    :aria-controls="`${notificationHintId}-trigger-${trigger.id}`"
+                    :aria-label="
+                      msg(activeTriggerId === trigger.id ? 'doneTime' : 'editTime', {
+                        number: index + 1
+                      })
+                    "
+                    :disabled="!!pending"
+                    @click="
+                      activeTriggerId = activeTriggerId === trigger.id ? undefined : trigger.id
+                    "
+                    >{{
+                      activeTriggerId === trigger.id ? msg('doneTimeShort') : msg('editTask')
+                    }}</MarButton
+                  >
+                  <MarButton
+                    v-if="form.triggers.length > 1"
+                    link
                     icon="close"
-                    :aria-label="msg('removeDate', { number: rowIndex + 1 })"
-                    @click="group.dates.splice(rowIndex, 1)"
+                    :aria-label="msg('removeTime', { number: index + 1 })"
+                    v-tooltip="msg('removeTime', { number: index + 1 })"
+                    :disabled="!!pending"
+                    @click="removeTrigger(index)"
                   />
                 </div>
-              </MarFormItem>
-              <MarButton
-                v-if="!readOnly"
-                icon="plus"
-                :disabled="group.dates.length >= explicitValueLimit || !!pending"
-                @click="addPickerRow(group.dates)"
-                >{{ msg('addDate') }}</MarButton
-              >
-            </div>
-            <MarFormItem
-              :label="group.timeKind === 'grid' ? msg('timeGrid') : ''"
-              :prop="`groups.${index}`"
-            >
-              <div v-if="group.timeKind === 'times'" class="time-values picker-list">
-                <MarFormItem
-                  v-for="(row, rowIndex) in group.times"
-                  :key="row.id"
-                  class="picker-item"
-                  :label="msg('timeEntry', { number: rowIndex + 1 })"
-                >
-                  <div class="picker-row">
+              </div>
+              <div :id="`${notificationHintId}-trigger-${trigger.id}`">
+                <fieldset v-if="activeTriggerId === trigger.id" class="trigger-fields">
+                  <legend class="trigger-legend">
+                    {{ msg('triggerEditor', { number: index + 1 }) }}
+                  </legend>
+                  <MarFormItem
+                    :label="msg('timeEntry', { number: index + 1 })"
+                    class="trigger-time"
+                  >
                     <MarTimePicker
-                      v-model="row.value"
+                      :model-value="trigger.time"
                       :placeholder="msg('chooseTime')"
                       :clearable="false"
+                      @update:model-value="setTriggerTime(trigger, $event)"
                     />
-                    <MarButton
-                      v-if="!readOnly && group.times.length > 1"
-                      text
-                      icon="close"
-                      :aria-label="msg('removeTime', { number: rowIndex + 1 })"
-                      @click="group.times.splice(rowIndex, 1)"
+                  </MarFormItem>
+                  <MarFormItem :label="msg('repeatLabel')">
+                    <MarRadioGroup v-model="trigger.kind" :aria-label="msg('repeatLabel')">
+                      <MarRadio v-for="kind in repeatOptions" :key="kind" :value="kind">{{
+                        msg(kind)
+                      }}</MarRadio>
+                    </MarRadioGroup>
+                  </MarFormItem>
+                  <MarFormItem
+                    v-if="trigger.kind === 'once'"
+                    :label="msg('dateEntry', { number: index + 1 })"
+                    class="trigger-time"
+                  >
+                    <MarDatePicker
+                      type="date"
+                      :model-value="trigger.date ?? trigger.suggestedDate"
+                      :placeholder="msg('chooseDate')"
+                      :clearable="false"
+                      @update:model-value="trigger.date = $event"
                     />
-                  </div>
-                </MarFormItem>
-                <MarButton
-                  v-if="!readOnly"
-                  icon="plus"
-                  :disabled="group.times.length >= explicitValueLimit || !!pending"
-                  @click="addPickerRow(group.times)"
-                  >{{ msg('addTime') }}</MarButton
-                >
-              </div>
-              <div v-else class="time-values">
-                <div class="wrapping-fields">
-                  <MarFormItem :label="msg('hours')">
-                    <MarSelect v-model="group.hours" :placeholder="msg('chooseHours')" multiple>
+                  </MarFormItem>
+                  <MarFormItem v-else-if="trigger.kind === 'weekly'" :label="msg('weekdayField')">
+                    <MarSelect
+                      v-model="trigger.weekdays"
+                      :placeholder="msg('chooseWeekdays')"
+                      multiple
+                    >
                       <MarOption
-                        v-for="hour in hourOptions"
-                        :key="hour"
-                        :value="hour"
-                        :label="String(hour).padStart(2, '0')"
+                        v-for="day in [1, 2, 3, 4, 5, 6, 0]"
+                        :key="day"
+                        :label="msg(`weekday${day}`)"
+                        :value="day"
                       />
                     </MarSelect>
                   </MarFormItem>
-                  <MarFormItem :label="msg('minutes')">
-                    <MarSelect v-model="group.minutes" :placeholder="msg('chooseMinutes')" multiple>
+                  <MarFormItem v-else-if="trigger.kind === 'monthly'" :label="msg('monthDayField')">
+                    <MarSelect
+                      v-model="trigger.monthDays"
+                      :placeholder="msg('chooseMonthDays')"
+                      multiple
+                    >
                       <MarOption
-                        v-for="minute in minuteOptions"
-                        :key="minute"
-                        :value="minute"
-                        :label="String(minute).padStart(2, '0')"
+                        v-for="day in monthDayOptions"
+                        :key="day"
+                        :label="String(day)"
+                        :value="day"
                       />
                     </MarSelect>
                   </MarFormItem>
-                </div>
-                <small>{{ msg('timeGridHint') }}</small>
+                </fieldset>
               </div>
             </MarFormItem>
+          </div>
+          <div v-if="!readOnly" class="add-trigger">
             <MarButton
-              v-if="!readOnly && form.groups.length > 1"
-              link
-              :disabled="!!pending"
-              @click="form.groups.splice(index, 1)"
-              >{{ msg('removeGroup') }}</MarButton
+              icon="plus"
+              :disabled="form.triggers.length >= scheduledTriggerLimit || !!pending"
+              @click="addTrigger"
             >
-          </fieldset>
-          <MarButton
-            v-if="!readOnly"
-            class="add-time-group"
-            icon="plus"
-            :disabled="form.groups.length >= 16 || !!pending"
-            @click="form.groups.push(timeDraft(nextId++))"
-            >{{ msg('addGroup') }}</MarButton
-          >
-          <MarFormItem :label="msg('grace')" prop="graceMinutes">
-            <MarSelect v-model="form.graceMinutes" filterable>
-              <MarOption
-                v-for="minute in graceOptions"
-                :key="minute"
-                :value="minute"
-                :label="minute === 0 ? msg('graceNone') : String(minute)"
+              {{ msg('addTime') }}
+            </MarButton>
+          </div>
+          <div v-if="hasSpecificDates" class="catch-up">
+            <MarFormItem :label="msg('catchUp')">
+              <MarSwitch
+                v-model="allowCatchUp"
+                :aria-label="msg('catchUp')"
+                :aria-describedby="`${notificationHintId}-catch-up`"
               />
-            </MarSelect>
-            <small>{{ msg('graceHint') }}</small>
-          </MarFormItem>
+              <small :id="`${notificationHintId}-catch-up`">{{ msg('graceHint') }}</small>
+            </MarFormItem>
+            <MarFormItem v-if="allowCatchUp" :label="msg('grace')" prop="graceMinutes">
+              <MarSelect v-model="form.graceMinutes" filterable>
+                <MarOption
+                  v-for="minute in graceOptions"
+                  :key="minute"
+                  :value="minute"
+                  :label="String(minute)"
+                />
+              </MarSelect>
+            </MarFormItem>
+          </div>
           <section class="preview" aria-live="polite">
             <strong>{{ msg('preview') }}</strong>
-            <p v-if="preview">{{ msg('nodeTimezone', { timezone: preview.timezone }) }}</p>
-            <p v-else-if="saved">{{ msg('nodeTimezone', { timezone: saved.timezone }) }}</p>
             <p v-if="loadingPreview">{{ $t('common.loading') }}</p>
             <p v-else-if="previewError">{{ errorSummary(previewError, msg('loadFailed')) }}</p>
             <p v-else-if="!preview">{{ msg('previewHint') }}</p>
@@ -895,40 +948,73 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
   align-content: start;
   justify-items: start;
 }
-.time-values {
-  width: 100%;
-}
 .runner-option {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
-.picker-item {
-  margin-block-end: 0.5rem;
-}
-.picker-list > button {
-  margin-block-end: 0.75rem;
-}
-.picker-row {
+.schedule-triggers {
   display: grid;
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
+}
+.trigger-item {
+  margin: 0;
+  border-block-start: 1px solid var(--mar-border-default);
+}
+.trigger-item:last-child {
+  border-block-end: 1px solid var(--mar-border-default);
+}
+.trigger-item :deep(.mar-ui-form-item__content) {
+  display: block;
+  min-inline-size: 0;
+}
+.trigger-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 0.375rem;
+  gap: 0.75rem;
+  min-block-size: 3.25rem;
+  padding-inline: 0.25rem;
 }
-.time-group {
-  border: 1px solid var(--mar-border-default);
-  border-radius: var(--mar-radius-control);
-  margin: 0 0 0.75rem;
-  min-width: 0;
-  padding: 0.75rem;
+.trigger-clock {
+  min-inline-size: 4ch;
+  font-size: var(--mar-font-size-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
-.time-group legend {
+.trigger-description,
+.schedule-timezone {
   color: var(--mar-text-secondary);
-  padding-inline: 0.375rem;
+  font-size: var(--mar-font-size-meta);
+  overflow-wrap: anywhere;
 }
-.add-time-group {
-  margin-block-end: 0.75rem;
+.trigger-fields {
+  min-inline-size: 0;
+  margin: 0 0 0.75rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-inline-start: 2px solid var(--mar-border-default);
+}
+.trigger-legend {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  padding-inline: 0.125rem;
+  margin-block-end: 0.375rem;
+}
+.trigger-time {
+  max-inline-size: 15rem;
+}
+.add-trigger {
+  margin-block: 0.75rem;
+}
+.schedule-timezone {
+  margin: 0 0 0.625rem;
+}
+.catch-up {
+  border-block-start: 1px solid var(--mar-border-default);
+  padding-block-start: 0.75rem;
+}
+.catch-up :deep(.mar-ui-form-item__content) {
+  gap: 0.375rem 0.75rem;
 }
 .preview,
 .proposals {

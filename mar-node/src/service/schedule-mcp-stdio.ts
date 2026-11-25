@@ -1,4 +1,5 @@
 import { NODE_MCP, NODE_MCP_VERSION } from '../mcp/naming.js';
+import { scheduleTimeGuidance } from '../schedule-guidance.js';
 import { connect } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -15,12 +16,13 @@ const server = new McpServer({ name: NODE_MCP.schedule.name, version: NODE_MCP_V
 const scope =
   'In this MAR-managed Workspace conversation, this tool only manages its MAR scheduled tasks, not system cron, CI, or other projects. ';
 const descriptions: Record<keyof typeof scheduleToolInputs, string> = {
-  list: 'List MAR tasks scheduled for this conversation. Each task has its own instructions and time combinations.',
-  get: 'Read one scheduled task in this conversation, including its instructions and time combinations.',
+  list: 'List MAR tasks scheduled for this conversation. Each task has its own instructions and time triggers.',
+  get: 'Read one scheduled task in this conversation, including its instructions and time triggers.',
   create:
-    'Create a new task in the Node time zone. Write the task objective as the instructions for one admitted trigger, not as a request to set up a schedule. If the outcome is uncertain, list tasks before trying again.',
+    'Create a separate task in the current conversation. The objective is what to do at each trigger, not how to schedule it. After creation, tell the user the next trigger and time zone from the receipt. If the outcome is uncertain, list tasks before trying again. ' +
+    scheduleTimeGuidance,
   update:
-    'Change the selected task using the revision from get or list. Write the objective as instructions for one admitted trigger. On a revision conflict, read the task again before editing.',
+    'Change only the selected task. Read its current revision and time zone first. The objective is what to do at each trigger. Omit triggers when only the name or objective changes; if supplied, triggers replaces the full schedule. A once trigger requires an explicit date. A proposal is not applied until approved. On a revision conflict, read again before editing.',
   runs: 'List execution records for this task in this conversation, newest first.'
 };
 for (const key of Object.keys(scheduleToolInputs) as (keyof typeof scheduleToolInputs)[]) {

@@ -8,7 +8,7 @@ import {
   scheduledTaskRevisionSchema,
   scheduledTaskStateSchema,
   scheduledTargetSchema,
-  scheduledTimeGroupsSchema
+  scheduledPreviewFields
 } from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
 import { protectedAdmin, validCsrf, type CurrentUserSession } from './session.js';
@@ -546,7 +546,7 @@ export function registerScheduledTaskRoutes({
       'POST',
       '/api/scheduled-tasks/preview',
       'schedule.preview',
-      address.extend({ groups: scheduledTimeGroupsSchema, taskId: id.optional() })
+      address.extend(scheduledPreviewFields)
     ]
   ] as const)
     app.route<{ Params: { taskId?: string; proposalId?: string } }>({

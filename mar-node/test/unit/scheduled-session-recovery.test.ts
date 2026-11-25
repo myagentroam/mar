@@ -1,4 +1,4 @@
-import { hourlyGroups } from './scheduled-task-fixtures.js';
+import { hourlyTriggers } from './scheduled-task-fixtures.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,7 +45,7 @@ async function fixture() {
       notifyOnTerminal: true,
       objective: 'Check status',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
   });

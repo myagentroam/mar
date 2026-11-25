@@ -1,4 +1,4 @@
-import type { ScheduledTimeGroup } from '@myagentroam/protocol';
+import type { ScheduledTrigger } from '@myagentroam/protocol';
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
@@ -7,12 +7,12 @@ const CALENDAR_SEARCH_DAYS = 8 * 366;
 
 export interface ScheduledTime {
   readonly dueAt: number;
-  readonly matchedGroups: readonly number[];
+  readonly matchedTriggers: readonly number[];
 }
 
 /** Node's wall-clock evaluator. Reads no runtime state; callers provide the clock and stored zone. */
 export function scheduledTimesAfter(
-  groups: readonly ScheduledTimeGroup[],
+  triggers: readonly ScheduledTrigger[],
   timezone: string,
   after: number,
   limit: number
@@ -25,48 +25,48 @@ export function scheduledTimesAfter(
   const offsetsByDay = new Map<number, ReadonlySet<number>>();
   const matches = new Map<number, number[]>();
 
-  for (const [index, group] of groups.entries()) {
-    const { days, times } = group;
-    const minutes =
-      times.kind === 'times'
-        ? times.times.map((time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3)))
-        : times.hours.flatMap((hour) => times.minutes.map((minute) => hour * 60 + minute));
-    const orderedMinutes = [...new Set(minutes)].sort((a, b) => a - b);
+  for (const [index, trigger] of triggers.entries()) {
+    const minute = Number(trigger.time.slice(0, 2)) * 60 + Number(trigger.time.slice(3));
     const dates =
-      days.kind === 'dates'
-        ? [...new Set(days.dates.map((date) => Date.parse(`${date}T00:00:00Z`)))].sort(
-            (a, b) => a - b
-          )
-        : civilDays(firstDay);
+      trigger.kind === 'once' ? [Date.parse(`${trigger.date}T00:00:00Z`)] : civilDays(firstDay);
     let count = 0;
     let horizon = firstDay + CALENDAR_SEARCH_DAYS * DAY;
-    scan: for (const day of dates) {
+    for (const day of dates) {
       if (day < firstDay) continue;
-      if (days.kind !== 'dates') {
+      if (trigger.kind !== 'once') {
         if (day > horizon) break;
-        if (!matchesCalendarDay(days, day)) continue;
+        if (!matchesCalendarDay(trigger, day)) continue;
       }
+      const localTime = day + minute * MINUTE;
+      if (localTime < localStart) continue;
       const offsets = offsetsByDay.get(day) ?? dayOffsets(formatter, day);
       offsetsByDay.set(day, offsets);
-      for (const minute of orderedMinutes) {
-        const localTime = day + minute * MINUTE;
-        if (localTime < localStart) continue;
-        const dueAt = earliestInstant(formatter, offsets, localTime);
-        if (dueAt === undefined || dueAt <= after) continue;
-        const previous = matches.get(dueAt);
-        if (previous === undefined) matches.set(dueAt, [index]);
-        else previous.push(index);
-        if (++count === limit) break scan;
-        horizon = day + CALENDAR_SEARCH_DAYS * DAY;
-      }
+      const dueAt = earliestInstant(formatter, offsets, localTime);
+      if (dueAt === undefined || dueAt <= after) continue;
+      const previous = matches.get(dueAt);
+      if (previous === undefined) matches.set(dueAt, [index]);
+      else previous.push(index);
+      if (++count === limit) break;
+      horizon = day + CALENDAR_SEARCH_DAYS * DAY;
     }
   }
 
-  // Any group's (n + 1)th distinct result has at least n predecessors in the union.
+  // Any trigger's (n + 1)th result has at least n predecessors in the union.
   return [...matches.entries()]
     .sort(([a], [b]) => a - b)
     .slice(0, limit)
-    .map(([dueAt, matchedGroups]) => ({ dueAt, matchedGroups }));
+    .map(([dueAt, matchedTriggers]) => ({ dueAt, matchedTriggers }));
+}
+
+export function suggestedScheduleDate(
+  time: string,
+  timezone: string,
+  after: number
+): string | undefined {
+  const next = scheduledTimesAfter([{ kind: 'daily', time }], timezone, after, 1)[0];
+  if (next === undefined) return undefined;
+  const local = localParts(scheduleFormatter(timezone, after), next.dueAt).timestamp;
+  return new Date(local).toISOString().slice(0, 10);
 }
 
 function* civilDays(firstDay: number): Generator<number> {
@@ -75,14 +75,11 @@ function* civilDays(firstDay: number): Generator<number> {
 }
 
 function matchesCalendarDay(
-  selector: Exclude<ScheduledTimeGroup['days'], { kind: 'dates' }>,
+  trigger: Exclude<ScheduledTrigger, { kind: 'once' }>,
   day: number
 ): boolean {
-  const date = new Date(day);
-  if (selector.months !== undefined && !selector.months.includes(date.getUTCMonth() + 1))
-    return false;
-  if (selector.kind === 'weekdays') return selector.weekdays.includes(date.getUTCDay());
-  if (selector.kind === 'monthDays') return selector.monthDays.includes(date.getUTCDate());
+  if (trigger.kind === 'weekly') return trigger.weekdays.includes(new Date(day).getUTCDay());
+  if (trigger.kind === 'monthly') return trigger.monthDays.includes(new Date(day).getUTCDate());
   return true;
 }
 

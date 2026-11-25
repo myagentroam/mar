@@ -100,8 +100,12 @@ it('publishes paired full MCP and management-only Host guidance without credenti
       expect(guidance).toContain('agents view returns state, Goal and recent activity only');
       expect(guidance).toContain('schedule get --task <task-id>');
       expect(guidance).toContain('schedule runs --task <task-id>');
-      expect(guidance).toContain('schedule create --name <name> --groups-file <file|->');
+      expect(guidance).toContain('schedule create --name <name> --triggers-file <file|->');
       expect(guidance).toContain('schedule update --task <task-id> --expected-revision <revision>');
+      expect(guidance).toContain('Daily at 10:00 and 20:00');
+      expect(guidance).toContain('Once on a chosen date');
+      expect(guidance).toContain('Supplying --triggers-file replaces all triggers');
+      expect(guidance).not.toContain('--groups-file');
       expect(guidance).not.toContain('--cron');
     }
     expect(await skill.load()).toContain(

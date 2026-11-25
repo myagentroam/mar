@@ -9,9 +9,9 @@ import type {
 import { i18n } from '../../src/service/locale-preference-service.js';
 import ScheduledTasksPanel from '../../src/view/schedule/ScheduledTasksPanel.vue?unit-render';
 import {
-  addPickerRow,
-  parseTimeDraft,
-  timeDraft
+  parseTriggerDraft,
+  pickerDate,
+  triggerDraft
 } from '../../src/view/schedule/scheduled-time-draft.js';
 import {
   flushComponent,
@@ -129,52 +129,53 @@ describe('Scheduled tasks workbench', () => {
     }
   );
 
-  it('keeps dates paired with their own times and validates unfinished edits', () => {
-    const a = timeDraft(1);
-    a.dayKind = 'weekdays';
+  it('keeps each run time independent and validates an unfinished selection', () => {
+    const a = triggerDraft(1);
+    a.kind = 'weekly';
     a.weekdays = [1, 3, 5];
-    a.times[0]!.value = '10:00';
-    addPickerRow(a.times);
-    a.times[1]!.value = '20:30';
-    const b = timeDraft(2);
-    b.dayKind = 'dates';
-    b.dates[0]!.value = new Date(2028, 1, 29);
-    b.times[0]!.value = '14:30';
-    expect(parseTimeDraft(a)).toMatchObject({
+    a.time = '10:00';
+    const b = triggerDraft(2);
+    b.date = new Date(2028, 1, 29);
+    b.time = '14:30';
+    expect(parseTriggerDraft(a)).toEqual({
       success: true,
-      data: { days: { weekdays: a.weekdays }, times: { times: ['10:00', '20:30'] } }
+      data: { kind: 'weekly', weekdays: [1, 3, 5], time: '10:00' }
     });
-    expect(parseTimeDraft(b)).toMatchObject({
+    expect(parseTriggerDraft(b)).toEqual({
       success: true,
-      data: { days: { dates: ['2028-02-29'] }, times: { times: ['14:30'] } }
+      data: { kind: 'once', date: '2028-02-29', time: '14:30' }
     });
-    addPickerRow(a.times);
-    expect(parseTimeDraft(a).success).toBe(false);
-    b.dates[0]!.value = null;
-    expect(parseTimeDraft(b).success).toBe(false);
+    a.time = null;
+    b.date = null;
+    expect(parseTriggerDraft(a).success).toBe(false);
+    expect(parseTriggerDraft(b).success).toBe(false);
   });
 
-  it('round-trips specific dates and times as plain values across the picker boundary', () => {
-    const saved = {
-      days: { kind: 'dates' as const, dates: ['2028-02-29', '2028-03-01'] },
-      times: { kind: 'times' as const, times: ['00:00', '23:59'] }
-    };
-    const draft = timeDraft(1, saved);
-    expect(draft.dates[0]!.value?.getDate()).toBe(29);
-    expect(parseTimeDraft(draft)).toEqual({ success: true, data: saved });
+  it('round-trips a civil date, using a node suggestion until the user picks a date', () => {
+    const saved = { kind: 'once' as const, date: '2028-02-29', time: '00:00' };
+    const draft = triggerDraft(1, saved);
+    draft.suggestedDate = pickerDate('2028-02-28');
+    expect(draft.date?.getDate()).toBe(29);
+    expect(parseTriggerDraft(draft)).toEqual({ success: true, data: saved });
+    draft.date = null;
+    expect(parseTriggerDraft(draft)).toEqual({
+      success: true,
+      data: { ...saved, date: '2028-02-28' }
+    });
+    draft.kind = 'daily';
+    expect(parseTriggerDraft(draft)).toEqual({
+      success: true,
+      data: { kind: 'daily', time: '00:00' }
+    });
   });
 
-  it('restores hour and minute selections without mutating the saved combination', () => {
-    const saved = {
-      days: { kind: 'anyDay' as const },
-      times: { kind: 'grid' as const, hours: [0, 23], minutes: [0, 59] }
-    };
-    const draft = timeDraft(1, saved);
-    expect(parseTimeDraft(draft)).toEqual({ success: true, data: saved });
-
-    draft.minutes.splice(0);
-    expect(parseTimeDraft(draft).success).toBe(false);
-    expect(saved.times.minutes).toEqual([0, 59]);
+  it('restores selected month days without mutating the saved trigger', () => {
+    const saved = { kind: 'monthly' as const, time: '23:59', monthDays: [15, 31] };
+    const draft = triggerDraft(1, saved);
+    expect(parseTriggerDraft(draft)).toEqual({ success: true, data: saved });
+    draft.monthDays.splice(0);
+    expect(parseTriggerDraft(draft).success).toBe(false);
+    expect(saved.monthDays).toEqual([15, 31]);
   });
 
   it('addresses colliding task and occurrence IDs using their originating nodes', async () => {

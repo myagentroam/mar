@@ -44,9 +44,9 @@ export function isAgentNetworkAction(action) {
   return networkActions.has(action);
 }
 
-// Adapt task commands without reimplementing the Server's time-group schema or Node's rules.
+// Adapt task commands without reimplementing the schedule trigger schema or Node's rules.
 async function prepareScheduleRequest(args, env, stdin, translate) {
-  const { action, taskId, sessionId, cursor, limit, page, expectedRevision, name, groupsFile } =
+  const { action, taskId, sessionId, cursor, limit, page, expectedRevision, name, triggersFile } =
     args;
   if (action === 'schedule.list') {
     return {
@@ -77,15 +77,15 @@ async function prepareScheduleRequest(args, env, stdin, translate) {
   }
   const fields = {};
   if (name !== undefined) fields.name = name;
-  if (groupsFile !== undefined) {
+  if (triggersFile !== undefined) {
     try {
-      const groups = JSON.parse(
-        await messageContent({ messageFile: groupsFile }, stdin, 64_000, translate)
+      const triggers = JSON.parse(
+        await messageContent({ messageFile: triggersFile }, stdin, 64_000, translate)
       );
-      if (!Array.isArray(groups) || groups.length === 0) throw new Error('GROUPS_INVALID');
-      fields.groups = groups;
+      if (!Array.isArray(triggers) || triggers.length === 0) throw new Error('TRIGGERS_INVALID');
+      fields.triggers = triggers;
     } catch {
-      throw new MarctlError(translate('errors.scheduleGroupsInvalid'), {
+      throw new MarctlError(translate('errors.scheduleTriggersInvalid'), {
         code: 'MARCTL_SESSION_INPUT_INVALID'
       });
     }

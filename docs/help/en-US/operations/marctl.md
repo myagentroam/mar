@@ -80,30 +80,26 @@ Use the `taskId` from the creation receipt or list as `TASK_ID`, and the current
 
 ```sh
 marctl agents schedule list --limit 20 --json
-marctl agents schedule create --name 'Build review' --groups-file groups.json -m 'Check build results' --json
+marctl agents schedule create --name 'Build review' --triggers-file triggers.json -m 'Check build results' --json
 marctl agents schedule get --task "$TASK_ID" --json
 marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" --message-file task.txt --json
 marctl agents schedule runs --task "$TASK_ID" --page 1 --json
 ```
 
-`--groups-file` reads a UTF-8 JSON array, not a Cron expression. This `groups.json` schedules weekdays at 10:00 and 20:00, plus a specific date at 14:30. Replace the example date with an actual future date in the Node time zone. Weekday numbers range from 0 (Sunday) to 6 (Saturday):
+`--triggers-file` reads a UTF-8 JSON array, not a Cron expression. Each entry has one `HH:mm` time. New tasks use the Node time zone; updates retain the task's saved time zone. A `once` trigger requires an explicit future date; the CLI does not suggest one. This `triggers.json` demonstrates the one-time, daily, weekly, and monthly forms:
 
 ```json
 [
-  {
-    "days": { "kind": "weekdays", "weekdays": [1, 2, 3, 4, 5] },
-    "times": { "kind": "times", "times": ["10:00", "20:00"] }
-  },
-  {
-    "days": { "kind": "dates", "dates": ["2030-03-21"] },
-    "times": { "kind": "times", "times": ["14:30"] }
-  }
+  { "kind": "once", "date": "2030-03-21", "time": "14:30" },
+  { "kind": "daily", "time": "10:00" },
+  { "kind": "weekly", "time": "09:00", "weekdays": [1, 2, 3, 4, 5] },
+  { "kind": "monthly", "time": "09:00", "monthDays": [1, 15] }
 ]
 ```
 
-Use `anyDay` for any day or `monthDays` for selected days of the month. Recurring day selectors can use `months` to restrict matching months. `times` can list `HH:mm` values or combine hour and minute sets with `{"kind":"grid","hours":[9,10],"minutes":[0,30]}`. Pass the task prompt with `-m` or `--message-file`, up to 20,000 characters. Either `--groups-file` or `--message-file` can read stdin using `-`, but not both in the same command.
+`weekly.weekdays` uses 0 (Sunday) through 6 (Saturday); `monthly.monthDays` uses 1 through 31. Invalid dates in shorter months do not trigger. Supplying `--triggers-file` on update replaces the entire trigger list; omit it to retain the current schedule. Pass the task prompt with `-m` or `--message-file`, up to 20,000 characters. Either `--triggers-file` or `--message-file` can read stdin using `-`, but not both in the same command.
 
-An update must specify a name, time groups, or a task prompt. Updating your own task applies directly. Updating someone else's returns `proposalId` and `baseRevision` for the creator to resolve without transferring execution identity. Re-read after a revision conflict. If a write result is unknown, check the task before retrying. Use the [Scheduled tasks page](../workbench/sessions.md#scheduled-tasks) to pause, resume, delete, or resolve proposals; these actions are not available in the CLI.
+An update must specify a name, triggers, or a task prompt. Updating your own task applies directly. Updating someone else's returns `proposalId` and `baseRevision` for the creator to resolve without transferring execution identity. Re-read after a revision conflict. If a write result is unknown, check the task before retrying. Use the [Scheduled tasks page](../workbench/sessions.md#scheduled-tasks) to pause, resume, delete, or resolve proposals; these actions are not available in the CLI.
 
 ## Persistent instructions and approvals
 

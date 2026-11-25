@@ -16,7 +16,7 @@ const row = (id: string) => ({
   enabled: true,
   nextRunAt: 321,
   objective: 'do not persist',
-  groups: []
+  triggers: []
 });
 const firstPage = {
   tasks: Array.from({ length: 100 }, (_, i) => row(String(i).padStart(3, '0'))),

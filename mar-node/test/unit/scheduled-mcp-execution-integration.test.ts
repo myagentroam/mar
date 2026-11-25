@@ -22,7 +22,7 @@ import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coord
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
 import { ScheduleMcpBridge } from '../../src/service/schedule-mcp-bridge.js';
 import { SessionScheduleService } from '../../src/session/session-schedule-service.js';
-import { dailyGroups } from './scheduled-task-fixtures.js';
+import { dailyTriggers } from './scheduled-task-fixtures.js';
 
 interface ScheduleIpcRequest {
   readonly token: string;
@@ -190,7 +190,7 @@ it('reads committed writes after lost IPC replies without replay or capability r
       arguments: {
         name: 'Daily check',
         objective: 'Created despite lost reply',
-        groups: dailyGroups('09:00')
+        triggers: dailyTriggers('09:00')
       }
     });
     expect(lostCreate.isError).toBe(true);
@@ -241,7 +241,7 @@ it('reads committed writes after lost IPC replies without replay or capability r
       ownerUserId: 7,
       name: 'Daily check',
       objective: 'Replacement with new ID',
-      groups: dailyGroups('09:00'),
+      triggers: dailyTriggers('09:00'),
       timezone: 'UTC'
     });
     expect(replacement.id).not.toBe(taskId);
@@ -360,7 +360,7 @@ it.each(
       const action = `mcp__mar_schedule__${query ? 'list_scheduled_tasks' : 'create_scheduled_task'}`;
       const toolInput = query
         ? {}
-        : { name: 'Build check', objective: 'Check the build', groups: dailyGroups('09:00') };
+        : { name: 'Build check', objective: 'Check the build', triggers: dailyTriggers('09:00') };
       const programmatic = configuration.codeMode;
       const name = programmatic ? 'code_exec' : action;
       const arguments_ = programmatic
@@ -534,7 +534,7 @@ it.each(
       const task = tasks[0]!;
       expect(task).toMatchObject({
         objective: 'Check the build',
-        groups: dailyGroups('09:00'),
+        triggers: dailyTriggers('09:00'),
         ownerUserId: 7
       });
       const taskId = task.id;
@@ -567,7 +567,7 @@ it.each(
         pools[1]!.call('mcp__mar_schedule__update_scheduled_task', {
           taskId,
           expectedRevision: 3,
-          patch: { groups: dailyGroups('10:30') }
+          patch: { triggers: dailyTriggers('10:30') }
         })
       ]);
       expect(parallel[0]).toMatchObject({ status: 'fulfilled' });
@@ -579,7 +579,7 @@ it.each(
       });
       expect(store.getById(taskId)).toMatchObject({
         objective: 'Parallel objective',
-        groups: dailyGroups('09:00'),
+        triggers: dailyTriggers('09:00'),
         revision: 4
       });
 
@@ -594,11 +594,19 @@ it.each(
         const scheduledTool = configuration.codeMode
           ? pools[0]!.definitions().find((tool) => tool.name === name)
           : requests[0]!.tools.find((tool) => tool.name === name);
-        expect(scheduledTool?.description).toContain('admitted trigger');
+        expect(scheduledTool?.description).toContain('The objective is what to do at each trigger');
         expect(scheduledTool?.description).toContain('system cron');
+        if (action === 'create') {
+          expect(scheduledTool?.description).toContain('Daily at 10:00 and 20:00');
+          expect(scheduledTool?.description).toContain('Once on a chosen date');
+        } else {
+          expect(scheduledTool?.description).toContain('triggers replaces the full schedule');
+        }
         const metadata = JSON.stringify(scheduledTool);
         expect(metadata).toContain('Instructions to execute at each trigger');
-        expect(metadata).toContain('Union of date and time combinations');
+        expect(metadata).toContain('One HH:mm per entry in the task time zone');
+        expect(metadata).toContain('Once requires a concrete date');
+        expect(metadata).not.toContain('"groups"');
         expect(metadata).not.toContain('verbatim as a user message');
         expect(metadata).not.toContain('starts without');
       }

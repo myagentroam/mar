@@ -20,6 +20,7 @@ import {
   remoteDesktopDescriptionSchema,
   remoteDesktopDescribeInputSchema,
   scheduleInvalidationSchema,
+  scheduledTasksApiVersion,
   type NodeCapabilities,
   type NodeEnvelope,
   type WorkbenchEventCategory
@@ -473,7 +474,7 @@ export class NodeConnector {
     this.capabilitiesProvided = options.capabilities !== undefined;
     this.capabilities = {
       ...(options.capabilities ?? unavailableCapabilities()),
-      scheduledTasks: { apiVersion: 1 }
+      scheduledTasks: { apiVersion: scheduledTasksApiVersion }
     };
     this.conversationHostingProbe = options.conversationHostingProbe ?? probeBubblewrap;
     this.conversationHosting = new ConversationHostingLifecycleService({
@@ -571,7 +572,7 @@ export class NodeConnector {
           await this.conversationHosting.project({
             ...capabilities,
             ...this.browserCapability(),
-            scheduledTasks: { apiVersion: 1 },
+            scheduledTasks: { apiVersion: scheduledTasksApiVersion },
             metadata: upgradeMetadata(
               capabilities.metadata,
               this.upgradeCoordinator.snapshot(),

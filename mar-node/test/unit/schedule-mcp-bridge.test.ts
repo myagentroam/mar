@@ -6,7 +6,7 @@ import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { SessionScheduleService } from '../../src/session/session-schedule-service.js';
 import { ScheduleMcpBridge } from '../../src/service/schedule-mcp-bridge.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
-import { dailyGroups } from './scheduled-task-fixtures.js';
+import { dailyTriggers } from './scheduled-task-fixtures.js';
 
 function fixture() {
   const database = new NodeDatabase(':memory:', 'node-schedule-mcp');
@@ -102,7 +102,7 @@ async function call(client: Client, name: string, args: Record<string, unknown> 
 const input = (name: string, objective: string) => ({
   name,
   objective,
-  groups: dailyGroups('10:00', '20:00')
+  triggers: dailyTriggers('10:00', '20:00')
 });
 
 describe('scheduled task MCP capability', () => {
@@ -122,12 +122,17 @@ describe('scheduled task MCP capability', () => {
         Object.keys(
           catalog.find((tool) => tool.name === 'create_scheduled_task')!.inputSchema.properties!
         )
-      ).toEqual(['name', 'objective', 'groups']);
+      ).toEqual(['name', 'objective', 'triggers']);
       expect(await call(owner, 'list_scheduled_tasks')).toEqual({ items: [] });
       const a = await call(owner, 'create_scheduled_task', input('A', 'First'));
       const b = await call(owner, 'create_scheduled_task', input('B', 'Second'));
       expect(a.taskId).not.toBe(b.taskId);
       expect(Object.keys(b).sort()).toEqual(['nextRunAt', 'revision', 'taskId', 'timezone']);
+      const legacy = await owner.callTool({
+        name: 'create_scheduled_task',
+        arguments: { ...input('Legacy', 'Must reject'), groups: dailyTriggers('11:00') }
+      });
+      expect(legacy.isError).toBe(true);
       const page = await call(owner, 'list_scheduled_tasks', { limit: 1 });
       expect(page.nextCursor).toEqual(expect.any(String));
       expect(page.items).toEqual([
@@ -141,9 +146,13 @@ describe('scheduled task MCP capability', () => {
       const updated = await call(owner, 'update_scheduled_task', {
         taskId: b.taskId,
         expectedRevision: 1,
-        patch: { objective: 'Updated' }
+        patch: { objective: 'Updated', triggers: dailyTriggers('10:00') }
       });
-      expect(updated).toEqual({ taskId: b.taskId, revision: 2, nextRunAt: b.nextRunAt });
+      expect(updated).toEqual({
+        taskId: b.taskId,
+        revision: 2,
+        nextRunAt: expect.any(Number)
+      });
       await expect(
         call(owner, 'update_scheduled_task', {
           taskId: b.taskId,
@@ -157,7 +166,7 @@ describe('scheduled task MCP capability', () => {
         name: 'B',
         state: 'SCHEDULED',
         objective: 'Updated',
-        groups: dailyGroups('10:00', '20:00'),
+        triggers: dailyTriggers('10:00'),
         timezone: b.timezone
       });
       expect(await call(owner, 'get_scheduled_task', { taskId: a.taskId })).toHaveProperty(
@@ -165,10 +174,10 @@ describe('scheduled task MCP capability', () => {
         'First'
       );
       const store = new ScheduledSessionStore(f.database.raw);
-      const claim = store.claim(String(b.taskId), Number(b.nextRunAt), 2)!;
+      const claim = store.claim(String(b.taskId), Number(updated.nextRunAt), 2)!;
       store.finish(claim, 'SUCCEEDED', undefined, 'scheduled-run');
       expect(await call(owner, 'list_scheduled_task_runs', { taskId: b.taskId })).toEqual({
-        items: [{ dueAt: b.nextRunAt, state: 'SUCCEEDED', runId: 'scheduled-run' }]
+        items: [{ dueAt: updated.nextRunAt, state: 'SUCCEEDED', runId: 'scheduled-run' }]
       });
       expect(f.changed).toHaveBeenCalledTimes(3);
     } finally {

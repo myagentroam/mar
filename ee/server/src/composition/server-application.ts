@@ -21,7 +21,7 @@ import { registerNodeRoutes } from '../route/node-routes.js';
 import { registerNodeRegistrationRoute } from '@myagentroam/server-core/node-registration-route';
 import { registerWorkspaceRoutes } from '../route/workspace-routes.js';
 import { registerSessionRunRoutes } from '../route/session-run-routes.js';
-import { scheduledTaskChangedSchema } from '@myagentroam/protocol';
+import { scheduledTaskChangedSchema, scheduledTasksApiVersion } from '@myagentroam/protocol';
 import { publicNode } from '@myagentroam/server-core/node-projection';
 import { registerScheduledTaskRoutes } from '@myagentroam/server-core/scheduled-task-routes';
 import {
@@ -627,10 +627,10 @@ export async function composeServerApplication(
             nodes.map(async (node) => {
               if (node.disabled || !(await resources.canAccessNodeContainer(userId, node.id)))
                 return null;
-              const capability = node.connected
-                ? nodeControl.nodeCapabilities(node.id)?.scheduledTasks
-                : publicNode(node).capabilities.scheduledTasks;
-              const supported = capability?.apiVersion === 1;
+              const supported = node.connected
+                ? nodeControl.supportsScheduledTasks(node.id)
+                : publicNode(node).capabilities.scheduledTasks?.apiVersion ===
+                  scheduledTasksApiVersion;
               return {
                 id: node.id,
                 name: node.displayName ?? node.id,

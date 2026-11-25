@@ -93,6 +93,27 @@ it('does not expose a renewal credential in malformed IPC response diagnostics',
   );
 });
 
+it('publishes the trigger schema and concise schedule guidance over stdio', async () => {
+  await usingIpcClient(
+    () => undefined,
+    async (client) => {
+      const tools = (await client.listTools()).tools;
+      const create = tools.find((tool) => tool.name === 'create_scheduled_task')!;
+      const update = tools.find((tool) => tool.name === 'update_scheduled_task')!;
+      expect(Object.keys(create.inputSchema.properties!)).toEqual([
+        'name',
+        'objective',
+        'triggers'
+      ]);
+      expect(create.description).toContain('Once on a chosen date');
+      expect(create.description).toContain('date is required');
+      expect(update.description).toContain('Omit triggers');
+      expect(update.description).toContain('triggers replaces the full schedule');
+      expect(JSON.stringify(create.inputSchema)).not.toContain('groups');
+    }
+  );
+});
+
 it('skips cancelled queued calls and dispatches the next call with the same credential', async () => {
   const requests: IpcRequest[] = [];
   let firstSocket!: Socket;

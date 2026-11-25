@@ -3,11 +3,11 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   MANAGEMENT_DEFAULT_LIMIT,
   MANAGEMENT_MAX_LIMIT,
-  scheduledTimeGroupsSchema,
+  scheduledTriggersSchema,
   type RunnerName,
   type ScheduledNewSession,
   type ScheduledTaskState,
-  type ScheduledTimeGroup
+  type ScheduledTrigger
 } from '@myagentroam/protocol';
 import { assertScheduleTimezone, scheduledTimesAfter } from './scheduled-session-recurrence.js';
 
@@ -60,7 +60,7 @@ export interface ScheduledSessionTask {
   readonly graceMinutes: number;
   readonly name: string;
   readonly objective: string;
-  readonly groups: readonly ScheduledTimeGroup[];
+  readonly triggers: readonly ScheduledTrigger[];
   readonly timezone: string;
   readonly enabled: boolean;
   readonly revision: number;
@@ -257,7 +257,7 @@ export class ScheduledSessionStore {
     const task = this.getById(taskId);
     if (task === undefined) throw new Error('SCHEDULE_NOT_FOUND');
     if (task.revision !== expectedRevision) throw new Error('SCHEDULE_REVISION_CONFLICT');
-    if (patch.name === undefined && patch.objective === undefined && patch.groups === undefined)
+    if (patch.name === undefined && patch.objective === undefined && patch.triggers === undefined)
       throw new Error('SCHEDULE_UPDATE_INVALID');
     if (actorUserId === task.ownerUserId) return this.update(taskId, expectedRevision, patch);
     return {
@@ -284,11 +284,11 @@ export class ScheduledSessionStore {
     readonly graceMinutes?: number | undefined;
     readonly objective: string;
     readonly name: string;
-    readonly groups: readonly ScheduledTimeGroup[];
+    readonly triggers: readonly ScheduledTrigger[];
     readonly timezone: string;
     readonly enabled?: boolean | undefined;
   }): ScheduledSessionTask {
-    const groups = normalizeTimeGroups(input.groups);
+    const triggers = normalizeTriggers(input.triggers);
     validate(input.objective, input.timezone);
     if (!Number.isSafeInteger(input.ownerUserId) || input.ownerUserId < 1)
       throw new Error('SCHEDULE_OWNER_INVALID');
@@ -302,13 +302,13 @@ export class ScheduledSessionStore {
       notifyOnTerminal: input.notifyOnTerminal ?? false,
       graceMinutes: input.graceMinutes ?? 0,
       name: normalizeName(input.name),
-      groups,
+      triggers,
       timezone: input.timezone,
       objective: input.objective.trim(),
       id: randomUUID(),
       enabled: input.enabled !== false,
       revision: 1,
-      nextRunAt: input.enabled === false ? null : requireNext(groups, input.timezone, now),
+      nextRunAt: input.enabled === false ? null : requireNext(triggers, input.timezone, now),
       createdAt: now,
       updatedAt: now
     };
@@ -322,7 +322,7 @@ export class ScheduledSessionStore {
       this.database
         .prepare(
           `INSERT INTO scheduled_session_tasks
-        (id,session_id,new_session,workspace_id,runner,owner_user_id,notify_on_terminal,grace_minutes,name,objective,time_groups,timezone,enabled,revision,next_run_at,created_at,updated_at)
+        (id,session_id,new_session,workspace_id,runner,owner_user_id,notify_on_terminal,grace_minutes,name,objective,triggers,timezone,enabled,revision,next_run_at,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
@@ -336,7 +336,7 @@ export class ScheduledSessionStore {
           task.graceMinutes,
           task.name,
           task.objective,
-          JSON.stringify(task.groups),
+          JSON.stringify(task.triggers),
           task.timezone,
           task.enabled ? 1 : 0,
           1,
@@ -373,8 +373,8 @@ export class ScheduledSessionStore {
       if (current.revision !== expectedRevision) throw new Error('SCHEDULE_REVISION_CONFLICT');
       const objective = patch.objective ?? current.objective;
       const name = patch.name === undefined ? current.name : normalizeName(patch.name);
-      const groups =
-        patch.groups === undefined ? current.groups : normalizeTimeGroups(patch.groups);
+      const triggers =
+        patch.triggers === undefined ? current.triggers : normalizeTriggers(patch.triggers);
       const timezone = patch.timezone ?? current.timezone;
       validate(objective, timezone);
       const enabled = patch.enabled ?? current.enabled;
@@ -384,14 +384,14 @@ export class ScheduledSessionStore {
       const now = this.now();
       const nextRunAt = enabled
         ? !current.enabled ||
-          JSON.stringify(groups) !== JSON.stringify(current.groups) ||
+          JSON.stringify(triggers) !== JSON.stringify(current.triggers) ||
           timezone !== current.timezone
-          ? requireNext(groups, timezone, now)
+          ? requireNext(triggers, timezone, now)
           : current.nextRunAt
         : null;
       const result = this.database
         .prepare(
-          `UPDATE scheduled_session_tasks SET session_id=?,new_session=?,runner=?,name=?,objective=?,time_groups=?,timezone=?,enabled=?,notify_on_terminal=?,grace_minutes=?,revision=?,next_run_at=?,updated_at=?
+          `UPDATE scheduled_session_tasks SET session_id=?,new_session=?,runner=?,name=?,objective=?,triggers=?,timezone=?,enabled=?,notify_on_terminal=?,grace_minutes=?,revision=?,next_run_at=?,updated_at=?
         WHERE id=? AND revision=?`
         )
         .run(
@@ -400,7 +400,7 @@ export class ScheduledSessionStore {
           runner,
           name,
           objective.trim(),
-          JSON.stringify(groups),
+          JSON.stringify(triggers),
           timezone,
           enabled ? 1 : 0,
           (patch.notifyOnTerminal ?? current.notifyOnTerminal) ? 1 : 0,
@@ -500,8 +500,8 @@ export class ScheduledSessionStore {
     )
       return undefined;
     const now = this.now();
-    const recurring = current.groups.filter((group) => group.days.kind !== 'dates');
-    const finite = current.groups.filter((group) => group.days.kind === 'dates');
+    const recurring = current.triggers.filter((trigger) => trigger.kind !== 'once');
+    const finite = current.triggers.filter((trigger) => trigger.kind === 'once');
     const nextRecurring = scheduledTimesAfter(
       recurring,
       current.timezone,
@@ -514,13 +514,13 @@ export class ScheduledSessionStore {
         ? (nextFinite ?? null)
         : Math.min(nextRecurring, nextFinite ?? Infinity);
     const match = scheduledTimesAfter(
-      current.groups,
+      current.triggers,
       current.timezone,
       Math.max(0, dueAt - 1),
       1
     )[0];
-    const matchedGroups = match?.dueAt === dueAt ? match.matchedGroups : [];
-    const isFinite = matchedGroups.some((index) => current.groups[index]?.days.kind === 'dates');
+    const matchedTriggers = match?.dueAt === dueAt ? match.matchedTriggers : [];
+    const isFinite = matchedTriggers.some((index) => current.triggers[index]?.kind === 'once');
     const expiresAt = isFinite ? dueAt + current.graceMinutes * 60_000 : null;
     const snapshot = JSON.stringify({
       name: current.name,
@@ -529,7 +529,7 @@ export class ScheduledSessionStore {
       sessionId: current.sessionId,
       ownerUserId: current.ownerUserId,
       timezone: current.timezone,
-      matchedGroups,
+      matchedTriggers,
       target: current.newSession
     });
     const id = `${current.id}:${dueAt}`;
@@ -862,12 +862,12 @@ export class ScheduledSessionStore {
   propose(task: ScheduledSessionTask, actorUserId: number, patch: AgentTaskPatch): string {
     if (!Number.isSafeInteger(actorUserId) || actorUserId < 1 || actorUserId === task.ownerUserId)
       throw new Error('SCHEDULE_PROPOSAL_INVALID');
-    if (patch.name === undefined && patch.objective === undefined && patch.groups === undefined)
+    if (patch.name === undefined && patch.objective === undefined && patch.triggers === undefined)
       throw new Error('SCHEDULE_PROPOSAL_INVALID');
     validate(patch.objective ?? task.objective, task.timezone);
     const name = patch.name === undefined ? null : normalizeName(patch.name);
-    const groups =
-      patch.groups === undefined ? null : JSON.stringify(normalizeTimeGroups(patch.groups));
+    const triggers =
+      patch.triggers === undefined ? null : JSON.stringify(normalizeTriggers(patch.triggers));
     return this.write(() => {
       const current = this.getById(task.id);
       if (current === undefined) throw new Error('SCHEDULE_NOT_FOUND');
@@ -883,7 +883,7 @@ export class ScheduledSessionStore {
       this.database
         .prepare(
           `INSERT INTO scheduled_session_proposals
-      (id,task_id,proposed_by_user_id,base_revision,name,objective,time_groups,status,created_at)
+      (id,task_id,proposed_by_user_id,base_revision,name,objective,triggers,status,created_at)
       VALUES (?,?,?,?,?,?,?,'PENDING',?)`
         )
         .run(
@@ -893,7 +893,7 @@ export class ScheduledSessionStore {
           task.revision,
           name,
           patch.objective ?? null,
-          groups,
+          triggers,
           this.now()
         );
       return id;
@@ -923,9 +923,9 @@ export class ScheduledSessionStore {
             ...(proposal['objective'] === null
               ? {}
               : { objective: proposal['objective'] as string }),
-            ...(proposal['time_groups'] === null
+            ...(proposal['triggers'] === null
               ? {}
-              : { groups: JSON.parse(proposal['time_groups'] as string) as ScheduledTimeGroup[] }),
+              : { triggers: JSON.parse(proposal['triggers'] as string) as ScheduledTrigger[] }),
             ...(proposal['timezone'] === null ? {} : { timezone: proposal['timezone'] as string })
           })
         : task;
@@ -945,7 +945,7 @@ export class ScheduledSessionStore {
 export interface AgentTaskPatch {
   readonly name?: string | undefined;
   readonly objective?: string | undefined;
-  readonly groups?: readonly ScheduledTimeGroup[] | undefined;
+  readonly triggers?: readonly ScheduledTrigger[] | undefined;
 }
 
 interface TaskPatch extends AgentTaskPatch {
@@ -962,18 +962,18 @@ function normalizeName(value: string): string {
   return name;
 }
 
-function normalizeTimeGroups(groups: readonly ScheduledTimeGroup[]): readonly ScheduledTimeGroup[] {
-  const parsed = scheduledTimeGroupsSchema.safeParse(groups);
+function normalizeTriggers(triggers: readonly ScheduledTrigger[]): readonly ScheduledTrigger[] {
+  const parsed = scheduledTriggersSchema.safeParse(triggers);
   if (!parsed.success) throw new Error('SCHEDULE_INVALID');
   return parsed.data;
 }
 
 function requireNext(
-  groups: readonly ScheduledTimeGroup[],
+  triggers: readonly ScheduledTrigger[],
   timezone: string,
   after: number
 ): number {
-  const next = scheduledTimesAfter(groups, timezone, after, 1)[0];
+  const next = scheduledTimesAfter(triggers, timezone, after, 1)[0];
   if (next === undefined) throw new Error('SCHEDULE_NEXT_TIME_UNAVAILABLE');
   return next.dueAt;
 }
@@ -999,7 +999,7 @@ function taskFromRow(row: SqlRow): ScheduledSessionTask {
     graceMinutes: Number(row['grace_minutes']),
     name: row['name'] as string,
     objective: row['objective'] as string,
-    groups: JSON.parse(row['time_groups'] as string) as ScheduledTimeGroup[],
+    triggers: JSON.parse(row['triggers'] as string) as ScheduledTrigger[],
     timezone: row['timezone'] as string,
     enabled: row['enabled'] === 1,
     revision: Number(row['revision']),

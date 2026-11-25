@@ -1,4 +1,4 @@
-import { hourlyGroups } from './scheduled-task-fixtures.js';
+import { hourlyTriggers } from './scheduled-task-fixtures.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -151,7 +151,8 @@ describe('Node SQLite session records', () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
-      { version: 24 }
+      { version: 24 },
+      { version: 25 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     expect(database.raw.prepare('PRAGMA table_info(agent_sessions)').all()).toEqual(
@@ -266,7 +267,8 @@ describe('Node SQLite session records', () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
-      { version: 24 }
+      { version: 24 },
+      { version: 25 }
     ]);
     expect(foreignKeyList(reopened.raw)).toEqual([]);
     expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/reopen-workspace' });
@@ -317,7 +319,8 @@ describe('Node SQLite session records', () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
-      { version: 24 }
+      { version: 24 },
+      { version: 25 }
     ]);
     expect(upgraded.getNativeSessionMetadata('codex', 'legacy-thread', workspace.id)).toMatchObject(
       {
@@ -377,7 +380,8 @@ describe('Node SQLite session records', () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
-      { version: 24 }
+      { version: 24 },
+      { version: 25 }
     ]);
     expect(restored.getWorkspace('kept')).toMatchObject({ path: '/kept' });
     expect(
@@ -655,7 +659,8 @@ describe('Node SQLite session records', () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
-      { version: 24 }
+      { version: 24 },
+      { version: 25 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     database.close();
@@ -701,7 +706,7 @@ describe('Node SQLite session records', () => {
       ownerUserId: 1,
       objective: 'Check',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     expect(() =>
@@ -846,7 +851,8 @@ describe('Node SQLite session records', () => {
         { version: 21 },
         { version: 22 },
         { version: 23 },
-        { version: 24 }
+        { version: 24 },
+        { version: 25 }
       ]);
       expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/legacy-workspace' });
       reopened.close();
@@ -887,7 +893,8 @@ describe('Node SQLite session records', () => {
         { version: 21 },
         { version: 22 },
         { version: 23 },
-        { version: 24 }
+        { version: 24 },
+        { version: 25 }
       ]);
       expect(upgraded.getWorkspace('w')?.path).toBe('/legacy');
       expect(
@@ -1104,7 +1111,7 @@ describe('Node SQLite session records', () => {
       ownerUserId: 1,
       objective: 'Workspace A task',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     const taskB = store.create({
@@ -1114,7 +1121,7 @@ describe('Node SQLite session records', () => {
       ownerUserId: 1,
       objective: 'Workspace B task',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     store.claim(taskA.id, taskA.nextRunAt!, taskA.revision);
@@ -1235,7 +1242,7 @@ describe('Node SQLite session records', () => {
       ownerUserId: 1,
       objective: 'Remove A',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     const taskB = store.create({
@@ -1245,7 +1252,7 @@ describe('Node SQLite session records', () => {
       ownerUserId: 1,
       objective: 'Keep B',
       name: 'Schedule',
-      groups: hourlyGroups,
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     store.claim(taskA.id, taskA.nextRunAt!, taskA.revision);

@@ -22,7 +22,7 @@ const headers = {
   origin: 'https://mar.test',
   'x-csrf-token': 'csrf'
 };
-const groups = [{ days: { kind: 'anyDay' }, times: { kind: 'times', times: ['12:00'] } }];
+const triggers = [{ kind: 'daily', time: '12:00' }];
 const future = 4_000_000_000_000;
 function matchesState(
   task: { enabled: boolean; nextRunAt: number | null; targetKind: string },
@@ -55,7 +55,7 @@ function task(id: string, workspaceId: string, ownerUserId = 1, nextRunAt: numbe
     sessionTitle: 'Session title',
     objectivePreview: 'Online instructions',
     objective: 'Sensitive full instructions',
-    groups
+    triggers
   };
 }
 
@@ -337,7 +337,7 @@ it('merges live and offline cards, retaining only the authorized offline index p
     ownerName: 'Owner nickname'
   });
   expect(offline.items[1]).not.toHaveProperty('objectivePreview');
-  expect(offline.items[1]).not.toHaveProperty('groups');
+  expect(offline.items[1]).not.toHaveProperty('triggers');
   expect(
     (await app.inject({ url: '/api/scheduled-tasks?nodeId=b', headers })).json().items
   ).toEqual([]);
@@ -646,14 +646,26 @@ it('binds detail, writes and preview to the authenticated Workspace and rejects 
         method: 'POST',
         url: '/api/scheduled-tasks/preview',
         headers,
-        payload: { ...address, groups }
+        payload: { ...address, triggers }
       })
     ).statusCode
   ).toBe(200);
   expect(requestNode).toHaveBeenCalledExactlyOnceWith(
     'a',
     'schedule.preview',
-    { workspaceId: 'a1', groups },
+    { workspaceId: 'a1', triggers },
+    { userId: 1, sessionHash: 'fingerprint', workspaceId: 'a1' },
+    undefined
+  );
+  requestNode.mockClear();
+  const preview = (payload: object) =>
+    app.inject({ method: 'POST', url: '/api/scheduled-tasks/preview', headers, payload });
+  expect((await preview({ ...address, triggers: [] })).statusCode).toBe(400);
+  expect((await preview({ ...address, taskId: 'a-task' })).statusCode).toBe(200);
+  expect(requestNode).toHaveBeenCalledExactlyOnceWith(
+    'a',
+    'schedule.preview',
+    { workspaceId: 'a1', taskId: 'a-task' },
     { userId: 1, sessionHash: 'fingerprint', workspaceId: 'a1' },
     undefined
   );

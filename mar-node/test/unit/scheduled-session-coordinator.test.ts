@@ -1,4 +1,4 @@
-import { hourlyGroups } from './scheduled-task-fixtures.js';
+import { hourlyTriggers } from './scheduled-task-fixtures.js';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeDatabase } from '../../src/database.js';
 import { ScheduledSessionCoordinator } from '../../src/service/scheduled-session-coordinator.js';
@@ -31,7 +31,7 @@ function fixture(now: () => number, notifyOnTerminal = false) {
     notifyOnTerminal,
     objective: 'Check status',
     name: 'Schedule',
-    groups: hourlyGroups,
+    triggers: hourlyTriggers,
     timezone: 'UTC'
   });
   return { database, store, task };
@@ -53,10 +53,11 @@ describe('scheduled session coordinator', () => {
         objective: 'Run once',
         timezone: 'UTC',
         graceMinutes: mode === 'zero grace' ? 0 : 60,
-        groups: [
+        triggers: [
           {
-            days: { kind: 'dates', dates: ['2025-01-01'] },
-            times: { kind: 'times', times: ['01:00'] }
+            kind: 'once',
+            date: '2025-01-01',
+            time: '01:00'
           }
         ]
       });

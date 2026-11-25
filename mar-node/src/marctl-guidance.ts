@@ -1,3 +1,5 @@
+import { scheduleTimeGuidance } from './schedule-guidance.js';
+
 export function hasMarctlContext(environment: Readonly<Record<string, string>>): boolean {
   return (
     environment['MAR_CTL_CONTEXT_REQUIRED'] === '1' &&
@@ -19,9 +21,9 @@ const marctlSafety =
 
 const marctlSchedule = [
   'Use marctl agents schedule list [--session <session-id>] [--cursor <cursor>] --json to list tasks in the authorized Workspace. Use schedule get --task <task-id> for the current revision and settings and schedule runs --task <task-id> [--page <page>] for trigger results. A Session can have multiple tasks; never use a Session ID as a task ID.',
-  'Use schedule create --name <name> --groups-file <file|-> (-m <text> | --message-file <file|->). This creates a separate task bound to the current Session unless you give --session <session-id> or --new-session --runner <runner> with exactly one of --model-id <id> and --default-model (and optional --effort). A new-session task creates a Session at each trigger.',
-  'The time file is a JSON array of date/time combinations in the Node time zone, for example [{"days":{"kind":"weekdays","weekdays":[1,2,3,4,5]},"times":{"kind":"times","times":["10:00","20:00"]}}]. Use stdin for either the groups or the task text, not both. This schedules MAR tasks, not CI or system jobs.',
-  'Use schedule update --task <task-id> --expected-revision <revision> with at least one of --name, --groups-file, -m or --message-file. Other users’ tasks receive proposals instead of direct updates. Re-read on revision conflict; after an unknown write, list or get to check the result before retrying.'
+  'Use schedule create --name <name> --triggers-file <file|-> (-m <text> | --message-file <file|->). This creates a separate task bound to the current Session unless you give --session <session-id> or --new-session --runner <runner> with exactly one of --model-id <id> and --default-model (and optional --effort). A new-session task creates a Session at each trigger.',
+  `${scheduleTimeGuidance} Use stdin for either the triggers or the task text, not both. After creation, confirm the next trigger and time zone from the receipt. This schedules MAR tasks, not CI or system jobs.`,
+  'Use schedule update --task <task-id> --expected-revision <revision> with at least one of --name, --triggers-file, -m or --message-file. Supplying --triggers-file replaces all triggers; omit it when only the name or prompt changes. Other users’ tasks receive proposals instead of direct updates. Re-read on revision conflict; after an unknown write, list or get to check the result before retrying.'
 ].join('\n\n');
 
 export const marctlManagementInstructions = [

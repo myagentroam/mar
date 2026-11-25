@@ -17,6 +17,7 @@ import {
   directNodeEventSchema,
   marctlExecutionCredentialRequestSchema,
   modelUsageBatchSchema,
+  scheduledTasksApiVersion,
   terminalDirectNodeEventSchema,
   remoteDesktopDirectNodeEventSchema,
   remoteDesktopRelayNodeEventSchema,
@@ -71,6 +72,7 @@ export interface NodeBrokerTransport {
 
 export interface NodeControlTransport extends NodeBrokerTransport {
   capabilities: NodeIdentityControl['nodeCapabilities'];
+  supportsScheduledTasks: NodeControl['supportsScheduledTasks'];
   request: NodeControl['requestNode'];
   sendNode: NodeIdentityControl['sendAuthenticatedNode'];
   send(socket: WebSocket, type: string, payload: unknown, replyTo?: string): void;
@@ -170,6 +172,7 @@ export class NodeControl extends NodeIdentityControl {
           operation === 'node.upgrade.request' ||
           operation === 'node.upgrade.cancel',
         capabilities: (nodeId) => this.nodeCapabilities(nodeId),
+        supportsScheduledTasks: (nodeId) => this.supportsScheduledTasks(nodeId),
         request: (nodeId, operation, data, user, timeoutMs, signal) =>
           this.requestNode(nodeId, operation, data, user, timeoutMs, signal),
         sendNode: (nodeId, type, payload) => this.sendAuthenticatedNode(nodeId, type, payload),
@@ -524,12 +527,16 @@ export class NodeControl extends NodeIdentityControl {
     return this.requestBroker.request(nodeId, operation, data, user, timeoutMs, signal);
   }
 
+  supportsScheduledTasks(nodeId: string): boolean {
+    return this.nodeCapabilities(nodeId)?.scheduledTasks?.apiVersion === scheduledTasksApiVersion;
+  }
+
   /** Opaque identity for committing read projections from the current business connection. */
   scheduledTaskConnection(nodeId: string): object | undefined {
     const socket = this.sockets.get(nodeId);
     return socket !== undefined &&
       socket.readyState === socket.OPEN &&
-      this.nodeCapabilities(nodeId)?.scheduledTasks?.apiVersion === 1
+      this.supportsScheduledTasks(nodeId)
       ? socket
       : undefined;
   }
@@ -746,7 +753,9 @@ export class NodeControl extends NodeIdentityControl {
         nodeId,
         envelope,
         isCurrentConnection: () => this.sockets.get(nodeId) === socket,
-        authorize: this.consumers.scheduleAuthorizer,
+        authorize: this.supportsScheduledTasks(nodeId)
+          ? this.consumers.scheduleAuthorizer
+          : undefined,
         respond: (payload) => this.send(socket, 'schedule.authorize.response', payload, envelope.id)
       });
       return true;

@@ -1,10 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { migrate, NODE_SCHEMA_MIGRATIONS } from '../../src/database.js';
-import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
-import { dailyGroups } from './scheduled-task-fixtures.js';
 
-function fixture(cron = '5 10,20 1 * 1') {
+function fixture(cron = '5 10,20 1 * 1', proposalCron = '55 8 * * 1-5') {
   const db = new DatabaseSync(':memory:');
   migrate(
     db,
@@ -22,78 +20,112 @@ function fixture(cron = '5 10,20 1 * 1') {
     `INSERT INTO scheduled_session_tasks (id,session_id,workspace_id,runner,owner_user_id,objective,cron,timezone,
     enabled,revision,next_run_at,created_at,updated_at,notify_on_terminal) VALUES ('legacy','s','w','codex',7,'Check',?,'UTC',1,4,36000000,1,2,1)`
   ).run(cron);
+  db.prepare("UPDATE scheduled_session_proposals SET cron=? WHERE id='time-edit'").run(
+    proposalCron
+  );
   return db;
 }
 
+function migrateToV24(db: DatabaseSync): void {
+  migrate(
+    db,
+    NODE_SCHEMA_MIGRATIONS.filter(({ version }) => version <= 24)
+  );
+}
+
 describe('scheduled task migration', () => {
-  it('reopens v24 with both kinds of proposals and keeps old execution facts without inventing snapshots', () => {
+  it('retains exact startup schema checking for unrelated v24 indexes', () => {
     const db = fixture();
     try {
       migrate(db);
-      const seq = db.prepare('PRAGMA schema_version').get();
-      migrate(db);
-      expect(db.prepare('PRAGMA schema_version').get()).toEqual(seq);
-      for (const table of ['scheduled_session_tasks', 'scheduled_session_proposals'])
-        expect(
-          db.prepare(`SELECT name FROM pragma_table_info('${table}') WHERE name='cron'`).get()
-        ).toBeUndefined();
-      const store = new ScheduledSessionStore(db, () => 0);
-      expect(store.getById('legacy')).toMatchObject({
-        ownerUserId: 7,
-        revision: 4,
-        nextRunAt: 36000000,
-        name: 'Work',
-        notifyOnTerminal: true,
-        groups: [
-          {
-            days: { kind: 'monthDays', monthDays: [1] },
-            times: { kind: 'grid', hours: [10, 20], minutes: [5] }
-          },
-          {
-            days: { kind: 'weekdays', weekdays: [1] },
-            times: { kind: 'grid', hours: [10, 20], minutes: [5] }
-          }
-        ]
-      });
-      expect(store.pendingProposals('legacy')).toMatchObject([
-        { id: 'time-edit', base_revision: 4, time_groups: expect.any(String) },
-        { id: 'objective-edit', base_revision: 4, time_groups: null }
-      ]);
-      expect(store.recent('legacy')).toMatchObject([
-        { run_id: 'run', execution_session_id: 's', task_snapshot: null },
-        { run_id: null, execution_session_id: null, task_snapshot: null }
-      ]);
-      expect(store.history('w', { taskId: 'legacy', sessionId: 's' })).toMatchObject({
-        total: 1,
-        items: [{ occurrenceId: 'previous' }]
-      });
-      expect(store.history('w', { taskId: 'legacy', sessionId: 'unrelated' })).toEqual({
-        total: 0,
-        items: []
-      });
-      const sibling = store.create({
-        sessionId: 's',
-        workspaceId: 'w',
-        runner: 'codex',
-        ownerUserId: 7,
-        name: 'Another',
-        objective: 'Separate prompt',
-        groups: dailyGroups('10:00'),
-        timezone: 'UTC'
-      });
-      const a = store.claim('legacy', 36000000, 4);
-      const b = store.claim(sibling.id, 36000000, 1);
-      expect(a).toEqual('legacy:36000000');
-      expect(b).toEqual(`${sibling.id}:36000000`);
-      expect(JSON.parse(String(store.recent(sibling.id)[0]?.task_snapshot))).toMatchObject({
-        objective: 'Separate prompt',
-        revision: 1,
-        matchedGroups: [0]
-      });
+      db.exec('DROP INDEX scheduled_session_tasks_due');
+      expect(() => NODE_SCHEMA_MIGRATIONS.at(-1)!.assert(db)).toThrow(
+        'NODE_DATABASE_SCHEMA_INVALID:scheduled_session_tasks_due'
+      );
     } finally {
       db.close();
     }
   });
+
+  it.each(['explicit', 'month-restricted', 'hour-grid'])(
+    'resets a %s schedule without conversion, skipping only work not yet submitted',
+    (format) => {
+      const db = fixture();
+      try {
+        migrateToV24(db);
+        db.prepare("UPDATE scheduled_session_tasks SET time_groups=? WHERE id='legacy'").run(
+          JSON.stringify([
+            {
+              days: {
+                kind: 'weekdays',
+                weekdays: [1, 5],
+                ...(format === 'month-restricted' ? { months: [2] } : {})
+              },
+              times:
+                format === 'hour-grid'
+                  ? { kind: 'grid', hours: [9], minutes: [0] }
+                  : { kind: 'times', times: ['09:00'] }
+            }
+          ])
+        );
+        db.exec(`INSERT INTO scheduled_session_occurrences
+        (id,task_id,due_at,status,run_id,created_at,updated_at) VALUES
+        ('claimed','legacy',300000,'CLAIMED',NULL,2,3),
+        ('waiting','legacy',360000,'WAITING',NULL,2,3),
+        ('submitting','legacy',420000,'SUBMITTING',NULL,2,3),
+        ('submitted','legacy',480000,'SUBMITTED','submitted-run',2,3);`);
+        migrate(db);
+
+        expect(
+          db
+            .prepare(
+              `SELECT name,objective,enabled,revision,next_run_at,triggers FROM scheduled_session_tasks
+              WHERE id='legacy'`
+            )
+            .get()
+        ).toMatchObject({
+          name: 'Work',
+          objective: 'Check',
+          enabled: 0,
+          revision: 5,
+          next_run_at: null,
+          triggers: '[]'
+        });
+        expect(
+          db
+            .prepare(
+              `SELECT id,status,code,run_id FROM scheduled_session_occurrences
+              WHERE id IN ('claimed','waiting','submitting','submitted') ORDER BY id`
+            )
+            .all()
+        ).toEqual([
+          { id: 'claimed', status: 'SKIPPED', code: 'SCHEDULE_TASK_CHANGED', run_id: null },
+          { id: 'submitted', status: 'SUBMITTED', code: null, run_id: 'submitted-run' },
+          { id: 'submitting', status: 'SUBMITTING', code: null, run_id: null },
+          { id: 'waiting', status: 'SKIPPED', code: 'SCHEDULE_TASK_CHANGED', run_id: null }
+        ]);
+        expect(
+          db
+            .prepare("SELECT id,run_id FROM scheduled_session_occurrences WHERE id='previous'")
+            .get()
+        ).toEqual({ id: 'previous', run_id: 'run' });
+        expect(
+          db.prepare("SELECT id FROM scheduled_session_proposals WHERE task_id='legacy'").all()
+        ).toEqual([]);
+        for (const table of ['scheduled_session_tasks', 'scheduled_session_proposals']) {
+          const columns = db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all();
+          expect(columns).toContainEqual({ name: 'triggers' });
+          expect(columns).not.toContainEqual({ name: 'time_groups' });
+        }
+        migrate(db);
+        expect(db.prepare('SELECT revision FROM scheduled_session_tasks').get()).toEqual({
+          revision: 5
+        });
+      } finally {
+        db.close();
+      }
+    }
+  );
 
   it('rolls back schema and rows when a legacy expression cannot be converted', () => {
     const db = fixture('invalid');

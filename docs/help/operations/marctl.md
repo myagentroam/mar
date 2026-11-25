@@ -80,30 +80,26 @@ Server 在每次请求中复核用户凭证、账号、登录 Session（适用�
 
 ```sh
 marctl agents schedule list --limit 20 --json
-marctl agents schedule create --name 'Build review' --groups-file groups.json -m 'Check build results' --json
+marctl agents schedule create --name 'Build review' --triggers-file triggers.json -m 'Check build results' --json
 marctl agents schedule get --task "$TASK_ID" --json
 marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" --message-file task.txt --json
 marctl agents schedule runs --task "$TASK_ID" --page 1 --json
 ```
 
-`--groups-file` 读取 UTF-8 JSON 数组，不接收 Cron 表达式。以下 `groups.json` 表示周一至周五 10:00 和 20:00，另外在示例指定日期 14:30 触发。请将示例日期替换为 Node 时区中的实际未来日期；星期编号为 0（周日）至 6（周六）：
+`--triggers-file` 读取 UTF-8 JSON 数组，不接收 Cron 表达式；每项只指定一个 `HH:mm` 时刻。新任务使用 Node 时区，更新沿用任务已保存的时区。`once` 必须填写明确的未来日期；CLI 不代为建议日期。以下 `triggers.json` 展示仅一次、每天、每周和每月四种形式：
 
 ```json
 [
-  {
-    "days": { "kind": "weekdays", "weekdays": [1, 2, 3, 4, 5] },
-    "times": { "kind": "times", "times": ["10:00", "20:00"] }
-  },
-  {
-    "days": { "kind": "dates", "dates": ["2030-03-21"] },
-    "times": { "kind": "times", "times": ["14:30"] }
-  }
+  { "kind": "once", "date": "2030-03-21", "time": "14:30" },
+  { "kind": "daily", "time": "10:00" },
+  { "kind": "weekly", "time": "09:00", "weekdays": [1, 2, 3, 4, 5] },
+  { "kind": "monthly", "time": "09:00", "monthDays": [1, 15] }
 ]
 ```
 
-还可用 `anyDay` 表示任意日、`monthDays` 表示每月指定日期；周期日期选择器可附 `months` 限定月份。`times` 可以列出 `HH:mm`，或用 `{"kind":"grid","hours":[9,10],"minutes":[0,30]}` 组合小时与分钟。用 `-m` 或 `--message-file` 提供任务正文，最多 20,000 字符。`--groups-file` 与 `--message-file` 都支持 `-` 读 stdin，但同一命令只能有一个读取 stdin。
+`weekly.weekdays` 使用 0（周日）至 6（周六），`monthly.monthDays` 使用 1 至 31；不存在的月日不会触发。更新时传入 `--triggers-file` 会整体替换所有触发时间，省略它则保留现有时间。用 `-m` 或 `--message-file` 提供任务正文，最多 20,000 字符。`--triggers-file` 与 `--message-file` 都支持 `-` 读 stdin，但同一命令只能有一个读取 stdin。
 
-更新至少指定名称、时间组合或正文之一。更新自己创建的任务直接生效；更新他人任务返回 `proposalId` 和 `baseRevision`，由创建者确认，不会转移执行身份。版本冲突时重新读取；写入结果未知时先核对任务，不要盲目重试。CLI 不提供启停、删除或提议审批；请在[定时任务页面](../workbench/sessions.md#定时任务)操作。
+更新至少指定名称、触发时间或正文之一。更新自己创建的任务直接生效；更新他人任务返回 `proposalId` 和 `baseRevision`，由创建者确认，不会转移执行身份。版本冲突时重新读取；写入结果未知时先核对任务，不要盲目重试。CLI 不提供启停、删除或提议审批；请在[定时任务页面](../workbench/sessions.md#定时任务)操作。
 
 ## 持久指令与审批
 

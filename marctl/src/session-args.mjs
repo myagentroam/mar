@@ -32,7 +32,7 @@ const commands = {
   'schedule.runs': ['task', 'page'],
   'schedule.create': [
     'name',
-    'groups-file',
+    'triggers-file',
     'session',
     'runner',
     'model-id',
@@ -43,7 +43,7 @@ const commands = {
   'schedule.update': [
     'task',
     'name',
-    'groups-file',
+    'triggers-file',
     'message',
     'message-file',
     'expected-revision'
@@ -69,7 +69,7 @@ const fieldNames = {
   'model-id': 'modelId',
   parent: 'parentSessionId',
   'expected-revision': 'expectedRevision',
-  'groups-file': 'groupsFile',
+  'triggers-file': 'triggersFile',
   task: 'taskId',
   session: 'sessionId',
   'message-file': 'messageFile',
@@ -257,13 +257,13 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
   if (
     action.startsWith('schedule.') &&
     ((args.sessionId !== undefined && (!args.sessionId.trim() || args.sessionId.length > 512)) ||
-      (args.groupsFile === '-' && args.messageFile === '-'))
+      (args.triggersFile === '-' && args.messageFile === '-'))
   )
     throw invalid();
   if (['schedule.get', 'schedule.update', 'schedule.runs'].includes(action) && !args.taskId)
     throw invalid();
   if (scheduleTarget) {
-    if (!args.name || !args.groupsFile?.trim()) throw invalid();
+    if (!args.name || !args.triggersFile?.trim()) throw invalid();
     if (args.newSession) {
       if (args.sessionId || !args.runner || Boolean(args.defaultModel) === Boolean(args.modelId))
         throw invalid();
@@ -274,9 +274,9 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
   if (
     action === 'schedule.update' &&
     (!args.expectedRevision ||
-      (args.groupsFile !== undefined && !args.groupsFile.trim()) ||
+      (args.triggersFile !== undefined && !args.triggersFile.trim()) ||
       (!args.name &&
-        !args.groupsFile &&
+        !args.triggersFile &&
         args.message === undefined &&
         args.messageFile === undefined))
   )

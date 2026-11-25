@@ -87,6 +87,41 @@ const schema = (db: DatabaseSync) =>
         : String(sql).replace(/\s+/g, ' ').trim()
     ]);
 
+/** Rebuild and compare the complete v24 schema, with an optional later reference-only transform. */
+export function assertNodeSchemaV24(
+  database: DatabaseSync,
+  transformReference?: (reference: DatabaseSync) => void
+): void {
+  const reference = new DatabaseSync(':memory:');
+  try {
+    reference.exec(NODE_SCHEMA_V13);
+    for (const migration of [
+      NODE_SCHEMA_MIGRATION_V14,
+      NODE_SCHEMA_MIGRATION_V15,
+      NODE_SCHEMA_MIGRATION_V16,
+      NODE_SCHEMA_MIGRATION_V17,
+      NODE_SCHEMA_MIGRATION_V18,
+      NODE_SCHEMA_MIGRATION_V19,
+      NODE_SCHEMA_MIGRATION_V20,
+      NODE_SCHEMA_MIGRATION_V21,
+      NODE_SCHEMA_MIGRATION_V22,
+      NODE_SCHEMA_MIGRATION_V23
+    ])
+      reference.exec(migration.sql);
+    reference.exec(sql);
+    reference.exec(dropLegacyColumns);
+    transformReference?.(reference);
+    const actual = new Map(schema(database).map(([name, ddl]) => [name, ddl] as const));
+    const expected = new Map(schema(reference).map(([name, ddl]) => [name, ddl] as const));
+    for (const [name, ddl] of expected)
+      if (actual.get(name) !== ddl) throw new Error(`NODE_DATABASE_SCHEMA_INVALID:${String(name)}`);
+    for (const name of actual.keys())
+      if (!expected.has(name)) throw new Error(`NODE_DATABASE_SCHEMA_INVALID:${String(name)}`);
+  } finally {
+    reference.close();
+  }
+}
+
 export const NODE_SCHEMA_MIGRATION_V24: NodeSchemaMigration = {
   version: 24,
   sql,
@@ -108,33 +143,6 @@ export const NODE_SCHEMA_MIGRATION_V24: NodeSchemaMigration = {
     database.exec(dropLegacyColumns);
   },
   assert(database) {
-    const reference = new DatabaseSync(':memory:');
-    try {
-      reference.exec(NODE_SCHEMA_V13);
-      for (const migration of [
-        NODE_SCHEMA_MIGRATION_V14,
-        NODE_SCHEMA_MIGRATION_V15,
-        NODE_SCHEMA_MIGRATION_V16,
-        NODE_SCHEMA_MIGRATION_V17,
-        NODE_SCHEMA_MIGRATION_V18,
-        NODE_SCHEMA_MIGRATION_V19,
-        NODE_SCHEMA_MIGRATION_V20,
-        NODE_SCHEMA_MIGRATION_V21,
-        NODE_SCHEMA_MIGRATION_V22,
-        NODE_SCHEMA_MIGRATION_V23
-      ])
-        reference.exec(migration.sql);
-      reference.exec(sql);
-      reference.exec(dropLegacyColumns);
-      const actual = new Map(schema(database).map(([name, ddl]) => [name, ddl] as const));
-      const expected = new Map(schema(reference).map(([name, ddl]) => [name, ddl] as const));
-      for (const [name, ddl] of expected)
-        if (actual.get(name) !== ddl)
-          throw new Error(`NODE_DATABASE_SCHEMA_INVALID:${String(name)}`);
-      for (const name of actual.keys())
-        if (!expected.has(name)) throw new Error(`NODE_DATABASE_SCHEMA_INVALID:${String(name)}`);
-    } finally {
-      reference.close();
-    }
+    assertNodeSchemaV24(database);
   }
 };

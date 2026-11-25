@@ -137,6 +137,7 @@ export class NodeRequestBroker {
     private readonly socketFor: (nodeId: string) => WebSocket | undefined,
     private readonly connectionPolicy: {
       readonly allows: (socket: WebSocket, operation: string) => boolean;
+      readonly supportsScheduledTasks?: (nodeId: string) => boolean;
     },
     private readonly services: {
       readonly usageGrants: Pick<ModelUsageGrants, 'issue'>;
@@ -395,6 +396,11 @@ export class NodeRequestBroker {
     }
     if (!this.connectionPolicy.allows(connection, operation))
       throw new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED');
+    if (
+      operation.startsWith('schedule.') &&
+      !this.connectionPolicy.supportsScheduledTasks?.(nodeId)
+    )
+      throw new NodeRequestAdmissionError('CAPABILITY_VERSION_UNSUPPORTED');
     const observation = observesRelayResources(operation) ? this.scopes.begin(nodeId) : undefined;
     try {
       const result = await this.channel.request(

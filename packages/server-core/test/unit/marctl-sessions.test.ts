@@ -17,9 +17,9 @@ import type {
 import type { UserNodeAuthorization } from '../../src/node-access-contracts.js';
 
 const apps: ReturnType<typeof Fastify>[] = [];
-const timeGroups = [
-  { days: { kind: 'weekdays', weekdays: [1, 5] }, times: { kind: 'times', times: ['09:00'] } },
-  { days: { kind: 'dates', dates: ['2035-02-12'] }, times: { kind: 'times', times: ['14:30'] } }
+const scheduleTriggers = [
+  { kind: 'weekly', time: '09:00', weekdays: [1, 5] },
+  { kind: 'once', time: '14:30', date: '2035-02-12' }
 ];
 const scheduleA = {
   taskId: 'task-a',
@@ -38,7 +38,7 @@ const scheduleB = {
 const scheduleResults: Record<string, Record<string, unknown>> = {
   'schedule.task.list': { tasks: [scheduleA, scheduleB], nextCursor: 'cursor' },
   'schedule.task.get': {
-    task: { ...scheduleB, objective: 'Check tests', groups: timeGroups, timezone: 'UTC' }
+    task: { ...scheduleB, objective: 'Check tests', triggers: scheduleTriggers, timezone: 'UTC' }
   },
   'schedule.occurrence.list': {
     occurrences: [{ dueAt: 200, state: 'SUCCEEDED', runId: 'run-b' }],
@@ -732,9 +732,9 @@ describe('Workspace-bound marctl agents', () => {
     const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
     const cli = fileURLToPath(new URL('../../../../marctl/bin/marctl.mjs', import.meta.url));
     const root = await mkdtemp(join(tmpdir(), 'marctl-schedule-http-'));
-    const groupsFile = join(root, 'groups.json');
+    const triggersFile = join(root, 'triggers.json');
     try {
-      await writeFile(groupsFile, JSON.stringify(timeGroups));
+      await writeFile(triggersFile, JSON.stringify(scheduleTriggers));
       for (const args of [
         ['send', 'target', '--steer', '-m', 'Additional context', '--client-message-id', 'input'],
         ['send', 'target', '--approval', 'approval-1', '--decision', 'approve'],
@@ -744,7 +744,16 @@ describe('Workspace-bound marctl agents', () => {
         ['schedule', 'list'],
         ['schedule', 'get', '--task', 'task-b'],
         ['schedule', 'runs', '--task', 'task-b'],
-        ['schedule', 'create', '--name', 'Check tests', '--groups-file', groupsFile, '-m', 'Check'],
+        [
+          'schedule',
+          'create',
+          '--name',
+          'Check tests',
+          '--triggers-file',
+          triggersFile,
+          '-m',
+          'Check'
+        ],
         [
           'schedule',
           'update',
@@ -752,8 +761,8 @@ describe('Workspace-bound marctl agents', () => {
           'task-b',
           '--expected-revision',
           '3',
-          '--groups-file',
-          groupsFile
+          '--triggers-file',
+          triggersFile
         ]
       ]) {
         const result = await promisify(execFile)(
@@ -841,7 +850,7 @@ describe('Workspace-bound marctl agents', () => {
           taskId: 'task-b',
           workspaceId: 'workspace',
           expectedRevision: 3,
-          patch: { groups: timeGroups }
+          patch: { triggers: scheduleTriggers }
         },
         expect.any(Object)
       );
@@ -1142,7 +1151,7 @@ describe('Workspace-bound marctl agents', () => {
       });
       const existing = { kind: 'existing', sessionId: 'other' };
       const newSession = { kind: 'newSession', runner: 'codex', model: { kind: 'default' } };
-      const fields = { name: 'Check', objective: 'Check', groups: timeGroups };
+      const fields = { name: 'Check', objective: 'Check', triggers: scheduleTriggers };
       const update = { taskId: 'task-b', expectedRevision: 3, patch: { objective: 'Review' } };
       const cases = [
         ['schedule.list', { limit: 2, sessionId: 'other', cursor: 'cursor' }, 'schedule.task.list'],
@@ -1179,7 +1188,7 @@ describe('Workspace-bound marctl agents', () => {
       action: 'schedule.create',
       name: 'Check',
       objective: 'Check',
-      groups: timeGroups,
+      triggers: scheduleTriggers,
       target: { kind: 'existing', sessionId: 'other' }
     };
     const update = {
@@ -1194,8 +1203,10 @@ describe('Workspace-bound marctl agents', () => {
       { action: 'schedule.runs', taskId: 'task-b', occurrencePage: 0 },
       {
         ...create,
-        groups: [{ days: { kind: 'anyDay' }, times: { kind: 'times', times: ['24:00'] } }]
+        triggers: [{ kind: 'daily', time: '24:00' }]
       },
+      { ...create, groups: scheduleTriggers },
+      { ...create, triggers: [{ kind: 'once', time: '09:00' }] },
       { ...create, ownerUserId: 99 },
       { ...create, target: { kind: 'newSession', runner: 'codex', model: { kind: 'fixed' } } },
       { ...update, workspaceId: 'foreign' },
