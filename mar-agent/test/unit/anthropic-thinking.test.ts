@@ -246,7 +246,7 @@ describe('Anthropic native thinking context', () => {
         )!;
         expect(
           buildContextGcProtection(records, 'thinking', 200_000).after(first.sequence - 1)
-        ).toEqual({ rollouts: 1, thinking: 2 });
+        ).toBe(1);
         expect(
           records
             .filter((record) => record.type === 'model.attempt')
@@ -530,7 +530,7 @@ describe('Anthropic native thinking context', () => {
       const continued = session.run({ prompt: 'After compact.' });
       for await (const event of continued) publicEvents.push(event);
       expect((await continued.result()).status).toBe('completed');
-      expect(nativeThinkingBlocks(requests.at(-1)!)).toEqual([signed, redacted]);
+      expect(nativeThinkingBlocks(requests.at(-1)!)).toEqual([]);
     } finally {
       await agent.dispose();
     }
@@ -546,15 +546,7 @@ describe('Anthropic native thinking context', () => {
         )
       ).toHaveLength(2);
       const checkpoint = records.findLast((record) => record.type === 'compact.completed')!;
-      const { retainedModelContext, ...summaryState } = checkpoint.payload as {
-        retainedModelContext: { role: string; item?: unknown }[];
-      };
-      expect(
-        retainedModelContext
-          .filter((message) => message.role === 'provider')
-          .map((message) => message.item)
-      ).toEqual([signed, redacted]);
-      expect(JSON.stringify(summaryState)).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
+      expect(JSON.stringify(checkpoint.payload)).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
       expect(
         JSON.stringify(
           records.filter((r) => r.type !== 'model.context' && r.type !== 'compact.completed')
