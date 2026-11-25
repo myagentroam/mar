@@ -612,6 +612,7 @@ const mobileToolsFocus = createMobileSurfaceFocusService({
         ? '.workspace-grid.mobile-surface-sessions .conversation-sidebar'
         : '.workspace-grid .workspace-aside'
     ),
+    document.querySelector<HTMLElement>('.workbench-brand'),
     document.querySelector<HTMLElement>('.activity-rail')
   ],
   close: () => props.page.layout.closeMobileWorkspaceSurface(),

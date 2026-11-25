@@ -985,6 +985,7 @@ const mobileFocus = createMobileSurfaceFocusService({
   isOpen: () => props.mobileViewport && (props.mobileHistoryOpen || mobileFilesOpen.value),
   regions: () => [
     document.getElementById(props.mobileHistoryOpen ? 'hosted-pane-history' : 'hosted-pane-files'),
+    document.querySelector<HTMLElement>('.workbench-brand'),
     document.querySelector<HTMLElement>('.activity-rail')
   ],
   close: closeMobilePanels

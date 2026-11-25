@@ -715,59 +715,38 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
         getComputedStyle(element).getPropertyValue('--mar-font-size-body').trim()
       )
   ).toBe('13px');
-  await expect(brand.getByRole('link', { name: '返回 MyAgentRoam 首页' })).toHaveAttribute(
-    'href',
-    '/'
-  );
+  const logo = brand.getByRole('button', { name: 'MyAgentRoam 菜单' });
+  await expect(logo.locator('img')).toBeVisible();
+  await expect(logo.locator('svg')).toHaveCount(0);
   await expect(brand.getByText('MyAgentRoam')).not.toBeVisible();
   await expect(brand.locator('.brand-version')).not.toBeVisible();
-  await brand.getByRole('img', { name: 'MyAgentRoam' }).hover();
-  await expect(page.getByRole('tooltip', { name: `MyAgentRoam ${currentVersion}` })).toBeVisible();
-  await page.mouse.move(389, 843);
-  const notificationsButton = page.getByRole('button', { name: '会话与通知' });
-  const documentationLink = page.getByRole('link', { name: '帮助' });
-  await expect(documentationLink).toHaveAttribute('href', '/docs/getting-started/overview');
-  await expect(documentationLink).toHaveAttribute('target', '_blank');
-  await expect(documentationLink).toHaveAccessibleName('帮助');
-  await expect(documentationLink).toBeVisible();
-  await expect(documentationLink.locator('svg')).toBeVisible();
-  await expect(documentationLink.locator('.rail-label')).toBeHidden();
-  await expect(notificationsButton.locator('.workbench-notification-trigger-label')).toHaveCount(0);
-  const [nodesGeometry, documentationGeometry, notificationGeometry, brandGeometryBox] =
-    await Promise.all([
-      nodesButton.boundingBox(),
-      documentationLink.boundingBox(),
-      notificationsButton.boundingBox(),
-      page.getByTestId('workbench-brand').boundingBox()
-    ]);
-  expect(documentationGeometry?.y).toBe(nodesGeometry?.y);
-  expect(documentationGeometry?.height).toBe(nodesGeometry?.height);
-  const [nodesContentGeometry, documentationContentGeometry] = await Promise.all([
-    nodesButton.locator('.nav-item-content').evaluate((element) => {
-      const content = element.getBoundingClientRect();
-      const icon = element.querySelector('svg')!.getBoundingClientRect();
-      return {
-        contentCenterY: content.top + content.height / 2,
-        iconCenterY: icon.top + icon.height / 2,
-        iconWidth: icon.width,
-        iconHeight: icon.height
-      };
-    }),
-    documentationLink.locator('.nav-item-content').evaluate((element) => {
-      const content = element.getBoundingClientRect();
-      const icon = element.querySelector('svg')!.getBoundingClientRect();
-      return {
-        contentCenterY: content.top + content.height / 2,
-        iconCenterY: icon.top + icon.height / 2,
-        iconWidth: icon.width,
-        iconHeight: icon.height
-      };
-    })
+  await expect(page.getByRole('link', { name: '帮助', exact: true })).toHaveCount(0);
+  await logo.click();
+  const brandMenu = page.getByRole('menu', { name: 'MyAgentRoam 菜单' });
+  await expect(brandMenu.getByRole('menuitem')).toHaveText([
+    `v${currentVersion}`,
+    '性能指示器',
+    '帮助文档'
   ]);
-  expect(documentationContentGeometry).toEqual(nodesContentGeometry);
-  expect(nodesContentGeometry.iconCenterY).toBe(nodesContentGeometry.contentCenterY);
-  expect(nodesContentGeometry.iconWidth).toBe(22);
-  expect(nodesContentGeometry.iconHeight).toBe(22);
+  await brandMenu.getByRole('menuitem', { name: '性能指示器' }).click();
+  const diagnostics = page.getByRole('dialog', { name: 'Web 性能诊断' });
+  await expect(brandMenu).toBeHidden();
+  await expect(diagnostics.getByText(/DOM [1-9]\d* · 消息卡片/u)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(diagnostics).toHaveCount(0);
+  await expect(logo).toBeFocused();
+
+  const notificationsButton = page.getByRole('button', { name: '会话与通知' });
+  await expect(notificationsButton.locator('.workbench-notification-trigger-label')).toHaveCount(0);
+  const [nodesGeometry, notificationGeometry, brandGeometryBox] = await Promise.all([
+    nodesButton.boundingBox(),
+    notificationsButton.boundingBox(),
+    brand.boundingBox()
+  ]);
+  expect(notificationGeometry?.y).toBe(nodesGeometry?.y);
+  expect(notificationGeometry?.height).toBe(nodesGeometry?.height);
+  await expect(nodesButton.locator('svg')).toHaveCSS('width', '22px');
+  await expect(nodesButton.locator('svg')).toHaveCSS('height', '22px');
   expect(
     (notificationGeometry?.y ?? Infinity) + (notificationGeometry?.height ?? 0)
   ).toBeLessThanOrEqual((brandGeometryBox?.y ?? 0) + (brandGeometryBox?.height ?? 0));
@@ -1528,6 +1507,8 @@ for (const labels of [
     enter: '进入控制台',
     work: '工作',
     help: '帮助',
+    brand: 'MyAgentRoam 菜单',
+    helpItem: '帮助文档',
     activity: '会话与通知',
     theme: 'vscode-dark-2026'
   },
@@ -1536,11 +1517,13 @@ for (const labels of [
     enter: 'Open console',
     work: 'Work',
     help: 'Help',
+    brand: 'MyAgentRoam menu',
+    helpItem: 'Help documentation',
     activity: 'Sessions & notifications',
     theme: 'daylight'
   }
 ]) {
-  test(`Mobile Help and notification icons align with navigation entries (${labels.locale})`, async ({
+  test(`Brand menu and notification navigation adapt across the breakpoint (${labels.locale})`, async ({
     page
   }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -1557,8 +1540,10 @@ for (const labels of [
     await work.click();
     for (const width of [320, 390, 767, 768, 1600]) {
       await page.setViewportSize({ width, height: 844 });
-      await expect(help).toBeVisible();
+      const logo = page.getByRole('button', { name: labels.brand });
       if (width >= 768) {
+        await expect(logo).toHaveCount(0);
+        await expect(help).toBeVisible();
         await expect(help.locator('.documentation-icon')).toBeVisible();
         await expect(help.locator('.documentation-icon')).toHaveCSS('width', '16px');
         const idleNavigation = page.locator('button.nav-menu-button:not(.active)').first();
@@ -1571,6 +1556,8 @@ for (const labels of [
         await expect(notification).toHaveCSS('background-color', hoverBackground);
         continue;
       }
+      await expect(help).toHaveCount(0);
+      await expect(logo).toBeVisible();
       await expect(notification).toHaveCSS('width', '36px');
       await expect(notification).toHaveCSS('height', '36px');
       await expect(notification.locator('svg.mar-icon')).toHaveCSS('width', '22px');
@@ -1622,30 +1609,16 @@ for (const labels of [
         await page.screenshot({ path: testInfo.outputPath('mobile-notification-open.png') });
       await notification.click();
       await expect(notification).toHaveAttribute('aria-expanded', 'false');
-      const geometry = await Promise.all(
-        [work, help].map((entry) =>
-          entry.evaluate((element) => {
-            const svg = element.querySelector<SVGSVGElement>('svg.mar-icon')!;
-            const rect = svg.getBoundingClientRect();
-            const shape = svg.getBBox();
-            return {
-              paintedWidth: (shape.width / svg.viewBox.baseVal.width) * rect.width,
-              paintedHeight: (shape.height / svg.viewBox.baseVal.height) * rect.height,
-              iconCenterY: rect.top + rect.height / 2
-            };
-          })
-        )
-      );
-      const visualSizes = geometry.map((icon) => Math.max(icon.paintedWidth, icon.paintedHeight));
-      const ratio = visualSizes[1]! / visualSizes[0]!;
-      expect(ratio).toBeGreaterThanOrEqual(0.9);
-      expect(ratio).toBeLessThanOrEqual(1.1);
-      expect(geometry[1]!.iconCenterY).toBe(geometry[0]!.iconCenterY);
-      await expect(help.locator('.rail-label')).toBeHidden();
+      await logo.click();
+      const menu = page.getByRole('menu', { name: labels.brand });
+      await expect(menu).toBeInViewport();
+      await expect(
+        menu.getByRole('menuitem', { name: labels.helpItem }).locator('svg')
+      ).toHaveAttribute('data-mar-icon', 'document');
       if (width === 390)
-        await page
-          .getByTestId('workbench-brand')
-          .screenshot({ path: testInfo.outputPath('mobile-help.png') });
+        await page.screenshot({ path: testInfo.outputPath('mobile-brand-menu.png') });
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
     }
   });
 }

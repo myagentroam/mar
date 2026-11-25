@@ -1,0 +1,241 @@
+<script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { showMessage } from '../../service/message-feedback-service.js';
+
+import { formatDateTime } from '../../util/time-presentation.js';
+import { computed } from 'vue';
+
+import { useI18n } from 'vue-i18n';
+import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
+
+const props = defineProps<{
+  readonly diagnostics: ReturnType<typeof createWebPerformanceDiagnostics>;
+  readonly hideTitle?: boolean;
+}>();
+const { t, locale } = useI18n();
+const snapshot = props.diagnostics.snapshot;
+
+const categoryOrder = [
+  'run',
+  'conversation',
+  'watch',
+  'notification',
+  'queue',
+  'workspace',
+  'session',
+  'node',
+  'control',
+  'other'
+] as const;
+const visibleCategories = computed(() =>
+  categoryOrder
+    .map((category) => ({ category, count: snapshot.value.categories[category] ?? 0 }))
+    .filter((entry) => entry.count > 0)
+);
+const healthLabel = computed(() => t(`performanceDiagnostics.health.${snapshot.value.health}`));
+const connectionLabel = computed(() =>
+  t(`performanceDiagnostics.connection.${snapshot.value.connectionState}`)
+);
+
+function decimal(value: number): string {
+  return new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(value);
+}
+
+function contentLengthLabel(value: number): string {
+  const units = ['', 'K', 'M', 'G'] as const;
+  let scaled = Math.max(0, value);
+  let unitIndex = 0;
+  while (scaled >= 1_000 && unitIndex < units.length - 1) {
+    scaled /= 1_000;
+    unitIndex += 1;
+  }
+  if (unitIndex < units.length - 1 && Math.round(scaled * 10) >= 10_000) {
+    scaled /= 1_000;
+    unitIndex += 1;
+  }
+  const formatted = new Intl.NumberFormat(locale.value, {
+    minimumFractionDigits: unitIndex === 0 ? 0 : 1,
+    maximumFractionDigits: 1
+  }).format(scaled);
+  return unitIndex === 0 ? formatted : `${formatted} ${units[unitIndex]}`;
+}
+
+function memoryLabel(): string {
+  const heap = snapshot.value.heap;
+  if (heap === undefined) return t('common.unavailable');
+  return t('performanceDiagnostics.heapValue', {
+    used: decimal(heap.usedBytes / 1_048_576),
+    limit: decimal(heap.limitBytes / 1_048_576),
+    percentage: decimal(heap.limitBytes <= 0 ? 0 : (heap.usedBytes / heap.limitBytes) * 100)
+  });
+}
+
+function pingLatencyLabel(): string {
+  const value = snapshot.value.pingLatencyMs;
+  return value === undefined
+    ? t('common.unavailable')
+    : t('performanceDiagnostics.pingLatencyValue', { duration: decimal(value) });
+}
+
+function lastMessageLabel(): string {
+  if (snapshot.value.lastMessageAt === undefined) return t('common.unavailable');
+  return formatDateTime(snapshot.value.lastMessageAt);
+}
+
+async function copyDiagnostics(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(props.diagnostics.detail(), null, 2));
+    showMessage(t('performanceDiagnostics.copySucceeded'), 'info');
+  } catch {
+    showMessage(t('performanceDiagnostics.copyFailed'), 'error');
+  }
+}
+</script>
+
+<template>
+  <section class="web-performance-panel" :aria-label="t('performanceDiagnostics.title')">
+    <header>
+      <strong v-if="!hideTitle">{{ t('performanceDiagnostics.title') }}</strong>
+      <div class="panel-heading-actions">
+        <span class="panel-health" :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
+        <MarButton
+          v-tooltip="t('performanceDiagnostics.copy')"
+          class="mar-icon-action panel-copy"
+          text
+          icon="copy"
+          :aria-label="t('performanceDiagnostics.copy')"
+          @click="copyDiagnostics"
+        />
+      </div>
+    </header>
+    <dl>
+      <dt>{{ t('performanceDiagnostics.connectionLabel') }}</dt>
+      <dd>{{ connectionLabel }}</dd>
+      <dt>{{ t('performanceDiagnostics.pingLatency') }}</dt>
+      <dd>{{ pingLatencyLabel() }}</dd>
+      <dt>{{ t('performanceDiagnostics.lastMessage') }}</dt>
+      <dd>{{ lastMessageLabel() }}</dd>
+      <dt>{{ t('performanceDiagnostics.messageRate') }}</dt>
+      <dd>
+        {{
+          t('performanceDiagnostics.rateValue', {
+            current: snapshot.messagesPerSecond,
+            peak: snapshot.peakMessagesPerSecond,
+            contentLength: contentLengthLabel(snapshot.contentLengthPerSecond)
+          })
+        }}
+      </dd>
+      <dt>{{ t('performanceDiagnostics.categories') }}</dt>
+      <dd class="category-values">
+        <template v-if="visibleCategories.length">
+          <span v-for="entry in visibleCategories" :key="entry.category">
+            {{ t(`performanceDiagnostics.category.${entry.category}`) }} {{ entry.count }}/s
+          </span>
+        </template>
+        <span v-else>{{ t('performanceDiagnostics.noRealtimeMessages') }}</span>
+      </dd>
+      <dt>{{ t('performanceDiagnostics.activeRunSessions') }}</dt>
+      <dd>{{ snapshot.activeRunSessions }}</dd>
+      <dt>{{ t('performanceDiagnostics.processing') }}</dt>
+      <dd>
+        {{
+          t('performanceDiagnostics.processingValue', {
+            average: decimal(snapshot.processing.averageMs),
+            p95: decimal(snapshot.processing.p95Ms),
+            maximum: decimal(snapshot.processing.maxMs)
+          })
+        }}
+      </dd>
+      <dt>{{ t('performanceDiagnostics.longTasks') }}</dt>
+      <dd>
+        {{
+          snapshot.longTasks.available
+            ? t('performanceDiagnostics.longTaskValue', {
+                count: snapshot.longTasks.count,
+                duration: decimal(snapshot.longTasks.totalDurationMs)
+              })
+            : t('common.unavailable')
+        }}
+      </dd>
+      <dt>{{ t('performanceDiagnostics.mainThreadDelay') }}</dt>
+      <dd>{{ decimal(snapshot.eventLoopDelayMs) }} ms</dd>
+      <dt>{{ t('performanceDiagnostics.pageScale') }}</dt>
+      <dd>
+        {{
+          t('performanceDiagnostics.pageScaleValue', {
+            dom: snapshot.domNodes,
+            messages: snapshot.messageCards
+          })
+        }}
+      </dd>
+      <dt>{{ t('performanceDiagnostics.jsHeap') }}</dt>
+      <dd>{{ memoryLabel() }}</dd>
+    </dl>
+    <p>{{ t('performanceDiagnostics.scopeHint') }}</p>
+  </section>
+</template>
+
+<style scoped>
+.web-performance-panel {
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-meta);
+}
+.web-performance-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--mar-border-medium);
+  padding-bottom: 0.45rem;
+}
+.panel-health {
+  color: var(--mar-text-secondary);
+}
+.panel-health.is-healthy {
+  color: var(--mar-color-success-text);
+}
+.panel-health.is-warning {
+  color: var(--mar-color-warning-text);
+}
+.panel-health.is-critical {
+  color: var(--mar-color-danger-text);
+}
+.panel-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.panel-copy {
+  flex: none;
+  inline-size: var(--mar-compact-control-size);
+  block-size: var(--mar-compact-control-size);
+  padding: 0;
+}
+.web-performance-panel dl {
+  display: grid;
+  grid-template-columns: 6.3rem minmax(0, 1fr);
+  margin: 0;
+}
+.web-performance-panel dt,
+.web-performance-panel dd {
+  min-width: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--mar-border-medium);
+  padding: 0.4rem 0;
+}
+.web-performance-panel dt {
+  color: var(--mar-text-secondary);
+}
+.web-performance-panel dd {
+  overflow-wrap: anywhere;
+}
+.category-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.55rem;
+}
+.web-performance-panel p {
+  margin: 0.5rem 0 0;
+  color: var(--mar-text-secondary);
+  line-height: 1.45;
+}
+</style>

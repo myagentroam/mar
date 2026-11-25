@@ -41,6 +41,8 @@ import { scheduleSections, type ScheduleSection } from '../schedule/scheduled-ta
 
 const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;
+const brand = ref<HTMLElement>();
+const mobilePerformanceOpen = ref(false);
 const sidebarPanel = ref<InstanceType<typeof WorkbenchSidebarPanel>>();
 const treeElement = computed(() => sidebarPanel.value?.element);
 const mobilePanelTarget = ref<HTMLElement>();
@@ -83,6 +85,29 @@ const props = defineProps<{
 const sidebarView = computed(() =>
   props.scheduleSection === undefined ? props.view : 'schedules'
 );
+const versionLabel = computed(() => `v${props.webVersion}`);
+const docsPath = computed(() => localizedDocsPath(locale.value, 'getting-started/overview'));
+watch(
+  () => props.mobileViewport,
+  (mobile) => {
+    if (!mobile) mobilePerformanceOpen.value = false;
+  }
+);
+
+type BrandCommand = 'reload' | 'performance' | 'help';
+function runBrandCommand(command: BrandCommand): void {
+  switch (command) {
+    case 'reload':
+      window.location.reload();
+      break;
+    case 'performance':
+      mobilePerformanceOpen.value = true;
+      break;
+    case 'help':
+      if (documentationAvailable) window.open(docsPath.value, '_blank', 'noopener,noreferrer');
+      break;
+  }
+}
 const displayView = ref(sidebarView.value);
 const displayUtility = ref(props.mobileUtilityPanel);
 let scrolledRevealTarget: WorkspaceTarget | undefined;
@@ -182,7 +207,11 @@ const menuLabel = computed(() =>
 
 const menuFocus = createMobileSurfaceFocusService({
   isOpen: () => props.mobileViewport && mobileMenuOpen.value,
-  regions: () => [treeElement.value, document.querySelector<HTMLElement>('.activity-rail')],
+  regions: () => [
+    treeElement.value,
+    brand.value,
+    document.querySelector<HTMLElement>('.activity-rail')
+  ],
   close: () => emit('closeMobileSidebar')
 });
 onBeforeUnmount(menuFocus.dispose);
@@ -250,8 +279,40 @@ function runBlankMenuCommand(command: string): void {
 </script>
 
 <template>
-  <header class="workbench-brand" data-testid="workbench-brand">
+  <header ref="brand" class="workbench-brand" data-testid="workbench-brand">
+    <!-- @vue-generic {BrandCommand} -->
+    <MarDropdown
+      v-if="mobileViewport"
+      :persistent="false"
+      placement="bottom-start"
+      @command="runBrandCommand"
+    >
+      <button
+        type="button"
+        class="brand-menu-trigger mar-icon-action"
+        :aria-label="$t('navigation.brandMenu')"
+      >
+        <img :src="logoIcon" alt="" />
+      </button>
+      <template #dropdown>
+        <MarDropdownMenu>
+          <MarDropdownItem
+            command="reload"
+            icon="source-code"
+            :aria-label="$t('navigation.reloadVersion', { version: versionLabel })"
+            >{{ versionLabel }}</MarDropdownItem
+          >
+          <MarDropdownItem command="performance" icon="info">{{
+            $t('navigation.performanceIndicator')
+          }}</MarDropdownItem>
+          <MarDropdownItem v-if="documentationAvailable" command="help" icon="document">{{
+            $t('navigation.helpDocumentation')
+          }}</MarDropdownItem>
+        </MarDropdownMenu>
+      </template>
+    </MarDropdown>
     <a
+      v-else
       v-tooltip="$t('common.productVersion', { version: webVersion })"
       class="brand-home-link"
       href="/"
@@ -333,9 +394,9 @@ function runBlankMenuCommand(command: string): void {
       </template>
       <MarLink
         v-tooltip="$t('navigation.help')"
-        v-if="documentationAvailable"
+        v-if="!mobileViewport && documentationAvailable"
         class="nav-menu-button documentation-link mar-icon-action"
-        :href="localizedDocsPath(locale, 'getting-started/overview')"
+        :href="docsPath"
         underline="never"
         target="_blank"
         rel="noopener noreferrer"
@@ -346,8 +407,12 @@ function runBlankMenuCommand(command: string): void {
         </span>
       </MarLink>
     </nav>
-    <div v-if="!mobileViewport" class="activity-rail-footer">
-      <WebPerformanceIndicator :diagnostics="performanceDiagnostics" />
+    <div v-show="!mobileViewport" class="activity-rail-footer">
+      <WebPerformanceIndicator
+        v-model:mobile-open="mobilePerformanceOpen"
+        :mobile="mobileViewport"
+        :diagnostics="performanceDiagnostics"
+      />
     </div>
   </aside>
   <Transition name="mobile-menu-scrim">
@@ -540,6 +605,11 @@ function runBlankMenuCommand(command: string): void {
   display: block;
   flex: 0 0 auto;
   border-radius: 5px;
+}
+
+.brand-menu-trigger {
+  display: block;
+  padding: 0;
 }
 
 .workbench-brand img {
@@ -869,11 +939,6 @@ function runBlankMenuCommand(command: string): void {
 
   .activity-rail nav .nav-menu-button .rail-label {
     display: none;
-  }
-
-  .documentation-link {
-    position: static;
-    cursor: pointer;
   }
 
   .rail-label {

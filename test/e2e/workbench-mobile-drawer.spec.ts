@@ -1,12 +1,124 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/web-core/src/view/workbench/WorkbenchNavigation.vue
+// @test-covers packages/web-core/src/view/workbench/WebPerformanceIndicator.vue
+
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture();
 });
 test.afterAll(async () => {
   await fixture?.close();
+});
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Mobile brand menu keeps version, diagnostics and documentation in order in ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true
+    });
+    try {
+      await context.route('**/docs/**', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<title>Help</title>' })
+      );
+      const page = await context.newPage();
+      const url = `${fixture.url}workbench-mobile-drawer.html?locale=zh-CN&theme=${theme}&tree-reveal=&view=nodes`;
+      await page.goto(url);
+      const brand = page.getByRole('button', { name: 'MyAgentRoam 菜单' });
+      const menu = page.getByRole('menu', { name: 'MyAgentRoam 菜单' });
+      await expect(page.locator('.documentation-link')).toHaveCount(0);
+      await expect(brand.locator('img')).toBeVisible();
+      await expect(brand.locator('svg')).toHaveCount(0);
+      await expect(brand).toHaveAttribute('aria-expanded', 'false');
+      await brand.tap();
+      await expect(brand).toHaveAttribute('aria-expanded', 'true');
+      await expect(menu.getByRole('menuitem')).toHaveText(['v0.10.1', '性能指示器', '帮助文档']);
+      const version = menu.getByRole('menuitem', { name: 'v0.10.1，刷新当前页面' });
+      const icons = menu.getByRole('menuitem').locator('svg.mar-icon');
+      for (const [index, icon] of ['source-code', 'info', 'document'].entries()) {
+        await expect(icons.nth(index)).toBeVisible();
+        await expect(icons.nth(index)).toHaveAttribute('data-mar-icon', icon);
+        await expect(icons.nth(index)).toHaveAttribute('aria-hidden', 'true');
+      }
+      await expect(icons).toHaveCount(3);
+      await expect(version).not.toHaveAttribute('title');
+      await expect(menu).toBeInViewport();
+      await page.screenshot({
+        path: testInfo.outputPath(`mobile-brand-${theme}.png`),
+        animations: 'disabled',
+        clip: { x: 0, y: 0, width: 390, height: 154 }
+      });
+
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      await expect(brand).toBeFocused();
+      await page.keyboard.press('ArrowDown');
+      await expect(version).toBeFocused();
+      await page.keyboard.press('ArrowDown');
+      await expect(menu.getByRole('menuitem', { name: '性能指示器' })).toBeFocused();
+      await page.keyboard.press('Enter');
+      const details = page.getByRole('dialog', { name: 'Web 性能诊断' });
+      await expect(menu).toBeHidden();
+      await expect(details).toBeVisible();
+      await expect(details.locator('dl')).toBeVisible();
+      await expect(details.getByRole('button', { name: /复制/u })).toBeVisible();
+      await page.goBack();
+      await expect(details).toHaveCount(0);
+      await expect(brand).toBeFocused();
+
+      await brand.tap();
+      const helpTab = context.waitForEvent('page');
+      await menu.getByRole('menuitem', { name: '帮助文档' }).tap();
+      const help = await helpTab;
+      await expect(help).toHaveURL(/\/docs\/getting-started\/overview$/u);
+      expect(await help.evaluate(() => window.opener)).toBeNull();
+      await help.close();
+      await expect(menu).toBeHidden();
+      await expect(page).toHaveURL(url);
+
+      await brand.tap();
+      await Promise.all([page.waitForEvent('load'), version.tap()]);
+      await expect(page).toHaveURL(url);
+      expect(
+        await page.evaluate(() =>
+          performance
+            .getEntriesByType('navigation')
+            .map((entry) => (entry as PerformanceNavigationTiming).type)
+        )
+      ).toEqual(['reload']);
+      await expect(menu).toBeHidden();
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test('Mobile brand menu dismisses over the resource drawer and omits unavailable docs', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 320, height: 690 });
+  await page.goto(
+    `${fixture.url}workbench-mobile-drawer.html?locale=en-US&tree-reveal&without-docs`
+  );
+  const brand = page.getByRole('button', { name: 'MyAgentRoam menu' });
+  const menu = page.getByRole('menu', { name: 'MyAgentRoam menu' });
+  const work = page.getByRole('button', { name: 'Work', exact: true });
+  const drawer = page.locator('.workspace-tree.mobile-open');
+  await work.click();
+  await expect(drawer).toBeVisible();
+  const historyLength = await page.evaluate(() => history.length);
+  await brand.click();
+  await expect(menu.getByRole('menuitem')).toHaveText(['v0.10.1', 'Performance indicator']);
+  await expect(menu).toBeInViewport();
+  expect(await page.evaluate(() => history.length)).toBe(historyLength);
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(brand).toBeFocused();
+  await expect(drawer).toBeVisible();
 });
 
 test('Desktop activity panels cover resize handles without disabling uncovered dragging', async ({
@@ -83,7 +195,7 @@ test('Touch highlights stay transparent on menus, scrims and preview overlays', 
         for (const control of [
           page.locator('html'),
           activity,
-          page.getByRole('link', { name: 'Help', exact: true })
+          page.getByRole('button', { name: 'MyAgentRoam menu', exact: true })
         ])
           await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
       await activity.tap();
@@ -170,88 +282,84 @@ for (const theme of ['daylight', 'midnight']) {
     }
   });
 
-  test(`Icon-only Help shares notification utility feedback without changing link behavior in ${theme}`, async ({
+  test(`Desktop Help and notifications retain themed toolbar feedback in ${theme}`, async ({
     browser
   }, testInfo) => {
-    for (const width of [1280, 390]) {
-      const context = await browser.newContext({
-        viewport: { width, height: 844 },
-        isMobile: width < 768,
-        hasTouch: width < 768
+    const width = 1280;
+    const context = await browser.newContext({
+      viewport: { width, height: 844 }
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      const help = page.getByRole('link', { name: 'Help', exact: true });
+      const activity = page.getByRole('button', {
+        name: 'Sessions & notifications',
+        exact: true
       });
-      try {
-        await context.route('**/help/**', (route) =>
-          route.fulfill({ contentType: 'text/html', body: '<title>Help</title>' })
-        );
-        const page = await context.newPage();
-        await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
-        const help = page.getByRole('link', { name: 'Help', exact: true });
-        const activity = page.getByRole('button', {
-          name: 'Sessions & notifications',
-          exact: true
-        });
-        await expect(help).toHaveAttribute('href', /getting-started\/overview/);
-        await expect(help).toHaveAttribute('target', '_blank');
-        await expect(help).toHaveAttribute('rel', 'noopener noreferrer');
-        await expect(help).toHaveText('');
-        await expect(help.locator('svg')).toBeVisible();
-        const iconBounds = (await help.locator('svg').boundingBox())!;
-        expect(iconBounds.width).toBe(width >= 768 ? 16 : 22);
-        expect(iconBounds.height).toBe(width >= 768 ? 16 : 22);
-        await expect(help).toHaveCSS('width', width >= 768 ? '24px' : '36px');
-        await expect(help).toHaveCSS('height', width >= 768 ? '24px' : '36px');
-        if (width >= 768) {
-          const bounds = (await help.boundingBox())!;
-          expect(bounds.width).toBe(bounds.height);
-          // Match the desktop shell inset; the mobile link stays in the rail flow.
-          expect(width - bounds.x - bounds.width).toBe(16);
-        } else await expect(help).toHaveCSS('position', 'static');
-        await help.screenshot({ path: testInfo.outputPath(`help-density-${width}.png`) });
-        for (const custom of [false, true]) {
-          if (custom)
-            await page.locator('html').evaluate((element) => {
-              element.style.setProperty('--mar-text-primary', '#d6dfc9');
-              element.style.setProperty('--mar-text-secondary', '#8295a4');
-              element.style.setProperty('--mar-conversation-activity-fg', '#9672d1');
-              element.style.setProperty('--mar-control-focus', '#af79d0');
-              element.style.setProperty('--mar-fill-row-hover', '#25334280');
-            });
-          const colors = await help.evaluate((element) => {
-            const probe = document.createElement('span');
-            element.append(probe);
-            const color = (token: string) => {
-              probe.style.color = `var(${token})`;
-              return getComputedStyle(probe).color;
-            };
-            const result = {
-              normal: color('--mar-text-secondary'),
-              hover: color('--mar-text-primary'),
-              hoverBackground: color('--mar-fill-row-hover'),
-              focus: color('--mar-control-focus')
-            };
-            probe.remove();
-            return result;
+      await expect(help).toHaveAttribute('href', /getting-started\/overview/);
+      await expect(help).toHaveAttribute('target', '_blank');
+      await expect(help).toHaveAttribute('rel', 'noopener noreferrer');
+      await expect(help).toHaveText('');
+      await expect(help.locator('svg')).toBeVisible();
+      const iconBounds = (await help.locator('svg').boundingBox())!;
+      expect(iconBounds.width).toBe(16);
+      expect(iconBounds.height).toBe(16);
+      await expect(help).toHaveCSS('width', '24px');
+      await expect(help).toHaveCSS('height', '24px');
+      const bounds = (await help.boundingBox())!;
+      expect(bounds.width).toBe(bounds.height);
+      expect(width - bounds.x - bounds.width).toBe(16);
+      await help.screenshot({ path: testInfo.outputPath(`help-density-${width}.png`) });
+      for (const custom of [false, true]) {
+        if (custom)
+          await page.locator('html').evaluate((element) => {
+            element.style.setProperty('--mar-text-primary', '#d6dfc9');
+            element.style.setProperty('--mar-text-secondary', '#8295a4');
+            element.style.setProperty('--mar-conversation-activity-fg', '#9672d1');
+            element.style.setProperty('--mar-control-focus', '#af79d0');
+            element.style.setProperty('--mar-fill-row-hover', '#25334280');
+            element.style.setProperty('--mar-action-hover-overlay', '#38445c80');
           });
-          for (const control of [help, activity]) {
-            await page.mouse.move(0, 0);
-            await expect(control).toHaveCSS('color', colors.normal);
-            await control.hover();
-            await expect(control).toHaveCSS('color', colors.hover);
-            await expect(control).toHaveCSS('background-color', colors.hoverBackground);
-            await control.focus();
-            await page.keyboard.press('Tab');
-            await page.keyboard.press('Shift+Tab');
-            await expect(control).toBeFocused();
-            await expect(control).toHaveCSS('color', colors.hover);
-            await expect(control).toHaveCSS('outline-color', colors.focus);
-            await expect(control).toHaveCSS('outline-width', '2px');
-          }
-          if (!custom)
-            await page.screenshot({ path: testInfo.outputPath(`help-${theme}-${width}.png`) });
+        const colors = await help.evaluate((element) => {
+          const probe = document.createElement('span');
+          element.append(probe);
+          const color = (token: string) => {
+            probe.style.color = `var(${token})`;
+            return getComputedStyle(probe).color;
+          };
+          const result = {
+            normal: color('--mar-text-secondary'),
+            hover: color('--mar-text-primary'),
+            actionBackground: color('--mar-action-hover-overlay'),
+            rowBackground: color('--mar-fill-row-hover'),
+            focus: color('--mar-control-focus')
+          };
+          probe.remove();
+          return result;
+        });
+        for (const [control, hoverBackground] of [
+          [help, colors.actionBackground],
+          [activity, colors.rowBackground]
+        ] as const) {
+          await page.mouse.move(0, 0);
+          await expect(control).toHaveCSS('color', colors.normal);
+          await control.hover();
+          await expect(control).toHaveCSS('color', colors.hover);
+          await expect(control).toHaveCSS('background-color', hoverBackground);
+          await control.focus();
+          await page.keyboard.press('Tab');
+          await page.keyboard.press('Shift+Tab');
+          await expect(control).toBeFocused();
+          await expect(control).toHaveCSS('color', colors.hover);
+          await expect(control).toHaveCSS('outline-color', colors.focus);
+          await expect(control).toHaveCSS('outline-width', '2px');
         }
-      } finally {
-        await context.close();
+        if (!custom)
+          await page.screenshot({ path: testInfo.outputPath(`help-${theme}-${width}.png`) });
       }
+    } finally {
+      await context.close();
     }
   });
 }

@@ -311,7 +311,6 @@ export function createWorkbenchPageController<
   });
 
   const webPerformanceDiagnostics = createWebPerformanceDiagnostics({
-    enabled: () => !mobileViewport.value,
     context: () => ({
       view: view.value,
       ...(workspaceNodeId.value === undefined ? {} : { nodeId: workspaceNodeId.value }),
