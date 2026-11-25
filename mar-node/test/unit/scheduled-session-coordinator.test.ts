@@ -190,6 +190,48 @@ describe('scheduled session coordinator', () => {
     }
   );
 
+  it('retains a failed scheduling drain from freeze until disposal', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
+    const { database, store, task } = fixture(Date.now);
+    const authorization = Promise.withResolvers<ScheduledRunContext>();
+    const authorize = vi.fn(() => authorization.promise);
+    const submit = vi.fn();
+    const failure = new Error('SCHEDULE_STORE_WRITE_FAILED');
+    const coordinator = new ScheduledSessionCoordinator({
+      store: () => store,
+      busy: () => false,
+      authorize,
+      submit,
+      emitNotification: vi.fn(),
+      sessionTitle: (id) => id
+    });
+    const finishAuthorization = () =>
+      authorization.resolve({ secretEnvironment: {}, executionContext: { runner: 'codex' } });
+    try {
+      coordinator.start();
+      await vi.advanceTimersByTimeAsync(task.nextRunAt! - Date.now());
+      expect(authorize).toHaveBeenCalledOnce();
+      vi.spyOn(store, 'finish').mockImplementationOnce(() => {
+        throw failure;
+      });
+      const frozenDrain = coordinator.stop();
+      finishAuthorization();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(store.finish).toHaveBeenCalledOnce();
+
+      const disposalDrain = coordinator.stop();
+      expect(disposalDrain).toBe(frozenDrain);
+      await expect(disposalDrain).rejects.toBe(failure);
+      expect(submit).not.toHaveBeenCalled();
+    } finally {
+      finishAuthorization();
+      await coordinator.stop()?.catch(() => undefined);
+      database.close();
+      vi.useRealTimers();
+    }
+  });
+
   it.each([false, true])(
     'settles a submitted Run after scheduling stops (terminal notifications: %s)',
     (notifyOnTerminal) => {

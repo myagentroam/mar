@@ -7,7 +7,8 @@ import type { RunnerRegistry } from '../runner/runner-registry.js';
 import type { GitOperationService } from '../service/git-operation-service.js';
 import type {
   BeginScheduledSubmission,
-  ScheduledRunContext
+  ScheduledRunContext,
+  ScheduledSubmissionReceipt
 } from '../service/scheduled-session-coordinator.js';
 import type { ScheduledSessionTask } from '../service/scheduled-session-store.js';
 
@@ -91,7 +92,7 @@ export class ScheduledExecutionService {
     occurrenceId: string,
     context: ScheduledRunContext,
     begin: BeginScheduledSubmission
-  ): Promise<{ readonly runId: string; readonly sessionId?: string }> => {
+  ): Promise<ScheduledSubmissionReceipt> => {
     const sessionId = context.sessionId ?? task.sessionId;
     if (sessionId === null) throw new Error('SCHEDULE_SESSION_NOT_FOUND');
     let identity: Promise<string | undefined> | undefined;
@@ -125,10 +126,9 @@ export class ScheduledExecutionService {
         })
     )) as { run: { id: string } };
     // Identity failure does not erase the Run receipt or authorize another submission.
-    const nativeSessionId = identity === undefined ? sessionId : await identity;
     return {
       runId: result.run.id,
-      ...(nativeSessionId === undefined ? {} : { sessionId: nativeSessionId })
+      ...(identity === undefined ? {} : { sessionIdentity: identity })
     };
   };
 }
