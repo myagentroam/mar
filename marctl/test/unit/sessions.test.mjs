@@ -1562,6 +1562,7 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
       assert.match(output, /schedule get --task/u);
       assert.match(output, /schedule runs --task/u);
       assert.match(output, /schedule create --name .* --triggers-file/u);
+      assert.match(output, /hourly[^\n]*minutes[^\n]*0\.\.59/u);
       assert.match(output, /schedule update --task .* --expected-revision/u);
       assert.ok(!output.toLowerCase().includes('urgent'));
       for (const line of output.split('\n')) {

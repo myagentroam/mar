@@ -38,6 +38,7 @@ export interface ScheduleNode {
   connected: boolean;
   supported?: boolean;
   newSessionSupported?: boolean;
+  hourlySupported?: boolean;
 }
 export interface ScheduleCard extends ScheduleTaskKey {
   name: string;

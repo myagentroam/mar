@@ -203,6 +203,13 @@ export const workbenchShellEnUS = {
       enterObjective: 'Enter the prompt for each run',
       nameRequired: 'Enter a task name of 1–160 characters.',
       once: 'Once',
+      hourly: 'Hourly',
+      hourlySummary: 'At minute {minutes}',
+      hourlyMinuteField: 'Minutes past each hour',
+      chooseHourlyMinutes: 'Select minutes (multiple allowed)',
+      hourlyMinutesRequired: 'Select at least one minute.',
+      hourlyUnavailable:
+        'This node does not support hourly schedules. Choose another frequency or node.',
       daily: 'Daily',
       weekly: 'Weekly',
       monthly: 'Monthly',

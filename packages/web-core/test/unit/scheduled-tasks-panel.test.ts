@@ -203,6 +203,27 @@ describe('Scheduled tasks workbench', () => {
     expect(saved.monthDays).toEqual([15, 31]);
   });
 
+  it('defaults hourly to the hour and round-trips multiple minutes without a clock field', () => {
+    const draft = triggerDraft(1);
+    draft.kind = 'hourly';
+    draft.time = '10:30';
+    expect(parseTriggerDraft(draft)).toEqual({
+      success: true,
+      data: { kind: 'hourly', minutes: [0] }
+    });
+
+    const saved = { kind: 'hourly' as const, minutes: [15, 45, 15] };
+    const restored = triggerDraft(1, saved);
+    expect(restored.minutes).toEqual([15, 45]);
+    expect(parseTriggerDraft(restored)).toEqual({
+      success: true,
+      data: { kind: 'hourly', minutes: [15, 45] }
+    });
+    restored.minutes.splice(0);
+    expect(parseTriggerDraft(restored).success).toBe(false);
+    expect(saved.minutes).toEqual([15, 45, 15]);
+  });
+
   it('addresses colliding task and occurrence IDs using their originating nodes', async () => {
     const request = vi.fn().mockResolvedValue({});
     const client = scheduledTaskClient(request);

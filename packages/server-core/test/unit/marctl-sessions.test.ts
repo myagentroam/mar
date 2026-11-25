@@ -733,8 +733,9 @@ describe('Workspace-bound marctl agents', () => {
     const cli = fileURLToPath(new URL('../../../../marctl/bin/marctl.mjs', import.meta.url));
     const root = await mkdtemp(join(tmpdir(), 'marctl-schedule-http-'));
     const triggersFile = join(root, 'triggers.json');
+    const hourlyTriggers = [...scheduleTriggers, { kind: 'hourly', minutes: [15, 45] }];
     try {
-      await writeFile(triggersFile, JSON.stringify(scheduleTriggers));
+      await writeFile(triggersFile, JSON.stringify(hourlyTriggers));
       for (const args of [
         ['send', 'target', '--steer', '-m', 'Additional context', '--client-message-id', 'input'],
         ['send', 'target', '--approval', 'approval-1', '--decision', 'approve'],
@@ -865,7 +866,7 @@ describe('Workspace-bound marctl agents', () => {
           taskId: 'task-b',
           workspaceId: 'workspace',
           expectedRevision: 3,
-          patch: { triggers: scheduleTriggers }
+          patch: { triggers: hourlyTriggers }
         },
         expect.any(Object)
       );

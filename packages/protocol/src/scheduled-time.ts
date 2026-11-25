@@ -9,6 +9,7 @@ export const scheduledClockTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]
 const time = scheduledClockTimeSchema;
 export const scheduledTriggerSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('once'), time, date: z.string().date() }),
+  z.strictObject({ kind: z.literal('hourly'), minutes: integers(0, 59) }),
   z.strictObject({ kind: z.literal('daily'), time }),
   z.strictObject({ kind: z.literal('weekly'), time, weekdays: integers(0, 6) }),
   z.strictObject({ kind: z.literal('monthly'), time, monthDays: integers(1, 31) })
@@ -61,7 +62,7 @@ export const scheduledTaskFields = {
       'Instructions to execute at each trigger, not instructions to configure the schedule.'
     ),
   triggers: scheduledTriggersSchema.describe(
-    'One HH:mm per entry in the task time zone (Node time zone on creation). Once requires a concrete date. Weekdays are 0 (Sunday) to 6 (Saturday).'
+    'In the task time zone (Node time zone on creation). Hourly takes minutes 0–59 instead of time. Other entries take one HH:mm. Once requires a concrete date. Weekdays are 0 (Sunday) to 6 (Saturday).'
   )
 };
 export const scheduledTaskFieldsSchema = z.strictObject(scheduledTaskFields);

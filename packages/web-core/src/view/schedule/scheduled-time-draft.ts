@@ -7,6 +7,7 @@ export interface TriggerDraft {
   time: string | null;
   date: Date | null;
   suggestedDate: Date | null;
+  minutes: number[];
   weekdays: number[];
   monthDays: number[];
 }
@@ -17,9 +18,10 @@ export function triggerDraft(id: number, trigger?: ScheduledTrigger): TriggerDra
   return {
     id,
     kind: trigger?.kind ?? 'once',
-    time: trigger?.time ?? null,
+    time: trigger?.kind === 'hourly' ? null : (trigger?.time ?? null),
     date: trigger?.kind === 'once' ? pickerDate(trigger.date) : null,
     suggestedDate: null,
+    minutes: trigger?.kind === 'hourly' ? [...new Set(trigger.minutes)] : [0],
     weekdays: trigger?.kind === 'weekly' ? [...trigger.weekdays] : [],
     monthDays: trigger?.kind === 'monthly' ? [...trigger.monthDays] : []
   };
@@ -37,9 +39,11 @@ export function parseTriggerDraft({
   time,
   date,
   suggestedDate,
+  minutes,
   weekdays,
   monthDays
 }: TriggerDraft): ReturnType<typeof scheduledTriggerSchema.safeParse> {
+  if (kind === 'hourly') return scheduledTriggerSchema.safeParse({ kind, minutes });
   return scheduledTriggerSchema.safeParse({
     kind,
     time,

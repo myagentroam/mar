@@ -88,11 +88,12 @@ marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" 
 marctl agents schedule runs --task "$TASK_ID" --page 1 --json
 ```
 
-`--triggers-file` reads a UTF-8 JSON array, not a Cron expression. Each entry has one `HH:mm` time. New tasks use the Node time zone; updates retain the task's saved time zone. A `once` trigger requires an explicit future date; the CLI does not suggest one. This `triggers.json` demonstrates the one-time, daily, weekly, and monthly forms:
+`--triggers-file` reads a UTF-8 JSON array, not a Cron expression. An `hourly` rule takes a non-empty `minutes` array (integers from 0 to 59) instead of `time`; other rules each take one `HH:mm` time. New tasks use the Node time zone; updates retain the task's saved time zone. A `once` trigger requires an explicit future date; the CLI does not suggest one. The hourly rule in this `triggers.json` runs at :15 and :45 past each hour:
 
 ```json
 [
   { "kind": "once", "date": "2030-03-21", "time": "14:30" },
+  { "kind": "hourly", "minutes": [15, 45] },
   { "kind": "daily", "time": "10:00" },
   { "kind": "weekly", "time": "09:00", "weekdays": [1, 2, 3, 4, 5] },
   { "kind": "monthly", "time": "09:00", "monthDays": [1, 15] }

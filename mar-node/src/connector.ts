@@ -474,7 +474,8 @@ export class NodeConnector {
     this.capabilitiesProvided = options.capabilities !== undefined;
     this.capabilities = {
       ...(options.capabilities ?? unavailableCapabilities()),
-      scheduledTasks: { apiVersion: scheduledTasksApiVersion }
+      scheduledTasks: { apiVersion: scheduledTasksApiVersion },
+      scheduledHourly: true
     };
     this.conversationHostingProbe = options.conversationHostingProbe ?? probeBubblewrap;
     this.conversationHosting = new ConversationHostingLifecycleService({
@@ -573,6 +574,7 @@ export class NodeConnector {
             ...capabilities,
             ...this.browserCapability(),
             scheduledTasks: { apiVersion: scheduledTasksApiVersion },
+            scheduledHourly: true,
             metadata: upgradeMetadata(
               capabilities.metadata,
               this.upgradeCoordinator.snapshot(),

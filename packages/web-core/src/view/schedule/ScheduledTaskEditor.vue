@@ -66,8 +66,10 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; changed: [] }>();
 const notificationHintId = useId();
 const monthDayOptions = Array.from({ length: 31 }, (_, index) => index + 1);
+const minuteOptions = Array.from({ length: 60 }, (_, minute) => minute);
 const graceOptions = Array.from({ length: 60 }, (_, minute) => minute + 1);
-const repeatOptions = ['once', 'daily', 'weekly', 'monthly'] as const;
+const repeatOptions = ['once', 'hourly', 'daily', 'weekly', 'monthly'] as const;
+const minuteLabel = (minute: number) => String(minute).padStart(2, '0');
 const msg = (key: string, args?: Record<string, string | number>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const editing = props.editing;
@@ -117,6 +119,7 @@ const preview = ref<{ timezone: string; times: { dueAt: number }[] }>();
 const timezone = ref(saved?.timezone);
 const selection = computed(() => ({ nodeId: form.nodeId, workspaceId: form.workspaceId }));
 const node = computed(() => props.nodes.find((item) => item.id === form.nodeId));
+const hourlySupported = computed(() => node.value?.hourlySupported === true);
 const targetReady = computed(
   () => node.value?.connected && node.value.supported !== false && form.workspaceId !== ''
 );
@@ -148,10 +151,13 @@ const efforts = computed(() => {
 const parsedTriggers = computed(() => form.triggers.map(parseTriggerDraft));
 const checkedTriggers = () =>
   parsedTriggers.value.flatMap((result) => (result.success ? [result.data] : []));
+function triggerError(row: TriggerDraft, index: number): string | undefined {
+  if (row.kind === 'hourly' && !hourlySupported.value) return 'hourlyUnavailable';
+  if (row.kind === 'hourly' && !row.minutes.length) return 'hourlyMinutesRequired';
+  return parsedTriggers.value[index]?.success ? undefined : 'triggerInvalid';
+}
 const previewTriggers = computed(() =>
-  form.triggers.length && parsedTriggers.value.every((result) => result.success)
-    ? checkedTriggers()
-    : undefined
+  form.triggers.length && !form.triggers.some(triggerError) ? checkedTriggers() : undefined
 );
 const suggestionTarget = computed(() =>
   form.triggers.find(
@@ -232,11 +238,14 @@ const rules: FormRules = {
 const timeRules = computed<FormRules>(() => ({
   graceMinutes: rules.graceMinutes,
   ...Object.fromEntries(
-    form.triggers.map((_, index) => [
+    form.triggers.map((row, index) => [
       `triggers.${index}`,
       [
         {
-          validator: () => parsedTriggers.value[index]?.success || new Error(msg('triggerInvalid'))
+          validator: () => {
+            const errorKey = triggerError(row, index);
+            return errorKey ? new Error(msg(errorKey)) : true;
+          }
         }
       ]
     ])
@@ -426,7 +435,7 @@ async function submit() {
     }
     if (!(await timeForm.value?.validate().catch(() => false))) {
       tab.value = 'time';
-      const invalid = parsedTriggers.value.findIndex((result) => !result.success);
+      const invalid = form.triggers.findIndex(triggerError);
       if (invalid !== -1) activeTriggerId.value = form.triggers[invalid]?.id;
       await nextTick();
       timeForm.value?.$el.querySelector('[role="alert"]')?.scrollIntoView({ block: 'nearest' });
@@ -503,6 +512,13 @@ onBeforeUnmount(() => {
 });
 function triggerLabel(trigger: ScheduledTrigger): string {
   if (trigger.kind === 'once') return `${trigger.date} · ${msg('once')}`;
+  if (trigger.kind === 'hourly')
+    return msg('hourlySummary', {
+      minutes: [...new Set(trigger.minutes)]
+        .sort((a, b) => a - b)
+        .map(minuteLabel)
+        .join(', ')
+    });
   if (trigger.kind === 'weekly') {
     const days = [1, 2, 3, 4, 5, 6, 0].filter((day) => trigger.weekdays.includes(day));
     return msg('weeklySummary', { days: days.map((day) => msg(`weekday${day}`)).join(', ') });
@@ -512,7 +528,13 @@ function triggerLabel(trigger: ScheduledTrigger): string {
   return msg('daily');
 }
 const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
-  triggers.map((trigger) => `${trigger.time} · ${triggerLabel(trigger)}`).join('\n');
+  triggers
+    .map((trigger) =>
+      trigger.kind === 'hourly'
+        ? `${msg('hourly')} · ${triggerLabel(trigger)}`
+        : `${trigger.time} · ${triggerLabel(trigger)}`
+    )
+    .join('\n');
 </script>
 
 <template>
@@ -772,7 +794,9 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               class="trigger-item"
             >
               <div class="trigger-row">
-                <span class="trigger-clock">{{ trigger.time || '—' }}</span>
+                <span class="trigger-clock">{{
+                  trigger.kind === 'hourly' ? msg('hourly') : trigger.time || '—'
+                }}</span>
                 <span class="trigger-description">
                   {{
                     parsedTriggers[index]?.success
@@ -816,6 +840,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                     {{ msg('triggerEditor', { number: index + 1 }) }}
                   </legend>
                   <MarFormItem
+                    v-if="trigger.kind !== 'hourly'"
                     :label="msg('timeEntry', { number: index + 1 })"
                     class="trigger-time"
                   >
@@ -828,9 +853,14 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                   </MarFormItem>
                   <MarFormItem :label="msg('repeatLabel')">
                     <MarRadioGroup v-model="trigger.kind" :aria-label="msg('repeatLabel')">
-                      <MarRadio v-for="kind in repeatOptions" :key="kind" :value="kind">{{
-                        msg(kind)
-                      }}</MarRadio>
+                      <template v-for="kind in repeatOptions" :key="kind">
+                        <MarRadio
+                          v-if="kind !== 'hourly' || hourlySupported || trigger.kind === 'hourly'"
+                          :value="kind"
+                          :disabled="kind === 'hourly' && !hourlySupported"
+                          >{{ msg(kind) }}</MarRadio
+                        >
+                      </template>
                     </MarRadioGroup>
                   </MarFormItem>
                   <MarFormItem
@@ -845,6 +875,29 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                       :clearable="false"
                       @update:model-value="trigger.date = $event"
                     />
+                  </MarFormItem>
+                  <MarFormItem
+                    v-else-if="trigger.kind === 'hourly'"
+                    :label="msg('hourlyMinuteField')"
+                  >
+                    <MarSelect
+                      v-model="trigger.minutes"
+                      :placeholder="msg('chooseHourlyMinutes')"
+                      :disabled="!hourlySupported"
+                      multiple
+                      collapse-tags
+                      collapse-tags-tooltip
+                    >
+                      <MarOption
+                        v-for="minute in minuteOptions"
+                        :key="minute"
+                        :label="minuteLabel(minute)"
+                        :value="minute"
+                      />
+                    </MarSelect>
+                    <p v-if="!hourlySupported" class="schedule-timezone">
+                      {{ msg('hourlyUnavailable') }}
+                    </p>
                   </MarFormItem>
                   <MarFormItem v-else-if="trigger.kind === 'weekly'" :label="msg('weekdayField')">
                     <MarSelect

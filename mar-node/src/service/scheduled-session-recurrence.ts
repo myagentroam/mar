@@ -10,16 +10,21 @@ export interface ScheduledTime {
   readonly matchedTriggers: readonly number[];
 }
 
+function sortedIntegers(values: readonly number[]): number[] {
+  return [...new Set(values)].sort((a, b) => a - b);
+}
+
 /** Compare calendar rules without changing the persisted row order used by execution snapshots. */
 export function scheduledRulesKey(triggers: readonly ScheduledTrigger[]): string {
-  const canonicalDays = (days: readonly number[]) => [...new Set(days)].sort((a, b) => a - b);
   const ruleKeys = triggers.map((trigger) => {
+    if (trigger.kind === 'hourly')
+      return JSON.stringify([trigger.kind, sortedIntegers(trigger.minutes)]);
     const base = [trigger.kind, trigger.time];
     if (trigger.kind === 'once') return JSON.stringify([...base, trigger.date]);
     if (trigger.kind === 'weekly')
-      return JSON.stringify([...base, canonicalDays(trigger.weekdays)]);
+      return JSON.stringify([...base, sortedIntegers(trigger.weekdays)]);
     if (trigger.kind === 'monthly')
-      return JSON.stringify([...base, canonicalDays(trigger.monthDays)]);
+      return JSON.stringify([...base, sortedIntegers(trigger.monthDays)]);
     return JSON.stringify(base);
   });
   return JSON.stringify(ruleKeys.sort());
@@ -41,28 +46,36 @@ export function scheduledTimesAfter(
   const matches = new Map<number, number[]>();
 
   for (const [index, trigger] of triggers.entries()) {
-    const minute = Number(trigger.time.slice(0, 2)) * 60 + Number(trigger.time.slice(3));
+    const hourly = trigger.kind === 'hourly';
+    const minutes = hourly
+      ? sortedIntegers(trigger.minutes)
+      : [Number(trigger.time.slice(0, 2)) * 60 + Number(trigger.time.slice(3))];
     const dates =
       trigger.kind === 'once' ? [Date.parse(`${trigger.date}T00:00:00Z`)] : civilDays(firstDay);
     let count = 0;
     let horizon = firstDay + CALENDAR_SEARCH_DAYS * DAY;
-    for (const day of dates) {
+    days: for (const day of dates) {
       if (day < firstDay) continue;
       if (trigger.kind !== 'once') {
         if (day > horizon) break;
         if (!matchesCalendarDay(trigger, day)) continue;
       }
-      const localTime = day + minute * MINUTE;
-      if (localTime < localStart) continue;
-      const offsets = offsetsByDay.get(day) ?? dayOffsets(formatter, day);
-      offsetsByDay.set(day, offsets);
-      const dueAt = earliestInstant(formatter, offsets, localTime);
-      if (dueAt === undefined || dueAt <= after) continue;
-      const previous = matches.get(dueAt);
-      if (previous === undefined) matches.set(dueAt, [index]);
-      else previous.push(index);
-      if (++count === limit) break;
-      horizon = day + CALENDAR_SEARCH_DAYS * DAY;
+      for (const minute of hourly ? hourlyMinutes(minutes) : minutes) {
+        const localTime = day + minute * MINUTE;
+        if (localTime < localStart) continue;
+        let offsets = offsetsByDay.get(day);
+        if (offsets === undefined) {
+          offsets = dayOffsets(formatter, day);
+          offsetsByDay.set(day, offsets);
+        }
+        const dueAt = earliestInstant(formatter, offsets, localTime);
+        if (dueAt === undefined || dueAt <= after) continue;
+        const previous = matches.get(dueAt);
+        if (previous === undefined) matches.set(dueAt, [index]);
+        else previous.push(index);
+        if (++count === limit) break days;
+        horizon = day + CALENDAR_SEARCH_DAYS * DAY;
+      }
     }
   }
 
@@ -87,6 +100,12 @@ export function suggestedScheduleDate(
 function* civilDays(firstDay: number): Generator<number> {
   // Yield the calendar cursor, even when nothing matches, so the caller can enforce its horizon.
   for (let day = firstDay; ; day += DAY) yield day;
+}
+
+function* hourlyMinutes(minutes: readonly number[]): Generator<number> {
+  for (let hour = 0; hour < 24; hour++) {
+    for (const minute of minutes) yield hour * 60 + minute;
+  }
 }
 
 function matchesCalendarDay(

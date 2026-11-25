@@ -420,6 +420,7 @@ export const nodeCapabilitiesSchema = z
     remoteDesktop: remoteDesktopCapabilitySchema.optional(),
     sessionAside: sessionAsideCapabilitySchema.optional(),
     scheduledTasks: scheduledTasksCapabilitySchema.optional(),
+    scheduledHourly: z.literal(true).optional(),
     sessionGroups: z
       .object({ apiVersion: z.literal(1) })
       .strict()

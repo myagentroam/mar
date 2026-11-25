@@ -228,7 +228,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   );
   const nodes = [
     { id: 'node-1', name: 'Node A', connected: true, supported: true },
-    { id: 'node-2', name: 'Node B', connected: true, supported: true }
+    { id: 'node-2', name: 'Node B', connected: true, supported: true, hourlySupported: true }
   ];
   const scope = { nodeId: 'node-2', workspaceId: 'workspace-1' };
   const workspaces = nodes.map((node) => ({
@@ -248,6 +248,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   const weekly = { kind: 'weekly', time: '18:30', weekdays: [1, 5] };
   const monthly = { kind: 'monthly', time: '09:00', monthDays: [15, 31] };
   const once = { kind: 'once', time: '14:30', date: '2028-03-01' };
+  const hourly = { kind: 'hourly', minutes: [15, 45] };
   const triggers = [...daily, monthly];
   const promptPreview =
     '检查最近一次构建的结果，汇总失败的步骤、相关日志和下一步建议。若没有失败，请记录这次构建的状态和可复查的运行编号。'.repeat(
@@ -627,6 +628,11 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await page.keyboard.press('Escape');
   await expect(page.getByRole('option', { name: 'Node B', exact: true })).toBeHidden();
   await expect(editor).toBeVisible();
+  await select('执行节点', 'Node A');
+  await editor.getByRole('tab', { name: '执行时间', exact: true }).click();
+  await expect(editor.getByRole('radio', { name: '每小时', exact: true })).toHaveCount(0);
+  await expect(editor.getByRole('radio', { name: '每天', exact: true })).toBeEnabled();
+  await editor.getByRole('tab', { name: '任务设置', exact: true }).click();
   await select('执行节点', 'Node B');
   await select('工作区', 'project');
   await select('运行目标', '已有会话');
@@ -730,6 +736,24 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(active().getByRole('combobox', { name: '星期', exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath('scheduled-clock-weekly-mobile.png') });
   await page.setViewportSize(desktopViewport);
+  await addTime.click();
+  await active().getByRole('radio', { name: '每小时', exact: true }).check();
+  await expect(active().getByRole('textbox', { name: '时刻 6' })).toHaveCount(0);
+  const minutes = active().getByRole('combobox', { name: '每小时第几分钟', exact: true });
+  await minutes.click();
+  const minuteOption = (name: string) => page.getByRole('option', { name, exact: true });
+  await expect(minuteOption('00')).toHaveAttribute('aria-selected', 'true');
+  await minuteOption('00').click();
+  await page.keyboard.press('Escape');
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor.getByText('至少选择一个分钟。', { exact: true })).toBeVisible();
+  expect(writes).toHaveLength(0);
+  await minutes.click();
+  await minuteOption('15').click();
+  await minuteOption('45').click();
+  await page.keyboard.press('Escape');
+  await editor.getByRole('button', { name: '收起执行时间 6' }).click();
+  await expect(editor.getByText('第 15, 45 分钟', { exact: true })).toBeVisible();
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).not.toBeVisible();
   expect(writes[0]?.csrf).toBeTruthy();
@@ -739,7 +763,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
     objective: 'Review the build',
     graceMinutes: 0,
     target: { kind: 'existing', sessionId: targetSession.externalSessionId },
-    triggers: [...daily, weekly, monthly, once]
+    triggers: [...daily, weekly, monthly, once, hourly]
   });
   expect(writes[0]?.body).not.toHaveProperty('timezone');
 
