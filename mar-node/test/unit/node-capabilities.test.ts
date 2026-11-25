@@ -3,7 +3,7 @@ vi.mock('ws', async (importOriginal) => {
   const { mockedWebSocket } = await import('./support/control-socket.js');
   return { ...actual, default: mockedWebSocket(actual.default) };
 });
-import { connectTestSocket } from './support/control-socket.js';
+import { connectTestSocket, disconnectTestSocket } from './support/control-socket.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { NodeCapabilities } from '../../../packages/protocol/src/index.js';
 import {
@@ -127,18 +127,23 @@ describe('Node capability version reporting', () => {
         browserService: { shutdown(): Promise<void>; disconnect(): Promise<void> };
       };
       browserOwner.browserService = { shutdown: async () => {}, disconnect: async () => {} };
-      connectTestSocket(connector, {
+      const socket = {
         readyState: 1,
         OPEN: 1,
         send(raw: string) {
           sent.push(JSON.parse(raw) as { type: string; payload: unknown });
         },
         close() {}
-      });
+      };
+      connectTestSocket(connector, socket);
       expect(sent).toHaveLength(1);
       expect(sent[0]).toMatchObject({
         type: 'capabilities',
-        payload: { nodeAppVersion: initial.nodeAppVersion, codex: initial.codex }
+        payload: {
+          nodeAppVersion: initial.nodeAppVersion,
+          codex: initial.codex,
+          scheduledTasks: { apiVersion: 2 }
+        }
       });
       sent.length = 0;
       (connector as unknown as { startCapabilityRefresh: () => void }).startCapabilityRefresh();
@@ -152,11 +157,25 @@ describe('Node capability version reporting', () => {
         expect(sent.filter((message) => message.type === 'capabilities')).toHaveLength(1)
       );
       expect(sent.find((message) => message.type === 'capabilities')?.payload).toMatchObject({
-        browser: { apiVersion: 1, nodeGeneration: browserOwner.nodeGeneration, ice: false }
+        browser: { apiVersion: 1, nodeGeneration: browserOwner.nodeGeneration, ice: false },
+        scheduledTasks: { apiVersion: 2 }
       });
 
       await vi.advanceTimersByTimeAsync(60_000);
       expect(sent.filter((message) => message.type === 'capabilities')).toHaveLength(1);
+
+      disconnectTestSocket(connector);
+      sent.length = 0;
+      connectTestSocket(connector, socket);
+      expect(sent).toEqual([
+        expect.objectContaining({
+          type: 'capabilities',
+          payload: expect.objectContaining({
+            scheduledTasks: { apiVersion: 2 },
+            codex: current.codex
+          })
+        })
+      ]);
 
       await connector.stop();
       current = { ...current, claudeCode: { available: true, version: 'claude 1.0.0' } };
@@ -211,6 +230,7 @@ describe('Node capability version reporting', () => {
         expect(sent).toHaveLength(1);
         expect(sent[0]?.payload).toEqual({
           ...initial,
+          scheduledTasks: { apiVersion: 2 },
           metadata: {
             ...initial.metadata,
             ...(supervised === '1' ? { supervisedUpgrade: true } : {})

@@ -4,6 +4,7 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ScheduledExecutionService } from '../../src/application/scheduled-execution-service.js';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { MarAgentMcpClientPool } from '../../src/runner/mar-agent/mcp-client-pool.js';
@@ -14,7 +15,10 @@ import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { NodeRunEventBridge } from '../../src/service/node-run-event-bridge.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import type { RunnerInteractionService } from '../../src/service/runner-interaction-service.js';
+import { dailyTriggers, hourlyTriggers } from './scheduled-task-fixtures.js';
 import type { ScheduledSessionCoordinator } from '../../src/service/scheduled-session-coordinator.js';
+import type { SessionMessageService } from '../../src/session/session-message-service.js';
+import type { GitOperationService } from '../../src/service/git-operation-service.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -29,6 +33,239 @@ afterEach(async () => {
 });
 
 describe('scheduled Node session flow', () => {
+  it.each(['identity-timeout', 'receipt-failed'] as const)(
+    'leaves the admitted bootstrap lifecycle to its owner (%s)',
+    async (outcome) => {
+      const begin = vi.fn();
+      const submitScheduled = vi.fn(
+        async (input: Parameters<SessionMessageService['submitScheduled']>[0]) => {
+          expect(begin).not.toHaveBeenCalled();
+          input.begin();
+          if (outcome === 'receipt-failed') throw new Error('RECEIPT_FAILED');
+          return { run: { id: 'accepted-run' } };
+        }
+      );
+      const execute = vi.fn(
+        async (_operation: string, data: unknown, next: (data: unknown) => Promise<unknown>) =>
+          next(data)
+      );
+      const service = new ScheduledExecutionService({
+        runtime: {} as never,
+        projection: {} as never,
+        authorization: {} as never,
+        runners: {} as never,
+        git: { execute },
+        messages: { submitScheduled },
+        lifecycle: {} as never
+      });
+      const release = vi.fn();
+      const receipt = service.submit(
+        {
+          id: 'task-1',
+          sessionId: null,
+          newSession: { model: { kind: 'default' }, runner: 'codex' },
+          workspaceId: 'workspace-1',
+          runner: 'codex',
+          ownerUserId: 7,
+          notifyOnTerminal: true,
+          graceMinutes: 60,
+          name: 'Check',
+          objective: 'Send once',
+          triggers: hourlyTriggers,
+          timezone: 'UTC',
+          enabled: true,
+          revision: 1,
+          nextRunAt: 60_000,
+          createdAt: 0,
+          updatedAt: 0
+        },
+        'occurrence-1',
+        {
+          sessionId: 'bootstrap',
+          release,
+          awaitIdentity: async () => {
+            expect(begin).toHaveBeenCalledOnce();
+            throw new Error('SESSION_NATIVE_ID_TIMEOUT');
+          },
+          secretEnvironment: {},
+          executionContext: { runner: 'codex' }
+        },
+        begin
+      );
+      if (outcome === 'identity-timeout')
+        await expect(receipt).resolves.toEqual({ runId: 'accepted-run' });
+      else await expect(receipt).rejects.toThrow('RECEIPT_FAILED');
+      expect(submitScheduled).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          sessionId: 'bootstrap',
+          occurrenceId: 'occurrence-1',
+          objective: 'Send once'
+        })
+      );
+      expect(release).not.toHaveBeenCalled();
+    }
+  );
+
+  it('reads schedule time zones before an execution time is complete without relaxing Workspace scope', async () => {
+    const database = new NodeDatabase(':memory:', 'schedule-preview');
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/preview',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const other = database.saveWorkspace({
+        path: '/other-preview',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const store = new ScheduledSessionStore(database.raw);
+      const task = store.create({
+        workspaceId: workspace.id,
+        runner: 'codex',
+        ownerUserId: 7,
+        sessionId: null,
+        newSession: { runner: 'codex', model: { kind: 'fixed', modelId: 'test-model' } },
+        name: 'Preview',
+        objective: 'Preview only',
+        timezone: 'Pacific/Auckland',
+        enabled: false,
+        triggers: dailyTriggers('10:00')
+      });
+      const service = new SessionScheduleService({
+        database: () => database,
+        runtime: {} as never,
+        projection: {} as never,
+        emitSession: vi.fn()
+      });
+      const preview = service.operations()['schedule.preview']!;
+      const scope = { workspaceId: workspace.id, __requestUserId: 7 };
+      expect(await preview(scope)).toEqual({
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        times: []
+      });
+      expect(await preview({ ...scope, taskId: task.id })).toEqual({
+        timezone: 'Pacific/Auckland',
+        times: []
+      });
+      expect(() => preview({ ...scope, workspaceId: other.id, taskId: task.id })).toThrow(
+        'SCHEDULE_NOT_FOUND'
+      );
+      expect(() => preview({ ...scope, triggers: [] })).toThrow('SCHEDULE_INVALID');
+      expect(await preview({ ...scope, taskId: task.id, suggestTime: '04:30' })).toEqual({
+        timezone: 'Pacific/Auckland',
+        times: [],
+        suggestedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u)
+      });
+      expect(() => preview({ ...scope, suggestTime: '24:00' })).toThrow('SCHEDULE_INVALID');
+    } finally {
+      database.close();
+    }
+  });
+
+  it('returns only the bounded, Workspace-scoped system index projection', async () => {
+    const database = new NodeDatabase(':memory:', 'schedule-index');
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/schedule-index',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const other = database.saveWorkspace({
+        path: '/other-index',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'thread',
+        workspaceId: workspace.id
+      });
+      const service = new SessionScheduleService({
+        database: () => database,
+        runtime: {} as never,
+        projection: {} as never,
+        emitSession: vi.fn()
+      });
+      const index = service.operations()['schedule.index.list']!;
+      const insert = database.raw.prepare(`INSERT INTO scheduled_session_tasks
+        (id,workspace_id,runner,owner_user_id,name,objective,triggers,timezone,enabled,revision,created_at,updated_at,session_id,new_session)
+        VALUES (?,?,'codex',7,'Task','Do not index',?,'UTC',0,1,0,0,?,?)`);
+      const triggers = JSON.stringify(hourlyTriggers);
+      insert.run('050-other', other.id, triggers, null, null);
+      for (let i = 0; i <= 100; i++)
+        insert.run(
+          String(i).padStart(3, '0'),
+          workspace.id,
+          triggers,
+          i === 98 ? 'thread' : null,
+          i === 99
+            ? JSON.stringify({
+                runner: 'codex',
+                model: { kind: 'fixed', modelId: 'not indexed' }
+              })
+            : null
+        );
+      const scope = {
+        workspaceId: workspace.id,
+        __requestUserId: 0,
+        __workspaceWatchSessionHash: 'scheduled-task-index'
+      };
+      const first = (await index(scope)) as {
+        tasks: readonly Record<string, unknown>[];
+        nextCursor: string | null;
+      };
+      expect(first.tasks.map((task) => task.id)).toEqual(
+        Array.from({ length: 100 }, (_, i) => String(i).padStart(3, '0'))
+      );
+      expect(first.nextCursor).toBe('099');
+      expect(first.tasks.slice(-2)).toEqual([
+        {
+          id: '098',
+          workspaceId: workspace.id,
+          name: 'Task',
+          ownerUserId: 7,
+          runner: 'codex',
+          sessionId: 'thread',
+          targetKind: 'existing',
+          enabled: false,
+          nextRunAt: null
+        },
+        {
+          id: '099',
+          workspaceId: workspace.id,
+          name: 'Task',
+          ownerUserId: 7,
+          runner: 'codex',
+          sessionId: null,
+          targetKind: 'newSession',
+          enabled: false,
+          nextRunAt: null
+        }
+      ]);
+      expect(await index({ ...scope, afterTaskId: first.nextCursor })).toEqual({
+        tasks: [
+          {
+            id: '100',
+            workspaceId: workspace.id,
+            name: 'Task',
+            ownerUserId: 7,
+            runner: 'codex',
+            sessionId: null,
+            targetKind: 'unbound',
+            enabled: false,
+            nextRunAt: null
+          }
+        ],
+        nextCursor: null
+      });
+      expect(() => index({ ...scope, workspaceId: 'unknown' })).toThrow('WORKSPACE_NOT_FOUND');
+      expect(() => index({ ...scope, __requestUserId: 7 })).toThrow('USER_AUTHORIZATION_REQUIRED');
+    } finally {
+      database.close();
+    }
+  });
+
   it.each([-1000, 1000])(
     'preserves the due occurrence when a full form is saved %s ms from its due time',
     async (offset) => {
@@ -60,7 +297,8 @@ describe('scheduled Node session flow', () => {
           runner: 'codex',
           ownerUserId: 1,
           objective: 'Original',
-          cron: '0 * * * *',
+          name: 'Hourly check',
+          triggers: hourlyTriggers,
           timezone: 'UTC'
         });
         const dueAt = task.nextRunAt!;
@@ -69,36 +307,49 @@ describe('scheduled Node session flow', () => {
           database: () => database,
           runtime: { getAgentSession: () => session } as never,
           projection: {} as never,
-          present: (value) => value,
-          emitSession: vi.fn(),
-          awaitNativeSessionId: async () => session.id
+          emitSession: vi.fn()
         });
-        const save = service.operations()['session.schedule.save']!;
-        const scope = { sessionId: session.id, workspaceId: workspace.id, __requestUserId: 2 };
+        const save = service.operations()['schedule.task.update']!;
+        const scope = {
+          sessionId: session.id,
+          taskId: task.id,
+          workspaceId: workspace.id,
+          __requestUserId: 1
+        };
+        await expect(
+          save({
+            ...scope,
+            __requestUserId: 2,
+            expectedRevision: 1,
+            patch: { objective: 'Not mine' }
+          })
+        ).rejects.toThrow('SCHEDULE_OWNER_REQUIRED');
         await save({
           ...scope,
           expectedRevision: task.revision,
-          objective: 'Updated',
-          cron: task.cron,
-          enabled: true,
-          notifyOnTerminal: true
+          patch: {
+            objective: 'Updated',
+            triggers: task.triggers,
+            enabled: true,
+            notifyOnTerminal: true
+          }
         });
-        expect(store.get(session.id)).toMatchObject({
+        expect(store.getById(task.id)).toMatchObject({
           nextRunAt: dueAt,
           revision: 2,
           objective: 'Updated',
-          ownerUserId: 2,
+          ownerUserId: 1,
           notifyOnTerminal: true
         });
-        await save({ ...scope, expectedRevision: 2, objective: 'Partial edit' });
-        expect(store.get(session.id)).toMatchObject({ nextRunAt: dueAt, revision: 3 });
+        await save({ ...scope, expectedRevision: 2, patch: { objective: 'Partial edit' } });
+        expect(store.getById(task.id)).toMatchObject({ nextRunAt: dueAt, revision: 3 });
         vi.setSystemTime(dueAt + 1000);
         expect(store.listDue(Date.now()).map((entry) => entry.sessionId)).toEqual([session.id]);
-        const occurrenceId = store.claim(session.id, dueAt, 3);
+        const occurrenceId = store.claim(task.id, dueAt, 3);
         expect(occurrenceId).toBe(`${task.id}:${dueAt}`);
-        expect(store.claim(session.id, dueAt, 3)).toBeUndefined();
+        expect(store.claim(task.id, dueAt, 3)).toBeUndefined();
         expect(store.recent(task.id)).toHaveLength(1);
-        expect(store.get(session.id)?.nextRunAt).toBe(dueAt + 3_600_000);
+        expect(store.getById(task.id)?.nextRunAt).toBe(dueAt + 3_600_000);
       } finally {
         database.close();
       }
@@ -178,6 +429,7 @@ describe('scheduled Node session flow', () => {
     const connector = new NodeConnector({ reconnect: false, database });
     const internals = connector as unknown as {
       runtime: NodeRuntimeState;
+      controlChannel: { connected(): boolean };
       scheduledRunAuthorization: {
         authorize(input: unknown): Promise<unknown>;
         close(): void;
@@ -199,16 +451,17 @@ describe('scheduled Node session flow', () => {
         modelId: 'claude-sonnet',
         access: 'full'
       });
-      await internals.executeNodeOperation('session.schedule.save', {
-        sessionId: session.id,
+      const created = (await internals.executeNodeOperation('schedule.task.create', {
+        target: { kind: 'existing', sessionId: session.id },
         workspaceId: workspace.id,
         __requestUserId: 7,
         objective: 'Inspect the repository',
-        cron: '0 * * * *',
+        name: 'Hourly check',
+        triggers: hourlyTriggers,
         enabled: true
-      });
+      })) as { task: { id: string } };
       const store = new ScheduledSessionStore(database.raw);
-      const task = store.get(session.id)!;
+      const task = store.getById(created.task.id)!;
       const authorize = vi
         .spyOn(internals.scheduledRunAuthorization, 'authorize')
         .mockImplementation(async () => {
@@ -222,6 +475,7 @@ describe('scheduled Node session flow', () => {
         closedOccurrences.push(...store.recent(task.id));
         close();
       });
+      vi.spyOn(internals.controlChannel, 'connected').mockReturnValue(true);
       internals.scheduledSessions.start();
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
       expect(authorize).toHaveBeenCalledOnce();
@@ -292,117 +546,111 @@ describe('scheduled Node session flow', () => {
         runner: 'codex',
         title: 'New Session'
       };
-      const awaitNativeSessionId = vi.fn(async () => {
-        pending.id = 'promoted';
-        pending.externalSessionId = 'promoted';
-        database.saveNativeSessionMetadata({
-          runner: 'codex',
-          externalSessionId: 'promoted',
-          workspaceId: workspace.id,
-          customTitle: pending.title
-        });
-        return 'promoted';
-      });
       const service = new SessionScheduleService({
         database: () => database,
         runtime: {
           getAgentSession: (id: string) =>
-            id === 'pending' || id === pending.externalSessionId
-              ? pending
-              : sessions.find((session) => session.id === id),
+            id === 'pending' ? pending : sessions.find((session) => session.id === id),
           updateSessionMetadata: vi.fn()
         } as never,
-        projection: { rename: async () => undefined } as never,
-        present: (session) => session,
+        projection: {
+          rename: async () => undefined,
+          createMetadataProjection: async () => undefined
+        } as never,
         emitSession: vi.fn(),
-        awaitNativeSessionId,
         proposed
       });
       const handlers = service.operations();
-      const first = { sessionId: 'first', workspaceId: workspace.id, __requestUserId: 7 };
-      const create = (scope: Record<string, unknown>) =>
-        handlers['session.schedule.agent.save']!({
+      const scope = { workspaceId: workspace.id, __requestUserId: 7 };
+      const create = (sessionId: string, workspaceId = workspace.id) =>
+        handlers['schedule.task.create']!({
           ...scope,
-          mode: 'create',
+          workspaceId,
+          target: { kind: 'existing', sessionId },
+          name: 'Daily check',
           objective: 'Check tests',
-          cron: '0 9 * * *'
-        });
-      for (const session of sessions)
-        await create({ ...first, sessionId: session.id, workspaceId: session.workspaceId });
-      await expect(create(first)).rejects.toThrow('SCHEDULE_ALREADY_EXISTS');
-      const page = (await handlers['session.schedule.list']!({
-        workspaceId: workspace.id,
-        limit: 1
-      })) as { tasks: Array<{ sessionId: string; sessionTitle: string }>; nextCursor: string };
-      const next = (await handlers['session.schedule.list']!({
-        workspaceId: workspace.id,
-        limit: 1,
-        cursor: page.nextCursor
-      })) as typeof page;
+          triggers: dailyTriggers('09:00')
+        }) as Promise<{ task: { id: string } }>;
+      const first = (await create('first')).task;
+      const second = (await create('first')).task;
+      await create('second');
+      await create('foreign', foreign.id);
+      expect(first.id).not.toBe(second.id);
+      const list = handlers['schedule.task.list']!;
+      const page = (await list({ ...scope, limit: 1 })) as {
+        tasks: Array<{ id: string; sessionId: string; sessionTitle: string }>;
+        nextCursor: string;
+      };
+      const next = (await list({ ...scope, limit: 2, cursor: page.nextCursor })) as typeof page;
       expect(page.tasks).toHaveLength(1);
-      expect(next.tasks).toHaveLength(1);
-      expect(new Set([...page.tasks, ...next.tasks].map((task) => task.sessionId))).toEqual(
-        new Set(['first', 'second'])
-      );
+      expect(page.tasks[0]).toMatchObject({
+        targetKind: 'existing',
+        objectivePreview: 'Check tests'
+      });
+      for (const field of ['objective', 'triggers', 'newSession', 'revision'])
+        expect(page.tasks[0]).not.toHaveProperty(field);
+      expect(next.tasks).toHaveLength(2);
+      expect(new Set([...page.tasks, ...next.tasks].map((task) => task.id)).size).toBe(3);
       expect([...page.tasks, ...next.tasks].map((task) => task.sessionTitle).sort()).toEqual([
+        'fixer#1',
         'fixer#1',
         'fixer#2'
       ]);
       await expect(
-        Promise.resolve().then(() =>
-          handlers['session.schedule.list']!({ workspaceId: foreign.id, cursor: page.nextCursor })
-        )
+        Promise.resolve().then(() => list({ workspaceId: foreign.id, cursor: page.nextCursor }))
       ).rejects.toThrow('SCHEDULE_INVALID');
-      const updated = await handlers['session.schedule.agent.save']!({
-        ...first,
-        mode: 'update',
-        expectedRevision: 1,
-        objective: 'Updated'
+      expect(await list({ ...scope, sessionId: 'first', offset: 0, limit: 0 })).toEqual({
+        total: 2,
+        tasks: []
       });
-      expect(updated).toMatchObject({
-        task: { revision: 2, ownerUserId: 7, objective: 'Updated' }
+      expect(await list({ ...scope, offset: 1, limit: 2 })).toEqual({
+        total: 3,
+        tasks: next.tasks
       });
       await expect(
-        handlers['session.schedule.agent.save']!({
-          ...first,
-          mode: 'update',
-          expectedRevision: 1,
-          objective: 'Stale'
-        })
+        Promise.resolve().then(() => list({ ...scope, offset: 0, cursor: page.nextCursor }))
+      ).rejects.toThrow('SCHEDULE_INVALID');
+      const update = handlers['schedule.task.propose']!;
+      const taskScope = { ...scope, taskId: first.id };
+      expect(
+        await update({ ...taskScope, expectedRevision: 1, patch: { objective: 'Updated' } })
+      ).toMatchObject({ task: { revision: 2, ownerUserId: 7, objective: 'Updated' } });
+      await expect(
+        update({ ...taskScope, expectedRevision: 1, patch: { objective: 'Stale' } })
       ).rejects.toThrow('SCHEDULE_REVISION_CONFLICT');
-      const proposal = await handlers['session.schedule.agent.save']!({
-        ...first,
-        __requestUserId: 8,
-        mode: 'update',
-        expectedRevision: 2,
-        objective: 'Proposed'
-      });
-      expect(proposal).toMatchObject({ status: 'PENDING', proposalId: expect.any(String) });
-      expect(proposed).toHaveBeenCalledWith('first', expect.any(String));
-      expect(await handlers['session.schedule.get']!(first)).toMatchObject({
-        task: { revision: 2, ownerUserId: 7, objective: 'Updated' }
+      expect(
+        await update({
+          ...taskScope,
+          __requestUserId: 8,
+          expectedRevision: 2,
+          patch: { objective: 'Proposed' }
+        })
+      ).toMatchObject({ status: 'PENDING', proposalId: expect.any(String) });
+      expect(proposed).toHaveBeenCalledWith(first.id, expect.any(String));
+      expect(
+        await service.invokeMcp(
+          { actorUserId: 7, workspaceId: workspace.id, sessionId: 'first' },
+          'get_scheduled_task',
+          { taskId: first.id }
+        )
+      ).toMatchObject({ revision: 2, objective: 'Updated' });
+      expect(await handlers['schedule.task.get']!({ ...scope, taskId: second.id })).toMatchObject({
+        task: { revision: 1, ownerUserId: 7, objective: 'Check tests' },
+        proposals: []
       });
       await expect(
-        handlers['session.schedule.agent.save']!({
-          ...first,
+        update({
+          ...taskScope,
           workspaceId: foreign.id,
-          mode: 'update',
           expectedRevision: 2,
-          objective: 'Wrong scope'
+          patch: { objective: 'Wrong scope' }
         })
-      ).rejects.toThrow('SESSION_NOT_FOUND');
+      ).rejects.toThrow('SCHEDULE_NOT_FOUND');
       expect(
         database.raw.prepare('SELECT COUNT(*) AS n FROM scheduled_session_proposals').get()
       ).toMatchObject({ n: 1 });
-      await expect(
-        create({ ...first, sessionId: 'pending', workspaceId: foreign.id })
-      ).rejects.toThrow('SESSION_NOT_FOUND');
-      expect(awaitNativeSessionId).not.toHaveBeenCalled();
-      await expect(create({ ...first, sessionId: 'pending' })).resolves.toMatchObject({
-        task: { sessionId: 'promoted', ownerUserId: 7, revision: 1 }
-      });
-      expect(awaitNativeSessionId).toHaveBeenCalledWith('pending');
-      expect(new ScheduledSessionStore(database.raw).get('pending')).toBeUndefined();
+      await expect(create('pending', foreign.id)).rejects.toThrow('SESSION_NOT_FOUND');
+      await expect(create('pending')).rejects.toThrow('SESSION_NOT_FOUND');
     } finally {
       database.close();
     }
@@ -433,18 +681,11 @@ describe('scheduled Node session flow', () => {
           getAgentSession: (id: string) => (id === session.id ? session : undefined)
         } as never,
         projection: { createMetadataProjection: async () => undefined } as never,
-        present: vi.fn(),
-        emitSession: vi.fn(),
-        awaitNativeSessionId: vi.fn()
+        emitSession: vi.fn()
       });
-      const get = service.operations()['session.schedule.get']!;
-      const input = { sessionId: session.id, workspaceId: workspace.id };
-      expect(await get(input)).toMatchObject({
-        task: null,
-        occurrences: [],
-        occurrenceTotal: 0,
-        occurrencePage: 1
-      });
+      const handlers = service.operations();
+      const get = async (input: Record<string, unknown>) =>
+        handlers['schedule.occurrence.list']!(input);
       const store = new ScheduledSessionStore(database.raw, () => now);
       const task = store.create({
         sessionId: session.id,
@@ -452,23 +693,197 @@ describe('scheduled Node session flow', () => {
         runner: 'codex',
         ownerUserId: 1,
         objective: 'Check',
-        cron: '0 * * * *',
+        name: 'Hourly check',
+        triggers: hourlyTriggers,
         timezone: 'UTC'
       });
+      const input = {
+        taskId: task.id,
+        sessionId: session.id,
+        workspaceId: workspace.id,
+        occurrencePage: 1
+      };
+      expect(await get(input)).toMatchObject({
+        occurrences: [],
+        occurrenceTotal: 0,
+        occurrencePage: 1
+      });
       for (let index = 0; index < 12; index++) {
-        now = store.get(task.sessionId)!.nextRunAt!;
-        store.finish(store.claim(task.sessionId, now, task.revision)!, 'SUCCEEDED');
+        now = store.getById(task.id)!.nextRunAt!;
+        store.finish(store.claim(task.id, now, task.revision)!, 'SUCCEEDED');
       }
       const first = (await get(input)) as { occurrences: unknown[] };
       expect(first.occurrences).toHaveLength(10);
+      expect(first.occurrences[0]).toMatchObject({
+        taskId: task.id,
+        name: 'Hourly check',
+        state: 'SUCCEEDED'
+      });
+      expect(JSON.stringify(first.occurrences)).not.toContain('objective');
+      const browserScope = {
+        workspaceId: workspace.id,
+        sessionId: session.id,
+        offset: 10,
+        limit: 10
+      };
+      const browserTail = (await get(browserScope)) as { total: number; items: unknown[] };
+      expect(browserTail.total).toBe(12);
+      expect(browserTail.items).toHaveLength(2);
+      expect(await get({ ...browserScope, offset: 12 })).toEqual({ total: 12, items: [] });
+      expect(await get({ ...browserScope, sessionId: 'another-session' })).toEqual({
+        total: 0,
+        items: []
+      });
+      await expect(get({ ...browserScope, offset: -1 })).rejects.toThrow('SCHEDULE_INVALID');
       const last = (await get({ ...input, occurrencePage: 3 })) as { occurrences: unknown[] };
       expect(last).toMatchObject({ occurrenceTotal: 12, occurrencePage: 2 });
       expect(last.occurrences).toHaveLength(2);
       for (const page of [0, -1, 1.5, '2', null, Number.MAX_SAFE_INTEGER + 1])
         await expect(get({ ...input, occurrencePage: page })).rejects.toThrow('SCHEDULE_INVALID');
+      await expect(get({ ...input, sessionId: 'another-session' })).resolves.toMatchObject({
+        occurrences: [],
+        occurrenceTotal: 0
+      });
       await expect(get({ ...input, workspaceId: 'another-workspace' })).rejects.toThrow(
-        'SESSION_NOT_FOUND'
+        'WORKSPACE_NOT_FOUND'
       );
+    } finally {
+      database.close();
+    }
+  });
+
+  it('filters history by the trigger-time Session and keeps the marctl views minimal after rebind', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
+    const database = new NodeDatabase(':memory:', 'schedule-scoped-history');
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/scoped-history',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const runtime = new Map(
+        ['old-target', 'new-target'].map((id) => [
+          id,
+          {
+            id,
+            externalSessionId: id,
+            workspaceId: workspace.id,
+            runner: 'codex' as const
+          }
+        ])
+      );
+      for (const id of runtime.keys())
+        database.saveNativeSessionMetadata({
+          runner: 'codex',
+          externalSessionId: id,
+          workspaceId: workspace.id,
+          pinned: true
+        });
+      const service = new SessionScheduleService({
+        database: () => database,
+        runtime: { getAgentSession: (id: string) => runtime.get(id) } as never,
+        projection: {} as never,
+        emitSession: vi.fn()
+      });
+      const ops = service.operations();
+      const scope = { workspaceId: workspace.id, __requestUserId: 7 };
+      const created = (await ops['schedule.task.create']!({
+        ...scope,
+        view: 'marctl',
+        target: { kind: 'existing', sessionId: 'old-target' },
+        name: 'Keep time',
+        objective: 'Original private objective',
+        triggers: hourlyTriggers
+      })) as { taskId: string; nextRunAt: number };
+      expect(created).toEqual({
+        view: 'marctl',
+        taskId: expect.any(String),
+        revision: 1,
+        nextRunAt: expect.any(Number),
+        timezone: expect.any(String)
+      });
+      const taskId = created.taskId;
+      const store = new ScheduledSessionStore(database.raw);
+      vi.setSystemTime(created.nextRunAt);
+      const id = store.claim(taskId, created.nextRunAt, 1)!;
+      store.beginSubmission(id, 'old-target');
+      store.finish(id, 'SUCCEEDED', undefined, 'old-run');
+      await ops['schedule.task.update']!({
+        ...scope,
+        taskId,
+        expectedRevision: 1,
+        patch: {
+          target: { kind: 'existing', sessionId: 'new-target' },
+          objective: 'Current private objective'
+        }
+      });
+      const oldHistory = await ops['schedule.occurrence.list']!({
+        ...scope,
+        taskId,
+        sessionId: 'old-target'
+      });
+      expect(oldHistory).toMatchObject({
+        items: [{ occurrenceId: id, run: { runId: 'old-run', sessionId: 'old-target' } }]
+      });
+      expect(
+        await ops['schedule.occurrence.list']!({ ...scope, taskId, sessionId: 'new-target' })
+      ).toEqual({ total: 0, items: [] });
+      await expect(
+        Promise.resolve().then(() =>
+          ops['schedule.occurrence.get']!({ ...scope, occurrenceId: id, sessionId: 'new-target' })
+        )
+      ).rejects.toThrow('SCHEDULE_NOT_FOUND');
+      expect(
+        await ops['schedule.task.list']!({ ...scope, view: 'marctl', sessionId: 'old-target' })
+      ).toEqual({ view: 'marctl', tasks: [], nextCursor: null });
+      expect(
+        await ops['schedule.task.list']!({ ...scope, view: 'marctl', sessionId: 'new-target' })
+      ).toEqual({
+        view: 'marctl',
+        tasks: [
+          {
+            taskId,
+            name: 'Keep time',
+            revision: 2,
+            nextRunAt: expect.any(Number),
+            state: 'SCHEDULED'
+          }
+        ],
+        nextCursor: null
+      });
+      expect(await ops['schedule.task.get']!({ ...scope, view: 'marctl', taskId })).toEqual({
+        view: 'marctl',
+        task: {
+          taskId,
+          name: 'Keep time',
+          revision: 2,
+          nextRunAt: expect.any(Number),
+          state: 'SCHEDULED',
+          objective: 'Current private objective',
+          triggers: hourlyTriggers,
+          timezone: expect.any(String)
+        }
+      });
+      expect(await ops['schedule.occurrence.list']!({ ...scope, taskId, view: 'marctl' })).toEqual({
+        view: 'marctl',
+        occurrencePage: 1,
+        occurrenceTotal: 1,
+        occurrences: [{ dueAt: created.nextRunAt, state: 'SUCCEEDED', runId: 'old-run' }]
+      });
+      const proposal = await ops['schedule.task.propose']!({
+        ...scope,
+        __requestUserId: 11,
+        view: 'marctl',
+        taskId,
+        expectedRevision: 2,
+        patch: { objective: 'Proposed' }
+      });
+      expect(proposal).toEqual({ view: 'marctl', proposalId: expect.any(String), baseRevision: 2 });
+      expect(store.getById(taskId)).toMatchObject({ ownerUserId: 7, revision: 2 });
+      expect(store.historyDetail(workspace.id, id)?.snapshot).toMatchObject({
+        objective: 'Original private objective'
+      });
     } finally {
       database.close();
     }
@@ -493,18 +908,14 @@ describe('scheduled Node session flow', () => {
       }
     });
     const internals = connector as unknown as {
-      runtime: { createAgentSession(input: Record<string, unknown>): { id: string } };
-      sessionIdentityService: { promote(sessionId: string, nativeSessionId: string): void };
-      sessionScheduleService: {
-        createFromMcp(input: {
-          sessionId: string;
-          workspaceId: string;
-          actorUserId: number;
-          objective: string;
-          cron: string;
-        }): Promise<{ sessionId: string; ownerUserId: number }>;
+      runtime: NodeRuntimeState;
+      sessionIdentityService: {
+        wait(sessionId: string): Promise<string>;
+        promote(sessionId: string, nativeSessionId: string): void;
       };
+      scheduleMcpBridge: ScheduleMcpBridge;
     };
+    let pool: MarAgentMcpClientPool | undefined;
     try {
       const session = internals.runtime.createAgentSession({
         workspaceId: workspace.id,
@@ -514,23 +925,319 @@ describe('scheduled Node session flow', () => {
         effort: 'medium',
         access: 'full-access'
       });
-      const creating = internals.sessionScheduleService.createFromMcp({
+      const run = internals.runtime.createMessageRun({
         sessionId: session.id,
+        clientMessageId: 'bootstrap',
+        content: 'Configure a schedule',
+        initiatedByUserId: 7
+      }).run;
+      const execution = internals.runtime.createExecution(run.id);
+      const descriptor = await internals.scheduleMcpBridge.prepare({
+        sessionId: session.id,
+        executionId: execution.id,
         workspaceId: workspace.id,
-        actorUserId: 7,
+        actorUserId: 7
+      });
+      pool = await MarAgentMcpClientPool.connect([descriptor], process.cwd());
+      const wait = vi.spyOn(internals.sessionIdentityService, 'wait');
+      const creating = pool.call('mcp__mar_schedule__create_scheduled_task', {
+        name: 'Review',
         objective: 'Review every day',
-        cron: '0 9 * * *'
+        triggers: dailyTriggers('09:00')
       });
+      await vi.waitFor(() => expect(wait).toHaveBeenCalledWith(session.id));
       internals.sessionIdentityService.promote(session.id, 'native-new-session');
-      expect(await creating).toMatchObject({
-        sessionId: 'native-new-session',
-        ownerUserId: 7
-      });
-      expect(new ScheduledSessionStore(database.raw).get('native-new-session')).toBeDefined();
+      await expect(creating).resolves.toMatchObject({ content: expect.stringContaining('taskId') });
+      const store = new ScheduledSessionStore(database.raw);
+      expect(store.list(workspace.id, undefined, 10, 'native-new-session').tasks).toEqual([
+        expect.objectContaining({ ownerUserId: 7, objective: 'Review every day' })
+      ]);
     } finally {
+      await pool?.close();
       await connector.stop();
     }
   });
+
+  it.each([
+    'denied',
+    'changed',
+    'paused-during-preparation',
+    'edited-during-preparation',
+    'accepted'
+  ] as const)(
+    'authorizes and launches a new-session target only for the still-current occurrence (%s)',
+    async (outcome) => {
+      const directory = await realpath(await mkdtemp(join(tmpdir(), 'schedule-bootstrap-')));
+      temporaryDirectories.push(directory);
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.parse('2025-01-01T00:00:00Z'));
+      const database = new NodeDatabase(':memory:', 'schedule-bootstrap');
+      const workspace = database.saveWorkspace({
+        path: directory,
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      const defaults = (modelId: string) => ({
+        runner: 'claude-code' as const,
+        modelId,
+        effort: 'medium',
+        access: 'default'
+      });
+      database.saveRunnerDefaults(defaults('before-saving'));
+      const startChannel = vi.fn((input: { onMessage(message: unknown): void }) => ({
+        completed: new Promise<void>((resolve) =>
+          setTimeout(() => {
+            input.onMessage({ type: 'system', subtype: 'init', session_id: 'promoted-scheduled' });
+            resolve();
+          }, 5)
+        ),
+        deliver: async () => undefined,
+        interrupt: async () => undefined,
+        cancel: () => undefined
+      }));
+      const connector = new NodeConnector({
+        database,
+        reconnect: false,
+        claudeClient: { startChannel } as never,
+        capabilities: {
+          platform: 'linux',
+          architecture: 'x64',
+          nodeVersion: process.version,
+          codex: { available: false },
+          claudeCode: { available: true }
+        }
+      });
+      const node = connector as unknown as {
+        capabilities: { scheduledTasks?: { apiVersion: number } };
+        controlChannel: { connected(): boolean };
+        gitOperationService: GitOperationService;
+        executeNodeOperation(operation: string, data: unknown): Promise<unknown>;
+        emitWorkbenchEvent(category: string, payload: unknown): void;
+        scheduledSessions: ScheduledSessionCoordinator;
+        scheduledRunAuthorization: {
+          authorize(input: {
+            sessionId: string;
+          }): Promise<{ secretEnvironment: Record<string, string> }>;
+        };
+        runtime: NodeRuntimeState;
+      };
+      try {
+        const events = vi.spyOn(node, 'emitWorkbenchEvent');
+        expect(node.capabilities.scheduledTasks).toEqual({ apiVersion: 2 });
+        const scope = { workspaceId: workspace.id, __requestUserId: 17 };
+        const { task } = (await node.executeNodeOperation('schedule.task.create', {
+          ...scope,
+          target: {
+            kind: 'newSession',
+            runner: 'claude-code',
+            model: { kind: 'default' },
+            effort: 'high'
+          },
+          name: 'New every hour',
+          objective: 'This is the first and only message',
+          notifyOnTerminal: true,
+          triggers: hourlyTriggers
+        })) as { task: { id: string; nextRunAt: number } };
+        expect(startChannel).not.toHaveBeenCalled();
+        expect(events).toHaveBeenCalledExactlyOnceWith('workspace', {
+          workspaceId: workspace.id,
+          topic: 'schedule.changed'
+        });
+        database.saveRunnerDefaults(defaults('at-trigger-model'));
+        const changed = outcome !== 'denied' && outcome !== 'accepted';
+        const update = (patch: { enabled: false } | { objective: string }) =>
+          node.executeNodeOperation('schedule.task.update', {
+            ...scope,
+            taskId: task.id,
+            expectedRevision: 1,
+            patch
+          });
+        let bootstrapId = '';
+        const authorize = vi
+          .spyOn(node.scheduledRunAuthorization, 'authorize')
+          .mockImplementation(async (request) => {
+            bootstrapId = request.sessionId;
+            expect(node.runtime.getAgentSession(bootstrapId)?.externalSessionId).toBeNull();
+            expect(database.getSessionRecord(bootstrapId)).toBeUndefined();
+            expect(startChannel).not.toHaveBeenCalled();
+            if (outcome === 'denied') throw new Error('WORKSPACE_ACCESS_DENIED');
+            if (outcome === 'changed') await update({ enabled: false });
+            return { secretEnvironment: {} };
+          });
+        if (outcome === 'paused-during-preparation' || outcome === 'edited-during-preparation') {
+          const execute = node.gitOperationService.execute.bind(node.gitOperationService);
+          vi.spyOn(node.gitOperationService, 'execute').mockImplementation(
+            async (operation, input, next) => {
+              if (operation === 'session.message') {
+                expect(new ScheduledSessionStore(database.raw).recent(task.id)[0]?.status).toBe(
+                  'CLAIMED'
+                );
+                await update(
+                  outcome === 'paused-during-preparation'
+                    ? { enabled: false }
+                    : { objective: 'Edited during preparation' }
+                );
+              }
+              return execute(operation, input, next);
+            }
+          );
+        }
+        vi.spyOn(node.controlChannel, 'connected').mockReturnValue(true);
+        node.scheduledSessions.start();
+        await vi.advanceTimersByTimeAsync(task.nextRunAt - Date.now());
+        const store = new ScheduledSessionStore(database.raw);
+        const occurrenceId = `${task.id}:${task.nextRunAt}`;
+        const detail = () => store.historyDetail(workspace.id, occurrenceId);
+        await vi.waitFor(() =>
+          expect(detail()).toMatchObject(
+            outcome === 'accepted'
+              ? {
+                  state: 'SUCCEEDED',
+                  run: { sessionId: 'promoted-scheduled', runId: expect.any(String) },
+                  startedAt: expect.any(Number),
+                  endedAt: expect.any(Number)
+                }
+              : {
+                  state: 'SKIPPED',
+                  reason:
+                    outcome === 'denied' ? 'WORKSPACE_ACCESS_DENIED' : 'SCHEDULE_TASK_CHANGED',
+                  run: null,
+                  startedAt: null,
+                  endedAt: null
+                }
+          )
+        );
+        expect(authorize).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            targetKind: 'newSession',
+            taskId: task.id,
+            revision: 1,
+            occurrenceId,
+            workspaceId: workspace.id,
+            ownerUserId: 17,
+            sessionId: bootstrapId,
+            runner: 'claude-code',
+            modelId: 'at-trigger-model'
+          })
+        );
+        expect(database.getSessionRecord(bootstrapId)).toBeUndefined();
+        expect(database.getRunnerDefaults()).toEqual([defaults('at-trigger-model')]);
+        expect(detail()?.snapshot).toMatchObject({
+          objective: 'This is the first and only message',
+          matchedTriggers: [
+            Number(
+              new Intl.DateTimeFormat('en-US', { hour: '2-digit', hourCycle: 'h23' }).format(
+                task.nextRunAt
+              )
+            )
+          ]
+        });
+        const changes = events.mock.calls.filter(([category]) => category === 'workspace');
+        const taskChanges = [
+          { workspaceId: workspace.id, topic: 'schedule.changed' }, // Create
+          { workspaceId: workspace.id, topic: 'schedule.changed' }, // Claim advances the cursor
+          ...(changed ? [{ workspaceId: workspace.id, topic: 'schedule.changed' }] : []) // Edit or pause
+        ];
+        expect(
+          changes.filter(
+            ([, payload]) => (payload as { topic: string }).topic === 'schedule.changed'
+          )
+        ).toEqual(taskChanges.map((payload) => ['workspace', payload]));
+        expect(changes).toContainEqual([
+          'workspace',
+          { workspaceId: workspace.id, topic: 'schedule.occurrence.changed' }
+        ]);
+        if (outcome === 'accepted') {
+          expect(
+            events.mock.calls.filter(
+              ([category, payload]) =>
+                category === 'conversation' &&
+                (payload as { event?: { payload?: { kind?: string } } }).event?.payload?.kind ===
+                  'SCHEDULE_TERMINAL'
+            )
+          ).toEqual([
+            [
+              'conversation',
+              expect.objectContaining({
+                event: expect.objectContaining({
+                  eventType: 'notification',
+                  payload: expect.objectContaining({
+                    targetType: 'WORKSPACE_SESSION',
+                    userId: 17,
+                    sessionId: 'promoted-scheduled',
+                    outcome: 'SUCCEEDED'
+                  })
+                })
+              })
+            ]
+          ]);
+          expect(startChannel).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              model: 'at-trigger-model',
+              effort: 'high',
+              prompt: serializeComposerTag('mar_schedule', {
+                objective: 'This is the first and only message'
+              })
+            })
+          );
+          expect(startChannel.mock.calls[0]![0]).not.toHaveProperty('resumeSessionId');
+          expect(database.getSessionRecord('promoted-scheduled')?.workspaceId).toBe(workspace.id);
+          expect(
+            database.getNativeSessionMetadata('claude-code', 'promoted-scheduled', workspace.id)
+              ?.pinOrder
+          ).toBeNull();
+        } else {
+          expect(node.runtime.getAgentSession(bootstrapId)).toBeUndefined();
+          expect(startChannel).not.toHaveBeenCalled();
+          expect(events).toHaveBeenCalledWith(
+            'conversation',
+            expect.objectContaining({
+              event: expect.objectContaining({
+                eventType: 'notification',
+                payload: expect.objectContaining({
+                  targetType: 'SCHEDULED_TASK',
+                  workspaceId: workspace.id,
+                  taskId: task.id,
+                  taskName: 'New every hour',
+                  userId: 17,
+                  kind: 'SCHEDULE_SKIPPED',
+                  reference: { kind: 'occurrence', id: expect.any(String) },
+                  code: outcome === 'denied' ? 'WORKSPACE_ACCESS_DENIED' : 'SCHEDULE_TASK_CHANGED'
+                })
+              })
+            })
+          );
+        }
+        events.mockClear();
+        await node.executeNodeOperation('schedule.task.propose', {
+          workspaceId: workspace.id,
+          __requestUserId: 42,
+          taskId: task.id,
+          expectedRevision: changed ? 2 : 1,
+          patch: { objective: 'Proposed change' }
+        });
+        expect(events).toHaveBeenCalledWith(
+          'conversation',
+          expect.objectContaining({
+            event: expect.objectContaining({
+              eventType: 'notification',
+              payload: expect.objectContaining({
+                targetType: 'SCHEDULED_TASK',
+                workspaceId: workspace.id,
+                taskId: task.id,
+                taskName: 'New every hour',
+                userId: 17,
+                kind: 'SCHEDULE_PROPOSAL',
+                reference: { kind: 'proposal', id: expect.any(String) }
+              })
+            })
+          })
+        );
+      } finally {
+        await connector.stop();
+      }
+    }
+  );
 
   it('starts the saved objective in the existing Claude Code session and permits schedule edits', async () => {
     const directory = await realpath(await mkdtemp(join(tmpdir(), 'schedule-success-')));
@@ -590,11 +1297,13 @@ describe('scheduled Node session flow', () => {
         options: {
           onTerminalRun(
             run: import('../../src/runtime-model.js').NodeAgentRun,
-            status: 'SUCCEEDED'
+            status: 'SUCCEEDED',
+            at: number
           ): void;
         };
       };
       emitWorkbenchEvent: (category: string, payload: unknown) => void;
+      controlChannel: { connected(): boolean };
       scheduledRunAuthorization: { authorize: (input: unknown) => Promise<unknown> };
       scheduledSessions: { start(): void; stop(): void };
       scheduleMcpBridge: ScheduleMcpBridge;
@@ -613,17 +1322,19 @@ describe('scheduled Node session flow', () => {
         modelId: 'sonnet'
       });
       internals.claudeClient.execution.managedNativeIds.add(session.id);
-      await internals.executeNodeOperation('session.schedule.save', {
-        sessionId: session.id,
+      const created = (await internals.executeNodeOperation('schedule.task.create', {
+        target: { kind: 'existing', sessionId: session.id },
         workspaceId: workspace.id,
         __requestUserId: 7,
         objective: 'Review changes',
-        cron: '0 * * * *',
+        name: 'Hourly check',
+        triggers: hourlyTriggers,
         enabled: true
-      });
+      })) as { task: { id: string } };
       internals.scheduledRunAuthorization.authorize = vi.fn(async () => ({
         secretEnvironment: {}
       }));
+      vi.spyOn(internals.controlChannel, 'connected').mockReturnValue(true);
       internals.scheduledSessions.start();
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
       await vi.waitFor(() =>
@@ -648,12 +1359,14 @@ describe('scheduled Node session flow', () => {
       expect(
         (
           await scheduleTools.call('mcp__mar_schedule__update_scheduled_task', {
-            objective: 'Review follow-up changes'
+            taskId: created.task.id,
+            expectedRevision: 1,
+            patch: { objective: 'Review follow-up changes' }
           })
         ).content
-      ).toContain('Review follow-up changes');
+      ).toContain('"revision":2');
       const store = new ScheduledSessionStore(database.raw);
-      const task = store.get(session.id)!;
+      const task = store.getById(created.task.id)!;
       expect(task).toMatchObject({
         objective: 'Review follow-up changes',
         ownerUserId: 7,
@@ -663,20 +1376,21 @@ describe('scheduled Node session flow', () => {
       expect(occurrence).toMatchObject({ status: 'SUBMITTED' });
       expect(internals.runtime.getRun(occurrence['run_id'] as string)?.source).toBe('SCHEDULED');
       const notifications = vi.spyOn(internals, 'emitWorkbenchEvent');
-      const edited = (await internals.executeNodeOperation('session.schedule.save', {
-        sessionId: session.id,
+      const edited = (await internals.executeNodeOperation('schedule.task.update', {
+        taskId: task.id,
         workspaceId: workspace.id,
-        __requestUserId: 8,
+        __requestUserId: 7,
         expectedRevision: task.revision,
-        notifyOnTerminal: true
+        patch: { notifyOnTerminal: true }
       })) as { task: { ownerUserId: number; notifyOnTerminal: boolean } };
       expect(edited.task).toMatchObject({
-        ownerUserId: 8,
+        ownerUserId: 7,
         notifyOnTerminal: true
       });
       internals.runEventService.options.onTerminalRun(
         internals.runtime.getRun(occurrence['run_id'] as string)!,
-        'SUCCEEDED'
+        'SUCCEEDED',
+        Date.now()
       );
       expect(store.recent(task.id)[0]).toMatchObject({ status: 'SUCCEEDED' });
       expect(
@@ -689,7 +1403,7 @@ describe('scheduled Node session flow', () => {
           'conversation',
           expect.objectContaining({
             event: expect.objectContaining({
-              payload: expect.objectContaining({ userId: 8, outcome: 'SUCCEEDED' })
+              payload: expect.objectContaining({ userId: 7, outcome: 'SUCCEEDED' })
             })
           })
         ]
@@ -754,6 +1468,7 @@ describe('scheduled Node session flow', () => {
         };
         runEventBridge: { emitRun: (...args: unknown[]) => unknown };
         emitWorkbenchEvent: (category: string, payload: unknown) => void;
+        controlChannel: { connected(): boolean };
         scheduledRunAuthorization: { authorize: (input: unknown) => Promise<unknown> };
         scheduledSessions: { start(): void; stop(): Promise<void> | undefined };
         executeNodeOperation(operation: string, input: unknown): Promise<unknown>;
@@ -790,37 +1505,37 @@ describe('scheduled Node session flow', () => {
           access: 'full'
         });
         internals.claudeClient.execution.managedNativeIds.add(session.id);
-        const saved = (await internals.executeNodeOperation('session.schedule.save', {
-          sessionId: session.id,
+        const saved = (await internals.executeNodeOperation('schedule.task.create', {
+          target: { kind: 'existing', sessionId: session.id },
           workspaceId: workspace.id,
           __requestUserId: 7,
           objective: 'Inspect the repository',
-          cron: '0 * * * *',
+          name: 'Hourly check',
+          triggers: hourlyTriggers,
           enabled: true
         })) as {
-          task: { readonly nextRunAt: number; readonly timezone: string };
-          session: { readonly runtime: { readonly capabilities: readonly string[] } };
+          task: { readonly id: string; readonly nextRunAt: number; readonly timezone: string };
         };
         expect(saved.task.nextRunAt).toBe(Date.parse('2025-01-01T01:00:00Z'));
         expect(saved.task.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
-        expect(saved.session.runtime.capabilities).toContain('session.schedule');
         expect(
           database.getNativeSessionMetadata('claude-code', session.id, workspace.id)?.pinOrder
         ).toBe(0);
         if (notifyOnTerminal)
-          await internals.executeNodeOperation('session.schedule.save', {
-            sessionId: session.id,
+          await internals.executeNodeOperation('schedule.task.update', {
+            taskId: saved.task.id,
             workspaceId: workspace.id,
-            __requestUserId: 8,
+            __requestUserId: 7,
             expectedRevision: 1,
-            notifyOnTerminal: true
+            patch: { notifyOnTerminal: true }
           });
         internals.scheduledRunAuthorization.authorize = vi.fn(async () => ({
           secretEnvironment: {}
         }));
+        vi.spyOn(internals.controlChannel, 'connected').mockReturnValue(true);
         internals.scheduledSessions.start();
         await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
-        const task = new ScheduledSessionStore(database.raw).get(session.id)!;
+        const task = new ScheduledSessionStore(database.raw).getById(saved.task.id)!;
         let submittedRunId: string | undefined;
         if (!failDuringInputPreparation) {
           await vi.waitFor(
@@ -834,7 +1549,7 @@ describe('scheduled Node session flow', () => {
           submittedRunId = submitted['run_id'] as string;
           expect(observedRuns.find((run) => run.id === submittedRunId)).toMatchObject({
             source: 'SCHEDULED',
-            initiatedByUserId: notifyOnTerminal ? 8 : 7
+            initiatedByUserId: 7
           });
           expect(
             internals.runtime
@@ -857,7 +1572,7 @@ describe('scheduled Node session flow', () => {
         );
         const occurrence = new ScheduledSessionStore(database.raw).recent(task.id)[0]!;
         expect(internals.scheduledRunAuthorization.authorize).toHaveBeenCalledWith(
-          expect.objectContaining({ ownerUserId: notifyOnTerminal ? 8 : 7 })
+          expect.objectContaining({ ownerUserId: 7 })
         );
         expect(prepared).toHaveBeenCalledWith(
           serializeComposerTag('mar_schedule', { objective: 'Inspect the repository' }),
@@ -890,7 +1605,7 @@ describe('scheduled Node session flow', () => {
           );
         expect(notifications).toEqual(
           notifyOnTerminal
-            ? [expect.objectContaining({ userId: 8, kind: 'SCHEDULE_TERMINAL' })]
+            ? [expect.objectContaining({ userId: 7, kind: 'SCHEDULE_TERMINAL' })]
             : []
         );
       } finally {

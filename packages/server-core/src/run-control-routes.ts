@@ -464,17 +464,25 @@ export function registerRunControlRoutes(input: {
     }
   );
 
-  app.get<{ Params: { runId: string }; Querystring: { nodeId?: string } }>(
+  app.get<{ Params: { runId: string }; Querystring: { nodeId?: string; workspaceId?: string } }>(
     '/api/agent-runs/:runId',
     async (request, reply) => {
       const admin = protectedAdmin(database, request, reply);
       if (admin === undefined) return;
       if (typeof request.query.nodeId !== 'string')
         return sendError(reply, 400, 'NODE_ID_REQUIRED');
+      const { workspaceId } = request.query;
+      if (
+        workspaceId !== undefined &&
+        (typeof workspaceId !== 'string' || workspaceId.length === 0)
+      )
+        return sendError(reply, 400, 'WORKSPACE_ID_REQUIRED');
+      reply.header('cache-control', 'private, no-store');
       try {
         return reply.send(
           await requestUserNode(nodeControl, admin, request.query.nodeId, 'run.get', {
-            runId: request.params.runId
+            runId: request.params.runId,
+            ...(workspaceId === undefined ? {} : { workspaceId })
           })
         );
       } catch (error) {

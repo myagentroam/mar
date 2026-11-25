@@ -7,9 +7,11 @@ export const NODE_MCP = {
   schedule: {
     name: 'mar_schedule',
     tools: {
+      list: 'list_scheduled_tasks',
       get: 'get_scheduled_task',
       create: 'create_scheduled_task',
-      update: 'update_scheduled_task'
+      update: 'update_scheduled_task',
+      runs: 'list_scheduled_task_runs'
     }
   },
   notification: {

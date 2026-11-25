@@ -17,6 +17,7 @@ import {
   directNodeEventSchema,
   marctlExecutionCredentialRequestSchema,
   modelUsageBatchSchema,
+  scheduledTasksApiVersion,
   terminalDirectNodeEventSchema,
   remoteDesktopDirectNodeEventSchema,
   remoteDesktopRelayNodeEventSchema,
@@ -71,6 +72,7 @@ export interface NodeBrokerTransport {
 
 export interface NodeControlTransport extends NodeBrokerTransport {
   capabilities: NodeIdentityControl['nodeCapabilities'];
+  supportsScheduledTasks: NodeControl['supportsScheduledTasks'];
   request: NodeControl['requestNode'];
   sendNode: NodeIdentityControl['sendAuthenticatedNode'];
   send(socket: WebSocket, type: string, payload: unknown, replyTo?: string): void;
@@ -109,6 +111,7 @@ export interface NodeControlConsumers extends NodeMessageConsumers {
   readonly mailNotifications: Pick<MailNotificationService, 'send'>;
   readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
   readonly scheduleAuthorizer: ScheduledRunAuthorizer;
+  readonly scheduledTaskConnectionChanged?: (nodeId: string) => void;
   readonly executionPreparer?: ExecutionPreparer;
   readonly browserUseAllowed?: (
     nodeId: string,
@@ -169,6 +172,7 @@ export class NodeControl extends NodeIdentityControl {
           operation === 'node.upgrade.request' ||
           operation === 'node.upgrade.cancel',
         capabilities: (nodeId) => this.nodeCapabilities(nodeId),
+        supportsScheduledTasks: (nodeId) => this.supportsScheduledTasks(nodeId),
         request: (nodeId, operation, data, user, timeoutMs, signal) =>
           this.requestNode(nodeId, operation, data, user, timeoutMs, signal),
         sendNode: (nodeId, type, payload) => this.sendAuthenticatedNode(nodeId, type, payload),
@@ -229,6 +233,7 @@ export class NodeControl extends NodeIdentityControl {
       this.browser?.revokeNode(nodeId);
     }
     this.runtimeCredentials.activateNodeConnection(nodeId);
+    this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     this.workbenchRelay.broadcast({
       type: 'node',
       nodeId,
@@ -246,6 +251,7 @@ export class NodeControl extends NodeIdentityControl {
     nodeId: string,
     capabilities: NodeCapabilities
   ): Promise<void> {
+    this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     const generation = this.nodeCapabilities(nodeId)?.remoteDesktop?.nodeGeneration;
     if (generation) {
       this.desktopDirect.retireOtherGenerations(nodeId, generation);
@@ -285,6 +291,7 @@ export class NodeControl extends NodeIdentityControl {
       );
   }
   protected override onNodeDisconnected(nodeId: string): void {
+    this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     this.browser?.revokeNode(nodeId);
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
     this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
@@ -520,6 +527,30 @@ export class NodeControl extends NodeIdentityControl {
     return this.requestBroker.request(nodeId, operation, data, user, timeoutMs, signal);
   }
 
+  supportsScheduledTasks(nodeId: string): boolean {
+    return this.nodeCapabilities(nodeId)?.scheduledTasks?.apiVersion === scheduledTasksApiVersion;
+  }
+
+  /** Opaque identity for committing read projections from the current business connection. */
+  scheduledTaskConnection(nodeId: string): object | undefined {
+    const socket = this.sockets.get(nodeId);
+    return socket !== undefined &&
+      socket.readyState === socket.OPEN &&
+      this.supportsScheduledTasks(nodeId)
+      ? socket
+      : undefined;
+  }
+
+  requestScheduledTaskIndex(
+    nodeId: string,
+    connection: object,
+    scope: { workspaceId: string; afterTaskId?: string }
+  ): Promise<unknown> {
+    if (this.scheduledTaskConnection(nodeId) !== connection)
+      return Promise.reject(new Error('NODE_CONNECTION_REPLACED'));
+    return this.requestBroker.requestScheduledTaskIndex(nodeId, scope);
+  }
+
   requestHostedConversationNode(
     nodeId: string,
     operation: string,
@@ -722,7 +753,9 @@ export class NodeControl extends NodeIdentityControl {
         nodeId,
         envelope,
         isCurrentConnection: () => this.sockets.get(nodeId) === socket,
-        authorize: this.consumers.scheduleAuthorizer,
+        authorize: this.supportsScheduledTasks(nodeId)
+          ? this.consumers.scheduleAuthorizer
+          : undefined,
         respond: (payload) => this.send(socket, 'schedule.authorize.response', payload, envelope.id)
       });
       return true;

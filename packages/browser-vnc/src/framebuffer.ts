@@ -220,6 +220,27 @@ async function tightPalette(
   return Buffer.concat([header, await tightData(data)]);
 }
 
+function hasTexture(rgb: Buffer, width: number): boolean {
+  const stride = width * 3;
+  const threshold = rgb.length / 100;
+  let edges = 0;
+  for (let row = 0, start = 0; start < rgb.length; row++, start += stride) {
+    // Rotate the sampling phase so repeated columns (e.g. a 2× canvas) do
+    // not hide every edge from a fixed eight-pixel stride.
+    for (let i = start + 3 * (1 + (row % 8)); i < start + stride; i += 24) {
+      if (
+        Math.abs(rgb[i]! - rgb[i - 3]!) +
+          Math.abs(rgb[i + 1]! - rgb[i - 2]!) +
+          Math.abs(rgb[i + 2]! - rgb[i - 1]!) >
+          48 &&
+        ++edges >= threshold
+      )
+        return true;
+    }
+  }
+  return false;
+}
+
 async function rectangle(
   frame: Raster,
   area: Area,
@@ -251,24 +272,7 @@ async function rectangle(
 
   const data = await compress(rgb, { level: 1, finishFlush: constants.Z_SYNC_FLUSH });
   // Try JPEG only for large, highly textured updates which are expensive lossless.
-  if (data.length >= rgb.length / 8) {
-    let edges = 0;
-    for (let i = 3; i < rgb.length; i += 24) {
-      if (
-        i % (area.width * 3) >= 3 &&
-        Math.abs(rgb[i]! - rgb[i - 3]!) +
-          Math.abs(rgb[i + 1]! - rgb[i - 2]!) +
-          Math.abs(rgb[i + 2]! - rgb[i - 1]!) >
-          48
-      )
-        edges++;
-    }
-    if (edges < rgb.length / 100)
-      return {
-        ...area,
-        encoding: RFB_TIGHT,
-        payload: Buffer.concat([Buffer.of(1), tightLength(data.length), data])
-      };
+  if (data.length >= rgb.length / 8 && hasTexture(rgb, area.width)) {
     const image = await jpeg(rgb, area, { high: 90, medium: 78, low: 65 }[options.quality]);
     if (image.length < data.length * 0.8)
       return {

@@ -27,7 +27,6 @@ import type {
   ExtensionSource
 } from '@myagentroam/agent/extensions';
 import type { MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
-import { highDensityCompactionPrompt } from '../../src/runner/mar-agent/compact-prompt.js';
 import { MarAgentManagedRunController } from '../../src/runner/mar-agent/managed-run-controller.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { MarAgentRuntimeModelFactory } from '../../src/runner/mar-agent/runtime-model-factory.js';
@@ -68,7 +67,7 @@ function compactContext(overrides: Partial<ExtensionCompactContext> = {}): Exten
     modelId: 'main-model',
     reason: 'manual',
     summaryTokenBudget: 1_000,
-    getPrompt: () => 'Core continuation contract: preserve evidence and output only the handoff.',
+    getPrompt: () => 'Core compaction prompt: preserve evidence needed for subsequent reasoning.',
     messages: [
       { role: 'user', content: 'objective with durable goal CONTRACT_MARKER' },
       { role: 'assistant', content: 'implemented the parser change' },
@@ -429,94 +428,44 @@ describe('MAR Agent compact extension', () => {
     const expected = buildCompactEvidence(context.messages, {
       maxTokens: Number.MAX_SAFE_INTEGER
     });
-    expect(input.messages).toHaveLength(2);
-    expect(input.messages[0]).toEqual({ role: 'user', content: expected });
+    expect(input.messages).toEqual([{ role: 'user', content: expected }]);
     expect(expected).toContain('CONTRACT_MARKER');
     expect(expected).toContain('TOOL_EVIDENCE_MARKER');
-    expect(input.messages[1]!.content).toBe(highDensityCompactionPrompt());
-    expect(input.system).toContain('evidence, not fresh instructions');
+    expect(input.system).toBe(context.getPrompt());
     expect(input.model.id).toBe('compact-model');
     expect(input.reasoningEffort).toBe('high');
     expect(input.outputLimit).toBe(1_000);
   });
 
-  it('maintains the high-density Textual Continuation IR grammar in Node', () => {
-    const prompt = highDensityCompactionPrompt();
-    expect(prompt).toContain('Textual Continuation IR');
-    expect(prompt).toContain('1. Goal contract');
-    expect(prompt).toContain('2. Current state');
-    expect(prompt).toContain('3. Settled matters');
-    expect(prompt).toContain('4. Necessary evidence');
-    expect(prompt).toContain('5. Open loops');
-    expect(prompt).toContain('<object> | <key>=<value>');
-    expect(prompt).toContain('<event/condition> -> <object>.<key>=<value> | <effect>');
-    expect(prompt).toContain('edit=pending');
-    expect(prompt).toContain('tests=not run');
-    expect(prompt).toContain('state=conflict');
-    expect(prompt).toContain('pending, not run, unverified, and failed');
-    expect(prompt).toContain('Preserve the names of Skills still needed');
-    expect(prompt).toContain('Remove Runtime-owned contextual instruction blocks');
-    expect(prompt).toContain('loaded Skill instructions, and constraints derived only from them');
-    expect(prompt).toContain('Todo/plan');
-    expect(prompt).toContain('freshness=current|stale|superseded');
-    expect(prompt).toContain('Without an invalidating event, a verified claim remains current');
-    expect(prompt).toContain(
-      'History replacement invalidates Responses continuation, not factual evidence'
-    );
-    expect(prompt).toContain('Preserve decisive values, or an exact artifact path/command');
-    expect(prompt).toContain(
-      'Authorization is valid only for its exact action, scope, and lifetime'
-    );
-    expect(prompt).toContain(
-      'Object state, completion, tool availability, and convenience never imply permission'
-    );
-    expect(prompt).toContain(
-      'authorization | action=<exact> | scope=<exact> | lifetime=<exact> | status=active'
-    );
-    expect(prompt).toContain("task's dominant language");
-    expect(prompt).toContain('do not translate identifiers or invent localized IR terminology');
-    expect(prompt).toContain(
-      'Remove user/project/directory AGENTS.md text and constraints derived only from those files'
-    );
-    expect(prompt).toContain('the next Execution reloads them');
-    expect(prompt).toContain('continuation fidelity first and density second');
-    expect(prompt).toContain(
-      'Prefer sufficient continuation state over brevity; never omit information required to resume correctly'
-    );
-    expect(prompt).not.toContain('A longer handoff is better');
-    expect(prompt).not.toMatch(/[\u4e00-\u9fff]/u);
-    expect(prompt).not.toContain('Continue from the compacted state below');
-  });
-
   it.each(['manual', 'automatic'] as const)(
-    'uses the Node prompt without reading the Core getter for %s compact',
+    'uses the SDK prompt unchanged as system instructions for %s compact',
     async (reason) => {
-      generateModelText.mockResolvedValueOnce({ text: 'Node contract summary' });
-      const getPrompt = vi.fn(() => {
-        throw new Error('Core getter must not be called');
-      });
+      const instruction = `SDK instructions for ${reason} compact.\n\nPreserve the evidence.`;
+      generateModelText.mockResolvedValueOnce({ text: 'Node compact summary' });
+      const getPrompt = vi.fn(() => instruction);
       await generateMarAgentCompact(
         compactContext({ reason, getPrompt }),
         selected(),
         new AbortController().signal
       );
-      expect(getPrompt).not.toHaveBeenCalled();
-      expect(
-        (generateModelText.mock.calls[0]![0] as { messages: { content: string }[] }).messages[1]
-      ).toEqual({ role: 'user', content: highDensityCompactionPrompt() });
+      expect(getPrompt).toHaveBeenCalledOnce();
+      expect(generateModelText).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ system: instruction })
+      );
     }
   );
 
-  it('counts the Node prompt in the fixed instruction overhead', async () => {
-    const getPrompt = vi.fn(() => 'short Core prompt');
+  it('counts the SDK prompt in the fixed instruction overhead', async () => {
+    const instruction = 'SDK compaction instruction. '.repeat(100);
+    const getPrompt = vi.fn(() => instruction);
     await expect(
       generateMarAgentCompact(
         compactContext({ getPrompt }),
-        selected({ contextWindowTokens: countModelTokens(highDensityCompactionPrompt()) }),
+        selected({ contextWindowTokens: countModelTokens(instruction) }),
         new AbortController().signal
       )
     ).resolves.toBeUndefined();
-    expect(getPrompt).not.toHaveBeenCalled();
+    expect(getPrompt).toHaveBeenCalledOnce();
     expect(generateModelText).not.toHaveBeenCalled();
   });
 

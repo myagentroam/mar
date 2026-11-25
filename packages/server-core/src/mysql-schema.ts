@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto';
 import { projectCredentialDocument } from './credential-document.js';
 import {
   validateMysqlSchema,
+  normalizeMysqlTableDefinition,
   mysqlSchemaWithoutForeignKeys,
   removeMysqlForeignKeys,
   validateMysqlReferences,
@@ -183,6 +184,55 @@ const BROWSER_USE_COLUMN_SQL =
   'ALTER TABLE users ADD COLUMN browser_use_enabled tinyint(1) NOT NULL DEFAULT 1';
 const BROWSER_SETTINGS_COLUMN_SQL =
   'ALTER TABLE users ADD COLUMN browser_settings json DEFAULT NULL';
+const SCHEDULED_TASK_INDEX_SQL = `CREATE TABLE \`scheduled_task_index\` (
+  \`node_id\` varchar(128) NOT NULL,
+  \`workspace_id\` varchar(128) NOT NULL,
+  \`task_id\` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  \`owner_user_id\` bigint unsigned NOT NULL,
+  \`name\` varchar(160) NOT NULL,
+  \`runner\` varchar(32) NOT NULL,
+  \`session_id\` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  \`target_kind\` enum('existing','newSession','unbound') NOT NULL,
+  \`enabled\` tinyint(1) NOT NULL,
+  \`next_run_at\` bigint DEFAULT NULL,
+  \`synced_at\` bigint NOT NULL,
+  PRIMARY KEY (\`node_id\`,\`workspace_id\`,\`task_id\`),
+  KEY \`scheduled_task_index_owner\` (\`owner_user_id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`;
+
+export const MYSQL_NOTIFICATION_GROUPS_SCHEMA = mysqlSchemaWithoutForeignKeys({
+  workbench_notifications: CORE_MYSQL_SCHEMA_V19['workbench_notifications']!.replace(
+    "enum('run','approval','plan','user-input','schedule')",
+    AGENT_NOTIFICATION_KIND
+  )
+    .replace('`message` varchar(512)', '`message` varchar(4000)')
+    .replace('  PRIMARY KEY', "  `session_group` enum('MAIN','CHILD') DEFAULT NULL,\n  PRIMARY KEY")
+});
+
+const NOTIFICATION_TARGET_TYPE = "enum('WORKSPACE_SESSION','HOSTED_CONVERSATION','SCHEDULED_TASK')";
+const NOTIFICATION_TARGET_CHECK =
+  "((`target_type` = _utf8mb4'WORKSPACE_SESSION') and (`workspace_id` is not null) and (`session_id` is not null) and (`conversation_id` is null) and (`task_id` is null) and (`task_reference` is null)) or ((`target_type` = _utf8mb4'HOSTED_CONVERSATION') and (`workspace_id` is null) and (`session_id` is null) and (`conversation_id` is not null) and (`task_id` is null) and (`task_reference` is null)) or ((`target_type` = _utf8mb4'SCHEDULED_TASK') and (`workspace_id` is not null) and (`session_id` is null) and (`conversation_id` is null) and (`task_id` is not null) and (`task_reference` is not null))";
+const NOTIFICATION_TARGET_CONSTRAINT = `CONSTRAINT \`workbench_notifications_exact_target\` CHECK ((${NOTIFICATION_TARGET_CHECK}))`;
+const NOTIFICATION_TARGET_DDL = `ALTER TABLE workbench_notifications
+  DROP CHECK workbench_notifications_exact_target,
+  MODIFY target_type ${NOTIFICATION_TARGET_TYPE} NOT NULL DEFAULT 'WORKSPACE_SESSION',
+  ADD COLUMN task_id varchar(128) DEFAULT NULL,
+  ADD COLUMN task_reference json,
+  ADD ${NOTIFICATION_TARGET_CONSTRAINT}`;
+const SCHEDULED_NOTIFICATION_SCHEMA = {
+  workbench_notifications: MYSQL_NOTIFICATION_GROUPS_SCHEMA.workbench_notifications!.replace(
+    "enum('WORKSPACE_SESSION','HOSTED_CONVERSATION')",
+    NOTIFICATION_TARGET_TYPE
+  )
+    .replace(
+      '  PRIMARY KEY',
+      '  `task_id` varchar(128) DEFAULT NULL,\n  `task_reference` json DEFAULT NULL,\n  PRIMARY KEY'
+    )
+    .replace(
+      /CONSTRAINT `workbench_notifications_exact_target` CHECK [^\n]+/u,
+      NOTIFICATION_TARGET_CONSTRAINT
+    )
+};
 
 export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
   ...CORE_MYSQL_SCHEMA_V19,
@@ -194,15 +244,7 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
     '`setting_key` varchar(128)',
     '`setting_key` varchar(191)'
   ),
-  workbench_notifications: CORE_MYSQL_SCHEMA_V19['workbench_notifications']!.replace(
-    "enum('run','approval','plan','user-input','schedule')",
-    AGENT_NOTIFICATION_KIND
-  )
-    .replace('`message` varchar(512)', '`message` varchar(4000)')
-    .replace(
-      '  PRIMARY KEY',
-      "  `session_group` enum('MAIN','CHILD') DEFAULT NULL,\n  PRIMARY KEY"
-    ),
+  ...SCHEDULED_NOTIFICATION_SCHEMA,
   mail_deliveries: MAIL_DELIVERIES_SQL.replace(
     '  PRIMARY KEY',
     '  `notification_result` json DEFAULT NULL,\n  PRIMARY KEY'
@@ -226,7 +268,8 @@ export const CORE_MYSQL_SCHEMA: MysqlSchema = mysqlSchemaWithoutForeignKeys({
   model_usage_records: MODEL_USAGE_CURRENT_SQL,
   ...MYSQL_PROMPT_COMPLETION_SCHEMA,
   ...MYSQL_WEB_PUSH_SCHEMA,
-  ...MYSQL_SESSION_SHARES_CURRENT_SCHEMA
+  ...MYSQL_SESSION_SHARES_CURRENT_SCHEMA,
+  scheduled_task_index: SCHEDULED_TASK_INDEX_SQL
 });
 
 export async function validateCoreMysqlBaseline(
@@ -241,6 +284,16 @@ export async function validateCoreMysqlDatabase(
   await validateMysqlSchema(connection, CORE_MYSQL_SCHEMA);
   await validateMysqlReferences(connection, CORE_MYSQL_SCHEMA_V19);
   await validateMysqlSessionShareReferences(connection);
+  const [scheduleOrphans] =
+    await connection.query(`SELECT 1 AS orphan FROM scheduled_task_index task
+    LEFT JOIN users owner ON owner.id=task.owner_user_id
+    LEFT JOIN nodes node ON node.id=task.node_id
+    LEFT JOIN workspaces workspace ON workspace.workspace_id=task.workspace_id AND workspace.node_id=task.node_id
+    WHERE owner.id IS NULL OR node.id IS NULL OR workspace.workspace_id IS NULL LIMIT 1`);
+  if (!Array.isArray(scheduleOrphans) || scheduleOrphans.length !== 0)
+    throw Object.assign(new Error('SERVER_DATABASE_REFERENCE_INVALID'), {
+      publicDetails: 'The scheduled task index contains a missing user or Node/Workspace reference.'
+    });
   await assertMysqlNoForeignKeys(connection);
 }
 
@@ -623,9 +676,7 @@ export const CORE_MYSQL_MIGRATIONS = [
         await connection.execute(
           "ALTER TABLE workbench_notifications ADD COLUMN session_group enum('MAIN','CHILD') DEFAULT NULL"
         );
-      await validateMysqlSchema(connection, {
-        workbench_notifications: CORE_MYSQL_SCHEMA['workbench_notifications']!
-      });
+      await validateMysqlSchema(connection, MYSQL_NOTIFICATION_GROUPS_SCHEMA);
     }
   },
   MODEL_SETTINGS_MIGRATION,
@@ -707,5 +758,40 @@ export const CORE_MYSQL_MIGRATIONS = [
         throw new Error('SERVER_DATABASE_SCHEMA_INVALID');
     }
   },
-  MODEL_CONTEXT_GC_MODE_MIGRATION
+  MODEL_CONTEXT_GC_MODE_MIGRATION,
+  {
+    version: 41,
+    name: 'scheduled_task_index',
+    checksum: createHash('sha256').update(SCHEDULED_TASK_INDEX_SQL).digest('hex'),
+    up: async (connection: MysqlMigrationConnection) => {
+      await connection.execute(
+        SCHEDULED_TASK_INDEX_SQL.replace('CREATE TABLE', 'CREATE TABLE IF NOT EXISTS')
+      );
+      await validateMysqlSchema(connection, { scheduled_task_index: SCHEDULED_TASK_INDEX_SQL });
+    }
+  },
+  {
+    version: 42,
+    name: 'scheduled_notification_target',
+    checksum: createHash('sha256').update(NOTIFICATION_TARGET_DDL).digest('hex'),
+    up: async (connection: MysqlMigrationConnection) => {
+      const [rows] = await connection.query('SHOW CREATE TABLE `workbench_notifications`');
+      const definition = (rows as { 'Create Table': unknown }[])[0]?.['Create Table'];
+      if (typeof definition !== 'string') throw new Error('SERVER_DATABASE_SCHEMA_MISMATCH');
+      const current = normalizeMysqlTableDefinition(definition);
+      if (
+        current ===
+        normalizeMysqlTableDefinition(SCHEDULED_NOTIFICATION_SCHEMA.workbench_notifications)
+      )
+        return;
+      if (
+        current !==
+        normalizeMysqlTableDefinition(MYSQL_NOTIFICATION_GROUPS_SCHEMA.workbench_notifications!)
+      )
+        throw new Error('SERVER_DATABASE_SCHEMA_MISMATCH');
+      // A single atomic MySQL DDL preserves existing rows and makes retry unambiguous.
+      await connection.execute(NOTIFICATION_TARGET_DDL);
+      await validateMysqlSchema(connection, SCHEDULED_NOTIFICATION_SCHEMA);
+    }
+  }
 ] as const;

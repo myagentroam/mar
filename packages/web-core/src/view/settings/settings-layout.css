@@ -1,0 +1,40 @@
+.settings-content {
+  --mar-settings-page-padding: 0.875rem 1rem;
+  inline-size: 100%;
+  min-inline-size: 0;
+  box-sizing: border-box;
+  padding: 0;
+  background: var(--mar-bg-panel);
+}
+
+.settings-content .mar-settings-option-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
+  align-items: center;
+  gap: 1rem;
+  padding-block: 0.875rem;
+  border-block-end: 1px solid var(--mar-border-subtle);
+}
+
+.settings-content .mar-settings-option-row > label {
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-body);
+  font-weight: 400;
+}
+
+.settings-content .mar-settings-option-row > .mar-ui-select {
+  inline-size: 100%;
+}
+
+@media (max-width: 767px) {
+  .settings-content {
+    --mar-settings-page-padding: 0.75rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-content .mar-settings-option-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+}

@@ -17,16 +17,79 @@ import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import WorkbenchSurface from './WorkbenchSurface.vue';
 import { useI18n } from 'vue-i18n';
 
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { createMobileLayerHistoryService } from '../../service/mobile-layer-history-service.js';
+import type {
+  ScheduleSessionContext,
+  ScheduledTasksLocation,
+  ScheduleSection
+} from '../schedule/scheduled-task-navigation.js';
 import NodeDetailsDialogs from '../settings/NodeDetailsDialogs.vue';
 import type { NodeDetailsData, WorkspaceDetailsData } from '../../model/node-details.js';
 import type { NodeSummary, Workspace } from '../../model/workbench.js';
+import type { WorkbenchView } from '../../util/workbench-route.js';
 const props = defineProps<{
   page: WorkbenchShellView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
   surface: WorkbenchSurfaceView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
 }>();
 const emit = defineEmits<{ openWorkspaceDetails: [nodeId: string, workspace: Workspace] }>();
 const { t } = useI18n();
+const schedules = ref<ScheduledTasksLocation>();
+function openSchedules(target: ScheduledTasksLocation): void {
+  props.page.layout.closeMobileSidebar();
+  props.page.layout.closeMobileWorkspaceSurface();
+  props.page.hosted.closeHostedConversationMobileHistory();
+  props.page.hosted.hostedConversationMobileFilesOpen = false;
+  schedules.value = target;
+}
+function showSchedules(session?: ScheduleSessionContext): void {
+  openSchedules(session ? { section: 'all', session } : { section: 'mine' });
+}
+function selectScheduleNavigation(): void {
+  const { layout } = props.page;
+  if (!schedules.value) {
+    showSchedules();
+  } else if (layout.mobileViewport) {
+    layout.selectMobileUtilityPanel(
+      layout.mobileUtilityPanel === 'schedules' ? undefined : 'schedules'
+    );
+  }
+  if (!layout.mobileViewport) layout.sidebarCollapsed = false;
+}
+function selectScheduleSection(section: ScheduleSection): void {
+  if (!schedules.value) return;
+  openSchedules({ section });
+}
+function closeSchedules(): void {
+  if (props.page.layout.mobileUtilityPanel === 'schedules') props.page.layout.closeMobileSidebar();
+  schedules.value = undefined;
+}
+function selectNavigation(view: WorkbenchView): void {
+  const leavingSchedules = schedules.value !== undefined;
+  closeSchedules();
+  props.page.application.selectNavigation(view, leavingSchedules ? 'enter-content' : undefined);
+}
+const scheduleReturn = createMobileLayerHistoryService({
+  isOpen: () => schedules.value !== undefined,
+  close: closeSchedules
+});
+onMounted(scheduleReturn.start);
+onBeforeUnmount(scheduleReturn.dispose);
+watch(() => props.page.identity.admin?.userId, closeSchedules);
+watch(
+  () => props.page.application.scheduleNotificationNavigation,
+  (navigation) => {
+    if (navigation?.kind === 'conversation') closeSchedules();
+    if (navigation?.kind === 'task') {
+      const { task } = navigation;
+      openSchedules({
+        section: task.reference.kind === 'occurrence' ? 'history' : 'mine',
+        link: task
+      });
+    }
+  },
+  { flush: 'sync' }
+);
 const panelStyle = computed(() => {
   const sidebar = props.page.layout.panelWidths.sidebar;
   const inspector = props.page.layout.panelWidths.compact;
@@ -140,6 +203,8 @@ function closeStandaloneFileWindow(): void {
         :inert="page.files.standaloneFileMode"
         :web-version="page.application.webVersion"
         :view="page.application.view"
+        :schedule-section="schedules?.section"
+        :schedule-session-scoped="schedules?.session !== undefined"
         :navigation-items="page.application.navigationItems"
         :settings-section="page.application.settingsSection"
         :settings-items="page.application.settingsItems"
@@ -167,7 +232,9 @@ function closeStandaloneFileWindow(): void {
         :workspace-label="page.selection.workspaceTabLabel"
         :workspaces="page.tree.orderedWorkspaces"
         @resize-sidebar="page.layout.setPanelWidth('sidebar', $event)"
-        @select-navigation="page.application.selectNavigation"
+        @select-navigation="selectNavigation"
+        @open-scheduled-tasks="selectScheduleNavigation"
+        @select-schedule-section="selectScheduleSection"
         @select-mobile-utility-panel="page.layout.selectMobileUtilityPanel"
         @close-mobile-sidebar="page.layout.closeMobileSidebar"
         @select-settings="page.application.selectSettingsSection"
@@ -180,7 +247,12 @@ function closeStandaloneFileWindow(): void {
         @register-node="page.registration.openNodeRegistrationFromTree"
         @add-workspace="page.tree.addWorkspaceForNode"
         @open-node-details="page.resources.showNodeDetails"
-        @open-workspace="page.tree.openWorkspaceFromTree"
+        @open-workspace="
+          (nodeId, workspaceId) => {
+            closeSchedules();
+            page.tree.openWorkspaceFromTree(nodeId, workspaceId);
+          }
+        "
         @start-workspace-drag="page.tree.startWorkspaceDrag"
         @end-workspace-drag="page.tree.endWorkspaceDrag"
         @reorder-workspace="page.tree.reorderWorkspace"
@@ -205,9 +277,19 @@ function closeStandaloneFileWindow(): void {
           @click="page.layout.closeMobileWorkspaceSurface"
         ></button>
       </Transition>
-      <slot name="surface">
+      <slot
+        name="surface"
+        :schedules="schedules"
+        :show-schedules="showSchedules"
+        :close-schedules="closeSchedules"
+        :select-schedule-section="selectScheduleSection"
+      >
         <WorkbenchSurface
           :page="surface"
+          :schedules="schedules"
+          @open-schedules="showSchedules"
+          @close-schedules="closeSchedules"
+          @select-schedule-section="selectScheduleSection"
           :aria-hidden="page.files.standaloneFileMode || undefined"
           :inert="page.files.standaloneFileMode"
         />

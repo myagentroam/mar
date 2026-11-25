@@ -1,4 +1,9 @@
-import { withMysqlTransaction, lockMysqlUsers } from './mysql-reference-store.js';
+import {
+  withMysqlTransaction,
+  lockMysqlUsers,
+  lockMysqlNode,
+  lockMysqlWorkspace
+} from './mysql-reference-store.js';
 import type { UserLocale } from './auth-contracts.js';
 import { readMysqlUserLocale, writeMysqlUserLocale } from './mysql-authentication.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -8,6 +13,7 @@ import type { NodeRequestAuthorization } from './node-access-contracts.js';
 import { workbenchNotificationMessages } from './i18n/workbench-notifications.js';
 import {
   NOTIFICATION_TARGET_READ_ID_LIMIT,
+  scheduledTaskNotificationPayloadSchema,
   serverNotificationSchema,
   type NotificationTarget as StoredWorkbenchNotificationTarget,
   type ServerNotification as StoredWorkbenchNotification
@@ -46,44 +52,69 @@ export class WorkbenchNotificationService {
   async consume(nodeId: string, value: unknown, dispatchOffline = true): Promise<boolean> {
     const payload = parsePayload(value);
     if (payload === undefined) return false;
-    if (payload.targetType === 'WORKSPACE_SESSION') {
-      const scheduleNotification =
-        payload.kind === 'SCHEDULE_SKIPPED' ||
-        payload.kind === 'SCHEDULE_FAILED' ||
-        payload.kind === 'SCHEDULE_PROPOSAL' ||
-        payload.kind === 'SCHEDULE_TERMINAL';
-      if (
-        !scheduleNotification &&
-        !(await this.authorizeNodeRequest(
-          payload.userId,
-          nodeId,
-          'workbench.event.receive',
-          value,
-          payload.workspaceId
-        ))
-      )
-        return false;
-    } else if (
-      this.authorizeHostedTarget === undefined ||
-      !(await this.authorizeHostedTarget(payload.userId, nodeId, payload.templateId))
-    ) {
-      return false;
-    }
+    const authorize = async () =>
+      payload.targetType === 'HOSTED_CONVERSATION'
+        ? ((await this.authorizeHostedTarget?.(payload.userId, nodeId, payload.templateId)) ??
+          false)
+        : this.authorizeNodeRequest(
+            payload.userId,
+            nodeId,
+            payload.targetType === 'SCHEDULED_TASK'
+              ? 'schedule.task.get'
+              : 'workbench.event.receive',
+            value,
+            payload.workspaceId
+          );
+    if (!(await authorize())) return false;
     const timestamp = this.now();
     const createdAt = Math.min(payload.occurredAt, timestamp);
     if (createdAt + TTL_MS <= timestamp) return true;
     await this.cleanup();
     const locale = await this.locale(payload.userId);
-    const agent = payload.kind === 'AGENT_MESSAGE';
+    const agent = payload.targetType === 'WORKSPACE_SESSION' && payload.kind === 'AGENT_MESSAGE';
+    const outcome = 'outcome' in payload ? payload.outcome : undefined;
     const presentation = agent
       ? { kind: 'agent' as const, title: 'MyAgentRoam', detail: '' }
-      : present(payload.kind, payload.outcome, locale, payload.targetType);
+      : present(payload.kind, outcome, locale, payload.targetType);
     const message = agent
       ? payload.agentMessage!
       : notificationMessage(presentation.kind, presentation.title, presentation.detail, locale);
     const id = randomUUID();
     const [result] = await withMysqlTransaction(this.database.raw, async (connection) => {
       await lockMysqlUsers(connection, [payload.userId]);
+      if (payload.targetType === 'SCHEDULED_TASK') {
+        await lockMysqlNode(connection, nodeId);
+        await lockMysqlWorkspace(connection, payload.workspaceId, nodeId);
+        return connection.execute<ResultSetHeader>(
+          `INSERT INTO workbench_notifications
+           (id,user_id,source_id,source_key,kind,title,message,node_id,target_type,workspace_id,
+            task_id,task_reference,session_title,run_id,created_at,expires_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON DUPLICATE KEY UPDATE source_key=VALUES(source_key)`,
+          [
+            id,
+            payload.userId,
+            payload.notificationId,
+            sha256(payload.notificationId),
+            presentation.kind,
+            notificationTitle(
+              await this.workspaceTitle(connection, nodeId, payload.workspaceId),
+              payload.taskName,
+              locale
+            ),
+            message,
+            nodeId,
+            payload.targetType,
+            payload.workspaceId,
+            payload.taskId,
+            JSON.stringify(payload.reference),
+            payload.taskName,
+            payload.runId,
+            createdAt,
+            createdAt + TTL_MS
+          ]
+        );
+      }
       return payload.targetType === 'WORKSPACE_SESSION'
         ? await connection.execute<ResultSetHeader>(
             `INSERT INTO workbench_notifications
@@ -143,23 +174,12 @@ export class WorkbenchNotificationService {
     });
     if (result.affectedRows !== 1) return true;
     const notification = await this.get(payload.userId, id);
-    if (notification !== undefined) {
+    if (
+      notification !== undefined &&
+      (payload.targetType !== 'SCHEDULED_TASK' || (await authorize()))
+    ) {
       this.push(payload.userId, { type: 'notification.created', notification });
-      if (dispatchOffline)
-        this.offline?.(payload.userId, notification, () =>
-          payload.targetType === 'HOSTED_CONVERSATION'
-            ? (this.authorizeHostedTarget?.(payload.userId, nodeId, payload.templateId) ??
-              Promise.resolve(false))
-            : Promise.resolve(
-                this.authorizeNodeRequest(
-                  payload.userId,
-                  nodeId,
-                  'workbench.event.receive',
-                  payload,
-                  payload.workspaceId
-                )
-              )
-        );
+      if (dispatchOffline) this.offline?.(payload.userId, notification, authorize);
     }
     return true;
   }
@@ -172,7 +192,10 @@ export class WorkbenchNotificationService {
       'SELECT * FROM workbench_notifications WHERE user_id=? AND source_key=? AND deleted_at IS NULL AND expires_at>?',
       [userId, sha256(sourceId), this.now()]
     );
-    return rows[0] === undefined ? undefined : mapRow(rows[0]);
+    const notification = rows[0] === undefined ? undefined : mapRow(rows[0]);
+    return notification && (await this.canReadTaskTarget(userId, notification))
+      ? notification
+      : undefined;
   }
 
   async reclassify(change: import('@myagentroam/protocol').SessionGroupChanged): Promise<void> {
@@ -224,11 +247,16 @@ export class WorkbenchNotificationService {
       'SELECT username FROM users WHERE id=? AND enabled=TRUE AND must_change_password=FALSE',
       [userId]
     );
-    if (typeof users[0]?.username !== 'string') return undefined;
+    const notification = mapRow(row);
+    if (
+      typeof users[0]?.username !== 'string' ||
+      !(await this.canReadTaskTarget(userId, notification))
+    )
+      return undefined;
     return {
       account: users[0].username,
       locale: await this.locale(userId),
-      notification: mapRow(row)
+      notification
     };
   }
 
@@ -240,7 +268,36 @@ export class WorkbenchNotificationService {
        ORDER BY created_at DESC,id DESC`,
       [userId, this.now()]
     );
-    return rows.map(mapRow);
+    const entries = rows.map(mapRow);
+    const grants = new Map<string, Promise<boolean>>();
+    const allowed = await Promise.all(
+      entries.map((entry) => {
+        const target = entry.target;
+        if (target.targetType !== 'SCHEDULED_TASK') return true;
+        const scope = JSON.stringify([target.nodeId, target.workspaceId]);
+        const pending = grants.get(scope) ?? this.canReadTaskTarget(userId, entry);
+        grants.set(scope, pending);
+        return pending;
+      })
+    );
+    return entries.filter((_, index) => allowed[index]);
+  }
+
+  private async canReadTaskTarget(
+    userId: number,
+    notification: StoredWorkbenchNotification
+  ): Promise<boolean> {
+    const target = notification.target;
+    return (
+      target.targetType !== 'SCHEDULED_TASK' ||
+      this.authorizeNodeRequest(
+        userId,
+        target.nodeId,
+        'schedule.task.get',
+        { workspaceId: target.workspaceId, taskId: target.taskId },
+        target.workspaceId
+      )
+    );
   }
 
   private async workspaceTitle(
@@ -385,14 +442,23 @@ function mapRow(row: RowDataPacket): StoredWorkbenchNotification {
           conversationId: String(row['conversation_id']),
           conversationName: String(row['session_title'])
         }
-      : {
-          targetType: 'WORKSPACE_SESSION',
-          nodeId: String(row['node_id']),
-          workspaceId: String(row['workspace_id']),
-          sessionId: String(row['session_id']),
-          sessionName: String(row['session_title']),
-          sessionGroup: row['session_group'] ?? 'MAIN'
-        };
+      : row['target_type'] === 'SCHEDULED_TASK'
+        ? {
+            targetType: 'SCHEDULED_TASK',
+            nodeId: String(row['node_id']),
+            workspaceId: String(row['workspace_id']),
+            taskId: String(row['task_id']),
+            taskName: String(row['session_title']),
+            reference: row['task_reference']
+          }
+        : {
+            targetType: 'WORKSPACE_SESSION',
+            nodeId: String(row['node_id']),
+            workspaceId: String(row['workspace_id']),
+            sessionId: String(row['session_id']),
+            sessionName: String(row['session_title']),
+            sessionGroup: row['session_group'] ?? 'MAIN'
+          };
   return serverNotificationSchema.parse({
     id: String(row['id']),
     kind: row['kind'],
@@ -408,6 +474,10 @@ function mapRow(row: RowDataPacket): StoredWorkbenchNotification {
 
 function parsePayload(value: unknown) {
   if (!record(value)) return undefined;
+  if (value.targetType === 'SCHEDULED_TASK') {
+    const parsed = scheduledTaskNotificationPayloadSchema.safeParse(value);
+    return parsed.success ? parsed.data : undefined;
+  }
   const kind = value.kind;
   const outcome = value.outcome;
   if (
@@ -500,12 +570,27 @@ function present(
   kind: string,
   outcome: string | undefined,
   locale: UserLocale,
-  targetType: 'WORKSPACE_SESSION' | 'HOSTED_CONVERSATION'
+  targetType: StoredWorkbenchNotificationTarget['targetType']
 ) {
   const messages = workbenchNotificationMessages[locale];
   if (kind === 'APPROVAL_REQUIRED') return { kind: 'approval' as const, ...messages.approval };
   if (kind === 'PLAN_READY') return { kind: 'plan' as const, ...messages.plan };
   if (kind === 'USER_INPUT_REQUIRED') return { kind: 'user-input' as const, ...messages.userInput };
+  if (targetType === 'SCHEDULED_TASK') {
+    const title =
+      kind === 'SCHEDULE_PROPOSAL'
+        ? messages.schedule.proposal.title
+        : kind === 'SCHEDULE_SKIPPED'
+          ? messages.schedule.skipped.title
+          : kind === 'SCHEDULE_FAILED' || outcome === 'FAILED'
+            ? messages.schedule.failed.title
+            : outcome === 'SUCCEEDED'
+              ? messages.schedule.completed
+              : outcome === 'CANCELLED'
+                ? messages.run.cancelled
+                : messages.run.interrupted;
+    return { kind: 'schedule' as const, title, detail: messages.schedule.taskDetail };
+  }
   if (kind === 'SCHEDULE_SKIPPED')
     return { kind: 'schedule' as const, ...messages.schedule.skipped };
   if (kind === 'SCHEDULE_FAILED') return { kind: 'schedule' as const, ...messages.schedule.failed };

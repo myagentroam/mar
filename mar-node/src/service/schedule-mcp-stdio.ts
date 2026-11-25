@@ -1,68 +1,39 @@
 import { NODE_MCP, NODE_MCP_VERSION } from '../mcp/naming.js';
+import { scheduleTimeGuidance } from '../schedule-guidance.js';
 import { connect } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
+import type { ZodTypeAny } from 'zod/v3';
+import { scheduleToolInputs } from '@myagentroam/protocol';
+import { scheduleIpcFrameLimit } from './schedule-mcp-contract.js';
 
 const endpoint = process.env['MAR_SCHEDULE_MCP_ENDPOINT'];
-let token = process.env['MAR_SCHEDULE_MCP_TOKEN'];
+const token = process.env['MAR_SCHEDULE_MCP_TOKEN'];
 if (endpoint === undefined || token === undefined) throw new Error('SCHEDULE_CAPABILITY_INVALID');
-// This client owns one rotating credential; consume renewals before dispatching later calls.
+// Serialize requests from this client so later reads can observe earlier writes.
 let previousRequest: Promise<unknown> = Promise.resolve();
-
 const server = new McpServer({ name: NODE_MCP.schedule.name, version: NODE_MCP_VERSION });
-const scopeNote =
-  'Scope is limited to the MAR scheduled task managed by Node for this conversation; ' +
-  'it does not cover repository, CI, system cron, or other timers.';
-const objectiveDescription =
-  'Task body for one scheduled run in this conversation. State what that run should do with enough task context. ' +
-  'Do not phrase it as a request to create or change a schedule or repeat cron/time-zone settings; MAR handles scheduling and skipped triggers.';
-server.registerTool(
-  NODE_MCP.schedule.tools.get,
-  {
-    description:
-      'Read the MAR scheduled task bound to this MAR-managed Workspace conversation, or null if none exists. ' +
-      scopeNote
-  },
-  async (extra) => result(await request(NODE_MCP.schedule.tools.get, {}, extra.signal))
-);
-server.registerTool(
-  NODE_MCP.schedule.tools.create,
-  {
-    description:
-      'Create the MAR scheduled task for this MAR-managed Workspace conversation. MAR runs it in this conversation for each admitted trigger using the connected Node time zone. ' +
-      scopeNote,
-    inputSchema: {
-      objective: z.string().min(1).max(20_000).describe(objectiveDescription),
-      cron: z
-        .string()
-        .min(9)
-        .max(64)
-        .describe(
-          'Five-field cron expression interpreted in the connected MAR Node time zone. It defines the schedule separately from the per-run task body.'
-        )
-    }
-  },
-  async (args, extra) => result(await request(NODE_MCP.schedule.tools.create, args, extra.signal))
-);
-server.registerTool(
-  NODE_MCP.schedule.tools.update,
-  {
-    description:
-      'Update the MAR scheduled task for this MAR-managed Workspace conversation. MAR runs the saved objective in this conversation for each admitted trigger using the connected Node time zone. ' +
-      scopeNote,
-    inputSchema: {
-      objective: z.string().min(1).max(20_000).describe(objectiveDescription).optional(),
-      cron: z
-        .string()
-        .min(9)
-        .max(64)
-        .describe('Replacement five-field cron expression in the connected MAR Node time zone.')
-        .optional()
-    }
-  },
-  async (args, extra) => result(await request(NODE_MCP.schedule.tools.update, args, extra.signal))
-);
+const scope =
+  'In this MAR-managed Workspace conversation, this tool only manages its MAR scheduled tasks, not system cron, CI, or other projects. ';
+const descriptions: Record<keyof typeof scheduleToolInputs, string> = {
+  list: 'List MAR tasks scheduled for this conversation. Each task has its own instructions and time triggers.',
+  get: 'Read one scheduled task in this conversation, including its instructions and time triggers.',
+  create:
+    'Create a separate task in the current conversation. The objective is what to do at each trigger, not how to schedule it. After creation, tell the user the next trigger and time zone from the receipt. If the outcome is uncertain, list tasks before trying again. ' +
+    scheduleTimeGuidance,
+  update:
+    'Change only the selected task. Read its current revision and time zone first. The objective is what to do at each trigger. Omit triggers when only the name or objective changes; if supplied, triggers replaces the full schedule. A once trigger requires an explicit date. A proposal is not applied until approved. On a revision conflict, read again before editing.',
+  runs: 'List execution records for this task in this conversation, newest first.'
+};
+for (const key of Object.keys(scheduleToolInputs) as (keyof typeof scheduleToolInputs)[]) {
+  const tool = NODE_MCP.schedule.tools[key];
+  const inputSchema = scheduleToolInputs[key] as unknown as ZodTypeAny;
+  server.registerTool<ZodTypeAny, ZodTypeAny>(
+    tool,
+    { description: scope + descriptions[key], inputSchema },
+    async (args, extra) => result(await request(tool, args, extra.signal))
+  );
+}
 
 await server.connect(new StdioServerTransport());
 
@@ -77,6 +48,9 @@ function exchange(tool: string, args: unknown, signal: AbortSignal): Promise<unk
     return Promise.reject(
       new Error('SCHEDULE_CALL_CANCELLED: The schedule call was cancelled before dispatch.')
     );
+  const frame = `${JSON.stringify({ token, tool, arguments: args })}\n`;
+  if (frame.length > scheduleIpcFrameLimit)
+    return Promise.reject(new Error('SCHEDULE_INPUT_TOO_LARGE: The call was not sent.'));
   return new Promise((resolve, reject) => {
     const socket = connect(endpoint!);
     const abort = () =>
@@ -89,9 +63,7 @@ function exchange(tool: string, args: unknown, signal: AbortSignal): Promise<unk
     socket.once('close', () => signal.removeEventListener('abort', abort));
     let body = '';
     socket.setEncoding('utf8');
-    socket.once('connect', () =>
-      socket.write(`${JSON.stringify({ token, tool, arguments: args })}\n`)
-    );
+    socket.once('connect', () => socket.write(frame));
     socket.on('data', (chunk) => (body += chunk));
     socket.once('error', reject);
     socket.once('end', () => {
@@ -99,16 +71,17 @@ function exchange(tool: string, args: unknown, signal: AbortSignal): Promise<unk
         const payload = JSON.parse(body) as {
           readonly result?: unknown;
           readonly error?: string;
-          readonly token?: string;
         };
-        if (payload.error !== undefined) reject(new Error(payload.error));
-        else {
-          // Credential renewal stays inside IPC; model-visible results never contain tokens.
-          if (typeof payload.token === 'string') token = payload.token;
+        if (typeof payload?.error === 'string' && /^[A-Z][A-Z0-9_]{0,127}$/u.test(payload.error))
+          reject(new Error(payload.error));
+        else if (
+          payload !== null &&
+          typeof payload === 'object' &&
+          Object.hasOwn(payload, 'result')
+        )
           resolve(payload.result);
-        }
+        else throw new Error();
       } catch {
-        // JSON diagnostics may include a partially received private renewal credential.
         reject(
           new Error(
             'SCHEDULE_IPC_RESPONSE_INVALID: The schedule service returned an invalid response.'

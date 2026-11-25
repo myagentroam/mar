@@ -18,6 +18,22 @@ const env = {
   MAR_CTL_USER_TOKEN: `marctl_user_e30.${'x'.repeat(43)}`,
   MAR_CTL_SESSION_ID: 'source'
 };
+const triggers = [
+  { kind: 'daily', time: '09:00' },
+  { kind: 'weekly', time: '10:30', weekdays: [1, 5] },
+  { kind: 'monthly', time: '12:00', monthDays: [1, 31] },
+  { kind: 'once', date: '2035-02-12', time: '14:30' }
+];
+const scheduleCreate = [
+  'schedule',
+  'create',
+  '--name',
+  'Build',
+  '--triggers-file',
+  '-',
+  '-m',
+  'Check build'
+];
 
 test('uses agents as the sole CLI command group', () => {
   assert.equal(parseArgs(['agents', 'current']).command, 'agents');
@@ -213,7 +229,7 @@ test('send maps an approval ID and decision without a Run ID', async () => {
   );
 });
 
-test('renames sessions, manages prompts and schedules, and decides approvals', async () => {
+test('renames sessions, manages prompts, and decides approvals', async () => {
   const calls = [];
   const invoke = (args) =>
     main(['agents', ...args, '--json'], {
@@ -227,8 +243,6 @@ test('renames sessions, manages prompts and schedules, and decides approvals', a
       }
     });
   assert.equal(await invoke(['rename', 'other', '--title', '  fixer#42 New title  ']), 0);
-  assert.equal(await invoke(['schedule', 'list', '--limit', '2']), 0);
-  assert.equal(await invoke(['schedule', 'get', 'other']), 0);
   assert.equal(await invoke(['prompt', 'get']), 0);
   assert.equal(await invoke(['prompt', 'set', '-m', '  Agent role  ']), 0);
   assert.equal(await invoke(['prompt', 'clear']), 0);
@@ -260,18 +274,8 @@ test('renames sessions, manages prompts and schedules, and decides approvals', a
     ]),
     0
   );
-  assert.equal(
-    await invoke(['schedule', 'create', 'other', '--cron', '0 9 * * *', '-m', 'Check build']),
-    0
-  );
-  assert.equal(
-    await invoke(['schedule', 'update', 'other', '--expected-revision', '3', '-m', 'Check tests']),
-    0
-  );
   assert.deepEqual(calls, [
     { action: 'rename', sessionId: 'other', title: 'fixer#42 New title' },
-    { action: 'schedule.list', limit: 2 },
-    { action: 'schedule.get', sessionId: 'other' },
     { action: 'prompt.get', sessionId: 'source' },
     { action: 'prompt.set', sessionId: 'source', content: '  Agent role  ' },
     { action: 'prompt.clear', sessionId: 'source' },
@@ -288,22 +292,168 @@ test('renames sessions, manages prompts and schedules, and decides approvals', a
       runId: 'run-2',
       approvalId: 'approval-2',
       decision: 'REJECTED'
-    },
-    { action: 'schedule.create', sessionId: 'other', cron: '0 9 * * *', content: 'Check build' },
-    { action: 'schedule.update', sessionId: 'other', expectedRevision: 3, content: 'Check tests' }
+    }
   ]);
   for (const args of [
     ['rename', 'other'],
-    ['rename', 'other', '--title', '   '],
-    ['schedule', 'create', 'other', '-m', 'Check'],
-    ['schedule', 'update', 'other', '-m', 'Check'],
-    ['schedule', 'update', 'other', '--expected-revision', '1'],
-    ['schedule', 'update', 'other', '--expected-revision', '1.5', '-m', 'Check'],
-    ['schedule', 'update', 'other', '--expected-revision', '9007199254740992', '-m', 'Check'],
-    ['schedule', 'update', 'other', '--expected-revision', '1', '--enabled', 'false'],
-    ['schedule', 'get', 'other', '--node', 'foreign']
+    ['rename', 'other', '--title', '   ']
   ])
     assert.throws(() => parseArgs(['agents', ...args]));
+});
+
+test('addresses schedules by task ID and creates a separate task for each supported target', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'marctl-schedule-'));
+  const triggersFile = join(root, 'triggers.json');
+  const calls = [];
+  const invoke = (args, sessionId = 'source') =>
+    main(['agents', ...args, '--json'], {
+      env: { ...env, MAR_CTL_SESSION_ID: sessionId },
+      stdin: [JSON.stringify(triggers)],
+      stdout: { write() {} },
+      client: {
+        sessionCommand: async (body) => {
+          calls.push(body);
+          return {};
+        }
+      }
+    });
+  try {
+    await writeFile(triggersFile, JSON.stringify(triggers));
+    assert.equal(await invoke(['schedule', 'list', '--limit', '2', '--cursor', 'cursor'], ''), 0);
+    assert.equal(await invoke(['schedule', 'list', '--session', 'other']), 0);
+    assert.equal(await invoke(['schedule', 'get', '--task', 'task-b'], ''), 0);
+    assert.equal(await invoke(['schedule', 'runs', '--task', 'task-b', '--page', '2'], ''), 0);
+    assert.equal(await invoke(scheduleCreate), 0);
+    assert.equal(await invoke([...scheduleCreate, '--session', 'other'], ''), 0);
+    assert.equal(
+      await invoke(
+        [...scheduleCreate, '--new-session', '--runner', 'codex', '--default-model'],
+        ''
+      ),
+      0
+    );
+    assert.equal(
+      await invoke([
+        ...scheduleCreate,
+        '--new-session',
+        '--runner',
+        'mar-agent',
+        '--model-id',
+        'model',
+        '--effort',
+        'high'
+      ]),
+      0
+    );
+    assert.equal(
+      await invoke(
+        [
+          'schedule',
+          'update',
+          '--task',
+          'task-b',
+          '--expected-revision',
+          '3',
+          '--name',
+          'Review',
+          '--triggers-file',
+          triggersFile,
+          '-m',
+          'Check tests'
+        ],
+        ''
+      ),
+      0
+    );
+    const create = { action: 'schedule.create', name: 'Build', objective: 'Check build', triggers };
+    assert.deepEqual(calls, [
+      { action: 'schedule.list', limit: 2, cursor: 'cursor' },
+      { action: 'schedule.list', sessionId: 'other' },
+      { action: 'schedule.get', taskId: 'task-b' },
+      { action: 'schedule.runs', taskId: 'task-b', occurrencePage: 2 },
+      { ...create, target: { kind: 'existing', sessionId: 'source' } },
+      { ...create, target: { kind: 'existing', sessionId: 'other' } },
+      { ...create, target: { kind: 'newSession', runner: 'codex', model: { kind: 'default' } } },
+      {
+        ...create,
+        target: {
+          kind: 'newSession',
+          runner: 'mar-agent',
+          model: { kind: 'fixed', modelId: 'model' },
+          effort: 'high'
+        }
+      },
+      {
+        action: 'schedule.update',
+        taskId: 'task-b',
+        expectedRevision: 3,
+        patch: { name: 'Review', objective: 'Check tests', triggers }
+      }
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects legacy syntax, invalid task options and competing stdin inputs before reading', async () => {
+  for (const args of [
+    ['schedule', 'get'],
+    ['schedule', 'get', 'other'],
+    ['schedule', 'get', '--task', 'task', '--node', 'foreign'],
+    ['schedule', 'runs', '--task', 'task', '--page', '0'],
+    ['schedule', 'create', '--name', 'Build', '--cron', '0 9 * * *', '-m', 'Check'],
+    ['schedule', 'create', '--name', 'Build', '--groups-file', '-', '-m', 'Check'],
+    ['schedule', 'create', '--name', 'Build', '--triggers-file', '-', '--message-file', '-'],
+    [...scheduleCreate, '--new-session', '--runner', 'codex'],
+    [
+      ...scheduleCreate,
+      '--new-session',
+      '--runner',
+      'codex',
+      '--default-model',
+      '--model-id',
+      'model'
+    ],
+    [
+      ...scheduleCreate,
+      '--session',
+      'other',
+      '--new-session',
+      '--runner',
+      'codex',
+      '--default-model'
+    ],
+    [...scheduleCreate, '--new-session', '--runner', 'invalid', '--default-model'],
+    ...['1.5', '9007199254740992'].map((value) => [
+      'schedule',
+      'update',
+      '--task',
+      'other',
+      '--expected-revision',
+      value,
+      '-m',
+      'Check'
+    ]),
+    ['schedule', 'update', '--task', 'other', '-m', 'Check'],
+    ['schedule', 'update', '--task', 'other', '--expected-revision', '1'],
+    ['schedule', 'update', '--task', 'other', '--expected-revision', '1', '--enabled', 'false']
+  ])
+    assert.throws(() => parseArgs(['agents', ...args]));
+
+  let read = false;
+  let output = '';
+  const code = await main(['agents', ...scheduleCreate, '--json'], {
+    env: { ...env, MAR_CTL_SESSION_ID: '' },
+    stdin: (async function* () {
+      read = true;
+      yield JSON.stringify(triggers);
+    })(),
+    stdout: { write: (value) => (output += value) },
+    client: { sessionCommand: async () => assert.fail('must not call Server') }
+  });
+  assert.notEqual(code, 0);
+  assert.equal(JSON.parse(output).error.code, 'MARCTL_SESSION_CONTEXT_REQUIRED');
+  assert.equal(read, false);
 });
 
 test('defaults only state and configuration commands to the current Session before reading input', async () => {
@@ -312,10 +462,7 @@ test('defaults only state and configuration commands to the current Session befo
     ['history'],
     ['graph'],
     ['config', '--effort', 'high'],
-    ['rename', '--title', 'Renamed'],
-    ['schedule', 'get'],
-    ['schedule', 'create', '--cron', '0 9 * * *', '-m', 'Check'],
-    ['schedule', 'update', '--expected-revision', '1', '-m', 'Check']
+    ['rename', '--title', 'Renamed']
   ]) {
     const calls = [];
     const options = {
@@ -332,7 +479,7 @@ test('defaults only state and configuration commands to the current Session befo
     assert.equal(await main(['agents', ...args, '--json'], options), 0);
     assert.equal(calls[0].sessionId, 'source');
     const explicit = [...args];
-    explicit.splice(args[0] === 'schedule' ? 2 : 1, 0, 'target');
+    explicit.splice(1, 0, 'target');
     assert.equal(await main(['agents', ...explicit, '--json'], options), 0);
     assert.equal(calls[1].sessionId, 'target');
     let errorOutput = '';
@@ -377,7 +524,18 @@ test('schedule text uses bounded UTF-8 stdin and new writes never retry uncertai
   ]) {
     let calls = 0;
     const code = await main(
-      ['agents', 'schedule', 'update', '--expected-revision', '1', '--message-file', '-', '--json'],
+      [
+        'agents',
+        'schedule',
+        'update',
+        '--task',
+        'task',
+        '--expected-revision',
+        '1',
+        '--message-file',
+        '-',
+        '--json'
+      ],
       {
         env,
         stdin: (async function* () {
@@ -395,10 +553,30 @@ test('schedule text uses bounded UTF-8 stdin and new writes never retry uncertai
     assert.equal(code === 0, valid);
     assert.equal(calls, valid ? 1 : 0);
   }
+  for (const input of [
+    '{',
+    'null',
+    '{}',
+    '[]',
+    `${' '.repeat(64_001)}${JSON.stringify(triggers)}`,
+    Buffer.from([0xff])
+  ]) {
+    let output = '';
+    assert.equal(
+      await main(['agents', ...scheduleCreate, '--json'], {
+        env,
+        stdin: [input],
+        stdout: { write: (value) => (output += value) },
+        client: { sessionCommand: async () => assert.fail('must not call Server') }
+      }),
+      2
+    );
+    assert.equal(JSON.parse(output).error.code, 'MARCTL_SESSION_INPUT_INVALID');
+  }
   for (const args of [
     ['rename', '--title', 'Updated'],
-    ['schedule', 'create', '--cron', '0 9 * * *', '-m', 'Check'],
-    ['schedule', 'update', '--expected-revision', '1', '--cron', '0 8 * * *']
+    scheduleCreate,
+    ['schedule', 'update', '--task', 'task', '--expected-revision', '1', '--triggers-file', '-']
   ]) {
     let output = '';
     let calls = 0;
@@ -418,6 +596,7 @@ test('schedule text uses bounded UTF-8 stdin and new writes never retry uncertai
     assert.equal(
       await main(['agents', ...args, '--json'], {
         env,
+        stdin: [JSON.stringify(triggers)],
         client,
         stdout: {
           write: (value) => {
@@ -1348,6 +1527,11 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
         assert.ok(output.includes(flag), flag);
       assert.ok(!output.includes('--forced'));
       assert.ok(!output.includes('--history'));
+      assert.ok(!output.includes('--cron'));
+      assert.match(output, /schedule get --task/u);
+      assert.match(output, /schedule runs --task/u);
+      assert.match(output, /schedule create --name .* --triggers-file/u);
+      assert.match(output, /schedule update --task .* --expected-revision/u);
       assert.ok(!output.toLowerCase().includes('urgent'));
       for (const line of output.split('\n')) {
         // Count CJK glyphs as two columns; other help characters occupy one.
@@ -1472,8 +1656,8 @@ test('keeps structured authorization failures and reports unknown mutation outco
     ['prompt', 'set', 's', '-m', 'new instructions'],
     ['prompt', 'clear', 's'],
     ['approval', 'decide', 's', '--run', 'r', '--approval', 'a', '--decision', 'approve'],
-    ['schedule', 'create', 's', '--cron', '* * * * *', '-m', 'task'],
-    ['schedule', 'update', 's', '--expected-revision', '1', '--cron', '* * * * *'],
+    [...scheduleCreate, '--session', 's'],
+    ['schedule', 'update', '--task', 'task', '--expected-revision', '1', '--triggers-file', '-'],
     ['stop', 's'],
     ['goal', 'set', 's', '-m', 'goal'],
     ['goal', 'clear', 's']
@@ -1483,6 +1667,7 @@ test('keeps structured authorization failures and reports unknown mutation outco
     assert.equal(
       await main(['agents', ...args, '--json'], {
         env,
+        stdin: [JSON.stringify(triggers)],
         stdout: { write: (value) => (mutationOutput += value) },
         client: {
           sessionCommand: async () => {

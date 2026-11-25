@@ -14,6 +14,7 @@ import {
 } from '../../service/browser-use-preference.js';
 import type { WorkbenchHttpService } from '../../service/workbench-http-service.js';
 import BrowserCacheSettings from './BrowserCacheSettings.vue';
+import './settings-layout.css';
 
 /** Browser Use is an account preference; link destinations are local to this device. */
 const props = defineProps<{
@@ -26,7 +27,7 @@ const enabled = ref(true);
 const useLoaded = ref(false);
 const useBusy = ref(false);
 const useError = ref<'load' | 'save'>();
-const helpId = useId();
+const id = useId();
 let requestLifetime = new AbortController();
 
 async function loadBrowserUse(): Promise<void> {
@@ -108,96 +109,80 @@ function save(kind: 'local' | 'web', value: unknown): void {
 </script>
 
 <template>
-  <section class="browser-settings" :aria-label="t('browser.settings')">
-    <header>
-      <h1>{{ t('browser.settings') }}</h1>
-      <p class="browser-settings-summary">{{ t('browser.settingsSummary') }}</p>
-    </header>
-    <section>
-      <MarCheckbox
-        :model-value="useLoaded ? enabled : false"
-        :disabled="!useLoaded || useBusy"
-        :aria-describedby="helpId"
-        @update:model-value="saveBrowserUse"
-        >{{ t('browser.use') }}</MarCheckbox
-      >
-      <p :id="helpId" class="browser-link-help">{{ t('browser.useHelp') }}</p>
-      <p v-if="useError" role="alert">
-        {{ t(useError === 'load' ? 'browser.useLoadFailed' : 'browser.useSaveFailed') }}
-        <MarButton v-if="useError === 'load'" link @click="loadBrowserUse">{{
-          t('browser.useRetry')
-        }}</MarButton>
-      </p>
-    </section>
-    <section>
-      <BrowserCacheSettings :user-id="userId" :request="request" />
-    </section>
-    <section>
-      <h2>{{ t('browser.preferences') }}</h2>
-      <div
-        class="browser-form-row"
-        v-for="(label, kind) in { web: 'browser.webLinks', local: 'browser.localLinks' } as const"
-        :key="kind"
-      >
-        <span>{{ t(label) }}</span>
-        <MarSelect
-          :model-value="preferences[kind]"
-          :aria-label="t(label)"
-          @update:model-value="(value) => save(kind, value)"
+  <div class="settings-content">
+    <section class="browser-settings" :aria-labelledby="`${id}-title`">
+      <header>
+        <h1 :id="`${id}-title`" class="mar-settings-page-title">{{ t('browser.settings') }}</h1>
+        <p class="mar-settings-page-summary">{{ t('browser.settingsSummary') }}</p>
+      </header>
+      <section>
+        <MarCheckbox
+          :model-value="useLoaded ? enabled : false"
+          :disabled="!useLoaded || useBusy"
+          :aria-describedby="`${id}-use-help`"
+          @update:model-value="saveBrowserUse"
+          >{{ t('browser.use') }}</MarCheckbox
         >
-          <MarOption value="mar" :label="t('browser.mar')" /><MarOption
-            value="external"
-            :label="t('browser.device')"
-          />
-        </MarSelect>
-      </div>
-      <p class="browser-link-help">{{ t('browser.linkHelp') }}</p>
-      <p v-if="saveFailed" role="alert">{{ t('browser.saveFailed') }}</p>
+        <p :id="`${id}-use-help`" class="browser-setting-help">{{ t('browser.useHelp') }}</p>
+        <p v-if="useError" role="alert">
+          {{ t(useError === 'load' ? 'browser.useLoadFailed' : 'browser.useSaveFailed') }}
+          <MarButton v-if="useError === 'load'" link @click="loadBrowserUse">{{
+            t('browser.useRetry')
+          }}</MarButton>
+        </p>
+      </section>
+      <section>
+        <BrowserCacheSettings :user-id="userId" :request="request" />
+      </section>
+      <section>
+        <h2 class="browser-setting-heading">{{ t('browser.preferences') }}</h2>
+        <div
+          v-for="(label, kind) in { web: 'browser.webLinks', local: 'browser.localLinks' } as const"
+          :key="kind"
+          class="mar-settings-option-row"
+        >
+          <label :id="`${id}-${kind}-label`" :for="`${id}-${kind}`">{{ t(label) }}</label>
+          <MarSelect
+            :id="`${id}-${kind}`"
+            :model-value="preferences[kind]"
+            :aria-labelledby="`${id}-${kind}-label`"
+            @update:model-value="(value) => save(kind, value)"
+          >
+            <MarOption value="mar" :label="t('browser.mar')" />
+            <MarOption value="external" :label="t('browser.device')" />
+          </MarSelect>
+        </div>
+        <p class="browser-setting-help">{{ t('browser.linkHelp') }}</p>
+        <p v-if="saveFailed" role="alert">{{ t('browser.saveFailed') }}</p>
+      </section>
     </section>
-  </section>
+  </div>
 </template>
 
 <style scoped>
 .browser-settings {
-  flex: 1;
-  min-inline-size: 0;
-  overflow: auto;
-  padding: clamp(0.75rem, 3vw, 1.5rem);
-}
-.browser-settings > header {
-  margin-block-end: 0.5rem;
-}
-.browser-settings h1 {
-  margin: 0;
-}
-.browser-settings-summary,
-.browser-link-help {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
-  line-height: 1.5;
-}
-.browser-settings-summary {
-  margin: 0.35rem 0 0;
-}
-.browser-link-help {
-  margin-block: 0.75rem 0;
+  display: grid;
+  gap: 0.65rem;
+  padding: var(--mar-settings-page-padding);
 }
 .browser-settings > section {
-  max-inline-size: 50rem;
-  padding-block: 0.5rem;
-  border-block-start: 1px solid var(--mar-ui-border);
+  max-inline-size: 34rem;
+  min-inline-size: 0;
 }
-.browser-form-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+.browser-settings > section + section {
+  padding-block-start: 0.65rem;
+  border-block-start: 1px solid var(--mar-border-subtle);
 }
-.browser-form-row {
-  justify-content: space-between;
-  margin-block: 0.5rem;
+.browser-settings :deep(.browser-setting-heading) {
+  margin: 0;
+  font-size: var(--mar-font-size-body);
+  font-weight: 600;
+  line-height: 1.4;
 }
-.browser-form-row > :last-child {
-  inline-size: min(15rem, 100%);
+.browser-settings :deep(.browser-setting-help) {
+  margin: 0.35rem 0 0;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
 }
 </style>

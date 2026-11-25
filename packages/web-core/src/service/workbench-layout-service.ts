@@ -182,15 +182,17 @@ function isWorkspaceTab(value: unknown): value is WorkspaceTab {
   );
 }
 
+export type MobileUtilityPanel = 'activity' | 'schedules';
+
 export interface WorkbenchLayoutView {
   mobileViewport: boolean;
   mobileSidebarOpen: boolean;
-  mobileUtilityPanel: 'activity' | undefined;
+  mobileUtilityPanel: MobileUtilityPanel | undefined;
   mobileWorkspaceSurface: MobileWorkspaceSurface;
   closeMobileSidebar: () => void;
   closeMobileWorkspaceSurface: () => void;
   openMobileWorkspaceSurface: (surface: Exclude<MobileWorkspaceSurface, 'conversation'>) => void;
-  selectMobileUtilityPanel: (panel: 'activity' | undefined) => void;
+  selectMobileUtilityPanel: (panel: MobileUtilityPanel | undefined) => void;
   sidebarCollapsed: boolean;
   sidebarContentVisible: boolean;
   panelWidths: { sidebar?: number; compact?: number; content?: number };

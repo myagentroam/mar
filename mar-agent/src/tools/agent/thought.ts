@@ -11,8 +11,7 @@ export const thoughtToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct'],
   parallelSafety: 'safe',
   eventInputFields: [],
-  description:
-    'Record dense, reusable insights not yet captured in durable artifacts: findings, decisions, rejected approaches with evidence, assumptions, and unresolved questions. Prefer terse domain shorthand, identifiers, and compact notation over narrative prose. Do not recap progress. Keep exact values and evidence needed to resume; distinguish verified facts from hypotheses. Do not include secrets or private deliberation.',
+  description: 'Record reusable insights for subsequent reasoning.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -23,7 +22,21 @@ export const thoughtToolDefinition: ClientToolDefinition = {
         minLength: 1,
         maxLength: maxTitleLength
       },
-      content: { type: 'string', minLength: 1, maxLength: maxContentBytes }
+      content: {
+        type: 'string',
+        description: `Record reusable insights not yet captured in durable artifacts: findings,
+decisions and evidence, rejected approaches and why, assumptions, and open
+questions.
+
+Write for reuse in subsequent reasoning: telegraphic fragments, standard
+domain abbreviations, exact identifiers and values, and compact symbolic
+relations. Omit connective prose, redundant context, and progress recaps.
+Compress wording, not meaning: preserve causal links and dependencies,
+and distinguish verified facts from hypotheses. Do not include secrets
+or private deliberation.`,
+        minLength: 1,
+        maxLength: maxContentBytes
+      }
     },
     required: ['title', 'content'],
     additionalProperties: false

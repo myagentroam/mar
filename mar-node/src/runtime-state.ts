@@ -898,6 +898,12 @@ export class NodeRuntimeState {
     return this.runs.get(canonical);
   }
 
+  /** Read a retained Run without making terminal entries available to control operations. */
+  getWorkspaceRun(id: string, workspaceId: string): NodeAgentRun | undefined {
+    const run = this.runs.get(id) ?? this.terminalRunIds.get(id);
+    return run?.workspaceId === workspaceId ? run : undefined;
+  }
+
   /** Resolves signed MCP scope against live execution ownership, never a token registry. */
   resolveMcpExecution(scope: {
     readonly executionId: string;

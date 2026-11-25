@@ -222,6 +222,17 @@ export class ResourceAccessService {
     return direct.allowed || this.canUseNode(actorUserId, nodeId);
   }
 
+  async canUseScheduledWorkspace(
+    actorUserId: number,
+    nodeId: string,
+    workspaceId: string
+  ): Promise<boolean> {
+    return (
+      (await this.ownership.node(nodeId)) !== undefined &&
+      this.canUseWorkspace(actorUserId, nodeId, workspaceId)
+    );
+  }
+
   async canRelay(
     actorUserId: number,
     nodeId: string,
@@ -229,6 +240,10 @@ export class ResourceAccessService {
     _data: unknown,
     workspaceId?: string
   ): Promise<boolean> {
+    if (operation.startsWith('schedule.'))
+      return (
+        workspaceId !== undefined && this.canUseScheduledWorkspace(actorUserId, nodeId, workspaceId)
+      );
     // Desktop access is Node-wide and cannot be delegated by a Workspace grant.
     if (operation === 'desktop.describe') return this.canUseNode(actorUserId, nodeId);
     if (operation === 'workspace.git.settings.get' && workspaceId !== undefined)

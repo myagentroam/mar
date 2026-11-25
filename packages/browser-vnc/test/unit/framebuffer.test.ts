@@ -193,6 +193,31 @@ test('scroll repairs a lossy reference before emitting any CopyRect', async () =
   ).toBe(RFB_COPY_RECT);
 });
 
+test('Tight JPEG detects high texture when motion contains repeated pairs of pixels', async () => {
+  const frame = raster(256, 128);
+  let seed = 1;
+  for (let offset = 0; offset < frame.rgb.length; offset += 6) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    frame.rgb.writeUIntBE(seed >>> 8, offset, 3);
+    frame.rgb.copy(frame.rgb, offset + 3, offset, offset + 3);
+  }
+  const jpeg = vi.fn(async () => Buffer.alloc(256));
+  const base = raster(frame.width, frame.height);
+  const moving = await encodeBrowserVncUpdate(frame, base, { ...options, motion: true, jpeg });
+  expect(moving).toMatchObject({ lossy: true, motion: true });
+  expect(moving?.data[16]).toBe(0x90);
+  expect(jpeg).toHaveBeenCalledOnce();
+
+  const still = await encodeBrowserVncUpdate(frame, undefined, { ...options, jpeg });
+  expect(still).toMatchObject({ lossy: false, motion: false });
+  expect(jpeg).toHaveBeenCalledOnce();
+
+  jpeg.mockResolvedValueOnce(frame.rgb);
+  const larger = await encodeBrowserVncUpdate(frame, base, { ...options, motion: true, jpeg });
+  expect(larger).toMatchObject({ lossy: false, motion: true });
+  expect(jpeg).toHaveBeenCalledTimes(2);
+});
+
 test('RFB 3.8 accepts fragmented negotiation but never accepts keyboard input', () => {
   const replies: Uint8Array[] = [];
   let requests = 0;
@@ -240,6 +265,16 @@ test('automatic quality first reduces cadence, then scale, and can recover withi
   rate.limit('auto');
   fast();
   expect(rate.profile.quality).toBe('high');
+});
+
+test('reacts after one confirmed motion frame that took a second to write, but not a still', () => {
+  const rate = new BrowserVncRate(false);
+  expect(rate.observe(1_100, 1_130, true)).toBe(false);
+  expect(rate.profile.fps).toBe(24);
+  expect(rate.observe(1_100, 1_130, true, 250_000)).toBe(true);
+  expect(rate.profile).toEqual({ quality: 'high', fps: 12, scale: 1 });
+  expect(rate.observe(1_100, 1_130, true, 250_000)).toBe(true);
+  expect(rate.profile).toEqual({ quality: 'medium', fps: 10, scale: 1 });
 });
 
 test('severe sustained motion reduces cadence in two updates before reducing raster', () => {

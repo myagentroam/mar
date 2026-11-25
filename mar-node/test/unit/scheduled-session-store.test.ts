@@ -1,79 +1,73 @@
+import { hourlyTriggers, dailyTriggers } from './scheduled-task-fixtures.js';
 import { describe, expect, it } from 'vitest';
 import { NodeDatabase } from '../../src/database.js';
-import {
-  nextScheduledAt,
-  parseScheduledCron
-} from '../../src/service/scheduled-session-recurrence.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
 
-describe('scheduled session recurrence', () => {
-  it('accepts simple and advanced five-field cron forms', () => {
-    expect(parseScheduledCron('15 * * * *')).toEqual({ kind: 'HOURLY', minute: 15 });
-    expect(parseScheduledCron('30 9 * * *')).toEqual({ kind: 'DAILY', minute: 30, hour: 9 });
-    expect(parseScheduledCron('0 8 * * 1')).toEqual({
-      kind: 'WEEKLY',
-      minute: 0,
-      hour: 8,
-      weekday: 1
-    });
-    expect(parseScheduledCron('*/15 9-17 * * 1-5')).toEqual({
-      kind: 'CRON',
-      expression: '*/15 9-17 * * 1-5'
-    });
-    expect(parseScheduledCron('0 0 1,15 */2 *')).toEqual({
-      kind: 'CRON',
-      expression: '0 0 1,15 */2 *'
-    });
-    expect(() => parseScheduledCron('0 0 31 2 *')).not.toThrow('SCHEDULE_CRON_INVALID');
-    expect(() => parseScheduledCron('*/0 * * * *')).toThrow('SCHEDULE_CRON_INVALID');
-    expect(() => parseScheduledCron('0 0 * * 8')).toThrow('SCHEDULE_CRON_INVALID');
-    expect(() => parseScheduledCron(`${'0,'.repeat(33)}0 * * * *`)).toThrow(
-      'SCHEDULE_CRON_INVALID'
-    );
-  });
-
-  it('skips a missing local time and runs a repeated local time once', () => {
-    const spring = Date.parse('2025-03-09T06:00:00Z');
-    expect(nextScheduledAt('30 2 * * *', 'America/New_York', spring)).toBe(
-      Date.parse('2025-03-10T06:30:00Z')
-    );
-    const firstFall = Date.parse('2025-11-02T05:30:00Z');
-    expect(nextScheduledAt('30 1 * * *', 'America/New_York', firstFall)).toBe(
-      Date.parse('2025-11-03T06:30:00Z')
-    );
-  });
-
-  it('supports ranges, steps and standard day-of-month/day-of-week matching', () => {
-    expect(nextScheduledAt('*/15 9-17 * * 1-5', 'UTC', Date.parse('2025-01-03T16:50:00Z'))).toBe(
-      Date.parse('2025-01-03T17:00:00Z')
-    );
-    expect(nextScheduledAt('0 9 1 * 1', 'UTC', Date.parse('2025-02-02T10:00:00Z'))).toBe(
-      Date.parse('2025-02-03T09:00:00Z')
-    );
-  });
-
-  it.each([
-    ['30 1 * * *', 'America/New_York', '2025-11-02T05:31:00Z', '2025-11-03T06:30:00Z'],
-    ['* * * * *', 'America/New_York', '2025-11-02T05:59:00Z', '2025-11-02T07:00:00Z'],
-    ['*/15 * * * *', 'America/New_York', '2025-11-02T06:10:00Z', '2025-11-02T07:00:00Z'],
-    ['45 1 * * *', 'Australia/Lord_Howe', '2025-04-05T14:46:00Z', '2025-04-06T15:15:00Z'],
-    ['15 2 * * *', 'Australia/Lord_Howe', '2025-10-04T15:00:00Z', '2025-10-05T15:15:00Z'],
-    ['0 9 * * *', 'Asia/Kathmandu', '2025-01-01T03:14:00Z', '2025-01-01T03:15:00Z'],
-    ['0 0 1 1 *', 'UTC', '2026-01-01T00:00:00Z', '2027-01-01T00:00:00Z'],
-    ['0 0 29 2 *', 'UTC', '2096-03-01T00:00:00Z', '2104-02-29T00:00:00Z'],
-    ['0 0 31 2 1', 'UTC', '2025-02-01T00:00:00Z', '2025-02-03T00:00:00Z']
-  ])('selects one local occurrence for %s in %s after %s', (cron, zone, after, expected) => {
-    expect(nextScheduledAt(cron, zone, Date.parse(after))).toBe(Date.parse(expected));
-  });
-
-  it('rejects an impossible date without reducing the search horizon', () => {
-    expect(() => nextScheduledAt('0 0 31 2 *', 'UTC', Date.parse('2025-01-01T00:00:00Z'))).toThrow(
-      'SCHEDULE_NEXT_TIME_UNAVAILABLE'
-    );
-  });
-});
-
 describe('scheduled session store', () => {
+  it('filters schedule state before paging and binds the cursor to that filter', () => {
+    const now = Date.parse('2026-11-25T08:00:00Z');
+    const database = new NodeDatabase(':memory:', 'schedule-states', () => now);
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/states',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      for (const externalSessionId of ['existing', 'removed'])
+        database.saveNativeSessionMetadata({
+          runner: 'codex',
+          externalSessionId,
+          workspaceId: workspace.id
+        });
+      const store = new ScheduledSessionStore(database.raw, () => now);
+      const create = (name: string, sessionId: string, enabled = true, ownerUserId = 1) =>
+        store.create({
+          name,
+          sessionId,
+          enabled,
+          workspaceId: workspace.id,
+          runner: 'codex',
+          ownerUserId,
+          objective: 'Check',
+          triggers: dailyTriggers('09:00'),
+          timezone: 'UTC'
+        });
+      const scheduled = [create('Active A', 'existing'), create('Active B', 'existing')];
+      const paused = create('Paused', 'existing', false);
+      const finished = create('Finished', 'existing');
+      const unbound = create('Unbound', 'removed');
+      database.raw
+        .prepare('UPDATE scheduled_session_tasks SET next_run_at=NULL WHERE id=?')
+        .run(finished.id);
+      store.unbindSession('removed');
+      const list = (state: 'scheduled' | 'paused' | 'finished' | 'unbound', cursor?: string) =>
+        store.list(workspace.id, cursor, 1, undefined, undefined, undefined, state);
+      const first = list('scheduled');
+      expect(first.nextCursor).not.toBeNull();
+      const second = list('scheduled', first.nextCursor!);
+      expect([...first.tasks, ...second.tasks].map(({ id }) => id).sort()).toEqual(
+        scheduled.map(({ id }) => id).sort()
+      );
+      expect(() => list('paused', first.nextCursor!)).toThrow('SCHEDULE_INVALID');
+      expect(list('paused').tasks.map(({ id }) => id)).toEqual([paused.id]);
+      expect(list('finished').tasks.map(({ id }) => id)).toEqual([finished.id]);
+      expect(list('unbound').tasks.map(({ id }) => id)).toEqual([unbound.id]);
+
+      create('Another owner', 'existing', true, 2);
+      create('Another session', 'removed');
+      const filter = { sessionId: 'existing', ownerUserId: 1, state: 'scheduled' as const };
+      const [, lastId] = scheduled.map(({ id }) => id).sort();
+      expect(store.listPage(workspace.id, filter, 0, 0)).toEqual({ total: 2, tasks: [] });
+      const page = store.listPage(workspace.id, filter, 1, 1);
+      expect(page.total).toBe(2);
+      expect(page.tasks.map(({ id }) => id)).toEqual([lastId]);
+      expect(store.listPage(workspace.id, filter, 2, 1)).toEqual({ total: 2, tasks: [] });
+      expect(() => store.listPage(workspace.id, filter, -1, 1)).toThrow('SCHEDULE_INVALID');
+    } finally {
+      database.close();
+    }
+  });
+
   it('recomputes time only for changed rules or a transition from disabled to enabled', () => {
     let now = Date.parse('2026-10-23T00:00:00Z');
     const database = new NodeDatabase(':memory:', 'schedule-edit', () => now);
@@ -95,26 +89,72 @@ describe('scheduled session store', () => {
         runner: 'codex',
         ownerUserId: 1,
         objective: 'Original',
-        cron: '0 * * * *',
+        name: 'Schedule',
+        triggers: hourlyTriggers,
         timezone: 'UTC'
       });
       const dueAt = task.nextRunAt;
       now = Date.parse('2026-10-23T01:00:01Z');
-      task = store.update(task.sessionId, task.revision, { timezone: 'UTC' });
+      task = store.update(task.id, task.revision, { timezone: 'UTC' });
       expect(task.nextRunAt).toBe(dueAt);
-      task = store.update(task.sessionId, task.revision, { cron: '30 2 * * *' });
+      task = store.update(task.id, task.revision, { triggers: dailyTriggers('02:30') });
       expect(task.nextRunAt).toBe(Date.parse('2026-10-23T02:30:00Z'));
-      task = store.update(task.sessionId, task.revision, { timezone: 'Asia/Shanghai' });
+      task = store.update(task.id, task.revision, { timezone: 'Asia/Shanghai' });
       expect(task.nextRunAt).toBe(Date.parse('2026-10-23T18:30:00Z'));
-      task = store.update(task.sessionId, task.revision, { enabled: false });
+      task = store.update(task.id, task.revision, { enabled: false });
       expect(task.nextRunAt).toBeNull();
-      task = store.update(task.sessionId, task.revision, {
+      task = store.update(task.id, task.revision, {
         objective: 'Paused edit',
-        cron: '0 * * * *'
+        triggers: hourlyTriggers
       });
       expect(task.nextRunAt).toBeNull();
-      task = store.update(task.sessionId, task.revision, { enabled: true });
+      task = store.update(task.id, task.revision, { enabled: true });
       expect(task.nextRunAt).toBe(Date.parse('2026-10-23T02:00:00Z'));
+    } finally {
+      database.close();
+    }
+  });
+
+  it('keeps an unclaimed due time when only trigger and calendar selection order changes', () => {
+    let now = Date.parse('2026-11-23T08:00:00Z');
+    const database = new NodeDatabase(':memory:', 'schedule-rule-order', () => now);
+    try {
+      const workspace = database.saveWorkspace({
+        path: '/schedule-order',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      database.saveNativeSessionMetadata({
+        runner: 'codex',
+        externalSessionId: 'order',
+        workspaceId: workspace.id
+      });
+      const store = new ScheduledSessionStore(database.raw, () => now);
+      let task = store.create({
+        sessionId: 'order',
+        workspaceId: workspace.id,
+        runner: 'codex',
+        ownerUserId: 1,
+        name: 'Calendar rules',
+        objective: 'Check',
+        triggers: [
+          { kind: 'weekly', time: '09:00', weekdays: [1, 5] },
+          { kind: 'monthly', time: '10:00', monthDays: [23, 30] }
+        ],
+        timezone: 'UTC'
+      });
+      const dueAt = Date.parse('2026-11-23T09:00:00Z');
+      expect(task.nextRunAt).toBe(dueAt);
+      now = dueAt + 1;
+      task = store.update(task.id, task.revision, {
+        objective: 'Renamed instructions',
+        triggers: [
+          { kind: 'monthly', time: '10:00', monthDays: [30, 23] },
+          { kind: 'weekly', time: '09:00', weekdays: [5, 1, 5] }
+        ]
+      });
+      expect(task.nextRunAt).toBe(dueAt);
+      expect(store.claim(task.id, dueAt, task.revision)).toBeDefined();
     } finally {
       database.close();
     }
@@ -141,18 +181,19 @@ describe('scheduled session store', () => {
         runner: 'codex',
         ownerUserId: 1,
         objective: 'Inspect',
-        cron: '30 1 * * *',
+        name: 'Schedule',
+        triggers: dailyTriggers('01:30'),
         timezone: 'America/New_York'
       });
       expect(task.nextRunAt).toBe(Date.parse('2025-11-02T05:30:00Z'));
       now = Date.parse('2025-11-02T05:31:00Z');
-      expect(store.claim(task.sessionId, task.nextRunAt!, task.revision)).toBe(
+      expect(store.claim(task.id, task.nextRunAt!, task.revision)).toBe(
         `${task.id}:${task.nextRunAt}`
       );
-      expect(store.get(task.sessionId)?.nextRunAt).toBe(Date.parse('2025-11-03T06:30:00Z'));
-      const paused = store.update(task.sessionId, task.revision, { enabled: false });
+      expect(store.getById(task.id)?.nextRunAt).toBe(Date.parse('2025-11-03T06:30:00Z'));
+      const paused = store.update(task.id, task.revision, { enabled: false });
       now = Date.parse('2025-11-02T06:10:00Z');
-      const resumed = store.update(task.sessionId, paused.revision, { enabled: true });
+      const resumed = store.update(task.id, paused.revision, { enabled: true });
       expect(resumed.nextRunAt).toBe(Date.parse('2025-11-03T06:30:00Z'));
     } finally {
       database.close();
@@ -180,9 +221,11 @@ describe('scheduled session store', () => {
         runner: 'codex',
         ownerUserId: 1,
         objective: 'Inspect',
-        cron: '0 * * * *',
+        name: 'Schedule',
+        triggers: hourlyTriggers,
         timezone: 'UTC'
       });
+      expect(store.getById(task.id)?.graceMinutes).toBe(0);
       expect(store.recentPage(task.id)).toEqual({
         occurrences: [],
         occurrenceTotal: 0,
@@ -190,8 +233,8 @@ describe('scheduled session store', () => {
       });
       const ids: string[] = [];
       for (let index = 0; index < 25; index++) {
-        now = store.get(task.sessionId)!.nextRunAt!;
-        const id = store.claim(task.sessionId, now, task.revision)!;
+        now = store.getById(task.id)!.nextRunAt!;
+        const id = store.claim(task.id, now, task.revision)!;
         ids.unshift(id);
         store.finish(id, 'SUCCEEDED');
       }
@@ -208,8 +251,8 @@ describe('scheduled session store', () => {
         store.recentPage(task.id, 3)
       );
       for (let index = 25; index < 106; index++) {
-        now = store.get(task.sessionId)!.nextRunAt!;
-        store.finish(store.claim(task.sessionId, now, task.revision)!, 'SKIPPED');
+        now = store.getById(task.id)!.nextRunAt!;
+        store.finish(store.claim(task.id, now, task.revision)!, 'SKIPPED');
       }
       expect(store.recentPage(task.id, 99)).toMatchObject({
         occurrenceTotal: 100,
@@ -225,7 +268,7 @@ describe('scheduled session store', () => {
     }
   });
 
-  it('bounds pending proposals and lets the latest editor resolve them', () => {
+  it('bounds pending proposals and keeps resolution with the setting owner', () => {
     const database = new NodeDatabase(':memory:', 'node-proposals');
     const workspace = database.saveWorkspace({
       path: '/scheduled-proposals',
@@ -244,30 +287,31 @@ describe('scheduled session store', () => {
       runner: 'codex',
       ownerUserId: 1,
       objective: 'Original',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     const proposal = store.propose(task, 2, { objective: 'Updated' });
-    expect(() => store.resolveProposal(task.sessionId, proposal, 2, true)).toThrow(
+    expect(() => store.resolveProposal(task.id, proposal, 2, true)).toThrow(
       'SCHEDULE_OWNER_REQUIRED'
     );
-    expect(store.resolveProposal(task.sessionId, proposal, 1, true).objective).toBe('Updated');
+    expect(store.resolveProposal(task.id, proposal, 1, true).objective).toBe('Updated');
     expect(store.pendingProposals(task.id)).toEqual([]);
     for (let index = 0; index < 50; index++)
-      store.propose(store.get(task.sessionId)!, 2, { objective: `Proposal ${index}` });
+      store.propose(store.getById(task.id)!, 2, { objective: `Proposal ${index}` });
     expect(store.pendingProposals(task.id)).toHaveLength(50);
-    expect(() => store.propose(store.get(task.sessionId)!, 2, { objective: 'Excess' })).toThrow(
+    expect(() => store.propose(store.getById(task.id)!, 2, { objective: 'Excess' })).toThrow(
       'SCHEDULE_PROPOSAL_LIMIT'
     );
-    store.update(task.sessionId, 2, { objective: 'Third' });
+    store.update(task.id, 2, { objective: 'Third' });
     expect(store.pendingProposals(task.id)).toEqual([]);
-    const edited = store.update(task.sessionId, 3, { ownerUserId: 2 });
-    expect(edited).toMatchObject({ ownerUserId: 2 });
-    const nextProposal = store.propose(edited, 1, { objective: 'Fourth' });
-    expect(() => store.resolveProposal(task.sessionId, nextProposal, 1, true)).toThrow(
+    const edited = store.update(task.id, 3, { name: 'Renamed' });
+    expect(edited).toMatchObject({ ownerUserId: 1 });
+    const nextProposal = store.propose(edited, 2, { objective: 'Fourth' });
+    expect(() => store.resolveProposal(task.id, nextProposal, 2, true)).toThrow(
       'SCHEDULE_OWNER_REQUIRED'
     );
-    expect(store.resolveProposal(task.sessionId, nextProposal, 2, true).objective).toBe('Fourth');
+    expect(store.resolveProposal(task.id, nextProposal, 1, true).objective).toBe('Fourth');
     database.close();
   });
 
@@ -300,7 +344,8 @@ describe('scheduled session store', () => {
       runner: 'codex' as const,
       ownerUserId: 1,
       objective: 'Inspect',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     };
 
@@ -349,20 +394,21 @@ describe('scheduled session store', () => {
       runner: 'codex',
       ownerUserId: 1,
       objective: 'Inspect',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     const proposal = store.propose(task, 2, { objective: 'Inspect later' });
-    const occurrence = store.claim(task.sessionId, task.nextRunAt!, task.revision);
+    const occurrence = store.claim(task.id, task.nextRunAt!, task.revision);
 
-    expect(() => store.remove(task.sessionId, task.revision + 1)).toThrow(
-      'SCHEDULE_REVISION_CONFLICT'
-    );
+    expect(() => store.remove(task.id, task.revision + 1)).toThrow('SCHEDULE_REVISION_CONFLICT');
     expect(store.getById(task.id)).toBeDefined();
     expect(store.recent(task.id)).toHaveLength(1);
     expect(store.pendingProposals(task.id).map((row) => row['id'])).toEqual([proposal]);
 
-    store.remove(task.sessionId, task.revision);
+    expect(() => store.remove(task.id, task.revision)).toThrow('SCHEDULE_IN_PROGRESS');
+    expect(store.finish(occurrence!, 'SKIPPED')).toBe(true);
+    store.remove(task.id, task.revision);
     expect(store.getById(task.id)).toBeUndefined();
     expect(store.recent(task.id)).toEqual([]);
     expect(store.pendingProposals(task.id)).toEqual([]);
@@ -390,21 +436,22 @@ describe('scheduled session store', () => {
       runner: 'codex',
       ownerUserId: 1,
       objective: 'Original',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
-    const current = store.update(task.sessionId, task.revision, { objective: 'Updated' });
+    const current = store.update(task.id, task.revision, { objective: 'Updated' });
     expect(() => store.propose(task, 2, { objective: 'Stale proposal' })).toThrow(
       'SCHEDULE_REVISION_CONFLICT'
     );
-    store.remove(current.sessionId, current.revision);
+    store.remove(current.id, current.revision);
     expect(() => store.propose(current, 2, { objective: 'Deleted proposal' })).toThrow(
       'SCHEDULE_NOT_FOUND'
     );
     database.close();
   });
 
-  it('persists tasks, claims each occurrence once, and cascades on session removal', () => {
+  it('persists tasks, claims each occurrence once, and retains history on session removal', () => {
     let now = Date.parse('2025-01-01T00:00:00Z');
     const database = new NodeDatabase(':memory:', 'node-a', () => now);
     const workspace = database.saveWorkspace({
@@ -425,7 +472,8 @@ describe('scheduled session store', () => {
       runner: 'codex',
       ownerUserId: 1,
       objective: 'Inspect the project',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
     expect(task.nextRunAt).toBe(Date.parse('2025-01-01T01:00:00Z'));
@@ -433,25 +481,29 @@ describe('scheduled session store', () => {
       ownerUserId: 1,
       notifyOnTerminal: false
     });
-    const edited = store.update(task.sessionId, task.revision, {
-      ownerUserId: 2,
-      notifyOnTerminal: true
-    });
+    const edited = store.update(task.id, task.revision, { notifyOnTerminal: true });
     expect(edited).toMatchObject({
-      ownerUserId: 2,
+      ownerUserId: 1,
       notifyOnTerminal: true
     });
     now = task.nextRunAt as number;
-    const occurrence = store.claim(task.sessionId, now, edited.revision);
+    const occurrence = store.claim(task.id, now, edited.revision);
     expect(occurrence).toBe(`${task.id}:${now}`);
-    expect(store.claim(task.sessionId, now, edited.revision)).toBeUndefined();
+    expect(store.claim(task.id, now, edited.revision)).toBeUndefined();
     store.finish(occurrence as string, 'SKIPPED', 'SCHEDULE_SESSION_BUSY');
     expect(store.recent(task.id)).toMatchObject([
       { status: 'SKIPPED', code: 'SCHEDULE_SESSION_BUSY' }
     ]);
-    database.deleteSessionRecord(task.sessionId);
-    expect(store.get(task.sessionId)).toBeUndefined();
-    expect(store.recent(task.id)).toEqual([]);
+    expect(database.deleteSessionRecord('session-1')).toEqual({
+      removed: true,
+      schedulesChanged: true
+    });
+    expect(store.getById(task.id)).toMatchObject({
+      sessionId: null,
+      enabled: false,
+      nextRunAt: null
+    });
+    expect(store.recent(task.id)).toHaveLength(1);
     database.close();
   });
 });

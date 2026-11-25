@@ -9,14 +9,12 @@ import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ScheduledSessionStore } from './scheduled-session-store.js';
+import { scheduleIpcFrameLimit } from './schedule-mcp-contract.js';
 
 const capabilitySchema = z.object({
   executionId: z.string(),
   sessionId: z.string(),
-  workspaceId: z.string().optional(),
-  taskId: z.string().optional(),
-  revision: z.number().int().nonnegative().optional(),
+  workspaceId: z.string(),
   actorUserId: z.number().int().positive()
 });
 type Capability = z.infer<typeof capabilitySchema>;
@@ -27,7 +25,7 @@ interface Request {
   readonly arguments?: unknown;
 }
 
-/** Owns task IPC, revision checks and private credential renewal after successful edits. */
+/** Owns private schedule IPC and verifies the execution capability before dispatch. */
 export class ScheduleMcpBridge {
   readonly #tokens = new McpCapabilityToken(NODE_MCP.schedule.name, capabilitySchema);
   readonly #sockets = new Set<Socket>();
@@ -38,17 +36,12 @@ export class ScheduleMcpBridge {
   #listening?: Promise<Server>;
 
   constructor(
-    private readonly store: () => ScheduledSessionStore,
-    private readonly changed: (sessionId: string) => void,
-    private readonly proposed: (sessionId: string, proposalId: string) => void,
-    private readonly resolveExecution: (capability: Capability) => string | undefined,
-    private readonly create?: (input: {
-      readonly sessionId: string;
-      readonly workspaceId: string;
-      readonly actorUserId: number;
-      readonly objective: string;
-      readonly cron: string;
-    }) => Promise<{ readonly id: string; readonly sessionId: string; readonly revision: number }>
+    private readonly resolveExecution: (capability: Capability) => Promise<string | undefined>,
+    private readonly invoke: (
+      scope: Pick<Capability, 'sessionId' | 'workspaceId' | 'actorUserId'>,
+      tool: string,
+      payload: unknown
+    ) => Promise<unknown>
   ) {}
 
   async prepare(capability: Capability): Promise<ResolvedMcpServer> {
@@ -66,11 +59,12 @@ export class ScheduleMcpBridge {
         MAR_SCHEDULE_MCP_ENDPOINT: this.#endpoint,
         MAR_SCHEDULE_MCP_TOKEN: token
       },
-      allowedToolCallers: {
-        [NODE_MCP.schedule.tools.get]: ['direct', 'programmatic'],
-        [NODE_MCP.schedule.tools.create]: ['direct', 'programmatic'],
-        [NODE_MCP.schedule.tools.update]: ['direct', 'programmatic']
-      }
+      allowedToolCallers: Object.fromEntries(
+        Object.values(NODE_MCP.schedule.tools).map((tool) => [
+          tool,
+          ['direct', 'programmatic'] as const
+        ])
+      )
     };
   }
 
@@ -104,7 +98,7 @@ export class ScheduleMcpBridge {
     socket.on('data', (chunk) => {
       if (received) return;
       body += chunk;
-      if (body.length > 64_000) {
+      if (body.length > scheduleIpcFrameLimit) {
         socket.destroy();
         return;
       }
@@ -119,80 +113,23 @@ export class ScheduleMcpBridge {
       const request = JSON.parse(body) as Request;
       const capability = this.#tokens.verify(request.token);
       if (capability === undefined) throw new Error('SCHEDULE_CAPABILITY_INVALID');
-      const sessionId = this.resolveExecution(capability);
+      const sessionId = await this.resolveExecution(capability);
       if (sessionId === undefined) throw new Error('SCHEDULE_CAPABILITY_STALE');
-      const task = this.store().get(sessionId);
-      if (request.tool === NODE_MCP.schedule.tools.get) {
-        // A create may commit before stdio receives the token that binds its task identity.
-        if (capability.taskId !== undefined && task?.id !== capability.taskId)
-          throw new Error('SCHEDULE_CAPABILITY_STALE');
-        socket.end(`${JSON.stringify({ result: task ?? null })}\n`);
-        return;
-      }
-      if (
-        (task === undefined && capability.taskId !== undefined) ||
-        (task !== undefined &&
-          (task.id !== capability.taskId || task.revision !== capability.revision))
-      )
-        throw new Error('SCHEDULE_CAPABILITY_STALE');
-      if (request.tool === NODE_MCP.schedule.tools.create) {
-        if (task !== undefined) throw new Error('SCHEDULE_ALREADY_EXISTS');
-        const args = record(request.arguments);
-        if (
-          typeof args.objective !== 'string' ||
-          typeof args.cron !== 'string' ||
-          capability.workspaceId === undefined ||
-          this.create === undefined
-        )
-          throw new Error('SCHEDULE_INVALID');
-        const created = await this.create({
-          sessionId,
-          workspaceId: capability.workspaceId,
-          actorUserId: capability.actorUserId,
-          objective: args.objective,
-          cron: args.cron
-        });
-        const token = this.#tokens.sign({
-          ...capability,
-          sessionId: created.sessionId,
-          taskId: created.id,
-          revision: created.revision
-        });
-        socket.end(`${JSON.stringify({ result: created, token })}\n`);
-        return;
-      }
-      if (request.tool !== NODE_MCP.schedule.tools.update) throw new Error('SCHEDULE_TOOL_INVALID');
-      if (task === undefined) throw new Error('SCHEDULE_NOT_FOUND');
-      const args = record(request.arguments);
-      const result = this.store().updateFromAgent(
-        task.sessionId,
-        task.revision,
-        capability.actorUserId,
-        args
+      if (typeof request.tool !== 'string') throw new Error('SCHEDULE_TOOL_INVALID');
+      const result = await this.invoke(
+        { sessionId, workspaceId: capability.workspaceId, actorUserId: capability.actorUserId },
+        request.tool,
+        request.arguments
       );
-      if ('proposalId' in result) {
-        this.proposed(task.sessionId, result.proposalId);
-        socket.end(`${JSON.stringify({ result })}\n`);
-      } else {
-        const token = this.#tokens.sign({
-          ...capability,
-          revision: result.revision
-        });
-        this.changed(task.sessionId);
-        socket.end(`${JSON.stringify({ result, token })}\n`);
-      }
+      socket.end(`${JSON.stringify({ result })}\n`);
     } catch (error) {
-      socket.end(
-        `${JSON.stringify({ error: error instanceof Error ? error.message : 'SCHEDULE_IPC_FAILED' })}\n`
-      );
+      const code =
+        error instanceof Error && /^[A-Z][A-Z0-9_]{0,127}$/.test(error.message)
+          ? error.message
+          : 'SCHEDULE_IPC_FAILED';
+      socket.end(`${JSON.stringify({ error: code })}\n`);
     }
   }
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }
 
 function scheduleMcpStdioArgs(): readonly string[] {

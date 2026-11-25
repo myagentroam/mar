@@ -32,6 +32,7 @@ export interface RunWorkbenchServiceOptions {
   readonly markInterrupted: (runId: string) => void;
 }
 
+/** Adapts Workbench Run reads and controls; Runtime owns active and retained Run state. */
 export class RunWorkbenchService {
   constructor(private readonly options: RunWorkbenchServiceOptions) {}
 
@@ -80,7 +81,13 @@ export class RunWorkbenchService {
   }
 
   private get(input: Record<string, unknown>): { run: NodeAgentRun } {
-    return { run: this.requireRun(input.runId) };
+    if (input.workspaceId === undefined) return { run: this.requireRun(input.runId) };
+    const run =
+      typeof input.runId === 'string' && typeof input.workspaceId === 'string'
+        ? this.options.runtime.getWorkspaceRun(input.runId, input.workspaceId)
+        : undefined;
+    if (run === undefined) throw new Error('RUN_NOT_FOUND');
+    return { run };
   }
 
   private async image(input: Record<string, unknown>): Promise<unknown> {

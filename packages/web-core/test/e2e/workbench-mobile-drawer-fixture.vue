@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
-import { nextTick, onBeforeUnmount, ref } from 'vue';
+import { nextTick, onBeforeUnmount, provide, ref } from 'vue';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../src/service/mobile-dialog-return-service.js';
 import { MarMessageBox } from '../../src/service/message-box-service.js';
+import { DOCUMENTATION_AVAILABLE_KEY } from '../../src/service/documentation-availability.js';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
@@ -63,6 +64,7 @@ const notification = {
   }
 };
 const params = new URL(location.href).searchParams;
+provide(DOCUMENTATION_AVAILABLE_KEY, !params.has('without-docs'));
 const startedAt = Date.now() - 138_000;
 let notificationsRead = params.has('read');
 let runPreview: typeof notification | undefined;
@@ -251,7 +253,7 @@ onBeforeUnmount(() => {
 <template>
   <main class="console-shell">
     <WorkbenchNavigation
-      web-version="fixture"
+      web-version="0.10.1"
       :view="navigation.view.value"
       :navigation-items="[
         { id: 'nodes', label: translate('navigation.nodes') },

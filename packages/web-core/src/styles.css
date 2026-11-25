@@ -157,11 +157,32 @@ pre {
   gap: 12px;
 }
 
-.mar-management-page h2 {
+.mar-management-page h2:where(:not(.mar-settings-page-title)) {
   margin: 0;
   font-size: var(--mar-font-size-title);
   line-height: 24px;
 }
+
+.mar-settings-page-title,
+.settings-content .settings-panel > h2 {
+  margin: 0;
+  font-size: var(--mar-font-size-title);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.mar-settings-page-title {
+  letter-spacing: normal;
+}
+
+.mar-settings-page-summary,
+.settings-content .settings-panel > p {
+  margin: 5px 0 0;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
+  line-height: 1.5;
+}
+
 .mar-management-page .mar-filter-row,
 .mar-management-page .mar-resource-filters {
   display: flex;
@@ -209,7 +230,7 @@ pre {
   min-height: var(--mar-compact-control-size);
   padding-inline: 2px;
 }
-.mar-management-page header p {
+.mar-management-page header p:where(:not(.mar-settings-page-summary)) {
   display: none;
 }
 

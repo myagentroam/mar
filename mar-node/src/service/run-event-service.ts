@@ -33,13 +33,16 @@ export interface RunEventServiceOptions {
   readonly refreshWorkspaceSessions: (workspaceId: string) => Promise<void>;
   readonly dispatchQueue: (sessionId: string, delayMs?: number) => Promise<void>;
   readonly executionStarted?: (executionId: string) => void;
+  readonly onRunStarted?: (run: import('../runtime-model.js').NodeAgentRun, at: number) => void;
   readonly acceptExecutionTerminal: (input: ExecutionTerminalInput) => ExecutionTerminalResult;
   readonly publishGoalUpdate: (update: NonNullable<ExecutionTerminalResult['goalUpdate']>) => void;
   readonly publishQueueChange: (sessionId: string) => void;
   readonly releaseExecution: (executionId: string) => void;
   readonly onTerminalRun?: (
     run: import('../runtime-model.js').NodeAgentRun,
-    status: RunnerExecutionStatus
+    status: RunnerExecutionStatus,
+    at: number,
+    reason?: string
   ) => void;
   readonly observeAgentEvent?: (input: {
     readonly run: import('../runtime-model.js').NodeAgentRun;
@@ -264,8 +267,15 @@ export class RunEventService {
         /* A stale Runner callback may race process-local Run cleanup. */
       }
     }
-    if (eventType === 'run.started' || eventType === 'run.running')
+    if (eventType === 'run.started' || eventType === 'run.running') {
       this.options.executionStarted?.(executionId);
+      if (
+        recorded !== undefined &&
+        targetsCurrentTurn &&
+        (executionId === currentExecutionId || executionId === run.id)
+      )
+        this.options.onRunStarted?.(run, recorded.createdAt);
+    }
     if (!terminalExecution) this.options.refreshAttachments?.(run.sessionId);
     const publicStatus = terminalExecution ? finalStatus : status;
     if (recorded !== undefined && targetsCurrentTurn)
@@ -355,12 +365,22 @@ export class RunEventService {
       void this.options.dispatchQueue(run.sessionId, status === 'FAILED' ? 15_000 : 0);
       return;
     }
+    if (run.source === 'SCHEDULED') {
+      const reason =
+        isPlainRecord(payload) &&
+        typeof payload.code === 'string' &&
+        /^[A-Z][A-Z0-9_]{0,127}$/u.test(payload.code)
+          ? payload.code
+          : undefined;
+      this.options.onTerminalRun?.(run, finalStatus, recorded!.createdAt, reason);
+    }
     if (this.options.isBootstrapSession(run.sessionId)) {
       this.options.rejectBootstrap(run.sessionId, 'SESSION_START_FAILED');
       return;
     }
     this.options.scheduleContextRefresh(run.sessionId);
-    this.options.onTerminalRun?.(run, finalStatus);
+    if (run.source !== 'SCHEDULED')
+      this.options.onTerminalRun?.(run, finalStatus, recorded!.createdAt);
     const idleSnapshot = this.options.refreshWorkspaceSessions(run.workspaceId);
     this.options.runtime.removeTerminalRun(runId);
     this.options.refreshAttachments?.(run.sessionId);

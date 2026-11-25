@@ -398,16 +398,12 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
   'enterpriseManagementService.member': 'Member',
   'workbenchPlanService.unableToImplementThePlan':
     composerEnUS.generated.workbenchPlanService.unableToImplementThePlan,
-  'workbenchContextCommandService.compactOlderContextToFreeWindowSpace':
-    composerEnUS.generated.workbenchContextCommandService.compactOlderContextToFreeWindowSpace,
-  'workbenchContextCommandService.compactContext':
-    composerEnUS.generated.workbenchContextCommandService.compactContext,
-  'workbenchContextCommandService.compact':
-    composerEnUS.generated.workbenchContextCommandService.compact,
-  'workbenchContextCommandService.cancel':
-    composerEnUS.generated.workbenchContextCommandService.cancel,
-  'workbenchContextCommandService.unableToCompactContext':
-    composerEnUS.generated.workbenchContextCommandService.unableToCompactContext,
+  ...Object.fromEntries(
+    Object.entries(composerEnUS.generated.workbenchContextCommandService).map(([key, value]) => [
+      `workbenchContextCommandService.${key}`,
+      value
+    ])
+  ),
   'mcpCenterPanel.thisAccountHasNoManageableNodes':
     skillConfigurationEnUS.generated.mcpCenterPanel.thisAccountHasNoManageableNodes,
   'mcpCenterPanel.selectANode': skillConfigurationEnUS.generated.mcpCenterPanel.selectANode,

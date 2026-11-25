@@ -231,7 +231,7 @@ describe('Core compact generation extension', () => {
       });
       expect(native.systemBlocks).toEqual(previous.systemBlocks);
       expect(native.messages.at(-1)!.content).toContain(
-        'user-level, project-level, or directory-level AGENTS.md instructions'
+        'Omit instructions and contextual state restored separately by Runtime, including AGENTS.md instructions'
       );
       expect(compact.contexts).toHaveLength(1);
       expect(JSON.stringify(compact.contexts[0]!.messages)).not.toContain('ENV_RULE_MARKER');

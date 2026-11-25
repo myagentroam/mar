@@ -916,6 +916,7 @@ describe('Server Node/Workspace ownership and grants', () => {
         ownerOrganizationId: 2
       })),
       canManageNode: vi.fn(async () => false),
+      canUseNode: vi.fn(async () => false),
       canRegisterWorkspace: vi.fn(async () => true),
       canManageNodeSecrets: vi.fn(async () => true)
     } as unknown as ResourceAccessService;
@@ -948,6 +949,7 @@ describe('Server Node/Workspace ownership and grants', () => {
       expect.objectContaining({
         id: 'node-1',
         manageable: false,
+        usable: false,
         workspaceCreatable: true,
         secretManageable: true
       })
@@ -1634,9 +1636,11 @@ describe('Server Node/Workspace ownership and grants', () => {
   it('writes a display name when backfilling a legacy Node Workspace', async () => {
     const fixture = resourceFixture();
     const service = new ResourceAccessService(fixture.database, fixture.authorization, () => 2_000);
-    await mutationFor(fixture, service).backfillNodeWorkspaces('node-1', [
-      { id: 'workspace-1', path: '/srv/projects/demo' }
-    ]);
+    await expect(
+      mutationFor(fixture, service).backfillNodeWorkspaces('node-1', [
+        { id: 'workspace-1', path: '/srv/projects/demo' }
+      ])
+    ).resolves.toEqual(['workspace-1']);
     expect(fixture.connection.execute).toHaveBeenCalledWith(
       expect.stringContaining('(workspace_id,display_name,node_id'),
       ['workspace-1', 'demo', 'node-1', 'PERSONAL', 1, null, 2_000]

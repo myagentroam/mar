@@ -97,11 +97,12 @@ onBeforeUnmount(() => lifetime.abort());
 </script>
 
 <template>
-  <h2>{{ t('browser.cacheCycleSection') }}</h2>
-  <p class="browser-cache-help">{{ t('browser.cacheCycleHelp', { min, max }) }}</p>
+  <h2 class="browser-setting-heading">{{ t('browser.cacheCycleSection') }}</h2>
+  <p class="browser-setting-help">{{ t('browser.cacheCycleHelp', { min, max }) }}</p>
   <MarForm
     v-if="saved !== undefined"
     ref="form"
+    class="browser-cache-form"
     :model="draft"
     :rules="rules"
     label-position="top"
@@ -139,10 +140,8 @@ onBeforeUnmount(() => lifetime.abort());
 </template>
 
 <style scoped>
-.browser-cache-help {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1.5;
+.browser-cache-form {
+  margin-block-start: 0.65rem;
 }
 .browser-cache-field {
   margin-block-end: 0;

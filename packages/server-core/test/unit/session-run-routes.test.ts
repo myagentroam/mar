@@ -77,6 +77,35 @@ function fixture(
 }
 
 describe('shared ordinary Session and Run routes', () => {
+  it('relays a scoped Run read with the Workspace in the authorization context', async () => {
+    const { app, requestNode, headers } = fixture();
+    const url = '/api/agent-runs/run-one?nodeId=node-one';
+    expect((await app.inject({ url: `${url}&workspaceId=`, headers })).statusCode).toBe(400);
+    expect(requestNode).not.toHaveBeenCalled();
+    const response = await app.inject({ url: `${url}&workspaceId=work-one`, headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(requestNode).toHaveBeenCalledWith(
+      'node-one',
+      'run.get',
+      { runId: 'run-one', workspaceId: 'work-one' },
+      expect.objectContaining({ userId: 1, workspaceId: 'work-one' }),
+      undefined
+    );
+  });
+
+  it('does not register the retired session schedule routes', async () => {
+    const { app, requestNode, headers } = fixture();
+    const url = '/api/agent-sessions/session-one/schedule';
+    for (const method of ['GET', 'PUT', 'DELETE'] as const)
+      expect((await app.inject({ method, url, headers })).statusCode).toBe(404);
+    expect(
+      (await app.inject({ method: 'POST', url: `${url}/proposals/proposal-one/resolve`, headers }))
+        .statusCode
+    ).toBe(404);
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
   it('only permits an empty Rewind boundary before a Turn', async () => {
     const { app, requestNode, headers } = fixture();
     const base = { nodeId: 'node-one', turnId: 'turn-one', boundary: null };
@@ -688,67 +717,6 @@ describe('shared ordinary Session and Run routes', () => {
     expect(requestNode).not.toHaveBeenCalled();
   });
 
-  it('forwards validated occurrence pages with the authorized schedule request', async () => {
-    const { app, requestNode, headers } = fixture();
-    const url =
-      '/api/agent-sessions/session-one/schedule?nodeId=node-one&workspaceId=workspace-one';
-    requestNode.mockResolvedValueOnce({
-      task: null,
-      occurrences: [],
-      occurrenceTotal: 25,
-      occurrencePage: 3
-    });
-    const result = await app.inject({ url: `${url}&occurrencePage=3`, headers });
-    expect(result.statusCode).toBe(200);
-    expect(result.json()).toMatchObject({ occurrenceTotal: 25, occurrencePage: 3 });
-    expect(requestNode.mock.calls[0]).toContainEqual(
-      expect.objectContaining({
-        occurrencePage: 3,
-        sessionId: 'session-one',
-        workspaceId: 'workspace-one'
-      })
-    );
-    requestNode.mockClear();
-    for (const value of ['0', '-1', '1.5', 'abc', '', '9007199254740992', '1&occurrencePage=2']) {
-      expect(
-        (await app.inject({ url: `${url}&occurrencePage=${value}`, headers })).statusCode
-      ).toBe(400);
-    }
-    expect(requestNode).not.toHaveBeenCalled();
-    expect((await app.inject({ url: `${url}&occurrencePage=2` })).statusCode).toBe(401);
-  });
-
-  it('shows the authenticated and persisted scheduled notification recipients by name', async () => {
-    const { app, requestNode, headers, database } = fixture();
-    const url =
-      '/api/agent-sessions/session-one/schedule?nodeId=node-one&workspaceId=workspace-one';
-    requestNode.mockResolvedValueOnce({
-      task: { ownerUserId: 7 },
-      nodeTimezone: 'Asia/Shanghai'
-    });
-    expect((await app.inject({ url })).statusCode).toBe(401);
-    expect(database.userDisplayName).not.toHaveBeenCalled();
-    const existing = await app.inject({ url, headers });
-    expect(existing.statusCode).toBe(200);
-    expect(existing.json()).toMatchObject({
-      currentUserName: 'Current nickname',
-      notifyUserName: 'Recipient nickname',
-      task: { ownerUserId: 7 }
-    });
-    requestNode.mockResolvedValueOnce({ task: { ownerUserId: 1 } });
-    expect((await app.inject({ url, headers })).json()).toMatchObject({
-      currentUserName: 'Current nickname',
-      notifyUserName: 'Current nickname',
-      task: { ownerUserId: 1 }
-    });
-    requestNode.mockResolvedValueOnce({ task: null });
-    expect((await app.inject({ url, headers })).json()).toMatchObject({
-      task: null,
-      currentUserName: 'Current nickname',
-      notifyUserName: null
-    });
-  });
-
   it('rejects unauthenticated reads and invalid-CSRF writes before preparing secrets', async () => {
     const { app, requestNode, headers, secrets } = fixture();
     expect((await app.inject({ url: '/api/agent-runs/run-one?nodeId=node-one' })).statusCode).toBe(
@@ -1218,7 +1186,8 @@ describe('shared ordinary Session and Run routes', () => {
       nodeId: 'node-one',
       workspaceId: 'workspace-one',
       sessionId: 'session-one',
-      selectedModelId: 'selected'
+      selectedModelId: 'selected',
+      purpose: 'compact'
     });
     expect(requestNode).toHaveBeenLastCalledWith(
       'node-one',
@@ -1261,80 +1230,6 @@ describe('shared ordinary Session and Run routes', () => {
     expect(response.statusCode).toBe(403);
     expect(response.json().error.code).toBe('NODE_ACCESS_DENIED');
     expect(requestNode).toHaveBeenCalledTimes(1);
-  });
-
-  it('routes scheduled task reads and versioned writes with Workspace authorization', async () => {
-    const { app, requestNode, headers } = fixture();
-    const path = '/api/agent-sessions/session-one/schedule';
-    const query = '?nodeId=node-one&workspaceId=workspace-one';
-    expect((await app.inject({ url: `${path}${query}` })).statusCode).toBe(401);
-    const read = await app.inject({ url: `${path}${query}`, headers });
-    expect(read.statusCode).toBe(200);
-    expect(requestNode).toHaveBeenLastCalledWith(
-      'node-one',
-      'session.schedule.get',
-      { sessionId: 'session-one', workspaceId: 'workspace-one' },
-      { userId: 1, sessionHash: 'fingerprint', workspaceId: 'workspace-one' },
-      undefined
-    );
-    const invalid = await app.inject({
-      method: 'PUT',
-      url: path,
-      headers: { ...headers, 'x-csrf-token': 'wrong' },
-      payload: {
-        nodeId: 'node-one',
-        workspaceId: 'workspace-one',
-        objective: 'Check',
-        cron: '0 * * * *'
-      }
-    });
-    expect(invalid.statusCode).toBe(403);
-    expect(requestNode).toHaveBeenCalledTimes(1);
-    const saved = await app.inject({
-      method: 'PUT',
-      url: path,
-      headers,
-      payload: {
-        nodeId: 'node-one',
-        workspaceId: 'workspace-one',
-        objective: 'Check',
-        cron: '0 * * * *',
-        enabled: true,
-        notifyOnTerminal: true
-      }
-    });
-    expect(saved.statusCode).toBe(200);
-    expect(requestNode).toHaveBeenLastCalledWith(
-      'node-one',
-      'session.schedule.save',
-      expect.objectContaining({ notifyOnTerminal: true }),
-      { userId: 1, sessionHash: 'fingerprint', workspaceId: 'workspace-one' },
-      undefined
-    );
-    const clientTimezone = await app.inject({
-      method: 'PUT',
-      url: path,
-      headers,
-      payload: {
-        nodeId: 'node-one',
-        workspaceId: 'workspace-one',
-        objective: 'Check',
-        cron: '0 * * * *',
-        timezone: 'UTC'
-      }
-    });
-    expect(clientTimezone.statusCode).toBe(400);
-    expect(requestNode).toHaveBeenLastCalledWith(
-      'node-one',
-      'session.schedule.save',
-      expect.objectContaining({
-        sessionId: 'session-one',
-        workspaceId: 'workspace-one',
-        cron: '0 * * * *'
-      }),
-      { userId: 1, sessionHash: 'fingerprint', workspaceId: 'workspace-one' },
-      undefined
-    );
   });
 });
 

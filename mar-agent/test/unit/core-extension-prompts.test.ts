@@ -22,11 +22,11 @@ describe('Core structured Prompt composition', () => {
       ['read', 'exec', 'skill'],
       '67f42a95d8321338097d62992dab14eb1041c67a0c2bde70b25b709042a80df4'
     ],
-    ['compact', [], '9dc5800d125dfa2ce2f3604d28be6f1307bfd969170eb8c86d0d41a449f87306'],
+    ['compact', [], 'f7146f8f3f8a7bcb84a0176ca1259b9a5514cf638ed7eb0049972d7787e9dfc0'],
     [
       'compact',
       ['read', 'exec', 'skill'],
-      '5ba8375340408b9d1b84e1dac1bc2f4d8ea1469826384e45990e8281c2306d86'
+      '047436cb88c7b516b5a4d6f8bc2266e4c1418b0dec2eeea632930469a61c850b'
     ]
   ] as const)('preserves the current %s Prompt bytes (%j)', (mode, tools, digest) => {
     const input = {
@@ -164,9 +164,7 @@ describe('Core structured Prompt composition', () => {
       );
       expect(compactRequest?.messages.at(-1)).toMatchObject({
         contextKind: 'compact_control',
-        content: expect.stringContaining(
-          'Do not continue implementation, call tools, address the user'
-        )
+        content: expect.stringContaining('Do not address the user, continue the task, call tools')
       });
     }
   );

@@ -21,6 +21,14 @@ import { registerNodeRoutes } from '../route/node-routes.js';
 import { registerNodeRegistrationRoute } from '@myagentroam/server-core/node-registration-route';
 import { registerWorkspaceRoutes } from '../route/workspace-routes.js';
 import { registerSessionRunRoutes } from '../route/session-run-routes.js';
+import { scheduledTaskChangedSchema, scheduledTasksApiVersion } from '@myagentroam/protocol';
+import { publicNode } from '@myagentroam/server-core/node-projection';
+import { registerScheduledTaskRoutes } from '@myagentroam/server-core/scheduled-task-routes';
+import {
+  MysqlScheduledTaskIndex,
+  ScheduledTaskIndex,
+  ScheduledTaskIndexProjection
+} from '@myagentroam/server-core/scheduled-task-index';
 import { BackgroundExecutionPreparationService } from '../service/background-execution-preparation-service.js';
 import { registerRunControlRoutes } from '../route/run-control-routes.js';
 import { registerEnvironmentSecretRoutes } from '../route/environment-secret-routes.js';
@@ -159,6 +167,7 @@ export async function composeServerApplication(
   });
   const app = httpApp as unknown as ServerApplication;
   let constructedNodeControl: NodeControl | undefined;
+  let constructedScheduleProjection: ScheduledTaskIndexProjection | undefined;
   let constructedRecentRuns: RecentRunService | undefined;
   let constructedMaintenance: ServerMaintenance | undefined;
   let constructedPush:
@@ -194,6 +203,25 @@ export async function composeServerApplication(
       ...(options.productUuid === undefined ? {} : { productUuid: options.productUuid })
     });
     let nodeControl!: ReturnType<typeof createNodeControl>;
+    const scheduleIndex = new MysqlScheduledTaskIndex(mysqlPool);
+    const scheduleProjection = new ScheduledTaskIndexProjection(
+      new ScheduledTaskIndex(scheduleIndex, now),
+      {
+        connection: (nodeId) => nodeControl.scheduledTaskConnection(nodeId),
+        workspaces: (nodeId) => scheduleIndex.registeredWorkspaceIds(nodeId),
+        read: (nodeId, connection, workspaceId, afterTaskId) =>
+          nodeControl.requestScheduledTaskIndex(nodeId, connection, {
+            workspaceId,
+            ...(afterTaskId === undefined ? {} : { afterTaskId })
+          }),
+        onError: (nodeId, workspaceId) =>
+          app.log.warn(
+            { nodeId, workspaceId, code: 'SCHEDULE_BASELINE_REFRESH_FAILED' },
+            'Scheduled task index refresh failed'
+          )
+      }
+    );
+    constructedScheduleProjection = scheduleProjection;
     const nodeUpgradeProgress = new NodeUpgradeProgress(
       database,
       now,
@@ -229,6 +257,7 @@ export async function composeServerApplication(
         notificationChannels: { send: (...args) => notificationChannels.send(...args) },
         scheduleAuthorizer: (nodeId, request) =>
           executionPreparation.prepareSchedule(nodeId, request),
+        scheduledTaskConnectionChanged: (nodeId) => scheduleProjection.connectionChanged(nodeId),
         executionPreparer: (nodeId, request) => executionPreparation.prepare(nodeId, request),
         browserUseAllowed: async (nodeId, { userId, workspaceId }) =>
           (await authorizeNodeRequest(
@@ -496,16 +525,20 @@ export async function composeServerApplication(
       resources,
       mutations
     });
+    const projectLiveWorkspaces: Parameters<
+      typeof registerWorkspaceRoutes
+    >[0]['resources']['projectNodeWorkspaces'] = async (userId, nodeId, workspaces) => {
+      const registered = await mutations.backfillNodeWorkspaces(nodeId, workspaces);
+      for (const workspaceId of registered) scheduleProjection.changed(nodeId, workspaceId);
+      return resources.projectNodeWorkspaces(userId, nodeId, workspaces);
+    };
     registerWorkspaceRoutes({
       app,
       database,
       nodeControl,
       publicOrigin,
       resources: {
-        projectNodeWorkspaces: async (userId, nodeId, workspaces) => {
-          await mutations.backfillNodeWorkspaces(nodeId, workspaces);
-          return resources.projectNodeWorkspaces(userId, nodeId, workspaces);
-        },
+        projectNodeWorkspaces: projectLiveWorkspaces,
         resolveWorkspaceOwnership: resources.resolveWorkspaceOwnership.bind(resources),
         assertCanManageWorkspace: resources.assertCanManageWorkspace.bind(resources),
         assertCanUnregisterWorkspace: resources.assertCanUnregisterWorkspace.bind(resources),
@@ -574,6 +607,53 @@ export async function composeServerApplication(
       shares: sessionShares,
       publicOrigin,
       databaseError
+    });
+    const releaseScheduleEvents = nodeControl.onWorkbenchEvent((event) => {
+      if (event.category !== 'workspace') return;
+      const changed = scheduledTaskChangedSchema.safeParse(event.payload);
+      if (changed.success) scheduleProjection.changed(event.nodeId, changed.data.workspaceId);
+    });
+    registerScheduledTaskRoutes({
+      app,
+      database,
+      databaseError,
+      nodeControl,
+      publicOrigin,
+      index: scheduleIndex,
+      schedules: {
+        nodes: async (userId) => {
+          const nodes = await nodeControl.listNodes();
+          const visible = await Promise.all(
+            nodes.map(async (node) => {
+              if (node.disabled || !(await resources.canAccessNodeContainer(userId, node.id)))
+                return null;
+              const supported = node.connected
+                ? nodeControl.supportsScheduledTasks(node.id)
+                : publicNode(node).capabilities.scheduledTasks?.apiVersion ===
+                  scheduledTasksApiVersion;
+              return {
+                id: node.id,
+                name: node.displayName ?? node.id,
+                connected: node.connected,
+                supported,
+                newSessionSupported: supported
+              };
+            })
+          );
+          return visible.flatMap((node) => (node === null ? [] : [node]));
+        },
+        workspaces: async (userId, nodeId, workspaces, source) => {
+          const allowed = await (source === 'live'
+            ? projectLiveWorkspaces(userId, nodeId, workspaces)
+            : resources.projectNodeWorkspaces(userId, nodeId, workspaces));
+          return allowed.map((workspace) => ({
+            id: workspace.id,
+            name: workspace.displayName ?? workspace.id
+          }));
+        },
+        canUseWorkspace: (userId, nodeId, workspaceId) =>
+          resources.canUseScheduledWorkspace(userId, nodeId, workspaceId)
+      }
     });
     registerSessionRunRoutes({
       ...searchProjection,
@@ -824,6 +904,8 @@ export async function composeServerApplication(
     app.addHook('preClose', async () => {
       if (admissionStopped) return;
       admissionStopped = true;
+      releaseScheduleEvents();
+      scheduleProjection.stop();
       for (const stop of [() => maintenance.stop(), () => webPushDispatcher.close()]) {
         try {
           stop();
@@ -849,6 +931,7 @@ export async function composeServerApplication(
       await attempt(() => webPushDispatcher.close());
       await attempt(() => traffic.close());
       await attempt(() => nodeControl.drainProjections());
+      await attempt(() => scheduleProjection.drain());
       await attempt(() => recentRuns.dispose());
       // Failures are reported by the owning startup or interval; drain before pool release.
       await maintenance.drain();
@@ -884,9 +967,11 @@ export async function composeServerApplication(
     for (const cleanup of [
       () => constructedMaintenance?.stop(),
       () => constructedPush?.close(),
+      () => constructedScheduleProjection?.stop(),
       () => constructedNodeControl?.close(),
       () => traffic.close(),
       () => constructedNodeControl?.drainProjections(),
+      () => constructedScheduleProjection?.drain(),
       () => constructedRecentRuns?.dispose(),
       () => constructedMaintenance?.drain(),
       () => constructedPush?.flush(),

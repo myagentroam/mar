@@ -21,6 +21,7 @@ export const integrationTestFiles = [
   'server-template-publish-state.spec.ts',
   'server-service-tier-migration.spec.ts',
   'personal-model-usage.spec.ts',
+  'scheduled-task-execution.spec.ts',
   'server-workspace-secrets.spec.ts',
   'shared-conversation-audit-flow.spec.ts',
   'shared-conversation-audit-storage.spec.ts',

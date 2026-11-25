@@ -4,6 +4,8 @@ export const workbenchNotificationMessages = {
     plan: { title: '计划可实施', detail: '请打开' },
     userInput: { title: '需要你的回答', detail: '请打开' },
     schedule: {
+      completed: '定时任务已完成',
+      taskDetail: '请打开定时任务查看',
       skipped: { title: '定时任务已跳过', detail: '请打开会话查看记录' },
       failed: { title: '定时任务运行失败', detail: '请打开会话查看记录' },
       proposal: { title: '定时任务有待确认修改', detail: '请打开会话查看' }
@@ -24,6 +26,8 @@ export const workbenchNotificationMessages = {
     plan: { title: 'Plan ready to implement', detail: 'open it.' },
     userInput: { title: 'Your answer is required', detail: 'open it.' },
     schedule: {
+      completed: 'Scheduled task completed',
+      taskDetail: 'open the scheduled task for details.',
       skipped: { title: 'Scheduled task skipped', detail: 'open the session for details.' },
       failed: { title: 'Scheduled task failed', detail: 'open the session for details.' },
       proposal: { title: 'Scheduled task edit proposed', detail: 'open the session to review it.' }

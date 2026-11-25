@@ -40,7 +40,7 @@ export function createNodeControl(
           database,
           authorize,
           transport.socketFor,
-          { allows: transport.allows },
+          { allows: transport.allows, supportsScheduledTasks: transport.supportsScheduledTasks },
           brokerServices,
           log,
           traffic

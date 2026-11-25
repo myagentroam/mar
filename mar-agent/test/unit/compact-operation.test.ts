@@ -83,7 +83,9 @@ describe('compaction operation boundary', () => {
           calls++;
           if (request.toolChoice === 'none' && hang) {
             expect(request.messages.length).toBeGreaterThanOrEqual(2);
-            expect(request.messages.at(-1)?.content).toContain('Output only the handoff.');
+            expect(request.messages.at(-1)?.content).toContain(
+              'Output only the notes in compact Markdown.'
+            );
             notifyStarted();
             yield {
               type: 'response.item',

@@ -56,6 +56,33 @@ export class NodeRequestChannel {
       (!Number.isSafeInteger(user.userId) || user.userId <= 0 || user.sessionHash.length === 0)
     )
       return Promise.reject(new NodeRequestAdmissionError('USER_AUTHORIZATION_REQUIRED'));
+    return this.sendRequest(nodeId, operation, data, user, timeoutMs, observe, signal);
+  }
+
+  /** Server-authored, read-only projection. No arbitrary operation or user may be supplied. */
+  requestScheduledTaskIndex(
+    nodeId: string,
+    data: { workspaceId: string; afterTaskId?: string }
+  ): Promise<unknown> {
+    return this.sendRequest(
+      nodeId,
+      'schedule.index.list',
+      data,
+      { userId: 0, sessionHash: 'scheduled-task-index' },
+      15_000
+    );
+  }
+
+  private sendRequest(
+    nodeId: string,
+    operation: string,
+    data: unknown,
+    user: UserNodeAuthorization,
+    timeoutMs: number,
+    observe?: RequestObserver,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    if (this.closed) return Promise.reject(new NodeRequestAdmissionError('NODE_CONTROL_CLOSED'));
     const socket = this.socketFor(nodeId);
     if (socket === undefined || socket.readyState !== socket.OPEN)
       return Promise.reject(new NodeRequestAdmissionError('NODE_OFFLINE'));

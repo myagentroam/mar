@@ -28,7 +28,7 @@ describe('marctl execution operation authorization', () => {
     });
   }
 
-  it.each(['session.metadata.update', 'session.config.update', 'session.schedule.agent.save'])(
+  it.each(['session.metadata.update', 'session.config.update'])(
     'allows %s within the Workspace regardless of Session relationship',
     async (operation) => {
       await expect(check(operation, 'parent')).resolves.toBeUndefined();
@@ -39,14 +39,36 @@ describe('marctl execution operation authorization', () => {
     }
   );
 
-  it.each(['run.cancel', 'session.command.execute', 'session.start', 'session.send'])(
-    'rejects legacy execution write %s',
+  it.each(['schedule.task.create', 'schedule.task.propose'])(
+    'allows %s within the current Workspace without borrowing another Run identity',
     async (operation) => {
-      await expect(check(operation, 'sibling')).rejects.toThrow('MARCTL_AGENT_NETWORK_REQUIRED');
-      await expect(check(operation, 'child')).rejects.toThrow('MARCTL_AGENT_NETWORK_REQUIRED');
-      await expect(check(operation, 'sibling', { type: 'terminal' })).resolves.toBeUndefined();
+      const resolve = vi.fn();
+      const checkScope = (workspaceId: string) =>
+        authorizeMarctlExecutionOperation({
+          caller,
+          operation,
+          data: { workspaceId },
+          userId: 7,
+          runtime,
+          resolveSession: resolve
+        });
+      await expect(checkScope('workspace')).resolves.toBeUndefined();
+      await expect(checkScope('other')).rejects.toThrow('AGENT_TARGET_NOT_AUTHORIZED');
+      expect(resolve).not.toHaveBeenCalled();
     }
   );
+
+  it.each([
+    'run.cancel',
+    'session.command.execute',
+    'session.start',
+    'session.send',
+    'session.schedule.agent.save'
+  ])('rejects legacy execution write %s', async (operation) => {
+    await expect(check(operation, 'sibling')).rejects.toThrow('MARCTL_AGENT_NETWORK_REQUIRED');
+    await expect(check(operation, 'child')).rejects.toThrow('MARCTL_AGENT_NETWORK_REQUIRED');
+    await expect(check(operation, 'sibling', { type: 'terminal' })).resolves.toBeUndefined();
+  });
 
   it('checks active Run ownership for permitted management targets', async () => {
     const otherOwner = {

@@ -790,7 +790,7 @@ export function createWorkbenchNotificationService(
   }
 
   function isActiveTarget(target: WorkbenchNotificationTarget | ActiveNotificationTarget): boolean {
-    if (target.targetType === undefined) return false;
+    if (target.targetType === undefined || target.targetType === 'SCHEDULED_TASK') return false;
     return (options.activeTargets?.() ?? []).some((active) => {
       if (target.targetType === 'HOSTED_CONVERSATION')
         return (

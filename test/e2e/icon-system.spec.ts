@@ -1136,9 +1136,10 @@ test('Activity rail keeps separate hover surfaces for icon actions and navigatio
 
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(`${fixture.url}icon-system.html?navigation=1&theme=${theme}&mobile=1`);
-    const help = rail.getByRole('link', { name: 'Help', exact: true });
-    await help.hover();
-    await expect(help).toHaveCSS('background-color', hoverOverlay);
+    await expect(rail.getByRole('link', { name: 'Help', exact: true })).toHaveCount(0);
+    const logo = page.getByRole('button', { name: 'MyAgentRoam menu' });
+    await logo.hover();
+    await expect(logo).toHaveCSS('background-color', hoverOverlay);
   }
 });
 

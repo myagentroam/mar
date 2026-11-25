@@ -13,7 +13,6 @@ import { buildContextGcProtection } from '../../src/session/context-gc-protectio
 import { contextGcReclaimedTokens } from '../../src/runtime/context/gc-tokens.js';
 import { projectCodeModeSearchResult } from '../../src/tools/code-mode/index.js';
 import { buildCompactionInput } from '../../src/runtime/compaction/history.js';
-import { projectCodeModeSearchResult } from '../../src/tools/code-mode/index.js';
 import {
   anthropicThinkingBlock,
   ANTHROPIC_THINKING_LIMITS
@@ -57,6 +56,14 @@ interface AnthropicRequestMessage {
 
 interface AnthropicRequest {
   readonly messages: readonly AnthropicRequestMessage[];
+  readonly tool_choice?: { readonly type: string };
+}
+
+function nativeThinkingBlocks(request: AnthropicRequest) {
+  return request.messages
+    .filter((message) => message.role === 'assistant')
+    .flatMap((message) => (Array.isArray(message.content) ? message.content : []))
+    .filter((block) => block.type === 'thinking' || block.type === 'redacted_thinking');
 }
 
 function events(blocks: Record<string, unknown>[], stop = 'end_turn'): unknown[] {
@@ -197,7 +204,7 @@ describe('Anthropic native thinking context', () => {
       )
     ).toBeGreaterThan(0);
   });
-  it('records complete private blocks on a failed semantic attempt without changing Anthropic replay', async () => {
+  it('retains complete private blocks when Runtime recovers a failed semantic attempt', async () => {
     const failed = events([{ ...signed, thinking: '' }, redacted]).slice(0, -2);
     failed.push({
       type: 'error',
@@ -226,7 +233,8 @@ describe('Anthropic native thinking context', () => {
         finalAnswer: 'Recovered'
       });
       expect(requests).toHaveLength(2);
-      expect(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/.test(JSON.stringify(requests[1]))).toBe(true);
+      expect(nativeThinkingBlocks(requests[0]!)).toEqual([]);
+      expect(nativeThinkingBlocks(requests[1]!)).toEqual([{ ...signed, thinking: '' }, redacted]);
       expect(JSON.stringify(publicEvents)).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
       const store = await JsonlSessionStore.open(home);
       try {
@@ -240,12 +248,21 @@ describe('Anthropic native thinking context', () => {
           buildContextGcProtection(records, 'thinking', 200_000).after(first.sequence - 1)
         ).toEqual({ rollouts: 1, thinking: 2 });
         expect(
-          records.find(
-            (record) =>
-              record.type === 'model.attempt' &&
-              (record.payload as { state?: string }).state === 'FAILED'
-          )?.payload
-        ).toMatchObject({ semanticEventObserved: true, willRetry: false });
+          records
+            .filter((record) => record.type === 'model.attempt')
+            .map((record) => record.payload)
+        ).toMatchObject([
+          { attempt: 1, state: 'STARTED' },
+          {
+            attempt: 1,
+            state: 'FAILED',
+            semanticEventObserved: true,
+            retryable: true,
+            willRetry: true
+          },
+          { attempt: 2, state: 'STARTED' },
+          { attempt: 2, state: 'SUCCEEDED' }
+        ]);
         expect(
           records.filter(
             (record) =>
@@ -501,18 +518,19 @@ describe('Anthropic native thinking context', () => {
       expect((await session.run({ prompt: 'Switch.', modelId: 'other' }).result()).status).toBe(
         'completed'
       );
-      expect(JSON.stringify(requests.at(-1).messages)).not.toContain(signed.signature);
-      expect((await session.compact().result()).status).toBe('completed');
       expect(JSON.stringify(requests.at(-1))).not.toMatch(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/);
+      expect((await session.compact().result()).status).toBe('completed');
+      const compactRequest = requests.at(-1)!;
+      expect(compactRequest.tool_choice).toEqual({ type: 'none' });
+      expect(nativeThinkingBlocks(compactRequest)).toEqual([signed, redacted]);
+      expect(JSON.stringify(compactRequest).match(/SIGNATURE_PRIVATE|REDACTED_PRIVATE/g)).toEqual([
+        'SIGNATURE_PRIVATE',
+        'REDACTED_PRIVATE'
+      ]);
       const continued = session.run({ prompt: 'After compact.' });
       for await (const event of continued) publicEvents.push(event);
       expect((await continued.result()).status).toBe('completed');
-      const native = requests
-        .at(-1)
-        .messages.flatMap((message) => (Array.isArray(message.content) ? message.content : []));
-      expect(
-        native.filter((block) => block.type === 'thinking' || block.type === 'redacted_thinking')
-      ).toEqual([signed, redacted]);
+      expect(nativeThinkingBlocks(requests.at(-1)!)).toEqual([signed, redacted]);
     } finally {
       await agent.dispose();
     }

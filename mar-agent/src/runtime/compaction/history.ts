@@ -5,7 +5,7 @@ import { countModelTokens, truncateModelText } from '../token-budget.js';
 import { compactionPrompt } from '../../prompts/compact.js';
 
 export const DEFAULT_COMPACTION_FOCUS =
-  'Create a durable continuation state for the next model invocation.';
+  'Keep what is needed to continue reasoning without the full conversation.';
 
 export function buildNativeCompactionMessages(
   messages: readonly ModelMessage[],

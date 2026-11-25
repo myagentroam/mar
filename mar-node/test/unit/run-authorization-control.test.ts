@@ -12,6 +12,30 @@ const request = {
 afterEach(() => vi.useRealTimers());
 
 describe('execution resource control', () => {
+  it('sends the current schedule authorization contract without legacy resource negotiation', async () => {
+    const sent: NodeEnvelope[] = [];
+    const control = new RunAuthorizationControl((envelope) => sent.push(envelope));
+    control.connected();
+    const { userId, ...scope } = request;
+    const schedule = {
+      ...scope,
+      ownerUserId: userId,
+      targetKind: 'existing' as const,
+      taskId: 'task',
+      revision: 2,
+      occurrenceId: 'task:1000'
+    };
+    const pending = control.authorize(schedule);
+    expect(sent[0]?.type).toBe('schedule.authorize');
+    expect(sent[0]?.payload).toEqual(schedule);
+    const context = { secretEnvironment: {}, gitConfiguration: { credentials: [] } };
+    control.handle(
+      createEnvelope('schedule.authorize.response', { context }, { replyTo: sent[0]!.id })
+    );
+    await expect(pending).resolves.toEqual(context);
+    control.close();
+  });
+
   it('correlates fresh resources without accepting a response from another operation', async () => {
     const sent: NodeEnvelope[] = [];
     const control = new RunAuthorizationControl((envelope) => sent.push(envelope));

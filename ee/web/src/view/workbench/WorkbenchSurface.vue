@@ -28,10 +28,10 @@ type NodeOwnership = Extract<WorkspaceRegistrationOwnership, { ownerType: 'ORGAN
 type CoreSurfaceProps = Parameters<
   typeof CoreSurface<ManagementSection, WorkspaceRegistrationOwnership, NodeOwnership>
 >[0];
-defineProps<{ page: CoreSurfaceProps['page'] }>();
+defineProps<{ page: CoreSurfaceProps['page']; schedules?: CoreSurfaceProps['schedules'] }>();
 </script>
 <template>
-  <CoreSurface :page="page">
+  <CoreSurface :page="page" :schedules="schedules">
     <template #workspace-registration>
       <WorkspaceRegistrationPicker
         open

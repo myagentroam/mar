@@ -1259,6 +1259,7 @@ export function createWorkspaceSessionPaneController(
     references: controller.references,
     quoteTarget: controller.quoteTarget,
     rewindConversation: controller.rewindConversation,
+    selectRun: realtime.openRun,
     rollbackConversation: controller.rollbackConversation,
     runControl: controller.runControl,
     runner: controller.runner,

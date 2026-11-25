@@ -1,3 +1,4 @@
+import { hourlyTriggers } from './scheduled-task-fixtures.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,10 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { migrate, NodeDatabase, NODE_SCHEMA_MIGRATIONS } from '../../src/database.js';
 import { NodeConnector } from '../../src/connector.js';
 import { ScheduledSessionCoordinator } from '../../src/service/scheduled-session-coordinator.js';
-import {
-  ScheduledSessionStore,
-  type ScheduledSessionTask
-} from '../../src/service/scheduled-session-store.js';
+import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -46,7 +44,8 @@ async function fixture() {
       ownerUserId: 7,
       notifyOnTerminal: true,
       objective: 'Check status',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      triggers: hourlyTriggers,
       timezone: 'UTC'
     });
   });
@@ -66,7 +65,7 @@ describe('scheduled session restart recovery', () => {
   it('keeps recovered failures recorded but silent when notifications are disabled before reconnect', async () => {
     const f = await fixture();
     const task = f.tasks[0]!;
-    const occurrenceId = f.store.claim(task.sessionId, task.nextRunAt!, task.revision)!;
+    const occurrenceId = f.store.claim(task.id, task.nextRunAt!, task.revision)!;
     const notify = vi.fn();
     const coordinator = new ScheduledSessionCoordinator({
       store: () => f.store,
@@ -81,7 +80,7 @@ describe('scheduled session restart recovery', () => {
     });
     try {
       coordinator.recoverInterrupted();
-      f.store.update(task.sessionId, task.revision, { notifyOnTerminal: false });
+      f.store.update(task.id, task.revision, { notifyOnTerminal: false });
       coordinator.connected();
       coordinator.connected();
       expect(f.store.recent(task.id)[0]).toMatchObject({
@@ -99,7 +98,7 @@ describe('scheduled session restart recovery', () => {
     vi.useFakeTimers();
     const f = await fixture();
     const ids = f.tasks.map((task, index) => {
-      const id = f.store.claim(task.sessionId, task.nextRunAt!, task.revision)!;
+      const id = f.store.claim(task.id, task.nextRunAt!, task.revision)!;
       if (index === 1) f.store.finish(id, 'SUBMITTED', undefined, 'old-run');
       return id;
     });
@@ -129,16 +128,23 @@ describe('scheduled session restart recovery', () => {
     });
     const internals = connector as unknown as {
       createDirectTransferService(): Promise<undefined>;
+      initializeDesktopRuntime(): Promise<void>;
+      initializeBrowser(): Promise<void>;
+      terminalManager: { warmup(): Promise<void> };
       computerUseEnablement: { initialize(): void };
-      controlChannel: { connect(): void; ready(): boolean };
+      controlChannel: { connect(): void; connected(): boolean; ready(): boolean };
       terminalChannel: { connect(): void };
       connectionLifecycle: { connected(): void };
       workbenchEventService: { publish(event: unknown): void };
       scheduledSessions: { options: { authorize: () => Promise<never> } };
     };
     vi.spyOn(internals, 'createDirectTransferService').mockResolvedValue(undefined);
+    vi.spyOn(internals, 'initializeDesktopRuntime').mockResolvedValue(undefined);
+    vi.spyOn(internals, 'initializeBrowser').mockResolvedValue(undefined);
+    vi.spyOn(internals.terminalManager, 'warmup').mockResolvedValue(undefined);
     vi.spyOn(internals.computerUseEnablement, 'initialize').mockImplementation(() => undefined);
     vi.spyOn(internals.controlChannel, 'connect').mockImplementation(() => undefined);
+    vi.spyOn(internals.controlChannel, 'connected').mockReturnValue(true);
     vi.spyOn(internals.terminalChannel, 'connect').mockImplementation(() => undefined);
     const published = vi.spyOn(internals.workbenchEventService, 'publish');
     const recovery = vi.spyOn(ScheduledSessionStore.prototype, 'recoverInterrupted');
@@ -183,11 +189,7 @@ describe('scheduled session restart recovery', () => {
           (event) => event['kind'] === 'SCHEDULE_FAILED' && event['userId'] === 7
         )
       ).toBe(true);
-      const activeId = store.claim(
-        f.tasks[0]!.sessionId,
-        store.get(f.tasks[0]!.sessionId)!.nextRunAt!,
-        1
-      )!;
+      const activeId = store.claim(f.tasks[0]!.id, store.getById(f.tasks[0]!.id)!.nextRunAt!, 1)!;
       store.finish(activeId, 'SUBMITTED', undefined, 'current-run');
       internals.connectionLifecycle.connected();
       expect(recovery).toHaveBeenCalledOnce();
@@ -214,11 +216,11 @@ describe('scheduled session restart recovery', () => {
       const f = await fixture();
       const task = f.tasks[0]!;
       f.setNow(task.nextRunAt!);
-      const occurrenceId = f.store.claim(task.sessionId, task.nextRunAt!, task.revision)!;
+      const occurrenceId = f.store.claim(task.id, task.nextRunAt!, task.revision)!;
       const sideEffects = window === 'claimed-before-submit' ? [] : [occurrenceId];
       if (window === 'submitted-before-terminal')
         f.store.finish(occurrenceId, 'SUBMITTED', undefined, 'original-run');
-      const nextRunAt = f.store.get(task.sessionId)!.nextRunAt!;
+      const nextRunAt = f.store.getById(task.id)!.nextRunAt!;
       f.database.close();
       const database = new NodeDatabase(f.path, 'node-a', f.clock);
       const store = new ScheduledSessionStore(database.raw, f.clock);
@@ -227,10 +229,17 @@ describe('scheduled session restart recovery', () => {
         secretEnvironment: {},
         executionContext: { runner: 'codex' as const }
       }));
-      const submit = vi.fn(async (_task: ScheduledSessionTask, id: string) => {
-        sideEffects.push(id);
-        return { runId: 'next-run' };
-      });
+      const submit = vi.fn(
+        async (
+          ...[_task, id, _context, begin]: Parameters<
+            ScheduledSessionCoordinator['options']['submit']
+          >
+        ) => {
+          begin();
+          sideEffects.push(id);
+          return { runId: 'next-run' };
+        }
+      );
       const coordinator = new ScheduledSessionCoordinator({
         store: () => store,
         busy: () => false,
@@ -251,7 +260,7 @@ describe('scheduled session restart recovery', () => {
           code: 'SCHEDULE_RESTART_OUTCOME_UNKNOWN',
           run_id: window === 'submitted-before-terminal' ? 'original-run' : null
         });
-        expect(store.get(task.sessionId)?.nextRunAt).toBe(nextRunAt);
+        expect(store.getById(task.id)?.nextRunAt).toBe(nextRunAt);
         expect(notify).not.toHaveBeenCalled();
         coordinator.connected();
         coordinator.connected();
@@ -368,9 +377,9 @@ describe('scheduled session restart recovery', () => {
     try {
       const task = f.tasks[0]!;
       for (let i = 0; i < 105; i++) {
-        const due = f.store.get(task.sessionId)!.nextRunAt!;
+        const due = f.store.getById(task.id)!.nextRunAt!;
         f.setNow(due);
-        f.store.claim(task.sessionId, due, task.revision);
+        f.store.claim(task.id, due, task.revision);
       }
       f.database.raw.exec(
         "CREATE TRIGGER fail_recovery BEFORE UPDATE ON scheduled_session_occurrences WHEN NEW.status='FAILED' BEGIN SELECT RAISE(ABORT, 'recovery-injected'); END"
@@ -395,7 +404,7 @@ describe('scheduled session restart recovery', () => {
   it('migrates v19 transactionally, preserves records and reopens without recreating the partial index', async () => {
     const f = await fixture();
     const task = f.tasks[0]!;
-    const occurrenceId = f.store.claim(task.sessionId, task.nextRunAt!, task.revision)!;
+    const occurrenceId = f.store.claim(task.id, task.nextRunAt!, task.revision)!;
     f.store.finish(occurrenceId, 'SUBMITTED', undefined, 'existing-run');
     f.database.close();
     const legacyPath = f.path + '.v19';
@@ -425,7 +434,11 @@ describe('scheduled session restart recovery', () => {
           .map((column) => String(column.name))
           .filter((name) => sourceColumns.has(name))
           .join(',');
-        raw.exec(`INSERT INTO ${table} (${columns}) SELECT ${columns} FROM source.${table}`);
+        if (table === 'scheduled_session_tasks')
+          raw.exec(
+            `INSERT INTO ${table} (${columns},cron) SELECT ${columns},'0 * * * *' FROM source.${table}`
+          );
+        else raw.exec(`INSERT INTO ${table} (${columns}) SELECT ${columns} FROM source.${table}`);
       }
       raw.exec('DETACH DATABASE source');
       const migration = NODE_SCHEMA_MIGRATIONS.find((entry) => entry.version === 20)!;

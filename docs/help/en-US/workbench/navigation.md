@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-24
+lastUpdated: 2026-11-25
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -8,6 +8,8 @@ lastUpdated: 2026-11-24
 With focus in the Aside tab strip, content, or Composer, use `Ctrl+W` / `Alt+W` to close the active session or Browser without closing the Workspace, clearing the session draft, or stopping its running task. Fixed tools remain open. See [Keyboard Shortcuts](../reference/keyboard-shortcuts.md) for input boundaries and cross-origin preview limitations.
 
 Console provides two parallel modes: **Work** and **Conversation**. Work is the new name for the former **Nodes** top-level entry and opens the same Node → Workspace resource tree. Node management, Workspace tabs, Agent sessions, files, Git, and terminals work exactly as before. Conversation mode starts and continues conversations from published templates.
+
+Open the calendar icon beside **Work** to view [Scheduled tasks](sessions.md#scheduled-tasks). Use the secondary menu to switch among **My schedules**, **All schedules**, and **Execution records**. On mobile, tap the icon to enter **My schedules**, then tap it again to open the menu. Switching between Work, Chat, and Scheduled tasks does not open a drawer. When creating a schedule, choose its run target explicitly; the active Workspace is not assumed.
 
 In Work mode, expand a Node group in the left resource tree and open a registered Workspace. Node rows organize resources and expose host management; clicking a Node name only expands or collapses its group and never changes the active Workspace. There is no separately saved current Node.
 
@@ -35,7 +37,7 @@ An offline or disabled Node keeps its registered resources visible but blocks li
 
 A green dot next to a Node means it is available. In workspace tabs and session lists, a green dot means a task is running; the dot is neutral when tasks are only starting or stopping. A green dot on the session tree button means it has a running or sleeping descendant. In the open tree, amber marks sleeping sessions.
 
-On mobile, use **Work** in the top bar to open the same resource tree. Selecting a Workspace closes the drawer and returns to the Agent conversation. Use **Chat** to enter Conversation mode; selecting it again while active opens the chat-history drawer. The top-level navigation contains Work, Chat, Admin, and Settings. Admin no longer has a separate Skill Center entry. Skill Configuration, Skill Sources, and Environment Secrets appear consecutively, while MCP Sources remains a separate Admin section; Skill Configuration switches between Skill and MCP in the page.
+On mobile, tap the active **Work** icon in the top bar to open the resource tree. Selecting a Workspace closes the drawer and returns to the Agent conversation. Tap the active **Chat** icon to open the chat-history drawer. Admin no longer has a separate Skill Center entry. Skill Configuration, Skill Sources, and Environment Secrets appear consecutively, while MCP Sources remains a separate Admin section; Skill Configuration switches between Skill and MCP in the page.
 
 Settings contains Account Security, Appearance, System Notifications, Quick Prompts, Personal Instructions, Keyboard Shortcuts, and About. Personal Instructions provides additional guidance for later Agent runs by the current account and saves Common, MAR Agent, Codex, Claude Code, and OpenCode values separately; the MAR Agent label remains `MAR Agent` in every interface language; each run combines Common with the current Agent's instructions without modifying Node or Workspace `AGENTS.md` or `CLAUDE.md`. Appearance defaults to the dark color theme. Under **Settings → Appearance → Icon theme**, MAR File Icons is the only option. File icons are independent of interface colors, and appearance preferences stay in the current browser. About shows the current Web version, links to the documentation center, and groups major open-source components across Web, Server, Node/MAR Agent, bundled tools, icons, and the optional Computer Use Runtime. This is a selection, not a complete dependency inventory. "View Web third-party notices" covers Web only; consult the corresponding Server, Node, and optional runtime distributions for their license and notice files. The `@myagentroam/binaries` package used by Node contains tool materials under `vendor/ripgrep/` and `vendor/ctags/`. External Agents, SDKs, and separately installed tools remain subject to their own terms. Runtime status and License management remain under Admin > System Information.
 
@@ -44,6 +46,8 @@ The **Sessions & notifications** icon after Chat opens one panel with separate r
 Click or tap the icon, or press `Ctrl/Cmd+Shift+E`, to open the custom Recent Sessions / Notifications panel. Click or tap the icon again, use the same shortcut, click outside, or press `Esc` to close. Hovering does not open or close it on desktop or mobile, and moving away leaves it open. Each opening starts on Notifications when unread notifications exist, or Recent Sessions otherwise; tab selection then stays under your control. No extra text tooltip covers the panel.
 
 On desktop, click the info icon at the bottom left to open or close this page’s Web performance diagnostics. Hovering does not open it. Click outside to dismiss it, or use the copy button in the panel to copy detailed diagnostics.
+
+On mobile, tap the MyAgentRoam logo in the upper-left corner to see the current Web version, open performance diagnostics, or access the help docs when available. The help docs open in a new tab.
 
 ## Themes
 

@@ -32,6 +32,14 @@ watch(
     <template #identity-extension
       ><EnterpriseLoginExtension :request="page.identity.request"
     /></template>
-    <template #surface><WorkbenchSurface :page="page" /></template>
+    <template #surface="{ schedules, showSchedules, closeSchedules, selectScheduleSection }">
+      <WorkbenchSurface
+        :page="page"
+        :schedules="schedules"
+        @open-schedules="showSchedules"
+        @close-schedules="closeSchedules"
+        @select-schedule-section="selectScheduleSection"
+      />
+    </template>
   </CorePage>
 </template>

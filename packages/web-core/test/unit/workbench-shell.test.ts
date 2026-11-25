@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { commonMessages } from '../../src/i18n/messages.js';
 import { MANAGEMENT_COMPOSITION_KEY } from '../../src/service/management-composition.js';
 import type { WorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
-import type { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
+import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
 import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
@@ -54,6 +54,7 @@ async function renderOfflineSurface() {
     aside: {
       asideViewMode: () => 'none',
       asideWidth: () => undefined,
+      terminalTabOpen: () => false,
       setAsideSessionFits: vi.fn(),
       setAsideSurfaceVisible: vi.fn()
     },
@@ -165,11 +166,11 @@ describe('Shared workbench shell', () => {
   });
 
   it.each([
-    ['en-US', 'Help'],
-    ['zh-CN', '帮助']
+    ['en-US', 'Chat', 'MyAgentRoam menu'],
+    ['zh-CN', '对话', 'MyAgentRoam 菜单']
   ] as const)(
-    'renders the mobile Help icon with an accessible label: %s',
-    async (locale, label) => {
+    'renders the mobile brand menu trigger with an accessible label: %s',
+    async (locale, label, brandLabel) => {
       localePreferenceService().setLocale(locale);
       const app = createSSRApp({
         render: () =>
@@ -209,7 +210,7 @@ describe('Shared workbench shell', () => {
               notifications: ref([]),
               hasUnreadSession: () => false
             } as unknown as WorkbenchNotificationService,
-            performanceDiagnostics: {} as ReturnType<typeof createWebPerformanceDiagnostics>,
+            performanceDiagnostics: createWebPerformanceDiagnostics(),
             uploads: [],
             uploadStatusLabel: () => ''
           })
@@ -223,25 +224,28 @@ describe('Shared workbench shell', () => {
       const navigationButtons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gsu)].filter(
         (match) => match[1]!.includes('nav-menu-button')
       );
-      expect(navigationButtons).toHaveLength(4);
+      expect(navigationButtons).toHaveLength(5);
       expect(navigationButtons.map((match) => match[1]!.includes('utility'))).toEqual([
+        false,
         false,
         false,
         true,
         true
       ]);
-      expect(navigationButtons[1]![1]).toContain('aria-current="page"');
+      expect(navigationButtons[2]![1]).toContain('aria-current="page"');
       for (const button of navigationButtons) {
         expect(button[1]).toMatch(/aria-label="[^"]+"/u);
         expect(button[1]).not.toMatch(/title="[^"]+"/u);
         expect(button[2]).not.toContain('rail-label');
       }
-      const helpLink =
-        /<a\b(?=[^>]*class="[^"]*\bdocumentation-link\b)(?=[^>]*aria-label="([^"]+)")[^>]*>([\s\S]*?)<\/a>/u.exec(
-          html
-        );
-      expect(helpLink?.[1]).toBe(label);
-      expect(helpLink?.[2]).toMatch(/<svg\b(?=[^>]*aria-hidden="true")/u);
+      const brandButton = /<button\b(?=[^>]*\bbrand-menu-trigger\b)([^>]*)>(.*?)<\/button>/su.exec(
+        html
+      );
+      expect(brandButton?.[1]).toContain(`aria-label="${brandLabel}"`);
+      expect(brandButton?.[1]).toContain('aria-haspopup="menu"');
+      expect(brandButton?.[2]).toMatch(/^<img\b/u);
+      expect(brandButton?.[2]).not.toContain('<svg');
+      expect(html).not.toContain('documentation-link');
     }
   );
 

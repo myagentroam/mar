@@ -28,11 +28,12 @@ export function assertNodeRelations(database: DatabaseSync): void {
     conversation_template_publish_jobs: `SELECT 1 FROM conversation_template_publish_jobs child LEFT JOIN conversation_template_versions parent
       ON parent.id=child.version_id WHERE child.version_id IS NOT NULL
       AND (parent.id IS NULL OR parent.template_id<>child.template_id) LIMIT 1`,
+    // Older schemas require session_id; current schemas also allow new and unbound targets.
     scheduled_session_tasks: `SELECT 1 FROM scheduled_session_tasks child
       LEFT JOIN agent_sessions session ON session.id=child.session_id
       LEFT JOIN workspaces workspace ON workspace.id=child.workspace_id
-      WHERE session.id IS NULL OR workspace.id IS NULL OR session.workspace_id<>child.workspace_id
-      OR session.runner<>child.runner LIMIT 1`,
+      WHERE workspace.id IS NULL OR (child.session_id IS NOT NULL AND
+        (session.id IS NULL OR session.workspace_id<>child.workspace_id OR session.runner<>child.runner)) LIMIT 1`,
     scheduled_session_occurrences: `SELECT 1 FROM scheduled_session_occurrences child LEFT JOIN scheduled_session_tasks parent
       ON parent.id=child.task_id WHERE parent.id IS NULL LIMIT 1`,
     scheduled_session_proposals: `SELECT 1 FROM scheduled_session_proposals child LEFT JOIN scheduled_session_tasks parent

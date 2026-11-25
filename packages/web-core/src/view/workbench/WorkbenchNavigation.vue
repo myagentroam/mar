@@ -29,15 +29,20 @@ import type { createWebPerformanceDiagnostics } from '../../service/web-performa
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
 import WorkbenchSidebarPanel from './WorkbenchSidebarPanel.vue';
 import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
-import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
+import {
+  WORKBENCH_PANEL_LIMITS,
+  type MobileUtilityPanel
+} from '../../service/workbench-layout-service.js';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
-import type { MobileUtilityPanel } from '../../service/workbench-navigation-service.js';
+import { scheduleSections, type ScheduleSection } from '../schedule/scheduled-task-navigation.js';
 
 const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;
+const brand = ref<HTMLElement>();
+const mobilePerformanceOpen = ref(false);
 const sidebarPanel = ref<InstanceType<typeof WorkbenchSidebarPanel>>();
 const treeElement = computed(() => sidebarPanel.value?.element);
 const mobilePanelTarget = ref<HTMLElement>();
@@ -47,6 +52,8 @@ const sidebarInset = 9;
 const props = defineProps<{
   readonly webVersion: string;
   readonly view: WorkbenchView;
+  readonly scheduleSection?: ScheduleSection | undefined;
+  readonly scheduleSessionScoped?: boolean;
   readonly navigationItems: readonly { readonly id: WorkbenchView; readonly label: string }[];
   readonly settingsSection: SettingsSection;
   readonly settingsItems: readonly { readonly id: SettingsSection; readonly label: string }[];
@@ -75,7 +82,33 @@ const props = defineProps<{
   readonly uploadStatusLabel: (task: WorkspaceUploadTask) => string;
 }>();
 
-const displayView = ref(props.view);
+const sidebarView = computed(() =>
+  props.scheduleSection === undefined ? props.view : 'schedules'
+);
+const versionLabel = computed(() => `v${props.webVersion}`);
+const docsPath = computed(() => localizedDocsPath(locale.value, 'getting-started/overview'));
+watch(
+  () => props.mobileViewport,
+  (mobile) => {
+    if (!mobile) mobilePerformanceOpen.value = false;
+  }
+);
+
+type BrandCommand = 'reload' | 'performance' | 'help';
+function runBrandCommand(command: BrandCommand): void {
+  switch (command) {
+    case 'reload':
+      window.location.reload();
+      break;
+    case 'performance':
+      mobilePerformanceOpen.value = true;
+      break;
+    case 'help':
+      if (documentationAvailable) window.open(docsPath.value, '_blank', 'noopener,noreferrer');
+      break;
+  }
+}
+const displayView = ref(sidebarView.value);
 const displayUtility = ref(props.mobileUtilityPanel);
 let scrolledRevealTarget: WorkspaceTarget | undefined;
 function claimRevealScroll(target: WorkspaceTarget): boolean {
@@ -93,26 +126,26 @@ const mobileMenuOpen = computed(
     props.mobileSidebarOpen &&
     !(
       workspaceStartupBlocked.value &&
-      props.view === 'nodes' &&
+      sidebarView.value === 'nodes' &&
       props.mobileUtilityPanel === undefined
     )
 );
 const sidebarVisible = computed(() =>
   props.mobileViewport
     ? mobileMenuOpen.value
-    : props.sidebarContentVisible && props.view !== 'conversations'
+    : props.sidebarContentVisible && sidebarView.value !== 'conversations'
 );
 function finishMenuLeave(): void {
-  displayView.value = props.view;
+  displayView.value = sidebarView.value;
   displayUtility.value = props.mobileUtilityPanel;
 }
 watch(
-  [() => props.view, () => props.mobileUtilityPanel, sidebarVisible],
+  [sidebarView, () => props.mobileUtilityPanel, sidebarVisible],
   async ([, , visible], [, , wasVisible]) => {
     const body = treeElement.value;
     if (body && wasVisible) scrollPositions.set(displayKey.value, body.scrollTop);
     if (props.mobileViewport && !visible) return;
-    displayView.value = props.view;
+    displayView.value = sidebarView.value;
     displayUtility.value = props.mobileUtilityPanel;
     if (!visible) return;
     await nextTick();
@@ -125,6 +158,8 @@ const emit = defineEmits<{
   moveNode: [nodeId: string, targetIndex: number];
   moveWorkspace: [nodeId: string, workspaceId: string, direction: -1 | 1];
   selectNavigation: [view: WorkbenchView];
+  openScheduledTasks: [];
+  selectScheduleSection: [section: ScheduleSection];
   selectMobileUtilityPanel: [panel: MobileUtilityPanel | undefined];
   closeMobileSidebar: [];
   selectSettings: [section: SettingsSection];
@@ -160,17 +195,23 @@ const menuLabel = computed(() =>
   translate(
     displayUtility.value === 'activity'
       ? 'activityCenter.title'
-      : displayView.value === 'settings'
-        ? 'navigation.settingsCategories'
-        : displayView.value === 'management'
-          ? 'navigation.managementCategories'
-          : 'navigation.nodeWorkspace'
+      : displayView.value === 'schedules'
+        ? 'generated.scheduledSession.panelTitle'
+        : displayView.value === 'settings'
+          ? 'navigation.settingsCategories'
+          : displayView.value === 'management'
+            ? 'navigation.managementCategories'
+            : 'navigation.nodeWorkspace'
   )
 );
 
 const menuFocus = createMobileSurfaceFocusService({
   isOpen: () => props.mobileViewport && mobileMenuOpen.value,
-  regions: () => [treeElement.value, document.querySelector<HTMLElement>('.activity-rail')],
+  regions: () => [
+    treeElement.value,
+    brand.value,
+    document.querySelector<HTMLElement>('.activity-rail')
+  ],
   close: () => emit('closeMobileSidebar')
 });
 onBeforeUnmount(menuFocus.dispose);
@@ -238,8 +279,40 @@ function runBlankMenuCommand(command: string): void {
 </script>
 
 <template>
-  <header class="workbench-brand" data-testid="workbench-brand">
+  <header ref="brand" class="workbench-brand" data-testid="workbench-brand">
+    <!-- @vue-generic {BrandCommand} -->
+    <MarDropdown
+      v-if="mobileViewport"
+      :persistent="false"
+      placement="bottom-start"
+      @command="runBrandCommand"
+    >
+      <button
+        type="button"
+        class="brand-menu-trigger mar-icon-action"
+        :aria-label="$t('navigation.brandMenu')"
+      >
+        <img :src="logoIcon" alt="" />
+      </button>
+      <template #dropdown>
+        <MarDropdownMenu>
+          <MarDropdownItem
+            command="reload"
+            icon="source-code"
+            :aria-label="$t('navigation.reloadVersion', { version: versionLabel })"
+            >{{ versionLabel }}</MarDropdownItem
+          >
+          <MarDropdownItem command="performance" icon="info">{{
+            $t('navigation.performanceIndicator')
+          }}</MarDropdownItem>
+          <MarDropdownItem v-if="documentationAvailable" command="help" icon="document">{{
+            $t('navigation.helpDocumentation')
+          }}</MarDropdownItem>
+        </MarDropdownMenu>
+      </template>
+    </MarDropdown>
     <a
+      v-else
       v-tooltip="$t('common.productVersion', { version: webVersion })"
       class="brand-home-link"
       href="/"
@@ -256,15 +329,15 @@ function runBlankMenuCommand(command: string): void {
           :class="[
             'nav-menu-button',
             {
-              active: view === item.id,
+              active: sidebarView === item.id,
               utility: item.id === 'management' || item.id === 'settings'
             }
           ]"
           :aria-label="item.label"
-          :aria-current="view === item.id ? 'page' : undefined"
+          :aria-current="sidebarView === item.id ? 'page' : undefined"
           :aria-expanded="
             mobileViewport
-              ? view === item.id &&
+              ? sidebarView === item.id &&
                 (item.id === 'conversations'
                   ? mobileHistoryOpen === true
                   : mobileSidebarOpen && mobileUtilityPanel === undefined)
@@ -283,6 +356,23 @@ function runBlankMenuCommand(command: string): void {
             <MarIcon name="settings" aria-hidden="true" v-else-if="item.id === 'settings'" />
             <MarIcon name="administration" aria-hidden="true" v-else />
           </span>
+        </button>
+        <button
+          v-if="item.id === 'nodes'"
+          type="button"
+          class="nav-menu-button"
+          :class="{ active: scheduleSection !== undefined }"
+          :aria-current="scheduleSection === undefined ? undefined : 'page'"
+          :aria-expanded="mobileViewport ? mobileUtilityPanel === 'schedules' : undefined"
+          :aria-controls="mobileViewport ? 'workbench-secondary-sidebar' : undefined"
+          :aria-label="$t('generated.scheduledSession.panelTitle')"
+          v-tooltip="{
+            content: $t('generated.scheduledSession.panelTitle'),
+            placement: mobileViewport ? 'bottom' : 'right'
+          }"
+          @click="emit('openScheduledTasks')"
+        >
+          <span class="nav-item-content"><MarIcon name="calendar-check" aria-hidden="true" /></span>
         </button>
         <WorkbenchActivityCenter
           v-if="item.id === 'conversations'"
@@ -304,9 +394,9 @@ function runBlankMenuCommand(command: string): void {
       </template>
       <MarLink
         v-tooltip="$t('navigation.help')"
-        v-if="documentationAvailable"
+        v-if="!mobileViewport && documentationAvailable"
         class="nav-menu-button documentation-link mar-icon-action"
-        :href="localizedDocsPath(locale, 'getting-started/overview')"
+        :href="docsPath"
         underline="never"
         target="_blank"
         rel="noopener noreferrer"
@@ -317,8 +407,12 @@ function runBlankMenuCommand(command: string): void {
         </span>
       </MarLink>
     </nav>
-    <div v-if="!mobileViewport" class="activity-rail-footer">
-      <WebPerformanceIndicator :diagnostics="performanceDiagnostics" />
+    <div v-show="!mobileViewport" class="activity-rail-footer">
+      <WebPerformanceIndicator
+        v-model:mobile-open="mobilePerformanceOpen"
+        :mobile="mobileViewport"
+        :diagnostics="performanceDiagnostics"
+      />
     </div>
   </aside>
   <Transition name="mobile-menu-scrim">
@@ -336,7 +430,8 @@ function runBlankMenuCommand(command: string): void {
     @after-leave="finishMenuLeave"
   >
     <WorkbenchSidebarPanel
-      v-show="mobileViewport ? mobileMenuOpen : view !== 'conversations'"
+      id="workbench-secondary-sidebar"
+      v-show="mobileViewport ? mobileMenuOpen : sidebarView !== 'conversations'"
       ref="sidebarPanel"
       :collapsed="sidebarCollapsed"
       class="workspace-tree"
@@ -345,7 +440,7 @@ function runBlankMenuCommand(command: string): void {
       :aria-label="menuLabel"
       tabindex="-1"
       @contextmenu="
-        view === 'nodes' &&
+        sidebarView === 'nodes' &&
         !workspaceStartupBlocked &&
         mobileUtilityPanel === undefined &&
         openBlankMenu($event)
@@ -353,11 +448,31 @@ function runBlankMenuCommand(command: string): void {
       @keydown.esc="handleBlankMenuEscape"
     >
       <div
-        v-show="displayUtility !== undefined"
+        v-show="displayUtility === 'activity'"
         ref="mobilePanelTarget"
         class="mobile-menu-content"
       />
-      <template v-if="displayUtility === undefined && displayView === 'nodes'">
+      <nav
+        v-if="
+          displayUtility !== 'activity' &&
+          displayView === 'schedules' &&
+          (sidebarContentVisible || mobileViewport)
+        "
+        class="settings-nav"
+        :aria-label="$t('generated.scheduledSession.panelTitle')"
+      >
+        <button
+          v-for="section in scheduleSections"
+          :key="section"
+          :class="{ active: !scheduleSessionScoped && scheduleSection === section }"
+          :aria-current="!scheduleSessionScoped && scheduleSection === section ? 'page' : undefined"
+          type="button"
+          @click="emit('selectScheduleSection', section)"
+        >
+          {{ $t(`generated.scheduledSession.${section}`) }}
+        </button>
+      </nav>
+      <template v-else-if="displayUtility === undefined && displayView === 'nodes'">
         <MarDropdown
           v-if="!workspaceStartupBlocked && blankMenuAnchor && sidebarVisible"
           ref="blankMenu"
@@ -451,7 +566,7 @@ function runBlankMenuCommand(command: string): void {
     </WorkbenchSidebarPanel>
   </Transition>
   <MarPanelResizeHandle
-    v-if="view === 'nodes' && !sidebarCollapsed && !mobileViewport"
+    v-if="sidebarView === 'nodes' && !sidebarCollapsed && !mobileViewport"
     class="workspace-tree-resize"
     :target="treeElement"
     :label="$t('generated.panelResize.workspaceTree')"
@@ -490,6 +605,11 @@ function runBlankMenuCommand(command: string): void {
   display: block;
   flex: 0 0 auto;
   border-radius: 5px;
+}
+
+.brand-menu-trigger {
+  display: block;
+  padding: 0;
 }
 
 .workbench-brand img {
@@ -819,11 +939,6 @@ function runBlankMenuCommand(command: string): void {
 
   .activity-rail nav .nav-menu-button .rail-label {
     display: none;
-  }
-
-  .documentation-link {
-    position: static;
-    cursor: pointer;
   }
 
   .rail-label {

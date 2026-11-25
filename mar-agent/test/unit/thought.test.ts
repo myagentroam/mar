@@ -4,6 +4,19 @@ import { executeThought, thoughtToolDefinition } from '../../src/tools/agent/tho
 import { codeModeToolDefinition, projectCodeModeTools } from '../../src/tools/code-mode/index.js';
 
 describe('thought', () => {
+  it('exposes compression and evidence guidance on the content field', () => {
+    const tools = projectCodeModeTools([codeModeToolDefinition, thoughtToolDefinition]);
+    const properties = tools.find(({ name }) => name === 'thought')?.inputSchema.properties;
+    expect(properties).toMatchObject({
+      title: { description: expect.stringContaining('human-readable title') },
+      content: {
+        description: expect.stringMatching(
+          /reuse in subsequent reasoning[\s\S]+telegraphic fragments[\s\S]+preserve causal links and dependencies[\s\S]+distinguish verified facts from hypotheses/u
+        )
+      }
+    });
+  });
+
   it('accepts exactly 32 KiB UTF-8 without echoing either field', async () => {
     const title = '确认恢复策略';
     const content = '研'.repeat(10_922) + 'ok';

@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { WebSocket, WebSocketServer } from 'ws';
 import { RTCPeerConnection } from 'node-datachannel/polyfill';
 import { cleanup } from 'node-datachannel';
@@ -53,8 +54,16 @@ declare global {
 
 // Uses the actual attachment owners and data adapters. The isolated fixture
 // supplies verified identities and connects the data peers, not product routes.
+// --measure optionally adds per-phase counters; --limit-kbps=N caps frame writes
+// during scrolling and animation, but does not emulate WAN RTT or packet loss.
 const mode = process.argv[2] ?? 'relay';
 assert(mode === 'relay' || mode === 'ice' || mode === 'ice-hd');
+const flags = process.argv.slice(3);
+const limit = flags.find((arg) => arg.startsWith('--limit-kbps='));
+const limitKbps = limit === undefined ? 0 : Number(limit.slice('--limit-kbps='.length));
+assert(limit === undefined || (Number.isFinite(limitKbps) && limitKbps > 0));
+assert(flags.every((arg) => arg === '--measure' || arg === limit));
+const measure = flags.includes('--measure') || !!limit;
 const hd = mode === 'ice-hd';
 const fixtureViewport = hd ? { width: 1920, height: 1080 } : { width: 960, height: 600 };
 const transportId = 'fixture-transport';
@@ -148,6 +157,21 @@ const runtime = new BrowserRuntime({
   failed
 });
 const service = runtime.attachments;
+let motionPhase = false;
+let frameBytes = 0;
+if (measure) {
+  const open = service.open.bind(service);
+  service.open = (grant, route, channel) => {
+    const send = channel.sendFrame.bind(channel);
+    channel.sendFrame = async (chunk, signal) => {
+      if (motionPhase && limitKbps)
+        await delay(Math.ceil((chunk.byteLength * 8) / limitKbps), undefined, { signal });
+      await send(chunk, signal);
+      frameBytes += chunk.byteLength;
+    };
+    return open(grant, route, channel);
+  };
+}
 const revoked: string[] = [];
 const revoke = service.revoke.bind(service);
 service.revoke = (id, code) => {
@@ -263,6 +287,43 @@ try {
     });
   }
   const web = await chrome.newPage();
+  const webProfile = measure ? await web.context().newCDPSession(web) : undefined;
+  await webProfile?.send('Performance.enable', { timeDomain: 'threadTicks' });
+  const taskMs = async () => {
+    const profile = await webProfile?.send('Performance.getMetrics');
+    const task = profile?.metrics.find(({ name }) => name === 'TaskDuration');
+    assert(task, 'Chromium did not report renderer task time');
+    return task.value * 1_000;
+  };
+  const startMeasurement = async () => {
+    if (!measure) return;
+    const tasks = await taskMs();
+    return { tasks, bytes: frameBytes, at: performance.now(), cpu: process.cpuUsage() };
+  };
+  const finishMeasurement = async (
+    phase: string,
+    start: Awaited<ReturnType<typeof startMeasurement>>,
+    frames: number
+  ) => {
+    if (!start) return;
+    const durationMs = performance.now() - start.at;
+    const cpu = process.cpuUsage(start.cpu);
+    const bytes = frameBytes - start.bytes;
+    console.log(
+      JSON.stringify({
+        phase,
+        mode,
+        limitKbps,
+        durationMs,
+        frames,
+        bytes,
+        fps: (frames * 1_000) / durationMs,
+        mbps: (bytes * 8) / durationMs / 1_000,
+        nodeCpuMs: (cpu.user + cpu.system) / 1_000,
+        webTaskMs: (await taskMs()) - start.tasks
+      })
+    );
+  };
   web.on('pageerror', (error) => errors.push(error));
   web.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
@@ -450,6 +511,7 @@ try {
       frame: window.probe.frame,
       samples: window.probe.samples.length
     }));
+    const measurement = await startMeasurement();
     const started = performance.now();
     assert(
       await web.evaluate(async (dy) => {
@@ -476,13 +538,17 @@ try {
     }, start);
     assert(result.frames > 2, 'Continuous scrolling must draw intermediate frames');
     assert.deepEqual(result.fixed, [154, 40, 85, 255]);
+    const finalAfterInputMs = performance.now() - sent;
+    await finishMeasurement(delta > 0 ? 'scroll-down' : 'scroll-up', measurement, result.frames);
     return {
       ...result,
       fps: (result.frames * 1_000) / elapsed,
-      finalAfterInputMs: performance.now() - sent
+      finalAfterInputMs
     };
   };
+  motionPhase = true;
   const continuousScroll = [await continuous(16, 1440, 74), await continuous(-16, 0, 20)];
+  motionPhase = false;
   // The text fixture must stop drawing and consuming bytes after the final paint.
   // Wait for two full sampling windows so the final legitimate frame isn't counted.
   const waitForScrollSilence = async () => {
@@ -584,6 +650,7 @@ try {
         (window as unknown as { animateFixture: (active: boolean) => void }).animateFixture(value),
       enabled
     );
+  motionPhase = true;
   await animate(true);
   try {
     await web.waitForFunction(
@@ -592,7 +659,9 @@ try {
         window.probe.samples.length >= 3 &&
         window.probe.quality !== 'high',
       beforeMotion,
-      { timeout: 12_000 }
+      // A capped link must finish the first lossless update before it can
+      // observe congestion; require the same number of real drawn updates.
+      { timeout: limitKbps ? 30_000 : 12_000 }
     );
   } catch (cause) {
     const observed = await web.evaluate(() => ({ ...window.probe }));
@@ -602,14 +671,28 @@ try {
     );
   }
   const animation = await web.evaluate(() => window.probe.samples.slice(1));
-  const stableStart = await web.evaluate(() => window.probe.samples.length);
-  await web.waitForFunction((count) => window.probe.samples.length >= count + 3, stableStart, {
-    timeout: 10_000
-  });
-  const steadyAnimation = await web.evaluate(
-    (count) => window.probe.samples.slice(count + 1),
+  const stableStart = await web.evaluate(() => ({
+    samples: window.probe.samples.length,
+    frame: window.probe.frame
+  }));
+  const motionMeasurement = await startMeasurement();
+  await web.waitForFunction(
+    (count) => window.probe.samples.length >= count + 3,
+    stableStart.samples,
+    {
+      timeout: 10_000
+    }
+  );
+  const steady = await web.evaluate(
+    ({ samples, frame }) => ({
+      samples: window.probe.samples.slice(samples + 1),
+      frames: window.probe.frame - frame
+    }),
     stableStart
   );
+  await finishMeasurement('steady-animation', motionMeasurement, steady.frames);
+  const steadyAnimation = steady.samples;
+  motionPhase = false;
   const settleStarted = performance.now();
   await animate(false);
   try {

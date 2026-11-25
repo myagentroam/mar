@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SecretManager from '../../../../packages/web-core/src/view/settings/EnvironmentSecretManager.vue?unit-render';
-import ScheduleDialog from '../../../../packages/web-core/src/view/workspace/SessionScheduleDialog.vue?unit-render';
+import ScheduleEditor from '../../../../packages/web-core/src/view/schedule/ScheduledTaskEditor.vue?unit-render';
+import { scheduledTaskClient } from '../../../../packages/web-core/src/service/scheduled-task-client.js';
 import OrganizationPage from '../../src/view/settings/OrganizationManagementPage.vue?unit-render';
 import EnterpriseSettings from '../../src/view/settings/SettingsContent.vue?unit-render';
 import {
@@ -307,50 +308,54 @@ describe('submission and authoritative reread loading', () => {
     )
   )('loads only the triggered schedule %s button (success=%s)', async (action, success) => {
     const write = deferred();
-    const read = deferred();
-    const result = {
+    const key = { id: 'task', nodeId: 'node', workspaceId: 'workspace' };
+    const detail = {
+      mine: true,
       task: {
         id: 'task',
+        name: 'Task',
         objective: 'Objective',
-        cron: '0 9 * * *',
+        triggers: [{ kind: 'daily', time: '09:00' }],
         timezone: 'UTC',
+        sessionId: 'session',
+        newSession: null,
         enabled: true,
-        ownerUserId: 1,
         notifyOnTerminal: false,
         revision: 1,
-        nextRunAt: null
+        graceMinutes: 60
       },
       proposals: [
-        {
-          id: 'proposal',
-          proposed_by_user_id: 1,
-          objective: 'New objective',
-          cron: null,
-          timezone: null,
-          created_at: 1
-        }
-      ],
-      canResolveProposals: true,
-      occurrences: [],
-      occurrencePage: 1,
-      occurrenceTotal: 0,
-      nodeTimezone: 'UTC'
+        { id: 'proposal', baseRevision: 1, name: null, objective: 'New objective', triggers: null }
+      ]
     };
-    const request = vi
-      .fn()
-      .mockResolvedValueOnce(result)
-      .mockImplementation((_path: string, init?: RequestInit) =>
-        init?.method ? write.promise : read.promise
-      );
+    const request = vi.fn((path: string, init?: RequestInit) =>
+      !init?.method
+        ? Promise.resolve(
+            path.startsWith('/api/workspaces')
+              ? { workspaces: [{ id: 'workspace', path: 'project' }] }
+              : { sessions: [], nextCursor: null }
+          )
+        : path.endsWith('/preview')
+          ? Promise.resolve({ timezone: 'UTC', times: [] })
+          : write.promise
+    );
     const close = vi.fn();
-    const view = renderComponent(ScheduleDialog, {
-      modelValue: true,
-      session: { id: 'session' },
-      nodeId: 'node',
-      workspaceId: 'workspace',
-      request,
-      'onUpdate:modelValue': close
-    });
+    const changed = vi.fn();
+    const view = renderComponent(
+      ScheduleEditor,
+      {
+        client: scheduledTaskClient(request as never),
+        nodes: [{ id: 'node', name: 'Node', connected: true, supported: true }],
+        editing: { key, detail },
+        onClose: close,
+        onChanged: changed
+      },
+      {},
+      { validate: async () => true }
+    );
+    const writeCount = () =>
+      request.mock.calls.filter(([path, init]) => init?.method && !path.endsWith('/preview'))
+        .length;
     try {
       await flushComponent();
       const label = translate(`generated.scheduledSession.${action}`);
@@ -359,35 +364,25 @@ describe('submission and authoritative reread loading', () => {
       expect(button(view, label).props.loading).toBe(true);
       expect(view.findAll('MarButton').filter((node) => node.props.loading)).toHaveLength(1);
       expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
-      expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(false);
-      await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
+      const dialog = view.findAll('MarDialog')[0]!;
+      const guard = dialog.props['before-close'] as (done: () => void) => Promise<void>;
+      const allowClose = vi.fn();
+      await guard(allowClose);
+      expect(allowClose).not.toHaveBeenCalled();
       expect(close).not.toHaveBeenCalled();
       await clickPending(view, label);
-      expect(request).toHaveBeenCalledTimes(2);
-      if (!success) {
-        write.reject(new Error('Write failed'));
-        await submission;
-        await flushComponent();
-        expect(view.findAll('MarButton').filter((node) => node.props.loading)).toHaveLength(0);
-        expect(view.findAll('MarForm')[0]!.props.disabled).toBe(false);
-        expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(false);
-        expect(request).toHaveBeenCalledTimes(2);
-        expect(
-          vi.mocked(showMessage).mock.calls.filter(([, type]) => type === 'error')
-        ).toHaveLength(1);
-        return;
-      }
-      write.resolve({});
-      await flushComponent();
-      expect(view.findAll('MarButton').filter((node) => node.props.loading)).toHaveLength(0);
-      expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(true);
-      expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
-      expect(request).toHaveBeenCalledTimes(3);
-      read.resolve(result);
+      expect(writeCount()).toBe(1);
+      if (success) write.resolve({});
+      else write.reject(new Error('Write failed'));
       await submission;
       await flushComponent();
-      expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(false);
+      expect(view.findAll('MarButton').filter((node) => node.props.loading)).toHaveLength(0);
       expect(view.findAll('MarForm')[0]!.props.disabled).toBe(false);
+      expect(writeCount()).toBe(1);
+      expect(changed).toHaveBeenCalledTimes(success ? 1 : 0);
+      if (!success) expect(textContent(view.root)).toContain('Write failed');
+      await guard(allowClose);
+      expect(allowClose).toHaveBeenCalledOnce();
     } finally {
       view.unmount();
     }

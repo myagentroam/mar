@@ -81,9 +81,11 @@ const AUDITED_MANAGEMENT_RELAY_OPERATIONS = new Set<string>([
   'session.metadata.update',
   'session.config.update',
   'session.pin.move',
-  'session.schedule.save',
-  'session.schedule.remove',
-  'session.schedule.proposal.resolve',
+  'schedule.task.create',
+  'schedule.task.update',
+  'schedule.task.propose',
+  'schedule.task.remove',
+  'schedule.task.resolveProposal',
   'session.rewind',
   'session.rollback',
   'session.remove',
@@ -135,6 +137,7 @@ export class NodeRequestBroker {
     private readonly socketFor: (nodeId: string) => WebSocket | undefined,
     private readonly connectionPolicy: {
       readonly allows: (socket: WebSocket, operation: string) => boolean;
+      readonly supportsScheduledTasks?: (nodeId: string) => boolean;
     },
     private readonly services: {
       readonly usageGrants: Pick<ModelUsageGrants, 'issue'>;
@@ -196,7 +199,8 @@ export class NodeRequestBroker {
       data,
       user.workspaceId
     );
-    if (conflict) return this.denyAuthorizedRequest(nodeId, operation, data, user, workspaceId);
+    if (conflict || (operation.startsWith('schedule.') && workspaceId === undefined))
+      return this.denyAuthorizedRequest(nodeId, operation, data, user, workspaceId);
     const ownership = this.authorize(user.userId, nodeId, operation, data, workspaceId);
     if (ownership instanceof Promise)
       return ownership.then((allowed) =>
@@ -206,6 +210,17 @@ export class NodeRequestBroker {
       );
     if (!ownership) return this.denyAuthorizedRequest(nodeId, operation, data, user, workspaceId);
     return this.dispatch(nodeId, operation, data, user, workspaceId, timeoutMs, connection, signal);
+  }
+
+  requestScheduledTaskIndex(
+    nodeId: string,
+    data: { workspaceId: string; afterTaskId?: string }
+  ): Promise<unknown> {
+    const socket = this.socketFor(nodeId);
+    if (socket === undefined) return Promise.reject(new NodeRequestAdmissionError('NODE_OFFLINE'));
+    if (!this.connectionPolicy.allows(socket, 'schedule.index.list'))
+      return Promise.reject(new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED'));
+    return this.channel.requestScheduledTaskIndex(nodeId, data);
   }
 
   /** Calls the closed Browser RPC surface after the Browser owner authorizes it.
@@ -381,6 +396,11 @@ export class NodeRequestBroker {
     }
     if (!this.connectionPolicy.allows(connection, operation))
       throw new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED');
+    if (
+      operation.startsWith('schedule.') &&
+      !this.connectionPolicy.supportsScheduledTasks?.(nodeId)
+    )
+      throw new NodeRequestAdmissionError('CAPABILITY_VERSION_UNSUPPORTED');
     const observation = observesRelayResources(operation) ? this.scopes.begin(nodeId) : undefined;
     try {
       const result = await this.channel.request(

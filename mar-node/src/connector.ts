@@ -19,6 +19,8 @@ import {
   directNodeCommandSchema,
   remoteDesktopDescriptionSchema,
   remoteDesktopDescribeInputSchema,
+  scheduleInvalidationSchema,
+  scheduledTasksApiVersion,
   type NodeCapabilities,
   type NodeEnvelope,
   type WorkbenchEventCategory
@@ -389,26 +391,22 @@ export class NodeConnector {
     (capability) => this.runtime.resolveMcpExecution(capability)?.sessionId
   );
   private readonly scheduleMcpBridge = new ScheduleMcpBridge(
-    () => {
-      if (this.database === undefined) throw new Error('NODE_DATABASE_UNAVAILABLE');
-      return new ScheduledSessionStore(this.database.raw);
+    async (capability) => {
+      const scope = { ...capability, userId: capability.actorUserId };
+      const run = this.runtime.resolveMcpExecution(scope);
+      if (run === undefined) return undefined;
+      const session = this.runtime.getAgentSession(run.sessionId);
+      if (session === undefined) return undefined;
+      const sessionId =
+        session.externalSessionId ?? (await this.sessionIdentityService.wait(session.id));
+      return this.runtime.resolveMcpExecution(scope)?.sessionId === sessionId
+        ? sessionId
+        : undefined;
     },
-    (sessionId) => {
-      const session = this.runtime.getAgentSession(sessionId);
-      if (session !== undefined)
-        this.emitSessionWorkbenchEvent({
-          session: this.sessionPresentationService.present(session)
-        });
-      this.scheduledSessions.changed();
-    },
-    (sessionId, proposalId) => this.scheduledSessions.proposalCreated(sessionId, proposalId),
-    (capability) =>
-      this.runtime.resolveMcpExecution({ ...capability, userId: capability.actorUserId })
-        ?.sessionId,
-    (input) => {
+    (scope, tool, payload) => {
       if (this.sessionScheduleService === undefined)
         throw new Error('SCHEDULE_SERVICE_UNAVAILABLE');
-      return this.sessionScheduleService.createFromMcp(input);
+      return this.sessionScheduleService.invokeMcp(scope, tool, payload);
     }
   );
   private readonly notificationMcpBridge = new NotificationMcpBridge(
@@ -474,7 +472,10 @@ export class NodeConnector {
     this.configPath = options.configPath;
     this.claudeApprovalTimeoutMs = options.claudeApprovalTimeoutMs ?? CLAUDE_APPROVAL_TIMEOUT_MS;
     this.capabilitiesProvided = options.capabilities !== undefined;
-    this.capabilities = options.capabilities ?? unavailableCapabilities();
+    this.capabilities = {
+      ...(options.capabilities ?? unavailableCapabilities()),
+      scheduledTasks: { apiVersion: scheduledTasksApiVersion }
+    };
     this.conversationHostingProbe = options.conversationHostingProbe ?? probeBubblewrap;
     this.conversationHosting = new ConversationHostingLifecycleService({
       config: () => this.config,
@@ -571,6 +572,7 @@ export class NodeConnector {
           await this.conversationHosting.project({
             ...capabilities,
             ...this.browserCapability(),
+            scheduledTasks: { apiVersion: scheduledTasksApiVersion },
             metadata: upgradeMetadata(
               capabilities.metadata,
               this.upgradeCoordinator.snapshot(),
@@ -1064,14 +1066,12 @@ export class NodeConnector {
       },
       scheduleMcp: async (input) => {
         if (this.database === undefined) return undefined;
-        const task = new ScheduledSessionStore(this.database.raw).get(input.sessionId);
         const run = this.runtime.getRun(input.runId);
         if (run?.initiatedByUserId === undefined) return undefined;
         return this.scheduleMcpBridge.prepare({
           executionId: input.runId,
           sessionId: input.sessionId,
           workspaceId: input.workspaceId,
-          ...(task === undefined ? {} : { taskId: task.id, revision: task.revision }),
           actorUserId: run.initiatedByUserId
         });
       },
@@ -1290,6 +1290,10 @@ export class NodeConnector {
         this.promptCompletion.invalidateSession(workspaceId, sessionId);
       },
       onHistoryMutationSettled: (sessionId) => this.continuousRunCoordinator.schedule(sessionId),
+      onScheduleTargetsUnbound: (workspaceId) => {
+        this.scheduledSessions.changed();
+        this.emitScheduledTaskChanged(workspaceId);
+      },
       invalidateWorkspaceSessions: (workspaceId) => {
         this.workspaceSessionService.invalidateCache(workspaceId);
         void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions');
@@ -1714,7 +1718,9 @@ export class NodeConnector {
       scheduleContextRefresh: (sessionId) => this.sessionContextService.schedule(sessionId),
       refreshWorkspaceSessions: (workspaceId) =>
         this.workspaceWorkbenchService.ensureTopicSnapshot(workspaceId, 'sessions'),
-      onTerminalRun: (run, status) => this.executionLifecycle.terminal(run, status),
+      onRunStarted: (run, at) => this.executionLifecycle.started(run, at),
+      onTerminalRun: (run, status, at, reason) =>
+        this.executionLifecycle.terminal(run, status, at, reason),
       observeAgentEvent: this.agentNetworkProjection.accept,
       dispatchQueue: (sessionId, delayMs) =>
         this.executionLifecycle.dispatchQueue(sessionId, delayMs),
@@ -1791,32 +1797,42 @@ export class NodeConnector {
       authorization: this.scheduledRunAuthorization,
       runners: this.runners,
       git: this.gitOperationService,
-      messages: this.sessionMessageService
+      messages: this.sessionMessageService,
+      lifecycle: this.sessionLifecycleService
     });
     this.scheduledSessions = new ScheduledSessionCoordinator({
       store: () => new ScheduledSessionStore(requireDatabase().raw),
+      available: () => this.controlChannel.connected(),
       busy: (task) =>
         this.stopped ||
-        this.restartHandoff.blocks(task.sessionId) ||
-        this.runtime.activeSessionRun(task.sessionId) !== undefined ||
-        this.runtime.sessionQueue(task.sessionId).itemIds.length > 0,
+        (task.sessionId !== null &&
+          (this.restartHandoff.blocks(task.sessionId) ||
+            this.runtime.activeSessionRun(task.sessionId) !== undefined ||
+            this.runtime.sessionQueue(task.sessionId).itemIds.length > 0)),
       authorize: scheduledExecution.authorize,
       submit: scheduledExecution.submit,
       sessionTitle: (sessionId) => {
         const session = this.runtime.getAgentSession(sessionId);
         return session?.customTitle ?? session?.runnerTitle ?? sessionId;
       },
+      registeredSession: (sessionId, workspaceId) =>
+        this.database?.getSessionRecord(sessionId)?.workspaceId === workspaceId,
       sessionGroup: (task) =>
-        sessionGroup(
-          this.runtime.getAgentSession(task.sessionId) ??
-            this.database?.getNativeSessionMetadata(
-              task.runner,
-              task.sessionId,
-              task.workspaceId
-            ) ??
-            {}
-        ),
-      emitNotification: (payload) => this.emitWorkbenchEvent('conversation', payload)
+        task.sessionId === null
+          ? 'MAIN'
+          : sessionGroup(
+              this.runtime.getAgentSession(task.sessionId) ??
+                this.database?.getNativeSessionMetadata(
+                  task.runner,
+                  task.sessionId,
+                  task.workspaceId
+                ) ??
+                {}
+            ),
+      emitNotification: (payload) => this.emitWorkbenchEvent('conversation', payload),
+      taskChanged: this.emitScheduledTaskChanged,
+      occurrenceChanged: (workspaceId) =>
+        this.emitScheduleInvalidation(workspaceId, 'schedule.occurrence.changed')
     });
     this.executionLifecycle = new ExecutionLifecycle(
       () => this.database !== undefined,
@@ -1983,20 +1999,15 @@ export class NodeConnector {
       database: requireDatabase,
       runtime: this.runtime,
       projection: this.nativeSessionProjectionService,
-      awaitNativeSessionId: (sessionId) => {
-        const nativeId = this.runtime.getAgentSession(sessionId)?.externalSessionId;
-        return nativeId === null || nativeId === undefined
-          ? this.sessionIdentityService.wait(sessionId)
-          : Promise.resolve(nativeId);
-      },
-      present: (session) => this.sessionPresentationService.present(session),
       emitSession: (session) =>
         this.emitSessionWorkbenchEvent({
           session: this.sessionPresentationService.present(session)
         }),
-      changed: () => this.scheduledSessions.changed(),
-      proposed: (sessionId, proposalId) =>
-        this.scheduledSessions.proposalCreated(sessionId, proposalId)
+      changed: (workspaceId) => {
+        this.scheduledSessions.changed();
+        this.emitScheduledTaskChanged(workspaceId);
+      },
+      proposed: (taskId, proposalId) => this.scheduledSessions.proposalCreated(taskId, proposalId)
     });
     this.operationRouter.registerAll(this.sessionScheduleService.operations());
     this.operationRouter.registerAll(this.sessionMessageService.operations());
@@ -2646,6 +2657,16 @@ export class NodeConnector {
   };
   private readonly emitSessionWorkbenchEvent = (payload: unknown): void =>
     this.publishWorkspaceSession(payload);
+  private readonly emitScheduledTaskChanged = (workspaceId: string): void => {
+    this.emitScheduleInvalidation(workspaceId, 'schedule.changed');
+  };
+  private emitScheduleInvalidation(
+    workspaceId: string,
+    topic: 'schedule.changed' | 'schedule.occurrence.changed'
+  ): void {
+    const event = scheduleInvalidationSchema.safeParse({ workspaceId, topic });
+    if (event.success) this.emitWorkbenchEvent('workspace', event.data);
+  }
   private readonly emitWorkbenchEvent = (
     category: WorkbenchEventCategory,
     payload: unknown

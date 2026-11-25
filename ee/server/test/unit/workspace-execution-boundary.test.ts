@@ -18,6 +18,28 @@ import { ResourceAccessService } from '../../src/rbac/resource-access-service.js
 import { NodeRequestBroker } from '../../src/service/node-request-broker.js';
 
 describe('Workspace execution boundary across Server and Node', () => {
+  it('requires a registered, non-disabled Node and a current Workspace grant for schedule reads', async () => {
+    let disabled = false;
+    const execute = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM nodes')) {
+        expect(sql).toContain('disabled=FALSE');
+        return [disabled ? [] : [{ owner_type: 'PERSONAL', owner_user_id: 8 }], []];
+      }
+      if (sql.includes('FROM workspaces'))
+        return [[{ owner_type: 'PERSONAL', owner_user_id: 7 }], []];
+      throw new Error('UNEXPECTED_QUERY');
+    });
+    const access = new ResourceAccessService({ raw: { execute } } as never, {} as never);
+    expect(await access.canRelay(7, 'node-a', 'schedule.task.list', {}, 'workspace-a')).toBe(true);
+    expect(await access.canRelay(8, 'node-a', 'schedule.task.list', {}, 'workspace-a')).toBe(false);
+    expect(await access.canRelay(7, 'node-a', 'schedule.task.list', {})).toBe(false);
+    disabled = true;
+    expect(await access.canUseScheduledWorkspace(7, 'node-a', 'workspace-a')).toBe(false);
+    expect(await access.canRelay(7, 'node-a', 'schedule.task.update', {}, 'workspace-a')).toBe(
+      false
+    );
+  });
+
   it('requires Node use for desktop discovery even with a usable Workspace context', async () => {
     const access = new ResourceAccessService(
       {

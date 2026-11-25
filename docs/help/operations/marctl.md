@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-11-24
+lastUpdated: 2026-11-25
 ---
 
 # 使用 marctl 管理节点
@@ -50,21 +50,9 @@ Server 在每次请求中复核用户凭证、账号、登录 Session（适用�
 
 ## 协同工作区会话
 
-`show/config/history/graph/rename/prompt` 及 `schedule get/create/update` 可省略会话 ID，默认使用执行上下文中的当前会话；显式 ID 优先，没有当前会话时明确报错，不猜测最近会话。`send/goal/stop/wait/approval` 始终要求显式目标 ID；`list` 和 `schedule list` 仍查询当前 Workspace。
+`show/config/history/graph/rename/prompt` 可省略会话 ID，默认使用执行上下文中的当前会话；显式 ID 优先，没有当前会话时明确报错，不猜测最近会话。`send/goal/stop/wait/approval` 始终要求显式目标 ID；`list` 查询当前 Workspace。
 
 使用 `marctl agents rename [<session-id>] --title 'fixer#42 Updated title' --json` 修改标题，首尾空白会去除，标题须非空且最多 160 字符。不限制 parent 关系，沿用 Web 改名链路，不启动或打断执行。查询当前标题使用 `agents current --json`。
-
-定时任务与内置 MCP 共用数据和修改规则：修改同一用户保存的任务直接生效，修改其他用户的任务返回 `PENDING` 提议，由原保存者确认，不转移执行身份。定时执行与手动执行使用相同的用户权限和任务修改规则。更新必须先读取当前 `revision`，再传 `--expected-revision`；冲突或写入结果不明时不自动重试。MAR Agent 的 marctl 内置技能可用时隐藏重复的定时 MCP；不可用及其他 Agent 保留原 MCP。
-
-```text
-marctl agents schedule list --limit 20 --json
-marctl agents schedule get --json
-marctl agents schedule create --cron '0 9 * * *' -m 'Check build results' --json
-marctl agents schedule update --expected-revision 1 --message-file task.txt --json
-marctl agents schedule get <session-id> --json
-```
-
-`schedule list` 分页查询 Node SQLite，返回 `tasks[]`（含 `sessionTitle`）和 `nextCursor`，不扫描 Agent 的原生会话历史。其他任务操作可显式指定目标会话；创建要求 cron 和正文，更新至少指定一项。正文沿用 `-m` / `--message-file`（支持 stdin），最多 20,000 字符；时区由 Node 确定。CLI 不提供任务启停、删除或提议审批操作。
 
 `view [<session-id>] --json` 只返回状态、当前 Goal 和有界最近活动，不附历史或接受历史分页参数。完整记录通过独立的 `history [<session-id>] --cursor <cursor> --limit <1..100> --json` 按需分页读取；首次读取可省略 cursor。`history --json` 在 `segments[].items[]` 中按 `kind === "assistant_message"` 筛选，文本在 `payload.text`；精简状态字段见下文。
 
@@ -81,6 +69,37 @@ marctl agents schedule get <session-id> --json
 `list` 仅接受 `--scope tree|active`、`--query <标题片段>`、`--limit <1..100>`。有当前会话时默认返回所在协作树，包含空闲会话；独立终端默认 active，显式 tree 需要会话上下文。active 返回当前 Workspace 中运行或睡眠的会话，不按更新时间、Goal 或队列推断。query 在所选范围内按标题过滤，忽略首尾空白、大小写及全角字母等兼容差异，再应用 limit（默认 10、上限 100）。活跃会话优先，其后按最近活动时间倒序。结果仅含 `scope`、`currentAgentId`（无会话时为 null）、扁平 `sessions` 和 `truncated`；每项仅含 `id`、`parentSessionId`、`title`、`status`。无匹配返回空列表，超出 limit 标记截断，无 cursor 或翻页；已知 ID 直接复用。`show` 返回精简 `session`，保留相同身份与状态，另带 `modelId`、`effort`、`queuedCount`、`latestMessage` 、最多三条 `recentTools`，以及 `pendingApprovals` 和 `pendingApprovalsTruncated`，不再附完整 Run、队列、Goal、路径或控制配置。详情分别查既有 Goal、schedule、graph、history 命令。modelId/effort 为 Node 已知会话配置，未知时为 null；queuedCount 不包含内部 Goal 续作项。
 
 会话 `status` 只有 `RUNNING`、`IDLE`、`SLEEPING`。SLEEPING 必须来自当前 Run 的真实前台 sleep 等待，不按工具名或 Goal 是否 active 推断；工具 `state` 仍为原有 `IN_PROGRESS`、`COMPLETED` 等生命周期。活动会话尚无新公开动作时返回空动态，不借用上一 Run；IDLE 可保留既有内存中的活动及观察时间。摘要最多 100 个 Unicode 字符，工具名最多 128 个，最新消息最多 300 个；`truncated` 标明内容截断，完整证据仍查 history。
+
+## 定时任务
+
+`marctl agents schedule` 在当前授权的普通 Workspace 中操作。`list` 返回精简的 `tasks[]` 和 `nextCursor`，可用 `--session <session-id>` 筛选绑定会话，并用 `--cursor` 继续分页。`get`、`update` 和 `runs` 必须传入 `--task <task-id>`，不能用会话 ID 代替。`runs` 以 `--page` 翻页，默认第一页，返回触发时间、结果及可用的运行引用，不返回提示词正文。
+
+`create` 每次新建一项独立任务，不覆盖原有任务。默认绑定当前会话；可用 `--session <session-id>` 指定同一 Workspace 的会话。如果希望每次触发都新建会话，改用 `--new-session --runner <runner>`，并在 `--model-id <id>` 与 `--default-model` 中二选一，可选 `--effort <value>`。没有当前会话时须明确选择目标。
+
+将创建回执或列表中的 `taskId` 用作 `TASK_ID`，并将详情中的当前 `revision` 用作 `REVISION`：
+
+```sh
+marctl agents schedule list --limit 20 --json
+marctl agents schedule create --name 'Build review' --triggers-file triggers.json -m 'Check build results' --json
+marctl agents schedule get --task "$TASK_ID" --json
+marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" --message-file task.txt --json
+marctl agents schedule runs --task "$TASK_ID" --page 1 --json
+```
+
+`--triggers-file` 读取 UTF-8 JSON 数组，不接收 Cron 表达式；每项只指定一个 `HH:mm` 时刻。新任务使用 Node 时区，更新沿用任务已保存的时区。`once` 必须填写明确的未来日期；CLI 不代为建议日期。以下 `triggers.json` 展示仅一次、每天、每周和每月四种形式：
+
+```json
+[
+  { "kind": "once", "date": "2030-03-21", "time": "14:30" },
+  { "kind": "daily", "time": "10:00" },
+  { "kind": "weekly", "time": "09:00", "weekdays": [1, 2, 3, 4, 5] },
+  { "kind": "monthly", "time": "09:00", "monthDays": [1, 15] }
+]
+```
+
+`weekly.weekdays` 使用 0（周日）至 6（周六），`monthly.monthDays` 使用 1 至 31；不存在的月日不会触发。更新时传入 `--triggers-file` 会整体替换所有触发时间，省略它则保留现有时间。用 `-m` 或 `--message-file` 提供任务正文，最多 20,000 字符。`--triggers-file` 与 `--message-file` 都支持 `-` 读 stdin，但同一命令只能有一个读取 stdin。
+
+更新至少指定名称、触发时间或正文之一。更新自己创建的任务直接生效；更新他人任务返回 `proposalId` 和 `baseRevision`，由创建者确认，不会转移执行身份。版本冲突时重新读取；写入结果未知时先核对任务，不要盲目重试。CLI 不提供启停、删除或提议审批；请在[定时任务页面](../workbench/sessions.md#定时任务)操作。
 
 ## 持久指令与审批
 

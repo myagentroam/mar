@@ -28,18 +28,15 @@ async function usingIpcClient(
   server.listen(endpoint);
   await once(server, 'listening');
   const bridge = new ScheduleMcpBridge(
-    () => {
-      throw new Error('UNEXPECTED_STORE_ACCESS');
-    },
-    () => undefined,
-    () => undefined,
-    (scope) => scope.sessionId
+    async () => undefined,
+    async () => undefined
   );
   const client = new Client({ name: 'schedule-response-fixture', version: '1' });
   try {
     const descriptor = await bridge.prepare({
       executionId: 'fixture',
       sessionId: 'fixture',
+      workspaceId: 'workspace',
       actorUserId: 7
     });
     await client.connect(
@@ -84,7 +81,10 @@ it('does not expose a renewal credential in malformed IPC response diagnostics',
   await usingIpcClient(
     (socket) => receive(socket, () => socket.end(`{"token":"${secret}",`)),
     async (client) => {
-      const result = await client.callTool({ name: 'get_scheduled_task', arguments: {} });
+      const result = await client.callTool({
+        name: 'get_scheduled_task',
+        arguments: { taskId: 'task' }
+      });
       expect(result.isError).toBe(true);
       expect(JSON.stringify(result)).toContain('SCHEDULE_IPC_RESPONSE_INVALID');
       expect(JSON.stringify(result)).not.toContain(secret);
@@ -93,7 +93,28 @@ it('does not expose a renewal credential in malformed IPC response diagnostics',
   );
 });
 
-it('skips cancelled queued calls and dispatches the next call with the renewed credential', async () => {
+it('publishes the trigger schema and concise schedule guidance over stdio', async () => {
+  await usingIpcClient(
+    () => undefined,
+    async (client) => {
+      const tools = (await client.listTools()).tools;
+      const create = tools.find((tool) => tool.name === 'create_scheduled_task')!;
+      const update = tools.find((tool) => tool.name === 'update_scheduled_task')!;
+      expect(Object.keys(create.inputSchema.properties!)).toEqual([
+        'name',
+        'objective',
+        'triggers'
+      ]);
+      expect(create.description).toContain('Once on a chosen date');
+      expect(create.description).toContain('date is required');
+      expect(update.description).toContain('Omit triggers');
+      expect(update.description).toContain('triggers replaces the full schedule');
+      expect(JSON.stringify(create.inputSchema)).not.toContain('groups');
+    }
+  );
+});
+
+it('skips cancelled queued calls and dispatches the next call with the same credential', async () => {
   const requests: IpcRequest[] = [];
   let firstSocket!: Socket;
   let arrived!: () => void;
@@ -112,13 +133,16 @@ it('skips cancelled queued calls and dispatches the next call with the renewed c
     async (client) => {
       const first = client.callTool({
         name: 'update_scheduled_task',
-        arguments: { objective: 'first' }
+        arguments: { taskId: 'task', expectedRevision: 1, patch: { objective: 'first' } }
       });
       await firstArrived;
       const abort = new AbortController();
       const cancelled = client
         .callTool(
-          { name: 'update_scheduled_task', arguments: { objective: 'cancelled' } },
+          {
+            name: 'update_scheduled_task',
+            arguments: { taskId: 'task', expectedRevision: 1, patch: { objective: 'cancelled' } }
+          },
           undefined,
           { signal: abort.signal }
         )
@@ -130,10 +154,13 @@ it('skips cancelled queued calls and dispatches the next call with the renewed c
       expect(requests).toHaveLength(1);
       firstSocket.end(`${JSON.stringify({ result: { revision: 2 }, token: 'renewed-fixture' })}\n`);
       expect((await first).isError).not.toBe(true);
-      const result = await client.callTool({ name: 'get_scheduled_task', arguments: {} });
+      const result = await client.callTool({
+        name: 'get_scheduled_task',
+        arguments: { taskId: 'task' }
+      });
       expect(result.isError).not.toBe(true);
       expect(requests).toHaveLength(2);
-      expect(requests[1]!.token).toBe('renewed-fixture');
+      expect(requests[1]!.token).toBe(requests[0]!.token);
       expect(requests[1]!.tool).toBe('get_scheduled_task');
       expect(JSON.stringify(result)).not.toContain('renewed-fixture');
     }
@@ -159,10 +186,10 @@ it('releases the client queue after a failed call without replaying it', async (
     async (client) => {
       const first = client.callTool({
         name: 'update_scheduled_task',
-        arguments: { objective: 'missing' }
+        arguments: { taskId: 'task', expectedRevision: 1, patch: { objective: 'missing' } }
       });
       await firstArrived;
-      const next = client.callTool({ name: 'get_scheduled_task', arguments: {} });
+      const next = client.callTool({ name: 'get_scheduled_task', arguments: { taskId: 'task' } });
       await client.ping();
       expect(requests).toHaveLength(1);
       firstSocket.end(`${JSON.stringify({ error: 'SCHEDULE_NOT_FOUND' })}\n`);
@@ -194,7 +221,10 @@ it('aborts in-flight IPC without replaying the write or blocking later calls', a
       const abort = new AbortController();
       const first = client
         .callTool(
-          { name: 'update_scheduled_task', arguments: { objective: 'uncertain' } },
+          {
+            name: 'update_scheduled_task',
+            arguments: { taskId: 'task', expectedRevision: 1, patch: { objective: 'uncertain' } }
+          },
           undefined,
           { signal: abort.signal }
         )
@@ -204,7 +234,7 @@ it('aborts in-flight IPC without replaying the write or blocking later calls', a
       await first;
       await client.ping();
       const next = client
-        .callTool({ name: 'get_scheduled_task', arguments: {} })
+        .callTool({ name: 'get_scheduled_task', arguments: { taskId: 'task' } })
         .catch((error: unknown) => ({ isError: true, error }));
       // A state assertion bounds a missing abort handoff; it does not release the held reply.
       await vi.waitFor(() => expect(requests).toHaveLength(2));

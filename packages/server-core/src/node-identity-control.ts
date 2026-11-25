@@ -484,6 +484,9 @@ function toStoredCapabilities(capabilities: NodeCapabilities): {
       ? {}
       : { conversationHosting: capabilities.conversationHosting }),
     ...(capabilities.computerUse === undefined ? {} : { computerUse: capabilities.computerUse }),
+    ...(capabilities.scheduledTasks === undefined
+      ? {}
+      : { scheduledTasks: capabilities.scheduledTasks }),
     ...(capabilities.remoteDesktop === undefined
       ? {}
       : { remoteDesktop: capabilities.remoteDesktop })

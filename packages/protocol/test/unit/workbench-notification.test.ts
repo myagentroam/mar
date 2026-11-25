@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { notificationCreatedSchema, serverNotificationSchema } from '../../src/index.js';
+import {
+  notificationCreatedSchema,
+  scheduledTaskNotificationPayloadSchema,
+  serverNotificationSchema
+} from '../../src/index.js';
 
 const base = {
   id: 'notification-1',
@@ -69,6 +73,56 @@ describe('Server Workbench notification protocol', () => {
       { ...validWorkspace, targetType: 'UNKNOWN' }
     ])
       expect(serverNotificationSchema.safeParse({ ...base, target }).success).toBe(false);
+  });
+
+  it('accepts task-only independent scheduler events and rejects mixed targets', () => {
+    const target = {
+      targetType: 'SCHEDULED_TASK',
+      workspaceId: 'workspace-1',
+      taskId: 'task-1',
+      taskName: 'Check status'
+    };
+    const event = {
+      ...target,
+      userId: 7,
+      runId: 'occurrence-1',
+      occurredAt: 1000,
+      notificationId: 'schedule:task-1:occurrence-1'
+    };
+    const occurrence = { kind: 'occurrence', id: 'occurrence-1' };
+    const proposal = { kind: 'proposal', id: 'proposal-1' };
+    for (const fields of [
+      {
+        kind: 'SCHEDULE_FAILED',
+        code: 'SCHEDULE_SUBMISSION_OUTCOME_UNKNOWN',
+        reference: occurrence
+      },
+      { kind: 'SCHEDULE_SKIPPED', code: 'SCHEDULE_EXPIRED', reference: occurrence },
+      { kind: 'SCHEDULE_PROPOSAL', reference: proposal },
+      { kind: 'SCHEDULE_TERMINAL', outcome: 'SUCCEEDED', reference: occurrence }
+    ])
+      expect(scheduledTaskNotificationPayloadSchema.parse({ ...event, ...fields })).toEqual({
+        ...event,
+        ...fields
+      });
+    for (const fields of [
+      { kind: 'SCHEDULE_PROPOSAL', reference: proposal, sessionId: 'bootstrap' },
+      { kind: 'SCHEDULE_PROPOSAL', reference: proposal, taskId: undefined },
+      { kind: 'SCHEDULE_PROPOSAL', reference: occurrence },
+      { kind: 'SCHEDULE_TERMINAL', reference: occurrence, outcome: 'RUNNING' },
+      { kind: 'AGENT_MESSAGE' }
+    ])
+      expect(
+        scheduledTaskNotificationPayloadSchema.safeParse({ ...event, ...fields }).success
+      ).toBe(false);
+    const notification = {
+      ...base,
+      kind: 'schedule',
+      target: { ...target, nodeId: 'node-1', reference: occurrence }
+    };
+    expect(notificationCreatedSchema.parse({ type: 'notification.created', notification })).toEqual(
+      { type: 'notification.created', notification }
+    );
   });
 
   it('keeps source Web-local and rejects missing or unknown wire fields and kinds', () => {

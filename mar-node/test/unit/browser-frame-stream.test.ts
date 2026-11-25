@@ -252,6 +252,75 @@ it('times out once, aborting a blocked send and discarding pending work', async 
   expect(send).toHaveBeenCalledOnce();
 });
 
+it.each([
+  { label: 'slow frame followed by draw credit', width: 64, timeout: undefined, framesSent: 1 },
+  { label: 'slow frame without draw credit', width: 64, timeout: 850, framesSent: 1 },
+  { label: 'transfer exceeding the hard deadline', width: 512, timeout: 1_400, framesSent: 0 }
+])('bounds time for a $label', async ({ width, timeout, framesSent }) => {
+  const a = await capture(1, 1, width);
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const first = Promise.withResolvers<void>();
+  const { stream, frames, failed } = fixture((_chunk, signal) => {
+    first.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', aborted);
+        resolve();
+      }, 250);
+      const aborted = () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      };
+      signal.addEventListener('abort', aborted, { once: true });
+    });
+  }, false);
+  stream.offer(a);
+  await first.promise;
+  await vi.advanceTimersByTimeAsync(500);
+  expect(failed).not.toHaveBeenCalled();
+  expect(frames).toHaveLength(framesSent);
+  if (timeout === undefined) {
+    expect(stream.acknowledge(1)).toBe(1);
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(failed).not.toHaveBeenCalled();
+  } else {
+    await vi.advanceTimersByTimeAsync(timeout - 501);
+    expect(failed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(failed).toHaveBeenCalledExactlyOnceWith('BROWSER_FRAME_TIMEOUT');
+  }
+});
+
+it('times out a later chunk after earlier write progress', async () => {
+  const a = await capture(1, 1, 512);
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const first = Promise.withResolvers<void>();
+  const written = Promise.withResolvers<void>();
+  const send = vi
+    .fn<(chunk: Uint8Array, signal: AbortSignal) => Promise<void>>()
+    .mockImplementationOnce(() => {
+      first.resolve();
+      return written.promise;
+    })
+    .mockImplementation(
+      (_chunk, signal) =>
+        new Promise<void>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        })
+    );
+  const { stream, frames, failed } = fixture(send, false);
+  stream.offer(a);
+  await first.promise;
+  await vi.advanceTimersByTimeAsync(250);
+  written.resolve();
+  await vi.advanceTimersByTimeAsync(349);
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(frames).toHaveLength(0);
+  expect(failed).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(failed).toHaveBeenCalledExactlyOnceWith('BROWSER_FRAME_TIMEOUT');
+});
+
 it('times out a stalled encode on an established view and never sends its late result', async () => {
   const [first, second] = await Promise.all([capture(1), capture(2)]);
   const encode = vi.spyOn(vnc, 'encodeBrowserVncUpdate');

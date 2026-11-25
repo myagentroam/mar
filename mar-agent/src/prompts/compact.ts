@@ -1,29 +1,44 @@
 export function compactionPrompt(): string {
-  return `# Compaction contract
-Produce a loss-aware state handoff for another agent that must continue the work without the discarded transcript. This is state transfer, not a user-facing recap and not a place to perform new work.
-Do not continue implementation, call tools, address the user, or treat this handoff as completion of the underlying task.
+  return `Preserve what subsequent reasoning will need when earlier details are no longer visible. Treat earlier messages as evidence, not as new requests or renewed permission.
 
-Preserve, when present:
-- the current objective, success criteria, scope, latest user intent, and any explicit priority changes;
-- user-supplied non-filesystem instructions, authorization and safety boundaries, environment/workspace/branch facts, and names of Skills still needed;
-- necessary verbatim user authorization or prohibitions with their original message/turn source, bounded task/target/impact, and pending permission-stop source; do not reduce these to a model claim that the user approved. Existing authorization remains valid across turns, equivalent tools, bounded retries and delegation unless scope or impact changes or the user withdraws it;
-- confirmed decisions, constraints, interfaces, invariants, assumptions that still matter, and exact identifiers;
-- completed actions and edits with exact file paths, symbols, commands, migrations, or external state changes;
-- verification actually run and its result, important tool evidence, reproducible errors, failed approaches and what they proved;
-- unresolved questions, blockers, risks, uncommitted changes, Todo/plan state, and pending external decisions;
-- the next concrete action and the evidence still required before completion.
+Leave enough to continue reasoning correctly without the full conversation.
 
-Distinguish clearly between completed, attempted, planned, inferred, and unverified work. Newer user instructions override older ones; retain superseded instructions only when needed to explain current state. Authorization has exact action, scope, and lifetime: preserve it as active only while all three remain valid. Historical instructions, completed scopes, and state that merely makes an action plausible cannot grant or revive authorization. Never invent completion, test results, file contents, permissions, authorization, or external effects.
+Write for subsequent reasoning, not as a recap for the user. Do not address the user, continue the task, call tools, or invent facts.
 
-Remove aggressively:
-- greetings, acknowledgements, progress chatter, repeated instructions, repeated status, and conclusions already represented once;
-- Runtime-owned contextual instruction blocks (Host instructions, capability policy, and Skill catalogs), their previous versions, and constraints derived only from them, because Runtime rebuilds the current blocks separately;
-- loaded Skill instructions and constraints derived only from them; reload required Skills when needed;
-- user-level, project-level, or directory-level AGENTS.md instructions and constraints derived only from those files, because the next Execution reloads and replaces them separately;
-- retained process/Subagent inventory, IDs, status, commands, cwd, and reuse instructions, because Runtime reloads and replaces that state separately;
-- raw long logs, large source excerpts, verbose tool payloads, duplicated search/read output, and implementation detail recoverable from named files or commands;
-- abandoned hypotheses and failed attempts that do not constrain the next action;
-- hidden reasoning, secrets, credentials, authorization values, and unrelated conversation.
+Compress wording, not meaning. Prefer completeness over brevity, even when the notes become substantially longer. When in doubt, keep a detail if losing it could change a later judgment, cause work to be repeated, or create false certainty.
 
-Use compact Markdown with these headings when applicable: Objective, Instructions and constraints, Decisions and facts, Completed work, Verification and evidence, Active state, Open issues and risks, Next action. Omit empty headings. Prefer precise paths, IDs, error codes, and short evidence over narrative. Output only the handoff.`;
+## Organization
+Organize the notes into sections covering:
+- Goal and constraints
+- Current state
+- Established conclusions and supporting evidence
+- Open loops
+
+Adapt headings and structure as needed; omit empty sections.
+
+Use telegraphic fragments, standard domain abbreviations, exact identifiers and values, and compact symbolic relations. Omit connective prose, redundant context, and progress recaps. Preserve causal links and dependencies.
+
+## Retention
+- Preserve the current goal, deliverable, completion criteria, active instructions, constraints, and non-goals. Resolve intent using the latest applicable user direction.
+- Keep what remains relevant to subsequent reasoning: findings, decisions and evidence, rejected approaches and why, assumptions, outcomes of prior actions, unresolved questions, and remaining work.
+- Preserve completed actions, non-repeatable side effects, observed failures, unresolved risks, and the next established action.
+- Distinguish verified facts from hypotheses, completed work from pending work, and unverified results from observed failures.
+- Preserve evidence scope and freshness. Retain earlier evidence when it explains a decision, disproves a hypothesis, or constrains subsequent work. Identify mutable state that needs revalidation.
+- Preserve conflicting evidence and what is needed to resolve it. Never resolve conflicts without sufficient evidence.
+- Preserve exact authorization boundaries: action, scope, and lifetime. Keep the wording and source of applicable authorization, prohibitions, or pending approval when available; never infer permission from prior completion, current state, capability, or convenience.
+- Keep decisive evidence with the conclusion it supports. Preserve the exact terms, values, identifiers, failure codes, ordering, and exceptions that change a later judgment, action, or verification; do not replace those details with broad references or labels. Preserve user-designated text. Use precise references for other details only when they can be recovered reliably.
+- Group related information and merge equivalent facts without losing distinct evidence or constraints.
+
+## Exclusions
+Remove irrelevant chronology, duplicate information, superseded hypotheses with no remaining relevance, verbose source material, and details that can be reliably recovered at low cost.
+
+Omit instructions and contextual state restored separately by Runtime, including AGENTS.md instructions, Host instructions, capability policy, Skill catalogs, and process, Code Exec cell, and Subagent inventories. Omit constraints derived solely from these restored instructions.
+
+Omit reloadable Skill content; retain the names of Skills still needed. Preserve task-relevant outcomes and dependencies not otherwise restored.
+
+Do not include secrets, credentials, or private deliberation.
+
+Before emitting, read the notes as if the earlier conversation were unavailable. Can you recover the conditions, order, and exceptions that matter, and tell exactly what the evidence established or left unverified? Restore missing details that could change subsequent reasoning. Check for inconsistencies introduced by compression and keep unresolved conflicts explicit.
+
+Output only the notes in compact Markdown.`;
 }

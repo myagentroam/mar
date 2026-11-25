@@ -3,11 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   NODE_PROTOCOL_VERSION,
   createEnvelope,
+  scheduledTasksApiVersion,
   workbenchNodeOperationSchema
 } from '../../packages/protocol/src/index.js';
 import { ServerDatabase } from '../../ee/server/src/database.js';
 import type { AuditEvent as AuditInput } from '../../packages/server-core/src/audit.js';
-import { createTestNodeControl } from '../support/create-test-node-control.js';
+import { createTestNodeControl, testNodeConsumers } from '../support/create-test-node-control.js';
 import { createTestNodeMessageProjector } from '../../packages/server-core/test/unit/support/node-message-projector.js';
 import { NodeRequestBroker } from '../../ee/server/src/service/node-request-broker.js';
 import { TerminalRelayService } from '../../packages/server-core/src/terminal-relay-service.js';
@@ -23,6 +24,119 @@ import {
 import { registerOwnedNode } from './support/node-control-fixture.js';
 
 describe('Node controlled relay contract', () => {
+  it('rejects v1 schedule RPCs and run authorization without affecting current connections', async () => {
+    const database = new ServerDatabase(':memory:');
+    const userId = database.getAdmin().id;
+    const canRelay = vi.fn(async () => true);
+    const control = createTestNodeControl(database, canRelay);
+    const authorize = vi.fn(async () => {
+      throw new Error('SCHEDULE_AUTH_DENIED');
+    });
+    testNodeConsumers(control).scheduleAuthorizer = authorize;
+    try {
+      const registered = database.registerNode(database.createNodeRegistrationToken(userId).token, {
+        metadata: '{}'
+      })!;
+      const { nodeId, credential } = registered;
+      const sent: Array<{ type: string; id: string; replyTo?: string; payload: unknown }> = [];
+      const socket = {
+        readyState: 1,
+        OPEN: 1,
+        send: (raw: string) => sent.push(JSON.parse(raw)),
+        close: vi.fn()
+      };
+      const internal = control as unknown as {
+        handleMessage(
+          socket: unknown,
+          raw: string,
+          setNodeId: (id: string) => void,
+          getNodeId: () => string | undefined
+        ): Promise<void>;
+      };
+      let authenticated: string | undefined;
+      const receive = async (type: string, payload: unknown, replyTo?: string) => {
+        const envelope = createEnvelope(type, payload, replyTo ? { replyTo } : undefined);
+        await internal.handleMessage(
+          socket,
+          JSON.stringify(envelope),
+          (id) => {
+            authenticated = id;
+          },
+          () => authenticated
+        );
+        return sent.find((message) => message.replyTo === envelope.id);
+      };
+      const capabilities = (apiVersion: number) => ({
+        platform: 'linux',
+        architecture: 'x64',
+        nodeAppVersion: '0.11.39',
+        nodeVersion: 'v24',
+        codex: { available: true },
+        claudeCode: { available: false },
+        scheduledTasks: { apiVersion }
+      });
+      const run = {
+        targetKind: 'existing',
+        taskId: 'task',
+        revision: 1,
+        occurrenceId: 'occurrence',
+        sessionId: 'session',
+        workspaceId: 'workspace',
+        ownerUserId: userId,
+        runner: 'codex',
+        modelId: null
+      };
+      const preview = () =>
+        control.requestNode(
+          nodeId,
+          'schedule.preview',
+          { workspaceId: 'workspace' },
+          {
+            userId,
+            sessionHash: 'fixture'
+          }
+        );
+      await receive('authenticate', { nodeId, credential });
+      await receive('capabilities', capabilities(1));
+      expect(control.isNodeUpgradeOnly(nodeId)).toBe(false);
+      expect(control.supportsScheduledTasks(nodeId)).toBe(false);
+      await expect(preview()).rejects.toMatchObject({ code: 'CAPABILITY_VERSION_UNSUPPORTED' });
+      expect(sent.some((message) => message.type === 'node.request')).toBe(false);
+      expect(await receive('schedule.authorize', run)).toMatchObject({
+        type: 'schedule.authorize.response',
+        payload: { error: { code: 'SCHEDULE_UNSUPPORTED' } }
+      });
+      expect(authorize).not.toHaveBeenCalled();
+
+      await receive('capabilities', capabilities(scheduledTasksApiVersion));
+      expect(control.supportsScheduledTasks(nodeId)).toBe(true);
+      const pending = preview();
+      const rpc = await vi.waitFor(() => {
+        const message = sent.find((item) => item.type === 'node.request');
+        expect(message?.payload).toMatchObject({ operation: 'schedule.preview' });
+        return message!;
+      });
+      const result = { timezone: 'UTC', times: [] };
+      await receive('node.response', { result }, rpc.id);
+      await expect(pending).resolves.toEqual(result);
+      expect(canRelay).toHaveBeenCalledWith(
+        userId,
+        nodeId,
+        'schedule.preview',
+        expect.anything(),
+        'workspace'
+      );
+      expect(await receive('schedule.authorize', run)).toMatchObject({
+        type: 'schedule.authorize.response',
+        payload: { error: { code: 'SCHEDULE_AUTH_DENIED' } }
+      });
+      expect(authorize).toHaveBeenCalledExactlyOnceWith(nodeId, run);
+    } finally {
+      control.close();
+      database.close();
+    }
+  });
+
   it('releases constructed relay and identity timers if composition fails', () => {
     vi.useFakeTimers();
     const failure = new Error('RELAY_ASSEMBLY_FAILED');

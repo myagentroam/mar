@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generatedEnUS } from '../../ee/web/src/i18n/messages.generated.en-US.js';
 import { generatedZhCN } from '../../ee/web/src/i18n/messages.generated.zh-CN.js';
+import { composerEnUS, composerZhCN } from '../../packages/web-core/src/i18n/composer.js';
 import {
   workbenchPageEnUS,
   workbenchPageZhCN
@@ -13,6 +14,15 @@ describe('workbench controller messages', () => {
     );
     expect(generatedZhCN.workbenchPageController).toEqual(
       workbenchPageZhCN.generated.workbenchPageController
+    );
+  });
+
+  it('publishes exactly the shared context command messages in both locales', () => {
+    expect(generatedEnUS.workbenchContextCommandService).toStrictEqual(
+      composerEnUS.generated.workbenchContextCommandService
+    );
+    expect(generatedZhCN.workbenchContextCommandService).toStrictEqual(
+      composerZhCN.generated.workbenchContextCommandService
     );
   });
 });

@@ -398,16 +398,12 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
   'enterpriseManagementService.member': '成员',
   'workbenchPlanService.unableToImplementThePlan':
     composerZhCN.generated.workbenchPlanService.unableToImplementThePlan,
-  'workbenchContextCommandService.compactOlderContextToFreeWindowSpace':
-    composerZhCN.generated.workbenchContextCommandService.compactOlderContextToFreeWindowSpace,
-  'workbenchContextCommandService.compactContext':
-    composerZhCN.generated.workbenchContextCommandService.compactContext,
-  'workbenchContextCommandService.compact':
-    composerZhCN.generated.workbenchContextCommandService.compact,
-  'workbenchContextCommandService.cancel':
-    composerZhCN.generated.workbenchContextCommandService.cancel,
-  'workbenchContextCommandService.unableToCompactContext':
-    composerZhCN.generated.workbenchContextCommandService.unableToCompactContext,
+  ...Object.fromEntries(
+    Object.entries(composerZhCN.generated.workbenchContextCommandService).map(([key, value]) => [
+      `workbenchContextCommandService.${key}`,
+      value
+    ])
+  ),
   'mcpCenterPanel.thisAccountHasNoManageableNodes':
     skillConfigurationZhCN.generated.mcpCenterPanel.thisAccountHasNoManageableNodes,
   'mcpCenterPanel.selectANode': skillConfigurationZhCN.generated.mcpCenterPanel.selectANode,

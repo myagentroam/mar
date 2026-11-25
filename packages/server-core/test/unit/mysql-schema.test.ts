@@ -12,7 +12,8 @@ import {
   CORE_MYSQL_MIGRATIONS,
   CORE_MYSQL_SCHEMA,
   CORE_MYSQL_SCHEMA_V9,
-  CORE_MYSQL_SCHEMA_V17
+  CORE_MYSQL_SCHEMA_V17,
+  MYSQL_NOTIFICATION_GROUPS_SCHEMA
 } from '../../src/mysql-schema.js';
 import { MYSQL_MIGRATION_DEMO } from '../../src/mysql-migration-demo.js';
 import { MODEL_USAGE_MIGRATION, MODEL_USAGE_SQL } from '../../src/model-usage-schema.js';
@@ -44,6 +45,25 @@ function schemaConnection() {
 }
 
 describe('Core MySQL schema', () => {
+  it('creates or reuses the minimal schedule projection table but rejects a wrong existing structure', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 41)!;
+    const schema = CORE_MYSQL_SCHEMA.scheduled_task_index;
+    let existing: string | undefined;
+    const execute = vi.fn(async (sql: string) => {
+      expect(sql).toContain('CREATE TABLE IF NOT EXISTS');
+      existing ??= sql.replace(' IF NOT EXISTS', '');
+      return [[], []];
+    });
+    const query = vi.fn(async () => [[{ 'Create Table': existing }], []]);
+    const connection = { execute, query } as never;
+    await migration.up(connection);
+    await migration.up(connection);
+    expect(existing).toBe(schema);
+    expect(existing).not.toMatch(/objective|groups|credential|FOREIGN KEY/i);
+    existing = 'CREATE TABLE `scheduled_task_index` (`wrong` int)';
+    await expect(migration.up(connection)).rejects.toThrow('SERVER_DATABASE_SCHEMA_MISMATCH');
+  });
+
   const usageQueryIndexSchema = MODEL_USAGE_SQL.replace(
     'KEY `model_usage_user_time` (`user_id`,`ended_at`,`source_key`)',
     'KEY `model_usage_user_time` (`user_id`,`purpose`,`ended_at`,`source_key`,`started_at`,`received_at`)'
@@ -151,7 +171,7 @@ describe('Core MySQL schema', () => {
 
   it('adds nullable notification session groups once and validates the upgraded table on retries', async () => {
     const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 33)!;
-    const currentDefinition = CORE_MYSQL_SCHEMA.workbench_notifications!;
+    const currentDefinition = MYSQL_NOTIFICATION_GROUPS_SCHEMA.workbench_notifications!;
     let hasSessionGroup = false;
     let definition = currentDefinition.replace(
       "  `session_group` enum('MAIN','CHILD') DEFAULT NULL,\n",
@@ -193,6 +213,29 @@ describe('Core MySQL schema', () => {
     ]);
     expect(query).toHaveBeenCalledTimes(2);
     expect(notificationRows).toEqual(originalRows);
+  });
+
+  it('atomically adds the task-only notification target and fails closed on schema drift', async () => {
+    const migration = CORE_MYSQL_MIGRATIONS.find(({ version }) => version === 42)!;
+    const expected = CORE_MYSQL_SCHEMA.workbench_notifications!;
+    let actual = MYSQL_NOTIFICATION_GROUPS_SCHEMA.workbench_notifications;
+    const query = vi.fn(async () => [[{ 'Create Table': actual }], []]);
+    const execute = vi.fn(async (sql: string) => {
+      expect(sql).toMatch(/DROP CHECK workbench_notifications_exact_target/);
+      expect(sql).toMatch(/ADD COLUMN task_id varchar\(128\) DEFAULT NULL/);
+      expect(sql).toMatch(/ADD COLUMN task_reference json/);
+      expect(sql).toMatch(
+        /'SCHEDULED_TASK'.*`session_id` is null.*`task_id` is not null.*`task_reference` is not null/u
+      );
+      actual = expected;
+    });
+    const connection = { execute, query } as never;
+    await migration.up(connection);
+    await migration.up(connection);
+    expect(execute).toHaveBeenCalledOnce();
+    actual = expected.replace('`task_id` varchar(128)', '`task_id` varchar(64)');
+    await expect(migration.up(connection)).rejects.toThrow('SERVER_DATABASE_SCHEMA_MISMATCH');
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it('adds recoverable share passwords once and validates retries without rewriting the prior migration', async () => {
@@ -728,7 +771,7 @@ describe('Core MySQL schema', () => {
     );
     expect(CORE_MYSQL_MIGRATIONS.map(({ version }) => version)).toEqual([
       9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-      33, 34, 35, 36, 37, 38, 39, 40
+      33, 34, 35, 36, 37, 38, 39, 40, 41, 42
     ]);
     expect(CORE_MYSQL_SCHEMA.mail_templates).toContain('`kind` enum');
     expect(CORE_MYSQL_SCHEMA.mail_deliveries).toContain('`payload_hash` char(64)');
