@@ -252,19 +252,22 @@ export function createWorkbenchNavigationPresentation<ManagementSection extends 
     }))
   );
 
-  function selectNavigation(nextView: WorkbenchView): void {
+  function selectNavigation(nextView: WorkbenchView, mode?: 'enter-content'): void {
     const previousView = view.value;
+    const isContent = nextView === 'nodes' || nextView === 'conversations';
+    const reenterContent =
+      mobileViewport.value && mode === 'enter-content' && isContent && previousView === nextView;
+    const repeatsCurrentView = previousView === nextView && !reenterContent;
     hostedConversationMobileFilesOpen.value = false;
     const collapseSidebar =
       mobileViewport.value &&
-      previousView === nextView &&
+      repeatsCurrentView &&
       mobileSidebarOpen.value &&
       mobileUtilityPanel.value === undefined;
     if (mobileViewport.value && nextView === 'conversations') {
       const historyWasOpen = hostedConversationMobileHistoryOpen.value;
-      hostedConversationMobileHistoryOpen.value = previousView === nextView && !historyWasOpen;
-      if (previousView === nextView) {
-        navigationService.selectMobileUtilityPanel(undefined);
+      hostedConversationMobileHistoryOpen.value = repeatsCurrentView && !historyWasOpen;
+      if (repeatsCurrentView) {
         closeMobileSidebar();
         closeMobileWorkspaceSurface();
         return;
@@ -275,15 +278,16 @@ export function createWorkbenchNavigationPresentation<ManagementSection extends 
       !managementItems.value.some((item) => item.id === managementSection.value)
     )
       managementSection.value = managementItems.value[0]?.id ?? input.defaultManagement;
-    selectWorkbenchView(nextView);
-    const enteringContent =
-      previousView !== nextView && (nextView === 'nodes' || nextView === 'conversations');
+    const enteringContent = isContent && !repeatsCurrentView;
     const restoringWork = nextView === 'nodes' && !input.canOpenWorkspaceSidebar();
-    if (mobileViewport.value && (collapseSidebar || enteringContent || restoringWork))
+    if (mobileViewport.value && (collapseSidebar || enteringContent || restoringWork)) {
       closeMobileSidebar();
-    if (previousView !== nextView && (nextView === 'nodes' || nextView === 'conversations'))
+      closeMobileWorkspaceSurface();
+      selectWorkbenchView(nextView, 'preserve-layout');
+    } else selectWorkbenchView(nextView);
+    if (previousView !== nextView && isContent)
       void input.recoverNotifications().catch(() => undefined);
-    input.transition(previousView, nextView);
+    if (!reenterContent) input.transition(previousView, nextView);
   }
 
   function closeHostedConversationMobileHistory(): void {

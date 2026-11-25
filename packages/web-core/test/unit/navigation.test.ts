@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
+import { ref } from 'vue';
+import {
+  createWorkbenchNavigationPresentation,
+  createWorkbenchNavigationService
+} from '../../src/service/workbench-navigation-service.js';
 import { transitionMobileWorkbenchLayout } from '../../src/util/mobile-workbench.js';
+import type { WorkbenchView } from '../../src/util/workbench-route.js';
+import type { SettingsSection } from '../../src/model/settings.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -21,6 +27,44 @@ function setup(mobile = true) {
 }
 
 describe('Public Navigation Layout', () => {
+  it.each(['nodes', 'conversations'] as const)(
+    're-enters mobile %s content from a covering page without toggling its menu',
+    (view) => {
+      vi.stubGlobal('window', { matchMedia: () => ({ matches: true }) });
+      const navigation = createWorkbenchNavigationService<WorkbenchView, SettingsSection, 'system'>(
+        {
+          initialView: view,
+          initialSettingsSection: 'account',
+          initialManagementSection: 'system',
+          opensMobileSidebar: (next) => next !== 'conversations'
+        }
+      );
+      const transition = vi.fn();
+      const presentation = createWorkbenchNavigationPresentation({
+        navigation,
+        management: { items: () => [] },
+        admin: ref({ authenticated: true, mustChangePassword: false }),
+        defaultManagement: 'system',
+        canOpenWorkspaceSidebar: () => true,
+        transition,
+        recoverNotifications: vi.fn().mockResolvedValue(undefined),
+        layout: { panelWidths: ref({}), setPanelWidth: vi.fn() }
+      });
+
+      presentation.selectMobileUtilityPanel('schedules');
+      presentation.selectNavigation(view, 'enter-content');
+      expect(navigation.view.value).toBe(view);
+      expect(navigation.mobileUtilityPanel.value).toBeUndefined();
+      expect(navigation.mobileSidebarOpen.value).toBe(false);
+      expect(presentation.hostedConversationMobileHistoryOpen.value).toBe(false);
+      expect(transition).not.toHaveBeenCalled();
+
+      presentation.selectNavigation(view);
+      expect(navigation.mobileSidebarOpen.value).toBe(view === 'nodes');
+      expect(presentation.hostedConversationMobileHistoryOpen.value).toBe(view === 'conversations');
+    }
+  );
+
   it('keeps utility drawers, navigation and Workspace tools mutually exclusive', () => {
     const { service } = setup();
     service.selectView('settings');

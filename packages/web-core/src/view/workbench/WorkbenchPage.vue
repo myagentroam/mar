@@ -27,6 +27,7 @@ import type {
 import NodeDetailsDialogs from '../settings/NodeDetailsDialogs.vue';
 import type { NodeDetailsData, WorkspaceDetailsData } from '../../model/node-details.js';
 import type { NodeSummary, Workspace } from '../../model/workbench.js';
+import type { WorkbenchView } from '../../util/workbench-route.js';
 const props = defineProps<{
   page: WorkbenchShellView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
   surface: WorkbenchSurfaceView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
@@ -37,6 +38,8 @@ const schedules = ref<ScheduledTasksLocation>();
 function openSchedules(target: ScheduledTasksLocation): void {
   props.page.layout.closeMobileSidebar();
   props.page.layout.closeMobileWorkspaceSurface();
+  props.page.hosted.closeHostedConversationMobileHistory();
+  props.page.hosted.hostedConversationMobileFilesOpen = false;
   schedules.value = target;
 }
 function showSchedules(session?: ScheduleSessionContext): void {
@@ -44,14 +47,14 @@ function showSchedules(session?: ScheduleSessionContext): void {
 }
 function selectScheduleNavigation(): void {
   const { layout } = props.page;
-  if (!schedules.value) showSchedules();
-  if (layout.mobileViewport) {
+  if (!schedules.value) {
+    showSchedules();
+  } else if (layout.mobileViewport) {
     layout.selectMobileUtilityPanel(
       layout.mobileUtilityPanel === 'schedules' ? undefined : 'schedules'
     );
-  } else {
-    layout.sidebarCollapsed = false;
   }
+  if (!layout.mobileViewport) layout.sidebarCollapsed = false;
 }
 function selectScheduleSection(section: ScheduleSection): void {
   if (!schedules.value) return;
@@ -60,6 +63,11 @@ function selectScheduleSection(section: ScheduleSection): void {
 function closeSchedules(): void {
   if (props.page.layout.mobileUtilityPanel === 'schedules') props.page.layout.closeMobileSidebar();
   schedules.value = undefined;
+}
+function selectNavigation(view: WorkbenchView): void {
+  const leavingSchedules = schedules.value !== undefined;
+  closeSchedules();
+  props.page.application.selectNavigation(view, leavingSchedules ? 'enter-content' : undefined);
 }
 const scheduleReturn = createMobileLayerHistoryService({
   isOpen: () => schedules.value !== undefined,
@@ -224,12 +232,7 @@ function closeStandaloneFileWindow(): void {
         :workspace-label="page.selection.workspaceTabLabel"
         :workspaces="page.tree.orderedWorkspaces"
         @resize-sidebar="page.layout.setPanelWidth('sidebar', $event)"
-        @select-navigation="
-          (view) => {
-            closeSchedules();
-            page.application.selectNavigation(view);
-          }
-        "
+        @select-navigation="selectNavigation"
         @open-scheduled-tasks="selectScheduleNavigation"
         @select-schedule-section="selectScheduleSection"
         @select-mobile-utility-panel="page.layout.selectMobileUtilityPanel"

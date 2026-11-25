@@ -279,7 +279,7 @@ export interface WorkbenchApplicationView<ManagementSection extends string> {
   openRecentRun: (run: import('./workbench-notification-service.js').RecentRun) => Promise<void>;
   runnerBrandIcon: (value: Session['runner']) => string;
   selectManagementSection: (section: ManagementSection) => void;
-  selectNavigation: (nextView: WorkbenchView) => void;
+  selectNavigation: (nextView: WorkbenchView, mode?: 'enter-content') => void;
   selectSettingsSection: (section: SettingsSection) => void;
   settingsItems: readonly { readonly id: SettingsSection; readonly label: string }[];
   settingsSection: SettingsSection;
