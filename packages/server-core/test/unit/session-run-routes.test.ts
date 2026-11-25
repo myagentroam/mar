@@ -1186,7 +1186,8 @@ describe('shared ordinary Session and Run routes', () => {
       nodeId: 'node-one',
       workspaceId: 'workspace-one',
       sessionId: 'session-one',
-      selectedModelId: 'selected'
+      selectedModelId: 'selected',
+      purpose: 'compact'
     });
     expect(requestNode).toHaveBeenLastCalledWith(
       'node-one',
