@@ -127,6 +127,24 @@ test('Workspace context indicator stays visible without a usage snapshot', async
   }
 });
 
+for (const [theme, fill] of [
+  ['daylight', /^conic-gradient\(rgb\(0, 95, 214\) 42%,/u],
+  ['vscode-dark-2026', /^conic-gradient\(rgb\(77, 163, 255\) 42%,/u]
+] as const) {
+  test(`Workspace context indicator uses activity blue in ${theme}`, async ({ page }) => {
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(
+        `${fixture.url}visual-alignment.html?theme=${theme}${width < 768 ? '&mobile=1' : ''}`
+      );
+      const indicator = page.locator('.composer-context-button');
+      await expect(indicator).toBeVisible();
+      await expect(indicator).toHaveText('42%');
+      await expect(indicator.locator('i')).toHaveCSS('background-image', fill);
+    }
+  });
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Composer actions have a single visible circle: ${theme}`, async ({ page }, testInfo) => {
     for (const width of [390, 1280]) {

@@ -518,7 +518,7 @@ function selectFiles(event: Event): void {
   height: 0.9rem;
   border-radius: 50%;
   background: conic-gradient(
-    var(--mar-text-secondary) var(--context-usage),
+    var(--mar-conversation-activity-fg) var(--context-usage),
     color-mix(in srgb, var(--mar-text-secondary) 30%, transparent) 0
   );
   position: relative;
