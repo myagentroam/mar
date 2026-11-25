@@ -119,6 +119,16 @@ describe('compaction task retention', () => {
     expect(messages[1]!.content).toContain(
       'Do not address the user, continue the task, call tools'
     );
+    expect(messages[1]!.content).toContain(
+      'Keep decisive evidence with the conclusion it supports'
+    );
+    expect(messages[1]!.content).toContain('Prefer completeness over brevity');
+    expect(messages[1]!.content).toContain(
+      'do not replace those details with broad references or labels'
+    );
+    expect(messages[1]!.content).toContain(
+      'Check for inconsistencies introduced by compression and keep unresolved conflicts explicit.'
+    );
     expect(messages[1]!.content).toContain('Output only the notes in compact Markdown.');
     expect(messages[1]!.content).not.toContain('Tests failed');
   });

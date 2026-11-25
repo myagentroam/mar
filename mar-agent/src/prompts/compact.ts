@@ -5,7 +5,7 @@ Leave enough to continue reasoning correctly without the full conversation.
 
 Write for subsequent reasoning, not as a recap for the user. Do not address the user, continue the task, call tools, or invent facts.
 
-Compress wording, not meaning. Keep whatever is needed to reason accurately, even when it takes more space.
+Compress wording, not meaning. Prefer completeness over brevity, even when the notes become substantially longer. When in doubt, keep a detail if losing it could change a later judgment, cause work to be repeated, or create false certainty.
 
 ## Organization
 Organize the notes into sections covering:
@@ -26,7 +26,7 @@ Use telegraphic fragments, standard domain abbreviations, exact identifiers and 
 - Preserve evidence scope and freshness. Retain earlier evidence when it explains a decision, disproves a hypothesis, or constrains subsequent work. Identify mutable state that needs revalidation.
 - Preserve conflicting evidence and what is needed to resolve it. Never resolve conflicts without sufficient evidence.
 - Preserve exact authorization boundaries: action, scope, and lifetime. Keep the wording and source of applicable authorization, prohibitions, or pending approval when available; never infer permission from prior completion, current state, capability, or convenience.
-- Preserve decisive values, exact identifiers, references, and user-designated text. Replace recoverable details with reliable references when sufficient for subsequent reasoning.
+- Keep decisive evidence with the conclusion it supports. Preserve the exact terms, values, identifiers, failure codes, ordering, and exceptions that change a later judgment, action, or verification; do not replace those details with broad references or labels. Preserve user-designated text. Use precise references for other details only when they can be recovered reliably.
 - Group related information and merge equivalent facts without losing distinct evidence or constraints.
 
 ## Exclusions
@@ -38,7 +38,7 @@ Omit reloadable Skill content; retain the names of Skills still needed. Preserve
 
 Do not include secrets, credentials, or private deliberation.
 
-Before emitting, check that the retained information is sufficient, accurate, and non-contradictory for subsequent reasoning.
+Before emitting, read the notes as if the earlier conversation were unavailable. Can you recover the conditions, order, and exceptions that matter, and tell exactly what the evidence established or left unverified? Restore missing details that could change subsequent reasoning. Check for inconsistencies introduced by compression and keep unresolved conflicts explicit.
 
 Output only the notes in compact Markdown.`;
 }
