@@ -191,9 +191,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const tokens = await page.locator('html').evaluate((root) => {
         const style = getComputedStyle(root);
         return Object.fromEntries(
-          ['bg-panel', 'fill-soft', 'text-disabled', 'text-secondary', 'control-color-danger'].map(
-            (token) => [token, style.getPropertyValue(`--mar-${token}`).trim()]
-          )
+          [
+            'bg-panel',
+            'fill-soft',
+            'text-disabled',
+            'text-secondary',
+            'control-color-danger',
+            'conversation-activity-fg'
+          ].map((token) => [token, style.getPropertyValue(`--mar-${token}`).trim()])
         );
       });
       await toolbar.screenshot({ path: info.outputPath(`composer-${theme}-${width}.png`) });
@@ -201,6 +206,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         locator
           .evaluate((element, property) => getComputedStyle(element)[property], property)
           .then(resolvedColorToHex);
+      const usageFill = () =>
+        context
+          .evaluate((element) => {
+            const gradient = getComputedStyle(element).backgroundImage;
+            return gradient.match(/^conic-gradient\((rgb\([^)]+\)) 42%,/u)?.[1];
+          })
+          .then((fill) => (fill ? resolvedColorToHex(fill) : undefined));
       const expectSendColors = async (fill: string, foreground: string) => {
         const expectedFill = await send.evaluate((element, cssColor) => {
           const probe = document.createElement('span');
@@ -220,18 +232,15 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       };
       const builtinFill = theme === 'daylight' ? '#005fd6' : '#2472d4';
       await expectSendColors(builtinFill, '#ffffff');
+      await expect.poll(usageFill).toBe(tokens['conversation-activity-fg']);
       await page
         .locator('html')
         .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff'));
       await expectSendColors(builtinFill, '#ffffff');
+      await expect.poll(usageFill).toBe('#ff00ff');
       await expect.poll(() => color(stop, 'color')).toBe(tokens['control-color-danger']);
       await expect.poll(() => color(stop, 'borderTopColor')).toBe(tokens['control-color-danger']);
       await expect.poll(() => color(stop, 'backgroundColor')).toBe(tokens['bg-panel']);
-      const ring = await context.evaluate((element) => {
-        const stop = getComputedStyle(element).backgroundImage.match(/rgb\([^)]+\)(?= 42%)/u);
-        return stop?.[0] ?? '';
-      });
-      expect(resolvedColorToHex(ring)).toBe(tokens['text-secondary']);
       const legacy = theme === 'vscode-dark-2026';
       const fill = legacy ? '#8ac7ff' : '#1565c0';
       const foreground = legacy ? '#000000' : '#ffffff';
@@ -257,6 +266,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         }
       );
       await expectSendColors(fill, foreground);
+      await expect.poll(usageFill).toBe('#8ac7ff');
       if (width >= 768) {
         await send.hover();
         await expectSendColors(`color-mix(in srgb, ${fill} 92%, ${tint})`, foreground);
