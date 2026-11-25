@@ -895,8 +895,6 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                       :placeholder="msg('chooseHourlyMinutes')"
                       :disabled="!hourlySupported"
                       multiple
-                      collapse-tags
-                      collapse-tags-tooltip
                     >
                       <MarOption
                         v-for="minute in minuteOptions"
