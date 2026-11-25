@@ -3,7 +3,6 @@ import type { SessionModelMessage } from '../session/model-request.js';
 import type { SessionRecord } from '../session/record-contract.js';
 import type { SessionStore, SessionStoreCompactInput } from '../session/store/contracts.js';
 import type { ResourceInputProjection } from './resource-input.js';
-import { compactRetainedStart } from '../runtime/compaction/retained-context.js';
 
 /** Commits one validated snapshot and records its fact before fallible live projection. */
 export async function commitExecutionCompaction(input: {
@@ -12,12 +11,9 @@ export async function commitExecutionCompaction(input: {
   readonly signal: AbortSignal;
   readonly prefix: readonly SessionModelMessage[];
   readonly messages: readonly SessionModelMessage[];
-  readonly model: Parameters<typeof compactRetainedStart>[2];
   readonly generation: string | undefined;
   readonly messageSources: WeakMap<SessionModelMessage, SessionRecord>;
-  draft(
-    retainedStart: number
-  ): Omit<SessionStoreCompactInput, 'retainedModelContext' | 'inlineMediaState'>;
+  draft(): Omit<SessionStoreCompactInput, 'retainedModelContext' | 'inlineMediaState'>;
   readonly checkpoint: ResourceInputProjection['checkpoint'];
   readonly withProjection: <T>(action: () => Promise<T>) => Promise<T>;
   readonly pendingDiscoveryNames: (message: SessionModelMessage) => readonly string[];
@@ -32,10 +28,9 @@ export async function commitExecutionCompaction(input: {
       input.prefix.some((message, index) => input.messages[index] !== message)
     )
       throw new AgentError('MAR_AGENT_COMPACT_STALE', 'The compaction prefix has changed.');
-    const retainedStart = compactRetainedStart(input.messages, input.prefix.length, input.model);
-    if (retainedStart === 0) return undefined;
+    if (input.prefix.length === 0) return undefined;
     const retained = [
-      ...input.messages.slice(0, retainedStart).flatMap((message) => {
+      ...input.prefix.flatMap((message) => {
         const receipt = message.mcpDiscovery;
         if (!receipt) return [];
         const names = input.pendingDiscoveryNames(message);
@@ -46,7 +41,7 @@ export async function commitExecutionCompaction(input: {
           : [{ ...message, mcpDiscovery: { id: receipt.id, names } }];
       }),
       ...input.messages
-        .slice(retainedStart)
+        .slice(input.prefix.length)
         .filter((message) => message.contextKind !== 'private' || message.role === 'provider')
     ];
     const retainedModelContext = retained.map((message) => {
@@ -78,7 +73,7 @@ export async function commitExecutionCompaction(input: {
     const record = await input.store.compact(
       input.sessionId,
       {
-        ...input.draft(retainedStart),
+        ...input.draft(),
         inlineMediaState: input.checkpoint(retained),
         retainedModelContext
       },

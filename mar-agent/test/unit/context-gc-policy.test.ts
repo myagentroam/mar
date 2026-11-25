@@ -62,8 +62,7 @@ function modelContext(
 function successfulRollout(
   add: ReturnType<typeof records>['add'],
   contextInputTokens: number,
-  cacheReadTokens = 0,
-  modelId = 'coding'
+  cacheReadTokens = 0
 ) {
   add('model.attempt', {
     purpose: 'EXECUTION',
@@ -74,18 +73,6 @@ function successfulRollout(
     maxAttempts: 5,
     continuation: false,
     credentialReason: 'REQUEST'
-  });
-  add('model.context', {
-    role: 'provider',
-    content: '',
-    provider: 'OPENAI_RESPONSES',
-    providerModelId: modelId,
-    item: {
-      type: 'reasoning',
-      id: 'complete-native-item',
-      encrypted_content: 'opaque',
-      summary: []
-    }
   });
   const usage = add('usage.updated', {
     type: 'usage.updated',
@@ -310,25 +297,26 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
     (scope) => {
       const fixture = records();
       addPatchCandidate(fixture);
-      for (let i = 0; i < 10; i++) successfulRollout(fixture.add, 6_000);
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add, 6_000);
+      expect(plan(fixture.values, { contextInputTokens: 6_000 })).toBeUndefined();
+      successfulRollout(fixture.add, 6_000);
       expect(plan(fixture.values, { contextInputTokens: 6_000 })).toBeDefined();
       fixture.add('execution.header', { ...scope, mode: 'run' });
       const usage = Math.floor(scope.contextWindowTokens * 0.6);
-      for (let i = 0; i < 9; i++) successfulRollout(fixture.add, usage, 0, scope.modelId);
+      for (let i = 0; i < 9; i++) successfulRollout(fixture.add, usage);
       const anchor = fixture.values.find((record) => record.type === 'tool.completed')!.sequence;
       expect(
         buildContextGcProtection(fixture.values, scope.modelId, scope.contextWindowTokens).after(
           anchor
-        ).rollouts
+        )
       ).toBe(9);
-      successfulRollout(fixture.add, usage, 0, scope.modelId);
+      successfulRollout(fixture.add, usage);
       const protection = buildContextGcProtection(
         fixture.values,
         scope.modelId,
         scope.contextWindowTokens
       ).after(anchor);
-      expect(protection.rollouts).toBe(10);
-      expect(protection.thinking).toBeGreaterThanOrEqual(3);
+      expect(protection).toBe(10);
     }
   );
 

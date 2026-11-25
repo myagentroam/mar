@@ -22,7 +22,7 @@ export function createExecutionCompaction(ports: {
   readonly sessionId: string;
   readonly executionId: string;
   readonly turnId: string;
-  readonly model: Pick<ResolvedModelConfiguration, 'id' | 'protocol' | 'contextWindowTokens'>;
+  readonly model: Pick<ResolvedModelConfiguration, 'id' | 'contextWindowTokens'>;
   readonly messages: SessionModelMessage[];
   readonly pendingInputs: Map<string, SessionRecord>;
   readonly messageSources: WeakMap<SessionModelMessage, SessionRecord>;
@@ -145,7 +145,6 @@ export function createExecutionCompaction(ports: {
         signal,
         prefix,
         messages,
-        model: ports.model,
         generation,
         messageSources: ports.messageSources,
         checkpoint: (value) => ports.resourceInput.checkpoint(value),
@@ -160,10 +159,10 @@ export function createExecutionCompaction(ports: {
           modelContext.replaceCompactMessages(replacementHistory, value);
           ports.updateBoundary(messages.length - value.length);
         },
-        draft: (retainedStart) => {
+        draft: () => {
           replacementHistory = buildCompactedHistory(
             candidate.summary,
-            modelContext.compactInputs(prefix.slice(0, retainedStart)),
+            modelContext.compactInputs(prefix),
             ports.userTokenLimit
           );
           return {
