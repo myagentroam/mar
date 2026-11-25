@@ -10,12 +10,14 @@ import { managementDateTime } from '../../util/time-presentation.js';
 // Presents one summary and emits navigation or task actions; it does not fetch or mutate a task.
 const props = defineProps<{ task: ScheduleCard }>();
 const emit = defineEmits<{
-  open: [];
+  details: [];
+  edit: [];
   history: [];
   openTarget: [target: ScheduleSessionScope];
 }>();
 const msg = (key: string, args?: Record<string, string>) =>
   translate(`generated.scheduledSession.${key}`, args);
+const titleAction = useTemplateRef<InstanceType<typeof MarButton>>('titleAction');
 const title = useTemplateRef<HTMLElement>('title');
 const preview = useTemplateRef<HTMLElement>('preview');
 const workspaceLabel = useTemplateRef<HTMLElement>('workspaceLabel');
@@ -53,25 +55,32 @@ function openSession(): void {
 }
 
 function onCardClick(event: MouseEvent): void {
-  if (!sessionTarget.value || (event.target as Element).closest('button')) return;
+  if (props.task.offline || (event.target as Element).closest('button')) return;
   const card = event.currentTarget as HTMLElement;
   const selection = card.ownerDocument.getSelection();
-  if (selection && !selection.isCollapsed && selection.containsNode(card, true)) return;
-  openSession();
+  if (
+    selection?.rangeCount &&
+    !selection.isCollapsed &&
+    selection.getRangeAt(0).intersectsNode(card)
+  )
+    return;
+  titleAction.value?.focus({ preventScroll: true });
+  emit('details');
 }
 </script>
 
 <template>
-  <li class="card" :class="{ 'card--interactive': sessionTarget }" @click="onCardClick">
+  <li class="card" :class="{ 'card--interactive': !task.offline }" @click="onCardClick">
     <header class="card-heading">
       <h3>
         <MarButton
-          v-if="sessionTarget"
+          v-if="!task.offline"
+          ref="titleAction"
           class="card-title-action"
-          :aria-label="msg('openTaskSession', { name: task.name })"
+          aria-haspopup="dialog"
           v-tooltip="() => readOverflowText(title)"
-          link
-          @click="openSession"
+          text
+          @click="emit('details')"
         >
           <span ref="title" class="clip">{{ task.name }}</span>
         </MarButton>
@@ -89,8 +98,20 @@ function onCardClick(event: MouseEvent): void {
     >
       {{ task.nodeName }} · {{ task.workspaceName }}
     </p>
-    <p ref="sessionLabel" v-tooltip="() => readOverflowText(sessionLabel)" class="clip">
-      {{ targetLabel }}
+    <p>
+      <MarButton
+        v-if="sessionTarget"
+        class="card-session-action"
+        :aria-label="msg('openTaskSession', { name: targetLabel })"
+        v-tooltip="() => readOverflowText(sessionLabel)"
+        text
+        @click="openSession"
+      >
+        <span ref="sessionLabel" class="clip">{{ targetLabel }}</span>
+      </MarButton>
+      <span v-else ref="sessionLabel" v-tooltip="() => readOverflowText(sessionLabel)" class="clip">
+        {{ targetLabel }}
+      </span>
     </p>
     <p v-if="task.objectivePreview" ref="preview" v-tooltip="previewTooltip" class="objective">
       {{ task.objectivePreview }}
@@ -118,12 +139,9 @@ function onCardClick(event: MouseEvent): void {
         link
         :disabled="task.offline === true"
         icon="edit"
-        @click="emit('open')"
+        @click="emit('edit')"
         >{{ msg('editTask') }}</MarButton
       >
-      <MarButton v-else-if="!task.offline" link icon="info" @click="emit('open')">{{
-        msg('taskDetails')
-      }}</MarButton>
       <MarButton link :disabled="task.offline === true" icon="clock" @click="emit('history')">{{
         msg('history')
       }}</MarButton>
@@ -175,9 +193,9 @@ h3 {
   margin: 0;
   font-size: var(--mar-font-size-title);
 }
-.card-title-action {
+.card-title-action,
+.card-session-action {
   display: block;
-  min-block-size: var(--mar-ui-compact-control-size, 24px);
   max-inline-size: 100%;
   padding: 0;
   border: 0;
@@ -185,6 +203,12 @@ h3 {
   font: inherit;
   letter-spacing: inherit;
   text-align: start;
+}
+@media (hover: hover) {
+  .card .card-session-action:hover {
+    background: var(--mar-fill-row-hover);
+    color: var(--mar-text-primary);
+  }
 }
 .card-title-action:focus-visible {
   outline: none;

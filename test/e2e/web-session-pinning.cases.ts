@@ -258,6 +258,11 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
     nextRunAt: Date.parse('2027-01-01T02:00:00Z')
   };
   const otherTask = { ...task, id: 'other-task', name: '复盘失败' };
+  const newSession = {
+    runner: 'mar-agent',
+    model: { kind: 'fixed', modelId: 'retired-model' },
+    effort: 'high'
+  };
   const listRequests: URL[] = [];
   const writes: { url: URL; body: Record<string, unknown>; csrf: string | undefined }[] = [];
   const makeCard = (row: typeof task, nodeId: string, mine: boolean) => ({
@@ -389,8 +394,15 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
         csrf: route.request().headers()['x-csrf-token']
       });
     else expect(url.searchParams.get('nodeId')).toBe('node-2');
-    return json(route, { task, mine: true, proposals: [] });
+    return json(route, {
+      task,
+      mine: true,
+      proposals: [{ id: 'proposal', baseRevision: task.revision, name: '建议名称' }]
+    });
   });
+  await page.route(/\/api\/scheduled-tasks\/other-task\?.*$/, (route) =>
+    json(route, { task: { ...otherTask, sessionId: null, newSession }, mine: true, proposals: [] })
+  );
   const record = {
     ...scope,
     nodeName: 'Node B',
@@ -540,6 +552,13 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(hoverCard).toHaveCSS('cursor', 'pointer');
   await expect(hoverCard).not.toHaveCSS('background-color', restingBackground);
   await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-hover.png') });
+  const linkedSession = hoverCard.getByRole('button', { name: '定时会话：打开会话' });
+  await expect(linkedSession).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const bodyColor = await hoverCard.evaluate((card) => getComputedStyle(card).color);
+  await expect(linkedSession).toHaveCSS('color', bodyColor);
+  await linkedSession.hover();
+  await expect(linkedSession).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await page.screenshot({ path: info.outputPath('scheduled-card-session-hover.png') });
   await panel.locator('.card').filter({ hasText: '检查构建' }).locator('.objective').hover();
   await expect(page.getByRole('tooltip')).toHaveText(promptPreview);
   await page.screenshot({ path: info.outputPath('scheduled-card-tooltip.png') });
@@ -548,6 +567,21 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
 
   await panel.getByRole('button', { name: '新建定时', exact: true }).click();
   const editor = page.getByRole('dialog').and(page.locator('dialog'));
+  const expectTargetLayout = async (stacked = false) => {
+    const target = editor.getByRole('combobox', { name: '运行目标', exact: true });
+    const session = editor.getByRole('combobox', { name: '运行会话', exact: true });
+    await expect(target).toBeVisible();
+    await expect(session).toBeVisible();
+    const targetBox = (await target.boundingBox())!;
+    const sessionBox = (await session.boundingBox())!;
+    if (stacked) {
+      expect(sessionBox.y).toBeGreaterThan(targetBox.y);
+      expect(Math.abs(sessionBox.x - targetBox.x)).toBeLessThan(2);
+    } else {
+      expect(sessionBox.x).toBeGreaterThan(targetBox.x);
+      expect(Math.abs(sessionBox.y - targetBox.y)).toBeLessThan(2);
+    }
+  };
   const select = async (name: string, option: string) => {
     await editor.getByRole('combobox', { name, exact: true }).click();
     await page.getByRole('option', { name: option, exact: true }).click();
@@ -565,6 +599,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await select('工作区', 'project');
   await select('运行目标', '已有会话');
   await select('运行会话', '定时会话');
+  await expectTargetLayout();
   await editor.getByRole('textbox', { name: '任务名称' }).fill('第三项任务');
   await editor.getByRole('textbox', { name: '任务提示词' }).fill('Review the build');
   const enabled = editor.getByRole('switch', { name: '已启用', exact: true });
@@ -580,6 +615,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await page.screenshot({ path: info.outputPath('scheduled-settings-desktop.png') });
   const desktopViewport = page.viewportSize()!;
   await page.setViewportSize({ width: 390, height: 844 });
+  await expectTargetLayout(true);
   await editor.getByText(notificationHint).scrollIntoViewIfNeeded();
   await expect(notification).toBeInViewport();
   const mobileEnabledBox = (await enabled.boundingBox())!;
@@ -683,6 +719,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
       .getByRole('button', { name: '编辑' })
   ).toHaveCount(0);
   await card.getByRole('button', { name: '编辑', exact: true }).click();
+  await expectTargetLayout();
   const deleteTask = editor.getByRole('button', { name: '删除任务', exact: true });
   await expect(deleteTask).toHaveText('删除任务');
   await expect(deleteTask.locator('svg')).toHaveCount(0);
@@ -921,35 +958,53 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await openAllSchedules();
   await expect(navigationCard.getByRole('link')).toHaveCount(0);
   await expect(navigationCard.getByRole('button', { name: 'project', exact: true })).toHaveCount(0);
-  await expect(navigationCard.getByRole('button', { name: '既有会话', exact: true })).toHaveCount(
-    0
-  );
-  await navigationCard.getByRole('button', { name: '任务详情', exact: true }).click();
-  await expect(editor).toBeVisible();
-  await expect(panel).toBeVisible();
-  await expect(editor.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
+  const cardTitle = hoverCard.getByRole('button', { name: '检查构建', exact: true });
+  await hoverCard.locator('.workspace-label').click();
+  await expect(editor.getByRole('tablist', { name: '任务详情' })).toBeVisible();
+  await expectTargetLayout();
+  await expect(editor.getByRole('button', { name: /^(保存|删除任务|接受|拒绝)$/ })).toHaveCount(0);
+  await expect(editor.getByText('建议名称', { exact: true })).toBeVisible();
+  await expect(editor.getByRole('textbox', { name: '任务提示词' })).toHaveAttribute('readonly', '');
+  await page.screenshot({ path: info.outputPath('scheduled-card-readonly-detail.png') });
   await page.keyboard.press('Escape');
   await expect(editor).toBeHidden();
+  await expect(cardTitle).toBeFocused();
   const unboundCard = panel.locator('.card').filter({ hasText: '复盘失败' });
-  await expect(unboundCard).toHaveCSS('cursor', 'auto');
+  await expect(unboundCard.getByRole('button', { name: /打开会话/ })).toHaveCount(0);
   await unboundCard.locator('.objective').click();
-  await expect(panel).toBeVisible();
+  await expect(editor.getByRole('heading', { name: '复盘失败', exact: true })).toBeVisible();
+  await expect(editor.getByRole('combobox', { name: '运行会话', exact: true })).toHaveCount(0);
+  await expect(editor.getByRole('combobox', { name: '模型', exact: true })).toHaveAttribute(
+    'placeholder',
+    'retired-model'
+  );
+  await expect(editor.getByRole('combobox', { name: '推理强度', exact: true })).toHaveText('High');
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
   const objective = navigationCard.locator('.objective');
   await objective.evaluate((text) => {
     const range = document.createRange();
     range.selectNodeContents(text);
-    document.getSelection()!.addRange(range);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
   });
   await objective.dispatchEvent('click');
+  await expect(editor).toBeHidden();
   await expect(panel).toBeVisible();
   await objective.evaluate(() => document.getSelection()!.removeAllRanges());
-  await objective.click();
+  await navigationCard
+    .getByRole('button', { name: '另一节点的相同任务 ID', exact: true })
+    .press('Enter');
+  await expect(editor.getByRole('tablist', { name: '任务详情' })).toBeVisible();
+  await expect(editor.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
+  const openSession = navigationCard.getByRole('button', { name: '既有会话：打开会话' });
+  await openSession.click();
   await expect(panel).toBeHidden();
   await expect(page.getByText('较早的对话', { exact: true })).toBeVisible();
   await openAllSchedules();
-  const openSession = navigationCard.getByRole('button', {
-    name: '另一节点的相同任务 ID：打开绑定会话'
-  });
   await openSession.press('Enter');
   await expect(panel).toBeHidden();
   await expect(page.getByText('较早的对话', { exact: true })).toBeVisible();

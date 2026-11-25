@@ -498,15 +498,22 @@ describe('Scheduled tasks workbench', () => {
     }
   });
 
-  it('offers card navigation only for an online task with a bound session', async () => {
-    const request = vi.fn().mockResolvedValue({
-      ...taskPage([
-        task,
-        { ...task, nodeId: 'b', offline: true },
-        { ...task, id: 'new-session', sessionId: null, targetKind: 'newSession' }
-      ]),
-      unavailableNodeIds: ['b']
-    });
+  it('opens online card details separately from editing and linked session navigation', async () => {
+    const request = vi.fn(async (path: string) =>
+      path.includes('/same-id?')
+        ? { task: { ...task, triggers: [] }, mine: true, proposals: [] }
+        : taskPage([
+            task,
+            { ...task, nodeId: 'b', name: 'Offline', offline: true },
+            {
+              ...task,
+              id: 'new-session',
+              name: 'New session',
+              sessionId: null,
+              targetKind: 'newSession'
+            }
+          ])
+    );
     const onOpenTarget = vi.fn();
     const view = renderComponent(ScheduledTasksPanel, { request, onOpenTarget, section: 'all' });
     try {
@@ -514,10 +521,19 @@ describe('Scheduled tasks workbench', () => {
       const controls = (label: string) =>
         view.findAll('MarButton').filter((item) => textContent(item).trim() === label);
       expect(controls('project')).toHaveLength(0);
-      expect(controls('session')).toHaveLength(0);
+      expect(controls('Offline')).toHaveLength(0);
+      expect(controls('New session')).toHaveLength(1);
+      expect(controls('session')).toHaveLength(1);
       expect(controls('Task A')).toHaveLength(1);
-      await trigger(controls('Task A')[0]!, 'onClick');
+      await trigger(controls('session')[0]!, 'onClick');
       expect(onOpenTarget).toHaveBeenCalledExactlyOnceWith({ ...scope, sessionId: 'session' });
+      expect(request).toHaveBeenCalledTimes(1);
+      await trigger(controls('Task A')[0]!, 'onClick');
+      expect(request.mock.calls.map(([path]) => path)).toContain(
+        '/api/scheduled-tasks/same-id?nodeId=a&workspaceId=work'
+      );
+      expect(onOpenTarget).toHaveBeenCalledTimes(1);
+      expect(controls('Save')).toHaveLength(0);
     } finally {
       view.unmount();
     }

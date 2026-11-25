@@ -95,7 +95,10 @@ const occurrence = shallowRef<ScheduleOccurrenceDetail>();
 const detailFailure = shallowRef<unknown>();
 const detailLoading = ref(false);
 const runReceipt = shallowRef<ScheduleRunReceipt>();
-const editor = shallowRef<{ key: ScheduleTaskKey; detail: ScheduleDetail } | 'new'>();
+const editor = shallowRef<
+  | { key: ScheduleTaskKey; detail: ScheduleDetail; mode: 'view' | 'edit'; invoker?: HTMLElement }
+  | 'new'
+>();
 let listRead: AbortController | undefined;
 let detailRead: AbortController | undefined;
 let refresh: ReturnType<typeof setTimeout> | undefined;
@@ -218,7 +221,12 @@ onBeforeUnmount(() => {
   detailRead?.abort();
 });
 
-async function openTask(key: ScheduleTaskKey, proposalId?: string) {
+async function openTask(key: ScheduleTaskKey, mode: 'view' | 'edit', proposalId?: string) {
+  const active = globalThis.document?.activeElement;
+  const invoker =
+    active && active instanceof HTMLElement && active !== active.ownerDocument.body
+      ? active
+      : undefined;
   closeDetail();
   selectedTask.value = key;
   const read = new AbortController();
@@ -233,7 +241,7 @@ async function openTask(key: ScheduleTaskKey, proposalId?: string) {
         detail = { ...detail, proposals: [proposal] };
       }
       selectedTask.value = undefined;
-      editor.value = { key, detail };
+      editor.value = { key, detail, mode, ...(invoker ? { invoker } : {}) };
     }
   } catch (error) {
     if (!read.signal.aborted) {
@@ -244,6 +252,12 @@ async function openTask(key: ScheduleTaskKey, proposalId?: string) {
   } finally {
     if (!read.signal.aborted) detailLoading.value = false;
   }
+}
+function closeEditor() {
+  const invoker = editor.value === 'new' ? undefined : editor.value?.invoker;
+  closeDetail();
+  // The loading and loaded dialogs are different layers, so restore the original invoker.
+  if (invoker) void nextTick(() => invoker.isConnected && invoker.focus({ preventScroll: true }));
 }
 async function openOccurrence(item: OccurrenceKey) {
   resetDetail();
@@ -305,7 +319,7 @@ watch(
   () => props.linkedTask,
   (task) => {
     if (!task) return;
-    if (task.reference.kind === 'proposal') void openTask(task, task.reference.id);
+    if (task.reference.kind === 'proposal') void openTask(task, 'edit', task.reference.id);
     else
       void openOccurrence({
         nodeId: task.nodeId,
@@ -376,7 +390,8 @@ watch(
             v-for="item in tasks"
             :key="identity(item)"
             :task="item"
-            @open="openTask(item)"
+            @details="openTask(item, 'view')"
+            @edit="openTask(item, 'edit')"
             @history="openTaskHistory(item)"
             @open-target="emit('openTarget', $event)"
           />
@@ -407,7 +422,7 @@ watch(
       :nodes="nodes"
       :locked-session="editor === 'new' ? sessionContext : undefined"
       :editing="editor === 'new' ? undefined : editor"
-      @close="closeDetail"
+      @close="closeEditor"
       @changed="changed"
     />
     <MarDialog

@@ -315,7 +315,7 @@ describe('submission and authoritative reread loading', () => {
         id: 'task',
         name: 'Task',
         objective: 'Objective',
-        groups: [{ days: { kind: 'anyDay' }, times: { kind: 'times', times: ['09:00'] } }],
+        triggers: [{ kind: 'daily', time: '09:00' }],
         timezone: 'UTC',
         sessionId: 'session',
         newSession: null,
@@ -325,7 +325,7 @@ describe('submission and authoritative reread loading', () => {
         graceMinutes: 60
       },
       proposals: [
-        { id: 'proposal', baseRevision: 1, name: null, objective: 'New objective', groups: null }
+        { id: 'proposal', baseRevision: 1, name: null, objective: 'New objective', triggers: null }
       ]
     };
     const request = vi.fn((path: string, init?: RequestInit) =>

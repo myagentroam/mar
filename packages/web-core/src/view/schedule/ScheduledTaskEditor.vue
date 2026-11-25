@@ -55,7 +55,7 @@ const props = defineProps<{
   client: ReturnType<typeof scheduledTaskClient>;
   nodes: ScheduleNode[];
   lockedSession?: ScheduleSessionContext | undefined;
-  editing?: { key: ScheduleTaskKey; detail: ScheduleDetail } | undefined;
+  editing?: { key: ScheduleTaskKey; detail: ScheduleDetail; mode?: 'view' | 'edit' } | undefined;
 }>();
 const emit = defineEmits<{ close: []; changed: [] }>();
 const notificationHintId = useId();
@@ -68,7 +68,7 @@ const editing = props.editing;
 const saved = editing?.detail.task;
 const lockedSession = editing ? undefined : props.lockedSession;
 const lockedScope = lockedSession?.scope;
-const readOnly = editing?.detail.mine === false;
+const readOnly = editing?.mode === 'view' || editing?.detail.mine === false;
 let nextId = 1;
 const form = reactive({
   nodeId: editing?.key.nodeId ?? lockedScope?.nodeId ?? '',
@@ -508,7 +508,7 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
   >
-    <MarTabs v-model="tab" :label="msg('editorSections')">
+    <MarTabs v-model="tab" :label="msg(readOnly ? 'taskDetails' : 'editorSections')">
       <MarTabPane name="task" :label="msg('taskTab')" class="editor-section">
         <MarForm
           ref="taskForm"
@@ -563,59 +563,61 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               }}</small>
             </MarFormItem>
           </div>
-          <MarFormItem :label="msg('target')" prop="targetKind">
-            <MarSelect
-              v-model="form.targetKind"
-              :placeholder="msg('chooseTarget')"
-              :disabled="!!lockedScope || !targetReady || undefined"
-              @change="clearModel"
+          <div :class="{ fields: form.targetKind === 'existing' }">
+            <MarFormItem :label="msg('target')" prop="targetKind">
+              <MarSelect
+                v-model="form.targetKind"
+                :placeholder="msg('chooseTarget')"
+                :disabled="!!lockedScope || !targetReady || undefined"
+                @change="clearModel"
+              >
+                <MarOption :label="msg('existing')" value="existing" />
+                <MarOption
+                  :label="msg('newSession')"
+                  value="newSession"
+                  :disabled="!newSessionSupported"
+                />
+              </MarSelect>
+            </MarFormItem>
+            <MarFormItem
+              v-if="form.targetKind === 'existing'"
+              :label="msg('session')"
+              prop="sessionId"
             >
-              <MarOption :label="msg('existing')" value="existing" />
-              <MarOption
-                :label="msg('newSession')"
-                value="newSession"
-                :disabled="!newSessionSupported"
-              />
-            </MarSelect>
-          </MarFormItem>
-          <MarFormItem
-            v-if="form.targetKind === 'existing'"
-            :label="msg('session')"
-            prop="sessionId"
-          >
-            <MarSelect
-              v-model="form.sessionId"
-              :placeholder="msg('chooseSession')"
-              :filterable="!lockedScope"
-              :disabled="!!lockedScope || undefined"
-              :loading="loadingTargets"
-            >
-              <MarOption
-                v-if="
-                  form.sessionId &&
-                  !sessions.some((item) => (item.externalSessionId ?? item.id) === form.sessionId)
-                "
-                :label="lockedSession?.title ?? form.sessionId"
-                :value="form.sessionId"
-              />
-              <MarOption
-                v-for="item in sessions"
-                :key="item.id"
-                :label="item.customTitle ?? item.runnerTitle ?? item.id"
-                :value="item.externalSessionId ?? item.id"
-              />
-            </MarSelect>
-            <MarButton
-              v-if="sessionCursor"
-              link
-              :disabled="loadingTargets"
-              @click="loadSessions(sessionCursor)"
-              >{{ msg('moreSessions') }}</MarButton
-            >
-            <small v-if="targetError" role="alert">{{
-              errorSummary(targetError, msg('loadFailed'))
-            }}</small>
-          </MarFormItem>
+              <MarSelect
+                v-model="form.sessionId"
+                :placeholder="msg('chooseSession')"
+                :filterable="!lockedScope"
+                :disabled="!!lockedScope || undefined"
+                :loading="loadingTargets"
+              >
+                <MarOption
+                  v-if="
+                    form.sessionId &&
+                    !sessions.some((item) => (item.externalSessionId ?? item.id) === form.sessionId)
+                  "
+                  :label="lockedSession?.title ?? form.sessionId"
+                  :value="form.sessionId"
+                />
+                <MarOption
+                  v-for="item in sessions"
+                  :key="item.id"
+                  :label="item.customTitle ?? item.runnerTitle ?? item.id"
+                  :value="item.externalSessionId ?? item.id"
+                />
+              </MarSelect>
+              <MarButton
+                v-if="sessionCursor && !readOnly"
+                link
+                :disabled="loadingTargets"
+                @click="loadSessions(sessionCursor)"
+                >{{ msg('moreSessions') }}</MarButton
+              >
+              <small v-if="targetError" role="alert">{{
+                errorSummary(targetError, msg('loadFailed'))
+              }}</small>
+            </MarFormItem>
+          </div>
           <div v-if="form.targetKind === 'newSession'" class="wrapping-fields">
             <MarFormItem :label="$t('common.runner')" prop="runner">
               <MarSelect
@@ -662,8 +664,13 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
                 />
               </MarSelect>
             </MarFormItem>
-            <MarFormItem v-if="efforts.length" :label="msg('effort')">
+            <MarFormItem v-if="efforts.length || (readOnly && form.effort)" :label="msg('effort')">
               <MarSelect v-model="form.effort" :placeholder="msg('chooseEffort')" clearable>
+                <MarOption
+                  v-if="readOnly && form.effort && !efforts.includes(form.effort)"
+                  :label="effortPresentation(form.effort)"
+                  :value="form.effort"
+                />
                 <MarOption
                   v-for="effort in efforts"
                   :key="effort"
@@ -680,6 +687,8 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
             ><MarInput
               v-model="form.objective"
               :placeholder="msg('enterObjective')"
+              :readonly="readOnly"
+              :disabled="readOnly ? false : undefined"
               type="textarea"
               :rows="5"
               maxlength="20000"
@@ -703,19 +712,21 @@ const triggersFromProposal = (triggers: ScheduledTrigger[]) =>
               <p v-if="proposal.triggers" class="multiline">
                 {{ triggersFromProposal(proposal.triggers) }}
               </p>
-              <MarButton
-                :disabled="!!pending"
-                :loading="pending === `${proposal.id}:false`"
-                @click="resolve(proposal.id, false)"
-                >{{ msg('reject') }}</MarButton
-              >
-              <MarButton
-                type="primary"
-                :disabled="!!pending"
-                :loading="pending === `${proposal.id}:true`"
-                @click="resolve(proposal.id, true)"
-                >{{ msg('accept') }}</MarButton
-              >
+              <template v-if="!readOnly">
+                <MarButton
+                  :disabled="!!pending"
+                  :loading="pending === `${proposal.id}:false`"
+                  @click="resolve(proposal.id, false)"
+                  >{{ msg('reject') }}</MarButton
+                >
+                <MarButton
+                  type="primary"
+                  :disabled="!!pending"
+                  :loading="pending === `${proposal.id}:true`"
+                  @click="resolve(proposal.id, true)"
+                  >{{ msg('accept') }}</MarButton
+                >
+              </template>
             </article>
           </section>
         </MarForm>
