@@ -101,6 +101,76 @@ for (const theme of ['dark', 'daylight']) {
   });
 }
 
+for (const [theme, mobile] of [
+  ['dark', false],
+  ['daylight', true]
+] as const) {
+  test(`Session group indicator stays one pixel inside the border in ${theme}`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      ...(mobile ? devices['Pixel 7'] : { viewport: { width: 1280, height: 800 } }),
+      deviceScaleFactor: 2,
+      reducedMotion: 'reduce'
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        `${fixture.url}workbench-navigation.html?theme=${theme}&locale=zh-CN${mobile ? '&mobile' : ''}`
+      );
+      const groups = page.locator('.session-group-tabs').getByRole('radiogroup');
+      const indicator = groups.locator('.mar-segmented-indicator');
+      await expect(groups).toHaveCSS('height', '26px');
+
+      for (const selection of ['MAIN', 'CHILD']) {
+        const radio = groups.locator(`input[value="${selection}"]`);
+        if (selection === 'CHILD') {
+          if (mobile) {
+            await radio.tap();
+          } else {
+            await groups.locator('input[value="MAIN"]').press('ArrowRight');
+            await expect(radio).toBeFocused();
+            await expect(radio.locator('..')).toHaveCSS('outline-style', 'solid');
+          }
+        }
+        await expect(radio).toBeChecked();
+        await expect(indicator).toBeVisible();
+        const { insets, cornerInset } = await indicator.evaluate((element, selection) => {
+          const group = element.closest('[role="radiogroup"]')!;
+          const bounds = group.getBoundingClientRect();
+          const fill = element.getBoundingClientRect();
+          const border = getComputedStyle(group);
+          const fillStyle = getComputedStyle(element);
+          const start = selection === 'MAIN';
+          const corner = start ? 'borderTopLeftRadius' : 'borderTopRightRadius';
+          const edge = parseFloat(start ? border.borderLeftWidth : border.borderRightWidth);
+          return {
+            insets: [
+              fill.top - bounds.top - parseFloat(border.borderTopWidth),
+              bounds.bottom - fill.bottom - parseFloat(border.borderBottomWidth),
+              (start ? fill.left - bounds.left : bounds.right - fill.right) - edge
+            ],
+            cornerInset: parseFloat(border[corner]) - edge - parseFloat(fillStyle[corner])
+          };
+        }, selection);
+        for (const inset of insets) expect(inset).toBeCloseTo(1, 1);
+        expect(cornerInset).toBeCloseTo(1, 1);
+
+        if (selection === 'MAIN') {
+          const sidebar = (await page.locator('.conversation-sidebar').boundingBox())!;
+          const track = (await groups.boundingBox())!;
+          await page.screenshot({
+            clip: { ...sidebar, height: track.y + track.height - sidebar.y + 36 },
+            path: testInfo.outputPath(`segmented-${theme}.png`)
+          });
+        }
+      }
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 test('Custom translucent selection and hover are painted once across the whole tab', async ({
   page
 }) => {
