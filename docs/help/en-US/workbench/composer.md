@@ -1,6 +1,6 @@
 ---
 title: Messages and Composer
-lastUpdated: 2026-11-24
+lastUpdated: 2026-11-25
 ---
 
 # Messages and Composer
@@ -32,6 +32,8 @@ On desktop, drag a queued message to change its order. On mobile, press and hold
 While editing a queued message, press `Esc` to discard unsaved changes and exit that editor without stopping the run.
 
 When you select **Steer** for a queued message, Node rechecks its actual state: during active work it delivers the message with priority as gentle additional information (steer); when idle it sends normally. It uses the latest saved text without adding another wrapper to an existing steer. The page still shows only the body and resources. Automatic delivery in queue order does not become steer, and special inputs such as Goal activation and automatic Goal continuation retain their existing semantics.
+
+If the MAR Agent execution is still starting, a steer waits for the original message to be recorded and then arrives as a separate message. Startup alone does not interrupt the task. The original text and attachments stay with the original message.
 
 ## Prompt Tab
 

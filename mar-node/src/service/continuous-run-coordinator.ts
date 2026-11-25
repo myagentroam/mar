@@ -97,11 +97,12 @@ export interface ExecutionTerminalResult {
 
 export interface ContinuousRunCoordinatorOptions {
   readonly resolveExecutionDirectory?: (session: NodeAgentSession) => Promise<string>;
+  readonly supportsNativeSteer?: (runner: RunnerExecutionContext['runner']) => boolean;
   readonly steer?: (
     prepared: PreparedExecutionInput<unknown>,
     item: NodeQueueItem,
     executionId: string
-  ) => Promise<import('../runner/contracts.js').RunnerSteerResult> | undefined;
+  ) => Promise<import('../runner/contracts.js').RunnerSteerResult>;
   readonly runtime: NodeRuntimeState;
   readonly emitQueue: (workspaceId: string, sessionId: string) => void;
   readonly emitConversation: (turn: unknown) => void;
@@ -157,10 +158,12 @@ export interface ContinuousRunCoordinatorOptions {
   readonly keepRunActive: (sessionId: string) => boolean;
 }
 
+/** Owns prepared inputs through queue dispatch or Runner handoff, not SDK input admission. */
 export class ContinuousRunCoordinator<TAttachment> {
   private readonly preparedInputs = new Map<string, PreparedExecutionInput<TAttachment>>();
   private readonly environmentLeases = new Map<string, () => void>();
-  private readonly dispatchedExecutions = new Set<string>();
+  // A completed handoff needs no wait; the entry still prevents duplicate dispatch.
+  private readonly executionDispatches = new Map<string, PromiseWithResolvers<boolean> | null>();
   private readonly startedExecutions = new Set<string>();
   private readonly scheduledSessions = new Map<string, NodeJS.Timeout>();
   private readonly immediateQueueItems = new Set<string>();
@@ -385,8 +388,7 @@ export class ContinuousRunCoordinator<TAttachment> {
       active.id === input.activeRunId &&
       activeTurn?.id === input.steerTarget.turnId &&
       this.canSteer(active) &&
-      (input.steerTarget.executionId === undefined ||
-        this.options.runtime.currentExecutionId(active.id) === input.steerTarget.executionId);
+      this.options.runtime.currentExecutionId(active.id) === input.steerTarget.executionId;
     const pauseVersion = this.options.runtime.sessionQueuePauseVersion(sessionId);
     // An explicit pause after this input's admission takes precedence over automatic recovery.
     if (
@@ -529,25 +531,31 @@ export class ContinuousRunCoordinator<TAttachment> {
   ): NativeSteerAdmission | undefined {
     const previous = this.steerInFlight.get(itemId);
     if (previous) return previous;
-    if (this.suspended || this.options.stopped() || !this.options.steer || !this.canSteer(active))
+    const steer = this.options.steer;
+    if (this.suspended || this.options.stopped() || !steer || !this.canSteer(active))
       return undefined;
     const executionId = this.options.runtime.currentExecutionId(active.id);
     if (!executionId) return undefined;
+    const item = this.options.runtime.getQueueItem(itemId)!;
+    const pending = this.preparedInputs.get(itemId)!;
+    if (this.options.supportsNativeSteer?.(pending.executionContext.runner) === false)
+      return undefined;
     this.prepareSteering(itemId);
     const prepared = this.preparedInputs.get(itemId)!;
-    const item = this.options.runtime.getQueueItem(itemId)!;
     const pauseVersion = this.options.runtime.sessionQueuePauseVersion(item.sessionId);
     const release = this.options.runtime.reserveQueueItem(itemId);
+    const dispatch = this.executionDispatches.get(executionId);
+    const deliver = () => steer(prepared, item, executionId);
     let attempt: ReturnType<NonNullable<ContinuousRunCoordinatorOptions['steer']>>;
     try {
-      attempt = this.options.steer(prepared, item, executionId);
+      attempt = dispatch
+        ? dispatch.promise.then((dispatched) =>
+            dispatched ? deliver() : { status: 'notAccepted' as const }
+          )
+        : deliver();
     } catch (error) {
       release();
       throw error;
-    }
-    if (!attempt) {
-      release();
-      return undefined;
     }
     const task = attempt
       .then(async (result) => {
@@ -724,6 +732,7 @@ export class ContinuousRunCoordinator<TAttachment> {
       if (
         current !== undefined &&
         replacement !== undefined &&
+        !this.options.supportsNativeSteer?.(current.executionContext.runner) &&
         replacement.precedingExecutionId !== executionId
       )
         this.preparedInputs.set(item.id, {
@@ -800,7 +809,7 @@ export class ContinuousRunCoordinator<TAttachment> {
     let executionId = this.options.runtime.currentExecutionId(active.id);
     // Immediate commands own a root Runner handle without a normal message Execution.
     if (executionId === undefined && this.options.runtime.isExecutionActive(active.id)) return;
-    if (executionId !== undefined && this.dispatchedExecutions.has(executionId)) return;
+    if (executionId !== undefined && this.executionDispatches.has(executionId)) return;
     let pending =
       executionId === undefined
         ? this.preparedInputs.get(active.id)
@@ -880,12 +889,13 @@ export class ContinuousRunCoordinator<TAttachment> {
       this.options.migrateAssets(active.id, execution.id);
     }
     if (executionId === undefined || pending === undefined) return;
-    if (this.dispatchedExecutions.has(executionId)) return;
+    if (this.executionDispatches.has(executionId)) return;
     if (!this.goalCurrent(pending)) {
       this.rejectStaleGoal(executionId);
       return;
     }
-    this.dispatchedExecutions.add(executionId);
+    const dispatch = Promise.withResolvers<boolean>();
+    this.executionDispatches.set(executionId, dispatch);
     let dispatched = false;
     try {
       // Capabilities belong to this Execution, never the Run or a claimed QueueItem.
@@ -918,7 +928,7 @@ export class ContinuousRunCoordinator<TAttachment> {
           userId: active.initiatedByUserId!
         });
       }
-      if (this.suspended || this.options.stopped() || !this.dispatchedExecutions.has(executionId))
+      if (this.suspended || this.options.stopped() || !this.executionDispatches.has(executionId))
         return;
       if (
         executionToken !== undefined &&
@@ -927,7 +937,7 @@ export class ContinuousRunCoordinator<TAttachment> {
       )
         throw new Error('MARCTL_EXECUTION_AUTHORIZATION_INVALID');
       if (!this.goalCurrent(pending)) {
-        this.dispatchedExecutions.delete(executionId);
+        this.executionDispatches.delete(executionId);
         this.rejectStaleGoal(executionId);
         return;
       }
@@ -981,6 +991,9 @@ export class ContinuousRunCoordinator<TAttachment> {
         'FAILED'
       );
     } finally {
+      if (dispatched && this.executionDispatches.get(executionId) === dispatch)
+        this.executionDispatches.set(executionId, null);
+      dispatch.resolve(dispatched);
       if (!dispatched) this.options.revokeExecutionMcps?.(executionId);
     }
   }
@@ -1021,7 +1034,8 @@ export class ContinuousRunCoordinator<TAttachment> {
     this.environmentLeases.get(id)?.();
     this.environmentLeases.delete(id);
     this.preparedInputs.delete(id);
-    this.dispatchedExecutions.delete(id);
+    this.executionDispatches.get(id)?.resolve(false);
+    this.executionDispatches.delete(id);
     this.startedExecutions.delete(id);
   }
 
@@ -1065,7 +1079,8 @@ export class ContinuousRunCoordinator<TAttachment> {
     for (const release of this.environmentLeases.values()) release();
     this.environmentLeases.clear();
     this.preparedInputs.clear();
-    this.dispatchedExecutions.clear();
+    for (const dispatch of this.executionDispatches.values()) dispatch?.resolve(false);
+    this.executionDispatches.clear();
     this.startedExecutions.clear();
     this.immediateQueueItems.clear();
     this.queueExecutionAdmissions.clear();

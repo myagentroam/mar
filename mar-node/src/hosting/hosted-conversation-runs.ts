@@ -580,6 +580,8 @@ export class HostedConversationRuns {
     conversation: HostedConversationManifest,
     handle: HostedConversationRuntimeHandle
   ): boolean {
+    // A pending steer cannot use the caller's earlier Stop to start a replacement.
+    if (this.expectsInterruption(conversation.id, handle.run.id)) return false;
     this.markInterruption(conversation.id, handle.run.id);
     try {
       const interrupted = handle.cancel();

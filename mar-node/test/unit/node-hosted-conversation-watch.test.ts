@@ -243,6 +243,63 @@ describe('Node hosted conversation watch', () => {
       f.database.close();
     }
   });
+  it('does not restart a hosted Run when Stop wins over a pending native steer', async () => {
+    const f = await watchFixture();
+    const completion = Promise.withResolvers<{ status: 'INTERRUPTED'; completedAt: number }>();
+    const admission = Promise.withResolvers<import('@myagentroam/agent').SteerResult>();
+    try {
+      const conversationId = await createConversation(f);
+      const cancel = vi.fn(() => true);
+      const steer = vi.fn(() => admission.promise);
+      f.runtime.startRun
+        .mockImplementationOnce(async () => ({
+          run: { id: 'starting-run', status: 'RUNNING', startedAt: 2000, completedAt: null },
+          completion: completion.promise,
+          cancel,
+          steer
+        }))
+        .mockImplementationOnce(async () => ({
+          run: { id: 'restarted-run', status: 'RUNNING', startedAt: 2300, completedAt: null },
+          completion: Promise.resolve({ status: 'SUCCEEDED', completedAt: 2400 }),
+          cancel: vi.fn(() => false)
+        }));
+      const operations = f.service.operations();
+      const request = { conversationId, __requestUserId: 7, __marAgentModels: [model] };
+      await operations['conversation.hosted.message']!({
+        ...request,
+        clientMessageId: 'original',
+        prompt: 'Original message',
+        attachmentIds: []
+      });
+      const pending = Promise.resolve(
+        operations['conversation.hosted.message']!({
+          ...request,
+          clientMessageId: 'guidance',
+          prompt: 'Guidance',
+          attachmentIds: [],
+          deliveryIntent: 'REPLACE_CURRENT'
+        })
+      ).then(
+        () => ({ status: 'sent' }),
+        (error: Error) => ({ status: 'rejected', code: error.message })
+      );
+      await vi.waitFor(() => expect(steer).toHaveBeenCalledOnce());
+      expect(await operations['conversation.hosted.interrupt']!(request)).toEqual({
+        interrupted: true
+      });
+      admission.resolve({ status: 'notAccepted' });
+      completion.resolve({ status: 'INTERRUPTED', completedAt: 2200 });
+      expect(await pending).toEqual({ status: 'rejected', code: 'HOSTED_CONVERSATION_RUN_ACTIVE' });
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(f.runtime.startRun).toHaveBeenCalledOnce();
+      expect(f.store.findMessage(7, conversationId, 'guidance')).toBeUndefined();
+    } finally {
+      admission.resolve({ status: 'notAccepted' });
+      completion.resolve({ status: 'INTERRUPTED', completedAt: 2200 });
+      await f.service.dispose();
+      f.database.close();
+    }
+  });
   it('releases the admission after a runtime start failure so a later message can start', async () => {
     const f = await watchFixture();
     try {

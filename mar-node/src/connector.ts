@@ -979,9 +979,10 @@ export class NodeConnector {
       resolveExecutionDirectory,
       runtime: this.runtime,
       mintMarctlExecutionCredential: (input) => this.marctlExecutionCredentials.request(input),
+      supportsNativeSteer: (runner) =>
+        this.runners.optional(runner)?.supportsNativeSteer() === true,
       steer: (prepared, item, executionId) => {
-        const runner = this.runners.optional(prepared.executionContext.runner);
-        if (!runner?.supportsNativeSteer()) return undefined;
+        const runner = this.runners.require(prepared.executionContext.runner);
         const images = item.attachments.filter(isImageAttachment).map((image) => ({
           name: image.name,
           mimeType: image.mime,
