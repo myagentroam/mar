@@ -1989,6 +1989,40 @@ for (const [scheme, width] of [
   ['Dark', 1280],
   ['Light', 390]
 ] as const) {
+  test(`Calendar confirmation uses a text button and restores focus in ${scheme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    if (scheme === 'Light') {
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    }
+    const input = page.getByPlaceholder('Single date field', { exact: true });
+    await input.click();
+    const calendar = page.getByRole('dialog', { name: 'Calendar', exact: true });
+    const confirm = calendar.getByRole('button', { name: 'Confirm', exact: true });
+    await expect(confirm).toBeDisabled();
+    await expect(confirm).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(confirm).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    const day = calendar.locator('[data-day][data-outside="false"]').first();
+    await day.click();
+    await expect(confirm).toBeEnabled();
+    await expect(confirm).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(confirm).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    await calendar.screenshot({
+      path: testInfo.outputPath(`calendar-confirm-${scheme.toLowerCase()}.png`)
+    });
+    await day.press('Tab');
+    await expect(confirm).toBeFocused();
+    await expect(confirm).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('Enter');
+    await expect(calendar).toBeHidden();
+    await expect(input).toBeFocused();
+  });
+
   test(`Standard fields share their boundary and preserve states in ${scheme} at ${width}px`, async ({
     page
   }, testInfo) => {
@@ -2077,6 +2111,10 @@ for (const [scheme, width] of [
         await wrapper(field).hover();
         await expect(wrapper(field)).toHaveCSS('border-top-color', disabledColors.border);
       }
+      await expect(fields.getByPlaceholder('Disabled single date', { exact: true })).toHaveCSS(
+        'cursor',
+        'not-allowed'
+      );
       const enabledInput = fields.getByRole('textbox', { name: 'Text field', exact: true });
       await enabledInput.hover();
       await expect(wrapper(enabledInput)).toHaveCSS(

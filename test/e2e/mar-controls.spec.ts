@@ -4,6 +4,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/mar-ui/components/button/MarButton.vue
 // @test-covers packages/mar-ui/components/checkbox/MarCheckbox.vue
+// @test-covers packages/mar-ui/components/date-picker/MarDatePicker.vue
 // @test-covers packages/mar-ui/components/segmented/MarSegmented.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
@@ -504,11 +505,17 @@ test('MAR complex fields keep scalar values, explicit commits and localized UI',
   const days = calendar.locator('.mar-ui-calendar-month__days button');
   // The calendar grid retains its reading size; only the footer controls are compact.
   await expect(days.nth(3)).toHaveCSS('font-size', '14px');
-  await expect(calendar.getByLabel('Start time', { exact: true })).toHaveCSS('font-size', '12px');
-  await expect(calendar.getByRole('button', { name: 'Confirm' })).toHaveCSS('font-size', '12px');
+  const startTime = calendar.getByLabel('Start time', { exact: true });
+  const confirm = calendar.getByRole('button', { name: 'Confirm', exact: true });
+  await expect(startTime).toHaveCSS('font-size', '12px');
+  await expect(startTime).toHaveCSS('border-top-style', 'solid');
+  await expect(confirm).toHaveCSS('font-size', '12px');
+  await expect(confirm).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+  await expect(confirm).toBeDisabled();
   await days.nth(3).click();
   await expect(page.getByLabel('Range changes')).toHaveText('0');
   await days.nth(6).click();
+  await expect(confirm).toBeEnabled();
   await expect(page.getByLabel('Range value')).toHaveText('0,0');
   await expect(page.getByLabel('Range changes')).toHaveText('0');
   await page.screenshot({ path: testInfo.outputPath('mobile-calendar.png') });

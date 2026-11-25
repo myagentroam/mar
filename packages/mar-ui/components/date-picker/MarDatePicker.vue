@@ -13,6 +13,7 @@ import { MarIcon } from '../../icons/index.js';
 import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
 import { useMarUiLocale } from '../../locale/index.js';
+import MarButton from '../button/MarButton.vue';
 import { useMarFormControl } from '../form/form-context.js';
 import '../form/field-frame.css';
 import { usePopup } from '../popup/use-popup.js';
@@ -388,9 +389,9 @@ function onFocusOut(event: FocusEvent) {
               @change="setTime(index, $event)"
             />
           </template>
-          <button type="button" :disabled="!valid" @click="confirm">
+          <MarButton text :disabled="!valid" @click="confirm">
             {{ locale.datePicker.confirm }}
-          </button>
+          </MarButton>
         </div>
       </div>
     </div>
@@ -491,7 +492,7 @@ function onFocusOut(event: FocusEvent) {
   border-block-start: 1px solid var(--mar-ui-border-subtle);
   font-size: var(--mar-ui-font-size-control);
 }
-.mar-ui-date-picker__footer > * {
+.mar-ui-date-picker__footer > input {
   min-inline-size: 0;
   border: 1px solid var(--mar-ui-input-border);
   border-radius: var(--mar-ui-radius-control);
@@ -500,12 +501,12 @@ function onFocusOut(event: FocusEvent) {
   color: var(--mar-ui-text-primary);
   font: inherit;
 }
-button:disabled,
+.mar-ui-date-picker__action:disabled,
 input:disabled {
   color: var(--mar-ui-text-disabled);
   cursor: not-allowed;
 }
-button:focus-visible,
+.mar-ui-date-picker__action:focus-visible,
 .mar-ui-date-picker__footer input:focus-visible {
   outline-offset: -2px;
 }
