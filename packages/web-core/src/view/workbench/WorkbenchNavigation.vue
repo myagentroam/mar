@@ -85,8 +85,9 @@ const props = defineProps<{
 const sidebarView = computed(() =>
   props.scheduleSection === undefined ? props.view : 'schedules'
 );
-const versionLabel = computed(() =>
-  translate('navigation.brandVersion', { version: `v${props.webVersion}` })
+const version = computed(() => `v${props.webVersion}`);
+const mobileVersionLabel = computed(() =>
+  translate('navigation.brandVersion', { version: version.value })
 );
 const docsPath = computed(() => localizedDocsPath(locale.value, 'getting-started/overview'));
 watch(
@@ -301,8 +302,8 @@ function runBlankMenuCommand(command: string): void {
           <MarDropdownItem
             command="reload"
             icon="tag"
-            :aria-label="$t('navigation.reloadVersion', { version: versionLabel })"
-            >{{ versionLabel }}</MarDropdownItem
+            :aria-label="$t('navigation.reloadVersion', { version: mobileVersionLabel })"
+            >{{ mobileVersionLabel }}</MarDropdownItem
           >
           <MarDropdownItem command="performance" icon="info">{{
             $t('navigation.performanceIndicator')
@@ -315,7 +316,7 @@ function runBlankMenuCommand(command: string): void {
     </MarDropdown>
     <a
       v-else
-      v-tooltip="$t('common.productVersion', { version: webVersion })"
+      v-tooltip="$t('common.productVersion', { version })"
       class="brand-home-link"
       href="/"
       :aria-label="$t('navigation.home')"

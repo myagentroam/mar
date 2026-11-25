@@ -319,6 +319,8 @@ for (const theme of ['daylight', 'midnight']) {
     try {
       const page = await context.newPage();
       await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+      await page.getByRole('link', { name: 'Back to MyAgentRoam home' }).hover();
+      await expect(page.getByRole('tooltip')).toHaveText('MyAgentRoam v0.10.1');
       const help = page.getByRole('link', { name: 'Help', exact: true });
       const activity = page.getByRole('button', {
         name: 'Sessions & notifications',
