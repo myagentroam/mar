@@ -18,18 +18,13 @@ function setEnabled(value: boolean) {
 </script>
 
 <template>
-  <div class="theme-row completion-preferences">
-    <label
-      id="appearance-prompt-completion-label"
-      for="appearance-prompt-completion"
-      class="theme-label"
-    >
+  <div class="mar-settings-option-row completion-preferences">
+    <label id="appearance-prompt-completion-label" for="appearance-prompt-completion">
       {{ translate('promptCompletion.work') }}
     </label>
     <MarSelect
       id="appearance-prompt-completion"
       :model-value="service.enabled.value"
-      class="theme-select"
       aria-labelledby="appearance-prompt-completion-label"
       @update:model-value="setEnabled"
     >
@@ -38,14 +33,3 @@ function setEnabled(value: boolean) {
     </MarSelect>
   </div>
 </template>
-
-<style scoped>
-.theme-label {
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-body);
-  font-weight: 400;
-}
-.theme-select {
-  width: 100%;
-}
-</style>

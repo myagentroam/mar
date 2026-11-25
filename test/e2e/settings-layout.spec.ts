@@ -194,12 +194,22 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
           if (section.id === 'appearance' || section.id === 'browser') {
             const rows = panel.locator('.mar-settings-option-row');
+            if (section.id === 'appearance') {
+              await expect(
+                rows.getByRole('combobox', {
+                  name: locale === 'zh-CN' ? '输入预测' : 'Composer Prediction',
+                  exact: true
+                })
+              ).toBeVisible();
+            }
             const row = rows.first();
             await expect(row.getByRole('combobox')).toBeVisible();
             const control = row.locator('.mar-ui-select');
             const label = row.locator('label');
             const bounds = (await row.boundingBox())!;
             const input = (await control.boundingBox())!;
+            const text = (await label.boundingBox())!;
+            const mobileGap = input.y - (text.y + text.height);
             if (width > 767) {
               const rootFontSize = await page.evaluate(() =>
                 parseFloat(getComputedStyle(document.documentElement).fontSize)
@@ -208,11 +218,21 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               expect(input.width).toBeLessThan(320);
               expect(Math.abs(bounds.x + bounds.width - input.x - input.width)).toBeLessThan(2);
             } else {
-              const text = (await label.boundingBox())!;
-              expect(input.y).toBeGreaterThanOrEqual(text.y + text.height);
+              expect(mobileGap).toBeGreaterThan(0);
             }
-            for (const select of await rows.locator('.mar-ui-select').all()) {
-              expect((await select.boundingBox())!.width).toBeCloseTo(input.width, 0);
+            for (const option of await rows.all()) {
+              const box = (await option.locator('.mar-ui-select').boundingBox())!;
+              const optionLabel = (await option.locator('label').boundingBox())!;
+              expect(box.x).toBeCloseTo(input.x, 0);
+              expect(box.width).toBeCloseTo(input.width, 0);
+              if (width > 767) {
+                expect(box.y + box.height / 2).toBeCloseTo(
+                  optionLabel.y + optionLabel.height / 2,
+                  0
+                );
+              } else {
+                expect(box.y - (optionLabel.y + optionLabel.height)).toBeCloseTo(mobileGap, 0);
+              }
             }
           }
           if (section.id === 'browser') {
