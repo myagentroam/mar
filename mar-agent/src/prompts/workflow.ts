@@ -33,7 +33,7 @@ export function toolUsagePrompt(
   return `${execution}
 
 <reasoning>
-During extended reasoning, earlier unrecorded insights may be lost as context evolves.
+During extended reasoning, earlier insights may be lost if left unrecorded.
 
 Use \`thought\` to capture reusable insights as they accumulate, rather than waiting until the task is complete.
 
