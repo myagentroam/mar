@@ -22,7 +22,6 @@ import { createMobileLayerHistoryService } from '../../service/mobile-layer-hist
 import type { ScheduleSessionScope } from '../../service/scheduled-task-client.js';
 import type {
   ScheduledTasksLocation,
-  ScheduleHistoryTask,
   ScheduleSection
 } from '../schedule/scheduled-task-navigation.js';
 import NodeDetailsDialogs from '../settings/NodeDetailsDialogs.vue';
@@ -54,13 +53,12 @@ function selectScheduleNavigation(): void {
     layout.sidebarCollapsed = false;
   }
 }
-function selectScheduleSection(section: ScheduleSection, historyTask?: ScheduleHistoryTask): void {
+function selectScheduleSection(section: ScheduleSection): void {
   if (!schedules.value) return;
   const { session } = schedules.value;
   schedules.value = {
     section,
-    ...(session === undefined ? {} : { session }),
-    ...(historyTask === undefined ? {} : { historyTask })
+    ...(session === undefined ? {} : { session })
   };
   if (props.page.layout.mobileUtilityPanel === 'schedules') props.page.layout.closeMobileSidebar();
 }

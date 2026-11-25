@@ -169,9 +169,15 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     ...session('scheduled', '定时会话', 0),
     externalSessionId: 'mock-native:scheduled'
   };
-  const groups = [
-    { days: { kind: 'anyDay' }, times: { kind: 'times', times: ['10:00', '20:00'] } }
-  ];
+  const explicitTimes = {
+    days: { kind: 'anyDay' },
+    times: { kind: 'times', times: ['10:00', '20:00'] }
+  };
+  const grid = {
+    days: { kind: 'monthDays', monthDays: [31], months: [1, 12] },
+    times: { kind: 'grid', hours: [0, 20], minutes: [0, 59] }
+  };
+  const groups = [explicitTimes, grid];
   const task = {
     id: 'task',
     name: '检查构建',
@@ -210,6 +216,17 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   );
   await page.route(/\/api\/agent-sessions\?nodeId=node-2(?:&.*)?$/, (route) =>
     json(route, { sessions: [targetSession], nextCursor: null })
+  );
+  await page.route(/\/api\/runner-profiles\?nodeId=node-2(?:&.*)?$/, (route) =>
+    json(route, {
+      profiles: ['opencode', 'mar-agent', 'codex', 'claude-code'].map((runner) => ({
+        runner,
+        models: [{ id: 'model', label: 'Test model', supportedEfforts: [] }],
+        accessOptions: [],
+        commands: [],
+        capabilities: []
+      }))
+    })
   );
   await page.route(/\/api\/scheduled-tasks(?:\?.*)?$/, async (route) => {
     const url = new URL(route.request().url());
@@ -251,6 +268,8 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   });
   const record = {
     ...scope,
+    nodeName: 'Node B',
+    workspaceName: 'project',
     occurrenceId: 'record',
     taskId: 'task',
     name: task.name,
@@ -261,21 +280,53 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     reason: null,
     run: null
   };
-  let failPage = true;
+  let failTaskPage = true;
+  let failMobilePage = true;
   const historyQueries: URL[] = [];
   await page.route(/\/api\/scheduled-occurrences\?.*$/, (route) => {
     const url = new URL(route.request().url());
     historyQueries.push(url);
-    if (url.searchParams.has('cursor') && failPage) {
-      failPage = false;
-      return json(route, { code: 'INTERNAL_ERROR', message: 'History unavailable' }, 500);
+    const scoped = url.searchParams.has('taskId');
+    const requestedPage = Number(url.searchParams.get('page'));
+    const filtered = url.searchParams.get('nodeId');
+    const mine = url.searchParams.get('mine') === 'true';
+    if (requestedPage === 2 && ((scoped && failTaskPage) || (!scoped && mine && failMobilePage))) {
+      if (scoped) failTaskPage = false;
+      else failMobilePage = false;
+      return json(route, { error: 'INTERNAL_ERROR' }, 500);
     }
+    const another = {
+      ...record,
+      nodeId: 'node-1',
+      nodeName: 'Node A',
+      workspaceName: 'other project',
+      occurrenceId: 'other-record',
+      name: '另一个任务的记录',
+      state: 'FAILED'
+    };
+    const pageSize = scoped ? 1 : 20;
+    const older = Array.from({ length: scoped ? 2 : 25 }, (_, index) => ({
+      ...record,
+      occurrenceId: `older-${index}`,
+      name: `旧记录 ${index + 1}`,
+      dueAt: record.dueAt - (index + 1) * 3600_000
+    }));
+    const all = scoped
+      ? [record, ...older]
+      : [
+          ...(!filtered || filtered === 'node-2' ? [record] : []),
+          ...(!mine && (!filtered || filtered === 'node-1') ? [another] : []),
+          ...(!filtered || filtered === 'node-2' ? older : [])
+        ];
+    const responsePage = Math.min(requestedPage, Math.max(1, Math.ceil(all.length / pageSize)));
     return json(route, {
-      items: url.searchParams.has('cursor')
-        ? [{ ...record, occurrenceId: 'older', name: '较早记录' }]
-        : [record],
-      nextCursor: url.searchParams.has('cursor') ? null : 'next',
-      unavailableNodeIds: []
+      items: all.slice((responsePage - 1) * pageSize, responsePage * pageSize),
+      page: responsePage,
+      pageSize,
+      total: all.length,
+      hasMore: responsePage * pageSize < all.length,
+      unavailableNodeIds: [],
+      ...(!scoped ? { nodes } : {})
     });
   });
   await page.route(/\/api\/scheduled-occurrences\/record\?.*$/, (route) => {
@@ -314,18 +365,21 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await expect(panel.locator('.card')).toHaveCount(3);
   expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('false');
   await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'daylight'));
-  const titleBox = (await panel
-    .getByRole('heading', { name: '定时任务', exact: true })
-    .boundingBox())!;
-  const refreshBox = (await panel
-    .getByRole('button', { name: '刷新', exact: true })
-    .boundingBox())!;
-  expect(Math.abs(titleBox.x - refreshBox.x)).toBeLessThan(1);
-  expect(refreshBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
+  const title = panel.getByRole('heading', { name: '定时任务', exact: true });
+  const refresh = panel.getByRole('button', { name: '刷新', exact: true });
+  // Read both boxes in one frame while the Workbench sidebar can still be animating.
+  const [titleBox, refreshBox] = await title.or(refresh).evaluateAll((elements) =>
+    elements.map((element) => {
+      const { x, y, bottom } = element.getBoundingClientRect();
+      return { x, y, bottom };
+    })
+  );
+  expect(Math.abs(titleBox!.x - refreshBox!.x)).toBeLessThan(1);
+  expect(refreshBox!.y).toBeGreaterThanOrEqual(titleBox!.bottom);
   await page.screenshot({ path: info.outputPath('scheduled-tasks-desktop.png') });
 
   await panel.getByRole('button', { name: '新建定时', exact: true }).click();
-  const editor = page.getByRole('dialog');
+  const editor = page.getByRole('dialog').and(page.locator('dialog'));
   const select = async (name: string, option: string) => {
     await editor.getByRole('combobox', { name, exact: true }).click();
     await page.getByRole('option', { name: option, exact: true }).click();
@@ -364,20 +418,99 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await page.screenshot({ path: info.outputPath('scheduled-settings-mobile.png') });
   await page.setViewportSize(desktopViewport);
   await editor.getByRole('tab', { name: '时间组合', exact: true }).click();
-  await editor.getByRole('textbox', { name: '指定时刻' }).fill('10:00,');
+  const first = editor.locator('fieldset').first();
+  const firstTime = first.getByRole('textbox', { name: '时刻 1', exact: true });
+  await firstTime.fill('10:00,');
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor.getByText('检查这组的日期和时刻。')).toBeVisible();
   expect(writes).toHaveLength(0);
-  await editor.getByRole('textbox', { name: '指定时刻' }).fill('10:00, 20:00');
-  await editor.getByRole('button', { name: '添加时间组合' }).click();
+  await firstTime.click();
+  const timePicker = page.getByRole('dialog', { name: '时间', exact: true });
+  await timePicker
+    .getByRole('group', { name: '小时' })
+    .getByRole('button', { name: '10', exact: true })
+    .click();
+  await timePicker
+    .getByRole('group', { name: '分钟' })
+    .getByRole('button', { name: '00', exact: true })
+    .click();
+  await page.screenshot({ path: info.outputPath('scheduled-time-picker-desktop.png') });
+  await timePicker.getByRole('button', { name: '确定', exact: true }).click();
+  await first.getByRole('button', { name: '添加时刻' }).click();
+  const secondTime = first.getByRole('textbox', { name: '时刻 2', exact: true });
+  await secondTime.fill('20:00');
+  await secondTime.press('Enter');
+  await expect(timePicker).toBeHidden();
+  await first.getByRole('button', { name: '添加时刻' }).click();
+  await first.getByRole('button', { name: '移除时刻 3' }).click();
+  const addGroup = editor.getByRole('button', { name: '添加时间组合' });
+  await expect(addGroup.locator('svg')).toBeVisible();
+  const grace = editor.getByText('指定日期等待上限（分钟）', { exact: true });
+  await expect(editor.getByRole('combobox', { name: '指定日期等待上限（分钟）' })).toHaveAttribute(
+    'placeholder',
+    '0（不等待）'
+  );
+  const groupBox = (await editor.locator('fieldset').first().boundingBox())!;
+  const addGroupBox = (await addGroup.boundingBox())!;
+  const graceBox = (await grace.boundingBox())!;
+  const gapAboveAddGroup = addGroupBox.y - (groupBox.y + groupBox.height);
+  const gapBelowAddGroup = graceBox.y - (addGroupBox.y + addGroupBox.height);
+  expect(gapAboveAddGroup).toBeGreaterThan(0);
+  expect(Math.abs(gapBelowAddGroup - gapAboveAddGroup)).toBeLessThan(2);
+  await addGroup.click();
   const second = editor.locator('fieldset').nth(1);
   await second.getByRole('combobox', { name: '日期规则' }).click();
   await page.getByRole('option', { name: '指定日期', exact: true }).click();
-  await second.getByRole('textbox', { name: '指定日期' }).fill('2028-02-29');
-  await second.getByRole('textbox', { name: '指定时刻' }).fill('14:30');
+  const firstDate = second.getByRole('textbox', { name: '日期 1', exact: true });
+  await firstDate.fill('2028-02-29');
+  await firstDate.press('ArrowDown');
+  const calendar = page.getByRole('dialog', { name: '日历', exact: true });
+  await calendar.getByRole('button', { name: '2028-02-29', exact: true }).click();
+  await page.screenshot({ path: info.outputPath('scheduled-date-picker-desktop.png') });
+  await calendar.getByRole('button', { name: '确定', exact: true }).click();
+  await second.getByRole('button', { name: '添加日期' }).click();
+  const secondDate = second.getByRole('textbox', { name: '日期 2', exact: true });
+  await secondDate.fill('2028-03-01');
+  await secondDate.press('Enter');
+  const dateTime = second.getByRole('textbox', { name: '时刻 1', exact: true });
+  await dateTime.fill('14:30');
+  await dateTime.press('Enter');
+  await addGroup.click();
+  const third = editor.locator('fieldset').nth(2);
+  await third.getByRole('combobox', { name: '日期规则', exact: true }).click();
+  await page.getByRole('option', { name: '按月中的日期', exact: true }).click();
+  await third.getByRole('combobox', { name: '按月中的日期', exact: true }).click();
+  await page.getByRole('option', { name: '31', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await third.getByRole('combobox', { name: '限定月份（可选）', exact: true }).click();
+  await page.getByRole('option', { name: '1 月', exact: true }).click();
+  await page.getByRole('option', { name: '12 月', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await third.getByRole('combobox', { name: '时间', exact: true }).click();
+  await page.getByRole('option', { name: '组合小时和分钟', exact: true }).click();
+  const hours = third.getByRole('combobox', { name: '小时（可多选）', exact: true });
+  const minutes = third.getByRole('combobox', { name: '分钟（可多选）', exact: true });
+  await hours.click();
+  await page.getByRole('option', { name: '00', exact: true }).click();
+  await page.getByRole('option', { name: '20', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(third.getByText('检查这组的日期和时刻。')).toBeVisible();
+  expect(writes).toHaveLength(0);
+  await minutes.click();
+  await page.getByRole('option', { name: '00', exact: true }).click();
+  await page.getByRole('option', { name: '59', exact: true }).click();
+  await page.keyboard.press('Escape');
   await expect(editor.getByText('按节点时区执行：Asia/Shanghai')).toBeVisible();
+  await expect(third.getByText(/每个选中的小时搭配所有选中的分钟/)).toBeVisible();
   await expect(editor.getByText('Cron', { exact: true })).toHaveCount(0);
+  await addGroup.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath('scheduled-editor-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await grace.scrollIntoViewIfNeeded();
+  await expect(hours).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('scheduled-editor-mobile.png') });
+  await page.setViewportSize(desktopViewport);
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).not.toBeVisible();
   expect(writes[0]?.csrf).toBeTruthy();
@@ -385,16 +518,27 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     ...scope,
     name: '第三项任务',
     objective: 'Review the build',
+    graceMinutes: 0,
     target: { kind: 'existing', sessionId: targetSession.externalSessionId },
     groups: [
-      ...groups,
-      { days: { kind: 'dates', dates: ['2028-02-29'] }, times: { kind: 'times', times: ['14:30'] } }
+      explicitTimes,
+      {
+        days: { kind: 'dates', dates: ['2028-02-29', '2028-03-01'] },
+        times: { kind: 'times', times: ['14:30'] }
+      },
+      grid
     ]
   });
   expect(writes[0]?.body).not.toHaveProperty('timezone');
 
   const card = panel.locator('.card').filter({ hasText: '检查构建' });
-  await card.getByRole('button', { name: '检查构建', exact: true }).click();
+  await expect(
+    panel
+      .locator('.card')
+      .filter({ hasText: '另一节点的相同任务 ID' })
+      .getByRole('button', { name: '编辑' })
+  ).toHaveCount(0);
+  await card.getByRole('button', { name: '编辑', exact: true }).click();
   await editor.getByRole('textbox', { name: '任务提示词' }).fill('New prompt');
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).not.toBeVisible();
@@ -402,27 +546,147 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   expect(writes[1]?.body).toMatchObject({
     ...scope,
     expectedRevision: 2,
-    patch: { objective: 'New prompt', groups }
+    patch: { objective: 'New prompt', groups, graceMinutes: 60 }
   });
-  await card.getByRole('button', { name: '执行记录', exact: true }).click();
-  await expect(panel.locator('.history li')).toHaveCount(1);
+
+  await panel.getByRole('button', { name: '新建定时', exact: true }).click();
+  await select('执行节点', 'Node B');
+  await select('工作区', 'project');
+  await select('运行目标', '每次新建会话');
+  const model = editor.getByRole('combobox', { name: '模型', exact: true });
+  await expect(model).toBeDisabled();
+  await expect(editor.getByRole('combobox', { name: '模型选择', exact: true })).toHaveCount(0);
+  const runner = editor.getByRole('combobox', { name: '运行器', exact: true });
+  await runner.click();
+  const codex = page.getByRole('option', { name: 'Codex', exact: true });
+  await expect(codex.locator('img')).toBeVisible();
+  await expect(
+    page.getByRole('option', { name: 'MAR Agent', exact: true }).locator('img')
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath('scheduled-runner-desktop.png'),
+    animations: 'disabled'
+  });
+  await codex.click();
+  await expect(runner).toHaveText('Codex');
+  await expect(editor.locator('img.mar-ui-select__icon[data-runner="codex"]')).toBeVisible();
+  await editor.getByRole('textbox', { name: '任务名称' }).fill('固定模型定时');
+  await editor.getByRole('textbox', { name: '任务提示词' }).fill('Check the build');
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor.getByText('请选择一个固定模型。')).toBeVisible();
+  expect(writes).toHaveLength(2);
+  await select('模型', 'Test model');
+  await editor.getByRole('tab', { name: '时间组合', exact: true }).click();
+  await firstTime.fill('08:00');
+  await firstTime.press('Enter');
+  await select('指定日期等待上限（分钟）', '15');
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  expect(writes[2]?.body).toMatchObject({
+    ...scope,
+    graceMinutes: 15,
+    target: { kind: 'newSession', runner: 'codex', model: { kind: 'fixed', modelId: 'model' } }
+  });
+
+  const recordsButton = card.getByRole('button', { name: '执行记录', exact: true });
+  await recordsButton.click();
+  const historyTable = editor.getByRole('table', { name: '执行记录列表', exact: true });
+  await expect(historyTable.getByRole('row')).toHaveCount(2);
+  await expect(header.getByRole('heading', { name: '全部定时' })).toBeVisible();
   expect(historyQueries.at(-1)?.searchParams.get('taskId')).toBe('task');
-  await panel.getByRole('button', { name: '加载更多' }).click();
-  await expect(panel.getByRole('alert')).toBeVisible();
-  await expect(panel.locator('.history li')).toHaveCount(1);
-  await panel.getByRole('button', { name: '加载更多' }).click();
-  await expect(panel.locator('.history li')).toHaveCount(2);
-  await panel.getByRole('button', { name: '检查构建', exact: true }).click();
+  await page.screenshot({
+    path: info.outputPath('scheduled-task-history-desktop.png'),
+    animations: 'disabled'
+  });
+  const taskPager = editor.getByRole('navigation', { name: '分页' });
+  await taskPager.getByRole('button', { name: '下一页' }).click();
+  await expect(editor.getByRole('alert')).toBeVisible();
+  await expect(historyTable.getByRole('row')).toHaveCount(2);
+  await taskPager.getByRole('button', { name: '下一页' }).click();
+  await expect(historyTable.getByRole('button')).not.toHaveText('2027-01-01 10:00:00');
+  await expect(historyTable.getByRole('row')).toHaveCount(2);
+  await taskPager.getByRole('button', { name: '上一页' }).click();
+  await expect(historyTable.getByRole('button')).toHaveText('2027-01-01 10:00:00');
+  const recordButton = historyTable.getByRole('button').first();
+  await recordButton.click();
   await expect(editor.getByText('Historical prompt')).toBeVisible();
   await expect(editor.getByRole('button', { name: '打开运行所在会话' })).toHaveCount(0);
+  const requestsBeforeBack = historyQueries.length;
+  await editor.getByRole('button', { name: '返回执行记录', exact: true }).click();
+  await expect(historyTable.getByRole('row')).toHaveCount(2);
+  await expect(recordButton).toBeFocused();
+  expect(historyQueries).toHaveLength(requestsBeforeBack);
+  await editor.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  await expect(recordsButton).toBeFocused();
+  if (!(await scheduleMenu.isVisible())) await toggle.click();
+  await scheduleMenu.getByRole('button', { name: '执行记录', exact: true }).click();
+  const globalHistory = page.getByRole('region', { name: '执行记录', exact: true });
+  const globalTable = globalHistory.getByRole('table', { name: '执行记录列表', exact: true });
+  await expect(globalTable.getByRole('row')).toHaveCount(21);
+  const globalPager = globalHistory.getByRole('navigation', { name: '分页' });
+  await expect(globalPager.getByText(/27/)).toBeVisible();
+  const query = () => historyQueries.at(-1)!.searchParams;
+  expect([...query()]).toEqual([
+    ['mine', 'false'],
+    ['page', '1']
+  ]);
+  await globalPager.getByRole('button', { name: '下一页' }).click();
+  await expect(globalTable.getByRole('row')).toHaveCount(8);
+  expect(query().get('page')).toBe('2');
+  await expect(globalPager).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('scheduled-global-history-desktop.png') });
+  const filter = async (name: string, option: string) => {
+    await globalHistory.getByRole('combobox', { name, exact: true }).click();
+    await page.getByRole('option', { name: option, exact: true }).click();
+  };
+  await filter('执行节点', 'Node A');
+  await expect(globalTable.getByRole('button', { name: '检查构建' })).toHaveCount(0);
+  await expect(globalTable.getByRole('button', { name: '另一个任务的记录' })).toBeVisible();
+  expect([...query()]).toEqual([
+    ['nodeId', 'node-1'],
+    ['mine', 'false'],
+    ['page', '1']
+  ]);
+  await filter('任务归属', '我的定时');
+  await expect(globalTable.getByText('此范围暂无执行记录。')).toBeVisible();
+  expect([...query()]).toEqual([
+    ['nodeId', 'node-1'],
+    ['mine', 'true'],
+    ['page', '1']
+  ]);
+  await filter('执行节点', '全部节点');
+  await expect(globalTable.getByRole('button', { name: '检查构建' })).toBeVisible();
+  expect([...query()]).toEqual([
+    ['mine', 'true'],
+    ['page', '1']
+  ]);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('aside.workspace-tree')).toBeHidden();
+  const tableScroll = globalHistory.getByRole('region', { name: '执行记录列表', exact: true });
+  await expect(tableScroll).toHaveAttribute('tabindex', '0');
+  expect(await tableScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+    true
+  );
   await page
     .locator('html')
     .evaluate((element) => element.setAttribute('data-theme', 'vscode-dark-2026'));
+  await page.screenshot({ path: info.outputPath('scheduled-global-history-mobile.png') });
+  await expect(globalPager).toHaveCount(0);
+  await globalTable.getByRole('row').last().scrollIntoViewIfNeeded();
+  const retry = globalHistory.getByRole('button', { name: '加载失败，点击重试' });
+  await expect(retry).toBeVisible();
+  await expect(globalTable.getByRole('row')).toHaveCount(21);
+  await retry.click();
+  await expect(globalTable.getByRole('row')).toHaveCount(27);
+  expect(query().get('page')).toBe('2');
+  await globalTable.getByRole('button', { name: '检查构建', exact: true }).click();
   await expect(editor.getByText('触发时的提示词')).toBeVisible();
   await expect(editor).toBeInViewport();
-  await page.screenshot({ path: info.outputPath('scheduled-history-mobile.png') });
+  await page.screenshot({
+    path: info.outputPath('scheduled-history-mobile.png'),
+    animations: 'disabled'
+  });
   await editor.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(editor).not.toBeVisible();
   const clock = page.getByRole('button', { name: '定时任务', exact: true });
@@ -449,5 +713,5 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await expect(header.getByRole('heading', { name: '我的定时' })).toBeVisible();
   await expect(scheduleMenu).toBeHidden();
   await page.getByRole('button', { name: '工作', exact: true }).click();
-  await expect(panel).toBeHidden();
+  await expect(panel.or(globalHistory)).toBeHidden();
 });

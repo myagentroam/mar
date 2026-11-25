@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref, useId, watch } from 'vue';
+import { computed, h, nextTick, onBeforeUnmount, reactive, ref, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarTimePicker } from '@myagentroam/mar-ui/time-picker';
 import { MarMessageBox } from '../../service/message-box-service.js';
 import type { ScheduledTarget, ScheduledTimeGroup } from '@myagentroam/protocol';
 import type { RunnerProfile, Session, Workspace } from '../../model/workbench.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import { managementDateTime } from '../../util/time-presentation.js';
+import { runnerBrandIcon } from '../../util/runner-brand-icon.js';
+import { runnerLabel } from '../../util/runner-presentation.js';
 import { translate } from '../../service/locale-preference-service.js';
 import {
   mountMobileDialogReturn,
@@ -25,7 +29,8 @@ import type {
   ScheduleTaskKey,
   scheduledTaskClient
 } from '../../service/scheduled-task-client.js';
-import { parseTimeDraft, timeDraft } from './scheduled-time-draft.js';
+import { addPickerRow, parseTimeDraft, timeDraft } from './scheduled-time-draft.js';
+import '../session/runner-brand-icon.css';
 
 // One dialog owns one draft and cancels its dependent reads when the scope or dialog changes.
 const props = defineProps<{
@@ -36,6 +41,12 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: []; changed: [] }>();
 const notificationHintId = useId();
+const hourOptions = Array.from({ length: 24 }, (_, hour) => hour);
+const minuteOptions = Array.from({ length: 60 }, (_, minute) => minute);
+const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1);
+const monthDayOptions = Array.from({ length: 31 }, (_, index) => index + 1);
+const graceOptions = Array.from({ length: 61 }, (_, minute) => minute);
+const explicitValueLimit = 64;
 const msg = (key: string, args?: Record<string, string | number>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const editing = props.editing;
@@ -53,13 +64,12 @@ const form = reactive({
   sessionId: saved?.sessionId ?? props.initial?.sessionId ?? '',
   runner: saved?.newSession?.runner ?? '',
   model: saved?.newSession?.model.kind === 'fixed' ? saved.newSession.model.modelId : '',
-  modelKind: saved?.newSession?.model.kind ?? '',
   effort: saved?.newSession?.effort ?? '',
   name: saved?.name ?? '',
   objective: saved?.objective ?? '',
   enabled: saved?.enabled ?? true,
   notifyOnTerminal: saved?.notifyOnTerminal ?? false,
-  graceMinutes: String(saved?.graceMinutes ?? 60),
+  graceMinutes: saved?.graceMinutes ?? 0,
   groups: saved?.groups.map((group) => timeDraft(nextId++, group)) ?? [timeDraft(nextId++)]
 });
 const dialog = ref<{ handleClose(): void }>();
@@ -86,15 +96,27 @@ const targetReady = computed(
   () => node.value?.connected && node.value.supported !== false && form.workspaceId !== ''
 );
 const profile = computed(() => profiles.value.find((item) => item.runner === form.runner));
-const model = computed(() => profile.value?.models.find((item) => item.id === form.model));
+const selectedRunnerIcon = computed(() => {
+  const runner = profile.value?.runner;
+  return runner
+    ? () =>
+        h('img', {
+          class: 'mar-runner-brand-icon',
+          'data-runner': runner,
+          src: runnerBrandIcon(runner),
+          alt: ''
+        })
+    : undefined;
+});
+const modelOptions = computed(
+  () => profile.value?.models.filter((item) => !item.subagentModel) ?? []
+);
+const model = computed(() => modelOptions.value.find((item) => item.id === form.model));
 const parsedGroups = computed(() => form.groups.map(parseTimeDraft));
 const checkedGroups = () =>
   parsedGroups.value.flatMap((group) => (group.success ? [group.data] : []));
 const newSessionSupported = computed(() => node.value?.newSessionSupported !== false);
 const initialDraft = JSON.stringify(form);
-const modelOptions = computed(
-  () => profile.value?.models.filter((item) => !item.subagentModel) ?? []
-);
 
 const rules: FormRules = {
   nodeId: [
@@ -119,7 +141,6 @@ const rules: FormRules = {
         new Error(msg('runnerRequired'))
     }
   ],
-  modelKind: [{ required: true, message: msg('modelRequired') }],
   model: [{ validator: () => model.value !== undefined || new Error(msg('modelRequired')) }],
   name: [
     {
@@ -138,7 +159,9 @@ const rules: FormRules = {
   graceMinutes: [
     {
       validator: () =>
-        (/^\d{1,2}$/.test(form.graceMinutes) && Number(form.graceMinutes) <= 60) ||
+        (Number.isInteger(form.graceMinutes) &&
+          form.graceMinutes >= 0 &&
+          form.graceMinutes <= 60) ||
         new Error(msg('graceHint'))
     }
   ]
@@ -165,7 +188,6 @@ function clearTarget(): void {
 }
 function clearModel(): void {
   form.model = '';
-  form.modelKind = '';
   form.effort = '';
 }
 let sessionRead: AbortController | undefined;
@@ -238,7 +260,9 @@ watch(
     try {
       const result = await props.client.profiles(selection.value, read.signal);
       if (!read.signal.aborted)
-        profiles.value = result.profiles.filter((item) => item.models.length > 0);
+        profiles.value = result.profiles.filter((item) =>
+          item.models.some((model) => !model.subagentModel)
+        );
     } catch (failure) {
       if (!read.signal.aborted) profileError.value = failure;
     } finally {
@@ -281,8 +305,7 @@ function target(): ScheduledTarget {
     : {
         kind: 'newSession',
         runner: form.runner as Extract<ScheduledTarget, { kind: 'newSession' }>['runner'],
-        model:
-          form.modelKind === 'fixed' ? { kind: 'fixed', modelId: form.model } : { kind: 'default' },
+        model: { kind: 'fixed', modelId: form.model },
         ...(form.effort ? { effort: form.effort } : {})
       };
 }
@@ -311,7 +334,7 @@ async function submit() {
       groups: checkedGroups(),
       enabled: form.enabled,
       notifyOnTerminal: form.notifyOnTerminal,
-      graceMinutes: Number(form.graceMinutes)
+      graceMinutes: form.graceMinutes
     };
     if (editing && saved) await props.client.update(editing.key, saved.revision, draft);
     else await props.client.create(selection.value, draft);
@@ -497,33 +520,41 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
           </MarFormItem>
           <template v-if="form.targetKind === 'newSession'">
             <MarFormItem :label="msg('runner')" prop="runner">
-              <MarSelect v-model="form.runner" :loading="loadingProfiles" @change="clearModel">
+              <MarSelect
+                v-model="form.runner"
+                v-bind="selectedRunnerIcon ? { prefixIcon: selectedRunnerIcon } : {}"
+                :loading="loadingProfiles"
+                @change="clearModel"
+              >
                 <MarOption
                   v-for="item in profiles"
                   :key="item.runner"
-                  :label="item.runner"
+                  :label="runnerLabel(item.runner)"
                   :value="item.runner"
-                />
+                >
+                  <span class="runner-option">
+                    <img
+                      class="mar-runner-brand-icon"
+                      :data-runner="item.runner"
+                      :src="runnerBrandIcon(item.runner)"
+                      alt=""
+                    />
+                    <span>{{ runnerLabel(item.runner) }}</span>
+                  </span>
+                </MarOption>
               </MarSelect>
               <small v-if="profileError" role="alert">{{
                 errorSummary(profileError, msg('loadFailed'))
               }}</small>
             </MarFormItem>
-            <MarFormItem :label="msg('modelPolicy')" prop="modelKind">
-              <MarSelect
-                v-model="form.modelKind"
-                @change="
-                  form.model = '';
-                  form.effort = '';
-                "
-              >
-                <MarOption :label="msg('defaultModel')" value="default" />
-                <MarOption :label="msg('fixedModel')" value="fixed" />
-              </MarSelect>
-            </MarFormItem>
-            <div v-if="form.modelKind === 'fixed'" class="fields">
+            <div :class="{ fields: model?.supportedEfforts.length }">
               <MarFormItem :label="msg('model')" prop="model">
-                <MarSelect v-model="form.model" filterable @change="form.effort = ''">
+                <MarSelect
+                  v-model="form.model"
+                  filterable
+                  :disabled="profile ? undefined : true"
+                  @change="form.effort = ''"
+                >
                   <MarOption
                     v-for="item in modelOptions"
                     :key="item.id"
@@ -626,37 +657,112 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
                 />
               </MarSelect>
             </MarFormItem>
-            <MarFormItem v-if="group.dayKind === 'dates'" :label="msg('dates')"
-              ><MarInput v-model="group.dates" /><small>{{ msg('datesHint') }}</small></MarFormItem
-            >
-            <MarFormItem v-if="group.dayKind === 'monthDays'" :label="msg('monthDays')"
-              ><MarInput v-model="group.monthDays" /><small>{{
-                msg('monthDaysHint')
-              }}</small></MarFormItem
-            >
-            <MarFormItem v-if="group.dayKind !== 'dates'" :label="msg('months')"
-              ><MarInput v-model="group.months" /><small>{{
-                msg('monthsHint')
-              }}</small></MarFormItem
-            >
+            <div v-if="group.dayKind === 'dates'" class="picker-list">
+              <MarFormItem
+                v-for="(row, rowIndex) in group.dates"
+                :key="row.id"
+                class="picker-item"
+                :label="msg('dateEntry', { number: rowIndex + 1 })"
+              >
+                <div class="picker-row">
+                  <MarDatePicker v-model="row.value" type="date" :clearable="false" />
+                  <MarButton
+                    v-if="!readOnly && group.dates.length > 1"
+                    text
+                    icon="close"
+                    :aria-label="msg('removeDate', { number: rowIndex + 1 })"
+                    @click="group.dates.splice(rowIndex, 1)"
+                  />
+                </div>
+              </MarFormItem>
+              <MarButton
+                v-if="!readOnly"
+                icon="plus"
+                :disabled="group.dates.length >= explicitValueLimit || !!pending"
+                @click="addPickerRow(group.dates)"
+                >{{ msg('addDate') }}</MarButton
+              >
+            </div>
+            <MarFormItem v-if="group.dayKind === 'monthDays'" :label="msg('monthDays')">
+              <MarSelect v-model="group.monthDays" multiple collapse-tags collapse-tags-tooltip>
+                <MarOption
+                  v-for="day in monthDayOptions"
+                  :key="day"
+                  :value="day"
+                  :label="String(day)"
+                />
+              </MarSelect>
+            </MarFormItem>
+            <MarFormItem v-if="group.dayKind !== 'dates'" :label="msg('months')">
+              <MarSelect
+                v-model="group.months"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                :placeholder="msg('allMonths')"
+              >
+                <MarOption
+                  v-for="month in monthOptions"
+                  :key="month"
+                  :value="month"
+                  :label="msg('monthOption', { number: month })"
+                />
+              </MarSelect>
+            </MarFormItem>
             <MarFormItem
-              :label="msg(group.timeKind === 'times' ? 'explicitTimes' : 'timeGrid')"
+              :label="group.timeKind === 'grid' ? msg('timeGrid') : ''"
               :prop="`groups.${index}`"
             >
-              <div v-if="group.timeKind === 'times'" class="time-values">
-                <MarInput v-model="group.times" /><small>{{ msg('timesHint') }}</small>
+              <div v-if="group.timeKind === 'times'" class="time-values picker-list">
+                <MarFormItem
+                  v-for="(row, rowIndex) in group.times"
+                  :key="row.id"
+                  class="picker-item"
+                  :label="msg('timeEntry', { number: rowIndex + 1 })"
+                >
+                  <div class="picker-row">
+                    <MarTimePicker v-model="row.value" :clearable="false" />
+                    <MarButton
+                      v-if="!readOnly && group.times.length > 1"
+                      text
+                      icon="close"
+                      :aria-label="msg('removeTime', { number: rowIndex + 1 })"
+                      @click="group.times.splice(rowIndex, 1)"
+                    />
+                  </div>
+                </MarFormItem>
+                <MarButton
+                  v-if="!readOnly"
+                  icon="plus"
+                  :disabled="group.times.length >= explicitValueLimit || !!pending"
+                  @click="addPickerRow(group.times)"
+                  >{{ msg('addTime') }}</MarButton
+                >
               </div>
-              <div v-else class="fields time-values">
-                <MarFormItem :label="msg('hours')"
-                  ><MarInput v-model="group.hours" /><small>{{
-                    msg('hoursHint')
-                  }}</small></MarFormItem
-                >
-                <MarFormItem :label="msg('minutes')"
-                  ><MarInput v-model="group.minutes" /><small>{{
-                    msg('minutesHint')
-                  }}</small></MarFormItem
-                >
+              <div v-else class="time-values">
+                <div class="fields">
+                  <MarFormItem :label="msg('hours')">
+                    <MarSelect v-model="group.hours" multiple collapse-tags collapse-tags-tooltip>
+                      <MarOption
+                        v-for="hour in hourOptions"
+                        :key="hour"
+                        :value="hour"
+                        :label="String(hour).padStart(2, '0')"
+                      />
+                    </MarSelect>
+                  </MarFormItem>
+                  <MarFormItem :label="msg('minutes')">
+                    <MarSelect v-model="group.minutes" multiple collapse-tags collapse-tags-tooltip>
+                      <MarOption
+                        v-for="minute in minuteOptions"
+                        :key="minute"
+                        :value="minute"
+                        :label="String(minute).padStart(2, '0')"
+                      />
+                    </MarSelect>
+                  </MarFormItem>
+                </div>
+                <small>{{ msg('timeGridHint') }}</small>
               </div>
             </MarFormItem>
             <MarButton
@@ -669,15 +775,23 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
           </fieldset>
           <MarButton
             v-if="!readOnly"
+            class="add-time-group"
+            icon="plus"
             :disabled="form.groups.length >= 16 || !!pending"
             @click="form.groups.push(timeDraft(nextId++))"
             >{{ msg('addGroup') }}</MarButton
           >
-          <MarFormItem :label="msg('grace')" prop="graceMinutes"
-            ><MarInput v-model="form.graceMinutes" inputmode="numeric" maxlength="2" /><small>{{
-              msg('graceHint')
-            }}</small></MarFormItem
-          >
+          <MarFormItem :label="msg('grace')" prop="graceMinutes">
+            <MarSelect v-model="form.graceMinutes" filterable>
+              <MarOption
+                v-for="minute in graceOptions"
+                :key="minute"
+                :value="minute"
+                :label="minute === 0 ? msg('graceNone') : String(minute)"
+              />
+            </MarSelect>
+            <small>{{ msg('graceHint') }}</small>
+          </MarFormItem>
           <section class="preview" aria-live="polite">
             <strong>{{ msg('preview') }}</strong>
             <p v-if="preview">{{ msg('nodeTimezone', { timezone: preview.timezone }) }}</p>
@@ -741,6 +855,24 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
 .time-values {
   width: 100%;
 }
+.runner-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.picker-item {
+  margin-block-end: 0.5rem;
+}
+.picker-list > button {
+  margin-block-end: 0.75rem;
+}
+.picker-row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.375rem;
+}
 .time-group {
   border: 1px solid var(--mar-border-default);
   border-radius: var(--mar-radius-control);
@@ -751,6 +883,9 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
 .time-group legend {
   color: var(--mar-text-secondary);
   padding-inline: 0.375rem;
+}
+.add-time-group {
+  margin-block-end: 0.75rem;
 }
 .preview,
 .proposals {

@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, useId, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  useId,
+  useTemplateRef,
+  watch
+} from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
@@ -19,6 +28,7 @@ import {
   scheduledTaskClient,
   type ScheduleCard,
   type ScheduleDetail,
+  type ScheduleInvalidation,
   type ScheduleNode,
   type ScheduleOccurrence,
   type ScheduleOccurrenceDetail,
@@ -29,19 +39,19 @@ import {
   type ScheduleTaskLink
 } from '../../service/scheduled-task-client.js';
 import ScheduledTaskEditor from './ScheduledTaskEditor.vue';
-import type { ScheduleHistoryTask, ScheduleSection } from './scheduled-task-navigation.js';
+import ScheduledExecutionHistory from './ScheduledExecutionHistory.vue';
+import type { ScheduleSection } from './scheduled-task-navigation.js';
 
-// This panel owns the current read scope, cursor and selected resource; the editor owns its draft.
+// Owns task cards and modal selection. History owns its paged reads; the editor owns its draft.
 const props = defineProps<{
   request: ScheduleRequest;
   section: ScheduleSection;
-  historyTask?: ScheduleHistoryTask | undefined;
+  mobile?: boolean;
   initial?: ScheduleSessionScope | undefined;
   linkedTask?: ScheduleTaskLink | undefined;
-  invalidation?: { nodeId?: string; workspaceId?: string; verify?: boolean } | undefined;
+  invalidation?: ScheduleInvalidation | undefined;
 }>();
 const emit = defineEmits<{
-  showHistory: [task?: ScheduleHistoryTask];
   openRun: [target: ScheduleSessionScope & { runId: string }];
 }>();
 const client = scheduledTaskClient(props.request);
@@ -50,13 +60,16 @@ const msg = (key: string, args?: Record<string, number | string>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const tasks = ref<ScheduleCard[]>([]);
 const nodes = ref<ScheduleNode[]>([]);
-const occurrences = ref<ScheduleOccurrence[]>([]);
 const cursor = ref<string | null>(null);
 const unavailable = ref<string[]>([]);
 const failure = shallowRef<unknown>();
 const loading = ref(false);
 const listComplete = computed(() => !loading.value && !failure.value && !unavailable.value.length);
 const selectedTask = shallowRef<ScheduleTaskKey>();
+const taskHistory = shallowRef<ScheduleTaskKey & { name: string }>();
+const historyView = useTemplateRef('historyView');
+const detailBody = ref<HTMLElement>();
+let historyRow: HTMLElement | undefined;
 type OccurrenceKey = Pick<ScheduleOccurrence, 'nodeId' | 'workspaceId' | 'taskId' | 'occurrenceId'>;
 const selectedOccurrence = shallowRef<OccurrenceKey>();
 const occurrence = shallowRef<ScheduleOccurrenceDetail>();
@@ -80,6 +93,7 @@ const cardState = (item: ScheduleCard) =>
         : 'enabled';
 
 async function load(next?: string) {
+  if (props.section === 'history') return;
   if (!next) cancelRefresh();
   listRead?.abort();
   const read = new AbortController();
@@ -88,49 +102,30 @@ async function load(next?: string) {
   failure.value = undefined;
   if (!next) {
     tasks.value = [];
-    occurrences.value = [];
     cursor.value = null;
     unavailable.value = [];
   }
   try {
-    const filters = {
-      mine: props.section === 'mine',
-      ...(next === undefined ? {} : { cursor: next })
-    };
-    if (props.section !== 'history') {
-      const result = await client.list(
-        {
-          ...filters,
-          ...(props.initial ? { session: props.initial } : {})
-        },
-        read.signal
-      );
-      if (read.signal.aborted) return;
-      tasks.value = next ? [...tasks.value, ...result.items] : result.items;
-      nodes.value = result.nodes;
-      unavailable.value = result.unavailableNodeIds;
-      cursor.value = result.nextCursor;
-    } else {
-      const result = await client.history(
-        {
-          ...filters,
-          ...(props.historyTask ? { task: props.historyTask } : {}),
-          ...(props.initial ? { session: props.initial } : {})
-        },
-        read.signal
-      );
-      if (read.signal.aborted) return;
-      occurrences.value = next ? [...occurrences.value, ...result.items] : result.items;
-      unavailable.value = result.unavailableNodeIds;
-      cursor.value = result.nextCursor;
-    }
+    const result = await client.list(
+      {
+        mine: props.section === 'mine',
+        ...(next === undefined ? {} : { cursor: next }),
+        ...(props.initial ? { session: props.initial } : {})
+      },
+      read.signal
+    );
+    if (read.signal.aborted) return;
+    tasks.value = next ? [...tasks.value, ...result.items] : result.items;
+    nodes.value = result.nodes;
+    unavailable.value = result.unavailableNodeIds;
+    cursor.value = result.nextCursor;
   } catch (error) {
     if (!read.signal.aborted) failure.value = error;
   } finally {
     if (!read.signal.aborted) loading.value = false;
   }
 }
-function closeDetail() {
+function resetDetail() {
   detailRead?.abort();
   selectedTask.value = undefined;
   selectedOccurrence.value = undefined;
@@ -140,10 +135,17 @@ function closeDetail() {
   runReceipt.value = undefined;
   editor.value = undefined;
 }
+function closeDetail() {
+  resetDetail();
+  taskHistory.value = undefined;
+  historyRow = undefined;
+}
 watch(
-  [() => props.section, () => props.historyTask],
+  () => props.section,
   () => {
     closeDetail();
+    cancelRefresh();
+    listRead?.abort();
     void load();
   },
   { immediate: true }
@@ -151,7 +153,7 @@ watch(
 watch(
   () => props.invalidation,
   (change) => {
-    const bound = props.historyTask ?? props.initial;
+    const bound = props.section === 'history' ? undefined : props.initial;
     if (
       !change ||
       (bound &&
@@ -162,8 +164,16 @@ watch(
     const open =
       selectedTask.value ??
       selectedOccurrence.value ??
+      taskHistory.value ??
       (typeof editor.value === 'object' ? editor.value.key : undefined);
-    if (change.verify && open && (!change.nodeId || change.nodeId === open.nodeId)) closeDetail();
+    if (
+      change.verify &&
+      open &&
+      (!change.nodeId || change.nodeId === open.nodeId) &&
+      (!change.workspaceId || change.workspaceId === open.workspaceId)
+    )
+      closeDetail();
+    if (props.section === 'history') return;
     cancelRefresh();
     refresh = setTimeout(() => void load(), 120);
   }
@@ -206,11 +216,14 @@ async function openTask(key: ScheduleTaskKey, proposalId?: string) {
   }
 }
 async function openOccurrence(item: OccurrenceKey) {
-  closeDetail();
+  resetDetail();
+  if (taskHistory.value && document.activeElement instanceof HTMLElement)
+    historyRow = document.activeElement;
   selectedOccurrence.value = item;
   const read = new AbortController();
   detailRead = read;
   detailLoading.value = true;
+  if (taskHistory.value) void nextTick(() => detailBody.value?.focus());
   try {
     const result = await client.occurrence(item, read.signal);
     if (read.signal.aborted) return;
@@ -224,7 +237,7 @@ async function openOccurrence(item: OccurrenceKey) {
     if (!read.signal.aborted) {
       detailFailure.value = error;
       if (errorCode(error) === 'SCHEDULE_NOT_FOUND' || errorCode(error) === 'WORKSPACE_NOT_FOUND')
-        void load();
+        void historyView.value?.reload();
     }
   } finally {
     if (!read.signal.aborted) detailLoading.value = false;
@@ -236,8 +249,18 @@ function openRun() {
   if (item && run && runReceipt.value)
     emit('openRun', { nodeId: item.nodeId, workspaceId: item.workspaceId, ...run });
 }
-function showTaskHistory({ nodeId, workspaceId, id, name }: ScheduleCard) {
-  emit('showHistory', { nodeId, workspaceId, id, name });
+function openTaskHistory({ nodeId, workspaceId, id, name }: ScheduleCard) {
+  closeDetail();
+  taskHistory.value = { nodeId, workspaceId, id, name };
+}
+function backToTaskHistory() {
+  resetDetail();
+  const row = historyRow;
+  historyRow = undefined;
+  void nextTick(() => {
+    if (row?.isConnected) row.focus();
+    else detailBody.value?.focus();
+  });
 }
 function reasonLabel(code: string): string {
   const key = `errors.${code}`;
@@ -268,26 +291,35 @@ watch(
 <template>
   <section class="mar-management-page schedule-panel" :aria-labelledby="panelTitleId">
     <header>
-      <h2 :id="panelTitleId">{{ msg('panelTitle') }}</h2>
+      <h2 :id="panelTitleId">{{ msg(section === 'history' ? 'history' : 'panelTitle') }}</h2>
     </header>
-    <div class="mar-table-actions">
-      <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="load()">{{
-        msg('refresh')
-      }}</MarButton>
-      <MarButton
-        v-if="section !== 'history'"
-        type="primary"
-        :icon="marIcon('plus')"
-        :disabled="nodes.length === 0"
-        @click="editor = 'new'"
-        >{{ msg('create') }}</MarButton
-      >
-    </div>
-    <p v-if="unavailable.length" role="status" class="notice">
-      {{ msg('partial', { count: unavailable.length }) }}
-    </p>
-    <p v-if="failure" role="alert" class="notice">{{ errorSummary(failure, msg('loadFailed')) }}</p>
-    <template v-if="section !== 'history'">
+    <ScheduledExecutionHistory
+      v-if="section === 'history'"
+      ref="historyView"
+      :client="client"
+      :mobile="mobile === true"
+      :invalidation="invalidation"
+      @open="openOccurrence"
+    />
+    <template v-else>
+      <div class="mar-table-actions">
+        <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="load()">{{
+          msg('refresh')
+        }}</MarButton>
+        <MarButton
+          type="primary"
+          :icon="marIcon('plus')"
+          :disabled="nodes.length === 0"
+          @click="editor = 'new'"
+          >{{ msg('create') }}</MarButton
+        >
+      </div>
+      <p v-if="unavailable.length" role="status" class="notice">
+        {{ msg('partial', { count: unavailable.length }) }}
+      </p>
+      <p v-if="failure" role="alert" class="notice">
+        {{ errorSummary(failure, msg('loadFailed')) }}
+      </p>
       <div
         v-if="loading && !tasks.length"
         class="mar-page-loading-state"
@@ -302,9 +334,10 @@ watch(
           <li v-for="item in tasks" :key="identity(item.nodeId, item.id)" class="card">
             <div class="card-heading">
               <h3>
-                <MarButton link :disabled="item.offline === true" @click="openTask(item)">{{
+                <MarButton v-if="!item.mine && !item.offline" link @click="openTask(item)">{{
                   item.name
                 }}</MarButton>
+                <template v-else>{{ item.name }}</template>
               </h3>
               <MarTag :type="cardState(item) === 'enabled' ? 'success' : 'info'">{{
                 msg(item.offline ? 'offline' : cardState(item))
@@ -333,51 +366,35 @@ watch(
                 <dd>{{ date(item.syncedAt) }}</dd>
               </div>
             </dl>
-            <MarButton
-              link
-              :disabled="item.offline === true"
-              :icon="marIcon('clock')"
-              @click="showTaskHistory(item)"
-              >{{ msg('history') }}</MarButton
-            >
+            <div class="mar-row-actions mar-row-actions--wrap">
+              <MarButton
+                v-if="item.mine"
+                link
+                :disabled="item.offline === true"
+                :icon="marIcon('edit')"
+                @click="openTask(item)"
+                >{{ msg('editTask') }}</MarButton
+              >
+              <MarButton
+                link
+                :disabled="item.offline === true"
+                :icon="marIcon('clock')"
+                @click="openTaskHistory(item)"
+                >{{ msg('history') }}</MarButton
+              >
+            </div>
           </li>
         </ul>
       </template>
-    </template>
-    <template v-else>
-      <div v-if="historyTask" class="history-filter">
-        <strong>{{ historyTask.name }}</strong>
-        <MarButton link @click="emit('showHistory')">{{ msg('clearTask') }}</MarButton>
-      </div>
-      <div
-        v-if="loading && !occurrences.length"
-        class="mar-page-loading-state"
-        role="progressbar"
-        :aria-label="$t('common.loading')"
+      <MarButton
+        v-if="cursor"
+        :loading="loading"
+        :disabled="loading"
+        class="more"
+        @click="load(cursor)"
+        >{{ msg('more') }}</MarButton
       >
-        <MarBusyIndicator />
-      </div>
-      <p v-else-if="!occurrences.length && listComplete" class="panel-empty">
-        {{ msg('emptyHistory') }}
-      </p>
-      <ul v-else-if="occurrences.length" class="history">
-        <li v-for="item in occurrences" :key="identity(item.nodeId, item.occurrenceId)">
-          <span
-            ><MarButton link @click="openOccurrence(item)">{{ item.name ?? item.taskId }}</MarButton
-            ><small>{{ date(item.dueAt) }}</small></span
-          >
-          <MarTag>{{ msg(`state.${item.state}`) }}</MarTag>
-        </li>
-      </ul>
     </template>
-    <MarButton
-      v-if="cursor"
-      :loading="loading"
-      :disabled="loading"
-      class="more"
-      @click="load(cursor)"
-      >{{ msg('more') }}</MarButton
-    >
     <ScheduledTaskEditor
       v-if="editor"
       :client="client"
@@ -388,57 +405,75 @@ watch(
       @changed="changed"
     />
     <MarDialog
-      v-if="selectedTask || selectedOccurrence"
+      v-if="selectedTask || selectedOccurrence || taskHistory"
       :model-value="true"
-      :title="selectedOccurrence ? msg('occurrence') : msg('title')"
+      :title="selectedOccurrence ? msg('occurrence') : taskHistory ? msg('history') : msg('title')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="(open) => !open && closeDetail()"
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
     >
-      <p v-if="detailFailure" role="alert">{{ errorSummary(detailFailure, msg('loadFailed')) }}</p>
-      <div
-        v-else-if="detailLoading"
-        class="mar-page-loading-state"
-        role="progressbar"
-        :aria-label="$t('common.loading')"
-      >
-        <MarBusyIndicator />
+      <div ref="detailBody" tabindex="-1">
+        <section v-if="taskHistory" v-show="!selectedOccurrence">
+          <h3 class="history-task-title">{{ taskHistory.name }}</h3>
+          <ScheduledExecutionHistory
+            ref="historyView"
+            :client="client"
+            :mobile="mobile === true"
+            :task="taskHistory"
+            :invalidation="invalidation"
+            @open="openOccurrence"
+          />
+        </section>
+        <p v-if="detailFailure" role="alert">
+          {{ errorSummary(detailFailure, msg('loadFailed')) }}
+        </p>
+        <div
+          v-else-if="detailLoading"
+          class="mar-page-loading-state"
+          role="progressbar"
+          :aria-label="$t('common.loading')"
+        >
+          <MarBusyIndicator />
+        </div>
+        <template v-else-if="occurrence">
+          <h3>{{ occurrence.name ?? occurrence.taskId }}</h3>
+          <MarTag>{{ msg(`state.${occurrence.state}`) }}</MarTag>
+          <MarDescriptions class="occurrence-facts" :column="1" border>
+            <MarDescriptionsItem :label="msg('dueAt')">{{
+              date(occurrence.dueAt)
+            }}</MarDescriptionsItem>
+            <MarDescriptionsItem :label="msg('actualStart')">{{
+              date(occurrence.startedAt)
+            }}</MarDescriptionsItem>
+            <MarDescriptionsItem :label="msg('actualEnd')">{{
+              date(occurrence.endedAt)
+            }}</MarDescriptionsItem>
+            <MarDescriptionsItem
+              v-if="occurrence.startedAt !== null && occurrence.endedAt !== null"
+              :label="msg('duration')"
+            >
+              {{
+                msg('seconds', {
+                  count: Math.max(0, Math.round((occurrence.endedAt - occurrence.startedAt) / 1000))
+                })
+              }}
+            </MarDescriptionsItem>
+            <MarDescriptionsItem v-if="occurrence.reason" :label="msg('reason')">
+              {{ reasonLabel(occurrence.reason) }}
+            </MarDescriptionsItem>
+            <MarDescriptionsItem v-if="runReceipt" :label="msg('originalRun')">
+              {{ runStatusLabel(runReceipt.status) }} · <code>{{ runReceipt.id }}</code>
+            </MarDescriptionsItem>
+          </MarDescriptions>
+          <h4>{{ msg('promptSnapshot') }}</h4>
+          <p class="snapshot">{{ occurrence.snapshot?.objective ?? msg('notRecorded') }}</p>
+        </template>
       </div>
-      <template v-else-if="occurrence">
-        <h3>{{ occurrence.name ?? occurrence.taskId }}</h3>
-        <MarTag>{{ msg(`state.${occurrence.state}`) }}</MarTag>
-        <MarDescriptions class="occurrence-facts" :column="1" border>
-          <MarDescriptionsItem :label="msg('dueAt')">{{
-            date(occurrence.dueAt)
-          }}</MarDescriptionsItem>
-          <MarDescriptionsItem :label="msg('actualStart')">{{
-            date(occurrence.startedAt)
-          }}</MarDescriptionsItem>
-          <MarDescriptionsItem :label="msg('actualEnd')">{{
-            date(occurrence.endedAt)
-          }}</MarDescriptionsItem>
-          <MarDescriptionsItem
-            v-if="occurrence.startedAt !== null && occurrence.endedAt !== null"
-            :label="msg('duration')"
-          >
-            {{
-              msg('seconds', {
-                count: Math.max(0, Math.round((occurrence.endedAt - occurrence.startedAt) / 1000))
-              })
-            }}
-          </MarDescriptionsItem>
-          <MarDescriptionsItem v-if="occurrence.reason" :label="msg('reason')">
-            {{ reasonLabel(occurrence.reason) }}
-          </MarDescriptionsItem>
-          <MarDescriptionsItem v-if="runReceipt" :label="msg('originalRun')">
-            {{ runStatusLabel(runReceipt.status) }} · <code>{{ runReceipt.id }}</code>
-          </MarDescriptionsItem>
-        </MarDescriptions>
-        <h4>{{ msg('promptSnapshot') }}</h4>
-        <p class="snapshot">{{ occurrence.snapshot?.objective ?? msg('notRecorded') }}</p>
-      </template>
       <template #footer>
+        <MarButton v-if="taskHistory && selectedOccurrence" @click="backToTaskHistory">{{
+          msg('backToHistory')
+        }}</MarButton>
         <MarButton v-if="runReceipt" type="primary" @click="openRun">{{
           msg('openRun')
         }}</MarButton>
@@ -452,27 +487,18 @@ watch(
 .schedule-panel {
   color: var(--mar-text-primary);
 }
-.card-heading,
-.history-filter {
+.card-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
-.secondary,
-.history small {
+.secondary {
   color: var(--mar-text-secondary);
 }
 p {
   margin: 0.375rem 0;
-}
-.history li {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  padding: 0.375rem 0;
 }
 ul {
   padding: 0;
@@ -531,12 +557,9 @@ ul {
   margin: 0;
   text-align: end;
 }
-.history li {
-  justify-content: space-between;
-  border-bottom: 1px solid var(--mar-border-default);
-}
-.history small {
-  display: block;
+.history-task-title {
+  margin: 0 0 0.75rem;
+  overflow-wrap: anywhere;
 }
 .more {
   align-self: start;

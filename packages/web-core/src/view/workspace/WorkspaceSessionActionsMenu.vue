@@ -91,7 +91,7 @@ function canMove(sessions: readonly Session[], direction: 'up' | 'down'): boolea
         :disabled="mutating"
         @click="emit('dialog', 'schedule')"
       >
-        <MarIcon name="clock" />{{ translate('generated.scheduledSession.title') }}
+        <MarIcon name="calendar-check" />{{ translate('generated.scheduledSession.title') }}
       </MarDropdownItem>
     </template>
     <template #destructive>

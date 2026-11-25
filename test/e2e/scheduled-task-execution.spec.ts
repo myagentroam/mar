@@ -247,24 +247,32 @@ test('Scheduled tasks run through the real Server, Node and execution history', 
     );
     expect(items.map((task) => task.id).sort()).toEqual([a.id, b.id].sort());
     const history = async () =>
-      (
-        await read<{
-          items: {
-            occurrenceId: string;
-            taskId: string;
-            state: string;
-            dueAt: number;
-            run: { runId: string; sessionId: string };
-          }[];
-        }>(await request.get('/api/scheduled-occurrences', { params: { ...scope, sessionId } }))
-      ).items;
+      await read<{
+        page: number;
+        pageSize: number;
+        total: number;
+        hasMore: boolean;
+        items: {
+          occurrenceId: string;
+          taskId: string;
+          state: string;
+          dueAt: number;
+          run: { runId: string; sessionId: string };
+        }[];
+      }>(
+        await request.get('/api/scheduled-occurrences', {
+          params: { ...scope, sessionId, page: 99, limit: 1 }
+        })
+      );
     await expect
-      .poll(async () => (await history()).map((item) => item.state), {
+      .poll(async () => (await history()).items.map((item) => item.state), {
         timeout: 125_000,
         intervals: [250, 1000]
       })
       .toEqual(['SUCCEEDED']);
-    const [entry] = await history();
+    const historyPage = await history();
+    expect(historyPage).toMatchObject({ page: 1, pageSize: 1, total: 1, hasMore: false });
+    const [entry] = historyPage.items;
     expect(entry).toMatchObject({ taskId: b.id, dueAt, run: { sessionId } });
     expect(inputs).toHaveLength(2);
     expect(JSON.stringify(inputs[1])).toContain('Use the revised instruction');

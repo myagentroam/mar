@@ -92,6 +92,7 @@ export const errorPresentationEnUS = {
     SESSION_NOT_FOUND: 'The session does not exist or has been removed.',
     RUN_NOT_FOUND: 'The run does not exist or has already ended.',
     SCHEDULE_NOT_FOUND: 'This scheduled task or execution record is no longer available.',
+    SCHEDULE_HISTORY_CHANGED: 'Execution records changed while loading. Retry this page.',
     SCHEDULE_REVISION_CONFLICT:
       'This task has changed. Reopen the task before making further changes.',
     SCHEDULE_NEXT_TIME_UNAVAILABLE: 'The time combinations have no future occurrence.',

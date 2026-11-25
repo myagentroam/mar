@@ -1,4 +1,5 @@
 import type {
+  ManagementPageMetadata,
   NotificationTarget,
   ScheduledNewSession,
   ScheduledTarget,
@@ -8,6 +9,12 @@ import type {
 import type { RunnerProfile, Session, Workspace } from '../model/workbench.js';
 
 export type ScheduleRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
+export interface ScheduleInvalidation {
+  nodeId?: string;
+  workspaceId?: string;
+  verify?: boolean;
+  connectionOnly?: true;
+}
 export interface ScheduleScope {
   nodeId: string;
   workspaceId: string;
@@ -69,6 +76,8 @@ export interface ScheduleDetail {
   proposals: ScheduleProposal[];
 }
 export interface ScheduleOccurrence extends ScheduleScope {
+  nodeName: string;
+  workspaceName: string;
   occurrenceId: string;
   taskId: string;
   name: string | null;
@@ -81,7 +90,7 @@ export interface ScheduleOccurrence extends ScheduleScope {
 }
 export interface ScheduleOccurrenceDetail extends Omit<
   ScheduleOccurrence,
-  'nodeId' | 'workspaceId'
+  'nodeId' | 'workspaceId' | 'nodeName' | 'workspaceName'
 > {
   snapshot: {
     name?: string;
@@ -144,13 +153,19 @@ export function scheduledTaskClient(request: ScheduleRequest) {
       filters: {
         mine: boolean;
         task?: ScheduleTaskKey;
-        session?: ScheduleSessionScope;
-        cursor?: string;
+        nodeId?: string;
+        page: number;
       },
       signal: AbortSignal
     ) =>
-      request<Page<ScheduleOccurrence>>(
-        `${occurrences}${query({ ...filters.session, ...(filters.task === undefined ? {} : { ...scope(filters.task), taskId: filters.task.id }), mine: filters.mine, cursor: filters.cursor })}`,
+      request<
+        ManagementPageMetadata & {
+          items: ScheduleOccurrence[];
+          unavailableNodeIds: string[];
+          nodes?: Pick<ScheduleNode, 'id' | 'name'>[];
+        }
+      >(
+        `${occurrences}${query({ ...(filters.task === undefined ? { nodeId: filters.nodeId } : { ...scope(filters.task), taskId: filters.task.id }), mine: filters.mine, page: String(filters.page) })}`,
         { signal }
       ),
     occurrence: (item: ScheduleScope & { occurrenceId: string }, signal: AbortSignal) =>

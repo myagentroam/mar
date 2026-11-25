@@ -234,6 +234,7 @@ describe('scheduled session store', () => {
         groups: hourlyGroups,
         timezone: 'UTC'
       });
+      expect(store.getById(task.id)?.graceMinutes).toBe(0);
       expect(store.recentPage(task.id)).toEqual({
         occurrences: [],
         occurrenceTotal: 0,

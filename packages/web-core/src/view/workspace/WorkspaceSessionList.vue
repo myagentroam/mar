@@ -548,7 +548,7 @@ function submitSessionSearch(): void {
                 <MarIcon
                   v-if="session.schedule?.enabled === true"
                   v-tooltip="translate('generated.scheduledSession.enabledIndicator')"
-                  name="clock"
+                  name="calendar-check"
                   class="session-status-indicator"
                   role="img"
                   aria-hidden="false"

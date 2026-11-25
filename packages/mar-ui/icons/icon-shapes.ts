@@ -2,6 +2,8 @@
 export const iconShapes = {
   subtract: '<path d="M5 12h14" />',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4m8-4v4" />',
+  'calendar-check':
+    '<rect x="3.5" y="4.75" width="17" height="16" rx="3"/><path d="M8 3v4m8-4v4m-7.5 7.5 2.25 2.25 4.75-5.5"/>',
   'chevrons-left': '<path d="m11 6-6 6 6 6m8-12-6 6 6 6" />',
   'chevrons-right': '<path d="m5 6 6 6-6 6m8-12 6 6-6 6" />',
   workspace:

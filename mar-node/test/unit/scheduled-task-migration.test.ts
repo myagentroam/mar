@@ -63,10 +63,14 @@ describe('scheduled task migration', () => {
         { run_id: 'run', execution_session_id: 's', task_snapshot: null },
         { run_id: null, execution_session_id: null, task_snapshot: null }
       ]);
-      expect(store.history('w', { taskId: 'legacy', sessionId: 's' })).toMatchObject([
-        { occurrenceId: 'previous' }
-      ]);
-      expect(store.history('w', { taskId: 'legacy', sessionId: 'unrelated' })).toEqual([]);
+      expect(store.history('w', { taskId: 'legacy', sessionId: 's' })).toMatchObject({
+        total: 1,
+        items: [{ occurrenceId: 'previous' }]
+      });
+      expect(store.history('w', { taskId: 'legacy', sessionId: 'unrelated' })).toEqual({
+        total: 0,
+        items: []
+      });
       const sibling = store.create({
         sessionId: 's',
         workspaceId: 'w',

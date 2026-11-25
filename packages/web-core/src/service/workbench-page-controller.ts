@@ -319,11 +319,8 @@ export function createWorkbenchPageController<
       ...(selectedSessionId.value === undefined ? {} : { sessionId: selectedSessionId.value })
     })
   });
-  const scheduleInvalidation = shallowRef<{
-    nodeId?: string;
-    workspaceId?: string;
-    verify?: boolean;
-  }>();
+  const scheduleInvalidation =
+    shallowRef<import('./scheduled-task-client.js').ScheduleInvalidation>();
   const scheduledTaskLink = shallowRef<import('./scheduled-task-client.js').ScheduleTaskLink>();
   const workbenchLiveConnection = createWorkbenchLiveService({
     diagnostics: webPerformanceDiagnostics,
@@ -347,7 +344,7 @@ export function createWorkbenchPageController<
       hostedConversationWorkspace.projectActivityMessage(message),
     onResyncRequired: handleWorkbenchResync,
     onNodeConnection: (nodeId, connected) => {
-      scheduleInvalidation.value = { nodeId, verify: true };
+      scheduleInvalidation.value = { nodeId, verify: true, connectionOnly: true };
       updateNodeConnection(nodeId, connected);
       if (!connected) directTransport.nodeInvalidated(nodeId);
       else void refreshNodes().then(() => directTransport.refresh(nodeId, true));

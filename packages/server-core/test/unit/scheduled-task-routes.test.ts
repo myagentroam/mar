@@ -107,7 +107,10 @@ function fixture() {
         .slice(0, limit)
     )
   };
-  const history = new Map<string, { occurrenceId: string; dueAt: number }[]>();
+  const history = new Map<
+    string,
+    { occurrenceId: string; dueAt: number; taskId?: string; ownerUserId?: number }[]
+  >();
   const requestNode = vi.fn(
     async (
       nodeId: string,
@@ -124,7 +127,7 @@ function fixture() {
         limit?: number;
         sessionId?: string;
         state?: ScheduledTaskState;
-        before?: { dueAt: number; sameTime: string };
+        offset?: number;
       };
       if (!connections.has(nodeId)) throw new Error('NODE_OFFLINE');
       if (operation === 'workspace.list')
@@ -145,32 +148,27 @@ function fixture() {
           nextCursor: filtered.length > input.limit! ? 'cursor' : null
         };
       }
-      if (operation === 'schedule.occurrence.list')
+      if (operation === 'schedule.occurrence.list') {
+        const filtered = (history.get(scope) ?? []).filter(
+          (item) =>
+            (!input.mine || (item.ownerUserId ?? 1) === 1) &&
+            (!input.taskId || input.taskId === (item.taskId ?? 'task'))
+        );
         return {
-          items: (history.get(scope) ?? [])
-            .filter((item) => {
-              const before = input.before;
-              return (
-                before === undefined ||
-                item.dueAt < before.dueAt ||
-                (item.dueAt === before.dueAt &&
-                  (before.sameTime === 'include' ||
-                    (before.sameTime !== 'exclude' && item.occurrenceId < before.sameTime)))
-              );
-            })
-            .slice(0, 11)
-            .map((item) => ({
-              taskId: 'task',
-              name: null,
-              state: 'SKIPPED',
-              reason: null,
-              startedAt: null,
-              endedAt: null,
-              run: null,
-              snapshot: { objective: 'not a list field' },
-              ...item
-            }))
+          total: filtered.length,
+          items: filtered.slice(input.offset, (input.offset ?? 0) + input.limit!).map((item) => ({
+            taskId: item.taskId ?? 'task',
+            name: null,
+            state: 'SKIPPED',
+            reason: null,
+            startedAt: null,
+            endedAt: null,
+            run: null,
+            snapshot: { objective: 'not a list field' },
+            ...item
+          }))
         };
+      }
       if (operation === 'schedule.task.get') {
         const task = tasks.find((item) => item.id === input.taskId);
         if (!task) throw new Error('SCHEDULE_NOT_FOUND');
@@ -372,8 +370,8 @@ it('pages across Nodes using only the list projections', async () => {
   expect(next.nextCursor).toBeNull();
 });
 
-it('pages history across same-time Nodes using scope-specific boundaries, and validates task scope', async () => {
-  const { app, history, requestNode, visible } = fixture();
+it('returns real totals and arbitrary history pages across same-time Nodes after scoped filtering', async () => {
+  const { app, history, requestNode, visible, connections } = fixture();
   history.set(
     'a:a1',
     Array.from({ length: 12 }, (_, index) => ({
@@ -388,16 +386,21 @@ it('pages history across same-time Nodes using scope-specific boundaries, and va
     })),
     { occurrenceId: 'b00', dueAt: 90 }
   ]);
-  const url = '/api/scheduled-occurrences?mine=false';
+  const url = '/api/scheduled-occurrences?mine=false&limit=10';
   expect((await app.inject({ url })).statusCode).toBe(401);
-  for (const bad of ['0', '1.5', 'abc', '', 'first&cursor=second'])
-    expect((await app.inject({ url: `${url}&cursor=${bad}`, headers })).statusCode).toBe(400);
+  for (const bad of [
+    'page=0',
+    'page=1.5',
+    'page=abc',
+    'page=',
+    'page=1&page=2',
+    'limit=501',
+    'cursor=old'
+  ])
+    expect((await app.inject({ url: `${url}&${bad}`, headers })).statusCode).toBe(400);
   expect(requestNode).not.toHaveBeenCalled();
-  const first = (await app.inject({ url, headers })).json();
-  expect(first.items).toHaveLength(10);
-  expect(first.items.at(-1).occurrenceId).toBe('a03');
-  expect(first.items[0]).not.toHaveProperty('snapshot');
-  const next = (await app.inject({ url: `${url}&cursor=${first.nextCursor}`, headers })).json();
+  const next = (await app.inject({ url: `${url}&page=2`, headers })).json();
+  expect(next).toMatchObject({ page: 2, pageSize: 10, total: 25, hasMore: true });
   expect(next.items.map((item: { occurrenceId: string }) => item.occurrenceId)).toEqual([
     'a02',
     'a01',
@@ -410,7 +413,13 @@ it('pages history across same-time Nodes using scope-specific boundaries, and va
     'b06',
     'b05'
   ]);
-  const last = (await app.inject({ url: `${url}&cursor=${next.nextCursor}`, headers })).json();
+  expect(next.items[0]).not.toHaveProperty('snapshot');
+  const first = (await app.inject({ url, headers })).json();
+  expect(first).toMatchObject({ page: 1, pageSize: 10, total: 25, hasMore: true });
+  expect(first.items).toHaveLength(10);
+  expect(first.items.at(-1).occurrenceId).toBe('a03');
+  const last = (await app.inject({ url: `${url}&page=9007199254740991`, headers })).json();
+  expect(last).toMatchObject({ page: 3, pageSize: 10, total: 25, hasMore: false });
   expect(last.items.map((item: { occurrenceId: string }) => item.occurrenceId)).toEqual([
     'b04',
     'b03',
@@ -418,14 +427,36 @@ it('pages history across same-time Nodes using scope-specific boundaries, and va
     'b01',
     'b00'
   ]);
-  expect(last.nextCursor).toBeNull();
   expect(requestNode).toHaveBeenCalledWith(
     'a',
     'schedule.occurrence.list',
-    { workspaceId: 'a1', mine: false, before: { dueAt: 100, sameTime: 'exclude' } },
+    { workspaceId: 'a1', mine: false, offset: 10, limit: 10 },
     expect.objectContaining({ workspaceId: 'a1' }),
     undefined
   );
+  history.get('b:b1')![0]!.ownerUserId = 7;
+  requestNode.mockClear();
+  const filtered = (
+    await app.inject({ url: `${url.replace('false', 'true')}&nodeId=b&page=2`, headers })
+  ).json();
+  expect(filtered.nodes.map((node: { id: string }) => node.id)).toEqual(['a', 'b']);
+  expect(filtered).toMatchObject({
+    page: 2,
+    total: 12,
+    hasMore: false,
+    items: [
+      { nodeId: 'b', occurrenceId: 'b01' },
+      { nodeId: 'b', occurrenceId: 'b00' }
+    ]
+  });
+  expect(requestNode).toHaveBeenCalledWith(
+    'b',
+    'schedule.occurrence.list',
+    { workspaceId: 'b1', mine: true, offset: 10, limit: 10 },
+    expect.objectContaining({ workspaceId: 'b1' }),
+    undefined
+  );
+  expect(requestNode.mock.calls.every(([nodeId]) => nodeId === 'b')).toBe(true);
   const detail = await app.inject({
     url: '/api/scheduled-occurrences/a03?nodeId=a&workspaceId=a1',
     headers
@@ -439,13 +470,6 @@ it('pages history across same-time Nodes using scope-specific boundaries, and va
     (await app.inject({ url: '/api/scheduled-occurrences/a03?nodeId=b&workspaceId=b1', headers }))
       .statusCode
   ).toBe(404);
-  expect(requestNode).toHaveBeenCalledWith(
-    'b',
-    'schedule.occurrence.list',
-    { workspaceId: 'b1', mine: false, before: { dueAt: 100, sameTime: 'include' } },
-    expect.objectContaining({ workspaceId: 'b1', userId: 1 }),
-    undefined
-  );
   expect((await app.inject({ url: `${url}&taskId=a-task&nodeId=a`, headers })).statusCode).toBe(
     400
   );
@@ -465,6 +489,15 @@ it('pages history across same-time Nodes using scope-specific boundaries, and va
     (await app.inject({ url: `${url}&taskId=a-task&nodeId=a&workspaceId=a1`, headers })).statusCode
   ).toBe(404);
   expect(requestNode).not.toHaveBeenCalled();
+  connections.delete('b');
+  const partial = (await app.inject({ url: `${url}&page=9`, headers })).json();
+  expect(partial).toMatchObject({
+    page: 1,
+    total: 0,
+    items: [],
+    hasMore: false,
+    unavailableNodeIds: ['b']
+  });
 });
 
 it('binds detail, writes and preview to the authenticated Workspace and rejects invalid writes before dispatch', async () => {

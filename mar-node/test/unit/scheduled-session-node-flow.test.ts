@@ -652,6 +652,21 @@ describe('scheduled Node session flow', () => {
         state: 'SUCCEEDED'
       });
       expect(JSON.stringify(first.occurrences)).not.toContain('objective');
+      const browserScope = {
+        workspaceId: workspace.id,
+        sessionId: session.id,
+        offset: 10,
+        limit: 10
+      };
+      const browserTail = (await get(browserScope)) as { total: number; items: unknown[] };
+      expect(browserTail.total).toBe(12);
+      expect(browserTail.items).toHaveLength(2);
+      expect(await get({ ...browserScope, offset: 12 })).toEqual({ total: 12, items: [] });
+      expect(await get({ ...browserScope, sessionId: 'another-session' })).toEqual({
+        total: 0,
+        items: []
+      });
+      await expect(get({ ...browserScope, offset: -1 })).rejects.toThrow('SCHEDULE_INVALID');
       const last = (await get({ ...input, occurrencePage: 3 })) as { occurrences: unknown[] };
       expect(last).toMatchObject({ occurrenceTotal: 12, occurrencePage: 2 });
       expect(last.occurrences).toHaveLength(2);
@@ -745,7 +760,7 @@ describe('scheduled Node session flow', () => {
       });
       expect(
         await ops['schedule.occurrence.list']!({ ...scope, taskId, sessionId: 'new-target' })
-      ).toEqual({ items: [] });
+      ).toEqual({ total: 0, items: [] });
       await expect(
         Promise.resolve().then(() =>
           ops['schedule.occurrence.get']!({ ...scope, occurrenceId: id, sessionId: 'new-target' })

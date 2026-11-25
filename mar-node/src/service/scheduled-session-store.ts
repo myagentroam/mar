@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  MANAGEMENT_DEFAULT_LIMIT,
   scheduledTimeGroupsSchema,
   type RunnerName,
   type ScheduledNewSession,
@@ -255,7 +256,7 @@ export class ScheduledSessionStore {
       runner: input.runner,
       ownerUserId: input.ownerUserId,
       notifyOnTerminal: input.notifyOnTerminal ?? false,
-      graceMinutes: input.graceMinutes ?? 60,
+      graceMinutes: input.graceMinutes ?? 0,
       name: normalizeName(input.name),
       groups,
       timezone: input.timezone,
@@ -677,38 +678,48 @@ export class ScheduledSessionStore {
       taskId?: string | undefined;
       ownerUserId?: number | undefined;
       sessionId?: string | undefined;
-      before?: { dueAt: number; sameTime: 'include' | 'exclude' | string } | undefined;
-    }
+    },
+    offset = 0,
+    limit = MANAGEMENT_DEFAULT_LIMIT
   ) {
-    const { taskId, ownerUserId, before, sessionId } = input;
-    const time = before?.dueAt ?? Number.MAX_SAFE_INTEGER;
-    return (
-      this.database
-        .prepare(
-          `SELECT o.id,o.task_id,o.due_at,o.status,o.code,o.run_id,
-      o.actual_started_at,o.ended_at,o.execution_session_id,
-      json_extract(o.task_snapshot,'$.name') AS name
-      FROM scheduled_session_occurrences o JOIN scheduled_session_tasks t ON t.id=o.task_id
+    const { taskId, ownerUserId, sessionId } = input;
+    const scope = `FROM scheduled_session_occurrences o JOIN scheduled_session_tasks t ON t.id=o.task_id
       WHERE t.workspace_id=? AND (? IS NULL OR t.id=?) AND (? IS NULL OR t.owner_user_id=?)
-      AND (? IS NULL OR ${occurrenceSession}=?)
-      AND (o.due_at<? OR (o.due_at=? AND (?='include' OR (?<>'exclude' AND o.id<?))))
-      ORDER BY o.due_at DESC,o.id DESC LIMIT 11`
-        )
-        .all(
-          workspaceId,
-          taskId ?? null,
-          taskId ?? null,
-          ownerUserId ?? null,
-          ownerUserId ?? null,
-          sessionId ?? null,
-          sessionId ?? null,
-          time,
-          time,
-          before?.sameTime ?? 'exclude',
-          before?.sameTime ?? 'exclude',
-          before?.sameTime ?? ''
-        ) as SqlRow[]
-    ).map(occurrenceSummary);
+      AND (? IS NULL OR ${occurrenceSession}=?)`;
+    const parameters = [
+      workspaceId,
+      taskId ?? null,
+      taskId ?? null,
+      ownerUserId ?? null,
+      ownerUserId ?? null,
+      sessionId ?? null,
+      sessionId ?? null
+    ];
+    this.database.exec('BEGIN');
+    let total: number;
+    let rows: SqlRow[];
+    try {
+      ({ total } = this.database
+        .prepare(`SELECT COUNT(*) AS total ${scope}`)
+        .get(...parameters) as {
+        total: number;
+      });
+      rows =
+        total <= offset
+          ? []
+          : (this.database
+              .prepare(
+                `SELECT o.id,o.task_id,o.due_at,o.status,o.code,o.run_id,o.actual_started_at,o.ended_at,
+        o.execution_session_id,json_extract(o.task_snapshot,'$.name') AS name ${scope}
+        ORDER BY o.due_at DESC,o.id DESC LIMIT ? OFFSET ?`
+              )
+              .all(...parameters, limit, offset) as SqlRow[]);
+      this.database.exec('COMMIT');
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
+    return { total, items: rows.map(occurrenceSummary) };
   }
 
   historyDetail(workspaceId: string, id: string, sessionId?: string) {

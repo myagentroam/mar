@@ -7,7 +7,9 @@ import {
   scheduledTaskIdSchema,
   scheduledTaskPatchSchema,
   scheduledTaskRevisionSchema,
-  scheduledTaskStateSchema
+  scheduledTaskStateSchema,
+  MANAGEMENT_DEFAULT_LIMIT,
+  MANAGEMENT_MAX_LIMIT
 } from '@myagentroam/protocol';
 import {
   scheduledTargetSchema,
@@ -271,24 +273,23 @@ export class SessionScheduleService {
         });
       return { ...paging, occurrences: occurrences.map(occurrenceSummary) };
     }
-    const before =
-      input.before === undefined
-        ? undefined
-        : parse(
-            z.object({
-              dueAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-              sameTime: z.string().min(1).max(512)
-            }),
-            input.before
-          );
-    return {
-      items: this.store().history(workspaceId, {
+    const { offset, limit } = parse(
+      z.object({
+        offset: z.number().int().nonnegative().safe().default(0),
+        limit: z.number().int().min(1).max(MANAGEMENT_MAX_LIMIT).default(MANAGEMENT_DEFAULT_LIMIT)
+      }),
+      input
+    );
+    return this.store().history(
+      workspaceId,
+      {
         taskId,
         sessionId,
-        before,
         ownerUserId: input.mine === true ? actorId(input) : undefined
-      })
-    };
+      },
+      offset,
+      limit
+    );
   }
 
   private historyDetail(input: Record<string, unknown>): unknown {

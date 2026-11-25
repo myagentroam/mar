@@ -310,7 +310,7 @@ function runBlankMenuCommand(command: string): void {
           }"
           @click="emit('openScheduledTasks')"
         >
-          <span class="nav-item-content"><MarIcon name="clock" aria-hidden="true" /></span>
+          <span class="nav-item-content"><MarIcon name="calendar-check" aria-hidden="true" /></span>
         </button>
         <WorkbenchActivityCenter
           v-if="item.id === 'conversations'"

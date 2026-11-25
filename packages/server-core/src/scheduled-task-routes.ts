@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
+  MANAGEMENT_DEFAULT_LIMIT,
+  MANAGEMENT_MAX_LIMIT,
   scheduledTaskWriteSchema,
   scheduledTaskOwnerPatchSchema,
   scheduledTaskRevisionSchema,
@@ -18,6 +20,7 @@ import {
   scheduledTaskIndexEntry,
   type ScheduledTaskIndexStore
 } from './scheduled-task-index.js';
+import { managementPageQuery, ManagementQueryError } from './management-pagination.js';
 
 const id = z.string().min(1).max(512);
 const address = z.object({ nodeId: id, workspaceId: id });
@@ -32,13 +35,7 @@ const taskFilter = filter.extend({
   state: scheduledTaskStateSchema.optional()
 });
 const listCursor = address.extend({ taskId: id });
-const historyCursor = z.object({
-  nodeId: id,
-  occurrenceId: id,
-  dueAt: z.number().int().nonnegative().safe()
-});
 const pageSize = 20;
-const historyPageSize = 10;
 const binary = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const time = z.number().int().nonnegative().safe();
 const directoryWorkspace = z.object({
@@ -69,7 +66,8 @@ const occurrenceSummary = z.object({
   run: z.object({ runId: id, sessionId: id }).nullable()
 });
 const occurrencePage = z.object({
-  items: z.array(occurrenceSummary).max(historyPageSize + 1)
+  total: time,
+  items: z.array(occurrenceSummary).max(MANAGEMENT_MAX_LIMIT)
 });
 const occurrenceDetail = occurrenceSummary.extend({ snapshot: z.record(z.unknown()).nullable() });
 const taskDetail = z
@@ -91,6 +89,55 @@ interface DirectoryWorkspace {
 interface Scope extends Address {
   nodeName: string;
   workspaceName: string;
+}
+type Occurrence = z.infer<typeof occurrenceSummary> & Scope;
+class HistoryChanged extends Error {}
+type HistoryBatch = {
+  scope: Scope;
+  total: number;
+  items: Occurrence[];
+  offset: number;
+  index: number;
+};
+
+/** Merge only bounded Node batches. Node remains the owner of counts and local ordering. */
+async function mergeHistoryPage(
+  batches: HistoryBatch[],
+  offset: number,
+  limit: number,
+  read: (batch: HistoryBatch, offset: number) => Promise<Occurrence[]>
+): Promise<Occurrence[]> {
+  const [first] = batches;
+  if (first && batches.length === 1 && offset > 0) return read(first, offset);
+  const items: Occurrence[] = [];
+  for (let rank = 0; items.length < limit; rank++) {
+    let selected: HistoryBatch | undefined;
+    for (const batch of batches) {
+      const row = batch.items[batch.index];
+      const best = selected?.items[selected.index];
+      if (
+        row &&
+        (!best ||
+          (best.dueAt - row.dueAt ||
+            binary(row.nodeId, best.nodeId) ||
+            binary(best.occurrenceId, row.occurrenceId)) < 0)
+      )
+        selected = batch;
+    }
+    if (!selected) break;
+    const item = selected.items[selected.index++]!;
+    if (rank >= offset) items.push(item);
+    if (items.length === limit) break;
+    if (
+      selected.index === selected.items.length &&
+      selected.offset + selected.index < selected.total
+    ) {
+      selected.offset += selected.index;
+      selected.index = 0;
+      selected.items = await read(selected, selected.offset);
+    }
+  }
+  return items;
 }
 export interface ScheduledTaskDirectory {
   nodes(userId: number): Promise<readonly DirectoryNode[]>;
@@ -148,7 +195,8 @@ export function registerScheduledTaskRoutes({
       }));
   };
   const directory = async (actor: CurrentUserSession, filters: z.infer<typeof scopeFilter>) => {
-    const nodes = (await schedules.nodes(actor.userId)).filter(
+    const visibleNodes = await schedules.nodes(actor.userId);
+    const nodes = visibleNodes.filter(
       (node) => filters.nodeId === undefined || node.id === filters.nodeId
     );
     const unavailable = new Set<string>();
@@ -169,7 +217,7 @@ export function registerScheduledTaskRoutes({
         }
       })
     );
-    return { nodes, unavailable, scopes: slices.flat() };
+    return { nodes, visibleNodes, unavailable, scopes: slices.flat() };
   };
 
   app.get('/api/scheduled-tasks', async (request, reply) => {
@@ -296,9 +344,19 @@ export function registerScheduledTaskRoutes({
     if (actor === undefined) return;
     reply.header('cache-control', 'private, no-store');
     try {
-      const query = filter
-        .extend({ taskId: id.optional(), sessionId: id.optional() })
-        .parse(request.query);
+      const raw = z.record(z.unknown()).parse(request.query);
+      if (raw.cursor !== undefined) return sendError(reply, 400, 'SCHEDULE_INVALID');
+      const query = scopeFilter
+        .extend({
+          taskId: id.optional(),
+          sessionId: id.optional(),
+          mine: z.enum(['true', 'false']).optional()
+        })
+        .parse(raw);
+      const { page, limit } = managementPageQuery(raw) ?? {
+        page: 1,
+        limit: MANAGEMENT_DEFAULT_LIMIT
+      };
       if (
         (query.taskId !== undefined || query.sessionId !== undefined) &&
         (query.nodeId === undefined || query.workspaceId === undefined)
@@ -311,69 +369,76 @@ export function registerScheduledTaskRoutes({
         !(await canUse(actor, { nodeId: query.nodeId, workspaceId: query.workspaceId }))
       )
         return sendError(reply, 404, 'SCHEDULE_NOT_FOUND');
-      const previous = decode(query.cursor, historyCursor);
-      const { scopes, unavailable } = await directory(actor, query);
+      const { scopes, visibleNodes, unavailable } = await directory(actor, query);
       if (query.taskId !== undefined && scopes.length === 0 && unavailable.size === 0)
         return sendError(reply, 404, 'SCHEDULE_NOT_FOUND');
-      const batches = await Promise.all(
-        scopes.map(async (scope) => {
-          try {
-            const before =
-              previous === undefined
-                ? undefined
-                : {
-                    dueAt: previous.dueAt,
-                    sameTime:
-                      scope.nodeId < previous.nodeId
-                        ? 'exclude'
-                        : scope.nodeId > previous.nodeId
-                          ? 'include'
-                          : previous.occurrenceId
-                  };
-            const result = occurrencePage.parse(
-              await call(actor, scope, 'schedule.occurrence.list', {
-                mine: query.mine !== 'false',
-                ...(query.taskId === undefined ? {} : { taskId: query.taskId }),
-                ...(query.sessionId === undefined ? {} : { sessionId: query.sessionId }),
-                ...(before === undefined ? {} : { before })
-              })
-            );
-            if (
-              query.taskId !== undefined &&
-              result.items.some((item) => item.taskId !== query.taskId)
-            )
-              throw new Error('NODE_RESPONSE_INVALID');
-            return (await canUse(actor, scope))
-              ? result.items.map((item) => ({ ...item, ...scope }))
-              : [];
-          } catch (error) {
-            if (query.taskId !== undefined)
-              throw error instanceof z.ZodError ? new Error('NODE_RESPONSE_INVALID') : error;
-            unavailable.add(scope.nodeId);
-            return [];
-          }
-        })
-      );
-      const candidates = batches
-        .flat()
-        .sort(
-          (a, b) =>
-            b.dueAt - a.dueAt ||
-            binary(a.nodeId, b.nodeId) ||
-            binary(b.occurrenceId, a.occurrenceId)
+      const read = async (scope: Scope, offset: number) => {
+        const result = occurrencePage.safeParse(
+          await call(actor, scope, 'schedule.occurrence.list', {
+            mine: query.mine !== 'false',
+            ...(query.taskId === undefined ? {} : { taskId: query.taskId }),
+            ...(query.sessionId === undefined ? {} : { sessionId: query.sessionId }),
+            limit,
+            offset
+          })
         );
-      const items = candidates.slice(0, historyPageSize);
-      const last = items.at(-1);
+        if (
+          !result.success ||
+          result.data.items.length !== Math.min(limit, Math.max(0, result.data.total - offset)) ||
+          (query.taskId !== undefined &&
+            result.data.items.some((item) => item.taskId !== query.taskId))
+        )
+          throw new Error('NODE_RESPONSE_INVALID');
+        if (!(await canUse(actor, scope))) throw new Error('SCHEDULE_NOT_FOUND');
+        return {
+          total: result.data.total,
+          items: result.data.items.map((item) => ({ ...item, ...scope }))
+        };
+      };
+      const batches = (
+        await Promise.all(
+          scopes.map(async (scope) => {
+            try {
+              return { scope, ...(await read(scope, 0)), offset: 0, index: 0 };
+            } catch (error) {
+              if (query.taskId !== undefined) throw error;
+              unavailable.add(scope.nodeId);
+              return undefined;
+            }
+          })
+        )
+      ).filter((batch): batch is HistoryBatch => batch !== undefined && batch.total > 0);
+      const total = batches.reduce((sum, batch) => sum + batch.total, 0);
+      const actualPage = Math.min(page, Math.max(1, Math.ceil(total / limit)));
+      const items = await mergeHistoryPage(
+        batches,
+        (actualPage - 1) * limit,
+        limit,
+        async (batch, offset) => {
+          const result = await read(batch.scope, offset);
+          if (result.total !== batch.total) throw new HistoryChanged();
+          return result.items;
+        }
+      );
+      if ((await Promise.all(batches.map(({ scope }) => canUse(actor, scope)))).includes(false))
+        return sendError(reply, 404, 'SCHEDULE_NOT_FOUND');
       return reply.send({
         items,
+        ...(query.taskId === undefined && query.sessionId === undefined
+          ? { nodes: visibleNodes.map(({ id, name }) => ({ id, name })) }
+          : {}),
         unavailableNodeIds: [...unavailable].sort(binary),
-        nextCursor:
-          last !== undefined && candidates.length > historyPageSize
-            ? encode({ nodeId: last.nodeId, dueAt: last.dueAt, occurrenceId: last.occurrenceId })
-            : null
+        page: actualPage,
+        pageSize: limit,
+        total,
+        hasMore: actualPage < Math.ceil(total / limit)
       });
     } catch (error) {
-      return error instanceof z.ZodError
+      if (error instanceof HistoryChanged)
+        return sendError(reply, 409, 'SCHEDULE_HISTORY_CHANGED', {
+          message: 'Execution history changed while this page was loading. Retry the page.'
+        });
+      return error instanceof z.ZodError || error instanceof ManagementQueryError
         ? sendError(reply, 400, 'SCHEDULE_INVALID')
         : databaseError(reply, error);
     }

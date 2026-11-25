@@ -41,7 +41,6 @@ import ScheduledTasksPanel from '../schedule/ScheduledTasksPanel.vue';
 import type { ScheduleSessionScope } from '../../service/scheduled-task-client.js';
 import type {
   ScheduledTasksLocation,
-  ScheduleHistoryTask,
   ScheduleSection
 } from '../schedule/scheduled-task-navigation.js';
 import SessionShareDialog from '../workspace/SessionShareDialog.vue';
@@ -87,7 +86,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   openSchedules: [session: ScheduleSessionScope];
   closeSchedules: [];
-  selectScheduleSection: [section: ScheduleSection, task?: ScheduleHistoryTask];
+  selectScheduleSection: [section: ScheduleSection];
 }>();
 async function openScheduledRun(target: ScheduleSessionScope & { runId: string }): Promise<void> {
   const source = props.schedules;
@@ -701,12 +700,11 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       v-if="schedules !== undefined"
       :key="JSON.stringify([page.identity.admin.userId, schedules.session])"
       :section="schedules.section"
-      :history-task="schedules.historyTask"
+      :mobile="page.layout.mobileViewport"
       :initial="schedules.session"
       :linked-task="schedules.link"
       :request="page.identity.request"
       :invalidation="page.application.scheduleInvalidation"
-      @show-history="(task) => emit('selectScheduleSection', 'history', task)"
       @open-run="openScheduledRun"
     />
     <section
