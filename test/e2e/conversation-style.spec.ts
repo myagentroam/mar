@@ -175,6 +175,12 @@ for (const locale of ['en-US', 'zh-CN']) {
       page
     }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: { writeText: async () => {} }
+        });
+      });
       const labels =
         locale === 'zh-CN'
           ? [
@@ -189,12 +195,33 @@ for (const locale of ['en-US', 'zh-CN']) {
               'Roll back this conversation',
               'Permanently delete this user message and all later conversation history'
             ];
+      const iconSize = width < 768 ? '13px' : '14px';
+      const targetSize = width < 768 ? '36px' : '24px';
+      const copiedLabel = locale === 'zh-CN' ? '消息已复制' : 'Message copied';
       for (const theme of ['daylight', 'vscode-dark-2026']) {
         await page.goto(
           `${fixture.url}conversation-style.html?history-actions=1&language=${locale}&theme=${theme}`
         );
         for (const [index, kind] of ['user_message', 'assistant_message'].entries()) {
           const message = page.locator(`.conversation-item.${kind}`);
+          const footer = message.locator('.conversation-message-actions');
+          const time = footer.locator('time');
+          await expect(time).toHaveCSS('font-size', width < 768 ? '11px' : '12px');
+          const timeBox = (await time.boundingBox())!;
+          const actions = footer.locator('.conversation-message-action');
+          await expect(actions).toHaveCount(kind === 'user_message' ? 3 : 2);
+          for (const action of await actions.all()) {
+            await expect(action).toHaveCSS('width', targetSize);
+            await expect(action).toHaveCSS('height', targetSize);
+            await expect(action.locator('svg')).toHaveCSS('width', iconSize);
+            await expect(action.locator('svg')).toHaveCSS('height', iconSize);
+            const actionBox = (await action.boundingBox())!;
+            expect(actionBox.x).toBeGreaterThanOrEqual(timeBox.x + timeBox.width);
+            expect(actionBox.y + actionBox.height / 2).toBeCloseTo(
+              timeBox.y + timeBox.height / 2,
+              0
+            );
+          }
           const branch = message.getByRole('button', { name: labels[index]!, exact: true });
           await expect(branch).toBeVisible();
           const glyph = branch.locator('[data-mar-icon="branch"]');
@@ -231,9 +258,26 @@ for (const locale of ['en-US', 'zh-CN']) {
             .locator('.conversation-item.assistant_message')
             .getByRole('button', { name: labels[3]!, exact: true })
         ).toHaveCount(0);
+        await page.mouse.move(0, 0);
+        await expect(page.locator('[role="tooltip"]:visible')).toHaveCount(0);
         await page.locator('.conversation-timeline').screenshot({
           path: testInfo.outputPath(`history-actions-${theme}.png`)
         });
+        for (const kind of ['user_message', 'assistant_message']) {
+          const footer = page.locator(`.conversation-item.${kind} .conversation-message-actions`);
+          await footer
+            .locator('button')
+            .filter({ has: page.locator('[data-mar-icon="copy"]') })
+            .click();
+          const copied = footer.getByRole('button', { name: copiedLabel, exact: true });
+          const glyph = copied.locator('[data-mar-icon="check"]');
+          const sizes = await glyph.evaluate((element) => {
+            const icon = getComputedStyle(element);
+            const button = getComputedStyle(element.parentElement!);
+            return { icon: [icon.width, icon.height], button: [button.width, button.height] };
+          });
+          expect(sizes).toEqual({ icon: [iconSize, iconSize], button: [targetSize, targetSize] });
+        }
       }
     });
   }
