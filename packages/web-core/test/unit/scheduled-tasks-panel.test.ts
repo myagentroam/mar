@@ -753,12 +753,12 @@ describe('Scheduled tasks workbench', () => {
     try {
       await flushComponent();
       expect(request.mock.calls[0]?.[0]).toBe('/api/scheduled-occurrences?mine=false&page=1');
-      await trigger(button(view, 'Task A'), 'onClick');
+      await trigger(button(view, 'Task A'), 'onClick', new Event('click'));
       expect(textContent(view.root)).toContain('Frozen prompt');
       expect(button(view, 'Open run’s session')).toBeUndefined();
       expect(textContent(view.root)).not.toContain('run-1');
       runWorkspace = record.workspaceId;
-      await trigger(button(view, 'Task A'), 'onClick');
+      await trigger(button(view, 'Task A'), 'onClick', new Event('click'));
       expect(textContent(view.root)).toContain('run-1');
       await trigger(button(view, 'Open run’s session'), 'onClick');
       expect(request.mock.calls.filter(([path]) => path.startsWith('/api/agent-runs/'))).toEqual([
@@ -780,7 +780,7 @@ describe('Scheduled tasks workbench', () => {
     const view = renderComponent(ScheduledTasksPanel, { request, section: 'history' });
     try {
       await flushComponent();
-      await trigger(button(view, task.name), 'onClick');
+      await trigger(button(view, task.name), 'onClick', new Event('click'));
       expect(request.mock.calls.map(([path]) => path)).toEqual([
         '/api/scheduled-occurrences?mine=false&page=1',
         '/api/scheduled-occurrences/record?nodeId=a&workspaceId=work',
