@@ -5,6 +5,9 @@ import { NodeDatabase } from '../../src/database.js';
 import { GoalMcpBridge } from '../../src/service/goal-mcp-bridge.js';
 import { GoalRuntime } from '../../src/service/goal-runtime.js';
 import { ScheduleMcpBridge } from '../../src/service/schedule-mcp-bridge.js';
+import { scheduleIpcFrameLimit } from '../../src/service/schedule-mcp-contract.js';
+import { hourlyGroups } from './scheduled-task-fixtures.js';
+import { SessionScheduleService } from '../../src/session/session-schedule-service.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
 
 vi.mock('node:net', async (importOriginal) => {
@@ -61,16 +64,24 @@ const cases = [
         runner: 'codex',
         ownerUserId: 1,
         objective: 'Original',
-        cron: '0 * * * *',
+        name: 'Hourly check',
+        groups: hourlyGroups,
         timezone: 'UTC'
       });
-      const authorize = vi.fn((capability: { sessionId: string }) => capability.sessionId);
-      const bridge = new ScheduleMcpBridge(() => store, vi.fn(), vi.fn(), authorize);
+      const authorize = vi.fn(async (capability: { sessionId: string }) => capability.sessionId);
+      const service = new SessionScheduleService({
+        database: () => database,
+        runtime: {} as never,
+        projection: {} as never,
+        emitSession: vi.fn()
+      });
+      const bridge = new ScheduleMcpBridge(authorize, (scope, tool, payload) =>
+        service.invokeMcp(scope, tool, payload)
+      );
       const descriptor = await bridge.prepare({
         executionId: 'execution-1',
-        sessionId: task.sessionId,
-        taskId: task.id,
-        revision: task.revision,
+        sessionId: 'session-1',
+        workspaceId: workspace.id,
         actorUserId: 2
       });
       return {
@@ -78,7 +89,11 @@ const cases = [
         request: JSON.stringify({
           token: descriptor.environment!.MAR_SCHEDULE_MCP_TOKEN!,
           tool: 'update_scheduled_task',
-          arguments: { objective: 'Proposed' }
+          arguments: {
+            taskId: task.id,
+            expectedRevision: task.revision,
+            patch: { objective: 'Proposed' }
+          }
         }),
         effects: () => store.pendingProposals(task.id).length,
         authorize,
@@ -94,7 +109,7 @@ const cases = [
   }
 ];
 
-describe.each(cases)('$name MCP IPC', ({ create }) => {
+describe.each(cases)('$name MCP IPC', ({ name, create }) => {
   let fixture: Awaited<ReturnType<typeof create>>;
   let client: net.Socket;
   let peer: net.Socket;
@@ -152,7 +167,9 @@ describe.each(cases)('$name MCP IPC', ({ create }) => {
 
   it('rejects an oversized complete request without authorization or side effects', () => {
     const request = JSON.parse(fixture.request) as { arguments: Record<string, unknown> };
-    request.arguments.padding = 'x'.repeat(65_000);
+    request.arguments.padding = 'x'.repeat(
+      name === 'Schedule' ? scheduleIpcFrameLimit + 1 : 65_000
+    );
     // Deliver one transport chunk regardless of platform-specific socket buffering.
     peer.emit('data', `${JSON.stringify(request)}\n`);
     expect(peer.destroyed).toBe(true);

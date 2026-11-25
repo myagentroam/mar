@@ -66,6 +66,7 @@ const request = {
   occurrenceId: 'task-1:1000',
   ownerUserId: 7,
   workspaceId: 'workspace-1',
+  targetKind: 'existing' as const,
   sessionId: 'session-1',
   runner: 'codex' as const,
   modelId: null

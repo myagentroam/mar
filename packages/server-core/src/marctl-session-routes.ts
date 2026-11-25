@@ -1,7 +1,14 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { runnerNameSchema } from '@myagentroam/protocol';
+import {
+  runnerNameSchema,
+  scheduledTargetSchema,
+  scheduledTaskFields,
+  scheduledTaskIdSchema,
+  scheduledTaskPatchSchema,
+  scheduledTaskRevisionSchema
+} from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
 import { safeErrorCode, sendError } from './http-errors.js';
 import { databaseError } from './domain-errors.js';
@@ -158,25 +165,29 @@ const commandSchema = z
         title: z.string().trim().min(1).max(160)
       })
       .strict(),
-    z.object({ action: z.literal('schedule.list'), ...page }).strict(),
-    z.object({ action: z.literal('schedule.get'), sessionId: id }).strict(),
-    z
-      .object({
-        action: z.literal('schedule.create'),
-        sessionId: id,
-        cron: z.string().min(1).max(512),
-        content: z.string().trim().min(1).max(20_000)
-      })
-      .strict(),
-    z
-      .object({
-        action: z.literal('schedule.update'),
-        sessionId: id,
-        expectedRevision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
-        cron: z.string().min(1).max(512).optional(),
-        content: z.string().trim().min(1).max(20_000).optional()
-      })
-      .strict(),
+    z.strictObject({
+      action: z.literal('schedule.list'),
+      limit: page.limit.default(20),
+      cursor: scheduledTaskIdSchema.optional(),
+      sessionId: id.optional()
+    }),
+    z.strictObject({ action: z.literal('schedule.get'), taskId: scheduledTaskIdSchema }),
+    z.strictObject({
+      action: z.literal('schedule.runs'),
+      taskId: scheduledTaskIdSchema,
+      occurrencePage: z.number().int().positive().default(1)
+    }),
+    z.strictObject({
+      action: z.literal('schedule.create'),
+      target: scheduledTargetSchema,
+      ...scheduledTaskFields
+    }),
+    z.strictObject({
+      action: z.literal('schedule.update'),
+      taskId: scheduledTaskIdSchema,
+      expectedRevision: scheduledTaskRevisionSchema,
+      patch: scheduledTaskPatchSchema
+    }),
     z.object({ action: z.literal('graph'), sessionId: id, limit: page.limit }).strict(),
     z.object({ action: z.literal('history'), sessionId: id, ...page }).strict(),
     z
@@ -246,10 +257,6 @@ const commandSchema = z
   .refine(
     (value) =>
       value.action !== 'config' || value.modelId !== undefined || value.effort !== undefined
-  )
-  .refine(
-    (value) =>
-      value.action !== 'schedule.update' || value.cron !== undefined || value.content !== undefined
   );
 
 export interface MarctlSessionDependencies {
@@ -387,6 +394,27 @@ export function registerMarctlSessionRoutes(
         // Legacy Run-based writes cannot identify the current target Execution safely.
         if (caller.type === 'execution' && ['start', 'send', 'stop'].includes(body.action))
           return sendError(reply, 409, 'MARCTL_AGENT_NETWORK_REQUIRED');
+        if (
+          body.action === 'schedule.list' ||
+          body.action === 'schedule.get' ||
+          body.action === 'schedule.runs' ||
+          body.action === 'schedule.create' ||
+          body.action === 'schedule.update'
+        ) {
+          const { action, ...parameters } = body;
+          const operation = {
+            'schedule.list': 'schedule.task.list',
+            'schedule.get': 'schedule.task.get',
+            'schedule.runs': 'schedule.occurrence.list',
+            'schedule.create': 'schedule.task.create',
+            'schedule.update': 'schedule.task.propose'
+          }[action];
+          const { view, ...result } = object(
+            await call(operation, { ...parameters, view: 'marctl' })
+          );
+          if (view !== 'marctl') return sendError(reply, 409, 'CAPABILITY_VERSION_UNSUPPORTED');
+          return reply.send(result);
+        }
         if (body.action === 'network') {
           const { operation, input: arguments_ } = body.command;
           const networkInput: Record<string, unknown> = { ...arguments_ };
@@ -674,14 +702,6 @@ export function registerMarctlSessionRoutes(
           return reply.send({ sessions: result.sessions, nextCursor: result.nextCursor });
         }
 
-        if (body.action === 'schedule.list')
-          return reply.send(
-            await call('session.schedule.list', {
-              limit: body.limit ?? 20,
-              ...(body.cursor === undefined ? {} : { cursor: body.cursor })
-            })
-          );
-
         let session: Record<string, unknown> | undefined;
         if ('sessionId' in body) {
           const result = object(
@@ -754,18 +774,6 @@ export function registerMarctlSessionRoutes(
         if (body.action === 'rename')
           return reply.send(
             await call('session.metadata.update', { sessionId, customTitle: body.title })
-          );
-        if (body.action === 'schedule.get')
-          return reply.send(await call('session.schedule.get', { sessionId }));
-        if (body.action === 'schedule.create' || body.action === 'schedule.update')
-          return reply.send(
-            await call('session.schedule.agent.save', {
-              sessionId,
-              mode: body.action === 'schedule.create' ? 'create' : 'update',
-              ...('expectedRevision' in body ? { expectedRevision: body.expectedRevision } : {}),
-              ...(body.cron === undefined ? {} : { cron: body.cron }),
-              ...(body.content === undefined ? {} : { objective: body.content })
-            })
           );
         if (body.action === 'config') {
           const models =

@@ -37,7 +37,13 @@ import BrowserHistoryDialog from './BrowserHistoryDialog.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
 import WorkspaceSessionActionsMenu from '../workspace/WorkspaceSessionActionsMenu.vue';
 import SessionPromptDialog from '../workspace/SessionPromptDialog.vue';
-import SessionScheduleDialog from '../workspace/SessionScheduleDialog.vue';
+import ScheduledTasksPanel from '../schedule/ScheduledTasksPanel.vue';
+import type { ScheduleSessionScope } from '../../service/scheduled-task-client.js';
+import type {
+  ScheduledTasksLocation,
+  ScheduleHistoryTask,
+  ScheduleSection
+} from '../schedule/scheduled-task-navigation.js';
 import SessionShareDialog from '../workspace/SessionShareDialog.vue';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
@@ -76,7 +82,28 @@ const SettingsContent = defineAsyncComponent({
 
 const props = defineProps<{
   page: WorkbenchSurfaceView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
+  schedules?: ScheduledTasksLocation | undefined;
 }>();
+const emit = defineEmits<{
+  openSchedules: [session: ScheduleSessionScope];
+  closeSchedules: [];
+  selectScheduleSection: [section: ScheduleSection, task?: ScheduleHistoryTask];
+}>();
+async function openScheduledRun(target: ScheduleSessionScope & { runId: string }): Promise<void> {
+  const source = props.schedules;
+  await props.page.selection.openSessionGroupTarget(target);
+  if (props.schedules !== source) return;
+  const selected = props.page.selection.workspaceTarget;
+  const pane = props.page.mainPaneController;
+  if (
+    selected?.nodeId === target.nodeId &&
+    selected.workspaceId === target.workspaceId &&
+    pane.selectedSessionId.value === target.sessionId
+  ) {
+    pane.selectRun(target.runId);
+    emit('closeSchedules');
+  }
+}
 const browserSource = ref<AsideWorkspace & { browserId: string }>();
 const browserReturn = ref<AsideWorkspace & { browserId: string }>();
 const browserData = ref<AsideWorkspace & { browserId: string; kind: 'cache' | 'history' }>();
@@ -463,15 +490,19 @@ function openSessionInPane(sessionId: string, destination: 'aside' | 'main'): bo
 
 // The workbench owns dialogs opened from either Chats or a conversation pane.
 const sessionDialog = ref<{
-  kind: 'share' | 'prompt' | 'schedule';
+  kind: 'share' | 'prompt';
   session: Session;
   nodeId: string;
   workspaceId: string;
 }>();
 function openSessionDialog(kind: 'share' | 'prompt' | 'schedule', session: Session): void {
   const target = props.page.selection.workspaceTarget;
-  if (target?.workspaceId === session.workspaceId)
-    sessionDialog.value = { kind, session, ...target };
+  if (target?.workspaceId !== session.workspaceId) return;
+  if (kind === 'schedule') {
+    emit('openSchedules', { ...target, sessionId: session.externalSessionId ?? session.id });
+    return;
+  }
+  sessionDialog.value = { kind, session, ...target };
 }
 watch(
   () => [
@@ -588,8 +619,11 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     :class="[
       'workbench',
       {
-        settings: page.application.view !== 'nodes' && page.application.view !== 'conversations',
-        standalone: page.application.view === 'conversations',
+        settings:
+          schedules === undefined &&
+          page.application.view !== 'nodes' &&
+          page.application.view !== 'conversations',
+        standalone: schedules === undefined && page.application.view === 'conversations',
         compact: page.layout.sidebarCollapsed
       }
     ]"
@@ -618,6 +652,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     <WorkbenchHeader
       :mobile-viewport="page.layout.mobileViewport"
       :view="page.application.view"
+      :schedule-section="schedules?.section"
       :sidebar-collapsed="page.layout.sidebarCollapsed"
       :workspace-startup-blocked="workStartupBlocked"
       :settings-section="page.application.settingsSection"
@@ -633,7 +668,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     >
       <template
         v-if="
-          page.application.view === 'nodes' && !page.layout.mobileViewport && !workStartupBlocked
+          schedules === undefined &&
+          page.application.view === 'nodes' &&
+          !page.layout.mobileViewport &&
+          !workStartupBlocked
         "
         #workspace-tabs
       >
@@ -659,8 +697,21 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         />
       </template>
     </WorkbenchHeader>
+    <ScheduledTasksPanel
+      v-if="schedules !== undefined"
+      :key="JSON.stringify([page.identity.admin.userId, schedules.session])"
+      :section="schedules.section"
+      :history-task="schedules.historyTask"
+      :initial="schedules.session"
+      :linked-task="schedules.link"
+      :request="page.identity.request"
+      :invalidation="page.application.scheduleInvalidation"
+      @close="emit('closeSchedules')"
+      @show-history="(task) => emit('selectScheduleSection', 'history', task)"
+      @open-run="openScheduledRun"
+    />
     <section
-      v-show="page.application.view === 'nodes'"
+      v-show="schedules === undefined && page.application.view === 'nodes'"
       ref="workContent"
       class="session-layout"
       tabindex="-1"
@@ -894,16 +945,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :session-id="sessionDialog.session.id"
             :request="page.identity.request"
             @close="sessionDialog = undefined"
-          />
-          <SessionScheduleDialog
-            v-else-if="sessionDialog?.kind === 'schedule'"
-            :key="sessionDialog.session.id"
-            :model-value="true"
-            :session="sessionDialog.session"
-            :node-id="sessionDialog.nodeId"
-            :workspace-id="sessionDialog.workspaceId"
-            :request="page.identity.request"
-            @update:model-value="($event) => !$event && (sessionDialog = undefined)"
           />
           <WorkspaceSessionPane
             :controller="page.mainPaneController"
@@ -1234,7 +1275,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       </Teleport>
     </section>
     <HostedConversationWorkspacePage
-      v-if="page.application.view === 'conversations'"
+      v-if="schedules === undefined && page.application.view === 'conversations'"
       :connected="page.application.liveConnected"
       :workspace="page.hosted.hostedConversationWorkspace"
       :request="page.identity.request"
@@ -1249,7 +1290,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       :has-unread-conversation="page.notifications.hasUnreadConversation"
       @close-mobile-history="page.hosted.closeHostedConversationMobileHistory"
     />
-    <template v-else-if="page.application.view === 'settings'">
+    <template v-else-if="schedules === undefined && page.application.view === 'settings'">
       <BrowserSettings
         v-if="page.application.settingsSection === 'browser'"
         :user-id="page.identity.admin.userId"
@@ -1289,7 +1330,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         />
       </slot>
     </template>
-    <template v-else-if="page.application.view === 'management'">
+    <template v-else-if="schedules === undefined && page.application.view === 'management'">
       <slot name="management-notice" />
       <component
         :is="managementPage.component"

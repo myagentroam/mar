@@ -1,3 +1,4 @@
+import { hourlyGroups } from './scheduled-task-fixtures.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -149,7 +150,8 @@ describe('Node SQLite session records', () => {
       { version: 20 },
       { version: 21 },
       { version: 22 },
-      { version: 23 }
+      { version: 23 },
+      { version: 24 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     expect(database.raw.prepare('PRAGMA table_info(agent_sessions)').all()).toEqual(
@@ -239,7 +241,7 @@ describe('Node SQLite session records', () => {
     database.close();
   });
 
-  it('reopens the current v23 database after a Node restart', async () => {
+  it('reopens the current database after a Node restart', async () => {
     const { path } = await databasePath('current-reopen');
     const first = new NodeDatabase(path, 'node-a');
     const workspace = first.saveWorkspace({
@@ -263,7 +265,8 @@ describe('Node SQLite session records', () => {
       { version: 20 },
       { version: 21 },
       { version: 22 },
-      { version: 23 }
+      { version: 23 },
+      { version: 24 }
     ]);
     expect(foreignKeyList(reopened.raw)).toEqual([]);
     expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/reopen-workspace' });
@@ -313,7 +316,8 @@ describe('Node SQLite session records', () => {
       { version: 20 },
       { version: 21 },
       { version: 22 },
-      { version: 23 }
+      { version: 23 },
+      { version: 24 }
     ]);
     expect(upgraded.getNativeSessionMetadata('codex', 'legacy-thread', workspace.id)).toMatchObject(
       {
@@ -372,7 +376,8 @@ describe('Node SQLite session records', () => {
       { version: 20 },
       { version: 21 },
       { version: 22 },
-      { version: 23 }
+      { version: 23 },
+      { version: 24 }
     ]);
     expect(restored.getWorkspace('kept')).toMatchObject({ path: '/kept' });
     expect(
@@ -649,7 +654,8 @@ describe('Node SQLite session records', () => {
       { version: 20 },
       { version: 21 },
       { version: 22 },
-      { version: 23 }
+      { version: 23 },
+      { version: 24 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     database.close();
@@ -694,7 +700,8 @@ describe('Node SQLite session records', () => {
       runner: 'codex',
       ownerUserId: 1,
       objective: 'Check',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      groups: hourlyGroups,
       timezone: 'UTC'
     });
     expect(() =>
@@ -838,7 +845,8 @@ describe('Node SQLite session records', () => {
         { version: 20 },
         { version: 21 },
         { version: 22 },
-        { version: 23 }
+        { version: 23 },
+        { version: 24 }
       ]);
       expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/legacy-workspace' });
       reopened.close();
@@ -878,7 +886,8 @@ describe('Node SQLite session records', () => {
         { version: 20 },
         { version: 21 },
         { version: 22 },
-        { version: 23 }
+        { version: 23 },
+        { version: 24 }
       ]);
       expect(upgraded.getWorkspace('w')?.path).toBe('/legacy');
       expect(
@@ -1094,7 +1103,8 @@ describe('Node SQLite session records', () => {
       runner: 'codex',
       ownerUserId: 1,
       objective: 'Workspace A task',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      groups: hourlyGroups,
       timezone: 'UTC'
     });
     const taskB = store.create({
@@ -1103,12 +1113,13 @@ describe('Node SQLite session records', () => {
       runner: 'opencode',
       ownerUserId: 1,
       objective: 'Workspace B task',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      groups: hourlyGroups,
       timezone: 'UTC'
     });
-    store.claim(taskA.sessionId, taskA.nextRunAt!, taskA.revision);
+    store.claim(taskA.id, taskA.nextRunAt!, taskA.revision);
     store.propose(taskA, 2, { objective: 'Workspace A proposal' });
-    store.claim(taskB.sessionId, taskB.nextRunAt!, taskB.revision);
+    store.claim(taskB.id, taskB.nextRunAt!, taskB.revision);
     database.saveTerminalSession({
       id: 'terminal-a',
       workspaceId: workspaceA.id,
@@ -1198,7 +1209,7 @@ describe('Node SQLite session records', () => {
     database.close();
   });
 
-  it('deletes a session record and all scheduled children without affecting another session', () => {
+  it('deletes a Session and unbinds its schedule without affecting another Session', () => {
     const database = new NodeDatabase(':memory:', 'node-session-removal');
     const workspace = database.saveWorkspace({
       id: 'workspace-session-removal',
@@ -1223,7 +1234,8 @@ describe('Node SQLite session records', () => {
       runner: 'codex',
       ownerUserId: 1,
       objective: 'Remove A',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      groups: hourlyGroups,
       timezone: 'UTC'
     });
     const taskB = store.create({
@@ -1232,16 +1244,27 @@ describe('Node SQLite session records', () => {
       runner: 'codex',
       ownerUserId: 1,
       objective: 'Keep B',
-      cron: '0 * * * *',
+      name: 'Schedule',
+      groups: hourlyGroups,
       timezone: 'UTC'
     });
-    store.claim(taskA.sessionId, taskA.nextRunAt!, taskA.revision);
+    store.claim(taskA.id, taskA.nextRunAt!, taskA.revision);
     store.propose(taskA, 2, { objective: 'Remove A proposal' });
 
-    expect(database.deleteSessionRecord('session-remove-a')).toBe(true);
-    expect(database.deleteSessionRecord('session-remove-a')).toBe(false);
-    expect(store.getById(taskA.id)).toBeUndefined();
-    expect(store.recent(taskA.id)).toEqual([]);
+    expect(database.deleteSessionRecord('session-remove-a')).toEqual({
+      removed: true,
+      schedulesChanged: true
+    });
+    expect(database.deleteSessionRecord('session-remove-a')).toEqual({
+      removed: false,
+      schedulesChanged: false
+    });
+    expect(store.getById(taskA.id)).toMatchObject({
+      sessionId: null,
+      enabled: false,
+      nextRunAt: null
+    });
+    expect(store.recent(taskA.id)).toHaveLength(1);
     expect(store.pendingProposals(taskA.id)).toEqual([]);
     expect(store.getById(taskB.id)).toBeDefined();
     expect(

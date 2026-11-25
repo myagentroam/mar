@@ -319,7 +319,8 @@ describe('Agent Network Run projection', () => {
       expect(runtime.activeSessionRun(child.id)).toBeUndefined();
       expect(onTerminalRun).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ id: run.id }),
-        'SUCCEEDED'
+        'SUCCEEDED',
+        expect.any(Number)
       );
       expect(observations.get(child.id)).toBeUndefined();
       expect(notifyEvents()).toEqual([]);

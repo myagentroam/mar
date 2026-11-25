@@ -8,6 +8,7 @@ import {
 
 import { scopedAuditEvent } from '../audit/audit-policy.js';
 import { MysqlNodeIdentityStorage } from '@myagentroam/server-core/mysql-node-identity';
+import { removeScheduledTaskIndex } from '@myagentroam/server-core/scheduled-task-index';
 import type { StoredNodeUpgrade } from '@myagentroam/server-core/node-upgrade-progress';
 import { MysqlAuthenticationStorage } from '@myagentroam/server-core/mysql-authentication';
 import {
@@ -407,6 +408,7 @@ export class MysqlServerDatabase {
         await this.nodeIdentities.deleteNodeWithConnection(connection, nodeId, actorUserId);
 
       await deleteRemainingPersonalWorkspaces(connection, userId, this.now);
+      await removeScheduledTaskIndex(connection, { ownerUserId: userId });
       await connection.execute(
         "DELETE FROM environment_secrets WHERE scope='PERSONAL' AND owner_user_id=?",
         [userId]
@@ -1021,6 +1023,7 @@ async function deleteRemainingPersonalWorkspaces(
       workspaceId,
       nodeId
     ]);
+    await removeScheduledTaskIndex(connection, { nodeId, workspaceId });
     await connection.execute('DELETE FROM workspaces WHERE workspace_id=? AND node_id=?', [
       workspaceId,
       nodeId

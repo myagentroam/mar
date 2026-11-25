@@ -14,17 +14,17 @@ const executionReadOperations = new Set([
   'session.goal.get',
   'session.turns.list',
   'workspace.queue.get',
-  'session.schedule.list',
-  'session.schedule.get',
+  'schedule.task.list',
+  'schedule.task.get',
+  'schedule.occurrence.list',
   'runner.profiles.list',
   'session.watch',
   'session.unwatch'
 ]);
-const executionManagementOperations = new Set([
-  'session.metadata.update',
-  'session.config.update',
-  'session.schedule.agent.save'
-]);
+const executionManagementOperations = new Set(['session.metadata.update', 'session.config.update']);
+
+// Task writes have their own actor/owner policy, independent of ownership of another Session's Run.
+const executionScheduleCommands = new Set(['schedule.task.create', 'schedule.task.propose']);
 
 /** Keep execution management within its authenticated Workspace and Run ownership. */
 export async function authorizeMarctlExecutionOperation(input: {
@@ -42,6 +42,12 @@ export async function authorizeMarctlExecutionOperation(input: {
   if (executionReadOperations.has(input.operation)) return;
   if (!isPlainRecord(input.data) || typeof input.data.workspaceId !== 'string')
     throw new Error('MARCTL_AGENT_NETWORK_REQUIRED');
+  if (executionScheduleCommands.has(input.operation)) {
+    const source = input.runtime.getAgentSession(input.caller.sessionId);
+    if (source?.workspaceId !== input.data.workspaceId)
+      throw new Error('AGENT_TARGET_NOT_AUTHORIZED');
+    return;
+  }
   let sessionId: string;
   if (input.operation === 'run.approval.decide') {
     const run =

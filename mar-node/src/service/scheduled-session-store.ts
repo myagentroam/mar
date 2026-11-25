@@ -1,23 +1,38 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import type { RunnerName } from '@myagentroam/protocol';
 import {
-  assertScheduleTimezone,
-  nextScheduledAt,
-  parseScheduledCron
-} from './scheduled-session-recurrence.js';
+  scheduledTimeGroupsSchema,
+  type RunnerName,
+  type ScheduledNewSession,
+  type ScheduledTaskState,
+  type ScheduledTimeGroup
+} from '@myagentroam/protocol';
+import { assertScheduleTimezone, scheduledTimesAfter } from './scheduled-session-recurrence.js';
 
 type SqlRow = Record<string, string | number | bigint | Uint8Array | null>;
 
+const occurrenceSession = `COALESCE(json_extract(o.task_snapshot,'$.sessionId'),
+  CASE WHEN o.task_snapshot IS NULL AND EXISTS (SELECT 1 FROM agent_sessions s
+    WHERE s.id=o.execution_session_id AND s.workspace_id=t.workspace_id) THEN o.execution_session_id END)`;
+const taskStateSql = {
+  scheduled: 'AND t.enabled=1 AND t.next_run_at IS NOT NULL',
+  paused: 'AND t.enabled=0 AND (t.session_id IS NOT NULL OR t.new_session IS NOT NULL)',
+  finished: 'AND t.enabled=1 AND t.next_run_at IS NULL',
+  unbound: 'AND t.session_id IS NULL AND t.new_session IS NULL'
+} satisfies Record<ScheduledTaskState, string>;
+
 export interface ScheduledSessionTask {
   readonly id: string;
-  readonly sessionId: string;
+  readonly sessionId: string | null;
+  readonly newSession: ScheduledNewSession | null;
   readonly workspaceId: string;
   readonly runner: RunnerName;
   readonly ownerUserId: number;
   readonly notifyOnTerminal: boolean;
+  readonly graceMinutes: number;
+  readonly name: string;
   readonly objective: string;
-  readonly cron: string;
+  readonly groups: readonly ScheduledTimeGroup[];
   readonly timezone: string;
   readonly enabled: boolean;
   readonly revision: number;
@@ -27,21 +42,46 @@ export interface ScheduledSessionTask {
 }
 
 export type ScheduledOccurrenceStatus =
-  'CLAIMED' | 'SUBMITTED' | 'SUCCEEDED' | 'SKIPPED' | 'FAILED';
+  | 'CLAIMED'
+  | 'WAITING'
+  | 'SUBMITTING'
+  | 'SUBMITTED'
+  | 'SUCCEEDED'
+  | 'SKIPPED'
+  | 'FAILED'
+  | 'CANCELLED';
 
 export const SCHEDULE_RESTART_OUTCOME_UNKNOWN = 'SCHEDULE_RESTART_OUTCOME_UNKNOWN';
+export const SCHEDULE_SUBMISSION_OUTCOME_UNKNOWN = 'SCHEDULE_SUBMISSION_OUTCOME_UNKNOWN';
 
+export function occurrenceState(
+  status: string,
+  reason: string | null,
+  startedAt: number | null
+): string {
+  if (reason === SCHEDULE_RESTART_OUTCOME_UNKNOWN || reason === SCHEDULE_SUBMISSION_OUTCOME_UNKNOWN)
+    return 'UNKNOWN';
+  if (status === 'SKIPPED' && reason === 'SCHEDULE_EXPIRED') return 'EXPIRED';
+  return (status === 'SUBMITTING' || status === 'SUBMITTED') && startedAt !== null
+    ? 'RUNNING'
+    : status;
+}
+
+/** Owns durable task revisions and the atomic handoff from a planned minute to an occurrence. */
 export class ScheduledSessionStore {
   constructor(
     private readonly database: DatabaseSync,
     private readonly now: () => number = Date.now
   ) {}
 
-  get(sessionId: string): ScheduledSessionTask | undefined {
+  nextForSession(sessionId: string): number | null {
     const row = this.database
-      .prepare('SELECT * FROM scheduled_session_tasks WHERE session_id=?')
-      .get(sessionId) as SqlRow | undefined;
-    return row === undefined ? undefined : taskFromRow(row);
+      .prepare(
+        `SELECT MIN(next_run_at) AS value FROM scheduled_session_tasks
+      WHERE session_id=? AND enabled=1`
+      )
+      .get(sessionId);
+    return (row?.['value'] as number | null) ?? null;
   }
 
   getById(taskId: string): ScheduledSessionTask | undefined {
@@ -64,23 +104,33 @@ export class ScheduledSessionStore {
   list(
     workspaceId: string,
     cursor?: string,
-    limit = 20
+    limit = 20,
+    sessionId?: string,
+    ownerUserId?: number,
+    afterTaskId?: string,
+    state?: ScheduledTaskState
   ): {
-    tasks: readonly (ScheduledSessionTask & { sessionTitle: string })[];
+    tasks: readonly (ScheduledSessionTask & { sessionTitle: string | null })[];
     nextCursor: string | null;
   } {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
       throw new Error('SCHEDULE_INVALID');
-    let after = '';
+    let after = afterTaskId ?? '';
     if (cursor !== undefined) {
       try {
-        if (cursor.length > 4096) throw new Error();
+        if (cursor.length > 4096 || afterTaskId !== undefined) throw new Error();
         const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
           workspaceId?: unknown;
+          sessionId?: unknown;
+          ownerUserId?: unknown;
+          state?: unknown;
           after?: unknown;
         };
         if (
           decoded.workspaceId !== workspaceId ||
+          decoded.sessionId !== sessionId ||
+          decoded.ownerUserId !== ownerUserId ||
+          decoded.state !== state ||
           typeof decoded.after !== 'string' ||
           decoded.after.length < 1 ||
           decoded.after.length > 512
@@ -95,47 +145,81 @@ export class ScheduledSessionStore {
       .prepare(
         `SELECT t.*, COALESCE(json_extract(s.metadata,'$.customTitle'),
          json_extract(s.metadata,'$.runnerTitle'),s.id) AS session_title
-       FROM scheduled_session_tasks t JOIN agent_sessions s ON s.id=t.session_id
-       WHERE t.workspace_id=? AND t.id>? ORDER BY t.id LIMIT ?`
+       FROM scheduled_session_tasks t LEFT JOIN agent_sessions s ON s.id=t.session_id
+       WHERE t.workspace_id=? ${sessionId === undefined ? '' : 'AND t.session_id=?'}
+       ${ownerUserId === undefined ? '' : 'AND t.owner_user_id=?'} ${state === undefined ? '' : taskStateSql[state]}
+       AND t.id>? ORDER BY t.id LIMIT ?`
       )
-      .all(workspaceId, after, limit + 1) as SqlRow[];
+      .all(
+        workspaceId,
+        ...(sessionId === undefined ? [] : [sessionId]),
+        ...(ownerUserId === undefined ? [] : [ownerUserId]),
+        after,
+        limit + 1
+      ) as SqlRow[];
     const tasks = rows
       .slice(0, limit)
-      .map((row) => ({ ...taskFromRow(row), sessionTitle: row['session_title'] as string }));
+      .map((row) => ({ ...taskFromRow(row), sessionTitle: row['session_title'] as string | null }));
     return {
       tasks,
       nextCursor:
         rows.length > limit
-          ? Buffer.from(JSON.stringify({ workspaceId, after: tasks.at(-1)!.id })).toString(
-              'base64url'
-            )
+          ? Buffer.from(
+              JSON.stringify({
+                workspaceId,
+                sessionId,
+                ownerUserId,
+                state,
+                after: tasks.at(-1)!.id
+              })
+            ).toString('base64url')
           : null
     };
   }
 
+  listIndex(workspaceId: string, afterTaskId?: string) {
+    const limit = 100;
+    const rows = this.database
+      .prepare(
+        `SELECT id,workspace_id,owner_user_id,name,runner,session_id,enabled,next_run_at,
+         CASE WHEN session_id IS NOT NULL THEN 'existing'
+              WHEN new_session IS NOT NULL THEN 'newSession' ELSE 'unbound' END AS target_kind
+       FROM scheduled_session_tasks WHERE workspace_id=? AND id>? ORDER BY id LIMIT ?`
+      )
+      .all(workspaceId, afterTaskId ?? '', limit + 1) as SqlRow[];
+    const tasks = rows.slice(0, limit).map((row) => ({
+      id: row.id as string,
+      workspaceId: row.workspace_id as string,
+      ownerUserId: Number(row.owner_user_id),
+      name: row.name as string,
+      runner: row.runner as RunnerName,
+      sessionId: row.session_id as string | null,
+      targetKind: row.target_kind as 'existing' | 'newSession' | 'unbound',
+      enabled: row.enabled === 1,
+      nextRunAt: row.next_run_at === null ? null : Number(row.next_run_at)
+    }));
+    return { tasks, nextCursor: rows.length > limit ? tasks.at(-1)!.id : null };
+  }
+
   updateFromAgent(
-    sessionId: string,
+    taskId: string,
     expectedRevision: number,
     actorUserId: number,
-    input: { readonly objective?: unknown; readonly cron?: unknown }
-  ): ScheduledSessionTask | { proposalId: string; status: 'PENDING' } {
+    patch: AgentTaskPatch
+  ): ScheduledSessionTask | { proposalId: string; baseRevision: number; status: 'PENDING' } {
     if (!Number.isSafeInteger(actorUserId) || actorUserId < 1)
       throw new Error('USER_AUTHORIZATION_REQUIRED');
-    const task = this.get(sessionId);
+    const task = this.getById(taskId);
     if (task === undefined) throw new Error('SCHEDULE_NOT_FOUND');
     if (task.revision !== expectedRevision) throw new Error('SCHEDULE_REVISION_CONFLICT');
-    if (
-      (input.objective !== undefined && typeof input.objective !== 'string') ||
-      (input.cron !== undefined && typeof input.cron !== 'string') ||
-      (input.objective === undefined && input.cron === undefined)
-    )
+    if (patch.name === undefined && patch.objective === undefined && patch.groups === undefined)
       throw new Error('SCHEDULE_UPDATE_INVALID');
-    const patch = {
-      ...(input.objective === undefined ? {} : { objective: input.objective as string }),
-      ...(input.cron === undefined ? {} : { cron: input.cron as string })
+    if (actorUserId === task.ownerUserId) return this.update(taskId, expectedRevision, patch);
+    return {
+      proposalId: this.propose(task, actorUserId, patch),
+      baseRevision: task.revision,
+      status: 'PENDING'
     };
-    if (actorUserId === task.ownerUserId) return this.update(sessionId, expectedRevision, patch);
-    return { proposalId: this.propose(task, actorUserId, patch), status: 'PENDING' };
   }
 
   nextDueAt(): number | null {
@@ -145,46 +229,74 @@ export class ScheduledSessionStore {
     return typeof row['value'] === 'number' ? row['value'] : null;
   }
 
+  upcoming(workspaceId: string, asOf: number, ownerUserId?: number, sessionId?: string) {
+    const rows = this.database
+      .prepare(
+        `SELECT * FROM scheduled_session_tasks WHERE workspace_id=?
+      AND enabled=1 AND next_run_at IS NOT NULL AND (? IS NULL OR owner_user_id=?)
+      AND (? IS NULL OR session_id=?)`
+      )
+      .all(
+        workspaceId,
+        ownerUserId ?? null,
+        ownerUserId ?? null,
+        sessionId ?? null,
+        sessionId ?? null
+      ) as SqlRow[];
+    const result = [];
+    for (const row of rows) {
+      const task = taskFromRow(row);
+      for (const time of scheduledTimesAfter(
+        task.groups,
+        task.timezone,
+        Math.max(asOf, task.nextRunAt! - 1),
+        6
+      ))
+        result.push({ taskId: task.id, name: task.name, dueAt: time.dueAt });
+    }
+    return result.sort((a, b) => a.dueAt - b.dueAt || (a.taskId < b.taskId ? -1 : 1)).slice(0, 6);
+  }
+
   create(input: {
-    readonly sessionId: string;
+    readonly sessionId: string | null;
+    readonly newSession?: ScheduledNewSession | null;
     readonly workspaceId: string;
     readonly runner: RunnerName;
     readonly ownerUserId: number;
-    readonly notifyOnTerminal?: boolean;
+    readonly notifyOnTerminal?: boolean | undefined;
+    readonly graceMinutes?: number | undefined;
     readonly objective: string;
-    readonly cron: string;
+    readonly name: string;
+    readonly groups: readonly ScheduledTimeGroup[];
     readonly timezone: string;
-    readonly enabled?: boolean;
+    readonly enabled?: boolean | undefined;
   }): ScheduledSessionTask {
-    validate(input.objective, input.cron, input.timezone);
+    const groups = normalizeTimeGroups(input.groups);
+    validate(input.objective, input.timezone);
     if (!Number.isSafeInteger(input.ownerUserId) || input.ownerUserId < 1)
       throw new Error('SCHEDULE_OWNER_INVALID');
     const now = this.now();
     const task: ScheduledSessionTask = {
       sessionId: input.sessionId,
+      newSession: input.newSession ?? null,
       workspaceId: input.workspaceId,
       runner: input.runner,
       ownerUserId: input.ownerUserId,
       notifyOnTerminal: input.notifyOnTerminal ?? false,
-      cron: input.cron,
+      graceMinutes: input.graceMinutes ?? 60,
+      name: normalizeName(input.name),
+      groups,
       timezone: input.timezone,
       objective: input.objective.trim(),
       id: randomUUID(),
       enabled: input.enabled !== false,
       revision: 1,
-      nextRunAt: input.enabled === false ? null : nextScheduledAt(input.cron, input.timezone, now),
+      nextRunAt: input.enabled === false ? null : requireNext(groups, input.timezone, now),
       createdAt: now,
       updatedAt: now
     };
     return this.write(() => {
-      const session = this.database
-        .prepare('SELECT workspace_id,runner FROM agent_sessions WHERE id=?')
-        .get(task.sessionId);
-      if (session === undefined) throw new Error('SESSION_NOT_FOUND');
-      if (session['workspace_id'] !== task.workspaceId || session['runner'] !== task.runner)
-        throw Object.assign(new Error('SCHEDULE_SESSION_MISMATCH'), {
-          publicMessage: "The scheduled task must use its session's Workspace and Runner."
-        });
+      this.checkTarget(task.workspaceId, task.sessionId, task.runner, task.newSession);
       if (
         this.database.prepare('SELECT 1 FROM workspaces WHERE id=?').get(task.workspaceId) ===
         undefined
@@ -193,18 +305,21 @@ export class ScheduledSessionStore {
       this.database
         .prepare(
           `INSERT INTO scheduled_session_tasks
-        (id,session_id,workspace_id,runner,owner_user_id,notify_on_terminal,objective,cron,timezone,enabled,revision,next_run_at,created_at,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        (id,session_id,new_session,workspace_id,runner,owner_user_id,notify_on_terminal,grace_minutes,name,objective,time_groups,timezone,enabled,revision,next_run_at,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           task.id,
           task.sessionId,
+          task.newSession === null ? null : JSON.stringify(task.newSession),
           task.workspaceId,
           task.runner,
           task.ownerUserId,
           task.notifyOnTerminal ? 1 : 0,
+          task.graceMinutes,
+          task.name,
           task.objective,
-          task.cron,
+          JSON.stringify(task.groups),
           task.timezone,
           task.enabled ? 1 : 0,
           1,
@@ -216,55 +331,67 @@ export class ScheduledSessionStore {
     });
   }
 
-  update(
-    sessionId: string,
-    expectedRevision: number,
-    patch: {
-      readonly objective?: string;
-      readonly cron?: string;
-      readonly timezone?: string;
-      readonly enabled?: boolean;
-      readonly ownerUserId?: number;
-      readonly notifyOnTerminal?: boolean;
+  private checkTarget(
+    workspaceId: string,
+    sessionId: string | null,
+    runner: RunnerName,
+    newSession: ScheduledNewSession | null
+  ): void {
+    if (sessionId === null) {
+      if (newSession !== null && newSession.runner === runner) return;
+      throw new Error('SCHEDULE_TARGET_REQUIRED');
     }
-  ): ScheduledSessionTask {
+    const session = this.database
+      .prepare('SELECT workspace_id,runner FROM agent_sessions WHERE id=?')
+      .get(sessionId);
+    if (session === undefined) throw new Error('SESSION_NOT_FOUND');
+    if (session['workspace_id'] !== workspaceId || session['runner'] !== runner)
+      throw new Error('SCHEDULE_SESSION_MISMATCH');
+  }
+
+  update(taskId: string, expectedRevision: number, patch: TaskPatch): ScheduledSessionTask {
     return this.write(() => {
-      const current = this.get(sessionId);
+      const current = this.getById(taskId);
       if (current === undefined) throw new Error('SCHEDULE_NOT_FOUND');
       if (current.revision !== expectedRevision) throw new Error('SCHEDULE_REVISION_CONFLICT');
-      if (
-        patch.ownerUserId !== undefined &&
-        (!Number.isSafeInteger(patch.ownerUserId) || patch.ownerUserId < 1)
-      )
-        throw new Error('SCHEDULE_OWNER_INVALID');
       const objective = patch.objective ?? current.objective;
-      const cron = patch.cron ?? current.cron;
+      const name = patch.name === undefined ? current.name : normalizeName(patch.name);
+      const groups =
+        patch.groups === undefined ? current.groups : normalizeTimeGroups(patch.groups);
       const timezone = patch.timezone ?? current.timezone;
-      validate(objective, cron, timezone);
+      validate(objective, timezone);
       const enabled = patch.enabled ?? current.enabled;
-      const ownerUserId = patch.ownerUserId ?? current.ownerUserId;
+      const { sessionId, runner, newSession } = patch.binding ?? current;
+      if (patch.binding !== undefined || enabled)
+        this.checkTarget(current.workspaceId, sessionId, runner, newSession);
+      const now = this.now();
       const nextRunAt = enabled
-        ? !current.enabled || cron !== current.cron || timezone !== current.timezone
-          ? nextScheduledAt(cron, timezone, this.now())
+        ? !current.enabled ||
+          JSON.stringify(groups) !== JSON.stringify(current.groups) ||
+          timezone !== current.timezone
+          ? requireNext(groups, timezone, now)
           : current.nextRunAt
         : null;
-      const now = this.now();
       const result = this.database
         .prepare(
-          `UPDATE scheduled_session_tasks SET objective=?,cron=?,timezone=?,enabled=?,owner_user_id=?,notify_on_terminal=?,revision=?,next_run_at=?,updated_at=?
-        WHERE session_id=? AND revision=?`
+          `UPDATE scheduled_session_tasks SET session_id=?,new_session=?,runner=?,name=?,objective=?,time_groups=?,timezone=?,enabled=?,notify_on_terminal=?,grace_minutes=?,revision=?,next_run_at=?,updated_at=?
+        WHERE id=? AND revision=?`
         )
         .run(
+          sessionId,
+          newSession === null ? null : JSON.stringify(newSession),
+          runner,
+          name,
           objective.trim(),
-          cron,
+          JSON.stringify(groups),
           timezone,
           enabled ? 1 : 0,
-          ownerUserId,
           (patch.notifyOnTerminal ?? current.notifyOnTerminal) ? 1 : 0,
+          patch.graceMinutes ?? current.graceMinutes,
           expectedRevision + 1,
           nextRunAt,
           now,
-          sessionId,
+          taskId,
           expectedRevision
         );
       if (result.changes !== 1) throw new Error('SCHEDULE_REVISION_CONFLICT');
@@ -277,28 +404,51 @@ export class ScheduledSessionStore {
       this.database
         .prepare("DELETE FROM scheduled_session_proposals WHERE task_id=? AND status='STALE'")
         .run(current.id);
-      return this.get(sessionId) as ScheduledSessionTask;
+      return this.getById(taskId)!;
     });
   }
 
-  remove(sessionId: string, expectedRevision: number): void {
+  remove(taskId: string, expectedRevision: number): void {
     this.write(() => {
-      const task = this.get(sessionId);
+      const task = this.getById(taskId);
       if (task === undefined || task.revision !== expectedRevision)
         throw new Error('SCHEDULE_REVISION_CONFLICT');
+      if (
+        this.database
+          .prepare(
+            `SELECT 1 FROM scheduled_session_occurrences WHERE task_id=?
+        AND status IN ('CLAIMED','WAITING','SUBMITTING','SUBMITTED') LIMIT 1`
+          )
+          .get(taskId) !== undefined
+      )
+        throw new Error('SCHEDULE_IN_PROGRESS');
       this.deleteTasks('id', task.id);
     });
   }
 
-  removeForSession(sessionId: string): void {
-    this.write(() => this.deleteTasks('session_id', sessionId));
+  unbindSession(sessionId: string): boolean {
+    const now = this.now();
+    this.database
+      .prepare(
+        `UPDATE scheduled_session_proposals SET status='STALE',resolved_at=?
+      WHERE status='PENDING' AND task_id IN (SELECT id FROM scheduled_session_tasks WHERE session_id=?)`
+      )
+      .run(now, sessionId);
+    return (
+      this.database
+        .prepare(
+          `UPDATE scheduled_session_tasks SET session_id=NULL, enabled=0,
+      next_run_at=NULL, revision=revision+1, updated_at=? WHERE session_id=?`
+        )
+        .run(now, sessionId).changes > 0
+    );
   }
 
   removeForWorkspace(workspaceId: string): void {
     this.write(() => this.deleteTasks('workspace_id', workspaceId));
   }
 
-  private deleteTasks(column: 'id' | 'session_id' | 'workspace_id', value: string): void {
+  private deleteTasks(column: 'id' | 'workspace_id', value: string): void {
     for (const table of ['scheduled_session_occurrences', 'scheduled_session_proposals']) {
       this.database
         .prepare(
@@ -323,8 +473,8 @@ export class ScheduledSessionStore {
     }
   }
 
-  claim(sessionId: string, dueAt: number, expectedRevision: number): string | undefined {
-    const current = this.get(sessionId);
+  claim(taskId: string, dueAt: number, expectedRevision: number): string | undefined {
+    const current = this.getById(taskId);
     if (
       current === undefined ||
       !current.enabled ||
@@ -332,7 +482,39 @@ export class ScheduledSessionStore {
       current.nextRunAt !== dueAt
     )
       return undefined;
-    const next = nextScheduledAt(current.cron, current.timezone, Math.max(this.now(), dueAt));
+    const now = this.now();
+    const recurring = current.groups.filter((group) => group.days.kind !== 'dates');
+    const finite = current.groups.filter((group) => group.days.kind === 'dates');
+    const nextRecurring = scheduledTimesAfter(
+      recurring,
+      current.timezone,
+      Math.max(now, dueAt),
+      1
+    )[0]?.dueAt;
+    const nextFinite = scheduledTimesAfter(finite, current.timezone, dueAt, 1)[0]?.dueAt;
+    const next =
+      nextRecurring === undefined
+        ? (nextFinite ?? null)
+        : Math.min(nextRecurring, nextFinite ?? Infinity);
+    const match = scheduledTimesAfter(
+      current.groups,
+      current.timezone,
+      Math.max(0, dueAt - 1),
+      1
+    )[0];
+    const matchedGroups = match?.dueAt === dueAt ? match.matchedGroups : [];
+    const isFinite = matchedGroups.some((index) => current.groups[index]?.days.kind === 'dates');
+    const expiresAt = isFinite ? dueAt + current.graceMinutes * 60_000 : null;
+    const snapshot = JSON.stringify({
+      name: current.name,
+      objective: current.objective,
+      revision: current.revision,
+      sessionId: current.sessionId,
+      ownerUserId: current.ownerUserId,
+      timezone: current.timezone,
+      matchedGroups,
+      target: current.newSession
+    });
     const id = `${current.id}:${dueAt}`;
     this.database.exec('BEGIN IMMEDIATE');
     try {
@@ -345,14 +527,24 @@ export class ScheduledSessionStore {
         this.database.exec('ROLLBACK');
         return undefined;
       }
-      this.database
+      const inserted = this.database
         .prepare(
           `INSERT INTO scheduled_session_occurrences
-          (id,task_id,due_at,status,created_at,updated_at) VALUES (?,?,?,'CLAIMED',?,?)`
+          (id,task_id,due_at,status,created_at,updated_at,task_snapshot,expires_at) VALUES (?,?,?,?,?,?,?,?)
+          ON CONFLICT(task_id,due_at) DO NOTHING`
         )
-        .run(id, current.id, dueAt, this.now(), this.now());
+        .run(
+          id,
+          current.id,
+          dueAt,
+          isFinite && current.graceMinutes > 0 ? 'WAITING' : 'CLAIMED',
+          now,
+          now,
+          snapshot,
+          expiresAt
+        );
       this.database.exec('COMMIT');
-      return id;
+      return inserted.changes === 1 ? id : undefined;
     } catch (error) {
       this.database.exec('ROLLBACK');
       throw error;
@@ -365,9 +557,14 @@ export class ScheduledSessionStore {
       const rows = this.database
         .prepare(
           `UPDATE scheduled_session_occurrences SET status='FAILED',code=?,updated_at=?
-          WHERE status IN ('CLAIMED','SUBMITTED') RETURNING id,task_id`
+          WHERE status IN ('CLAIMED','SUBMITTING','SUBMITTED')
+          RETURNING id,task_id,COALESCE(execution_session_id,json_extract(task_snapshot,'$.sessionId')) AS session_id`
         )
-        .all(SCHEDULE_RESTART_OUTCOME_UNKNOWN, this.now()) as { id: string; task_id: string }[];
+        .all(SCHEDULE_RESTART_OUTCOME_UNKNOWN, this.now()) as {
+        id: string;
+        task_id: string;
+        session_id: string | null;
+      }[];
       const tasks = new Map<string, ScheduledSessionTask>();
       for (const row of rows) {
         if (tasks.has(row.task_id)) continue;
@@ -376,25 +573,186 @@ export class ScheduledSessionStore {
         tasks.set(task.id, task);
         this.pruneTerminal(row.id);
       }
-      return rows.map((row) => ({ task: tasks.get(row.task_id)!, occurrenceId: row.id }));
+      return rows.map((row) => ({
+        task: { ...tasks.get(row.task_id)!, sessionId: row.session_id },
+        occurrenceId: row.id
+      }));
     });
   }
 
   finish(
     occurrenceId: string,
-    status: Exclude<ScheduledOccurrenceStatus, 'CLAIMED'>,
+    status: 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED' | 'CANCELLED',
     code?: string,
-    runId?: string
+    runId?: string,
+    endedAt?: number
   ): boolean {
     const result = this.database
       .prepare(
-        `UPDATE scheduled_session_occurrences SET status=?,code=?,run_id=?,updated_at=?
-        WHERE id=? AND status IN ('CLAIMED','SUBMITTED')`
+        `UPDATE scheduled_session_occurrences SET status=?,code=?,run_id=COALESCE(?,run_id),updated_at=?,ended_at=?
+        WHERE id=? AND status IN ('CLAIMED','WAITING','SUBMITTING','SUBMITTED')
+          AND (run_id IS NULL OR ? IS NULL OR run_id=?)`
       )
-      .run(status, code ?? null, runId ?? null, this.now(), occurrenceId);
+      .run(
+        status,
+        code ?? null,
+        runId ?? null,
+        this.now(),
+        endedAt ?? null,
+        occurrenceId,
+        runId ?? null,
+        runId ?? null
+      );
     if (result.changes !== 1) return false;
     if (status !== 'SUBMITTED') this.pruneTerminal(occurrenceId);
     return true;
+  }
+
+  occurrence(occurrenceId: string) {
+    return this.database
+      .prepare(
+        `SELECT task_id,due_at,expires_at,status,run_id,
+      COALESCE(execution_session_id,json_extract(task_snapshot,'$.sessionId')) AS execution_session_id,
+      json_extract(task_snapshot,'$.revision') AS revision FROM scheduled_session_occurrences WHERE id=?`
+      )
+      .get(occurrenceId) as
+      | {
+          task_id: string;
+          due_at: number;
+          expires_at: number | null;
+          status: ScheduledOccurrenceStatus;
+          run_id: string | null;
+          revision: number | null;
+          execution_session_id: string | null;
+        }
+      | undefined;
+  }
+
+  waiting() {
+    return this.database
+      .prepare(
+        `SELECT id,task_id,due_at,expires_at,
+      json_extract(task_snapshot,'$.revision') AS revision FROM scheduled_session_occurrences WHERE status='WAITING'
+      ORDER BY due_at,task_id`
+      )
+      .all() as {
+      id: string;
+      task_id: string;
+      due_at: number;
+      expires_at: number;
+      revision: number;
+    }[];
+  }
+
+  nextWaitingDeadline(): number | null {
+    const row = this.database
+      .prepare(
+        `SELECT MIN(expires_at) AS value FROM scheduled_session_occurrences WHERE status='WAITING'`
+      )
+      .get();
+    return (row?.['value'] as number | null) ?? null;
+  }
+
+  waitForAvailability(occurrenceId: string, reason: string): boolean {
+    return (
+      this.database
+        .prepare(
+          `UPDATE scheduled_session_occurrences SET status='WAITING',code=?,updated_at=?
+      WHERE id=? AND status IN ('CLAIMED','WAITING') AND (status<>'WAITING' OR code IS NOT ?)`
+        )
+        .run(reason, this.now(), occurrenceId, reason).changes === 1
+    );
+  }
+
+  beginSubmission(occurrenceId: string, sessionId: string | null): boolean {
+    return (
+      this.database
+        .prepare(
+          `UPDATE scheduled_session_occurrences SET status='SUBMITTING',code=NULL,
+      updated_at=?,execution_session_id=? WHERE id=? AND status IN ('CLAIMED','WAITING')`
+        )
+        .run(this.now(), sessionId, occurrenceId).changes === 1
+    );
+  }
+
+  started(occurrenceId: string, runId: string, sessionId: string | null, at: number): boolean {
+    return (
+      this.database
+        .prepare(
+          `UPDATE scheduled_session_occurrences SET run_id=COALESCE(run_id,?),
+      execution_session_id=COALESCE(execution_session_id,?),actual_started_at=COALESCE(actual_started_at,?)
+      WHERE id=? AND status IN ('SUBMITTING','SUBMITTED') AND (run_id IS NULL OR run_id=?)
+        AND (actual_started_at IS NULL OR (? IS NOT NULL AND execution_session_id IS NULL))`
+        )
+        .run(runId, sessionId, at, occurrenceId, runId, sessionId).changes === 1
+    );
+  }
+
+  bindExecutionSession(occurrenceId: string, sessionId: string): boolean {
+    return (
+      this.database
+        .prepare(
+          `UPDATE scheduled_session_occurrences SET execution_session_id=?
+          WHERE id=? AND execution_session_id IS NULL`
+        )
+        .run(sessionId, occurrenceId).changes === 1
+    );
+  }
+
+  history(
+    workspaceId: string,
+    input: {
+      taskId?: string | undefined;
+      ownerUserId?: number | undefined;
+      sessionId?: string | undefined;
+      before?: { dueAt: number; sameTime: 'include' | 'exclude' | string } | undefined;
+    }
+  ) {
+    const { taskId, ownerUserId, before, sessionId } = input;
+    const time = before?.dueAt ?? Number.MAX_SAFE_INTEGER;
+    return (
+      this.database
+        .prepare(
+          `SELECT o.id,o.task_id,o.due_at,o.status,o.code,o.run_id,
+      o.actual_started_at,o.ended_at,o.execution_session_id,
+      json_extract(o.task_snapshot,'$.name') AS name
+      FROM scheduled_session_occurrences o JOIN scheduled_session_tasks t ON t.id=o.task_id
+      WHERE t.workspace_id=? AND (? IS NULL OR t.id=?) AND (? IS NULL OR t.owner_user_id=?)
+      AND (? IS NULL OR ${occurrenceSession}=?)
+      AND (o.due_at<? OR (o.due_at=? AND (?='include' OR (?<>'exclude' AND o.id<?))))
+      ORDER BY o.due_at DESC,o.id DESC LIMIT 11`
+        )
+        .all(
+          workspaceId,
+          taskId ?? null,
+          taskId ?? null,
+          ownerUserId ?? null,
+          ownerUserId ?? null,
+          sessionId ?? null,
+          sessionId ?? null,
+          time,
+          time,
+          before?.sameTime ?? 'exclude',
+          before?.sameTime ?? 'exclude',
+          before?.sameTime ?? ''
+        ) as SqlRow[]
+    ).map(occurrenceSummary);
+  }
+
+  historyDetail(workspaceId: string, id: string, sessionId?: string) {
+    const row = this.database
+      .prepare(
+        `SELECT o.*,json_extract(o.task_snapshot,'$.name') AS name
+      FROM scheduled_session_occurrences o JOIN scheduled_session_tasks t ON o.task_id=t.id
+      WHERE t.workspace_id=? AND o.id=? AND (? IS NULL OR ${occurrenceSession}=?)`
+      )
+      .get(workspaceId, id, sessionId ?? null, sessionId ?? null) as SqlRow | undefined;
+    return row === undefined
+      ? undefined
+      : {
+          ...occurrenceSummary(row),
+          snapshot: row.task_snapshot === null ? null : JSON.parse(String(row.task_snapshot))
+        };
   }
 
   private pruneTerminal(occurrenceId: string): void {
@@ -402,10 +760,10 @@ export class ScheduledSessionStore {
       .prepare(
         `DELETE FROM scheduled_session_occurrences
       WHERE task_id=(SELECT task_id FROM scheduled_session_occurrences WHERE id=?)
-        AND status NOT IN ('CLAIMED','SUBMITTED')
+        AND status NOT IN ('CLAIMED','WAITING','SUBMITTING','SUBMITTED')
         AND id NOT IN (SELECT id FROM scheduled_session_occurrences
           WHERE task_id=(SELECT task_id FROM scheduled_session_occurrences WHERE id=?)
-            AND status NOT IN ('CLAIMED','SUBMITTED') ORDER BY due_at DESC LIMIT 100)`
+            AND status NOT IN ('CLAIMED','WAITING','SUBMITTING','SUBMITTED') ORDER BY due_at DESC LIMIT 100)`
       )
       .run(occurrenceId, occurrenceId);
   }
@@ -418,9 +776,28 @@ export class ScheduledSessionStore {
       .all(taskId, Math.max(1, Math.min(limit, 100))) as SqlRow[];
   }
 
+  listSessionRuns(taskId: string, sessionId: string, before: number, limit: number) {
+    return this.database
+      .prepare(
+        `SELECT o.due_at,o.status,o.code,o.run_id,o.actual_started_at,o.ended_at
+      FROM scheduled_session_occurrences o JOIN scheduled_session_tasks t ON o.task_id=t.id
+      WHERE o.task_id=? AND ${occurrenceSession}=? AND o.due_at<?
+      ORDER BY o.due_at DESC LIMIT ?`
+      )
+      .all(taskId, sessionId, before, limit) as {
+      due_at: number;
+      status: ScheduledOccurrenceStatus;
+      code: string | null;
+      run_id: string | null;
+      actual_started_at: number | null;
+      ended_at: number | null;
+    }[];
+  }
+
   recentPage(
     taskId: string,
-    page = 1
+    page = 1,
+    sessionId?: string
   ): {
     readonly occurrences: readonly SqlRow[];
     readonly occurrenceTotal: number;
@@ -429,15 +806,20 @@ export class ScheduledSessionStore {
     if (!Number.isSafeInteger(page) || page < 1) throw new Error('SCHEDULE_INVALID');
     const total = (
       this.database
-        .prepare('SELECT COUNT(*) AS count FROM scheduled_session_occurrences WHERE task_id=?')
-        .get(taskId) as { count: number }
+        .prepare(
+          `SELECT COUNT(*) AS count FROM scheduled_session_occurrences o
+          JOIN scheduled_session_tasks t ON o.task_id=t.id WHERE o.task_id=? AND (? IS NULL OR ${occurrenceSession}=?)`
+        )
+        .get(taskId, sessionId ?? null, sessionId ?? null) as { count: number }
     ).count;
     const actualPage = Math.min(page, Math.max(1, Math.ceil(total / 10)));
     const occurrences = this.database
       .prepare(
-        'SELECT * FROM scheduled_session_occurrences WHERE task_id=? ORDER BY due_at DESC, id DESC LIMIT 10 OFFSET ?'
+        `SELECT o.*,json_extract(o.task_snapshot,'$.name') AS name FROM scheduled_session_occurrences o
+         JOIN scheduled_session_tasks t ON o.task_id=t.id WHERE o.task_id=? AND (? IS NULL OR ${occurrenceSession}=?)
+         ORDER BY o.due_at DESC, o.id DESC LIMIT 10 OFFSET ?`
       )
-      .all(taskId, (actualPage - 1) * 10) as SqlRow[];
+      .all(taskId, sessionId ?? null, sessionId ?? null, (actualPage - 1) * 10) as SqlRow[];
     return { occurrences, occurrenceTotal: total, occurrencePage: actualPage };
   }
 
@@ -450,24 +832,15 @@ export class ScheduledSessionStore {
       .all(taskId) as SqlRow[];
   }
 
-  propose(
-    task: ScheduledSessionTask,
-    actorUserId: number,
-    patch: {
-      readonly objective?: string;
-      readonly cron?: string;
-      readonly timezone?: string;
-    }
-  ): string {
+  propose(task: ScheduledSessionTask, actorUserId: number, patch: AgentTaskPatch): string {
     if (!Number.isSafeInteger(actorUserId) || actorUserId < 1 || actorUserId === task.ownerUserId)
       throw new Error('SCHEDULE_PROPOSAL_INVALID');
-    if (patch.objective === undefined && patch.cron === undefined && patch.timezone === undefined)
+    if (patch.name === undefined && patch.objective === undefined && patch.groups === undefined)
       throw new Error('SCHEDULE_PROPOSAL_INVALID');
-    validate(
-      patch.objective ?? task.objective,
-      patch.cron ?? task.cron,
-      patch.timezone ?? task.timezone
-    );
+    validate(patch.objective ?? task.objective, task.timezone);
+    const name = patch.name === undefined ? null : normalizeName(patch.name);
+    const groups =
+      patch.groups === undefined ? null : JSON.stringify(normalizeTimeGroups(patch.groups));
     return this.write(() => {
       const current = this.getById(task.id);
       if (current === undefined) throw new Error('SCHEDULE_NOT_FOUND');
@@ -483,7 +856,7 @@ export class ScheduledSessionStore {
       this.database
         .prepare(
           `INSERT INTO scheduled_session_proposals
-      (id,task_id,proposed_by_user_id,base_revision,objective,cron,timezone,status,created_at)
+      (id,task_id,proposed_by_user_id,base_revision,name,objective,time_groups,status,created_at)
       VALUES (?,?,?,?,?,?,?,'PENDING',?)`
         )
         .run(
@@ -491,9 +864,9 @@ export class ScheduledSessionStore {
           task.id,
           actorUserId,
           task.revision,
+          name,
           patch.objective ?? null,
-          patch.cron ?? null,
-          patch.timezone ?? null,
+          groups,
           this.now()
         );
       return id;
@@ -501,12 +874,12 @@ export class ScheduledSessionStore {
   }
 
   resolveProposal(
-    sessionId: string,
+    taskId: string,
     proposalId: string,
     ownerUserId: number,
     accept: boolean
   ): ScheduledSessionTask {
-    const task = this.get(sessionId);
+    const task = this.getById(taskId);
     if (task === undefined) throw new Error('SCHEDULE_NOT_FOUND');
     if (task.ownerUserId !== ownerUserId) throw new Error('SCHEDULE_OWNER_REQUIRED');
     const proposal = this.database
@@ -518,13 +891,15 @@ export class ScheduledSessionStore {
     this.database.exec('BEGIN IMMEDIATE');
     try {
       const updated = accept
-        ? this.update(sessionId, task.revision, {
+        ? this.update(taskId, task.revision, {
+            ...(proposal['name'] === null ? {} : { name: proposal['name'] as string }),
             ...(proposal['objective'] === null
               ? {}
               : { objective: proposal['objective'] as string }),
-            ...(proposal['cron'] === null ? {} : { cron: proposal['cron'] as string }),
-            ...(proposal['timezone'] === null ? {} : { timezone: proposal['timezone'] as string }),
-            ownerUserId
+            ...(proposal['time_groups'] === null
+              ? {}
+              : { groups: JSON.parse(proposal['time_groups'] as string) as ScheduledTimeGroup[] }),
+            ...(proposal['timezone'] === null ? {} : { timezone: proposal['timezone'] as string })
           })
         : task;
       this.database
@@ -540,28 +915,89 @@ export class ScheduledSessionStore {
   }
 }
 
-function validate(objective: string, cron: string, timezone: string): void {
+export interface AgentTaskPatch {
+  readonly name?: string | undefined;
+  readonly objective?: string | undefined;
+  readonly groups?: readonly ScheduledTimeGroup[] | undefined;
+}
+
+interface TaskPatch extends AgentTaskPatch {
+  readonly binding?: Pick<ScheduledSessionTask, 'sessionId' | 'runner' | 'newSession'>;
+  readonly timezone?: string;
+  readonly enabled?: boolean | undefined;
+  readonly notifyOnTerminal?: boolean | undefined;
+  readonly graceMinutes?: number | undefined;
+}
+
+function normalizeName(value: string): string {
+  const name = value.trim();
+  if (name.length < 1 || name.length > 160) throw new Error('SCHEDULE_NAME_INVALID');
+  return name;
+}
+
+function normalizeTimeGroups(groups: readonly ScheduledTimeGroup[]): readonly ScheduledTimeGroup[] {
+  const parsed = scheduledTimeGroupsSchema.safeParse(groups);
+  if (!parsed.success) throw new Error('SCHEDULE_INVALID');
+  return parsed.data;
+}
+
+function requireNext(
+  groups: readonly ScheduledTimeGroup[],
+  timezone: string,
+  after: number
+): number {
+  const next = scheduledTimesAfter(groups, timezone, after, 1)[0];
+  if (next === undefined) throw new Error('SCHEDULE_NEXT_TIME_UNAVAILABLE');
+  return next.dueAt;
+}
+
+function validate(objective: string, timezone: string): void {
   if (objective.trim().length < 1 || objective.trim().length > 20_000)
     throw new Error('SCHEDULE_OBJECTIVE_INVALID');
-  parseScheduledCron(cron);
   assertScheduleTimezone(timezone);
 }
 
 function taskFromRow(row: SqlRow): ScheduledSessionTask {
   return {
     id: row['id'] as string,
-    sessionId: row['session_id'] as string,
+    sessionId: row['session_id'] as string | null,
+    newSession:
+      row['new_session'] === null
+        ? null
+        : (JSON.parse(row['new_session'] as string) as ScheduledNewSession),
     workspaceId: row['workspace_id'] as string,
     runner: row['runner'] as RunnerName,
     ownerUserId: Number(row['owner_user_id']),
     notifyOnTerminal: row['notify_on_terminal'] === 1,
+    graceMinutes: Number(row['grace_minutes']),
+    name: row['name'] as string,
     objective: row['objective'] as string,
-    cron: row['cron'] as string,
+    groups: JSON.parse(row['time_groups'] as string) as ScheduledTimeGroup[],
     timezone: row['timezone'] as string,
     enabled: row['enabled'] === 1,
     revision: Number(row['revision']),
     nextRunAt: row['next_run_at'] === null ? null : Number(row['next_run_at']),
     createdAt: Number(row['created_at']),
     updatedAt: Number(row['updated_at'])
+  };
+}
+
+export function occurrenceSummary(row: SqlRow) {
+  const runId = row.run_id as string | null;
+  const sessionId = row.execution_session_id as string | null;
+  return {
+    occurrenceId: row.id as string,
+    taskId: row.task_id as string,
+    dueAt: Number(row.due_at),
+    state: occurrenceState(
+      String(row.status),
+      row.code as string | null,
+      row.actual_started_at as number | null
+    ),
+    reason: row.code as string | null,
+    name: row.name as string | null,
+    startedAt: row.actual_started_at as number | null,
+    endedAt: row.ended_at as number | null,
+    run: runId === null || sessionId === null ? null : { runId, sessionId }
   };
 }

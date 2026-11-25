@@ -91,6 +91,25 @@ export const errorPresentationEnUS = {
       'This Workspace is still used as the source Workspace of a conversation template and cannot be removed.',
     SESSION_NOT_FOUND: 'The session does not exist or has been removed.',
     RUN_NOT_FOUND: 'The run does not exist or has already ended.',
+    SCHEDULE_NOT_FOUND: 'This scheduled task or execution record is no longer available.',
+    SCHEDULE_REVISION_CONFLICT:
+      'This task has changed. Reopen the task before making further changes.',
+    SCHEDULE_NEXT_TIME_UNAVAILABLE: 'The time combinations have no future occurrence.',
+    SCHEDULE_SESSION_NOT_FOUND: 'The target session is no longer available.',
+    SCHEDULE_SESSION_BUSY: 'The target session was busy at the scheduled time.',
+    SCHEDULE_CONTROL_UNAVAILABLE: 'The Node could not reach the Server at the scheduled time.',
+    SCHEDULE_EXPIRED: 'The start deadline passed before the task could run.',
+    SCHEDULE_TASK_CHANGED: 'The task changed before this execution could start.',
+    SCHEDULE_NODE_RESTARTED: 'The Node restarted before this execution could start.',
+    SCHEDULE_NODE_STOPPED: 'The Node stopped before this execution could start.',
+    SCHEDULE_RESTART_OUTCOME_UNKNOWN:
+      'The Node restarted while the execution was being submitted; it was not retried.',
+    SCHEDULE_SUBMISSION_OUTCOME_UNKNOWN:
+      'The Node could not confirm submission; it was not retried.',
+    SCHEDULE_EXECUTION_FAILED: 'The Node could not start the scheduled execution.',
+    SCHEDULE_MODEL_UNAVAILABLE: 'The configured model was not available for this execution.',
+    SCHEDULE_RUN_FAILED: 'The scheduled run failed.',
+    SCHEDULE_RUN_CANCELLED: 'The scheduled run was cancelled.',
     WATCH_REQUEST_TIMEOUT: 'The subscription request timed out. Reload to try again.',
     SESSION_WATCH_SNAPSHOT_TIMEOUT:
       'Timed out waiting for the initial session snapshot. Reload to try again.',

@@ -17,14 +17,25 @@ export class ExecutionLifecycle {
     private readonly continuous: ContinuousRunCoordinator<RunnerImageAttachment>,
     private readonly goal: GoalContinuationCoordinator,
     private readonly usage: NodeModelUsageService,
-    private readonly runtime: Pick<NodeRuntimeState, 'revokeExecutionMcps'>,
+    private readonly runtime: Pick<NodeRuntimeState, 'revokeExecutionMcps' | 'getAgentSession'>,
     private readonly events: NodeRunEventBridge,
     private readonly upgrade: NodeUpgradeCoordinator
   ) {}
 
-  terminal(run: NodeAgentRun, status: RunnerExecutionStatus): void {
-    if (this.databaseAvailable()) this.scheduled.executionTerminated(run, status);
+  started(run: NodeAgentRun, at: number): void {
+    if (run.source === 'SCHEDULED' && this.databaseAvailable())
+      this.scheduled.executionStarted(run, at, this.nativeSessionId(run) ?? null);
+  }
+
+  terminal(run: NodeAgentRun, status: RunnerExecutionStatus, at: number, reason?: string): void {
+    if (run.source === 'SCHEDULED' && this.databaseAvailable())
+      this.scheduled.executionTerminated(run, status, at, reason, this.nativeSessionId(run));
     this.continuous.runTerminated(run.sessionId);
+    if (this.databaseAvailable()) this.scheduled.changed();
+  }
+
+  private nativeSessionId(run: NodeAgentRun): string | undefined {
+    return this.runtime.getAgentSession(run.sessionId)?.externalSessionId ?? undefined;
   }
 
   revokeMcps(executionId: string): void {

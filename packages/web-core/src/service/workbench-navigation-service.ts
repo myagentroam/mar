@@ -3,14 +3,13 @@ import type { SettingsSection as ApplicationSettings } from '../model/settings.j
 import type { AdminState } from './admin-auth-service.js';
 import type { ManagementComposition } from './management-composition.js';
 import { translate } from './locale-preference-service.js';
+import type { MobileUtilityPanel } from './workbench-layout-service.js';
 import { computed, proxyRefs, ref, watch, type Ref } from 'vue';
 import {
   MOBILE_WORKBENCH_VIEWPORT_QUERY,
   transitionMobileWorkbenchLayout,
   type MobileWorkspaceSurface
 } from '../util/mobile-workbench.js';
-
-export type MobileUtilityPanel = 'activity';
 
 export interface WorkbenchNavigationService<
   WorkbenchView extends string,

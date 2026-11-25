@@ -3,6 +3,9 @@ import { safePublicError, sendError, errorResponseOptions } from './http-errors.
 
 export function domainErrorStatus(code: string): number {
   if (code === 'NODE_RESPONSE_INVALID') return 502;
+  if (code === 'SCHEDULE_NOT_FOUND') return 404;
+  if (code === 'SCHEDULE_OWNER_REQUIRED') return 403;
+  if (code === 'SCHEDULE_REVISION_CONFLICT') return 409;
   if (code === 'SESSION_SHARE_NOT_FOUND') return 404;
   if (code === 'SESSION_SHARE_EXPIRED') return 410;
   if (code === 'SESSION_SHARE_CREDENTIAL_INVALID') return 401;

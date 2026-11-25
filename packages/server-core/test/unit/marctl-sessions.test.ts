@@ -1,5 +1,8 @@
 import Fastify from 'fastify';
 import { execFile } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { Pool } from 'mysql2/promise';
@@ -14,6 +17,37 @@ import type {
 import type { UserNodeAuthorization } from '../../src/node-access-contracts.js';
 
 const apps: ReturnType<typeof Fastify>[] = [];
+const timeGroups = [
+  { days: { kind: 'weekdays', weekdays: [1, 5] }, times: { kind: 'times', times: ['09:00'] } },
+  { days: { kind: 'dates', dates: ['2035-02-12'] }, times: { kind: 'times', times: ['14:30'] } }
+];
+const scheduleA = {
+  taskId: 'task-a',
+  name: 'Build',
+  revision: 1,
+  state: 'SCHEDULED',
+  nextRunAt: 100
+};
+const scheduleB = {
+  taskId: 'task-b',
+  name: 'Review',
+  revision: 3,
+  state: 'SCHEDULED',
+  nextRunAt: 200
+};
+const scheduleResults: Record<string, Record<string, unknown>> = {
+  'schedule.task.list': { tasks: [scheduleA, scheduleB], nextCursor: 'cursor' },
+  'schedule.task.get': {
+    task: { ...scheduleB, objective: 'Check tests', groups: timeGroups, timezone: 'UTC' }
+  },
+  'schedule.occurrence.list': {
+    occurrences: [{ dueAt: 200, state: 'SUCCEEDED', runId: 'run-b' }],
+    occurrencePage: 1,
+    occurrenceTotal: 1
+  },
+  'schedule.task.create': { taskId: 'task-c', revision: 1, nextRunAt: 300, timezone: 'UTC' },
+  'schedule.task.propose': { proposalId: 'proposal', baseRevision: 3 }
+};
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
@@ -82,6 +116,8 @@ async function fixture(
       if (operation === 'session.start')
         return { session: { id: 'native-new' }, run: { id: 'new-run' } };
       if (operation === 'session.command.execute') return { accepted: true };
+      if (Object.hasOwn(scheduleResults, operation))
+        return { view: 'marctl', ...scheduleResults[operation] };
       return { accepted: true };
     }
   );
@@ -695,7 +731,10 @@ describe('Workspace-bound marctl agents', () => {
     });
     const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
     const cli = fileURLToPath(new URL('../../../../marctl/bin/marctl.mjs', import.meta.url));
+    const root = await mkdtemp(join(tmpdir(), 'marctl-schedule-http-'));
+    const groupsFile = join(root, 'groups.json');
     try {
+      await writeFile(groupsFile, JSON.stringify(timeGroups));
       for (const args of [
         ['send', 'target', '--steer', '-m', 'Additional context', '--client-message-id', 'input'],
         ['send', 'target', '--approval', 'approval-1', '--decision', 'approve'],
@@ -703,9 +742,19 @@ describe('Workspace-bound marctl agents', () => {
         ['rename', '--title', 'reviewer#42 Updated'],
         ['config', '--effort', 'high'],
         ['schedule', 'list'],
-        ['schedule', 'get'],
-        ['schedule', 'create', '--cron', '0 9 * * *', '-m', 'Check tests'],
-        ['schedule', 'update', '--expected-revision', '3', '--cron', '0 8 * * *']
+        ['schedule', 'get', '--task', 'task-b'],
+        ['schedule', 'runs', '--task', 'task-b'],
+        ['schedule', 'create', '--name', 'Check tests', '--groups-file', groupsFile, '-m', 'Check'],
+        [
+          'schedule',
+          'update',
+          '--task',
+          'task-b',
+          '--expected-revision',
+          '3',
+          '--groups-file',
+          groupsFile
+        ]
       ]) {
         const result = await promisify(execFile)(
           process.execPath,
@@ -723,6 +772,16 @@ describe('Workspace-bound marctl agents', () => {
         );
         expect(result.stderr).toBe('');
         expect(JSON.parse(result.stdout)).toBeTypeOf('object');
+        if (args[0] === 'schedule') {
+          const operation = {
+            list: 'schedule.task.list',
+            get: 'schedule.task.get',
+            runs: 'schedule.occurrence.list',
+            create: 'schedule.task.create',
+            update: 'schedule.task.propose'
+          }[args[1]!];
+          expect(JSON.parse(result.stdout)).toEqual(scheduleResults[operation!]);
+        }
         if (args[0] === 'list') expect(JSON.parse(result.stdout)).toEqual(listResult);
         if (args[0] === 'send' && args.includes('--approval'))
           expect(JSON.parse(result.stdout)).toMatchObject({
@@ -753,8 +812,7 @@ describe('Workspace-bound marctl agents', () => {
           input: {
             agentId: 'target',
             approval: { approvalId: 'approval-1', decision: 'approve' },
-            clientMessageId: expect.any(String),
-            deliveryIntent: 'SEND'
+            clientMessageId: expect.any(String)
           }
         },
         expect.not.objectContaining({ marctlExecutionResources: expect.anything() })
@@ -777,18 +835,19 @@ describe('Workspace-bound marctl agents', () => {
       );
       expect(requestNode).toHaveBeenCalledWith(
         'node',
-        'session.schedule.agent.save',
+        'schedule.task.propose',
         {
-          sessionId: 'source',
+          view: 'marctl',
+          taskId: 'task-b',
           workspaceId: 'workspace',
-          mode: 'update',
           expectedRevision: 3,
-          cron: '0 8 * * *'
+          patch: { groups: timeGroups }
         },
         expect.any(Object)
       );
     } finally {
       await app.close();
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -1075,101 +1134,108 @@ describe('Workspace-bound marctl agents', () => {
   });
 
   it.each([false, true])(
-    'forwards normal schedule reads and agent edits (scheduled=%s)',
+    'relays task commands through the authenticated Workspace without provisioning a Run (scheduled=%s)',
     async (scheduled) => {
-      const { app, headers, requestNode, secrets } = await fixture(true, scheduled);
-      for (const payload of [
-        { action: 'schedule.list', limit: 2 },
-        { action: 'schedule.get', sessionId: 'other' },
-        { action: 'schedule.create', sessionId: 'other', cron: '0 9 * * *', content: 'Check' },
-        { action: 'schedule.update', sessionId: 'other', expectedRevision: 3, content: 'Review' }
-      ]) {
-        expect(
-          (await app.inject({ method: 'POST', url: '/api/marctl/sessions', headers, payload }))
-            .statusCode
-        ).toBe(200);
+      const source = { type: 'execution', sessionId: 'source', executionId: 'execution-1' };
+      const { app, headers, requestNode, secrets } = await fixture(true, scheduled, {
+        executionSource: 'source'
+      });
+      const existing = { kind: 'existing', sessionId: 'other' };
+      const newSession = { kind: 'newSession', runner: 'codex', model: { kind: 'default' } };
+      const fields = { name: 'Check', objective: 'Check', groups: timeGroups };
+      const update = { taskId: 'task-b', expectedRevision: 3, patch: { objective: 'Review' } };
+      const cases = [
+        ['schedule.list', { limit: 2, sessionId: 'other', cursor: 'cursor' }, 'schedule.task.list'],
+        ['schedule.get', { taskId: 'task-b' }, 'schedule.task.get'],
+        ['schedule.runs', { taskId: 'task-b', occurrencePage: 1 }, 'schedule.occurrence.list'],
+        ['schedule.create', { target: existing, ...fields }, 'schedule.task.create'],
+        ['schedule.create', { target: newSession, ...fields }, 'schedule.task.create'],
+        ['schedule.update', update, 'schedule.task.propose']
+      ] as const;
+      for (const [action, data, operation] of cases) {
+        requestNode.mockClear();
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers,
+          payload: { action, ...data }
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual(scheduleResults[operation]);
+        expect(requestNode).toHaveBeenCalledExactlyOnceWith(
+          'node',
+          operation,
+          { workspaceId: 'workspace', view: 'marctl', ...data },
+          expect.objectContaining({ userId: 7, workspaceId: 'workspace', marctlCaller: source })
+        );
       }
-      expect(requestNode).toHaveBeenCalledWith(
-        'node',
-        'session.schedule.list',
-        { workspaceId: 'workspace', limit: 2 },
-        expect.any(Object)
-      );
-      expect(requestNode).toHaveBeenCalledWith(
-        'node',
-        'session.schedule.agent.save',
-        {
-          workspaceId: 'workspace',
-          sessionId: 'other',
-          mode: 'create',
-          cron: '0 9 * * *',
-          objective: 'Check'
-        },
-        expect.any(Object)
-      );
-      expect(requestNode).toHaveBeenCalledWith(
-        'node',
-        'session.schedule.agent.save',
-        {
-          workspaceId: 'workspace',
-          sessionId: 'other',
-          mode: 'update',
-          expectedRevision: 3,
-          objective: 'Review'
-        },
-        expect.any(Object)
-      );
-      expect(requestNode.mock.calls.some((call) => call[1] === 'session.schedule.save')).toBe(
-        false
-      );
       expect(secrets.resolve).not.toHaveBeenCalled();
     }
   );
 
-  it.each([false, true])(
-    'rejects forged schedule fields and foreign targets (scheduled=%s)',
-    async (scheduled) => {
-      const foreground = await fixture(true, scheduled);
-      for (const extra of [{ ownerUserId: 99 }, { enabled: false }, { readonly: false }])
-        expect(
-          (
-            await foreground.app.inject({
-              method: 'POST',
-              url: '/api/marctl/sessions',
-              headers: foreground.headers,
-              payload: {
-                action: 'schedule.update',
-                sessionId: 'other',
-                expectedRevision: 1,
-                content: 'Check',
-                ...extra
-              }
-            })
-          ).statusCode
-        ).toBe(400);
-      const foreign = await fixture(true, scheduled, { session: { workspaceId: 'foreign' } });
-      expect(
-        (
-          await foreign.app.inject({
-            method: 'POST',
-            url: '/api/marctl/sessions',
-            headers: foreign.headers,
-            payload: { action: 'rename', sessionId: 'other', title: 'Changed' }
-          })
-        ).statusCode
-      ).toBe(403);
-      expect(
-        (
-          await foreign.app.inject({
-            method: 'POST',
-            url: '/api/marctl/sessions',
-            headers: foreign.headers,
-            payload: { action: 'schedule.get', sessionId: 'other' }
-          })
-        ).statusCode
-      ).toBe(403);
+  it('rejects legacy and forged schedule input before contacting Node', async () => {
+    const { app, headers, requestNode } = await fixture();
+    const create = {
+      action: 'schedule.create',
+      name: 'Check',
+      objective: 'Check',
+      groups: timeGroups,
+      target: { kind: 'existing', sessionId: 'other' }
+    };
+    const update = {
+      action: 'schedule.update',
+      taskId: 'task-b',
+      expectedRevision: 1,
+      patch: { objective: 'Check' }
+    };
+    for (const payload of [
+      { action: 'schedule.get', sessionId: 'other' },
+      { action: 'schedule.create', sessionId: 'other', cron: '0 9 * * *', content: 'Check' },
+      { action: 'schedule.runs', taskId: 'task-b', occurrencePage: 0 },
+      {
+        ...create,
+        groups: [{ days: { kind: 'anyDay' }, times: { kind: 'times', times: ['24:00'] } }]
+      },
+      { ...create, ownerUserId: 99 },
+      { ...create, target: { kind: 'newSession', runner: 'codex', model: { kind: 'fixed' } } },
+      { ...update, workspaceId: 'foreign' },
+      { ...update, sessionId: 'other' },
+      { ...update, view: 'marctl' },
+      { ...update, patch: {} },
+      { ...update, patch: { ...update.patch, enabled: false } },
+      { ...update, patch: { ...update.patch, target: { kind: 'existing', sessionId: 'other' } } }
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe('MARCTL_SESSION_INPUT_INVALID');
     }
-  );
+    expect(requestNode).not.toHaveBeenCalled();
+  });
+
+  it('preserves Node task-scope rejection and rejects replies without a compact view', async () => {
+    const { app, headers, requestNode } = await fixture();
+    const call = (taskId: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers,
+        payload: { action: 'schedule.get', taskId }
+      });
+    requestNode.mockRejectedValueOnce(new Error('SCHEDULE_NOT_FOUND'));
+    const foreign = await call('foreign-task');
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.json().error.code).toBe('SCHEDULE_NOT_FOUND');
+    requestNode.mockResolvedValueOnce({ task: { objective: 'Do not disclose', ownerUserId: 99 } });
+    const legacy = await call('task-b');
+    expect(legacy.statusCode).toBe(409);
+    expect(legacy.json().error.code).toBe('CAPABILITY_VERSION_UNSUPPORTED');
+    expect(legacy.body).not.toContain('Do not disclose');
+  });
 
   it.each(['send', 'start'] as const)(
     'relays %s with the authenticated Execution rather than a client origin',

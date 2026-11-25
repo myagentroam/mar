@@ -15,13 +15,20 @@ export function validUserAuthorization(
     operation === 'model.resource.read' &&
     authorization.userId === 0 &&
     authorization.sessionHash === 'model-resource';
+  const internalScheduleIndex = operation === 'schedule.index.list';
+  const scheduleIndexAuthorization =
+    authorization.userId === 0 &&
+    authorization.sessionHash === 'scheduled-task-index' &&
+    authorization.marctlCaller === undefined;
   return (
-    (modelResourceCapability ||
-      (typeof authorization.userId === 'number' &&
-        Number.isSafeInteger(authorization.userId) &&
-        authorization.userId > 0 &&
-        typeof authorization.sessionHash === 'string' &&
-        /^[A-Za-z0-9_-]{43}$/.test(authorization.sessionHash))) &&
+    (internalScheduleIndex
+      ? scheduleIndexAuthorization
+      : modelResourceCapability ||
+        (typeof authorization.userId === 'number' &&
+          Number.isSafeInteger(authorization.userId) &&
+          authorization.userId > 0 &&
+          typeof authorization.sessionHash === 'string' &&
+          /^[A-Za-z0-9_-]{43}$/.test(authorization.sessionHash))) &&
     authorization.nodeId === nodeId &&
     authorization.operation === operation &&
     authorization.requestId === envelope.id &&

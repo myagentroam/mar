@@ -27,10 +27,27 @@ const commands = {
   'prompt.set': ['message', 'message-file'],
   'prompt.clear': [],
   'approval.decide': ['run', 'approval', 'decision'],
-  'schedule.list': ['cursor', 'limit'],
-  'schedule.get': [],
-  'schedule.create': ['cron', 'message', 'message-file'],
-  'schedule.update': ['cron', 'message', 'message-file', 'expected-revision'],
+  'schedule.list': ['cursor', 'limit', 'session'],
+  'schedule.get': ['task'],
+  'schedule.runs': ['task', 'page'],
+  'schedule.create': [
+    'name',
+    'groups-file',
+    'session',
+    'runner',
+    'model-id',
+    'effort',
+    'message',
+    'message-file'
+  ],
+  'schedule.update': [
+    'task',
+    'name',
+    'groups-file',
+    'message',
+    'message-file',
+    'expected-revision'
+  ],
   send: [
     'message',
     'message-file',
@@ -52,6 +69,9 @@ const fieldNames = {
   'model-id': 'modelId',
   parent: 'parentSessionId',
   'expected-revision': 'expectedRevision',
+  'groups-file': 'groupsFile',
+  task: 'taskId',
+  session: 'sessionId',
   'message-file': 'messageFile',
   'client-message-id': 'clientMessageId',
   run: 'runId',
@@ -111,6 +131,12 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
       args[key] = true;
       continue;
     }
+    if (action === 'schedule.create' && ['--new-session', '--default-model'].includes(flag)) {
+      const key = flag === '--new-session' ? 'newSession' : 'defaultModel';
+      if (args[key]) throw invalid();
+      args[key] = true;
+      continue;
+    }
     if (flag === '--clear-goal' && ['start', 'send'].includes(action)) {
       const key = 'clearGoal';
       if (Object.hasOwn(args, key)) throw invalid();
@@ -134,7 +160,7 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     if (name === 'agent' && action === 'wait') {
       (args.agentIds ??= []).push(value);
       if (args.agentIds.length > 8) throw invalid();
-    } else if (name === 'limit' || name === 'expected-revision') {
+    } else if (name === 'limit' || name === 'expected-revision' || name === 'page') {
       if (
         !/^[1-9][0-9]*$/u.test(value) ||
         !Number.isSafeInteger(Number(value)) ||
@@ -171,7 +197,6 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
   )
     throw invalid();
   if (
-    action === 'start' &&
     args.runner !== undefined &&
     !['mar-agent', 'codex', 'claude-code', 'opencode'].includes(args.runner)
   )
@@ -210,21 +235,50 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     );
   if (action === 'rename' && args.title !== undefined) args.title = args.title.trim();
   if (args.title !== undefined && args.title.length > 160) throw invalid();
-  if (args.modelId !== undefined && (args.modelId.trim().length === 0 || args.modelId.length > 120))
+  const scheduleTarget = action === 'schedule.create';
+  if (
+    args.modelId !== undefined &&
+    (!args.modelId.trim() || args.modelId.length > (scheduleTarget ? 256 : 120))
+  )
     throw invalid();
-  if (args.effort !== undefined && args.effort.length > 120) throw invalid();
+  if (
+    args.effort !== undefined &&
+    (scheduleTarget ? !args.effort.trim() || args.effort.length > 32 : args.effort.length > 120)
+  )
+    throw invalid();
   if (action === 'config' && args.modelId === undefined && args.effort === undefined)
     throw invalid();
   if (action === 'rename') {
     if (args.title === undefined || args.title.trim().length === 0) throw invalid();
   }
-  if (action === 'schedule.create' && args.cron === undefined) throw invalid();
-  if (args.cron !== undefined && (args.cron.trim().length === 0 || args.cron.length > 512))
+  if (args.name !== undefined && (!args.name.trim() || args.name.length > 160)) throw invalid();
+  if (args.taskId !== undefined && (!args.taskId.trim() || args.taskId.length > 512))
     throw invalid();
   if (
+    action.startsWith('schedule.') &&
+    ((args.sessionId !== undefined && (!args.sessionId.trim() || args.sessionId.length > 512)) ||
+      (args.groupsFile === '-' && args.messageFile === '-'))
+  )
+    throw invalid();
+  if (['schedule.get', 'schedule.update', 'schedule.runs'].includes(action) && !args.taskId)
+    throw invalid();
+  if (scheduleTarget) {
+    if (!args.name || !args.groupsFile?.trim()) throw invalid();
+    if (args.newSession) {
+      if (args.sessionId || !args.runner || Boolean(args.defaultModel) === Boolean(args.modelId))
+        throw invalid();
+    } else if (args.runner || args.modelId || args.defaultModel || args.effort !== undefined) {
+      throw invalid();
+    }
+  }
+  if (
     action === 'schedule.update' &&
-    (args.expectedRevision === undefined ||
-      (args.cron === undefined && args.message === undefined && args.messageFile === undefined))
+    (!args.expectedRevision ||
+      (args.groupsFile !== undefined && !args.groupsFile.trim()) ||
+      (!args.name &&
+        !args.groupsFile &&
+        args.message === undefined &&
+        args.messageFile === undefined))
   )
     throw invalid();
   if (args.query !== undefined && args.query.length > 160) throw invalid();

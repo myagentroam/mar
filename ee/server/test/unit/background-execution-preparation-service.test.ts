@@ -45,12 +45,12 @@ function fixture(searchBackendAvailable?: () => boolean) {
     modelId: 'selected'
   };
   const schedule = {
-    executionResources: 1 as const,
     taskId: 'task',
     revision: 2,
     occurrenceId: 'occurrence',
     ownerUserId: 7,
     workspaceId: 'workspace',
+    targetKind: 'existing' as const,
     sessionId: 'session',
     runner: 'mar-agent' as const,
     modelId: 'selected'
@@ -118,14 +118,30 @@ describe('background execution preparation', () => {
     expect(f.issue).not.toHaveBeenCalled();
   });
 
-  it('keeps Git configuration out of legacy schedule responses', async () => {
+  it('provides Git configuration to both schedule targets', async () => {
     const f = fixture();
-    expect(await f.service.prepareSchedule('node', f.schedule)).toHaveProperty(
-      'gitConfiguration',
-      f.git
+    for (const targetKind of ['existing', 'newSession'] as const)
+      expect(await f.service.prepareSchedule('node', { ...f.schedule, targetKind })).toHaveProperty(
+        'gitConfiguration',
+        f.git
+      );
+  });
+
+  it('checks new-session authorization before loading scheduled execution resources', async () => {
+    const f = fixture();
+    f.authorize.mockResolvedValueOnce(false);
+    await expect(
+      f.service.prepareSchedule('node', { ...f.schedule, targetKind: 'newSession' })
+    ).rejects.toThrow('WORKSPACE_ACCESS_DENIED');
+    expect(f.authorize).toHaveBeenCalledExactlyOnceWith(
+      f.schedule.ownerUserId,
+      'node',
+      'session.start',
+      { workspaceId: f.schedule.workspaceId, runner: f.schedule.runner },
+      f.schedule.workspaceId
     );
-    const { executionResources: _version, ...legacy } = f.schedule;
-    expect(await f.service.prepareSchedule('node', legacy)).not.toHaveProperty('gitConfiguration');
+    expect(f.resolve).not.toHaveBeenCalled();
+    expect(f.issue).not.toHaveBeenCalled();
   });
 
   it('preserves caller-specific missing-model errors without issuing resources', async () => {

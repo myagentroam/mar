@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { messageContent } from './session-input.mjs';
+import { MarctlError } from './errors.mjs';
 
 const networkActions = new Set(['start', 'send', 'wait', 'stop', 'list', 'view']);
 
@@ -43,7 +44,62 @@ export function isAgentNetworkAction(action) {
   return networkActions.has(action);
 }
 
+// Adapt task commands without reimplementing the Server's time-group schema or Node's rules.
+async function prepareScheduleRequest(args, env, stdin, translate) {
+  const { action, taskId, sessionId, cursor, limit, page, expectedRevision, name, groupsFile } =
+    args;
+  if (action === 'schedule.list') {
+    return {
+      action,
+      ...(sessionId === undefined ? {} : { sessionId }),
+      ...(cursor === undefined ? {} : { cursor }),
+      ...(limit === undefined ? {} : { limit })
+    };
+  }
+  if (action === 'schedule.get') return { action, taskId };
+  if (action === 'schedule.runs') return { action, taskId, occurrencePage: page ?? 1 };
+
+  let target;
+  if (action === 'schedule.create') {
+    const targetSessionId = sessionId ?? env.MAR_CTL_SESSION_ID;
+    if (!args.newSession && !targetSessionId)
+      throw new MarctlError(translate('errors.scheduleContextRequired'), {
+        code: 'MARCTL_SESSION_CONTEXT_REQUIRED'
+      });
+    target = args.newSession
+      ? {
+          kind: 'newSession',
+          runner: args.runner,
+          model: args.defaultModel ? { kind: 'default' } : { kind: 'fixed', modelId: args.modelId },
+          ...(args.effort === undefined ? {} : { effort: args.effort })
+        }
+      : { kind: 'existing', sessionId: targetSessionId };
+  }
+  const fields = {};
+  if (name !== undefined) fields.name = name;
+  if (groupsFile !== undefined) {
+    try {
+      const groups = JSON.parse(
+        await messageContent({ messageFile: groupsFile }, stdin, 64_000, translate)
+      );
+      if (!Array.isArray(groups) || groups.length === 0) throw new Error('GROUPS_INVALID');
+      fields.groups = groups;
+    } catch {
+      throw new MarctlError(translate('errors.scheduleGroupsInvalid'), {
+        code: 'MARCTL_SESSION_INPUT_INVALID'
+      });
+    }
+  }
+  if (args.messageFile !== undefined || args.message !== undefined)
+    fields.objective = await messageContent(args, stdin, 20_000, translate);
+  return target === undefined
+    ? { action, taskId, expectedRevision, patch: fields }
+    : { action, target, ...fields };
+}
+
 export async function prepareSessionRequest({ args, env, stdin, translate, sessionId, targeted }) {
+  if (args.action.startsWith('schedule.'))
+    return Object.freeze(await prepareScheduleRequest(args, env, stdin, translate));
   const body = { action: args.action };
   for (const name of [
     'sessionId',
@@ -56,9 +112,7 @@ export async function prepareSessionRequest({ args, env, stdin, translate, sessi
     'limit',
     'query',
     'runId',
-    'approvalId',
-    'cron',
-    'expectedRevision'
+    'approvalId'
   ])
     if (args[name] !== undefined) body[name] = args[name];
   if (targeted) body.sessionId = sessionId;
@@ -71,11 +125,7 @@ export async function prepareSessionRequest({ args, env, stdin, translate, sessi
     body.content = await messageContent(
       args,
       stdin,
-      args.action === 'goal.set' ||
-        args.action.startsWith('schedule.') ||
-        args.action === 'prompt.set'
-        ? 20000
-        : 100000,
+      args.action === 'goal.set' || args.action === 'prompt.set' ? 20_000 : 100_000,
       translate,
       args.action === 'prompt.set'
     );

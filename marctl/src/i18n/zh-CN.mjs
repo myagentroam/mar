@@ -64,12 +64,17 @@ ${configurationHelp}
   {program} rename [<id>] --title <name> [--json]
   {program} prompt get|clear [<id>] [--json]
   {program} prompt set [<id>] (-m <text> | --message-file <file|->) [--json]
-  {program} schedule list [--cursor <cursor>] [--limit <1..100>] [--json]
-  {program} schedule get [<id>] [--json]
-  {program} schedule create [<id>] --cron <cron>
-    (-m <text> | --message-file <file|->) [--json]
-  {program} schedule update [<id>] --expected-revision <revision>
-    [--cron <cron>] [-m <text> | --message-file <file|->] [--json]
+  {program} schedule list [--session <会话 ID>] [--cursor <游标>]
+    [--limit <1..100>] [--json]
+  {program} schedule get --task <任务 ID> [--json]
+  {program} schedule runs --task <任务 ID> [--page <页码>] [--json]
+  {program} schedule create --name <名称> --groups-file <文件|->
+    (-m <正文> | --message-file <文件|->) [--json]
+    [--session <会话 ID> | --new-session --runner <Runner>
+      (--model-id <ID> | --default-model) [--effort <值>]]
+  {program} schedule update --task <任务 ID> --expected-revision <版本>
+    [--name <名称>] [--groups-file <文件|->]
+    [-m <正文> | --message-file <文件|->] [--json]
   {program} approval decide <id> --run <run-id> --approval <approval-id>
     --decision <approve|reject> [--json]
   {program} wait <id> --run <run-id> [--until approval] --timeout <duration>
@@ -89,6 +94,11 @@ ${configurationHelp}
   stop 停止目标当前执行并清除 Goal。wait 默认等待直接子会话终态 30 秒，
   0ms 为快照；正数按传入时长等待，最多 5 分钟。等待不会停止任务。
   -m 与 --message-file 互斥；文件使用 UTF-8，- 从 stdin 读取。
+  创建定时任务默认绑定当前会话；--new-session 在每次触发时新建会话。
+  更新定时任务至少指定一项。--groups-file 读取按 Node 时区解释的时间组合
+  JSON 数组，例如：
+  [{"days":{"kind":"anyDay"},"times":{"kind":"times","times":["09:00"]}}]
+  时间组合与任务正文只能有一项从 stdin 读取。
   list 默认查询所在会话树，包含空闲会话；
   没有当前会话时默认 active，显式 tree 须有会话上下文。active 包含当前
   Workspace 中运行及睡眠的会话。返回 currentAgentId（无会话时为 null）、
@@ -221,6 +231,8 @@ ${configurationHelp}`,
 
     userContextUnavailable: '此 Node 会话没有有效的 marctl 用户授权。',
     sessionContextRequired: '当前上下文没有会话，请显式指定会话 ID。',
+    scheduleContextRequired: '当前上下文没有会话，请使用 --session 或 --new-session。',
+    scheduleGroupsInvalid: '请用 --groups-file 提供非空 JSON 数组（UTF-8，最多 64,000 字符）。',
     serverUrlInvalid: 'MAR_CTL_SERVER_URL 无效。',
     serverUrlTransport: 'MAR_CTL_SERVER_URL 必须使用 HTTP 或 HTTPS。',
     serverUrlOrigin: 'MAR_CTL_SERVER_URL 必须是不含凭据或查询参数的 Origin。',

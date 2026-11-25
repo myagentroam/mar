@@ -39,7 +39,18 @@ export class BackgroundExecutionPreparationService {
     this.prepareContext(nodeId, request, 'EXECUTION_MODEL_UNAVAILABLE');
 
   readonly prepareSchedule: ScheduledRunAuthorizer = async (nodeId, request) => {
-    const context = await this.prepareContext(
+    if (
+      request.targetKind === 'newSession' &&
+      !(await this.options.authorize(
+        request.ownerUserId,
+        nodeId,
+        'session.start',
+        { workspaceId: request.workspaceId, runner: request.runner },
+        request.workspaceId
+      ))
+    )
+      throw new Error('WORKSPACE_ACCESS_DENIED');
+    return this.prepareContext(
       nodeId,
       {
         userId: request.ownerUserId,
@@ -50,9 +61,6 @@ export class BackgroundExecutionPreparationService {
       },
       'SCHEDULE_MODEL_UNAVAILABLE'
     );
-    if (request.executionResources === 1) return context;
-    const { gitConfiguration: _git, ...legacyContext } = context;
-    return legacyContext;
   };
 
   private async prepareContext(

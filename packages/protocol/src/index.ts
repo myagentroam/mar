@@ -1,6 +1,7 @@
 import { modelUsageGrantSchema, usageCountSchema } from './model-usage.js';
 import { personalGitRuntimeSchema } from './git-identity.js';
 import { z } from 'zod';
+import { scheduledTasksCapabilitySchema } from './scheduled-time.js';
 import { fileChangeDiffSchema } from './tool-result-resource.js';
 export * from './tool-result-resource.js';
 import { resourceOwnershipSchema, type ResourceOwnership } from './enterprise.js';
@@ -16,6 +17,7 @@ export const XAI_SUBSCRIPTION_PROXY_BASE_URL = 'https://cli-chat-proxy.grok.com/
 export const XAI_SUBSCRIPTION_BASE_URL = XAI_SUBSCRIPTION_PROXY_BASE_URL;
 export * from './composer-tags.js';
 export * from './session-shares.js';
+export * from './scheduled-time.js';
 
 export * from './enterprise.js';
 export * from './skill.js';
@@ -417,6 +419,7 @@ export const nodeCapabilitiesSchema = z
     browserSettings: z.literal(true).optional(),
     remoteDesktop: remoteDesktopCapabilitySchema.optional(),
     sessionAside: sessionAsideCapabilitySchema.optional(),
+    scheduledTasks: scheduledTasksCapabilitySchema.optional(),
     sessionGroups: z
       .object({ apiVersion: z.literal(1) })
       .strict()
@@ -729,7 +732,7 @@ export type RuntimeCredentialResolveResponse = z.infer<
 >;
 export const scheduledRunAuthorizeRequestSchema = z
   .object({
-    executionResources: z.literal(1).optional(),
+    targetKind: z.enum(['existing', 'newSession']),
     taskId: boundedIdentifierSchema,
     revision: positiveSafeIntegerSchema,
     occurrenceId: z.string().min(1).max(256),
@@ -2048,6 +2051,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   browserDownloadWorkspace: z.literal(true).optional(),
   remoteDesktop: remoteDesktopCapabilitySchema.optional(),
   sessionAside: sessionAsideCapabilitySchema.optional(),
+  scheduledTasks: scheduledTasksCapabilitySchema.optional(),
   sessionGroups: z
     .object({ apiVersion: z.literal(1) })
     .strict()
@@ -3982,15 +3986,20 @@ export const workbenchNodeOperationSchema = z.enum([
   'workspace.unwatch',
   'session.unwatch',
   'session.metadata.update',
-  'session.schedule.get',
-  'session.schedule.list',
-  'session.schedule.agent.save',
+  'schedule.task.get',
+  'schedule.task.list',
+  'schedule.task.create',
+  'schedule.task.update',
+  'schedule.task.propose',
+  'schedule.task.remove',
+  'schedule.task.resolveProposal',
+  'schedule.preview',
+  'schedule.occurrence.list',
+  'schedule.occurrence.get',
+  'schedule.upcoming.list',
   'session.cli.context',
   'session.graph',
   'session.goal.get',
-  'session.schedule.save',
-  'session.schedule.remove',
-  'session.schedule.proposal.resolve',
   'session.pin.move',
   'session.rewind',
   'session.rollback',

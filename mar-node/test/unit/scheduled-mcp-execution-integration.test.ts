@@ -21,6 +21,8 @@ import { MarAgentMcpClientPool } from '../../src/runner/mar-agent/mcp-client-poo
 import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
 import { ScheduleMcpBridge } from '../../src/service/schedule-mcp-bridge.js';
+import { SessionScheduleService } from '../../src/session/session-schedule-service.js';
+import { dailyGroups } from './scheduled-task-fixtures.js';
 
 interface ScheduleIpcRequest {
   readonly token: string;
@@ -111,7 +113,22 @@ function scheduleToolText(result: unknown): string {
   return block.text;
 }
 
-it('reads committed creates and updates after lost renewals without renewing or replaying the old token', async () => {
+function makeBridge(database: NodeDatabase, runtime: NodeRuntimeState, changed = vi.fn()) {
+  const service = new SessionScheduleService({
+    database: () => database,
+    runtime,
+    projection: { rename: async () => undefined } as never,
+    emitSession: vi.fn(),
+    changed
+  });
+  return new ScheduleMcpBridge(
+    async (capability) =>
+      runtime.resolveMcpExecution({ ...capability, userId: capability.actorUserId })?.sessionId,
+    (scope, tool, payload) => service.invokeMcp(scope, tool, payload)
+  );
+}
+
+it('reads committed writes after lost IPC replies without replay or capability renewal', async () => {
   const home = await mkdtemp(join(tmpdir(), 'mar-schedule-lost-renewal-'));
   const database = new NodeDatabase(':memory:', 'schedule-mcp-lost-renewal');
   const workspace = database.saveWorkspace({ path: home, kind: 'DIRECTORY', gitSummary: null });
@@ -122,6 +139,7 @@ it('reads committed creates and updates after lost renewals without renewing or 
   const session = runtime.createAgentSession({
     workspaceId: workspace.id,
     runner: 'mar-agent',
+    externalSessionId: 'native-session',
     cwd: home
   });
   database.saveNativeSessionMetadata({
@@ -130,33 +148,8 @@ it('reads committed creates and updates after lost renewals without renewing or 
     workspaceId: workspace.id
   });
   const store = new ScheduledSessionStore(database.raw);
-  const createWrite = vi.spyOn(store, 'create');
-  const updateWrite = vi.spyOn(store, 'updateFromAgent');
   const changed = vi.fn();
-  const proposed = vi.fn();
-  const createTask = vi.fn(
-    async (input: {
-      readonly sessionId: string;
-      readonly workspaceId: string;
-      readonly actorUserId: number;
-      readonly objective: string;
-      readonly cron: string;
-    }) =>
-      store.create({
-        ...input,
-        runner: 'mar-agent',
-        ownerUserId: input.actorUserId,
-        timezone: 'UTC'
-      })
-  );
-  const bridge = new ScheduleMcpBridge(
-    () => store,
-    changed,
-    proposed,
-    (capability) =>
-      runtime.resolveMcpExecution({ ...capability, userId: capability.actorUserId })?.sessionId,
-    createTask
-  );
+  const bridge = makeBridge(database, runtime, changed);
   const clients: Client[] = [];
   let proxy: Awaited<ReturnType<typeof createScheduleResponseProxy>> | undefined;
   const connectClient = async (descriptor: ResolvedMcpServer) => {
@@ -194,157 +187,84 @@ it('reads committed creates and updates after lost renewals without renewing or 
     proxy.dropNextResponse('create_scheduled_task');
     const lostCreate = await createClient.callTool({
       name: 'create_scheduled_task',
-      arguments: { objective: 'Created before lost renewal', cron: '0 9 * * *' }
+      arguments: {
+        name: 'Daily check',
+        objective: 'Created despite lost reply',
+        groups: dailyGroups('09:00')
+      }
     });
     expect(lostCreate.isError).toBe(true);
     expect(scheduleToolText(lostCreate)).toContain('SCHEDULE_IPC_RESPONSE_INVALID');
-    const created = store.get(session.id)!;
-    expect(created).toMatchObject({ objective: 'Created before lost renewal', revision: 1 });
-    expect(createTask).toHaveBeenCalledOnce();
-    expect(createWrite).toHaveBeenCalledOnce();
-    expect(proxy.requests.at(-1)!.token).toBe(createToken);
-    expect(proxy.responses.at(-1)).toMatchObject({
-      result: { id: created.id, revision: 1 },
-      token: expect.any(String)
-    });
-    expect(proxy.responses.at(-1)!.token).not.toBe(createToken);
-
-    const createdRead = await createClient.callTool({ name: 'get_scheduled_task', arguments: {} });
-    expect(createdRead.isError).not.toBe(true);
-    expect(JSON.parse(scheduleToolText(createdRead))).toMatchObject({
-      id: created.id,
-      objective: 'Created before lost renewal',
-      revision: 1
-    });
-    expect(proxy.requests.at(-1)!.token).toBe(createToken);
-    expect(proxy.responses.at(-1)).not.toHaveProperty('token');
-    expect(JSON.stringify(createdRead)).not.toContain('"token"');
-    expect(createWrite).toHaveBeenCalledOnce();
-    expect(changed).not.toHaveBeenCalled();
-    expect(proposed).not.toHaveBeenCalled();
-
-    const staleCreateWrite = await createClient.callTool({
-      name: 'update_scheduled_task',
-      arguments: { objective: 'Must stay stale after readback' }
-    });
-    expect(staleCreateWrite.isError).toBe(true);
-    expect(scheduleToolText(staleCreateWrite)).toContain('SCHEDULE_CAPABILITY_STALE');
-    expect(updateWrite).not.toHaveBeenCalled();
-    expect(store.get(session.id)).toMatchObject({ id: created.id, revision: 1 });
-    runtime.revokeExecutionMcps(createExecution.id);
-    const releasedRead = await createClient.callTool({
-      name: 'get_scheduled_task',
-      arguments: {}
-    });
-    expect(releasedRead.isError).toBe(true);
-    expect(scheduleToolText(releasedRead)).toContain('SCHEDULE_CAPABILITY_STALE');
-
-    runtime.finishRun(createRun.id, 'SUCCEEDED');
-    const updateRun = runtime.createMessageRun({
-      sessionId: session.id,
-      clientMessageId: 'lost-update-response',
-      content: 'Update schedule',
-      initiatedByUserId: 7
-    }).run;
-    const updateExecution = runtime.createExecution(updateRun.id);
-    const updateServer = await bridge.prepare({
-      executionId: updateExecution.id,
-      sessionId: session.id,
-      workspaceId: workspace.id,
-      taskId: created.id,
-      revision: created.revision,
-      actorUserId: 7
-    });
-    const updateToken = updateServer.environment!.MAR_SCHEDULE_MCP_TOKEN!;
-    const updateClient = await connectClient(updateServer);
+    expect(changed).toHaveBeenCalledTimes(1);
+    const recovered = await createClient.callTool({ name: 'list_scheduled_tasks', arguments: {} });
+    const listed = JSON.parse(scheduleToolText(recovered)) as {
+      items: { taskId: string; revision: number }[];
+    };
+    expect(listed.items).toEqual([expect.objectContaining({ name: 'Daily check', revision: 1 })]);
+    const { taskId } = listed.items[0]!;
+    expect(proxy.responses.some((response) => 'token' in response)).toBe(false);
+    expect(proxy.requests.every((request) => request.token === createToken)).toBe(true);
 
     proxy.dropNextResponse('update_scheduled_task');
-    const lostUpdate = await updateClient.callTool({
+    const patch = {
+      taskId,
+      expectedRevision: 1,
+      patch: { objective: 'Updated despite lost reply' }
+    };
+    const lostUpdate = await createClient.callTool({
       name: 'update_scheduled_task',
-      arguments: { objective: 'Updated before lost renewal' }
+      arguments: patch
     });
     expect(lostUpdate.isError).toBe(true);
     expect(scheduleToolText(lostUpdate)).toContain('SCHEDULE_IPC_RESPONSE_INVALID');
-    const updated = store.get(session.id)!;
-    expect(updated).toMatchObject({
-      id: created.id,
-      objective: 'Updated before lost renewal',
+    const readback = await createClient.callTool({
+      name: 'get_scheduled_task',
+      arguments: { taskId }
+    });
+    expect(JSON.parse(scheduleToolText(readback))).toMatchObject({
+      taskId,
+      objective: 'Updated despite lost reply',
       revision: 2
     });
-    expect(updateWrite).toHaveBeenCalledOnce();
-    expect(changed).toHaveBeenCalledOnce();
-    expect(changed).toHaveBeenCalledWith(session.id);
-    expect(proposed).not.toHaveBeenCalled();
-    expect(proxy.requests.at(-1)!.token).toBe(updateToken);
-    expect(proxy.responses.at(-1)).toMatchObject({
-      result: { id: created.id, revision: 2 },
-      token: expect.any(String)
-    });
-    expect(proxy.responses.at(-1)!.token).not.toBe(updateToken);
+    expect(JSON.stringify(readback)).not.toContain(createToken);
+    const stale = await createClient.callTool({ name: 'update_scheduled_task', arguments: patch });
+    expect(stale.isError).toBe(true);
+    expect(scheduleToolText(stale)).toContain('SCHEDULE_REVISION_CONFLICT');
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(store.getById(taskId)).toMatchObject({ revision: 2 });
 
-    const updatedRead = await updateClient.callTool({ name: 'get_scheduled_task', arguments: {} });
-    expect(updatedRead.isError).not.toBe(true);
-    expect(JSON.parse(scheduleToolText(updatedRead))).toMatchObject({
-      id: created.id,
-      objective: 'Updated before lost renewal',
-      revision: 2
-    });
-    expect(proxy.requests.at(-1)!.token).toBe(updateToken);
-    expect(proxy.responses.at(-1)).not.toHaveProperty('token');
-    expect(JSON.stringify(updatedRead)).not.toContain('"token"');
-    expect(updateWrite).toHaveBeenCalledOnce();
-    expect(changed).toHaveBeenCalledOnce();
-
-    const staleUpdate = await updateClient.callTool({
-      name: 'update_scheduled_task',
-      arguments: { objective: 'Must not replay after readback' }
-    });
-    expect(staleUpdate.isError).toBe(true);
-    expect(scheduleToolText(staleUpdate)).toContain('SCHEDULE_CAPABILITY_STALE');
-    expect(store.get(session.id)).toMatchObject({
-      id: created.id,
-      objective: 'Updated before lost renewal',
-      revision: 2
-    });
-    expect(updateWrite).toHaveBeenCalledOnce();
-    expect(changed).toHaveBeenCalledOnce();
-
-    store.removeForSession(session.id);
+    store.remove(taskId, 2);
     const replacement = store.create({
       sessionId: session.id,
       workspaceId: workspace.id,
       runner: 'mar-agent',
       ownerUserId: 7,
-      objective: 'Replacement with the same revision',
-      cron: '0 9 * * *',
+      name: 'Daily check',
+      objective: 'Replacement with new ID',
+      groups: dailyGroups('09:00'),
       timezone: 'UTC'
     });
-    expect(replacement.id).not.toBe(created.id);
-    const changedIdentityRead = await updateClient.callTool({
-      name: 'get_scheduled_task',
-      arguments: {}
+    expect(replacement.id).not.toBe(taskId);
+    for (const [name, args] of [
+      ['get_scheduled_task', { taskId }],
+      ['update_scheduled_task', patch]
+    ] as const) {
+      const deleted = await createClient.callTool({ name, arguments: args });
+      expect(deleted.isError).toBe(true);
+      expect(scheduleToolText(deleted)).toContain('SCHEDULE_NOT_FOUND');
+    }
+    expect(store.getById(replacement.id)).toMatchObject({
+      revision: 1,
+      objective: 'Replacement with new ID'
     });
-    expect(changedIdentityRead.isError).toBe(true);
-    expect(scheduleToolText(changedIdentityRead)).toContain('SCHEDULE_CAPABILITY_STALE');
-    const changedIdentityWrite = await updateClient.callTool({
-      name: 'update_scheduled_task',
-      arguments: { objective: 'Must not target a replacement task' }
-    });
-    expect(changedIdentityWrite.isError).toBe(true);
-    expect(scheduleToolText(changedIdentityWrite)).toContain('SCHEDULE_CAPABILITY_STALE');
-    expect(store.get(session.id)).toMatchObject({
-      id: replacement.id,
-      objective: 'Replacement with the same revision',
-      revision: 1
-    });
-    expect(updateWrite).toHaveBeenCalledOnce();
-    expect(changed).toHaveBeenCalledOnce();
+    runtime.revokeExecutionMcps(createExecution.id);
+    const released = await createClient.callTool({ name: 'list_scheduled_tasks', arguments: {} });
+    expect(released.isError).toBe(true);
+    expect(scheduleToolText(released)).toContain('SCHEDULE_CAPABILITY_STALE');
   } finally {
     await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
     await proxy?.close();
     await bridge.close();
-    createWrite.mockRestore();
-    updateWrite.mockRestore();
     database.close();
     await rm(home, { recursive: true, force: true });
   }
@@ -368,6 +288,7 @@ it.each(
     const session = runtime.createAgentSession({
       workspaceId: workspace.id,
       runner: 'mar-agent',
+      externalSessionId: 'native-session',
       cwd: home
     });
     database.saveNativeSessionMetadata({
@@ -375,29 +296,7 @@ it.each(
       externalSessionId: session.id,
       workspaceId: workspace.id
     });
-    const create = vi.fn(
-      async (input: {
-        sessionId: string;
-        workspaceId: string;
-        actorUserId: number;
-        objective: string;
-        cron: string;
-      }) =>
-        store.create({
-          ...input,
-          runner: 'mar-agent',
-          ownerUserId: input.actorUserId,
-          timezone: 'UTC'
-        })
-    );
-    const server = new ScheduleMcpBridge(
-      () => store,
-      vi.fn(),
-      vi.fn(),
-      (capability) =>
-        runtime.resolveMcpExecution({ ...capability, userId: capability.actorUserId })?.sessionId,
-      create
-    );
+    const server = makeBridge(database, runtime);
     const starts: Record<string, unknown>[] = [];
     const coordinator = new ContinuousRunCoordinator({
       executionTerminating: () => undefined,
@@ -458,18 +357,15 @@ it.each(
       });
       const toolCall = round === 0 || round === 2;
       const query = round === 0;
-      const code = query
-        ? 'observe.result(await tools.mcp__mar_schedule__get_scheduled_task({}));'
-        : 'observe.result(await tools.mcp__mar_schedule__create_scheduled_task({ objective: "Check the build", cron: "0 9 * * *" }));';
+      const action = `mcp__mar_schedule__${query ? 'list_scheduled_tasks' : 'create_scheduled_task'}`;
+      const toolInput = query
+        ? {}
+        : { name: 'Build check', objective: 'Check the build', groups: dailyGroups('09:00') };
       const programmatic = configuration.codeMode;
-      const name = programmatic
-        ? 'code_exec'
-        : `mcp__mar_schedule__${query ? 'get' : 'create'}_scheduled_task`;
+      const name = programmatic ? 'code_exec' : action;
       const arguments_ = programmatic
-        ? { code }
-        : query
-          ? {}
-          : { objective: 'Check the build', cron: '0 9 * * *' };
+        ? { code: `observe.result(await tools.${action}(${JSON.stringify(toolInput)}));` }
+        : toolInput;
       let events: unknown[];
       if (configuration.protocol === 'ANTHROPIC_MESSAGES') {
         events = [
@@ -506,7 +402,7 @@ it.each(
               call_id: `call-${round}`,
               name,
               ...(programmatic
-                ? { type: 'custom_tool_call', input: code }
+                ? { type: 'custom_tool_call', input: 'code' in arguments_ ? arguments_.code : '' }
                 : { type: 'function_call', arguments: JSON.stringify(arguments_) })
             }
           : {
@@ -593,6 +489,8 @@ it.each(
             lifecycle: 'EXECUTION',
             transport: 'STDIO',
             allowedToolCallers: {
+              list_scheduled_tasks: ['direct', 'programmatic'],
+              list_scheduled_task_runs: ['direct', 'programmatic'],
               get_scheduled_task: ['direct', 'programmatic'],
               create_scheduled_task: ['direct', 'programmatic'],
               update_scheduled_task: ['direct', 'programmatic']
@@ -622,7 +520,7 @@ it.each(
       runtime.revokeExecutionMcps(firstExecution);
       coordinator.remove(firstExecution);
       host.unbindExecutionMcp(firstBinding);
-      await expect(pools[0]!.call('mcp__mar_schedule__get_scheduled_task', {})).rejects.toThrow(
+      await expect(pools[0]!.call('mcp__mar_schedule__list_scheduled_tasks', {})).rejects.toThrow(
         'SCHEDULE_CAPABILITY_STALE'
       );
       await coordinator.dispatch(session.id);
@@ -631,42 +529,58 @@ it.each(
       expect(
         (await sdkSession.run({ prompt: 'Create a daily scheduled task.' }).result()).status
       ).toBe('completed');
-      expect(store.get(session.id)).toMatchObject({
+      const tasks = store.list(workspace.id, undefined, 10, session.id).tasks;
+      expect(tasks).toHaveLength(1);
+      const task = tasks[0]!;
+      expect(task).toMatchObject({
         objective: 'Check the build',
-        cron: '0 9 * * *',
+        groups: dailyGroups('09:00'),
         ownerUserId: 7
       });
-      expect(create).toHaveBeenCalledOnce();
+      const taskId = task.id;
       expect(requests).toHaveLength(4);
       expect(requests[0]!.tools).toEqual(requests[2]!.tools);
-
-      // The real stdio client must privately renew after create and every owner update.
-      expect((await pools[1]!.call('mcp__mar_schedule__get_scheduled_task', {})).content).toContain(
-        'Check the build'
-      );
+      expect(
+        (await pools[1]!.call('mcp__mar_schedule__get_scheduled_task', { taskId })).content
+      ).toContain('Check the build');
       for (const [index, objective] of ['Updated once', 'Updated twice'].entries()) {
         const result = await pools[1]!.call('mcp__mar_schedule__update_scheduled_task', {
-          objective
+          taskId,
+          expectedRevision: index + 1,
+          patch: { objective }
         });
-        expect(result.content).toContain(objective);
-        expect(JSON.stringify(result)).not.toContain('"token"');
-        expect(store.get(session.id)).toMatchObject({ objective, revision: index + 2 });
+        expect(JSON.parse(result.content)).toEqual({
+          taskId,
+          revision: index + 2,
+          nextRunAt: task.nextRunAt
+        });
+        expect(store.getById(taskId)).toMatchObject({ objective, revision: index + 2 });
       }
 
-      // Concurrent calls from this one client must consume its own renewed scope in order.
-      const parallel = await Promise.all([
+      // Client order does not waive the revision precondition on parallel writes.
+      const parallel = await Promise.allSettled([
         pools[1]!.call('mcp__mar_schedule__update_scheduled_task', {
-          objective: 'Parallel objective'
+          taskId,
+          expectedRevision: 3,
+          patch: { objective: 'Parallel objective' }
         }),
         pools[1]!.call('mcp__mar_schedule__update_scheduled_task', {
-          cron: '30 10 * * *'
+          taskId,
+          expectedRevision: 3,
+          patch: { groups: dailyGroups('10:30') }
         })
       ]);
-      expect(parallel).toHaveLength(2);
-      expect(store.get(session.id)).toMatchObject({
+      expect(parallel[0]).toMatchObject({ status: 'fulfilled' });
+      expect(parallel[1]).toMatchObject({
+        status: 'rejected',
+        reason: expect.objectContaining({
+          message: expect.stringContaining('SCHEDULE_REVISION_CONFLICT')
+        })
+      });
+      expect(store.getById(taskId)).toMatchObject({
         objective: 'Parallel objective',
-        cron: '30 10 * * *',
-        revision: 5
+        groups: dailyGroups('09:00'),
+        revision: 4
       });
 
       expect(
@@ -683,10 +597,8 @@ it.each(
         expect(scheduledTool?.description).toContain('admitted trigger');
         expect(scheduledTool?.description).toContain('system cron');
         const metadata = JSON.stringify(scheduledTool);
-        expect(metadata).toContain('Task body for one scheduled run');
-        expect(metadata).toContain('Do not phrase it as a request to create or change a schedule');
-        expect(metadata).toContain('repeat cron/time-zone settings');
-        expect(metadata).toContain('MAR handles scheduling and skipped triggers');
+        expect(metadata).toContain('Instructions to execute at each trigger');
+        expect(metadata).toContain('Union of date and time combinations');
         expect(metadata).not.toContain('verbatim as a user message');
         expect(metadata).not.toContain('starts without');
       }
@@ -695,9 +607,9 @@ it.each(
           'mcp__mar_schedule__get_scheduled_task'
         );
       runtime.revokeExecutionMcps(secondExecution);
-      await expect(pools[1]!.call('mcp__mar_schedule__get_scheduled_task', {})).rejects.toThrow(
-        'SCHEDULE_CAPABILITY_STALE'
-      );
+      await expect(
+        pools[1]!.call('mcp__mar_schedule__get_scheduled_task', { taskId })
+      ).rejects.toThrow('SCHEDULE_CAPABILITY_STALE');
     } finally {
       coordinator.clear();
       await agent?.dispose();

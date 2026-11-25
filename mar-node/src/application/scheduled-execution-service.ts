@@ -1,10 +1,14 @@
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { NativeSessionProjectionService } from '../session/native-session-projection-service.js';
 import type { SessionMessageService } from '../session/session-message-service.js';
+import type { SessionLifecycleService } from '../session/session-lifecycle-service.js';
 import type { RunAuthorizationControl } from '../service/run-authorization-control.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import type { GitOperationService } from '../service/git-operation-service.js';
-import type { ScheduledRunContext } from '../service/scheduled-session-coordinator.js';
+import type {
+  BeginScheduledSubmission,
+  ScheduledRunContext
+} from '../service/scheduled-session-coordinator.js';
 import type { ScheduledSessionTask } from '../service/scheduled-session-store.js';
 
 /** Prepares and submits scheduled input through existing Session/Runner owners.
@@ -23,6 +27,7 @@ export class ScheduledExecutionService {
       readonly runners: Pick<RunnerRegistry, 'require'>;
       readonly git: Pick<GitOperationService, 'execute'>;
       readonly messages: Pick<SessionMessageService, 'submitScheduled'>;
+      readonly lifecycle: Pick<SessionLifecycleService, 'reserveScheduled'>;
     }
   ) {}
 
@@ -30,46 +35,70 @@ export class ScheduledExecutionService {
     task: ScheduledSessionTask,
     occurrenceId: string
   ): Promise<ScheduledRunContext> => {
+    const reserved =
+      task.newSession === null
+        ? undefined
+        : await this.options.lifecycle.reserveScheduled(task.workspaceId, task.newSession);
     const session =
-      this.options.runtime.getAgentSession(task.sessionId) ??
-      (await this.options.projection.resolveCurrent(task.sessionId));
-    if (
-      session === undefined ||
-      session.workspaceId !== task.workspaceId ||
-      session.runner !== task.runner
-    )
-      throw new Error('SCHEDULE_SESSION_NOT_FOUND');
-    const configured = this.options.projection.ensureResumedConfiguration(session);
-    const context = await this.options.authorization.authorize({
-      taskId: task.id,
-      revision: task.revision,
-      occurrenceId,
-      sessionId: task.sessionId,
-      workspaceId: task.workspaceId,
-      ownerUserId: task.ownerUserId,
-      runner: task.runner,
-      modelId: configured.modelId
-    });
-    return {
-      ...(context.gitConfiguration === undefined
-        ? {}
-        : { gitConfiguration: context.gitConfiguration }),
-      secretEnvironment: context.secretEnvironment,
-      personalInstructions: context.personalInstructions,
-      usageGrant: context.usageGrant,
-      executionContext: this.options.runners.require(task.runner).prepareExecutionContext(context)
-    };
+      reserved?.session ??
+      (task.sessionId === null
+        ? undefined
+        : (this.options.runtime.getAgentSession(task.sessionId) ??
+          (await this.options.projection.resolveCurrent(task.sessionId))));
+    try {
+      if (
+        session === undefined ||
+        session.workspaceId !== task.workspaceId ||
+        session.runner !== task.runner
+      )
+        throw new Error('SCHEDULE_SESSION_NOT_FOUND');
+      const configured =
+        reserved === undefined
+          ? this.options.projection.ensureResumedConfiguration(session)
+          : session;
+      const context = await this.options.authorization.authorize({
+        targetKind: reserved === undefined ? 'existing' : 'newSession',
+        taskId: task.id,
+        revision: task.revision,
+        occurrenceId,
+        sessionId: session.id,
+        workspaceId: task.workspaceId,
+        ownerUserId: task.ownerUserId,
+        runner: task.runner,
+        modelId: configured.modelId
+      });
+      return {
+        sessionId: session.id,
+        ...(reserved === undefined
+          ? {}
+          : { release: reserved.release, awaitIdentity: reserved.awaitIdentity }),
+        ...(context.gitConfiguration === undefined
+          ? {}
+          : { gitConfiguration: context.gitConfiguration }),
+        secretEnvironment: context.secretEnvironment,
+        personalInstructions: context.personalInstructions,
+        usageGrant: context.usageGrant,
+        executionContext: this.options.runners.require(task.runner).prepareExecutionContext(context)
+      };
+    } catch (error) {
+      reserved?.release();
+      throw error;
+    }
   };
 
   readonly submit = async (
     task: ScheduledSessionTask,
     occurrenceId: string,
-    context: ScheduledRunContext
-  ): Promise<{ readonly runId: string }> => {
+    context: ScheduledRunContext,
+    begin: BeginScheduledSubmission
+  ): Promise<{ readonly runId: string; readonly sessionId?: string }> => {
+    const sessionId = context.sessionId ?? task.sessionId;
+    if (sessionId === null) throw new Error('SCHEDULE_SESSION_NOT_FOUND');
+    let identity: Promise<string | undefined> | undefined;
     const result = (await this.options.git.execute(
       'session.message',
       {
-        sessionId: task.sessionId,
+        sessionId,
         workspaceId: task.workspaceId,
         __requestUserId: task.ownerUserId,
         secretEnvironment: context.secretEnvironment,
@@ -79,10 +108,15 @@ export class ScheduledExecutionService {
       },
       async (data) =>
         this.options.messages.submitScheduled({
-          sessionId: task.sessionId,
+          sessionId,
           occurrenceId,
           objective: task.objective,
           initiatedByUserId: task.ownerUserId,
+          begin: () => {
+            begin();
+            // From admission onward, the Session identity owner handles promotion and cleanup.
+            identity = context.awaitIdentity?.().catch(() => undefined);
+          },
           secretEnvironment: (data as { secretEnvironment: Record<string, string> })
             .secretEnvironment,
           personalInstructions: context.personalInstructions,
@@ -90,6 +124,11 @@ export class ScheduledExecutionService {
           executionContext: context.executionContext
         })
     )) as { run: { id: string } };
-    return { runId: result.run.id };
+    // Identity failure does not erase the Run receipt or authorize another submission.
+    const nativeSessionId = identity === undefined ? sessionId : await identity;
+    return {
+      runId: result.run.id,
+      ...(nativeSessionId === undefined ? {} : { sessionId: nativeSessionId })
+    };
   };
 }

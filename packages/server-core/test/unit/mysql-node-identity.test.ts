@@ -54,7 +54,7 @@ describe('shared Node identity persistence', () => {
       expect(query).toContain('used_at IS NULL');
       expect(query).toContain("owner_type='PERSONAL'");
       expect(query).toContain('FOR UPDATE');
-      expect(values.slice(1)).toEqual([1, 1]);
+      expect(values?.slice(1)).toEqual([1, 1]);
       expect(connection.commit).toHaveBeenCalledOnce();
       expect(connection.beginTransaction).toHaveBeenCalledOnce();
       expect(connection.release).toHaveBeenCalledOnce();

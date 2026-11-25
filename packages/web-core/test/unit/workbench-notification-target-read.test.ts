@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { watch } from 'vue';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 
+type SessionTarget = Exclude<NotificationTarget, { targetType: 'SCHEDULED_TASK' }>;
+
 function entry(id: string, target: NotificationTarget, updatedAt = 100): ServerNotification {
   return {
     id,
@@ -27,7 +29,7 @@ function gate<T>() {
   return { promise, resolve, reject };
 }
 
-const targets: NotificationTarget[] = [
+const targets: SessionTarget[] = [
   {
     targetType: 'WORKSPACE_SESSION',
     nodeId: 'node',
@@ -42,7 +44,7 @@ const targets: NotificationTarget[] = [
   }
 ];
 
-function confirm(target: NotificationTarget, readAt = 200, notificationIds = ['covered']) {
+function confirm(target: SessionTarget, readAt = 200, notificationIds = ['covered']) {
   return target.targetType === 'WORKSPACE_SESSION'
     ? {
         type: 'notification.session-read',
@@ -61,10 +63,7 @@ function confirm(target: NotificationTarget, readAt = 200, notificationIds = ['c
       };
 }
 
-function mark(
-  state: ReturnType<typeof createWorkbenchNotificationService>,
-  target: NotificationTarget
-) {
+function mark(state: ReturnType<typeof createWorkbenchNotificationService>, target: SessionTarget) {
   if (target.targetType === 'WORKSPACE_SESSION')
     return state.markSessionRead(target.nodeId, target.workspaceId, target.sessionId);
   state.markConversationRead(target.nodeId, target.conversationId);

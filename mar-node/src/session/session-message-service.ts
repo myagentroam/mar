@@ -52,6 +52,7 @@ type RestoredConfiguration = Pick<NodeAgentSession, 'modelId' | 'effort' | 'acce
 type MessageInput = Record<string | symbol, unknown> & {
   readonly [RUNNER_EXECUTION_CONTEXT]?: RunnerExecutionContext;
   readonly [RESTORE_CONFIGURATION]?: RestoredConfiguration;
+  readonly [INTERNAL_SCHEDULE]?: () => void;
 };
 
 interface SessionMessageServiceOptions {
@@ -188,13 +189,14 @@ export class SessionMessageService {
     readonly occurrenceId: string;
     readonly objective: string;
     readonly initiatedByUserId: number;
+    readonly begin: () => void;
     readonly secretEnvironment: Readonly<Record<string, string>>;
     readonly personalInstructions?: unknown;
     readonly executionContext: RunnerExecutionContext;
     readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
   }): Promise<unknown> {
     return this.message({
-      [INTERNAL_SCHEDULE]: true,
+      [INTERNAL_SCHEDULE]: input.begin,
       sessionId: input.sessionId,
       clientMessageId: input.occurrenceId,
       content: input.objective,
@@ -231,7 +233,8 @@ export class SessionMessageService {
     const clientMessageId = input.clientMessageId;
     const content = input.content;
     const internalGoal = input[INTERNAL_GOAL] === true;
-    const internalSchedule = input[INTERNAL_SCHEDULE] === true;
+    const beginScheduledSubmission = input[INTERNAL_SCHEDULE];
+    const internalSchedule = beginScheduledSubmission !== undefined;
     const internalRestore = input[INTERNAL_RESTORE] === true;
     const internalRunnerContent =
       (internalGoal || internalSchedule || internalRestore) &&
@@ -357,6 +360,7 @@ export class SessionMessageService {
           : {}),
         ...(inlineAttachments.length === 0 ? {} : { attachments: inlineAttachments })
       };
+      beginScheduledSubmission?.();
       const created = internalRestore
         ? {
             run: undefined,

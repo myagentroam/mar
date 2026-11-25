@@ -1,4 +1,4 @@
-import type { RunnerDefaultConfiguration } from '@myagentroam/protocol';
+import type { RunnerDefaultConfiguration, ScheduledNewSession } from '@myagentroam/protocol';
 import {
   RUNNER_EXECUTION_CONTEXT,
   type RunnerExecutionContext
@@ -96,10 +96,10 @@ export class SessionLifecycleService {
     if (sessionPrompt !== undefined && current.externalSessionId === null)
       throw new Error('SESSION_ACTIVATION_REQUIRED');
     if (input.pinned === false) {
-      const task = new ScheduledSessionStore(this.options.database().raw).get(
+      const next = new ScheduledSessionStore(this.options.database().raw).nextForSession(
         current.externalSessionId ?? current.id
       );
-      if (task?.enabled === true) throw new Error('SCHEDULE_PIN_REQUIRED');
+      if (next !== null) throw new Error('SCHEDULE_PIN_REQUIRED');
     }
     const nativeCodexRename =
       this.options.runners.require(current.runner).usesRunnerTitleForRename() &&
@@ -160,6 +160,44 @@ export class SessionLifecycleService {
   }
 
   private async create(input: Record<string, unknown>): Promise<unknown> {
+    const session = await this.createSession(input, input.__marctlOrigin === undefined);
+    return { session: this.options.present(session) };
+  }
+
+  async reserveScheduled(
+    workspaceId: string,
+    target: ScheduledNewSession
+  ): Promise<{
+    session: NodeAgentSession;
+    release: () => void;
+    awaitIdentity: () => Promise<string>;
+  }> {
+    const workspace = this.options.database().getWorkspace(workspaceId);
+    if (workspace === undefined) throw new Error('WORKSPACE_NOT_FOUND');
+    const session = await this.createSession(
+      {
+        workspaceId,
+        cwd: workspace.path,
+        runner: target.runner,
+        bootstrapOnly: true,
+        effort: target.effort,
+        ...(target.model.kind === 'fixed' ? { modelId: target.model.modelId } : {})
+      },
+      false,
+      true
+    );
+    return {
+      session,
+      release: () => this.options.identity.reject(session.id, 'SESSION_START_FAILED'),
+      awaitIdentity: () => this.options.identity.wait(session.id)
+    };
+  }
+
+  private async createSession(
+    input: Record<string, unknown>,
+    saveDefaults: boolean,
+    scheduled = false
+  ): Promise<NodeAgentSession> {
     const runner = this.options.runners.product(input.runner);
     if (
       typeof input.workspaceId !== 'string' ||
@@ -217,7 +255,12 @@ export class SessionLifecycleService {
     const environment = parseSecretEnvironment(input.secretEnvironment);
     const saved = database.getRunnerDefaults().find((value) => value.runner === runner.name);
     const executionContext = runner.prepareExecutionContext(input);
-    const fallback = runner.defaultConfiguration(workspace, environment, executionContext);
+    // Resolve a candidate before authorization. Server still controls the selected model and resources.
+    const fallback = runner.defaultConfiguration(
+      workspace,
+      environment,
+      scheduled ? undefined : executionContext
+    );
     const configuration: RunnerDefaultConfiguration = {
       runner: runner.name,
       modelId:
@@ -230,6 +273,7 @@ export class SessionLifecycleService {
             ? fallback.access
             : (saved?.access ?? fallback.access)
     };
+    if (scheduled && !configuration.modelId?.trim()) throw new Error('SCHEDULE_MODEL_UNAVAILABLE');
     if (runner.name === 'mar-agent' && !['auto', 'full-access'].includes(configuration.access))
       throw new Error('SESSION_INVALID');
     if (parentSessionId !== undefined)
@@ -249,9 +293,9 @@ export class SessionLifecycleService {
       ...(typeof input.customTitle === 'string' ? { customTitle: input.customTitle } : {})
     });
     if (input.bootstrapOnly === true) this.options.identity.markBootstrap(session.id);
-    if (input.__marctlOrigin === undefined) database.saveRunnerDefaults(configuration);
+    if (saveDefaults) database.saveRunnerDefaults(configuration);
     if (input.bootstrapOnly !== true) this.options.emitSession(session);
-    return { session: this.options.present(session) };
+    return session;
   }
 
   private async updateConfiguration(input: Record<string, unknown>): Promise<unknown> {

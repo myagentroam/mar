@@ -29,12 +29,15 @@ import type { createWebPerformanceDiagnostics } from '../../service/web-performa
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
 import WorkbenchSidebarPanel from './WorkbenchSidebarPanel.vue';
 import { MarPanelResizeHandle } from '@myagentroam/mar-ui/panel-resize-handle';
-import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
+import {
+  WORKBENCH_PANEL_LIMITS,
+  type MobileUtilityPanel
+} from '../../service/workbench-layout-service.js';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
 
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
-import type { MobileUtilityPanel } from '../../service/workbench-navigation-service.js';
+import { scheduleSections, type ScheduleSection } from '../schedule/scheduled-task-navigation.js';
 
 const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;
@@ -47,6 +50,7 @@ const sidebarInset = 9;
 const props = defineProps<{
   readonly webVersion: string;
   readonly view: WorkbenchView;
+  readonly scheduleSection?: ScheduleSection | undefined;
   readonly navigationItems: readonly { readonly id: WorkbenchView; readonly label: string }[];
   readonly settingsSection: SettingsSection;
   readonly settingsItems: readonly { readonly id: SettingsSection; readonly label: string }[];
@@ -75,7 +79,10 @@ const props = defineProps<{
   readonly uploadStatusLabel: (task: WorkspaceUploadTask) => string;
 }>();
 
-const displayView = ref(props.view);
+const sidebarView = computed(() =>
+  props.scheduleSection === undefined ? props.view : 'schedules'
+);
+const displayView = ref(sidebarView.value);
 const displayUtility = ref(props.mobileUtilityPanel);
 let scrolledRevealTarget: WorkspaceTarget | undefined;
 function claimRevealScroll(target: WorkspaceTarget): boolean {
@@ -93,26 +100,26 @@ const mobileMenuOpen = computed(
     props.mobileSidebarOpen &&
     !(
       workspaceStartupBlocked.value &&
-      props.view === 'nodes' &&
+      sidebarView.value === 'nodes' &&
       props.mobileUtilityPanel === undefined
     )
 );
 const sidebarVisible = computed(() =>
   props.mobileViewport
     ? mobileMenuOpen.value
-    : props.sidebarContentVisible && props.view !== 'conversations'
+    : props.sidebarContentVisible && sidebarView.value !== 'conversations'
 );
 function finishMenuLeave(): void {
-  displayView.value = props.view;
+  displayView.value = sidebarView.value;
   displayUtility.value = props.mobileUtilityPanel;
 }
 watch(
-  [() => props.view, () => props.mobileUtilityPanel, sidebarVisible],
+  [sidebarView, () => props.mobileUtilityPanel, sidebarVisible],
   async ([, , visible], [, , wasVisible]) => {
     const body = treeElement.value;
     if (body && wasVisible) scrollPositions.set(displayKey.value, body.scrollTop);
     if (props.mobileViewport && !visible) return;
-    displayView.value = props.view;
+    displayView.value = sidebarView.value;
     displayUtility.value = props.mobileUtilityPanel;
     if (!visible) return;
     await nextTick();
@@ -125,6 +132,8 @@ const emit = defineEmits<{
   moveNode: [nodeId: string, targetIndex: number];
   moveWorkspace: [nodeId: string, workspaceId: string, direction: -1 | 1];
   selectNavigation: [view: WorkbenchView];
+  openScheduledTasks: [];
+  selectScheduleSection: [section: ScheduleSection];
   selectMobileUtilityPanel: [panel: MobileUtilityPanel | undefined];
   closeMobileSidebar: [];
   selectSettings: [section: SettingsSection];
@@ -160,11 +169,13 @@ const menuLabel = computed(() =>
   translate(
     displayUtility.value === 'activity'
       ? 'activityCenter.title'
-      : displayView.value === 'settings'
-        ? 'navigation.settingsCategories'
-        : displayView.value === 'management'
-          ? 'navigation.managementCategories'
-          : 'navigation.nodeWorkspace'
+      : displayView.value === 'schedules'
+        ? 'generated.scheduledSession.panelTitle'
+        : displayView.value === 'settings'
+          ? 'navigation.settingsCategories'
+          : displayView.value === 'management'
+            ? 'navigation.managementCategories'
+            : 'navigation.nodeWorkspace'
   )
 );
 
@@ -256,15 +267,15 @@ function runBlankMenuCommand(command: string): void {
           :class="[
             'nav-menu-button',
             {
-              active: view === item.id,
+              active: sidebarView === item.id,
               utility: item.id === 'management' || item.id === 'settings'
             }
           ]"
           :aria-label="item.label"
-          :aria-current="view === item.id ? 'page' : undefined"
+          :aria-current="sidebarView === item.id ? 'page' : undefined"
           :aria-expanded="
             mobileViewport
-              ? view === item.id &&
+              ? sidebarView === item.id &&
                 (item.id === 'conversations'
                   ? mobileHistoryOpen === true
                   : mobileSidebarOpen && mobileUtilityPanel === undefined)
@@ -283,6 +294,23 @@ function runBlankMenuCommand(command: string): void {
             <MarIcon name="settings" aria-hidden="true" v-else-if="item.id === 'settings'" />
             <MarIcon name="administration" aria-hidden="true" v-else />
           </span>
+        </button>
+        <button
+          v-if="item.id === 'nodes'"
+          type="button"
+          class="nav-menu-button"
+          :class="{ active: scheduleSection !== undefined }"
+          :aria-current="scheduleSection === undefined ? undefined : 'page'"
+          :aria-expanded="mobileViewport ? mobileUtilityPanel === 'schedules' : undefined"
+          :aria-controls="mobileViewport ? 'workbench-secondary-sidebar' : undefined"
+          :aria-label="$t('generated.scheduledSession.panelTitle')"
+          v-tooltip="{
+            content: $t('generated.scheduledSession.panelTitle'),
+            placement: mobileViewport ? 'bottom' : 'right'
+          }"
+          @click="emit('openScheduledTasks')"
+        >
+          <span class="nav-item-content"><MarIcon name="clock" aria-hidden="true" /></span>
         </button>
         <WorkbenchActivityCenter
           v-if="item.id === 'conversations'"
@@ -336,7 +364,8 @@ function runBlankMenuCommand(command: string): void {
     @after-leave="finishMenuLeave"
   >
     <WorkbenchSidebarPanel
-      v-show="mobileViewport ? mobileMenuOpen : view !== 'conversations'"
+      id="workbench-secondary-sidebar"
+      v-show="mobileViewport ? mobileMenuOpen : sidebarView !== 'conversations'"
       ref="sidebarPanel"
       :collapsed="sidebarCollapsed"
       class="workspace-tree"
@@ -345,7 +374,7 @@ function runBlankMenuCommand(command: string): void {
       :aria-label="menuLabel"
       tabindex="-1"
       @contextmenu="
-        view === 'nodes' &&
+        sidebarView === 'nodes' &&
         !workspaceStartupBlocked &&
         mobileUtilityPanel === undefined &&
         openBlankMenu($event)
@@ -353,11 +382,31 @@ function runBlankMenuCommand(command: string): void {
       @keydown.esc="handleBlankMenuEscape"
     >
       <div
-        v-show="displayUtility !== undefined"
+        v-show="displayUtility === 'activity'"
         ref="mobilePanelTarget"
         class="mobile-menu-content"
       />
-      <template v-if="displayUtility === undefined && displayView === 'nodes'">
+      <nav
+        v-if="
+          displayUtility !== 'activity' &&
+          displayView === 'schedules' &&
+          (sidebarContentVisible || mobileViewport)
+        "
+        class="settings-nav"
+        :aria-label="$t('generated.scheduledSession.panelTitle')"
+      >
+        <button
+          v-for="section in scheduleSections"
+          :key="section"
+          :class="{ active: scheduleSection === section }"
+          :aria-current="scheduleSection === section ? 'page' : undefined"
+          type="button"
+          @click="emit('selectScheduleSection', section)"
+        >
+          {{ $t(`generated.scheduledSession.${section}`) }}
+        </button>
+      </nav>
+      <template v-else-if="displayUtility === undefined && displayView === 'nodes'">
         <MarDropdown
           v-if="!workspaceStartupBlocked && blankMenuAnchor && sidebarVisible"
           ref="blankMenu"
@@ -451,7 +500,7 @@ function runBlankMenuCommand(command: string): void {
     </WorkbenchSidebarPanel>
   </Transition>
   <MarPanelResizeHandle
-    v-if="view === 'nodes' && !sidebarCollapsed && !mobileViewport"
+    v-if="sidebarView === 'nodes' && !sidebarCollapsed && !mobileViewport"
     class="workspace-tree-resize"
     :target="treeElement"
     :label="$t('generated.panelResize.workspaceTree')"

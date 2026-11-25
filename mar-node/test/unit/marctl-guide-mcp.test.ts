@@ -98,6 +98,11 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     for (const guidance of [await skill.load(), marctlInstructions]) {
       expect(guidance).toContain('marctl agents history <id>');
       expect(guidance).toContain('agents view returns state, Goal and recent activity only');
+      expect(guidance).toContain('schedule get --task <task-id>');
+      expect(guidance).toContain('schedule runs --task <task-id>');
+      expect(guidance).toContain('schedule create --name <name> --groups-file <file|->');
+      expect(guidance).toContain('schedule update --task <task-id> --expected-revision <revision>');
+      expect(guidance).not.toContain('--cron');
     }
     expect(await skill.load()).toContain(
       'If a request result is unknown, inspect history before retrying.'

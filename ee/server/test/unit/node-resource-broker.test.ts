@@ -76,6 +76,45 @@ function gate<T>() {
   return { promise, release };
 }
 
+it('relays the minimal schedule index only through the fixed internal operation on a business connection', async () => {
+  const f = fixture();
+  const scope = { workspaceId: 'w', afterTaskId: 'previous' };
+  await expect(f.broker.request('n', 'schedule.index.list', scope, f.user)).rejects.toThrow(
+    'OPERATION_UNSUPPORTED'
+  );
+  await expect(
+    f.broker.request('n', 'schedule.task.list', scope, {
+      userId: 0,
+      sessionHash: 'scheduled-task-index'
+    })
+  ).rejects.toThrow('USER_AUTHORIZATION_REQUIRED');
+  expect(f.sent).toHaveLength(0);
+  const request = f.broker.requestScheduledTaskIndex('n', scope);
+  const sent = f.sent[0]!;
+  expect(sent.payload).toMatchObject({
+    operation: 'schedule.index.list',
+    data: scope,
+    userAuthorization: {
+      userId: 0,
+      sessionHash: 'scheduled-task-index',
+      nodeId: 'n',
+      requestId: sent.id,
+      operation: 'schedule.index.list',
+      issuedAt: expect.any(Number),
+      expiresAt: expect.any(Number)
+    }
+  });
+  const result = { tasks: [], nextCursor: null };
+  f.broker.resolve('n', createEnvelope('node.response', { result }, { replyTo: sent.id }));
+  await expect(request).resolves.toEqual(result);
+  expect(f.authorize).not.toHaveBeenCalled();
+  f.setUpgradeOnly();
+  await expect(f.broker.requestScheduledTaskIndex('n', scope)).rejects.toThrow(
+    'NODE_UPGRADE_REQUIRED'
+  );
+  expect(f.sent).toHaveLength(1);
+});
+
 describe('Browser download relay', () => {
   const attachmentId = '2fcc6166-ff9d-4f5f-939c-329cc03ae855';
   const command = {
@@ -231,6 +270,42 @@ function activeObservations(broker: NodeRequestBroker): number {
 }
 
 describe('Node broker resource scope lifecycle', () => {
+  it('never dispatches a schedule operation without an exact Workspace grant', async () => {
+    const f = fixture();
+    const operation = 'schedule.task.update';
+    await expect(f.broker.request('n', operation, { taskId: 'task' }, f.user)).rejects.toThrow(
+      'NODE_ACCESS_DENIED'
+    );
+    await expect(
+      f.broker.request(
+        'n',
+        operation,
+        { workspaceId: 'other', taskId: 'task' },
+        { ...f.user, workspaceId: 'w' }
+      )
+    ).rejects.toThrow('NODE_ACCESS_DENIED');
+    expect(f.authorize).not.toHaveBeenCalled();
+    expect(f.sent).toHaveLength(0);
+    const data = {
+      workspaceId: 'w',
+      taskId: 'task',
+      expectedRevision: 2,
+      patch: { objective: 'not audit metadata' }
+    };
+    f.authorize.mockResolvedValue(false);
+    await expect(f.broker.request('n', operation, data, f.user)).rejects.toThrow(
+      'NODE_ACCESS_DENIED'
+    );
+    expect(f.authorize).toHaveBeenCalledExactlyOnceWith(2, 'n', operation, data, 'w');
+    expect(f.sent).toHaveLength(0);
+    await vi.waitFor(() => expect(f.audit).toHaveBeenCalledTimes(3));
+    expect(f.audit.mock.calls.at(-1)?.[0]).toMatchObject({
+      eventType: operation,
+      result: 'DENIED'
+    });
+    expect(JSON.stringify(f.audit.mock.calls)).not.toContain(data.patch.objective);
+  });
+
   it('rejects business requests before authorization or forwarding on an upgrade-only connection', async () => {
     const f = fixture();
     f.setUpgradeOnly();

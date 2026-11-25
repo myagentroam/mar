@@ -726,6 +726,24 @@ describe('Node Runtime history boundaries', () => {
       turns: []
     });
   });
+
+  it('retains a terminal Run only for reads in its Workspace', () => {
+    const { runtime, session } = fixture();
+    const { run } = runtime.createMessageRun({
+      sessionId: session.id,
+      clientMessageId: 'retained-run',
+      content: 'message'
+    });
+    runtime.finishRun(run.id, 'SUCCEEDED');
+    runtime.removeTerminalRun(run.id);
+    expect(runtime.getRun(run.id)).toBeUndefined();
+    expect(runtime.getWorkspaceRun(run.id, 'other-workspace')).toBeUndefined();
+    expect(runtime.getWorkspaceRun(run.id, session.workspaceId!)).toMatchObject({
+      id: run.id,
+      sessionId: session.id,
+      status: 'SUCCEEDED'
+    });
+  });
 });
 
 describe('Node execution directory admission', () => {

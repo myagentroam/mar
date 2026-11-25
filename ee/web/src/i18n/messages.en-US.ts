@@ -154,6 +154,7 @@ export const enUS = {
       config: 'Update configuration',
       pin: 'Move pinned session',
       scheduleSave: 'Save schedule',
+      schedulePropose: 'Propose a schedule change',
       scheduleRemove: 'Remove schedule',
       scheduleResolve: 'Resolve schedule proposal',
       rewind: 'Rewind',

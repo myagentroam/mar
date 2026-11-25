@@ -15,6 +15,16 @@
     "test:unit": "vitest run --config vitest.config.mts"
   },
   "exports": {
+    "./scheduled-task-index": {
+      "development": "./src/scheduled-task-index.ts",
+      "types": "./dist/scheduled-task-index.d.ts",
+      "import": "./dist/scheduled-task-index.js"
+    },
+    "./scheduled-task-routes": {
+      "development": "./src/scheduled-task-routes.ts",
+      "types": "./dist/scheduled-task-routes.d.ts",
+      "import": "./dist/scheduled-task-routes.js"
+    },
     "./mar-agent-resource-input-service": {
       "development": "./src/mar-agent-resource-input-service.ts",
       "types": "./dist/mar-agent-resource-input-service.d.ts",

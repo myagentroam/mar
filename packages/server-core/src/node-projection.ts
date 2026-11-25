@@ -1,4 +1,7 @@
-import { remoteDesktopCapabilitySchema } from '@myagentroam/protocol';
+import {
+  remoteDesktopCapabilitySchema,
+  scheduledTasksCapabilitySchema
+} from '@myagentroam/protocol';
 
 export function publicNode<
   T extends {
@@ -23,6 +26,7 @@ export function publicNode<
   }
   const info = metadata as Record<string, unknown>;
   const desktop = remoteDesktopCapabilitySchema.safeParse(info['remoteDesktop']);
+  const scheduledTasks = scheduledTasksCapabilitySchema.safeParse(info['scheduledTasks']);
   return {
     ...node,
     platform: typeof info['platform'] === 'string' ? info['platform'] : 'unknown',
@@ -58,7 +62,8 @@ export function publicNode<
       ...(typeof info['computerUse'] === 'object' && info['computerUse'] !== null
         ? { computerUse: info['computerUse'] }
         : {}),
-      ...(desktop.success ? { remoteDesktop: desktop.data } : {})
+      ...(desktop.success ? { remoteDesktop: desktop.data } : {}),
+      ...(scheduledTasks.success ? { scheduledTasks: scheduledTasks.data } : {})
     },
     metadata: info
   };

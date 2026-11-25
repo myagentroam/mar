@@ -28,6 +28,7 @@ describe('Scheduled run authorization protocol', () => {
     ).toBe(true);
   });
   const input = {
+    targetKind: 'existing',
     taskId: 'task-1',
     revision: 1,
     occurrenceId: 'task-1:1000',
@@ -44,13 +45,20 @@ describe('Scheduled run authorization protocol', () => {
 
   it('accepts only bounded scheduled requests with an authorized owner', () => {
     expect(protocol.scheduledRunAuthorizeRequestSchema.parse(input)).toEqual(input);
+    expect(
+      protocol.scheduledRunAuthorizeRequestSchema.parse({ ...input, targetKind: 'newSession' })
+        .targetKind
+    ).toBe('newSession');
     for (const override of [
+      { targetKind: undefined },
+      { targetKind: 'legacy' },
       { runner: 'unknown' },
       { ownerUserId: 0 },
       { sessionId: '' },
       { taskId: 'x'.repeat(201) },
       { revision: 0 },
       { occurrenceId: '' },
+      { executionResources: 1 },
       { model: 'legacy-model' },
       { credential: 'do-not-send' }
     ])
@@ -68,5 +76,18 @@ describe('Scheduled run authorization protocol', () => {
       })
     ).toMatchObject({ error: { code: 'WORKSPACE_ACCESS_DENIED' } });
     expect(protocol.scheduledRunAuthorizeResponseSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('keeps execution record invalidations out of the task-index event contract', () => {
+    for (const topic of ['schedule.changed', 'schedule.occurrence.changed']) {
+      const event = { workspaceId: 'workspace', topic };
+      expect(protocol.scheduleInvalidationSchema.parse(event)).toEqual(event);
+      expect(protocol.scheduledTaskChangedSchema.safeParse(event).success).toBe(
+        topic === 'schedule.changed'
+      );
+      expect(protocol.scheduleInvalidationSchema.safeParse({ ...event, task: {} }).success).toBe(
+        false
+      );
+    }
   });
 });

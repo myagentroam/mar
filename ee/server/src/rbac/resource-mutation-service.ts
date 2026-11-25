@@ -10,6 +10,7 @@ import {
   withMysqlTransaction
 } from '@myagentroam/server-core/mysql-reference-store';
 import { normalizeWorkspaceGroupName } from '@myagentroam/server-core/workspace-group';
+import { removeScheduledTaskIndex } from '@myagentroam/server-core/scheduled-task-index';
 import type {
   WorkspaceResourcePolicy,
   WorkspaceUpdate
@@ -66,11 +67,11 @@ export class ResourceMutationService {
     this.ownership = new ResourceOwnershipStore(database);
   }
 
-  /** Register previously discovered legacy workspaces before projecting their visibility. */
+  /** Register discovered legacy Workspaces and return only newly committed IDs. */
   async backfillNodeWorkspaces<T extends { readonly id: string }>(
     nodeId: string,
     workspaces: readonly T[]
-  ): Promise<void> {
+  ): Promise<readonly string[]> {
     const node = await this.ownership.node(nodeId);
     if (node === undefined) throw new Error('NODE_NOT_FOUND');
     const connection = await this.database.raw.getConnection();
@@ -96,6 +97,7 @@ export class ResourceMutationService {
       );
       const mayBackfill =
         !licenseRows[0]?.['ever_activated'] || nodeRows[0]?.['legacy_ownership_backfill_pending'];
+      const registered: string[] = [];
       for (const workspace of workspaces) {
         const [registeredRows] = await connection.execute<RowDataPacket[]>(
           'SELECT node_id FROM workspaces WHERE workspace_id=? FOR UPDATE',
@@ -127,6 +129,7 @@ export class ResourceMutationService {
             this.now()
           ]
         );
+        registered.push(workspace.id);
       }
       if (nodeRows[0]?.['legacy_ownership_backfill_pending'])
         await connection.execute(
@@ -135,6 +138,7 @@ export class ResourceMutationService {
         );
       await connection.commit();
       commitMysqlAudits(connection);
+      return registered;
     } catch (error) {
       discardMysqlAudits(connection);
       await connection.rollback();
@@ -485,6 +489,7 @@ export class ResourceMutationService {
         workspaceId,
         nodeId
       ]);
+      await removeScheduledTaskIndex(connection, { nodeId, workspaceId });
       const [result] = await connection.execute<ResultSetHeader>(
         'DELETE FROM workspaces WHERE workspace_id=? AND node_id=?',
         [workspaceId, nodeId]

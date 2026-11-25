@@ -5,5 +5,6 @@ export interface NodeSchemaMigration {
   readonly sql: string;
   readonly rebuildTables?: boolean;
   readonly preflight?: (database: DatabaseSync) => void;
+  readonly afterSql?: (database: DatabaseSync) => void;
   readonly assert: (database: DatabaseSync) => void;
 }

@@ -6,7 +6,6 @@ import { NodeDatabase } from '../../src/database.js';
 import { GoalRuntime } from '../../src/service/goal-runtime.js';
 import { GoalMcpBridge } from '../../src/service/goal-mcp-bridge.js';
 import { ScheduleMcpBridge } from '../../src/service/schedule-mcp-bridge.js';
-import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
 import {
   NotificationMcpBridge,
   resolveNotificationCapability
@@ -93,12 +92,10 @@ describe.each(['goal', 'schedule', 'notification'] as const)(
               )
             : domain === 'schedule'
               ? new ScheduleMcpBridge(
-                  () => new ScheduledSessionStore(database.raw),
-                  () => undefined,
-                  () => undefined,
-                  (capability) =>
+                  async (capability) =>
                     f.runtime.resolveMcpExecution({ ...capability, userId: capability.actorUserId })
-                      ?.sessionId
+                      ?.sessionId,
+                  async () => ({ items: [] })
                 )
               : new NotificationMcpBridge(
                   (capability) => resolveNotificationCapability(f.runtime, capability),
@@ -119,7 +116,7 @@ describe.each(['goal', 'schedule', 'notification'] as const)(
             domain === 'goal'
               ? 'get_goal'
               : domain === 'schedule'
-                ? 'get_scheduled_task'
+                ? 'list_scheduled_tasks'
                 : 'send_email_notification';
           const invoke = (credential: string): Promise<Record<string, unknown>> =>
             new Promise((resolve, reject) => {

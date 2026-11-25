@@ -26,7 +26,10 @@ describe('execution lifecycle', () => {
 
   it('keeps terminal, progress and release ordering across owners', () => {
     const calls: string[] = [];
-    const scheduled = { executionTerminated: vi.fn(() => calls.push('scheduled')) };
+    const scheduled = {
+      executionTerminated: vi.fn(() => calls.push('scheduled')),
+      changed: vi.fn()
+    };
     const continuous = {
       runTerminated: vi.fn(() => calls.push('terminal')),
       remove: vi.fn(() => calls.push('remove'))
@@ -36,7 +39,10 @@ describe('execution lifecycle', () => {
       executionProgress: vi.fn(() => calls.push('progress'))
     };
     const usage = { release: vi.fn(() => calls.push('usage')) };
-    const runtime = { revokeExecutionMcps: vi.fn(() => calls.push('revoke-mcps')) };
+    const runtime = {
+      revokeExecutionMcps: vi.fn(() => calls.push('revoke-mcps')),
+      getAgentSession: vi.fn()
+    };
     const events = { emitConversationItem: vi.fn(() => calls.push('event')) };
     let available = true;
     const owner = new ExecutionLifecycle(
@@ -49,7 +55,7 @@ describe('execution lifecycle', () => {
       events as never,
       { pending: () => false } as never
     );
-    owner.terminal({ sessionId: 'session' } as never, 'SUCCEEDED');
+    owner.terminal({ sessionId: 'session', source: 'SCHEDULED' } as never, 'SUCCEEDED', 100);
     owner.emitItem('run', {});
     owner.release('run');
     expect(calls).toEqual([
@@ -64,7 +70,7 @@ describe('execution lifecycle', () => {
     ]);
     expect(runtime.revokeExecutionMcps).toHaveBeenCalledWith('run');
     available = false;
-    owner.terminal({ sessionId: 'session' } as never, 'FAILED');
+    owner.terminal({ sessionId: 'session', source: 'SCHEDULED' } as never, 'FAILED', 200);
     expect(scheduled.executionTerminated).toHaveBeenCalledOnce();
     expect(continuous.runTerminated).toHaveBeenCalledTimes(2);
   });

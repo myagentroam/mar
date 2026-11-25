@@ -11,6 +11,7 @@ import type { ResourceOwnership } from '@myagentroam/protocol';
 import type { StoredNode } from './node-identity.js';
 import type { StoredNodeUpgrade } from './node-upgrade-progress.js';
 import { lockMysqlUsers } from './mysql-reference-store.js';
+import { removeScheduledTaskIndex } from './scheduled-task-index.js';
 export interface NodeIdentityAuditEvent extends AuditEvent {
   readonly eventType:
     | 'node_registration_token_created'
@@ -498,6 +499,7 @@ export class MysqlNodeIdentityStorage {
       [nodeId, nodeId]
     );
     await connection.execute('DELETE FROM session_shares WHERE node_id=?', [nodeId]);
+    await removeScheduledTaskIndex(connection, { nodeId });
     await connection.execute('DELETE FROM workspaces WHERE node_id=?', [nodeId]);
     await connection.execute('DELETE FROM node_credentials WHERE node_id=?', [nodeId]);
     const [result] = await connection.execute<ResultSetHeader>('DELETE FROM nodes WHERE id=?', [

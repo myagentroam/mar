@@ -109,6 +109,7 @@ export interface NodeControlConsumers extends NodeMessageConsumers {
   readonly mailNotifications: Pick<MailNotificationService, 'send'>;
   readonly notificationChannels: Pick<NotificationChannelService, 'send'>;
   readonly scheduleAuthorizer: ScheduledRunAuthorizer;
+  readonly scheduledTaskConnectionChanged?: (nodeId: string) => void;
   readonly executionPreparer?: ExecutionPreparer;
   readonly browserUseAllowed?: (
     nodeId: string,
@@ -229,6 +230,7 @@ export class NodeControl extends NodeIdentityControl {
       this.browser?.revokeNode(nodeId);
     }
     this.runtimeCredentials.activateNodeConnection(nodeId);
+    this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     this.workbenchRelay.broadcast({
       type: 'node',
       nodeId,
@@ -246,6 +248,7 @@ export class NodeControl extends NodeIdentityControl {
     nodeId: string,
     capabilities: NodeCapabilities
   ): Promise<void> {
+    this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     const generation = this.nodeCapabilities(nodeId)?.remoteDesktop?.nodeGeneration;
     if (generation) {
       this.desktopDirect.retireOtherGenerations(nodeId, generation);
@@ -285,6 +288,7 @@ export class NodeControl extends NodeIdentityControl {
       );
   }
   protected override onNodeDisconnected(nodeId: string): void {
+    this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     this.browser?.revokeNode(nodeId);
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
     this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
@@ -518,6 +522,26 @@ export class NodeControl extends NodeIdentityControl {
     signal?: AbortSignal
   ): Promise<unknown> {
     return this.requestBroker.request(nodeId, operation, data, user, timeoutMs, signal);
+  }
+
+  /** Opaque identity for committing read projections from the current business connection. */
+  scheduledTaskConnection(nodeId: string): object | undefined {
+    const socket = this.sockets.get(nodeId);
+    return socket !== undefined &&
+      socket.readyState === socket.OPEN &&
+      this.nodeCapabilities(nodeId)?.scheduledTasks?.apiVersion === 1
+      ? socket
+      : undefined;
+  }
+
+  requestScheduledTaskIndex(
+    nodeId: string,
+    connection: object,
+    scope: { workspaceId: string; afterTaskId?: string }
+  ): Promise<unknown> {
+    if (this.scheduledTaskConnection(nodeId) !== connection)
+      return Promise.reject(new Error('NODE_CONNECTION_REPLACED'));
+    return this.requestBroker.requestScheduledTaskIndex(nodeId, scope);
   }
 
   requestHostedConversationNode(

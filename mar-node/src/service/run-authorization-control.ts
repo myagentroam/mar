@@ -68,7 +68,7 @@ export class RunAuthorizationControl {
   ): Promise<Extract<ExecutionPrepareResponse, { context: unknown }>['context']> {
     return this.request(
       'schedule.authorize',
-      scheduledRunAuthorizeRequestSchema.parse({ ...request, executionResources: 1 }),
+      scheduledRunAuthorizeRequestSchema.parse(request),
       'SCHEDULE'
     );
   }

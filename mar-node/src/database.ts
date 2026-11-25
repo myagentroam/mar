@@ -5,6 +5,7 @@ import { NODE_SCHEMA_MIGRATION_V20 } from './migrations/v020.js';
 import { NODE_SCHEMA_MIGRATION_V21 } from './migrations/v021.js';
 import { NODE_SCHEMA_MIGRATION_V22 } from './migrations/v022.js';
 import { NODE_SCHEMA_MIGRATION_V23 } from './migrations/v023.js';
+import { NODE_SCHEMA_MIGRATION_V24 } from './migrations/v024.js';
 import { normalizeSessionPrompt } from './runner/personal-instructions.js';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
@@ -46,7 +47,8 @@ export const NODE_SCHEMA_MIGRATIONS: readonly NodeSchemaMigration[] = [
   NODE_SCHEMA_MIGRATION_V20,
   NODE_SCHEMA_MIGRATION_V21,
   NODE_SCHEMA_MIGRATION_V22,
-  NODE_SCHEMA_MIGRATION_V23
+  NODE_SCHEMA_MIGRATION_V23,
+  NODE_SCHEMA_MIGRATION_V24
 ];
 const LEGACY_NODE_SCHEMA_V12 = NODE_SCHEMA_VERSION_V13 - 1;
 const OBSOLETE_NODE_SCHEMA_V16 = 16;
@@ -506,12 +508,11 @@ export class NodeDatabase {
       if (this.getWorkspace(input.workspaceId) === undefined)
         throw new Error('WORKSPACE_NOT_FOUND');
       const scheduled = this.raw
-        .prepare('SELECT workspace_id,runner FROM scheduled_session_tasks WHERE session_id=?')
-        .get(input.externalSessionId);
-      if (
-        scheduled !== undefined &&
-        (scheduled['workspace_id'] !== input.workspaceId || scheduled['runner'] !== input.runner)
-      )
+        .prepare(
+          'SELECT 1 FROM scheduled_session_tasks WHERE session_id=? AND (workspace_id<>? OR runner<>?) LIMIT 1'
+        )
+        .get(input.externalSessionId, input.workspaceId, input.runner);
+      if (scheduled !== undefined)
         throw Object.assign(new Error('SCHEDULE_SESSION_MISMATCH'), {
           publicMessage: "The scheduled task must use its session's Workspace and Runner."
         });
@@ -709,15 +710,15 @@ export class NodeDatabase {
     return workspaceId;
   }
 
-  deleteSessionRecord(sessionId: string): boolean {
+  deleteSessionRecord(sessionId: string): { removed: boolean; schedulesChanged: boolean } {
     this.raw.exec('BEGIN IMMEDIATE');
     try {
-      new ScheduledSessionStore(this.raw).removeForSession(sessionId);
+      const schedulesChanged = new ScheduledSessionStore(this.raw).unbindSession(sessionId);
       const removed =
         Number(this.raw.prepare('DELETE FROM agent_sessions WHERE id = ?').run(sessionId).changes) >
         0;
       this.raw.exec('COMMIT');
-      return removed;
+      return { removed, schedulesChanged };
     } catch (error) {
       this.raw.exec('ROLLBACK');
       throw error;
@@ -822,6 +823,7 @@ export function migrate(
     try {
       entry.preflight?.(database);
       database.exec(entry.sql);
+      entry.afterSql?.(database);
       entry.assert(database);
       if (entry.version >= NODE_SCHEMA_MIGRATION_V16.version) {
         assertNodeNoForeignKeys(database);

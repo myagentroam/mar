@@ -57,6 +57,7 @@ interface SessionCatalogServiceOptions {
   }>;
   readonly invalidateHistory: (sessionId: string, workspaceId: string) => void;
   readonly invalidateWorkspaceSessions: (workspaceId: string) => void;
+  readonly onScheduleTargetsUnbound?: (workspaceId: string) => void;
   readonly emitSession: (session: NodeAgentSession) => void;
   /** Lets the FIFO owner reconsider preserved input after history admission is released. */
   readonly onHistoryMutationSettled?: (sessionId: string) => void;
@@ -670,10 +671,15 @@ export class SessionCatalogService {
     const ids = [root.externalSessionId];
     const seen = new Set(ids);
     const parents = new Map<string, string>();
+    let schedulesChanged = false;
+    const removeRecord = (session: NodeAgentSession) => {
+      const result = database.deleteSessionRecord(session.id);
+      schedulesChanged ||= result.schedulesChanged;
+      this.options.forget(session, this.options.nativeIds(session));
+    };
     const settle = (session: NodeAgentSession, deleted: boolean) => {
       if (cleanup === undefined) return;
-      database.deleteSessionRecord(session.id);
-      this.options.forget(session, this.options.nativeIds(session));
+      removeRecord(session);
       cleanup.settled(session, deleted);
     };
     const releases: Array<() => void> = [];
@@ -768,13 +774,11 @@ export class SessionCatalogService {
       await flushBatch();
       // Manual deletion preserves all relationships if any native owner fails.
       if (cleanup === undefined) {
-        for (const session of sessions.reverse()) {
-          this.options.database().deleteSessionRecord(session.id);
-          this.options.forget(session, this.options.nativeIds(session));
-        }
+        for (const session of sessions.reverse()) removeRecord(session);
       }
     } finally {
       for (const release of releases.reverse()) release();
+      if (schedulesChanged) this.options.onScheduleTargetsUnbound?.(root.workspaceId);
     }
   }
 

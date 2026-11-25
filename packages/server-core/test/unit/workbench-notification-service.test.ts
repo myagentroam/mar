@@ -411,7 +411,7 @@ describe('Server Workbench notification service', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it('records scheduled skip and terminal events for the designated recipient after access is revoked', async () => {
+  it('records scheduled skip and terminal events only for the designated authorized recipient', async () => {
     const execute = vi.fn(async (sql: string, _parameters?: unknown[]) => {
       void _parameters;
       if (sql.includes('DELETE FROM workbench_notifications')) return [{ affectedRows: 0 }, []];
@@ -422,7 +422,7 @@ describe('Server Workbench notification service', () => {
       if (sql.includes('SELECT * FROM workbench_notifications WHERE id=')) return [[], []];
       throw new Error(`UNEXPECTED_SQL:${sql}`);
     });
-    const userCanRequestNode = vi.fn(async () => false);
+    const userCanRequestNode = vi.fn(async () => true);
     const database = transactionalDatabase(execute, userCanRequestNode);
     const service = new WorkbenchNotificationService(
       database as never,
@@ -455,13 +455,150 @@ describe('Server Workbench notification service', () => {
         outcome: 'SUCCEEDED'
       })
     ).toBe(true);
-    expect(userCanRequestNode).not.toHaveBeenCalled();
+    expect(userCanRequestNode).toHaveBeenCalledTimes(2);
     const insertions = execute.mock.calls.filter(([sql]) =>
       sql.includes('INSERT INTO workbench_notifications')
     );
     expect(insertions).toHaveLength(2);
     expect(insertions.map(([, values]) => values?.[1])).toEqual([8, 8]);
     expect(insertions.map(([, values]) => values?.[4])).toEqual(['schedule', 'run']);
+    userCanRequestNode.mockResolvedValue(false);
+    execute.mockClear();
+    expect(
+      await service.consume('node-1', {
+        userId: 8,
+        notificationId: 'another',
+        kind: 'SCHEDULE_SKIPPED',
+        workspaceId: 'workspace-1',
+        sessionId: 'session-1',
+        sessionTitle: 'Session',
+        runId: 'due-3',
+        occurredAt: 900
+      })
+    ).toBe(false);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates task-only notices and filters their exact Workspace on delivery and reads', async () => {
+    let row: Record<string, unknown> | undefined;
+    const execute = vi.fn(async (sql: string, parameters: unknown[] = []) => {
+      if (sql.startsWith('DELETE FROM')) return [{ affectedRows: 0 }, []];
+      if (sql.startsWith('SELECT locale FROM users')) return [[{ locale: 'en-US' }], []];
+      if (sql.startsWith('SELECT username FROM users')) return [[{ username: 'test' }], []];
+      if (sql.startsWith('SELECT id FROM nodes')) return [[{ id: 'node-1' }], []];
+      if (sql.startsWith('SELECT workspace_id,node_id FROM workspaces'))
+        return [[{ workspace_id: 'workspace-1', node_id: 'node-1' }], []];
+      if (sql.startsWith('SELECT display_name FROM workspaces'))
+        return [[{ display_name: 'Workspace' }], []];
+      if (sql.startsWith('INSERT INTO workbench_notifications')) {
+        expect(sql).toContain('task_id,task_reference,session_title,run_id');
+        expect(sql).not.toContain('session_id');
+        const keys = [
+          'id',
+          'user_id',
+          'source_id',
+          'source_key',
+          'kind',
+          'title',
+          'message',
+          'node_id',
+          'target_type',
+          'workspace_id',
+          'task_id',
+          'task_reference',
+          'session_title',
+          'run_id',
+          'created_at',
+          'expires_at'
+        ];
+        if (row?.source_key === parameters[3]) return [{ affectedRows: 0 }, []];
+        row = {
+          ...Object.fromEntries(keys.map((key, i) => [key, parameters[i]])),
+          task_reference: JSON.parse(String(parameters[keys.indexOf('task_reference')])),
+          read_at: null,
+          deleted_at: null
+        };
+        return [{ affectedRows: 1 }, []];
+      }
+      if (sql.startsWith('SELECT * FROM workbench_notifications')) {
+        const userId = sql.includes('WHERE id=?') ? parameters[1] : parameters[0];
+        return [row?.user_id === userId ? [row] : [], []];
+      }
+      throw new Error(`UNEXPECTED_SQL:${sql}`);
+    });
+    let accessible = true;
+    const authorize = vi.fn(
+      async (
+        userId: number,
+        nodeId: string,
+        operation: string,
+        _payload: unknown,
+        workspaceId?: string
+      ) =>
+        accessible &&
+        userId === 7 &&
+        nodeId === 'node-1' &&
+        operation === 'schedule.task.get' &&
+        workspaceId === 'workspace-1'
+    );
+    const database = transactionalDatabase(execute, async () => true);
+    const push = vi.fn();
+    const offline =
+      vi.fn<(userId: number, notification: unknown, authorize: () => Promise<boolean>) => void>();
+    const service = new WorkbenchNotificationService(
+      database as never,
+      authorize,
+      push,
+      () => 1_000,
+      undefined,
+      offline
+    );
+    const event = {
+      targetType: 'SCHEDULED_TASK',
+      userId: 7,
+      kind: 'SCHEDULE_FAILED',
+      code: 'WORKSPACE_ACCESS_DENIED',
+      workspaceId: 'workspace-1',
+      taskId: 'task-1',
+      taskName: 'Daily check',
+      reference: { kind: 'occurrence', id: 'occurrence-1' },
+      runId: 'occurrence-1',
+      notificationId: 'schedule:task-1:occurrence-1',
+      occurredAt: 900
+    };
+    expect(await service.consume('node-other', event)).toBe(false);
+    expect(await service.consume('node-1', { ...event, sessionId: 'bootstrap' })).toBe(false);
+    expect(execute).not.toHaveBeenCalled();
+    expect(await service.consume('node-1', event)).toBe(true);
+    expect(await service.consume('node-1', event)).toBe(true);
+    expect(push).toHaveBeenCalledExactlyOnceWith(7, {
+      type: 'notification.created',
+      notification: expect.objectContaining({
+        kind: 'schedule',
+        id: row!.id,
+        title: 'Workspace: Daily check',
+        message: 'Scheduled task failed, open the scheduled task for details.',
+        target: {
+          targetType: 'SCHEDULED_TASK',
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          taskId: 'task-1',
+          taskName: 'Daily check',
+          reference: event.reference
+        }
+      })
+    });
+    expect(offline).toHaveBeenCalledOnce();
+    const id = String(row!.id);
+    expect(await service.list(7)).toHaveLength(1);
+    expect(await service.list(8)).toEqual([]);
+    expect(await service.forPush(7, id)).toBeDefined();
+    accessible = false;
+    expect(await offline.mock.calls[0]![2]()).toBe(false);
+    expect(await service.list(7)).toEqual([]);
+    expect(await service.bySource(7, event.notificationId)).toBeUndefined();
+    expect(await service.forPush(7, id)).toBeUndefined();
+    expect(await service.consume('node-1', { ...event, notificationId: 'new' })).toBe(false);
   });
 
   it('limits notification titles with workspace names and separators to fit notification storage', async () => {

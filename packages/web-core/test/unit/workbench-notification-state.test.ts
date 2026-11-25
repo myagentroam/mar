@@ -15,6 +15,8 @@ import {
 } from '../../src/util/notification-presentation';
 import { ApiError } from '../../src/util/api-error';
 
+type SessionTarget = Exclude<NotificationTarget, { targetType: 'SCHEDULED_TASK' }>;
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -46,7 +48,12 @@ function notification(
   };
 }
 
-function hostedNotification(id: string, conversationId = 'conversation-1'): ServerNotification {
+function hostedNotification(
+  id: string,
+  conversationId = 'conversation-1'
+): ServerNotification & {
+  readonly target: Extract<NotificationTarget, { targetType: 'HOSTED_CONVERSATION' }>;
+} {
   const now = Date.now();
   return {
     id,
@@ -89,8 +96,8 @@ function recoveryFixture(
   onNotificationClick?: (notification: WorkbenchNotification) => Promise<void>
 ) {
   const active = {
-    target: notification('active').target as NotificationTarget | undefined,
-    others: [] as NotificationTarget[]
+    target: notification('active').target as SessionTarget | undefined,
+    others: [] as SessionTarget[]
   };
   const server = {
     entries,
@@ -706,6 +713,30 @@ describe('expired notification ID cleanup', () => {
 });
 
 describe('Web Workbench notification state', () => {
+  it('opens a scheduled-task notification by its own ID without reading another session', async () => {
+    const entry = {
+      ...notification('scheduled-result'),
+      kind: 'schedule',
+      target: {
+        targetType: 'SCHEDULED_TASK',
+        nodeId: 'node-2',
+        workspaceId: 'work',
+        taskId: 'task-2',
+        taskName: 'Review',
+        reference: { kind: 'occurrence', id: 'occurrence-1' }
+      }
+    } satisfies ServerNotification;
+    const onClick = vi.fn(async () => {});
+    const f = recoveryFixture([entry], onClick);
+    try {
+      await f.state.openNotification(entry.id);
+      expect(onClick).toHaveBeenCalledExactlyOnceWith({ ...entry, source: 'server' });
+      expect(f.reads().map(([path]) => path)).toEqual(['/api/notifications/scheduled-result/read']);
+    } finally {
+      f.state.dispose();
+    }
+  });
+
   it.each(['workspace', 'hosted'] as const)(
     'reads only the foreground %s target on focus without reconnecting and detaches on disposal',
     async (kind) => {
@@ -723,7 +754,7 @@ describe('Web Workbench notification state', () => {
       const entry = kind === 'workspace' ? notification : hostedNotification;
       const current = entry('current');
       const f = recoveryFixture([current, entry('other', 'other-target')]);
-      f.active.target = current.target as NotificationTarget;
+      f.active.target = current.target as SessionTarget;
       try {
         await f.state.start();
         f.state.notify({ id: 'update', kind: 'web-update', version: '0.9.5' });
@@ -789,7 +820,7 @@ describe('Web Workbench notification state', () => {
         else f.state.markConversationRead('node-1', 'conversation-1');
         await f.state.recover();
       });
-      f.active.target = clicked.target as NotificationTarget;
+      f.active.target = clicked.target as SessionTarget;
       try {
         await f.state.load();
         await f.state.openNotification({ ...clicked, source: 'server' });
@@ -1205,7 +1236,7 @@ describe('Web Workbench notification state', () => {
     );
     try {
       const first = f.state.recover();
-      f.active.target = notification('other', 'session-2').target as NotificationTarget;
+      f.active.target = notification('other', 'session-2').target as SessionTarget;
       const second = f.state.recover();
       release({ notifications: f.server.entries });
       await Promise.all([first, second]);
@@ -1261,7 +1292,7 @@ describe('Web Workbench notification state', () => {
       try {
         const recovering = f.state.recover();
         if (change === 'target-switch')
-          f.active.target = notification('other', 'session-2').target as NotificationTarget;
+          f.active.target = notification('other', 'session-2').target as SessionTarget;
         else if (change === 'inactive-view') f.active.target = undefined;
         else if (change === 'hidden-page') vi.stubGlobal('document', { visibilityState: 'hidden' });
         else if (change === 'unfocused-page')
@@ -1281,7 +1312,7 @@ describe('Web Workbench notification state', () => {
   it('does not retry a recovery write when its target changes during the failed write', async () => {
     const f = recoveryFixture([notification('current'), notification('other', 'session-2')]);
     f.server.readGate = async () => {
-      f.active.target = notification('other', 'session-2').target as NotificationTarget;
+      f.active.target = notification('other', 'session-2').target as SessionTarget;
       throw new Error('Target changed');
     };
     try {
@@ -1296,7 +1327,7 @@ describe('Web Workbench notification state', () => {
   it('recovers the active HostedConversation without reading Workspace notifications', async () => {
     const current = hostedNotification('hosted');
     const f = recoveryFixture([current, notification('workspace')]);
-    f.active.target = current.target as NotificationTarget;
+    f.active.target = current.target as SessionTarget;
     try {
       await f.state.recover();
       expect(f.reads()[0]?.[0]).toBe('/api/notifications/conversation/read');
@@ -2431,7 +2462,7 @@ describe('Web Workbench notification state', () => {
         f.active.target = undefined;
         await f.state.recover();
         expect(f.reads()).toHaveLength(0);
-        f.active.target = current.target as NotificationTarget;
+        f.active.target = current.target as SessionTarget;
         await f.state.recover();
         expect(f.reads().map(([path]) => path)).toEqual([
           `/api/notifications/${kind === 'workspace' ? 'session' : 'conversation'}/read`

@@ -151,6 +151,7 @@ export const zhCN = {
       config: '修改配置',
       pin: '移动置顶会话',
       scheduleSave: '保存调度',
+      schedulePropose: '提出定时任务修改建议',
       scheduleRemove: '删除调度',
       scheduleResolve: '处理调度建议',
       rewind: '回退',

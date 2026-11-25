@@ -1,33 +1,89 @@
-export type ScheduledCadence =
-  | { readonly kind: 'HOURLY'; readonly minute: number }
-  | { readonly kind: 'DAILY'; readonly minute: number; readonly hour: number }
-  | {
-      readonly kind: 'WEEKLY';
-      readonly minute: number;
-      readonly hour: number;
-      readonly weekday: number;
-    }
-  | { readonly kind: 'CRON'; readonly expression: string };
+import type { ScheduledTimeGroup } from '@myagentroam/protocol';
 
-export function parseScheduledCron(cron: string): ScheduledCadence {
-  const parsed = parseCronExpression(cron);
-  if (
-    parsed.dayOfMonthWildcard &&
-    parsed.monthWildcard &&
-    /^\d+$/.test(parsed.fields[0] ?? '') &&
-    (parsed.fields[1] === '*' || /^\d+$/.test(parsed.fields[1] ?? '')) &&
-    (parsed.fields[4] === '*' || /^\d+$/.test(parsed.fields[4] ?? ''))
-  ) {
-    const minute = exactInteger(parsed.fields[0], 0, 59);
-    const hour = parsed.fields[1] === '*' ? undefined : exactInteger(parsed.fields[1], 0, 23);
-    const weekdayValue =
-      parsed.fields[4] === '*' ? undefined : exactInteger(parsed.fields[4], 0, 7);
-    if (hour === undefined && weekdayValue === undefined) return { kind: 'HOURLY', minute };
-    if (hour !== undefined && weekdayValue === undefined) return { kind: 'DAILY', minute, hour };
-    if (hour !== undefined && weekdayValue !== undefined)
-      return { kind: 'WEEKLY', minute, hour, weekday: weekdayValue === 7 ? 0 : weekdayValue };
+const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
+// A Gregorian leap-day gap is at most eight years. Weekday and other month-day rules recur sooner.
+const CALENDAR_SEARCH_DAYS = 8 * 366;
+
+export interface ScheduledTime {
+  readonly dueAt: number;
+  readonly matchedGroups: readonly number[];
+}
+
+/** Node's wall-clock evaluator. Reads no runtime state; callers provide the clock and stored zone. */
+export function scheduledTimesAfter(
+  groups: readonly ScheduledTimeGroup[],
+  timezone: string,
+  after: number,
+  limit: number
+): readonly ScheduledTime[] {
+  const formatter = scheduleFormatter(timezone, after);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error('SCHEDULE_LIMIT_INVALID');
+  const localStart = localParts(formatter, after).timestamp;
+  const firstDay = Math.floor(localStart / DAY) * DAY;
+  const offsetsByDay = new Map<number, ReadonlySet<number>>();
+  const matches = new Map<number, number[]>();
+
+  for (const [index, group] of groups.entries()) {
+    const { days, times } = group;
+    const minutes =
+      times.kind === 'times'
+        ? times.times.map((time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3)))
+        : times.hours.flatMap((hour) => times.minutes.map((minute) => hour * 60 + minute));
+    const orderedMinutes = [...new Set(minutes)].sort((a, b) => a - b);
+    const dates =
+      days.kind === 'dates'
+        ? [...new Set(days.dates.map((date) => Date.parse(`${date}T00:00:00Z`)))].sort(
+            (a, b) => a - b
+          )
+        : civilDays(firstDay);
+    let count = 0;
+    let horizon = firstDay + CALENDAR_SEARCH_DAYS * DAY;
+    scan: for (const day of dates) {
+      if (day < firstDay) continue;
+      if (days.kind !== 'dates') {
+        if (day > horizon) break;
+        if (!matchesCalendarDay(days, day)) continue;
+      }
+      const offsets = offsetsByDay.get(day) ?? dayOffsets(formatter, day);
+      offsetsByDay.set(day, offsets);
+      for (const minute of orderedMinutes) {
+        const localTime = day + minute * MINUTE;
+        if (localTime < localStart) continue;
+        const dueAt = earliestInstant(formatter, offsets, localTime);
+        if (dueAt === undefined || dueAt <= after) continue;
+        const previous = matches.get(dueAt);
+        if (previous === undefined) matches.set(dueAt, [index]);
+        else previous.push(index);
+        if (++count === limit) break scan;
+        horizon = day + CALENDAR_SEARCH_DAYS * DAY;
+      }
+    }
   }
-  return { kind: 'CRON', expression: parsed.expression };
+
+  // Any group's (n + 1)th distinct result has at least n predecessors in the union.
+  return [...matches.entries()]
+    .sort(([a], [b]) => a - b)
+    .slice(0, limit)
+    .map(([dueAt, matchedGroups]) => ({ dueAt, matchedGroups }));
+}
+
+function* civilDays(firstDay: number): Generator<number> {
+  // Yield the calendar cursor, even when nothing matches, so the caller can enforce its horizon.
+  for (let day = firstDay; ; day += DAY) yield day;
+}
+
+function matchesCalendarDay(
+  selector: Exclude<ScheduledTimeGroup['days'], { kind: 'dates' }>,
+  day: number
+): boolean {
+  const date = new Date(day);
+  if (selector.months !== undefined && !selector.months.includes(date.getUTCMonth() + 1))
+    return false;
+  if (selector.kind === 'weekdays') return selector.weekdays.includes(date.getUTCDay());
+  if (selector.kind === 'monthDays') return selector.monthDays.includes(date.getUTCDate());
+  return true;
 }
 
 export function assertScheduleTimezone(timezone: string): void {
@@ -39,11 +95,11 @@ export function assertScheduleTimezone(timezone: string): void {
   }
 }
 
-export function nextScheduledAt(cron: string, timezone: string, after: number): number {
-  const schedule = parseCronExpression(cron);
+function scheduleFormatter(timezone: string, after: number): Intl.DateTimeFormat {
   assertScheduleTimezone(timezone);
-  if (!Number.isSafeInteger(after) || after < 0) throw new Error('SCHEDULE_TIME_INVALID');
-  const formatter = new Intl.DateTimeFormat('en-US', {
+  if (!Number.isSafeInteger(after) || after < 0 || after > 8.64e15)
+    throw new Error('SCHEDULE_TIME_INVALID');
+  return new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
@@ -52,135 +108,31 @@ export function nextScheduledAt(cron: string, timezone: string, after: number): 
     minute: '2-digit',
     hourCycle: 'h23'
   });
-  const start = localParts(formatter, after);
-  const dayMs = 24 * 60 * 60_000;
-  const limit = Math.floor(after / 60_000) * 60_000 + 8 * 366 * dayMs;
-  const firstDay = Date.UTC(start.year, start.month - 1, start.day);
-  const hours = [...schedule.hour].sort((a, b) => a - b);
-  const minutes = [...schedule.minute].sort((a, b) => a - b);
-  // These are calendar dates represented in UTC, not fixed-length local days.
-  for (let day = firstDay; day <= limit + dayMs; day += dayMs) {
-    const date = new Date(day);
-    if (!matchesDate(schedule, date)) continue;
-    // Sample both sides of this date to include offsets on either side of a
-    // transition, including half-hour folds and whole-day calendar jumps.
-    const offsets = new Set(
-      [day - dayMs, day, day + 2 * dayMs].map(
-        (time) => localParts(formatter, time).timestamp - time
-      )
-    );
-    for (const hour of hours) {
-      if (day === firstDay && hour < start.hour) continue;
-      for (const minute of minutes) {
-        if (day === firstDay && hour === start.hour && minute < start.minute) continue;
-        const localTime = day + (hour * 60 + minute) * 60_000;
-        let earliest = Infinity;
-        for (const offset of offsets) {
-          const candidate = localTime - offset;
-          if (localParts(formatter, candidate).timestamp === localTime) {
-            earliest = Math.min(earliest, candidate);
-          }
-        }
-        // Resolve an ambiguous minute before filtering by after: the second
-        // physical occurrence must never become a replacement for the first.
-        if (earliest > after && earliest <= limit) return earliest;
-      }
-    }
+}
+
+function dayOffsets(formatter: Intl.DateTimeFormat, day: number): ReadonlySet<number> {
+  // The cursor is a civil date, encoded in UTC. Sample both sides of possible transitions.
+  return new Set(
+    [day - DAY, day, day + 2 * DAY].map((time) => localParts(formatter, time).timestamp - time)
+  );
+}
+
+function earliestInstant(
+  formatter: Intl.DateTimeFormat,
+  offsets: ReadonlySet<number>,
+  localTime: number
+): number | undefined {
+  let earliest: number | undefined;
+  // Resolve a fold before comparing with "after": its later instant never replaces its first.
+  for (const offset of offsets) {
+    const candidate = localTime - offset;
+    if (
+      (earliest === undefined || candidate < earliest) &&
+      localParts(formatter, candidate).timestamp === localTime
+    )
+      earliest = candidate;
   }
-  throw new Error('SCHEDULE_NEXT_TIME_UNAVAILABLE');
-}
-
-interface ParsedCronExpression {
-  readonly expression: string;
-  readonly fields: readonly string[];
-  readonly minute: ReadonlySet<number>;
-  readonly hour: ReadonlySet<number>;
-  readonly dayOfMonth: ReadonlySet<number>;
-  readonly month: ReadonlySet<number>;
-  readonly dayOfWeek: ReadonlySet<number>;
-  readonly dayOfMonthWildcard: boolean;
-  readonly monthWildcard: boolean;
-  readonly dayOfWeekWildcard: boolean;
-}
-
-function parseCronExpression(cron: string): ParsedCronExpression {
-  const expression = cron.trim();
-  const fields = expression.split(/\s+/);
-  if (
-    expression.length === 0 ||
-    expression.length > 64 ||
-    fields.length !== 5 ||
-    fields.some((field) => field.length === 0)
-  )
-    throw new Error('SCHEDULE_CRON_INVALID');
-  const minute = parseField(fields[0] ?? '', 0, 59);
-  const hour = parseField(fields[1] ?? '', 0, 23);
-  const dayOfMonth = parseField(fields[2] ?? '', 1, 31);
-  const month = parseField(fields[3] ?? '', 1, 12);
-  const dayOfWeek = parseField(fields[4] ?? '', 0, 7, (value) => (value === 7 ? 0 : value));
-  return {
-    expression,
-    fields,
-    minute: minute.values,
-    hour: hour.values,
-    dayOfMonth: dayOfMonth.values,
-    month: month.values,
-    dayOfWeek: dayOfWeek.values,
-    dayOfMonthWildcard: minuteWildcard(dayOfMonth.values, 1, 31),
-    monthWildcard: minuteWildcard(month.values, 1, 12),
-    dayOfWeekWildcard: minuteWildcard(dayOfWeek.values, 0, 6)
-  };
-}
-
-function parseField(
-  field: string,
-  min: number,
-  max: number,
-  normalize: (value: number) => number = (value) => value
-): { readonly values: ReadonlySet<number> } {
-  if (field.includes('?')) throw new Error('SCHEDULE_CRON_INVALID');
-  const values = new Set<number>();
-  for (const segment of field.split(',')) {
-    if (segment.length === 0) throw new Error('SCHEDULE_CRON_INVALID');
-    const parts = segment.split('/');
-    if (parts.length > 2 || parts.some((part) => part.length === 0))
-      throw new Error('SCHEDULE_CRON_INVALID');
-    const base = parts[0] ?? '';
-    const step = parts[1] === undefined ? 1 : exactInteger(parts[1], 1, max - min + 1);
-    let start: number;
-    let end: number;
-    if (base === '*') {
-      start = min;
-      end = max;
-    } else if (/^\d+-\d+$/.test(base)) {
-      const range = base.split('-');
-      start = exactInteger(range[0], min, max);
-      end = exactInteger(range[1], min, max);
-      if (start > end) throw new Error('SCHEDULE_CRON_INVALID');
-    } else if (parts.length === 1 && /^\d+$/.test(base)) {
-      start = exactInteger(base, min, max);
-      end = start;
-    } else {
-      throw new Error('SCHEDULE_CRON_INVALID');
-    }
-    if (parts[1] !== undefined && start === end) throw new Error('SCHEDULE_CRON_INVALID');
-    for (let value = start; value <= end; value += step) values.add(normalize(value));
-  }
-  if (values.size === 0) throw new Error('SCHEDULE_CRON_INVALID');
-  return { values };
-}
-
-function exactInteger(value: string | undefined, min: number, max: number): number {
-  if (value === undefined || !/^(0|[1-9][0-9]*)$/.test(value))
-    throw new Error('SCHEDULE_CRON_INVALID');
-  const number = Number(value);
-  if (!Number.isInteger(number) || number < min || number > max)
-    throw new Error('SCHEDULE_CRON_INVALID');
-  return number;
-}
-
-function minuteWildcard(values: ReadonlySet<number>, min: number, max: number): boolean {
-  return values.size === max - min + 1;
+  return earliest;
 }
 
 function localParts(formatter: Intl.DateTimeFormat, time: number) {
@@ -200,19 +152,4 @@ function localParts(formatter: Intl.DateTimeFormat, time: number) {
     month,
     timestamp: Date.UTC(year, month - 1, day, hour, minute)
   };
-}
-
-function matchesDate(schedule: ParsedCronExpression, date: Date): boolean {
-  if (!schedule.month.has(date.getUTCMonth() + 1)) return false;
-  const dayOfMonthMatches = schedule.dayOfMonth.has(date.getUTCDate());
-  const dayOfWeekMatches = schedule.dayOfWeek.has(date.getUTCDay());
-  const dayMatches =
-    schedule.dayOfMonthWildcard && schedule.dayOfWeekWildcard
-      ? true
-      : schedule.dayOfMonthWildcard
-        ? dayOfWeekMatches
-        : schedule.dayOfWeekWildcard
-          ? dayOfMonthMatches
-          : dayOfMonthMatches || dayOfWeekMatches;
-  return dayMatches;
 }

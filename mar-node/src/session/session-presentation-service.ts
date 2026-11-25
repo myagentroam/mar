@@ -95,12 +95,10 @@ export class SessionPresentationService {
         database === undefined
           ? null
           : (() => {
-              const task = new ScheduledSessionStore(database.raw).get(
+              const nextRunAt = new ScheduledSessionStore(database.raw).nextForSession(
                 session.externalSessionId ?? session.id
               );
-              return task === undefined
-                ? null
-                : { enabled: task.enabled, nextRunAt: task.nextRunAt };
+              return nextRunAt === null ? null : { enabled: true, nextRunAt };
             })()
     };
   }

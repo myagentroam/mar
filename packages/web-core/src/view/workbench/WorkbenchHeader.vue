@@ -2,12 +2,15 @@
 import { computed } from 'vue';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import type { SettingsSection } from '../../model/settings.js';
+import { translate } from '../../service/locale-preference-service.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
+import type { ScheduleSection } from '../schedule/scheduled-task-navigation.js';
 type ManagementSection = string;
 
 const props = defineProps<{
   readonly mobileViewport: boolean;
   readonly view: WorkbenchView;
+  readonly scheduleSection?: ScheduleSection | undefined;
   readonly sidebarCollapsed: boolean;
   readonly workspaceStartupBlocked?: boolean;
   readonly settingsSection: SettingsSection;
@@ -17,7 +20,21 @@ const props = defineProps<{
   readonly conversationTitle: string | undefined;
 }>();
 
+const workspaceTabsActive = computed(
+  () => props.view === 'nodes' && props.scheduleSection === undefined
+);
+const rootLabelKey = computed(() =>
+  props.scheduleSection !== undefined
+    ? 'generated.scheduledSession.panelTitle'
+    : props.view === 'settings'
+      ? 'navigation.settings'
+      : props.view === 'conversations'
+        ? 'navigation.conversations'
+        : 'navigation.management'
+);
 const currentLabel = computed(() => {
+  if (props.scheduleSection !== undefined)
+    return translate(`generated.scheduledSession.${props.scheduleSection}`);
   if (props.view === 'conversations') return props.conversationTitle;
   if (props.view === 'settings')
     return props.settingsItems.find((item) => item.id === props.settingsSection)?.label;
@@ -33,11 +50,14 @@ const emit = defineEmits<{
 
 <template>
   <header
-    v-if="!mobileViewport || view !== 'nodes'"
-    :class="['workbench-header', { 'workspace-tabs-active': view === 'nodes' }]"
+    v-if="!mobileViewport || view !== 'nodes' || scheduleSection !== undefined"
+    :class="['workbench-header', { 'workspace-tabs-active': workspaceTabsActive }]"
   >
     <button
-      v-if="!mobileViewport && (view !== 'nodes' || !workspaceStartupBlocked)"
+      v-if="
+        !mobileViewport &&
+        (scheduleSection !== undefined || view !== 'nodes' || !workspaceStartupBlocked)
+      "
       class="workbench-tree-toggle mar-icon-button mar-icon-action mar-icon-action--panel-toggle"
       v-tooltip="
         sidebarCollapsed ? $t('navigation.expandSidebar') : $t('navigation.collapseSidebar')
@@ -51,22 +71,25 @@ const emit = defineEmits<{
     >
       <MarIcon :name="sidebarCollapsed ? 'sidebar' : 'sidebar-expanded'" />
     </button>
-    <div v-if="view === 'nodes'" class="workspace-tabs-slot">
+    <div v-if="workspaceTabsActive" class="workspace-tabs-slot">
       <slot name="workspace-tabs"></slot>
     </div>
     <div v-else class="breadcrumb" :aria-label="$t('navigation.currentLocation')">
-      <span>{{
-        view === 'settings'
-          ? $t('navigation.settings')
-          : view === 'conversations'
-            ? $t('navigation.conversations')
-            : $t('navigation.management')
-      }}</span>
+      <span>{{ $t(rootLabelKey) }}</span>
       <template v-if="currentLabel">
-        <MarIcon class="breadcrumb-separator" name="chevron-right" size="0.65rem" />
-        <strong v-tooltip="view === 'conversations' ? currentLabel : undefined">{{
-          currentLabel
-        }}</strong>
+        <MarIcon
+          class="breadcrumb-separator"
+          name="chevron-right"
+          size="0.65rem"
+          aria-hidden="true"
+        />
+        <component
+          :is="scheduleSection === undefined ? 'strong' : 'h1'"
+          v-tooltip="
+            scheduleSection === undefined && view === 'conversations' ? currentLabel : undefined
+          "
+          >{{ currentLabel }}</component
+        >
       </template>
     </div>
   </header>
@@ -135,13 +158,19 @@ const emit = defineEmits<{
   color: var(--mar-text-secondary);
 }
 
-.breadcrumb strong {
+.breadcrumb strong,
+.breadcrumb h1 {
   min-width: 0;
   overflow: hidden;
   color: var(--mar-text-primary);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.breadcrumb h1 {
+  margin: 0;
+  font-size: inherit;
 }
 
 @media (max-width: 767px) {

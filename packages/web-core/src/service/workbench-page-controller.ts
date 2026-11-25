@@ -10,6 +10,7 @@
  * ordinary page disposal stays with each domain and preserves allowed refresh recovery.
  * Views consume explicit view contracts, not this factory's inferred return type.
  */
+import { scheduleInvalidationSchema } from '@myagentroam/protocol';
 import { createWorkbenchWatchRecovery } from './workbench-watch-coordinator.js';
 import {
   ACCOUNT_STORAGE_KEY,
@@ -318,10 +319,26 @@ export function createWorkbenchPageController<
       ...(selectedSessionId.value === undefined ? {} : { sessionId: selectedSessionId.value })
     })
   });
+  const scheduleInvalidation = shallowRef<{
+    nodeId?: string;
+    workspaceId?: string;
+    verify?: boolean;
+  }>();
+  const scheduledTaskLink = shallowRef<import('./scheduled-task-client.js').ScheduleTaskLink>();
   const workbenchLiveConnection = createWorkbenchLiveService({
     diagnostics: webPerformanceDiagnostics,
     canConnect: () => admin.value.authenticated && !admin.value.mustChangePassword,
     onEvent: (event) => {
+      if (event.category === 'workspace') {
+        const schedule = scheduleInvalidationSchema.safeParse(event.payload);
+        if (schedule.success) {
+          scheduleInvalidation.value = {
+            nodeId: event.nodeId,
+            workspaceId: schedule.data.workspaceId
+          };
+          return;
+        }
+      }
       if (workbenchNotificationService.project(event)) return;
       mainPaneController.events.applyBroadcast(event);
     },
@@ -330,6 +347,7 @@ export function createWorkbenchPageController<
       hostedConversationWorkspace.projectActivityMessage(message),
     onResyncRequired: handleWorkbenchResync,
     onNodeConnection: (nodeId, connected) => {
+      scheduleInvalidation.value = { nodeId, verify: true };
       updateNodeConnection(nodeId, connected);
       if (!connected) directTransport.nodeInvalidated(nodeId);
       else void refreshNodes().then(() => directTransport.refresh(nodeId, true));
@@ -356,6 +374,7 @@ export function createWorkbenchPageController<
       asidePaneController.restoreVisibleWatch();
     },
     onConnectionRestored: () => {
+      scheduleInvalidation.value = { verify: true };
       workbenchCapabilityService.clearUpgradeProgress();
       void refreshNodes();
       const workspace = workspaceTarget.value;
@@ -1034,6 +1053,9 @@ export function createWorkbenchPageController<
     selectWorkspace,
     syncWorkspaceSessions: (...args) => workspaceSessionDiscovery.synchronize(...args),
     openHostedConversationTarget: (...args) => openHostedConversationTarget(...args),
+    openScheduledTask: (task) => {
+      scheduledTaskLink.value = task;
+    },
     discovery: workspaceSessionDiscovery,
     selection: () => workbenchSessionSelectionService,
     onAsideRevealed: (target) => {
@@ -2115,6 +2137,7 @@ export function createWorkbenchPageController<
     if (restartWatch) hostedWatchRecovery.resyncNode(nodeId);
   }
   function handleWorkbenchResync(nodeId: string): void {
+    scheduleInvalidation.value = { nodeId, verify: true };
     watchRecovery.resync(nodeId);
     hostedWatchRecovery.resyncNode(nodeId);
   }
@@ -2405,6 +2428,8 @@ export function createWorkbenchPageController<
       applyWebUpdate,
       retryWorkspaceWatch: () => workspaceWatchService.retryFailed(),
       liveConnected: workbenchLiveConnection.connected,
+      scheduleInvalidation,
+      scheduledTaskLink,
       networkUnavailable: workbenchHttpService.networkUnavailable,
       codeNavigationReady,
       managementItems,

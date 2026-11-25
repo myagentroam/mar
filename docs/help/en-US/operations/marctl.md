@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-11-24
+lastUpdated: 2026-11-25
 ---
 
 # Manage Nodes with marctl
@@ -50,21 +50,9 @@ Credentials are signed by the Server. An ordinary Server restart neither invalid
 
 ## Coordinate Workspace Sessions
 
-For `show/config/history/graph/rename/prompt` and `schedule get/create/update`, omit the Session ID to use the current execution-context Session. An explicit ID takes precedence. Without a current Session, the command fails rather than guessing a recent one. `send/goal/stop/wait/approval` always require an explicit target ID; `list` and `schedule list` still query the current Workspace.
+For `show/config/history/graph/rename/prompt`, omit the Session ID to use the current execution-context Session. An explicit ID takes precedence. Without a current Session, the command fails rather than guessing a recent one. `send/goal/stop/wait/approval` always require an explicit target ID; `list` queries the current Workspace.
 
 Use `marctl agents rename [<session-id>] --title 'fixer#42 Updated title' --json` to rename a Session. The trimmed title must be nonempty and at most 160 characters. There is no parent-tree restriction. Renaming uses the Web title-update flow without starting or interrupting execution. Use `agents current --json` to read the current title.
-
-Scheduled tasks share data and agent editing rules with the built-in MCP: edits by the saving user apply directly; another user's edits return a `PENDING` proposal for the saving user to confirm, without changing execution identity. Scheduled and manual executions use the same user permissions and task editing rules. Read the current `revision` before passing `--expected-revision`; conflicts and uncertain writes are not retried automatically. MAR Agent hides the duplicate schedule MCP when its built-in marctl skill is available. Other Agents, or executions without that skill, retain the MCP.
-
-```text
-marctl agents schedule list --limit 20 --json
-marctl agents schedule get --json
-marctl agents schedule create --cron '0 9 * * *' -m 'Check build results' --json
-marctl agents schedule update --expected-revision 1 --message-file task.txt --json
-marctl agents schedule get <session-id> --json
-```
-
-`schedule list` pages through Node SQLite and returns `tasks[]` (including `sessionTitle`) and `nextCursor`, without scanning native Agent session histories. Other schedule operations accept an explicit target Session. Creation requires cron and text; updates require at least one. Text uses `-m` / `--message-file` (including stdin), up to 20,000 characters. The Node chooses the time zone. The CLI does not provide task enable/disable, deletion, or proposal approval commands.
 
 `view [<session-id>] --json` returns only state, the current Goal, and bounded recent activity, without history or history pagination options. Read records on demand with the separate `history [<session-id>] --cursor <cursor> --limit <1..100> --json` command; omit the cursor for the first page. For `history --json`, select `kind === "assistant_message"` in `segments[].items[]` and read `payload.text`; compact state fields are described below.
 
@@ -81,6 +69,41 @@ Session listing, ID lookup, and `list --query <title-fragment>` read only Sessio
 `list` accepts only `--scope tree|active`, `--query <title-fragment>`, and `--limit <1..100>`. With a current Session it defaults to the containing collaboration tree, including idle Sessions; a standalone terminal defaults to active, and explicit tree requires Session context. Active includes running or sleeping Sessions in the current Workspace, not inferred from timestamps, Goals, or queues. Query filters titles within the selected scope, ignoring surrounding whitespace and case and normalizing compatibility characters such as full-width letters, before applying limit (default 10, maximum 100). Active Sessions come first, then recent activity descending. Results contain only `scope`, `currentAgentId` (null without a Session), flat `sessions`, and `truncated`; entries contain only `id`, `parentSessionId`, `title`, and `status`. No matches produce an empty list; excess matches set truncated, without a cursor or pagination. Reuse known IDs directly. `show` returns a compact `session` with the same identity and status, plus `modelId`, `effort`, `queuedCount`, `latestMessage`, up to three `recentTools`, plus `pendingApprovals` and `pendingApprovalsTruncated`; it does not include full Runs, queues, Goals, paths, or control settings. Use the existing Goal, schedule, graph, and history commands for their respective details. Model ID/effort are Node-known Session settings, or null when unknown; `queuedCount` excludes internal Goal continuation.
 
 Session `status` is `RUNNING`, `IDLE`, or `SLEEPING`. Sleeping requires a confirmed foreground sleep in the current Run, not a tool name or an active Goal. Tool `state` remains its original lifecycle, such as `IN_PROGRESS` or `COMPLETED`. A running Session with no new public action has empty activity rather than borrowing a previous Run. Idle Sessions may show earlier in-memory activity with its observation time. Summaries are limited to 100 Unicode characters, tool names to 128, and the latest message to 300; `truncated` indicates shortened content. Full evidence remains in history.
+
+## Scheduled tasks
+
+`marctl agents schedule` works in the current authorized regular Workspace. `list` returns compact `tasks[]` and `nextCursor`. Use `--session <session-id>` to filter by the bound session and `--cursor` for the next page. `get`, `update`, and `runs` require `--task <task-id>`, not a session ID. `runs` uses `--page`, defaults to page one, and returns trigger times, outcomes, and any available run references without the task prompt.
+
+`create` always creates a separate task; it never overwrites an existing one. It targets the current session by default. Use `--session <session-id>` to select a session in the same Workspace. To create a new session on each trigger instead, use `--new-session --runner <runner>` with either `--model-id <id>` or `--default-model` and optionally `--effort <value>`. If there is no current session, specify a target explicitly.
+
+Use the `taskId` from the creation receipt or list as `TASK_ID`, and the current `revision` from the task detail as `REVISION`:
+
+```sh
+marctl agents schedule list --limit 20 --json
+marctl agents schedule create --name 'Build review' --groups-file groups.json -m 'Check build results' --json
+marctl agents schedule get --task "$TASK_ID" --json
+marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" --message-file task.txt --json
+marctl agents schedule runs --task "$TASK_ID" --page 1 --json
+```
+
+`--groups-file` reads a UTF-8 JSON array, not a Cron expression. This `groups.json` schedules weekdays at 10:00 and 20:00, plus a specific date at 14:30. Replace the example date with an actual future date in the Node time zone. Weekday numbers range from 0 (Sunday) to 6 (Saturday):
+
+```json
+[
+  {
+    "days": { "kind": "weekdays", "weekdays": [1, 2, 3, 4, 5] },
+    "times": { "kind": "times", "times": ["10:00", "20:00"] }
+  },
+  {
+    "days": { "kind": "dates", "dates": ["2030-03-21"] },
+    "times": { "kind": "times", "times": ["14:30"] }
+  }
+]
+```
+
+Use `anyDay` for any day or `monthDays` for selected days of the month. Recurring day selectors can use `months` to restrict matching months. `times` can list `HH:mm` values or combine hour and minute sets with `{"kind":"grid","hours":[9,10],"minutes":[0,30]}`. Pass the task prompt with `-m` or `--message-file`, up to 20,000 characters. Either `--groups-file` or `--message-file` can read stdin using `-`, but not both in the same command.
+
+An update must specify a name, time groups, or a task prompt. Updating your own task applies directly. Updating someone else's returns `proposalId` and `baseRevision` for the creator to resolve without transferring execution identity. Re-read after a revision conflict. If a write result is unknown, check the task before retrying. Use the [Scheduled tasks page](../workbench/sessions.md#scheduled-tasks) to pause, resume, delete, or resolve proposals; these actions are not available in the CLI.
 
 ## Persistent instructions and approvals
 

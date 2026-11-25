@@ -271,6 +271,51 @@ describe('Node request user authorization', () => {
     );
   });
 
+  it('admits a schedule index read only for the system identity on its exact Node request', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(ISSUED_AT);
+    const operation = 'schedule.index.list';
+    const f = fixture({ userId: 0, sessionHash: 'scheduled-task-index', operation });
+    const payload = f.request.payload as { userAuthorization: Record<string, unknown> };
+    await f.service.handle({
+      ...f.request,
+      payload: { ...payload, operation, data: { workspaceId: 'w', __requestUserId: 123 } }
+    });
+    expect(f.execute).toHaveBeenCalledExactlyOnceWith(operation, {
+      workspaceId: 'w',
+      __requestUserId: 0,
+      __workspaceWatchSessionHash: 'scheduled-task-index'
+    });
+    f.execute.mockClear();
+    for (const [requestOperation, authorization] of [
+      [operation, { userId: 1, sessionHash: SESSION_HASH }],
+      [operation, { sessionHash: 'model-resource' }],
+      [operation, { requestId: 'wrong-request' }],
+      [operation, { nodeId: 'wrong-node' }],
+      [operation, { expiresAt: EXPIRES_AT + 1 }],
+      [operation, { marctlCaller: { type: 'execution' } }],
+      ['schedule.task.list', {}]
+    ] as const) {
+      await f.service.handle({
+        ...f.request,
+        payload: {
+          operation: requestOperation,
+          data: {},
+          userAuthorization: {
+            ...payload.userAuthorization,
+            operation: requestOperation,
+            ...authorization
+          }
+        }
+      });
+      expect(f.send).toHaveBeenLastCalledWith(
+        'node.response',
+        expect.objectContaining({ error: 'USER_AUTHORIZATION_REQUIRED' }),
+        REQUEST_ID
+      );
+    }
+    expect(f.execute).not.toHaveBeenCalled();
+  });
+
   it('rejects requests before the Node identity is available', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(ISSUED_AT);
     const f = fixture();
