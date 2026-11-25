@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
@@ -26,8 +26,7 @@ import {
   type ScheduleRunReceipt,
   type ScheduleSessionScope,
   type ScheduleTaskKey,
-  type ScheduleTaskLink,
-  type ScheduleUpcoming
+  type ScheduleTaskLink
 } from '../../service/scheduled-task-client.js';
 import ScheduledTaskEditor from './ScheduledTaskEditor.vue';
 import type { ScheduleHistoryTask, ScheduleSection } from './scheduled-task-navigation.js';
@@ -42,21 +41,21 @@ const props = defineProps<{
   invalidation?: { nodeId?: string; workspaceId?: string; verify?: boolean } | undefined;
 }>();
 const emit = defineEmits<{
-  close: [];
   showHistory: [task?: ScheduleHistoryTask];
   openRun: [target: ScheduleSessionScope & { runId: string }];
 }>();
 const client = scheduledTaskClient(props.request);
+const panelTitleId = useId();
 const msg = (key: string, args?: Record<string, number | string>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const tasks = ref<ScheduleCard[]>([]);
 const nodes = ref<ScheduleNode[]>([]);
-const upcoming = ref<ScheduleUpcoming[]>([]);
 const occurrences = ref<ScheduleOccurrence[]>([]);
 const cursor = ref<string | null>(null);
 const unavailable = ref<string[]>([]);
 const failure = shallowRef<unknown>();
 const loading = ref(false);
+const listComplete = computed(() => !loading.value && !failure.value && !unavailable.value.length);
 const selectedTask = shallowRef<ScheduleTaskKey>();
 type OccurrenceKey = Pick<ScheduleOccurrence, 'nodeId' | 'workspaceId' | 'taskId' | 'occurrenceId'>;
 const selectedOccurrence = shallowRef<OccurrenceKey>();
@@ -89,7 +88,6 @@ async function load(next?: string) {
   failure.value = undefined;
   if (!next) {
     tasks.value = [];
-    upcoming.value = [];
     occurrences.value = [];
     cursor.value = null;
     unavailable.value = [];
@@ -103,7 +101,6 @@ async function load(next?: string) {
       const result = await client.list(
         {
           ...filters,
-          includeUpcoming: !next,
           ...(props.initial ? { session: props.initial } : {})
         },
         read.signal
@@ -111,7 +108,6 @@ async function load(next?: string) {
       if (read.signal.aborted) return;
       tasks.value = next ? [...tasks.value, ...result.items] : result.items;
       nodes.value = result.nodes;
-      if (!next) upcoming.value = result.upcoming;
       unavailable.value = result.unavailableNodeIds;
       cursor.value = result.nextCursor;
     } else {
@@ -270,8 +266,11 @@ watch(
 </script>
 
 <template>
-  <section class="schedule-panel" :aria-label="msg('panelTitle')">
-    <div class="panel-actions actions">
+  <section class="mar-management-page schedule-panel" :aria-labelledby="panelTitleId">
+    <header>
+      <h2 :id="panelTitleId">{{ msg('panelTitle') }}</h2>
+    </header>
+    <div class="mar-table-actions">
       <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="load()">{{
         msg('refresh')
       }}</MarButton>
@@ -283,7 +282,6 @@ watch(
         @click="editor = 'new'"
         >{{ msg('create') }}</MarButton
       >
-      <MarButton @click="emit('close')">{{ msg('close') }}</MarButton>
     </div>
     <p v-if="unavailable.length" role="status" class="notice">
       {{ msg('partial', { count: unavailable.length }) }}
@@ -299,41 +297,15 @@ watch(
         <MarBusyIndicator />
       </div>
       <template v-else>
-        <section class="upcoming" :aria-label="msg('upcoming')">
-          <h2>{{ msg('upcoming') }}</h2>
-          <p v-if="upcoming.length === 0 && !failure" class="secondary">
-            {{ msg('noUpcoming') }}
-          </p>
-          <ul v-else>
-            <li
-              v-for="item in upcoming"
-              :key="identity(item.nodeId, `${item.taskId}:${item.dueAt}`)"
-            >
-              <time :datetime="new Date(item.dueAt).toISOString()">{{ date(item.dueAt) }}</time>
-              <MarButton
-                link
-                @click="
-                  openTask({
-                    nodeId: item.nodeId,
-                    workspaceId: item.workspaceId,
-                    id: item.taskId
-                  })
-                "
-                >{{ item.name }}</MarButton
-              >
-              <span class="secondary">{{ item.nodeName }}</span>
-            </li>
-          </ul>
-        </section>
-        <p v-if="!tasks.length && !failure" class="panel-empty">{{ msg('emptyTasks') }}</p>
-        <ul v-else class="cards" :aria-label="msg('tasks')">
+        <p v-if="!tasks.length && listComplete" class="panel-empty">{{ msg('emptyTasks') }}</p>
+        <ul v-else-if="tasks.length" class="cards" :aria-label="msg('tasks')">
           <li v-for="item in tasks" :key="identity(item.nodeId, item.id)" class="card">
             <div class="card-heading">
-              <h2>
+              <h3>
                 <MarButton link :disabled="item.offline === true" @click="openTask(item)">{{
                   item.name
                 }}</MarButton>
-              </h2>
+              </h3>
               <MarTag :type="cardState(item) === 'enabled' ? 'success' : 'info'">{{
                 msg(item.offline ? 'offline' : cardState(item))
               }}</MarTag>
@@ -373,7 +345,7 @@ watch(
       </template>
     </template>
     <template v-else>
-      <div v-if="historyTask" class="actions history-filter">
+      <div v-if="historyTask" class="history-filter">
         <strong>{{ historyTask.name }}</strong>
         <MarButton link @click="emit('showHistory')">{{ msg('clearTask') }}</MarButton>
       </div>
@@ -385,10 +357,10 @@ watch(
       >
         <MarBusyIndicator />
       </div>
-      <p v-else-if="!occurrences.length && !failure" class="panel-empty">
+      <p v-else-if="!occurrences.length && listComplete" class="panel-empty">
         {{ msg('emptyHistory') }}
       </p>
-      <ul v-else class="history">
+      <ul v-else-if="occurrences.length" class="history">
         <li v-for="item in occurrences" :key="identity(item.nodeId, item.occurrenceId)">
           <span
             ><MarButton link @click="openOccurrence(item)">{{ item.name ?? item.taskId }}</MarButton
@@ -478,44 +450,23 @@ watch(
 
 <style scoped>
 .schedule-panel {
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  overflow: auto;
-  padding: clamp(1rem, 3vw, 2rem);
   color: var(--mar-text-primary);
 }
 .card-heading,
-.actions {
+.history-filter {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
-.panel-actions {
-  justify-content: flex-end;
-  margin-bottom: 1rem;
-}
 .secondary,
-.notice,
 .history small {
   color: var(--mar-text-secondary);
 }
 p {
   margin: 0.375rem 0;
 }
-.upcoming {
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--mar-border-subtle);
-}
-.upcoming h2,
-.card h2 {
-  font-size: var(--mar-font-size-body);
-  font-weight: 600;
-  margin: 0;
-}
-.upcoming li,
 .history li {
   display: flex;
   align-items: center;
@@ -525,14 +476,13 @@ p {
 }
 ul {
   padding: 0;
-  margin: 0.5rem 0 0;
+  margin: 0;
   list-style: none;
 }
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
   gap: 0.75rem;
-  margin-top: 1rem;
 }
 .card {
   min-width: 0;
@@ -545,19 +495,17 @@ ul {
   flex-wrap: nowrap;
   align-items: flex-start;
 }
-.card-heading h2 {
+.card-heading h3 {
   min-width: 0;
+  margin: 0;
 }
-.card h2 :deep(button) {
+.card-heading h3 :deep(button) {
   font-size: inherit;
   font-weight: inherit;
   white-space: normal;
   text-align: start;
 }
-.card h2 :deep(button:enabled) {
-  color: var(--mar-text-primary);
-}
-.card h2 :deep(button:enabled:hover) {
+.card-heading h3 :deep(button:enabled) {
   color: var(--mar-text-primary);
 }
 .objective {
@@ -590,13 +538,12 @@ ul {
 .history small {
   display: block;
 }
-.history-filter,
-.more,
-.notice {
-  margin-top: 0.75rem;
+.more {
+  align-self: start;
 }
+.notice,
 .panel-empty {
-  margin: 1.5rem 0;
+  margin: 0;
   color: var(--mar-text-secondary);
 }
 .snapshot {

@@ -114,7 +114,6 @@ describe('Scheduled tasks workbench', () => {
       .mockResolvedValueOnce({
         items: [task],
         nodes: [node],
-        upcoming: [],
         unavailableNodeIds: [],
         nextCursor: null
       })
@@ -167,7 +166,6 @@ describe('Scheduled tasks workbench', () => {
       read.resolve({
         items: [task],
         nodes: [node],
-        upcoming: [],
         unavailableNodeIds: [],
         nextCursor: null
       });
@@ -177,6 +175,30 @@ describe('Scheduled tasks workbench', () => {
       expect(button(second, 'New schedule').props.disabled).toBe(true);
     } finally {
       second.unmount();
+    }
+  });
+
+  it.each([
+    ['mine', 'No scheduled tasks in this scope.'],
+    ['history', 'No execution records in this scope.']
+  ] as const)('only reports an empty %s list after a complete read', async (section, empty) => {
+    const result = { items: [], nodes: [node], nextCursor: null };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ ...result, unavailableNodeIds: ['b'] })
+      .mockResolvedValueOnce({ ...result, unavailableNodeIds: [] });
+    const view = renderComponent(ScheduledTasksPanel, { request, section });
+    try {
+      await flushComponent();
+      expect(textContent(view.root)).toContain(
+        'Some results may be missing. Unavailable nodes: 1.'
+      );
+      expect(textContent(view.root)).not.toContain(empty);
+      await trigger(button(view, 'Refresh'), 'onClick');
+      expect(textContent(view.root)).toContain(empty);
+      expect(textContent(view.root)).not.toContain('Unavailable nodes');
+    } finally {
+      view.unmount();
     }
   });
 
@@ -260,7 +282,6 @@ describe('Scheduled tasks workbench', () => {
         return {
           items: [task],
           nodes: [node],
-          upcoming: [],
           unavailableNodeIds: [],
           nextCursor: null
         };

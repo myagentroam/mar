@@ -706,7 +706,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       :linked-task="schedules.link"
       :request="page.identity.request"
       :invalidation="page.application.scheduleInvalidation"
-      @close="emit('closeSchedules')"
       @show-history="(task) => emit('selectScheduleSection', 'history', task)"
       @open-run="openScheduledRun"
     />

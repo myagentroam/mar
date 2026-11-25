@@ -229,34 +229,6 @@ export class ScheduledSessionStore {
     return typeof row['value'] === 'number' ? row['value'] : null;
   }
 
-  upcoming(workspaceId: string, asOf: number, ownerUserId?: number, sessionId?: string) {
-    const rows = this.database
-      .prepare(
-        `SELECT * FROM scheduled_session_tasks WHERE workspace_id=?
-      AND enabled=1 AND next_run_at IS NOT NULL AND (? IS NULL OR owner_user_id=?)
-      AND (? IS NULL OR session_id=?)`
-      )
-      .all(
-        workspaceId,
-        ownerUserId ?? null,
-        ownerUserId ?? null,
-        sessionId ?? null,
-        sessionId ?? null
-      ) as SqlRow[];
-    const result = [];
-    for (const row of rows) {
-      const task = taskFromRow(row);
-      for (const time of scheduledTimesAfter(
-        task.groups,
-        task.timezone,
-        Math.max(asOf, task.nextRunAt! - 1),
-        6
-      ))
-        result.push({ taskId: task.id, name: task.name, dueAt: time.dueAt });
-    }
-    return result.sort((a, b) => a.dueAt - b.dueAt || (a.taskId < b.taskId ? -1 : 1)).slice(0, 6);
-  }
-
   create(input: {
     readonly sessionId: string | null;
     readonly newSession?: ScheduledNewSession | null;

@@ -72,8 +72,7 @@ export class SessionScheduleService {
       'schedule.task.resolveProposal': (data) => this.resolveProposal(record(data)),
       'schedule.preview': (data) => this.preview(record(data)),
       'schedule.occurrence.list': (data) => this.history(record(data)),
-      'schedule.occurrence.get': (data) => this.historyDetail(record(data)),
-      'schedule.upcoming.list': (data) => this.upcoming(record(data))
+      'schedule.occurrence.get': (data) => this.historyDetail(record(data))
     };
   }
 
@@ -300,19 +299,6 @@ export class SessionScheduleService {
     );
     if (result === undefined) throw new Error('SCHEDULE_NOT_FOUND');
     return result;
-  }
-
-  private upcoming(input: Record<string, unknown>): unknown {
-    const workspaceId = this.workspace(input);
-    const asOf = parse(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), input.asOf);
-    return {
-      items: this.store().upcoming(
-        workspaceId,
-        asOf,
-        input.mine === true ? actorId(input) : undefined,
-        optionalId(input.sessionId)
-      )
-    };
   }
 
   private async save(input: Record<string, unknown>): Promise<unknown> {

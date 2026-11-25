@@ -145,13 +145,6 @@ function fixture() {
           nextCursor: filtered.length > input.limit! ? 'cursor' : null
         };
       }
-      if (operation === 'schedule.upcoming.list')
-        return {
-          items: tasks
-            .filter((item) => matchesState(item, 'scheduled'))
-            .slice(0, 6)
-            .map(({ id, name }) => ({ taskId: id, name, dueAt: future }))
-        };
       if (operation === 'schedule.occurrence.list')
         return {
           items: (history.get(scope) ?? [])
@@ -298,11 +291,9 @@ it('merges live and offline cards, retaining only the authorized offline index p
   ).toBe(true);
 
   connections.delete('b');
-  const offline = (
-    await app.inject({ url: '/api/scheduled-tasks?mine=false&includeUpcoming=true', headers })
-  ).json();
+  const offline = (await app.inject({ url: '/api/scheduled-tasks?mine=false', headers })).json();
   expect(offline.unavailableNodeIds).toEqual(['b']);
-  expect(offline.upcoming).toMatchObject([{ nodeId: 'a', taskId: 'a-task' }]);
+  expect(offline.items[0]).toMatchObject({ nodeId: 'a', id: 'a-task', nextRunAt: future });
   expect(offline.items[1]).toMatchObject({
     id: 'b-task',
     offline: true,
@@ -340,57 +331,45 @@ it('reports an online unsupported Node without issuing schedule reads or returni
 });
 
 it('applies the same task state filter to authorized online and offline cards before paging', async () => {
-  const { app, connections, localTasks, requestNode, store } = fixture();
+  const { app, connections, localTasks, store } = fixture();
   connections.delete('b');
   localTasks.get('a:a1')!.push({ ...task('paused', 'a1', 1, null), enabled: false });
   const paused = await app.inject({
-    url: '/api/scheduled-tasks?mine=false&state=paused&includeUpcoming=true',
+    url: '/api/scheduled-tasks?mine=false&state=paused',
     headers
   });
   expect(paused.statusCode).toBe(200);
   expect(paused.json().items).toMatchObject([{ id: 'paused' }]);
-  expect(paused.json().upcoming).toEqual([]);
   expect(store.list).toHaveBeenCalledWith('b', 'b1', { state: 'paused' }, 21);
-  expect(
-    requestNode.mock.calls.some(([, operation]) => operation === 'schedule.upcoming.list')
-  ).toBe(false);
   const scheduled = await app.inject({
-    url: '/api/scheduled-tasks?mine=false&state=scheduled&includeUpcoming=true',
+    url: '/api/scheduled-tasks?mine=false&state=scheduled',
     headers
   });
   expect(scheduled.json().items).toMatchObject([{ id: 'a-task' }, { id: 'b-task', offline: true }]);
-  expect(scheduled.json().upcoming).toMatchObject([{ taskId: 'a-task' }]);
   expect(
     (await app.inject({ url: '/api/scheduled-tasks?state=RUNNING', headers })).statusCode
   ).toBe(400);
 });
 
-it('uses one time reference and does not narrow upcoming to the current card page', async () => {
+it('pages across Nodes using only the list projections', async () => {
   const { app, localTasks, requestNode } = fixture();
   localTasks.set(
     'a:a1',
     Array.from({ length: 21 }, (_, i) => task(`a${String(i).padStart(2, '0')}`, 'a1'))
   );
-  const url = '/api/scheduled-tasks?mine=false&includeUpcoming=true';
+  const url = '/api/scheduled-tasks?mine=false';
   const first = (await app.inject({ url, headers })).json();
   expect(first.items).toHaveLength(20);
-  expect(first.upcoming.map((entry: { taskId: string }) => entry.taskId)).toEqual([
-    'a00',
-    'a01',
-    'a02',
-    'a03',
-    'a04',
-    'a05'
+  expect(first).not.toHaveProperty('upcoming');
+  expect(requestNode.mock.calls.map(([, operation]) => operation).sort()).toEqual([
+    'schedule.task.list',
+    'schedule.task.list',
+    'workspace.list',
+    'workspace.list'
   ]);
-  const requests = requestNode.mock.calls.filter((call) => call[1] === 'schedule.upcoming.list');
-  expect(requests).toHaveLength(2);
-  expect((requests[0]![2] as { asOf: number }).asOf).toBe(
-    (requests[1]![2] as { asOf: number }).asOf
-  );
   const next = (await app.inject({ url: `${url}&cursor=${first.nextCursor}`, headers })).json();
   expect(next.items.map((item: { id: string }) => item.id)).toEqual(['a20', 'b-task']);
   expect(next.nextCursor).toBeNull();
-  expect(next.upcoming).toEqual(first.upcoming);
 });
 
 it('pages history across same-time Nodes using scope-specific boundaries, and validates task scope', async () => {

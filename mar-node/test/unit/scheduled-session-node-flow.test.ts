@@ -752,21 +752,8 @@ describe('scheduled Node session flow', () => {
         )
       ).rejects.toThrow('SCHEDULE_NOT_FOUND');
       expect(
-        await ops['schedule.upcoming.list']!({
-          ...scope,
-          asOf: Date.now(),
-          sessionId: 'old-target'
-        })
-      ).toEqual({ items: [] });
-      expect(
-        await ops['schedule.upcoming.list']!({
-          ...scope,
-          asOf: Date.now(),
-          sessionId: 'new-target'
-        })
-      ).toMatchObject({
-        items: [expect.objectContaining({ taskId }), ...Array(5).fill(expect.anything())]
-      });
+        await ops['schedule.task.list']!({ ...scope, view: 'marctl', sessionId: 'old-target' })
+      ).toEqual({ view: 'marctl', tasks: [], nextCursor: null });
       expect(
         await ops['schedule.task.list']!({ ...scope, view: 'marctl', sessionId: 'new-target' })
       ).toEqual({

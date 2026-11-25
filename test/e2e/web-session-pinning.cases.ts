@@ -232,10 +232,7 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
           : [])
       ],
       unavailableNodeIds: [],
-      nextCursor: null,
-      upcoming: [
-        { ...scope, taskId: 'task', nodeName: 'Node B', name: task.name, dueAt: task.nextRunAt }
-      ]
+      nextCursor: null
     });
   });
   await page.route('**/api/scheduled-tasks/preview', (route) =>
@@ -295,6 +292,12 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   const toggle = header.locator('.workbench-tree-toggle');
   await expect(panel.locator('.card')).toHaveCount(2);
   expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('true');
+  expect([...listRequests.at(-1)!.searchParams.keys()]).toEqual(['mine']);
+  await expect(panel.getByRole('heading', { name: '定时任务', level: 2 })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: '检查构建', level: 3 })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: '接下来', exact: true })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
+  await expect(panel.getByText('下次执行', { exact: true })).toHaveCount(2);
   await expect(header.getByRole('heading', { name: '我的定时' })).toBeVisible();
   await expect(scheduleMenu.getByRole('button', { name: '我的定时' })).toHaveAttribute(
     'aria-current',
@@ -311,6 +314,14 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await expect(panel.locator('.card')).toHaveCount(3);
   expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('false');
   await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'daylight'));
+  const titleBox = (await panel
+    .getByRole('heading', { name: '定时任务', exact: true })
+    .boundingBox())!;
+  const refreshBox = (await panel
+    .getByRole('button', { name: '刷新', exact: true })
+    .boundingBox())!;
+  expect(Math.abs(titleBox.x - refreshBox.x)).toBeLessThan(1);
+  expect(refreshBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
   await page.screenshot({ path: info.outputPath('scheduled-tasks-desktop.png') });
 
   await panel.getByRole('button', { name: '新建定时', exact: true }).click();
@@ -331,10 +342,27 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await select('运行会话', '定时会话');
   await editor.getByRole('textbox', { name: '任务名称' }).fill('第三项任务');
   await editor.getByRole('textbox', { name: '任务提示词' }).fill('Review the build');
-  await expect(editor.getByRole('switch', { name: '任务通知' })).not.toBeChecked();
-  await expect(
-    editor.getByText('由任务创建者执行。通知涵盖运行完成、跳过和失败；关闭通知仍会保留执行记录。')
-  ).toBeVisible();
+  const enabled = editor.getByRole('switch', { name: '已启用', exact: true });
+  const notification = editor.getByRole('switch', { name: '任务通知', exact: true });
+  await expect(notification).not.toBeChecked();
+  const notificationHint = '任务以创建者身份执行。开启后，任务结束时通知创建者。';
+  await expect(notification).toHaveAccessibleDescription(notificationHint);
+  await editor.getByText(notificationHint).scrollIntoViewIfNeeded();
+  const enabledBox = (await enabled.boundingBox())!;
+  const notificationBox = (await notification.boundingBox())!;
+  expect(Math.abs(enabledBox.y - notificationBox.y)).toBeLessThan(1);
+  expect(notificationBox.x).toBeGreaterThan(enabledBox.x);
+  await page.screenshot({ path: info.outputPath('scheduled-settings-desktop.png') });
+  const desktopViewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await editor.getByText(notificationHint).scrollIntoViewIfNeeded();
+  await expect(notification).toBeInViewport();
+  const mobileEnabledBox = (await enabled.boundingBox())!;
+  const mobileNotificationBox = (await notification.boundingBox())!;
+  expect(Math.abs(mobileEnabledBox.x - mobileNotificationBox.x)).toBeLessThan(1);
+  expect(mobileNotificationBox.y).toBeGreaterThan(mobileEnabledBox.y);
+  await page.screenshot({ path: info.outputPath('scheduled-settings-mobile.png') });
+  await page.setViewportSize(desktopViewport);
   await editor.getByRole('tab', { name: '时间组合', exact: true }).click();
   await editor.getByRole('textbox', { name: '指定时刻' }).fill('10:00,');
   await editor.getByRole('button', { name: '保存', exact: true }).click();
@@ -420,4 +448,6 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   await scheduleMenu.getByRole('button', { name: '我的定时' }).click();
   await expect(header.getByRole('heading', { name: '我的定时' })).toBeVisible();
   await expect(scheduleMenu).toBeHidden();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await expect(panel).toBeHidden();
 });

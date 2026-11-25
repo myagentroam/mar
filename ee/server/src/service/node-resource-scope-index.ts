@@ -92,7 +92,6 @@ const WORKSPACE_INPUTS = new Set([
   'schedule.preview',
   'schedule.occurrence.list',
   'schedule.occurrence.get',
-  'schedule.upcoming.list',
   'session.list',
   'session.discover',
   'terminal.open',

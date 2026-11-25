@@ -43,12 +43,6 @@ export interface ScheduleCard extends ScheduleTaskKey {
   syncedAt?: number;
   offline?: boolean;
 }
-export interface ScheduleUpcoming extends ScheduleScope {
-  taskId: string;
-  name: string;
-  dueAt: number;
-  nodeName: string;
-}
 export interface ScheduleTask {
   id: string;
   name: string;
@@ -135,14 +129,13 @@ export function scheduledTaskClient(request: ScheduleRequest) {
     list: (
       filters: {
         mine: boolean;
-        includeUpcoming: boolean;
         cursor?: string;
         session?: ScheduleSessionScope;
       },
       signal: AbortSignal
     ) =>
-      request<Page<ScheduleCard> & { nodes: ScheduleNode[]; upcoming: ScheduleUpcoming[] }>(
-        `${tasks}${query({ ...filters.session, mine: filters.mine, includeUpcoming: filters.includeUpcoming, cursor: filters.cursor })}`,
+      request<Page<ScheduleCard> & { nodes: ScheduleNode[] }>(
+        `${tasks}${query({ ...filters.session, mine: filters.mine, cursor: filters.cursor })}`,
         { signal }
       ),
     detail: (key: ScheduleTaskKey, signal: AbortSignal) =>

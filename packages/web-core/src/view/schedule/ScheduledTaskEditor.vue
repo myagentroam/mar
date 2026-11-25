@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, useId, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
@@ -35,6 +35,7 @@ const props = defineProps<{
   editing?: { key: ScheduleTaskKey; detail: ScheduleDetail } | undefined;
 }>();
 const emit = defineEmits<{ close: []; changed: [] }>();
+const notificationHintId = useId();
 const msg = (key: string, args?: Record<string, string | number>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const editing = props.editing;
@@ -551,11 +552,10 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
           /></MarFormItem>
           <div class="fields toggles">
             <MarFormItem :label="msg('enabled')"><MarSwitch v-model="form.enabled" /></MarFormItem>
-            <MarFormItem :label="msg('terminalNotifications')"
-              ><MarSwitch v-model="form.notifyOnTerminal" /><small>{{
-                msg('notifyUserHint')
-              }}</small></MarFormItem
-            >
+            <MarFormItem :label="msg('terminalNotifications')">
+              <MarSwitch v-model="form.notifyOnTerminal" :aria-describedby="notificationHintId" />
+              <small :id="notificationHintId">{{ msg('notifyUserHint') }}</small>
+            </MarFormItem>
           </div>
           <section
             v-if="editing?.detail.proposals.length"
@@ -730,7 +730,14 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
 }
-.toggles,
+.toggles {
+  align-items: start;
+}
+.toggles :deep(.mar-ui-form-item__content) {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+}
 .time-values {
   width: 100%;
 }

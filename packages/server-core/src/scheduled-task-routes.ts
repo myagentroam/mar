@@ -28,7 +28,6 @@ const filter = scopeFilter.extend({
   cursor: z.string().max(4096).optional()
 });
 const taskFilter = filter.extend({
-  includeUpcoming: z.enum(['true', 'false']).optional(),
   sessionId: id.optional(),
   state: scheduledTaskStateSchema.optional()
 });
@@ -57,9 +56,6 @@ const taskPage = z.object({
       })
     )
     .max(pageSize + 1)
-});
-const upcomingPage = z.object({
-  items: z.array(z.object({ taskId: id, dueAt: time, name: z.string() })).max(6)
 });
 const occurrenceSummary = z.object({
   occurrenceId: id,
@@ -190,7 +186,6 @@ export function registerScheduledTaskRoutes({
       const cursor = decode(query.cursor, listCursor);
       const { nodes, scopes, unavailable } = await directory(actor, query);
       const mine = query.mine !== 'false';
-      const asOf = Date.now();
       const context = (scope: Scope) => {
         const comparison =
           cursor === undefined
@@ -225,61 +220,34 @@ export function registerScheduledTaskRoutes({
         Promise.all(
           scopes.map(async (scope) => {
             const { comparison, conditions } = context(scope);
-            const partial = () => {
+            if (comparison < 0) return [];
+            let result: z.infer<typeof taskPage>;
+            try {
+              result = taskPage.parse(
+                await call(actor, scope, 'schedule.task.list', {
+                  ...conditions,
+                  mine,
+                  limit: pageSize + 1
+                })
+              );
+              if (
+                result.tasks.some(
+                  (task) =>
+                    task.workspaceId !== scope.workspaceId ||
+                    (mine && task.ownerUserId !== actor.userId)
+                )
+              )
+                throw new Error('NODE_RESPONSE_INVALID');
+            } catch {
               unavailable.add(scope.nodeId);
-            };
-            const [tasks, upcoming] = await Promise.all([
-              comparison < 0
-                ? []
-                : (async () => {
-                    try {
-                      const result = taskPage.parse(
-                        await call(actor, scope, 'schedule.task.list', {
-                          ...conditions,
-                          mine,
-                          limit: pageSize + 1
-                        })
-                      );
-                      if (
-                        result.tasks.some(
-                          (task) =>
-                            task.workspaceId !== scope.workspaceId ||
-                            (mine && task.ownerUserId !== actor.userId)
-                        )
-                      )
-                        throw new Error('NODE_RESPONSE_INVALID');
-                      return result.tasks.map((task) => ({
-                        ...task,
-                        ...scope,
-                        mine: task.ownerUserId === actor.userId
-                      }));
-                    } catch {
-                      partial();
-                      return [];
-                    }
-                  })(),
-              query.includeUpcoming !== 'true' ||
-              (query.state !== undefined && query.state !== 'scheduled')
-                ? []
-                : (async () => {
-                    try {
-                      const { items } = upcomingPage.parse(
-                        await call(actor, scope, 'schedule.upcoming.list', {
-                          mine,
-                          asOf,
-                          ...(query.sessionId === undefined ? {} : { sessionId: query.sessionId })
-                        })
-                      );
-                      if (items.some((item) => item.dueAt <= asOf))
-                        throw new Error('NODE_RESPONSE_INVALID');
-                      return items.map((item) => ({ ...item, ...scope }));
-                    } catch {
-                      partial();
-                      return [];
-                    }
-                  })()
-            ]);
-            return (await canUse(actor, scope)) ? { tasks, upcoming } : { tasks: [], upcoming: [] };
+              return [];
+            }
+            if (!(await canUse(actor, scope))) return [];
+            return result.tasks.map((task) => ({
+              ...task,
+              ...scope,
+              mine: task.ownerUserId === actor.userId
+            }));
           })
         ),
         Promise.all(
@@ -296,7 +264,7 @@ export function registerScheduledTaskRoutes({
           })
         )
       ]);
-      const candidates = [...live.flatMap((batch) => batch.tasks), ...cached.flat()].sort(
+      const candidates = [...live.flat(), ...cached.flat()].sort(
         (a, b) =>
           binary(a.nodeId, b.nodeId) || binary(a.workspaceId, b.workspaceId) || binary(a.id, b.id)
       );
@@ -314,13 +282,7 @@ export function registerScheduledTaskRoutes({
         nextCursor:
           last !== undefined && candidates.length > pageSize
             ? encode({ nodeId: last.nodeId, workspaceId: last.workspaceId, taskId: last.id })
-            : null,
-        upcoming: live
-          .flatMap((batch) => batch.upcoming)
-          .sort(
-            (a, b) => a.dueAt - b.dueAt || binary(a.nodeId, b.nodeId) || binary(a.taskId, b.taskId)
-          )
-          .slice(0, 6)
+            : null
       });
     } catch (error) {
       return error instanceof z.ZodError

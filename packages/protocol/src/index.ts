@@ -3996,7 +3996,6 @@ export const workbenchNodeOperationSchema = z.enum([
   'schedule.preview',
   'schedule.occurrence.list',
   'schedule.occurrence.get',
-  'schedule.upcoming.list',
   'session.cli.context',
   'session.graph',
   'session.goal.get',

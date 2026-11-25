@@ -87,7 +87,7 @@ Clicking the selected Workspace tree entry or jumping to an already open session
 
 ## Scheduled tasks
 
-Open the clock icon beside **Work** to see **Scheduled tasks**, or open it from an existing session's menu to filter the same page to that session. **My schedules** shows tasks you created and can still access. **All schedules** includes other tasks you can see. Offline nodes may show only their last synced task summaries; editing, upcoming triggers, and execution records require an online node.
+Open the clock icon beside **Work** to see **Scheduled tasks**, or open it from an existing session's menu to filter the same page to that session. **My schedules** shows tasks you created and can still access. **All schedules** includes other tasks you can see. Each task card shows its next run. Offline nodes may show only their last synced task summaries; editing and viewing execution records require an online node.
 
 1. Select **New schedule**, then choose an online node, a Workspace, and a run target. Reuse an existing session or choose **Create a session each time** and select the Agent and model strategy. Existing sessions use their settings at trigger time; new sessions use the selected settings. Hosted conversations do not support scheduling.
 2. Enter a name and a task prompt, then add one or more **Time combinations**. Each combination selects dates and times within those dates. For example, use one for weekdays at 10:00 and 20:00, and another for a specific date at 14:30. If two combinations match the same minute, the task triggers only once. Create separate tasks to use different prompts at different times. Multiple tasks can target the same session.
