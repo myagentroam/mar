@@ -10,6 +10,9 @@ import type { WorkspaceTarget } from '../model/workbench.js';
 import type { WorkbenchNotificationTarget } from './workbench-notification-service.js';
 import type { ScheduleTaskLink } from './scheduled-task-client.js';
 
+export type ScheduleNotificationNavigation =
+  { readonly kind: 'conversation' } | { readonly kind: 'task'; readonly task: ScheduleTaskLink };
+
 type SessionNotificationTarget = Exclude<
   WorkbenchNotificationTarget,
   { targetType: 'SCHEDULED_TASK' }
@@ -62,7 +65,7 @@ export function createWorkbenchTargetNavigation(input: {
   ) => Promise<boolean>;
   readonly syncWorkspaceSessions: (workspaceId: string) => Promise<void>;
   readonly openHostedConversationTarget: (nodeId: string, conversationId: string) => Promise<void>;
-  readonly openScheduledTask: (task: ScheduleTaskLink) => void;
+  readonly onScheduleNavigation: (navigation: ScheduleNotificationNavigation) => void;
   readonly discovery: Pick<
     ReturnType<typeof import('./workspace-session-service.js').createWorkspaceSessionService>,
     'groupSelectionRevision' | 'selectGroup'
@@ -97,14 +100,23 @@ export function createWorkbenchTargetNavigation(input: {
     const target = notification.target;
     if (target === undefined) return;
     if (target.targetType === 'SCHEDULED_TASK') {
-      input.openScheduledTask({
-        nodeId: target.nodeId,
-        workspaceId: target.workspaceId,
-        id: target.taskId,
-        reference: target.reference
+      input.onScheduleNavigation({
+        kind: 'task',
+        task: {
+          nodeId: target.nodeId,
+          workspaceId: target.workspaceId,
+          id: target.taskId,
+          reference: target.reference
+        }
       });
       return;
     }
+    // Reveal the conversation surface before Main/Aside navigation measures or reuses it.
+    if (
+      target.targetType === 'HOSTED_CONVERSATION' ||
+      (target.workspaceId !== undefined && target.sessionId !== undefined)
+    )
+      input.onScheduleNavigation({ kind: 'conversation' });
     await navigateWorkbenchTarget(target, 'reuse');
   }
 

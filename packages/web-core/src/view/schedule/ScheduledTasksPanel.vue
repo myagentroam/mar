@@ -46,30 +46,32 @@ import ScheduledTaskEditor from './ScheduledTaskEditor.vue';
 import ScheduledExecutionHistory from './ScheduledExecutionHistory.vue';
 import ScheduledWorkspaceFilter from './ScheduledWorkspaceFilter.vue';
 import ManagementPagination from '../settings/ManagementPagination.vue';
-import type { ScheduleSection } from './scheduled-task-navigation.js';
+import type { ScheduleSection, ScheduleSessionContext } from './scheduled-task-navigation.js';
 
 // Owns task cards and modal selection. History owns its paged reads; the editor owns its draft.
 const props = defineProps<{
   request: ScheduleRequest;
   section: ScheduleSection;
   mobile?: boolean;
-  initial?: ScheduleSessionScope | undefined;
+  session?: ScheduleSessionContext | undefined;
   linkedTask?: ScheduleTaskLink | undefined;
   invalidation?: ScheduleInvalidation | undefined;
 }>();
 const emit = defineEmits<{
   openTarget: [target: ScheduleScope & { sessionId?: string; runId?: string }];
+  backToAll: [];
 }>();
 const client = scheduledTaskClient(props.request);
 const panelTitleId = useId();
 const msg = (key: string, args?: Record<string, number | string>) =>
   translate(`generated.scheduledSession.${key}`, args);
+const sessionContext = computed(() => (props.section === 'history' ? undefined : props.session));
+const sessionScope = computed(() => sessionContext.value?.scope);
+const title = computed(() => msg(sessionContext.value ? 'sessionTitle' : props.section));
 const summary = computed(() =>
-  msg(
-    props.initial && props.section !== 'history'
-      ? `${props.section}SessionSummary`
-      : `${props.section}Summary`
-  )
+  sessionContext.value
+    ? msg('currentSession', { name: sessionContext.value.title })
+    : msg(`${props.section}Summary`)
 );
 const tasks = ref<ScheduleCard[]>([]);
 const nodes = ref<ScheduleNode[]>([]);
@@ -100,7 +102,7 @@ let refresh: ReturnType<typeof setTimeout> | undefined;
 const identity = ({ nodeId, workspaceId, id }: ScheduleTaskKey) =>
   JSON.stringify([nodeId, workspaceId, id]);
 const context = computed(() =>
-  JSON.stringify([props.section, props.initial ?? workspace.value, props.mobile === true])
+  JSON.stringify([props.section, sessionScope.value ?? workspace.value, props.mobile === true])
 );
 const date = (time: number | null) =>
   time === null ? msg('notRecorded') : managementDateTime(time);
@@ -120,7 +122,7 @@ async function load(next: number, reset = false, incremental = props.mobile === 
     total.value = 0;
     hasMore.value = false;
   }
-  const target = props.initial ?? workspace.value;
+  const target = sessionScope.value ?? workspace.value;
   const filters = { mine: props.section === 'mine', ...(target ? { target } : {}) };
   const readContext = context.value;
   const current = () => !read.signal.aborted && readContext === context.value;
@@ -139,7 +141,7 @@ async function load(next: number, reset = false, incremental = props.mobile === 
       const seen = new Set(tasks.value.map(identity));
       tasks.value = [...tasks.value, ...result.items.filter((task) => !seen.has(identity(task)))];
     } else tasks.value = result.items;
-    if (props.initial || !target) nodes.value = result.nodes;
+    if (sessionScope.value || !target) nodes.value = result.nodes;
     if (result.workspaces) workspaces.value = result.workspaces;
     page.value = result.page;
     pageSize.value = result.pageSize;
@@ -175,7 +177,7 @@ function closeDetail() {
   historyRow = undefined;
 }
 watch(
-  [() => props.section, () => props.initial, workspace],
+  [() => props.section, sessionScope, workspace],
   () => {
     closeDetail();
     cancelRefresh();
@@ -197,10 +199,10 @@ watch(
       selectedTask.value ??
       selectedOccurrence.value ??
       taskHistory.value ??
-      (typeof editor.value === 'object' ? editor.value.key : undefined);
-    // A notification can open a task outside the current list filter.
+      (editor.value === 'new' ? sessionScope.value : editor.value?.key);
+    // Dialogs follow their target scope, independently of the current list filter.
     if (change.verify && open && matches(open)) closeDetail();
-    const bound = props.initial ?? workspace.value;
+    const bound = sessionScope.value ?? workspace.value;
     if (props.section === 'history' || (bound && !matches(bound))) return;
     cancelRefresh();
     refresh = setTimeout(reload, 120);
@@ -319,7 +321,7 @@ watch(
 <template>
   <section class="mar-management-page schedule-panel" :aria-labelledby="panelTitleId">
     <header>
-      <h2 :id="panelTitleId" class="mar-settings-page-title">{{ msg(section) }}</h2>
+      <h2 :id="panelTitleId" class="mar-settings-page-title">{{ title }}</h2>
       <p class="mar-settings-page-summary">{{ summary }}</p>
     </header>
     <ScheduledExecutionHistory
@@ -331,8 +333,18 @@ watch(
       @open="openOccurrence"
     />
     <template v-else>
-      <ScheduledWorkspaceFilter v-if="!initial" v-model="workspace" :workspaces="workspaces" />
+      <ScheduledWorkspaceFilter
+        v-if="!sessionContext"
+        v-model="workspace"
+        :workspaces="workspaces"
+      />
       <div class="mar-table-actions">
+        <MarButton
+          v-if="sessionContext"
+          :icon="marIcon('chevron-left')"
+          @click="emit('backToAll')"
+          >{{ msg('backToAll') }}</MarButton
+        >
         <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="reload()">{{
           msg('refresh')
         }}</MarButton>
@@ -356,7 +368,9 @@ watch(
         <MarBusyIndicator />
       </div>
       <template v-else>
-        <p v-if="!tasks.length && listComplete" class="panel-empty">{{ msg('emptyTasks') }}</p>
+        <p v-if="!tasks.length && listComplete" class="panel-empty">
+          {{ msg(sessionContext ? 'emptySessionTasks' : 'emptyTasks') }}
+        </p>
         <ul v-else-if="tasks.length" class="cards" :aria-label="msg('tasks')" :aria-busy="loading">
           <ScheduledTaskCard
             v-for="item in tasks"
@@ -391,7 +405,7 @@ watch(
       v-if="editor"
       :client="client"
       :nodes="nodes"
-      :initial="initial"
+      :locked-session="editor === 'new' ? sessionContext : undefined"
       :editing="editor === 'new' ? undefined : editor"
       @close="closeDetail"
       @changed="changed"

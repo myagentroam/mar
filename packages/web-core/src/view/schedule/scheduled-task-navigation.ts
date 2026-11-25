@@ -6,9 +6,14 @@ import type {
 export const scheduleSections = ['mine', 'all', 'history'] as const;
 export type ScheduleSection = (typeof scheduleSections)[number];
 
+export interface ScheduleSessionContext {
+  readonly scope: ScheduleSessionScope;
+  readonly title: string;
+}
+
 /** Workbench navigation state; the panel owns reads, details and editor drafts. */
 export interface ScheduledTasksLocation {
   readonly section: ScheduleSection;
-  readonly session?: ScheduleSessionScope;
+  readonly session?: ScheduleSessionContext;
   readonly link?: ScheduleTaskLink;
 }

@@ -321,7 +321,10 @@ export function createWorkbenchPageController<
   });
   const scheduleInvalidation =
     shallowRef<import('./scheduled-task-client.js').ScheduleInvalidation>();
-  const scheduledTaskLink = shallowRef<import('./scheduled-task-client.js').ScheduleTaskLink>();
+  const scheduleNotificationNavigation =
+    shallowRef<
+      import('./workbench-notification-navigation-service.js').ScheduleNotificationNavigation
+    >();
   const workbenchLiveConnection = createWorkbenchLiveService({
     diagnostics: webPerformanceDiagnostics,
     canConnect: () => admin.value.authenticated && !admin.value.mustChangePassword,
@@ -1050,8 +1053,8 @@ export function createWorkbenchPageController<
     selectWorkspace,
     syncWorkspaceSessions: (...args) => workspaceSessionDiscovery.synchronize(...args),
     openHostedConversationTarget: (...args) => openHostedConversationTarget(...args),
-    openScheduledTask: (task) => {
-      scheduledTaskLink.value = task;
+    onScheduleNavigation: (navigation) => {
+      scheduleNotificationNavigation.value = navigation;
     },
     discovery: workspaceSessionDiscovery,
     selection: () => workbenchSessionSelectionService,
@@ -2427,7 +2430,7 @@ export function createWorkbenchPageController<
       retryWorkspaceWatch: () => workspaceWatchService.retryFailed(),
       liveConnected: workbenchLiveConnection.connected,
       scheduleInvalidation,
-      scheduledTaskLink,
+      scheduleNotificationNavigation,
       networkUnavailable: workbenchHttpService.networkUnavailable,
       codeNavigationReady,
       managementItems,

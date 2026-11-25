@@ -28,11 +28,11 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
+import type { ScheduleSessionContext } from './scheduled-task-navigation.js';
 import type {
   ScheduleDetail,
   ScheduleDraft,
   ScheduleNode,
-  ScheduleSessionScope,
   ScheduleTaskKey,
   scheduledTaskClient
 } from '../../service/scheduled-task-client.js';
@@ -43,7 +43,7 @@ import '../session/runner-brand-icon.css';
 const props = defineProps<{
   client: ReturnType<typeof scheduledTaskClient>;
   nodes: ScheduleNode[];
-  initial?: ScheduleSessionScope | undefined;
+  lockedSession?: ScheduleSessionContext | undefined;
   editing?: { key: ScheduleTaskKey; detail: ScheduleDetail } | undefined;
 }>();
 const emit = defineEmits<{ close: []; changed: [] }>();
@@ -58,17 +58,15 @@ const msg = (key: string, args?: Record<string, string | number>) =>
   translate(`generated.scheduledSession.${key}`, args);
 const editing = props.editing;
 const saved = editing?.detail.task;
+const lockedSession = editing ? undefined : props.lockedSession;
+const lockedScope = lockedSession?.scope;
 const readOnly = editing?.detail.mine === false;
 let nextId = 1;
 const form = reactive({
-  nodeId: editing?.key.nodeId ?? props.initial?.nodeId ?? '',
-  workspaceId: editing?.key.workspaceId ?? props.initial?.workspaceId ?? '',
-  targetKind: saved?.newSession
-    ? 'newSession'
-    : saved?.sessionId || props.initial
-      ? 'existing'
-      : '',
-  sessionId: saved?.sessionId ?? props.initial?.sessionId ?? '',
+  nodeId: editing?.key.nodeId ?? lockedScope?.nodeId ?? '',
+  workspaceId: editing?.key.workspaceId ?? lockedScope?.workspaceId ?? '',
+  targetKind: saved?.newSession ? 'newSession' : saved?.sessionId || lockedScope ? 'existing' : '',
+  sessionId: saved?.sessionId ?? lockedScope?.sessionId ?? '',
   runner: saved?.newSession?.runner ?? '',
   model: saved?.newSession?.model.kind === 'fixed' ? saved.newSession.model.modelId : '',
   effort: saved?.newSession?.effort ?? '',
@@ -233,7 +231,7 @@ watch(
     sessionCursor.value = null;
     loadingTargets.value = false;
     targetError.value = undefined;
-    if (!targetReady.value) return;
+    if (lockedScope || !targetReady.value) return;
     const read = new AbortController();
     sessionRead = read;
     onCleanup(() => read.abort());
@@ -312,6 +310,7 @@ watch(
 );
 
 function target(): ScheduledTarget {
+  if (lockedScope) return { kind: 'existing', sessionId: lockedScope.sessionId };
   return form.targetKind === 'existing'
     ? { kind: 'existing', sessionId: form.sessionId }
     : {
@@ -349,7 +348,7 @@ async function submit() {
       graceMinutes: form.graceMinutes
     };
     if (editing && saved) await props.client.update(editing.key, saved.revision, draft);
-    else await props.client.create(selection.value, draft);
+    else await props.client.create(lockedScope ?? selection.value, draft);
     if (alive.value) emit('changed');
   } catch (failure) {
     if (alive.value) error.value = failure;
@@ -447,7 +446,7 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
               <MarSelect
                 v-model="form.nodeId"
                 :placeholder="msg('chooseNode')"
-                :disabled="!!saved || undefined"
+                :disabled="!!saved || !!lockedScope || undefined"
                 @change="chooseNode"
               >
                 <MarOption
@@ -470,7 +469,7 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
               <MarSelect
                 v-model="form.workspaceId"
                 :placeholder="msg('chooseWorkspace')"
-                :disabled="!form.nodeId || !!saved || undefined"
+                :disabled="!form.nodeId || !!saved || !!lockedScope || undefined"
                 :loading="loadingWorkspaces"
                 @change="clearTarget"
               >
@@ -490,7 +489,7 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
             <MarSelect
               v-model="form.targetKind"
               :placeholder="msg('chooseTarget')"
-              :disabled="!targetReady || undefined"
+              :disabled="!!lockedScope || !targetReady || undefined"
               @change="clearModel"
             >
               <MarOption :label="msg('existing')" value="existing" />
@@ -509,7 +508,8 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
             <MarSelect
               v-model="form.sessionId"
               :placeholder="msg('chooseSession')"
-              filterable
+              :filterable="!lockedScope"
+              :disabled="!!lockedScope || undefined"
               :loading="loadingTargets"
             >
               <MarOption
@@ -517,7 +517,7 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
                   form.sessionId &&
                   !sessions.some((item) => (item.externalSessionId ?? item.id) === form.sessionId)
                 "
-                :label="form.sessionId"
+                :label="lockedSession?.title ?? form.sessionId"
                 :value="form.sessionId"
               />
               <MarOption

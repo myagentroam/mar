@@ -11,6 +11,7 @@ const props = defineProps<{
   readonly mobileViewport: boolean;
   readonly view: WorkbenchView;
   readonly scheduleSection?: ScheduleSection | undefined;
+  readonly scheduleSessionScoped?: boolean;
   readonly sidebarCollapsed: boolean;
   readonly workspaceStartupBlocked?: boolean;
   readonly settingsSection: SettingsSection;
@@ -33,6 +34,7 @@ const rootLabelKey = computed(() =>
         : 'navigation.management'
 );
 const currentLabel = computed(() => {
+  if (props.scheduleSessionScoped) return translate('generated.scheduledSession.sessionTitle');
   if (props.scheduleSection !== undefined)
     return translate(`generated.scheduledSession.${props.scheduleSection}`);
   if (props.view === 'conversations') return props.conversationTitle;

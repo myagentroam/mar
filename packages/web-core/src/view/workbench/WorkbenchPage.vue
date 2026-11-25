@@ -19,8 +19,8 @@ import { useI18n } from 'vue-i18n';
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createMobileLayerHistoryService } from '../../service/mobile-layer-history-service.js';
-import type { ScheduleSessionScope } from '../../service/scheduled-task-client.js';
 import type {
+  ScheduleSessionContext,
   ScheduledTasksLocation,
   ScheduleSection
 } from '../schedule/scheduled-task-navigation.js';
@@ -39,7 +39,7 @@ function openSchedules(target: ScheduledTasksLocation): void {
   props.page.layout.closeMobileWorkspaceSurface();
   schedules.value = target;
 }
-function showSchedules(session?: ScheduleSessionScope): void {
+function showSchedules(session?: ScheduleSessionContext): void {
   openSchedules(session ? { section: 'all', session } : { section: 'mine' });
 }
 function selectScheduleNavigation(): void {
@@ -55,12 +55,7 @@ function selectScheduleNavigation(): void {
 }
 function selectScheduleSection(section: ScheduleSection): void {
   if (!schedules.value) return;
-  const { session } = schedules.value;
-  schedules.value = {
-    section,
-    ...(session === undefined ? {} : { session })
-  };
-  if (props.page.layout.mobileUtilityPanel === 'schedules') props.page.layout.closeMobileSidebar();
+  openSchedules({ section });
 }
 function closeSchedules(): void {
   if (props.page.layout.mobileUtilityPanel === 'schedules') props.page.layout.closeMobileSidebar();
@@ -74,14 +69,18 @@ onMounted(scheduleReturn.start);
 onBeforeUnmount(scheduleReturn.dispose);
 watch(() => props.page.identity.admin?.userId, closeSchedules);
 watch(
-  () => props.page.application.scheduledTaskLink,
-  (task) => {
-    if (task)
+  () => props.page.application.scheduleNotificationNavigation,
+  (navigation) => {
+    if (navigation?.kind === 'conversation') closeSchedules();
+    if (navigation?.kind === 'task') {
+      const { task } = navigation;
       openSchedules({
         section: task.reference.kind === 'occurrence' ? 'history' : 'mine',
         link: task
       });
-  }
+    }
+  },
+  { flush: 'sync' }
 );
 const panelStyle = computed(() => {
   const sidebar = props.page.layout.panelWidths.sidebar;
@@ -197,6 +196,7 @@ function closeStandaloneFileWindow(): void {
         :web-version="page.application.webVersion"
         :view="page.application.view"
         :schedule-section="schedules?.section"
+        :schedule-session-scoped="schedules?.session !== undefined"
         :navigation-items="page.application.navigationItems"
         :settings-section="page.application.settingsSection"
         :settings-items="page.application.settingsItems"

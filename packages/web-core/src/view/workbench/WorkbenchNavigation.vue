@@ -51,6 +51,7 @@ const props = defineProps<{
   readonly webVersion: string;
   readonly view: WorkbenchView;
   readonly scheduleSection?: ScheduleSection | undefined;
+  readonly scheduleSessionScoped?: boolean;
   readonly navigationItems: readonly { readonly id: WorkbenchView; readonly label: string }[];
   readonly settingsSection: SettingsSection;
   readonly settingsItems: readonly { readonly id: SettingsSection; readonly label: string }[];
@@ -398,8 +399,8 @@ function runBlankMenuCommand(command: string): void {
         <button
           v-for="section in scheduleSections"
           :key="section"
-          :class="{ active: scheduleSection === section }"
-          :aria-current="scheduleSection === section ? 'page' : undefined"
+          :class="{ active: !scheduleSessionScoped && scheduleSection === section }"
+          :aria-current="!scheduleSessionScoped && scheduleSection === section ? 'page' : undefined"
           type="button"
           @click="emit('selectScheduleSection', section)"
         >

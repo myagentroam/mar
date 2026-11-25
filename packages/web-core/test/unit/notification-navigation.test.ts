@@ -1,7 +1,11 @@
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkspaceTarget } from '../../src/model/workbench.js';
-import { navigateWorkbenchNotification } from '../../src/service/workbench-notification-navigation-service.js';
+import {
+  createWorkbenchTargetNavigation,
+  navigateWorkbenchNotification
+} from '../../src/service/workbench-notification-navigation-service.js';
+import type { WorkbenchNotification } from '../../src/service/workbench-notification-service.js';
 
 function fixture() {
   const workspaceTarget = ref<WorkspaceTarget>();
@@ -31,6 +35,73 @@ const notification = {
 };
 
 describe('Workspace notification navigation', () => {
+  it('reveals an already selected conversation for every notification, but keeps task links in scheduling', async () => {
+    const target = { nodeId: 'node-2', workspaceId: 'workspace-2' };
+    const workspaceTarget = ref<WorkspaceTarget>(target);
+    const onScheduleNavigation = vi.fn();
+    const openNavigatedSession = vi.fn(async () => undefined);
+    const selectView = vi.fn();
+    const navigation = createWorkbenchTargetNavigation({
+      workspaceTarget,
+      sessions: ref([]),
+      selectView,
+      applyWebUpdate: vi.fn(),
+      closeMobileSidebar: vi.fn(),
+      selectWorkspace: vi.fn(),
+      syncWorkspaceSessions: vi.fn(async () => undefined),
+      openHostedConversationTarget: vi.fn(),
+      onScheduleNavigation,
+      discovery: { groupSelectionRevision: () => 0, selectGroup: vi.fn() },
+      selection: () => ({
+        hasAsideSession: () => false,
+        openNavigatedSession,
+        selectSession: vi.fn()
+      }),
+      onAsideRevealed: vi.fn(),
+      notice: vi.fn()
+    });
+    const entry = {
+      id: 'notification-1',
+      source: 'server',
+      kind: 'run',
+      title: 'Run finished',
+      message: 'Open conversation',
+      createdAt: 1,
+      updatedAt: 1,
+      expiresAt: 100,
+      read: false,
+      target: notification
+    } satisfies WorkbenchNotification;
+
+    await navigation.openWorkbenchNotification(entry);
+    await navigation.openWorkbenchNotification(entry);
+    expect(onScheduleNavigation.mock.calls).toEqual([
+      [{ kind: 'conversation' }],
+      [{ kind: 'conversation' }]
+    ]);
+    expect(onScheduleNavigation.mock.invocationCallOrder[0]).toBeLessThan(
+      selectView.mock.invocationCallOrder[0]!
+    );
+    expect(openNavigatedSession).toHaveBeenCalledTimes(2);
+
+    const reference = { kind: 'occurrence', id: 'occurrence-1' } as const;
+    await navigation.openWorkbenchNotification({
+      ...entry,
+      target: {
+        ...target,
+        targetType: 'SCHEDULED_TASK',
+        taskId: 'task-1',
+        taskName: 'Build checks',
+        reference
+      }
+    });
+    expect(onScheduleNavigation).toHaveBeenLastCalledWith({
+      kind: 'task',
+      task: { ...target, id: 'task-1', reference }
+    });
+    expect(selectView).toHaveBeenCalledTimes(2);
+  });
+
   it('activates the target Workspace before synchronizing and opening its session', async () => {
     const f = fixture();
     const calls: string[] = [];

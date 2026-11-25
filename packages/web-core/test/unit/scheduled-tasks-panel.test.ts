@@ -74,6 +74,7 @@ const taskPage = (items: ScheduleCard[], page = 1, total = items.length, pageSiz
   hasMore: page * pageSize < total,
   unavailableNodeIds: []
 });
+const sessionContext = { scope: { ...scope, sessionId: 'session' }, title: 'Build checks' };
 const button = (view: ReturnType<typeof renderComponent>, label: string) =>
   view.findAll('MarButton').find((item) => textContent(item).trim() === label)!;
 
@@ -91,22 +92,18 @@ describe('Scheduled tasks workbench', () => {
   it.each([
     ['mine', false, 'My schedules', 'View and manage your scheduled tasks.'],
     ['all', false, 'All schedules', 'View all scheduled tasks you have access to.'],
-    ['mine', true, 'My schedules', 'View and manage your scheduled tasks for this session.'],
-    [
-      'all',
-      true,
-      'All schedules',
-      'View all scheduled tasks for this session that you have access to.'
-    ],
+    ['all', true, 'Session schedules', 'Current session: Build checks'],
     ['history', true, 'Execution records', 'See when scheduled tasks ran and how they ended.']
   ] as const)(
     'identifies the %s section with a title and summary (session context: %s)',
     async (section, sessionScoped, title, summary) => {
       const request = vi.fn().mockResolvedValue(taskPage([]));
+      const onBackToAll = vi.fn();
       const view = renderComponent(ScheduledTasksPanel, {
         request,
         section,
-        initial: sessionScoped ? { ...scope, sessionId: 'session' } : undefined
+        session: sessionScoped ? sessionContext : undefined,
+        onBackToAll
       });
       try {
         await flushComponent();
@@ -117,6 +114,15 @@ describe('Scheduled tasks workbench', () => {
         expect(description?.type).toBe('p');
         expect(textContent(description!)).toBe(summary);
         expect(header!.parent?.props['aria-labelledby']).toBe(heading?.props.id);
+        if (section === 'all' && sessionScoped) {
+          const back = view
+            .findAll('button')
+            .find((node) => textContent(node) === 'Back to all schedules');
+          expect(back).toBeDefined();
+          await trigger(back!, 'onClick');
+          expect(onBackToAll).toHaveBeenCalledOnce();
+          expect(textContent(view.root)).toContain('No scheduled tasks for this session.');
+        }
       } finally {
         view.unmount();
       }
@@ -527,7 +533,7 @@ describe('Scheduled tasks workbench', () => {
     const props = reactive({
       request,
       section: 'mine' as const,
-      initial: { ...scope, sessionId: 'session' },
+      session: sessionContext,
       invalidation: undefined as typeof scope | undefined
     });
     const view = renderComponent(ScheduledTasksPanel, props);
@@ -550,6 +556,37 @@ describe('Scheduled tasks workbench', () => {
     } finally {
       if (mounted) view.unmount();
       vi.useRealTimers();
+    }
+  });
+
+  it('closes a locked creation form only when its Workspace authority needs revalidation', async () => {
+    const request = vi.fn(async (path: string) =>
+      path.startsWith('/api/workspaces?')
+        ? { workspaces: [{ id: scope.workspaceId, path: '/project', kind: 'DIRECTORY' }] }
+        : taskPage([])
+    );
+    const props = reactive({
+      request,
+      section: 'all' as const,
+      session: sessionContext,
+      invalidation: undefined as ScheduleInvalidation | undefined
+    });
+    const view = renderComponent(ScheduledTasksPanel, props);
+    try {
+      await flushComponent();
+      await trigger(button(view, 'New schedule'), 'onClick');
+      expect(view.findAll('MarDialog')).toHaveLength(1);
+      props.invalidation = { ...scope, workspaceId: 'other', verify: true };
+      await flushComponent();
+      expect(view.findAll('MarDialog')).toHaveLength(1);
+      props.invalidation = scope;
+      await flushComponent();
+      expect(view.findAll('MarDialog')).toHaveLength(1);
+      props.invalidation = { ...scope, verify: true };
+      await flushComponent();
+      expect(view.findAll('MarDialog')).toHaveLength(0);
+    } finally {
+      view.unmount();
     }
   });
 
@@ -616,7 +653,7 @@ describe('Scheduled tasks workbench', () => {
       request,
       onOpenTarget,
       section: 'history',
-      initial: { ...scope, sessionId: 'session' }
+      session: sessionContext
     });
     try {
       await flushComponent();

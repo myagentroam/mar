@@ -261,7 +261,9 @@ export interface WorkbenchApplicationView<ManagementSection extends string> {
   retryWorkspaceWatch: () => Promise<void>;
   liveConnected: boolean;
   scheduleInvalidation?: import('./scheduled-task-client.js').ScheduleInvalidation | undefined;
-  scheduledTaskLink?: import('./scheduled-task-client.js').ScheduleTaskLink | undefined;
+  scheduleNotificationNavigation?:
+    | import('./workbench-notification-navigation-service.js').ScheduleNotificationNavigation
+    | undefined;
   networkUnavailable: boolean;
   codeNavigationReady: boolean;
   managementItems: { id: ManagementSection; label: string }[];

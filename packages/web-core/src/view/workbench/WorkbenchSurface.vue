@@ -40,6 +40,7 @@ import SessionPromptDialog from '../workspace/SessionPromptDialog.vue';
 import ScheduledTasksPanel from '../schedule/ScheduledTasksPanel.vue';
 import type { ScheduleScope, ScheduleSessionScope } from '../../service/scheduled-task-client.js';
 import type {
+  ScheduleSessionContext,
   ScheduledTasksLocation,
   ScheduleSection
 } from '../schedule/scheduled-task-navigation.js';
@@ -84,7 +85,7 @@ const props = defineProps<{
   schedules?: ScheduledTasksLocation | undefined;
 }>();
 const emit = defineEmits<{
-  openSchedules: [session: ScheduleSessionScope];
+  openSchedules: [session: ScheduleSessionContext];
   closeSchedules: [];
   selectScheduleSection: [section: ScheduleSection];
 }>();
@@ -503,7 +504,10 @@ function openSessionDialog(kind: 'share' | 'prompt' | 'schedule', session: Sessi
   const target = props.page.selection.workspaceTarget;
   if (target?.workspaceId !== session.workspaceId) return;
   if (kind === 'schedule') {
-    emit('openSchedules', { ...target, sessionId: session.externalSessionId ?? session.id });
+    emit('openSchedules', {
+      scope: { ...target, sessionId: session.externalSessionId ?? session.id },
+      title: props.page.sessionList.sessionTitle(session)
+    });
     return;
   }
   sessionDialog.value = { kind, session, ...target };
@@ -657,6 +661,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       :mobile-viewport="page.layout.mobileViewport"
       :view="page.application.view"
       :schedule-section="schedules?.section"
+      :schedule-session-scoped="schedules?.session !== undefined"
       :sidebar-collapsed="page.layout.sidebarCollapsed"
       :workspace-startup-blocked="workStartupBlocked"
       :settings-section="page.application.settingsSection"
@@ -703,14 +708,15 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     </WorkbenchHeader>
     <ScheduledTasksPanel
       v-if="schedules !== undefined"
-      :key="JSON.stringify([page.identity.admin.userId, schedules.session])"
+      :key="JSON.stringify([page.identity.admin.userId, schedules.session?.scope])"
       :section="schedules.section"
       :mobile="page.layout.mobileViewport"
-      :initial="schedules.session"
+      :session="schedules.session"
       :linked-task="schedules.link"
       :request="page.identity.request"
       :invalidation="page.application.scheduleInvalidation"
       @open-target="openScheduledTarget"
+      @back-to-all="emit('selectScheduleSection', 'all')"
     />
     <section
       v-show="schedules === undefined && page.application.view === 'nodes'"
