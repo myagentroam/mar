@@ -707,7 +707,8 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   ).toHaveCount(0);
   await card.getByRole('button', { name: '编辑', exact: true }).click();
   const deleteTask = editor.getByRole('button', { name: '删除任务', exact: true });
-  await expect(deleteTask.locator('svg')).toBeVisible();
+  await expect(deleteTask).toHaveText('删除任务');
+  await expect(deleteTask.locator('svg')).toHaveCount(0);
   await expect(deleteTask).toHaveCSS('border-top-width', '1px');
   await editor.getByRole('textbox', { name: '任务提示词' }).fill('New prompt');
   await editor.getByRole('button', { name: '保存', exact: true }).click();

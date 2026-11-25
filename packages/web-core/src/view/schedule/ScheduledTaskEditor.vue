@@ -845,7 +845,6 @@ function groupsFromProposal(groups: ScheduledTimeGroup[]): string {
         v-if="saved && !readOnly"
         type="danger"
         plain
-        icon="delete"
         :loading="pending === 'delete'"
         :disabled="!!pending"
         @click="remove"
