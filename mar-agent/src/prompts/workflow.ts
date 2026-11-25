@@ -35,7 +35,7 @@ export function toolUsagePrompt(
 <reasoning>
 During extended reasoning, earlier insights may be lost if left unrecorded.
 
-Use \`thought\` to capture reusable insights as they accumulate, rather than waiting until the task is complete.
+When you work out something useful for subsequent reasoning - such as confirming a hypothesis, ruling out an approach, or changing your understanding or next step - capture it with \`thought\` while it is still fresh.
 
 Avoid recording trivial observations or repeating existing conclusions.
 </reasoning>`;

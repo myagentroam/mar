@@ -22,11 +22,11 @@ describe('Core structured Prompt composition', () => {
       ['read', 'exec', 'skill'],
       '67f42a95d8321338097d62992dab14eb1041c67a0c2bde70b25b709042a80df4'
     ],
-    ['compact', [], 'd36079f367adde15f4a08ff3dca0090ace983ce5a96b87498ad6fe3fa4cebd76'],
+    ['compact', [], 'f7146f8f3f8a7bcb84a0176ca1259b9a5514cf638ed7eb0049972d7787e9dfc0'],
     [
       'compact',
       ['read', 'exec', 'skill'],
-      'bd146717646aa643c084423813d41cb8477ea8e12a26c4182ef7cb9c96624ecd'
+      '047436cb88c7b516b5a4d6f8bc2266e4c1418b0dec2eeea632930469a61c850b'
     ]
   ] as const)('preserves the current %s Prompt bytes (%j)', (mode, tools, digest) => {
     const input = {
