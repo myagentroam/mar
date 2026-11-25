@@ -91,21 +91,20 @@ function fixture() {
       ]
     ]
   ]);
-  const store: Pick<ScheduledTaskIndexStore, 'list' | 'workspaceIds'> = {
+  const store: Pick<ScheduledTaskIndexStore, 'page' | 'workspaceIds'> = {
     workspaceIds: async (nodeId) =>
       [...persisted.keys()]
         .filter((key) => key.startsWith(`${nodeId}:`))
         .map((key) => key.split(':')[1]!),
-    list: vi.fn(async (nodeId, workspaceId, filter, limit) =>
-      (persisted.get(`${nodeId}:${workspaceId}`) ?? [])
+    page: vi.fn(async (nodeId, workspaceId, filter, offset, limit) => {
+      const filtered = (persisted.get(`${nodeId}:${workspaceId}`) ?? [])
         .filter(
           (item) => filter.ownerUserId === undefined || filter.ownerUserId === item.ownerUserId
         )
         .filter((item) => filter.sessionId === undefined || filter.sessionId === item.sessionId)
-        .filter((item) => filter.afterTaskId === undefined || item.id > filter.afterTaskId)
-        .filter((item) => matchesState(item, filter.state))
-        .slice(0, limit)
-    )
+        .filter((item) => matchesState(item, filter.state));
+      return { total: filtered.length, tasks: filtered.slice(offset, offset + limit) };
+    })
   };
   const history = new Map<
     string,
@@ -123,7 +122,6 @@ function fixture() {
         workspaceId: string;
         taskId?: string;
         mine?: boolean;
-        afterTaskId?: string;
         limit?: number;
         sessionId?: string;
         state?: ScheduledTaskState;
@@ -140,12 +138,11 @@ function fixture() {
           (item) =>
             (!input.mine || item.ownerUserId === 1) &&
             matchesState(item, input.state) &&
-            (input.afterTaskId === undefined || item.id > input.afterTaskId) &&
             (input.sessionId === undefined || item.sessionId === input.sessionId)
         );
         return {
-          tasks: filtered.slice(0, input.limit),
-          nextCursor: filtered.length > input.limit! ? 'cursor' : null
+          total: filtered.length,
+          tasks: filtered.slice(input.offset, (input.offset ?? 0) + input.limit!)
         };
       }
       if (operation === 'schedule.occurrence.list') {
@@ -263,7 +260,10 @@ it('reconciles the complete live Workspace list before filtering a schedule read
     requestNode.mock.calls
       .filter(([, operation]) => operation === 'schedule.task.list')
       .map(([, , data]) => data)
-  ).toEqual([expect.objectContaining({ workspaceId: 'a1' })]);
+  ).toEqual([
+    expect.objectContaining({ workspaceId: 'a1', offset: 0, limit: 0 }),
+    expect.objectContaining({ workspaceId: 'a1', offset: 0, limit: 1 })
+  ]);
 });
 
 it('offers authorized Workspace filters independently of the current page and task ownership', async () => {
@@ -319,7 +319,7 @@ it('merges live and offline cards, retaining only the authorized offline index p
   ]);
   expect(first.json().items[0]).not.toHaveProperty('objective');
   expect(first.json().items[0]).not.toHaveProperty('newSession');
-  expect(store.list).not.toHaveBeenCalled();
+  expect(store.page).not.toHaveBeenCalled();
   expect(
     requestNode.mock.calls.every(
       (call) => (call[2] as { workspaceId?: string }).workspaceId !== 'unauthorized'
@@ -342,12 +342,12 @@ it('merges live and offline cards, retaining only the authorized offline index p
     (await app.inject({ url: '/api/scheduled-tasks?nodeId=b', headers })).json().items
   ).toEqual([]);
   visible.delete('b:b1');
-  vi.mocked(store.list).mockClear();
+  vi.mocked(store.page).mockClear();
   database.userDisplayName.mockClear();
   expect(
     (await app.inject({ url: '/api/scheduled-tasks?nodeId=b&mine=false', headers })).json().items
   ).toEqual([]);
-  expect(store.list).not.toHaveBeenCalled();
+  expect(store.page).not.toHaveBeenCalled();
   expect(database.userDisplayName).not.toHaveBeenCalled();
 });
 
@@ -362,7 +362,7 @@ it('reports an online unsupported Node without issuing schedule reads or returni
     items: [],
     unavailableNodeIds: ['b']
   });
-  expect(store.list).not.toHaveBeenCalled();
+  expect(store.page).not.toHaveBeenCalled();
   expect(requestNode).not.toHaveBeenCalled();
 });
 
@@ -376,7 +376,7 @@ it('applies the same task state filter to authorized online and offline cards be
   });
   expect(paused.statusCode).toBe(200);
   expect(paused.json().items).toMatchObject([{ id: 'paused' }]);
-  expect(store.list).toHaveBeenCalledWith('b', 'b1', { state: 'paused' }, 21);
+  expect(store.page).toHaveBeenCalledWith('b', 'b1', { state: 'paused' }, 0, 0);
   const scheduled = await app.inject({
     url: '/api/scheduled-tasks?mine=false&state=scheduled',
     headers
@@ -387,26 +387,68 @@ it('applies the same task state filter to authorized online and offline cards be
   ).toBe(400);
 });
 
-it('pages across Nodes using only the list projections', async () => {
-  const { app, localTasks, requestNode } = fixture();
+it('counts authorized scopes but reads only the requested slice across live and offline Nodes', async () => {
+  const { app, connections, localTasks, requestNode, store } = fixture();
+  connections.delete('b');
   localTasks.set(
     'a:a1',
     Array.from({ length: 21 }, (_, i) => task(`a${String(i).padStart(2, '0')}`, 'a1'))
   );
   const url = '/api/scheduled-tasks?mine=false';
+  const liveReads = () =>
+    requestNode.mock.calls
+      .filter(([, operation]) => operation === 'schedule.task.list')
+      .map(([, , data]) => data);
   const first = (await app.inject({ url, headers })).json();
+  expect(first).toMatchObject({ page: 1, pageSize: 20, total: 22, hasMore: true });
   expect(first.items).toHaveLength(20);
-  expect(first).not.toHaveProperty('upcoming');
-  expect(requestNode.mock.calls.map(([, operation]) => operation).sort()).toEqual([
-    'schedule.task.list',
-    'schedule.task.list',
-    'workspace.list',
-    'workspace.list'
+  expect(first).not.toHaveProperty('nextCursor');
+  expect(liveReads()).toEqual([
+    expect.objectContaining({ offset: 0, limit: 0 }),
+    expect.objectContaining({ offset: 0, limit: 20 })
   ]);
-  const next = (await app.inject({ url: `${url}&cursor=${first.nextCursor}`, headers })).json();
+  expect(store.page).toHaveBeenCalledExactlyOnceWith('b', 'b1', {}, 0, 0);
+
+  requestNode.mockClear();
+  vi.mocked(store.page).mockClear();
+  const next = (await app.inject({ url: `${url}&page=100`, headers })).json();
   expect(next.items.map((item: { id: string }) => item.id)).toEqual(['a20', 'b-task']);
-  expect(next.nextCursor).toBeNull();
+  expect(next).toMatchObject({ page: 2, pageSize: 20, total: 22, hasMore: false });
+  expect(next).not.toHaveProperty('workspaces');
+  expect(liveReads()).toEqual([
+    expect.objectContaining({ offset: 0, limit: 0 }),
+    expect.objectContaining({ offset: 20, limit: 1 })
+  ]);
+  expect(store.page).toHaveBeenNthCalledWith(2, 'b', 'b1', {}, 0, 1);
+
+  const empty = await app.inject({ url: `${url}&state=finished&page=9&limit=4`, headers });
+  expect(empty.json()).toMatchObject({ page: 1, pageSize: 4, total: 0, hasMore: false, items: [] });
+  for (const invalid of ['page=0', 'limit=501', 'limit=0', 'cursor=old'])
+    expect((await app.inject({ url: `${url}&${invalid}`, headers })).statusCode).toBe(400);
 });
+
+it.each(['count', 'grant'])(
+  'does not return a page when its %s changes during the slice read',
+  async (change) => {
+    const { app, visible, localTasks, requestNode } = fixture();
+    const read = requestNode.getMockImplementation()!;
+    requestNode.mockImplementation(async (...args) => {
+      if (
+        args[0] === 'a' &&
+        args[1] === 'schedule.task.list' &&
+        (args[2] as { limit: number }).limit > 0
+      ) {
+        if (change === 'count') localTasks.get('a:a1')!.push(task('later', 'a1'));
+        else visible.delete('b:b1'); // Off-page scopes must not leak through the total or filter options.
+      }
+      return read(...args);
+    });
+    const response = await app.inject({ url: '/api/scheduled-tasks?mine=false&limit=1', headers });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: 'SCHEDULE_TASK_PAGE_CHANGED' } });
+    expect(response.json()).not.toHaveProperty('items');
+  }
+);
 
 it('returns real totals and arbitrary history pages across same-time Nodes after scoped filtering', async () => {
   const { app, history, requestNode, visible, connections } = fixture();

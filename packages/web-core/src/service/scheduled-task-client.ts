@@ -116,12 +116,6 @@ export interface ScheduleDraft {
   notifyOnTerminal: boolean;
   graceMinutes: number;
 }
-interface Page<T> {
-  items: T[];
-  nextCursor: string | null;
-  unavailableNodeIds: string[];
-}
-
 /** Encodes resource addresses and keeps HTTP DTOs out of the editor and panel. */
 export function scheduledTaskClient(request: ScheduleRequest) {
   const tasks = '/api/scheduled-tasks';
@@ -142,14 +136,19 @@ export function scheduledTaskClient(request: ScheduleRequest) {
     list: (
       filters: {
         mine: boolean;
-        cursor?: string;
+        page: number;
         target?: ScheduleScope & { sessionId?: string };
       },
       signal: AbortSignal
     ) =>
       request<
-        Page<ScheduleCard> & { nodes: ScheduleNode[]; workspaces?: ScheduleWorkspaceOption[] }
-      >(`${tasks}${query({ ...filters.target, mine: filters.mine, cursor: filters.cursor })}`, {
+        ManagementPageMetadata & {
+          items: ScheduleCard[];
+          unavailableNodeIds: string[];
+          nodes: ScheduleNode[];
+          workspaces?: ScheduleWorkspaceOption[];
+        }
+      >(`${tasks}${query({ ...filters.target, mine: filters.mine, page: String(filters.page) })}`, {
         signal
       }),
     detail: (key: ScheduleTaskKey, signal: AbortSignal) =>

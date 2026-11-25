@@ -24,7 +24,7 @@ const firstPage = {
 };
 
 function fixture() {
-  const store = { workspaceIds: vi.fn(), list: vi.fn(), replace: vi.fn() };
+  const store = { workspaceIds: vi.fn(), list: vi.fn(), page: vi.fn(), replace: vi.fn() };
   const index = new ScheduledTaskIndex(store, () => 123);
   const onError = vi.fn();
   const input = { nodeId: 'node', workspaceId: 'workspace', current: () => true, onError };
@@ -223,4 +223,69 @@ it('bounds a prepared index read while binding the exact owner, session and curs
     ),
     ['node', 'workspace', 42, 'session', 'task']
   );
+});
+
+it('counts offline tasks and reads only the requested slice with the same scope', async () => {
+  const execute = vi
+    .fn()
+    .mockResolvedValueOnce([[{ total: 5 }]])
+    .mockResolvedValueOnce([
+      [
+        {
+          task_id: 'task-4',
+          owner_user_id: 42,
+          session_id: 'session',
+          name: 'Fourth task',
+          runner: 'mar-agent',
+          target_kind: 'existing',
+          enabled: 1,
+          next_run_at: 123,
+          synced_at: 1
+        }
+      ]
+    ]);
+  const connection = {
+    execute,
+    query: vi.fn(),
+    beginTransaction: vi.fn(),
+    commit: vi.fn(),
+    rollback: vi.fn(),
+    release: vi.fn()
+  };
+  const countOnly = vi.fn().mockResolvedValue([[{ total: 5 }]]);
+  const store = new MysqlScheduledTaskIndex({
+    getConnection: async () => connection,
+    execute: countOnly
+  } as never);
+  const filter = { ownerUserId: 42, sessionId: 'session', state: 'scheduled' as const };
+  await expect(store.page('node', 'workspace', filter, 0, 0)).resolves.toEqual({
+    total: 5,
+    tasks: []
+  });
+  expect(countOnly).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('COUNT(*)'), [
+    'node',
+    'workspace',
+    42,
+    'session'
+  ]);
+  expect(execute).not.toHaveBeenCalled();
+  await expect(store.page('node', 'workspace', filter, 3, 1)).resolves.toMatchObject({
+    total: 5,
+    tasks: [{ id: 'task-4', workspaceId: 'workspace', ownerUserId: 42, syncedAt: 1 }]
+  });
+  expect(execute).toHaveBeenNthCalledWith(1, expect.stringContaining('COUNT(*)'), [
+    'node',
+    'workspace',
+    42,
+    'session'
+  ]);
+  const [countSql] = execute.mock.calls[0]!;
+  expect(execute).toHaveBeenNthCalledWith(
+    2,
+    expect.stringContaining(
+      `${countSql.slice(countSql.indexOf('FROM '))} ORDER BY task_id LIMIT 1 OFFSET 3`
+    ),
+    ['node', 'workspace', 42, 'session']
+  );
+  expect(connection.commit).toHaveBeenCalledOnce();
 });

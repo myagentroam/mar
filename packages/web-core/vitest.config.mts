@@ -12,7 +12,7 @@ const componentFixtureQuery = /[?&]unit-render(?:&|$)/u;
 const marUiComponentEntry =
   /^@myagentroam\/mar-ui\/(alert|busy-indicator|button|cascader|checkbox|check-tag|date-picker|descriptions|divider|dropdown|empty|form|icons|input-number|link|loading-panel|pagination|progress|radio|region-status|result|scrollbar|segmented|select|switch|table|tabs|tag|time-picker|time-select)$/u;
 const selectBusinessFixtures =
-  /\/(EnterpriseUserManagementPage|EnvironmentSecretManager|MarAgentCompactSettings|MarAgentModelManagementPage|PromptCompletionSettings|RemoteDesktopPage|SettingsContent|UsageStatisticsSettings)\.vue\?/u;
+  /\/(EnterpriseUserManagementPage|EnvironmentSecretManager|MarAgentCompactSettings|MarAgentModelManagementPage|PromptCompletionSettings|RemoteDesktopPage|ScheduledWorkspaceFilter|SettingsContent|UsageStatisticsSettings)\.vue\?/u;
 // Opt in only the component fixtures that drive the real template and lifecycle.
 // Existing SSR and setup-only fixtures keep their original compilation mode.
 const componentFixtures: Plugin = {

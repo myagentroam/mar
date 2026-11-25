@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import { scheduledTaskClient } from '../../src/service/scheduled-task-client.js';
-import type { ScheduleInvalidation } from '../../src/service/scheduled-task-client.js';
+import type {
+  ScheduleCard,
+  ScheduleInvalidation,
+  ScheduleTaskLink
+} from '../../src/service/scheduled-task-client.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import ScheduledTasksPanel from '../../src/view/schedule/ScheduledTasksPanel.vue?unit-render';
 import {
@@ -61,6 +65,15 @@ const historyPage = (items: (typeof history)[], page = 1, total = items.length, 
   unavailableNodeIds: []
 });
 const node = { id: 'a', name: 'Node A', connected: true, supported: true };
+const taskPage = (items: ScheduleCard[], page = 1, total = items.length, pageSize = 20) => ({
+  items,
+  nodes: [node],
+  page,
+  pageSize,
+  total,
+  hasMore: page * pageSize < total,
+  unavailableNodeIds: []
+});
 const button = (view: ReturnType<typeof renderComponent>, label: string) =>
   view.findAll('MarButton').find((item) => textContent(item).trim() === label)!;
 
@@ -89,9 +102,7 @@ describe('Scheduled tasks workbench', () => {
   ] as const)(
     'identifies the %s section with a title and summary (session context: %s)',
     async (section, sessionScoped, title, summary) => {
-      const request = vi
-        .fn()
-        .mockResolvedValue({ ...historyPage([]), nodes: [node], nextCursor: null });
+      const request = vi.fn().mockResolvedValue(taskPage([]));
       const view = renderComponent(ScheduledTasksPanel, {
         request,
         section,
@@ -184,12 +195,7 @@ describe('Scheduled tasks workbench', () => {
   it('keeps the current history page on a failed load and retries only the selected task', async () => {
     const request = vi
       .fn()
-      .mockResolvedValueOnce({
-        items: [task],
-        nodes: [node],
-        unavailableNodeIds: [],
-        nextCursor: null
-      })
+      .mockResolvedValueOnce(taskPage([task]))
       .mockResolvedValueOnce(historyPage([history], 1, 2, 1))
       .mockRejectedValueOnce(new Error('Second page unavailable'))
       .mockResolvedValueOnce(
@@ -202,7 +208,7 @@ describe('Scheduled tasks workbench', () => {
       await trigger(button(view, 'Execution records'), 'onClick');
       expect(request.mock.calls[1]?.[0]).toContain('taskId=same-id');
       expect(request.mock.calls[1]?.[0]).toContain('mine=false');
-      const pager = () => view.findAll('MarPagination')[0]!;
+      const pager = () => view.findAll('MarPagination').at(-1)!;
       expect(pager().props).toMatchObject({ currentPage: 1, total: 2, pageSize: 1 });
       await trigger(pager(), 'onCurrentChange', 2);
       expect(textContent(view.root)).toContain('Second page unavailable');
@@ -223,6 +229,47 @@ describe('Scheduled tasks workbench', () => {
     }
   });
 
+  it('replaces desktop cards and drops an obsolete page when the task scope changes', async () => {
+    const second = { ...task, id: 'second', name: 'Task B' };
+    const stale = deferred<ReturnType<typeof taskPage>>();
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(taskPage([task], 1, 2, 1))
+      .mockResolvedValueOnce(taskPage([second], 2, 2, 1))
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(taskPage([task]));
+    const props = reactive<{ request: typeof request; section: 'mine' | 'all' }>({
+      request,
+      section: 'mine'
+    });
+    const view = renderComponent(ScheduledTasksPanel, props);
+    try {
+      await flushComponent();
+      const pager = () => view.findAll('MarPagination')[0]!;
+      const cards = () => view.findAll('h3').map(textContent);
+      expect(cards()).toEqual([task.name]);
+      await trigger(pager(), 'onCurrentChange', 2);
+      expect(cards()).toEqual([second.name]);
+      expect(pager().props.currentPage).toBe(2);
+      await trigger(pager(), 'onCurrentChange', 1);
+      props.section = 'all';
+      await flushComponent();
+      stale.resolve(taskPage([{ ...task, name: 'Stale' }]));
+      await flushComponent();
+      expect(request.mock.calls[2]?.[1].signal.aborted).toBe(true);
+      expect(request.mock.calls.map(([path]) => path)).toEqual([
+        '/api/scheduled-tasks?mine=true&page=1',
+        '/api/scheduled-tasks?mine=true&page=2',
+        '/api/scheduled-tasks?mine=true&page=1',
+        '/api/scheduled-tasks?mine=false&page=1'
+      ]);
+      expect(cards()).toEqual([task.name]);
+      expect(pager().props).toMatchObject({ currentPage: 1, total: 1 });
+    } finally {
+      view.unmount();
+    }
+  });
+
   it('ignores a late list after unmount and never treats read failure as an empty create dialog', async () => {
     const read = deferred<unknown>();
     const request = vi
@@ -234,18 +281,57 @@ describe('Scheduled tasks workbench', () => {
     expect(request.mock.calls[0]?.[1].signal.aborted).toBe(true);
     const second = renderComponent(ScheduledTasksPanel, { request, section: 'mine' });
     try {
-      read.resolve({
-        items: [task],
-        nodes: [node],
-        unavailableNodeIds: [],
-        nextCursor: null
-      });
+      read.resolve(taskPage([task]));
       await flushComponent();
       expect(textContent(second.root)).toContain('Forbidden');
       expect(textContent(second.root)).not.toContain(task.name);
       expect(button(second, 'New schedule').props.disabled).toBe(true);
     } finally {
       second.unmount();
+    }
+  });
+
+  it('restarts mobile cards from the first page when the server clamps an append', async () => {
+    const second = { ...task, id: 'second', name: 'Second task' };
+    const current = { ...task, id: 'current', name: 'Current task' };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(taskPage([task], 1, 3, 1))
+      .mockResolvedValueOnce(taskPage([second], 2, 3, 1))
+      .mockResolvedValueOnce(taskPage([second], 2, 2, 1))
+      .mockResolvedValueOnce(taskPage([current], 1, 2, 1));
+    let notify: IntersectionObserverCallback | undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          notify = callback;
+        }
+        observe() {}
+        disconnect() {}
+      }
+    );
+    const intersect = (isIntersecting: boolean) =>
+      notify?.([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver);
+    const view = renderComponent(ScheduledTasksPanel, { request, section: 'mine', mobile: true });
+    try {
+      await flushComponent();
+      intersect(true);
+      await flushComponent();
+      const cards = () => view.findAll('h3').map(textContent);
+      expect(cards()).toEqual([task.name, second.name]);
+      intersect(false);
+      intersect(true);
+      await flushComponent();
+      expect(
+        request.mock.calls.map(([path]) =>
+          new URL(path, 'https://test.invalid').searchParams.get('page')
+        )
+      ).toEqual(['1', '2', '3', '1']);
+      expect(cards()).toEqual([current.name]);
+    } finally {
+      view.unmount();
+      vi.unstubAllGlobals();
     }
   });
 
@@ -372,12 +458,7 @@ describe('Scheduled tasks workbench', () => {
   });
 
   it('shows a neutral task empty state without listing unavailable nodes', async () => {
-    const request = vi.fn().mockResolvedValue({
-      items: [],
-      nodes: [node],
-      nextCursor: null,
-      unavailableNodeIds: ['b']
-    });
+    const request = vi.fn().mockResolvedValue({ ...taskPage([]), unavailableNodeIds: ['b'] });
     const view = renderComponent(ScheduledTasksPanel, { request, section: 'mine' });
     try {
       await flushComponent();
@@ -390,7 +471,7 @@ describe('Scheduled tasks workbench', () => {
 
   it('only reports an empty history list after a complete read', async () => {
     const empty = 'No execution records in this scope.';
-    const result = { ...historyPage([]), nodes: [node], nextCursor: null };
+    const result = historyPage([]);
     const request = vi
       .fn()
       .mockResolvedValueOnce({ ...result, unavailableNodeIds: ['b'] })
@@ -414,7 +495,12 @@ describe('Scheduled tasks workbench', () => {
     const request = vi.fn().mockResolvedValue({
       items: [task, { ...task, nodeId: 'b', offline: true }],
       nodes: [node],
-      nextCursor: null,
+      page: 1,
+      pageSize: 20,
+      get total() {
+        return this.items.length;
+      },
+      hasMore: false,
       unavailableNodeIds: ['b']
     });
     const onOpenTarget = vi.fn();
@@ -436,9 +522,7 @@ describe('Scheduled tasks workbench', () => {
   it('keeps a scheduled refresh when a different Workspace changes and releases it on unmount', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const request = vi.fn(async (path: string) =>
-      path.startsWith('/api/scheduled-tasks')
-        ? { items: [task], nodes: [node], unavailableNodeIds: [], nextCursor: null }
-        : historyPage([])
+      path.startsWith('/api/scheduled-tasks') ? taskPage([task]) : historyPage([])
     );
     const props = reactive({
       request,
@@ -466,6 +550,44 @@ describe('Scheduled tasks workbench', () => {
     } finally {
       if (mounted) view.unmount();
       vi.useRealTimers();
+    }
+  });
+
+  it('invalidates a linked task outside the Workspace filter without reloading the filtered list', async () => {
+    const linked = { nodeId: 'b', workspaceId: 'other', id: 'linked' };
+    const detail = deferred<unknown>();
+    const request = vi.fn((path: string, _init?: RequestInit) =>
+      path.startsWith('/api/scheduled-tasks?')
+        ? Promise.resolve({ ...taskPage([task]), workspaces: [task] })
+        : detail.promise
+    );
+    const props = reactive({
+      request,
+      section: 'mine' as const,
+      linkedTask: undefined as ScheduleTaskLink | undefined,
+      invalidation: undefined as ScheduleInvalidation | undefined
+    });
+    const view = renderComponent(ScheduledTasksPanel, props);
+    try {
+      await flushComponent();
+      await trigger(view.findAll('MarSelect')[0]!, 'onUpdate:modelValue', '["a","work"]');
+      expect(request.mock.calls[1]?.[0]).toContain('workspaceId=work');
+      props.linkedTask = { ...linked, reference: { kind: 'proposal', id: 'proposal' } };
+      await flushComponent();
+      expect(request.mock.calls[2]?.[0]).toBe(
+        '/api/scheduled-tasks/linked?nodeId=b&workspaceId=other'
+      );
+      expect(view.findAll('MarDialog')).toHaveLength(1);
+      props.invalidation = { ...linked, verify: true };
+      await flushComponent();
+      expect(view.findAll('MarDialog')).toHaveLength(0);
+      expect(request.mock.calls[2]?.[1]?.signal?.aborted).toBe(true);
+      detail.reject(new Error('Stale result'));
+      await flushComponent();
+      expect(request).toHaveBeenCalledTimes(3);
+      expect(textContent(view.root)).not.toContain('Stale result');
+    } finally {
+      view.unmount();
     }
   });
 
@@ -541,13 +663,7 @@ describe('Scheduled tasks workbench', () => {
 
   it('opens a proposal notification by task address without falling back to creation', async () => {
     const request = vi.fn(async (path: string) => {
-      if (path.startsWith('/api/scheduled-tasks?'))
-        return {
-          items: [task],
-          nodes: [node],
-          unavailableNodeIds: [],
-          nextCursor: null
-        };
+      if (path.startsWith('/api/scheduled-tasks?')) return taskPage([task]);
       throw new Error('Linked task is no longer available');
     });
     const view = renderComponent(ScheduledTasksPanel, {

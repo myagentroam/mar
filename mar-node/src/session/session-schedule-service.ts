@@ -165,8 +165,30 @@ export class SessionScheduleService {
 
   private list(input: Record<string, unknown>): unknown {
     const workspaceId = this.workspace(input);
-    const page = parse(pageSchema, input);
     const sessionId = optionalId(input.sessionId);
+    if (input.offset !== undefined) {
+      if (input.cursor !== undefined || input.afterTaskId !== undefined || input.view === 'marctl')
+        throw new Error('SCHEDULE_INVALID');
+      const { offset, limit } = parse(
+        z.object({
+          offset: z.number().int().nonnegative().safe(),
+          limit: z.number().int().min(0).max(MANAGEMENT_MAX_LIMIT)
+        }),
+        input
+      );
+      const result = this.store().listPage(
+        workspaceId,
+        {
+          sessionId,
+          ownerUserId: input.mine === true ? actorId(input) : undefined,
+          state: parse(scheduledTaskStateSchema.optional(), input.state)
+        },
+        offset,
+        limit
+      );
+      return { total: result.total, tasks: result.tasks.map(taskCard) };
+    }
+    const page = parse(pageSchema, input);
     if (input.view === 'marctl') {
       if (sessionId !== undefined) this.requireRegisteredSession(workspaceId, sessionId);
       const after = optionalId(page.cursor);
@@ -195,20 +217,7 @@ export class SessionScheduleService {
       parse(scheduledTaskStateSchema.optional(), input.state)
     );
     return {
-      tasks: result.tasks.map((task) => ({
-        id: task.id,
-        workspaceId: task.workspaceId,
-        ownerUserId: task.ownerUserId,
-        name: task.name,
-        runner: task.runner,
-        sessionId: task.sessionId,
-        sessionTitle: task.sessionTitle,
-        targetKind:
-          task.sessionId !== null ? 'existing' : task.newSession ? 'newSession' : 'unbound',
-        enabled: task.enabled,
-        nextRunAt: task.nextRunAt,
-        objectivePreview: task.objective.slice(0, 180)
-      })),
+      tasks: result.tasks.map(taskCard),
       nextCursor: result.nextCursor
     };
   }
@@ -494,6 +503,22 @@ export class SessionScheduleService {
 function receipt(task: ScheduledSessionTask) {
   return { taskId: task.id, revision: task.revision, nextRunAt: task.nextRunAt };
 }
+function taskCard(task: ScheduledSessionTask & { sessionTitle: string | null }) {
+  return {
+    id: task.id,
+    workspaceId: task.workspaceId,
+    ownerUserId: task.ownerUserId,
+    name: task.name,
+    runner: task.runner,
+    sessionId: task.sessionId,
+    sessionTitle: task.sessionTitle,
+    targetKind: task.sessionId !== null ? 'existing' : task.newSession ? 'newSession' : 'unbound',
+    enabled: task.enabled,
+    nextRunAt: task.nextRunAt,
+    objectivePreview: task.objective.slice(0, 180)
+  };
+}
+
 function summary(task: ScheduledSessionTask) {
   return {
     ...receipt(task),

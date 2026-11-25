@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   MANAGEMENT_DEFAULT_LIMIT,
+  MANAGEMENT_MAX_LIMIT,
   scheduledTimeGroupsSchema,
   type RunnerName,
   type ScheduledNewSession,
@@ -21,6 +22,32 @@ const taskStateSql = {
   finished: 'AND t.enabled=1 AND t.next_run_at IS NULL',
   unbound: 'AND t.session_id IS NULL AND t.new_session IS NULL'
 } satisfies Record<ScheduledTaskState, string>;
+
+type TaskListFilter = {
+  sessionId?: string | undefined;
+  ownerUserId?: number | undefined;
+  state?: ScheduledTaskState | undefined;
+};
+const taskListFrom = 'FROM scheduled_session_tasks t';
+const taskListSelect = `SELECT t.*, COALESCE(json_extract(s.metadata,'$.customTitle'),
+  json_extract(s.metadata,'$.runnerTitle'),s.id) AS session_title
+  ${taskListFrom} LEFT JOIN agent_sessions s ON s.id=t.session_id`;
+
+function taskListScope(workspaceId: string, { sessionId, ownerUserId, state }: TaskListFilter) {
+  return {
+    where: `WHERE t.workspace_id=? ${sessionId === undefined ? '' : 'AND t.session_id=?'}
+      ${ownerUserId === undefined ? '' : 'AND t.owner_user_id=?'} ${state === undefined ? '' : taskStateSql[state]}`,
+    params: [
+      workspaceId,
+      ...(sessionId === undefined ? [] : [sessionId]),
+      ...(ownerUserId === undefined ? [] : [ownerUserId])
+    ]
+  };
+}
+
+function taskWithSessionTitle(row: SqlRow) {
+  return { ...taskFromRow(row), sessionTitle: row['session_title'] as string | null };
+}
 
 export interface ScheduledSessionTask {
   readonly id: string;
@@ -142,25 +169,11 @@ export class ScheduledSessionStore {
         throw new Error('SCHEDULE_INVALID');
       }
     }
+    const { where, params } = taskListScope(workspaceId, { sessionId, ownerUserId, state });
     const rows = this.database
-      .prepare(
-        `SELECT t.*, COALESCE(json_extract(s.metadata,'$.customTitle'),
-         json_extract(s.metadata,'$.runnerTitle'),s.id) AS session_title
-       FROM scheduled_session_tasks t LEFT JOIN agent_sessions s ON s.id=t.session_id
-       WHERE t.workspace_id=? ${sessionId === undefined ? '' : 'AND t.session_id=?'}
-       ${ownerUserId === undefined ? '' : 'AND t.owner_user_id=?'} ${state === undefined ? '' : taskStateSql[state]}
-       AND t.id>? ORDER BY t.id LIMIT ?`
-      )
-      .all(
-        workspaceId,
-        ...(sessionId === undefined ? [] : [sessionId]),
-        ...(ownerUserId === undefined ? [] : [ownerUserId]),
-        after,
-        limit + 1
-      ) as SqlRow[];
-    const tasks = rows
-      .slice(0, limit)
-      .map((row) => ({ ...taskFromRow(row), sessionTitle: row['session_title'] as string | null }));
+      .prepare(`${taskListSelect} ${where} AND t.id>? ORDER BY t.id LIMIT ?`)
+      .all(...params, after, limit + 1) as SqlRow[];
+    const tasks = rows.slice(0, limit).map(taskWithSessionTitle);
     return {
       tasks,
       nextCursor:
@@ -176,6 +189,37 @@ export class ScheduledSessionStore {
             ).toString('base64url')
           : null
     };
+  }
+
+  listPage(workspaceId: string, filter: TaskListFilter, offset: number, limit: number) {
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 0 ||
+      limit > MANAGEMENT_MAX_LIMIT
+    )
+      throw new Error('SCHEDULE_INVALID');
+    const { where, params } = taskListScope(workspaceId, filter);
+    this.database.exec('BEGIN');
+    try {
+      const { total } = this.database
+        .prepare(`SELECT COUNT(*) AS total ${taskListFrom} ${where}`)
+        .get(...params) as { total: number };
+      const tasks =
+        limit === 0 || offset >= total
+          ? []
+          : (
+              this.database
+                .prepare(`${taskListSelect} ${where} ORDER BY t.id LIMIT ? OFFSET ?`)
+                .all(...params, limit, offset) as SqlRow[]
+            ).map(taskWithSessionTitle);
+      this.database.exec('COMMIT');
+      return { total, tasks };
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   listIndex(workspaceId: string, afterTaskId?: string) {

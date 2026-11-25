@@ -154,7 +154,15 @@ function session(id: string, runnerTitle: string, pinOrder: number | null) {
 test('Scheduled tasks show scope-specific page titles and summaries', async ({ page }, info) => {
   await mockConsoleApi(page, 'MANAGED', ['session.schedule'], []);
   await page.route(/\/api\/scheduled-tasks(?:\?.*)?$/, (route) =>
-    json(route, { items: [], nodes: [], nextCursor: null, unavailableNodeIds: [] })
+    json(route, {
+      items: [],
+      nodes: [],
+      unavailableNodeIds: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      hasMore: false
+    })
   );
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
@@ -321,36 +329,40 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
     }
     listRequests.push(url);
     const filtered = url.searchParams.get('nodeId');
+    const items = [
+      makeCard(task, 'node-2', true),
+      {
+        ...makeCard(otherTask, 'node-2', true),
+        enabled: false,
+        nextRunAt: null,
+        targetKind: 'newSession',
+        sessionTitle: null,
+        sessionId: null,
+        objectivePreview: '整理失败报告并汇总待跟进项。'
+      },
+      ...(url.searchParams.get('mine') === 'false'
+        ? [
+            {
+              ...makeCard({ ...task, name: '另一节点的相同任务 ID' }, 'node-1', false),
+              sessionId: 'session-1',
+              sessionTitle: '既有会话'
+            }
+          ]
+        : [])
+    ].filter(
+      (item) =>
+        !filtered ||
+        (item.nodeId === filtered && item.workspaceId === url.searchParams.get('workspaceId'))
+    );
     return json(route, {
       nodes: filtered ? nodes.filter((item) => item.id === filtered) : nodes,
       ...(!filtered ? { workspaces } : {}),
-      items: [
-        makeCard(task, 'node-2', true),
-        {
-          ...makeCard(otherTask, 'node-2', true),
-          enabled: false,
-          nextRunAt: null,
-          targetKind: 'newSession',
-          sessionTitle: null,
-          sessionId: null,
-          objectivePreview: '整理失败报告并汇总待跟进项。'
-        },
-        ...(url.searchParams.get('mine') === 'false'
-          ? [
-              {
-                ...makeCard({ ...task, name: '另一节点的相同任务 ID' }, 'node-1', false),
-                sessionId: 'session-1',
-                sessionTitle: '既有会话'
-              }
-            ]
-          : [])
-      ].filter(
-        (item) =>
-          !filtered ||
-          (item.nodeId === filtered && item.workspaceId === url.searchParams.get('workspaceId'))
-      ),
+      items,
       unavailableNodeIds: ['node-offline'],
-      nextCursor: null
+      page: 1,
+      pageSize: 20,
+      total: items.length,
+      hasMore: false
     });
   });
   await page.route('**/api/scheduled-tasks/preview', (route) =>
@@ -457,7 +469,10 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   };
   await expect(panel.locator('.card')).toHaveCount(2);
   expect(listRequests.at(-1)?.searchParams.get('mine')).toBe('true');
-  expect([...listRequests.at(-1)!.searchParams.keys()]).toEqual(['mine']);
+  expect([...listRequests.at(-1)!.searchParams]).toEqual([
+    ['mine', 'true'],
+    ['page', '1']
+  ]);
   await expect(panel.getByRole('heading', { name: '我的定时', level: 2 })).toBeVisible();
   await expect(panel.getByRole('heading', { name: '检查构建', level: 3 })).toBeVisible();
   await expect(panel.getByRole('heading', { name: '接下来', exact: true })).toHaveCount(0);
@@ -468,7 +483,8 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   expect([...listRequests.at(-1)!.searchParams]).toEqual([
     ['nodeId', 'node-1'],
     ['workspaceId', 'workspace-1'],
-    ['mine', 'true']
+    ['mine', 'true'],
+    ['page', '1']
   ]);
   await clearWorkspace(panel);
   await expect(panel.locator('.card')).toHaveCount(2);
@@ -493,7 +509,8 @@ test('Scheduled tasks select a node, save multiple time combinations, and open e
   expect([...listRequests.at(-1)!.searchParams]).toEqual([
     ['nodeId', 'node-1'],
     ['workspaceId', 'workspace-1'],
-    ['mine', 'false']
+    ['mine', 'false'],
+    ['page', '1']
   ]);
   await clearWorkspace(panel);
   await expect(panel.locator('.card')).toHaveCount(3);

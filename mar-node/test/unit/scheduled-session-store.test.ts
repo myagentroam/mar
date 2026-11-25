@@ -85,14 +85,14 @@ describe('scheduled session store', () => {
           workspaceId: workspace.id
         });
       const store = new ScheduledSessionStore(database.raw, () => now);
-      const create = (name: string, sessionId: string, enabled = true) =>
+      const create = (name: string, sessionId: string, enabled = true, ownerUserId = 1) =>
         store.create({
           name,
           sessionId,
           enabled,
           workspaceId: workspace.id,
           runner: 'codex',
-          ownerUserId: 1,
+          ownerUserId,
           objective: 'Check',
           groups: dailyGroups('09:00'),
           timezone: 'UTC'
@@ -117,6 +117,17 @@ describe('scheduled session store', () => {
       expect(list('paused').tasks.map(({ id }) => id)).toEqual([paused.id]);
       expect(list('finished').tasks.map(({ id }) => id)).toEqual([finished.id]);
       expect(list('unbound').tasks.map(({ id }) => id)).toEqual([unbound.id]);
+
+      create('Another owner', 'existing', true, 2);
+      create('Another session', 'removed');
+      const filter = { sessionId: 'existing', ownerUserId: 1, state: 'scheduled' as const };
+      const [, lastId] = scheduled.map(({ id }) => id).sort();
+      expect(store.listPage(workspace.id, filter, 0, 0)).toEqual({ total: 2, tasks: [] });
+      const page = store.listPage(workspace.id, filter, 1, 1);
+      expect(page.total).toBe(2);
+      expect(page.tasks.map(({ id }) => id)).toEqual([lastId]);
+      expect(store.listPage(workspace.id, filter, 2, 1)).toEqual({ total: 2, tasks: [] });
+      expect(() => store.listPage(workspace.id, filter, -1, 1)).toThrow('SCHEDULE_INVALID');
     } finally {
       database.close();
     }

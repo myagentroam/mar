@@ -542,6 +542,17 @@ describe('scheduled Node session flow', () => {
       await expect(
         Promise.resolve().then(() => list({ workspaceId: foreign.id, cursor: page.nextCursor }))
       ).rejects.toThrow('SCHEDULE_INVALID');
+      expect(await list({ ...scope, sessionId: 'first', offset: 0, limit: 0 })).toEqual({
+        total: 2,
+        tasks: []
+      });
+      expect(await list({ ...scope, offset: 1, limit: 2 })).toEqual({
+        total: 3,
+        tasks: next.tasks
+      });
+      await expect(
+        Promise.resolve().then(() => list({ ...scope, offset: 0, cursor: page.nextCursor }))
+      ).rejects.toThrow('SCHEDULE_INVALID');
       const update = handlers['schedule.task.propose']!;
       const taskScope = { ...scope, taskId: first.id };
       expect(

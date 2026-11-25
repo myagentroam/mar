@@ -78,6 +78,7 @@ export const errorPresentationZhCN = {
     RUN_NOT_FOUND: '运行记录不存在或已结束。',
     SCHEDULE_NOT_FOUND: '该定时任务或执行记录已不可用。',
     SCHEDULE_HISTORY_CHANGED: '加载期间执行记录发生变化，请重试。',
+    SCHEDULE_TASK_PAGE_CHANGED: '加载期间定时任务发生变化，请重试。',
     SCHEDULE_REVISION_CONFLICT: '任务已被修改，请重新打开任务后再编辑。',
     SCHEDULE_NEXT_TIME_UNAVAILABLE: '这些时间组合没有未来的触发时刻。',
     SCHEDULE_SESSION_NOT_FOUND: '目标会话已不可用。',

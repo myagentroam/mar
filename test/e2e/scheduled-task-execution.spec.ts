@@ -242,10 +242,33 @@ test('Scheduled tasks run through the real Server, Node and execution history', 
         }
       })
     );
-    const { items } = await read<{ items: { id: string }[] }>(
-      await request.get('/api/scheduled-tasks', { params: { ...scope, sessionId } })
-    );
-    expect(items.map((task) => task.id).sort()).toEqual([a.id, b.id].sort());
+    const taskPage = async (page: number) =>
+      await read<{
+        items: { id: string }[];
+        page: number;
+        pageSize: number;
+        total: number;
+        hasMore: boolean;
+      }>(
+        await request.get('/api/scheduled-tasks', {
+          params: { ...scope, sessionId, page, limit: 1 }
+        })
+      );
+    const [firstId, secondId] = [a.id, b.id].sort();
+    expect(await taskPage(1)).toMatchObject({
+      items: [{ id: firstId }],
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      hasMore: true
+    });
+    expect(await taskPage(2)).toMatchObject({
+      items: [{ id: secondId }],
+      page: 2,
+      pageSize: 1,
+      total: 2,
+      hasMore: false
+    });
     const history = async () =>
       await read<{
         page: number;

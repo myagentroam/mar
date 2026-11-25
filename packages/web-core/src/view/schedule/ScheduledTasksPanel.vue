@@ -15,6 +15,7 @@ import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { marIcon } from '@myagentroam/mar-ui/icons';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
+import { MANAGEMENT_DEFAULT_LIMIT } from '@myagentroam/protocol';
 import { errorCode } from '../../util/api-error.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import { managementDateTime } from '../../util/time-presentation.js';
@@ -44,6 +45,7 @@ import ScheduledTaskCard from './ScheduledTaskCard.vue';
 import ScheduledTaskEditor from './ScheduledTaskEditor.vue';
 import ScheduledExecutionHistory from './ScheduledExecutionHistory.vue';
 import ScheduledWorkspaceFilter from './ScheduledWorkspaceFilter.vue';
+import ManagementPagination from '../settings/ManagementPagination.vue';
 import type { ScheduleSection } from './scheduled-task-navigation.js';
 
 // Owns task cards and modal selection. History owns its paged reads; the editor owns its draft.
@@ -73,8 +75,11 @@ const tasks = ref<ScheduleCard[]>([]);
 const nodes = ref<ScheduleNode[]>([]);
 const workspace = shallowRef<ScheduleScope>();
 const workspaces = shallowRef<ScheduleWorkspaceOption[]>([]);
-const cursor = ref<string | null>(null);
-const failure = shallowRef<unknown>();
+const page = ref(1);
+const pageSize = ref(MANAGEMENT_DEFAULT_LIMIT);
+const total = ref(0);
+const hasMore = ref(false);
+const failure = shallowRef<{ error: unknown; page: number; incremental: boolean }>();
 const loading = ref(false);
 const listComplete = computed(() => !loading.value && !failure.value);
 const selectedTask = shallowRef<ScheduleTaskKey>();
@@ -92,43 +97,68 @@ const editor = shallowRef<{ key: ScheduleTaskKey; detail: ScheduleDetail } | 'ne
 let listRead: AbortController | undefined;
 let detailRead: AbortController | undefined;
 let refresh: ReturnType<typeof setTimeout> | undefined;
-const identity = (nodeId: string, id: string) => JSON.stringify([nodeId, id]);
+const identity = ({ nodeId, workspaceId, id }: ScheduleTaskKey) =>
+  JSON.stringify([nodeId, workspaceId, id]);
+const context = computed(() =>
+  JSON.stringify([props.section, props.initial ?? workspace.value, props.mobile === true])
+);
 const date = (time: number | null) =>
   time === null ? msg('notRecorded') : managementDateTime(time);
 
-async function load(next?: string) {
+async function load(next: number, reset = false, incremental = props.mobile === true && next > 1) {
   if (props.section === 'history') return;
-  if (!next) cancelRefresh();
+  if (!reset && loading.value) return;
+  if (reset) cancelRefresh();
   listRead?.abort();
   const read = new AbortController();
   listRead = read;
   loading.value = true;
-  failure.value = undefined;
-  if (!next) {
+  if (!incremental) failure.value = undefined;
+  if (reset) {
     tasks.value = [];
-    cursor.value = null;
+    page.value = 1;
+    total.value = 0;
+    hasMore.value = false;
   }
   const target = props.initial ?? workspace.value;
+  const filters = { mine: props.section === 'mine', ...(target ? { target } : {}) };
+  const readContext = context.value;
+  const current = () => !read.signal.aborted && readContext === context.value;
+  let requestPage = next;
+  let append = props.mobile === true && next > 1;
   try {
-    const result = await client.list(
-      {
-        mine: props.section === 'mine',
-        ...(next === undefined ? {} : { cursor: next }),
-        ...(target ? { target } : {})
-      },
-      read.signal
-    );
-    if (read.signal.aborted) return;
-    tasks.value = next ? [...tasks.value, ...result.items] : result.items;
+    let result = await client.list({ ...filters, page: requestPage }, read.signal);
+    if (!current()) return;
+    if (append && result.page < requestPage) {
+      requestPage = 1;
+      append = false;
+      if (result.page !== 1) result = await client.list({ ...filters, page: 1 }, read.signal);
+      if (!current()) return;
+    }
+    if (append) {
+      const seen = new Set(tasks.value.map(identity));
+      tasks.value = [...tasks.value, ...result.items.filter((task) => !seen.has(identity(task)))];
+    } else tasks.value = result.items;
     if (props.initial || !target) nodes.value = result.nodes;
     if (result.workspaces) workspaces.value = result.workspaces;
-    cursor.value = result.nextCursor;
+    page.value = result.page;
+    pageSize.value = result.pageSize;
+    total.value = result.total;
+    hasMore.value = result.hasMore;
+    failure.value = undefined;
   } catch (error) {
-    if (!read.signal.aborted) failure.value = error;
+    if (current()) failure.value = { error, page: requestPage, incremental };
   } finally {
-    if (!read.signal.aborted) loading.value = false;
+    if (current()) loading.value = false;
   }
 }
+const reload = () => load(1, true);
+const loadMore = () => {
+  if (hasMore.value && !failure.value) void load(page.value + 1);
+};
+const retry = () => {
+  if (failure.value) void load(failure.value.page, false, failure.value.incremental);
+};
 function resetDetail() {
   detailRead?.abort();
   selectedTask.value = undefined;
@@ -145,41 +175,35 @@ function closeDetail() {
   historyRow = undefined;
 }
 watch(
-  [() => props.section, workspace],
+  [() => props.section, () => props.initial, workspace],
   () => {
     closeDetail();
     cancelRefresh();
     listRead?.abort();
-    void load();
+    if (props.section === 'history') loading.value = false;
+    else void reload();
   },
   { immediate: true }
 );
+watch(() => props.mobile === true, reload);
 watch(
   () => props.invalidation,
   (change) => {
-    const bound = props.section === 'history' ? undefined : props.initial;
-    if (
-      !change ||
-      (bound &&
-        ((change.nodeId && change.nodeId !== bound.nodeId) ||
-          (change.workspaceId && change.workspaceId !== bound.workspaceId)))
-    )
-      return;
+    if (!change) return;
+    const matches = (scope: ScheduleScope) =>
+      (!change.nodeId || change.nodeId === scope.nodeId) &&
+      (!change.workspaceId || change.workspaceId === scope.workspaceId);
     const open =
       selectedTask.value ??
       selectedOccurrence.value ??
       taskHistory.value ??
       (typeof editor.value === 'object' ? editor.value.key : undefined);
-    if (
-      change.verify &&
-      open &&
-      (!change.nodeId || change.nodeId === open.nodeId) &&
-      (!change.workspaceId || change.workspaceId === open.workspaceId)
-    )
-      closeDetail();
-    if (props.section === 'history') return;
+    // A notification can open a task outside the current list filter.
+    if (change.verify && open && matches(open)) closeDetail();
+    const bound = props.initial ?? workspace.value;
+    if (props.section === 'history' || (bound && !matches(bound))) return;
     cancelRefresh();
-    refresh = setTimeout(() => void load(), 120);
+    refresh = setTimeout(reload, 120);
   }
 );
 function cancelRefresh() {
@@ -213,7 +237,7 @@ async function openTask(key: ScheduleTaskKey, proposalId?: string) {
     if (!read.signal.aborted) {
       detailFailure.value = error;
       if (errorCode(error) === 'SCHEDULE_NOT_FOUND' || errorCode(error) === 'WORKSPACE_NOT_FOUND')
-        void load();
+        void reload();
     }
   } finally {
     if (!read.signal.aborted) detailLoading.value = false;
@@ -273,7 +297,7 @@ function reasonLabel(code: string): string {
 }
 function changed() {
   closeDetail();
-  void load();
+  void reload();
 }
 watch(
   () => props.linkedTask,
@@ -309,7 +333,7 @@ watch(
     <template v-else>
       <ScheduledWorkspaceFilter v-if="!initial" v-model="workspace" :workspaces="workspaces" />
       <div class="mar-table-actions">
-        <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="load()">{{
+        <MarButton :icon="marIcon('refresh')" :disabled="loading" @click="reload()">{{
           msg('refresh')
         }}</MarButton>
         <MarButton
@@ -320,8 +344,8 @@ watch(
           >{{ msg('create') }}</MarButton
         >
       </div>
-      <p v-if="failure" role="alert" class="notice">
-        {{ errorSummary(failure, msg('loadFailed')) }}
+      <p v-if="failure && !failure.incremental" role="alert" class="notice">
+        {{ errorSummary(failure.error, msg('loadFailed')) }}
       </p>
       <div
         v-if="loading && !tasks.length"
@@ -333,10 +357,10 @@ watch(
       </div>
       <template v-else>
         <p v-if="!tasks.length && listComplete" class="panel-empty">{{ msg('emptyTasks') }}</p>
-        <ul v-else-if="tasks.length" class="cards" :aria-label="msg('tasks')">
+        <ul v-else-if="tasks.length" class="cards" :aria-label="msg('tasks')" :aria-busy="loading">
           <ScheduledTaskCard
             v-for="item in tasks"
-            :key="identity(item.nodeId, item.id)"
+            :key="identity(item)"
             :task="item"
             @open="openTask(item)"
             @history="openTaskHistory(item)"
@@ -344,14 +368,24 @@ watch(
           />
         </ul>
       </template>
-      <MarButton
-        v-if="cursor"
+      <ManagementPagination
+        v-if="tasks.length"
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        :mobile="mobile === true"
+        :mobile-visible-count="tasks.length"
         :loading="loading"
-        :disabled="loading"
-        class="more"
-        @click="load(cursor)"
-        >{{ msg('more') }}</MarButton
-      >
+        :loading-more="mobile === true"
+        :failed="failure !== undefined"
+        :incremental-failed="failure?.incremental === true"
+        :error="failure?.error"
+        :has-more="hasMore"
+        :context-key="context"
+        @page="load"
+        @load-more="loadMore"
+        @retry="retry"
+      />
     </template>
     <ScheduledTaskEditor
       v-if="editor"
@@ -462,9 +496,6 @@ watch(
 .history-task-title {
   margin: 0 0 0.75rem;
   overflow-wrap: anywhere;
-}
-.more {
-  align-self: start;
 }
 .notice,
 .panel-empty {

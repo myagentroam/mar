@@ -21,21 +21,17 @@ import {
   type ScheduledTaskIndexStore
 } from './scheduled-task-index.js';
 import { managementPageQuery, ManagementQueryError } from './management-pagination.js';
+import { readScheduledTaskPage, ScheduledTaskPageChanged } from './scheduled-task-pagination.js';
 
 const id = z.string().min(1).max(512);
 const address = z.object({ nodeId: id, workspaceId: id });
 const mutation = address.extend({ expectedRevision: scheduledTaskRevisionSchema });
 const scopeFilter = address.partial();
-const filter = scopeFilter.extend({
+const taskFilter = scopeFilter.extend({
   mine: z.enum(['true', 'false']).optional(),
-  cursor: z.string().max(4096).optional()
-});
-const taskFilter = filter.extend({
   sessionId: id.optional(),
   state: scheduledTaskStateSchema.optional()
 });
-const listCursor = address.extend({ taskId: id });
-const pageSize = 20;
 const binary = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const time = z.number().int().nonnegative().safe();
 const directoryWorkspace = z.object({
@@ -45,6 +41,7 @@ const directoryWorkspace = z.object({
 });
 const workspaceList = z.object({ workspaces: z.array(directoryWorkspace) });
 const taskPage = z.object({
+  total: time,
   tasks: z
     .array(
       scheduledTaskCardEntry.extend({
@@ -52,7 +49,7 @@ const taskPage = z.object({
         objectivePreview: z.string().max(180).optional()
       })
     )
-    .max(pageSize + 1)
+    .max(MANAGEMENT_MAX_LIMIT)
 });
 const occurrenceSummary = z.object({
   occurrenceId: id,
@@ -156,7 +153,7 @@ interface Options {
   publicOrigin: string | undefined;
   databaseError(reply: FastifyReply, error: unknown): FastifyReply;
   schedules: ScheduledTaskDirectory;
-  index: Pick<ScheduledTaskIndexStore, 'list' | 'workspaceIds'>;
+  index: Pick<ScheduledTaskIndexStore, 'page' | 'workspaceIds'>;
 }
 
 /** Authorizes and merges Node snapshots. No clock, task prompt or execution state is owned here. */
@@ -225,131 +222,137 @@ export function registerScheduledTaskRoutes({
     if (actor === undefined) return;
     reply.header('cache-control', 'private, no-store');
     try {
-      const query = taskFilter.parse(request.query);
+      const raw = z.record(z.unknown()).parse(request.query);
+      if (raw.cursor !== undefined) return sendError(reply, 400, 'SCHEDULE_INVALID');
+      const query = taskFilter.parse(raw);
+      const { page, limit } = managementPageQuery(raw) ?? {
+        page: 1,
+        limit: MANAGEMENT_DEFAULT_LIMIT
+      };
       if (
         query.sessionId !== undefined &&
         (query.nodeId === undefined || query.workspaceId === undefined)
       )
         return sendError(reply, 400, 'SCHEDULE_INVALID');
-      const cursor = decode(query.cursor, listCursor);
       const { nodes, scopes, unavailable } = await directory(actor, query);
       const mine = query.mine !== 'false';
-      const context = (scope: Scope) => {
-        const comparison =
-          cursor === undefined
-            ? 1
-            : binary(scope.nodeId, cursor.nodeId) || binary(scope.workspaceId, cursor.workspaceId);
-        const conditions = {
-          ...(query.state === undefined ? {} : { state: query.state }),
-          ...(query.sessionId === undefined ? {} : { sessionId: query.sessionId }),
-          ...(cursor !== undefined && comparison === 0 ? { afterTaskId: cursor.taskId } : {})
-        };
-        return { comparison, conditions };
+      const conditions = {
+        ...(query.state === undefined ? {} : { state: query.state }),
+        ...(query.sessionId === undefined ? {} : { sessionId: query.sessionId })
       };
-      const offline = async (scope: Scope) => {
-        const { comparison, conditions } = context(scope);
-        if (comparison < 0 || !(await canUse(actor, scope))) return undefined;
-        const tasks = await index.list(
-          scope.nodeId,
-          scope.workspaceId,
-          { ...conditions, ...(mine ? { ownerUserId: actor.userId } : {}) },
-          pageSize + 1
-        );
-        if (!(await canUse(actor, scope))) return undefined;
-        return {
-          scope,
-          tasks: tasks.map((task) => ({
-            ...task,
-            ...scope,
-            offline: true,
-            mine: task.ownerUserId === actor.userId
-          }))
-        };
-      };
-      const [live, cached] = await Promise.all([
-        Promise.all(
-          scopes.map(async (scope) => {
-            const { comparison, conditions } = context(scope);
-            if (comparison < 0) return undefined;
-            let result: z.infer<typeof taskPage>;
-            try {
-              result = taskPage.parse(
-                await call(actor, scope, 'schedule.task.list', {
-                  ...conditions,
-                  mine,
-                  limit: pageSize + 1
-                })
-              );
-              if (
-                result.tasks.some(
-                  (task) =>
-                    task.workspaceId !== scope.workspaceId ||
-                    (mine && task.ownerUserId !== actor.userId)
-                )
-              )
-                throw new Error('NODE_RESPONSE_INVALID');
-            } catch {
-              unavailable.add(scope.nodeId);
-              return undefined;
-            }
-            if (!(await canUse(actor, scope))) return undefined;
-            return {
-              scope,
-              tasks: result.tasks.map((task) => ({
-                ...task,
-                ...scope,
-                mine: task.ownerUserId === actor.userId
-              }))
-            };
-          })
-        ),
-        Promise.all(
+      const offlineScopes = (
+        await Promise.all(
           nodes
             .filter((node) => !node.connected)
             .map(async (node) => {
               const ids = await index.workspaceIds(node.id);
-              const scopes = await project(
+              return project(
                 actor,
                 node,
                 ids.map((id) => ({ id })),
                 'index',
                 query.workspaceId
               );
-              return Promise.all(scopes.map(offline));
             })
         )
-      ]);
-      const readable = [...live, ...cached.flat()].filter((slice) => slice !== undefined);
-      const candidates = readable
-        .flatMap(({ tasks }) => tasks)
+      ).flat();
+      const readScope = async (scope: Scope, offline: boolean, offset: number, limit: number) => {
+        const result = offline
+          ? await index.page(
+              scope.nodeId,
+              scope.workspaceId,
+              { ...conditions, ...(mine ? { ownerUserId: actor.userId } : {}) },
+              offset,
+              limit
+            )
+          : taskPage.parse(
+              await call(actor, scope, 'schedule.task.list', {
+                ...conditions,
+                mine,
+                offset,
+                limit
+              })
+            );
+        if (
+          result.tasks.length !== Math.min(limit, Math.max(0, result.total - offset)) ||
+          result.tasks.some(
+            (task) =>
+              task.workspaceId !== scope.workspaceId || (mine && task.ownerUserId !== actor.userId)
+          )
+        )
+          throw new Error('NODE_RESPONSE_INVALID');
+        return {
+          total: result.total,
+          tasks: result.tasks.map((task) => ({
+            ...task,
+            ...scope,
+            ...(offline ? { offline: true } : {}),
+            mine: task.ownerUserId === actor.userId
+          }))
+        };
+      };
+      const count = async (scope: Scope, offline: boolean) => {
+        if (!(await canUse(actor, scope))) return undefined;
+        let total: number;
+        try {
+          ({ total } = await readScope(scope, offline, 0, 0));
+        } catch (error) {
+          if (offline) throw error;
+          unavailable.add(scope.nodeId);
+          return undefined;
+        }
+        if (!(await canUse(actor, scope))) return undefined;
+        return {
+          scope,
+          total,
+          read: async (offset: number, limit: number) => {
+            if (!(await canUse(actor, scope))) throw new ScheduledTaskPageChanged();
+            try {
+              return await readScope(scope, offline, offset, limit);
+            } catch (error) {
+              if (offline) throw error;
+              throw new ScheduledTaskPageChanged();
+            }
+          }
+        };
+      };
+      const readable = (
+        await Promise.all([
+          ...scopes.map((scope) => count(scope, false)),
+          ...offlineScopes.map((scope) => count(scope, true))
+        ])
+      )
+        .filter((source) => source !== undefined)
         .sort(
           (a, b) =>
-            binary(a.nodeId, b.nodeId) || binary(a.workspaceId, b.workspaceId) || binary(a.id, b.id)
+            binary(a.scope.nodeId, b.scope.nodeId) ||
+            binary(a.scope.workspaceId, b.scope.workspaceId)
         );
+      const result = await readScheduledTaskPage(readable, page, limit);
       const items = await Promise.all(
-        candidates.slice(0, pageSize).map(async ({ ownerUserId, ...task }) => ({
+        result.items.map(async ({ ownerUserId, ...task }) => ({
           ...task,
           ownerName: (await database.userDisplayName(ownerUserId)) ?? null
         }))
       );
-      const last = items.at(-1);
+      // Recheck every source: even a scope outside the returned window contributes to total.
+      if ((await Promise.all(readable.map(({ scope }) => canUse(actor, scope)))).includes(false))
+        throw new ScheduledTaskPageChanged();
       return reply.send({
+        ...result,
         items,
         nodes,
-        ...(query.nodeId === undefined &&
-        query.workspaceId === undefined &&
-        query.sessionId === undefined &&
-        cursor === undefined
+        ...(query.nodeId === undefined && query.workspaceId === undefined && result.page === 1
           ? { workspaces: readable.map(({ scope }) => scope) }
           : {}),
-        unavailableNodeIds: [...unavailable].sort(binary),
-        nextCursor:
-          last !== undefined && candidates.length > pageSize
-            ? encode({ nodeId: last.nodeId, workspaceId: last.workspaceId, taskId: last.id })
-            : null
+        unavailableNodeIds: [...unavailable].sort(binary)
       });
     } catch (error) {
-      return error instanceof z.ZodError
+      if (error instanceof ScheduledTaskPageChanged)
+        return sendError(reply, 409, 'SCHEDULE_TASK_PAGE_CHANGED', {
+          message: 'Scheduled tasks changed while this page was loading. Retry the page.'
+        });
+      return error instanceof z.ZodError || error instanceof ManagementQueryError
         ? sendError(reply, 400, 'SCHEDULE_INVALID')
         : databaseError(reply, error);
     }
@@ -570,16 +573,4 @@ export function registerScheduledTaskRoutes({
         }
       }
     });
-}
-
-function encode(value: object): string {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-function decode<T>(value: string | undefined, schema: z.ZodType<T>): T | undefined {
-  if (value === undefined) return undefined;
-  try {
-    return schema.parse(JSON.parse(Buffer.from(value, 'base64url').toString('utf8')));
-  } catch {
-    return schema.parse(null);
-  }
 }

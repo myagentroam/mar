@@ -1,5 +1,6 @@
 import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import {
+  MANAGEMENT_MAX_LIMIT,
   runnerNameSchema,
   scheduledTaskTargetKindSchema,
   type ScheduledTaskState
@@ -35,19 +36,60 @@ const taskStateSql = {
   unbound: "AND target_kind='unbound'"
 } satisfies Record<ScheduledTaskState, string>;
 
+type IndexFilter = {
+  ownerUserId?: number;
+  sessionId?: string;
+  state?: ScheduledTaskState;
+};
+const cardColumns =
+  'task_id,owner_user_id,name,runner,session_id,target_kind,enabled,next_run_at,synced_at';
+
+function indexListScope(nodeId: string, workspaceId: string, filter: IndexFilter) {
+  return {
+    scope: `FROM scheduled_task_index WHERE node_id=? AND workspace_id=?
+       ${filter.ownerUserId === undefined ? '' : 'AND owner_user_id=?'}
+       ${filter.sessionId === undefined ? '' : 'AND session_id=?'}
+       ${filter.state === undefined ? '' : taskStateSql[filter.state]}`,
+    params: [
+      nodeId,
+      workspaceId,
+      ...[filter.ownerUserId, filter.sessionId].filter((part) => part !== undefined)
+    ]
+  };
+}
+
+function indexedCard(row: RowDataPacket, workspaceId: string): IndexedScheduledTask {
+  return {
+    ...scheduledTaskIndexEntry.parse({
+      id: row.task_id,
+      workspaceId,
+      ownerUserId: Number(row.owner_user_id),
+      name: row.name,
+      runner: row.runner,
+      sessionId: row.session_id,
+      enabled: row.enabled === 1,
+      nextRunAt: row.next_run_at === null ? null : Number(row.next_run_at)
+    }),
+    targetKind: scheduledTaskTargetKindSchema.parse(row.target_kind),
+    syncedAt: Number(row.synced_at)
+  };
+}
+
 export interface ScheduledTaskIndexStore {
   workspaceIds(nodeId: string): Promise<readonly string[]>;
   list(
     nodeId: string,
     workspaceId: string,
-    filter: {
-      ownerUserId?: number;
-      sessionId?: string;
-      afterTaskId?: string;
-      state?: ScheduledTaskState;
-    },
+    filter: IndexFilter & { afterTaskId?: string },
     limit: number
   ): Promise<readonly IndexedScheduledTask[]>;
+  page(
+    nodeId: string,
+    workspaceId: string,
+    filter: IndexFilter,
+    offset: number,
+    limit: number
+  ): Promise<{ total: number; tasks: readonly IndexedScheduledTask[] }>;
   replace(
     nodeId: string,
     workspaceId: string,
@@ -236,35 +278,60 @@ export class MysqlScheduledTaskIndex implements ScheduledTaskIndexStore {
   ): Promise<readonly IndexedScheduledTask[]> {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('SCHEDULE_INDEX_LIMIT_INVALID');
     // mysql2 binds numbers as DOUBLE, which MySQL can reject for a prepared LIMIT.
+    const { scope, params } = indexListScope(nodeId, workspaceId, filter);
     const [rows] = await this.pool.execute<RowDataPacket[]>(
-      `SELECT task_id,owner_user_id,name,runner,session_id,target_kind,enabled,next_run_at,synced_at FROM scheduled_task_index
-       WHERE node_id=? AND workspace_id=?
-       ${filter.ownerUserId === undefined ? '' : 'AND owner_user_id=?'}
-       ${filter.sessionId === undefined ? '' : 'AND session_id=?'}
-       ${filter.state === undefined ? '' : taskStateSql[filter.state]}
+      `SELECT ${cardColumns} ${scope}
        ${filter.afterTaskId === undefined ? '' : 'AND task_id>?'} ORDER BY task_id LIMIT ${limit}`,
-      [
-        nodeId,
-        workspaceId,
-        ...[filter.ownerUserId, filter.sessionId, filter.afterTaskId].filter(
-          (part) => part !== undefined
-        )
-      ]
+      filter.afterTaskId === undefined ? params : [...params, filter.afterTaskId]
     );
-    return rows.map((row) => ({
-      ...scheduledTaskIndexEntry.parse({
-        id: row.task_id,
-        workspaceId,
-        ownerUserId: Number(row.owner_user_id),
-        name: row.name,
-        runner: row.runner,
-        sessionId: row.session_id,
-        enabled: row.enabled === 1,
-        nextRunAt: row.next_run_at === null ? null : Number(row.next_run_at)
-      }),
-      targetKind: scheduledTaskTargetKindSchema.parse(row.target_kind),
-      syncedAt: Number(row.synced_at)
-    }));
+    return rows.map((row) => indexedCard(row, workspaceId));
+  }
+
+  async page(
+    nodeId: string,
+    workspaceId: string,
+    filter: IndexFilter,
+    offset: number,
+    limit: number
+  ) {
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 0 ||
+      limit > MANAGEMENT_MAX_LIMIT
+    )
+      throw new Error('SCHEDULE_INDEX_LIMIT_INVALID');
+    const { scope, params } = indexListScope(nodeId, workspaceId, filter);
+    const count = async (connection: Pick<PoolConnection, 'execute'>) => {
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        `SELECT COUNT(*) AS total ${scope}`,
+        params
+      );
+      return timestamp.parse(Number(rows[0]?.total));
+    };
+    if (limit === 0) return { total: await count(this.pool), tasks: [] };
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+      await connection.beginTransaction();
+      const total = await count(connection);
+      const [rows] =
+        offset >= total
+          ? [[]]
+          : await connection.execute<RowDataPacket[]>(
+              `SELECT ${cardColumns} ${scope} ORDER BY task_id LIMIT ${limit} OFFSET ${offset}`,
+              params
+            );
+      const tasks = rows.map((row) => indexedCard(row, workspaceId));
+      await connection.commit();
+      return { total, tasks };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async replace(
