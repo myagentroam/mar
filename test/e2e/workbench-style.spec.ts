@@ -151,7 +151,7 @@ for (const { theme, width } of [
     const options = groups.getByRole('radio');
     await expect(options).toHaveCount(2);
     for (const option of await options.all()) {
-      await expect(option).toHaveCSS('height', '20px');
+      await expect(option).toHaveCSS('height', '22px');
     }
     const list = sidebar.locator('.session-list');
     await expect(list.locator('strong')).toHaveText([
@@ -188,7 +188,7 @@ for (const { theme, width } of [
     const row = (title: string) =>
       list.locator('.session-link').filter({ has: page.getByText(title, { exact: true }) });
     for (const [title, icon, name] of [
-      ['Scheduled', 'clock', 'Scheduled task enabled'],
+      ['Scheduled', 'calendar-check', 'Scheduled task enabled'],
       ['Pinned', 'pin', 'Pinned'],
       ['Paused, still pinned', 'pin', 'Pinned']
     ] as const) {
@@ -1570,9 +1570,7 @@ for (const theme of ['daylight', 'dark']) {
     await expect(
       inspector.getByRole('button', { name: 'Refresh Git changes', exact: true })
     ).toBeEnabled();
-    await list.evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
+    await list.locator('.change-append-state').scrollIntoViewIfNeeded();
     await expect(list.locator('.change-path')).toHaveCount(205);
     expect(reads).toBe(3);
     await expect(inspector.getByRole('button', { name: 'Load more' })).toHaveCount(0);

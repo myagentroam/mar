@@ -7,15 +7,17 @@ import { json, mockConsoleApi } from './support/web-console-api.js';
 
 test.use({ timezoneId: 'Asia/Shanghai' });
 
-const cardFixtures = [
-  ['Commit review', 'MyAgentRoam', 'Review the latest changes and record findings.', '09:30'],
-  ['UAT session analysis', 'MyAgentRoam', 'Summarize findings from the UAT session.', '14:00'],
-  ['Forge queue check', 'MyAgentRoam', 'Check the queue for items that need attention.', ''],
-  ['Research briefing', 'lab', 'Prepare notes and follow up on open research questions.', ''],
-  ['Lab coordination', 'lab', 'Coordinate active work and capture the next steps.', '10:00'],
-  ['AI news watch', 'personal', 'Track new releases and product changes.', ''],
-  ['Codex reset watch', 'personal', 'Watch for Codex reset signals.', '']
-].map(([name, workspaceName, objectivePreview, time], index) => ({
+const cardFixtures = (
+  [
+    ['Commit review', 'MyAgentRoam', 'Review the latest changes and record findings.', '09:30'],
+    ['UAT session analysis', 'MyAgentRoam', 'Summarize findings from the UAT session.', '14:00'],
+    ['Forge queue check', 'MyAgentRoam', 'Check the queue for items that need attention.', ''],
+    ['Research briefing', 'lab', 'Prepare notes and follow up on open research questions.', ''],
+    ['Lab coordination', 'lab', 'Coordinate active work and capture the next steps.', '10:00'],
+    ['AI news watch', 'personal', 'Track new releases and product changes.', ''],
+    ['Codex reset watch', 'personal', 'Watch for Codex reset signals.', '']
+  ] as const
+).map(([name, workspaceName, objectivePreview, time], index) => ({
   nodeId: 'node-1',
   nodeName: 'linux',
   workspaceId: `workspace-${workspaceName}`,

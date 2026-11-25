@@ -33,6 +33,7 @@ describe('shared Console bootstrap', () => {
         order: 0,
         component: {},
         labelKey: 'system',
+        icon: 'system',
         visible: () => true,
         props: ({ request }) => ({ request })
       }
@@ -55,6 +56,7 @@ describe('shared Console bootstrap', () => {
         order: 0,
         component: {},
         labelKey: 'system',
+        icon: 'system',
         visible: () => true,
         props: ({ request }) => ({ request })
       }
@@ -81,6 +83,7 @@ describe('shared Console bootstrap', () => {
           order: 0,
           component: {},
           labelKey: 'system',
+          icon: 'system',
           visible: () => true,
           props: ({ request }) => ({ request })
         }

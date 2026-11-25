@@ -2,7 +2,6 @@ import { expect, test } from '@playwright/test';
 import {
   emitMockSessionEvent,
   fulfillMockSessionWatch,
-  installSessionIdleSocket,
   mockConsoleApi,
   json,
   write
@@ -131,7 +130,6 @@ test('A fresh Watch snapshot restores process activity after observed session id
 test('Idle transitions preserve input and late responses cannot switch back to the previous session', async ({
   page
 }) => {
-  await installSessionIdleSocket(page);
   const writes: {
     readonly url: string;
     readonly csrf: string | undefined;
@@ -147,6 +145,7 @@ test('Idle transitions preserve input and late responses cannot switch back to t
       id: 'session-1',
       workspaceId: 'workspace-1',
       runner: 'codex' as const,
+      externalSessionId: 'mock-native:session-1',
       runnerTitle: '第一会话',
       activity: 'IDLE' as const,
       control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
@@ -155,6 +154,7 @@ test('Idle transitions preserve input and late responses cannot switch back to t
       id: 'session-2',
       workspaceId: 'workspace-1',
       runner: 'codex' as const,
+      externalSessionId: 'mock-native:session-2',
       runnerTitle: '第二会话',
       activity: 'RUNNING' as const,
       control: {
@@ -252,24 +252,35 @@ test('Idle transitions preserve input and late responses cannot switch back to t
   await page.locator('.session-link').filter({ hasText: '第一会话' }).click();
   const input = page.getByRole('textbox', { name: '输入消息' });
   await input.fill('发往第一会话');
+  const messageRequested = page.waitForRequest((request) =>
+    new URL(request.url()).pathname.endsWith('/api/agent-sessions/session-1/messages')
+  );
   await input.press('Enter');
+  const messageRequest = await messageRequested;
   await page.locator('.session-link').filter({ hasText: '第二会话' }).click();
   await expect(page.getByText('第二会话最终回答', { exact: true })).toBeVisible();
   await input.fill('第二会话未发送草稿');
-  await page.evaluate(() =>
-    (
-      window as unknown as { __runIdleSocket: { emitRunActive(): void } }
-    ).__runIdleSocket.emitRunActive()
-  );
+  const liveRun = {
+    id: 'run-session-2-live',
+    sessionId: 'session-2',
+    workspaceId: 'workspace-1',
+    status: 'RUNNING',
+    recoveryState: 'ACTIVE',
+    version: 1
+  };
+  await emitMockSessionEvent(page, 'run', { run: liveRun });
   await expect(page.locator('.composer-working')).toBeVisible();
-  await page.evaluate(() =>
-    (
-      window as unknown as { __runIdleSocket: { emitSessionIdle(): void } }
-    ).__runIdleSocket.emitSessionIdle()
-  );
+  await emitMockSessionEvent(page, 'run', {
+    run: { ...liveRun, status: 'SUCCEEDED', version: 2 }
+  });
+  await emitMockSessionEvent(page, 'session', { session: { ...sessions[1], activity: 'IDLE' } });
   await expect(input).toHaveValue('第二会话未发送草稿');
   await expect(page.locator('.composer-working')).toHaveCount(0);
+  const messageResponded = page.waitForResponse(
+    (response) => response.request() === messageRequest
+  );
   releaseMessage?.();
+  expect(await (await messageResponded).finished()).toBeNull();
   await expect(page.getByRole('heading', { name: '第二会话', exact: true })).toBeVisible();
   await expect(input).toHaveValue('第二会话未发送草稿');
   await expect(page.getByText('第二会话最终回答', { exact: true })).toHaveCount(1);
