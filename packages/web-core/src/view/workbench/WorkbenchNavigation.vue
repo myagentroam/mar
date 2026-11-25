@@ -85,7 +85,9 @@ const props = defineProps<{
 const sidebarView = computed(() =>
   props.scheduleSection === undefined ? props.view : 'schedules'
 );
-const versionLabel = computed(() => `v${props.webVersion}`);
+const versionLabel = computed(() =>
+  translate('navigation.brandVersion', { version: `v${props.webVersion}` })
+);
 const docsPath = computed(() => localizedDocsPath(locale.value, 'getting-started/overview'));
 watch(
   () => props.mobileViewport,
@@ -306,7 +308,7 @@ function runBlankMenuCommand(command: string): void {
             $t('navigation.performanceIndicator')
           }}</MarDropdownItem>
           <MarDropdownItem v-if="documentationAvailable" command="help" icon="document">{{
-            $t('navigation.helpDocumentation')
+            $t('navigation.help')
           }}</MarDropdownItem>
         </MarDropdownMenu>
       </template>
@@ -608,8 +610,24 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .brand-menu-trigger {
+  --mar-action-hover-bg: transparent;
+  position: relative;
   display: block;
   padding: 0;
+}
+
+.brand-menu-trigger:is(:hover, :active, :focus-visible, [aria-expanded='true'])::before {
+  /* Match the artwork inside the square PNG without changing the button or menu anchor. */
+  position: absolute;
+  inset: 20% 3% 26% 5%;
+  border-radius: inherit;
+  background: var(--mar-ui-action-hover-overlay);
+  content: '';
+  pointer-events: none;
+}
+
+.brand-menu-trigger img {
+  position: relative;
 }
 
 .workbench-brand img {

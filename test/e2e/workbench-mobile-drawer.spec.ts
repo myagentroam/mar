@@ -36,8 +36,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(brand).toHaveAttribute('aria-expanded', 'false');
       await brand.tap();
       await expect(brand).toHaveAttribute('aria-expanded', 'true');
-      await expect(menu.getByRole('menuitem')).toHaveText(['v0.10.1', '性能指示器', '帮助文档']);
-      const version = menu.getByRole('menuitem', { name: 'v0.10.1，刷新当前页面' });
+      await expect(menu.getByRole('menuitem')).toHaveText(['版本 v0.10.1', 'Web性能', '帮助']);
+      const version = menu.getByRole('menuitem', { name: '版本 v0.10.1，刷新当前页面' });
       const icons = menu.getByRole('menuitem').locator('svg.mar-icon');
       for (const [index, icon] of ['tag', 'info', 'document'].entries()) {
         await expect(icons.nth(index)).toBeVisible();
@@ -59,7 +59,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.keyboard.press('ArrowDown');
       await expect(version).toBeFocused();
       await page.keyboard.press('ArrowDown');
-      await expect(menu.getByRole('menuitem', { name: '性能指示器' })).toBeFocused();
+      await expect(menu.getByRole('menuitem', { name: 'Web性能' })).toBeFocused();
       await page.keyboard.press('Enter');
       const details = page.getByRole('dialog', { name: 'Web 性能诊断' });
       await expect(menu).toBeHidden();
@@ -72,7 +72,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
       await brand.tap();
       const helpTab = context.waitForEvent('page');
-      await menu.getByRole('menuitem', { name: '帮助文档' }).tap();
+      await menu.getByRole('menuitem', { name: '帮助' }).tap();
       const help = await helpTab;
       await expect(help).toHaveURL(/\/docs\/getting-started\/overview$/u);
       expect(await help.evaluate(() => window.opener)).toBeNull();
@@ -111,14 +111,41 @@ test('Mobile brand menu dismisses over the resource drawer and omits unavailable
   await work.click();
   await expect(drawer).toBeVisible();
   const historyLength = await page.evaluate(() => history.length);
-  await brand.click();
-  await expect(menu.getByRole('menuitem')).toHaveText(['v0.10.1', 'Performance indicator']);
+  const hitArea = await brand.boundingBox();
+  await brand.hover();
+  await expect(brand).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const highlight = await brand.evaluate((button) => {
+    const style = getComputedStyle(button, '::before');
+    return { background: style.backgroundColor, height: parseFloat(style.height) };
+  });
+  expect(highlight.background).not.toBe('rgba(0, 0, 0, 0)');
+  expect(highlight.height).toBeGreaterThan(0);
+  expect(highlight.height).toBeLessThan(hitArea!.height);
+  expect(await brand.boundingBox()).toEqual(hitArea);
+  // The transparent gutter still belongs to the button, not just the painted mark.
+  await brand.click({ position: { x: 2, y: 2 } });
+  await page.mouse.move(0, 0);
+  await expect(menu.getByRole('menuitem')).toHaveText(['version v0.10.1', 'Web performance']);
+  await expect(
+    menu.getByRole('menuitem', { name: 'version v0.10.1, reload current page' })
+  ).toBeVisible();
+  await expect
+    .poll(() => brand.evaluate((button) => getComputedStyle(button, '::before').backgroundColor))
+    .toBe(highlight.background);
   await expect(menu).toBeInViewport();
   expect(await page.evaluate(() => history.length)).toBe(historyLength);
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(brand).toBeFocused();
   await expect(drawer).toBeVisible();
+
+  await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US`);
+  await brand.click();
+  await expect(menu.getByRole('menuitem')).toHaveText([
+    'version v0.10.1',
+    'Web performance',
+    'Help'
+  ]);
 });
 
 test('Desktop activity panels cover resize handles without disabling uncovered dragging', async ({

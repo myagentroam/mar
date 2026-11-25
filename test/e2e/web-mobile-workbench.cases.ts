@@ -724,11 +724,11 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await logo.click();
   const brandMenu = page.getByRole('menu', { name: 'MyAgentRoam 菜单' });
   await expect(brandMenu.getByRole('menuitem')).toHaveText([
-    `v${currentVersion}`,
-    '性能指示器',
-    '帮助文档'
+    `版本 v${currentVersion}`,
+    'Web性能',
+    '帮助'
   ]);
-  await brandMenu.getByRole('menuitem', { name: '性能指示器' }).click();
+  await brandMenu.getByRole('menuitem', { name: 'Web性能' }).click();
   const diagnostics = page.getByRole('dialog', { name: 'Web 性能诊断' });
   await expect(brandMenu).toBeHidden();
   await expect(diagnostics.getByText(/DOM [1-9]\d* · 消息卡片/u)).toBeVisible();
@@ -1508,7 +1508,6 @@ for (const labels of [
     work: '工作',
     help: '帮助',
     brand: 'MyAgentRoam 菜单',
-    helpItem: '帮助文档',
     activity: '会话与通知',
     theme: 'vscode-dark-2026'
   },
@@ -1518,7 +1517,6 @@ for (const labels of [
     work: 'Work',
     help: 'Help',
     brand: 'MyAgentRoam menu',
-    helpItem: 'Help documentation',
     activity: 'Sessions & notifications',
     theme: 'daylight'
   }
@@ -1613,7 +1611,7 @@ for (const labels of [
       const menu = page.getByRole('menu', { name: labels.brand });
       await expect(menu).toBeInViewport();
       await expect(
-        menu.getByRole('menuitem', { name: labels.helpItem }).locator('svg')
+        menu.getByRole('menuitem', { name: labels.help, exact: true }).locator('svg')
       ).toHaveAttribute('data-mar-icon', 'document');
       if (width === 390)
         await page.screenshot({ path: testInfo.outputPath('mobile-brand-menu.png') });

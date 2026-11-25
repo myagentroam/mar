@@ -47,7 +47,7 @@ Click or tap the icon, or press `Ctrl/Cmd+Shift+E`, to open the custom Recent Se
 
 On desktop, click the info icon at the bottom left to open or close this page’s Web performance diagnostics. Hovering does not open it. Click outside to dismiss it, or use the copy button in the panel to copy detailed diagnostics.
 
-On mobile, tap the MyAgentRoam logo in the upper-left corner to see the current Web version, open performance diagnostics, or access the help docs when available. The help docs open in a new tab.
+On mobile, tap the MyAgentRoam logo in the upper-left corner to open the brand menu. Tap **version vX.X.X** to reload the current page, **Web performance** to open diagnostics, or **Help** (when available) to open the docs in a new tab.
 
 ## Themes
 
