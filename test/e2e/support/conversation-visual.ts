@@ -39,7 +39,7 @@ export async function verifyConversationThemes(
   for (const dark of [false, true]) {
     await page.evaluate((enabled) => {
       document.documentElement.classList.toggle('dark', enabled);
-      if (enabled) document.documentElement.dataset.theme = 'vscode-dark-2026';
+      if (enabled) document.documentElement.dataset.theme = 'dark';
       else delete document.documentElement.dataset.theme;
     }, dark);
     const disclosureRows = page.locator('.process-heading, .conversation-item summary:visible');

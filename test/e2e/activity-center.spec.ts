@@ -17,7 +17,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => fixture.close());
 
 async function expectActivityElevation(popover: Locator, theme: string) {
-  const dark = theme === 'vscode-dark-2026';
+  const dark = theme === 'dark';
   await expect(popover).toBeVisible();
   const background = await popover.evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(resolvedColorToHex(background)).toBe(dark ? '#2b2b2b' : '#ffffff');
@@ -261,7 +261,7 @@ test('Aggregated notifications preserve upload recovery, removal and cancellatio
 test.describe('Activity list feedback with a mouse', () => {
   test.use({ hasTouch: false });
 
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     test(`Single notification preview matches its row in the notification list in ${theme}`, async ({
       page
     }) => {
@@ -316,7 +316,7 @@ test.describe('Activity list feedback with a mouse', () => {
       await expect(badge).toBeVisible();
       await expect(row).toHaveCSS('background-color', defaultBackground);
       await expect(row).toHaveCSS('border-inline-start-width', '0px');
-      if (theme === 'vscode-dark-2026') {
+      if (theme === 'dark') {
         await panel.screenshot({ path: testInfo.outputPath('notification-unread-default.png') });
       }
       await title.hover();
@@ -326,7 +326,7 @@ test.describe('Activity list feedback with a mouse', () => {
       const hoverBackground = await row.evaluate(
         (element) => getComputedStyle(element).backgroundColor
       );
-      if (theme === 'vscode-dark-2026') {
+      if (theme === 'dark') {
         await panel.screenshot({ path: testInfo.outputPath('notification-unread-hover.png') });
       }
       await remove.hover();
@@ -396,7 +396,7 @@ test.describe('Activity list feedback with a mouse', () => {
         await expect(button).toHaveCSS('outline-width', '2px');
         await expect(button).toHaveCSS('outline-style', 'solid');
         await expect(childRow).toHaveCSS('background-color', defaultBackground);
-        if (theme === 'vscode-dark-2026' && width === 1280) {
+        if (theme === 'dark' && width === 1280) {
           await panel.locator('input[value="MAIN"]').click();
           await rows.first().hover();
           await panel.screenshot({ path: testInfo.outputPath('recent-session-hover-dark.png') });
@@ -429,7 +429,7 @@ test('Activity entry distinguishes all four states and caps unread counts', asyn
 });
 
 for (const width of [1280, 390]) {
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     test(`Activity tabs share MarTabs workbench styling and preserve keyboard activation at ${width}px ${theme}`, async ({
       page
     }, testInfo) => {
@@ -753,7 +753,7 @@ for (const width of [1280, 390]) {
       await expect(page.locator('output')).toHaveText('session-0');
     });
   }
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     test(`Activity previews stay near the entry without stealing menus or focus at ${width}px ${theme}`, async ({
       page
     }, testInfo) => {

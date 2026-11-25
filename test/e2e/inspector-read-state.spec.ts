@@ -49,7 +49,7 @@ function textContrast(locator: Locator) {
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Inspector result rows share visible hover and keyboard focus in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -224,7 +224,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 }
 
 for (const width of [1280, 390]) {
-  const theme = width < 768 ? 'daylight' : 'vscode-dark-2026';
+  const theme = width < 768 ? 'daylight' : 'dark';
   test(`Inspector feedback scrolls with the content it describes at ${width}px`, async ({
     page
   }) => {
@@ -540,7 +540,7 @@ async function expectReadableState(button: Locator) {
   await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`Settings, directory and HTML refresh actions recover: ${theme} ${width}`, async ({
       page
@@ -723,7 +723,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`Inspector read feedback keeps text, indentation and neutral actions: ${theme} ${width}`, async ({
       browser

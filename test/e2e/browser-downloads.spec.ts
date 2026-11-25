@@ -305,7 +305,7 @@ test('Browser download states fit dark desktop and light narrow dialogs', async 
   try {
     await page.setViewportSize({ width: 960, height: 680 });
     await page.goto(`${fixture.url}browser-downloads.html?locale=zh-CN`);
-    await page.evaluate(() => (document.documentElement.dataset.theme = 'vscode-dark-2026'));
+    await page.evaluate(() => (document.documentElement.dataset.theme = 'dark'));
     const downloads = page.getByRole('button', { name: '下载', exact: true });
     await expect(downloads).toBeEnabled();
     const items = [

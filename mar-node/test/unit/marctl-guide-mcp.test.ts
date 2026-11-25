@@ -98,6 +98,15 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     for (const guidance of [await skill.load(), marctlInstructions]) {
       expect(guidance).toContain('marctl agents history <id>');
       expect(guidance).toContain('agents view returns state, Goal and recent activity only');
+      expect(guidance).toContain('schedule list [--current | --session <session-id>]');
+      expect(guidance).toContain('no need to look up its ID or list tasks first');
+      expect(guidance).toContain(
+        'For a new task, use a one-time trigger unless recurrence was requested'
+      );
+      expect(guidance).toContain('its next occurrence in the known Node time zone');
+      expect(guidance).toContain('ask only for the missing detail');
+      expect(guidance).toContain('without a follow-up query');
+      expect(guidance).toContain('check with schedule list or get before retrying');
       expect(guidance).toContain('schedule get --task <task-id>');
       expect(guidance).toContain('schedule runs --task <task-id>');
       expect(guidance).toContain('schedule create --name <name> --triggers-file <file|->');
@@ -105,11 +114,14 @@ it('publishes paired full MCP and management-only Host guidance without credenti
       expect(guidance).toContain('Daily at 10:00 and 20:00');
       expect(guidance).toContain('Once on a chosen date');
       expect(guidance).toContain('Supplying --triggers-file replaces all triggers');
+      expect(guidance).toContain(
+        'preserve any times and recurrence the user did not ask to change'
+      );
       expect(guidance).not.toContain('--groups-file');
       expect(guidance).not.toContain('--cron');
     }
     expect(await skill.load()).toContain(
-      'If a request result is unknown, inspect history before retrying.'
+      'If message delivery is uncertain, inspect Session history before retrying.'
     );
     expect(client.getServerVersion()?.name).toBe('mar_cli');
     const { tools } = await client.listTools();
@@ -140,7 +152,7 @@ it('publishes paired full MCP and management-only Host guidance without credenti
       '--scope tree|active',
       'agents start --title <title>',
       'manual terminal may omit it',
-      'inspect history before retrying',
+      'inspect Session history before retrying',
       'Session IDs and parent relationships do not grant authorization'
     ]) {
       expect(result.content).toEqual([{ type: 'text', text: expect.stringContaining(guidance) }]);

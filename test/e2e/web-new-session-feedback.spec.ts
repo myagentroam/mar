@@ -11,7 +11,7 @@ async function openWorkspaceDraft(page: Page) {
 }
 
 for (const { width, theme, scheme } of [
-  { width: 1280, theme: 'vscode-dark-2026', scheme: 'dark' },
+  { width: 1280, theme: 'dark', scheme: 'dark' },
   { width: 390, theme: 'daylight', scheme: 'light' }
 ]) {
   test(`New session canvas matches its header in ${theme} at ${width}px`, async ({
@@ -37,7 +37,7 @@ for (const { width, theme, scheme } of [
 
 for (const { width, theme, lateSuccess } of [
   { width: 1280, theme: 'daylight', lateSuccess: false },
-  { width: 390, theme: 'vscode-dark-2026', lateSuccess: true }
+  { width: 390, theme: 'dark', lateSuccess: true }
 ]) {
   test(`New session feedback preserves the Composer through submission and recovery at ${width}px`, async ({
     page

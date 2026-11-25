@@ -427,7 +427,7 @@ async function confirmLogout(): Promise<void> {
             @update:model-value="setTheme($event as ThemePreference)"
           >
             <MarOption :label="t('settings.light')" value="daylight" />
-            <MarOption :label="t('settings.dark')" value="vscode-dark-2026" />
+            <MarOption :label="t('settings.dark')" value="dark" />
             <MarOption
               v-for="item in customThemes"
               :key="item.id"

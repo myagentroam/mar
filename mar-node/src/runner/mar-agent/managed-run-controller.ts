@@ -155,17 +155,21 @@ interface MarAgentManagedRunControllerOptions {
   readonly attachNetworkContext?: import('./session-runtime.js').MarAgentRuntimeResources['attachNetworkContext'];
 }
 
+type ManagedSteer = (
+  input: import('../contracts.js').RunnerSteerInput
+) => Promise<import('../contracts.js').RunnerSteerResult>;
+
+/** Owns each Node execution's SDK binding and teardown; input admission remains in the SDK. */
 export class MarAgentManagedRunController {
   readonly #mcpClients = new MarAgentMcpClientCache();
   readonly #executions = new Map<
     string,
-    { cancel(): void; cancelTitle(): void; settled: Promise<void> }
-  >();
-  readonly #steerTargets = new Map<
-    string,
-    (
-      input: import('../contracts.js').RunnerSteerInput
-    ) => Promise<import('../contracts.js').RunnerSteerResult>
+    {
+      cancel(): void;
+      cancelTitle(): void;
+      settled: Promise<void>;
+      steer: Promise<ManagedSteer | undefined>;
+    }
   >();
   readonly #runtimes: MarAgentSessionRuntimeRegistry;
   readonly #questions = new Map<string, PendingInteraction<Record<string, unknown>>>();
@@ -308,13 +312,11 @@ export class MarAgentManagedRunController {
     };
   }
 
-  steer(
+  async steer(
     input: import('../contracts.js').RunnerSteerInput
   ): Promise<import('../contracts.js').RunnerSteerResult> {
-    return (
-      this.#steerTargets.get(input.expectedExecutionId)?.(input) ??
-      Promise.resolve({ status: 'notAccepted' })
-    );
+    const target = await this.#executions.get(input.expectedExecutionId)?.steer;
+    return target?.(input) ?? { status: 'notAccepted' };
   }
 
   start(envelope: NodeEnvelope): void {
@@ -441,6 +443,8 @@ export class MarAgentManagedRunController {
     const browserUseLifetime = new AbortController();
     let browserCli: Awaited<ReturnType<typeof openBrowserCliScope>> | undefined;
     const titleController = new AbortController();
+    const steerTarget = Promise.withResolvers<ManagedSteer | undefined>();
+    if (input.mode === 'compact') steerTarget.resolve(undefined);
     let cancelExecution: (() => void) | undefined;
     // Own cancellation before any asynchronous preparation, not only after SDK admission.
     let resolveSettled!: () => void;
@@ -451,10 +455,12 @@ export class MarAgentManagedRunController {
       cancel: () => {
         if (controller.signal.aborted) return;
         controller.abort();
+        steerTarget.resolve(undefined);
         cancelExecution?.();
       },
       cancelTitle: () => titleController.abort(),
-      settled
+      settled,
+      steer: steerTarget.promise
     };
     this.#executions.set(input.runId, execution);
     let runtime: MarAgentSessionRuntime | undefined;
@@ -672,7 +678,7 @@ export class MarAgentManagedRunController {
       cancelExecution = () => handle.cancel();
       const steerNormalizer = runtime.normalizer;
       if (input.mode !== 'compact')
-        this.#steerTargets.set(input.runId, async (request) => {
+        steerTarget.resolve(async (request) => {
           if (
             controller.signal.aborted ||
             (request.modelId && request.modelId !== input.model.id) ||
@@ -859,7 +865,7 @@ export class MarAgentManagedRunController {
         this.#normalizers.delete(input.runId);
 
         this.#executions.delete(input.runId);
-        this.#steerTargets.delete(input.runId);
+        steerTarget.resolve(undefined);
         if (cancelledDuringPreparation)
           terminalEvent = {
             eventType: 'run.cancelled',

@@ -22,8 +22,9 @@ const entry = {
 };
 
 describe('MAR native steer integration', () => {
-  it('binds the Node execution to its SDK target and rejects only incompatible explicit configuration', async () => {
+  it('waits for the SDK target during startup and checks explicit configuration', async () => {
     const release = Promise.withResolvers<void>();
+    const prepared = Promise.withResolvers<void>();
     const cancel = vi.fn();
     const handle = {
       executionId: 'sdk-execution',
@@ -47,25 +48,28 @@ describe('MAR native steer integration', () => {
       cancel: vi.fn(),
       steer
     };
-    const createAgent = vi.fn(async () => ({
-      createSession: vi.fn(async () => session),
-      openSession: vi.fn(async () => session),
-      listSessions: vi.fn(),
-      getSession: vi.fn(async () => ({
-        id: session.id,
-        title: 'Test',
-        workspace: '/workspace',
-        source: { type: 'user' as const },
-        automaticTitlePending: false
-      })),
-      setSessionTitle: vi.fn(),
-      setSystemInstruction: vi.fn(),
-      reconfigureModels: vi.fn(),
-      extensionDiagnostics: () => [],
-      deleteSession: vi.fn(),
-      clearSession: vi.fn(),
-      dispose: vi.fn()
-    }));
+    const createAgent = vi.fn(async () => {
+      await prepared.promise;
+      return {
+        createSession: vi.fn(async () => session),
+        openSession: vi.fn(async () => session),
+        listSessions: vi.fn(),
+        getSession: vi.fn(async () => ({
+          id: session.id,
+          title: 'Test',
+          workspace: '/workspace',
+          source: { type: 'user' as const },
+          automaticTitlePending: false
+        })),
+        setSessionTitle: vi.fn(),
+        setSystemInstruction: vi.fn(),
+        reconfigureModels: vi.fn(),
+        extensionDiagnostics: () => [],
+        deleteSession: vi.fn(),
+        clearSession: vi.fn(),
+        dispose: vi.fn()
+      };
+    });
     const host = {
       ...executionActivity(),
       adopt: vi.fn(),
@@ -118,7 +122,6 @@ describe('MAR native steer integration', () => {
       images: []
     });
     try {
-      await vi.waitFor(() => expect(session.run).toHaveBeenCalledOnce());
       const request: RunnerSteerInput = {
         expectedExecutionId: 'node-execution',
         prompt: entry.text,
@@ -130,18 +133,18 @@ describe('MAR native steer integration', () => {
         collaborationMode: 'default',
         images: []
       };
-      for (const override of [
-        { expectedExecutionId: 'other' },
-        { modelId: 'other' },
-        { effort: 'high' },
-        { access: 'auto' },
-        { collaborationMode: 'plan' as const }
-      ])
-        expect(await controller.steer({ ...request, ...override })).toEqual({
-          status: 'notAccepted'
-        });
-      expect(steer).not.toHaveBeenCalled();
-      expect(await controller.steer(request)).toMatchObject({
+      const onEarlyAdmission = vi.fn();
+      const earlyAdmission = controller.steer(request).then((receipt) => {
+        onEarlyAdmission(receipt);
+        return receipt;
+      });
+      expect(await controller.steer({ ...request, expectedExecutionId: 'other' })).toEqual({
+        status: 'notAccepted'
+      });
+      expect(onEarlyAdmission).not.toHaveBeenCalled();
+      expect(session.run).not.toHaveBeenCalled();
+      prepared.resolve();
+      expect(await earlyAdmission).toMatchObject({
         status: 'accepted',
         item: { kind: 'user_message', payload: { text: entry.text } }
       });
@@ -152,6 +155,16 @@ describe('MAR native steer integration', () => {
         clientMessageId: entry.clientMessageId,
         images: []
       });
+      for (const override of [
+        { modelId: 'other' },
+        { effort: 'high' },
+        { access: 'auto' },
+        { collaborationMode: 'plan' as const }
+      ])
+        expect(await controller.steer({ ...request, ...override })).toEqual({
+          status: 'notAccepted'
+        });
+      expect(steer).toHaveBeenCalledTimes(1);
       for (const inherited of [{ modelId: '' }, { effort: '' }])
         expect(await controller.steer({ ...request, ...inherited })).toMatchObject({
           status: 'accepted'
@@ -160,6 +173,7 @@ describe('MAR native steer integration', () => {
       expect(cancel).not.toHaveBeenCalled();
       expect(session.run).toHaveBeenCalledOnce();
     } finally {
+      prepared.resolve();
       release.resolve();
       await running;
       await controller.dispose();

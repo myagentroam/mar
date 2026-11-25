@@ -6,7 +6,7 @@ import {
   MarDropdownMenu,
   type MarDropdownInstance
 } from '@myagentroam/mar-ui/dropdown';
-import { marIcon } from '@myagentroam/mar-ui/icons';
+import { MarIcon, marIcon, type MarIconName } from '@myagentroam/mar-ui/icons';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import logoIcon from '../../assets/logo-icon.png';
@@ -22,7 +22,6 @@ import type {
 } from '../../service/workbench-notification-service.js';
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
-import { MarIcon } from '@myagentroam/mar-ui/icons';
 import WorkbenchActivityCenter from './WorkbenchActivityCenter.vue';
 import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
 import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
@@ -38,6 +37,27 @@ import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbe
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
 import { scheduleSections, type ScheduleSection } from '../schedule/scheduled-task-navigation.js';
+
+const settingsIcons = {
+  account: 'user',
+  usage: 'bar-chart',
+  appearance: 'sun',
+  'custom-themes': 'palette',
+  notifications: 'notification',
+  'quick-prompts': 'quote',
+  'personal-instructions': 'document',
+  git: 'branch',
+  browser: 'web',
+  registration: 'desktop',
+  shortcuts: 'keyboard',
+  about: 'info'
+} as const satisfies Record<SettingsSection, MarIconName>;
+
+const scheduleIcons = {
+  mine: 'calendar-check',
+  all: 'calendar',
+  history: 'clock'
+} as const satisfies Record<ScheduleSection, MarIconName>;
 
 const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;
@@ -58,7 +78,11 @@ const props = defineProps<{
   readonly settingsSection: SettingsSection;
   readonly settingsItems: readonly { readonly id: SettingsSection; readonly label: string }[];
   readonly managementSection: ManagementSection;
-  readonly managementItems: readonly { readonly id: ManagementSection; readonly label: string }[];
+  readonly managementItems: readonly {
+    readonly id: ManagementSection;
+    readonly label: string;
+    readonly icon: MarIconName;
+  }[];
   readonly sidebarCollapsed: boolean;
   readonly mobileSidebarOpen: boolean;
   readonly sidebarContentVisible: boolean;
@@ -85,7 +109,10 @@ const props = defineProps<{
 const sidebarView = computed(() =>
   props.scheduleSection === undefined ? props.view : 'schedules'
 );
-const versionLabel = computed(() => `v${props.webVersion}`);
+const version = computed(() => `v${props.webVersion}`);
+const mobileVersionLabel = computed(() =>
+  translate('navigation.brandVersion', { version: version.value })
+);
 const docsPath = computed(() => localizedDocsPath(locale.value, 'getting-started/overview'));
 watch(
   () => props.mobileViewport,
@@ -299,21 +326,21 @@ function runBlankMenuCommand(command: string): void {
           <MarDropdownItem
             command="reload"
             icon="tag"
-            :aria-label="$t('navigation.reloadVersion', { version: versionLabel })"
-            >{{ versionLabel }}</MarDropdownItem
+            :aria-label="$t('navigation.reloadVersion', { version: mobileVersionLabel })"
+            >{{ mobileVersionLabel }}</MarDropdownItem
           >
           <MarDropdownItem command="performance" icon="info">{{
             $t('navigation.performanceIndicator')
           }}</MarDropdownItem>
           <MarDropdownItem v-if="documentationAvailable" command="help" icon="document">{{
-            $t('navigation.helpDocumentation')
+            $t('navigation.help')
           }}</MarDropdownItem>
         </MarDropdownMenu>
       </template>
     </MarDropdown>
     <a
       v-else
-      v-tooltip="$t('common.productVersion', { version: webVersion })"
+      v-tooltip="$t('common.productVersion', { version })"
       class="brand-home-link"
       href="/"
       :aria-label="$t('navigation.home')"
@@ -469,7 +496,8 @@ function runBlankMenuCommand(command: string): void {
           type="button"
           @click="emit('selectScheduleSection', section)"
         >
-          {{ $t(`generated.scheduledSession.${section}`) }}
+          <MarIcon :name="scheduleIcons[section]" size="1rem" />
+          <span>{{ $t(`generated.scheduledSession.${section}`) }}</span>
         </button>
       </nav>
       <template v-else-if="displayUtility === undefined && displayView === 'nodes'">
@@ -542,7 +570,8 @@ function runBlankMenuCommand(command: string): void {
             type="button"
             @click="emit('selectSettings', item.id)"
           >
-            {{ item.label }}
+            <MarIcon :name="settingsIcons[item.id]" size="1rem" />
+            <span>{{ item.label }}</span>
           </button>
         </nav>
         <nav
@@ -559,7 +588,8 @@ function runBlankMenuCommand(command: string): void {
             type="button"
             @click="emit('selectManagement', item.id)"
           >
-            {{ item.label }}
+            <MarIcon :name="item.icon" size="1rem" />
+            <span>{{ item.label }}</span>
           </button>
         </nav>
       </template>
@@ -608,8 +638,24 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .brand-menu-trigger {
+  --mar-action-hover-bg: transparent;
+  position: relative;
   display: block;
   padding: 0;
+}
+
+.brand-menu-trigger:is(:hover, :active, :focus-visible, [aria-expanded='true'])::before {
+  /* Match the artwork inside the square PNG without changing the button or menu anchor. */
+  position: absolute;
+  inset: 20% 3% 26% 5%;
+  border-radius: inherit;
+  background: var(--mar-ui-action-hover-overlay);
+  content: '';
+  pointer-events: none;
+}
+
+.brand-menu-trigger img {
+  position: relative;
 }
 
 .workbench-brand img {
@@ -819,8 +865,10 @@ function runBlankMenuCommand(command: string): void {
 }
 
 .settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   min-height: var(--mar-settings-row-height);
-  width: 100%;
   border: 0;
   border-radius: var(--mar-radius-control);
   background: transparent;

@@ -139,9 +139,7 @@ for (const [view, name, title, desktopWidth, actionCount] of [
     await expect.poll(() => actionCell.evaluate((cell) => cell.clientWidth)).toBe(desktopWidth);
     await expectDescriptionLayout(false);
     if (view === 'organizations') {
-      await page
-        .locator('html')
-        .evaluate((root) => root.setAttribute('data-theme', 'vscode-dark-2026'));
+      await page.locator('html').evaluate((root) => root.setAttribute('data-theme', 'dark'));
       await expectDescriptionLayout(false);
       await descriptions.screenshot({
         path: testInfo.outputPath('organization-details-desktop.png')

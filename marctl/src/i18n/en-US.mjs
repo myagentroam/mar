@@ -65,8 +65,8 @@ Management:
   {program} rename [<id>] --title <name> [--json]
   {program} prompt get|clear [<id>] [--json]
   {program} prompt set [<id>] (-m <text> | --message-file <file|->) [--json]
-  {program} schedule list [--session <session-id>] [--cursor <cursor>]
-    [--limit <1..100>] [--json]
+  {program} schedule list [--current | --session <session-id>]
+    [--cursor <cursor>] [--limit <1..100>] [--json]
   {program} schedule get --task <task-id> [--json]
   {program} schedule runs --task <task-id> [--page <page>] [--json]
   {program} schedule create --name <name> --triggers-file <file|->
@@ -98,6 +98,7 @@ Input and results:
   Positive timeouts use the requested duration; maximum is 5m.
   Waiting does not stop the task.
   -m and --message-file are exclusive; files use UTF-8 and - reads stdin.
+  Schedule list covers the Workspace by default. --current requires a Session.
   Schedule creation defaults to the current Session; --new-session creates a
   Session at each trigger. Specify at least one field when updating a task.
   --triggers-file reads a JSON array; each entry has one HH:mm in the Node
@@ -246,6 +247,7 @@ No configuration, authorization, or Server connection is required.`
 
     userContextUnavailable: 'This Node session has no valid marctl user authorization.',
     sessionContextRequired: 'No current Session is available; specify a Session ID explicitly.',
+    scheduleListContextRequired: 'No current Session is available; use --session <session-id>.',
     scheduleContextRequired: 'No current Session is available; use --session or --new-session.',
     scheduleTriggersInvalid:
       'Provide a non-empty JSON array (UTF-8, at most 64,000 characters) with --triggers-file.',

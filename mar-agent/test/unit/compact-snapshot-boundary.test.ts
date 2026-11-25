@@ -34,9 +34,9 @@ function nativeItem(protocol: AgentModelConfiguration['protocol'], index: number
       : { type: 'redacted_thinking', data: `opaque-${index}` };
 }
 
-describe('Compact thinking tail through SDK and JSONL', () => {
+describe('Compact snapshot boundary through SDK and JSONL', () => {
   it.each(['tool', 'input'] as const)(
-    'retains %s-image references without reading image bytes during manual Compact',
+    'archives %s images in the snapshot without loading bytes during manual Compact',
     async (source) => {
       const home = await mkdtemp(join(tmpdir(), 'mar-thinking-media-retention-'));
       homes.push(home);
@@ -139,10 +139,9 @@ describe('Compact thinking tail through SDK and JSONL', () => {
           ).status
         ).toBe('completed');
       expect(requests.at(-1)!.messages.flatMap((message) => message.images ?? [])).toHaveLength(1);
-      const acceptedPixels = requests
-        .at(-1)!
-        .messages.flatMap((message) => message.images ?? [])[0]!.dataBase64;
-      expect(acceptedPixels).toBeTypeOf('string');
+      const observed = requests.at(-1)!.messages.flatMap((message) => message.images ?? [])[0]!;
+      expect(observed.dataBase64).toBeTypeOf('string');
+      expect(observed.resourceId).toBeTypeOf('string');
       const resourceReads = vi.spyOn(JsonlSessionStore.prototype, 'readResource');
       expect((await session.compact().result()).status).toBe('completed');
       expect(resourceReads).not.toHaveBeenCalled();
@@ -152,45 +151,33 @@ describe('Compact thinking tail through SDK and JSONL', () => {
         const checkpoint = state.contextRecords.findLast(
           (record) => record.type === 'compact.completed'
         )!;
-        const retained = (checkpoint.payload as { retainedModelContext: ModelRequest['messages'] })
-          .retainedModelContext;
-        const image = retained.find((message) =>
-          source === 'tool'
-            ? message.role === 'tool' && message.callId === 'image'
-            : message.role === 'user' && message.content === 'Retained image input.'
-        )!.images;
-        expect(image).toHaveLength(1);
-        expect(image![0]).toMatchObject({ resourceId: expect.any(String), mimeType: 'image/png' });
-        expect(image![0]!.dataBase64).toBeUndefined();
+        const retained =
+          (checkpoint.payload as { retainedModelContext?: ModelRequest['messages'] })
+            .retainedModelContext ?? [];
+        expect(retained.flatMap((message) => message.images ?? [])).toEqual([]);
+        expect(await store.readResource(session.id, observed.resourceId!)).toEqual({
+          mimeType: 'image/png',
+          dataBase64: observed.dataBase64
+        });
       } finally {
         await store.close();
       }
       expect((await session.run({ prompt: 'Continue without restart.' }).result()).status).toBe(
         'completed'
       );
-      expect(
-        requests
-          .at(-1)!
-          .messages.flatMap((message) => message.images ?? [])
-          .map((image) => image.dataBase64)
-      ).toEqual([acceptedPixels]);
+      expect(requests.at(-1)!.messages.flatMap((message) => message.images ?? [])).toEqual([]);
       await agent.dispose();
       agents.delete(agent);
       agent = await create();
       const reopened = await agent.openSession(session.id);
       expect((await reopened.run({ prompt: 'Continue.' }).result()).status).toBe('completed');
-      expect(
-        requests
-          .at(-1)!
-          .messages.flatMap((message) => message.images ?? [])
-          .map((image) => image.dataBase64)
-      ).toEqual([acceptedPixels]);
+      expect(requests.at(-1)!.messages.flatMap((message) => message.images ?? [])).toEqual([]);
     }
   );
 
   for (const protocol of ['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const) {
     it.each(['manual', 'automatic', 'smart'] as const)(
-      `retains three complete items with %s (${protocol})`,
+      `does not pull native items back across the %s Compact boundary (${protocol})`,
       async (trigger) => {
         const home = await mkdtemp(join(tmpdir(), 'mar-thinking-retention-'));
         homes.push(home);
@@ -294,24 +281,23 @@ describe('Compact thinking tail through SDK and JSONL', () => {
         expect(generatedInputs).toHaveLength(1);
         expect(generatedInputs[0]).toEqual(expect.arrayContaining(['seed-0', 'seed-3']));
 
-        // Recompaction must preserve distinct native items already sourced from a checkpoint.
+        // A second Compact must not bring archived native items back into active history.
         if (trigger === 'manual') {
           expect((await session.compact().result()).status).toBe('completed');
           expect(generatedInputs).toHaveLength(2);
         }
-        const expected = [1, 2, 3].map((index) => nativeItem(protocol, index));
         const store = await JsonlSessionStore.open(home);
         try {
           const state = await store.readExecutionState(session.id);
           const checkpoint = state.contextRecords.findLast(
             (record) => record.type === 'compact.completed'
           )!;
-          const payload = checkpoint.payload as { retainedModelContext: ModelRequest['messages'] };
+          const payload = checkpoint.payload as { retainedModelContext?: ModelRequest['messages'] };
           expect(
-            payload.retainedModelContext
+            (payload.retainedModelContext ?? [])
               .filter((message) => message.role === 'provider')
               .map((message) => message.item)
-          ).toEqual(expected);
+          ).toEqual([]);
           const restored = await restoreMessages(store, session.id, state.contextRecords, {
             includeImages: false
           });
@@ -319,7 +305,7 @@ describe('Compact thinking tail through SDK and JSONL', () => {
             restored.messages
               .filter((message) => message.role === 'provider')
               .map((message) => message.item)
-          ).toEqual(expected);
+          ).toEqual([]);
           for (const content of ['seed-2', 'seed-3'])
             expect(restored.messages.filter((message) => message.content === content)).toHaveLength(
               1
@@ -339,7 +325,7 @@ describe('Compact thinking tail through SDK and JSONL', () => {
             .at(-1)!
             .messages.filter((message) => message.role === 'provider')
             .map((message) => message.item)
-        ).toEqual(expected);
+        ).toEqual([]);
       }
     );
   }

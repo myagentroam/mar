@@ -1,4 +1,4 @@
-import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
+import { THOUGHT_TOOL_NAME } from '../runtime/context/thought-contract.js';
 
 export function toolUsagePrompt(
   tools: readonly string[],

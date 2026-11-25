@@ -17,7 +17,7 @@ lastUpdated: 2026-11-25
 
 桌面端点击左下角的信息图标可查看或收起当前页面的 Web 性能诊断；悬停不会打开。点击面板外也可关闭，面板内可复制详细诊断信息。
 
-移动端点击左上角的 MyAgentRoam 标志，可查看当前 Web 版本、打开性能指示器或访问帮助文档（如已提供）。帮助文档在新标签页打开。
+移动端点击左上角的 MyAgentRoam 标志可打开品牌菜单。点击“版本 vX.X.X”刷新当前页面；“Web性能”打开性能诊断，“帮助”（如已提供）在新标签页打开。
 
 ## 前置条件
 
@@ -80,7 +80,9 @@ JSON 使用 `version: 1`、`name` 和 `colors`，不再使用 `base`。`colors` 
 
 可读文字分为主文字 `--mar-text-primary`、次级文字 `--mar-text-secondary` 和辅助文字 `--mar-text-muted`。例如资源树、工作区会话和托管对话列表以主文字显示选中名称、以次级文字显示未选中名称，时间和辅助说明使用辅助文字。禁用控件的文字单独配置。
 
-`--mar-conversation-activity-fg` 设置对话当前阶段圆环和输入框上方状态条的颜色。`--mar-conversation-activity-fill` 设置发送按钮和通知未读数字角标的实心底色，图标和数字自动选择对比度更高的黑色或白色。如果自定义主题只设置了活动前景色，实心底色沿用该颜色。普通主按钮仍使用 `--mar-control-primary-bg`、`--mar-control-primary-hover`、`--mar-control-primary-active`，并搭配 `--mar-control-primary-fg`；键盘焦点使用 `--mar-control-focus`。
+`--mar-conversation-activity-fg` 设置对话当前阶段圆环和输入框上方状态条的颜色。`--mar-conversation-activity-fill` 设置发送按钮和通知未读数字角标的实心底色，图标和数字自动选择对比度更高的黑色或白色。如果自定义主题只设置了活动前景色，实心底色沿用该颜色。
+
+实心主按钮可在颜色字段帮助中搜索 `--mar-button-primary-`，独立配置文字、底色和描边，不影响勾选控件或加载环。未配置的字段使用默认深色主题对应的按钮颜色。键盘焦点使用 `--mar-control-focus`。
 
 只有 **JSON 语法错误**阻止保存或导出。缺失名称、未知字段或变量、无效颜色及低对比度只提示警告。保存和导出保留未知与无效内容，但应用时忽略；旧 `base` 字段也仅保留并提示未知字段，不再改变缺色回退规则。不执行任意 CSS、URL 或脚本。对比度检查仅覆盖显式填写的不透明颜色组合，不代表完整的可访问性认证。
 

@@ -28,6 +28,7 @@ export function createEnterpriseManagementPages(): readonly ManagementPageDefini
       id: 'organizations',
       order: 10,
       labelKey: 'navigation.organizations',
+      icon: 'organization',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/OrganizationManagementPage.vue'),
         loadingComponent,
@@ -43,6 +44,7 @@ export function createEnterpriseManagementPages(): readonly ManagementPageDefini
       id: 'users',
       order: 20,
       labelKey: 'navigation.users',
+      icon: 'users',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/EnterpriseUserManagementPage.vue'),
         loadingComponent,
@@ -59,6 +61,7 @@ export function createEnterpriseManagementPages(): readonly ManagementPageDefini
       id: 'oauth',
       order: 100,
       labelKey: 'navigation.oauth',
+      icon: 'oauth',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/OAuthManagementPage.vue'),
         loadingComponent,
@@ -71,6 +74,7 @@ export function createEnterpriseManagementPages(): readonly ManagementPageDefini
       id: 'audit',
       order: 120,
       labelKey: 'navigation.audit',
+      icon: 'audit',
       component: defineAsyncComponent({
         loader: () => import('../view/settings/AuditManagementPage.vue'),
         loadingComponent,

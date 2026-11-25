@@ -103,9 +103,9 @@ test('Node management aligns filter typography and keeps rows compact without sh
   page
 }, testInfo) => {
   for (const [width, theme] of [
-    [1720, 'vscode-dark-2026'],
+    [1720, 'dark'],
     [1280, 'daylight'],
-    [390, 'vscode-dark-2026']
+    [390, 'dark']
   ] as const) {
     await page.setViewportSize({ width, height: 720 });
     await visit(page, 'node-registration', theme);
@@ -180,8 +180,8 @@ test('Node registration uses text-only footer actions and wraps them without ove
 }, testInfo) => {
   for (const [width, theme] of [
     [1280, 'daylight'],
-    [390, 'vscode-dark-2026'],
-    [320, 'vscode-dark-2026']
+    [390, 'dark'],
+    [320, 'dark']
   ] as const) {
     await page.setViewportSize({ width, height: 720 });
     await visit(page, 'node-registration', theme);
@@ -283,7 +283,7 @@ test('Dialog focus return does not first refocus the opener when the dialog move
 test('Dialog and MessageBox titles use the panel title size', async ({ page }) => {
   for (const [viewport, theme] of [
     [viewports[0]!, 'daylight'],
-    [viewports[1]!, 'vscode-dark-2026']
+    [viewports[1]!, 'dark']
   ] as const) {
     await page.setViewportSize(viewport);
     for (const kind of ['short', 'message']) {
@@ -308,7 +308,7 @@ for (const locale of ['en-US', 'zh-CN']) {
       page
     }) => {
       await page.setViewportSize(viewport);
-      const theme = viewport.width < 768 ? 'vscode-dark-2026' : 'daylight';
+      const theme = viewport.width < 768 ? 'dark' : 'daylight';
       await page.goto(
         `${fixture.url}dialog-layout.html?kind=cleanup&theme=${theme}&locale=${locale}`
       );
@@ -357,7 +357,7 @@ for (const locale of ['en-US', 'zh-CN']) {
   }
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const resource of ['Skills', 'MCP']) {
     test(`Loaded ${resource} scrolls inside its dialog without overlay scrolling: ${theme}`, async ({
       page
@@ -731,7 +731,7 @@ test('Workspace registration keeps new-directory confirmation separate from subm
   page
 }) => {
   await page.setViewportSize({ width: 390, height: 600 });
-  await visit(page, 'registration', 'vscode-dark-2026');
+  await visit(page, 'registration', 'dark');
   await page.getByRole('button').first().click();
   const registration = page.getByRole('dialog', { name: 'Register Workspace' });
   await registration.getByRole('button', { name: 'New directory', exact: true }).click();
@@ -793,7 +793,7 @@ test.describe('Mobile dialog viewport', () => {
   test.use({ isMobile: true, hasTouch: true, viewport: { width: 390, height: 844 } });
 
   test('A smaller viewport keeps the open dialog and close action reachable', async ({ page }) => {
-    await visit(page, 'details', 'vscode-dark-2026');
+    await visit(page, 'details', 'dark');
     await page.getByRole('button', { name: 'Open content' }).tap();
     const dialog = page.locator('.mar-ui-dialog:visible');
     await expectBounded(dialog);

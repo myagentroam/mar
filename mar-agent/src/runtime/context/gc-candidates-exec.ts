@@ -130,12 +130,12 @@ export function collectExecCandidates(
       );
       if (contextGcProtectionMature(protection)) {
         mature.push(replacement);
-        observedRollouts = Math.min(observedRollouts, protection.rollouts);
-      } else if (protection.rollouts < CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS) {
+        observedRollouts = Math.min(observedRollouts, protection);
+      } else {
         awaitingRollouts.push(replacement);
         retryAfterRollouts = Math.min(
           retryAfterRollouts,
-          CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS - protection.rollouts
+          CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS - protection
         );
       }
     }

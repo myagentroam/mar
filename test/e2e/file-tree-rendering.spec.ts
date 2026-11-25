@@ -89,7 +89,7 @@ test('File tree renders bundled MAR file and folder icons by default in both col
   try {
     await page.goto(`${fixture.url}file-tree.html`);
     for (const [theme, expectedFolderColor] of [
-      ['vscode-dark-2026', 'rgb(117, 195, 255)'],
+      ['dark', 'rgb(117, 195, 255)'],
       ['daylight', 'rgb(0, 118, 229)']
     ] as const) {
       await page.evaluate((value) => localStorage.setItem('mar.theme', value), theme);

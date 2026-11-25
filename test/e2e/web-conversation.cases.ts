@@ -79,8 +79,8 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
   for (const { width, height, theme } of [
-    { width: 1440, height: 1000, theme: 'vscode-dark-2026' },
-    { width: 390, height: 844, theme: 'vscode-dark-2026' },
+    { width: 1440, height: 1000, theme: 'dark' },
+    { width: 390, height: 844, theme: 'dark' },
     { width: 320, height: 568, theme: 'daylight' },
     { width: 667, height: 375, theme: 'daylight' }
   ]) {
@@ -662,7 +662,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     for (const dark of [false, true]) {
       await page.evaluate((enabled) => {
         document.documentElement.classList.toggle('dark', enabled);
-        if (enabled) document.documentElement.dataset.theme = 'vscode-dark-2026';
+        if (enabled) document.documentElement.dataset.theme = 'dark';
         else delete document.documentElement.dataset.theme;
       }, dark);
       const card = userMessages.first();
@@ -956,7 +956,7 @@ test('Approval cards emphasize pending states and use neutral terminal states in
   for (const dark of [false, true]) {
     await page.evaluate((enabled) => {
       document.documentElement.classList.toggle('dark', enabled);
-      if (enabled) document.documentElement.dataset.theme = 'vscode-dark-2026';
+      if (enabled) document.documentElement.dataset.theme = 'dark';
       else delete document.documentElement.dataset.theme;
     }, dark);
     await expect(cards.first()).toHaveCSS(
@@ -1443,7 +1443,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       for (const dark of [false, true]) {
         await page.evaluate((enabled) => {
           document.documentElement.classList.toggle('dark', enabled);
-          if (enabled) document.documentElement.dataset.theme = 'vscode-dark-2026';
+          if (enabled) document.documentElement.dataset.theme = 'dark';
           else delete document.documentElement.dataset.theme;
         }, dark);
         const icon = read.locator(':scope > summary .conversation-record-icon');

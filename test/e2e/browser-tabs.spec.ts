@@ -16,7 +16,7 @@ test('Browser page tabs use the shared selection fill without highlighting the t
     for (const theme of ['dark', 'light', 'custom'] as const) {
       await page.evaluate((theme) => {
         const root = document.documentElement;
-        root.dataset.theme = theme === 'light' ? 'daylight' : 'vscode-dark-2026';
+        root.dataset.theme = theme === 'light' ? 'daylight' : 'dark';
         if (theme === 'custom') root.style.setProperty('--mar-fill-selection', '#285654');
       }, theme);
       if (theme === 'light') await page.setViewportSize({ width: 390, height: 700 });

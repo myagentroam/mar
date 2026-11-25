@@ -1146,6 +1146,7 @@ describe('maragent CLI', () => {
 
     expect(result).toMatchObject({ code: 0, stderr: '' });
     expect(result.stdout).toContain('"type":"usage.updated"');
+    expect(result.stdout).toContain('"type":"model.usage"');
     expect(requests).toContainEqual(
       expect.objectContaining({
         input: expect.arrayContaining([

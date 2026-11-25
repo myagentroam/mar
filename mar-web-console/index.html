@@ -10,7 +10,7 @@
     <script>
       {
         const root = document.documentElement;
-        let scheme = 'vscode-dark-2026';
+        let scheme = 'dark';
         let background;
         try {
           const themeId = localStorage.getItem('mar.theme');
@@ -20,7 +20,7 @@
             const cached = JSON.parse(localStorage.getItem('mar.themeBootstrap') ?? 'null');
             if (
               cached?.themeId === themeId &&
-              (cached.scheme === 'daylight' || cached.scheme === 'vscode-dark-2026') &&
+              (cached.scheme === 'daylight' || cached.scheme === 'dark') &&
               typeof cached.background === 'string' &&
               /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/iu.test(cached.background)
             ) {
@@ -31,7 +31,7 @@
         } catch {
           // Missing, blocked, or invalid storage leaves the built-in defaults in place.
         }
-        if (scheme === 'vscode-dark-2026') {
+        if (scheme === 'dark') {
           root.setAttribute('data-theme', scheme);
           root.classList.add('dark');
         }
@@ -85,12 +85,12 @@
         }
       }
 
-      html[data-theme='vscode-dark-2026'] .mar-bootstrap {
+      html[data-theme='dark'] .mar-bootstrap {
         background: var(--mar-bootstrap-bg, var(--mar-bg-page, #1a1a1a));
       }
 
-      html[data-theme='vscode-dark-2026'] .mar-bootstrap__trace {
-        color: var(--mar-control-primary-bg, #dedede);
+      html[data-theme='dark'] .mar-bootstrap__trace {
+        color: var(--mar-control-primary-bg, #1789fc);
       }
 
       @media (prefers-reduced-motion: reduce) {

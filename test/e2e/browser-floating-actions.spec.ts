@@ -14,7 +14,7 @@ test('Desktop browser page actions use compact buttons and matching icons', asyn
     await page.setViewportSize({ width: 960, height: 700 });
     await page.goto(`${fixture.url}browser-input.html`);
     await page.evaluate(() => {
-      document.documentElement.dataset.theme = 'vscode-dark-2026';
+      document.documentElement.dataset.theme = 'dark';
     });
     const actions = page.getByRole('group', { name: 'Remote page actions' });
     const copy = actions.getByRole('button', { name: 'Copy selected text' });
@@ -85,7 +85,7 @@ test('An unavailable browser shows the offline icon instead of page actions', as
   try {
     await page.goto(`${fixture.url}browser-input.html?offline`);
     await page.evaluate(() => {
-      document.documentElement.dataset.theme = 'vscode-dark-2026';
+      document.documentElement.dataset.theme = 'dark';
     });
     const warning = page.getByRole('alert').filter({ hasText: 'Browser unavailable' });
     await expect(warning).toBeVisible();

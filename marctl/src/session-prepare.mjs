@@ -49,9 +49,14 @@ async function prepareScheduleRequest(args, env, stdin, translate) {
   const { action, taskId, sessionId, cursor, limit, page, expectedRevision, name, triggersFile } =
     args;
   if (action === 'schedule.list') {
+    const filterSessionId = args.current ? env.MAR_CTL_SESSION_ID : sessionId;
+    if (args.current && !filterSessionId)
+      throw new MarctlError(translate('errors.scheduleListContextRequired'), {
+        code: 'MARCTL_SESSION_CONTEXT_REQUIRED'
+      });
     return {
       action,
-      ...(sessionId === undefined ? {} : { sessionId }),
+      ...(filterSessionId === undefined ? {} : { sessionId: filterSessionId }),
       ...(cursor === undefined ? {} : { cursor }),
       ...(limit === undefined ? {} : { limit })
     };

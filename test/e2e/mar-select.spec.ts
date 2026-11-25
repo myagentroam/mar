@@ -14,7 +14,7 @@ test('Dark Select hover is distinct from its popup and does not replace selectio
   page
 }, testInfo) => {
   await page.goto(`${fixture.url}mar-select.html`);
-  await page.locator('html').evaluate((element) => (element.dataset.theme = 'vscode-dark-2026'));
+  await page.locator('html').evaluate((element) => (element.dataset.theme = 'dark'));
   await page.getByRole('button', { name: 'Open at zero' }).click();
   const list = page.getByRole('listbox', { name: 'Record state' });
   const selected = list.getByRole('option', { selected: true });

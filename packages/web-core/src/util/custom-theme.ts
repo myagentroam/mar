@@ -119,6 +119,10 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     ['--mar-control-primary-fg', '--mar-control-primary-bg'],
     ['--mar-control-primary-fg', '--mar-control-primary-hover'],
     ['--mar-control-primary-fg', '--mar-control-primary-active'],
+    ['--mar-button-primary-fg', '--mar-button-primary-bg'],
+    ['--mar-button-primary-fg', '--mar-button-primary-hover'],
+    ['--mar-button-primary-fg', '--mar-button-primary-active'],
+    ['--mar-button-primary-border', '--mar-bg-panel', 3],
     ['--mar-conversation-activity-fg', '--mar-bg-panel'],
     ['--mar-conversation-activity-fg', '--mar-conversation-surface'],
     ['--mar-conversation-activity-fg', '--mar-conversation-process'],
@@ -150,5 +154,5 @@ export function themeColorScheme(colors: Record<string, string>): BuiltinTheme {
   const color = colors['--mar-bg-page'] ?? '';
   // The default canvas is dark. Transparent backgrounds cannot determine a light scheme.
   const brightness = hexColor.test(color) ? luminance(color) : undefined;
-  return brightness !== undefined && brightness > 0.5 ? 'daylight' : 'vscode-dark-2026';
+  return brightness !== undefined && brightness > 0.5 ? 'daylight' : 'dark';
 }

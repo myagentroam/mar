@@ -72,14 +72,16 @@ Session `status` is `RUNNING`, `IDLE`, or `SLEEPING`. Sleeping requires a confir
 
 ## Scheduled tasks
 
-`marctl agents schedule` works in the current authorized regular Workspace. `list` returns compact `tasks[]` and `nextCursor`. Use `--session <session-id>` to filter by the bound session and `--cursor` for the next page. `get`, `update`, and `runs` require `--task <task-id>`, not a session ID. `runs` uses `--page`, defaults to page one, and returns trigger times, outcomes, and any available run references without the task prompt.
+`marctl agents schedule` works in the current authorized regular Workspace. `list` defaults to the whole Workspace and returns compact `tasks[]` and `nextCursor`. Use `--current` to list only this session's tasks, or `--session <session-id>` to filter by a specific session. These options are mutually exclusive, and `--current` fails if there is no current session. Keep the same filter when passing `--cursor` for the next page. `get`, `update`, and `runs` require `--task <task-id>`, not a session ID. `runs` uses `--page`, defaults to page one, and returns trigger times, outcomes, and any available run references without the task prompt.
 
 `create` always creates a separate task; it never overwrites an existing one. It targets the current session by default. Use `--session <session-id>` to select a session in the same Workspace. To create a new session on each trigger instead, use `--new-session --runner <runner>` with either `--model-id <id>` or `--default-model` and optionally `--effort <value>`. If there is no current session, specify a target explicitly.
+
+If you ask an Agent to “check the build at 18:00” as a new task without requesting a repeat, it treats the request as one-time. When the Node time zone is known and no other date is implied, it picks the next date on which 18:00 occurs. If the date or time zone is unclear, the Agent asks only for the missing detail. The creation receipt contains the next trigger time and time zone. When you change a time on an existing task, the Agent preserves any other times and recurrence you did not ask to change.
 
 Use the `taskId` from the creation receipt or list as `TASK_ID`, and the current `revision` from the task detail as `REVISION`:
 
 ```sh
-marctl agents schedule list --limit 20 --json
+marctl agents schedule list --current --limit 20 --json
 marctl agents schedule create --name 'Build review' --triggers-file triggers.json -m 'Check build results' --json
 marctl agents schedule get --task "$TASK_ID" --json
 marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" --message-file task.txt --json

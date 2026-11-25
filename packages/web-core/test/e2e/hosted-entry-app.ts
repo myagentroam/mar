@@ -15,7 +15,7 @@ import '../../src/styles.css';
 document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 localePreferenceService().setLocale('en-US');
 themePreferenceService().setTheme(
-  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'dark'
 );
 
 // The page and domain services are real; Playwright supplies HTTP responses and Watch frames.

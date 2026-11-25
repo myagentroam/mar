@@ -97,6 +97,13 @@ export class SessionExecution {
     { -readonly [K in keyof SessionExecutionContext]: SessionExecutionContext[K] },
     'steer' | 'compactRequests' | 'requestMessages' | 'appendedMessages' | 'toolSources'
   >;
+  // The handle exists before its first input is committed. This only gates entry to the mailbox.
+  readonly #steerReady = Promise.withResolvers<void>();
+  private readonly steer: NonNullable<SessionExecutionContext['steer']> = async (input, source) => {
+    if (input.expectedExecutionId !== this.executionId) return { status: 'notAccepted' };
+    if (!this.#bindings.steer) await this.#steerReady.promise;
+    return this.#bindings.steer?.(input, source) ?? { status: 'notAccepted' };
+  };
 
   bindViews(
     views: Partial<
@@ -108,6 +115,7 @@ export class SessionExecution {
 
   acceptSteer(steer: NonNullable<SessionExecutionContext['steer']>): void {
     this.#bindings = { ...this.#bindings, steer };
+    this.#steerReady.resolve();
   }
 
   stopSteer(): void {
@@ -123,7 +131,8 @@ export class SessionExecution {
     delete this.#bindings.requestMessages;
     this.retireCompactRequests(reason);
     delete this.#bindings.appendedMessages;
-    delete this.#bindings.steer;
+    this.stopSteer();
+    this.#steerReady.resolve();
   }
 
   detachToolSources(): void {
@@ -188,9 +197,7 @@ export class SessionExecution {
       get compactRequests() {
         return bindings().compactRequests;
       },
-      get steer() {
-        return bindings().steer;
-      },
+      ...(kind === 'compact' ? {} : { steer: this.steer }),
       get requestMessages() {
         return bindings().requestMessages;
       },
@@ -577,5 +584,6 @@ export class SessionExecution {
   cancel(reason?: unknown): void {
     if (this.completionAdmitted) return;
     this.controller.abort(reason);
+    this.#steerReady.resolve();
   }
 }

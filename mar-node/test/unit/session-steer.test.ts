@@ -184,6 +184,80 @@ describe('Node steering delivery', () => {
     expect(f.runtime.findMessageRun(f.session.id, 'target')).toBeUndefined();
   });
 
+  it.each(['start', 'stop'] as const)(
+    'waits for the original execution during dispatch preparation (%s)',
+    async (action) => {
+      const preparing = Promise.withResolvers<void>();
+      const steer = vi.fn(async () => ({ status: 'handled' as const }));
+      const f = fixture(
+        {
+          supportsNativeSteer: (runner) => runner === 'mar-agent',
+          steer,
+          notificationMcp: async () => {
+            await preparing.promise;
+            return undefined;
+          },
+          stopped: () => false
+        },
+        'mar-agent'
+      );
+      const { run, execution } = f.start();
+      const first = f.coordinator.pending(execution.id)!;
+      const image = { name: 'first.png', mime: 'image/png', dataBase64: 'AA==' };
+      f.coordinator.prepare(execution.id, { ...first, attachments: [image] });
+      const dispatch = f.coordinator.dispatch(f.session.id);
+      try {
+        const item = f.queue('correction', 'Correction');
+        const receipt = f.coordinator.settle({
+          submissionId: item.id,
+          intent: 'REPLACE_CURRENT',
+          queueBefore: item.queueBefore,
+          activeRunId: run.id,
+          steerTarget: { turnId: execution.turnId, executionId: execution.id }
+        });
+        expect(f.control).not.toHaveBeenCalled();
+        expect(steer).not.toHaveBeenCalled();
+        expect(f.runtime.getQueueItem(item.id)?.content).toBe('Correction');
+        if (action === 'stop') {
+          f.runtime.pauseSessionQueue(f.session.id);
+          f.coordinator.remove(execution.id);
+          expect(await receipt).toBe('QUEUED');
+          preparing.resolve();
+          await dispatch;
+          expect(f.control).not.toHaveBeenCalled();
+          expect(steer).not.toHaveBeenCalled();
+          expect(f.runtime.sessionQueue(f.session.id)).toMatchObject({
+            paused: true,
+            itemIds: [item.id]
+          });
+          return;
+        }
+        preparing.resolve();
+        await dispatch;
+        expect(await receipt).toBe('ACCEPTED');
+        expect(f.control).toHaveBeenCalledExactlyOnceWith(
+          'run.start',
+          expect.objectContaining({
+            runId: execution.id,
+            input: 'Original task',
+            attachments: [image]
+          })
+        );
+        expect(steer).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ input: steerComposerMessage('Correction'), attachments: [] }),
+          expect.objectContaining({ clientMessageId: 'correction' }),
+          execution.id
+        );
+        expect(f.runtime.getQueueItem(item.id)).toBeUndefined();
+        expect(f.runtime.currentExecutionId(run.id)).toBe(execution.id);
+      } finally {
+        preparing.resolve();
+        await dispatch;
+        f.coordinator.suspend();
+      }
+    }
+  );
+
   it.each(['conversation', 'queue', 'continuation'] as const)(
     'settles accepted input and clears temporary images when the %s observer throws',
     async (observer) => {
@@ -441,32 +515,38 @@ describe('Node steering delivery', () => {
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it('keeps ordinary delivery while the initial input has no replaceable Execution yet', () => {
-    const f = fixture();
-    const run = f.runtime.createMessageRun({
-      sessionId: f.session.id,
-      clientMessageId: 'preparing',
-      content: 'Original task'
-    }).run;
-    f.prepare(run.id, 'Original task');
-    const item = f.queue('supplement');
-    expect(
-      f.coordinator.settle({
-        submissionId: item.id,
-        intent: 'REPLACE_CURRENT',
-        queueBefore: item.queueBefore,
-        activeRunId: run.id,
-        steerTarget: {
-          turnId: f.runtime.conversationTurnForRun(run.id)!.id,
-          executionId: undefined
-        }
-      })
-    ).toBe('QUEUED');
-    expect(f.coordinator.pending(run.id)?.input).toBe('Original task');
-    expect(f.coordinator.pending(item.id)?.input).toBe('Additional context');
-    expect(item.prepareSteerInput).not.toHaveBeenCalled();
-    expect(f.control).not.toHaveBeenCalled();
-  });
+  it.each([false, true])(
+    'keeps ordinary delivery if the initial input had no Execution at submission (created meanwhile: %s)',
+    (createdMeanwhile) => {
+      const f = fixture();
+      const run = f.runtime.createMessageRun({
+        sessionId: f.session.id,
+        clientMessageId: 'preparing',
+        content: 'Original task'
+      }).run;
+      f.prepare(run.id, 'Original task');
+      const item = f.queue('supplement');
+      const turnId = f.runtime.conversationTurnForRun(run.id)!.id;
+      const execution = createdMeanwhile ? f.runtime.createExecution(run.id) : undefined;
+      if (execution) f.prepare(execution.id, 'Original task');
+      expect(
+        f.coordinator.settle({
+          submissionId: item.id,
+          intent: 'REPLACE_CURRENT',
+          queueBefore: item.queueBefore,
+          activeRunId: run.id,
+          steerTarget: {
+            turnId,
+            executionId: undefined
+          }
+        })
+      ).toBe('QUEUED');
+      expect(f.coordinator.pending(execution?.id ?? run.id)?.input).toBe('Original task');
+      expect(f.coordinator.pending(item.id)?.input).toBe('Additional context');
+      expect(item.prepareSteerInput).not.toHaveBeenCalled();
+      expect(f.control).not.toHaveBeenCalled();
+    }
+  );
 
   it('does not interrupt a later Execution in the same continuous Run', () => {
     const f = fixture();

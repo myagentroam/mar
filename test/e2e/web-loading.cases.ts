@@ -63,7 +63,7 @@ function sessions(start: number, count: number) {
 }
 
 for (const { theme, mobile } of [
-  { theme: 'vscode-dark-2026', mobile: false },
+  { theme: 'dark', mobile: false },
   { theme: 'daylight', mobile: true }
 ] as const) {
   test.describe(`Work startup: ${theme}`, () => {
@@ -174,7 +174,7 @@ for (const { theme, mobile } of [
   });
 }
 
-for (const theme of ['vscode-dark-2026', 'daylight']) {
+for (const theme of ['dark', 'daylight']) {
   test(`Unified loading: authentication ring consumes the actual theme: ${theme}`, async ({
     page
   }, testInfo) => {

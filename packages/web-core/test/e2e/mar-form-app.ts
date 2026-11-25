@@ -10,7 +10,7 @@ import Fixture from './mar-form-fixture.vue';
 const query = new URLSearchParams(location.search);
 const locale = query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US';
 document.documentElement.lang = locale;
-themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026');
+themePreferenceService().setTheme(query.get('theme') === 'light' ? 'daylight' : 'dark');
 const i18n = createI18n({
   legacy: false,
   locale,

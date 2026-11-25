@@ -59,7 +59,7 @@ for (const viewport of [
     await page.clock.pauseAt(new Date('2026-11-12T00:00:01Z'));
     await page.addInitScript((mobile) => {
       localStorage.setItem('mar.locale.v2', mobile ? 'zh-CN' : 'en-US');
-      localStorage.setItem('mar.theme', mobile ? 'vscode-dark-2026' : 'daylight');
+      localStorage.setItem('mar.theme', mobile ? 'dark' : 'daylight');
     }, viewport.width === 390);
     await page.goto(`${server.url}remote-desktop-controls.html?path=relay`);
     await expect

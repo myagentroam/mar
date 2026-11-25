@@ -1,22 +1,6 @@
 import { anthropicThinkingBlock } from './anthropic-thinking.js';
 import type { ModelMessage } from './contracts.js';
 
-/** Adapters persist native items at completion; consumers need only type and identity. */
-export function completedNativeThinkingIdentity(
-  payload: { role?: unknown; provider?: unknown; item?: unknown },
-  recordId: string
-): string | undefined {
-  if (payload.role !== 'provider') return undefined;
-  const item = payload.item;
-  if (!item || typeof item !== 'object' || Array.isArray(item)) return undefined;
-  const block = item as Record<string, unknown>;
-  if (payload.provider === 'ANTHROPIC_MESSAGES') {
-    return block.type === 'thinking' || block.type === 'redacted_thinking' ? recordId : undefined;
-  }
-  if (payload.provider !== 'OPENAI_RESPONSES' || block.type !== 'reasoning') return undefined;
-  return typeof block.id === 'string' ? block.id : recordId;
-}
-
 /** Interpret only the existing native context record shapes and their model ownership. */
 export function restoreNativeModelContext(
   payload: Record<string, unknown>,

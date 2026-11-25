@@ -1,3 +1,4 @@
+import type { MarIconName } from '@myagentroam/mar-ui/icons';
 import type { PromptCompletionBinding } from './prompt-completion-client-service.js';
 import type { WorkbenchNotification } from './workbench-notification-service.js';
 import type { SettingsSection } from '../model/settings.js';
@@ -266,7 +267,11 @@ export interface WorkbenchApplicationView<ManagementSection extends string> {
     | undefined;
   networkUnavailable: boolean;
   codeNavigationReady: boolean;
-  managementItems: { id: ManagementSection; label: string }[];
+  managementItems: readonly {
+    readonly id: ManagementSection;
+    readonly label: string;
+    readonly icon: MarIconName;
+  }[];
   managementSection: ManagementSection;
   navigationItems: readonly {
     readonly id: WorkbenchView;

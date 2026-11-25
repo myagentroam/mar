@@ -549,7 +549,7 @@ describe('Responses retry boundaries', () => {
         )!;
         expect(
           buildContextGcProtection(records, 'responses', 200_000).after(firstAttempt.sequence - 1)
-        ).toEqual({ rollouts: 1, thinking: 0 });
+        ).toBe(1);
         expect(
           records.filter(
             (record) =>

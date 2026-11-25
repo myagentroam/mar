@@ -157,7 +157,7 @@ test('Browser zoom is a single menu row that stays open while adjusting', async 
       animations: 'disabled'
     });
     await page.evaluate(() => {
-      document.documentElement.dataset.theme = 'vscode-dark-2026';
+      document.documentElement.dataset.theme = 'dark';
     });
     await menu.screenshot({
       path: testInfo.outputPath('browser-zoom-menu-dark.png'),
@@ -581,9 +581,7 @@ test('Browser opens the context menu for text, fields, and links and preserves a
     await expect(menu).toBeHidden();
     await remote.locator('body').evaluate((body) => delete body.dataset.intercept);
     await page.setViewportSize({ width: 390, height: 700 });
-    await page.evaluate(() =>
-      document.documentElement.setAttribute('data-theme', 'vscode-dark-2026')
-    );
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     await clickAt(780, 560);
     await expect(menu).toHaveCSS('background-color', 'rgb(41, 42, 45)');
     const menuBox = (await menu.boundingBox())!;
@@ -1262,7 +1260,7 @@ for (const [locale, width, title, viewport, raster, codec, preference] of [
       await page.goto(`${fixture.url}browser-input.html?locale=${locale}`);
       if (locale === 'zh-CN') {
         await page.evaluate(() => {
-          document.documentElement.dataset.theme = 'vscode-dark-2026';
+          document.documentElement.dataset.theme = 'dark';
         });
       }
       await page.getByRole('button', { name: title }).click();

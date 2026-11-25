@@ -686,7 +686,7 @@ describe('asynchronous Compact', () => {
     }
   });
 
-  it('does not carry old thinking when the asynchronous suffix already contains four complete blocks', async () => {
+  it('does not carry old thinking into an asynchronous suffix with one native item', async () => {
     const release = barrier();
     const native = (group: string, count: number): ModelEvent[] =>
       Array.from({ length: count }, (_, index) => ({
@@ -699,7 +699,7 @@ describe('asynchronous Compact', () => {
       (_request, index) => {
         if (index === 1) return [...native('old', 4), ...response('seed', 100)];
         if (index === 2) return readCall('before-snapshot', 8500);
-        if (index === 3) return [...native('new', 4), ...readCall('after-snapshot', 8500)];
+        if (index === 3) return [...native('new', 1), ...readCall('after-snapshot', 8500)];
         if (index === 4) {
           release.release();
           return readCall('after-release', 9000);
@@ -717,7 +717,7 @@ describe('asynchronous Compact', () => {
     });
     expect(f.generations()).toBe(1);
     const latest = f.requests.at(-1)!.messages;
-    const expected = native('new', 4).map((event) =>
+    const expected = native('new', 1).map((event) =>
       event.type === 'response.item' ? event.item : undefined
     );
     expect(

@@ -12,6 +12,13 @@ import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 
+const pixelImage = {
+  name: 'pixel.png',
+  mimeType: 'image/png',
+  dataBase64:
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII='
+};
+
 const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -123,6 +130,77 @@ async function fixture(
 describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
   'native steer %s',
   (protocol) => {
+    it.each(['continue', 'cancel', 'fail'] as const)(
+      'waits for the first image input to commit or close before admission (%s)',
+      async (outcome) => {
+        const publishing = Promise.withResolvers<void>();
+        const finishPublication = Promise.withResolvers<void>();
+        const url = 'https://images.example.test/session/first.png';
+        const f = await fixture(protocol, async () => {
+          publishing.resolve();
+          await finishPublication.promise;
+          if (outcome === 'fail') throw new Error('Image publication failed');
+          return { url, urlExpiresAt: Date.now() + 60_000 };
+        });
+        const handle = f.session.run({
+          prompt: 'First input',
+          clientMessageId: 'first',
+          images: [pixelImage]
+        });
+        const request = {
+          expectedExecutionId: handle.executionId,
+          prompt: 'Correction',
+          clientMessageId: 'second'
+        };
+        let receipt: ReturnType<typeof f.session.steer>;
+        try {
+          await Promise.race([
+            publishing.promise,
+            handle.result().then((result) => {
+              throw new Error(result.status);
+            })
+          ]);
+          const settled = vi.fn();
+          receipt = f.session.steer(request).then((result) => {
+            settled(result);
+            return result;
+          });
+          expect(
+            await f.session.steer({ ...request, expectedExecutionId: 'another-execution' })
+          ).toEqual({ status: 'notAccepted' });
+          expect(settled).not.toHaveBeenCalled();
+          expect(f.requests).toHaveLength(0);
+          if (outcome === 'cancel') {
+            handle.cancel();
+            expect(await receipt).toEqual({ status: 'notAccepted' });
+          }
+        } finally {
+          finishPublication.resolve();
+          f.release();
+        }
+        if (outcome !== 'continue') {
+          expect(await receipt).toEqual({ status: 'notAccepted' });
+          expect(await handle.result()).toMatchObject({
+            status: outcome === 'cancel' ? 'cancelled' : 'failed'
+          });
+          expect(f.requests).toHaveLength(0);
+        } else {
+          expect(await receipt).toMatchObject({ status: 'accepted' });
+          expect(await handle.result()).toMatchObject({ status: 'completed' });
+          const users = f.requests[0]!.messages.filter((m) => m.role === 'user' && !m.contextKind);
+          expect(users.map((m) => m.content)).toEqual(['First input', 'Correction']);
+          expect(users[0]!.images).toMatchObject([{ url }]);
+          expect(users[1]!.images).toBeUndefined();
+          const history = await f.catalog.history(f.session.id, { limit: 100 });
+          expect(
+            history.entries
+              .filter((entry) => entry.kind === 'user')
+              .map((entry) => entry.clientMessageId)
+          ).toEqual(['first', 'second']);
+        }
+      }
+    );
+
     it.each([false, true])(
       'rolls back only the selected steer and preserves earlier work and pending input (applied=%s)',
       async (applied) => {
@@ -250,17 +328,11 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           throw new Error(JSON.stringify(r));
         })
       ]);
-      const image = {
-        name: 'pixel.png',
-        mimeType: 'image/png',
-        dataBase64:
-          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII='
-      };
       await f.session.steer({
         expectedExecutionId: handle.executionId,
         prompt: 'pending image',
         clientMessageId: 'image',
-        images: [image]
+        images: [pixelImage]
       });
       expect(publishModelResource).toHaveBeenCalledTimes(1);
       handle.cancel();
@@ -271,7 +343,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       const records = await store.read(f.session.id);
       const checkpoint = records.findLast((r) => r.type === 'compact.completed')!;
       expect((checkpoint.payload as Record<string, unknown>).pendingInputs).toHaveLength(1);
-      expect(JSON.stringify(checkpoint.payload)).not.toContain(image.dataBase64);
+      expect(JSON.stringify(checkpoint.payload)).not.toContain(pixelImage.dataBase64);
       await f.agent.dispose();
       const agent = await f.create();
       cleanups.push(() => agent.dispose());
@@ -280,7 +352,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       const users = f.requests.at(-1)!.messages.filter((m) => m.role === 'user' && !m.contextKind);
       expect(users.map((m) => m.content).slice(-2)).toEqual(['pending image', 'fresh']);
       const restored = users.find((m) => m.content === 'pending image')!.images!;
-      expect(restored).toMatchObject([{ mimeType: image.mimeType, ...published }]);
+      expect(restored).toMatchObject([{ mimeType: pixelImage.mimeType, ...published }]);
       expect(restored[0]).not.toHaveProperty('dataBase64');
       expect(publishModelResource).toHaveBeenCalledTimes(1);
     });

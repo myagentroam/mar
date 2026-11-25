@@ -137,6 +137,11 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
       args[key] = true;
       continue;
     }
+    if (action === 'schedule.list' && flag === '--current') {
+      if (args.current) throw invalid();
+      args.current = true;
+      continue;
+    }
     if (flag === '--clear-goal' && ['start', 'send'].includes(action)) {
       const key = 'clearGoal';
       if (Object.hasOwn(args, key)) throw invalid();
@@ -254,6 +259,7 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
   if (args.name !== undefined && (!args.name.trim() || args.name.length > 160)) throw invalid();
   if (args.taskId !== undefined && (!args.taskId.trim() || args.taskId.length > 512))
     throw invalid();
+  if (args.current && args.sessionId !== undefined) throw invalid();
   if (
     action.startsWith('schedule.') &&
     ((args.sessionId !== undefined && (!args.sessionId.trim() || args.sessionId.length > 512)) ||

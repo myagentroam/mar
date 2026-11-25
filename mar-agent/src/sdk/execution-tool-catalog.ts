@@ -17,7 +17,7 @@ import type { SessionModelMessage } from '../session/model-request.js';
 import type { ExecutionMode } from './types.js';
 import type { ResolvedModelConfiguration } from './model-runtime.js';
 import { ExecutionToolSources } from './extension-tools.js';
-import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
+import { THOUGHT_TOOL_NAME } from '../runtime/context/thought-contract.js';
 
 /** Initializes one Execution's catalog before Extension attachment owns its bindings. */
 export async function initializeExecutionToolCatalog(input: {

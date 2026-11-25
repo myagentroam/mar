@@ -64,7 +64,7 @@ export function collectWebCandidates(
     if (!target || existingTargets.has(contextGcTargetKey(target))) continue;
     const evidenceSequence = group.result.record.sequence;
     const protection = input.protection!.after(Math.max(evidenceSequence, target.sequence));
-    const observedRollouts = protection.rollouts;
+    const observedRollouts = protection;
     const candidate: ContextCandidate = {
       replacements: [
         {
@@ -142,9 +142,7 @@ export function collectToolOutputCandidates(
     }
     if (evidence.length === 0) continue;
     const evidenceSequence = Math.max(...evidence);
-    const observedRollouts = input.protection!.after(
-      Math.max(target.sequence, evidenceSequence)
-    ).rollouts;
+    const observedRollouts = input.protection!.after(Math.max(target.sequence, evidenceSequence));
     const candidate: ContextCandidate = {
       replacements: [
         {
@@ -197,7 +195,7 @@ export function collectToolOutputCandidates(
     const evidenceSequence = successor.record.sequence;
     const observedRollouts = input.protection!.after(
       Math.max(target.sequence, group.completed.sequence, evidenceSequence)
-    ).rollouts;
+    );
     let replacement: ContextCandidate['replacements'][number];
     if (ownWrite && (group.toolName === 'todo_write' || group.toolName === 'todo')) {
       const args = group.call.message.arguments;
@@ -268,9 +266,7 @@ export function collectToolOutputCandidates(
     });
     if (!successor) continue;
     const evidenceSequence = successor.result!.record.sequence;
-    const observedRollouts = input.protection!.after(
-      Math.max(target.sequence, evidenceSequence)
-    ).rollouts;
+    const observedRollouts = input.protection!.after(Math.max(target.sequence, evidenceSequence));
     const candidate: ContextCandidate = {
       replacements: [
         {
@@ -314,7 +310,7 @@ export function collectToolOutputCandidates(
     if (!target || existingTargets.has(contextGcTargetKey(target))) continue;
     const evidenceSequence = group.result.record.sequence;
     const protection = input.protection!.after(Math.max(evidenceSequence, target.sequence));
-    const observedRollouts = protection.rollouts;
+    const observedRollouts = protection;
     const candidate: ContextCandidate = {
       replacements: [
         {

@@ -44,7 +44,7 @@
           })
         );
         themes.setTheme(custom.id);
-      } else themes.setTheme(theme === 'dark' ? 'vscode-dark-2026' : 'daylight');
+      } else themes.setTheme(theme === 'dark' ? 'dark' : 'daylight');
       const language = new URLSearchParams(location.search).get('lang');
       const workspace = { nodeId: 'node-1', workspaceId: 'workspace-1' };
       const longTitle = new URLSearchParams(location.search).get('long-title');

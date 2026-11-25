@@ -38,7 +38,7 @@ localePreferenceService().setLocale(
   new URL(location.href).searchParams.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );
 themePreferenceService().setTheme(
-  new URL(location.href).searchParams.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026'
+  new URL(location.href).searchParams.get('theme') === 'light' ? 'daylight' : 'dark'
 );
 const remoteDesktopIcons = new URL(location.href).searchParams.has('remote-desktop-icons');
 const remoteDesktopUnavailable = new URL(location.href).searchParams.has('desktop-unavailable');

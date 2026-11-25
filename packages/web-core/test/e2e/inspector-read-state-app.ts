@@ -17,9 +17,7 @@ const parameters = new URL(location.href).searchParams;
 const scrollFeedback = parameters.has('scroll-feedback');
 const rowStyles = parameters.has('row-styles');
 localePreferenceService().setLocale(parameters.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
-themePreferenceService().setTheme(
-  parameters.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
-);
+themePreferenceService().setTheme(parameters.get('theme') === 'daylight' ? 'daylight' : 'dark');
 const target = { nodeId: 'node', workspaceId: 'workspace' };
 const noop = () => {};
 const http = createScopedHttpService();

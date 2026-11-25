@@ -76,6 +76,11 @@ html.console-ui,
   --mar-control-primary-fg: #ffffff;
   --mar-control-primary-hover: #004cc3;
   --mar-control-primary-active: #0042aa;
+  --mar-button-primary-bg: var(--mar-control-primary-bg);
+  --mar-button-primary-fg: var(--mar-control-primary-fg);
+  --mar-button-primary-hover: var(--mar-control-primary-hover);
+  --mar-button-primary-active: var(--mar-control-primary-active);
+  --mar-button-primary-border: #00000000;
   --mar-control-intent-fg: #ffffff;
   --mar-control-intent-fill-base: #000000;
   --mar-control-intent-fill-strength: 100%;
@@ -154,8 +159,8 @@ html.console-ui,
   --mar-overlay-border: #b9cadf;
 }
 
-html.console-ui[data-theme='vscode-dark-2026'],
-.mar-theme-preview[data-theme='vscode-dark-2026'] {
+html.console-ui[data-theme='dark'],
+.mar-theme-preview[data-theme='dark'] {
   color-scheme: dark;
   color: var(--mar-text-primary);
   background: var(--mar-bg-page);
@@ -200,10 +205,15 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-conversation-activity-fg: var(--mar-palette-blue-activity);
   --mar-conversation-activity-fill: #2472d4;
 
-  --mar-control-primary-bg: #dedede;
+  --mar-control-primary-bg: #1789fc;
   --mar-control-primary-fg: #181818;
-  --mar-control-primary-hover: #eeeeee;
-  --mar-control-primary-active: #c4c4c4;
+  --mar-control-primary-hover: #2f96ff;
+  --mar-control-primary-active: #1782f8;
+  --mar-button-primary-bg: #0b70db;
+  --mar-button-primary-fg: #ffffff;
+  --mar-button-primary-hover: #1074de;
+  --mar-button-primary-active: #096bd2;
+  --mar-button-primary-border: var(--mar-control-primary-bg);
   --mar-control-intent-fg: initial;
   --mar-control-intent-fill-base: var(--mar-bg-panel);
   --mar-control-intent-fill-strength: 8%;
@@ -274,11 +284,11 @@ html.console-ui[data-theme='vscode-dark-2026'],
   }
 }
 
-html.console-ui[data-theme='vscode-dark-2026'] body {
+html.console-ui[data-theme='dark'] body {
   background: var(--mar-bg-page);
 }
 
-html.console-ui[data-theme='vscode-dark-2026'] .mar-runner-brand-icon[data-runner='codex'] {
+html.console-ui[data-theme='dark'] .mar-runner-brand-icon[data-runner='codex'] {
   filter: invert(1);
 }
 

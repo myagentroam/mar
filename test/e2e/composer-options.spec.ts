@@ -56,7 +56,7 @@ for (const locale of ['en-US', 'zh-CN']) {
       await page.setViewportSize({ width: 1280, height: 844 });
       for (const compact of [true, false]) {
         await page.goto(
-          `${fixture.url}composer-options.html?short&locale=${locale}${running ? '&running' : ''}${running && compact ? '&empty' : ''}${compact ? '&compact-names&existing-session' : ''}&theme=${compact ? 'daylight' : 'vscode-dark-2026'}`
+          `${fixture.url}composer-options.html?short&locale=${locale}${running ? '&running' : ''}${running && compact ? '&empty' : ''}${compact ? '&compact-names&existing-session' : ''}&theme=${compact ? 'daylight' : 'dark'}`
         );
         const toolbar = page.locator('.composer-toolbar');
         const hint = toolbar.locator('.composer-keyboard-hint');
@@ -135,7 +135,7 @@ for (const locale of ['en-US', 'zh-CN']) {
 }
 
 for (const width of [1280, 390]) {
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     test(`Composer action buttons keep balanced vertical space (${width}, ${theme})`, async ({
       page
     }, info) => {
@@ -175,7 +175,7 @@ for (const width of [1280, 390]) {
   }
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Composer send uses a contrasting activity fill while feedback stays neutral in ${theme}`, async ({
     page
   }, info) => {
@@ -191,9 +191,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const tokens = await page.locator('html').evaluate((root) => {
         const style = getComputedStyle(root);
         return Object.fromEntries(
-          ['bg-panel', 'fill-soft', 'text-disabled', 'text-secondary', 'control-color-danger'].map(
-            (token) => [token, style.getPropertyValue(`--mar-${token}`).trim()]
-          )
+          [
+            'bg-panel',
+            'fill-soft',
+            'text-disabled',
+            'text-secondary',
+            'control-color-danger',
+            'conversation-activity-fg'
+          ].map((token) => [token, style.getPropertyValue(`--mar-${token}`).trim()])
         );
       });
       await toolbar.screenshot({ path: info.outputPath(`composer-${theme}-${width}.png`) });
@@ -201,6 +206,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         locator
           .evaluate((element, property) => getComputedStyle(element)[property], property)
           .then(resolvedColorToHex);
+      const usageFill = () =>
+        context
+          .evaluate((element) => {
+            const gradient = getComputedStyle(element).backgroundImage;
+            return gradient.match(/^conic-gradient\((rgb\([^)]+\)) 42%,/u)?.[1];
+          })
+          .then((fill) => (fill ? resolvedColorToHex(fill) : undefined));
       const expectSendColors = async (fill: string, foreground: string) => {
         const expectedFill = await send.evaluate((element, cssColor) => {
           const probe = document.createElement('span');
@@ -220,19 +232,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       };
       const builtinFill = theme === 'daylight' ? '#005fd6' : '#2472d4';
       await expectSendColors(builtinFill, '#ffffff');
+      await expect.poll(usageFill).toBe(tokens['conversation-activity-fg']);
       await page
         .locator('html')
         .evaluate((root) => root.style.setProperty('--mar-conversation-activity-fg', '#ff00ff'));
       await expectSendColors(builtinFill, '#ffffff');
+      await expect.poll(usageFill).toBe('#ff00ff');
       await expect.poll(() => color(stop, 'color')).toBe(tokens['control-color-danger']);
       await expect.poll(() => color(stop, 'borderTopColor')).toBe(tokens['control-color-danger']);
       await expect.poll(() => color(stop, 'backgroundColor')).toBe(tokens['bg-panel']);
-      const ring = await context.evaluate((element) => {
-        const stop = getComputedStyle(element).backgroundImage.match(/rgb\([^)]+\)(?= 42%)/u);
-        return stop?.[0] ?? '';
-      });
-      expect(resolvedColorToHex(ring)).toBe(tokens['text-secondary']);
-      const legacy = theme === 'vscode-dark-2026';
+      const legacy = theme === 'dark';
       const fill = legacy ? '#8ac7ff' : '#1565c0';
       const foreground = legacy ? '#000000' : '#ffffff';
       const tint = legacy ? '#ffffff' : '#000000';
@@ -257,6 +266,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         }
       );
       await expectSendColors(fill, foreground);
+      await expect.poll(usageFill).toBe('#8ac7ff');
       if (width >= 768) {
         await send.hover();
         await expectSendColors(`color-mix(in srgb, ${fill} 92%, ${tint})`, foreground);
@@ -287,7 +297,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 }
 
 for (const [width, theme, hoverColor] of [
-  [1280, 'vscode-dark-2026', 'rgba(255, 255, 255, 0.1)'],
+  [1280, 'dark', 'rgba(255, 255, 255, 0.1)'],
   [1280, 'daylight', 'rgba(0, 95, 214, 0.08)'],
   [390, 'daylight', 'rgba(0, 95, 214, 0.08)']
 ] as const) {
@@ -361,7 +371,7 @@ for (const [width, theme, hoverColor] of [
 
 for (const [width, height, theme, top] of [
   [1280, 844, 'daylight', false],
-  [390, 844, 'vscode-dark-2026', false],
+  [390, 844, 'dark', false],
   [320, 360, 'daylight', true]
 ] as const) {
   test(`Composer menus fill their columns and keep local scrolling (${width}x${height}, ${theme})`, async ({
@@ -488,7 +498,7 @@ for (const [width, height, theme, top] of [
 
 for (const [width, theme] of [
   [1280, 'daylight'],
-  [1280, 'vscode-dark-2026'],
+  [1280, 'dark'],
   [390, 'daylight']
 ] as const) {
   test(`Short model names keep the two-column menu content-sized (${width}, ${theme})`, async ({
@@ -602,7 +612,7 @@ test('Touch selection keeps the other column value and short menus stay compact'
   });
   try {
     const page = await context.newPage();
-    await page.goto(`${fixture.url}composer-options.html?mobile&short&theme=vscode-dark-2026`);
+    await page.goto(`${fixture.url}composer-options.html?mobile&short&theme=dark`);
     const trigger = page.locator('.composer-model-effort-select');
     await trigger.tap();
     const menu = page.locator('[role="listbox"].composer-model-effort-popper:visible');

@@ -1,4 +1,5 @@
 import { AgentError, describeAgentError } from '../error.js';
+import { THOUGHT_TOOL_NAME } from '../runtime/context/thought-contract.js';
 import type { ClientToolCall, ExecutedToolCall } from '../runtime/tool-round-contract.js';
 export type { ClientToolCall, ExecutedToolCall } from '../runtime/tool-round-contract.js';
 import type { EventPayload } from '../runtime/events.js';
@@ -29,7 +30,7 @@ import { failedToolResultExtensions } from './result-extensions.js';
 import { permissionStopFromError } from './permissions.js';
 import { scheduleToolCallBatch, type createSessionToolScheduler } from './scheduler.js';
 import type { ToolCall } from './contracts.js';
-import { readThoughtInput, THOUGHT_TOOL_NAME, thoughtToolDefinition } from './agent/thought.js';
+import { readThoughtInput, thoughtToolDefinition } from './agent/thought.js';
 
 /** One immutable model round's catalog; execution resources remain owned by the SDK/Host. */
 export interface RoundToolScope {

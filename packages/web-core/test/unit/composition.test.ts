@@ -61,6 +61,7 @@ describe('public management registry', () => {
     id: 'system',
     order: 100,
     labelKey: 'system.title',
+    icon: 'system',
     component: {},
     visible: () => true,
     props: ({ request }) => ({ request })
@@ -70,12 +71,16 @@ describe('public management registry', () => {
     id: 'extra-page',
     order: 20,
     labelKey: 'extra.title',
+    icon: 'info',
     visible: (user) => user.authenticated
   };
 
   it('uses the same ordered, current visibility for navigation and resolution', () => {
     const registry = createManagementComposition([system, extension]);
-    expect(registry.items(admin).map(({ id }) => id)).toEqual(['extra-page', 'system']);
+    expect(registry.items(admin)).toEqual([
+      { id: 'extra-page', labelKey: 'extra.title', icon: 'info' },
+      { id: 'system', labelKey: 'system.title', icon: 'system' }
+    ]);
     expect(registry.resolve('extra-page', admin).id).toBe('extra-page');
     expect(registry.resolve('extra-page', { ...admin, authenticated: false }).id).toBe('system');
     expect(registry.resolve('unregistered', admin).id).toBe('system');

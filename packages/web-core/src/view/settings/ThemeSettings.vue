@@ -36,7 +36,7 @@ interface ThemeRow {
   builtin: boolean;
 }
 const themes = computed<ThemeRow[]>(() => [
-  { id: 'vscode-dark-2026', name: t('settings.dark'), builtin: true },
+  { id: 'dark', name: t('settings.dark'), builtin: true },
   { id: 'daylight', name: t('settings.light'), builtin: true },
   ...service.customThemes.value.map((item) => ({
     ...item,
@@ -48,7 +48,7 @@ const form = ref<FormInstance>();
 const editorId = useId();
 const fileInput = ref<HTMLInputElement>();
 const selectedId = ref<CustomTheme['id']>();
-const selectedBuiltin = ref<BuiltinTheme | undefined>('vscode-dark-2026');
+const selectedBuiltin = ref<BuiltinTheme | undefined>('dark');
 const isBuiltin = computed(() => selectedBuiltin.value !== undefined);
 const paletteReady = ref(false);
 const expandedPreview = ref(false);

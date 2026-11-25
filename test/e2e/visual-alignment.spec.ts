@@ -319,7 +319,7 @@ test('Shared tooltip retains keyboard ownership when a transient hover leaves in
   await expect(first).toHaveAttribute('aria-describedby', 'existing-description');
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Computer Use separates its switch state from the supporting hint in ${theme}`, async ({
     page
   }) => {
@@ -419,7 +419,7 @@ test('Shared tooltip keeps one active instance for thousands of targets and pres
   expect(warnings).toEqual([]);
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Shared tooltip suppresses mouse-click focus and resumes deliberate hover and keyboard focus in ${theme}`, async ({
     page
   }) => {
@@ -972,7 +972,7 @@ test('Shared tooltip follows keyboard focus on real tree rows and workspace tabs
   await expect(page.locator('.mar-tooltip:visible')).toHaveText('Workspace one');
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Workspace header toggle keeps hover and focus inset from the divider: ${theme}`, async ({
     page
   }, testInfo) => {
@@ -1161,7 +1161,7 @@ test('Workspace Tab context menu fits its short commands without an anchor arrow
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 850 });
   await page.goto(
-    `${fixture.url}workspace-tabs.html?locale=zh-CN&placement=header&layout=dynamic&theme=vscode-dark-2026`
+    `${fixture.url}workspace-tabs.html?locale=zh-CN&placement=header&layout=dynamic&theme=dark`
   );
   const tab = page.getByRole('tab', { name: 'Workspace one', exact: true });
   await tab.click({ button: 'right' });
@@ -1187,7 +1187,7 @@ test('Workspace Tab context menu fits its short commands without an anchor arrow
   await expect(menu).toBeHidden();
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Workspace pinned boundary masks scrolled tabs and preserves keyboard focus: ${theme}`, async ({
     page
   }, testInfo) => {
@@ -1196,8 +1196,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(
         `${fixture.url}workspace-tabs.html?locale=en-US&layout=boundary&placement=${placement}&theme=${theme}`
       );
-      if (theme === 'vscode-dark-2026')
-        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      if (theme === 'dark') await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       else await expect(page.locator('html')).not.toHaveAttribute('data-theme');
       const list = page.getByRole('tablist');
       const pinned = list.locator('.sticky-pinned');
@@ -1362,7 +1361,7 @@ test('Performance diagnostics copy uses a compact independent hover surface', as
     });
   });
   for (const [theme, locale, copyName, hoverOverlay] of [
-    ['vscode-dark-2026', 'zh-CN', '复制详细诊断信息', 'rgba(255, 255, 255, 0.1)'],
+    ['dark', 'zh-CN', '复制详细诊断信息', 'rgba(255, 255, 255, 0.1)'],
     ['daylight', 'en-US', 'Copy detailed diagnostics', 'rgba(0, 95, 214, 0.08)']
   ] as const) {
     await page.goto(
@@ -1476,7 +1475,7 @@ test('An outside click dismisses performance details without stealing focus', as
   await expect(outside).toBeFocused();
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [390, 767, 768, 1280]) {
     test(`Session performance clears the final row and keeps compact bottom spacing: ${theme}, ${width}px`, async ({
       browser
@@ -1555,7 +1554,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Notification and template surfaces consume semantic fields without glass or horizontal motion: ${theme}`, async ({
     page
   }, testInfo) => {

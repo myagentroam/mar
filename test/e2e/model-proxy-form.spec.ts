@@ -61,8 +61,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await page.goto(
         `${fixture.url}model-proxy.html?locale=${locale}&theme=${mobile ? 'dark' : 'light'}`
       );
-      if (mobile)
-        await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+      if (mobile) await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
       const edit = locale === 'zh-CN' ? '编辑' : 'Edit';
       const copy = locale === 'zh-CN' ? '复制' : 'Duplicate';
       const save = locale === 'zh-CN' ? '保存' : 'Save';

@@ -47,7 +47,7 @@ Click or tap the icon, or press `Ctrl/Cmd+Shift+E`, to open the custom Recent Se
 
 On desktop, click the info icon at the bottom left to open or close this page’s Web performance diagnostics. Hovering does not open it. Click outside to dismiss it, or use the copy button in the panel to copy detailed diagnostics.
 
-On mobile, tap the MyAgentRoam logo in the upper-left corner to see the current Web version, open performance diagnostics, or access the help docs when available. The help docs open in a new tab.
+On mobile, tap the MyAgentRoam logo in the upper-left corner to open the brand menu. Tap **version vX.X.X** to reload the current page, **Web performance** to open diagnostics, or **Help** (when available) to open the docs in a new tab.
 
 ## Themes
 
@@ -67,7 +67,9 @@ JSON uses `version: 1`, `name`, and `colors`, not `base`. The colors object maps
 
 Readable text has three levels: primary (`--mar-text-primary`), secondary (`--mar-text-secondary`), and muted (`--mar-text-muted`). For example, the resource tree, workspace session list, and hosted conversation list use primary for selected names, secondary for unselected names, and muted for timestamps and supporting notes. Disabled control text is configured separately.
 
-`--mar-conversation-activity-fg` sets the color of the current conversation phase ring and the status strip above the composer. `--mar-conversation-activity-fill` sets the solid background of the send button and unread notification count badges. The icon and count automatically use black or white for contrast. If a custom theme only sets the activity foreground, its color also supplies the solid fill. Regular primary buttons still use `--mar-control-primary-bg`, `--mar-control-primary-hover`, and `--mar-control-primary-active` with `--mar-control-primary-fg`. Keyboard focus uses `--mar-control-focus`.
+`--mar-conversation-activity-fg` sets the color of the current conversation phase ring and the status strip above the composer. `--mar-conversation-activity-fill` sets the solid background of the send button and unread notification count badges. The icon and count automatically use black or white for contrast. If a custom theme only sets the activity foreground, its color also supplies the solid fill.
+
+Search for `--mar-button-primary-` in the color field help to set the text, fill, or border of solid primary buttons without affecting checked controls or loading rings. Unset fields use the corresponding button colors from the default dark theme. Keyboard focus uses `--mar-control-focus`.
 
 Only **invalid JSON syntax** blocks saving or exporting. Missing names, unknown fields or tokens, invalid colors, and low contrast produce advisory warnings. Saved and exported JSON retains unknown and invalid content, but it is ignored when applied. An old `base` field is also retained with an unknown-field warning; it no longer changes the dark fallback rule. Arbitrary CSS, URLs, and scripts are not executed. Contrast checks cover only explicit opaque color pairs, not a complete accessibility audit.
 

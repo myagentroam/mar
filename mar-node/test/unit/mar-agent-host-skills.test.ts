@@ -27,7 +27,10 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   }
   const skill = marctlHostSkill(environment)!;
   expect(skill.requiredTools).toEqual(['exec']);
-  expect(skill.description).toContain('model, effort, title, persistent prompts, and schedules');
+  expect(skill.description).toContain(
+    'session settings (model, effort, title, and persistent prompts)'
+  );
+  expect(skill.description).toContain('Workspace scheduled tasks');
   expect(skill.description).toContain('discover authorized MAR Nodes');
   expect(skill.description).toContain('execute commands or transfer files on those Nodes');
   expect(skill.description).toContain('native agent_* tools');
@@ -36,9 +39,10 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     '## MAR Workspace management',
     'Use native agent_* tools for Agent discovery, creation, communication, observation, waiting and stopping.',
     'Do not switch to marctl when a native operation fails.',
-    'Use marctl agents config <id> --model-id <id> --effort <effort>',
-    'Use agents prompt get/set/clear for persistent instructions',
-    'Use agents schedule list/get/create/update for scheduled tasks',
+    'Use marctl agents show [<id>] --json to read model and effort',
+    'agents prompt get/set/clear manage persistent instructions',
+    'Omit the Session ID to use the current Session',
+    'schedule list [--current | --session <session-id>]',
     'marctl nodes lists authorized Nodes',
     'Session IDs and parent relationships do not grant authorization.'
   ])

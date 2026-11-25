@@ -1,13 +1,9 @@
-import { completedNativeThinkingIdentity } from '../model/native-context.js';
 import type { SessionRecord } from './record-contract.js';
 
 export const CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS = 10;
 
-export function contextGcProtectionMature(count: {
-  readonly rollouts: number;
-  readonly thinking: number;
-}) {
-  return count.rollouts >= CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS && count.thinking >= 3;
+export function contextGcProtectionMature(rollouts: number): boolean {
+  return rollouts >= CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS;
 }
 
 /** One immutable boundary index; Compact seeds configuration when its execution header is sliced out. */
@@ -17,9 +13,8 @@ export function buildContextGcProtection(
   contextWindowTokens: number
 ) {
   const configurations = new Map<string, { modelId: string; window: number }>();
-  const attempts = new Map<string, { start: number; matching: boolean; native: Set<string> }>();
+  const attempts = new Map<string, number>();
   const successful: number[] = [];
-  const thinking: number[] = [];
   let baseline = { modelId, window: contextWindowTokens };
   for (const record of records) {
     if (record.type === 'compact.completed' && isRecord(record.payload)) {
@@ -35,7 +30,7 @@ export function buildContextGcProtection(
     }
     if (
       !record.executionId ||
-      !['execution.header', 'model.attempt', 'model.context'].includes(record.type) ||
+      (record.type !== 'execution.header' && record.type !== 'model.attempt') ||
       !isRecord(record.payload)
     )
       continue;
@@ -49,45 +44,23 @@ export function buildContextGcProtection(
             ? payload.contextWindowTokens
             : contextWindowTokens
       });
-    } else if (record.type === 'model.attempt') {
-      if (payload.purpose !== 'EXECUTION') continue;
+    } else if (payload.purpose === 'EXECUTION') {
       if (payload.state === 'STARTED') {
         const configuration = configurations.get(key) ?? baseline;
-        attempts.set(key, {
-          start: record.sequence,
-          matching:
-            payload.purpose === 'EXECUTION' &&
-            configuration.modelId === modelId &&
-            configuration.window === contextWindowTokens,
-          native: new Set()
-        });
+        if (configuration.modelId === modelId && configuration.window === contextWindowTokens)
+          attempts.set(key, record.sequence);
+        else attempts.delete(key);
       } else if (payload.state === 'SUCCEEDED' || payload.state === 'FAILED') {
-        const attempt = attempts.get(key);
-        if (attempt?.matching) {
-          if (payload.state === 'SUCCEEDED') successful.push(attempt.start);
-          for (let i = 0; i < attempt.native.size; i++) thinking.push(attempt.start);
-        }
+        const start = attempts.get(key);
+        if (start !== undefined && payload.state === 'SUCCEEDED') successful.push(start);
         attempts.delete(key);
       }
-    } else if (record.type === 'model.context') {
-      const attempt = attempts.get(key);
-      if (
-        !attempt?.matching ||
-        (typeof payload.providerModelId === 'string' && payload.providerModelId !== modelId)
-      )
-        continue;
-      const identity = completedNativeThinkingIdentity(payload, record.recordId);
-      if (identity !== undefined) attempt.native.add(identity);
     }
   }
-  for (const attempt of attempts.values())
-    if (attempt.matching)
-      for (let i = 0; i < attempt.native.size; i++) thinking.push(attempt.start);
   successful.sort((a, b) => a - b);
-  thinking.sort((a, b) => a - b);
   return {
     after(anchor: number) {
-      return { rollouts: afterCount(successful, anchor), thinking: afterCount(thinking, anchor) };
+      return afterCount(successful, anchor);
     }
   };
 }

@@ -2,10 +2,10 @@ import { expect, test } from '@playwright/test';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
 for (const viewport of [
-  { width: 1440, height: 900, locale: 'en-US', theme: 'vscode-dark-2026' },
+  { width: 1440, height: 900, locale: 'en-US', theme: 'dark' },
   { width: 1440, height: 900, locale: 'en-US', theme: 'daylight' },
   { width: 390, height: 844, locale: 'zh-CN', theme: 'daylight' },
-  { width: 390, height: 844, locale: 'en-US', theme: 'vscode-dark-2026' }
+  { width: 390, height: 844, locale: 'en-US', theme: 'dark' }
 ]) {
   test(`Personal instructions keep a bounded editor and scope drafts at ${viewport.width}px in ${viewport.theme}`, async ({
     page

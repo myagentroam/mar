@@ -74,7 +74,7 @@ for (const mode of ['workspace'] as const) {
       expect(await requestCount(page)).toBe(1);
     });
 
-    for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
+    for (const theme of ['daylight', 'dark'] as const) {
       test(`prediction actions use shared interaction colors in ${theme}`, async ({ page }) => {
         await page.goto(`${fixture.url}/?automatic=0`);
         await page.evaluate((theme) => {
@@ -149,7 +149,7 @@ for (const mode of ['workspace'] as const) {
         await page.goto(`${fixture.url}/?locale=${language}`);
         await page.evaluate(() => {
           document.documentElement.classList.add('console-ui');
-          document.documentElement.dataset.theme = 'vscode-dark-2026';
+          document.documentElement.dataset.theme = 'dark';
         });
         const status = page.locator('.completion-status');
         await expect(page.locator('[data-completion-action]')).toHaveText(

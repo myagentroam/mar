@@ -68,7 +68,7 @@ test('Audit initial failure reports an error and recovers through refresh on mob
 
 for (const [theme, warning, danger] of [
   ['daylight', 'rgb(133, 74, 0)', 'rgb(180, 35, 50)'],
-  ['vscode-dark-2026', 'rgb(248, 203, 114)', 'rgb(255, 128, 135)']
+  ['dark', 'rgb(248, 203, 114)', 'rgb(255, 128, 135)']
 ] as const) {
   test(`Audit results use the shared warning and danger palette in ${theme}`, async ({
     page
@@ -233,7 +233,7 @@ test('Usage distribution follows the theme activity color and preserves radio ty
   });
   for (const [theme, color] of [
     ['daylight', 'rgb(0, 95, 214)'],
-    ['vscode-dark-2026', 'rgb(77, 163, 255)']
+    ['dark', 'rgb(77, 163, 255)']
   ] as const) {
     await page.locator('html').evaluate((root, value) => (root.dataset.theme = value), theme);
     const outside = await page

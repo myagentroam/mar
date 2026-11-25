@@ -246,9 +246,10 @@ export function createWorkbenchNavigationPresentation<ManagementSection extends 
   ]);
 
   const managementItems = computed(() =>
-    managementComposition.items(admin.value).map(({ id, labelKey }) => ({
+    managementComposition.items(admin.value).map(({ id, labelKey, icon }) => ({
       id,
-      label: translate(labelKey)
+      label: translate(labelKey),
+      icon
     }))
   );
 

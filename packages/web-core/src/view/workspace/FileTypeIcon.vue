@@ -11,7 +11,7 @@ const props = withDefaults(
 const theme = themePreferenceService().baseTheme;
 const iconTheme = iconThemePreferenceService().theme;
 const icon = computed(() => {
-  const light = theme.value !== 'vscode-dark-2026';
+  const light = theme.value !== 'dark';
   const resolver = resolveIconTheme(iconTheme.value);
   return props.kind === 'DIRECTORY'
     ? resolver.resolveFolder(light, props.name)

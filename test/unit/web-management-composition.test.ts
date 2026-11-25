@@ -44,7 +44,7 @@ describe('Workbench management composition', () => {
     const extendedPages = createCommonManagementPages();
     expect(publicPages.length).toBeGreaterThan(0);
     const catalogue = (pages: readonly ManagementPageDefinition[]) =>
-      pages.map(({ id, order, labelKey }) => ({ id, order, labelKey }));
+      pages.map(({ id, order, labelKey, icon }) => ({ id, order, labelKey, icon }));
     expect(catalogue(extendedPages)).toEqual(catalogue(publicPages));
   });
 

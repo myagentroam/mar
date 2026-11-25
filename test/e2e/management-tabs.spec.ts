@@ -59,7 +59,7 @@ test('Tapping a partially visible management tab reveals its full label', async 
 });
 
 for (const [width, theme] of [
-  [1280, 'vscode-dark-2026'],
+  [1280, 'dark'],
   [320, 'daylight']
 ] as const) {
   for (const view of ['models', 'skills', 'sources', 'mcp-sources'] as const) {

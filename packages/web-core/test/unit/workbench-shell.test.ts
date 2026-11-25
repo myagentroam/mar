@@ -509,7 +509,7 @@ describe('Shared workbench shell', () => {
             settingsSection: 'account',
             managementSection: 'host-extension',
             settingsItems: [],
-            managementItems: [{ id: 'host-extension', label: 'Host extension' }],
+            managementItems: [{ id: 'host-extension', label: 'Host extension', icon: 'info' }],
             conversationTitle: undefined
           })
       });

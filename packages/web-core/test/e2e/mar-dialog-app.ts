@@ -5,6 +5,6 @@ import { themePreferenceService } from '../../src/service/theme-preference-servi
 import '../../src/styles.css';
 import Fixture from './mar-dialog-fixture.vue';
 
-themePreferenceService().setTheme('vscode-dark-2026');
+themePreferenceService().setTheme('dark');
 localePreferenceService().setLocale('en-US');
 createApp(Fixture).use(tooltipPlugin).mount('#app');

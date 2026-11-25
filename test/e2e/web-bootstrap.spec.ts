@@ -1,6 +1,11 @@
+// @test-covers mar-web-console/index.html
 import { expect, test } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+const bootstrapUrl = 'http://console-bootstrap.test/console';
+const bootstrapFile = fileURLToPath(new URL('../../mar-web-console/index.html', import.meta.url));
+
+for (const theme of ['daylight', 'dark']) {
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 390, height: 844 }
@@ -11,17 +16,31 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.setViewportSize(viewport);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await page.addInitScript((value) => localStorage.setItem('mar.theme', value), theme);
-      // Keep the application unloaded to exercise the independent HTML bootstrap.
+      // Serve the real entry HTML without loading the application or starting a backend.
       await page.route('**/*', (route) =>
-        route.request().resourceType() === 'script' ? route.abort() : route.continue()
+        route.request().url() === bootstrapUrl
+          ? route.fulfill({ path: bootstrapFile, contentType: 'text/html' })
+          : route.abort()
       );
-      await page.goto('/console');
+      await page.goto(bootstrapUrl);
+      const root = page.locator('html');
       const bootstrap = page.locator('#mar-bootstrap');
       const graphic = bootstrap.locator('.mar-bootstrap__trace');
+      const dark = theme === 'dark';
+      if (dark) await expect(root).toHaveAttribute('data-theme', 'dark');
+      else await expect(root).not.toHaveAttribute('data-theme');
       await expect(bootstrap).toBeVisible();
       await expect(bootstrap).toHaveCSS(
         'background-color',
-        theme === 'daylight' ? 'rgb(243, 246, 249)' : 'rgb(14, 17, 22)'
+        dark ? 'rgb(26, 26, 26)' : 'rgb(248, 251, 255)'
+      );
+      await expect(graphic).toHaveCSS(
+        'border-top-color',
+        dark ? 'rgb(23, 137, 252)' : 'rgb(0, 87, 219)'
+      );
+      await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+        'content',
+        dark ? '#1a1a1a' : '#f8fbff'
       );
       const bounds = await graphic.boundingBox();
       expect(bounds).not.toBeNull();

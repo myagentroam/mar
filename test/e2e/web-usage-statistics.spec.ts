@@ -315,7 +315,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       })
       .toBe(0);
     const selectionIndicator = categories.locator('.mar-segmented-indicator');
-    for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+    for (const theme of ['vscode-light-2026', 'dark']) {
       await page.evaluate(
         (value) => document.documentElement.setAttribute('data-theme', value),
         theme
@@ -352,7 +352,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         clip: { x: 0, y: 0, width: page.viewportSize()!.width, height: 610 },
         path: testInfo.outputPath(`usage-purpose-${theme}.png`)
       });
-      if (!mobile && theme === 'vscode-dark-2026') {
+      if (!mobile && theme === 'dark') {
         await refreshButton.hover();
         await expect(refreshButton).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await refreshButton.screenshot({

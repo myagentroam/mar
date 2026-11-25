@@ -61,7 +61,7 @@ for (const width of [1440, 390]) {
       await page.getByRole('button', { name: '打开辅助工作面', exact: true }).click();
 
     const aside = page.locator('.workbench-aside');
-    for (const theme of ['daylight', 'vscode-dark-2026']) {
+    for (const theme of ['daylight', 'dark']) {
       await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
       for (const [label, selector] of [
         ['文件', '.explorer-toolbar'],

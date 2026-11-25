@@ -29,7 +29,7 @@ test.afterAll(async () => {
 
 for (const [width, theme, createColors] of [
   [1280, 'daylight', ['#deeaff', '#17243a', '#b9cadf']],
-  [390, 'vscode-dark-2026', ['#323232', '#eaeaea', '#3d3d3d']]
+  [390, 'dark', ['#323232', '#eaeaea', '#3d3d3d']]
 ] as const) {
   test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({
     page
@@ -112,7 +112,7 @@ test('Hosted create action stays readable with a bright custom tool hover color'
   await page.route('**/api/conversation-templates', (route) =>
     route.fulfill({ json: { templates: [] } })
   );
-  await page.goto(`${fixture.url}hosted-entry.html?workspace-page=1&theme=vscode-dark-2026`);
+  await page.goto(`${fixture.url}hosted-entry.html?workspace-page=1&theme=dark`);
   const create = page.getByRole('button', { name: 'New chat', exact: true });
   await expect(create).toBeEnabled();
   await page.evaluate(async (modulePath) => {
@@ -190,7 +190,7 @@ test('Hosted history uses green for running and neutral dots for transitions', a
   await page.route('**/api/conversation-templates', (route) =>
     route.fulfill({ json: { templates: [] } })
   );
-  await page.goto(`${fixture.url}hosted-entry.html?workspace-page=1&theme=vscode-dark-2026`);
+  await page.goto(`${fixture.url}hosted-entry.html?workspace-page=1&theme=dark`);
   for (const [index, state] of states.entries()) {
     const row = page.getByRole('button', { name: new RegExp(`Conversation ${index + 1}`) });
     await expect(row).toBeVisible();
@@ -374,7 +374,7 @@ test.describe('Mobile hosted draft', () => {
 async function openEntry(
   page: Page,
   templateName = template.name,
-  theme = 'vscode-dark-2026',
+  theme = 'dark',
   availableModels = models
 ) {
   const state = { failCatalog: false, modelAvailable: true, alternateAvailable: false };
@@ -479,7 +479,7 @@ function hostedHistoryTurn(
 
 async function openHostedSend(
   page: Page,
-  { theme = 'vscode-dark-2026', historyMessage }: { theme?: string; historyMessage?: string } = {}
+  { theme = 'dark', historyMessage }: { theme?: string; historyMessage?: string } = {}
 ) {
   const snapshot = hostedConversationSnapshotSchema.parse({
     conversation: {
@@ -625,7 +625,7 @@ async function openHostedSend(
   };
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Hosted draft keeps its canvas and controls steady after history in ${theme}`, async ({
     page
   }) => {
@@ -803,7 +803,7 @@ test('A late catalog refresh loads the replacement template models after returni
   }
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Hosted Composer keeps its focus border through keyboard and mouse send in ${theme}`, async ({
     page
   }) => {
@@ -958,7 +958,7 @@ test('Hosted send shows Watch activity immediately and does not revive a termina
   }
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Restored conversation keeps the normal composer surface while syncing in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -1050,7 +1050,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
 for (const [width, theme, cached] of [
   [1280, 'daylight', false],
-  [390, 'vscode-dark-2026', true]
+  [390, 'dark', true]
 ] as const) {
   test(`Hosted Watch centers the first load and retries inline at ${width} in ${theme}`, async ({
     page
@@ -1231,8 +1231,8 @@ for (const [width, theme, cached] of [
 
 for (const [width, theme] of [
   [1280, 'daylight'],
-  [1280, 'vscode-dark-2026'],
-  [390, 'vscode-dark-2026']
+  [1280, 'dark'],
+  [390, 'dark']
 ] as const) {
   test(`Hosted model and template share neutral dropdown triggers at ${width} in ${theme}`, async ({
     page
@@ -1340,7 +1340,7 @@ for (const [width, theme] of [
 }
 
 for (const width of [1280, 390]) {
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     test(`Existing template switch preserves drafts and uses the same Node at ${width} in ${theme}`, async ({
       page
     }, testInfo) => {
@@ -1546,7 +1546,7 @@ test('Menu refresh falls back for an unavailable model and a real template switc
 });
 
 for (const width of [1280, 390]) {
-  for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const theme of ['daylight', 'dark']) {
     test(`Template menu does not overlap its name tooltip at ${width} in ${theme}`, async ({
       page
     }, testInfo) => {

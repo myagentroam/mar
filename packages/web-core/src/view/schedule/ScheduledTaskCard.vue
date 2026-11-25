@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, useTemplateRef } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { MarTag } from '@myagentroam/mar-ui/tag';
 import { readOverflowText } from '@myagentroam/mar-ui/tooltip';
 import { translate } from '../../service/locale-preference-service.js';
 import type { ScheduleCard, ScheduleSessionScope } from '../../service/scheduled-task-client.js';
@@ -35,12 +34,22 @@ const sessionTarget = computed<ScheduleSessionScope | undefined>(() => {
   const sessionId = session.value;
   if (!offline && sessionId !== null) return { nodeId, workspaceId, sessionId };
 });
+const repeatedSessionTitle = computed(
+  () => sessionTarget.value !== undefined && targetLabel.value === props.task.name
+);
+const sessionActionLabel = computed(() => msg('openTaskSession', { name: targetLabel.value }));
 const state = computed(() => {
   const { offline, targetKind, enabled, nextRunAt } = props.task;
   if (offline) return 'offline';
   if (targetKind === 'unbound') return 'unbound';
   if (!enabled) return 'paused';
   return nextRunAt === null ? 'finished' : 'enabled';
+});
+const nextRun = computed(() => {
+  const timestamp = props.task.nextRunAt;
+  if (timestamp === null) return undefined;
+  const [date, clock] = managementDateTime(timestamp).split(' ');
+  return { date, clock: clock!.slice(0, 5), iso: new Date(timestamp).toISOString() };
 });
 const previewTooltip = () => {
   const element = preview.value;
@@ -71,154 +80,180 @@ function onCardClick(event: MouseEvent): void {
 
 <template>
   <li class="card" :class="{ 'card--interactive': !task.offline }" @click="onCardClick">
-    <header class="card-heading">
-      <h3>
+    <article class="card-layout">
+      <header class="card-heading">
+        <h3>
+          <MarButton
+            v-if="!task.offline"
+            ref="titleAction"
+            class="card-title-action"
+            aria-haspopup="dialog"
+            v-tooltip="() => readOverflowText(title)"
+            text
+            @click="emit('details')"
+          >
+            <span ref="title" class="clip">{{ task.name }}</span>
+          </MarButton>
+          <span v-else ref="title" v-tooltip="() => readOverflowText(title)" class="clip">{{
+            task.name
+          }}</span>
+        </h3>
+        <div class="card-context">
+          <span
+            ref="workspaceLabel"
+            v-tooltip="() => readOverflowText(workspaceLabel)"
+            class="clip"
+          >
+            {{ task.nodeName }} · {{ task.workspaceName }}
+          </span>
+          <MarButton
+            v-if="sessionTarget"
+            class="card-session-action"
+            :aria-label="sessionActionLabel"
+            v-tooltip="
+              () => (repeatedSessionTitle ? sessionActionLabel : readOverflowText(sessionLabel))
+            "
+            text
+            icon="external-link"
+            @click="openSession"
+          >
+            <span v-if="!repeatedSessionTitle" ref="sessionLabel" class="clip">{{
+              targetLabel
+            }}</span>
+          </MarButton>
+          <span
+            v-else
+            ref="sessionLabel"
+            v-tooltip="() => readOverflowText(sessionLabel)"
+            class="clip"
+            >{{ targetLabel }}</span
+          >
+        </div>
+      </header>
+
+      <p v-if="task.objectivePreview" ref="preview" v-tooltip="previewTooltip" class="objective">
+        {{ task.objectivePreview }}
+      </p>
+
+      <dl class="card-schedule">
+        <div>
+          <dt>{{ msg('nextRun') }}</dt>
+          <dd>
+            <time v-if="nextRun" class="next-run" :datetime="nextRun.iso">
+              <span class="run-clock">{{ nextRun.clock }}</span>
+              <span class="run-date">{{ nextRun.date }}</span>
+            </time>
+            <span v-else class="no-upcoming">{{ msg('noUpcoming') }}</span>
+          </dd>
+        </div>
+        <div class="schedule-state">
+          <dt class="state-label">{{ msg('historyStatus') }}</dt>
+          <dd :class="{ 'state--attention': state === 'unbound' }">{{ msg(state) }}</dd>
+        </div>
+        <div class="card-meta">
+          <dt>{{ msg('owner') }}</dt>
+          <dd>{{ task.ownerName ?? msg('notRecorded') }}</dd>
+        </div>
+        <div v-if="task.offline && task.syncedAt" class="card-meta">
+          <dt>{{ msg('lastSynced') }}</dt>
+          <dd>{{ managementDateTime(task.syncedAt) }}</dd>
+        </div>
+      </dl>
+
+      <footer class="card-actions mar-row-actions mar-row-actions--wrap">
         <MarButton
-          v-if="!task.offline"
-          ref="titleAction"
-          class="card-title-action"
-          aria-haspopup="dialog"
-          v-tooltip="() => readOverflowText(title)"
-          text
-          @click="emit('details')"
+          v-if="task.mine"
+          link
+          :disabled="task.offline === true"
+          icon="edit"
+          @click="emit('edit')"
+          >{{ msg('editTask') }}</MarButton
         >
-          <span ref="title" class="clip">{{ task.name }}</span>
-        </MarButton>
-        <span v-else ref="title" v-tooltip="() => readOverflowText(title)" class="clip">{{
-          task.name
-        }}</span>
-      </h3>
-      <MarTag :type="state === 'enabled' ? 'success' : 'info'">{{ msg(state) }}</MarTag>
-    </header>
-
-    <p
-      ref="workspaceLabel"
-      v-tooltip="() => readOverflowText(workspaceLabel)"
-      class="workspace-label clip"
-    >
-      {{ task.nodeName }} · {{ task.workspaceName }}
-    </p>
-    <p>
-      <MarButton
-        v-if="sessionTarget"
-        class="card-session-action"
-        :aria-label="msg('openTaskSession', { name: targetLabel })"
-        v-tooltip="() => readOverflowText(sessionLabel)"
-        text
-        @click="openSession"
-      >
-        <span ref="sessionLabel" class="clip">{{ targetLabel }}</span>
-      </MarButton>
-      <span v-else ref="sessionLabel" v-tooltip="() => readOverflowText(sessionLabel)" class="clip">
-        {{ targetLabel }}
-      </span>
-    </p>
-    <p v-if="task.objectivePreview" ref="preview" v-tooltip="previewTooltip" class="objective">
-      {{ task.objectivePreview }}
-    </p>
-
-    <dl class="card-facts">
-      <div>
-        <dt>{{ msg('owner') }}</dt>
-        <dd>{{ task.ownerName ?? msg('notRecorded') }}</dd>
-      </div>
-      <div>
-        <dt>{{ msg('nextRun') }}</dt>
-        <dd class="next-run">
-          {{ task.nextRunAt === null ? msg('noUpcoming') : managementDateTime(task.nextRunAt) }}
-        </dd>
-      </div>
-      <div v-if="task.offline && task.syncedAt">
-        <dt>{{ msg('lastSynced') }}</dt>
-        <dd>{{ managementDateTime(task.syncedAt) }}</dd>
-      </div>
-    </dl>
-    <footer class="mar-row-actions mar-row-actions--wrap">
-      <MarButton
-        v-if="task.mine"
-        link
-        :disabled="task.offline === true"
-        icon="edit"
-        @click="emit('edit')"
-        >{{ msg('editTask') }}</MarButton
-      >
-      <MarButton link :disabled="task.offline === true" icon="clock" @click="emit('history')">{{
-        msg('history')
-      }}</MarButton>
-    </footer>
+        <MarButton link :disabled="task.offline === true" icon="clock" @click="emit('history')">{{
+          msg('history')
+        }}</MarButton>
+      </footer>
+    </article>
   </li>
 </template>
 
 <style scoped>
 .card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
+  container: schedule-card / inline-size;
   min-inline-size: 0;
   padding: 1rem;
   background: var(--mar-bg-panel);
-  border: 1px solid var(--mar-border-default);
-  border-block-start-color: color-mix(
-    in srgb,
-    var(--mar-border-default),
-    var(--mar-text-primary) 14%
-  );
-  border-radius: var(--mar-radius-control);
-  box-shadow: inset 0 -2px var(--mar-shadow-soft);
+  border: 1px solid color-mix(in srgb, var(--mar-border-subtle) 48%, var(--mar-bg-panel));
+  border-radius: var(--mar-radius-surface);
 }
 .card--interactive {
   cursor: pointer;
 }
 @media (hover: hover) {
-  .card--interactive:hover {
-    background: color-mix(in srgb, var(--mar-bg-panel), var(--mar-fill-row-hover) 42%);
-    border-block-start-color: var(--mar-border-medium);
+  .card--interactive:hover:not(:has(.card-session-action:hover)) {
+    background: color-mix(in srgb, var(--mar-bg-panel), var(--mar-fill-row-hover) 34%);
   }
-}
-.card--interactive:active {
-  box-shadow: inset 0 1px var(--mar-shadow-soft);
 }
 .card:has(.card-title-action:focus-visible) {
   outline: 2px solid var(--mar-control-focus);
   outline-offset: 2px;
 }
+.card-layout {
+  display: grid;
+  min-block-size: 100%;
+  grid-template-areas: 'heading' 'objective' 'schedule' 'actions';
+  gap: 0.5rem 1.125rem;
+}
 .card-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
+  grid-area: heading;
+  min-inline-size: 0;
 }
 h3 {
-  min-inline-size: 0;
   margin: 0;
   font-size: var(--mar-font-size-title);
+  font-weight: 600;
+  line-height: 1.35;
 }
 .card-title-action,
 .card-session-action {
-  display: block;
   max-inline-size: 100%;
   padding: 0;
   border: 0;
-  color: inherit;
   font: inherit;
   letter-spacing: inherit;
   text-align: start;
 }
-@media (hover: hover) {
-  .card .card-session-action:hover {
-    background: var(--mar-fill-row-hover);
-    color: var(--mar-text-primary);
-  }
+.card-title-action {
+  display: block;
+  color: inherit;
+}
+.card-context {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-block-start: 0.25rem;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+}
+.card-context > * {
+  min-inline-size: 0;
+}
+.card-session-action {
+  flex-shrink: 0;
+  max-inline-size: 48%;
+  --mar-ui-button-hover-bg: transparent;
+  --mar-ui-button-active-bg: transparent;
+  --mar-ui-button-hover-fg: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
+}
+.card-session-action :deep(.mar-ui-button__label) {
+  min-inline-size: 0;
 }
 .card-title-action:focus-visible {
   outline: none;
 }
 p {
   margin: 0;
-}
-.workspace-label,
-dt {
-  color: var(--mar-text-secondary);
 }
 .clip {
   display: block;
@@ -227,24 +262,29 @@ dt {
   white-space: nowrap;
 }
 .objective {
+  grid-area: objective;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-clamp: 2;
+  overflow: clip;
   overflow-wrap: anywhere;
   white-space: pre-line;
+  color: var(--mar-text-secondary);
 }
-.card-facts {
+.card-schedule {
+  grid-area: schedule;
   display: grid;
-  gap: 0.375rem;
-  margin: auto 0 0;
-  padding-block: 0.375rem;
+  align-content: start;
+  gap: 0.25rem;
+  margin: 0;
+  font-size: var(--mar-font-size-meta);
+  color: var(--mar-text-secondary);
 }
-.card-facts > div {
+.card-meta {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: baseline;
+  color: var(--mar-text-muted);
   gap: 0.125rem 0.5rem;
 }
 dd {
@@ -252,6 +292,51 @@ dd {
   overflow-wrap: anywhere;
 }
 .next-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.125rem 0.5rem;
   font-variant-numeric: tabular-nums;
+}
+.run-clock {
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-title);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.no-upcoming {
+  display: block;
+  padding-block: 0.25rem;
+  color: var(--mar-text-muted);
+}
+.schedule-state {
+  font-weight: 500;
+}
+.state-label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.state--attention {
+  color: var(--mar-color-warning-text);
+}
+.card-layout .card-actions {
+  grid-area: actions;
+  align-self: end;
+  min-inline-size: 0;
+  flex-wrap: wrap;
+}
+@container schedule-card (inline-size >= 23rem) {
+  .card-layout {
+    grid-template-areas: 'heading schedule' 'objective schedule' 'actions schedule';
+    grid-template-columns: minmax(0, 1fr) minmax(0, 34%);
+    grid-template-rows: auto 1fr auto;
+  }
+  .next-run {
+    flex-direction: column;
+  }
 }
 </style>

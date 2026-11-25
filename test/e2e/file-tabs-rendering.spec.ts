@@ -11,7 +11,7 @@ async function captureScreenshot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: resolve(directory, name), fullPage: true, animations: 'disabled' });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`File tabs and title retain joined top-rounded tabs with quiet borders in ${theme} at ${width}px`, async ({
       page
@@ -102,7 +102,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [1280, 390]) {
     test(`file toolbar icons replace rather than accompany loading in ${theme} at ${width}px`, async ({
       page
@@ -224,7 +224,7 @@ test('HTML preview waits for a pending save without handing off the editor', asy
       await expect(failure).toContainText(fact);
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+      for (const theme of ['vscode-light-2026', 'dark']) {
         await page
           .locator('html')
           .evaluate((element, value) => element.setAttribute('data-theme', value), theme);

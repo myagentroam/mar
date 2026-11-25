@@ -156,7 +156,7 @@ for (const labels of [
     });
     test('edits only the current visitor without submitting a message', async ({ page }) => {
       await mockSharedConversation(page, labels.locale);
-      const theme = labels.mobile ? 'daylight' : 'vscode-dark-2026';
+      const theme = labels.mobile ? 'daylight' : 'dark';
       await page.addInitScript((value) => {
         localStorage.setItem('mar.theme', value);
         localStorage.setItem(
@@ -365,7 +365,7 @@ for (const labels of [
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
     await page.addInitScript((locale) => {
       localStorage.setItem('mar.locale.v2', locale);
-      localStorage.setItem('mar.theme', 'vscode-dark-2026');
+      localStorage.setItem('mar.theme', 'dark');
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
         value: {
@@ -551,7 +551,7 @@ for (const locale of ['zh-CN', 'en-US']) {
     'Share password gate presents Console branding and inline errors (' + locale + ')',
     async ({ page }, testInfo) => {
       const chinese = locale === 'zh-CN';
-      const theme = chinese ? 'vscode-dark-2026' : 'daylight';
+      const theme = chinese ? 'dark' : 'daylight';
       await page.setViewportSize(
         chinese ? { width: 320, height: 300 } : { width: 1100, height: 740 }
       );

@@ -8,7 +8,7 @@ import { themePreferenceService } from '../../src/service/theme-preference-servi
 
 localePreferenceService().setLocale('en-US');
 themePreferenceService().setTheme(
-  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'dark'
 );
 createApp(
   new URL(location.href).searchParams.has('empty-layout')

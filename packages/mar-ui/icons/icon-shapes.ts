@@ -17,6 +17,10 @@ export const iconShapes = {
     '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M10.75 8h6.75M6.5 16h6.75"/><circle cx="8.5" cy="8" r="2.25"/><circle cx="15.5" cy="16" r="2.25"/>',
   settings:
     '<path d="M9.7 3.5h4.6l.7 2.7 2 .9 2.5-.8 2.2 3.8-1.9 1.8v2.2l1.9 1.8-2.2 3.8-2.5-.8-2 .9-.7 2.7H9.7L9 19.8l-2-.9-2.5.8-2.2-3.8L4.2 14v-2.2l-1.9-1.8 2.2-3.8 2.5.8 2-.9.7-2.6Z" transform="translate(1.2 .4) scale(.9)"/><circle cx="12" cy="12" r="3"/>',
+  'bar-chart': '<path d="M4 4v14a2 2 0 0 0 2 2h14M8.5 15.5v-3m5 3V6m5 9.5v-6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.75V5m0 14v2.25M2.75 12H5m14 0h2.25M5.5 5.5l1.6 1.6m9.8 9.8 1.6 1.6m0-13-1.6 1.6m-9.8 9.8-1.6 1.6"/>',
+  palette:
+    '<path d="M12 3.5a8.5 8.5 0 1 0 0 17h1a1.9 1.9 0 0 0 1.4-3.2 1.65 1.65 0 0 1 1.2-2.75h1.65a3.25 3.25 0 0 0 3.2-3.8A8.5 8.5 0 0 0 12 3.5Z"/><path d="M7.55 12h.05M9.35 8.3h.05m4.15-.55h.05m3.15 2.5h.05" stroke-width="2.35"/>',
   'recent-sessions':
     '<path d="M18.5 7.5V7A2.5 2.5 0 0 0 16 4.5H5A2.5 2.5 0 0 0 2.5 7v7A2.5 2.5 0 0 0 5 16.5h.5"/><rect x="5.5" y="7.5" width="16" height="12" rx="2.5"/><path d="M10.5 11.5h6m-6 4h4"/>',
   'session-list':
@@ -175,13 +179,11 @@ export const iconShapes = {
   audit:
     '<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M9 8h7m-7 4h7m-7 4h4" /><circle cx="7" cy="8" r="0.55" fill="currentColor" stroke="none"/><circle cx="7" cy="12" r="0.55" fill="currentColor" stroke="none"/><circle cx="7" cy="16" r="0.55" fill="currentColor" stroke="none"/>',
   model:
-    '<rect x="6" y="6" width="12" height="12" rx="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 3v3m6-3v3M9 18v3m6-3v3M3 9h3m-3 6h3m12-6h3m-3 6h3" />',
+    '<path d="M11 3.5a2 2 0 0 1 2 0l6 3.45a2 2 0 0 1 1 1.73v6.64a2 2 0 0 1-1 1.73l-6 3.45a2 2 0 0 1-2 0l-6-3.45a2 2 0 0 1-1-1.73V8.68a2 2 0 0 1 1-1.73L11 3.5Z"/><path d="m4.35 7.75 7.65 4.4 7.65-4.4M12 12.15v8.55"/>',
   secret:
     '<rect x="3.5" y="9" width="17" height="11.5" rx="2.5"/><path d="M8 9V7a4 4 0 0 1 8 0v2" /><circle cx="8" cy="15.5" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="15.5" r="1" fill="currentColor" stroke="none"/><circle cx="16" cy="15.5" r="1" fill="currentColor" stroke="none"/>',
   'skill-source':
     '<rect x="4" y="6" width="16" height="15" rx="2.2"/><path d="M7 3h10M9 6v8l3-2 3 2V6" />',
-  'mcp-source':
-    '<rect x="3.5" y="3.5" width="17" height="7" rx="2"/><path d="M8 7h8M12 10.5V16M5 16h14M5 16v4m7-4v4m7-4v4" />',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.8"/><path d="m3.8 6.5 6.7 5a2.5 2.5 0 0 0 3 0l6.7-5" />',
   system:
     '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 8h18M12 14v3" /><circle cx="12" cy="11.5" r="0.8" fill="currentColor" stroke="none"/>'

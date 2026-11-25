@@ -1,3 +1,4 @@
+import type { MarIconName } from '@myagentroam/mar-ui/icons';
 import { inject, type Component, type InjectionKey } from 'vue';
 import type { AdminState } from './admin-auth-service.js';
 import type { NodeSummary } from '../model/node.js';
@@ -34,6 +35,7 @@ export interface ManagementPageDefinition<
   readonly id: Section;
   readonly order: number;
   readonly labelKey: string;
+  readonly icon: MarIconName;
   readonly component: Component;
   readonly visible: (admin: AdminState) => boolean;
   readonly props: (context: ManagementPageContext) => Props;
@@ -46,6 +48,7 @@ export interface ManagementComposition<
   items(admin: AdminState): readonly {
     readonly id: Section;
     readonly labelKey: string;
+    readonly icon: MarIconName;
   }[];
   resolve(section: Section, admin: AdminState): ManagementPageDefinition<Section, Props>;
 }
@@ -69,7 +72,9 @@ export function createManagementComposition<
   const ordered = [...pages.values()].sort((left, right) => left.order - right.order);
   return {
     items: (admin) =>
-      ordered.filter((page) => page.visible(admin)).map(({ id, labelKey }) => ({ id, labelKey })),
+      ordered
+        .filter((page) => page.visible(admin))
+        .map(({ id, labelKey, icon }) => ({ id, labelKey, icon })),
     resolve(section, admin) {
       const page = pages.get(section);
       if (page?.visible(admin)) return page;

@@ -182,21 +182,31 @@ test('Scheduled tasks show scope-specific page titles and summaries', async ({ p
   const summary = all.getByText('查看你有权访问的所有定时任务。', { exact: true });
   await expect(title).toBeVisible();
   await expect(summary).toBeVisible();
+  const workspaceLabel = all.getByText('工作区', { exact: true });
+  const workspaceFilter = all.getByRole('combobox', { name: '工作区', exact: true });
   const refresh = all.getByRole('button', { name: '刷新', exact: true });
+  await expect(workspaceFilter).toBeVisible();
+  await expect(refresh).toBeVisible();
   // Measure in one frame while the Workbench sidebar can still be animating.
-  const [titleBox, summaryBox, refreshBox] = await title
+  const [titleBox, summaryBox, labelBox, filterBox, refreshBox] = await title
     .or(summary)
+    .or(workspaceLabel)
+    .or(workspaceFilter)
     .or(refresh)
     .evaluateAll((elements) =>
       elements.map((element) => {
-        const { x, top, bottom } = element.getBoundingClientRect();
-        return { x, top, bottom };
+        const { x, top, bottom, right } = element.getBoundingClientRect();
+        return { x, top, bottom, right };
       })
     );
   expect(Math.abs(titleBox!.x - summaryBox!.x)).toBeLessThan(1);
-  expect(Math.abs(titleBox!.x - refreshBox!.x)).toBeLessThan(1);
+  expect(Math.abs(titleBox!.x - labelBox!.x)).toBeLessThan(1);
   expect(summaryBox!.top).toBeGreaterThanOrEqual(titleBox!.bottom);
-  expect(refreshBox!.top).toBeGreaterThanOrEqual(summaryBox!.bottom);
+  expect(filterBox!.top).toBeGreaterThanOrEqual(summaryBox!.bottom);
+  expect(refreshBox!.x).toBeGreaterThanOrEqual(filterBox!.right);
+  expect(
+    Math.abs(refreshBox!.top + refreshBox!.bottom - filterBox!.top - filterBox!.bottom)
+  ).toBeLessThan(2);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(summary).toBeInViewport();
@@ -541,9 +551,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(panel.locator('.card')).toHaveCount(3);
   await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'daylight'));
   await page.screenshot({ path: info.outputPath('scheduled-tasks-desktop.png') });
-  await page
-    .locator('html')
-    .evaluate((element) => element.setAttribute('data-theme', 'vscode-dark-2026'));
+  await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'dark'));
   await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-desktop.png') });
   const hoverCard = panel.locator('.card').filter({ hasText: '检查构建' });
   const restingBackground = await hoverCard.evaluate(
@@ -554,11 +562,17 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   await expect(hoverCard).not.toHaveCSS('background-color', restingBackground);
   await page.screenshot({ path: info.outputPath('scheduled-tasks-dark-hover.png') });
   const linkedSession = hoverCard.getByRole('button', { name: '定时会话：打开会话' });
+  await expect(hoverCard.getByText('创建者', { exact: true })).toBeVisible();
   await expect(linkedSession).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const restingSessionColor = await linkedSession.evaluate(
+    (button) => getComputedStyle(button).color
+  );
   const bodyColor = await hoverCard.evaluate((card) => getComputedStyle(card).color);
-  await expect(linkedSession).toHaveCSS('color', bodyColor);
+  expect(restingSessionColor).not.toBe(bodyColor);
   await linkedSession.hover();
-  await expect(linkedSession).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(hoverCard).toHaveCSS('background-color', restingBackground);
+  await expect(linkedSession).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(linkedSession).toHaveCSS('color', bodyColor);
   await page.screenshot({ path: info.outputPath('scheduled-card-session-hover.png') });
   await panel.locator('.card').filter({ hasText: '检查构建' }).locator('.objective').hover();
   await expect(page.getByRole('tooltip')).toHaveText(promptPreview);
@@ -901,9 +915,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   expect(await tableScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
     true
   );
-  await page
-    .locator('html')
-    .evaluate((element) => element.setAttribute('data-theme', 'vscode-dark-2026'));
+  await page.locator('html').evaluate((element) => element.setAttribute('data-theme', 'dark'));
   await page.screenshot({ path: info.outputPath('scheduled-global-history-mobile.png') });
   await expect(globalPager).toHaveCount(0);
   await globalTable.getByRole('row').last().scrollIntoViewIfNeeded();
@@ -962,7 +974,7 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
   const cardTitle = hoverCard.getByRole('button', { name: '检查构建', exact: true });
   // The existing binding can be outside the session picker's first page.
   readerSessionPage = [];
-  await hoverCard.locator('.workspace-label').click();
+  await hoverCard.getByText('Node B · project', { exact: true }).click();
   await expect(editor.getByRole('tablist', { name: '任务详情' })).toBeVisible();
   await expect(editor.getByRole('combobox', { name: '运行会话', exact: true })).toHaveAttribute(
     'placeholder',

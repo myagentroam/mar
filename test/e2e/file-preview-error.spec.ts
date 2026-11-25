@@ -84,7 +84,7 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
-for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+for (const theme of ['vscode-light-2026', 'dark']) {
   test(`file read failure stays inside its file page and retries: ${theme}`, async ({
     page
   }, testInfo) => {

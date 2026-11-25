@@ -19,7 +19,8 @@ import {
   type RunInput,
   type ExecutionHandle,
   type AgentModelConfiguration,
-  type AgentReasoningEffort
+  type AgentReasoningEffort,
+  type ModelUsageObservation
 } from '../index.js';
 import type { AgentExtension } from '../extensions.js';
 import { CodexAuthFileCredentialProvider } from './codex-auth-file.js';
@@ -374,7 +375,7 @@ async function main() {
     workspace,
     ...(format === 'stream-json'
       ? {
-          modelUsage: (usage: import('../model/usage.js').ModelUsageObservation) => {
+          modelUsage: (usage: ModelUsageObservation) => {
             stdout.write(`${JSON.stringify({ type: 'model.usage', ...usage })}\n`);
           }
         }

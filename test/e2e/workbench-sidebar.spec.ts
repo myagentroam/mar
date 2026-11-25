@@ -14,7 +14,7 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-for (const theme of ['vscode-dark-2026', 'daylight']) {
+for (const theme of ['dark', 'daylight']) {
   for (const width of [1280, 390]) {
     test(`Main navigation keeps the current page highlighted on hover: ${theme}, ${width}px`, async ({
       page
@@ -288,7 +288,7 @@ for (const layout of ['desktop', 'mobile']) {
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Desktop diagnostics shares the rail button geometry and hover in ${theme}`, async ({
     page
   }, testInfo) => {

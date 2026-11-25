@@ -60,7 +60,8 @@ class ContextGcAdapter implements ModelAdapter {
   constructor(
     readonly configuration = model,
     initialCall = 0,
-    readonly filePath = 'large.txt'
+    readonly filePath = 'large.txt',
+    readonly options: { readonly thought?: false; readonly finalCall?: number } = {}
   ) {
     this.call = initialCall;
   }
@@ -76,6 +77,11 @@ class ContextGcAdapter implements ModelAdapter {
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     const call = ++this.call;
+    const finalCall = this.options.finalCall ?? 13;
+    const thought =
+      call === 12 &&
+      this.configuration.contextGcMode === 'with_thought' &&
+      this.options.thought !== false;
     await request.onAttemptDiagnostic?.({
       protocol: 'ANTHROPIC_MESSAGES',
       transport: 'HTTP',
@@ -112,14 +118,14 @@ class ContextGcAdapter implements ModelAdapter {
           '*** End Patch'
         ].join('\n')
       };
-    else if (call === 12 && this.configuration.contextGcMode === 'with_thought')
+    else if (thought)
       yield {
         type: 'client_tool.call',
         callId: 'thought-12',
         name: 'thought',
         arguments: { title: 'File updated', content: 'read-1 superseded by patch-1' }
       };
-    else if (call >= 3 && call <= 12)
+    else if (call >= 3 && call < finalCall)
       yield {
         type: 'client_tool.call',
         callId: `sleep-${call}`,
@@ -127,7 +133,7 @@ class ContextGcAdapter implements ModelAdapter {
         arguments: { durationMs: 1 }
       };
     else yield { type: 'text.completed', itemId: `answer-${call}`, text: 'finished' };
-    if (call !== 12 || this.configuration.contextGcMode !== 'with_thought')
+    if (!thought)
       yield {
         type: 'usage',
         usage: {
@@ -138,7 +144,7 @@ class ContextGcAdapter implements ModelAdapter {
           outputTokens: 10
         }
       };
-    yield { type: 'completed', reason: call < 13 ? 'tool_use' : 'completed' };
+    yield { type: 'completed', reason: call < finalCall ? 'tool_use' : 'completed' };
     await request.onAttemptDiagnostic?.({
       protocol: 'ANTHROPIC_MESSAGES',
       transport: 'HTTP',
@@ -285,6 +291,80 @@ describe('context GC runtime integration', () => {
           );
         } else if (setting === 'auto') expect(gc).toHaveBeenCalled();
         else expect(gc).not.toHaveBeenCalled();
+      } finally {
+        await store.close();
+      }
+    }
+  );
+
+  it.each([
+    { status: 'completed', finalCall: 13, attempts: 1, reclaimed: true },
+    { status: 'completed', finalCall: 11, attempts: 1, reclaimed: false },
+    { status: 'cancelled', finalCall: 13, attempts: 0, reclaimed: false }
+  ])(
+    'applies the natural Turn GC trigger and existing rollout protection: %j',
+    async ({ status, finalCall, attempts, reclaimed }) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-gc-next-turn-'));
+      homes.push(home);
+      await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+      const configured = { ...model, contextGcMode: 'with_thought' as const };
+      const adapter = new ContextGcAdapter(configured, 0, 'large.txt', {
+        thought: false,
+        finalCall
+      });
+      const start = adapter.start.bind(adapter);
+      let cancel: (() => void) | undefined;
+      vi.spyOn(adapter, 'start').mockImplementation(async function* (request) {
+        for await (const event of start(request)) {
+          yield event;
+          if (event.type === 'usage' && adapter.requests.length === finalCall) cancel?.();
+        }
+      });
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+          models: [configured]
+        },
+        () => adapter
+      );
+      const session = await agent.createSession({ workspace: home });
+      const gc = vi.spyOn(ContextGcRuntime.prototype, 'run');
+      try {
+        const first = session.run({ prompt: 'Update the file.' });
+        if (status === 'cancelled') cancel = () => first.cancel();
+        expect(await first.result()).toMatchObject({ status });
+        expect(gc).not.toHaveBeenCalled();
+        expect(JSON.stringify(adapter.requests[finalCall - 1]?.messages)).toContain(
+          'old context old context'
+        );
+
+        expect(
+          await session.run({ prompt: 'Continue without changing the file.' }).result()
+        ).toMatchObject({ status: 'completed' });
+        expect(gc).toHaveBeenCalledTimes(attempts);
+        const followUp = JSON.stringify(adapter.requests[finalCall]?.messages);
+        expect(followUp).toContain('Continue without changing the file.');
+        expect(followUp.includes('old context old context')).toBe(!reclaimed);
+      } finally {
+        await agent.dispose();
+      }
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const records = await store.read(session.id);
+        const checkpoints = records.filter((record) => record.type === 'context.gc.completed');
+        expect(checkpoints).toHaveLength(reclaimed ? 1 : 0);
+        if (reclaimed) {
+          const usage = records.find(
+            (record) =>
+              record.type === 'usage.updated' &&
+              (record.payload as { contextInputTokens?: number }).contextInputTokens === 7_300
+          );
+          expect(usage).toBeDefined();
+          expect(checkpoints[0]?.payload).toMatchObject({
+            trigger: { usageSequence: usage!.sequence, contextInputTokens: 7_300 }
+          });
+        }
       } finally {
         await store.close();
       }

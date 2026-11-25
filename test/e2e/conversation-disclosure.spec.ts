@@ -197,7 +197,7 @@ test('automatic process collapse also releases its reasoning disclosure state', 
 
 for (const [width, theme] of [
   [1280, 'daylight'],
-  [390, 'vscode-dark-2026']
+  [390, 'dark']
 ] as const) {
   test(`structured details share the tool surface without changing their content (${width}px, ${theme})`, async ({
     page

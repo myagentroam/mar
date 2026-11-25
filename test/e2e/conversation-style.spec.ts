@@ -110,7 +110,7 @@ test('Process duration ticks do not reproject the conversation body', async ({ p
   );
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   for (const width of [800, 1280]) {
     test(`Sidebar panel icon fills only when expanded in ${theme} at ${width}px`, async ({
       page
@@ -198,7 +198,7 @@ for (const locale of ['en-US', 'zh-CN']) {
       const iconSize = width < 768 ? '13px' : '14px';
       const targetSize = width < 768 ? '36px' : '24px';
       const copiedLabel = locale === 'zh-CN' ? '消息已复制' : 'Message copied';
-      for (const theme of ['daylight', 'vscode-dark-2026']) {
+      for (const theme of ['daylight', 'dark']) {
         await page.goto(
           `${fixture.url}conversation-style.html?history-actions=1&language=${locale}&theme=${theme}`
         );
@@ -875,7 +875,7 @@ for (const input of ['wheel', 'touch', 'keyboard']) {
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Conversation focus stays quiet for modifiers and shortcuts but visible for keyboard navigation in ${theme}`, async ({
     page
   }) => {
@@ -1136,7 +1136,7 @@ for (const { width, input, phase } of [
   });
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Read groups expand individual files lazily and preserve raw call details in ${theme}`, async ({
     browser
   }, testInfo) => {
@@ -1260,7 +1260,7 @@ test('Process headings reveal content without a redundant status tooltip', async
   await expect(reasoning.locator('p')).toContainText('Full thinking detail');
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Jump to latest uses neutral floating feedback in ${theme}`, async ({
     browser
   }, testInfo) => {
@@ -1645,7 +1645,7 @@ function freezeFirstDisclosureFrame(element: Element) {
   };
 }
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Reasoning group keeps its painted hover corners on the first expansion frame in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -1748,7 +1748,7 @@ test('Read group keeps its rounded hover and focus ring during expansion', async
   await page.setViewportSize({ width: 1280, height: 900 });
   // Settle the outer process before enabling motion for the nested disclosure under test.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto(`${fixture.url}conversation-style.html?theme=vscode-dark-2026&group-spacing=1`);
+  await page.goto(`${fixture.url}conversation-style.html?theme=dark&group-spacing=1`);
   await page.locator('[data-process-id="spacing-process"] .process-heading').click();
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   const summary = page.locator('.conversation-record-group > summary').filter({ hasText: /^Read/ });
@@ -1796,7 +1796,7 @@ test('Read group keeps its rounded hover and focus ring during expansion', async
   await expect.poll(childReceivesPointer).toBe(true);
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Expanded command details expose the complete command in ${theme}`, async ({
     browser
   }, testInfo) => {
@@ -2551,7 +2551,7 @@ test('uses the bright daylight palette with accessible interactive and text colo
 test('uses neutral near-black surfaces with clear text and distinct semantic feedback', async ({
   page
 }) => {
-  await page.goto(fixture.url + 'conversation-style.html?theme=vscode-dark-2026');
+  await page.goto(fixture.url + 'conversation-style.html?theme=dark');
   const dark = await paletteColors(page);
   expect(dark['--mar-bg-page']).toBe('#1a1a1a');
   expect(dark['--mar-bg-panel']).toBe('#1e1e1e');
@@ -2572,6 +2572,10 @@ test('uses neutral near-black surfaces with clear text and distinct semantic fee
   expect(dark['--mar-fill-row-hover']).toBe('#2e2e2e');
   expect(dark).not.toHaveProperty('--mar-color-brand');
   expect(dark).toMatchObject({
+    '--mar-control-primary-bg': '#1789fc',
+    '--mar-control-primary-fg': '#181818',
+    '--mar-control-primary-hover': '#2f96ff',
+    '--mar-control-primary-active': '#1782f8',
     '--mar-text-primary': '#eaeaea',
     '--mar-text-secondary': '#c2c2c2',
     '--mar-text-muted': '#a0a0a0',
@@ -2647,17 +2651,22 @@ test('uses neutral near-black surfaces with clear text and distinct semantic fee
   }
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test('Navigation and conversation contrasts remain accessible in ' + theme, async ({ page }) => {
     await page.goto(fixture.url + 'conversation-style.html?markdown-blocks&theme=' + theme);
     const colors = await paletteColors(page);
     for (const fill of ['bg', 'hover', 'active']) {
       const background = colors[`--mar-control-primary-${fill}`]!;
-      if (theme === 'vscode-dark-2026') expect(background).toMatch(/^#([\da-f]{2})\1\1$/u);
       expect(
         contrast(colors['--mar-control-primary-fg']!, background),
         fill
       ).toBeGreaterThanOrEqual(4.5);
+      for (const surface of ['--mar-bg-panel', '--mar-fill-selection']) {
+        expect(
+          contrast(background, colors[surface]!),
+          `${fill} on ${surface}`
+        ).toBeGreaterThanOrEqual(3);
+      }
     }
     for (const surface of [
       '--mar-bg-panel',

@@ -71,7 +71,7 @@ export function collectCodeModeCandidates(
             evidenceSequence
           }
         ],
-        observedRollouts: protection.rollouts,
+        observedRollouts: protection,
         evidenceSequence
       };
       const reclaimedTokens = candidateSavings(candidate);
@@ -157,7 +157,7 @@ export function collectCodeModeCandidates(
       });
     if (replacements.length === 0) continue;
     const protection = input.protection!.after(Math.max(evidenceSequence, completionSequence));
-    const observedRollouts = protection.rollouts;
+    const observedRollouts = protection;
     const candidate: ContextCandidate = { replacements, observedRollouts, evidenceSequence };
     const reclaimedTokens = candidateSavings(candidate);
     if (reclaimedTokens <= 0) continue;

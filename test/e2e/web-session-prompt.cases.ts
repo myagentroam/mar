@@ -67,9 +67,9 @@ for (const supported of [false, true]) {
 
 for (const [locale, theme] of [
   ['zh-CN', 'daylight'],
-  ['zh-CN', 'vscode-dark-2026'],
+  ['zh-CN', 'dark'],
   ['en-US', 'daylight'],
-  ['en-US', 'vscode-dark-2026']
+  ['en-US', 'dark']
 ] as const) {
   test(`Session Prompt edits persist, clear, and retain failed input (${locale}, ${theme})`, async ({
     page

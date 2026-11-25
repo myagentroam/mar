@@ -15,7 +15,7 @@ test('Usage filters stay compact on desktop and wrap without overflow in narrow 
 }, testInfo) => {
   for (const width of [1600, 1280, 700, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(`${fixture.url}icon-system.html?usage=1&locale=zh-CN&theme=vscode-dark-2026`);
+    await page.goto(`${fixture.url}icon-system.html?usage=1&locale=zh-CN&theme=dark`);
     const panel = page.getByTestId('usage-statistics');
     if (width === 1280) {
       await page.addStyleTag({

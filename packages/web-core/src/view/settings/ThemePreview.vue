@@ -5,7 +5,11 @@ import { MarInput } from '@myagentroam/mar-ui/input';
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { themeColorScheme } from '../../util/custom-theme.js';
-defineProps<{ name: string; colors: Record<string, string>; expanded?: boolean }>();
+defineProps<{
+  name: string;
+  colors: Record<string, string>;
+  expanded?: boolean;
+}>();
 const { t } = useI18n();
 const sampleInput = ref('');
 </script>

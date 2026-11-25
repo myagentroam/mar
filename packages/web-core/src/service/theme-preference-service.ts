@@ -58,12 +58,12 @@ export function parseStoredThemePreference(
 ): ThemePreference {
   const custom = themes.find((item) => item.id === value);
   if (custom) return custom.id;
-  return value === 'daylight' ? 'daylight' : 'vscode-dark-2026';
+  return value === 'daylight' ? 'daylight' : 'dark';
 }
 
 function applyThemePreference(theme: ThemePreference): void {
   const root = document.documentElement;
-  if (theme === 'vscode-dark-2026') {
+  if (theme === 'dark') {
     root.setAttribute('data-theme', theme);
     root.classList.add('dark');
     return;
@@ -89,7 +89,7 @@ export function createThemePreferenceService(
     const fill =
       colors['--mar-conversation-activity-fill'] ?? colors['--mar-conversation-activity-fg'];
     return {
-      ...palette('vscode-dark-2026'),
+      ...palette('dark'),
       ...colors,
       // A legacy source may only set the activity foreground. Preserve its hue for the solid fill.
       ...(fill && resolveActivityFill(fill))
@@ -106,23 +106,20 @@ export function createThemePreferenceService(
       ? themeColorScheme(activeColors.value)
       : theme.value === 'daylight'
         ? 'daylight'
-        : 'vscode-dark-2026'
+        : 'dark'
   );
   let appliedTokens: string[] = [];
   function apply(): void {
-    for (const token of appliedTokens) document.documentElement.style.removeProperty(token);
+    const root = document.documentElement;
+    for (const token of appliedTokens) root.style.removeProperty(token);
     const colors = activeColors.value;
     appliedTokens = Object.keys(colors);
     applyThemePreference(baseTheme.value);
-    for (const [token, color] of Object.entries(colors))
-      document.documentElement.style.setProperty(token, color);
+    for (const [token, color] of Object.entries(colors)) root.style.setProperty(token, color);
     document
       .querySelector?.('meta[name="theme-color"]')
-      ?.setAttribute(
-        'content',
-        getComputedStyle(document.documentElement).getPropertyValue('--mar-bg-page').trim()
-      );
-    document.documentElement.style.removeProperty('--mar-bootstrap-bg');
+      ?.setAttribute('content', getComputedStyle(root).getPropertyValue('--mar-bg-page').trim());
+    root.style.removeProperty('--mar-bootstrap-bg');
   }
   function refreshBootstrapTheme(): void {
     // The next page follows the shared preference, which may differ from this tab's theme.

@@ -21,6 +21,8 @@ const darkPalette = {
   '--mar-conversation-activity-fill': '#2472d4',
   '--mar-control-primary-bg': '#dedede',
   '--mar-control-primary-fg': '#181818',
+  '--mar-button-primary-bg': '#0b70db',
+  '--mar-button-primary-fg': '#ffffff',
   '--mar-control-focus': '#a0a0a0',
   '--mar-text-primary': '#e7eaf0',
   '--mar-text-muted': '#a6aeb9'
@@ -67,6 +69,29 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Custom theme validation', () => {
+  it('resolves and copies button colors independently of shared Primary colors', () => {
+    const service = createThemePreferenceService();
+    const partial = source({ '--mar-control-primary-fg': '#17243a' });
+    expect(service.resolveColors(partial)).toMatchObject({
+      '--mar-control-primary-fg': '#17243a',
+      '--mar-button-primary-bg': '#0b70db',
+      '--mar-button-primary-fg': '#ffffff'
+    });
+    const builtin = service.builtinSource('dark', 'Dark');
+    const copy = service.duplicateSource(builtin, 'Copy');
+    expect(analyzeCustomTheme(copy).colors).toMatchObject({
+      '--mar-button-primary-bg': '#0b70db',
+      '--mar-button-primary-fg': '#ffffff',
+      '--mar-control-primary-fg': '#181818'
+    });
+    const item = service.saveCustomTheme(copy);
+    service.setTheme(item.id);
+    expect(styles.get('--mar-button-primary-fg')).toBe('#ffffff');
+    expect(styles.get('--mar-control-primary-fg')).toBe('#181818');
+    service.setTheme('dark');
+    expect(styles.has('--mar-button-primary-fg')).toBe(false);
+  });
+
   it('round-trips navigation selection independently and defaults missing or invalid values', () => {
     const service = createThemePreferenceService();
     const input = source({
@@ -405,8 +430,8 @@ describe('Custom theme persistence and application', () => {
     expect(themeColorScheme(lightPalette)).toBe('daylight');
     expect(themeColorScheme({ '--mar-bg-page': '#ffff' })).toBe('daylight');
     expect(themeColorScheme({ '--mar-bg-page': '#FFFFFFFF' })).toBe('daylight');
-    expect(themeColorScheme(darkPalette)).toBe('vscode-dark-2026');
-    expect(themeColorScheme({ '--mar-bg-page': '#fff0' })).toBe('vscode-dark-2026');
+    expect(themeColorScheme(darkPalette)).toBe('dark');
+    expect(themeColorScheme({ '--mar-bg-page': '#fff0' })).toBe('dark');
   });
 
   it('never overwrites or deletes built-in identities', () => {
@@ -436,7 +461,7 @@ describe('Custom theme persistence and application', () => {
     const first = service.saveCustomTheme(text);
     const second = service.saveCustomTheme(text);
     expect(first.id).not.toBe(second.id);
-    expect(service.theme.value).toBe('vscode-dark-2026');
+    expect(service.theme.value).toBe('dark');
     service.setTheme(first.id);
     expect(service.baseTheme.value).toBe('daylight');
     expect(classes.has('dark')).toBe(false);
@@ -452,10 +477,7 @@ describe('Custom theme persistence and application', () => {
       source({ '--mar-bg-panel': '#123', '--mar-text-primary': '#fff' })
     );
     service.setTheme(item.id);
-    service.saveCustomTheme(
-      source({ '--mar-bg-panel': '#456' }, { base: 'vscode-dark-2026' }),
-      item.id
-    );
+    service.saveCustomTheme(source({ '--mar-bg-panel': '#456' }, { base: 'dark' }), item.id);
     expect(styles.get('--mar-bg-panel')).toBe('#456');
     expect(styles.get('--mar-text-primary')).toBe(darkPalette['--mar-text-primary']);
     expect(classes.has('dark')).toBe(true);
@@ -463,9 +485,9 @@ describe('Custom theme persistence and application', () => {
     expect(styles.size).toBe(0);
     service.setTheme(item.id);
     service.deleteCustomTheme(item.id);
-    expect(service.theme.value).toBe('vscode-dark-2026');
+    expect(service.theme.value).toBe('dark');
     expect(styles.size).toBe(0);
-    expect(createThemePreferenceService().theme.value).toBe('vscode-dark-2026');
+    expect(createThemePreferenceService().theme.value).toBe('dark');
   });
   it('rejects only invalid JSON and saves warning-only documents', () => {
     const service = createThemePreferenceService();
@@ -474,13 +496,13 @@ describe('Custom theme persistence and application', () => {
     const item = service.saveCustomTheme('null');
     service.setTheme(item.id);
     expect(service.customThemes.value[0]?.source).toBe('null');
-    expect(service.baseTheme.value).toBe('vscode-dark-2026');
+    expect(service.baseTheme.value).toBe('dark');
   });
   it('recovers from corrupt storage and missing custom selections', () => {
     storage.set(CUSTOM_THEMES_STORAGE_KEY, '{');
     storage.set(THEME_STORAGE_KEY, 'custom:missing');
     const service = createThemePreferenceService();
-    expect(service.theme.value).toBe('vscode-dark-2026');
+    expect(service.theme.value).toBe('dark');
     expect(service.customThemes.value).toEqual([]);
   });
   it('does not change saved state or applied colors when storage fails', () => {

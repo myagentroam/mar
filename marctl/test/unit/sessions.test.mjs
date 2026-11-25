@@ -395,11 +395,41 @@ test('addresses schedules by task ID and creates a separate task for each suppor
   }
 });
 
+test('lists current Session tasks in one request without widening the scope when context is absent', async () => {
+  const calls = [];
+  let output = '';
+  const invoke = (options, sessionId = 'source') =>
+    main(['agents', 'schedule', 'list', ...options, '--json'], {
+      env: { ...env, MAR_CTL_SESSION_ID: sessionId },
+      stdout: { write: (value) => (output = value) },
+      client: {
+        sessionCommand: async (body) => {
+          calls.push(body);
+          return { tasks: [], nextCursor: null };
+        }
+      }
+    });
+  assert.equal(await invoke(['--current', '--cursor', 'cursor', '--limit', '2']), 0);
+  assert.deepEqual(JSON.parse(output), { tasks: [], nextCursor: null });
+  assert.equal(await invoke([], 'source'), 0);
+  assert.equal(await invoke(['--current'], ''), 1);
+  assert.equal(JSON.parse(output).error.code, 'MARCTL_SESSION_CONTEXT_REQUIRED');
+  assert.deepEqual(calls, [
+    { action: 'schedule.list', sessionId: 'source', cursor: 'cursor', limit: 2 },
+    { action: 'schedule.list' }
+  ]);
+});
+
 test('rejects legacy syntax, invalid task options and competing stdin inputs before reading', async () => {
   for (const args of [
     ['schedule', 'get'],
     ['schedule', 'get', 'other'],
     ['schedule', 'get', '--task', 'task', '--node', 'foreign'],
+    ['schedule', 'list', '--current', '--session', 'other'],
+    ['schedule', 'list', '--session', 'other', '--current'],
+    ['schedule', 'list', '--current', '--current'],
+    ['schedule', 'list', '--current', 'other'],
+    [...scheduleCreate, '--current'],
     ['schedule', 'runs', '--task', 'task', '--page', '0'],
     ['schedule', 'create', '--name', 'Build', '--cron', '0 9 * * *', '-m', 'Check'],
     ['schedule', 'create', '--name', 'Build', '--groups-file', '-', '-m', 'Check'],
@@ -1528,6 +1558,7 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
       assert.ok(!output.includes('--forced'));
       assert.ok(!output.includes('--history'));
       assert.ok(!output.includes('--cron'));
+      assert.match(output, /schedule list \[--current \| --session /u);
       assert.match(output, /schedule get --task/u);
       assert.match(output, /schedule runs --task/u);
       assert.match(output, /schedule create --name .* --triggers-file/u);

@@ -88,7 +88,7 @@ test('Library loading has one compact ring for each variant without mounting Mar
   await page.locator('#app').screenshot({ path: testInfo.outputPath('loading-variants.png') });
 });
 
-for (const theme of ['daylight', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'dark']) {
   test(`Session cleanup uses button loading without a content mask: ${theme}`, async ({
     page
   }, testInfo) => {
