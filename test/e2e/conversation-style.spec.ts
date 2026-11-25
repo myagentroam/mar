@@ -10,10 +10,10 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-test('Empty workspace and hosted prompts alone center the adjacent composer on desktop', async ({
-  page
-}) => {
-  for (const width of [1280, 390]) {
+for (const width of [1280, 390]) {
+  test(`Empty workspace and hosted prompts center the adjacent composer only on desktop at ${width}px`, async ({
+    page
+  }) => {
     await page.setViewportSize({ width, height: 900 });
     for (const [kind, state, empty] of [
       ['workspace', 'empty', true],
@@ -49,8 +49,8 @@ test('Empty workspace and hosted prompts alone center the adjacent composer on d
         await expect(composer).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       }
     }
-  }
-});
+  });
+}
 
 for (const [width, columnWidth] of [
   [390, undefined],

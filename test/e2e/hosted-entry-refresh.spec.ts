@@ -73,7 +73,7 @@ for (const [width, theme, createColors] of [
       const searchControl = page.locator('.history-search-row .mar-ui-input');
       const focusColor = await searchControl.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--mar-ui-control-focus)';
+        probe.style.color = 'var(--mar-ui-input-border-focus)';
         element.append(probe);
         const color = getComputedStyle(probe).color;
         probe.remove();

@@ -22,10 +22,18 @@ describe('Workbench surface host slots', () => {
       const page = {
         application: { view, managementSection: 'system' },
         identity: { admin: { authenticated: true } },
+        browser: { destination: ref(undefined), clearDestination: vi.fn() },
+        browserCapability: () => undefined,
         registration: { workspaceRegistrationNodeId: 'node-a' },
-        aside: { setAsideSurfaceVisible: vi.fn(), asideViewMode: vi.fn(), asideWidth: vi.fn() },
+        aside: {
+          setAsideSessionFits: vi.fn(),
+          setAsideSurfaceVisible: vi.fn(),
+          terminalTabOpen: () => false,
+          asideViewMode: vi.fn(),
+          asideWidth: vi.fn()
+        },
         layout: {},
-        selection: {},
+        selection: { workspaceTabs: [] },
         resources: {},
         files: { mountSurface: vi.fn(), unmountSurface: vi.fn() },
         mainPaneController: {
@@ -45,6 +53,7 @@ describe('Workbench surface host slots', () => {
           id: 'system',
           order: 1,
           labelKey: 'navigation.nodeManagement',
+          icon: 'system',
           component: { render: () => h('p', 'Resolved management page') },
           visible: () => true,
           props: () => ({ request: async <T>() => undefined as T })

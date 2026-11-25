@@ -37,6 +37,8 @@ import type {
 } from '../../src/model/workbench.js';
 import { renderComponent, flushComponent } from './support/component-renderer.js';
 
+vi.mock('@novnc/novnc', () => ({ default: class extends EventTarget {} }));
+
 const captured = vi.hoisted(() => ({
   paneConstruction: [] as {
     workspace: Workspace | undefined;
@@ -471,7 +473,9 @@ function controller(pwaApplication?: PwaApplicationService, initialView: Workben
     opensMobileSidebar: (view) => view !== 'conversations'
   });
   const management = {
-    items: vi.fn(() => [{ id: 'custom-nodes', labelKey: 'navigation.nodeManagement' }])
+    items: vi.fn(() => [
+      { id: 'custom-nodes', labelKey: 'navigation.nodeManagement', icon: 'node' as const }
+    ])
   };
   let page!: ReturnType<typeof createWorkbenchPageController>;
   mounted.push(

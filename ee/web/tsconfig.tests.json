@@ -7,6 +7,7 @@
   "include": [
     "src/**/*.ts",
     "test/**/*.ts",
+    "../../packages/web-core/src/novnc.d.ts",
     "../../packages/web-core/src/vue-shims.d.ts",
     "../../packages/web-core/test/unit/support/component-fixtures.d.ts"
   ],

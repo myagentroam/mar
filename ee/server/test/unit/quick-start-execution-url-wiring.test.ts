@@ -191,6 +191,7 @@ async function invoke(context: Awaited<ReturnType<typeof fixture>>, entry: Entry
         : await consumers.scheduleAuthorizer(nodeId, {
             ...request,
             ownerUserId: 1,
+            targetKind: 'existing',
             taskId: 'task-1',
             revision: 1,
             occurrenceId: 'occurrence-1'
@@ -346,6 +347,7 @@ it.each(['execution', 'schedule'] as const)(
         : context.consumers.scheduleAuthorizer(context.nodeId, {
             ...request,
             ownerUserId: 1,
+            targetKind: 'existing',
             taskId: 'task-1',
             revision: 1,
             occurrenceId: 'occurrence-1'
