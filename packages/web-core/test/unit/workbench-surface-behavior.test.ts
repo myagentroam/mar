@@ -328,7 +328,7 @@ function installMainPane(page: ReturnType<typeof pageFixture>): void {
 
 describe('Workbench surface composition behavior', () => {
   it.each([false, true])(
-    'hides cached Workspace running indicators while offline and retains unread state (mobile=%s)',
+    'hides Workspace Tab markers while offline without clearing unread state (mobile=%s)',
     async (mobileViewport) => {
       const nodes = shallowReactive([
         { id: 'node', connected: true },
@@ -346,7 +346,8 @@ describe('Workbench surface composition behavior', () => {
                 ? 'running'
                 : 'transitioning'
               : undefined,
-          hasUnreadWorkspace: () => true
+          hasUnreadWorkspace: (nodeId: string, workspaceId: string) =>
+            workspaceId === (nodeId === 'node' ? 'one' : 'other')
         }
       });
       const view = renderComponent(Surface, { page });
@@ -358,11 +359,16 @@ describe('Workbench surface composition behavior', () => {
           };
         const activity = (nodeId: string, workspaceId: string) =>
           tabProps()['run-activity'](nodeId, workspaceId);
-        const unread = () => tabProps()['has-unread']('node', 'one');
+        const unread = (nodeId: string, workspaceId: string) =>
+          tabProps()['has-unread'](nodeId, workspaceId);
         expect(activity('node', 'one')).toBe('running');
         expect(activity('node', 'two')).toBeUndefined();
         expect(activity('other-node', 'other')).toBe('transitioning');
         expect(activity('unknown-node', 'other')).toBeUndefined();
+        expect(unread('node', 'one')).toBe(true);
+        expect(unread('node', 'two')).toBe(false);
+        expect(unread('other-node', 'other')).toBe(true);
+        expect(unread('unknown-node', 'other')).toBe(false);
 
         Object.assign(page.application, { networkUnavailable: true });
         await nextTick();
@@ -370,13 +376,17 @@ describe('Workbench surface composition behavior', () => {
         expect(activity('other-node', 'other')).toBeUndefined();
         expect(nodes[0]!.connected).toBe(true);
         expect(page.notifications.workspaceRunActivity('node', 'one')).toBe('running');
-        expect(unread()).toBe(true);
+        expect(unread('node', 'one')).toBe(false);
+        expect(unread('other-node', 'other')).toBe(false);
+        expect(page.notifications.hasUnreadWorkspace('node', 'one')).toBe(true);
 
         Object.assign(page.application, { networkUnavailable: false });
         nodes[0] = { id: 'node', connected: false };
         await nextTick();
         expect(activity('node', 'one')).toBeUndefined();
         expect(activity('other-node', 'other')).toBe('transitioning');
+        expect(unread('node', 'one')).toBe(false);
+        expect(unread('other-node', 'other')).toBe(true);
 
         nodes[0] = { id: 'node', connected: true };
         await nextTick();
@@ -384,7 +394,7 @@ describe('Workbench surface composition behavior', () => {
         activeRun.value = false;
         await nextTick();
         expect(activity('node', 'one')).toBeUndefined();
-        expect(unread()).toBe(true);
+        expect(unread('node', 'one')).toBe(true);
       } finally {
         view.unmount();
       }

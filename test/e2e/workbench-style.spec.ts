@@ -1,5 +1,5 @@
 import { grantClipboardPermissions } from './support/clipboard.js';
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { hostedConversationSnapshotSchema } from '../../packages/protocol/src/index.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -1724,6 +1724,45 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }
 }
 
+function setFixtureWorkspaceConnection(page: Page, connected: boolean) {
+  return page.evaluate((online) => {
+    (
+      window as Window & { setWorkspaceConnection: (connected: boolean) => void }
+    ).setWorkspaceConnection(online);
+  }, connected);
+}
+
+test('Desktop Workspace overflow hides and restores unread while the menu stays open', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.goto(
+    `${fixture.url}workbench-style.html?locale=en-US&offline=1&unread=1&tab-overflow=1`
+  );
+  const offline = page.locator('.workspace-offline-placeholder');
+  await expect(offline).toBeVisible();
+  await setFixtureWorkspaceConnection(page, true);
+  const tab = page.locator('.workspace-tab[data-tab-id="node:offline"]');
+  const tabUnread = tab.locator('.workspace-tab-unread');
+  await expect(tabUnread).toBeVisible();
+  await page.getByRole('button', { name: 'All open workspaces', exact: true }).click();
+  const item = page
+    .getByRole('menuitem')
+    .filter({ has: page.getByText('Workspace', { exact: true }) });
+  const menuUnread = item.locator('.workspace-tab-unread');
+  await expect(menuUnread).toBeVisible();
+
+  await setFixtureWorkspaceConnection(page, false);
+  await expect(offline).toBeVisible();
+  await expect(item).toBeVisible();
+  await expect(menuUnread).toHaveCount(0);
+  await expect(tabUnread).toHaveCount(0);
+
+  await setFixtureWorkspaceConnection(page, true);
+  await expect(menuUnread).toBeVisible();
+  await expect(tabUnread).toBeVisible();
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
     test(`Workspace connection feedback is singular and restrictions stay neutral in ${theme} at ${width}px`, async ({
@@ -1731,21 +1770,21 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(
-        `${fixture.url}workbench-style.html?theme=${theme}&offline=1&network-offline=1`
+        `${fixture.url}workbench-style.html?theme=${theme}&offline=1&network-offline=1&unread=1`
       );
       const offline = page.locator('.workspace-offline-placeholder');
       await expect(offline).toBeVisible();
       await expect(offline).toContainText('Offline. Waiting for reconnection.');
+      const tab = page.locator('.workspace-tab[data-tab-id="node:offline"]');
+      await expect(tab).toBeVisible();
+      await expect(tab.locator('.workspace-tab-unread')).toHaveCount(0);
       await expect(
         page.locator('.readonly-banner, .workspace-recovery-panel, .mar-message')
       ).toHaveCount(0);
       await offline.screenshot({ path: testInfo.outputPath('network-offline.png') });
-      await page.evaluate(() => {
-        (
-          window as unknown as Window & { restoreWorkspaceConnection: () => void }
-        ).restoreWorkspaceConnection();
-      });
+      await setFixtureWorkspaceConnection(page, true);
       await expect(offline).toHaveCount(0);
+      await expect(tab.locator('.workspace-tab-unread')).toBeVisible();
       await expect(page.locator('.workspace-recovery-panel')).toBeVisible();
       await expect(page.locator('.mar-message')).toHaveCount(0);
 
@@ -1820,9 +1859,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
       await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));
-      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&offline=1`);
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&offline=1&unread=1`);
       const offline = page.locator('.workspace-offline-placeholder');
       await expect(offline).toBeVisible();
+      const tab = page.locator('.workspace-tab[data-tab-id="node:offline"]');
+      await expect(tab).toBeVisible();
+      await expect(tab.locator('.workspace-tab-unread')).toHaveCount(0);
       await expect(offline).toHaveAttribute('role', 'status');
       const offlineIcon = offline.locator('[data-mar-icon="connection-off"]');
       await expect(offlineIcon).toBeVisible();
@@ -1860,6 +1902,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(geometry.unobscured).toBe(true);
       expect(['none', 'normal']).toContain(geometry.pseudoContent);
       await offline.screenshot({ path: testInfo.outputPath('offline-connection-icon.png') });
+      await setFixtureWorkspaceConnection(page, true);
+      await expect(offline).toHaveCount(0);
+      await expect(tab.locator('.workspace-tab-unread')).toBeVisible();
     });
 
     test(`Session row feedback stays immediate in ${theme} at ${width}px`, async ({ page }) => {

@@ -394,12 +394,21 @@ if (new URLSearchParams(location.search).has('terminal-capability'))
             };
     }
   });
+const surfaceNode = shallowReactive({
+  ...node,
+  connected: workspaceRecoveryFixture || networkOfflineFixture || restrictionFixture
+});
+const showSurfaceUnread = offlineFixture && unreadFixture;
+const surfaceTabOverflow = new URL(location.href).searchParams.has('tab-overflow');
+const surfaceTarget = { nodeId: node.id, workspaceId: 'offline' };
+const surfaceTab = { ...surfaceTarget, id: 'node:offline', label: 'Workspace', lastActiveAt: 1 };
 const surfacePage = shallowReactive({
   view: 'nodes',
   setAsideSurfaceVisible() {},
   setAsideSessionFits() {},
   asideViewMode: () => 'compact' as const,
   asideWidth: () => undefined,
+  terminalTabOpen: () => false,
   mobileViewport: mobile,
   sidebarCollapsed: false,
   settingsSection: 'account',
@@ -433,8 +442,8 @@ const surfacePage = shallowReactive({
     setInputFocus() {},
     setRangeEditor() {}
   },
-  workspaceTarget: { nodeId: 'node', workspaceId: 'offline' },
-  workspaceHost: { connected: false },
+  workspaceTarget: surfaceTarget,
+  workspaceHost: surfaceNode,
   networkUnavailable: networkOfflineFixture,
   nodeReady: false,
   nodeManifestLoading: false,
@@ -447,8 +456,11 @@ const surfacePage = shallowReactive({
     workspaceRecoveryRetries += 1;
     surfacePage.workspaceSelectionLoading = true;
   },
-  workspaceTabs: [],
-  nodes: [],
+  workspaceTabs: showSurfaceUnread
+    ? [surfaceTab, ...(surfaceTabOverflow ? tabs.slice(1) : [])]
+    : [],
+  activeWorkspaceTabId: showSurfaceUnread ? surfaceTab.id : undefined,
+  nodes: showSurfaceUnread ? [surfaceNode] : [],
   workspaceTabNodeLabel: () => 'Node',
   nodeLabel: () => 'Node',
   workspaceDirectAvailable: () => false,
@@ -456,12 +468,13 @@ const surfacePage = shallowReactive({
   workspaceTabService: { move() {}, setPinned() {} },
   workbenchNotificationService: {
     workspaceRunActivity: () => undefined,
-    hasUnreadWorkspace: () => false
+    hasUnreadWorkspace: (nodeId: string, workspaceId: string) =>
+      showSurfaceUnread &&
+      nodeId === surfaceTarget.nodeId &&
+      workspaceId === surfaceTarget.workspaceId
   },
   mobileWorkspaceSurface: 'conversation'
 });
-if (workspaceRecoveryFixture || networkOfflineFixture || restrictionFixture)
-  surfacePage.workspaceHost = { connected: true };
 if (workspaceRecoveryFixture)
   Object.assign(window, {
     failWorkspaceRecoveryRead: () => {
@@ -469,18 +482,20 @@ if (workspaceRecoveryFixture)
       return workspaceRecoveryRetries;
     }
   });
-if (networkOfflineFixture)
+if (networkOfflineFixture || showSurfaceUnread)
   Object.assign(window, {
-    restoreWorkspaceConnection: () => {
-      surfacePage.networkUnavailable = false;
+    setWorkspaceConnection: (connected: boolean) => {
+      if (networkOfflineFixture) surfacePage.networkUnavailable = !connected;
+      else surfaceNode.connected = connected;
     }
   });
 const offlineSurfacePage = {
   application: surfacePage,
   aside: surfacePage,
+  browser: { destination: ref(undefined), clearDestination() {} },
   files: { mountSurface() {}, unmountSurface() {} },
   hosted: surfacePage,
-  identity: {},
+  identity: { admin: {} },
   layout: surfacePage,
   notifications: surfacePage.workbenchNotificationService,
   registration: {},

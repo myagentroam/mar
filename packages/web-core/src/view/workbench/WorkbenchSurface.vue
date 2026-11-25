@@ -264,13 +264,22 @@ async function retryWorkspaceRecovery(): Promise<void> {
   await nextTick();
   if (!props.page.selection.workspaceSelectionLoading) workspaceRecoveryRetrying.value = false;
 }
+function canShowWorkspaceTabMarkers(nodeId: string): boolean {
+  return (
+    !props.page.application.networkUnavailable &&
+    props.page.resources.nodes.some((node) => node.id === nodeId && node.connected)
+  );
+}
 function workspaceTabRunActivity(nodeId: string, workspaceId: string) {
-  if (
-    props.page.application.networkUnavailable ||
-    !props.page.resources.nodes.some((node) => node.id === nodeId && node.connected)
-  )
-    return undefined;
-  return props.page.notifications.workspaceRunActivity(nodeId, workspaceId);
+  return canShowWorkspaceTabMarkers(nodeId)
+    ? props.page.notifications.workspaceRunActivity(nodeId, workspaceId)
+    : undefined;
+}
+function workspaceTabHasUnread(nodeId: string, workspaceId: string): boolean {
+  return (
+    canShowWorkspaceTabMarkers(nodeId) &&
+    props.page.notifications.hasUnreadWorkspace(nodeId, workspaceId)
+  );
 }
 const workspaceFilesRestriction = computed(() => {
   const host = props.page.resources.workspaceHost;
@@ -642,7 +651,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :direct-available="page.resources.workspaceDirectAvailable"
           :direct-description="page.resources.workspaceDirectDescription"
           :run-activity="workspaceTabRunActivity"
-          :has-unread="page.notifications.hasUnreadWorkspace"
+          :has-unread="workspaceTabHasUnread"
           @activate="page.selection.activateWorkspaceTab"
           @close="page.selection.closeWorkspaceTab"
           @reorder="page.selection.moveWorkspaceTab"
@@ -712,7 +721,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :direct-available="page.resources.workspaceDirectAvailable"
           :direct-description="page.resources.workspaceDirectDescription"
           :run-activity="workspaceTabRunActivity"
-          :has-unread="page.notifications.hasUnreadWorkspace"
+          :has-unread="workspaceTabHasUnread"
           @activate="page.selection.activateWorkspaceTab"
           @close="page.selection.closeWorkspaceTab"
           @reorder="page.selection.moveWorkspaceTab"
