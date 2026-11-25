@@ -17,21 +17,24 @@ const marctlHistory =
   'Use marctl agents history <id> [--cursor <cursor>] [--limit <1..100>] --json to read public history on demand; agents view returns state, Goal and recent activity only.';
 
 const marctlSafety =
-  'If a request result is unknown, inspect history before retrying. Session IDs and parent relationships do not grant authorization.';
+  'Verify the result of any uncertain write before retrying. If message delivery is uncertain, inspect Session history before retrying. Session IDs and parent relationships do not grant authorization.';
+
+const marctlSessionSettings =
+  'Use marctl agents show [<id>] --json to read model and effort, or agents config [<id>] with --model-id and/or --effort to change future executions. agents rename changes the title and agents prompt get/set/clear manage persistent instructions (set takes -m or --message-file). Omit the Session ID to use the current Session.';
 
 const marctlSchedule = [
-  'Use marctl agents schedule list [--session <session-id>] [--cursor <cursor>] --json to list tasks in the authorized Workspace. Use schedule get --task <task-id> for the current revision and settings and schedule runs --task <task-id> [--page <page>] for trigger results. A Session can have multiple tasks; never use a Session ID as a task ID.',
-  'Use schedule create --name <name> --triggers-file <file|-> (-m <text> | --message-file <file|->). This creates a separate task bound to the current Session unless you give --session <session-id> or --new-session --runner <runner> with exactly one of --model-id <id> and --default-model (and optional --effort). A new-session task creates a Session at each trigger.',
-  `${scheduleTimeGuidance} Use stdin for either the triggers or the task text, not both. After creation, confirm the next trigger and time zone from the receipt. This schedules MAR tasks, not CI or system jobs.`,
-  'Use schedule update --task <task-id> --expected-revision <revision> with at least one of --name, --triggers-file, -m or --message-file. Supplying --triggers-file replaces all triggers; omit it when only the name or prompt changes. Other users’ tasks receive proposals instead of direct updates. Re-read on revision conflict; after an unknown write, list or get to check the result before retrying.'
+  'Use marctl agents schedule list [--current | --session <session-id>] [--cursor <cursor>] --json. Use --current for this Session; without a filter it lists Workspace tasks. Use schedule get --task <task-id> for the current revision and settings and schedule runs --task <task-id> [--page <page>] for trigger results. A Session can have multiple tasks; never use a Session ID as a task ID.',
+  'Use marctl agents schedule create --name <name> --triggers-file <file|-> (-m <text> | --message-file <file|->) --json. By default create a separate task in the current Session, with no need to look up its ID or list tasks first. Use --session <session-id> for an explicitly requested existing Session, or --new-session --runner <runner> with exactly one of --model-id <id> and --default-model (and optional --effort) to create a Session at each trigger.',
+  'For a new task, use a one-time trigger unless recurrence was requested. For a bare clock time with no date implied, use its next occurrence in the known Node time zone. If the date or time zone cannot be reliably determined, ask only for the missing detail. Never silently roll an explicitly requested date forward.',
+  `${scheduleTimeGuidance} Use --triggers-file - to pass JSON through stdin without a temporary file; only one input can read stdin. Report the next trigger and time zone from the creation receipt without a follow-up query. This schedules MAR tasks, not CI or system jobs.`,
+  'Use schedule update --task <task-id> --expected-revision <revision> with at least one of --name, --triggers-file, -m or --message-file. Supplying --triggers-file replaces all triggers; for a partial change, use the existing triggers and preserve any times and recurrence the user did not ask to change. Omit --triggers-file when only the name or prompt changes. Other users’ tasks receive proposals instead of direct updates. Re-read on revision conflict. If a schedule write has an unknown outcome, check with schedule list or get before retrying.'
 ].join('\n\n');
 
 export const marctlManagementInstructions = [
   '## MAR Workspace management',
   'Use native agent_* tools for Agent discovery, creation, communication, observation, waiting and stopping. Do not switch to marctl when a native operation fails.',
   marctlHistory,
-  'Use marctl agents config <id> --model-id <id> --effort <effort> to change future model settings; agents rename <id> --title <title> changes a title.',
-  'Use agents prompt get/set/clear for persistent instructions; set accepts -m or --message-file.',
+  marctlSessionSettings,
   marctlSchedule,
   'marctl nodes lists authorized Nodes; marctl ssh executes remote commands and marctl scp transfers files. Use marctl help agents, nodes, ssh or scp for options.',
   marctlSafety
@@ -52,7 +55,8 @@ export const marctlInstructions = [
   'Send can update a Goal alone with --goal <objective> or --clear-goal; omitted Goal leaves it unchanged. Decide an authorized Agent approval with send <id> --approval <approval-id> --decision approve|reject.',
   'List accepts only --scope tree|active, optional --query <title-fragment> and --limit <1..100> (default 10). With a current Session it defaults to the containing collaboration tree, including idle Sessions; without one it defaults to active Workspace Sessions (running or sleeping), and explicit tree is rejected. Active Sessions come first, then recent activity descending. Returns scope, currentAgentId (null without a Session), flat sessions with id, parentSessionId, title and status, and truncated; no cursor or pagination. Reuse known IDs directly.',
   'Only direct-child updates are collected automatically. Sending to a non-child never subscribes; an explicit wait observes it only for that call.',
-  'Use agents config, rename and prompt for Session management. marctl nodes, ssh and scp use authorized Nodes.',
+  marctlSessionSettings,
   marctlSchedule,
+  'marctl nodes, ssh and scp use authorized Nodes.',
   marctlSafety
 ].join('\n\n');

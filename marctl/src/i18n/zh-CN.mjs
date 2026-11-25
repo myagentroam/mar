@@ -64,8 +64,8 @@ ${configurationHelp}
   {program} rename [<id>] --title <name> [--json]
   {program} prompt get|clear [<id>] [--json]
   {program} prompt set [<id>] (-m <text> | --message-file <file|->) [--json]
-  {program} schedule list [--session <会话 ID>] [--cursor <游标>]
-    [--limit <1..100>] [--json]
+  {program} schedule list [--current | --session <会话 ID>]
+    [--cursor <游标>] [--limit <1..100>] [--json]
   {program} schedule get --task <任务 ID> [--json]
   {program} schedule runs --task <任务 ID> [--page <页码>] [--json]
   {program} schedule create --name <名称> --triggers-file <文件|->
@@ -94,6 +94,7 @@ ${configurationHelp}
   stop 停止目标当前执行并清除 Goal。wait 默认等待直接子会话终态 30 秒，
   0ms 为快照；正数按传入时长等待，最多 5 分钟。等待不会停止任务。
   -m 与 --message-file 互斥；文件使用 UTF-8，- 从 stdin 读取。
+  定时列表默认查询工作区；--current 仅查询当前会话，须有会话上下文。
   创建定时任务默认绑定当前会话；--new-session 在每次触发时新建会话。
   --triggers-file 读取 JSON 数组，每项指定一个 HH:mm；创建用 Node 时区，
   更新用已保存时区。once 必须明确 date；另支持 daily、weekly（weekdays 为 0..6）
@@ -231,6 +232,7 @@ ${configurationHelp}`,
 
     userContextUnavailable: '此 Node 会话没有有效的 marctl 用户授权。',
     sessionContextRequired: '当前上下文没有会话，请显式指定会话 ID。',
+    scheduleListContextRequired: '当前上下文没有会话，请使用 --session <会话 ID>。',
     scheduleContextRequired: '当前上下文没有会话，请使用 --session 或 --new-session。',
     scheduleTriggersInvalid: '请用 --triggers-file 提供非空 JSON 数组（UTF-8，最多 64,000 字符）。',
     serverUrlInvalid: 'MAR_CTL_SERVER_URL 无效。',

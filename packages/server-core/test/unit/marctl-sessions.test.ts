@@ -742,6 +742,7 @@ describe('Workspace-bound marctl agents', () => {
         ['rename', '--title', 'reviewer#42 Updated'],
         ['config', '--effort', 'high'],
         ['schedule', 'list'],
+        ['schedule', 'list', '--current', '--cursor', 'cursor', '--limit', '2'],
         ['schedule', 'get', '--task', 'task-b'],
         ['schedule', 'runs', '--task', 'task-b'],
         [
@@ -812,6 +813,20 @@ describe('Workspace-bound marctl agents', () => {
             }
           });
       }
+      expect(
+        requestNode.mock.calls
+          .filter(([, operation]) => operation === 'schedule.task.list')
+          .map(([, , input]) => input)
+      ).toEqual([
+        { workspaceId: 'workspace', view: 'marctl', limit: 20 },
+        {
+          workspaceId: 'workspace',
+          view: 'marctl',
+          sessionId: 'source',
+          cursor: 'cursor',
+          limit: 2
+        }
+      ]);
       expect(requestNode).toHaveBeenCalledWith(
         'node',
         'agent.network',

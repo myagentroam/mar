@@ -72,14 +72,16 @@ Server 在每次请求中复核用户凭证、账号、登录 Session（适用�
 
 ## 定时任务
 
-`marctl agents schedule` 在当前授权的普通 Workspace 中操作。`list` 返回精简的 `tasks[]` 和 `nextCursor`，可用 `--session <session-id>` 筛选绑定会话，并用 `--cursor` 继续分页。`get`、`update` 和 `runs` 必须传入 `--task <task-id>`，不能用会话 ID 代替。`runs` 以 `--page` 翻页，默认第一页，返回触发时间、结果及可用的运行引用，不返回提示词正文。
+`marctl agents schedule` 在当前授权的普通 Workspace 中操作。`list` 默认查整个工作区，返回精简的 `tasks[]` 和 `nextCursor`。用 `--current` 只列当前会话的任务，或用 `--session <session-id>` 筛选指定会话，两者不能混用；没有当前会话时 `--current` 会报错。用 `--cursor` 继续分页时保留原筛选条件。`get`、`update` 和 `runs` 必须传入 `--task <task-id>`，不能用会话 ID 代替。`runs` 以 `--page` 翻页，默认第一页，返回触发时间、结果及可用的运行引用，不返回提示词正文。
 
 `create` 每次新建一项独立任务，不覆盖原有任务。默认绑定当前会话；可用 `--session <session-id>` 指定同一 Workspace 的会话。如果希望每次触发都新建会话，改用 `--new-session --runner <runner>`，并在 `--model-id <id>` 与 `--default-model` 中二选一，可选 `--effort <value>`。没有当前会话时须明确选择目标。
+
+直接对 Agent 说「18 点检查构建」新建任务时，未要求重复则按单次处理。Node 时区已知且没有其他日期含义时，取下一次到达 18 点的日期；日期或时区不明确时，Agent 只确认缺失的信息。创建成功后可直接从回执看到下次触发时间和时区。只修改已有任务的某个执行时刻时，Agent 保留未要求修改的时刻和周期。
 
 将创建回执或列表中的 `taskId` 用作 `TASK_ID`，并将详情中的当前 `revision` 用作 `REVISION`：
 
 ```sh
-marctl agents schedule list --limit 20 --json
+marctl agents schedule list --current --limit 20 --json
 marctl agents schedule create --name 'Build review' --triggers-file triggers.json -m 'Check build results' --json
 marctl agents schedule get --task "$TASK_ID" --json
 marctl agents schedule update --task "$TASK_ID" --expected-revision "$REVISION" --message-file task.txt --json
