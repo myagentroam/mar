@@ -39,7 +39,7 @@ export function parseTriggerDraft({
   suggestedDate,
   weekdays,
   monthDays
-}: TriggerDraft) {
+}: TriggerDraft): ReturnType<typeof scheduledTriggerSchema.safeParse> {
   return scheduledTriggerSchema.safeParse({
     kind,
     time,

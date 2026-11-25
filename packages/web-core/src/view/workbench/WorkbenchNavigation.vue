@@ -298,7 +298,7 @@ function runBlankMenuCommand(command: string): void {
         <MarDropdownMenu>
           <MarDropdownItem
             command="reload"
-            icon="source-code"
+            icon="tag"
             :aria-label="$t('navigation.reloadVersion', { version: versionLabel })"
             >{{ versionLabel }}</MarDropdownItem
           >
