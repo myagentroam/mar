@@ -19,6 +19,7 @@ type Capture = Pick<BrowserFrame, 'viewVersion' | 'width' | 'height'> & {
   scrollY?: number;
 };
 type Flight = { sequence: number; view: number; final: boolean; acknowledged: () => void };
+const TRANSFER_DEADLINE_MULTIPLIER = 4;
 
 /** One attachment owns one RFB peer, one confirmed framebuffer and a single latest capture. */
 export class BrowserVncStream {
@@ -252,7 +253,17 @@ export class BrowserVncStream {
       acknowledged: ack.resolve
     });
     const started = performance.now();
-    const aborted = () => ack.resolve();
+    // Keep the short stall timeout, but let a large lossless frame make
+    // progress on a slow link. One frame can never hold credit indefinitely.
+    this.deadline?.refresh();
+    const transferDeadline = setTimeout(
+      () => this.fail('BROWSER_FRAME_TIMEOUT'),
+      this.options.deadlineMs * TRANSFER_DEADLINE_MULTIPLIER
+    ).unref();
+    const aborted = () => {
+      clearTimeout(transferDeadline);
+      ack.resolve();
+    };
     signal.addEventListener('abort', aborted, { once: true });
     try {
       for (const { bytes, final } of encodeBrowserFrame({
@@ -264,6 +275,7 @@ export class BrowserVncStream {
         signal.throwIfAborted();
         current.final = final;
         await this.options.send(bytes, signal);
+        if (!signal.aborted) this.deadline?.refresh();
       }
       const written = performance.now();
       await ack.promise;
@@ -303,6 +315,7 @@ export class BrowserVncStream {
       )
         this.options.changed(this.quality);
     } finally {
+      clearTimeout(transferDeadline);
       signal.removeEventListener('abort', aborted);
       this.current = undefined;
     }

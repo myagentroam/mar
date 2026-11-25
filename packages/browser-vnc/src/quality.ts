@@ -55,9 +55,11 @@ export class BrowserVncRate {
       (motionWorkMs !== undefined && motionWorkMs * before.fps > 1_000);
     if (slow) {
       this.cheap = this.fast = 0;
-      // Keep the normal debounce, but don't spend three large frames at every
-      // rung when the measured motion is already several times over budget.
-      if (++this.slow >= (motionBps >= motionBudget * 3 ? 2 : 3)) {
+      // A confirmed motion frame that takes seconds to write is already a
+      // sustained signal when newer captures are waiting. Don't hold that
+      // same rung for several more large writes on a constrained link.
+      const slowWrite = superseded && motionBytes > 0 && writeMs >= 1_000;
+      if (++this.slow >= (slowWrite ? 1 : motionBps >= motionBudget * 3 ? 2 : 3)) {
         this.level = Math.min(this.level + 1, profiles.length - 1);
         this.slow = 0;
       }
