@@ -484,12 +484,11 @@ for (const theme of ['daylight', 'midnight']) {
       const tokens = await remove.evaluate((element) => {
         const probe = document.createElement('span');
         probe.style.cssText =
-          'position:absolute;color:var(--mar-text-primary);background:var(--mar-fill-row-hover);border-color:var(--mar-control-focus)';
+          'position:absolute;color:var(--mar-text-primary);border-color:var(--mar-control-focus)';
         element.append(probe);
         const style = getComputedStyle(probe);
         const colors = {
           foreground: style.color,
-          surface: style.backgroundColor,
           focus: style.borderTopColor
         };
         probe.remove();
@@ -505,7 +504,8 @@ for (const theme of ['daylight', 'midnight']) {
       expect(normal.color).not.toBe(tokens.foreground);
       await remove.hover();
       await expect(remove).toHaveCSS('color', tokens.foreground);
-      await expect(remove).toHaveCSS('background-color', tokens.surface);
+      // Row-owned hover surface keeps the inline delete transparent; only the icon brightens.
+      await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(remove).toHaveCSS('transform', normal.transform);
       await expect(remove.locator('svg')).toHaveCSS('transform', normal.iconTransform);
       expect(await remove.boundingBox()).toEqual(bounds);
@@ -521,7 +521,7 @@ for (const theme of ['daylight', 'midnight']) {
       await expect(remove).toHaveCSS('outline-color', tokens.focus);
       await expect(remove).toHaveCSS('outline-offset', '2px');
       await expect(remove).toHaveCSS('color', tokens.foreground);
-      await expect(remove).toHaveCSS('background-color', tokens.surface);
+      await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
       await remove.evaluate((element: HTMLButtonElement) => {
         element.disabled = true;
@@ -1008,14 +1008,22 @@ test('Mobile menus animate in Chat, preserve their leaving content and isolate s
   await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(30);
   expect(await page.evaluate(() => history.length)).toBe(historyLength);
   expect(await drawer.evaluate((element) => element.scrollTop)).toBe(0);
+  let visitedBrand = false;
   for (let index = 0; index < 45; index++) {
     await page.keyboard.press('Tab');
-    expect(
-      await page.evaluate(() =>
-        Boolean(document.activeElement?.closest('.workspace-tree, .activity-rail'))
-      )
-    ).toBe(true);
+    const focusedRegion = await page.evaluate(() => {
+      const region = document.activeElement?.closest(
+        '.workspace-tree, .activity-rail, .workbench-brand'
+      );
+      if (!region) return 'outside';
+      return region.matches('.workbench-brand') ? 'brand' : 'drawer-or-rail';
+    });
+    expect(focusedRegion, `focus stays in the drawer or header after Tab ${index + 1}`).not.toBe(
+      'outside'
+    );
+    visitedBrand ||= focusedRegion === 'brand';
   }
+  expect(visitedBrand).toBe(true);
   // Closing and observing in one browser task proves the content is retained
   // before the leave transition ends, rather than testing only the final state.
   const leaving = await page.evaluate(() => {
