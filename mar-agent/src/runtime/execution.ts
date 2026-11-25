@@ -6,7 +6,7 @@ import type { AgentModelConfiguration } from '../model/configuration.js';
 import type { ModelEvent, ModelRetryState, ModelUsage } from '../model/contracts.js';
 import { isProviderContextOverflow, recoverModelStream } from '../model/recovery.js';
 import { modelStreamEventObservedAt } from '../model/sse.js';
-import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
+import { THOUGHT_TOOL_NAME } from './context/thought-contract.js';
 import type { ClientToolCall, ExecutedToolCall } from './tool-round-contract.js';
 import type { AuthoritativeModelUsage } from './context/usage.js';
 import type { ExecutionMode } from './contracts.js';

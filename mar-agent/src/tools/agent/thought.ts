@@ -1,7 +1,7 @@
 import { AgentError } from '../../error.js';
+import { THOUGHT_TOOL_NAME } from '../../runtime/context/thought-contract.js';
 import type { ClientToolDefinition } from '../contracts.js';
 
-export const THOUGHT_TOOL_NAME = 'thought';
 const maxTitleLength = 256;
 const maxContentBytes = 32 * 1024;
 

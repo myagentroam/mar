@@ -14,7 +14,7 @@ import type { ExecutionModelLifecycle } from './execution-model-lifecycle.js';
 import type { createExecutionModelContext } from './execution-model-context.js';
 import type { ResourceInputProjection } from './resource-input.js';
 import type { ContextGcMode } from '../model/configuration.js';
-import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
+import { THOUGHT_TOOL_NAME } from '../runtime/context/thought-contract.js';
 
 type GcRound = {
   readonly request: Pick<PreparedExecutionRound<RoundToolScope>['request'], 'system'>;

@@ -260,8 +260,12 @@ describe('Agent structure boundaries', () => {
   });
   it('groups Agent state tools separately from local side effects while keeping shared dispatch at the root', () => {
     const paths = new Set(files());
-    for (const name of ['question', 'skill', 'todo', 'todo-read', 'todo-write']) {
+    for (const name of ['question', 'skill', 'thought', 'todo', 'todo-tool']) {
       expect(paths.has(`tools/agent/${name}.ts`), name).toBe(true);
+      expect(paths.has(`tools/${name}.ts`), name).toBe(false);
+    }
+    for (const name of ['todo-read', 'todo-write']) {
+      expect(paths.has(`tools/agent/${name}.ts`), name).toBe(false);
       expect(paths.has(`tools/${name}.ts`), name).toBe(false);
     }
     for (const name of ['agent-start', 'agent-wait', 'agent-message', 'agent-cancel'])
@@ -306,7 +310,15 @@ describe('Agent structure boundaries', () => {
   });
 
   it('keeps CLI, shared application capabilities and Sandbox outside the core without reverse dependencies', () => {
-    expect(readdirSync(packageSourceRoot).sort()).toEqual([
+    // Empty local directories are not source modules and are not tracked by Git.
+    const entries = readdirSync(packageSourceRoot, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          !entry.isDirectory() || readdirSync(join(packageSourceRoot, entry.name)).length > 0
+      )
+      .map((entry) => entry.name)
+      .sort();
+    expect(entries).toEqual([
       'cli',
       'error.ts',
       'extensions',

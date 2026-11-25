@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { AgentError } from '../error.js';
-import { THOUGHT_TOOL_NAME } from '../tools/agent/thought.js';
+import { THOUGHT_TOOL_NAME } from '../runtime/context/thought-contract.js';
 import type {
   ClientToolDefinition,
   McpCatalogTool,
