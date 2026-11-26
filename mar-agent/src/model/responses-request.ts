@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { AgentError } from '../error.js';
 import {
   agentReasoningEffortSchema,
@@ -186,7 +187,10 @@ function strictFunctionSchema(value: unknown, optional = false): unknown {
       ...(optional ? { type: ['array', 'null'] } : {})
     };
   if (!optional) return supportedSchema;
-  if (typeof schema.type === 'string') return { ...supportedSchema, type: [schema.type, 'null'] };
+  if (typeof schema.type === 'string')
+    return schema.type === 'null'
+      ? supportedSchema
+      : { ...supportedSchema, type: [schema.type, 'null'] };
   if (Array.isArray(schema.type))
     return {
       ...supportedSchema,
@@ -480,8 +484,6 @@ export function responsesFunctionArguments(
   value: unknown
 ): unknown {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
-  const args = Object.entries(value);
-  if (!args.some(([, argument]) => argument === null)) return value;
   const tool =
     request.tools.find((candidate) => candidate.name === name) ??
     request.messages
@@ -489,16 +491,93 @@ export function responsesFunctionArguments(
       ?.toolSearchTools?.find((candidate) => candidate.name === name);
   const schema = tool?.inputSchema;
   if (schema?.type !== 'object' || hasOpenFunctionObject(schema)) return value;
+  return restoreStrictFunctionValue(value, schema);
+}
+
+function restoreStrictFunctionValue(value: unknown, schema: Record<string, unknown>): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(schema.anyOf)) {
+    // Only reverse union lowering where all plausible wire branches agree.
+    if (schema.properties !== undefined || schema.items !== undefined) return value;
+    const candidates = schema.anyOf
+      .filter((branch) => matchesStrictFunctionBranch(value, branch))
+      .map((branch) => restoreStrictFunctionValue(value, record(branch)));
+    return candidates.length > 0 &&
+      candidates.every((item) => isDeepStrictEqual(item, candidates[0]))
+      ? candidates[0]
+      : value;
+  }
+  if (Array.isArray(value))
+    return schema.type === 'array' && schema.items !== undefined
+      ? value.map((item) => restoreStrictFunctionValue(item, record(schema.items)))
+      : value;
+  if (schema.type !== 'object') return value;
   const required = new Set(Array.isArray(schema.required) ? schema.required : []);
   const properties = record(schema.properties);
   return Object.fromEntries(
-    args.filter(([key, argument]) => {
-      if (argument !== null || required.has(key) || !Object.hasOwn(properties, key)) return true;
-      const { type, enum: choices } = record(properties[key]);
-      if (Array.isArray(choices) && !choices.includes(null)) return false;
-      if (typeof type === 'string') return type === 'null';
-      if (Array.isArray(type)) return type.includes('null');
-      return true;
+    Object.entries(value).flatMap(([key, argument]) => {
+      if (!Object.hasOwn(properties, key)) return [[key, argument]];
+      const property = properties[key];
+      if (argument === null && !required.has(key) && isStrictNullPlaceholder(property)) return [];
+      return [[key, restoreStrictFunctionValue(argument, record(property))]];
+    })
+  );
+}
+
+/** Compare the original and lowered shapes; do not hide an invalid argument. */
+function isStrictNullPlaceholder(property: unknown): boolean {
+  return (
+    nullAdmission(property) === false &&
+    nullAdmission(strictFunctionSchema(property, true)) === true
+  );
+}
+
+/** Decide only null admission, not general Schema validity. Unresolved constraints stay unknown. */
+function nullAdmission(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  const schema = record(value);
+  if ('$ref' in schema || '$dynamicRef' in schema || '$recursiveRef' in schema) return undefined;
+  const { type, const: literal, enum: choices, anyOf } = schema;
+  if (
+    (typeof type === 'string' && type !== 'null') ||
+    (Array.isArray(type) && !type.includes('null')) ||
+    (literal !== undefined && literal !== null) ||
+    (Array.isArray(choices) && !choices.includes(null))
+  )
+    return false;
+  if ('allOf' in schema || 'oneOf' in schema || 'not' in schema || 'if' in schema) return undefined;
+  if (!Array.isArray(anyOf)) return true;
+  const branches = anyOf.map(nullAdmission);
+  return branches.includes(true) ? true : branches.includes(undefined) ? undefined : false;
+}
+
+/** Exclude incompatible branches using facts from the strict wire shape, not tool defaults. */
+function matchesStrictFunctionBranch(value: object, branch: unknown): boolean {
+  if (branch === false) return false;
+  const schema = record(branch);
+  const type = Array.isArray(value) ? 'array' : 'object';
+  if (typeof schema.type === 'string' && schema.type !== type) return false;
+  if (Array.isArray(schema.type) && !schema.type.includes(type)) return false;
+  if (type !== 'object' || schema.type !== 'object') return true;
+  const properties = record(schema.properties);
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  const args = record(value);
+  return (
+    required.every((key) => typeof key === 'string' && Object.hasOwn(args, key)) &&
+    Object.entries(args).every(([key, argument]) => {
+      if (!Object.hasOwn(properties, key)) return schema.patternProperties !== undefined;
+      const property = properties[key];
+      if (argument === null)
+        return (
+          nullAdmission(
+            required.includes(key) ? property : strictFunctionSchema(property, true)
+          ) !== false
+        );
+      const { const: literal, enum: choices } = record(property);
+      return (
+        (literal === undefined || isDeepStrictEqual(argument, literal)) &&
+        (!Array.isArray(choices) || choices.some((choice) => isDeepStrictEqual(argument, choice)))
+      );
     })
   );
 }
