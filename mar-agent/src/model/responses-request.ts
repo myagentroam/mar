@@ -9,17 +9,35 @@ import type { ModelRequest } from './contracts.js';
 import { modelImageUrl } from './image.js';
 import { isRealUserMessage, uniqueModelImages } from './input-images.js';
 import { responseItem } from './responses-event-projection.js';
-import type { ResponsesRequestBody } from './responses-session-cache.js';
 import { record, text } from './sse.js';
 import { resolveModelTextBlocks } from './text-blocks.js';
 import { stableToolSchema } from './tool-schema.js';
 import { jsonToolInput } from './tool-input.js';
 
+export type ResponsesRequestBody = Readonly<Record<string, unknown>> & {
+  readonly input: readonly unknown[];
+};
+
+export interface ResponsesToolPlaceholders {
+  omitNull?: true;
+  properties?: Map<string, ResponsesToolPlaceholders>;
+  items?: ResponsesToolPlaceholders;
+}
+
+// Request-local metadata; never serialized with the tool definitions.
+type ToolPlaceholders = Map<string, ResponsesToolPlaceholders | undefined>;
+
+export interface ResponsesToolProjection {
+  direct: ToolPlaceholders;
+  deferred: Map<string, ToolPlaceholders>;
+}
+
 export function responsesRequestBody(
   configuration: AgentModelConfiguration,
   request: ModelRequest,
   messages: ModelRequest['messages'],
-  previousOutputItems: readonly Record<string, unknown>[] = []
+  previousOutputItems: readonly Record<string, unknown>[] = [],
+  placeholders?: ResponsesToolProjection
 ): ResponsesRequestBody {
   const systemBlocks = resolveModelTextBlocks(request.system, request.systemBlocks ?? []);
   if (
@@ -44,13 +62,12 @@ export function responsesRequestBody(
                 type: 'tool_search',
                 execution: 'client',
                 description: tool.description,
-                parameters: stableToolSchema(
-                  strictFunctionSchema(stableToolSchema(tool.inputSchema))
-                )
+                parameters: stableToolSchema(strictToolParameters(tool, placeholders?.direct))
               }
             : responsesFunctionTool(
                 tool,
-                configuration.responsesOptionalParameters?.nativeTools !== false
+                configuration.responsesOptionalParameters?.nativeTools !== false,
+                placeholders?.direct
               )
         );
   if (configuration.responsesToolNamespace && tools.length > 0) {
@@ -80,7 +97,8 @@ export function responsesRequestBody(
     usesResponsesConfigurationUpdates(configuration),
     configuration.responsesOptionalParameters?.nativeTools !== false,
     request.tools,
-    previousOutputItems
+    previousOutputItems,
+    placeholders?.deferred
   );
   const systemInput = responsesSystemInput(request, systemBlocks);
   if (systemInput !== undefined) input.unshift(systemInput);
@@ -151,7 +169,22 @@ function responsesSystemInput(
   };
 }
 
-function strictFunctionSchema(value: unknown, optional = false): unknown {
+function strictFunctionSchema(
+  value: unknown,
+  optional = false,
+  placeholders?: ResponsesToolPlaceholders
+): unknown {
+  const projected = projectStrictFunctionSchema(value, optional, placeholders);
+  if (optional && placeholders && acceptsNull(value) === false && acceptsNull(projected) === true)
+    placeholders.omitNull = true;
+  return projected;
+}
+
+function projectStrictFunctionSchema(
+  value: unknown,
+  optional: boolean,
+  placeholders: ResponsesToolPlaceholders | undefined
+): unknown {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
   const schema = value as Record<string, unknown>;
   const supportedSchema = Object.fromEntries(
@@ -163,6 +196,13 @@ function strictFunctionSchema(value: unknown, optional = false): unknown {
     supportedSchema.anyOf = schema.anyOf.map((branch) => strictFunctionSchema(branch));
   if (optional && Array.isArray(schema.enum) && !schema.enum.includes(null))
     supportedSchema.enum = [...schema.enum, null];
+  // Do not select a union branch or infer constraints from references.
+  const childPlans =
+    placeholders &&
+    !hasUnresolvedNullConstraint(schema) &&
+    !['anyOf', 'const', 'enum'].some((key) => Object.hasOwn(schema, key))
+      ? placeholders
+      : undefined;
   if (schema.type === 'object') {
     const properties = record(schema.properties);
     const required = new Set(Array.isArray(schema.required) ? schema.required : []);
@@ -170,21 +210,29 @@ function strictFunctionSchema(value: unknown, optional = false): unknown {
       ...supportedSchema,
       ...(optional ? { type: ['object', 'null'] } : {}),
       properties: Object.fromEntries(
-        Object.entries(properties).map(([name, property]) => [
-          name,
-          strictFunctionSchema(property, !required.has(name))
-        ])
+        Object.entries(properties).map(([name, property]) => {
+          const child = childPlans ? {} : undefined;
+          const projected = strictFunctionSchema(property, !required.has(name), child);
+          if (childPlans && child && hasPlaceholders(child))
+            (childPlans.properties ??= new Map()).set(name, child);
+          return [name, projected];
+        })
       ),
       required: Object.keys(properties),
       additionalProperties: false
     };
   }
-  if (schema.type === 'array')
+  if (schema.type === 'array') {
+    const child = childPlans ? {} : undefined;
+    const items =
+      schema.items === undefined ? undefined : strictFunctionSchema(schema.items, false, child);
+    if (childPlans && child && hasPlaceholders(child)) childPlans.items = child;
     return {
       ...supportedSchema,
-      ...(schema.items === undefined ? {} : { items: strictFunctionSchema(schema.items) }),
+      ...(items === undefined ? {} : { items }),
       ...(optional ? { type: ['array', 'null'] } : {})
     };
+  }
   if (!optional) return supportedSchema;
   if (typeof schema.type === 'string')
     return schema.type === 'null'
@@ -206,6 +254,33 @@ function strictFunctionSchema(value: unknown, optional = false): unknown {
   return { anyOf: [supportedSchema, { type: 'null' }] };
 }
 
+function hasPlaceholders(plan: ResponsesToolPlaceholders): boolean {
+  return Boolean(plan.omitNull || plan.properties || plan.items);
+}
+
+function hasUnresolvedNullConstraint(schema: Record<string, unknown>): boolean {
+  return ['$ref', '$dynamicRef', '$recursiveRef', 'oneOf', 'allOf', 'not', 'if', 'nullable'].some(
+    (key) => Object.hasOwn(schema, key)
+  );
+}
+
+/** Only classify null for the explicit forms used by the Strict projection. */
+function acceptsNull(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  const schema = record(value);
+  if (hasUnresolvedNullConstraint(schema)) return undefined;
+  if (
+    (typeof schema.type === 'string' && schema.type !== 'null') ||
+    (Array.isArray(schema.type) && !schema.type.includes('null')) ||
+    (Object.hasOwn(schema, 'const') && schema.const !== null) ||
+    (Array.isArray(schema.enum) && !schema.enum.includes(null))
+  )
+    return false;
+  if (!Array.isArray(schema.anyOf)) return true;
+  const branches = schema.anyOf.map(acceptsNull);
+  return branches.includes(true) ? true : branches.includes(undefined) ? undefined : false;
+}
+
 export function openAiInput(
   messages: ModelRequest['messages'],
   images: ModelRequest['images'] | undefined,
@@ -214,7 +289,8 @@ export function openAiInput(
   configurationUpdates = true,
   nativeTools = true,
   tools: ModelRequest['tools'] = [],
-  previousOutputItems: readonly Record<string, unknown>[] = []
+  previousOutputItems: readonly Record<string, unknown>[] = [],
+  deferredPlaceholders?: ResponsesToolProjection['deferred']
 ) {
   const compatibleMessages = messages.filter(
     (message) =>
@@ -316,7 +392,8 @@ export function openAiInput(
         customCallIds,
         functionCallIds,
         nativeTools,
-        tools
+        tools,
+        deferredPlaceholders
       )
     );
   }
@@ -330,7 +407,8 @@ function openAiInputItem(
   customCallIds: ReadonlySet<string> = new Set(),
   functionCallIds: ReadonlySet<string> = new Set(),
   nativeTools = true,
-  tools: ModelRequest['tools'] = []
+  tools: ModelRequest['tools'] = [],
+  deferredPlaceholders?: ResponsesToolProjection['deferred']
 ) {
   const userImages =
     message.role === 'user' ? uniqueModelImages(message.images, images) : ([] as const);
@@ -384,14 +462,20 @@ function openAiInputItem(
     nativeTools &&
     message.toolSearchTools &&
     !functionCallIds.has(message.callId ?? '')
-  )
+  ) {
+    const placeholders: ToolPlaceholders | undefined = deferredPlaceholders ? new Map() : undefined;
+    const projectedTools = message.toolSearchTools.map((tool) =>
+      responsesFunctionTool(tool, true, placeholders)
+    );
+    if (placeholders && message.callId) deferredPlaceholders?.set(message.callId, placeholders);
     return {
       type: 'tool_search_output',
       call_id: message.callId,
       status: 'completed',
       execution: 'client',
-      tools: message.toolSearchTools.map((tool) => responsesFunctionTool(tool))
+      tools: projectedTools
     };
+  }
   if (message.role === 'tool')
     return {
       type: customCallIds.has(message.callId ?? '')
@@ -461,19 +545,36 @@ function contextualAuthority(message: ModelRequest['messages'][number]): string 
   return message.contextualBlock?.authority;
 }
 
-function responsesFunctionTool(tool: ModelRequest['tools'][number], nativeTools = true) {
+function strictToolParameters(
+  tool: ModelRequest['tools'][number],
+  placeholders?: ToolPlaceholders
+) {
+  const plan = placeholders ? {} : undefined;
+  const parameters = strictFunctionSchema(stableToolSchema(tool.inputSchema), false, plan);
+  placeholders?.set(tool.name, plan && hasPlaceholders(plan) ? plan : undefined);
+  return parameters;
+}
+
+function responsesFunctionTool(
+  tool: ModelRequest['tools'][number],
+  nativeTools: boolean,
+  placeholders?: ToolPlaceholders
+) {
+  if (tool.inputMode === 'freeform' && nativeTools) {
+    placeholders?.set(tool.name, undefined);
+    return { type: 'custom', name: tool.name, description: tool.description };
+  }
   const strict = !hasOpenFunctionObject(tool.inputSchema);
-  return tool.inputMode === 'freeform' && nativeTools
-    ? { type: 'custom', name: tool.name, description: tool.description }
-    : {
-        type: 'function',
-        name: tool.name,
-        description: tool.description,
-        parameters: stableToolSchema(
-          strict ? strictFunctionSchema(stableToolSchema(tool.inputSchema)) : tool.inputSchema
-        ),
-        strict
-      };
+  if (!strict) placeholders?.set(tool.name, undefined);
+  return {
+    type: 'function',
+    name: tool.name,
+    description: tool.description,
+    parameters: stableToolSchema(
+      strict ? strictToolParameters(tool, placeholders) : tool.inputSchema
+    ),
+    strict
+  };
 }
 
 function hasOpenFunctionObject(value: unknown): boolean {

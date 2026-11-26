@@ -51,7 +51,7 @@ afterEach(async () => {
 });
 
 describe('OpenAI Responses tool namespace on STANDARD transport', () => {
-  it.each([false, true])('omits null fields (deferred=%s)', async (deferred) => {
+  it.each([false, true])('omits Strict-only null placeholders (deferred=%s)', async (deferred) => {
     const patch = {
       type: 'object',
       properties: { objective: { type: 'string' }, name: { type: 'string' } },
@@ -69,11 +69,16 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
           goal: { anyOf: [{ type: 'null' }, { type: 'string' }] },
           optionalConstant: { const: 'fixed' },
           patch,
-          rows: { type: 'array', items: { anyOf: [patch, { type: 'null' }] } },
+          rows: { type: 'array', items: patch },
+          choice: {
+            anyOf: [patch, { ...patch, required: ['name'] }]
+          },
+          nullableEnum: { type: ['string', 'null'], enum: ['auto', null] },
+          enumPlaceholder: { type: ['string', 'null'], enum: ['auto'] },
           enabled: { type: 'boolean' },
           limit: { type: 'integer' }
         },
-        required: ['title'],
+        required: ['title', 'enabled'],
         additionalProperties: false
       }
     };
@@ -83,8 +88,11 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
       goal: null,
       optionalConstant: null,
       patch: { objective: 'New work', name: null },
-      rows: [null, { objective: null, name: '' }],
-      enabled: false,
+      rows: [null, { objective: null, name: null }, { objective: '', name: '' }],
+      choice: { objective: 'Choice', name: null },
+      nullableEnum: null,
+      enumPlaceholder: null,
+      enabled: null,
       limit: 0
     };
     const fixture = await startHttpResponsesServer([
@@ -149,9 +157,12 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
       name: tool.name,
       arguments: {
         title: 'Test',
+        goal: null,
         patch: { objective: 'New work' },
-        rows: [null, { name: '' }],
-        enabled: false,
+        rows: [null, { objective: null }, { objective: '', name: '' }],
+        choice: { objective: 'Choice', name: null },
+        nullableEnum: null,
+        enabled: null,
         limit: 0
       }
     });
@@ -161,7 +172,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
     );
   });
 
-  it('omits null fields through deeply nested JSON arrays without aborting the response', async () => {
+  it('preserves deeply nested non-Strict arguments without traversing them', async () => {
     const depth = 4096;
     const fixture = await startHttpResponsesServer([
       {
@@ -199,7 +210,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
       leaf = leaf[0];
     }
     expect(nesting).toBe(depth);
-    expect(leaf).toEqual({ value: 1 });
+    expect(leaf).toEqual({ optional: null, value: 1 });
     expect(events).toContainEqual({ type: 'completed', reason: 'completed' });
   });
 
@@ -1062,6 +1073,97 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
       await turn.close();
     }
   });
+
+  it.each(['continue', 'reconnect', 'reject continuation'] as const)(
+    'uses the deferred schema from the successful attempt (%s)',
+    async (mode) => {
+      const deferred = {
+        name: 'deferred_probe',
+        description: 'Look up a record.',
+        inputSchema: {
+          type: 'object',
+          properties: { limit: { type: 'integer' }, label: { type: ['string', 'null'] } },
+          additionalProperties: false
+        }
+      };
+      const item = {
+        type: 'function_call',
+        id: 'probe-item',
+        call_id: 'probe-call',
+        name: deferred.name,
+        arguments: '{"limit":null,"label":null}'
+      };
+      const fixture = await startResponsesWebSocketServer([], {
+        closeAfterRequestIndexes: mode === 'reconnect' ? [0] : [],
+        responsesByRequest: [
+          completedEvents('first', [messageItem('first', 'Ready')]),
+          ...(mode === 'reject continuation'
+            ? [[{ type: 'error', status: 400, error: { code: 'invalid_previous_response_id' } }]]
+            : []),
+          completedEvents('second', [item])
+        ]
+      });
+      webSocketFixtures.push(fixture);
+      const adapter = registerAdapter(new OpenAiResponsesAdapter(configuration(fixture.baseUrl)));
+      const turn = adapter.createTurnSession();
+      const request: ModelRequest = {
+        ...toolRequest([]),
+        messages: [
+          { role: 'user', content: 'Find a record.' },
+          { role: 'tool_call', callId: 'search', name: 'tool_search', arguments: {} },
+          { role: 'tool', callId: 'search', content: 'Found', toolSearchTools: [deferred] }
+        ]
+      };
+      try {
+        const signal = new AbortController().signal;
+        await collect(turn.start(request, signal));
+        turn.commitContinuationInput(request.messages.length + 1);
+        if (mode === 'reconnect')
+          await vi.waitFor(() => expect(fixture.closedConnections()).toBe(1));
+        const rebound = {
+          ...deferred,
+          inputSchema: {
+            ...deferred.inputSchema,
+            properties: { ...deferred.inputSchema.properties, limit: { type: ['integer', 'null'] } }
+          }
+        };
+        const events = await collect(
+          turn.start(
+            {
+              ...request,
+              messages: [
+                ...request.messages.slice(0, -1),
+                { role: 'tool', callId: 'search', content: 'Found', toolSearchTools: [rebound] },
+                providerMessage(messageItem('first', 'Ready'), 'standard'),
+                { role: 'user', content: 'Look it up.' }
+              ]
+            },
+            signal
+          )
+        );
+        if (mode !== 'reconnect')
+          expect(fixture.requests[1]).toMatchObject({
+            previous_response_id: 'first',
+            input: [{ role: 'user', content: 'Look it up.' }]
+          });
+        if (mode !== 'continue') {
+          const fullReplay = fixture.requests.at(-1);
+          expect(fullReplay).not.toHaveProperty('previous_response_id');
+          expect(fullReplay?.input).toContainEqual(
+            expect.objectContaining({ type: 'tool_search_output' })
+          );
+        }
+        expect(events).toContainEqual({
+          type: 'client_tool.call',
+          callId: 'probe-call',
+          name: deferred.name,
+          arguments: mode === 'continue' ? { label: null } : { limit: null, label: null }
+        });
+      } finally {
+        await turn.close();
+      }
+    }
+  );
 
   it('replays full history after a WebSocket reconnect', async () => {
     const message = messageItem('response-1', 'First answer');

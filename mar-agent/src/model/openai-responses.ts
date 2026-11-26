@@ -1,4 +1,9 @@
-import { responsesRequestBody } from './responses-request.js';
+import {
+  responsesRequestBody,
+  type ResponsesRequestBody,
+  type ResponsesToolPlaceholders,
+  type ResponsesToolProjection
+} from './responses-request.js';
 export { openAiInput } from './responses-request.js';
 import {
   ResponsesTextProjection,
@@ -64,7 +69,6 @@ import {
   clearResponsesContinuation,
   invalidateResponsesWebSocket,
   terminateWebSocket,
-  type ResponsesRequestBody,
   type ResponsesSessionState
 } from './responses-session-cache.js';
 
@@ -73,35 +77,51 @@ const WEBSOCKET_SEND_FRAME_BYTES = 1024 * 1024;
 const OPENAI_RESPONSES_EARLY_EOF_REASON = 'OPENAI_RESPONSES_EARLY_EOF';
 const X_CODEX_TURN_STATE = 'x-codex-turn-state';
 
-/** Omit unset object fields for execution without changing array positions or provider history. */
-function responsesToolArguments(value: unknown): unknown {
-  if (value === null || typeof value !== 'object') return value;
-  const copy = (node: object) =>
-    (Array.isArray(node) ? node.slice() : { ...node }) as Record<string, unknown>;
-  const result = copy(value);
-  const pending = [result];
+/** Follow only positions recorded by the Strict projection, without mutating the response. */
+function responsesToolArguments(value: unknown, plan?: ResponsesToolPlaceholders): unknown {
+  if (!plan) return value;
+  const pending: [Record<string, unknown> | unknown[], ResponsesToolPlaceholders][] = [];
+  const copy = (node: unknown, fields: ResponsesToolPlaceholders | undefined): unknown => {
+    if (!fields || node === null || typeof node !== 'object') return node;
+    if (Array.isArray(node)) {
+      if (!fields.items) return node;
+      const array = node.slice();
+      pending.push([array, fields]);
+      return array;
+    }
+    if (!fields.properties) return node;
+    const object = { ...node } as Record<string, unknown>;
+    pending.push([object, fields]);
+    return object;
+  };
+  const result = copy(value, plan);
   while (pending.length > 0) {
-    const node = pending.pop()!;
-    const array = Array.isArray(node);
-    for (const key of Object.keys(node)) {
-      const field = node[key];
-      if (field === null) {
-        if (!array) delete node[key];
-      } else if (typeof field === 'object') {
-        const child = copy(field);
-        node[key] = child;
-        pending.push(child);
+    const [node, fields] = pending.pop()!;
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) node[i] = copy(node[i], fields.items);
+    } else if (fields.properties) {
+      for (const [key, child] of fields.properties) {
+        if (!Object.hasOwn(node, key)) continue;
+        if (node[key] === null && child.omitNull) delete node[key];
+        else node[key] = copy(node[key], child);
       }
     }
   }
   return result;
 }
 
-interface PreparedResponsesRequest {
-  readonly inputItemCount: number;
-  readonly fullBody: ResponsesRequestBody;
+interface PreparedResponsesAttempt {
   readonly body: ResponsesRequestBody;
+  readonly inputItemCount: number;
+  readonly toolPlans: ReadonlyMap<string, ResponsesToolPlaceholders | undefined>;
+  readonly deferredToolPlans: ReadonlyMap<string, ResponsesToolPlaceholders | undefined>;
+}
+
+interface PreparedResponsesRequest {
+  readonly first: PreparedResponsesAttempt;
+  readonly full: PreparedResponsesAttempt;
   readonly continuation: boolean;
+  completed?: PreparedResponsesAttempt;
 }
 
 type ResponsesWebSocketDiagnostic = Pick<
@@ -159,7 +179,6 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
     prepared: PreparedResponsesRequest
   ): AsyncIterable<ModelEvent> {
     let useContinuation = prepared.continuation;
-    let requestBody = prepared.body;
     let credentialReason: ModelCredentialAcquireReason = 'REQUEST';
     let unauthorizedRetryUsed = false;
     let invalidContinuationFallbackUsed = false;
@@ -172,8 +191,8 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
         // Adapter retries and Runtime recovery share this counter, but not Provider Turn state.
         turn.restartProviderTurn();
         useContinuation = false;
-        requestBody = prepared.fullBody;
       }
+      const attemptRequest = useContinuation ? prepared.first : prepared.full;
       if (resetOutputTiming) yield { type: 'output.reset' };
       resetOutputTiming = false;
       const attempt = retryState.attempts++;
@@ -185,7 +204,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
         this.configuration.responsesTransport?.transport === 'WEBSOCKET' ? 'WEBSOCKET' : 'HTTP';
       const requestPrefixDiagnostic = request.onAttemptDiagnostic
         ? {
-            requestInputItems: prepared.inputItemCount
+            requestInputItems: attemptRequest.inputItemCount
           }
         : {};
       const prelude: ModelEvent[] = [];
@@ -208,7 +227,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
             this.startAttempt(
               request,
               signal,
-              requestBody,
+              attemptRequest,
               useContinuation,
               credentialReason,
               turn
@@ -248,6 +267,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
           ...turn.connectionDiagnostic(),
           durationMs: Math.max(0, Date.now() - attemptStartedAt)
         });
+        prepared.completed = attemptRequest;
         return;
       } catch (error) {
         const reportFailure = async (
@@ -284,7 +304,6 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
         ) {
           invalidContinuationFallbackUsed = true;
           useContinuation = false;
-          requestBody = prepared.fullBody;
           turn.restartProviderTurn();
           retryState.attempts = Math.max(0, retryState.attempts - 1);
           credentialReason = 'RECONNECT';
@@ -308,7 +327,6 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
           if (fallback?.action === 'resetContinuation') {
             invalidContinuationFallbackUsed = true;
             useContinuation = false;
-            requestBody = prepared.fullBody;
             turn.restartProviderTurn();
             credentialReason = 'RECONNECT';
             await reportFailure(true, {
@@ -354,7 +372,6 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
             ? 'RECONNECT'
             : 'REQUEST';
         useContinuation = false;
-        requestBody = prepared.fullBody;
         if (error instanceof AgentError && error.details?.transport === 'WEBSOCKET')
           turn.invalidateWebSocket();
         await waitForModelRetry(retryAfter, attempt, signal, delayMs);
@@ -365,11 +382,12 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
   private async *startAttempt(
     request: ModelRequest,
     signal: AbortSignal,
-    body: ResponsesRequestBody,
+    attempt: PreparedResponsesAttempt,
     continuation: boolean,
     credentialReason: ModelCredentialAcquireReason,
     turn: OpenAiResponsesTurnSession
   ): AsyncIterable<ModelEvent> {
+    const { body, toolPlans } = attempt;
     let latestCredentialRevision: number | undefined;
     let diagnosticSecrets: readonly string[] = [];
     const fetchResponse = async (requestBody: ResponsesRequestBody) => {
@@ -581,7 +599,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
                 type: 'client_tool.call',
                 callId,
                 name: 'tool_search',
-                arguments: responsesToolArguments(arguments_),
+                arguments: responsesToolArguments(arguments_, toolPlans.get('tool_search')),
                 ...(argumentError ? { argumentError } : {})
               },
               modelStreamEventObservedAt(raw)
@@ -616,7 +634,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
                 type: 'client_tool.call',
                 callId,
                 name,
-                arguments: responsesToolArguments(args),
+                arguments: responsesToolArguments(args, toolPlans.get(name)),
                 ...(argumentError ? { argumentError } : {})
               },
               modelStreamEventObservedAt(raw)
@@ -977,7 +995,9 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
         yield event;
       }
       responseId = this.#completedResponseId ?? responseId;
+      const attempt = prepared.completed;
       if (
+        attempt !== undefined &&
         responsesContinuationEnabled(this.adapter.configuration) &&
         completed &&
         responseId !== undefined &&
@@ -985,12 +1005,16 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
       ) {
         this.state.lastRequest =
           this.adapter.configuration.responsesTransport?.transport === 'WEBSOCKET'
-            ? { ...prepared.body, input: [] }
-            : prepared.fullBody;
+            ? { ...attempt.body, input: [] }
+            : prepared.full.body;
         this.state.lastMessageCount = request.messages.length + outputMessageCount;
-        this.state.lastInputItemCount = prepared.inputItemCount;
+        this.state.lastInputItemCount = attempt.inputItemCount;
         this.state.lastSystem = JSON.stringify([request.system, request.systemBlocks]);
-        this.state.lastResponse = { responseId, outputItems };
+        this.state.lastResponse = {
+          responseId,
+          outputItems,
+          deferredToolPlans: attempt.deferredToolPlans
+        };
       } else clearResponsesContinuation(this.state);
       finished = true;
     } catch (error) {
@@ -1055,20 +1079,39 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
       clearResponsesContinuation(this.state);
     }
     // The continuation baseline must not share mutable schemas or items with callers.
-    const snapshot = (body: ResponsesRequestBody) =>
-      JSON.parse(JSON.stringify(body)) as ResponsesRequestBody;
-    let full: ResponsesRequestBody | undefined;
-    const fullBody = () =>
-      (full ??= snapshot(
-        responsesRequestBody(this.adapter.configuration, request, request.messages)
-      ));
+    const project = (
+      input: ModelRequest,
+      messages: ModelRequest['messages'],
+      previousOutputItems: readonly Record<string, unknown>[] = []
+    ) => {
+      const toolProjection: ResponsesToolProjection = { direct: new Map(), deferred: new Map() };
+      const body = JSON.parse(
+        JSON.stringify(
+          responsesRequestBody(
+            this.adapter.configuration,
+            input,
+            messages,
+            previousOutputItems,
+            toolProjection
+          )
+        )
+      ) as ResponsesRequestBody;
+      return { body, toolProjection };
+    };
+    let fullProjection: ReturnType<typeof project> | undefined;
+    const fullRequest = () => (fullProjection ??= project(request, request.messages));
+    let full: PreparedResponsesAttempt | undefined;
+    const fullAttempt = () => {
+      const { body, toolProjection } = fullRequest();
+      return (full ??= prepareResponsesAttempt(body, body.input.length, toolProjection));
+    };
     if (responsesContinuationEnabled(this.adapter.configuration)) {
       const websocket = this.adapter.configuration.responsesTransport?.transport === 'WEBSOCKET';
       const suffixMessages =
         websocket && this.state.lastMessageCount !== undefined
           ? request.messages.slice(this.state.lastMessageCount)
           : undefined;
-      const suffixBody =
+      const suffix =
         websocket &&
         this.state.lastResponse !== undefined &&
         suffixMessages !== undefined &&
@@ -1076,47 +1119,42 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
         this.state.lastSystem === JSON.stringify([request.system, request.systemBlocks]) &&
         // Top-level images attach to the last real user, which must be in this suffix.
         (!request.images?.length || suffixMessages.some(isRealUserMessage))
-          ? snapshot(
-              responsesRequestBody(
-                this.adapter.configuration,
-                { ...request, system: '', systemBlocks: [] },
-                suffixMessages,
-                this.state.lastResponse.outputItems
-              )
+          ? project(
+              { ...request, system: '', systemBlocks: [] },
+              suffixMessages,
+              this.state.lastResponse.outputItems
             )
           : undefined;
       const incremental = websocket
-        ? suffixBody !== undefined &&
-          responsesContinuationPropertiesMatch(this.state.lastRequest!, suffixBody)
-          ? suffixBody.input
+        ? suffix !== undefined &&
+          responsesContinuationPropertiesMatch(this.state.lastRequest!, suffix.body)
+          ? suffix.body.input
           : undefined
-        : incrementalResponsesInput(this.state, fullBody());
+        : incrementalResponsesInput(this.state, fullRequest().body);
       if (incremental !== undefined) {
-        const responseId = this.state.lastResponse!.responseId;
+        const previous = this.state.lastResponse!;
         const inputItemCount = websocket
-          ? (this.state.lastInputItemCount ?? 0) +
-            this.state.lastResponse!.outputItems.length +
-            incremental.length
-          : fullBody().input.length;
+          ? (this.state.lastInputItemCount ?? 0) + previous.outputItems.length + incremental.length
+          : fullRequest().body.input.length;
+        const { body, toolProjection } = suffix ?? fullRequest();
         delete this.state.lastResponse;
         return {
-          get fullBody() {
-            return fullBody();
+          get full() {
+            return fullAttempt();
           },
-          inputItemCount,
-          body: {
-            ...(suffixBody ?? fullBody()),
-            input: incremental,
-            previous_response_id: responseId
-          },
+          first: prepareResponsesAttempt(
+            { ...body, input: incremental, previous_response_id: previous.responseId },
+            inputItemCount,
+            toolProjection,
+            previous.deferredToolPlans
+          ),
           continuation: true
         };
       }
     }
     return {
-      fullBody: fullBody(),
-      inputItemCount: fullBody().input.length,
-      body: fullBody(),
+      full: fullAttempt(),
+      first: fullAttempt(),
       continuation: false
     };
   }
@@ -1318,6 +1356,29 @@ function incrementalResponsesInput(
   for (let index = 0; index < baseline.length; index++)
     if (JSON.stringify(baseline[index]) !== JSON.stringify(current.input[index])) return undefined;
   return current.input.slice(baseline.length);
+}
+
+/** Inherited plans describe the provider prefix; only the input actually sent can replace them. */
+function prepareResponsesAttempt(
+  body: ResponsesRequestBody,
+  inputItemCount: number,
+  projection: ResponsesToolProjection,
+  inherited?: PreparedResponsesAttempt['deferredToolPlans']
+): PreparedResponsesAttempt {
+  const deferredToolPlans = new Map(inherited);
+  for (const value of body.input) {
+    const item = record(value);
+    const callId = text(item.call_id);
+    if (item.type !== 'tool_search_output' || callId === undefined) continue;
+    for (const [name, plan] of projection.deferred.get(callId) ?? [])
+      deferredToolPlans.set(name, plan);
+  }
+  return {
+    body,
+    inputItemCount,
+    deferredToolPlans,
+    toolPlans: new Map([...deferredToolPlans, ...projection.direct])
+  };
 }
 
 function responsesContinuationPropertiesMatch(
