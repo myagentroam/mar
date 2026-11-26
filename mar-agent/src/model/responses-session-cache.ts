@@ -1,9 +1,6 @@
 import WebSocket from 'ws';
 import { AgentError } from '../error.js';
-
-export type ResponsesRequestBody = Readonly<Record<string, unknown>> & {
-  readonly input: readonly unknown[];
-};
+import type { ResponsesRequestBody, ResponsesToolPlaceholders } from './responses-request.js';
 
 export interface ResponsesSessionState {
   socket?: WebSocket;
@@ -19,6 +16,7 @@ export interface ResponsesSessionState {
   lastResponse?: {
     readonly responseId: string;
     readonly outputItems: readonly Record<string, unknown>[];
+    readonly deferredToolPlans: ReadonlyMap<string, ResponsesToolPlaceholders | undefined>;
   };
 }
 

@@ -155,6 +155,40 @@ describe('Workspace Watch session group switching', () => {
       f.close();
     }
   });
+  it('passes the authenticated user to each Watch and reinitializes navigation when picking a board', async () => {
+    const f = fixture();
+    const graph = {
+      sessionIds: [],
+      summaryAnchors: [],
+      treeAnchor: 'one',
+      collaboration: {},
+      limit: 20
+    };
+    const board = { ...graph, collaboration: { boardSessionId: 'one' } };
+    try {
+      const firstUser = { __requestUserId: 7, __workspaceWatchSessionHash: 'first' };
+      const secondUser = { __requestUserId: 8, __workspaceWatchSessionHash: 'second' };
+      await f.select('MAIN', firstUser, { sessionNavigation: graph });
+      await f.select('MAIN', secondUser, { sessionNavigation: graph });
+      await vi.waitFor(() => expect(f.navigation).toHaveBeenCalledTimes(2));
+      expect(f.navigation).toHaveBeenCalledWith('workspace-1', graph, 7);
+      expect(f.navigation).toHaveBeenCalledWith('workspace-1', graph, 8);
+      f.sessions.mockClear();
+      f.files.mockClear();
+      f.changes.mockClear();
+      const selected = await f.select('MAIN', firstUser, { sessionNavigation: board });
+      await vi.waitFor(() =>
+        expect(f.events.filter((event) => event.watchId === selected)).toHaveLength(4)
+      );
+      expect(f.navigation).toHaveBeenLastCalledWith('workspace-1', board, 7);
+      expect(f.sessions).not.toHaveBeenCalled();
+      expect(f.files).not.toHaveBeenCalled();
+      expect(f.changes).not.toHaveBeenCalled();
+    } finally {
+      f.close();
+    }
+  });
+
   it('reads only sessions and hands off the last resource snapshots to the new watch', async () => {
     const f = fixture();
     try {

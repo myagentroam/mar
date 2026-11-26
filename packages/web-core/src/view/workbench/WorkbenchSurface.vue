@@ -57,6 +57,7 @@ import { useManagementComposition } from '../../service/management-composition.j
 import WorkspaceSessionPane from './WorkspaceSessionPane.vue';
 import WorkbenchAside from './WorkbenchAside.vue';
 import WorkspaceSessionTreePopover from '../workspace/WorkspaceSessionTreePopover.vue';
+import WorkspaceCollaborationDialog from '../workspace/WorkspaceCollaborationDialog.vue';
 import type { AsideTool, AsideWorkspace } from '../../service/workbench-aside-service.js';
 import {
   readBrowserLinkPreferences,
@@ -337,6 +338,9 @@ const treeStatus = computed(() =>
     ? 'failed'
     : props.page.application.workspaceWatchTopicStatus.sessionNavigation
 );
+const collaborationEnabled = computed(
+  () => props.page.resources.nodeManifest?.sessionCollaboration === true
+);
 const asideVisible = computed(
   () =>
     props.page.application.view === 'nodes' &&
@@ -440,6 +444,7 @@ const treePopup = ref<{
   anchor: HTMLElement;
   title: string;
   placement: 'bottom-start' | 'bottom-end';
+  collaboration: boolean;
   closing?: ReturnType<typeof readSessionTree>;
 }>();
 const openTreeSessionId = computed(() =>
@@ -449,6 +454,11 @@ const treePopupContent = computed(() => treePopup.value?.closing ?? readSessionT
 function closeSessionTree(restoreFocus = false): void {
   const previous = treePopup.value;
   if (!previous || previous.closing) return;
+  if (previous.collaboration) {
+    treePopup.value = undefined;
+    props.page.sessionList.setSessionTreeAnchor(undefined);
+    return;
+  }
   // Keep only the last rendered tree while the Popover fades out.
   previous.closing = readSessionTree();
   props.page.sessionList.setSessionTreeAnchor(undefined);
@@ -472,8 +482,15 @@ function showSessionTree(
     closeSessionTree(true);
     return;
   }
-  treePopup.value = { ...target, sessionId, anchor, title, placement };
-  props.page.sessionList.setSessionTreeAnchor(sessionId);
+  treePopup.value = {
+    ...target,
+    sessionId,
+    anchor,
+    title,
+    placement,
+    collaboration: collaborationEnabled.value
+  };
+  props.page.sessionList.setSessionTreeAnchor(sessionId, treePopup.value.collaboration);
 }
 function openAsideTarget(target: {
   nodeId: string;
@@ -524,6 +541,7 @@ function titleMenuBindings(session: Session) {
   return {
     session,
     canNavigate: aside.asideSupported,
+    collaborationEnabled: collaborationEnabled.value,
     navigationDisabled: sessionList.mutationLoading || !resources.nodeReady,
     mutating: sessionList.mutationLoading,
     onRename: () => sessionList.renameSession(session),
@@ -862,6 +880,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         >
           <WorkspaceSessionList
             :aside-supported="page.aside.asideSupported"
+            :collaboration-enabled="collaborationEnabled"
             @open-aside="openAsideTarget"
             :session-group="page.sessionList.workspaceSessionGroup"
             @select-group="page.sessionList.selectWorkspaceSessionGroup"
@@ -961,6 +980,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :aside-expanded="asideVisible"
             :aside-disabled="!page.layout.mobileViewport && asideWidth === undefined"
             :tree-supported="page.aside.asideSupported"
+            :collaboration-enabled="collaborationEnabled"
             :tree-open-session-id="openTreeSessionId"
             :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
             :tree-status="treeStatus"
@@ -1196,6 +1216,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :open-browser-link="routeBrowserLink"
                     :aside-ready="page.aside.asideState?.active !== undefined"
                     :tree-supported="page.aside.asideSupported"
+                    :collaboration-enabled="collaborationEnabled"
                     :tree-open-session-id="openTreeSessionId"
                     :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
                     :tree-status="treeStatus"
@@ -1357,8 +1378,21 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         @extension-changed="page.identity.refreshAdmin"
       />
     </template>
+    <WorkspaceCollaborationDialog
+      v-if="treePopup?.collaboration"
+      :key="treePopup.sessionId"
+      :anchor="treePopup.sessionId"
+      :title="treePopup.title"
+      :snapshot="page.sessionList.sessionNavigationSnapshot"
+      :status="treeStatus"
+      :can-retry="!workspaceOffline && treeStatus === 'failed'"
+      @close="closeSessionTree()"
+      @open="openSessionFromTree"
+      @board="page.sessionList.setCollaborationBoard"
+      @retry="page.application.retryWorkspaceWatch"
+    />
     <WorkspaceSessionTreePopover
-      v-if="treePopup"
+      v-else-if="treePopup"
       :key="treePopup.sessionId"
       :visible="!treePopup.closing"
       :anchor="treePopup.anchor"

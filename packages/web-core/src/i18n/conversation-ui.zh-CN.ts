@@ -379,12 +379,14 @@ export const conversationUiZhCN = {
     },
     whiteboardDetail: {
       boardAgentId: '白板所有者',
-      boardRevision: '白板版本',
-      entryCount: '条目数',
-      operationCount: '请求操作数',
-      result: '结果',
-      changed: '已变更',
-      unchanged: '无变化'
+      empty: '白板为空',
+      singleEntry: '1 条记录',
+      entries: '{count} 条记录',
+      removedOne: '移除了 1 条记录',
+      removed: '移除了 {count} 条记录',
+      changesTruncated: '此处省略了部分更新内容。',
+      unfollowed: '已取消关注',
+      noFollowedBoard: '没有额外关注的白板'
     },
     subagentOperation: {
       START: '启动',

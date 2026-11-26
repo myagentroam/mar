@@ -38,9 +38,9 @@ export class NodeOrchestration {
     };
   }
 
-  release(runId: string): void {
+  release(runId: string, workspaceId: string): void {
     this.incoming.delete(runId);
-    this.whiteboard.release(runId);
+    this.whiteboard.release(runId, workspaceId);
   }
 
   /** The SDK owns delivery/acknowledgement and the wait barrier; Node supplies the current view. */

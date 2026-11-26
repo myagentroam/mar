@@ -79,6 +79,9 @@ export function parseModelInputMetadata(value: unknown): ModelInputMetadata | un
     ...(typeof metadata.recordId === 'string' && metadata.recordId.length <= 128
       ? { recordId: metadata.recordId }
       : {}),
+    ...(typeof metadata.clientMessageId === 'string'
+      ? { clientMessageId: metadata.clientMessageId }
+      : {}),
     ...(typeof metadata.extensionId === 'string' && metadata.extensionId.length <= 128
       ? { extensionId: metadata.extensionId }
       : {}),

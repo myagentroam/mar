@@ -57,6 +57,10 @@ export const iconShapes = {
     '<rect x="6.5" y="7" width="13.5" height="13.5" rx="2.2"/><path d="M16 4H5.5a2 2 0 0 0-2 2v10m6.75-5h6m-6 4h4"/>',
   'session-tree':
     '<path d="M9 12h2.75m4.25-5.75h-2.25a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2H16"/><rect x="2.75" y="8.5" width="6.25" height="7" rx="2"/><rect x="16" y="4" width="5.25" height="4.5" rx="1.4"/><rect x="16" y="15.5" width="5.25" height="4.5" rx="1.4"/>',
+  'collaboration-network':
+    '<path d="m10 10.5-3-4m3 7-3 4m7-5.5h4"/><circle cx="5.5" cy="4.5" r="2"/><circle cx="5.5" cy="19.5" r="2"/><circle cx="11.5" cy="12" r="2.5"/><circle cx="20" cy="12" r="2"/>',
+  'locate-current':
+    '<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/><circle cx="12" cy="12" r="3"/>',
   image:
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2.8"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4" />',
   key: '<circle cx="8" cy="8" r="4.5"/><path d="m11.3 11.3 9.2 9.2m-5.8-5.8 2.5-2.5m.3 5.3 2.5-2.5" />',

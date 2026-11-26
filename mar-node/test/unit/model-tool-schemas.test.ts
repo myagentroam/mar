@@ -64,7 +64,7 @@ const browserTool = createBrowserUseExtensions({
 describe('Node-owned MAR Agent model tool schemas', () => {
   it('accepts only the operands for the selected whiteboard action and operation', () => {
     const validate = whiteboardTool(
-      () => ({}),
+      () => ({ data: {} }),
       () => 'execution'
     ).parseInput!;
     for (const input of [
@@ -119,7 +119,7 @@ describe('Node-owned MAR Agent model tool schemas', () => {
 
   it('accepts Responses strict-mode null placeholders when reading the whiteboard', () => {
     const tool = whiteboardTool(
-      () => ({}),
+      () => ({ data: {} }),
       () => 'execution'
     );
     expect(tool.parseInput!({ action: 'read', boardAgentId: null, ops: null })).toEqual({
@@ -130,7 +130,7 @@ describe('Node-owned MAR Agent model tool schemas', () => {
   it.each([
     browserTool,
     whiteboardTool(
-      () => ({}),
+      () => ({ data: {} }),
       () => 'execution'
     ),
     computerUseToolDefinition,

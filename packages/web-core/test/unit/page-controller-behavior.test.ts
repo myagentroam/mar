@@ -2538,6 +2538,35 @@ describe('Workbench controller composition behavior', () => {
     expect(page.aside.asideSessionMetadata).toEqual([]);
   });
 
+  it('requests the anchor board on opening collaboration and removes it when the network closes', async () => {
+    const { page } = controller();
+    const workspace = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    await captured.seedNodes!([{ ...node, nodeAppVersion: '0.11.69' }]);
+    captured.setTarget!(workspace);
+    await captured.seedManifest!({
+      manifestVersion: 1,
+      observedAt: 1,
+      sessionAside: { apiVersion: 1 },
+      sessionCollaboration: true,
+      conversation: { available: true, reasonCode: null }
+    });
+    captured.setDraft!(false);
+    captured.setSession!('main');
+    const query = () => captured.workspaceWatch!.sessionNavigation!();
+    page.sessionList.setSessionTreeAnchor('main', true);
+    expect(query()).toMatchObject({
+      treeAnchor: 'main',
+      collaboration: { boardSessionId: 'main' }
+    });
+    page.sessionList.setCollaborationBoard('peer');
+    expect(query()).toMatchObject({
+      treeAnchor: 'main',
+      collaboration: { boardSessionId: 'peer' }
+    });
+    page.sessionList.setSessionTreeAnchor(undefined);
+    expect(query()?.collaboration).toBeUndefined();
+  });
+
   it.each(['ready', 'changed-target', 'hidden', 'closed'] as const)(
     'waits for the live connection before opening session history (%s)',
     async (outcome) => {

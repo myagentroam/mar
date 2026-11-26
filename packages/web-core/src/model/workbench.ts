@@ -280,6 +280,7 @@ export interface UserSessionSummary {
 }
 export interface NodeWorkbenchManifest {
   readonly sessionAside?: { readonly apiVersion: 1 };
+  readonly sessionCollaboration?: true;
   readonly sessionGroups?: { readonly apiVersion: 1 };
   readonly manifestVersion: number;
   readonly observedAt: number;

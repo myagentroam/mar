@@ -1727,14 +1727,14 @@ function genericToolItem(
     toolName === 'read' && status === 'COMPLETED' && outputSummary !== null
       ? publicToolOutput(outputSummary, summaryTruncated ? 'SOURCE' : outputTruncation)
       : undefined;
-  const presentation = projectToolPresentation(
-    toolName,
-    input,
-    output,
-    sleepStartedAt,
-    outputSummary,
-    readOutput
-  );
+  const presentation =
+    toolName === 'whiteboard'
+      ? {
+          kind: 'EXTENSION',
+          name: 'whiteboard',
+          data: whiteboardOperationPresentation(input, status === 'COMPLETED' ? output : undefined)
+        }
+      : projectToolPresentation(toolName, input, output, sleepStartedAt, outputSummary, readOutput);
   const inputSummary = compactRunnerValue(input, 10_000);
   return {
     itemId: id,
@@ -1764,14 +1764,6 @@ function genericToolItem(
       ...(toolCategory === undefined ? {} : { toolCategory }),
       ...(presentation === undefined ? {} : { toolPresentation: presentation }),
       ...(agentOperation === undefined ? {} : { agentOperation }),
-      ...(toolName === 'whiteboard'
-        ? {
-            whiteboardOperation: whiteboardOperationPresentation(
-              input,
-              status === 'COMPLETED' ? output : undefined
-            )
-          }
-        : {}),
       ...subagent
     },
     merge: true

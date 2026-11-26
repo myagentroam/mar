@@ -19,7 +19,8 @@ export interface WorkspaceWatchSnapshotServiceOptions {
   ) => Promise<unknown>;
   readonly sessionNavigation?: (
     workspaceId: string,
-    query: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery
+    query: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery,
+    userId?: number
   ) => Promise<unknown>;
   readonly nodeId: () => string;
   readonly emitWatchEvent: (payload: unknown) => void;
@@ -249,7 +250,11 @@ export class WorkspaceWatchSnapshotService {
     if (active !== undefined) return active;
     const read = (
       topic === 'sessionNavigation'
-        ? this.options.sessionNavigation!(workspace.id, watch.topics.sessionNavigation!)
+        ? this.options.sessionNavigation!(
+            workspace.id,
+            watch.topics.sessionNavigation!,
+            watch.userId
+          )
         : topic === 'sessions'
           ? this.options.listSessions(workspace.id, watch.topics.sessionGroup)
           : topic === 'changes'

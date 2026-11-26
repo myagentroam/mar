@@ -7,6 +7,7 @@ import { MarIcon } from '@myagentroam/mar-ui/icons';
 defineProps<{
   sessionId: string;
   open: boolean;
+  collaboration?: boolean;
   summary?: NavigationSummary | undefined;
   status: 'idle' | 'loading' | 'ready' | 'failed';
 }>();
@@ -17,7 +18,7 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
   <button
     type="button"
     class="mar-icon-button mar-icon-action conversation-tree-button"
-    v-tooltip="translate('sessionGroups.tree')"
+    v-tooltip="translate(collaboration ? 'collaboration.entry' : 'sessionGroups.tree')"
     :aria-description="
       status === 'failed'
         ? translate('sessionGroups.treeSyncUnavailable')
@@ -25,13 +26,13 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
           ? translate('sessionGroups.activeDescendants', { count: summary.activeCount })
           : undefined
     "
-    :aria-label="translate('sessionGroups.tree')"
+    :aria-label="translate(collaboration ? 'collaboration.entry' : 'sessionGroups.tree')"
     :aria-expanded="open"
     aria-haspopup="dialog"
     @click="emit('show', sessionId, $event.currentTarget as HTMLElement)"
   >
     <span class="tree-icon">
-      <MarIcon name="session-tree" />
+      <MarIcon :name="collaboration ? 'collaboration-network' : 'session-tree'" />
       <span
         v-if="summary?.hasActiveDescendants"
         class="tree-active-indicator mar-icon-status-badge"

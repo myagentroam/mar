@@ -388,12 +388,14 @@ export const conversationUiEnUS = {
     },
     whiteboardDetail: {
       boardAgentId: 'Board owner',
-      boardRevision: 'Board revision',
-      entryCount: 'Entries',
-      operationCount: 'Requested operations',
-      result: 'Result',
-      changed: 'Changed',
-      unchanged: 'No change'
+      empty: 'Whiteboard is empty',
+      singleEntry: '1 entry',
+      entries: '{count} entries',
+      removedOne: 'Removed 1 entry',
+      removed: 'Removed {count} entries',
+      changesTruncated: 'More changed entries were omitted from this preview.',
+      unfollowed: 'Unfollowed the whiteboard',
+      noFollowedBoard: 'No additional whiteboard was being followed'
     },
     subagentOperation: {
       START: 'Start',

@@ -66,6 +66,7 @@ const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly hasUnread: (sessionId: string) => boolean;
   readonly asideSupported?: boolean;
+  readonly collaborationEnabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -615,6 +616,7 @@ function submitSessionSearch(): void {
                 :session="session"
                 :list-context="{ sessions, canDelete: canDeleteSession?.(session) !== false }"
                 :can-navigate="asideSupported === true"
+                :collaboration-enabled="collaborationEnabled === true"
                 :navigation-disabled="loading || !nodeReady"
                 :mutating="loading"
                 @open="

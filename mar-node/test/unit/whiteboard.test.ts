@@ -133,7 +133,8 @@ describe('WhiteboardStore', () => {
       ])
     ).toMatchObject({
       boardRevision: 2,
-      added: [{ id: 'w3', revision: 1 }]
+      added: [{ id: 'w3', revision: 1 }],
+      entryChanges: { entries: ['final', 'third'], removedCount: 1 }
     });
     expect(store.read(OWNER)).toMatchObject({
       boardRevision: 2,
@@ -149,7 +150,11 @@ describe('WhiteboardStore', () => {
         { op: 'clear', expectedBoardRevision: 2 },
         { op: 'add', content: 'replacement after clear' }
       ])
-    ).toMatchObject({ boardRevision: 3, added: [{ id: 'w4', revision: 1 }] });
+    ).toMatchObject({
+      boardRevision: 3,
+      added: [{ id: 'w4', revision: 1 }],
+      entryChanges: { entries: ['replacement after clear'], removedCount: 2 }
+    });
     expect(store.read(OWNER)).toMatchObject({
       boardRevision: 3,
       entries: [{ id: 'w4', revision: 1, content: 'replacement after clear' }],
@@ -216,7 +221,7 @@ describe('WhiteboardStore', () => {
 
     expect(
       update(store, [{ op: 'update', id: 'w1', expectedRevision: 1, content: 'unchanged' }])
-    ).toMatchObject({ boardRevision: 1 });
+    ).toMatchObject({ boardRevision: 1, entryChanges: { entries: [], removedCount: 0 } });
     expect(store.read(OWNER)).toMatchObject({
       boardRevision: 1,
       entries: [{ id: 'w1', revision: 1, content: 'unchanged' }],
@@ -292,6 +297,28 @@ describe('WhiteboardStore', () => {
 });
 
 describe('WhiteboardService', () => {
+  it('projects only active, same-user sharing without removing boards on detach', () => {
+    const { service, runs } = serviceFixture();
+    addRun(runs, 'root-run', 'archived');
+    addRun(runs, 'peer-run', 'peer');
+    addRun(runs, 'other-run', 'other', 'workspace', 8);
+    service.join('peer-run', 'archived');
+    service.update('peer-run', {
+      expectedBoardId: 'archived',
+      ops: [{ op: 'add', content: 'Decision' }]
+    });
+    expect(service.relationships('workspace', 7)).toEqual([
+      { ownerSessionId: 'archived', followerSessionId: 'peer' }
+    ]);
+    expect(service.relationships('workspace', 8)).toEqual([]);
+    expect(service.relationships('elsewhere', 7)).toEqual([]);
+    runs.delete('root-run');
+    service.release('root-run', 'workspace');
+    expect(service.relationships('workspace', 7)).toEqual([]);
+    expect(service.readPersisted('workspace', 'archived')?.entries[0]?.content).toBe('Decision');
+    expect(service.readPersisted('elsewhere', 'archived')).toBeUndefined();
+  });
+
   it('keeps the own board through inheritance and replaces only the followed board', () => {
     const { service, runs } = serviceFixture();
     for (const id of ['A', 'B', 'C', 'D']) addRun(runs, id, id);
@@ -307,7 +334,7 @@ describe('WhiteboardService', () => {
     edit('B', 'D', 'B now follows D');
     expect(service.join('B', 'B')).toEqual({ boardAgentId: 'B', changed: false });
     expect(followedBoard(service, 'B')?.boardId).toBe('D');
-    expect(service.leave('B')).toEqual({ changed: true });
+    expect(service.leave('B')).toEqual({ boardAgentId: 'D', changed: true });
     expect(service.leave('B')).toEqual({ changed: false });
     expect(followedBoard(service, 'B')).toBeUndefined();
     expect(() => edit('B', 'D', 'B stopped following D')).toThrowError(
@@ -327,7 +354,7 @@ describe('WhiteboardService', () => {
     addRun(runs, 'run-B', 'B');
     service.inherit('run-B', 'run-A1');
     runs.delete('run-A1');
-    service.release('run-A1');
+    service.release('run-A1', 'workspace');
     expect(service.isDetached('run-B')).toBe(true);
 
     addRun(runs, 'run-A2', 'A');
@@ -337,7 +364,7 @@ describe('WhiteboardService', () => {
     expect(service.isDetached('run-C')).toBe(true);
 
     const candidate = service.capture('run-B', ['run-A2']);
-    expect(service.leave('run-B')).toEqual({ changed: true });
+    expect(service.leave('run-B')).toEqual({ boardAgentId: 'A', changed: true });
     expect(service.isDetached('run-B')).toBe(false);
     expect(candidate.accept()).toBe(false);
     expect(service.capture('run-B', ['run-A2']).views.map(({ role }) => role)).toEqual(['own']);
@@ -412,7 +439,7 @@ describe('WhiteboardService', () => {
     }
     expect(followedBoard(service, 'A')?.boardId).toBe('owner-B');
     runs.delete('A');
-    service.release('A');
+    service.release('A', 'workspace');
     expect(service.isDetached('peer')).toBe(true);
     expect(service.isDetached('new-peer')).toBe(true);
     expect(service.read('B').boardAgentId).toBe('owner-B');
@@ -462,7 +489,7 @@ describe('WhiteboardService', () => {
       ops: [{ op: 'add', content: 'still shared through the root' }]
     });
 
-    service.release('run-B1');
+    service.release('run-B1', 'workspace');
 
     expect(followedBoard(service, 'run-C1')).toMatchObject({
       boardId: 'owner-A',
@@ -485,7 +512,7 @@ describe('WhiteboardService', () => {
     });
 
     runs.delete('run-A1');
-    service.release('run-A1');
+    service.release('run-A1', 'workspace');
     expect(service.read('run-B1')).toMatchObject({ boardAgentId: 'agent-B' });
     const editDetached = (runId: string) =>
       service.update(runId, {
@@ -588,7 +615,7 @@ describe('WhiteboardService', () => {
     expect(revokedWake).not.toHaveBeenCalled();
 
     runs.delete('run-A1');
-    service.release('run-A1');
+    service.release('run-A1', 'workspace');
     addRun(runs, 'run-A2', 'owner-A');
     service.update('run-A2', {
       expectedBoardId: 'owner-A',
@@ -822,7 +849,7 @@ describe('NodeOrchestration whiteboard context', () => {
     const signal = new AbortController().signal;
     acknowledgeContext(await context.requestContext!({ clientMessageIds: [], signal }));
     runs.delete('run-A1');
-    service.release('run-A1');
+    service.release('run-A1', 'workspace');
     addRun(runs, 'run-A2', 'owner-A');
     service.update('run-A2', {
       expectedBoardId: 'owner-A',
@@ -925,7 +952,7 @@ describe('NodeOrchestration whiteboard context', () => {
     addRun(runs, 'run-B1', 'agent-B');
     service.inherit('run-B1', 'run-A1');
     runs.delete('run-A1');
-    service.release('run-A1');
+    service.release('run-A1', 'workspace');
     addRun(runs, 'run-A2', 'owner-A');
     const orchestration = new NodeOrchestration(service);
     orchestration.prepareInput(
@@ -935,7 +962,7 @@ describe('NodeOrchestration whiteboard context', () => {
       false
     );
     runs.delete('run-A2');
-    service.release('run-A2');
+    service.release('run-A2', 'workspace');
     addRun(runs, 'run-A3', 'owner-A');
     orchestration.prepareInput(
       'run-B1',
@@ -972,7 +999,7 @@ describe('NodeOrchestration whiteboard context', () => {
     addRun(runs, 'run-B1', 'agent-B');
     service.inherit('run-B1', 'run-A1');
     runs.delete('run-A1');
-    service.release('run-A1');
+    service.release('run-A1', 'workspace');
     addRun(runs, 'run-A2', 'owner-A');
     service.update('run-A2', {
       expectedBoardId: 'owner-A',
@@ -989,7 +1016,7 @@ describe('NodeOrchestration whiteboard context', () => {
     const candidate = await request();
     expect(candidate.items).toHaveLength(2);
     runs.delete('run-A2');
-    service.release('run-A2');
+    service.release('run-A2', 'workspace');
     expect(candidate.accept?.(() => true)).toBe(false);
     const retry = await request();
     expect(contextBoard(retry.items, 'followed')).toBeUndefined();

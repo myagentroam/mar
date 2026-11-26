@@ -51,23 +51,50 @@ afterEach(async () => {
 });
 
 describe('OpenAI Responses tool namespace on STANDARD transport', () => {
-  it('removes strict-mode null placeholders before calling a tool but keeps declared nulls', async () => {
+  it.each([false, true])('omits Strict-only null placeholders (deferred=%s)', async (deferred) => {
+    const patch = {
+      type: 'object',
+      properties: { objective: { type: 'string' }, name: { type: 'string' } },
+      required: ['objective'],
+      additionalProperties: false
+    };
     const tool = {
-      name: 'start_probe',
-      description: 'Start a test task.',
+      name: 'update_probe',
+      description: 'Update a test task.',
       inputSchema: {
         type: 'object',
         properties: {
           title: { type: 'string' },
           runner: { type: 'string' },
-          clientMessageId: { type: 'string' },
-          goal: { anyOf: [{ type: 'null' }, { type: 'string' }] }
+          goal: { anyOf: [{ type: 'null' }, { type: 'string' }] },
+          optionalConstant: { const: 'fixed' },
+          patch,
+          rows: { type: 'array', items: patch },
+          choice: {
+            anyOf: [patch, { ...patch, required: ['name'] }]
+          },
+          nullableEnum: { type: ['string', 'null'], enum: ['auto', null] },
+          enumPlaceholder: { type: ['string', 'null'], enum: ['auto'] },
+          enabled: { type: 'boolean' },
+          limit: { type: 'integer' }
         },
-        required: ['title'],
+        required: ['title', 'enabled'],
         additionalProperties: false
       }
     };
-    const arguments_ = { title: 'Test', runner: null, clientMessageId: null, goal: null };
+    const arguments_ = {
+      title: 'Test',
+      runner: null,
+      goal: null,
+      optionalConstant: null,
+      patch: { objective: 'New work', name: null },
+      rows: [null, { objective: null, name: null }, { objective: '', name: '' }],
+      choice: { objective: 'Choice', name: null },
+      nullableEnum: null,
+      enumPlaceholder: null,
+      enabled: null,
+      limit: 0
+    };
     const fixture = await startHttpResponsesServer([
       {
         type: 'response.output_item.done',
@@ -90,24 +117,101 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         })
       )
     );
-    const events = await collect(adapter.start(toolRequest([tool]), new AbortController().signal));
-    expect(fixture.requests[0]!.tools).toEqual([
+    const request = deferred
+      ? {
+          ...toolRequest([]),
+          messages: [
+            {
+              role: 'tool_call' as const,
+              content: '',
+              callId: 'search',
+              name: 'tool_search',
+              arguments: {}
+            },
+            { role: 'tool' as const, content: 'found', callId: 'search', toolSearchTools: [tool] }
+          ]
+        }
+      : toolRequest([tool]);
+    const events = await collect(adapter.start(request, new AbortController().signal));
+    const sentTools = deferred
+      ? (fixture.requests[0]!.input as Array<Record<string, unknown>>).find(
+          ({ type }) => type === 'tool_search_output'
+        )?.tools
+      : fixture.requests[0]!.tools;
+    expect(sentTools).toEqual([
       expect.objectContaining({
         name: tool.name,
         strict: true,
         parameters: expect.objectContaining({
-          properties: expect.objectContaining({ runner: { type: ['string', 'null'] } })
+          properties: expect.objectContaining({
+            runner: { type: ['string', 'null'] },
+            goal: { anyOf: [{ type: 'null' }, { type: 'string' }] },
+            optionalConstant: { anyOf: [{ const: 'fixed' }, { type: 'null' }] }
+          })
         })
       })
     ]);
-    expect(events.find(({ type }) => type === 'client_tool.call')).toMatchObject({
+    expect(events).toContainEqual({
+      type: 'client_tool.call',
       callId: 'start-probe',
-      name: tool.name
+      name: tool.name,
+      arguments: {
+        title: 'Test',
+        goal: null,
+        patch: { objective: 'New work' },
+        rows: [null, { objective: null }, { objective: '', name: '' }],
+        choice: { objective: 'Choice', name: null },
+        nullableEnum: null,
+        enabled: null,
+        limit: 0
+      }
     });
-    expect(events.find(({ type }) => type === 'client_tool.call')).toHaveProperty('arguments', {
-      title: 'Test',
-      goal: null
-    });
+    expect(events.find(({ type }) => type === 'response.item')).toHaveProperty(
+      'item.arguments',
+      JSON.stringify(arguments_)
+    );
+  });
+
+  it('preserves deeply nested non-Strict arguments without traversing them', async () => {
+    const depth = 4096;
+    const fixture = await startHttpResponsesServer([
+      {
+        type: 'response.function_call_arguments.done',
+        call_id: 'deep-call',
+        name: 'json_probe',
+        arguments: `{"payload":${'['.repeat(depth)}{"optional":null,"value":1}${']'.repeat(depth)}}`
+      },
+      { type: 'response.completed', response: { id: 'deep-response' } }
+    ]);
+    httpFixtures.push(fixture);
+    const adapter = registerAdapter(
+      new OpenAiResponsesAdapter(
+        configuration(fixture.baseUrl, {
+          responsesTransport: { transport: 'HTTP', httpVersion: '1.1' },
+          responsesPreviousResponseId: false
+        })
+      )
+    );
+    const request = toolRequest([
+      {
+        name: 'json_probe',
+        description: 'Accept a JSON object.',
+        inputSchema: { type: 'object', additionalProperties: true }
+      }
+    ]);
+    const events = await collect(adapter.start(request, new AbortController().signal));
+    const call = events.find((event) => event.type === 'client_tool.call');
+    expect(call).toMatchObject({ callId: 'deep-call', name: 'json_probe' });
+    expect(call?.argumentError).toBeUndefined();
+    let leaf = (call?.arguments as { payload: unknown }).payload;
+    let nesting = 0;
+    while (Array.isArray(leaf) && leaf.length === 1) {
+      nesting++;
+      leaf = leaf[0];
+    }
+    expect(nesting).toBe(depth);
+    expect(leaf).toEqual({ optional: null, value: 1 });
+    expect(events).toContainEqual({ type: 'completed', reason: 'completed' });
   });
 
   it.each([undefined, 'mar'])(
@@ -685,7 +789,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         call_id: 'search-call',
         status: 'completed',
         execution: 'client',
-        arguments: { query: 'records', limit: 1 }
+        arguments: { query: 'records', limit: null }
       };
       const fixture = await startHttpResponsesServer(
         completedEvents('search-response', [searchCall])
@@ -705,7 +809,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         description: 'Search deferred tools.',
         inputSchema: {
           type: 'object',
-          properties: { query: { type: 'string' } },
+          properties: { query: { type: 'string' }, limit: { type: 'integer' } },
           required: ['query'],
           additionalProperties: false
         },
@@ -718,8 +822,12 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         type: 'client_tool.call',
         callId: 'search-call',
         name: 'tool_search',
-        arguments: { query: 'records', limit: 1 }
+        arguments: { query: 'records' }
       });
+      expect(events.find(({ type }) => type === 'response.item')).toHaveProperty(
+        'item.arguments',
+        searchCall.arguments
+      );
       expect(fixture.requests[0]!.tools).toEqual([
         expect.objectContaining({ type: 'tool_search', execution: 'client' }),
         expect.objectContaining({ type: 'namespace', name: 'mar' })
@@ -965,6 +1073,97 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
       await turn.close();
     }
   });
+
+  it.each(['continue', 'reconnect', 'reject continuation'] as const)(
+    'uses the deferred schema from the successful attempt (%s)',
+    async (mode) => {
+      const deferred = {
+        name: 'deferred_probe',
+        description: 'Look up a record.',
+        inputSchema: {
+          type: 'object',
+          properties: { limit: { type: 'integer' }, label: { type: ['string', 'null'] } },
+          additionalProperties: false
+        }
+      };
+      const item = {
+        type: 'function_call',
+        id: 'probe-item',
+        call_id: 'probe-call',
+        name: deferred.name,
+        arguments: '{"limit":null,"label":null}'
+      };
+      const fixture = await startResponsesWebSocketServer([], {
+        closeAfterRequestIndexes: mode === 'reconnect' ? [0] : [],
+        responsesByRequest: [
+          completedEvents('first', [messageItem('first', 'Ready')]),
+          ...(mode === 'reject continuation'
+            ? [[{ type: 'error', status: 400, error: { code: 'invalid_previous_response_id' } }]]
+            : []),
+          completedEvents('second', [item])
+        ]
+      });
+      webSocketFixtures.push(fixture);
+      const adapter = registerAdapter(new OpenAiResponsesAdapter(configuration(fixture.baseUrl)));
+      const turn = adapter.createTurnSession();
+      const request: ModelRequest = {
+        ...toolRequest([]),
+        messages: [
+          { role: 'user', content: 'Find a record.' },
+          { role: 'tool_call', callId: 'search', name: 'tool_search', arguments: {} },
+          { role: 'tool', callId: 'search', content: 'Found', toolSearchTools: [deferred] }
+        ]
+      };
+      try {
+        const signal = new AbortController().signal;
+        await collect(turn.start(request, signal));
+        turn.commitContinuationInput(request.messages.length + 1);
+        if (mode === 'reconnect')
+          await vi.waitFor(() => expect(fixture.closedConnections()).toBe(1));
+        const rebound = {
+          ...deferred,
+          inputSchema: {
+            ...deferred.inputSchema,
+            properties: { ...deferred.inputSchema.properties, limit: { type: ['integer', 'null'] } }
+          }
+        };
+        const events = await collect(
+          turn.start(
+            {
+              ...request,
+              messages: [
+                ...request.messages.slice(0, -1),
+                { role: 'tool', callId: 'search', content: 'Found', toolSearchTools: [rebound] },
+                providerMessage(messageItem('first', 'Ready'), 'standard'),
+                { role: 'user', content: 'Look it up.' }
+              ]
+            },
+            signal
+          )
+        );
+        if (mode !== 'reconnect')
+          expect(fixture.requests[1]).toMatchObject({
+            previous_response_id: 'first',
+            input: [{ role: 'user', content: 'Look it up.' }]
+          });
+        if (mode !== 'continue') {
+          const fullReplay = fixture.requests.at(-1);
+          expect(fullReplay).not.toHaveProperty('previous_response_id');
+          expect(fullReplay?.input).toContainEqual(
+            expect.objectContaining({ type: 'tool_search_output' })
+          );
+        }
+        expect(events).toContainEqual({
+          type: 'client_tool.call',
+          callId: 'probe-call',
+          name: deferred.name,
+          arguments: mode === 'continue' ? { label: null } : { limit: null, label: null }
+        });
+      } finally {
+        await turn.close();
+      }
+    }
+  );
 
   it('replays full history after a WebSocket reconnect', async () => {
     const message = messageItem('response-1', 'First answer');

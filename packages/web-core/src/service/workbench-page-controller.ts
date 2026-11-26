@@ -1583,6 +1583,11 @@ export function createWorkbenchPageController<
   } = composerController;
 
   const sessionTreeAnchor = ref<string>();
+  const collaborationBoardSessionId = ref<string>();
+  function setSessionTreeAnchor(sessionId: string | undefined, showBoard: boolean = false): void {
+    sessionTreeAnchor.value = sessionId;
+    collaborationBoardSessionId.value = showBoard ? sessionId : undefined;
+  }
   const sessionNavigation = createSessionNavigationProjection((workspace, missing) => {
     workbenchSessionSelectionService.removeMissingAside(workspace, missing);
   });
@@ -1609,7 +1614,9 @@ export function createWorkbenchPageController<
       ),
       asideSessionIds: aside.sessions,
       visibleTreeAnchors,
-      treeAnchor: sessionTreeAnchor.value
+      treeAnchor: sessionTreeAnchor.value,
+      collaborationEnabled: nodeManifest.value?.sessionCollaboration === true,
+      boardSessionId: collaborationBoardSessionId.value
     });
   });
 
@@ -2315,8 +2322,9 @@ export function createWorkbenchPageController<
       movePinnedSession,
       movePinnedSessionTo,
       setSessionPinned,
-      setSessionTreeAnchor: (sessionId: string | undefined) => {
-        sessionTreeAnchor.value = sessionId;
+      setSessionTreeAnchor,
+      setCollaborationBoard: (sessionId: string | undefined) => {
+        collaborationBoardSessionId.value = sessionId;
       },
       sessionNavigationSnapshot: computed(() => {
         return sessionNavigation.current(workspaceTarget.value, navigationQuery.value);

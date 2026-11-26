@@ -25,6 +25,11 @@ interface StoredWhiteboard extends WhiteboardSnapshot {
   readonly recentChanges: readonly WhiteboardChange[];
 }
 
+export interface WhiteboardEntryChanges {
+  readonly entries: readonly string[];
+  readonly removedCount: number;
+}
+
 export type WhiteboardOperation =
   | { readonly op: 'add'; readonly content: string }
   | {
@@ -156,11 +161,22 @@ export class WhiteboardStore {
             JSON.stringify(log)
           );
       }
+      const before = new Map(board.entries.map(({ id, content }) => [id, content]));
+      const changedEntries: string[] = [];
+      for (const { id, content } of entries) {
+        if (before.get(id) !== content) changedEntries.push(content);
+        before.delete(id);
+      }
+      const entryChanges: WhiteboardEntryChanges = {
+        entries: changedEntries,
+        removedCount: before.size
+      };
       this.database.exec('COMMIT');
       return {
         boardId: board.boardId,
         boardRevision,
         changed,
+        entryChanges,
         added: entries
           .filter(({ id }) => added.has(id))
           .map(({ id, revision }) => ({ id, revision }))

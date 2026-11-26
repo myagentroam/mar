@@ -1,6 +1,12 @@
 import { shallowRef } from 'vue';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import type { WorkspaceSessionNavigationQuery } from '@myagentroam/protocol';
+import {
+  collaborationWhiteboardSchema,
+  sessionCollaborationEdgeSchema,
+  type CollaborationWhiteboard,
+  type SessionCollaborationEdge,
+  type WorkspaceSessionNavigationQuery
+} from '@myagentroam/protocol';
 import { sameNavigation } from './workspace-watch-service.js';
 
 export function sessionNavigationQuery(options: {
@@ -8,6 +14,8 @@ export function sessionNavigationQuery(options: {
   readonly asideSessionIds: readonly string[];
   readonly visibleTreeAnchors: readonly string[];
   readonly treeAnchor?: string | undefined;
+  readonly collaborationEnabled?: boolean;
+  readonly boardSessionId?: string | undefined;
 }): WorkspaceSessionNavigationQuery | undefined {
   if (!options.enabled) return undefined;
   return {
@@ -18,7 +26,19 @@ export function sessionNavigationQuery(options: {
         ...(options.treeAnchor === undefined ? [] : [options.treeAnchor])
       ])
     ],
-    ...(options.treeAnchor === undefined ? {} : { treeAnchor: options.treeAnchor }),
+    ...(options.treeAnchor === undefined
+      ? {}
+      : {
+          treeAnchor: options.treeAnchor,
+          ...(options.collaborationEnabled
+            ? {
+                collaboration:
+                  options.boardSessionId === undefined
+                    ? {}
+                    : { boardSessionId: options.boardSessionId }
+              }
+            : {})
+        }),
     limit: 100
   };
 }
@@ -45,13 +65,24 @@ export interface NavigationSummary {
 export interface NavigationSnapshot extends WorkspaceTarget {
   readonly sessions: readonly NavigationSession[];
   readonly summaries: readonly NavigationSummary[];
-  readonly tree: {
-    readonly anchorSessionId: string;
-    readonly parent: NavigationSession | null;
-    readonly nodes: readonly NavigationSession[];
-    readonly truncated: boolean;
-  } | null;
+  readonly tree: NavigationTree | null;
+  readonly collaboration?: NavigationCollaboration;
   readonly missingSessionIds: readonly string[];
+}
+
+export interface NavigationTree {
+  readonly anchorSessionId: string;
+  readonly parent: NavigationSession | null;
+  readonly nodes: readonly NavigationSession[];
+  readonly truncated: boolean;
+}
+
+export interface NavigationCollaboration {
+  readonly anchor: NavigationSession;
+  readonly peers: readonly NavigationSession[];
+  readonly sharing: readonly SessionCollaborationEdge[];
+  readonly board?: CollaborationWhiteboard | null;
+  readonly truncated: boolean;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -83,6 +114,34 @@ function summary(value: unknown): value is NavigationSummary {
   );
 }
 
+function collaboration(
+  value: unknown,
+  tree: unknown,
+  query: WorkspaceSessionNavigationQuery
+): boolean {
+  if (query.collaboration === undefined || tree === null) return value === undefined;
+  return (
+    record(value) &&
+    session(value.anchor) &&
+    value.anchor.id === query.treeAnchor &&
+    Array.isArray(value.peers) &&
+    value.peers.length <= 32 &&
+    value.peers.every(session) &&
+    Array.isArray(value.sharing) &&
+    value.sharing.length <= 134 &&
+    value.sharing.every(
+      (edge: unknown) => sessionCollaborationEdgeSchema.safeParse(edge).success
+    ) &&
+    typeof value.truncated === 'boolean' &&
+    (query.collaboration.boardSessionId === undefined
+      ? value.board === undefined
+      : value.board === null ||
+        (record(value.board) &&
+          value.board.sessionId === query.collaboration.boardSessionId &&
+          collaborationWhiteboardSchema.safeParse(value.board).success))
+  );
+}
+
 export function createSessionNavigationProjection(
   onMissing: (workspace: WorkspaceTarget, sessionIds: readonly string[]) => void
 ) {
@@ -109,7 +168,8 @@ export function createSessionNavigationProjection(
           (value.tree.parent !== null && !session(value.tree.parent)) ||
           !Array.isArray(value.tree.nodes) ||
           !value.tree.nodes.every(session) ||
-          typeof value.tree.truncated !== 'boolean'))
+          typeof value.tree.truncated !== 'boolean')) ||
+      !collaboration(value.collaboration, value.tree, query)
     )
       return false;
     acceptedQuery = query;

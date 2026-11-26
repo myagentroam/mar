@@ -9,9 +9,11 @@ import {
   retainCompactionUserMessages
 } from '../../src/runtime/compaction/history.js';
 import {
+  inputMetadataFromRecord,
   replacementHistoryFromCheckpoint,
   type SessionRecord
 } from '../../src/session/store/index.js';
+import { restoreCompactTail } from '../../src/runtime/compaction/retained-context.js';
 import { countModelTokens } from '../../src/runtime/token-budget.js';
 import { contextualInstructionInsertIndex } from '../../src/runtime/context/world-state.js';
 import { estimatedRequestTokens } from '../../src/runtime/context/request-budget.js';
@@ -304,6 +306,39 @@ describe('compaction task retention', () => {
     );
   });
 
+  it('round-trips a parent Agent message identity through both compact restore paths', () => {
+    const metadata = inputMetadataFromRecord({
+      type: 'turn.user',
+      recordId: 'input-record',
+      sequence: 1,
+      timestamp: '2026-01-01T00:00:00.000Z',
+      sessionId: 'session',
+      payload: {
+        prompt: 'Resume the shared task.',
+        inputSource: 'parent_agent',
+        clientMessageId: 'peer-message'
+      }
+    });
+    const content = 'Resume the shared task.';
+    const history = buildCompactedHistory('summary', [{ content, metadata }], 100);
+    const checkpoint = JSON.parse(
+      JSON.stringify({
+        type: 'compact.completed',
+        payload: { summary: 'summary', replacementHistory: history }
+      })
+    ) as SessionRecord;
+    expect(
+      compactedHistoryMessages(replacementHistoryFromCheckpoint(checkpoint)!)[0]?.metadata
+    ).toEqual({
+      source: 'parent_agent',
+      recordId: 'input-record',
+      clientMessageId: 'peer-message'
+    });
+    expect(
+      restoreCompactTail(JSON.parse(JSON.stringify({ role: 'user', content, metadata })))
+    ).toEqual({ role: 'user', content, metadata });
+  });
+
   it('rejects inconsistent checkpoint provenance and strips unknown metadata fields', () => {
     const checkpoint = (metadata: unknown) =>
       ({
@@ -323,6 +358,7 @@ describe('compaction task retention', () => {
         checkpoint({
           source: 'parent_agent',
           recordId: 'source-1',
+          clientMessageId: 123,
           truncated: true,
           extra: 'must not survive'
         })

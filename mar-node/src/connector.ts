@@ -48,6 +48,7 @@ import { GoalMcpBridge } from './service/goal-mcp-bridge.js';
 import { NodeOrchestration } from './orchestration/node-orchestration.js';
 import { WhiteboardService } from './orchestration/whiteboard/whiteboard-service.js';
 import { WhiteboardStore } from './orchestration/whiteboard/whiteboard-store.js';
+import { invokeWhiteboard } from './orchestration/whiteboard/whiteboard-tool.js';
 import { requireOrchestrationExecution } from './orchestration/execution-actor.js';
 import { assertSessionControlOwner } from './service/run-ownership-policy.js';
 import { AgentNetworkObservations } from './orchestration/agent-network/agent-network-observations.js';
@@ -463,7 +464,7 @@ export class NodeConnector {
     Date.now,
     (run, session, userMessage) => {
       this.recentRunProjectionService.record(run, session, userMessage);
-      if (run.completedAt !== null) this.orchestration.release(run.id);
+      if (run.completedAt !== null) this.orchestration.release(run.id, run.workspaceId);
     }
   );
   private readonly orchestration = new NodeOrchestration(
@@ -490,6 +491,9 @@ export class NodeConnector {
       boardInWorkspace: (owner, workspaceId) => {
         const session = this.database?.getSessionRecord(owner);
         return session?.workspaceId === workspaceId && session.runner === 'mar-agent';
+      },
+      changed: (workspaceId) => {
+        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessionNavigation');
       },
       canRecover: (run, owner) => {
         if (this.database?.getSessionRecord(owner)?.workspaceId !== run.workspaceId) return false;
@@ -815,20 +819,20 @@ export class NodeConnector {
                 runtime: this.runtime,
                 coordinator: this.continuousRunCoordinator
               });
-              const board = this.orchestration.whiteboard;
-              switch (input.action) {
-                case 'read':
-                  return board.read(run.id, input.boardAgentId);
-                case 'join':
-                  return board.join(run.id, input.boardAgentId);
-                case 'leave':
-                  return board.leave(run.id);
-                case 'update':
-                  return board.update(run.id, {
-                    expectedBoardId: input.boardAgentId,
-                    ops: input.ops
-                  });
-              }
+              return invokeWhiteboard(this.orchestration.whiteboard, run.id, input, (ownerId) => {
+                const live = this.runtime.getAgentSessionById(ownerId);
+                const stored = this.database?.getSessionRecord(ownerId);
+                const liveTitle = live?.workspaceId === run.workspaceId ? live : undefined;
+                const storedTitle =
+                  stored?.workspaceId === run.workspaceId ? stored.metadata : undefined;
+                return (
+                  liveTitle?.customTitle ??
+                  storedTitle?.customTitle ??
+                  liveTitle?.runnerTitle ??
+                  storedTitle?.runnerTitle ??
+                  undefined
+                );
+              });
             },
             resources: async (signal: AbortSignal) => {
               signal.throwIfAborted();
@@ -1807,8 +1811,11 @@ export class NodeConnector {
       changes: this.workspaceChangeService,
       listSessions: (workspaceId, sessionGroup) =>
         this.workspaceSessionService.listPage(workspaceId, sessionGroup),
-      sessionNavigation: async (workspaceId, query) =>
-        this.sessionCatalogService.navigation({ workspaceId, ...query }),
+      sessionNavigation: async (workspaceId, query, userId) =>
+        this.sessionCatalogService.navigation(
+          { workspaceId, ...query },
+          userId === undefined ? undefined : { userId, whiteboard: this.orchestration.whiteboard }
+        ),
       invalidatePrompt: (id) => this.promptCompletion?.invalidateWorkspace(id),
       nodeId: () => this.config?.nodeId ?? 'runtime-node',
       nodeGeneration: () => this.nodeGeneration,

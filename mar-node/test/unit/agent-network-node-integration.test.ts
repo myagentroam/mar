@@ -215,10 +215,14 @@ describe('Node Agent Network owner integration', () => {
     const invokeBoard = vi.fn<
       import('../../src/orchestration/whiteboard/whiteboard-tool.js').WhiteboardInvoke
     >((_id, input) => {
-      if (input.action === 'read') return board.read('worker', input.boardAgentId);
-      if (input.action === 'join') return board.join('worker', input.boardAgentId);
-      if (input.action === 'leave') return board.leave('worker');
-      return board.update('worker', { expectedBoardId: input.boardAgentId, ops: input.ops });
+      if (input.action === 'read') return { data: board.read('worker', input.boardAgentId) };
+      if (input.action === 'join') return { data: board.join('worker', input.boardAgentId) };
+      if (input.action === 'leave') return { data: board.leave('worker') };
+      const { entryChanges, ...data } = board.update('worker', {
+        expectedBoardId: input.boardAgentId,
+        ops: input.ops
+      });
+      return { data, entryChanges };
     });
     const blocks = (request: ModelRequest) =>
       request.messages.filter((m) => m.contextualBlock?.id === 'request:mar.node.whiteboard');
@@ -390,7 +394,7 @@ describe('Node Agent Network owner integration', () => {
       const wakeOnDetach = vi.fn();
       const unsubscribe = context.wake!.subscribe(wakeOnDetach);
       runs.delete('owner');
-      orchestration.release('owner');
+      orchestration.release('owner', 'workspace');
       unsubscribe();
       expect(board.isDetached('worker')).toBe(true);
       expect(context.wake!.pending()).toBe(false);

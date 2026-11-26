@@ -2,7 +2,8 @@ import { AgentError } from '@myagentroam/agent';
 import type { ExtensionToolSpec } from '@myagentroam/agent/extensions';
 import { z } from 'zod';
 import { isPlainRecord } from '../../util/records.js';
-import { whiteboardOperationEvent } from './whiteboard-presentation.js';
+import { whiteboardOperationEvent, type WhiteboardToolResult } from './whiteboard-presentation.js';
+import type { WhiteboardService } from './whiteboard-service.js';
 import type { WhiteboardUpdate } from './whiteboard-store.js';
 
 const id = z.string().min(1).max(256);
@@ -39,7 +40,38 @@ export type WhiteboardToolInput =
       readonly boardAgentId: string;
       readonly ops: WhiteboardUpdate['ops'];
     };
-export type WhiteboardInvoke = (executionId: string, input: WhiteboardToolInput) => unknown;
+export type WhiteboardInvoke = (
+  executionId: string,
+  input: WhiteboardToolInput
+) => WhiteboardToolResult;
+
+/** Adapt one domain operation without adding display metadata to the model receipt. */
+export function invokeWhiteboard(
+  board: WhiteboardService,
+  runId: string,
+  input: WhiteboardToolInput,
+  ownerName: (boardAgentId: string) => string | undefined
+): WhiteboardToolResult {
+  const result = ((): WhiteboardToolResult => {
+    switch (input.action) {
+      case 'read':
+        return { data: board.read(runId, input.boardAgentId) };
+      case 'join':
+        return { data: board.join(runId, input.boardAgentId) };
+      case 'leave':
+        return { data: board.leave(runId) };
+      case 'update': {
+        const { entryChanges, ...data } = board.update(runId, {
+          expectedBoardId: input.boardAgentId,
+          ops: input.ops
+        });
+        return { data, entryChanges };
+      }
+    }
+  })();
+  const id = result.data.boardAgentId;
+  return id ? { ...result, boardAgentName: ownerName(id) } : result;
+}
 
 function invalidInput(): AgentError {
   return new AgentError(
@@ -96,9 +128,13 @@ export function whiteboardTool(
         );
       try {
         const input = payload as WhiteboardToolInput;
-        const data = invoke(executionId, input);
-        const eventData = whiteboardOperationEvent(input, data);
-        return { data, content: JSON.stringify(data), ...(eventData ? { eventData } : {}) };
+        const result = invoke(executionId, input);
+        const eventData = whiteboardOperationEvent(input, result);
+        return {
+          data: result.data,
+          content: JSON.stringify(result.data),
+          ...(eventData ? { eventData } : {})
+        };
       } catch (error) {
         // The SDK's model error text does not carry generic internal details.
         if (error instanceof AgentError && error.code.startsWith('WHITEBOARD_') && error.details) {

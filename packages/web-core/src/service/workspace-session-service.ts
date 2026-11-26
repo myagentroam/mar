@@ -695,7 +695,8 @@ export interface WorkbenchSessionListView {
     position: 'before' | 'after'
   ) => Promise<void>;
   setSessionPinned: (session: Session, pinned: boolean) => Promise<void>;
-  setSessionTreeAnchor: (sessionId: string | undefined) => void;
+  setSessionTreeAnchor: (sessionId: string | undefined, showBoard?: boolean) => void;
+  setCollaborationBoard: (sessionId: string | undefined) => void;
   sessionNavigationSnapshot: NavigationSnapshot | undefined;
   sessionActivity: (session: Session) => NonNullable<Session['activity']>;
   sessionActivityDateTime: (session: Session) => string | undefined;

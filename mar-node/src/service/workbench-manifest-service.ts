@@ -72,6 +72,7 @@ export class WorkbenchManifestService {
       browserTabControls: capabilities.browser ? (true as const) : undefined,
       browserDownloadWorkspace: capabilities.browser ? (true as const) : undefined,
       sessionAside: capabilities.sessionAside,
+      sessionCollaboration: capabilities.sessionCollaboration,
       sessionGroups: capabilities.sessionGroups,
       scheduledTasks: capabilities.scheduledTasks,
       git: {

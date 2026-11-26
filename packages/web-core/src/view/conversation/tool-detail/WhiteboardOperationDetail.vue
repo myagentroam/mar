@@ -1,65 +1,47 @@
 <script setup lang="ts">
-import type { WhiteboardOperationPresentation } from '@myagentroam/protocol';
-import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
+import type { WhiteboardEntryChanges } from '../../../util/whiteboard-operation-presentation.js';
 
-const props = defineProps<{ operation: WhiteboardOperationPresentation }>();
-const fields = computed(() => {
-  const { boardAgentId, boardRevision, entryCount, operationCount, changed } = props.operation;
-  return {
-    boardAgentId,
-    boardRevision,
-    entryCount,
-    operationCount,
-    result:
-      changed === undefined
-        ? undefined
-        : translate(
-            changed
-              ? 'presentation.whiteboardDetail.changed'
-              : 'presentation.whiteboardDetail.unchanged'
-          )
-  };
-});
+defineProps<{
+  owner: string | undefined;
+  receipt: string | undefined;
+  entryChanges: WhiteboardEntryChanges | undefined;
+}>();
 </script>
 
 <template>
-  <dl v-if="Object.values(fields).some((value) => value !== undefined)" class="whiteboard-detail">
-    <template v-for="(value, field) in fields" :key="field">
-      <div
-        v-if="value !== undefined"
-        :class="{ 'whiteboard-detail-owner': field === 'boardAgentId' }"
+  <p v-if="owner || receipt" class="whiteboard-detail mar-conversation-detail-text">
+    <template v-if="owner">
+      <span class="tool-detail-meta"
+        >{{ translate('presentation.whiteboardDetail.boardAgentId') }}:</span
       >
-        <dt>{{ translate(`presentation.whiteboardDetail.${field}`) }}</dt>
-        <dd>{{ value }}</dd>
-      </div>
+      {{ owner }}
     </template>
-  </dl>
+    <span v-if="owner && receipt" aria-hidden="true"> · </span>
+    {{ receipt }}
+  </p>
+  <template v-if="entryChanges">
+    <ul v-if="entryChanges.entries.length" class="whiteboard-entry-changes">
+      <li v-for="(entry, index) in entryChanges.entries" :key="index">
+        <p class="mar-conversation-detail-text">{{ entry }}</p>
+      </li>
+    </ul>
+    <p v-if="entryChanges.removedCount" class="mar-conversation-detail-text">
+      {{
+        entryChanges.removedCount === 1
+          ? translate('presentation.whiteboardDetail.removedOne')
+          : translate('presentation.whiteboardDetail.removed', { count: entryChanges.removedCount })
+      }}
+    </p>
+    <p v-if="entryChanges.truncated" class="tool-detail-meta">
+      {{ translate('presentation.whiteboardDetail.changesTruncated') }}
+    </p>
+  </template>
 </template>
 
 <style scoped>
-.whiteboard-detail {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 1rem;
-  margin: 0 0 0.5rem;
-  font-size: var(--mar-font-size-detail);
-}
-.whiteboard-detail > div {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 0.5rem;
-  max-width: 100%;
-}
-.whiteboard-detail-owner {
-  flex-basis: 100%;
-}
-.whiteboard-detail dt {
-  color: var(--mar-text-secondary);
-}
-.whiteboard-detail dd {
-  min-width: 0;
+.whiteboard-entry-changes {
   margin: 0;
-  overflow-wrap: anywhere;
+  padding-inline-start: 1.25em;
 }
 </style>
