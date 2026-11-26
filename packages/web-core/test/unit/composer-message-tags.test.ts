@@ -228,10 +228,18 @@ describe('Composer product tag presentation', () => {
     ).toThrow('COMPOSER_MESSAGE_TOO_LARGE');
   });
 
-  it('hides mixed session references and preserves their metadata when a queue body is edited', () => {
+  it('hides mixed references from the queue editor but preserves them in the saved message', () => {
     const selected = [
       { type: 'file' as const, path: 'src/main.ts', label: 'main.ts' },
-      { type: 'session' as const, sessionId: 'session-42', label: 'Alpha & <review>' }
+      { type: 'session' as const, sessionId: 'session-42', label: 'Alpha & <review>' },
+      {
+        type: 'quote' as const,
+        id: 'quote-queue',
+        source: 'assistant' as const,
+        messageId: 'reply-1',
+        label: 'Reply excerpt',
+        text: 'First quoted line\nSecond quoted line'
+      }
     ];
     const raw = serializeComposerMessage([], 'Compare this work', selected);
     expect(parseComposerTags(raw).find((part) => part.kind === 'mar_references')).toMatchObject({

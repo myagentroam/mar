@@ -99,9 +99,8 @@ function editQueueItem(item: WorkspaceQueueItem) {
   queueEditor.startEditing(item);
 }
 function saveQueueItem(id: string) {
-  items.value = items.value.map((item) =>
-    item.queueItemId === id ? { ...item, content: editingContent.value } : item
-  );
+  const content = queueEditor.serializeEditedContent(editingContent.value);
+  items.value = items.value.map((item) => (item.queueItemId === id ? { ...item, content } : item));
   queueEditor.finishEditing();
 }
 function saveGoal(objective: string) {

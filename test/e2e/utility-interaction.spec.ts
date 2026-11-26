@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { serializeComposerTag } from '../../packages/protocol/src/composer-tags.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import type { WorkspaceQueueItem } from '../../packages/web-core/src/model/workbench.js';
 
@@ -167,6 +168,54 @@ for (const theme of ['light', 'dark', 'custom']) {
 }
 
 for (const width of [1280, 390]) {
+  test(`Queue keeps a quoted message compact and edits only its body at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(
+      `${fixture.url}visual-alignment.html?utility-interaction&theme=${width === 390 ? 'dark' : 'daylight'}`
+    );
+    const row = page.locator('.queue-item');
+    await expect(row).toBeVisible();
+    const height = await row.evaluate((element) => element.getBoundingClientRect().height);
+    const body = 'Include this in the next change';
+    const quote = 'Original reply, first line\nOriginal reply, second line';
+    const references = serializeComposerTag('mar_references', {
+      references: [
+        {
+          type: 'quote',
+          id: 'quote-queue',
+          source: 'assistant',
+          messageId: 'reply-1',
+          label: 'Reply excerpt',
+          text: quote
+        }
+      ]
+    });
+    await page.evaluate((content) => {
+      const queue = (window as unknown as { utilityQueue: UtilityQueue }).utilityQueue;
+      queue.replace([{ ...queue.items()[0]!, content }]);
+    }, `${body}\n${references}`);
+    await expect(row.locator('.work-item-content')).toHaveText(body);
+    await expect(row.locator('.message-reference-tag')).toHaveCount(0);
+    expect(await row.evaluate((element) => element.getBoundingClientRect().height)).toBeCloseTo(
+      height,
+      1
+    );
+    await row.getByRole('button', { name: 'Edit', exact: true }).click();
+    await expect(row.getByRole('textbox')).toHaveValue(body);
+    await expect(row.locator('.message-reference-tag')).toHaveCount(0);
+    const editedBody = 'Update the next change';
+    await row.getByRole('textbox').fill(editedBody);
+    await row.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(row.locator('.work-item-content')).toHaveText(editedBody);
+    await expect(row.locator('.message-reference-tag')).toHaveCount(0);
+    const savedContent = await page.evaluate(
+      () => (window as unknown as { utilityQueue: UtilityQueue }).utilityQueue.items()[0]!.content
+    );
+    expect(savedContent).toBe(`${editedBody}\n${references}`);
+  });
+
   test(`New queue items scroll only the pending work list to the end at ${width}px`, async ({
     page
   }) => {

@@ -8,7 +8,6 @@ import {
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
-import MessageReferenceTags from './MessageReferenceTags.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { queueKeys } from '../../service/console-shortcut-keys.js';
@@ -522,9 +521,6 @@ onMounted(() => {
             }}</span>
           </span>
           <div class="queue-item-content">
-            <MessageReferenceTags
-              :references="composerMessagePresentation({ text: item.content }).references"
-            />
             <small
               v-tooltip="messageSource(item)?.title"
               v-if="messageSource(item)"
