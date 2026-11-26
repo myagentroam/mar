@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-27
 ---
 
 # Create and Manage Sessions
@@ -11,7 +11,7 @@ Group tabs show only their names and selected state, without running counts or u
 
 Click or tap the conversation title to share or rename the session, view its collaboration network, or manage its prompt and scheduled task where supported. Use the session list's More menu to pin, reorder, or delete it. **Copy session ID** is available from the title and list menus; the ID is not shown in the header.
 
-Open the **Collaboration Network** dialog from the icon beside the title, the title menu, or the list menu. Solid arrows point from parent sessions to their children; dashed lines indicate a currently shared whiteboard. Whiteboards are not nodes. The graph automatically scales and centers the current session. Large graphs stay readable: use the mouse wheel to zoom, drag to pan, or swipe the canvas on a phone. The right panel starts with the current session’s whiteboard. Select a node to see its board or a dashed line to see the shared board. Board entries and recent changes are shown directly and cannot be edited. Use the actions at the top of the board panel to open the session that owns the displayed board in Main or Aside. Closing the dialog leaves the current session unchanged. Older Nodes without network support continue to open the session tree from the same entry points.
+Open the **Collaboration Network** dialog from the icon beside the title, the title menu, or the list menu. Solid arrows point from parent sessions to their children; dashed lines indicate a currently shared whiteboard. Whiteboards are not nodes. The graph automatically scales and centers the current session. Large graphs stay readable: use the mouse wheel to zoom, drag to pan, or swipe the canvas on a phone. The right panel starts with the current session’s whiteboard. Select a node to see its own board, or select a dashed line to highlight the relationship and see its shared board. Select a node again to return to that session’s own board. Board entries and recent changes are shown directly and cannot be edited. Use the actions at the top of the board panel to open the session that owns the displayed board in Main or Aside. Closing the dialog leaves the current session unchanged. Older Nodes without network support continue to open the session tree from the same entry points.
 
 A session can be open in both the main work area and Aside. Opening either side does not close the other, and reopening the same location does not refresh its conversation. Each Workspace keeps independent Main and Aside drafts for message text, skill tags, and references. Switching sessions or starting a new session on one side preserves its input; switching Workspaces restores that Workspace's draft for each side. Even the same session has independent input on both sides, while concurrent duplicate submissions are still prevented. Queued-message edits remain bound to their original session. Closing an Aside session tab stops displaying the conversation there; it does not end the Agent's task, delete the session, or close the main work area.
 
