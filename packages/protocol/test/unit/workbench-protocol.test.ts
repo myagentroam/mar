@@ -3,6 +3,7 @@ import {
   NODE_PROTOCOL_VERSION,
   agentOperationPresentationSchema,
   capabilityAvailabilitySchema,
+  collaborationWhiteboardSchema,
   codexCredentialSummarySchema,
   conversationItemDeltaSchema,
   conversationItemSchema,
@@ -158,6 +159,45 @@ describe('Workbench protocol contracts', () => {
         summaryAnchors: [],
         limit: 10,
         extra: true
+      }).success
+    ).toBe(false);
+  });
+
+  it('requires an anchor for a bounded, read-only collaboration query', () => {
+    const base = { sessionIds: [], summaryAnchors: [], limit: 100 };
+    const graph = { ...base, treeAnchor: 'current', collaboration: {} };
+    expect(workspaceSessionNavigationQuerySchema.parse(graph)).toEqual(graph);
+    expect(
+      workspaceSessionNavigationQuerySchema.parse({
+        ...graph,
+        collaboration: { boardSessionId: 'owner' }
+      }).collaboration
+    ).toEqual({ boardSessionId: 'owner' });
+    expect(
+      workspaceSessionNavigationQuerySchema.safeParse({ ...base, collaboration: {} }).success
+    ).toBe(false);
+    expect(
+      workspaceSessionNavigationQuerySchema.safeParse({
+        ...graph,
+        collaboration: { boardSessionId: '' }
+      }).success
+    ).toBe(false);
+    expect(
+      workspaceSessionNavigationQuerySchema.safeParse({ ...graph, collaboration: { write: true } })
+        .success
+    ).toBe(false);
+    const board = {
+      sessionId: 'owner',
+      title: 'Owner',
+      revision: 1,
+      entries: [],
+      recentChanges: []
+    };
+    expect(collaborationWhiteboardSchema.parse(board)).toEqual(board);
+    expect(
+      collaborationWhiteboardSchema.safeParse({
+        ...board,
+        entries: [{ id: 'e', content: 'a'.repeat(1025) }]
       }).success
     ).toBe(false);
   });

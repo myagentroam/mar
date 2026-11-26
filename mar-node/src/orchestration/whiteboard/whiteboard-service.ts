@@ -1,4 +1,5 @@
 import { AgentError } from '@myagentroam/agent';
+import type { SessionCollaborationEdge } from '@myagentroam/protocol';
 import type {
   WhiteboardChange,
   WhiteboardSnapshot,
@@ -38,6 +39,7 @@ interface WhiteboardServiceOptions {
   activeOwnerRunId(ownerSessionId: string): string | undefined;
   boardInWorkspace(ownerSessionId: string, workspaceId: string): boolean;
   canRecover?(participant: Participant, ownerSessionId: string): boolean;
+  changed?(workspaceId: string): void;
 }
 
 /** Owns temporary board bindings and revision notices. The Node Run owner decides liveness. */
@@ -87,8 +89,10 @@ export class WhiteboardService {
     if (!target || !source || !this.compatible(target, source)) return;
     // A detached follow is still the source's choice, not an implicit leave.
     const binding = this.follows.get(source.id)?.[0] ?? this.own(source);
-    if (binding.ownerSessionId !== target.sessionId)
+    if (binding.ownerSessionId !== target.sessionId) {
       this.follows.set(targetRunId, [this.newFollow(binding)]);
+      this.options.changed?.(target.workspaceId);
+    }
   }
 
   isDetached(runId: string): boolean {
@@ -125,6 +129,25 @@ export class WhiteboardService {
         details: { ownBoardAgentId: run.sessionId, followedBoardAgentId: followed?.ownerSessionId }
       }
     );
+  }
+
+  relationships(workspaceId: string, userId: number): SessionCollaborationEdge[] {
+    const edges: SessionCollaborationEdge[] = [];
+    for (const runId of this.follows.keys()) {
+      const run = this.options.activeRun(runId);
+      if (run?.workspaceId !== workspaceId || run.initiatedByUserId !== userId) continue;
+      const board = this.followed(run);
+      if (board)
+        edges.push({ ownerSessionId: board.ownerSessionId, followerSessionId: run.sessionId });
+    }
+    return edges;
+  }
+
+  /** Internal data read for an already authorized Workspace, independent of Run liveness. */
+  readPersisted(workspaceId: string, owner: string) {
+    return this.options.boardInWorkspace(owner, workspaceId)
+      ? this.options.store().read(owner)
+      : undefined;
   }
 
   read(
@@ -172,15 +195,17 @@ export class WhiteboardService {
         'No active whiteboard for that Agent ID can be joined.'
       );
     this.follows.set(runId, [this.newFollow(this.own(root))]);
+    this.options.changed?.(run.workspaceId);
     return { boardAgentId: boardId, changed: true };
   }
 
   leave(runId: string) {
-    this.requireRun(runId);
+    const run = this.requireRun(runId);
     // A detached follow still identifies the board being left.
     const binding = this.follows.get(runId)?.[0];
     if (!binding) return { changed: false };
     this.follows.delete(runId);
+    this.options.changed?.(run.workspaceId);
     return { boardAgentId: binding.ownerSessionId, changed: true };
   }
 
@@ -220,7 +245,10 @@ export class WhiteboardService {
       )
         return false;
       // An edit after capture is not in the accepted snapshot and must remain pending.
-      if (live?.reconnect && captured?.reconnect) this.follows.set(runId, [captured.binding]);
+      if (liveRun && live?.reconnect && captured?.reconnect) {
+        this.follows.set(runId, [captured.binding]);
+        this.options.changed?.(liveRun.workspaceId);
+      }
       return true;
     };
     if (!run) return { accept, views: [] };
@@ -270,6 +298,7 @@ export class WhiteboardService {
     const binding = this.writable(run, input.expectedBoardId);
     const result = this.options.store().update(binding.ownerSessionId, run.sessionId, input);
     if (result.changed) {
+      this.options.changed?.(run.workspaceId);
       const previous = this.notices.get(binding.rootRunId)?.find(({ writer }) => writer !== runId);
       const latest = { writer: runId, revision: result.boardRevision };
       this.notices.set(binding.rootRunId, previous ? [latest, previous] : [latest]);
@@ -309,9 +338,15 @@ export class WhiteboardService {
     };
   }
 
-  release(runId: string): void {
+  release(runId: string, workspaceId: string): void {
+    const hadSharing =
+      this.follows.has(runId) ||
+      [...this.follows.values()].some((bindings) =>
+        bindings.some((binding) => binding.rootRunId === runId)
+      );
     this.follows.delete(runId);
     this.notices.delete(runId);
     this.listenersByRoot.delete(runId);
+    if (hadSharing) this.options.changed?.(workspaceId);
   }
 }

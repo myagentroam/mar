@@ -67,7 +67,12 @@ export class WorkspaceWatchController {
       input.workbenchConnectionId as string,
       this.options.nodeGeneration(),
       topics,
-      input.prepareFiles === true
+      input.prepareFiles === true,
+      typeof input.__requestUserId === 'number' &&
+        Number.isSafeInteger(input.__requestUserId) &&
+        input.__requestUserId > 0
+        ? input.__requestUserId
+        : undefined
     );
     void this.options.snapshots.initial(
       workspace,
@@ -128,6 +133,8 @@ function sameNavigation(
   return (
     left.limit === right.limit &&
     left.treeAnchor === right.treeAnchor &&
+    (left.collaboration === undefined) === (right.collaboration === undefined) &&
+    left.collaboration?.boardSessionId === right.collaboration?.boardSessionId &&
     left.sessionIds.length === right.sessionIds.length &&
     left.sessionIds.every((id, index) => id === right.sessionIds[index]) &&
     left.summaryAnchors.length === right.summaryAnchors.length &&

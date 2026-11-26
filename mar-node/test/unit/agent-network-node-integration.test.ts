@@ -394,7 +394,7 @@ describe('Node Agent Network owner integration', () => {
       const wakeOnDetach = vi.fn();
       const unsubscribe = context.wake!.subscribe(wakeOnDetach);
       runs.delete('owner');
-      orchestration.release('owner');
+      orchestration.release('owner', 'workspace');
       unsubscribe();
       expect(board.isDetached('worker')).toBe(true);
       expect(context.wake!.pending()).toBe(false);

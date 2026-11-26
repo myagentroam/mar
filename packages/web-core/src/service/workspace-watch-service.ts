@@ -52,7 +52,7 @@ export function createWorkspaceWatchService(options: {
     topic: WorkspaceWatchTopic,
     revision: number,
     navigationQuery?: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery
-  ) => void;
+  ) => boolean | void;
 }) {
   const topicStatus = reactive<Record<WorkspaceWatchTopic, WorkspaceWatchTopicStatus>>({
     sessions: 'idle',
@@ -362,11 +362,27 @@ export function createWorkspaceWatchService(options: {
     const current = identity(event);
     if (current === undefined) return false;
     const revision = event.revision as number;
-    if (revision <= revisions[event.topic]) return true;
-    revisions[event.topic] = revision;
-    topicFailures[event.topic] = 0;
-    topicStatus[event.topic] = 'ready';
-    if (event.topic === 'sessions')
+    const topic = event.topic;
+    if (revision <= revisions[topic]) return true;
+    revisions[topic] = revision;
+    if (topic === 'sessionNavigation') {
+      const accepted = options.onSnapshot(
+        current.nodeId,
+        current.workspaceId,
+        { sessionNavigation: event.payload },
+        topic,
+        revision,
+        current.sessionNavigation
+      );
+      if (context !== current) return true;
+      if (accepted === false) {
+        failTopic(current, topic);
+        return true;
+      }
+    }
+    topicFailures[topic] = 0;
+    topicStatus[topic] = 'ready';
+    if (topic === 'sessions')
       options.onSnapshot(
         current.nodeId,
         current.workspaceId,
@@ -374,7 +390,7 @@ export function createWorkspaceWatchService(options: {
         event.topic,
         revision
       );
-    else if (event.topic === 'files')
+    else if (topic === 'files')
       options.onSnapshot(
         current.nodeId,
         current.workspaceId,
@@ -382,22 +398,13 @@ export function createWorkspaceWatchService(options: {
         event.topic,
         revision
       );
-    else if (event.topic === 'changes')
+    else if (topic === 'changes')
       options.onSnapshot(
         current.nodeId,
         current.workspaceId,
         { changes: event.payload },
         event.topic,
         revision
-      );
-    else
-      options.onSnapshot(
-        current.nodeId,
-        current.workspaceId,
-        { sessionNavigation: event.payload },
-        event.topic,
-        revision,
-        current.sessionNavigation
       );
     return true;
   }
@@ -407,19 +414,23 @@ export function createWorkspaceWatchService(options: {
       return false;
     const current = identity(event);
     if (current === undefined) return false;
-    topicStatus[event.topic] = 'failed';
-    topicFailures[event.topic] += 1;
-    if (topicFailures[event.topic] > 3) return true;
+    failTopic(current, event.topic);
+    return true;
+  }
+
+  function failTopic(current: WatchContext, topic: WorkspaceWatchTopic): void {
+    topicStatus[topic] = 'failed';
+    topicFailures[topic] += 1;
+    if (topicFailures[topic] > 3) return;
     if (topicRetryTimer !== undefined) clearTimeout(topicRetryTimer);
-    const workspaceId = current.workspaceId;
     topicRetryTimer = setTimeout(
       () => {
         topicRetryTimer = undefined;
-        void establish(workspaceId, current.directory, false);
+        if (context === current && Object.values(topicStatus).includes('failed'))
+          void establish(current.workspaceId, current.directory, false);
       },
-      Math.min(options.heartbeatMs, 1_000 * 2 ** (topicFailures[event.topic] - 1))
+      Math.min(options.heartbeatMs, 1_000 * 2 ** (topicFailures[topic] - 1))
     );
-    return true;
   }
 
   return {
@@ -456,6 +467,8 @@ export function sameNavigation(
       right !== undefined &&
       left.limit === right.limit &&
       left.treeAnchor === right.treeAnchor &&
+      (left.collaboration === undefined) === (right.collaboration === undefined) &&
+      left.collaboration?.boardSessionId === right.collaboration?.boardSessionId &&
       left.sessionIds.length === right.sessionIds.length &&
       left.sessionIds.every((id, i) => id === right.sessionIds[i]) &&
       left.summaryAnchors.length === right.summaryAnchors.length &&

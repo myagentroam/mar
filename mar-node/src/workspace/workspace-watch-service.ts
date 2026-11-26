@@ -5,6 +5,7 @@ export interface WorkspaceWatch {
   readonly workspaceId: string;
   readonly watchId: string;
   readonly sessionHash: string;
+  readonly userId?: number | undefined;
   readonly workbenchConnectionId: string;
   readonly nodeGeneration: string;
   readonly prepareFiles?: boolean;
@@ -101,7 +102,8 @@ export class WorkspaceWatchService {
     workbenchConnectionId: string,
     nodeGeneration: string,
     topics: WorkspaceWatch['topics'],
-    prepareFiles = false
+    prepareFiles = false,
+    userId?: number
   ): WorkspaceWatch {
     const key = `${sessionHash}:${workbenchConnectionId}`;
     for (const [activeWorkspaceId, watches] of this.watches)
@@ -112,6 +114,7 @@ export class WorkspaceWatchService {
       workspaceId,
       watchId,
       sessionHash,
+      userId,
       workbenchConnectionId,
       nodeGeneration,
       expiresAt: Date.now() + WATCH_TTL_MS,

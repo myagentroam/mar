@@ -3,8 +3,73 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { createWorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
 import { createSessionNavigationProjection } from '../../src/service/session-navigation-projection.js';
+import { createWorkspaceWatchProjection } from '../../src/service/workspace-watch-projection.js';
 
 describe('Shared Workspace Watch', () => {
+  it('reports rejected navigation snapshots and can retry on a fresh lease', async () => {
+    const workspace = { nodeId: 'node-1', workspaceId: 'workspace-1' };
+    const query = {
+      sessionIds: [],
+      summaryAnchors: [],
+      treeAnchor: 'agent',
+      collaboration: { boardSessionId: 'agent' },
+      limit: 100
+    };
+    const projection = createSessionNavigationProjection(vi.fn());
+    const requests: RequestInit[] = [];
+    const target = ref(workspace);
+    const receiver = createWorkspaceWatchProjection({
+      workspaceTarget: target,
+      navigation: { query: () => query, accept: projection.accept },
+      files: { acceptWatch: vi.fn() },
+      updateBranch: vi.fn(),
+      sessions: {
+        current: ref([]),
+        selectedId: ref(undefined),
+        applySnapshot: vi.fn(),
+        reconcile: vi.fn()
+      }
+    });
+    const service = createWorkspaceWatchService({
+      workspaceTarget: target,
+      workspaces: ref([{ id: workspace.workspaceId, kind: 'DIRECTORY' }]),
+      heartbeatMs: 60_000,
+      sessionNavigation: () => query,
+      request: async (_path, init) => {
+        requests.push(init ?? {});
+        return {} as never;
+      },
+      onSnapshot: receiver.accept
+    });
+    const frame = (index: number, payload: unknown, revision = 1) => ({
+      ...workspace,
+      type: 'watch.workspace.snapshot',
+      topic: 'sessionNavigation',
+      revision,
+      workbenchConnectionId: 'local-test-connection',
+      nodeGeneration: 'generation',
+      watchId: JSON.parse(String(requests[index]?.body)).watchId,
+      payload
+    });
+    try {
+      await service.start(workspace.workspaceId);
+      const valid = { sessions: [], summaries: [], missingSessionIds: ['agent'], tree: null };
+      expect(service.handleEvent(frame(0, { ...valid, tree: {} }))).toBe(true);
+      expect(service.topicStatus.sessionNavigation).toBe('failed');
+      expect(projection.current(workspace, query)).toBeUndefined();
+      expect(service.handleEvent(frame(0, valid, 0))).toBe(true);
+      expect(service.topicStatus.sessionNavigation).toBe('failed');
+      await service.retryFailed();
+      expect(service.topicStatus.sessionNavigation).toBe('loading');
+      expect(service.handleEvent(frame(0, valid, 2))).toBe(false);
+      expect(service.handleEvent(frame(1, valid))).toBe(true);
+      expect(service.topicStatus.sessionNavigation).toBe('ready');
+      expect(projection.current(workspace, query)?.missingSessionIds).toEqual(['agent']);
+    } finally {
+      service.stop();
+    }
+  });
+
   it('retries failed topics through the same lease and accepts only the new watch snapshot', async () => {
     const requests: RequestInit[] = [];
     const service = createWorkspaceWatchService({
@@ -118,7 +183,9 @@ describe('Shared Workspace Watch', () => {
         requests.push(init === undefined ? { path } : { path, init });
         return Promise.resolve({ accepted: true }) as never;
       },
-      onSnapshot: (_nodeId, _workspaceId, snapshot) => snapshots.push(snapshot)
+      onSnapshot: (_nodeId, _workspaceId, snapshot) => {
+        snapshots.push(snapshot);
+      }
     });
 
     await service.start('workspace-1');
@@ -164,7 +231,9 @@ describe('Shared Workspace Watch', () => {
         requests.push(init ?? {});
         return { accepted: true } as never;
       },
-      onSnapshot: (_nodeId, _workspaceId, snapshot) => snapshots.push(snapshot)
+      onSnapshot: (_nodeId, _workspaceId, snapshot) => {
+        snapshots.push(snapshot);
+      }
     });
     await service.start('workspace-1');
     const initial = JSON.parse(String(requests[0]?.body)) as { watchId: string };
@@ -215,7 +284,9 @@ describe('Shared Workspace Watch', () => {
         if (init) requests.push(init);
         return Promise.resolve({ accepted: true }) as never;
       },
-      onSnapshot: (_node, _workspace, snapshot) => snapshots.push(snapshot)
+      onSnapshot: (_node, _workspace, snapshot) => {
+        snapshots.push(snapshot);
+      }
     });
     await service.start('workspace-1');
     const first = JSON.parse(String(requests[0]?.body));
@@ -336,7 +407,9 @@ describe('Shared Workspace Watch', () => {
         requests.push(init === undefined ? { path } : { path, init });
         return Promise.resolve({ accepted: true }) as never;
       },
-      onSnapshot: (_nodeId, _workspaceId, snapshot) => snapshots.push(snapshot)
+      onSnapshot: (_nodeId, _workspaceId, snapshot) => {
+        snapshots.push(snapshot);
+      }
     });
 
     await service.start('workspace-1', 'src');

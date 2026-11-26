@@ -15,6 +15,7 @@ import type { NodeRuntimeState } from '../runtime-state.js';
 import { isTerminalRunStatus } from './runtime/type-guards.js';
 import { sessionPage } from './pagination.js';
 import type { NativeSessionProjectionService } from './native-session-projection-service.js';
+import type { WhiteboardService } from '../orchestration/whiteboard/whiteboard-service.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import { latestSessionActivityAt } from './session-presentation-service.js';
 import {
@@ -217,7 +218,10 @@ export class SessionCatalogService {
     return { rootSessionId: root.id, nodes, truncated: queue.length > nodes.length };
   }
 
-  navigation(query: SessionNavigationQuery) {
+  navigation(
+    query: SessionNavigationQuery,
+    collaboration?: { readonly userId: number; readonly whiteboard: WhiteboardService }
+  ) {
     const database = this.options.database();
     const statuses = new Map<string, ReturnType<typeof sessionActivityStatus>>();
     const status = (id: string) => {
@@ -332,7 +336,80 @@ export class SessionCatalogService {
             nodes: [...selected.values()].sort(compare).map(project),
             truncated: records.length > query.limit
           };
-    return { sessions, summaries, tree, missingSessionIds };
+    if (!anchor || !tree || !query.collaboration || !collaboration)
+      return { sessions, summaries, tree, missingSessionIds };
+
+    const scope = new Set([anchor.id, ...selected.keys(), ...(parent ? [parent.id] : [])]);
+    const edges = collaboration.whiteboard.relationships(query.workspaceId, collaboration.userId);
+    const boards = new Set(
+      edges
+        .filter((edge) => scope.has(edge.ownerSessionId) || scope.has(edge.followerSessionId))
+        .map((edge) => edge.ownerSessionId)
+    );
+    const peers: ReturnType<typeof project>[] = [];
+    let truncated = tree.truncated;
+    const priority = ({ ownerSessionId, followerSessionId }: (typeof edges)[number]) =>
+      ownerSessionId === anchor.id || followerSessionId === anchor.id
+        ? 0
+        : scope.has(ownerSessionId) || scope.has(followerSessionId)
+          ? 1
+          : 2;
+    const prioritizedEdges = edges
+      .filter((edge) => boards.has(edge.ownerSessionId))
+      .sort((left, right) => priority(left) - priority(right));
+    const sharing = prioritizedEdges.filter((edge) => {
+      const additions = [edge.ownerSessionId, edge.followerSessionId].filter(
+        (id) => !scope.has(id)
+      );
+      const records = additions.map(get);
+      if (records.some((record) => record === undefined)) return false;
+      if (peers.length + records.length > 32) {
+        truncated = true;
+        return false;
+      }
+      for (const record of records) {
+        scope.add(record!.id);
+        peers.push(project(record!));
+      }
+      return true;
+    });
+    const requested = query.collaboration.boardSessionId;
+    const owner = requested === undefined ? undefined : get(requested);
+    const board = owner && collaboration.whiteboard.readPersisted(query.workspaceId, owner.id);
+    return {
+      sessions,
+      summaries,
+      tree,
+      missingSessionIds,
+      collaboration: {
+        anchor: project(anchor),
+        peers,
+        sharing,
+        truncated,
+        ...(requested === undefined
+          ? {}
+          : {
+              board:
+                board && owner
+                  ? {
+                      sessionId: owner.id,
+                      title: project(owner).title,
+                      revision: board.boardRevision,
+                      entries: board.entries.map(({ id, content }) => ({ id, content })),
+                      recentChanges: board.recentChanges.map((change) => {
+                        const actor = get(change.actorSessionId);
+                        return {
+                          revision: change.boardRevision,
+                          ...(actor === undefined ? {} : { actorTitle: project(actor).title }),
+                          at: change.at,
+                          summary: change.summary
+                        };
+                      })
+                    }
+                  : null
+            })
+      }
+    };
   }
 
   private navigationProjector(

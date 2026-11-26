@@ -5,6 +5,53 @@ import {
 } from '../../src/service/session-navigation-projection.js';
 
 describe('Session Navigation projection', () => {
+  it('does not surface a board from a different captured query or a mismatched response', () => {
+    const projection = createSessionNavigationProjection(vi.fn());
+    const workspace = { nodeId: 'node', workspaceId: 'workspace' };
+    const anchor = {
+      id: 'agent',
+      parentSessionId: null,
+      title: 'Owner',
+      runner: 'mar-agent',
+      activity: 'IDLE',
+      status: 'IDLE',
+      lastActivityAt: 0
+    };
+    const withoutBoard = {
+      sessionIds: [],
+      summaryAnchors: [],
+      limit: 100,
+      treeAnchor: 'agent',
+      collaboration: {}
+    };
+    const readBoard = { ...withoutBoard, collaboration: { boardSessionId: 'agent' } };
+    const payload = {
+      sessions: [],
+      summaries: [],
+      missingSessionIds: [],
+      tree: { anchorSessionId: 'agent', parent: null, nodes: [], truncated: false },
+      collaboration: { anchor, peers: [], sharing: [], truncated: false }
+    };
+    expect(projection.accept(workspace, withoutBoard, payload)).toBe(true);
+    expect(projection.current(workspace, readBoard)).toBeUndefined();
+    const board = {
+      sessionId: 'other',
+      title: 'Other Board',
+      revision: 0,
+      entries: [],
+      recentChanges: []
+    };
+    const detail = (sessionId: string) => ({
+      ...payload,
+      collaboration: { ...payload.collaboration, board: { ...board, sessionId } }
+    });
+    expect(projection.accept(workspace, readBoard, detail('other'))).toBe(false);
+    expect(projection.accept(workspace, withoutBoard, detail('agent'))).toBe(false);
+    expect(projection.accept(workspace, readBoard, detail('agent'))).toBe(true);
+    expect(projection.current(workspace, withoutBoard)).toBeUndefined();
+    expect(projection.current(workspace, readBoard)?.collaboration?.board?.sessionId).toBe('agent');
+  });
+
   it('omits unsupported topics and does not request descendant summaries for background tabs', () => {
     const input = {
       asideSessionIds: ['front', 'background', 'front'],

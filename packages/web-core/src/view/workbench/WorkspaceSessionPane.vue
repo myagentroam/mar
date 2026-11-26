@@ -31,6 +31,7 @@ const props = defineProps<{
   controller: WorkspaceSessionPaneView;
   openBrowserLink?: (link: WorkbenchBrowserLink, alternate: boolean) => boolean;
   treeSupported?: boolean;
+  collaborationEnabled?: boolean;
   asideReady?: boolean;
   asideControls?: string;
   asideExpanded?: boolean;
@@ -188,6 +189,7 @@ onBeforeUnmount(() => {
             :open="treeOpenSessionId === sessionId"
             :summary="treeSummaries?.find((item) => item.anchorSessionId === sessionId)"
             :status="treeStatus ?? 'idle'"
+            :collaboration="collaborationEnabled === true"
             @show="
               (id, anchor) =>
                 emit(

@@ -21,7 +21,8 @@ export function composeWorkspaceApplication(input: {
   readonly listSessions: (workspaceId: string, group?: SessionGroup) => Promise<unknown>;
   readonly sessionNavigation?: (
     workspaceId: string,
-    query: WorkspaceSessionNavigationQuery
+    query: WorkspaceSessionNavigationQuery,
+    userId?: number
   ) => Promise<unknown>;
   readonly invalidatePrompt: (workspaceId: string) => void;
   readonly nodeId: () => string;

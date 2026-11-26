@@ -419,6 +419,7 @@ export const nodeCapabilitiesSchema = z
     browserSettings: z.literal(true).optional(),
     remoteDesktop: remoteDesktopCapabilitySchema.optional(),
     sessionAside: sessionAsideCapabilitySchema.optional(),
+    sessionCollaboration: z.literal(true).optional(),
     scheduledTasks: scheduledTasksCapabilitySchema.optional(),
     scheduledHourly: z.literal(true).optional(),
     sessionGroups: z
@@ -1655,10 +1656,46 @@ export const workspaceSessionNavigationQuerySchema = z
     sessionIds: z.array(z.string().min(1).max(512)),
     summaryAnchors: z.array(z.string().min(1).max(512)),
     treeAnchor: z.string().min(1).max(512).optional(),
+    collaboration: z
+      .object({ boardSessionId: z.string().min(1).max(512).optional() })
+      .strict()
+      .optional(),
     limit: z.number().int().min(1).max(100)
   })
-  .strict();
+  .strict()
+  .refine((query) => query.collaboration === undefined || query.treeAnchor !== undefined);
 export type WorkspaceSessionNavigationQuery = z.infer<typeof workspaceSessionNavigationQuerySchema>;
+
+const collaborationSessionIdSchema = z.string().min(1).max(512);
+export const sessionCollaborationEdgeSchema = z
+  .object({
+    ownerSessionId: collaborationSessionIdSchema,
+    followerSessionId: collaborationSessionIdSchema
+  })
+  .strict();
+export type SessionCollaborationEdge = z.infer<typeof sessionCollaborationEdgeSchema>;
+
+export const collaborationWhiteboardSchema = z
+  .object({
+    sessionId: collaborationSessionIdSchema,
+    title: z.string(),
+    revision: z.number().int().nonnegative(),
+    entries: z.array(z.object({ id: z.string(), content: z.string().max(1024) }).strict()).max(32),
+    recentChanges: z
+      .array(
+        z
+          .object({
+            revision: z.number().int().nonnegative(),
+            actorTitle: z.string().optional(),
+            at: z.number().int().nonnegative(),
+            summary: z.string()
+          })
+          .strict()
+      )
+      .max(10)
+  })
+  .strict();
+export type CollaborationWhiteboard = z.infer<typeof collaborationWhiteboardSchema>;
 
 export const recentRunSchema = z.object({
   runId: z.string().min(1).max(128),
@@ -2051,6 +2088,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   browserDownloadWorkspace: z.literal(true).optional(),
   remoteDesktop: remoteDesktopCapabilitySchema.optional(),
   sessionAside: sessionAsideCapabilitySchema.optional(),
+  sessionCollaboration: z.literal(true).optional(),
   scheduledTasks: scheduledTasksCapabilitySchema.optional(),
   sessionGroups: z
     .object({ apiVersion: z.literal(1) })

@@ -5,6 +5,8 @@ import { NativeSessionProjectionService } from '../../src/session/native-session
 import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import type { NodeAgentSession } from '../../src/session/contracts.js';
+import { WhiteboardService } from '../../src/orchestration/whiteboard/whiteboard-service.js';
+import { WhiteboardStore } from '../../src/orchestration/whiteboard/whiteboard-store.js';
 
 function fixture() {
   const database = new NodeDatabase(':memory:', 'session-navigation');
@@ -118,6 +120,102 @@ function fixture() {
 }
 
 describe('Session Navigation bounded tree', () => {
+  it('adds cross-tree peers from authorized live board relationships and only reads the requested board', () => {
+    const f = fixture();
+    try {
+      const store = new WhiteboardStore(f.database.raw);
+      const ids = ['owner', 'child', 'peer'];
+      const active = new Map(
+        ids.map((id) => [
+          id,
+          {
+            id,
+            sessionId: id,
+            workspaceId: f.workspace.id,
+            initiatedByUserId: 7
+          }
+        ])
+      );
+      for (const id of ids)
+        f.database.saveNativeSessionMetadata({
+          runner: 'mar-agent',
+          externalSessionId: id,
+          workspaceId: f.workspace.id,
+          ...(id === 'child' ? { parentSessionId: 'owner' } : {})
+        });
+      const changed = vi.fn();
+      const whiteboard = new WhiteboardService({
+        store: () => store,
+        activeRun: (id) => active.get(id),
+        activeOwnerRunId: (id) => active.get(id)?.id,
+        boardInWorkspace: (id, workspaceId) =>
+          f.database.getSessionRecord(id)?.workspaceId === workspaceId,
+        changed
+      });
+      whiteboard.join('child', 'owner');
+      whiteboard.join('peer', 'owner');
+      whiteboard.update('peer', {
+        expectedBoardId: 'owner',
+        ops: [{ op: 'add', content: 'Shared decision' }]
+      });
+      const request = {
+        workspaceId: f.workspace.id,
+        sessionIds: [],
+        summaryAnchors: [],
+        treeAnchor: 'owner',
+        collaboration: {},
+        limit: 100
+      };
+      const graph = f.catalog.navigation(request, { userId: 7, whiteboard });
+      expect(graph.tree?.nodes.map((node) => node.id)).toEqual(['child']);
+      expect(graph.collaboration?.peers.map((node) => node.id)).toEqual(['peer']);
+      expect(graph.collaboration?.sharing).toEqual([
+        { ownerSessionId: 'owner', followerSessionId: 'child' },
+        { ownerSessionId: 'owner', followerSessionId: 'peer' }
+      ]);
+      for (let i = 0; i < 34; i++) {
+        const id = `other-${i}`;
+        f.database.saveNativeSessionMetadata({
+          runner: 'mar-agent',
+          externalSessionId: id,
+          workspaceId: f.workspace.id
+        });
+        active.set(id, { id, sessionId: id, workspaceId: f.workspace.id, initiatedByUserId: 7 });
+        whiteboard.join(id, i === 33 ? 'child' : 'owner');
+      }
+      const bounded = f.catalog.navigation(
+        { ...request, treeAnchor: 'child' },
+        { userId: 7, whiteboard }
+      ).collaboration;
+      expect(bounded?.truncated).toBe(true);
+      expect(bounded?.peers).toHaveLength(32);
+      expect(bounded?.sharing.slice(0, 2)).toEqual([
+        { ownerSessionId: 'owner', followerSessionId: 'child' },
+        { ownerSessionId: 'child', followerSessionId: 'other-33' }
+      ]);
+      expect(graph.collaboration?.board).toBeUndefined();
+      expect(
+        f.catalog.navigation(request, { userId: 8, whiteboard }).collaboration?.sharing
+      ).toEqual([]);
+      active.delete('owner');
+      changed.mockClear();
+      whiteboard.release('owner', f.workspace.id);
+      expect(changed).toHaveBeenCalledWith(f.workspace.id);
+      const read = (id: string) =>
+        f.catalog.navigation(
+          { ...request, collaboration: { boardSessionId: id } },
+          { userId: 7, whiteboard }
+        );
+      expect(read('owner').collaboration).toMatchObject({
+        sharing: [{ ownerSessionId: 'child', followerSessionId: 'other-33' }],
+        board: { entries: [{ content: 'Shared decision' }] }
+      });
+      expect(read('unknown').collaboration?.board).toBeNull();
+    } finally {
+      f.database.close();
+    }
+  });
+
   it('selects active descendants first and newest idle descendants before the cap using a request-local lookup', () => {
     const f = fixture();
     try {

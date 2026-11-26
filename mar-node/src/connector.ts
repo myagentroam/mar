@@ -464,7 +464,7 @@ export class NodeConnector {
     Date.now,
     (run, session, userMessage) => {
       this.recentRunProjectionService.record(run, session, userMessage);
-      if (run.completedAt !== null) this.orchestration.release(run.id);
+      if (run.completedAt !== null) this.orchestration.release(run.id, run.workspaceId);
     }
   );
   private readonly orchestration = new NodeOrchestration(
@@ -491,6 +491,9 @@ export class NodeConnector {
       boardInWorkspace: (owner, workspaceId) => {
         const session = this.database?.getSessionRecord(owner);
         return session?.workspaceId === workspaceId && session.runner === 'mar-agent';
+      },
+      changed: (workspaceId) => {
+        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessionNavigation');
       },
       canRecover: (run, owner) => {
         if (this.database?.getSessionRecord(owner)?.workspaceId !== run.workspaceId) return false;
@@ -1808,8 +1811,11 @@ export class NodeConnector {
       changes: this.workspaceChangeService,
       listSessions: (workspaceId, sessionGroup) =>
         this.workspaceSessionService.listPage(workspaceId, sessionGroup),
-      sessionNavigation: async (workspaceId, query) =>
-        this.sessionCatalogService.navigation({ workspaceId, ...query }),
+      sessionNavigation: async (workspaceId, query, userId) =>
+        this.sessionCatalogService.navigation(
+          { workspaceId, ...query },
+          userId === undefined ? undefined : { userId, whiteboard: this.orchestration.whiteboard }
+        ),
       invalidatePrompt: (id) => this.promptCompletion?.invalidateWorkspace(id),
       nodeId: () => this.config?.nodeId ?? 'runtime-node',
       nodeGeneration: () => this.nodeGeneration,

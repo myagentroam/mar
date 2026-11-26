@@ -9,6 +9,7 @@ const props = defineProps<{
   session: Session;
   listContext?: { sessions: readonly Session[]; canDelete: boolean };
   canNavigate: boolean;
+  collaborationEnabled?: boolean;
   navigationDisabled: boolean;
   mutating: boolean;
 }>();
@@ -77,7 +78,9 @@ function canMove(sessions: readonly Session[], direction: 'up' | 'down'): boolea
         <MarIcon name="edit" />{{ translate('generated.workspaceSessionList.rename') }}
       </MarDropdownItem>
       <MarDropdownItem v-if="canNavigate" :disabled="navigationDisabled" command="tree">
-        <MarIcon name="session-tree" />{{ translate('sessionGroups.tree') }}
+        <MarIcon :name="collaborationEnabled ? 'collaboration-network' : 'session-tree'" />{{
+          translate(collaborationEnabled ? 'collaboration.entry' : 'sessionGroups.tree')
+        }}
       </MarDropdownItem>
       <MarDropdownItem
         v-if="session.runtime?.capabilities?.includes('session.prompt')"

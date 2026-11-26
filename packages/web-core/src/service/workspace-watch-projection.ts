@@ -47,7 +47,11 @@ export function createWorkspaceWatchProjection(input: {
         capturedQuery !== undefined &&
         sameNavigation(input.navigation.query(), capturedQuery)
       )
-        input.navigation.accept({ nodeId, workspaceId }, capturedQuery, snapshot.sessionNavigation);
+        return input.navigation.accept(
+          { nodeId, workspaceId },
+          capturedQuery,
+          snapshot.sessionNavigation
+        );
       return;
     }
     input.files.acceptWatch(nodeId, workspaceId, snapshot, { topic, revision });
