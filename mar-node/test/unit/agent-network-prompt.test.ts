@@ -204,10 +204,15 @@ it.each([false, true])(
       expect(instructions).toContain(
         [
           '# Delegation and coordination',
-          'Prefer handling focused or tightly coupled work locally.',
-          'Consider delegating a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
-          'Avoid splitting work merely because agents are available.'
+          'A useful handoff includes an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.'
         ].join('\n\n')
+      );
+      expect(instructions).not.toContain(
+        'Prefer handling focused or tightly coupled work locally.'
+      );
+      expect(instructions).not.toContain('Consider delegating a clearly separable subtask');
+      expect(instructions).not.toContain(
+        'Avoid splitting work merely because agents are available.'
       );
       expect(instructions).toContain('Prefer following up through the direct delegate');
       expect(instructions).toContain('only when a concrete issue needs independent verification');

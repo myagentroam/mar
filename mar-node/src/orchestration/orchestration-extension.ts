@@ -165,9 +165,6 @@ const tools: readonly {
 
 const delegationPrompt = [
   '## Delegation and coordination',
-  'Prefer handling focused or tightly coupled work locally.',
-  'Consider delegating a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
-  'Avoid splitting work merely because agents are available.',
   'A useful handoff includes an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
   'Prefer following up through the direct delegate; deeper Session inspection is usually useful only when a concrete issue needs independent verification.',
   'While children run, prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work. Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.',
