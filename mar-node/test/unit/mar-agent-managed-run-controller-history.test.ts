@@ -36,7 +36,7 @@ const base = {
 };
 
 describe('MAR Agent managed run projection', () => {
-  it('projects separate latency and generation TPS from the built SDK over fake HTTP', async () => {
+  it('projects separate latency and end-to-end TPS from the built SDK over fake HTTP', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-node-model-performance-'));
     const workspace = join(home, 'workspace');
     await mkdir(workspace);
@@ -130,7 +130,7 @@ describe('MAR Agent managed run projection', () => {
         emit.mock.calls
           .filter(([, type]) => type === 'run.performance')
           .map(([, , payload]) => payload)
-      ).toEqual([{ latencyMs: 200 }, { latencyMs: 200, tokensPerSecond: 90 }]);
+      ).toEqual([{ latencyMs: 200 }, { latencyMs: 200, tokensPerSecond: 18 }]);
       expect(JSON.stringify(emitItem.mock.calls)).not.toContain('output.started');
       expect(JSON.stringify(emitItem.mock.calls)).not.toContain('model.performance');
     } finally {

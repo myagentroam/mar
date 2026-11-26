@@ -22,7 +22,11 @@ if (testLicense) {
 const testDatabase =
   listing || integration || fixtures ? undefined : resolvePlaywrightTestDatabase(testRunId);
 const productionPackageRoot = process.env.MAR_E2E_PRODUCTION_PACKAGE?.trim();
-const singleServer = smoke || productionPackageRoot !== undefined;
+const prebuiltWeb =
+  mode === 'full' &&
+  process.env.MAR_E2E_PREBUILT_WEB === '1' &&
+  productionPackageRoot === undefined;
+const singleServer = smoke || prebuiltWeb || productionPackageRoot !== undefined;
 const portOffset = [...testRunId].reduce(
   (value, character) => (value * 31 + character.charCodeAt(0)) % 800,
   0
@@ -38,6 +42,7 @@ const serverCommand = 'node --import tsx test/e2e/support/playwright-server.ts';
 
 export default defineConfig({
   testDir: './test/e2e',
+  ...(!listing && prebuiltWeb ? { metadata: { marWebSource: 'server-build' } } : {}),
   forbidOnly: smoke,
   ...(smoke ? { workers: 1, retries: 0, timeout: 90_000 } : {}),
   ...(smoke ? { grep: new RegExp(smokeTitlesForPlatform().join('|')) } : {}),
@@ -89,7 +94,7 @@ export default defineConfig({
         ? [
             {
               command:
-                productionPackageRoot === undefined
+                smoke && productionPackageRoot === undefined
                   ? 'node mar-server/dist/main.js'
                   : serverCommand,
               timeout: 180_000,

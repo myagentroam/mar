@@ -151,13 +151,13 @@ test('smoke requires every fixed journey once and rejects skipped, flaky, missin
   }
 });
 
-test('compiled smoke uses a single isolated listener while full and package modes keep their own entrypoints', () => {
+test('browser modes select the correct Web host and report the release Web build', () => {
   const root = resolve(import.meta.dirname, '../..');
   const workspace = mkdtempSync(resolve(tmpdir(), 'mar-smoke-server-config-'));
   const env = { ...process.env };
   for (const name of Object.keys(env))
     if (name.startsWith('MAR_TEST_') || name.startsWith('MAR_E2E_')) delete env[name];
-  function inspect(mode, packageRoot) {
+  function inspect(mode, { packageRoot, prebuiltWeb } = {}) {
     const output = execFileSync(
       process.execPath,
       [
@@ -167,6 +167,7 @@ test('compiled smoke uses a single isolated listener while full and package mode
         '-e',
         `import config from ${JSON.stringify(new URL('../../playwright.config.mts', import.meta.url).href)};
        console.log(JSON.stringify({baseURL: config.use.baseURL, nodePort: process.env.MAR_E2E_SERVER_PORT,
+       webSource: config.metadata?.marWebSource,
        servers: config.webServer.map(({ command, url, reuseExistingServer, env }) =>
          ({ command, url, reuseExistingServer, webRoot: env.MAR_WEB_ROOT }))}));`
       ],
@@ -179,6 +180,7 @@ test('compiled smoke uses a single isolated listener while full and package mode
           MAR_TEST_DATABASE_ADMIN_URL: 'mysql://fixture:fixture@127.0.0.1:1',
           MAR_E2E_WEB_PORT: '50001',
           MAR_E2E_SERVER_PORT: '50002',
+          ...(prebuiltWeb ? { MAR_E2E_PREBUILT_WEB: '1' } : {}),
           ...(packageRoot ? { MAR_E2E_PRODUCTION_PACKAGE: packageRoot } : {})
         },
         encoding: 'utf8',
@@ -204,9 +206,15 @@ test('compiled smoke uses a single isolated listener while full and package mode
     assert.equal(full.servers.length, 2);
     assert.match(full.servers[0].command, /playwright-server\.ts/u);
     assert.match(full.servers[1].command, /web-console dev/u);
+    assert.equal(full.webSource, undefined);
+    const prebuilt = inspect('full', { prebuiltWeb: true });
+    assert.equal(prebuilt.nodePort, '50001');
+    assert.equal(prebuilt.webSource, 'server-build');
+    assert.deepEqual(prebuilt.servers, [{ ...smoke.servers[0], command: full.servers[0].command }]);
     const packageRoot = resolve(root, 'fixture-package');
-    const packaged = inspect('full', packageRoot);
+    const packaged = inspect('full', { packageRoot, prebuiltWeb: true });
     assert.equal(packaged.nodePort, '50001');
+    assert.equal(packaged.webSource, undefined);
     assert.deepEqual(packaged.servers, [
       {
         ...smoke.servers[0],

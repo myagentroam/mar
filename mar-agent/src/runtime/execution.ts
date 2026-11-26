@@ -78,6 +78,7 @@ export class ExecutionLoop<TScope = unknown> {
     const { mode, messages } = input;
     let recoveringFromContextOverflow = false;
     const modelRetryState: ModelRetryState = { attempts: 0 };
+    let retryTpsStartedAt: number | undefined;
     while (true) {
       let stop: string | undefined;
       let sawTool = false;
@@ -91,7 +92,6 @@ export class ExecutionLoop<TScope = unknown> {
       const startedMessages = new Set<string>();
       const leadingMessageWhitespace = new Map<string, string>();
       let sawModelSemanticEvent = false;
-      let requestStartedAt: number;
       let firstModelResponseAt: number | undefined;
       let generation = new ModelGenerationTiming();
       let requestCompletedAt: number | undefined;
@@ -106,18 +106,26 @@ export class ExecutionLoop<TScope = unknown> {
       };
       const emitFinalPerformance = async (completedAt: number) => {
         if (mode === 'compact') return;
-        generation.finish(completedAt);
-        const outputDuration = generation.durationMs;
+        const requestDurationMs = completedAt - tpsStartedAt;
         const outputTokens = requestOutputTokens;
-        if (outputTokens === undefined || outputDuration === undefined) return;
+        if (
+          outputTokens === undefined ||
+          !Number.isFinite(requestDurationMs) ||
+          requestDurationMs <= 0
+        )
+          return;
+        generation.finish(completedAt);
+        const outputDurationMs = Math.round(generation.durationMs ?? 0);
+        // Final output tokens can include reasoning that the provider did not stream.
+        const rateDurationMs = Math.max(requestDurationMs, 1_000);
         await input.publish({
           type: 'model.performance',
           ...(firstModelResponseAt === undefined
             ? {}
             : { latencyMs: Math.max(0, Math.round(firstModelResponseAt - requestStartedAt)) }),
           outputTokens,
-          outputDurationMs: Math.round(outputDuration),
-          tokensPerSecond: Number(((outputTokens * 1000) / outputDuration).toFixed(2))
+          ...(outputDurationMs === 0 ? {} : { outputDurationMs }),
+          tokensPerSecond: Number(((outputTokens * 1_000) / rateDurationMs).toFixed(2))
         });
       };
       const persistToolCalls = async (calls: readonly ClientToolCall[]) => {
@@ -134,8 +142,10 @@ export class ExecutionLoop<TScope = unknown> {
           await input.appendContext(message);
         }
       };
+      const requestStartedAt = performance.now();
+      const tpsStartedAt = retryTpsStartedAt ?? requestStartedAt;
+      retryTpsStartedAt = undefined;
       try {
-        requestStartedAt = performance.now();
         for await (const event of input.startModel({
           ...round.request,
           retryState: modelRetryState
@@ -257,6 +267,8 @@ export class ExecutionLoop<TScope = unknown> {
             }
             messages.push({ role: 'assistant', content: event.text });
           } else if (event.type === 'usage') {
+            // Adapters merge intermediate usage within the request before publishing final usage.
+            if (event.final === false) continue;
             latestUsage = event.usage;
             if (event.final === true) generation.finish(observedAt);
             const outputTokens =
@@ -265,7 +277,7 @@ export class ExecutionLoop<TScope = unknown> {
               event.usage.outputTokens >= 0
                 ? event.usage.outputTokens
                 : undefined;
-            if (event.final !== false && (outputTokens !== undefined || event.final === true))
+            if (outputTokens !== undefined || event.final === true)
               requestOutputTokens = outputTokens;
             const reportedContext = event.usage.contextInputTokens ?? event.usage.inputTokens;
             if (
@@ -339,7 +351,11 @@ export class ExecutionLoop<TScope = unknown> {
           if (pendingTools.some((call) => call.argumentError !== undefined))
             pendingTools.splice(0, pendingTools.length);
           else if (pendingTools.length > 0) await persistToolCalls(pendingTools);
-          if (pendingTools.length === 0) continue;
+          if (pendingTools.length === 0) {
+            // Runtime recovery continues the same logical request unless it runs a tool.
+            retryTpsStartedAt = tpsStartedAt;
+            continue;
+          }
         } else if (
           mode === 'compact' &&
           !sawModelSemanticEvent &&
@@ -470,6 +486,7 @@ export class ExecutionLoop<TScope = unknown> {
           this.planOutputPrefixes.clear();
           if (await recoverModelStream(error, modelRetryState, input.recoverySignal())) {
             this.finalAnswer = '';
+            retryTpsStartedAt = tpsStartedAt;
             continue;
           }
           throw error;
