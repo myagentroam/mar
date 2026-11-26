@@ -161,6 +161,48 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
     );
   });
 
+  it('omits null fields through deeply nested JSON arrays without aborting the response', async () => {
+    const depth = 4096;
+    const fixture = await startHttpResponsesServer([
+      {
+        type: 'response.function_call_arguments.done',
+        call_id: 'deep-call',
+        name: 'json_probe',
+        arguments: `{"payload":${'['.repeat(depth)}{"optional":null,"value":1}${']'.repeat(depth)}}`
+      },
+      { type: 'response.completed', response: { id: 'deep-response' } }
+    ]);
+    httpFixtures.push(fixture);
+    const adapter = registerAdapter(
+      new OpenAiResponsesAdapter(
+        configuration(fixture.baseUrl, {
+          responsesTransport: { transport: 'HTTP', httpVersion: '1.1' },
+          responsesPreviousResponseId: false
+        })
+      )
+    );
+    const request = toolRequest([
+      {
+        name: 'json_probe',
+        description: 'Accept a JSON object.',
+        inputSchema: { type: 'object', additionalProperties: true }
+      }
+    ]);
+    const events = await collect(adapter.start(request, new AbortController().signal));
+    const call = events.find((event) => event.type === 'client_tool.call');
+    expect(call).toMatchObject({ callId: 'deep-call', name: 'json_probe' });
+    expect(call?.argumentError).toBeUndefined();
+    let leaf = (call?.arguments as { payload: unknown }).payload;
+    let nesting = 0;
+    while (Array.isArray(leaf) && leaf.length === 1) {
+      nesting++;
+      leaf = leaf[0];
+    }
+    expect(nesting).toBe(depth);
+    expect(leaf).toEqual({ value: 1 });
+    expect(events).toContainEqual({ type: 'completed', reason: 'completed' });
+  });
+
   it.each([undefined, 'mar'])(
     'omits unsupported array uniqueness for direct and deferred generic tools with namespace=%s',
     async (namespace) => {
