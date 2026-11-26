@@ -68,6 +68,18 @@ it('maps content and effort to the native request and defaults only the standalo
   );
 });
 
+it.each([{}, { description: null, role: null, modelId: null, effort: null }])(
+  'uses the current model and defaults for optional operands in %j',
+  async (optional) => {
+    const test = setup();
+    await test.execute({ title: 'Child', content: 'Do work', ...optional }, test.call);
+    expect(test.run).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'model' }));
+    expect(test.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ source: expect.objectContaining({ role: 'general-purpose' }) })
+    );
+  }
+);
+
 it.each([undefined, '', '   '])(
   'rejects an absent or blank title before child creation: %s',
   async (title) => {

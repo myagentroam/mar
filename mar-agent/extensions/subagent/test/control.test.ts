@@ -70,7 +70,7 @@ function setup() {
   };
 }
 
-it('declares the discovery scope as a typed string enum', () => {
+it('declares the discovery scope as an optional nullable string enum', () => {
   const tools = new Map<string, { inputSchema: { properties: Record<string, unknown> } }>();
   const context = {
     tools: {
@@ -81,8 +81,8 @@ it('declares the discovery scope as a typed string enum', () => {
   } as unknown as SessionExtensionContext;
   registerQueryTools(context, {} as Agent);
   expect(tools.get('agent_list')?.inputSchema.properties.scope).toEqual({
-    type: 'string',
-    enum: ['children', 'profile']
+    type: ['string', 'null'],
+    enum: ['children', 'profile', null]
   });
 });
 

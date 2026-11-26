@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { fromJSONSchema } from 'zod';
 import type { Agent, AgentEvent } from '@myagentroam/agent';
 import type {
   ExtensionOperationContext,
@@ -84,10 +85,10 @@ it('uses common model parameters while keeping standalone capabilities explicit'
   expect(wait.properties.agentIds).toMatchObject({ maxItems: 8 });
   expect(Object.keys(test.tools.get('agent_stop')!.inputSchema.properties)).toEqual(['agentId']);
   expect(test.tools.get('agent_send')!.inputSchema.properties.delivery).toMatchObject({
-    enum: ['append', 'replace']
+    enum: ['append', 'replace', null]
   });
   expect(test.tools.get('agent_list')!.inputSchema.properties.scope).toMatchObject({
-    enum: ['children', 'profile']
+    enum: ['children', 'profile', null]
   });
   test.observations.close();
 });
@@ -131,13 +132,42 @@ it('returns the same bounded agents array in model content and data without nati
   }
 });
 
-it('defaults child discovery to ten without losing its native discovery scope', async () => {
+it.each([{}, { scope: null, limit: null, cursor: null }])(
+  'defaults child discovery to ten for %j without forwarding a cursor',
+  async (input) => {
+    const test = fixture();
+    try {
+      const tool = test.tools.get('agent_list')!;
+      const parsed = fromJSONSchema(tool.inputSchema).parse(input);
+      await tool.execute(parsed, {
+        signal: new AbortController().signal
+      } as ExtensionOperationContext);
+      expect(test.listSessions).toHaveBeenCalledWith({ parentSessionId: 'parent', limit: 10 });
+    } finally {
+      test.observations.close();
+    }
+  }
+);
+
+it('accepts null for optional start and send parameters but still requires message content', () => {
   const test = fixture();
   try {
-    await test.tools
-      .get('agent_list')!
-      .execute({}, { signal: new AbortController().signal } as ExtensionOperationContext);
-    expect(test.listSessions).toHaveBeenCalledWith({ parentSessionId: 'parent', limit: 10 });
+    const start = fromJSONSchema(test.tools.get('agent_start')!.inputSchema);
+    const send = fromJSONSchema(test.tools.get('agent_send')!.inputSchema);
+    const input = {
+      title: 'Child',
+      content: 'Work',
+      description: null,
+      role: null,
+      modelId: null,
+      effort: null
+    };
+    expect(start.safeParse(input).success).toBe(true);
+    expect(start.safeParse({ ...input, content: null }).success).toBe(false);
+    expect(send.safeParse({ agentId: 'child', content: 'Work', delivery: null }).success).toBe(
+      true
+    );
+    expect(send.safeParse({ agentId: 'child', content: null, delivery: null }).success).toBe(false);
   } finally {
     test.observations.close();
   }

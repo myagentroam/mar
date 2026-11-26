@@ -95,6 +95,49 @@ describe('Node execution web tools', () => {
       { query: 'query', maxResults: 8, maxTokens: 2000 },
       ctx.signal
     );
+    await extensions.executeTool!(
+      call('web_search', { query: 'query', maxResults: null, maxTokens: null }),
+      ctx
+    );
+    expect(webSearch).toHaveBeenLastCalledWith(
+      { query: 'query', maxResults: 8, maxTokens: 2000 },
+      ctx.signal
+    );
+    await extensions.executeTool!(
+      call('web_fetch', {
+        action: 'open',
+        ref: 'page-1',
+        url: null,
+        line: null,
+        cursor: '0:1',
+        pattern: null,
+        maxTokens: null
+      }),
+      ctx
+    );
+    expect(webFetch).toHaveBeenLastCalledWith(
+      { action: 'open', ref: 'page-1', cursor: '0:1', maxTokens: 2000 },
+      ctx.signal,
+      'session'
+    );
+  });
+
+  it('does not treat null as a value for required web tool operands', async () => {
+    const webFetch = vi.fn();
+    const webSearch = vi.fn();
+    const extensions = createWebToolsExtensions({ enabled: true, webFetch, webSearch });
+    const ctx = context();
+    await expect(
+      extensions.executeTool!(
+        call('web_fetch', { action: 'find', ref: 'page', pattern: null }),
+        ctx
+      )
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_TOOL_INPUT_INVALID' });
+    await expect(
+      extensions.executeTool!(call('web_search', { query: null }), ctx)
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_TOOL_INPUT_INVALID' });
+    expect(webFetch).not.toHaveBeenCalled();
+    expect(webSearch).not.toHaveBeenCalled();
   });
 
   it.each([undefined, 'auto', 'invalid'])(

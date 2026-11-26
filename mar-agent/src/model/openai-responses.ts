@@ -1,4 +1,4 @@
-import { responsesFunctionArguments, responsesRequestBody } from './responses-request.js';
+import { responsesRequestBody } from './responses-request.js';
 export { openAiInput } from './responses-request.js';
 import {
   ResponsesTextProjection,
@@ -592,7 +592,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
                 type: 'client_tool.call',
                 callId,
                 name,
-                arguments: responsesFunctionArguments(request, name, args),
+                arguments: args,
                 ...(argumentError ? { argumentError } : {})
               },
               modelStreamEventObservedAt(raw)

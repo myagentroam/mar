@@ -11,14 +11,18 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
     inputSchema: {
       type: 'object',
       properties: {
-        scope: { type: 'string', enum: ['children', 'profile'] },
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
-        cursor: { type: 'string', minLength: 1 }
+        scope: { type: ['string', 'null'], enum: ['children', 'profile', null] },
+        limit: { type: ['integer', 'null'], minimum: 1, maximum: 100 },
+        cursor: { type: ['string', 'null'], minLength: 1 }
       },
       additionalProperties: false
     },
     async execute(raw) {
-      const input = raw as { scope?: 'children' | 'profile'; limit?: number; cursor?: string };
+      const input = raw as {
+        scope?: 'children' | 'profile' | null;
+        limit?: number | null;
+        cursor?: string | null;
+      };
       const current = await agent.getSession(context.sessionId);
       const data =
         input.scope === 'profile'
@@ -31,7 +35,7 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
               .listSessions({
                 parentSessionId: context.sessionId,
                 limit: input.limit ?? 10,
-                ...(input.cursor === undefined ? {} : { cursor: input.cursor })
+                ...(input.cursor == null ? {} : { cursor: input.cursor })
               })
               .then((page) => ({
                 current: {
@@ -61,9 +65,9 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
       type: 'object',
       properties: {
         agentId: { type: 'string', minLength: 1 },
-        includeHistory: { type: 'boolean' },
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
-        cursor: { type: 'string', minLength: 1 }
+        includeHistory: { type: ['boolean', 'null'] },
+        limit: { type: ['integer', 'null'], minimum: 1, maximum: 100 },
+        cursor: { type: ['string', 'null'], minLength: 1 }
       },
       required: ['agentId'],
       additionalProperties: false
@@ -71,9 +75,9 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
     async execute(raw) {
       const input = raw as {
         agentId: string;
-        includeHistory?: boolean;
-        limit?: number;
-        cursor?: string;
+        includeHistory?: boolean | null;
+        limit?: number | null;
+        cursor?: string | null;
       };
       const [actor, session] = await Promise.all([
         agent.getSession(context.sessionId),
@@ -88,8 +92,8 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
         throw new AgentError('MAR_AGENT_SUBAGENT_NOT_FOUND', 'Session is not available.');
       const history = input.includeHistory
         ? await agent.sessionHistory(session.id, {
-            ...(input.limit === undefined ? {} : { limit: input.limit }),
-            ...(input.cursor === undefined ? {} : { cursor: input.cursor })
+            ...(input.limit == null ? {} : { limit: input.limit }),
+            ...(input.cursor == null ? {} : { cursor: input.cursor })
           })
         : undefined;
       const data = {

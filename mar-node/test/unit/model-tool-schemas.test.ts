@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import type { ExtensionToolSpec, SessionExtensionContext } from '@myagentroam/agent/extensions';
+import { describe, expect, it, vi } from 'vitest';
+import { fromJSONSchema } from 'zod';
+import { orchestrationExtension } from '../../src/orchestration/orchestration-extension.js';
 import { whiteboardTool } from '../../src/orchestration/whiteboard/whiteboard-tool.js';
 import { createBrowserUseExtensions } from '../../src/runner/mar-agent/browser-use-extensions.js';
 import {
@@ -62,6 +65,60 @@ const browserTool = createBrowserUseExtensions({
 }).tools![0]!;
 
 describe('Node-owned MAR Agent model tool schemas', () => {
+  it('normalizes optional agent operands without changing delivery intent or required fields', async () => {
+    const tools = new Map<string, ExtensionToolSpec>();
+    const invoke = vi.fn(async () => ({}));
+    const context = {
+      tools: { register: (tool: ExtensionToolSpec) => tools.set(tool.name, tool) },
+      hooks: { intercept: vi.fn() }
+    } as unknown as SessionExtensionContext;
+    await orchestrationExtension(invoke, () => 'execution').attachSession!(context);
+    const call = {
+      operationId: 'operation',
+      sessionId: 'parent',
+      sessionEpoch: 0,
+      signal: new AbortController().signal,
+      actor: 'model',
+      entry: 'direct'
+    } as const;
+    const check = async (name: string, input: unknown, expected: unknown) => {
+      const tool = tools.get(`agent_${name}`)!;
+      await tool.execute(fromJSONSchema(tool.inputSchema).parse(input), call, vi.fn());
+      expect(invoke).toHaveBeenLastCalledWith('execution', name, expected, call, undefined);
+    };
+    const start = { title: 'Child', content: 'Work' };
+    await check(
+      'start',
+      { ...start, modelId: null, effort: null, runner: null, goal: null, clientMessageId: null },
+      start
+    );
+    const goalOnly = { agentId: 'child', goal: { objective: 'Work' } };
+    await check(
+      'send',
+      { ...goalOnly, approval: null, content: null, delivery: null, clientMessageId: null },
+      goalOnly
+    );
+    await check(
+      'send',
+      { agentId: 'child', content: 'Work', delivery: null },
+      { agentId: 'child', content: 'Work', deliveryIntent: 'REPLACE_CURRENT' }
+    );
+    await check(
+      'wait',
+      { agentIds: ['child'], mode: null, waitFor: null, waitMs: null },
+      { agentIds: ['child'], mode: 'any', waitFor: 'completion', waitMs: 30_000 }
+    );
+    await check(
+      'wait',
+      { agentIds: null, mode: null, waitFor: null, waitMs: null },
+      { waitFor: 'completion', waitMs: 30_000 }
+    );
+    expect(
+      fromJSONSchema(tools.get('agent_start')!.inputSchema).safeParse({ ...start, content: null })
+        .success
+    ).toBe(false);
+  });
+
   it('accepts only the operands for the selected whiteboard action and operation', () => {
     const validate = whiteboardTool(
       () => ({ data: {} }),

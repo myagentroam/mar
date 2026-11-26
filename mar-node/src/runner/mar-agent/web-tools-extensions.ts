@@ -6,6 +6,7 @@ import {
   webSearchRequestSchema,
   type WebFetchHandler
 } from '../../service/web-fetch-contracts.js';
+import { isPlainRecord } from '../../util/records.js';
 
 export const webSearchToolDefinition: ClientToolDefinition = {
   name: 'web_search',
@@ -83,10 +84,20 @@ export function createWebToolsExtensions(input: {
       if (!isToolAvailable(call.name, context))
         throw new AgentError('MAR_AGENT_TOOL_NOT_AVAILABLE', 'Node web tool is unavailable.');
       context.signal.throwIfAborted();
-      const parsed =
-        call.name === 'web_search'
-          ? webSearchRequestSchema.safeParse(call.arguments)
-          : webFetchRequestSchema.safeParse(call.arguments);
+      const search = call.name === 'web_search';
+      const optional = search
+        ? ['maxResults', 'maxTokens']
+        : ['url', 'ref', 'line', 'cursor', 'pattern', 'maxTokens'];
+      const args = isPlainRecord(call.arguments)
+        ? Object.fromEntries(
+            Object.entries(call.arguments).filter(
+              ([key, value]) => value !== null || !optional.includes(key)
+            )
+          )
+        : call.arguments;
+      const parsed = search
+        ? webSearchRequestSchema.safeParse(args)
+        : webFetchRequestSchema.safeParse(args);
       if (!parsed.success)
         throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Node web tool input is invalid.');
       try {

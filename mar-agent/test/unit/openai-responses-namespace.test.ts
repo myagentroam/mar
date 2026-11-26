@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SecretValue, parseModelCatalog, type AgentModelConfiguration } from '../../src/index.js';
 import type { ModelEvent, ModelRequest } from '../../src/model/contracts.js';
 import { OpenAiResponsesAdapter, openAiInput } from '../../src/model/openai-responses.js';
-import { responsesFunctionArguments } from '../../src/model/responses-request.js';
 import { projectCodeModeSearchResult } from '../../src/tools/code-mode/index.js';
 import { projectPermissionTool } from '../../src/tools/permissions.js';
 import { startResponsesWebSocketServer } from './support/responses-transport-servers.js';
@@ -52,199 +51,144 @@ afterEach(async () => {
 });
 
 describe('OpenAI Responses tool namespace on STANDARD transport', () => {
-  it.each([false, true])(
-    'removes strict placeholders but keeps declared nulls (deferred=%s)',
-    async (deferred) => {
-      const nested = {
-        type: 'object',
-        properties: {
-          optional: { type: 'string' },
-          nullable: { type: ['string', 'null'] },
-          required: { type: 'null' }
-        },
-        required: ['required'],
-        additionalProperties: false
-      };
-      const tool = {
-        name: 'start_probe',
-        description: 'Start a test task.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            title: { type: 'string' },
-            runner: { type: 'string' },
-            clientMessageId: { type: 'string' },
-            goal: { anyOf: [{ type: 'null' }, { type: 'string' }] },
-            optionalNull: { type: 'null' },
-            optionalConstant: { const: 'fixed' },
-            nested,
-            rows: { type: 'array', items: nested },
-            choice: { anyOf: [nested, { type: 'string' }] },
-            optionalUnion: { anyOf: [{ type: 'string' }, { type: 'number' }] },
-            ambiguous: {
-              anyOf: [
-                nested,
-                {
-                  ...nested,
-                  properties: { ...nested.properties, optional: { type: ['string', 'null'] } }
-                }
-              ]
-            },
-            tagged: {
-              anyOf: [
-                {
-                  ...nested,
-                  properties: { ...nested.properties, kind: { type: 'string', enum: ['a'] } },
-                  required: ['required']
-                },
-                {
-                  ...nested,
-                  properties: {
-                    ...nested.properties,
-                    kind: { type: 'string', enum: ['b'] },
-                    optional: { type: ['string', 'null'] }
-                  },
-                  required: ['required']
-                }
-              ]
-            }
-          },
-          required: ['title'],
-          additionalProperties: false
-        }
-      };
-      const wireNested = { optional: null, nullable: null, required: null };
-      const arguments_ = {
-        title: 'Test',
-        runner: null,
-        clientMessageId: null,
-        goal: null,
-        optionalNull: null,
-        optionalConstant: null,
-        nested: wireNested,
-        rows: [wireNested],
-        choice: wireNested,
-        optionalUnion: null,
-        ambiguous: wireNested,
-        tagged: { ...wireNested, kind: 'a' }
-      };
-      const fixture = await startHttpResponsesServer([
-        {
-          type: 'response.output_item.done',
-          item: {
-            type: 'function_call',
-            id: 'start-probe-item',
-            call_id: 'start-probe',
-            name: tool.name,
-            arguments: JSON.stringify(arguments_)
-          }
-        },
-        { type: 'response.completed', response: { id: 'strict-placeholder' } }
-      ]);
-      httpFixtures.push(fixture);
-      const adapter = registerAdapter(
-        new OpenAiResponsesAdapter(
-          configuration(fixture.baseUrl, {
-            responsesTransport: { transport: 'HTTP', httpVersion: '1.1' },
-            responsesPreviousResponseId: false
-          })
-        )
-      );
-      const request = deferred
-        ? {
-            ...toolRequest([]),
-            messages: [
-              {
-                role: 'tool_call' as const,
-                content: '',
-                callId: 'search',
-                name: 'tool_search',
-                arguments: {}
-              },
-              { role: 'tool' as const, content: 'found', callId: 'search', toolSearchTools: [tool] }
-            ]
-          }
-        : toolRequest([tool]);
-      const events = await collect(adapter.start(request, new AbortController().signal));
-      const sentTools = deferred
-        ? (fixture.requests[0]!.input as Array<Record<string, unknown>>).find(
-            ({ type }) => type === 'tool_search_output'
-          )?.tools
-        : fixture.requests[0]!.tools;
-      expect(sentTools).toEqual([
-        expect.objectContaining({
-          name: tool.name,
-          strict: true,
-          parameters: expect.objectContaining({
-            properties: expect.objectContaining({
-              runner: { type: ['string', 'null'] },
-              optionalNull: { type: 'null' },
-              optionalConstant: { anyOf: [{ const: 'fixed' }, { type: 'null' }] }
-            })
-          })
-        })
-      ]);
-      expect(events.find(({ type }) => type === 'client_tool.call')).toMatchObject({
-        callId: 'start-probe',
-        name: tool.name
-      });
-      expect(events.find(({ type }) => type === 'client_tool.call')).toHaveProperty('arguments', {
-        title: 'Test',
-        goal: null,
-        optionalNull: null,
-        nested: { nullable: null, required: null },
-        rows: [{ nullable: null, required: null }],
-        choice: { nullable: null, required: null },
-        ambiguous: wireNested,
-        tagged: { kind: 'a', nullable: null, required: null }
-      });
-    }
-  );
-
-  it('normalizes nested-only placeholders without modifying arguments or non-strict tools', () => {
-    const input = { nested: { optional: null, required: null, unknown: null } };
+  it.each([false, true])('preserves all tool argument nulls (deferred=%s)', async (deferred) => {
     const nested = {
       type: 'object',
-      properties: { optional: { type: 'string' }, required: { type: 'string' } },
+      properties: {
+        optional: { type: 'string' },
+        nullable: { type: ['string', 'null'] },
+        required: { type: 'null' }
+      },
       required: ['required'],
       additionalProperties: false
     };
     const tool = {
-      name: 'nested_probe',
-      description: 'Inspect nested options.',
-      inputSchema: { type: 'object', properties: { nested } }
-    };
-    expect(responsesFunctionArguments(toolRequest([tool]), tool.name, input)).toEqual({
-      nested: { required: null, unknown: null }
-    });
-    // Real nulls are also not reinterpreted for tools sent with strict:false.
-    const open = { ...tool, inputSchema: { ...tool.inputSchema, additionalProperties: true } };
-    expect(responsesFunctionArguments(toolRequest([open]), open.name, input)).toBe(input);
-    expect(input.nested.optional).toBeNull();
-  });
-
-  it('keeps nulls when the strict schema does not admit them or admission is unknown', () => {
-    const tool = {
-      name: 'constraint_probe',
-      description: 'Inspect a typed union.',
+      name: 'start_probe',
+      description: 'Start a test task.',
       inputSchema: {
         type: 'object',
-        $defs: { text: { type: 'string' } },
         properties: {
-          union: { type: 'string', anyOf: [{ enum: ['a'] }, { enum: ['b'] }] },
-          reference: { type: 'string', $ref: '#/$defs/text' },
-          optional: { type: 'string' }
-        }
+          title: { type: 'string' },
+          runner: { type: 'string' },
+          clientMessageId: { type: 'string' },
+          goal: { anyOf: [{ type: 'null' }, { type: 'string' }] },
+          optionalNull: { type: 'null' },
+          optionalConstant: { const: 'fixed' },
+          nested,
+          rows: { type: 'array', items: nested },
+          choice: { anyOf: [nested, { type: 'string' }] },
+          optionalUnion: { anyOf: [{ type: 'string' }, { type: 'number' }] },
+          ambiguous: {
+            anyOf: [
+              nested,
+              {
+                ...nested,
+                properties: { ...nested.properties, optional: { type: ['string', 'null'] } }
+              }
+            ]
+          },
+          tagged: {
+            anyOf: [
+              {
+                ...nested,
+                properties: { ...nested.properties, kind: { type: 'string', enum: ['a'] } },
+                required: ['required']
+              },
+              {
+                ...nested,
+                properties: {
+                  ...nested.properties,
+                  kind: { type: 'string', enum: ['b'] },
+                  optional: { type: ['string', 'null'] }
+                },
+                required: ['required']
+              }
+            ]
+          }
+        },
+        required: ['title'],
+        additionalProperties: false
       }
     };
-    // Widening the type does not widen the union or the referenced schema.
-    expect(
-      responsesFunctionArguments(toolRequest([tool]), tool.name, {
-        union: null,
-        reference: null,
-        optional: null
+    const wireNested = { optional: null, nullable: null, required: null };
+    const arguments_ = {
+      title: 'Test',
+      runner: null,
+      clientMessageId: null,
+      goal: null,
+      optionalNull: null,
+      optionalConstant: null,
+      nested: wireNested,
+      rows: [wireNested],
+      choice: wireNested,
+      optionalUnion: null,
+      ambiguous: wireNested,
+      tagged: { ...wireNested, kind: 'a' }
+    };
+    const fixture = await startHttpResponsesServer([
+      {
+        type: 'response.output_item.done',
+        item: {
+          type: 'function_call',
+          id: 'start-probe-item',
+          call_id: 'start-probe',
+          name: tool.name,
+          arguments: JSON.stringify(arguments_)
+        }
+      },
+      { type: 'response.completed', response: { id: 'strict-placeholder' } }
+    ]);
+    httpFixtures.push(fixture);
+    const adapter = registerAdapter(
+      new OpenAiResponsesAdapter(
+        configuration(fixture.baseUrl, {
+          responsesTransport: { transport: 'HTTP', httpVersion: '1.1' },
+          responsesPreviousResponseId: false
+        })
+      )
+    );
+    const request = deferred
+      ? {
+          ...toolRequest([]),
+          messages: [
+            {
+              role: 'tool_call' as const,
+              content: '',
+              callId: 'search',
+              name: 'tool_search',
+              arguments: {}
+            },
+            { role: 'tool' as const, content: 'found', callId: 'search', toolSearchTools: [tool] }
+          ]
+        }
+      : toolRequest([tool]);
+    const events = await collect(adapter.start(request, new AbortController().signal));
+    const sentTools = deferred
+      ? (fixture.requests[0]!.input as Array<Record<string, unknown>>).find(
+          ({ type }) => type === 'tool_search_output'
+        )?.tools
+      : fixture.requests[0]!.tools;
+    expect(sentTools).toEqual([
+      expect.objectContaining({
+        name: tool.name,
+        strict: true,
+        parameters: expect.objectContaining({
+          properties: expect.objectContaining({
+            runner: { type: ['string', 'null'] },
+            optionalNull: { type: 'null' },
+            optionalConstant: { anyOf: [{ const: 'fixed' }, { type: 'null' }] }
+          })
+        })
       })
-    ).toEqual({ union: null, reference: null });
+    ]);
+    expect(events.find(({ type }) => type === 'client_tool.call')).toMatchObject({
+      callId: 'start-probe',
+      name: tool.name
+    });
+    expect(events.find(({ type }) => type === 'client_tool.call')).toHaveProperty(
+      'arguments',
+      arguments_
+    );
   });
 
   it.each([undefined, 'mar'])(
