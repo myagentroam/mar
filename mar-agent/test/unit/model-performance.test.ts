@@ -8,6 +8,7 @@ import { LocalAgentHost } from '../../src/host.js';
 import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import type { ModelAdapter, ModelEvent } from '../../src/model/contracts.js';
+import type { SessionRecord } from '../../src/session/store/contracts.js';
 import {
   observeModelStreamEvent,
   modelStreamEventObservedAt,
@@ -110,6 +111,58 @@ const usage = (outputTokens: number): ModelEvent => ({ type: 'usage', usage: { o
 const complete: ModelEvent = { type: 'completed', reason: 'completed' };
 
 describe('Model output TPS evidence', () => {
+  it.each([
+    {
+      scenario: 'the gateway corrects input at the end',
+      finalInput: { input_tokens: 3_141, cache_read_input_tokens: 120_832 },
+      expected: { inputTokens: 3_141, contextInputTokens: 123_973, cacheReadTokens: 120_832 }
+    },
+    {
+      scenario: 'Anthropic reports input only at the start',
+      finalInput: {},
+      expected: { inputTokens: 36_753, contextInputTokens: 36_753 }
+    }
+  ])('updates context once from merged usage when $scenario', async ({ finalInput, expected }) => {
+    const events = await nativeEvents('ANTHROPIC_MESSAGES', [
+      { type: 'message_start', message: { id: 'reply', usage: { input_tokens: 36_753 } } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done.' } },
+      { type: 'content_block_stop', index: 0 },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { ...finalInput, output_tokens: 20 }
+      },
+      { type: 'message_stop' }
+    ]);
+    const result = await measure(events.map((event, index) => [100 + index, event]));
+    const expectedUsage = expect.objectContaining({ ...expected, outputTokens: 20 });
+    expect(result.events.filter((event) => event.type === 'usage.updated')).toEqual([
+      expectedUsage
+    ]);
+    const records = result.persisted
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line) as SessionRecord);
+    expect(records.filter((record) => record.type === 'usage.updated')).toEqual([
+      expect.objectContaining({ payload: expectedUsage })
+    ]);
+    expect(result.metrics).toEqual([expect.objectContaining({ latencyMs: expect.any(Number) })]);
+    expect(result.metrics[0]).not.toHaveProperty('tokensPerSecond');
+  });
+
+  it('does not publish or persist intermediate context usage for a cancelled request', async () => {
+    const result = await measure([
+      [100, { type: 'usage', final: false, usage: { inputTokens: 36_753 } }],
+      [200, delta('A')],
+      [1_200, { type: 'completed', reason: 'cancelled' }]
+    ]);
+    expect(result.events.some((event) => event.type === 'usage.updated')).toBe(false);
+    expect(result.persisted).not.toContain('"type":"usage.updated"');
+    expect(result.metrics).toHaveLength(1);
+    expect(result.metrics[0]).not.toHaveProperty('tokensPerSecond');
+  });
+
   it.each([0, 0.5, 302_000 / 244_948.5, 999.5, 999.999, 1_000, 1_000.001])(
     'requires at least one second of unrounded transport timing for a %s ms window',
     async (duration) => {

@@ -257,6 +257,8 @@ export class ExecutionLoop<TScope = unknown> {
             }
             messages.push({ role: 'assistant', content: event.text });
           } else if (event.type === 'usage') {
+            // Adapters merge intermediate usage within the request before publishing final usage.
+            if (event.final === false) continue;
             latestUsage = event.usage;
             if (event.final === true) generation.finish(observedAt);
             const outputTokens =
@@ -265,7 +267,7 @@ export class ExecutionLoop<TScope = unknown> {
               event.usage.outputTokens >= 0
                 ? event.usage.outputTokens
                 : undefined;
-            if (event.final !== false && (outputTokens !== undefined || event.final === true))
+            if (outputTokens !== undefined || event.final === true)
               requestOutputTokens = outputTokens;
             const reportedContext = event.usage.contextInputTokens ?? event.usage.inputTokens;
             if (
