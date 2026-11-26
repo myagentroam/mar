@@ -10,6 +10,48 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const [theme, locale, width, titles] of [
+  ['dark', 'zh-CN', 1280, { history: '执行记录', mine: '我的定时', all: '全部定时' }],
+  [
+    'daylight',
+    'en-US',
+    390,
+    { history: 'Execution records', mine: 'My schedules', all: 'All schedules' }
+  ]
+] as const) {
+  test(`Schedule sections use the same title and summary layout at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    let summarySpacing: number | undefined;
+    for (const scope of ['history', 'mine', 'all'] as const) {
+      const name = titles[scope];
+      await page.goto(
+        `${fixture.url}workbench-style.html?schedule=${scope}&theme=${theme}&locale=${locale}`
+      );
+      const section = page.getByRole('region', { name, exact: true });
+      const title = section.getByRole('heading', { level: 2, name, exact: true });
+      await expect(title).toBeVisible();
+      const size = await title.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue('--mar-font-size-title').trim()
+      );
+      await expect(title).toHaveCSS('font-size', size);
+      await expect(title).toHaveCSS('font-weight', '600');
+      const header = title.locator('..');
+      const summary = header.locator('p');
+      await expect(summary).toBeVisible();
+      const titleBox = (await title.boundingBox())!;
+      const summaryBox = (await summary.boundingBox())!;
+      const gap = summaryBox.y - (titleBox.y + titleBox.height);
+      expect(gap).toBeGreaterThan(0);
+      expect(summaryBox.x).toBeCloseTo(titleBox.x, 1);
+      summarySpacing ??= gap;
+      expect(gap).toBeCloseTo(summarySpacing, 1);
+      await header.screenshot({ path: testInfo.outputPath(`schedule-header-${scope}.png`) });
+    }
+  });
+}
+
 function sessionListColors(list: Locator) {
   return list.evaluate((element) => {
     const probe = document.createElement('span');

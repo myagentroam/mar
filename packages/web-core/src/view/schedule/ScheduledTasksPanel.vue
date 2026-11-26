@@ -547,16 +547,6 @@ watch(
 .schedule-panel--tasks {
   background: var(--mar-bg-page);
 }
-.schedule-panel--tasks > header {
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.schedule-panel--tasks .mar-settings-page-title {
-  font-size: var(--mar-font-size-page-title);
-}
-.schedule-panel--tasks .mar-settings-page-summary {
-  margin-block-start: 0;
-}
 .schedule-panel--tasks
   > :is(
     header,
