@@ -106,18 +106,26 @@ export class ExecutionLoop<TScope = unknown> {
       };
       const emitFinalPerformance = async (completedAt: number) => {
         if (mode === 'compact') return;
-        generation.finish(completedAt);
-        const outputDuration = generation.durationMs;
+        const requestDurationMs = completedAt - requestStartedAt;
         const outputTokens = requestOutputTokens;
-        if (outputTokens === undefined || outputDuration === undefined) return;
+        if (
+          outputTokens === undefined ||
+          !Number.isFinite(requestDurationMs) ||
+          requestDurationMs <= 0
+        )
+          return;
+        generation.finish(completedAt);
+        const outputDurationMs = Math.round(generation.durationMs ?? 0);
+        // Final output tokens can include reasoning that the provider did not stream.
+        const rateDurationMs = Math.max(requestDurationMs, 1_000);
         await input.publish({
           type: 'model.performance',
           ...(firstModelResponseAt === undefined
             ? {}
             : { latencyMs: Math.max(0, Math.round(firstModelResponseAt - requestStartedAt)) }),
           outputTokens,
-          outputDurationMs: Math.round(outputDuration),
-          tokensPerSecond: Number(((outputTokens * 1000) / outputDuration).toFixed(2))
+          ...(outputDurationMs === 0 ? {} : { outputDurationMs }),
+          tokensPerSecond: Number(((outputTokens * 1_000) / rateDurationMs).toFixed(2))
         });
       };
       const persistToolCalls = async (calls: readonly ClientToolCall[]) => {

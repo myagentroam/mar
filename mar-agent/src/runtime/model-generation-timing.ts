@@ -1,4 +1,4 @@
-/** Request-local observed generation intervals, excluding explicit execution pauses. */
+/** Diagnostic generation intervals within one model attempt, excluding explicit execution pauses. */
 export class ModelGenerationTiming {
   private startedAt: number | undefined;
   private latestAt: number | undefined;
@@ -33,6 +33,6 @@ export class ModelGenerationTiming {
   }
 
   get durationMs(): number | undefined {
-    return this.completed && this.valid && this.duration >= 1_000 ? this.duration : undefined;
+    return this.completed && this.valid && this.duration > 0 ? this.duration : undefined;
   }
 }

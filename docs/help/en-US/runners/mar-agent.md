@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-25
+lastUpdated: 2026-11-26
 ---
 
 # Configure and Use MAR Agent
@@ -31,7 +31,7 @@ Responses retries start a fresh model-service request using the current full con
 
 MAR Agent does not impose a cumulative token budget or model-round limit on a run, or force finalization based on cumulative usage. Long tasks can continue after Context GC or Compact; context-window checks, cancellation and model-request timeouts still apply. Provider plan, account and request limits are unaffected.
 
-The information icon at the lower-right of a Workspace session shows the latest available Latency and average output TPS. Latency updates after the first valid semantic model response. Average output TPS updates only after the request ends, the provider reports authoritative output tokens, and the summed observed generation duration is at least one second. Shorter windows do not publish a new TPS value; Latency and token usage still update, and the previous valid TPS remains within the same Run. TPS uses client-observed generation intervals, excluding client-tool execution and explicit Hosted Tool execution pauses. Output tokens may include reasoning and tool calls, and network or upstream buffering may affect the observed duration, so TPS is not pure server-side inference speed.
+The Workspace session segment heading and its [Info details](../workbench/conversation.md) show the latest available Latency and average output TPS. Latency updates after the first valid semantic model response. TPS is an end-to-end estimate: the provider's final output token count divided by the elapsed time from starting the model request to receiving its completion. Positive durations under one second are counted as one second. The token count can include hidden reasoning and tool-call arguments. The elapsed time includes the wait for the first response, network time, and hosted tools run within the request, but excludes client tools run outside it. This is not the model's raw generation speed. If final usage or valid timing is missing, or the request is cancelled, no new TPS is published and the previous valid value stays within the same Run.
 
 Every user can use the **My model order** tab to arrange their authorized models in the model picker. This does not affect other users, the administrator-defined default order, session title generation, or template candidates. Newly available models that the user has not arranged remain after the saved personal order in the administrator-defined default order. System administrators manage that global default in the **Models** tab, which lists a model’s name, connection type, model ID, availability, access, and test status. The list omits credentials and Responses transport; Codex transport remains available in the model editor. Removing a model does not require disabling it first and is not blocked because the model is currently in use. A model request that has already started may finish naturally, while later attempts to use the removed model fail because it no longer exists. Select **Adjust order**, drag the handle at the start of each row, then select **Save order** to persist the complete order and leave sorting mode. **Cancel** restores the order from before editing.
 

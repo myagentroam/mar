@@ -110,7 +110,7 @@ const answer: ModelEvent = { type: 'text.completed', itemId: 'answer', text: 'Do
 const usage = (outputTokens: number): ModelEvent => ({ type: 'usage', usage: { outputTokens } });
 const complete: ModelEvent = { type: 'completed', reason: 'completed' };
 
-describe('Model output TPS evidence', () => {
+describe('Model output performance', () => {
   it.each([
     {
       scenario: 'the gateway corrects input at the end',
@@ -147,8 +147,7 @@ describe('Model output TPS evidence', () => {
     expect(records.filter((record) => record.type === 'usage.updated')).toEqual([
       expect.objectContaining({ payload: expectedUsage })
     ]);
-    expect(result.metrics).toEqual([expect.objectContaining({ latencyMs: expect.any(Number) })]);
-    expect(result.metrics[0]).not.toHaveProperty('tokensPerSecond');
+    expect(result.metrics.at(-1)).toMatchObject({ outputTokens: 20, tokensPerSecond: 20 });
   });
 
   it('does not publish or persist intermediate context usage for a cancelled request', async () => {
@@ -163,77 +162,61 @@ describe('Model output TPS evidence', () => {
     expect(result.metrics[0]).not.toHaveProperty('tokensPerSecond');
   });
 
-  it.each([0, 0.5, 302_000 / 244_948.5, 999.5, 999.999, 1_000, 1_000.001])(
-    'requires at least one second of unrounded transport timing for a %s ms window',
-    async (duration) => {
-      const startedAt = 8_880;
-      const endedAt = startedAt + duration;
-      const result = await measure([
-        [startedAt, { type: 'output.started' }, startedAt],
-        [9_000, delta('A'), startedAt],
-        [20_000, { type: 'output.completed' }, endedAt],
-        [20_000, { type: 'usage', final: true, usage: { outputTokens: 302 } }, endedAt],
-        [20_000, answer],
-        [20_000, complete, endedAt]
-      ]);
-      expect(result.metrics[0]).toMatchObject({ latencyMs: startedAt });
-      expect(result.events).toContainEqual(
-        expect.objectContaining({ type: 'usage.updated', outputTokens: 302 })
-      );
-      if (duration < 1_000) expect(result.metrics).toHaveLength(1);
-      else
-        expect(result.metrics.at(-1)).toMatchObject({
-          outputTokens: 302,
-          outputDurationMs: Math.round(duration),
-          tokensPerSecond: Number((302_000 / duration).toFixed(2))
-        });
-    }
-  );
-
-  it('does not publish private-only TPS below one second', async () => {
-    const result = await measure(
-      [
-        [100, { type: 'output.started' }],
-        [1_099.999, { type: 'output.completed' }],
-        [5_000, { type: 'usage', final: true, usage: { outputTokens: 302 } }],
-        [10_000, complete]
-      ],
-      { cancelAfterUsage: true }
-    );
-    expect(result.metrics).toEqual([]);
+  it.each([
+    [0, undefined],
+    [0.5, 302],
+    [400, 302],
+    [999.5, 302],
+    [1_000, 302],
+    [1_000.49, 301.85],
+    [1_400, 215.71]
+  ])('estimates end-to-end TPS for a %s ms request', async (duration, expectedTps) => {
+    const result = await measure([
+      [900, delta('A'), 0],
+      [20_000, { type: 'output.completed' }, duration],
+      [20_000, { type: 'usage', final: true, usage: { outputTokens: 302 } }, duration],
+      [20_000, answer],
+      [20_000, complete, duration]
+    ]);
+    expect(result.metrics[0]).toMatchObject({ latencyMs: 0 });
     expect(result.events).toContainEqual(
       expect.objectContaining({ type: 'usage.updated', outputTokens: 302 })
     );
+    if (expectedTps === undefined) expect(result.metrics).toHaveLength(1);
+    else
+      expect(result.metrics.at(-1)).toMatchObject({
+        outputTokens: 302,
+        outputDurationMs: Math.round(duration),
+        tokensPerSecond: expectedTps
+      });
   });
 
-  it.each([499.999, 500, 500.001])(
-    'applies the minimum to summed %s ms segments without hosted execution time',
-    async (segmentDuration) => {
+  it.each([499, 500, 501])(
+    'reports two %s ms generation segments independently of end-to-end TPS',
+    async (segmentMs) => {
       const result = await measure([
         [100, { type: 'output.started' }],
         [100, delta('A')],
-        [100 + segmentDuration, { type: 'output.paused' }],
+        [100 + segmentMs, { type: 'output.paused' }],
         [10_000, { type: 'output.started' }],
         [10_000, delta('B')],
-        [10_000 + segmentDuration, { type: 'output.completed' }],
+        [10_000 + segmentMs, { type: 'output.completed' }],
         [20_000, { type: 'usage', final: true, usage: { outputTokens: 100 } }],
         [20_000, answer],
         [20_000, complete]
       ]);
-      if (segmentDuration < 500) expect(result.metrics).toHaveLength(1);
-      else
-        expect(result.metrics.at(-1)).toMatchObject({
-          outputDurationMs: Math.round(segmentDuration * 2),
-          tokensPerSecond: Number((100_000 / (segmentDuration * 2)).toFixed(2))
-        });
+      expect(result.metrics.at(-1)).toMatchObject({
+        outputDurationMs: segmentMs * 2,
+        tokensPerSecond: 5
+      });
     }
   );
 
-  it('publishes TPS from private generation boundaries without requiring a Latency response', async () => {
+  it('estimates TPS without a Latency response', async () => {
     const result = await measure(
       [
         [100, { type: 'output.started' }],
-        [1_100, { type: 'output.completed' }],
+        [800, { type: 'output.completed' }],
         [1_500, { type: 'usage', final: true, usage: { outputTokens: 100 } }],
         [3_000, complete]
       ],
@@ -242,14 +225,14 @@ describe('Model output TPS evidence', () => {
     expect(result.metrics).toHaveLength(1);
     expect(result.metrics[0]).toMatchObject({
       outputTokens: 100,
-      outputDurationMs: 1_000,
-      tokensPerSecond: 100
+      outputDurationMs: 700,
+      tokensPerSecond: 33.33
     });
     expect(result.metrics[0]).not.toHaveProperty('latencyMs');
     expect(result.persisted).not.toContain('model.performance');
   });
 
-  it('starts TPS on private generation deltas, not a late public summary', async () => {
+  it('starts generation diagnostics on private deltas, not a late public summary', async () => {
     const result = await measure([
       [100, { type: 'output.delta' }],
       [2_000, { type: 'output.delta' }],
@@ -272,7 +255,7 @@ describe('Model output TPS evidence', () => {
         latencyMs: 100,
         outputTokens: 1_000,
         outputDurationMs: 3_900,
-        tokensPerSecond: 256.41
+        tokensPerSecond: 250
       })
     ]);
     expect(result.events.some((event) => (event.type as string) === 'output.delta')).toBe(false);
@@ -280,9 +263,13 @@ describe('Model output TPS evidence', () => {
     expect(result.persisted).not.toContain('model.performance');
   });
 
-  it.each(['completed-only', 'same-instant', 'sub-millisecond'] as const)(
-    'does not publish TPS without a positive generation window for %s output',
-    async (kind) => {
+  it.each([
+    ['completed-only', 250],
+    ['same-instant', 250.63],
+    ['sub-millisecond', 250.6]
+  ] as const)(
+    'estimates TPS from request timing without reporting a positive generation millisecond for %s output',
+    async (kind, expectedTps) => {
       const schedule: (readonly [number, ModelEvent])[] = [];
       if (kind !== 'completed-only') schedule.push([3_990, delta('A')]);
       if (kind === 'same-instant') schedule.push([3_990, delta('B')]);
@@ -290,8 +277,12 @@ describe('Model output TPS evidence', () => {
       const end = kind === 'same-instant' ? 3_990 : kind === 'sub-millisecond' ? 3_990.4 : 4_000;
       schedule.push([end, answer], [end, usage(1_000)], [end, complete]);
       const result = await measure(schedule);
-      expect(result.metrics).toHaveLength(1);
-      expect(result.metrics[0]).not.toHaveProperty('tokensPerSecond');
+      expect(result.metrics).toHaveLength(2);
+      expect(result.metrics[1]).toMatchObject({
+        outputTokens: 1_000,
+        tokensPerSecond: expectedTps
+      });
+      expect(result.metrics[1]).not.toHaveProperty('outputDurationMs');
     }
   );
 
@@ -319,13 +310,13 @@ describe('Model output TPS evidence', () => {
       latencyMs: 29_900,
       outputTokens: 5_100,
       outputDurationMs: 30_000,
-      tokensPerSecond: 170
+      tokensPerSecond: 169.44
     });
     expect(result.persisted).not.toContain('output.started');
     expect(result.events.some((event) => (event.type as string) === 'output.started')).toBe(false);
   });
 
-  it('accepts one delta and uses the native final-usage boundary instead of late completion', async () => {
+  it('uses the native generation end for diagnostics and request completion for TPS', async () => {
     const result = await measure([
       [100, delta('A')],
       [2_000, { type: 'output.completed' }, 1_100],
@@ -335,12 +326,12 @@ describe('Model output TPS evidence', () => {
     ]);
     expect(result.metrics.at(-1)).toMatchObject({
       outputDurationMs: 1_000,
-      tokensPerSecond: 100
+      tokensPerSecond: 20
     });
     expect(result.persisted).not.toContain('output.completed');
   });
 
-  it('sums generation segments without hosted tool execution or final-usage delivery delays', async () => {
+  it('includes hosted execution in TPS but not in observed generation time', async () => {
     const result = await measure([
       [100, { type: 'output.started' }],
       [200, delta('A')],
@@ -360,7 +351,7 @@ describe('Model output TPS evidence', () => {
       [20_000, answer],
       [20_000, complete]
     ]);
-    expect(result.metrics.at(-1)).toMatchObject({ outputDurationMs: 1_200, tokensPerSecond: 100 });
+    expect(result.metrics.at(-1)).toMatchObject({ outputDurationMs: 1_200, tokensPerSecond: 6 });
   });
 
   it('resets generation boundaries as well as tokens before a successful retry', async () => {
@@ -376,10 +367,13 @@ describe('Model output TPS evidence', () => {
       [2_500, answer],
       [3_000, complete]
     ]);
-    expect(result.metrics.at(-1)).toMatchObject({ outputDurationMs: 1_000, tokensPerSecond: 100 });
+    expect(result.metrics.at(-1)).toMatchObject({
+      outputDurationMs: 1_000,
+      tokensPerSecond: 33.33
+    });
   });
 
-  it('does not start TPS on provider context or hosted execution status', async () => {
+  it('does not start generation diagnostics on provider context or hosted execution status', async () => {
     const result = await measure([
       [50, { type: 'response.item', provider: 'OPENAI_RESPONSES', item: { type: 'reasoning' } }],
       [
@@ -395,7 +389,7 @@ describe('Model output TPS evidence', () => {
     expect(result.metrics.at(-1)).toMatchObject({
       latencyMs: 50,
       outputDurationMs: 2_000,
-      tokensPerSecond: 50
+      tokensPerSecond: 33.33
     });
   });
 
@@ -411,7 +405,7 @@ describe('Model output TPS evidence', () => {
     expect(result.metrics.at(-1)).toMatchObject({
       outputTokens: 100,
       outputDurationMs: 1_100,
-      tokensPerSecond: 90.95
+      tokensPerSecond: 83.35
     });
   });
 
@@ -457,17 +451,40 @@ describe('Model output TPS evidence', () => {
     }
   );
 
-  it('does not turn delayed consumption of one transport batch into a generation window', async () => {
-    const result = await measure([
-      [900, delta('A'), 100],
-      [3_990, delta('B'), 100],
-      [4_000, answer],
-      [4_000, usage(1_000)],
-      [4_000, complete, 100]
+  it('estimates TPS when encrypted reasoning and text arrive in one late Responses batch', async () => {
+    const events = await nativeEvents('OPENAI_RESPONSES', [
+      { type: 'response.created', response: { id: 'reply' } },
+      {
+        type: 'response.output_item.done',
+        item: { type: 'reasoning', id: 'thinking', encrypted_content: 'opaque', summary: [] }
+      },
+      { type: 'response.output_text.delta', item_id: 'answer', delta: 'Done.' },
+      {
+        type: 'response.output_item.done',
+        item: {
+          type: 'message',
+          id: 'answer',
+          role: 'assistant',
+          phase: 'final_answer',
+          content: [{ type: 'output_text', text: 'Done.' }]
+        }
+      },
+      {
+        type: 'response.completed',
+        response: {
+          id: 'reply',
+          usage: { output_tokens: 900, output_tokens_details: { reasoning_tokens: 850 } }
+        }
+      }
     ]);
-    expect(result.metrics).toHaveLength(1);
-    expect(result.metrics[0]).toMatchObject({ latencyMs: 100 });
-    expect(result.metrics[0]).not.toHaveProperty('tokensPerSecond');
+    const result = await measure(events.map((event, i) => [9_000 + i * 1_000, event, 9_000]));
+    expect(result.metrics).toHaveLength(2);
+    expect(result.metrics[1]).toMatchObject({
+      latencyMs: 9_000,
+      outputTokens: 900,
+      tokensPerSecond: 100
+    });
+    expect(result.metrics[1]).not.toHaveProperty('outputDurationMs');
   });
 
   it('uses transport completion time instead of consumer-side processing delay', async () => {
@@ -481,7 +498,7 @@ describe('Model output TPS evidence', () => {
     expect(result.metrics.at(-1)).toMatchObject({
       latencyMs: 100,
       outputDurationMs: 3_900,
-      tokensPerSecond: 256.41
+      tokensPerSecond: 250
     });
   });
 
@@ -501,7 +518,7 @@ describe('Model output TPS evidence', () => {
       latencyMs: 100,
       outputTokens: 100,
       outputDurationMs: 1_000,
-      tokensPerSecond: 100
+      tokensPerSecond: 50
     });
     expect(result.persisted).not.toContain('output.reset');
     expect(result.events.some((event) => (event.type as string) === 'output.reset')).toBe(false);
