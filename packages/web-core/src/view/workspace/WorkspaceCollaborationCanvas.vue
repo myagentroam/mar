@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import './view-toolbar-control.css';
 import { computed, ref, shallowRef, useId, watch, watchEffect } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { readOverflowText } from '@myagentroam/mar-ui/tooltip';
 import type { SessionCollaborationEdge } from '@myagentroam/protocol';
@@ -24,8 +26,13 @@ const props = defineProps<{
   selectedEdge: SessionCollaborationEdge | undefined;
   sessions: readonly NavigationSession[];
   sharing: readonly SessionCollaborationEdge[];
+  canOpenSession: boolean;
 }>();
-const emit = defineEmits<{ select: [id: string]; board: [edge: SessionCollaborationEdge] }>();
+const emit = defineEmits<{
+  select: [id: string];
+  board: [edge: SessionCollaborationEdge];
+  open: [sessionId: string, destination: 'main' | 'aside'];
+}>();
 const arrow = useId();
 const help = useId();
 const port = ref<HTMLElement>();
@@ -58,6 +65,8 @@ const descriptions = computed(() => {
   return descriptions;
 });
 const camera = shallowRef<GraphCamera>({ scale: 1, x: 0, y: 0 });
+const canZoomOut = computed(() => camera.value.scale > MIN_COLLABORATION_SCALE);
+const canZoomIn = computed(() => camera.value.scale < MAX_COLLABORATION_SCALE);
 const initialized = ref(false);
 const dragging = ref(false);
 let manual = false;
@@ -79,8 +88,9 @@ watch(graph, ({ nodes, edges }) => {
   const focused = viewport?.ownerDocument.activeElement;
   if (!viewport || !focused || !viewport.contains(focused)) return;
   let removed = false;
-  if (focused instanceof HTMLButtonElement && focused.dataset.networkSession !== undefined) {
-    removed = !nodes.has(focused.dataset.networkSession);
+  const focusedNode = focused.closest<HTMLElement>('[data-network-node]');
+  if (focusedNode) {
+    removed = !nodes.has(focusedNode.dataset.networkNode!);
   } else if (focused instanceof SVGPathElement && focused.classList.contains('edge-hit-area')) {
     const { owner, follower } = focused.dataset;
     removed = !edges.some(
@@ -91,6 +101,21 @@ watch(graph, ({ nodes, edges }) => {
     viewport.focus({ preventScroll: true });
   }
 });
+
+watch(
+  () => props.canOpenSession,
+  (canOpen) => {
+    const viewport = port.value;
+    const focused = viewport?.ownerDocument.activeElement;
+    if (
+      !canOpen &&
+      viewport?.contains(focused ?? null) &&
+      focused?.closest('.network-node-actions')
+    ) {
+      viewport.focus({ preventScroll: true });
+    }
+  }
+);
 
 watch([graph, size], ([next, viewport], [previous, oldViewport]) => {
   const current = next.nodes.get(props.anchor);
@@ -132,6 +157,7 @@ function zoom(factor: number, x = size.value.width / 2, y = size.value.height / 
 function wheel(event: WheelEvent) {
   if (event.ctrlKey || event.metaKey || !port.value) return;
   event.preventDefault();
+  port.value.querySelector<HTMLButtonElement>('.network-node-more[aria-expanded="true"]')?.click();
   const rect = port.value.getBoundingClientRect();
   const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
   const delta = Math.max(-300, Math.min(300, event.deltaY * units));
@@ -177,6 +203,20 @@ function nodeTooltip(id: string): string | undefined {
   return readOverflowText(
     port.value?.querySelector(`[data-node-title='${CSS.escape(id)}']`) ?? null
   );
+}
+
+function openNodeMenu(event: MouseEvent | KeyboardEvent) {
+  if (
+    event instanceof KeyboardEvent &&
+    event.key !== 'ContextMenu' &&
+    !(event.shiftKey && event.key === 'F10')
+  )
+    return;
+  const node = (event.currentTarget as HTMLElement).closest('[data-network-node]');
+  const more = node?.querySelector<HTMLButtonElement>('.network-node-more');
+  if (!more || more.disabled) return;
+  event.preventDefault();
+  if (more.getAttribute('aria-expanded') !== 'true') more.click();
 }
 
 function stopDragClick(event: MouseEvent) {
@@ -382,37 +422,76 @@ function showFocusedEdge(event: FocusEvent) {
           </g>
         </svg>
         <template v-for="session in sessions" :key="session.id">
-          <button
+          <div
             v-if="graph.nodes.has(session.id)"
-            v-tooltip="() => nodeTooltip(session.id)"
-            type="button"
-            class="network-node"
-            :data-network-session="session.id"
-            :class="{ 'is-current': session.id === anchor, 'is-selected': session.id === selected }"
+            class="network-node-shell"
+            :data-network-node="session.id"
             :style="{
               left: `${graph.nodes.get(session.id)!.x}px`,
               top: `${graph.nodes.get(session.id)!.y}px`,
               width: `${collaborationNodeSize.width}px`,
               height: `${collaborationNodeSize.height}px`
             }"
-            :aria-pressed="session.id === selected"
-            :aria-current="session.id === anchor ? 'true' : undefined"
-            :aria-description="descriptions.get(session.id)?.join('; ')"
-            @focus="showFocused(session.id)"
-            @click="emit('select', session.id)"
           >
-            <span class="network-node-icon">
-              <MarIcon name="agent-session" :size="18" />
-            </span>
-            <span class="network-node-copy">
-              <span class="network-node-title" :data-node-title="session.id">{{
-                session.title
-              }}</span>
-              <span v-if="session.id === anchor" class="network-node-badge">{{
-                translate('collaboration.current')
-              }}</span>
-            </span>
-          </button>
+            <button
+              v-tooltip="() => nodeTooltip(session.id)"
+              type="button"
+              class="network-node"
+              :class="{
+                'is-current': session.id === anchor,
+                'is-selected': session.id === selected
+              }"
+              :aria-pressed="session.id === selected"
+              :aria-current="session.id === anchor ? 'true' : undefined"
+              :aria-description="descriptions.get(session.id)?.join('; ')"
+              @focus="showFocused(session.id)"
+              @click="emit('select', session.id)"
+              @contextmenu="openNodeMenu"
+              @keydown="openNodeMenu"
+            >
+              <span class="network-node-icon">
+                <MarIcon name="agent-session" :size="18" />
+              </span>
+              <span class="network-node-copy">
+                <span class="network-node-title" :data-node-title="session.id">{{
+                  session.title
+                }}</span>
+                <span v-if="session.id === anchor" class="network-node-badge">{{
+                  translate('collaboration.current')
+                }}</span>
+              </span>
+            </button>
+            <MarDropdown
+              class="network-node-actions"
+              placement="bottom-end"
+              :persistent="false"
+              :disabled="!canOpenSession"
+              @command="
+                ($event === 'aside' || $event === 'main') && emit('open', session.id, $event)
+              "
+            >
+              <MarButton
+                v-tooltip="translate('sessionGroups.actions')"
+                class="network-node-more mar-icon-action"
+                icon="more"
+                text
+                :aria-label="translate('collaboration.sessionActions', { title: session.title })"
+                @focus="showFocused(session.id)"
+                @contextmenu="openNodeMenu"
+                @keydown="openNodeMenu"
+              />
+              <template #dropdown>
+                <MarDropdownMenu @pointerdown.stop @wheel.stop>
+                  <MarDropdownItem icon="split" command="aside">
+                    {{ translate('sessionGroups.openAside') }}
+                  </MarDropdownItem>
+                  <MarDropdownItem icon="external-link" command="main">
+                    {{ translate('sessionGroups.openMain') }}
+                  </MarDropdownItem>
+                </MarDropdownMenu>
+              </template>
+            </MarDropdown>
+          </div>
         </template>
       </div>
     </div>
@@ -425,30 +504,37 @@ function showFocusedEdge(event: FocusEvent) {
           }}</span
         >
       </div>
-      <div class="network-controls" :aria-label="translate('collaboration.viewControls')">
+      <div
+        class="network-controls"
+        role="group"
+        :aria-label="translate('collaboration.viewControls')"
+      >
+        <div class="network-zoom" role="group" :aria-label="translate('collaboration.zoom')">
+          <MarButton
+            icon="subtract"
+            text
+            :aria-label="translate('collaboration.zoomOut')"
+            v-tooltip="translate('collaboration.zoomOut')"
+            :aria-disabled="!canZoomOut || undefined"
+            @click="canZoomOut && zoom(1 / 1.2)"
+          />
+          <output>{{ Math.round(camera.scale * 100) }}%</output>
+          <MarButton
+            icon="plus"
+            text
+            :aria-label="translate('collaboration.zoomIn')"
+            v-tooltip="translate('collaboration.zoomIn')"
+            :aria-disabled="!canZoomIn || undefined"
+            @click="canZoomIn && zoom(1.2)"
+          />
+        </div>
         <MarButton
-          :aria-label="translate('collaboration.zoomOut')"
-          :disabled="camera.scale <= MIN_COLLABORATION_SCALE"
-          @click="zoom(1 / 1.2)"
-        >
-          <MarIcon name="subtract" />
-        </MarButton>
-        <output>{{ Math.round(camera.scale * 100) }}%</output>
-        <MarButton
-          :aria-label="translate('collaboration.zoomIn')"
-          :disabled="camera.scale >= MAX_COLLABORATION_SCALE"
-          @click="zoom(1.2)"
-        >
-          <MarIcon name="plus" />
-        </MarButton>
-        <MarButton
-          class="network-fit"
-          icon="fullscreen"
+          class="network-fit mar-view-toolbar-control"
+          icon="fit"
           :aria-label="translate('collaboration.fit')"
           v-tooltip="translate('collaboration.fit')"
           @click="position()"
-          >{{ translate('collaboration.fit') }}</MarButton
-        >
+        />
         <MarButton icon="locate-current" @click="position(anchor, true)">{{
           translate('collaboration.locate')
         }}</MarButton>
@@ -549,9 +635,15 @@ function showFocusedEdge(event: FocusEvent) {
 .network-arrow {
   fill: var(--mar-border-strong);
 }
-.network-node {
+.network-node-shell {
   position: absolute;
   transform: translate(-50%, -50%);
+  --network-node-more-size: 1.875rem;
+}
+.network-node {
+  box-sizing: border-box;
+  inline-size: 100%;
+  block-size: 100%;
   border-radius: var(--mar-radius-selection);
   border: 1px solid var(--mar-border-medium);
   background: var(--mar-bg-panel);
@@ -560,6 +652,7 @@ function showFocusedEdge(event: FocusEvent) {
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
+  padding-inline-end: calc(var(--network-node-more-size) + 0.375rem);
   text-align: start;
   font-size: var(--mar-font-size-detail);
   font-weight: 400;
@@ -596,6 +689,17 @@ function showFocusedEdge(event: FocusEvent) {
   font-size: var(--mar-font-size-meta);
   color: var(--mar-text-secondary);
 }
+.network-node-actions {
+  position: absolute;
+  inset-inline-end: 0.25rem;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+}
+.network-node-more {
+  inline-size: var(--network-node-more-size);
+  block-size: var(--network-node-more-size);
+  padding: 0;
+}
 .network-toolbar,
 .network-controls,
 .network-legend,
@@ -612,15 +716,53 @@ function showFocusedEdge(event: FocusEvent) {
   padding: 0.5rem 0.625rem;
 }
 .network-controls {
-  gap: 0.25rem;
+  gap: 0.375rem;
   flex-wrap: wrap;
   touch-action: manipulation;
 }
-.network-controls output {
+.network-zoom {
+  display: inline-flex;
+  flex: none;
+  align-items: stretch;
+  border: 1px solid var(--mar-border-default);
+  border-radius: var(--mar-radius-control);
+  background: var(--mar-bg-panel);
+}
+.network-zoom > .mar-ui-button,
+.network-fit {
+  flex: none;
+  inline-size: var(--mar-compact-control-size);
+  padding-inline: 0;
+}
+.network-zoom > .mar-ui-button {
+  border: 0;
+  border-radius: calc(var(--mar-radius-control) - 1px);
+  min-block-size: calc(var(--mar-compact-control-size) - 2px);
+}
+.network-zoom > [aria-disabled='true'] {
+  color: var(--mar-text-disabled);
+  cursor: not-allowed;
+}
+.network-zoom > .mar-ui-button:first-child {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.network-zoom > .mar-ui-button:last-child {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+.network-zoom output {
+  display: grid;
+  place-items: center;
+  min-inline-size: calc(4ch + 1rem);
+  padding-inline: 0.5rem;
+  box-sizing: border-box;
+  border-inline: 1px solid var(--mar-border-subtle);
   font-size: var(--mar-font-size-meta);
-  text-align: center;
-  min-width: 2.5em;
   font-variant-numeric: tabular-nums;
+}
+.network-controls > .mar-ui-button + .mar-ui-button {
+  margin-inline-start: 0;
 }
 .network-legend {
   gap: 0.75rem;
@@ -646,13 +788,5 @@ function showFocusedEdge(event: FocusEvent) {
 .network-legend .legend-sharing {
   border-top-color: var(--network-sharing-stroke);
   border-top-style: dashed;
-}
-@media (max-width: 430px) {
-  .network-fit :deep(.mar-ui-button__label) {
-    display: none;
-  }
-  .network-fit {
-    gap: 0;
-  }
 }
 </style>

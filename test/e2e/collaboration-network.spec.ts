@@ -75,7 +75,7 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
   await expect(tooltip).toHaveText(childName);
   await page.mouse.move(1, 1);
   await expect(tooltip).not.toBeVisible();
-  await port.getByRole('button', { name: '文档更新', exact: true }).focus();
+  await port.getByRole('button', { name: '会话操作：文档更新', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(child).toBeFocused();
   await expect(tooltip).toHaveText(childName);
@@ -92,7 +92,7 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
   await heading.hover();
   await expect(tooltip).toHaveText(`白板 · ${childName}`);
   await page.mouse.move(1, 1);
-  await board.getByRole('button', { name: '在主工作面打开' }).focus();
+  await dialog.getByRole('button', { name: '定位', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(heading).toBeFocused();
   await expect(tooltip).toHaveText(`白板 · ${childName}`);
@@ -127,20 +127,25 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
 });
 
 test('keeps stale board content hidden until the navigation retry succeeds', async ({ page }) => {
-  const { dialog, current } = await openNetwork(page, 'dark');
+  const { dialog, port, current } = await openNetwork(page, 'dark');
   const board = dialog.getByRole('region', { name: '白板', exact: true });
+  const more = dialog.getByRole('button', { name: '会话操作：发布协调', exact: true });
   const content = board.getByText('发布前先核对回归结果。');
   await expect(content).toBeVisible();
+  await more.press('Enter');
+  await expect(dialog.getByRole('menuitem', { name: '在侧栏打开' })).toBeFocused();
   await page.evaluate(() => window.dispatchEvent(new Event('fixture-board-failed')));
+  await expect(dialog.getByRole('menu')).toBeHidden();
+  await expect(port).toBeFocused();
   await expect(content).toBeHidden();
   await dialog.getByRole('button', { name: '重试' }).click();
   await expect(board.getByRole('status', { name: '正在读取白板' })).toBeVisible();
   await expect(content).toBeHidden();
-  await expect(board.getByRole('button', { name: '在主工作面打开' })).toBeDisabled();
+  await expect(more).toBeDisabled();
   await expect(current).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('fixture-board-recovered')));
   await expect(content).toBeVisible();
-  await expect(board.getByRole('button', { name: '在主工作面打开' })).toBeEnabled();
+  await expect(more).toBeEnabled();
 });
 
 test('opens the full network from a deep Aside session and centers only its entry', async ({
@@ -149,11 +154,11 @@ test('opens the full network from a deep Aside session and centers only its entr
   await page.setViewportSize({ width: 1480, height: 940 });
   const { dialog, port } = await openNetwork(page, 'dark');
   const layout = () =>
-    port.locator('.network-node').evaluateAll((nodes) =>
+    port.locator('[data-network-node]').evaluateAll((nodes) =>
       nodes
         .map((node) => {
           const { dataset, style } = node as HTMLElement;
-          return [dataset.networkSession, style.left, style.top].join(':');
+          return [dataset.networkNode, style.left, style.top].join(':');
         })
         .sort()
     );
@@ -168,8 +173,8 @@ test('opens the full network from a deep Aside session and centers only its entr
           .sort()
       );
   const mainEdges = await edgeLayout();
-  await port.getByRole('button', { name: '发布前冒烟' }).press('Enter');
-  await dialog.getByRole('button', { name: '在侧栏打开' }).click();
+  await port.getByRole('button', { name: '发布前冒烟', exact: true }).press('Shift+F10');
+  await dialog.getByRole('menuitem', { name: '在侧栏打开' }).click();
   await expect(dialog).toBeHidden();
   await page
     .getByRole('complementary', { name: 'Aside' })
@@ -248,11 +253,8 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await expect(board.getByText('Added 2 entries')).toBeVisible();
   await expect(board.getByText('只读', { exact: true })).toHaveCount(0);
   const heading = board.getByRole('heading', { name: '白板 · 发布协调' });
-  const actions = board.getByRole('group', { name: '打开 发布协调' });
   await expect(heading).toBeVisible();
-  expect((await actions.boundingBox())!.y + (await actions.boundingBox())!.height).toBeLessThan(
-    (await heading.boundingBox())!.y
-  );
+  await expect(board.getByRole('button', { name: /打开/ })).toHaveCount(0);
   const [titleBox, boardIconBox] = await Promise.all([
     heading.locator('.clip-title').boundingBox(),
     heading.locator('[data-mar-icon="collection"]').boundingBox()
@@ -262,9 +264,6 @@ test('focuses the current session in a complex network, zooms at the pointer and
   ).toBeLessThan(1);
   await expect(dialog.getByText('会话详情', { exact: true })).toHaveCount(0);
   await expect(current).toHaveAccessibleDescription(/父会话：发布计划.*关注 安全审查 的白板/);
-  await expect(
-    board.getByRole('button', { name: '在主工作面打开' }).locator('[data-mar-icon="external-link"]')
-  ).toBeVisible();
   await page.screenshot({
     path: info.outputPath('collaboration-network-desktop.png'),
     animations: 'disabled'
@@ -278,13 +277,13 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await page.mouse.move(start.x + 86, start.y + 37, { steps: 5 });
   await page.mouse.up();
   await expect.poll(centered).toBeGreaterThan(70);
-  await dialog.getByRole('button', { name: '定位当前' }).click();
+  await dialog.getByRole('button', { name: '定位', exact: true }).click();
   await expect.poll(centered).toBeLessThan(2);
   await page.mouse.move(viewport.x + viewport.width * 0.28, viewport.y + viewport.height * 0.35);
   await page.mouse.wheel(0, -240);
   await expect(dialog.locator('output')).not.toHaveText('80%');
   await expect.poll(centered).toBeGreaterThan(30);
-  await dialog.getByRole('button', { name: '定位当前' }).click();
+  await dialog.getByRole('button', { name: '定位', exact: true }).click();
   await expect.poll(centered).toBeLessThan(2);
   const clickEdge = async (name: string) => {
     const edge = port.getByRole('button', { name, exact: true });
@@ -319,8 +318,92 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await expect(board.getByText('核对权限审查的结论。')).toBeVisible();
   await expect(port.locator('.is-selected-edge')).toHaveCount(0);
   await expect(board.getByRole('heading', { name: '共享白板 · 安全审查' })).toBeVisible();
-  await board.getByRole('button', { name: '在主工作面打开' }).click();
+});
+
+test('opens the same node menu by More and right click without selecting that node', async ({
+  page
+}, info) => {
+  await page.setViewportSize({ width: 1480, height: 940 });
+  const { dialog, port, current } = await openNetwork(page, 'dark');
+  const node = port.getByRole('button', { name: '安全审查', exact: true });
+  const more = port.getByRole('button', { name: '会话操作：安全审查', exact: true });
+  const menu = dialog.getByRole('menu');
+  const aside = menu.getByRole('menuitem', { name: '在侧栏打开' });
+  const main = menu.getByRole('menuitem', { name: '在主工作面打开' });
+  await expect(more.locator('[data-mar-icon="more"]')).toBeVisible();
+  await more.click();
+  await expect(aside).toBeFocused();
+  await expect(aside.locator('[data-mar-icon="split"]')).toBeVisible();
+  await expect(main.locator('[data-mar-icon="external-link"]')).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(main).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(more).toBeFocused();
+
+  await node.click({ button: 'right' });
+  await expect(aside).toBeFocused();
+  await expect(current).toHaveAttribute('aria-pressed', 'true');
+  await expect(node).toHaveAttribute('aria-pressed', 'false');
+  await expect(dialog.getByRole('heading', { name: '白板 · 发布协调' })).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath('collaboration-network-node-menu.png'),
+    animations: 'disabled'
+  });
+  await main.click();
+  await expect(dialog).toBeHidden();
   await expect(page.getByRole('status')).toHaveText('main: peer-a');
+});
+
+test('keeps the three zoom controls together and fits the network at 320px in English', async ({
+  page
+}, info) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto(`${fixture.url}collaboration-network.html?theme=dark&locale=en-US`);
+  await page.getByRole('button', { name: 'View collaboration network' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Collaboration network', exact: true });
+  const controls = dialog.getByRole('group', { name: 'Canvas controls' });
+  const zoom = controls.getByRole('group', { name: 'Zoom', exact: true });
+  const out = zoom.getByRole('button', { name: 'Zoom out' });
+  const scale = zoom.getByRole('status');
+  const plus = zoom.getByRole('button', { name: 'Zoom in' });
+  const fit = controls.getByRole('button', { name: 'Fit network' });
+  const locate = controls.getByRole('button', { name: 'Locate', exact: true });
+  await expect(scale).toHaveText('80%');
+  await expect(out).toBeDisabled();
+  await expect(fit.locator('[data-mar-icon="fit"]')).toBeVisible();
+  const [outBox, scaleBox, plusBox, controlsBox, locateBox] = await Promise.all(
+    [out, scale, plus, controls, locate].map((locator) => locator.boundingBox())
+  );
+  expect(outBox!.y).toBe(plusBox!.y);
+  expect(outBox!.x + outBox!.width).toBeCloseTo(scaleBox!.x);
+  expect(scaleBox!.x + scaleBox!.width).toBeCloseTo(plusBox!.x);
+  expect(locateBox!.x + locateBox!.width).toBeLessThanOrEqual(controlsBox!.x + controlsBox!.width);
+
+  await plus.press('Enter');
+  await expect(scale).toHaveText('96%');
+  await out.press('Enter');
+  await expect(scale).toHaveText('80%');
+  await expect(out).toBeDisabled();
+  await expect(out).toBeFocused();
+  await out.press('Space');
+  await expect(scale).toHaveText('80%');
+  await page.keyboard.press('Tab');
+  await expect(plus).toBeFocused();
+  for (let step = 0; step < 5; step++) await page.keyboard.press('Enter');
+  await expect(scale).toHaveText('175%');
+  await expect(plus).toBeDisabled();
+  await expect(plus).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(fit).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(scale).toHaveText('80%');
+  await locate.click();
+  await page.screenshot({
+    path: info.outputPath('collaboration-network-zoom-mobile.png'),
+    animations: 'disabled'
+  });
 });
 
 test.describe('narrow viewport', () => {
@@ -385,7 +468,7 @@ test.describe('touch viewport', () => {
     }
     await expect(port).not.toHaveClass(/is-dragging/);
     await expect(parent).toHaveAttribute('aria-pressed', 'true');
-    await dialog.getByRole('button', { name: '定位当前' }).tap();
+    await dialog.getByRole('button', { name: '定位', exact: true }).tap();
     await expect
       .poll(async () => Math.abs((await current.boundingBox())!.x - initial.x))
       .toBeLessThan(2);
@@ -405,5 +488,16 @@ test.describe('touch viewport', () => {
       path: info.outputPath('collaboration-network-mobile.png'),
       animations: 'disabled'
     });
+    await port.getByRole('button', { name: '会话操作：发布协调', exact: true }).tap();
+    const menu = dialog.getByRole('menu');
+    await expect(menu).toBeVisible();
+    await expect(edge).toHaveAttribute('aria-pressed', 'true');
+    await page.screenshot({
+      path: info.outputPath('collaboration-network-mobile-menu.png'),
+      animations: 'disabled'
+    });
+    await menu.getByRole('menuitem', { name: '在侧栏打开' }).tap();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('status')).toHaveText('aside: release-current');
   });
 });

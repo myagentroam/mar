@@ -1,0 +1,15 @@
+/* Shared button surfaces for file previews and workspace view tools. */
+.workspace-file-page-frame :is(.file-toolbar-control, .image-preview-control).mar-ui-button,
+.mar-view-toolbar-control.mar-ui-button {
+  --mar-ui-button-bg: var(--mar-bg-panel);
+  --mar-ui-button-border: var(--mar-border-default);
+  --mar-ui-button-fg: var(--mar-text-secondary);
+  --mar-ui-button-hover-bg: var(--mar-fill-row-hover);
+  --mar-ui-button-hover-border: var(--mar-border-medium);
+  --mar-ui-button-hover-fg: var(--mar-text-primary);
+  --mar-ui-button-active-bg: var(--mar-fill-selection);
+  --mar-ui-button-active-border: var(--mar-border-medium);
+  --mar-ui-button-active-fg: var(--mar-text-primary);
+  --mar-ui-button-disabled-bg: var(--mar-bg-panel);
+  --mar-ui-button-disabled-border: var(--mar-border-subtle);
+}

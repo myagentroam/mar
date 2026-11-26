@@ -11,7 +11,7 @@ import { createTooltipApp } from './tooltip-app.js';
 import '../../src/styles.css';
 
 const query = new URLSearchParams(location.search);
-localePreferenceService().setLocale('zh-CN');
+localePreferenceService().setLocale(query.get('locale') === 'en-US' ? 'en-US' : 'zh-CN');
 themePreferenceService().setTheme(query.get('theme') === 'daylight' ? 'daylight' : 'dark');
 
 function session(

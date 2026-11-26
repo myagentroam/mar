@@ -88,9 +88,6 @@ const board = computed(() => {
   return result?.sessionId === boardId.value ? result : result === null ? null : undefined;
 });
 const boardTitle = computed(() => board.value?.title ?? boardOwner.value?.title);
-const canOpenBoardSession = computed(
-  () => props.status === 'ready' && Boolean(boardOwner.value || board.value)
-);
 
 function select(next: BoardSelection) {
   const previousBoard = boardId.value;
@@ -160,35 +157,17 @@ function time(at: number) {
           :selected-edge="selectedEdge"
           :sessions="currentGraph.sessions"
           :sharing="currentGraph.sharing"
+          :can-open-session="status === 'ready'"
           @select="(sessionId) => select({ kind: 'session', sessionId })"
           @board="(edge) => select({ kind: 'sharing', edge })"
+          @open="
+            (sessionId, destination) => status === 'ready' && emit('open', sessionId, destination)
+          "
         />
         <section
           class="collaboration-inspector"
           :aria-label="translate('collaboration.whiteboard')"
         >
-          <div class="board-panel-header">
-            <div
-              class="board-actions"
-              role="group"
-              :aria-label="translate('collaboration.openSession', { title: boardTitle ?? title })"
-            >
-              <MarButton
-                icon="split"
-                :disabled="!canOpenBoardSession"
-                @click="emit('open', boardId, 'aside')"
-              >
-                {{ translate('sessionGroups.openAside') }}
-              </MarButton>
-              <MarButton
-                icon="external-link"
-                :disabled="!canOpenBoardSession"
-                @click="emit('open', boardId, 'main')"
-              >
-                {{ translate('sessionGroups.openMain') }}
-              </MarButton>
-            </div>
-          </div>
           <div class="board-heading">
             <h3
               v-tooltip="() => readOverflowText(boardHeadingLabel)"
@@ -285,17 +264,8 @@ function time(at: number) {
   border-inline-start: 1px solid var(--mar-border-subtle);
   overflow-wrap: anywhere;
 }
-.board-panel-header {
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--mar-border-subtle);
-}
-.board-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
 .board-heading {
-  margin: 0.875rem 0 0.375rem;
+  margin: 0 0 0.375rem;
 }
 .board-heading .board-title {
   display: flex;
@@ -315,14 +285,6 @@ function time(at: number) {
 }
 .collaboration-inspector p {
   font-size: var(--mar-font-size-body);
-}
-.board-actions {
-  flex-wrap: wrap;
-}
-.collaboration-inspector :deep(.mar-ui-button) {
-  max-width: 100%;
-  white-space: normal;
-  text-align: start;
 }
 .collaboration-placeholder {
   min-height: 14rem;
