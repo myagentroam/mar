@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { grantClipboardPermissions } from './support/clipboard.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 async function captureScreenshot(page: Page, name: string): Promise<void> {
@@ -391,6 +392,62 @@ test('Text file commands follow the focused preview and ignore composition', asy
     await expect(count).toHaveText('0');
     await page.keyboard.press('Control+Shift+v');
     await expect(count).toHaveText('1');
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('Read-only text selects and copies the entire file without editing it', async ({ page }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+  try {
+    const content = Array.from({ length: 600 }, (_, index) => `// Source line ${index + 1}`).join(
+      '\n'
+    );
+    await page.route('**/api/workspaces/workspace/files/read?*', (route) => {
+      const path = new URL(route.request().url()).searchParams.get('path');
+      const text = path === 'source.ts' ? content : '// Background tab';
+      return route.fulfill({
+        json: {
+          file: {
+            encoding: 'utf-8',
+            content: text,
+            size: text.length,
+            revision: 'r1',
+            nextOffset: null
+          }
+        }
+      });
+    });
+    await grantClipboardPermissions(page.context(), { origin: fixture.url });
+    await page.goto(`${fixture.url}file-tabs.html?navigation-ownership`);
+    await page.getByRole('button', { name: 'Open navigation fixture tabs' }).click();
+    const frame = page.locator('.workspace-file-page-frame:visible');
+    const editor = frame.getByRole('textbox', { name: 'Code editor preview', exact: true });
+    const download = frame.getByRole('button', { name: 'Download file', exact: true });
+    await expect(editor).toBeVisible();
+    await download.focus();
+    await page.keyboard.press('Tab');
+    await expect(editor).toBeFocused();
+
+    await download.focus();
+    await frame.getByText('// Source line 1', { exact: true }).click();
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveAttribute('aria-readonly', 'true');
+    await expect(frame.getByText('// Source line 600', { exact: true })).toHaveCount(0);
+
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('ControlOrMeta+c');
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(content);
+
+    await page.keyboard.press('ControlOrMeta+f');
+    const search = frame.getByRole('search').getByRole('textbox', { name: 'Find', exact: true });
+    await search.fill('Source line');
+    await search.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.insertText('line 600');
+    await expect(search).toHaveValue('line 600');
   } finally {
     await fixture.close();
   }

@@ -367,6 +367,16 @@ function focus(): void {
   previewRoot.value?.root?.focus();
 }
 
+function focusPreviewContent(event: MouseEvent): void {
+  if (
+    !editing.value &&
+    event.currentTarget instanceof HTMLElement &&
+    !event.currentTarget.contains(document.activeElement)
+  ) {
+    focus();
+  }
+}
+
 function cursorPosition(): { readonly line: number; readonly column: number } | undefined {
   if (codeEditorEnabled.value) return codeEditor.value?.cursorPosition();
   const textarea = fallbackTextArea.value;
@@ -1182,7 +1192,7 @@ defineExpose({
           codeEditorEnabled && !(markdown && renderMarkdown && markdownResourceUrl && !editing),
         'file-preview-content-fallback': !codeEditorEnabled
       }"
-      @click="!editing && focus()"
+      @click="focusPreviewContent"
     >
       <template v-if="!loading">
         <MarkdownFilePreview
@@ -1196,7 +1206,7 @@ defineExpose({
           v-else-if="codeEditorEnabled"
           ref="codeEditor"
           v-model="editorContent"
-          :aria-label="translate('generated.filePreviewDialog.codeEditorPreview')"
+          :accessible-label="translate('generated.filePreviewDialog.codeEditorPreview')"
           :path="file.path"
           :read-only="!editing"
           :target-line="targetLine"
