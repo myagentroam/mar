@@ -30,23 +30,19 @@ if (!options.list && options.mode === 'smoke') {
     }
   }
 }
-if (!options.list && (options.mode === 'smoke' || prebuiltWeb)) {
-  const listeners = [];
-  async function reservePort() {
-    const listener = createServer();
-    listeners.push(listener);
-    return new Promise((resolve, reject) => {
+if (
+  !options.list &&
+  (options.mode === 'smoke' || prebuiltWeb) &&
+  process.env.MAR_E2E_WEB_PORT === undefined
+) {
+  const listener = createServer();
+  try {
+    process.env.MAR_E2E_WEB_PORT = await new Promise((resolve, reject) => {
       listener.once('error', reject);
       listener.listen(0, '127.0.0.1', () => resolve(String(listener.address().port)));
     });
-  }
-  try {
-    process.env.MAR_E2E_WEB_PORT ??= await reservePort();
-    if (prebuiltWeb) process.env.MAR_E2E_SERVER_PORT ??= await reservePort();
   } finally {
-    await Promise.all(
-      listeners.map((listener) => new Promise((resolve) => listener.close(resolve)))
-    );
+    await new Promise((resolve) => listener.close(resolve));
   }
 }
 
@@ -84,7 +80,13 @@ const reportPath = resolve(root, `test/runs/playwright-results-${testRunId}.json
 try {
   if (!options.list && options.mode === 'full') {
     if (prebuiltWeb) {
-      await access(resolve(root, 'mar-web-console/dist/index.html'));
+      await access(
+        resolve(
+          root,
+          process.env.MAR_E2E_PRODUCTION_PACKAGE?.trim() ?? 'mar-server',
+          'web/index.html'
+        )
+      );
     } else {
       const buildCode = await run('pnpm', ['--filter', '@myagentroam/web-console', 'build']);
       if (buildCode !== 0 || interrupted) throw new Error('E2E_WEB_BUILD_FAILED');

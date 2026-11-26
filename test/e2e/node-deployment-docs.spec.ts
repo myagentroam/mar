@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { selectAppearanceOption } from './support/web-auth-settings-fixture.js';
+import { json, mockConsoleApi } from './support/web-console-api.js';
 
 test('Public documentation requires no login and supports stable deep links', async ({
   page,
@@ -7,6 +10,22 @@ test('Public documentation requires no login and supports stable deep links', as
   const response = await request.get('/docs/getting-started/overview');
   expect(response.ok()).toBe(true);
   expect(response.headers()['content-type']).toContain('text/html');
+  if (test.info().config.metadata['marWebSource'] === 'server-build') {
+    const web = new URL('../../mar-server/web/', import.meta.url);
+    const consoleResponse = await request.get('/console');
+    expect(consoleResponse.ok()).toBe(true);
+    expect(
+      (await consoleResponse.body()).equals(await readFile(new URL('index.html', web))),
+      'Console must serve the prebuilt HTML, not the development entry point'
+    ).toBe(true);
+    expect(
+      (await response.body()).equals(
+        await readFile(new URL('docs/getting-started/overview.html', web))
+      ),
+      'Documentation must serve the prebuilt HTML, not a development page'
+    ).toBe(true);
+    expect((await request.get('/api/auth/me')).status()).toBe(401);
+  }
   const logo = await request.get('/docs/logo.png');
   expect(logo.ok()).toBe(true);
   expect(logo.headers()['content-type']).toContain('image/png');
@@ -104,10 +123,16 @@ test('Documentation language switching preserves deep links and browser preferen
   await expect.poll(() => page.evaluate(() => localStorage.getItem('mar.locale.v2'))).toBe('zh-CN');
   await page.goto(english);
   const otherPage = await context.newPage();
+  await mockConsoleApi(otherPage, 'MANAGED', ['history.read', 'turn.start'], []);
+  await otherPage.route('**/api/auth/preferences/locale', (route) =>
+    json(route, { locale: route.request().postDataJSON().locale })
+  );
   await otherPage.goto('/');
   await expect(otherPage.locator('html')).toHaveAttribute('lang', 'en-US');
-  await otherPage.getByRole('combobox', { name: 'Switch to Chinese' }).click();
-  await otherPage.getByRole('option', { name: '简体中文' }).click();
+  await otherPage.getByRole('button', { name: 'Open console' }).click();
+  await otherPage.getByRole('button', { name: 'Settings', exact: true }).click();
+  await otherPage.getByRole('button', { name: 'Appearance', exact: true }).click();
+  await selectAppearanceOption(otherPage, 'Language', '简体中文');
   await expect(page).toHaveURL(/\/docs\/getting-started\/overview$/u);
   await expect(page.getByRole('heading', { name: 'MyAgentRoam 是什么' })).toBeVisible();
   await page.goto(english);
