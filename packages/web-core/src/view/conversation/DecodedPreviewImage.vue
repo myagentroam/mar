@@ -13,6 +13,7 @@ const props = defineProps<{
   readonly source: string;
   readonly name: string;
   readonly original?: boolean;
+  readonly direct?: boolean | undefined;
 }>();
 const emit = defineEmits<{ error: [source: string]; ready: [resized: boolean] }>();
 const preview = shallowRef<LoadedImagePreview>();
@@ -26,7 +27,7 @@ function reset(): void {
   retry.value += 1;
 }
 watch(
-  [() => props.source, () => props.original, retry],
+  [() => props.source, () => props.original, () => props.direct, retry],
   async (_, __, onCleanup) => {
     const current = ++generation.value;
     const controller = new AbortController();
@@ -44,7 +45,8 @@ watch(
       loaded = await loadConversationImagePreview(
         props.source,
         props.original === true,
-        controller.signal
+        controller.signal,
+        props.direct
       );
       if (controller.signal.aborted || current !== generation.value) {
         loaded.release();

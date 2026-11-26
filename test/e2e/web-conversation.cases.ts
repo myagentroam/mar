@@ -28,6 +28,32 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
   ];
   const imageSvg = ({ width, height }: { width: number; height: number }) =>
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#4b80bd"/></svg>`;
+  // A looping 12×10 GIF whose first frame is transparent and whose second frame is red.
+  const animation = Buffer.from(
+    'R0lGODlhDAAKAIAAAExpcQAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQFCgAAACwAAAAADAAKAAACCYSPqcvtD6OcBQAh+QQFWgAAACwAAAAADAAKAIBMaXHrAAACCYyPqcvtD6OcBQA7',
+    'base64'
+  );
+  async function expectVisibleGifFrame(image: Locator): Promise<void> {
+    await expect
+      .poll(async () => {
+        // Canvas drawImage on the GIF itself can read its first frame. Sample the rendered pixels.
+        const screenshot = await image.screenshot({ scale: 'css', timeout: 2_000 });
+        return page.evaluate(async (png) => {
+          const bitmap = await createImageBitmap(new Blob([Uint8Array.from(png)]));
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 1;
+            const context = canvas.getContext('2d')!;
+            context.drawImage(bitmap, bitmap.width >> 1, bitmap.height >> 1, 1, 1, 0, 0, 1, 1);
+            const [red = 0, green = 255, blue = 255] = context.getImageData(0, 0, 1, 1).data;
+            return red > 180 && green < 40 && blue < 40;
+          } finally {
+            bitmap.close();
+          }
+        }, Array.from(screenshot));
+      })
+      .toBe(true);
+  }
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
     fulfillMockSessionWatch(
@@ -47,7 +73,7 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
               kind: 'assistant_message',
               status: 'COMPLETED',
               payload: {
-                text: `**Desktop**\n\n![Desktop screenshot](/tmp/desktop.png)\n\n**Mobile**\n\n![Mobile screenshot](output/mobile.png)\n\n![${longImageName}](https://images.example/screenshot.png)`
+                text: `**Desktop**\n\n![Desktop screenshot](/tmp/desktop.png)\n\n**Mobile**\n\n![Mobile screenshot](output/mobile.png)\n\n![${longImageName}](https://images.example/screenshot.png)\n\n![Animation](output/animation.gif)`
               }
             }
           ]
@@ -55,17 +81,19 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       ])
     )
   );
-  await page.route('**/api/workspaces/workspace-1/files/content?**', (route) =>
-    route.fulfill({
+  await page.route('**/api/workspaces/workspace-1/files/content?**', (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    if (query.get('path') === 'output/animation.gif') {
+      return query.has('maxWidth') || query.has('maxHeight')
+        ? route.fulfill({ status: 422 })
+        : route.fulfill({ contentType: 'image/gif', body: animation });
+    }
+    return route.fulfill({
       contentType: 'image/svg+xml',
       headers: { 'x-mar-image-resized': '0' },
-      body: imageSvg(
-        new URL(route.request().url()).searchParams.get('path')?.endsWith('mobile.png')
-          ? imageSizes[1]!
-          : imageSizes[0]!
-      )
-    })
-  );
+      body: imageSvg(query.get('path')?.endsWith('mobile.png') ? imageSizes[1]! : imageSizes[0]!)
+    });
+  });
   await page.route('https://images.example/screenshot.png', (route) =>
     route.fulfill({ contentType: 'image/svg+xml', body: imageSvg(imageSizes[2]!) })
   );
@@ -88,15 +116,20 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
     await page.setViewportSize({ width, height });
     await page.reload();
     const thumbnails = page.locator('.agent-markdown [data-image-preview]');
-    await expect(thumbnails).toHaveCount(3);
-    for (let index = 0; index < 3; index += 1) {
+    await expect(thumbnails).toHaveCount(4);
+    for (let index = 0; index < imageSizes.length; index += 1) {
       const thumbnail = thumbnails.nth(index);
       const img = thumbnail.locator('img');
-      await thumbnail.evaluate((element) =>
-        element.scrollIntoView({ block: 'center', inline: 'nearest' })
-      );
       await expect
-        .poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth))
+        .poll(
+          () =>
+            img.evaluate((element) => {
+              if (!element.naturalWidth)
+                element.scrollIntoView({ block: 'center', inline: 'nearest' });
+              return element.naturalWidth;
+            }),
+          { message: `Load Markdown image ${index + 1} at ${width}×${height}` }
+        )
         .toBe(imageSizes[index]!.width);
       const bounds = await img.boundingBox();
       // DOM rectangles can differ by a floating-point rounding step in Firefox.
@@ -152,10 +185,12 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
         await expect(dialog).toBeVisible();
       }
       await expect(title).toHaveCSS('text-overflow', 'ellipsis');
-      await expect(dialog.locator('img')).toHaveCSS('object-fit', 'contain');
-      await expect(dialog.locator('img')).toHaveCSS('object-position', '50% 50%');
+      await expect(previewImage).toBeVisible();
       const layout = await frame.evaluate((element) => {
         const body = element.querySelector('.mar-ui-dialog__body')!.getBoundingClientRect();
+        const viewport = element
+          .querySelector('.mar-image-preview-viewport')!
+          .getBoundingClientRect();
         const displayedImage = element.querySelector('img')!;
         const image = displayedImage.getBoundingClientRect();
         const close = element.querySelector('.mar-ui-dialog__close')!.getBoundingClientRect();
@@ -171,6 +206,12 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
               image.height -
                 (image.width * displayedImage.naturalHeight) / displayedImage.naturalWidth
             ) < 1,
+          imageCenteredInViewport:
+            Math.abs(image.left + image.width / 2 - (viewport.left + viewport.width / 2)) < 1 &&
+            Math.abs(image.top + image.height / 2 - (viewport.top + viewport.height / 2)) < 1,
+          imageNotUpscaled:
+            image.width <= displayedImage.naturalWidth &&
+            image.height <= displayedImage.naturalHeight,
           closeVisible:
             close.left >= 0 &&
             close.right <= innerWidth &&
@@ -183,6 +224,8 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       expect(layout).toEqual({
         imageFitsBody: true,
         imagePreservesAspectRatio: true,
+        imageCenteredInViewport: true,
+        imageNotUpscaled: true,
         closeVisible: true,
         headerAboveImage: true,
         noOverflow: true
@@ -198,6 +241,21 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       contentType: 'image/png'
     });
   }
+  const gifThumbnail = page.getByRole('button', { name: /Animation/ }).getByRole('img');
+  await gifThumbnail.scrollIntoViewIfNeeded();
+  await expect.poll(() => gifThumbnail.evaluate((image) => image.naturalWidth)).toBe(12);
+  const gifSource = new URL((await gifThumbnail.getAttribute('src'))!, page.url());
+  expect(gifSource.searchParams.get('path')).toBe('output/animation.gif');
+  expect(gifSource.searchParams.has('maxWidth')).toBe(false);
+  expect(gifSource.searchParams.has('maxHeight')).toBe(false);
+  await expectVisibleGifFrame(gifThumbnail);
+  await gifThumbnail.click();
+  const gifDialog = page.getByRole('dialog', { name: 'Animation', exact: true });
+  const gifPreview = gifDialog.getByRole('img');
+  await expect(gifPreview).toBeVisible();
+  expect(await gifPreview.evaluate((image) => image.currentSrc)).toBe(gifSource.href);
+  await expectVisibleGifFrame(gifPreview);
+  await expect(gifDialog.getByRole('button', { name: '查看原图' })).toHaveCount(0);
 });
 
 test('Sending an image in an idle session follows the latest message after its thumbnail loads', async ({

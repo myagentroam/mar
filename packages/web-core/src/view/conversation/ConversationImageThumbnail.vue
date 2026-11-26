@@ -3,19 +3,16 @@ import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, ref, watch } from 'vue';
 import { conversationThumbnailUrl } from '../../util/conversation-image-url.js';
 
-const props = defineProps<{ source: string; name: string }>();
+const props = defineProps<{ source: string; name: string; direct?: boolean | undefined }>();
 const emit = defineEmits<{
   click: [event: MouseEvent];
   unavailable: [source: string];
 }>();
 const failed = ref(false);
-const thumbnail = computed(() => conversationThumbnailUrl(props.source));
-watch(
-  () => props.source,
-  () => {
-    failed.value = false;
-  }
-);
+const thumbnail = computed(() => conversationThumbnailUrl(props.source, props.direct));
+watch(thumbnail, () => {
+  failed.value = false;
+});
 function open(event: MouseEvent): void {
   failed.value = false;
   emit('click', event);

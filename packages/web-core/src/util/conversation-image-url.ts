@@ -9,6 +9,6 @@ export function conversationPreviewUrl(source: string, bounds: ImagePreviewOptio
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-export function conversationThumbnailUrl(source: string): string {
-  return conversationPreviewUrl(source, { maxWidth: 320, maxHeight: 240 });
+export function conversationThumbnailUrl(source: string, direct = false): string {
+  return direct ? source : conversationPreviewUrl(source, { maxWidth: 320, maxHeight: 240 });
 }

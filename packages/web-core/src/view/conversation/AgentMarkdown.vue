@@ -15,6 +15,7 @@ import { workspaceFileTarget } from '../../util/file-preview.js';
 import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
 import { conversationThumbnailUrl } from '../../util/conversation-image-url.js';
 import { CONVERSATION_MARKDOWN_CACHE_KEY } from '../../util/conversation-markdown-cache.js';
+import type { ConversationImageAttachment } from '../../service/conversation-image-service.js';
 
 const props = defineProps<{
   readonly content: string;
@@ -24,7 +25,7 @@ const props = defineProps<{
   readonly openUrl?: ((url: string, alternate: boolean) => boolean) | undefined;
 }>();
 const emit = defineEmits<{
-  'open-image': [source: string, name: string];
+  'open-image': [attachment: ConversationImageAttachment];
   'open-file': [
     path: string,
     line: number | undefined,
@@ -140,10 +141,11 @@ renderer.renderer.rules.image = (tokens, index, options, environment, self) => {
   const token = tokens[index]!;
   const source = String(token.attrGet('src') ?? '');
   const label = self.renderInlineAsText(token.children ?? [], options, environment);
-  const renderImage = () => {
+  const renderImage = (direct = false) => {
     const fullSource = String(token.attrGet('src') ?? '');
-    token.attrSet('src', conversationThumbnailUrl(fullSource));
+    token.attrSet('src', conversationThumbnailUrl(fullSource, direct));
     token.attrSet('data-image-source', fullSource);
+    if (direct) token.attrSet('data-image-direct', 'true');
     token.attrSet('loading', 'lazy');
     const image = defaultImageRenderer?.(tokens, index, options, environment, self) ?? '';
     // Preserve explicit image links rather than nesting a button inside an anchor.
@@ -160,11 +162,11 @@ renderer.renderer.rules.image = (tokens, index, options, environment, self) => {
   if (/^(?:https?:\/\/|data:image\/)/iu.test(source)) return renderImage();
   const fileTarget = workspaceFileTarget(source, props.workspaceRoot, window.location.origin);
   if (props.imageResourceUrl !== undefined) {
-    const resourceUrl =
-      fileTarget === undefined ? undefined : props.imageResourceUrl(fileTarget.path);
+    if (fileTarget === undefined) return renderer.utils.escapeHtml(label || source);
+    const resourceUrl = props.imageResourceUrl(fileTarget.path);
     if (!resourceUrl) return renderer.utils.escapeHtml(label || source);
     token.attrSet('src', resourceUrl);
-    return renderImage();
+    return renderImage(/\.gif$/iu.test(fileTarget.path));
   }
   if (fileTarget === undefined) {
     if (!/^sandbox:/iu.test(source)) return renderImage();
@@ -240,6 +242,7 @@ const html = computed(() => {
         'data-code-copy',
         'data-image-preview',
         'data-image-source',
+        'data-image-direct',
         'data-workspace-file',
         'data-workspace-line',
         'data-workspace-column'
@@ -291,11 +294,11 @@ function onMarkdownClick(event: MouseEvent): void {
     const source = image?.getAttribute('data-image-source');
     if (source) {
       event.preventDefault();
-      emit(
-        'open-image',
-        source,
-        image?.alt || translate('generated.conversationTimeline.imageAttachment')
-      );
+      emit('open-image', {
+        name: image?.alt || translate('generated.conversationTimeline.imageAttachment'),
+        previewUrl: source,
+        direct: image?.getAttribute('data-image-direct') === 'true'
+      });
       return;
     }
   }

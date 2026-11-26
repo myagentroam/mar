@@ -19,7 +19,7 @@ Tall detail areas initially use a limited-height preview. Select **Show more** t
 
 Cross-session message headings distinguish parent, child, descendant, and other sessions using the saved sender name. Hover to see the source session ID. Older messages without a saved relationship retain their original source label.
 
-Images in the conversation load as thumbnails. Click one to open a preview, shown only after loading and decoding finish. Detail previews fit within 2560×2560 without enlarging small images. If a preview was resized, **View original** appears below it and loads the original image, fitted to the dialog. Long screenshots also fit as a whole at first, so their text may appear small. Failed loads can be retried. This does not change uploaded files or images sent to the model.
+Images in the conversation load as thumbnails. Click one to open a preview, shown only after loading and decoding finish. Detail previews normally fit within 2560×2560 without enlarging small images. If a preview was resized, **View original** appears below it and loads the original image, fitted to the dialog. GIFs use the original file both inline and in the preview, preserving animation. Long screenshots also fit as a whole at first, so their text may appear small. Failed loads can be retried. This does not change uploaded files or images sent to the model.
 
 On desktop, scroll the wheel over the image area to zoom, then hold the primary mouse button and drag to pan. On mobile, pinch with two fingers to zoom and drag with one finger to pan after zooming in. The centered controls below the image offer zoom, fit, and a four-way pan button. When available, **View original** appears in the same group.
 

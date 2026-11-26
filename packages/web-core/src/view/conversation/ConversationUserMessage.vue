@@ -5,6 +5,7 @@ import type { ComposerAttachmentFile } from '@myagentroam/protocol';
 import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
 import MessageReferenceTags from '../composer/MessageReferenceTags.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
+import type { ConversationImageAttachment } from '../../service/conversation-image-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import {
   composerMessageCopyText,
@@ -23,7 +24,7 @@ const props = defineProps<{
   collaborationDetail?: boolean;
   sharerName?: string | undefined;
   timestamp?: number | undefined;
-  images: readonly { name: string; previewUrl: string | undefined }[];
+  images: readonly ConversationImageAttachment[];
   imageResourceUrl?: ((path: string) => string) | undefined;
   openUrl?: ((url: string, alternate: boolean) => boolean) | undefined;
   copied: boolean;
@@ -39,7 +40,7 @@ const emit = defineEmits<{
     external: boolean,
     attachment?: ComposerAttachmentFile
   ];
-  openImage: [attachment: { name: string; previewUrl: string | undefined }];
+  openImage: [attachment: ConversationImageAttachment];
   imageUnavailable: [source: string];
   copy: [];
   rewind: [];
@@ -106,6 +107,7 @@ function openPlainUrl(event: MouseEvent, url: string): void {
       <ConversationImageThumbnail
         v-if="attachment.previewUrl"
         :source="attachment.previewUrl"
+        :direct="attachment.direct"
         :name="attachment.name"
         :aria-label="
           translate('generated.conversationTimeline.enlarge', { value0: attachment.name })
