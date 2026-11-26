@@ -581,9 +581,7 @@ function showFocusedEdge(event: FocusEvent) {
   place-items: center;
   width: 1.5rem;
   height: 1.5rem;
-  border-radius: var(--mar-radius-control);
   color: var(--mar-text-primary);
-  background: color-mix(in srgb, var(--mar-text-primary) 9%, var(--mar-bg-panel));
 }
 .network-node-copy {
   display: grid;
