@@ -32,6 +32,7 @@ import {
 } from '../../util/conversation-markdown-cache.js';
 import ConversationUserMessage from './ConversationUserMessage.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
+import type { ConversationImageAttachment as ImageAttachment } from '../../service/conversation-image-service.js';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
 import ConversationToolDetail from './tool-detail/ConversationToolDetail.vue';
@@ -89,11 +90,6 @@ import {
 } from '../../util/conversation-activity.js';
 import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
 import { isTerminalRunStatus } from '../../util/run-state.js';
-
-interface ImageAttachment {
-  readonly name: string;
-  readonly previewUrl: string | undefined;
-}
 
 interface UserInputQuestion {
   readonly id: string;
@@ -775,6 +771,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               <ConversationImageThumbnail
                 v-if="attachment.previewUrl"
                 :source="attachment.previewUrl"
+                :direct="attachment.direct"
                 :name="attachment.name"
                 :aria-label="
                   translate('generated.conversationTimeline.enlarge2', {
@@ -1130,7 +1127,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               :cache-identity="markdownCacheIdentity(turn, displayItem.item)"
               v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
               :image-resource-url="imageResourceUrl"
-              @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
+              @open-image="emit('openImage', $event)"
               @open-file="
                 (path, line, column, external) => emit('openFile', path, line, column, external)
               "
@@ -1381,9 +1378,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                       :content="task.text"
                       v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
                       :image-resource-url="imageResourceUrl"
-                      @open-image="
-                        (source, name) => emit('openImage', { name, previewUrl: source })
-                      "
+                      @open-image="emit('openImage', $event)"
                       @open-file="
                         (path, line, column, external) =>
                           emit('openFile', path, line, column, external)
@@ -1443,7 +1438,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
                 v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
                 :image-resource-url="imageResourceUrl"
-                @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
+                @open-image="emit('openImage', $event)"
                 @open-file="
                   (path, line, column, external) => emit('openFile', path, line, column, external)
                 "
@@ -1455,7 +1450,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                     :content="step.text"
                     v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
                     :image-resource-url="imageResourceUrl"
-                    @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
+                    @open-image="emit('openImage', $event)"
                     @open-file="
                       (path, line, column, external) =>
                         emit('openFile', path, line, column, external)
@@ -1583,6 +1578,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               <ConversationImageThumbnail
                 v-if="attachment.previewUrl"
                 :source="attachment.previewUrl"
+                :direct="attachment.direct"
                 :name="attachment.name"
                 :aria-label="
                   translate('generated.conversationTimeline.enlarge2', { value0: attachment.name })

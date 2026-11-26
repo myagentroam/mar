@@ -55,6 +55,44 @@ describe('Conversation image loading', () => {
     }
   });
 
+  it('uses the original GIF in both the list and the decoded dialog for an opaque Run image URL', async () => {
+    const service = createConversationImageService(ref('node'));
+    const attachment = service.attachments('run', {
+      attachments: [{ name: 'Animation', mime: 'image/gif', imageIndex: 0 }]
+    })[0]!;
+    service.open(attachment);
+    const preview = service.preview.value!;
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const thumbnail = renderComponent(ConversationImageThumbnail, {
+      source: attachment.previewUrl,
+      name: attachment.name,
+      direct: attachment.direct
+    });
+    const onReady = vi.fn();
+    const dialog = renderComponent(DecodedPreviewImage, {
+      ...preview,
+      source: preview.url,
+      onReady
+    });
+    try {
+      await flushComponent();
+      expect(thumbnail.findAll('img')[0]!.props.src).toBe(
+        '/api/agent-runs/run/images/0?nodeId=node'
+      );
+      const image = dialog.findAll('img')[0]!;
+      expect(image.props.src).toBe(preview.url);
+      expect(fetch).not.toHaveBeenCalled();
+      Object.assign(image, { decode: async () => {}, naturalWidth: 32, naturalHeight: 32 });
+      await trigger(image, 'onLoad', { currentTarget: image });
+      expect(onReady).toHaveBeenCalledExactlyOnceWith(false);
+    } finally {
+      thumbnail.unmount();
+      dialog.unmount();
+      service.dispose();
+    }
+  });
+
   it.each(['ordinary', 'Hosted'])(
     'retains the original %s source after a thumbnail error until its Turn is evicted',
     async (kind) => {

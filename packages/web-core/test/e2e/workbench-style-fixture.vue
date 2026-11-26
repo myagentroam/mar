@@ -11,6 +11,7 @@ import type {
   WorkspaceQueueItem
 } from '../../src/model/workbench.js';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue';
+import ScheduledTasksPanel from '../../src/view/schedule/ScheduledTasksPanel.vue';
 import { registerWorkspacePaneShortcuts } from '../../src/service/workspace-session-pane-state.js';
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
@@ -49,6 +50,19 @@ import type { AsideTool } from '../../src/service/workbench-aside-service.js';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
 
 const gestureFixture = new URL(location.href).searchParams.has('send-gesture');
+const schedule = new URL(location.href).searchParams.get('schedule');
+const fixtureSchedule =
+  schedule === 'mine' || schedule === 'all' || schedule === 'history' ? schedule : undefined;
+const scheduleRequest = async <T,>(): Promise<T> =>
+  ({
+    items: [],
+    nodes: [],
+    unavailableNodeIds: [],
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    hasMore: false
+  }) as T;
 const composerFixture = new URL(location.href).searchParams.has('composer') && !gestureFixture;
 const hostedGestureFixture = new URL(location.href).searchParams.has('hosted-gesture');
 const submittedIntents = ref<string[]>([]);
@@ -585,7 +599,13 @@ if (composerFixture) {
 </script>
 
 <template>
-  <HostedComposerGestureFixture v-if="hostedGestureFixture" />
+  <ScheduledTasksPanel
+    v-if="fixtureSchedule"
+    :section="fixtureSchedule"
+    :mobile="mobile"
+    :request="scheduleRequest"
+  />
+  <HostedComposerGestureFixture v-else-if="hostedGestureFixture" />
   <section v-else-if="gestureFixture" class="gesture-composer-fixture">
     <ConversationComposer
       v-model:input="fixtureInput"

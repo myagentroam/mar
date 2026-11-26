@@ -143,7 +143,8 @@ export class ScheduledSessionCoordinator {
         }
       | { readonly kind: 'SCHEDULE_PROPOSAL' }
   ): void => {
-    const currentTask = this.options.store().getById(task.id);
+    const store = this.options.store();
+    const currentTask = store.getById(task.id);
     if (
       currentTask === undefined ||
       (event.kind !== 'SCHEDULE_PROPOSAL' && !currentTask.notifyOnTerminal)
@@ -168,6 +169,12 @@ export class ScheduledSessionCoordinator {
               id: occurrenceId
             }
           };
+    if (
+      target.targetType === 'SCHEDULED_TASK' &&
+      event.kind !== 'SCHEDULE_PROPOSAL' &&
+      store.occurrence(occurrenceId) === undefined
+    )
+      return;
     const runId = event.kind === 'SCHEDULE_TERMINAL' ? event.runId : occurrenceId;
     this.options.emitNotification({
       event: {

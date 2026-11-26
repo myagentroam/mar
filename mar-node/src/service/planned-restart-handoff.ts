@@ -160,6 +160,7 @@ interface Options {
     message: RestartMessage
   ) => Promise<'missing' | 'completed' | 'interrupted' | 'paused'>;
   readonly restore: (session: RestartSession, handoffId: string) => Promise<void>;
+  readonly onSessionsUnblocked?: () => void;
   readonly diagnose: (code: string, sessionId?: string, errorCode?: string) => void;
 }
 
@@ -407,14 +408,17 @@ export class PlannedRestartHandoff {
             errorCode === 'RESTART_SESSION_RESTORE_FAILED' ? undefined : errorCode
           );
         } finally {
-          this.blocked.delete(entry.session.id);
+          if (this.blocked.delete(entry.session.id)) this.options.onSessionsUnblocked?.();
         }
       }
       if (!failed) await rm(this.path(true), { force: true });
     } catch {
       this.options.diagnose('RESTART_HANDOFF_CONSUME_FAILED');
     } finally {
-      this.blocked.clear();
+      if (this.blocked.size > 0) {
+        this.blocked.clear();
+        this.options.onSessionsUnblocked?.();
+      }
     }
   }
 }

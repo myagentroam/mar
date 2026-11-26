@@ -9,6 +9,7 @@ import {
   type AgentModelConfiguration
 } from '../../src/index.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
+import { SessionRuntime } from '../../src/sdk/session-runtime.js';
 import type { AgentExtension } from '../../src/extensions/contracts.js';
 import type { AgentEvent } from '../../src/runtime/events.js';
 import type { ModelAdapter, ModelEvent, ModelRequest } from '../../src/model/contracts.js';
@@ -182,6 +183,73 @@ async function deferredUserRecords(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe('native steer acceptance boundaries', () => {
+  it.each(['before failure', 'during cleanup'] as const)(
+    'releases a startup steer before cleanup finishes and preserves the outcome with cancellation %s',
+    async (cancelAt) => {
+      const submitting = Promise.withResolvers<void>();
+      const failSubmission = Promise.withResolvers<void>();
+      const cleaning = Promise.withResolvers<void>();
+      const releaseCleanup = Promise.withResolvers<void>();
+      const f = await fixture({
+        extensions: [
+          {
+            id: 'native-steer-failed-startup',
+            apiVersion: '1.0',
+            attachSession(context) {
+              context.hooks.intercept('prompt.submit', async () => {
+                submitting.resolve();
+                await failSubmission.promise;
+                throw new Error('Initial input failed');
+              });
+            }
+          }
+        ]
+      });
+      const projection = vi
+        .spyOn(SessionRuntime.prototype, 'joinRecordProjection')
+        .mockImplementation(async () => {
+          cleaning.resolve();
+          await releaseCleanup.promise;
+        });
+      const handle = f.session.run({ prompt: 'initial' });
+      const events = collectEvents(handle);
+      const received = vi.fn();
+      try {
+        await waitForGate(handle, submitting.promise, 'first prompt admission');
+        const steer = f.session.steer({
+          expectedExecutionId: handle.executionId,
+          prompt: 'follow-up',
+          clientMessageId: 'failed-startup'
+        });
+        void steer.then(received);
+        if (cancelAt === 'before failure') handle.cancel();
+        failSubmission.resolve();
+        await waitForGate(handle, cleaning.promise, 'failed execution cleanup');
+        await vi.waitFor(() =>
+          expect(received).toHaveBeenCalledExactlyOnceWith({ status: 'notAccepted' })
+        );
+        if (cancelAt === 'during cleanup') handle.cancel();
+      } finally {
+        failSubmission.resolve();
+        releaseCleanup.resolve();
+        try {
+          await handle.result();
+        } finally {
+          projection.mockRestore();
+        }
+      }
+      const cancelled = cancelAt === 'before failure';
+      expect(await handle.result()).toMatchObject(
+        cancelled ? { status: 'cancelled' } : { status: 'failed', errorCode: expect.any(String) }
+      );
+      expect((await events).at(-1)?.type).toBe(
+        cancelled ? 'execution.cancelled' : 'execution.failed'
+      );
+      expect(f.requests).toHaveLength(0);
+      expect(await userHistory(f)).toEqual([]);
+    }
+  );
+
   it('waits for every tool in a response batch, including an approval-gated call, before applying steer', async () => {
     const approvalStarted = Promise.withResolvers<void>();
     const releaseApproval = Promise.withResolvers<void>();
@@ -721,35 +789,87 @@ describe('native steer acceptance boundaries', () => {
     ]);
   });
 
-  it('returns notAccepted once finalization has closed steer, even before the result settles', async () => {
-    const completionEntered = Promise.withResolvers<void>();
-    const releaseCompletion = Promise.withResolvers<void>();
-    class BlockingCompletionHost extends LocalAgentHost {
-      override async emit(event: AgentEvent): Promise<void> {
-        if (event.type === 'execution.completed') {
-          completionEntered.resolve();
-          await releaseCompletion.promise;
+  it.each(['committed', 'handled'] as const)(
+    'rejects new steer before publishing completion without losing accepted receipts: %s input',
+    async (inputKind) => {
+      const submitting = Promise.withResolvers<void>();
+      const handleInput = Promise.withResolvers<void>();
+      const completionEntered = Promise.withResolvers<void>();
+      const releaseCompletion = Promise.withResolvers<void>();
+      class BlockingCompletionHost extends LocalAgentHost {
+        override async emit(event: AgentEvent): Promise<void> {
+          if (event.type === 'execution.completed') {
+            completionEntered.resolve();
+            await releaseCompletion.promise;
+          }
+          super.emit(event);
         }
-        super.emit(event);
       }
+      const handled = inputKind === 'handled';
+      const f = await fixture({
+        hostFactory: (input) => new BlockingCompletionHost(input),
+        ...(handled
+          ? {
+              extensions: [
+                {
+                  id: 'native-steer-handled-startup',
+                  apiVersion: '1.0',
+                  attachSession(context) {
+                    context.hooks.intercept('prompt.submit', async () => {
+                      submitting.resolve();
+                      await handleInput.promise;
+                      return { value: { drop: 'handled' } };
+                    });
+                  }
+                }
+              ]
+            }
+          : {})
+      });
+      const handle = f.session.run({ prompt: 'initial', permissionMode: 'full-access' });
+      const received = vi.fn();
+      const steer = (prompt: string, clientMessageId: string) =>
+        f.session.steer({
+          expectedExecutionId: handle.executionId,
+          prompt,
+          clientMessageId
+        });
+      const retrySteer = () => steer('accepted guidance', 'accepted-before-completion');
+      const lateSteer = () => steer('too late', 'final-race');
+      try {
+        let accepted: Awaited<ReturnType<typeof retrySteer>> | undefined;
+        if (handled) {
+          await waitForGate(handle, submitting.promise, 'initial prompt admission');
+          void lateSteer().then(received);
+          handleInput.resolve();
+        } else {
+          await waitForGate(handle, f.started, 'initial model request');
+          accepted = await retrySteer();
+          expect(accepted.status).toBe('accepted');
+          f.release();
+        }
+        await waitForGate(handle, completionEntered.promise, 'execution completion publication');
+        if (!handled) {
+          expect(await retrySteer()).toEqual(accepted);
+          void lateSteer().then(received);
+        }
+        await vi.waitFor(() =>
+          expect(received).toHaveBeenCalledExactlyOnceWith({ status: 'notAccepted' })
+        );
+        handle.cancel();
+      } finally {
+        handleInput.resolve();
+        f.release();
+        releaseCompletion.resolve();
+        await handle.result();
+      }
+      expect(await handle.result()).toMatchObject(
+        handled ? { status: 'completed', inputHandled: true } : { status: 'completed' }
+      );
+      expect(f.requests).toHaveLength(handled ? 0 : 2);
+      expect((await userHistory(f)).map((entry) => entry.kind === 'user' && entry.text)).toEqual(
+        handled ? [] : ['initial', 'accepted guidance']
+      );
     }
-    const f = await fixture({ hostFactory: (input) => new BlockingCompletionHost(input) });
-    const handle = f.session.run({ prompt: 'initial', permissionMode: 'full-access' });
-    await waitForGate(handle, f.started, 'initial model request');
-    f.release();
-    await waitForGate(handle, completionEntered.promise, 'execution completion publication');
-    expect(
-      await f.session.steer({
-        expectedExecutionId: handle.executionId,
-        prompt: 'too late',
-        clientMessageId: 'final-race'
-      })
-    ).toEqual({ status: 'notAccepted' });
-    releaseCompletion.resolve();
-    expect(await handle.result()).toMatchObject({ status: 'completed' });
-    expect(f.requests).toHaveLength(1);
-    expect((await userHistory(f)).map((entry) => entry.kind === 'user' && entry.text)).toEqual([
-      'initial'
-    ]);
-  });
+  );
 });

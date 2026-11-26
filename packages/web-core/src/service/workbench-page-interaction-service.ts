@@ -27,6 +27,7 @@ import { toolChangeOpenIntent } from './tool-change-review-service.js';
 import type { FileChangeEntry } from '../util/conversation-presentation.js';
 import { copyConversationMessage as copyMessage } from './workbench-conversation-copy-service.js';
 import { isHtmlFile } from '../util/file-preview.js';
+import type { ConversationImagePreview } from './conversation-image-service.js';
 
 export interface WorkbenchPageInteractionOptions {
   readonly view: Readonly<Ref<WorkbenchView>>;
@@ -221,7 +222,7 @@ export interface WorkbenchInteractionsView {
   attachmentPreview: ComposerAttachment | undefined;
   attachmentPreviewOpen: boolean;
   closeQuickOpenFile: (selected?: boolean) => void;
-  conversationImagePreview: { readonly name: string; readonly url: string } | undefined;
+  conversationImagePreview: ConversationImagePreview | undefined;
   conversationImagePreviewOpen: boolean;
   handleConversationImagePreviewError: (url: string) => Promise<void>;
   openQuickWorkspaceFile: (

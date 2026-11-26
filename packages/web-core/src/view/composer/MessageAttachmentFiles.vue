@@ -29,6 +29,7 @@ const emit = defineEmits<{
         v-if="file.mime.startsWith('image/')"
         class="conversation-file-attachment"
         :source="imageResourceUrl?.(file.path) ?? ''"
+        :direct="file.mime === 'image/gif'"
         :name="translate('generated.conversationTimeline.imageAttachment')"
         :aria-label="
           translate('generated.conversationTimeline.enlarge', {

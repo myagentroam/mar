@@ -113,6 +113,23 @@ SDK、CLI 与工作台使用同一个 MAR Agent 内核。Smart Compaction 是**�
 
 [上下文与计划](docs/help/workbench/context-and-plan.md) · [Steer、队列与 Goal](docs/help/workbench/composer.md) · [定时会话](docs/help/workbench/sessions.md) · [Code Mode 与工具](docs/help/runners/mar-agent.md)
 
+### 在工作区安排定时任务
+
+在支持定时的 Node 上安排构建检查、审阅汇总等重复工作。选择工作区并设置提示词，可复用已有会话，也可每次新建会话。任务卡片显示下次执行时间、是否暂停，以及执行记录入口。
+
+可设为仅一次、每天、每周或每月执行；支持每小时定时的 Node 还可选择每小时内的多个触发分钟，例如第 `15` 和第 `45` 分钟。定时运行会自动批准工具权限请求，Agent 沙箱与主机限制仍然生效。[定时任务](docs/help/workbench/sessions.md#定时任务)。
+
+<details>
+<summary>查看任务卡片、编辑器和移动端分钟多选</summary>
+
+![桌面定时任务卡片，显示下次执行时间、状态与执行记录入口](docs/assets/schedule-cards.zh-CN.png)
+
+![桌面定时编辑器，显示执行节点、工作区、会话与提示词](docs/assets/schedule-editor.zh-CN.png)
+
+<img src="docs/assets/schedule-minutes.zh-CN.png" alt="移动端每小时定时，已选择第 15 和第 45 分钟" width="320" />
+
+</details>
+
 ## 从执行过程到可审阅的结果
 
 选择获授权的 Node 与工作区，创建或继续 Agent 会话，在同一工作台使用项目文件、Git 状态和终端。企业共享让获授权成员接手可访问的工作，不必在每个人的电脑上重复配置相同环境。
@@ -133,7 +150,7 @@ SDK、CLI 与工作台使用同一个 MAR Agent 内核。Smart Compaction 是**�
 <details>
 <summary>查看文件修改审阅</summary>
 
-![本次工具修改的只读 Diff 与增删行](docs/assets/workbench-review.zh-CN.png)
+![单次工具操作的只读 Diff，展示三个变更区块](docs/assets/workbench-review.zh-CN.png)
 
 </details>
 

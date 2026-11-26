@@ -302,6 +302,53 @@ describe('scheduled session coordinator', () => {
     }
   });
 
+  it.each([false, true])(
+    'notifies an evicted terminal occurrence only if it can link to a Session (registered: %s)',
+    (registeredSession) => {
+      let now = Date.parse('2025-01-01T00:00:00Z');
+      const { database, store, task } = fixture(() => now, true);
+      const emit = vi.fn();
+      const occurrenceChanged = vi.fn();
+      const coordinator = new ScheduledSessionCoordinator({
+        store: () => store,
+        busy: () => false,
+        authorize: vi.fn(),
+        submit: vi.fn(),
+        emitNotification: emit,
+        occurrenceChanged,
+        registeredSession: () => registeredSession,
+        sessionTitle: (id) => id
+      });
+      try {
+        const run = {
+          id: 'older-run',
+          clientMessageId: store.claim(task.id, task.nextRunAt!, task.revision)!,
+          source: 'SCHEDULED' as const
+        };
+        expect(store.finish(run.clientMessageId, 'SUBMITTED', undefined, run.id)).toBe(true);
+        for (let i = 0; i < 100; i++) {
+          now = store.getById(task.id)!.nextRunAt!;
+          expect(store.finish(store.claim(task.id, now, task.revision)!, 'SKIPPED')).toBe(true);
+        }
+        expect(store.occurrence(run.clientMessageId)?.status).toBe('SUBMITTED');
+
+        coordinator.executionTerminated(run, 'SUCCEEDED');
+
+        expect(store.occurrence(run.clientMessageId)).toBeUndefined();
+        expect(occurrenceChanged).toHaveBeenCalledExactlyOnceWith(task.workspaceId);
+        if (registeredSession) {
+          expect(emit.mock.calls[0]?.[0]).toMatchObject({
+            event: {
+              payload: { targetType: 'WORKSPACE_SESSION', sessionId: task.sessionId, runId: run.id }
+            }
+          });
+        } else expect(emit).not.toHaveBeenCalled();
+      } finally {
+        database.close();
+      }
+    }
+  );
+
   it('does not notify after the task and occurrence are removed', () => {
     const { database, store, task } = fixture(() => Date.parse('2025-01-01T00:00:00Z'), true);
     const occurrenceId = store.claim(task.id, task.nextRunAt!, task.revision)!;

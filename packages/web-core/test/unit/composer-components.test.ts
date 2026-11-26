@@ -552,9 +552,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
   });
 
   it.each([false, true])(
-    'shows saved quote snapshots without XML in queue entries (editing: %s)',
+    'keeps references out of queue previews and editors (editing: %s)',
     async (editing) => {
-      const content = serializeComposerTag('mar_references', {
+      const references = serializeComposerTag('mar_references', {
         references: [
           {
             type: 'quote',
@@ -562,22 +562,42 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
             source: 'assistant',
             messageId: 'reply-1',
             label: 'Reply excerpt',
-            text: 'Private snapshot text'
-          }
+            text: 'Quoted snapshot text'
+          },
+          { type: 'file', path: 'src/queued.ts', label: 'queued.ts' },
+          { type: 'session', sessionId: 'queued-session', label: 'Referenced session' }
         ]
       });
-      const html = await render(ComposerQueue, {
-        items: [{ queueItemId: 'quote-only', content }],
-        paused: false,
-        loading: false,
-        editingQueueItemId: editing ? 'quote-only' : undefined,
-        editingContent: '',
-        goal: undefined
-      });
-      expect(html).toContain('message-reference-tag');
-      expect(html).toContain(locale === 'zh-CN' ? '回复片段' : 'Reply excerpt');
-      expect(html).toContain('Private snapshot text');
-      expect(html).not.toContain('mar_references');
+      const tooltips: unknown[] = [];
+      const html = await render(
+        ComposerQueue,
+        {
+          items: [
+            { queueItemId: 'with-body', content: `Queued request\n${references}` },
+            { queueItemId: 'references-only', content: references }
+          ],
+          paused: false,
+          loading: false,
+          editingQueueItemId: editing ? 'with-body' : undefined,
+          editingContent: 'Queued request',
+          goal: undefined
+        },
+        tooltips
+      );
+      if (editing) expect(html).toContain('<textarea');
+      else expect(html).toContain('Queued request');
+      expect(html).toContain('data-queue-item-id="references-only"');
+      for (const hidden of [
+        'message-reference-tag',
+        locale === 'zh-CN' ? '回复片段' : 'Reply excerpt',
+        'Quoted snapshot text',
+        'queued.ts',
+        'Referenced session',
+        'mar_references'
+      ]) {
+        expect(html).not.toContain(hidden);
+        expect(tooltips.join('\n')).not.toContain(hidden);
+      }
     }
   );
 

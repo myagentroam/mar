@@ -6,13 +6,15 @@ export interface LoadedImagePreview {
   readonly release: () => void;
 }
 
-/** A preview owns its temporary URL; no image body is retained between dialogs. */
+/** Direct images load through the browser; a fetched preview owns its temporary URL. */
 export async function loadConversationImagePreview(
   source: string,
   original: boolean,
-  signal: AbortSignal
+  signal: AbortSignal,
+  direct = false
 ): Promise<LoadedImagePreview> {
-  if (!source.startsWith('/api/')) return { url: source, resized: false, release: () => {} };
+  if (direct || !source.startsWith('/api/'))
+    return { url: source, resized: false, release: () => {} };
   const url = original
     ? source
     : conversationPreviewUrl(source, { maxWidth: 2560, maxHeight: 2560 });

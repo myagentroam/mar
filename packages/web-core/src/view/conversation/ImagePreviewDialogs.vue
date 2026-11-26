@@ -9,13 +9,14 @@ import { marIcon } from '@myagentroam/mar-ui/icons';
 import { computed, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
+import type { ConversationImagePreview } from '../../service/conversation-image-service.js';
 import DecodedPreviewImage from './DecodedPreviewImage.vue';
 
 const props = defineProps<{
   readonly attachmentOpen: boolean;
   readonly attachment: ComposerAttachment | undefined;
   readonly conversationOpen: boolean;
-  readonly conversation: { readonly name: string; readonly url: string } | undefined;
+  readonly conversation: ConversationImagePreview | undefined;
 }>();
 
 const emit = defineEmits<{
@@ -35,7 +36,7 @@ const conversationTitle = computed(
 const original = ref(false);
 const resized = ref(false);
 watch(
-  [() => props.conversation?.url, () => props.conversationOpen],
+  [() => props.conversation?.url, () => props.conversation?.direct, () => props.conversationOpen],
   () => {
     original.value = false;
     resized.value = false;
@@ -104,10 +105,11 @@ watch(
       :source="conversation.url"
       :name="conversation.name"
       :original="original"
+      :direct="conversation.direct"
       @ready="resized = $event"
       @error="emit('conversationError', $event)"
     >
-      <template v-if="resized && !original" #actions>
+      <template v-if="resized && !original && !conversation.direct" #actions>
         <MarButton :icon="marIcon('image')" @click="original = true">
           {{ translate('generated.imagePreview.viewOriginal') }}
         </MarButton>

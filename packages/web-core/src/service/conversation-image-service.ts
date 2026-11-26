@@ -8,6 +8,13 @@ import { translate } from './locale-preference-service.js';
 export interface ConversationImageAttachment {
   readonly name: string;
   readonly previewUrl: string | undefined;
+  readonly direct?: boolean | undefined;
+}
+
+export interface ConversationImagePreview {
+  readonly name: string;
+  readonly url: string;
+  readonly direct?: boolean | undefined;
 }
 
 export interface ConversationImageSourceInput {
@@ -31,7 +38,7 @@ export function createConversationImageService(
   options: ConversationImageServiceOptions = {}
 ) {
   const unavailable = ref<Record<string, true>>({});
-  const preview = ref<{ readonly name: string; readonly url: string }>();
+  const preview = ref<ConversationImagePreview>();
   const previewOpen = ref(false);
   let previewGeneration = 0;
   let filePreview:
@@ -80,7 +87,7 @@ export function createConversationImageService(
       const url = files.sourceUrl(file, generation);
       await files.revalidate(file);
       if (!currentFilePreview(generation, target)) return;
-      open({ name: file.name, previewUrl: url });
+      open({ name: file.name, previewUrl: url, direct: file.mime === 'image/gif' });
       filePreview = { file, target, url };
     } catch (error) {
       if (currentFilePreview(generation, target)) files.onError(error, file.path);
@@ -151,7 +158,9 @@ export function createConversationImageService(
     let inferredImageIndex = 0;
     return values.flatMap((attachment) => {
       const value = conversationPayload(attachment);
-      if (value === undefined || !stringField(value, 'mime').startsWith('image/')) return [];
+      if (value === undefined) return [];
+      const mime = stringField(value, 'mime');
+      if (!mime.startsWith('image/')) return [];
       const name =
         stringField(value, 'name') ||
         translate('generated.conversationImageService.imageAttachment');
@@ -160,7 +169,8 @@ export function createConversationImageService(
       return [
         {
           name,
-          previewUrl: source === undefined || unavailable.value[source] ? undefined : source
+          previewUrl: source === undefined || unavailable.value[source] ? undefined : source,
+          ...(mime === 'image/gif' ? { direct: true } : {})
         }
       ];
     });
@@ -195,7 +205,11 @@ export function createConversationImageService(
     if (attachment.previewUrl === undefined) return;
     previewGeneration += 1;
     filePreview = undefined;
-    preview.value = { name: attachment.name, url: attachment.previewUrl };
+    preview.value = {
+      name: attachment.name,
+      url: attachment.previewUrl,
+      ...(attachment.direct ? { direct: true } : {})
+    };
     previewOpen.value = true;
   }
 
