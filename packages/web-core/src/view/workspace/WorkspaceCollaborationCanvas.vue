@@ -2,7 +2,7 @@
 import { computed, ref, shallowRef, useId, watch, watchEffect } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
-import marAgentIcon from '../../assets/logo-icon.png';
+import { readOverflowText } from '@myagentroam/mar-ui/tooltip';
 import type { SessionCollaborationEdge } from '@myagentroam/protocol';
 import type { NavigationSession } from '../../service/session-navigation-projection.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -20,18 +20,19 @@ import {
 /** Renders the relationship canvas and owns its view transform, never session or board state. */
 const props = defineProps<{
   anchor: string;
-  selected: string;
+  selected: string | undefined;
+  selectedEdge: SessionCollaborationEdge | undefined;
   sessions: readonly NavigationSession[];
   sharing: readonly SessionCollaborationEdge[];
 }>();
-const emit = defineEmits<{ select: [id: string]; board: [id: string] }>();
+const emit = defineEmits<{ select: [id: string]; board: [edge: SessionCollaborationEdge] }>();
 const arrow = useId();
 const help = useId();
 const port = ref<HTMLElement>();
 const size = shallowRef({ width: 0, height: 0 });
 const graph = computed(() => buildCollaborationGraph(props.sessions, props.anchor, props.sharing));
+const labels = computed(() => new Map(props.sessions.map(({ id, title }) => [id, title])));
 const descriptions = computed(() => {
-  const labels = new Map(props.sessions.map(({ id, title }) => [id, title]));
   const descriptions = new Map<string, string[]>();
   const add = (id: string, description: string) => {
     const items = descriptions.get(id) ?? [];
@@ -39,8 +40,8 @@ const descriptions = computed(() => {
     descriptions.set(id, items);
   };
   for (const { from, to, kind } of graph.value.edges) {
-    const source = labels.get(from)!;
-    const target = labels.get(to)!;
+    const source = labels.value.get(from)!;
+    const target = labels.value.get(to)!;
     add(
       from,
       translate(kind === 'parent' ? 'collaboration.childRelation' : 'collaboration.sharesWith', {
@@ -71,6 +72,19 @@ watchEffect((cleanup) => {
   });
   observer.observe(element);
   cleanup(() => observer.disconnect());
+});
+
+watch(graph, ({ edges }) => {
+  const viewport = port.value;
+  const focused = viewport?.ownerDocument.activeElement;
+  if (!viewport || !(focused instanceof SVGPathElement) || !viewport.contains(focused)) return;
+  if (!focused.classList.contains('edge-hit-area')) return;
+  const { owner, follower } = focused.dataset;
+  if (
+    !edges.some(({ kind, from, to }) => kind === 'sharing' && from === owner && to === follower)
+  ) {
+    viewport.focus({ preventScroll: true });
+  }
 });
 
 watch([graph, size], ([next, viewport], [previous, oldViewport]) => {
@@ -154,6 +168,12 @@ function end(event: PointerEvent) {
   dragging.value = false;
 }
 
+function nodeTooltip(id: string): string | undefined {
+  return readOverflowText(
+    port.value?.querySelector(`[data-node-title='${CSS.escape(id)}']`) ?? null
+  );
+}
+
 function stopDragClick(event: MouseEvent) {
   if (!blockClick || event.detail === 0) return;
   event.preventDefault();
@@ -190,6 +210,97 @@ function showFocused(id: string) {
   if (x < insetX || y < insetY || x > size.value.width - insetX || y > size.value.height - insetY)
     position(id, true);
 }
+
+function isSelectedEdge(owner: string, follower: string) {
+  return (
+    props.selectedEdge?.ownerSessionId === owner &&
+    props.selectedEdge.followerSessionId === follower
+  );
+}
+
+function selectEdge(ownerSessionId: string, followerSessionId: string) {
+  emit('board', { ownerSessionId, followerSessionId });
+}
+
+function distanceToEdge(path: SVGPathElement, point: DOMPoint) {
+  const length = path.getTotalLength();
+  const step = length / 16;
+  const distanceAt = (at: number) => {
+    const p = path.getPointAtLength(at);
+    return (p.x - point.x) ** 2 + (p.y - point.y) ** 2;
+  };
+  let center = 0;
+  let best = distanceAt(0);
+  // Bracket the nearest part of the curve, then refine within that part.
+  for (let i = 1; i <= 16; i++) {
+    const candidate = distanceAt(i * step);
+    if (candidate >= best) continue;
+    center = i * step;
+    best = candidate;
+  }
+  let low = Math.max(0, center - step);
+  let high = Math.min(length, center + step);
+  for (let i = 0; i < 12; i++) {
+    const left = low + (high - low) / 3;
+    const right = high - (high - low) / 3;
+    if (distanceAt(left) < distanceAt(right)) high = right;
+    else low = left;
+  }
+  return Math.min(best, distanceAt((low + high) / 2));
+}
+
+function activateEdge(event: MouseEvent, owner: string, follower: string) {
+  const target = event.currentTarget as SVGPathElement;
+  const transform = target.getScreenCTM();
+  if (event.detail === 0 || !transform) {
+    selectEdge(owner, follower);
+    return;
+  }
+  // Wide touch strokes can overlap; choose the nearest centerline, not the last painted edge.
+  const candidates = target.ownerDocument
+    .elementsFromPoint(event.clientX, event.clientY)
+    .filter(
+      (element): element is SVGPathElement =>
+        element instanceof SVGPathElement &&
+        element.ownerSVGElement === target.ownerSVGElement &&
+        element.classList.contains('edge-hit-area')
+    );
+  if (candidates.length < 2) {
+    selectEdge(owner, follower);
+    return;
+  }
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse());
+  let closest = target;
+  let best = distanceToEdge(target, point);
+  for (const candidate of candidates) {
+    if (candidate === target) continue;
+    const distance = distanceToEdge(candidate, point);
+    if (distance >= best) continue;
+    closest = candidate;
+    best = distance;
+  }
+  if (closest !== target && target.ownerDocument.activeElement === target) {
+    closest.focus({ preventScroll: true });
+  }
+  selectEdge(closest.dataset.owner!, closest.dataset.follower!);
+}
+
+function showFocusedEdge(event: FocusEvent) {
+  const path = event.currentTarget as SVGPathElement;
+  if (gesture || !path.matches(':focus-visible')) return;
+  const point = path.getPointAtLength(path.getTotalLength() / 2);
+  const { scale, x, y } = camera.value;
+  const { width, height } = size.value;
+  const screenX = x + point.x * scale;
+  const screenY = y + point.y * scale;
+  if (screenX >= 14 && screenX <= width - 14 && screenY >= 14 && screenY <= height - 14) return;
+  manual = true;
+  camera.value = boundCollaborationGraph(graph.value, size.value, {
+    scale,
+    x: width / 2 - point.x * scale,
+    y: height / 2 - point.y * scale
+  });
+}
 </script>
 
 <template>
@@ -220,7 +331,7 @@ function showFocused(id: string) {
           transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`
         }"
       >
-        <svg class="network-edges" :width="graph.width" :height="graph.height" aria-hidden="true">
+        <svg class="network-edges" :width="graph.width" :height="graph.height">
           <defs>
             <marker :id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
               <path class="network-arrow" d="M0 0L6 3.5 0 7z" />
@@ -229,9 +340,13 @@ function showFocused(id: string) {
           <g
             v-for="edge in graph.edges"
             :key="`${edge.kind}:${JSON.stringify([edge.from, edge.to])}`"
+            :class="{
+              'is-selected-edge': edge.kind === 'sharing' && isSelectedEdge(edge.from, edge.to)
+            }"
           >
             <path
               :d="edge.path"
+              aria-hidden="true"
               :class="[
                 `edge-${edge.kind}`,
                 { 'is-related': edge.from === selected || edge.to === selected }
@@ -242,13 +357,29 @@ function showFocused(id: string) {
               v-if="edge.kind === 'sharing'"
               :d="edge.path"
               class="edge-hit-area"
-              @click="emit('board', edge.from)"
+              role="button"
+              tabindex="0"
+              :data-owner="edge.from"
+              :data-follower="edge.to"
+              :aria-label="
+                translate('collaboration.sharingRelation', {
+                  owner: labels.get(edge.from)!,
+                  follower: labels.get(edge.to)!
+                })
+              "
+              :aria-pressed="isSelectedEdge(edge.from, edge.to)"
+              @focus="showFocusedEdge"
+              @click="activateEdge($event, edge.from, edge.to)"
+              @keydown.enter.prevent="selectEdge(edge.from, edge.to)"
+              @keydown.space.prevent
+              @keyup.space.prevent="selectEdge(edge.from, edge.to)"
             />
           </g>
         </svg>
         <template v-for="session in sessions" :key="session.id">
           <button
             v-if="graph.nodes.has(session.id)"
+            v-tooltip="() => nodeTooltip(session.id)"
             type="button"
             class="network-node"
             :class="{ 'is-current': session.id === anchor, 'is-selected': session.id === selected }"
@@ -265,10 +396,12 @@ function showFocused(id: string) {
             @click="emit('select', session.id)"
           >
             <span class="network-node-icon">
-              <img :src="marAgentIcon" alt="" width="18" height="18" draggable="false" />
+              <MarIcon name="agent-session" :size="18" />
             </span>
             <span class="network-node-copy">
-              <span class="network-node-title">{{ session.title }}</span>
+              <span class="network-node-title" :data-node-title="session.id">{{
+                session.title
+              }}</span>
               <span v-if="session.id === anchor" class="network-node-badge">{{
                 translate('collaboration.current')
               }}</span>
@@ -383,15 +516,29 @@ function showFocused(id: string) {
 .network-edges .edge-parent.is-related {
   stroke: var(--mar-text-secondary);
 }
-.network-edges g:hover .edge-sharing {
+.network-edges g:has(.edge-hit-area:focus-visible) .edge-sharing {
   stroke: var(--mar-text-primary);
+  stroke-width: 2.5;
+}
+.network-edges .is-selected-edge .edge-sharing {
+  stroke: var(--mar-color-accent);
+  stroke-width: 2.5;
 }
 .edge-hit-area {
   fill: none;
   stroke: transparent;
   stroke-width: 14;
+  vector-effect: non-scaling-stroke;
   pointer-events: stroke;
   cursor: pointer;
+}
+.edge-hit-area:focus-visible {
+  outline: none;
+}
+@media (pointer: coarse) {
+  .edge-hit-area {
+    stroke-width: 28;
+  }
 }
 .network-arrow {
   fill: var(--mar-border-strong);
@@ -408,7 +555,8 @@ function showFocused(id: string) {
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
   text-align: start;
-  font-size: var(--mar-font-size-body);
+  font-size: var(--mar-font-size-detail);
+  font-weight: 400;
   cursor: pointer;
 }
 .network-node.is-current {
@@ -428,11 +576,8 @@ function showFocused(id: string) {
   width: 1.5rem;
   height: 1.5rem;
   border-radius: var(--mar-radius-control);
+  color: var(--mar-text-primary);
   background: color-mix(in srgb, var(--mar-text-primary) 9%, var(--mar-bg-panel));
-}
-.network-node-icon img {
-  display: block;
-  object-fit: contain;
 }
 .network-node-copy {
   display: grid;
@@ -442,7 +587,6 @@ function showFocused(id: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
 }
 .network-node-badge {
   font-size: var(--mar-font-size-meta);

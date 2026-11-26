@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import MarBusyIndicator from '@myagentroam/mar-ui/busy-indicator';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
+import { readOverflowText } from '@myagentroam/mar-ui/tooltip';
+import type { SessionCollaborationEdge } from '@myagentroam/protocol';
 import type {
   NavigationSession,
   NavigationSnapshot
@@ -31,8 +33,20 @@ const currentGraph = shallowRef<{
   readonly sharing: NonNullable<NavigationSnapshot['collaboration']>['sharing'];
   readonly truncated: boolean;
 }>();
-const selected = ref(props.anchor);
-const boardId = ref(props.anchor);
+type BoardSelection =
+  { kind: 'session'; sessionId: string } | { kind: 'sharing'; edge: SessionCollaborationEdge };
+const selection = shallowRef<BoardSelection>({ kind: 'session', sessionId: props.anchor });
+const selectedSession = computed(() =>
+  selection.value.kind === 'session' ? selection.value.sessionId : undefined
+);
+const selectedEdge = computed(() =>
+  selection.value.kind === 'sharing' ? selection.value.edge : undefined
+);
+const boardId = computed(
+  () => selectedEdge.value?.ownerSessionId ?? selectedSession.value ?? props.anchor
+);
+const anchorTitle = useTemplateRef<HTMLElement>('anchorTitle');
+const boardHeadingLabel = useTemplateRef<HTMLElement>('boardHeadingLabel');
 const mobileHistory = createMobileLayerHistoryService({
   isOpen: () => true,
   close: () => emit('close')
@@ -55,7 +69,6 @@ watch(
       ...tree.nodes,
       ...graph.peers
     ];
-    if (!sessions.some((session) => session.id === selected.value)) selected.value = props.anchor;
     currentGraph.value = {
       sessions: [...new Map(sessions.map((session) => [session.id, session])).values()],
       sharing: graph.sharing,
@@ -69,17 +82,6 @@ const names = computed(
   () => new Map(currentGraph.value?.sessions.map((session) => [session.id, session]))
 );
 const boardOwner = computed(() => names.value.get(boardId.value));
-const relatedBoards = computed(() => {
-  const ids = new Set([selected.value]);
-  for (const edge of currentGraph.value?.sharing ?? []) {
-    if (edge.followerSessionId === selected.value) ids.add(edge.ownerSessionId);
-  }
-  if (boardId.value !== selected.value) ids.add(boardId.value);
-  return [...ids].flatMap((id) => {
-    const owner = names.value.get(id);
-    return owner?.runner === 'mar-agent' ? [owner] : [];
-  });
-});
 const board = computed(() => {
   if (!boardId.value || props.status !== 'ready') return undefined;
   const result = props.snapshot?.collaboration?.board;
@@ -90,15 +92,10 @@ const canOpenBoardSession = computed(
   () => props.status === 'ready' && Boolean(boardOwner.value || board.value)
 );
 
-function select(id: string) {
-  selected.value = id;
-  selectBoard(id);
-}
-
-function selectBoard(id: string) {
-  if (boardId.value === id) return;
-  boardId.value = id;
-  emit('board', id);
+function select(next: BoardSelection) {
+  const previousBoard = boardId.value;
+  selection.value = next;
+  if (boardId.value !== previousBoard) emit('board', boardId.value);
 }
 
 function time(at: number) {
@@ -122,7 +119,9 @@ function time(at: number) {
     <template #header="{ titleId, titleClass }">
       <div class="collaboration-heading">
         <h2 :id="titleId" :class="titleClass">{{ translate('collaboration.title') }}</h2>
-        <p>{{ title }}</p>
+        <p ref="anchorTitle" v-tooltip="() => readOverflowText(anchorTitle)" class="clip-title">
+          {{ title }}
+        </p>
       </div>
     </template>
     <div
@@ -157,11 +156,12 @@ function time(at: number) {
       <div class="collaboration-body">
         <WorkspaceCollaborationCanvas
           :anchor="anchor"
-          :selected="selected"
+          :selected="selectedSession"
+          :selected-edge="selectedEdge"
           :sessions="currentGraph.sessions"
           :sharing="currentGraph.sharing"
-          @select="select"
-          @board="selectBoard"
+          @select="(sessionId) => select({ kind: 'session', sessionId })"
+          @board="(edge) => select({ kind: 'sharing', edge })"
         />
         <section
           class="collaboration-inspector"
@@ -190,32 +190,25 @@ function time(at: number) {
             </div>
           </div>
           <div class="board-heading">
-            <h3 class="board-title">
+            <h3
+              v-tooltip="() => readOverflowText(boardHeadingLabel)"
+              class="board-title"
+              tabindex="0"
+            >
               <MarIcon name="collection" />
-              <span>
+              <span ref="boardHeadingLabel" class="clip-title">
                 {{
                   boardTitle
-                    ? translate('collaboration.boardTitle', { title: boardTitle })
+                    ? translate(
+                        selectedEdge
+                          ? 'collaboration.sharedBoardTitle'
+                          : 'collaboration.boardTitle',
+                        { title: boardTitle }
+                      )
                     : translate('collaboration.whiteboard')
                 }}
               </span>
             </h3>
-          </div>
-          <div
-            v-if="relatedBoards.some(({ id }) => id !== boardId)"
-            class="board-switcher"
-            role="group"
-            :aria-label="translate('collaboration.switchBoard')"
-          >
-            <MarButton
-              v-for="owner in relatedBoards"
-              :key="owner.id"
-              text
-              :aria-label="translate('collaboration.viewBoard', { title: owner.title })"
-              :aria-pressed="owner.id === boardId"
-              @click="selectBoard(owner.id)"
-              >{{ owner.title }}</MarButton
-            >
           </div>
           <p v-if="boardOwner && boardOwner.runner !== 'mar-agent'" role="status">
             {{ translate('collaboration.noBoard') }}
@@ -260,11 +253,20 @@ function time(at: number) {
 .collaboration-heading {
   min-width: 0;
 }
+.collaboration-heading h2 {
+  font-weight: 400;
+}
 .collaboration-heading p {
   margin: 0.25rem 0 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
-  overflow-wrap: anywhere;
+}
+.clip-title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .collaboration-body {
   display: grid;
@@ -287,8 +289,7 @@ function time(at: number) {
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--mar-border-subtle);
 }
-.board-actions,
-.board-switcher {
+.board-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -298,15 +299,14 @@ function time(at: number) {
 }
 .board-heading .board-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.375rem;
   margin: 0;
-  font-size: var(--mar-font-size-title);
-  font-weight: 600;
+  font-size: var(--mar-font-size-body);
+  font-weight: 400;
 }
 .board-title :deep(.mar-icon) {
   flex: none;
-  align-self: flex-start;
   color: var(--mar-text-secondary);
 }
 .collaboration-inspector small {
@@ -316,16 +316,8 @@ function time(at: number) {
 .collaboration-inspector p {
   font-size: var(--mar-font-size-body);
 }
-.board-actions,
-.board-switcher {
+.board-actions {
   flex-wrap: wrap;
-}
-.board-switcher {
-  gap: 0.25rem;
-  margin: 0.5rem 0;
-}
-.board-switcher :deep([aria-pressed='true']) {
-  background: var(--mar-fill-selection);
 }
 .collaboration-inspector :deep(.mar-ui-button) {
   max-width: 100%;
@@ -361,7 +353,7 @@ function time(at: number) {
 .board-changes h4 {
   margin: 0;
   font-size: var(--mar-font-size-body);
-  font-weight: 600;
+  font-weight: 400;
 }
 @media (max-width: 767px) {
   .collaboration-body {

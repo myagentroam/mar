@@ -122,6 +122,8 @@ export const iconShapes = {
     '<path d="M4 7h3m5 0h8M4 17h8m5 0h3" /><circle cx="9.5" cy="7" r="2.5"/><circle cx="14.5" cy="17" r="2.5"/>',
   reasoning:
     '<path d="M10 7c.8 4.8 2.2 6.2 7 7-4.8.8-6.2 2.2-7 7-.8-4.8-2.2-6.2-7-7 4.8-.8 6.2-2.2 7-7Z"/><path d="M18 2.5c.4 1.9 1.1 2.6 3 3-1.9.4-2.6 1.1-3 3-.4-1.9-1.1-2.6-3-3 1.9-.4 2.6-1.1 3-3Z"/>',
+  'agent-session':
+    '<rect x="4" y="7" width="16" height="13" rx="4"/><path d="M12 3.5V7"/><g fill="currentColor" stroke="none"><circle cx="9" cy="13.5" r="1.15"/><circle cx="15" cy="13.5" r="1.15"/></g>',
   'agent-collaboration':
     '<path d="M12 5h5.5A3.75 3.75 0 0 1 21.25 8.75v3.75a3.75 3.75 0 0 1-3.1 3.7M17 2.75V5M9.25 6v3.25"/><rect x="2.75" y="9.25" width="13" height="11.5" rx="3.4"/><g fill="currentColor" stroke="none"><circle cx="6.75" cy="14.75" r=".95"/><circle cx="11.75" cy="14.75" r=".95"/><circle cx="18.5" cy="10.5" r=".95"/></g>',
   terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.8"/><path d="m7 9 3 3-3 3m6 0h4" />',
