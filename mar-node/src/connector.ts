@@ -1019,6 +1019,8 @@ export class NodeConnector {
           });
       },
       emitQueue: (workspaceId, sessionId) => {
+        if (this.runtime.sessionQueue(sessionId).itemIds.length === 0)
+          this.scheduledSessions.changed();
         this.runEventBridge.emitQueue(workspaceId, sessionId);
         this.runAttachmentService.refreshSession(sessionId);
       },
@@ -1452,6 +1454,7 @@ export class NodeConnector {
       commandActive: (id, command) => this.commandStates.get(id, command)?.active === true,
       inputState,
       restore: (entry, id) => restorer.restore(entry, id),
+      onSessionsUnblocked: () => this.scheduledSessions.changed(),
       diagnose: (code, sessionId, errorCode) =>
         nodeLog('node.restart.diagnostic', { code, sessionId, errorCode })
     });

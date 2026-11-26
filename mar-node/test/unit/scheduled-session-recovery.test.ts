@@ -393,9 +393,37 @@ describe('scheduled session restart recovery', () => {
           .get()
       ).toMatchObject({ count: 105 });
       f.database.raw.exec('DROP TRIGGER fail_recovery');
-      expect(f.store.recoverInterrupted()).toHaveLength(105);
+      const notify = vi.fn();
+      const coordinator = new ScheduledSessionCoordinator({
+        store: () => f.store,
+        busy: () => false,
+        authorize: vi.fn(),
+        submit: vi.fn(),
+        emitNotification: notify,
+        registeredSession: () => false,
+        sessionTitle: (id) => id
+      });
+      coordinator.recoverInterrupted();
       expect(f.store.recentPage(task.id).occurrenceTotal).toBe(100);
-      expect(f.store.recent(task.id, 100).every((row) => row['status'] === 'FAILED')).toBe(true);
+      const retained = f.store.recent(task.id, 100);
+      expect(retained.every((row) => row['status'] === 'FAILED')).toBe(true);
+      expect(notify).not.toHaveBeenCalled();
+
+      coordinator.connected();
+
+      expect(notify).toHaveBeenCalledTimes(100);
+      for (const {
+        event: { payload }
+      } of notify.mock.calls.map(([outbound]) => outbound)) {
+        expect(payload).toMatchObject({
+          targetType: 'SCHEDULED_TASK',
+          reference: { kind: 'occurrence' },
+          code: 'SCHEDULE_RESTART_OUTCOME_UNKNOWN'
+        });
+      }
+      expect(notify.mock.calls.map(([{ event }]) => event.payload.reference.id).sort()).toEqual(
+        retained.map((row) => row['id']).sort()
+      );
     } finally {
       f.database.close();
     }

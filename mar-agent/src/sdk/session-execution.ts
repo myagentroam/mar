@@ -120,6 +120,7 @@ export class SessionExecution {
 
   stopSteer(): void {
     delete this.#bindings.steer;
+    this.#steerReady.resolve();
   }
 
   retireCompactRequests(reason: unknown): void {
@@ -132,7 +133,6 @@ export class SessionExecution {
     this.retireCompactRequests(reason);
     delete this.#bindings.appendedMessages;
     this.stopSteer();
-    this.#steerReady.resolve();
   }
 
   detachToolSources(): void {
@@ -339,6 +339,8 @@ export class SessionExecution {
       if (full.type === 'execution.completed') {
         this.controller.signal.throwIfAborted();
         this.completionAdmitted = true;
+        // Handled input never binds steer; keep existing receipts available until teardown.
+        this.#steerReady.resolve();
       }
       if (
         full.type === 'execution.completed' ||
@@ -531,10 +533,12 @@ export class SessionExecution {
         return { executionId: this.executionId, status: 'completed', ...result };
       } catch (error) {
         failed = true;
+        // Cleanup can release steer callers that interrupt this execution on fallback.
+        const cancelled = this.controller.signal.aborted;
         await input.beforeFailure(error);
         input.endParent();
         const finalAnswer = this.kind === 'compact' ? '' : (this.finalAnswer ?? '');
-        if (this.controller.signal.aborted) {
+        if (cancelled) {
           await input.emit({ type: 'execution.cancelled' }).catch(() => undefined);
           return { executionId: this.executionId, status: 'cancelled', finalAnswer };
         }
