@@ -2,7 +2,6 @@
 import { computed, ref, shallowRef, useId, watch, watchEffect } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
-import marAgentIcon from '../../assets/logo-icon.png';
 import type { SessionCollaborationEdge } from '@myagentroam/protocol';
 import type { NavigationSession } from '../../service/session-navigation-projection.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -265,7 +264,7 @@ function showFocused(id: string) {
             @click="emit('select', session.id)"
           >
             <span class="network-node-icon">
-              <img :src="marAgentIcon" alt="" width="18" height="18" draggable="false" />
+              <MarIcon name="agent-session" :size="18" />
             </span>
             <span class="network-node-copy">
               <span class="network-node-title">{{ session.title }}</span>
@@ -428,11 +427,8 @@ function showFocused(id: string) {
   width: 1.5rem;
   height: 1.5rem;
   border-radius: var(--mar-radius-control);
+  color: var(--mar-text-primary);
   background: color-mix(in srgb, var(--mar-text-primary) 9%, var(--mar-bg-panel));
-}
-.network-node-icon img {
-  display: block;
-  object-fit: contain;
 }
 .network-node-copy {
   display: grid;

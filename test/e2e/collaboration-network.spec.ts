@@ -52,20 +52,9 @@ test('focuses the current session in a complex network, zooms at the pointer and
     );
   };
   await expect.poll(centered).toBeLessThan(2);
-  const brandMarks = port.locator('.network-node img');
-  await expect(brandMarks).toHaveCount(31);
-  await expect
-    .poll(() =>
-      brandMarks.evaluateAll((images) => {
-        const logos = images as HTMLImageElement[];
-        return (
-          logos.every((image) => image.complete && image.naturalWidth > 0 && image.alt === '') &&
-          new Set(logos.map((image) => image.currentSrc)).size === 1 &&
-          /logo-icon/.test(logos[0]?.currentSrc ?? '')
-        );
-      })
-    )
-    .toBe(true);
+  const agentIcon = '[data-mar-icon="agent-session"]';
+  await expect(port.locator(`.network-node:has(${agentIcon}[aria-hidden="true"])`)).toHaveCount(31);
+  await expect(current.locator(agentIcon)).toBeVisible();
   await expect(port.locator('.edge-parent')).toHaveCount(27);
   await expect(port.locator('.edge-sharing')).toHaveCount(6);
   await expect(dialog.locator('output')).toHaveText('80%');
@@ -91,8 +80,8 @@ test('focuses the current session in a complex network, zooms at the pointer and
   });
 
   const viewport = (await port.boundingBox())!;
-  const logo = (await current.locator('img').boundingBox())!;
-  const start = { x: logo.x + logo.width / 2, y: logo.y + logo.height / 2 };
+  const icon = (await current.locator(agentIcon).boundingBox())!;
+  const start = { x: icon.x + icon.width / 2, y: icon.y + icon.height / 2 };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(start.x + 86, start.y + 37, { steps: 5 });
@@ -147,6 +136,10 @@ test('focuses the current session in a complex network, zooms at the pointer and
 });
 
 test.describe('touch viewport', () => {
+  test.skip(
+    ({ browserName }) => browserName !== 'chromium',
+    'Touch panning requires Chromium CDP.'
+  );
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
   test('pans diagonally without selecting the touched session and returns to current', async ({

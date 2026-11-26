@@ -31,7 +31,7 @@ function session(
 }
 
 const anchor = session('release-current', '发布协调', 'release-parent');
-const parent = session('release-parent', '发布计划');
+const parent: NavigationSession = { ...session('release-parent', '发布计划'), runner: 'codex' };
 const branches = ['依赖检查', '文档更新', '回归测试', '制品构建', '集成验收'].map((title, i) =>
   session(`branch-${i}`, title, anchor.id)
 );
