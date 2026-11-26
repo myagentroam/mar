@@ -294,6 +294,7 @@ describe('Node Agent Network owner integration', () => {
       const execution = session.run({ prompt: 'Coordinate the work', clientMessageId: 'initial' });
       const wakeReasons = [];
       const boardErrors = [];
+      const boardEventData = [];
       for await (const event of execution) {
         if (event.type === 'sleep.started' && event.callId === 'sleep-1')
           edit([
@@ -305,12 +306,24 @@ describe('Node Agent Network owner integration', () => {
           wakeReasons.push(event.data);
         if (event.type === 'tool.failed' && event.toolName === 'whiteboard')
           boardErrors.push({ callId: event.callId, code: event.code });
+        if (event.type === 'tool.completed' && event.toolName === 'whiteboard')
+          boardEventData.push(event.data);
       }
       expect((await execution.result()).status).toBe('completed');
       expect(boardErrors).toEqual([
         { callId: 'invalid-board-read', code: 'WHITEBOARD_INPUT_INVALID' }
       ]);
       expect(invokeBoard.mock.calls).toEqual([['worker', { action: 'read' }]]);
+      expect(boardEventData).toEqual([
+        {
+          whiteboardOperation: {
+            action: 'read',
+            boardAgentId: 'worker',
+            boardRevision: 0,
+            entryCount: 0
+          }
+        }
+      ]);
       expect(wakeReasons).toEqual([
         expect.objectContaining({ wakeReason: 'context_update' }),
         expect.objectContaining({ wakeReason: 'context_update' })

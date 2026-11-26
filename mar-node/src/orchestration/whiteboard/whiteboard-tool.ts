@@ -2,6 +2,7 @@ import { AgentError } from '@myagentroam/agent';
 import type { ExtensionToolSpec } from '@myagentroam/agent/extensions';
 import { z } from 'zod';
 import { isPlainRecord } from '../../util/records.js';
+import { whiteboardOperationEvent } from './whiteboard-presentation.js';
 import type { WhiteboardUpdate } from './whiteboard-store.js';
 
 const id = z.string().min(1).max(256);
@@ -94,8 +95,10 @@ export function whiteboardTool(
           'No whiteboard is available for this execution.'
         );
       try {
-        const data = invoke(executionId, payload as WhiteboardToolInput);
-        return { data, content: JSON.stringify(data) };
+        const input = payload as WhiteboardToolInput;
+        const data = invoke(executionId, input);
+        const eventData = whiteboardOperationEvent(input, data);
+        return { data, content: JSON.stringify(data), ...(eventData ? { eventData } : {}) };
       } catch (error) {
         // The SDK's model error text does not carry generic internal details.
         if (error instanceof AgentError && error.code.startsWith('WHITEBOARD_') && error.details) {

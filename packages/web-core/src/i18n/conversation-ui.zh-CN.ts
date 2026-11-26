@@ -370,6 +370,22 @@ export const conversationUiZhCN = {
       STOP: 'stop',
       RESUME: 'resume'
     },
+    whiteboardOperation: {
+      read: '读取白板',
+      join: '加入白板',
+      leave: '离开白板',
+      update: '更新白板',
+      unknown: '白板'
+    },
+    whiteboardDetail: {
+      boardAgentId: '白板所有者',
+      boardRevision: '白板版本',
+      entryCount: '条目数',
+      operationCount: '请求操作数',
+      result: '结果',
+      changed: '已变更',
+      unchanged: '无变化'
+    },
     subagentOperation: {
       START: '启动',
       STATUS: '查看状态',

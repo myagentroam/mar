@@ -541,6 +541,57 @@ if (new URL(location.href).searchParams.has('specialized')) {
     }
   );
 }
+if (new URL(location.href).searchParams.has('whiteboard-cards')) {
+  detailSamples.push(
+    {
+      id: 'whiteboard-update',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'whiteboard',
+        inputSummary: '{"action":"update"}',
+        outputSummary: '{"changed":false}',
+        whiteboardOperation: {
+          action: 'update',
+          boardAgentId: 'board-owner',
+          boardRevision: 0,
+          operationCount: 1,
+          changed: false
+        }
+      }
+    },
+    {
+      id: 'whiteboard-join',
+      kind: 'tool_call',
+      status: 'FAILED',
+      payload: {
+        toolName: 'whiteboard',
+        errorCode: 'WHITEBOARD_UNAVAILABLE',
+        errorMessage: 'Board is not active.',
+        whiteboardOperation: { action: 'join', boardAgentId: 'unknown-owner' }
+      }
+    },
+    {
+      id: 'whiteboard-running',
+      kind: 'tool_call',
+      status: 'IN_PROGRESS',
+      payload: {
+        toolName: 'whiteboard',
+        progressLabel: 'Running',
+        whiteboardOperation: { action: 'read', boardAgentId: 'board-owner' }
+      }
+    },
+    {
+      id: 'whiteboard-cancelled',
+      kind: 'tool_call',
+      status: 'CANCELLED',
+      payload: {
+        toolName: 'whiteboard',
+        whiteboardOperation: { action: 'leave' }
+      }
+    }
+  );
+}
 if (new URL(location.href).searchParams.has('agent-cards')) {
   const params = new URL(location.href).searchParams;
   detailSamples.push({

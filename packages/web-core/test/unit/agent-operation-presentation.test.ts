@@ -16,6 +16,31 @@ function item(id: string, payload: object): ConversationItem {
 }
 
 describe('Agent operation presentation', () => {
+  it('uses structured whiteboard records in the same Agent collaboration group', () => {
+    localePreferenceService().setLocale('en-US');
+    const start = item('start', {
+      toolName: 'agent_start',
+      agentOperation: { action: 'START', targets: [] }
+    });
+    const whiteboard = item('board', {
+      toolName: 'whiteboard',
+      whiteboardOperation: { action: 'leave', changed: false }
+    });
+    const legacy = item('legacy', { toolName: 'whiteboard', inputSummary: '{"action":"read"}' });
+    const next = {
+      ...item('next', { toolName: 'whiteboard', whiteboardOperation: { action: 'read' } }),
+      processGroup: { id: 'next-process' }
+    };
+    expect(conversationDisplayItems([start, legacy, whiteboard, next])).toMatchObject([
+      { type: 'tool_group', items: [legacy] },
+      { type: 'subagent_group', id: 'start', items: [start, whiteboard] },
+      { type: 'subagent_group', id: 'next', items: [next] }
+    ]);
+    expect(conversationItemText('tool_call', whiteboard.payload)).toBe('Leave whiteboard');
+    expect(agentOperationTargets(whiteboard.payload)).toEqual([]);
+    localePreferenceService().setLocale('zh-CN');
+    expect(conversationItemText('tool_call', whiteboard.payload)).toBe('离开白板');
+  });
   it('groups all operations in one process regardless of targets and discovery', () => {
     const items = [
       item('start', {

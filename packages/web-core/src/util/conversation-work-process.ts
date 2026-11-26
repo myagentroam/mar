@@ -12,8 +12,13 @@ import {
   conversationFileChangeEntries,
   conversationDisplayItems,
   conversationProcessItemFacts,
+  isSubagentToolCall,
   type ConversationDisplayItem
 } from './conversation-presentation.js';
+import {
+  whiteboardOperation,
+  whiteboardOperationTitle
+} from './whiteboard-operation-presentation.js';
 
 export interface ConversationProcessBlock {
   readonly id: string;
@@ -447,6 +452,8 @@ export function conversationProcessLabel(
       activity = 'subagent';
       break;
     case 'tool_call': {
+      const board = whiteboardOperation(payload);
+      if (board) return whiteboardOperationTitle(board);
       const presentation = toolPresentation(item.payload);
       if (presentation) {
         activity = {
@@ -458,7 +465,7 @@ export function conversationProcessLabel(
         }[presentation.kind];
         if (presentation.kind === 'SKILL') name = presentation.name;
       } else if (payload?.toolCategory === 'IMAGE_GENERATION') activity = 'image';
-      else if (payload?.subagentOperation || payload?.agentOperation) activity = 'subagent';
+      else if (isSubagentToolCall(payload)) activity = 'subagent';
       else {
         activity = 'tool';
         name = payload?.toolName;

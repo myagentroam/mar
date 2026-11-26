@@ -50,6 +50,44 @@ import {
 } from '../../src/index.js';
 
 describe('Workbench protocol contracts', () => {
+  it('retains whiteboard call facts without board contents or session targets', () => {
+    const item = {
+      id: 'call',
+      sessionId: 'session',
+      turnId: 'turn',
+      runId: null,
+      parentItemId: null,
+      sourceSequence: 1,
+      revision: 0,
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      startedAt: 1,
+      completedAt: 2,
+      payload: {
+        namespace: 'mar-agent',
+        toolName: 'whiteboard',
+        title: 'whiteboard',
+        inputSummary: null,
+        outputSummary: null,
+        progressLabel: null,
+        errorCode: null
+      }
+    };
+    const facts = { action: 'read', boardAgentId: 'owner', boardRevision: 0, entryCount: 0 };
+    const withFacts = (whiteboardOperation: object) => ({
+      ...item,
+      payload: { ...item.payload, whiteboardOperation }
+    });
+    expect(conversationItemSchema.parse(item).payload).toEqual(item.payload);
+    expect(
+      conversationItemSchema.parse(withFacts({ ...facts, entries: ['text'], targets: ['session'] }))
+        .payload
+    ).toEqual({ ...item.payload, whiteboardOperation: facts });
+    expect(conversationItemSchema.safeParse(withFacts({ ...facts, entryCount: -1 })).success).toBe(
+      false
+    );
+  });
+
   it('accepts only running and idle Session activity without the legacy managed state', () => {
     expect(sessionActivityStateSchema.parse('RUNNING')).toBe('RUNNING');
     expect(sessionActivityStateSchema.parse('IDLE')).toBe('IDLE');
