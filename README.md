@@ -113,6 +113,23 @@ The SDK, CLI, and workbench share the same MAR Agent core. Smart Compaction is a
 
 [Context and plans](docs/help/en-US/workbench/context-and-plan.md) · [Steer, queues, and Goal](docs/help/en-US/workbench/composer.md) · [Scheduled sessions](docs/help/en-US/workbench/sessions.md) · [Code Mode and tools](docs/help/en-US/runners/mar-agent.md)
 
+### Schedule recurring work in a Workspace
+
+Run regular build checks or review summaries on a Node that supports scheduling. Pick a Workspace and a prompt, then reuse an existing session or create a new one for each run. Task cards show the next run, pause status, and a link to execution records.
+
+Use one-time, daily, weekly, or monthly rules. Nodes that support hourly schedules also let you pick multiple minutes past each hour, such as `:15` and `:45`. Scheduled runs automatically approve tool permission requests; Agent sandboxes and host restrictions still apply. [Scheduled tasks](docs/help/en-US/workbench/sessions.md#scheduled-tasks).
+
+<details>
+<summary>See the schedule cards, editor, and mobile minute selection</summary>
+
+![Desktop schedule cards with next run, status, and execution records](docs/assets/schedule-cards.en-US.png)
+
+![Desktop schedule editor with execution Node, Workspace, session, and prompt](docs/assets/schedule-editor.en-US.png)
+
+<img src="docs/assets/schedule-minutes.en-US.png" alt="Mobile hourly schedule with minutes 15 and 45 selected" width="320" />
+
+</details>
+
 ## From execution to reviewable results
 
 Choose an authorized Node and Workspace, create or resume an Agent session, and use the project's files, Git state, and terminal in one workbench. Enterprise sharing lets authorized teammates pick up accessible work without configuring the same environment on every computer.
@@ -133,7 +150,7 @@ Supporting MAR Agent Nodes preserve a read-only diff for each `apply_patch` oper
 <details>
 <summary>See a file change under review</summary>
 
-![Read-only diff showing the added and removed lines from one tool operation](docs/assets/workbench-review.en-US.png)
+![Read-only diff showing three change blocks from one tool operation](docs/assets/workbench-review.en-US.png)
 
 </details>
 
