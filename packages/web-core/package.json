@@ -9,7 +9,8 @@
     "scripts"
   ],
   "scripts": {
-    "build": "node ../../scripts/clean-build-output.mjs dist && vue-tsc -p tsconfig.json --noEmit && vite build",
+    "build": "vue-tsc -p tsconfig.json --noEmit",
+    "build:library": "pnpm build && node ../../scripts/clean-build-output.mjs dist && vite build",
     "typecheck": "vue-tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json",
     "test:unit": "vitest run --config vitest.config.mts"
   },

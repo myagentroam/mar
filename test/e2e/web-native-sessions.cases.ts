@@ -688,8 +688,10 @@ test('Workspace session cleanup defaults to thirty days and refreshes the sessio
   await dialog.getByRole('button', { name: '清理会话' }).click();
 
   const pendingCleanup = await cleanupRequest;
-  await expect(dialog.getByRole('button', { name: '清理中…' })).toBeVisible();
-  await expect(dialog.locator('.mar-ui-loading')).toBeVisible();
+  const cleanupButton = dialog.getByRole('button', { name: '清理会话', exact: true });
+  await expect(cleanupButton).toHaveAttribute('aria-busy', 'true');
+  await expect(cleanupButton).toBeDisabled();
+  await expect(cleanupButton.locator('.mar-ui-button__spinner')).toBeVisible();
   expect(writes).toEqual(
     expect.arrayContaining([
       expect.objectContaining({

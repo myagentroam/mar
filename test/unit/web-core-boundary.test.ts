@@ -11,6 +11,11 @@ import {
   translate
 } from '../../ee/web/src/service/locale-preference-service';
 
+// These Node fixtures exercise workbench composition, not the browser-only VNC transport.
+vi.mock('../../packages/web-core/src/service/browser-viewport.js', () => ({
+  BrowserViewport: class {}
+}));
+
 const root = 'packages/web-core';
 const read = (path: string) => readFileSync(path, 'utf8');
 function expectSharedEntry(path: string, entry: string): void {
@@ -21,6 +26,19 @@ function expectSharedEntry(path: string, entry: string): void {
   expect(existsSync(`${root}/${target}`)).toBe(true);
 }
 describe('single shared Web implementation', () => {
+  it('builds the private Web Core from source in the product without a separate library bundle', () => {
+    const manifest = JSON.parse(read(`${root}/package.json`));
+    expect(manifest.private).toBe(true);
+    expect(
+      Object.values(manifest.exports).every(
+        (path) => typeof path === 'string' && /^\.\/(src|scripts)\//u.test(path)
+      )
+    ).toBe(true);
+    expect(manifest.scripts.build).toContain('vue-tsc -p tsconfig.json --noEmit');
+    expect(manifest.scripts.build).not.toContain('vite build');
+    expect(manifest.scripts['build:library']).toContain('vite build');
+  });
+
   it('shares complete model, credential and image flows with private ownership and grant extensions', () => {
     const page = read(`${root}/src/view/settings/MarAgentModelManagementPage.vue`);
     expect(page).not.toMatch(
@@ -163,16 +181,25 @@ describe('single shared Web implementation', () => {
 
   it('shares Conversation views, rendering and scroll/image state without private implementation copies', () => {
     const manifest = JSON.parse(read(`${root}/package.json`));
-    for (const [name, folder] of [
-      ['ConversationHeader', 'conversation'],
-      ['ConversationScroll', 'conversation'],
-      ['ConversationTimeline', 'conversation'],
-      ['ImagePreviewDialogs', 'conversation'],
-      ['AgentMarkdown', 'common']
+    for (const name of [
+      'ConversationHeader',
+      'ConversationScroll',
+      'ConversationTimeline',
+      'ImagePreviewDialogs',
+      'AgentMarkdown'
     ]) {
-      expect(existsSync(`ee/web/src/view/${folder}/${name}.vue`)).toBe(false);
-      expect(manifest.exports[`./${name}.vue`]).toBe(`./src/view/${folder}/${name}.vue`);
-      expect(read(`${root}/src/view/${folder}/${name}.vue`)).not.toMatch(
+      const view = `src/view/conversation/${name}.vue`;
+      expect(existsSync(`ee/web/${view}`)).toBe(false);
+      if (name === 'AgentMarkdown') {
+        expect(existsSync('ee/web/src/view/common/AgentMarkdown.vue')).toBe(false);
+        expect(manifest.exports['./AgentMarkdown.vue']).toBeUndefined();
+        expect(read(`${root}/src/view/conversation/ConversationTimeline.vue`)).toContain(
+          "import AgentMarkdown from './AgentMarkdown.vue'"
+        );
+      } else {
+        expect(manifest.exports[`./${name}.vue`]).toBe(`./${view}`);
+      }
+      expect(read(`${root}/${view}`)).not.toMatch(
         /from ['"]@\/|@myagentroam-enterprise|fetch\(|new WebSocket|PageController/u
       );
     }
