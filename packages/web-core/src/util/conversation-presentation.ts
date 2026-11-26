@@ -11,6 +11,10 @@ import type { Approval, ConversationItem } from '../model/workbench.js';
 import { translate } from '../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../i18n/conversation-ui.en-US.js';
 import { agentOperation, agentOperationTargets } from './agent-operation-presentation.js';
+import {
+  whiteboardOperation,
+  whiteboardOperationTitle
+} from './whiteboard-operation-presentation.js';
 import { composerMessageCopyText, composerMessagePresentation } from './composer-message.js';
 import {
   toolPresentation,
@@ -164,13 +168,14 @@ function groupType(
   if (item.kind === 'reasoning') return 'reasoning_group';
   if (item.kind === 'command_execution') return 'command_group';
   if (item.kind === 'file_change') return 'file_change_group';
-  if (item.kind === 'tool_call' && isSubagentToolCall(conversationPayload(item.payload)))
-    return 'subagent_group';
+  if (item.kind === 'tool_call') {
+    const payload = conversationPayload(item.payload);
+    if (isSubagentToolCall(payload) || whiteboardOperation(payload)) return 'subagent_group';
+  }
   if (item.kind === 'tool_call' && toolPresentation(item.payload)?.kind === 'READ')
     return 'read_group';
   if (
     item.kind === 'tool_call' &&
-    !isSubagentToolCall(conversationPayload(item.payload)) &&
     toolPresentation(item.payload) === undefined &&
     !isImageGenerationItem(item)
   )
@@ -471,6 +476,8 @@ export function conversationItemLabel(kind: string, payload?: unknown): string {
   }
   if (kind === 'tool_call') {
     const value = conversationPayload(payload);
+    const board = whiteboardOperation(value);
+    if (board) return whiteboardOperationTitle(board);
     const title = toolPresentationTitle(payload);
     if (title) return title;
     if (value !== undefined && !isSubagentToolCall(value) && isImageGenerationPayload(value))
@@ -524,6 +531,8 @@ export function conversationItemText(
       : translate('generated.conversationPresentation.thoughtCompleted');
   }
   if (kind === 'tool_call') {
+    const board = whiteboardOperation(value);
+    if (board) return whiteboardOperationTitle(board);
     if (!isSubagentToolCall(value) && isImageGenerationPayload(value)) {
       if (status === 'PENDING' || status === 'IN_PROGRESS')
         return translate('nodeMessages.generatingImage');

@@ -1,13 +1,13 @@
-import type { NodeRuntimeState } from '../runtime-state.js';
-import type { NodeAgentRun } from '../runtime-model.js';
-import type { RunnerExecutionStatus } from '../runner/contracts.js';
+import type { NodeRuntimeState } from '../../runtime-state.js';
+import type { NodeAgentRun } from '../../runtime-model.js';
+import type { RunnerExecutionStatus } from '../../runner/contracts.js';
 import type { AgentNetworkActor } from './agent-network-service.js';
 import {
   AgentNetworkObservations,
   agentObservationFromRunEvent,
   type ParentObservations
 } from './agent-network-observations.js';
-import { sessionPendingApprovals } from './session-recent-activity.js';
+import { sessionPendingApprovals } from '../../service/session-recent-activity.js';
 
 /** Projects normalized Execution observations and owns transient observers through Run settlement.
  * Run-keyed handles survive Session identity promotion without borrowing a replacement's lifetime.

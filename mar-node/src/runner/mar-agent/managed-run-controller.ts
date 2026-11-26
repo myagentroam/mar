@@ -152,7 +152,7 @@ interface MarAgentManagedRunControllerOptions {
   readonly computerUse?: ComputerUseExecutionProvider;
   readonly generateTitle?: typeof generateSessionTitle;
   readonly publishModelResource?: import('./session-runtime.js').NodeModelResourcePublisher;
-  readonly attachNetworkContext?: import('./session-runtime.js').MarAgentRuntimeResources['attachNetworkContext'];
+  readonly attachOrchestrationContext?: import('./session-runtime.js').MarAgentRuntimeResources['attachOrchestrationContext'];
 }
 
 type ManagedSteer = (
@@ -207,10 +207,10 @@ export class MarAgentManagedRunController {
             }
           }),
         customTitle: (sessionId) => this.host.customTitle?.(sessionId) ?? undefined,
-        ...(options.attachNetworkContext === undefined
+        ...(options.attachOrchestrationContext === undefined
           ? {}
           : {
-              attachNetworkContext: options.attachNetworkContext
+              attachOrchestrationContext: options.attachOrchestrationContext
             }),
         modelUsage: (runId, usage) =>
           this.host.emit(runId, 'run.usage', normalizeMarAgentUsage(usage)),

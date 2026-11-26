@@ -584,4 +584,14 @@ describe('independent tool presentation', () => {
       )
     ).toContain('Wake reason: New public subagent message');
   });
+
+  it.each([
+    ['en-US', 'Shared information updated'],
+    ['zh-CN', '共享信息已更新']
+  ] as const)('localizes a context-update Sleep wake in %s', (locale, expected) => {
+    localePreferenceService().setLocale(locale);
+    expect(
+      toolPresentationDetails(payload({ kind: 'SLEEP', wakeReason: 'context_update' }))
+    ).toContain(expected);
+  });
 });

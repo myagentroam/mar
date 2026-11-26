@@ -45,14 +45,19 @@ import { CommandStateStore } from './runner-command-engine.js';
 import { GoalRuntime } from './service/goal-runtime.js';
 import { GoalContinuationCoordinator } from './service/goal-continuation-coordinator.js';
 import { GoalMcpBridge } from './service/goal-mcp-bridge.js';
-import { AgentNetworkObservations } from './service/agent-network-observations.js';
-import { AgentNetworkRunProjection } from './service/agent-network-run-projection.js';
-import { createNodeAgentNetwork } from './service/agent-network-bindings.js';
+import { NodeOrchestration } from './orchestration/node-orchestration.js';
+import { WhiteboardService } from './orchestration/whiteboard/whiteboard-service.js';
+import { WhiteboardStore } from './orchestration/whiteboard/whiteboard-store.js';
+import { requireOrchestrationExecution } from './orchestration/execution-actor.js';
+import { assertSessionControlOwner } from './service/run-ownership-policy.js';
+import { AgentNetworkObservations } from './orchestration/agent-network/agent-network-observations.js';
+import { AgentNetworkRunProjection } from './orchestration/agent-network/agent-network-run-projection.js';
+import { createNodeAgentNetwork } from './orchestration/agent-network/agent-network-bindings.js';
 import {
   agentNetworkExecutionCommand,
   agentNetworkInvoke
-} from './service/agent-network-invoke.js';
-import type { AgentNetworkService } from './service/agent-network-service.js';
+} from './orchestration/agent-network/agent-network-invoke.js';
+import type { AgentNetworkService } from './orchestration/agent-network/agent-network-service.js';
 import { RunnerUsageReader } from './runner-usage.js';
 import { ClaudeCodeRunner } from './runner/claude-code-runner.js';
 import { ClaudeManagedRunController } from './runner/claude/managed-run-controller.js';
@@ -456,7 +461,46 @@ export class NodeConnector {
     () => this.config?.nodeId ?? 'runtime-node',
     (workspaceId) => this.database?.getWorkspace(workspaceId),
     Date.now,
-    (run, session, userMessage) => this.recentRunProjectionService.record(run, session, userMessage)
+    (run, session, userMessage) => {
+      this.recentRunProjectionService.record(run, session, userMessage);
+      if (run.completedAt !== null) this.orchestration.release(run.id);
+    }
+  );
+  private readonly orchestration = new NodeOrchestration(
+    new WhiteboardService({
+      store: () => {
+        if (!this.database) throw new Error('NODE_DATABASE_UNAVAILABLE');
+        return new WhiteboardStore(this.database.raw);
+      },
+      activeRun: (id) => {
+        const run = this.runtime.getRun(id);
+        if (
+          run?.id === id &&
+          run.runner === 'mar-agent' &&
+          run.completedAt === null &&
+          run.status !== 'CANCELLING' &&
+          Number.isSafeInteger(run.initiatedByUserId) &&
+          this.runtime.activeSessionRun(run.sessionId)?.id === id &&
+          this.database?.getWorkspace(run.workspaceId)
+        )
+          return run;
+        return undefined;
+      },
+      activeOwnerRunId: (owner) => this.runtime.activeSessionRun(owner)?.id,
+      boardInWorkspace: (owner, workspaceId) => {
+        const session = this.database?.getSessionRecord(owner);
+        return session?.workspaceId === workspaceId && session.runner === 'mar-agent';
+      },
+      canRecover: (run, owner) => {
+        if (this.database?.getSessionRecord(owner)?.workspaceId !== run.workspaceId) return false;
+        try {
+          assertSessionControlOwner(this.runtime, owner, run.initiatedByUserId);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    })
   );
   private readonly goalCoordinator: GoalContinuationCoordinator;
   private readonly metrics = new NodeMetrics();
@@ -743,14 +787,49 @@ export class NodeConnector {
       },
       {
         modelFactory: this.marAgentRuntimeModels,
-        attachNetworkContext: (sessionId) =>
-          Object.assign(this.agentNetworkObservations.attach(sessionId), {
+        attachOrchestrationContext: (sessionId, currentExecution) => {
+          const observations = this.agentNetworkObservations.attach(sessionId);
+          const current = () => {
+            const executionId = currentExecution();
+            if (executionId === undefined) return undefined;
+            const run = this.runtime.getRun(executionId);
+            return run && this.runtime.currentExecutionId(run.id) === executionId ? run : undefined;
+          };
+          return {
+            collect: observations.collect.bind(observations),
+            close: observations.close.bind(observations),
+            ...this.orchestration.context(() => current()?.id, observations),
             invoke: agentNetworkInvoke({
               sessionId,
               runtime: this.runtime,
               coordinator: this.continuousRunCoordinator,
               service: this.agentNetworkService
             }),
+            whiteboard: (
+              executionId: string,
+              input: import('./orchestration/whiteboard/whiteboard-tool.js').WhiteboardToolInput
+            ) => {
+              const { run } = requireOrchestrationExecution({
+                sessionId,
+                executionId,
+                runtime: this.runtime,
+                coordinator: this.continuousRunCoordinator
+              });
+              const board = this.orchestration.whiteboard;
+              switch (input.action) {
+                case 'read':
+                  return board.read(run.id, input.boardAgentId);
+                case 'join':
+                  return board.join(run.id, input.boardAgentId);
+                case 'leave':
+                  return board.leave(run.id);
+                case 'update':
+                  return board.update(run.id, {
+                    expectedBoardId: input.boardAgentId,
+                    ops: input.ops
+                  });
+              }
+            },
             resources: async (signal: AbortSignal) => {
               signal.throwIfAborted();
               const currentSession = this.runtime.getAgentSessionById(sessionId);
@@ -774,7 +853,8 @@ export class NodeConnector {
                 )}`
               ];
             }
-          }),
+          };
+        },
         publishModelResource: (image, context) => {
           const session = this.runtime.getAgentSession(context.ownerSessionId);
           if (session === undefined) throw new Error('RUN_SESSION_NOT_FOUND');
@@ -981,11 +1061,28 @@ export class NodeConnector {
     this.continuousRunCoordinator = new ContinuousRunCoordinator({
       resolveExecutionDirectory,
       runtime: this.runtime,
+      prepareOrchestrationInput: (run, input) => {
+        this.orchestration.prepareInput(
+          run.id,
+          input.clientMessageId,
+          input.orchestrationSource,
+          run.clientMessageId === input.clientMessageId
+        );
+      },
       mintMarctlExecutionCredential: (input) => this.marctlExecutionCredentials.request(input),
       supportsNativeSteer: (runner) =>
         this.runners.optional(runner)?.supportsNativeSteer() === true,
       steer: (prepared, item, executionId) => {
         const runner = this.runners.require(prepared.executionContext.runner);
+        const run = this.runtime.getRun(executionId);
+        const releaseOrchestration =
+          run &&
+          this.orchestration.prepareInput(
+            run.id,
+            item.clientMessageId,
+            prepared.orchestrationSource,
+            false
+          );
         const images = item.attachments.filter(isImageAttachment).map((image) => ({
           name: image.name,
           mimeType: image.mime,
@@ -1003,21 +1100,33 @@ export class NodeConnector {
             collaborationMode: prepared.collaborationMode,
             images
           })
-          .then((result) => {
-            if (result.status !== 'accepted') return result;
-            const attachments = this.runAttachmentService.append(
-              executionId,
-              item.attachments.filter(isImageAttachment)
-            );
-            return {
-              ...result,
-              item: {
-                ...result.item,
-                merge: true,
-                payload: { ...result.item.payload, ...(attachments.length ? { attachments } : {}) }
+          .then(
+            (result) => {
+              if (result.status !== 'accepted') {
+                releaseOrchestration?.();
+                return result;
               }
-            };
-          });
+              const attachments = this.runAttachmentService.append(
+                executionId,
+                item.attachments.filter(isImageAttachment)
+              );
+              return {
+                ...result,
+                item: {
+                  ...result.item,
+                  merge: true,
+                  payload: {
+                    ...result.item.payload,
+                    ...(attachments.length ? { attachments } : {})
+                  }
+                }
+              };
+            },
+            (error: unknown) => {
+              releaseOrchestration?.();
+              throw error;
+            }
+          );
       },
       emitQueue: (workspaceId, sessionId) => {
         if (this.runtime.sessionQueue(sessionId).itemIds.length === 0)

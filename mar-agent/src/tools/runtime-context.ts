@@ -66,7 +66,9 @@ export interface ToolRuntimeContext {
   modelId?: string;
   signal: AbortSignal;
   waitInterrupt?: import('./wait.js').ToolWaitInterrupt | undefined;
-  contextUpdates?: import('./wait.js').ToolWaitInterrupt;
+  contextUpdates?: import('./wait.js').ToolWaitInterrupt & {
+    reason?(): 'subagent_message' | 'context_update';
+  };
   permissionPolicy?: import('./permissions.js').ExecutionToolPermissions;
   parentCallId?: string;
   writeToolResultResource?: import('./result-extensions.js').ToolResultResourceWriter;

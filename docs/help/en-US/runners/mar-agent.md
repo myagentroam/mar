@@ -179,6 +179,14 @@ agent_wait({
 
 Native collaboration tools use the same compact result for direct calls and Code Mode `data`: target identity, actual operation status, new messages or terminal conclusions obtained by waiting, and partial failures, unknown outcomes, and error codes remain available. Internal audit receipts, queue item IDs, and internal execution identifiers are omitted. The optional `goal` in `agent_start` and `agent_send` is a persistent objective across executions, separate from the current message. Omit it or pass `null` to leave it unchanged, use `objective` to set or replace it, or use `clear` to remove it without stopping the current execution.
 
+### Shared whiteboard
+
+Every Agent keeps its own whiteboard and can follow one other board. When an Agent brings someone into the work, the new participant keeps its own board and follows the board the initiating Agent follows, or the initiating Agent's own board if it follows none. A disconnected follow is inherited as-is but does not provide board content or allow edits until reconnected. This includes idle Agents brought in by a message. Messaging an active Agent does not change the board it follows.
+
+The board identifier, `boardAgentId`, is the owning Agent's ID. Read a board in the same workspace by that ID, even when its owner is idle. Omit the ID to read your own board. Reads return the contents and up to ten recent change summaries without changing what you follow. `join` accepts an active board's `boardAgentId` and replaces only the board you follow. Use `whiteboard({ action: 'leave' })` to stop following another board without changing your own. Use `update` with the ID of your own board or the board you follow.
+
+Your own board and the board you follow are provided automatically. Edits can wake sleeping subscribers but do not start idle sessions. When the owner finishes their run, the followed board stops updating automatically but remains readable by ID. This does not affect your own board. To resume following it, join again when the owner is active or ask the owner to send a message from a new run.
+
 ### Web search and fetch
 
 When Hosted Web Search is enabled, both Auto and Full access use the selected model service's native hosted search without a client permission declaration; self-hosted search is not exposed at the same time. Otherwise MAR Agent uses the SearXNG service bundled with Server Compose. Web Fetch connects directly from the Node, does not read model credentials, and never inherits the SOCKS5 proxy configured on a Codex credential. It can reach any HTTP/HTTPS IP address or domain available from the Node, including intranet resources. It accepts self-signed or otherwise untrusted HTTPS certificates by default; set `MAR_AGENT_WEB_FETCH_ALLOW_UNTRUSTED_TLS=0` in the Node service environment to enforce certificate verification.

@@ -11,7 +11,7 @@ import {
 } from '../../../mar-agent/dist/index.js';
 import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import type { ModelEvent, ModelRequest } from '../../../mar-agent/dist/model/contracts.js';
-import { agentNetworkExtension } from '../../src/runner/mar-agent/agent-network-extension.js';
+import { orchestrationExtension } from '../../src/orchestration/orchestration-extension.js';
 import { marAgentRuntimeExtensionSource } from '../../src/runner/mar-agent/runtime-extensions.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 
@@ -66,7 +66,7 @@ async function fixture(
             ...snapshot,
             extensions: [
               ...snapshot.extensions,
-              ...(networkEnabled ? [agentNetworkExtension(invoke, () => 'execution')] : []),
+              ...(networkEnabled ? [orchestrationExtension(invoke, () => 'execution')] : []),
               {
                 id: 'capture',
                 apiVersion: '1.0' as const,
@@ -211,6 +211,9 @@ it.each([false, true])(
       );
       expect(instructions).toContain('Prefer following up through the direct delegate');
       expect(instructions).toContain('only when a concrete issue needs independent verification');
+      expect(instructions).toContain(
+        'For direct requests and Session coordination, use native agent_* tools.'
+      );
       expect(instructions).toContain('avoid unnecessary cross-Session coordination');
       expect(instructions).toContain('do not treat them as task-owned children');
       expect(instructions).not.toContain('Explicitly wait when you need progress or completion.');
@@ -221,7 +224,7 @@ it.each([false, true])(
         'Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.'
       );
       expect(instructions).toContain(
-        'Prefer reusing known Session IDs rather than rediscovering them.'
+        'Prefer reusing known Agent IDs rather than rediscovering them.'
       );
       expect(instructions).toContain(
         'An accepted message normally needs no separate acknowledgment.'
@@ -239,12 +242,12 @@ it.each([false, true])(
       expect(instructions).not.toContain('Contact the parent proactively');
       expect(instructions).not.toContain('or when explicitly asked to report');
       expect(instructions).toContain(
-        'Updates are most useful when requested or when the recipient needs to decide or change course'
+        'Direct updates are most useful when requested or when the recipient needs to decide or change course'
       );
       expect(instructions).not.toContain('Send updates for meaningful progress');
       expect(instructions).toContain('prefer combining related updates');
       expect(instructions).toContain(
-        'Sending to a non-child Agent does not subscribe to future updates; waiting for a non-child observes it only for that call.'
+        'Sending a message to an Agent other than your direct child does not subscribe you to its Session activity. For those Agents, agent_wait observes Session activity only for the duration of the call.'
       );
       expect(instructions).toContain(
         'Before final delivery, resolve any outstanding child work required for the task.'
@@ -254,7 +257,7 @@ it.each([false, true])(
       );
       expect(instructions).not.toContain('Join or stop task-required child work');
       expect(instructions).toContain(
-        "selecting a child's model or effort at creation use native agent_* tools"
+        "Use agent_start to select a child's model or effort at creation."
       );
       expect(instructions).toContain('Do not switch to marctl when a native operation fails.');
       expect(instructions).not.toContain('existing authorized Sessions');
@@ -293,7 +296,7 @@ it('selects delegation and lateral guidance independently and omits both during 
       'The parent automatically collects replies and terminal state from its direct children before its next model request.',
       'Report progress, blockers, and results in your own Session rather than using agent_send to contact your parent.',
       'Parent-to-child guidance still uses agent_send.',
-      'Sending to a non-child Agent does not subscribe to future updates'
+      'Sending a message to an Agent other than your direct child does not subscribe you to its Session activity.'
     ]) {
       expect(instructions.split(guidance)).toHaveLength(expected[1] ? 2 : 1);
     }
@@ -323,9 +326,9 @@ it.each([false, true])(
     ]);
     const composed = await test.context.prompts.composeDefault();
     const text = composed.sections.find(
-      (section) => section.id === 'mar.node.agent-network:delegation'
+      (section) => section.id === 'mar.node.orchestration'
     )!.text!;
-    expect(JSON.parse(text.split('Available subagent models:\n')[1]!)).toEqual({
+    expect(JSON.parse(text.split('Available subagent models:\n')[1]!.split('\n')[0]!)).toEqual({
       runner: 'mar-agent',
       models: [
         {
@@ -347,9 +350,9 @@ it('refreshes the injected models after reconfiguration and represents an empty 
     await test.agent.reconfigureModels({ models: [test.configuration, ...models] });
     const composed = await test.context.prompts.composeDefault();
     const text = composed.sections.find(
-      (section) => section.id === 'mar.node.agent-network:delegation'
+      (section) => section.id === 'mar.node.orchestration'
     )!.text!;
-    const catalog = JSON.parse(text.split('Available subagent models:\n')[1]!);
+    const catalog = JSON.parse(text.split('Available subagent models:\n')[1]!.split('\n')[0]!);
     expect(catalog.models.map((model: { id: string }) => model.id)).toEqual(
       models.map((model) => model.id)
     );

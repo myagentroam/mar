@@ -12,6 +12,7 @@ import {
   stringField
 } from '../../../util/conversation-presentation.js';
 import { agentOperationDetail } from '../../../util/agent-operation-presentation.js';
+import { whiteboardOperation } from '../../../util/whiteboard-operation-presentation.js';
 import {
   detailOnlyToolText,
   readFileDetail,
@@ -31,6 +32,7 @@ import SleepDetail from './SleepDetail.vue';
 import ImageViewDetail from './ImageViewDetail.vue';
 import CompactRequestDetail from './CompactRequestDetail.vue';
 import GenericToolDetail from './GenericToolDetail.vue';
+import WhiteboardOperationDetail from './WhiteboardOperationDetail.vue';
 const props = defineProps<{
   item: ConversationItem;
   copyOnly?: boolean;
@@ -43,6 +45,7 @@ const payload = computed(() =>
     : {}
 );
 const output = computed(() => readToolOutput(payload.value));
+const board = computed(() => whiteboardOperation(payload.value));
 const selection = computed(() => {
   const p = payload.value;
   const agent = props.item.permissionStop ? undefined : agentOperationDetail(p, props.item.status);
@@ -206,18 +209,22 @@ const detailText = computed(() => {
         :error-message="typeof payload.errorMessage === 'string' ? payload.errorMessage : undefined"
         :permission-reason="item.permissionStop?.reason"
       />
-      <GenericToolDetail
-        v-else-if="selection.kind === 'generic'"
-        :title="stringField(payload, 'title')"
-        :tool-name="stringField(payload, 'toolName')"
-        :input-summary="typeof payload.inputSummary === 'string' ? payload.inputSummary : undefined"
-        :input-truncated="payload.inputTruncated === true"
-        :generic-output="output"
-        :progress-label="stringField(payload, 'progressLabel')"
-        :error-code="stringField(payload, 'errorCode')"
-        :error-message="stringField(payload, 'errorMessage')"
-        :permission-reason="item.permissionStop?.reason"
-      />
+      <template v-else-if="selection.kind === 'generic'">
+        <WhiteboardOperationDetail v-if="board" :operation="board" />
+        <GenericToolDetail
+          :title="stringField(payload, 'title')"
+          :tool-name="stringField(payload, 'toolName')"
+          :input-summary="
+            typeof payload.inputSummary === 'string' ? payload.inputSummary : undefined
+          "
+          :input-truncated="payload.inputTruncated === true"
+          :generic-output="output"
+          :progress-label="board ? undefined : stringField(payload, 'progressLabel')"
+          :error-code="stringField(payload, 'errorCode')"
+          :error-message="stringField(payload, 'errorMessage')"
+          :permission-reason="item.permissionStop?.reason"
+        />
+      </template>
       <pre v-else-if="selection.kind === 'text'" class="mar-conversation-detail-text">{{
         selection.value
       }}</pre>

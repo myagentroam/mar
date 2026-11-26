@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
-import { waitForAgentTargets, type AgentWaitTarget } from '../../src/service/agent-network-wait.js';
+import { AgentNetworkObservations } from '../../src/orchestration/agent-network/agent-network-observations.js';
+import {
+  waitForAgentTargets,
+  type AgentWaitTarget
+} from '../../src/orchestration/agent-network/agent-network-wait.js';
 
 function fixture() {
   const network = new AgentNetworkObservations();

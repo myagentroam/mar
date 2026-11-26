@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NodeMetrics } from '../../src/operational.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
-import { AgentNetworkRunProjection } from '../../src/service/agent-network-run-projection.js';
-import { waitForAgentTargets } from '../../src/service/agent-network-wait.js';
+import { AgentNetworkObservations } from '../../src/orchestration/agent-network/agent-network-observations.js';
+import { AgentNetworkRunProjection } from '../../src/orchestration/agent-network/agent-network-run-projection.js';
+import { waitForAgentTargets } from '../../src/orchestration/agent-network/agent-network-wait.js';
 import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import { RunEventService } from '../../src/service/run-event-service.js';
 

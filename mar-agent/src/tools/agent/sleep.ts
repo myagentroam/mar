@@ -13,8 +13,7 @@ export const sleepToolDefinition: ClientToolDefinition = {
   autoPermission: 'omit',
   allowedCallers: ['direct'],
   parallelSafety: 'safe',
-  description:
-    'Pause for up to durationMs milliseconds. Returns early when user input or a new public subagent message is available. Returns elapsed time and the wake reason.',
+  description: 'Pause for up to durationMs milliseconds. External events can end the pause early.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -67,7 +66,11 @@ export async function executeSleep(
     durationMs,
     elapsedMs: Math.round(performance.now() - started),
     wakeReason:
-      outcome === 'ready' ? 'subagent_message' : outcome === 'interrupted' ? 'steer' : 'elapsed'
+      outcome === 'ready'
+        ? (messages?.reason?.() ?? 'subagent_message')
+        : outcome === 'interrupted'
+          ? 'steer'
+          : 'elapsed'
   };
   return { content: JSON.stringify(data), data };
 }

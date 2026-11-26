@@ -14,7 +14,7 @@ import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
 import { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import { marctlHostSkill } from '../../src/runner/mar-agent/marctl-skill.js';
-import { agentNetworkExtension } from '../../src/runner/mar-agent/agent-network-extension.js';
+import { orchestrationExtension } from '../../src/orchestration/orchestration-extension.js';
 
 const environment = {
   MAR_CTL_CONTEXT_REQUIRED: '1',
@@ -26,7 +26,7 @@ const environment = {
 
 it('publishes concise Agent tool descriptions and delivery parameter guidance', () => {
   const register = vi.fn();
-  agentNetworkExtension(vi.fn(), () => 'execution').attachSession!({
+  orchestrationExtension(vi.fn(), () => 'execution').attachSession!({
     tools: { register },
     hooks: { intercept() {} }
   } as never);

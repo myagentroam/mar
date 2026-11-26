@@ -7,11 +7,14 @@ import { SecretValue, type AgentModelConfiguration } from '@myagentroam/agent';
 import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import type { ModelEvent } from '../../../mar-agent/dist/model/contracts.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
-import { createNodeAgentNetwork } from '../../src/service/agent-network-bindings.js';
-import { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
-import { executionAgentActor, invokeAgentNetwork } from '../../src/service/agent-network-invoke.js';
+import { createNodeAgentNetwork } from '../../src/orchestration/agent-network/agent-network-bindings.js';
+import { AgentNetworkObservations } from '../../src/orchestration/agent-network/agent-network-observations.js';
+import {
+  executionAgentActor,
+  invokeAgentNetwork
+} from '../../src/orchestration/agent-network/agent-network-invoke.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
-import { agentNetworkExtension } from '../../src/runner/mar-agent/agent-network-extension.js';
+import { orchestrationExtension } from '../../src/orchestration/orchestration-extension.js';
 
 function fixture() {
   const runtime = new NodeRuntimeState(
@@ -284,7 +287,7 @@ describe('Agent Network wait diagnostics', () => {
           }),
           models: [configuration],
           extensions: [
-            agentNetworkExtension(
+            orchestrationExtension(
               (_execution, action, input, context, onResolved) =>
                 invokeAgentNetwork(
                   f.service,

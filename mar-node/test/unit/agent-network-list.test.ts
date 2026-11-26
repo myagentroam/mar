@@ -8,9 +8,9 @@ import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { NodeAgentSession } from '../../src/session/contracts.js';
 import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
-import type { AgentNetworkService } from '../../src/service/agent-network-service.js';
-import { invokeAgentNetwork } from '../../src/service/agent-network-invoke.js';
-import { actorForAuthenticatedTerminal } from '../../src/service/agent-network-bindings.js';
+import type { AgentNetworkService } from '../../src/orchestration/agent-network/agent-network-service.js';
+import { invokeAgentNetwork } from '../../src/orchestration/agent-network/agent-network-invoke.js';
+import { actorForAuthenticatedTerminal } from '../../src/orchestration/agent-network/agent-network-bindings.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {

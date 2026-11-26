@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { OpenAiResponsesAdapter } from '../../src/model/openai-responses.js';
 import type { ModelEvent, ModelMessage, ModelTurnSession } from '../../src/model/contracts.js';
+import { resetContextualWorldState } from '../../src/runtime/context/world-state.js';
+import { prepareExecutionRoundRequest } from '../../src/sdk/execution-round-request.js';
 import {
   startResponsesWebSocketServer,
   type CloseableServer
@@ -160,6 +162,113 @@ function expectFullReplay(body: ResponsesBody, system: string) {
 }
 
 describe('Responses HTTP continuation', () => {
+  it('sends only the contextual replacement in the continuation suffix and commits it once', async () => {
+    const server = await startHttpResponsesServer([
+      completedResponse('response-1'),
+      { status: 429, error: 'retry fixture' },
+      completedResponse('response-2'),
+      completedResponse('response-3')
+    ]);
+    const model = configuration(server.baseUrl, { responsesPreviousResponseId: true });
+    const turn = createTurn(createAdapter(model));
+    const signal = new AbortController().signal;
+    let world = resetContextualWorldState(undefined, 0, {
+      instructionSnapshot: undefined,
+      instructionContent: undefined
+    });
+    const acknowledge = vi.fn();
+    const prepare = (messages: ModelMessage[], body?: string) =>
+      prepareExecutionRoundRequest({
+        messages,
+        model,
+        requestBase: { promptCacheKey: 'fixture-session' },
+        residentTools: () => [],
+        autoPermission: false,
+        signal,
+        capture: () => ({
+          roundTools: [],
+          roundBindings: undefined,
+          toolScope: undefined,
+          composeSystemPrompt: async () => ({ text: 'Reply.' })
+        }),
+        requestContext: async () => ({
+          items: body === undefined ? [] : [{ id: 'shared', content: body }],
+          acknowledge
+        }),
+        bind: () => {},
+        world: () => world,
+        commitWorld: async (next) => {
+          world = next;
+        },
+        preparing: () => {},
+        transform: async (request) => request
+      });
+    const first = await prepare([{ role: 'user', content: 'First' }], 'Initial shared view');
+    await collect(turn.start(first.request, signal));
+    await first.acknowledgeRequestContext!();
+    const messages = messagesAfterFirstResponse('response-1', 'Second');
+    const discarded = await prepare(messages, 'Discarded view');
+    expect(JSON.stringify(discarded.request.messages)).toContain('Discarded view');
+    expect(acknowledge).toHaveBeenCalledTimes(1);
+    const second = await prepare(messages, 'Current shared view');
+    await collect(turn.start(second.request, signal));
+    await second.acknowledgeRequestContext!();
+    expect(acknowledge).toHaveBeenCalledTimes(2);
+    expect(server.requests).toHaveLength(3);
+    expect(server.requests[1]).toMatchObject({
+      previous_response_id: 'response-1',
+      input: [
+        { role: 'user', content: 'Second' },
+        {
+          role: 'user',
+          content: expect.stringMatching(/Contextual data[\s\S]*Current shared view/u)
+        }
+      ]
+    });
+    // The adapter's ordinary HTTP retry uses full replay; keep the historical
+    // initial prefix intact and send the replacement exactly once in either shape.
+    const replay = server.requests[2]?.input as unknown[];
+    const initialInput = server.requests[0]?.input as unknown[];
+    expect(replay.slice(0, initialInput.length)).toEqual(initialInput);
+    expect(replay.slice(-2)).toEqual(server.requests[1]?.input);
+    expect(JSON.stringify(server.requests[1])).not.toContain('Initial shared view');
+    expect(JSON.stringify(server.requests[2])).not.toContain('Discarded view');
+    const unchanged = await prepare(messages, 'Current shared view');
+    expect(unchanged.request.messages).toEqual(second.request.messages);
+
+    const cleared = await prepare(
+      [
+        ...messages,
+        {
+          role: 'provider',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'responses-http',
+          content: '',
+          item: responseItem('response-2')
+        },
+        { role: 'assistant', content: 'First answer' },
+        { role: 'user', content: 'Third' }
+      ],
+      'Empty shared view'
+    );
+    await collect(turn.start(cleared.request, signal));
+    await cleared.acknowledgeRequestContext!();
+    expect(acknowledge).toHaveBeenCalledTimes(3);
+    expect(server.requests[3]).toMatchObject({
+      previous_response_id: 'response-2',
+      input: [
+        { role: 'user', content: 'Third' },
+        {
+          role: 'user',
+          content: expect.stringMatching(/Contextual data[\s\S]*Empty shared view/u)
+        }
+      ]
+    });
+    expect(server.requests.map(({ prompt_cache_key }) => prompt_cache_key)).toEqual(
+      Array(4).fill('fixture-session')
+    );
+  });
+
   it.each(['HTTP', 'WEBSOCKET'] as const)(
     'preserves continuation when a child update is appended over %s',
     async (transport) => {

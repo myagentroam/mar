@@ -12,6 +12,7 @@ import { NODE_SCHEMA_MIGRATION_V14 } from '../../src/migrations/v014.js';
 import { NODE_SCHEMA_MIGRATION_V15 } from '../../src/migrations/v015.js';
 import { NODE_SCHEMA_MIGRATION_V16 } from '../../src/migrations/v016.js';
 import { ScheduledSessionStore } from '../../src/service/scheduled-session-store.js';
+import { WhiteboardStore } from '../../src/orchestration/whiteboard/whiteboard-store.js';
 
 const directories: string[] = [];
 
@@ -22,6 +23,63 @@ afterEach(async () => {
 });
 
 describe('Node SQLite session records', () => {
+  it('preserves a whiteboard and its next entry ID across reopen, and removes boards with their owners', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mar-whiteboard-reopen-'));
+    directories.push(directory);
+    const path = join(directory, 'node.db');
+    const database = new NodeDatabase(path, 'whiteboard-persistence');
+    const workspace = database.saveWorkspace({
+      path: directory,
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const seed = new WhiteboardStore(database.raw);
+    try {
+      for (const session of ['first-owner', 'second-owner']) {
+        database.saveNativeSessionMetadata({
+          runner: 'mar-agent',
+          externalSessionId: session,
+          workspaceId: workspace.id
+        });
+        seed.update(session, session, {
+          expectedBoardId: session,
+          ops: [{ op: 'add', content: 'Remember across runs' }]
+        });
+      }
+    } finally {
+      database.close();
+    }
+    const reopened = new NodeDatabase(path, 'whiteboard-persistence');
+    try {
+      const board = new WhiteboardStore(reopened.raw);
+      expect(board.read('first-owner')).toMatchObject({
+        boardRevision: 1,
+        entries: [{ id: 'w1' }],
+        recentChanges: [{ boardRevision: 1 }]
+      });
+      expect(
+        board.update('first-owner', 'first-owner', {
+          expectedBoardId: 'first-owner',
+          ops: [
+            { op: 'clear', expectedBoardRevision: 1 },
+            { op: 'add', content: 'New decision' }
+          ]
+        })
+      ).toMatchObject({ added: [{ id: 'w2', revision: 1 }] });
+      expect(reopened.deleteSessionRecord('first-owner').removed).toBe(true);
+      expect(board.read('first-owner')).toMatchObject({
+        boardRevision: 0,
+        entries: [],
+        recentChanges: []
+      });
+      expect(board.read('second-owner').boardRevision).toBe(1);
+      reopened.removeWorkspace(workspace.id);
+      expect(reopened.raw.prepare('SELECT * FROM whiteboards').all()).toEqual([]);
+    } finally {
+      reopened.close();
+    }
+  });
+
   it('rolls back the parent column, index and source JSON when v22 fails', () => {
     const database = new DatabaseSync(':memory:');
     const earlier = NODE_SCHEMA_MIGRATIONS.filter(({ version }) => version <= 21);
@@ -152,7 +210,8 @@ describe('Node SQLite session records', () => {
       { version: 22 },
       { version: 23 },
       { version: 24 },
-      { version: 25 }
+      { version: 25 },
+      { version: 26 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     expect(database.raw.prepare('PRAGMA table_info(agent_sessions)').all()).toEqual(
@@ -268,7 +327,8 @@ describe('Node SQLite session records', () => {
       { version: 22 },
       { version: 23 },
       { version: 24 },
-      { version: 25 }
+      { version: 25 },
+      { version: 26 }
     ]);
     expect(foreignKeyList(reopened.raw)).toEqual([]);
     expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/reopen-workspace' });
@@ -320,7 +380,8 @@ describe('Node SQLite session records', () => {
       { version: 22 },
       { version: 23 },
       { version: 24 },
-      { version: 25 }
+      { version: 25 },
+      { version: 26 }
     ]);
     expect(upgraded.getNativeSessionMetadata('codex', 'legacy-thread', workspace.id)).toMatchObject(
       {
@@ -381,7 +442,8 @@ describe('Node SQLite session records', () => {
       { version: 22 },
       { version: 23 },
       { version: 24 },
-      { version: 25 }
+      { version: 25 },
+      { version: 26 }
     ]);
     expect(restored.getWorkspace('kept')).toMatchObject({ path: '/kept' });
     expect(
@@ -660,7 +722,8 @@ describe('Node SQLite session records', () => {
       { version: 22 },
       { version: 23 },
       { version: 24 },
-      { version: 25 }
+      { version: 25 },
+      { version: 26 }
     ]);
     expect(foreignKeyList(database.raw)).toEqual([]);
     database.close();
@@ -852,7 +915,8 @@ describe('Node SQLite session records', () => {
         { version: 22 },
         { version: 23 },
         { version: 24 },
-        { version: 25 }
+        { version: 25 },
+        { version: 26 }
       ]);
       expect(reopened.getWorkspace(workspace.id)).toMatchObject({ path: '/legacy-workspace' });
       reopened.close();
@@ -894,7 +958,8 @@ describe('Node SQLite session records', () => {
         { version: 22 },
         { version: 23 },
         { version: 24 },
-        { version: 25 }
+        { version: 25 },
+        { version: 26 }
       ]);
       expect(upgraded.getWorkspace('w')?.path).toBe('/legacy');
       expect(

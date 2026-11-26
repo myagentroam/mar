@@ -284,6 +284,7 @@ export class GoalContinuationCoordinator {
     messageContent,
     clientMessageId,
     messageOrigin,
+    orchestrationSource,
     attachments,
     attachmentIds
   }: GoalStartInput): Promise<unknown> {
@@ -322,6 +323,7 @@ export class GoalContinuationCoordinator {
         ...(messageContent === undefined ? {} : { messageContent }),
         ...(clientMessageId === undefined ? {} : { clientMessageId }),
         ...(messageOrigin === undefined ? {} : { messageOrigin }),
+        ...(orchestrationSource === undefined ? {} : { orchestrationSource }),
         ...(attachments === undefined ? {} : { attachments }),
         ...(attachmentIds === undefined ? {} : { attachmentIds }),
         ...(suppressNotifications === true ? { suppressNotifications: true } : {}),

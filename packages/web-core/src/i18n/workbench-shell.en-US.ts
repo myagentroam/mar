@@ -7,7 +7,7 @@ export const workbenchShellEnUS = {
       openSession: 'Open in aside'
     },
     panelResize: {
-      workspaceTree: 'Resize workspace tree',
+      sidebar: 'Resize sidebar',
       files: 'Resize files panel'
     },
     workspaceTree: {

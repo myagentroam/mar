@@ -1,4 +1,4 @@
-import { responsesRequestBody } from './responses-request.js';
+import { responsesFunctionArguments, responsesRequestBody } from './responses-request.js';
 export { openAiInput } from './responses-request.js';
 import {
   ResponsesTextProjection,
@@ -585,13 +585,14 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
             text(item.id) ??
             'unknown';
           if (!emittedFunctionCalls.has(callId)) {
+            const name = text(event.name) ?? text(item.name) ?? known?.name ?? 'unknown';
             emittedFunctionCalls.add(callId);
             yield observeModelStreamEvent(
               {
                 type: 'client_tool.call',
                 callId,
-                name: text(event.name) ?? text(item.name) ?? known?.name ?? 'unknown',
-                arguments: args,
+                name,
+                arguments: responsesFunctionArguments(request, name, args),
                 ...(argumentError ? { argumentError } : {})
               },
               modelStreamEventObservedAt(raw)

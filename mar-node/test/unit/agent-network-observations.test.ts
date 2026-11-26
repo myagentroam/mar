@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AgentNetworkObservations,
   agentObservationFromRunEvent
-} from '../../src/service/agent-network-observations.js';
+} from '../../src/orchestration/agent-network/agent-network-observations.js';
 
 function publish(
   network: AgentNetworkObservations,

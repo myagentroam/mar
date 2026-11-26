@@ -12,6 +12,75 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('shows historical whiteboard receipts and errors inside Agent collaboration', async ({
+  page,
+  context
+}) => {
+  await grantClipboardPermissions(context);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(
+    `${fixture.url}conversation-tool-detail.html?timeline&unified&agent-cards&whiteboard-cards&theme=dark`
+  );
+  const process = page.locator('.process-heading').first();
+  if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+  const group = page.locator('.subagent-group > details');
+  await expect(group).toHaveCount(1);
+  await expect(group.locator('.whiteboard-detail')).toHaveCount(0);
+  await group.locator(':scope > summary').click();
+  await expect(group.getByText('start Native review')).toBeVisible();
+  const rows = group.locator('.conversation-tool-detail');
+  const update = rows.filter({ has: page.getByText('Update whiteboard', { exact: true }) });
+  await expect(update.locator(':scope > summary')).not.toContainText('board-owner');
+  await update.locator(':scope > summary').press('Enter');
+  await expect(update.locator('.whiteboard-detail dt')).toHaveText([
+    'Board owner',
+    'Board revision',
+    'Requested operations',
+    'Result'
+  ]);
+  await expect(update.locator('.whiteboard-detail dd')).toHaveText([
+    'board-owner',
+    '0',
+    '1',
+    'No change'
+  ]);
+  const facts = update.locator('.whiteboard-detail');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect
+    .poll(() =>
+      facts.locator('dt').evaluateAll((labels) => {
+        const [owner, revision, count, result] = labels.map(
+          (label) => label.getBoundingClientRect().top
+        );
+        return owner! < revision! && revision === count && count === result;
+      })
+    )
+    .toBe(true);
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect
+    .poll(() => facts.evaluate((element) => element.scrollWidth <= element.clientWidth))
+    .toBe(true);
+  await expect(update.getByRole('link')).toHaveCount(0);
+  await update.locator('.tool-detail-copy').click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain('"outputSummary"');
+  const join = rows.filter({ has: page.getByText('Join whiteboard', { exact: true }) });
+  await expect(join.locator(':scope > summary')).toContainText('Failed');
+  await join.locator(':scope > summary').click();
+  await expect(join.locator('.whiteboard-detail dt')).toHaveText(['Board owner']);
+  await expect(join.getByText('Board is not active.')).toBeVisible();
+  const read = rows.filter({ has: page.getByText('Read whiteboard', { exact: true }) });
+  await expect(read.locator(':scope > summary')).toContainText('Running');
+  await read.locator(':scope > summary').click();
+  await expect(read.locator('.whiteboard-detail dt')).toHaveText(['Board owner']);
+  await expect(read.locator('.tool-detail')).not.toContainText('Running');
+  const leave = rows.filter({ has: page.getByText('Leave whiteboard', { exact: true }) });
+  await expect(leave.locator(':scope > summary')).toContainText('Cancelled');
+  await group.locator(':scope > summary').click();
+  await expect(group.locator('.whiteboard-detail')).toHaveCount(0);
+});
+
 for (const [width, theme, locale, goalLabel] of [
   [1280, 'daylight', 'en-US', 'Goal'],
   [390, 'dark', 'zh-CN', '目标']

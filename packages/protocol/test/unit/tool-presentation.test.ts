@@ -119,6 +119,8 @@ describe('tool presentation protocol', () => {
         startedAt: '2026-10-20T00:00:00.000Z'
       })
     ).toBeDefined();
+    const updated = { kind: 'SLEEP', wakeReason: 'context_update' };
+    expect(toolPresentationSchema.parse(updated)).toEqual(updated);
     for (const value of [
       { kind: 'SLEEP', durationMs: 1800001 },
       { kind: 'SLEEP', elapsedMs: 1.5 },

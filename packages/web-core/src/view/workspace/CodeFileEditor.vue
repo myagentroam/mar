@@ -44,6 +44,7 @@ const props = defineProps<{
   readonly modelValue: string;
   readonly path: string;
   readonly readOnly: boolean;
+  readonly accessibleLabel: string;
   readonly targetLine?: number | undefined;
   readonly targetColumn?: number | undefined;
   readonly codeNavigationEnabled?: boolean;
@@ -56,7 +57,7 @@ const emit = defineEmits<{
   'navigate-file': [request: FileNavigationRequest];
 }>();
 const host = ref<HTMLElement>();
-const editable = new Compartment();
+const mode = new Compartment();
 const language = new Compartment();
 const navigationTarget = new Compartment();
 const navigationDestination = new Compartment();
@@ -469,8 +470,15 @@ function decorateSearchPanel(): void {
   });
 }
 
-function editorMode(readOnly: boolean) {
-  return [EditorView.editable.of(!readOnly), EditorState.readOnly.of(readOnly)];
+function editorMode(readOnly: boolean, accessibleLabel: string): Extension {
+  return [
+    EditorView.editable.of(!readOnly),
+    EditorState.readOnly.of(readOnly),
+    EditorView.contentAttributes.of({
+      'aria-label': accessibleLabel,
+      ...(readOnly ? { tabindex: '0' } : {})
+    })
+  ];
 }
 
 function selectAll(): boolean {
@@ -516,7 +524,7 @@ onMounted(() => {
         vscodeEditorTheme,
         syntaxHighlighting(vscodeHighlightStyle),
         language.of([]),
-        editable.of(editorMode(props.readOnly)),
+        mode.of(editorMode(props.readOnly, props.accessibleLabel)),
         navigationTarget.of([]),
         navigationDestination.of([]),
         EditorState.phrases.of({
@@ -589,8 +597,9 @@ watch(
   }
 );
 watch(
-  () => props.readOnly,
-  (value) => view?.dispatch({ effects: editable.reconfigure(editorMode(value)) })
+  () => [props.readOnly, props.accessibleLabel] as const,
+  ([readOnly, accessibleLabel]) =>
+    view?.dispatch({ effects: mode.reconfigure(editorMode(readOnly, accessibleLabel)) })
 );
 watch(
   () => props.path,

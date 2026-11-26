@@ -24,7 +24,8 @@ import { boundToolOutput } from '@myagentroam/protocol';
 import {
   agentOperationAction,
   agentOperationPresentation
-} from './agent-operation-presentation.js';
+} from '../../orchestration/agent-network/agent-operation-presentation.js';
+import { whiteboardOperationPresentation } from '../../orchestration/whiteboard/whiteboard-presentation.js';
 
 export interface MarAgentNormalizedItem {
   readonly itemId: string;
@@ -326,13 +327,14 @@ export class MarAgentConversationNormalizer {
         else this.#finishCodeModeOutputCall(event.callId, event.parentCallId);
         return [];
       }
-      // Public Agent calls, read/web calls, skill loads and artifacts use native events.
+      // Public collaboration calls, read/web calls, skill loads and artifacts use native events.
       if (
         event.parentCallId !== undefined &&
         event.toolName !== 'read' &&
         event.toolName !== 'web_search' &&
         event.toolName !== 'web_fetch' &&
         event.toolName !== 'skill_load' &&
+        event.toolName !== 'whiteboard' &&
         agentOperationAction(event.toolName) === undefined &&
         !isImageGenerationTool(event.toolName)
       ) {
@@ -1762,6 +1764,14 @@ function genericToolItem(
       ...(toolCategory === undefined ? {} : { toolCategory }),
       ...(presentation === undefined ? {} : { toolPresentation: presentation }),
       ...(agentOperation === undefined ? {} : { agentOperation }),
+      ...(toolName === 'whiteboard'
+        ? {
+            whiteboardOperation: whiteboardOperationPresentation(
+              input,
+              status === 'COMPLETED' ? output : undefined
+            )
+          }
+        : {}),
       ...subagent
     },
     merge: true

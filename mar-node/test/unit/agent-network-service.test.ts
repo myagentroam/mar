@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NodeAgentSession } from '../../src/session/contracts.js';
-import { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
-import { AgentNetworkService } from '../../src/service/agent-network-service.js';
-import { invokeAgentNetwork } from '../../src/service/agent-network-invoke.js';
+import { AgentNetworkObservations } from '../../src/orchestration/agent-network/agent-network-observations.js';
+import { AgentNetworkService } from '../../src/orchestration/agent-network/agent-network-service.js';
+import { invokeAgentNetwork } from '../../src/orchestration/agent-network/agent-network-invoke.js';
 import type { ExtensionOperationContext } from '@myagentroam/agent/extensions';
 
 function fixture(parentSessionId: string | null = 'parent') {

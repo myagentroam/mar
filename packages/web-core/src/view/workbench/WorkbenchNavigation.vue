@@ -64,9 +64,10 @@ const locale = localePreferenceService().locale;
 const brand = ref<HTMLElement>();
 const mobilePerformanceOpen = ref(false);
 const sidebarPanel = ref<InstanceType<typeof WorkbenchSidebarPanel>>();
-const treeElement = computed(() => sidebarPanel.value?.element);
+const sidebarElement = computed(() => sidebarPanel.value?.element);
 const mobilePanelTarget = ref<HTMLElement>();
-// Persisted sidebar widths include the shell inset outside the measured tree.
+const sidebarId = 'workbench-secondary-sidebar';
+// Persisted sidebar widths include the shell inset outside the measured panel.
 const sidebarInset = 9;
 
 const props = defineProps<{
@@ -169,14 +170,15 @@ function finishMenuLeave(): void {
 watch(
   [sidebarView, () => props.mobileUtilityPanel, sidebarVisible],
   async ([, , visible], [, , wasVisible]) => {
-    const body = treeElement.value;
+    const body = sidebarElement.value;
     if (body && wasVisible) scrollPositions.set(displayKey.value, body.scrollTop);
     if (props.mobileViewport && !visible) return;
     displayView.value = sidebarView.value;
     displayUtility.value = props.mobileUtilityPanel;
     if (!visible) return;
     await nextTick();
-    if (treeElement.value) treeElement.value.scrollTop = scrollPositions.get(displayKey.value) ?? 0;
+    if (sidebarElement.value)
+      sidebarElement.value.scrollTop = scrollPositions.get(displayKey.value) ?? 0;
   }
 );
 
@@ -235,7 +237,7 @@ const menuLabel = computed(() =>
 const menuFocus = createMobileSurfaceFocusService({
   isOpen: () => props.mobileViewport && mobileMenuOpen.value,
   regions: () => [
-    treeElement.value,
+    sidebarElement.value,
     brand.value,
     document.querySelector<HTMLElement>('.activity-rail')
   ],
@@ -289,14 +291,14 @@ function openBlankMenu(event: MouseEvent): void {
   }
   event.preventDefault();
   blankMenuAnchor.value = new DOMRect(event.clientX, event.clientY);
-  if (!blankMenuVisible.value) treeElement.value?.focus({ preventScroll: true });
+  if (!blankMenuVisible.value) sidebarElement.value?.focus({ preventScroll: true });
   void nextTick(() => blankMenu.value?.handleOpen());
 }
 function handleBlankMenuEscape(event: KeyboardEvent): void {
   if (!blankMenuVisible.value) return;
   event.preventDefault();
   event.stopPropagation();
-  treeElement.value?.focus({ preventScroll: true });
+  sidebarElement.value?.focus({ preventScroll: true });
   blankMenu.value?.handleClose();
 }
 function runBlankMenuCommand(command: string): void {
@@ -391,7 +393,7 @@ function runBlankMenuCommand(command: string): void {
           :class="{ active: scheduleSection !== undefined }"
           :aria-current="scheduleSection === undefined ? undefined : 'page'"
           :aria-expanded="mobileViewport ? mobileUtilityPanel === 'schedules' : undefined"
-          :aria-controls="mobileViewport ? 'workbench-secondary-sidebar' : undefined"
+          :aria-controls="mobileViewport ? sidebarId : undefined"
           :aria-label="$t('generated.scheduledSession.panelTitle')"
           v-tooltip="{
             content: $t('generated.scheduledSession.panelTitle'),
@@ -457,7 +459,7 @@ function runBlankMenuCommand(command: string): void {
     @after-leave="finishMenuLeave"
   >
     <WorkbenchSidebarPanel
-      id="workbench-secondary-sidebar"
+      :id="sidebarId"
       v-show="mobileViewport ? mobileMenuOpen : sidebarView !== 'conversations'"
       ref="sidebarPanel"
       :collapsed="sidebarCollapsed"
@@ -596,13 +598,15 @@ function runBlankMenuCommand(command: string): void {
     </WorkbenchSidebarPanel>
   </Transition>
   <MarPanelResizeHandle
-    v-if="sidebarView === 'nodes' && !sidebarCollapsed && !mobileViewport"
-    class="workspace-tree-resize"
-    :target="treeElement"
-    :label="$t('generated.panelResize.workspaceTree')"
+    v-if="!mobileViewport && !sidebarCollapsed && sidebarVisible"
+    class="workbench-sidebar-resize"
+    :target="sidebarElement"
+    :label="$t('generated.panelResize.sidebar')"
+    :aria-controls="sidebarId"
     :min="WORKBENCH_PANEL_LIMITS.sidebar.min - sidebarInset"
     :max="WORKBENCH_PANEL_LIMITS.sidebar.max - sidebarInset"
     :direction="1"
+    :gesture-key="sidebarView"
     @resize="emit('resizeSidebar', $event + sidebarInset)"
   />
 </template>
@@ -803,7 +807,7 @@ function runBlankMenuCommand(command: string): void {
     font-size: 16px;
   }
 
-  .console-shell:has(.workspace-tree-resize.dragging) .workspace-tree {
+  .console-shell:has(.workbench-sidebar-resize.dragging) .workspace-tree {
     transition: none;
   }
 
@@ -844,7 +848,7 @@ function runBlankMenuCommand(command: string): void {
   }
 }
 
-.workspace-tree-resize {
+.workbench-sidebar-resize {
   position: fixed;
   z-index: 6;
   top: 9px;

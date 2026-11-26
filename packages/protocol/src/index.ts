@@ -2312,6 +2312,16 @@ export const agentOperationPresentationSchema = z.object({
     .optional()
 });
 export type AgentOperationPresentation = z.infer<typeof agentOperationPresentationSchema>;
+/** Public facts from one whiteboard call, not a live board or Session link. */
+export const whiteboardOperationPresentationSchema = z.object({
+  action: z.enum(['read', 'join', 'leave', 'update']).optional(),
+  boardAgentId: z.string().min(1).max(256).optional(),
+  boardRevision: z.number().int().nonnegative().optional(),
+  entryCount: z.number().int().min(0).max(32).optional(),
+  operationCount: z.number().int().min(1).max(128).optional(),
+  changed: z.boolean().optional()
+});
+export type WhiteboardOperationPresentation = z.infer<typeof whiteboardOperationPresentationSchema>;
 export const subagentLatestMessageSchema = z.object({
   itemId: z.string().min(1).max(128),
   turnId: z.string().min(1).max(128),
@@ -2476,7 +2486,7 @@ const toolCallPresentationSchema = z.discriminatedUnion('kind', [
     durationMs: z.number().int().min(1).max(1800000).optional(),
     startedAt: z.string().datetime().optional(),
     elapsedMs: z.number().int().nonnegative().optional(),
-    wakeReason: z.enum(['elapsed', 'steer', 'subagent_message']).optional()
+    wakeReason: z.enum(['elapsed', 'steer', 'subagent_message', 'context_update']).optional()
   })
 ]);
 export const toolPresentationSchema = z.union([
@@ -2594,6 +2604,7 @@ const toolCallItemSchema = conversationItemBaseSchema.extend({
     toolCategory: z.enum(['IMAGE_GENERATION']).optional(),
     toolPresentation: toolCallPresentationSchema.optional(),
     agentOperation: agentOperationPresentationSchema.optional(),
+    whiteboardOperation: whiteboardOperationPresentationSchema.optional(),
     subagentOperation: subagentOperationSchema.optional(),
     subagentCallDetail: subagentCallDetailSchema.optional(),
     subagentWait: z.boolean().optional(),

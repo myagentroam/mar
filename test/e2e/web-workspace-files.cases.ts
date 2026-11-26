@@ -663,7 +663,7 @@ for (const theme of ['daylight', 'dark']) {
       expect(treeBounds!.y).toBe(bounds!.y);
       expect(bounds!.x - treeBounds!.x - treeBounds!.width).toBe(0);
       expect(treeBounds!.y + treeBounds!.height).toBe(bounds!.y + bounds!.height);
-      const resizeBounds = await page.locator('.workspace-tree-resize').boundingBox();
+      const resizeBounds = await page.locator('.workbench-sidebar-resize').boundingBox();
       expect(resizeBounds).not.toBeNull();
       expect(resizeBounds!.y).toBe(treeBounds!.y);
       expect(resizeBounds!.y + resizeBounds!.height).toBe(treeBounds!.y + treeBounds!.height);
@@ -686,13 +686,13 @@ for (const theme of ['daylight', 'dark']) {
       }
       await page.locator('.workbench-header').click({ position: { x: 240, y: 20 } });
       await page.screenshot({ path: testInfo.outputPath(`workbench-shell-${theme}-${width}.png`) });
-      await page.locator('.workspace-tree-resize').hover();
+      await page.locator('.workbench-sidebar-resize').hover();
       await page.screenshot({
         path: testInfo.outputPath(`workbench-resize-hover-${theme}-${width}.png`)
       });
     }
     const tree = page.locator('.workspace-tree');
-    const resize = page.locator('.workspace-tree-resize');
+    const resize = page.locator('.workbench-sidebar-resize');
     const initialTreeWidth = (await tree.boundingBox())!.width;
     const handleBounds = (await resize.boundingBox())!;
     await page.mouse.move(handleBounds.x + 3, handleBounds.y + 80);

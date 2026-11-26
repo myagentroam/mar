@@ -26,6 +26,7 @@ export interface ModelTextBlock {
 export interface ModelInputMetadata {
   source: 'user' | 'parent_agent' | 'extension';
   recordId?: string;
+  clientMessageId?: string;
   extensionId?: string;
   truncated?: true;
   smartCompaction?: true;

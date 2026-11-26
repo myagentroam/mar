@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { whiteboardTool } from '../../src/orchestration/whiteboard/whiteboard-tool.js';
 import { createBrowserUseExtensions } from '../../src/runner/mar-agent/browser-use-extensions.js';
 import {
   computerUseToolDefinition,
@@ -61,8 +62,77 @@ const browserTool = createBrowserUseExtensions({
 }).tools![0]!;
 
 describe('Node-owned MAR Agent model tool schemas', () => {
+  it('accepts only the operands for the selected whiteboard action and operation', () => {
+    const validate = whiteboardTool(
+      () => ({}),
+      () => 'execution'
+    ).parseInput!;
+    for (const input of [
+      {},
+      { action: 'read', boardId: 'a' },
+      { action: 'read', entryId: 'w1' },
+      { action: 'read', ops: [{ op: 'add', content: 'unexpected' }] },
+      { action: 'join' },
+      { action: 'leave', boardAgentId: 'a' },
+      { action: 'leave', ops: [{ op: 'add', content: 'unexpected' }] },
+      { action: 'join', boardAgentId: 'a', ops: [{ op: 'add', content: 'unexpected' }] },
+      {
+        action: 'update',
+        expectedBoardId: 'a',
+        ops: [{ op: 'add', content: 'new' }]
+      },
+      { action: 'update', boardAgentId: null, ops: null },
+      { action: 'update', boardAgentId: 'a', ops: [] },
+      { action: 'update', boardAgentId: 'a', ops: [{ op: 'update', id: 'w1', content: 'new' }] },
+      {
+        action: 'update',
+        boardAgentId: 'a',
+        ops: [{ op: 'del', id: 'w1', expectedRevision: 1, content: 'unexpected' }]
+      }
+    ])
+      expect(() => validate(input)).toThrow(
+        expect.objectContaining({ code: 'WHITEBOARD_INPUT_INVALID' })
+      );
+    expect(validate({ action: 'read' })).toEqual({ action: 'read' });
+    expect(validate({ action: 'leave' })).toEqual({ action: 'leave' });
+    expect(validate({ action: 'leave', boardAgentId: null, ops: null })).toEqual({
+      action: 'leave'
+    });
+    expect(validate({ action: 'read', boardAgentId: 'b' })).toEqual({
+      action: 'read',
+      boardAgentId: 'b'
+    });
+    expect(validate({ action: 'join', boardAgentId: 'b', ops: null })).toEqual({
+      action: 'join',
+      boardAgentId: 'b'
+    });
+    const batch = {
+      action: 'update',
+      boardAgentId: 'a',
+      ops: [
+        { op: 'clear', expectedBoardRevision: 2 },
+        { op: 'add', content: 'new' }
+      ]
+    };
+    expect(validate(batch)).toEqual(batch);
+  });
+
+  it('accepts Responses strict-mode null placeholders when reading the whiteboard', () => {
+    const tool = whiteboardTool(
+      () => ({}),
+      () => 'execution'
+    );
+    expect(tool.parseInput!({ action: 'read', boardAgentId: null, ops: null })).toEqual({
+      action: 'read'
+    });
+  });
+
   it.each([
     browserTool,
+    whiteboardTool(
+      () => ({}),
+      () => 'execution'
+    ),
     computerUseToolDefinition,
     computerUseWaitToolDefinition,
     codexImageGenToolDefinition,

@@ -152,7 +152,8 @@ export const conversationUiEnUS = {
     wake: {
       elapsed: 'Time elapsed',
       steer: 'User input',
-      subagent_message: 'New public subagent message'
+      subagent_message: 'New public subagent message',
+      context_update: 'Shared information updated'
     }
   },
   permissionStop: {
@@ -377,6 +378,22 @@ export const conversationUiEnUS = {
       LIST: 'list',
       STOP: 'stop',
       RESUME: 'resume'
+    },
+    whiteboardOperation: {
+      read: 'Read whiteboard',
+      join: 'Join whiteboard',
+      leave: 'Leave whiteboard',
+      update: 'Update whiteboard',
+      unknown: 'Whiteboard'
+    },
+    whiteboardDetail: {
+      boardAgentId: 'Board owner',
+      boardRevision: 'Board revision',
+      entryCount: 'Entries',
+      operationCount: 'Requested operations',
+      result: 'Result',
+      changed: 'Changed',
+      unchanged: 'No change'
     },
     subagentOperation: {
       START: 'Start',

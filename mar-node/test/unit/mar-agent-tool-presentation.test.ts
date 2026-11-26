@@ -10,6 +10,7 @@ import { conversationItemSchema, toolPresentationSchema } from '@myagentroam/pro
 import type { NodeConfig } from '../../src/config.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { createWebToolsExtensions } from '../../src/runner/mar-agent/web-tools-extensions.js';
+import { whiteboardTool } from '../../src/orchestration/whiteboard/whiteboard-tool.js';
 import { WebToolService } from '../../src/service/web-tool-service.js';
 import { formatReadEventOutput } from '../../../mar-agent/src/tools/local/read.js';
 import {
@@ -33,6 +34,90 @@ function event(payload: Record<string, unknown>): AgentEvent {
 }
 
 describe('MAR tool presentation projection', () => {
+  it.each([undefined, 'cell-call'])(
+    'projects whiteboard receipts and errors (parent: %s)',
+    async (parentCallId) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const common = { toolName: 'whiteboard', callId: 'board', parentCallId };
+      const input = { action: 'read' };
+      const receipt = {
+        boardAgentId: 'owner',
+        boardRevision: 2,
+        entries: [{ id: 'w1', revision: 1, content: 'Board text' }]
+      };
+      const tool = whiteboardTool(
+        () => receipt,
+        () => 'execution'
+      );
+      const result = await tool.execute(
+        await tool.parseInput!(input),
+        {
+          operationId: 'operation',
+          sessionId: 'session',
+          sessionEpoch: 1,
+          actor: 'model',
+          entry: 'direct',
+          signal: AbortSignal.timeout(1000)
+        },
+        async () => {
+          throw new Error('Unexpected next call');
+        }
+      );
+      expect(result.data).toEqual(receipt);
+      const [start] = normalizer.normalize(event({ ...common, type: 'tool.started', input }));
+      expect(start?.payload).toMatchObject({ whiteboardOperation: { action: 'read' } });
+      expect(start?.payload.whiteboardOperation).not.toHaveProperty('entryCount');
+      const [done] = normalizer.normalize(
+        event({
+          ...common,
+          type: 'tool.completed',
+          summary: result.content,
+          data: result.eventData
+        })
+      );
+      expect(done?.itemId).toBe(start?.itemId);
+      expect(done?.payload).toMatchObject({ outputSummary: result.content });
+      expect(done?.payload.whiteboardOperation).toEqual({
+        action: 'read',
+        boardAgentId: 'owner',
+        boardRevision: 2,
+        entryCount: 1
+      });
+      expect(done?.payload).not.toHaveProperty('agentOperation');
+
+      const join = { ...common, callId: 'join' };
+      normalizer.normalize(
+        event({ ...join, type: 'tool.started', input: { action: 'join', boardAgentId: 'owner' } })
+      );
+      const [failed] = normalizer.normalize(
+        event({
+          ...join,
+          type: 'tool.failed',
+          code: 'WHITEBOARD_UNAVAILABLE',
+          message: 'Board is not active.'
+        })
+      );
+      expect(failed).toMatchObject({
+        status: 'FAILED',
+        payload: {
+          errorCode: 'WHITEBOARD_UNAVAILABLE',
+          errorMessage: 'Board is not active.',
+          whiteboardOperation: { action: 'join', boardAgentId: 'owner' }
+        }
+      });
+
+      const leave = { ...common, callId: 'leave' };
+      const [leaving] = normalizer.normalize(
+        event({ ...leave, type: 'tool.started', input: { action: 'leave' } })
+      );
+      const [cancelled] = normalizer.normalize(
+        event({ ...leave, type: 'tool.failed', code: 'MAR_AGENT_CANCELLED' })
+      );
+      expect(cancelled?.itemId).toBe(leaving?.itemId);
+      expect(cancelled?.status).toBe('CANCELLED');
+      expect(cancelled?.payload.whiteboardOperation).toEqual({ action: 'leave' });
+    }
+  );
   it('carries SDK source intervals through the public schema and snapshot reducer to file detail', () => {
     const contents = '  first 😀\r\n  second\r\n';
     const sdk = formatReadEventOutput([
@@ -536,6 +621,12 @@ describe('MAR tool presentation projection', () => {
       'sleep',
       { durationMs: 1800000 },
       { durationMs: 1800000, elapsedMs: 192000, wakeReason: 'subagent_message' },
+      'SLEEP'
+    ],
+    [
+      'sleep',
+      { durationMs: 1800000 },
+      { durationMs: 1800000, elapsedMs: 40, wakeReason: 'context_update' },
       'SLEEP'
     ]
   ])('projects structured %s facts identically on replay', (toolName, input, data, kind) => {

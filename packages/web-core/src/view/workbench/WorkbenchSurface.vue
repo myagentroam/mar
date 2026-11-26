@@ -1726,7 +1726,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     transition: margin-left var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
   }
 
-  .console-shell:has(.workspace-tree-resize.dragging) .workbench {
+  .console-shell:has(.workbench-sidebar-resize.dragging) .workbench {
     transition: none;
   }
 }

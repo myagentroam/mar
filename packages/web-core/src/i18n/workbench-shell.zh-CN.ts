@@ -7,7 +7,7 @@ export const workbenchShellZhCN = {
       openSession: '在侧栏打开'
     },
     panelResize: {
-      workspaceTree: '调整工作区树宽度',
+      sidebar: '调整侧栏宽度',
       files: '调整文件区宽度'
     },
     workspaceTree: {

@@ -144,7 +144,12 @@ export const conversationUiZhCN = {
     requestedDuration: '请求时长',
     elapsedDuration: '实际耗时',
     wakeReason: '唤醒原因',
-    wake: { elapsed: '等待时间已到', steer: '用户输入', subagent_message: '子 Agent 新公开消息' }
+    wake: {
+      elapsed: '等待时间已到',
+      steer: '用户输入',
+      subagent_message: '子 Agent 新公开消息',
+      context_update: '共享信息已更新'
+    }
   },
   permissionStop: {
     code: '代码',
@@ -364,6 +369,22 @@ export const conversationUiZhCN = {
       LIST: 'list',
       STOP: 'stop',
       RESUME: 'resume'
+    },
+    whiteboardOperation: {
+      read: '读取白板',
+      join: '加入白板',
+      leave: '离开白板',
+      update: '更新白板',
+      unknown: '白板'
+    },
+    whiteboardDetail: {
+      boardAgentId: '白板所有者',
+      boardRevision: '白板版本',
+      entryCount: '条目数',
+      operationCount: '请求操作数',
+      result: '结果',
+      changed: '已变更',
+      unchanged: '无变化'
     },
     subagentOperation: {
       START: '启动',

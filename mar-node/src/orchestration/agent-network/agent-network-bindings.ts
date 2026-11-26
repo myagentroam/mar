@@ -1,26 +1,27 @@
+import { ORCHESTRATION_INPUT_SOURCE } from '../input-source.js';
 import {
   auditConversationReceiptSchema,
   marAgentRuntimeModelConfigurationSchema
 } from '@myagentroam/protocol';
 import { AgentError } from '@myagentroam/agent';
-import type { RunnerRegistry } from '../runner/runner-registry.js';
-import { resolvedPersonalInstructions } from '../runner/personal-instructions.js';
-import type { NodeDatabase } from '../database.js';
-import type { NodeRuntimeState } from '../runtime-state.js';
-import type { NodeAgentSession } from '../session/contracts.js';
-import type { SessionLifecycleService } from '../session/session-lifecycle-service.js';
-import type { SessionMessageService } from '../session/session-message-service.js';
-import type { NativeSessionProjectionService } from '../session/native-session-projection-service.js';
-import type { ExternalSessionResumeService } from './external-session-resume-service.js';
-import type { GoalContinuationCoordinator } from './goal-continuation-coordinator.js';
-import type { GoalRuntime } from './goal-runtime.js';
-import type { RunWorkbenchService } from './run-workbench-service.js';
+import type { RunnerRegistry } from '../../runner/runner-registry.js';
+import { resolvedPersonalInstructions } from '../../runner/personal-instructions.js';
+import type { NodeDatabase } from '../../database.js';
+import type { NodeRuntimeState } from '../../runtime-state.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
+import type { SessionLifecycleService } from '../../session/session-lifecycle-service.js';
+import type { SessionMessageService } from '../../session/session-message-service.js';
+import type { NativeSessionProjectionService } from '../../session/native-session-projection-service.js';
+import type { ExternalSessionResumeService } from '../../service/external-session-resume-service.js';
+import type { GoalContinuationCoordinator } from '../../service/goal-continuation-coordinator.js';
+import type { GoalRuntime } from '../../service/goal-runtime.js';
+import type { RunWorkbenchService } from '../../service/run-workbench-service.js';
 import type { AgentNetworkObservations, ParentObservations } from './agent-network-observations.js';
 import { AgentNetworkService, type AgentNetworkActor } from './agent-network-service.js';
-import { isPlainRecord } from '../util/records.js';
-import { safeErrorCode } from '../util/safe-error.js';
-import { SESSION_ADMISSION_SIGNAL } from '../session/operation-admission.js';
-import { assertSessionControlOwner } from './run-ownership-policy.js';
+import { isPlainRecord } from '../../util/records.js';
+import { safeErrorCode } from '../../util/safe-error.js';
+import { SESSION_ADMISSION_SIGNAL } from '../../session/operation-admission.js';
+import { assertSessionControlOwner } from '../../service/run-ownership-policy.js';
 const terminalCalls = new WeakMap<AgentNetworkActor, { readonly workspaceId: string }>();
 
 /** Bind a terminal actor only after the Node request boundary has authenticated its caller. */
@@ -33,7 +34,7 @@ export function actorForAuthenticatedTerminal(
   return authenticated;
 }
 
-import { agentNetworkSessionView } from './session-recent-activity.js';
+import { agentNetworkSessionView } from '../../service/session-recent-activity.js';
 import { listAgentNetworkSessions } from './agent-network-list.js';
 
 interface Bindings {
@@ -298,6 +299,8 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         content: input.content,
         clientMessageId: input.clientMessageId,
         __suppressNotifications: true,
+        [ORCHESTRATION_INPUT_SOURCE]:
+          !terminal && actor.runId ? { runId: actor.runId, hasMessage: true } : undefined,
         ...(!terminal && parent ? { __marctlOrigin: origin(parent) } : {}),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(model ? { modelId: model } : {}),
@@ -313,6 +316,9 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
                 objective: input.goal.kind === 'set' ? input.goal.objective : '',
                 secretEnvironment: childEnvironment(actor),
                 messageContent: input.content,
+                ...(!terminal && actor.runId
+                  ? { orchestrationSource: { runId: actor.runId, hasMessage: true } }
+                  : {}),
                 suppressNotifications: true,
                 ...(!terminal && parent ? { messageOrigin: origin(parent) } : {}),
                 clientMessageId: input.clientMessageId,
@@ -363,6 +369,14 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
             : { personalInstructions: actor.personalInstructions }),
           ...(actor.usageGrant === undefined ? {} : { usageGrant: actor.usageGrant }),
           preserveActiveRun: true,
+          ...(parent && actor.runId
+            ? {
+                orchestrationSource: {
+                  runId: actor.runId,
+                  hasMessage: Boolean(message?.content.trim())
+                }
+              }
+            : {}),
           ...(parent ? { messageOrigin: origin(parent, session.id) } : {}),
           ...(message === undefined
             ? {}
@@ -390,6 +404,8 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
           ...(signal ? { [SESSION_ADMISSION_SIGNAL]: signal } : {}),
           sessionId: session.id,
           __suppressNotifications: true,
+          [ORCHESTRATION_INPUT_SOURCE]:
+            parent && actor.runId ? { runId: actor.runId, hasMessage: true } : undefined,
           ...(parent ? { __marctlOrigin: origin(parent, session.id) } : {})
         })
       );

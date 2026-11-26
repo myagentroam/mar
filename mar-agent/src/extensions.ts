@@ -115,6 +115,7 @@ export type {
 } from './extensions/services.js';
 export { SESSION_CONTEXT_PROVIDER } from './extensions/session-context.js';
 export type {
+  ExtensionRequestContext,
   ExtensionSessionContextItem,
   ExtensionSessionContextProvider
 } from './extensions/session-context.js';
