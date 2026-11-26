@@ -28,12 +28,14 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
   ];
   const imageSvg = ({ width, height }: { width: number; height: number }) =>
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#4b80bd"/></svg>`;
-  // A looping 12×10 GIF whose first frame is transparent and whose second frame is red.
+  // A 12×10 GIF whose first frame is transparent and whose second frame is red.
   const animation = Buffer.from(
     'R0lGODlhDAAKAIAAAExpcQAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQFCgAAACwAAAAADAAKAAACCYSPqcvtD6OcBQAh+QQFWgAAACwAAAAADAAKAIBMaXHrAAACCYyPqcvtD6OcBQA7',
     'base64'
   );
-  async function expectVisibleGifFrame(image: Locator): Promise<void> {
+  animation.writeUInt16LE(1, 35); // Set a finite source loop count.
+  animation.writeUInt16LE(35, 42); // Give the screenshot poll time to observe the transparent frame.
+  async function expectVisibleGifFrame(image: Locator, visible = true): Promise<void> {
     await expect
       .poll(async () => {
         // Canvas drawImage on the GIF itself can read its first frame. Sample the rendered pixels.
@@ -52,7 +54,7 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
           }
         }, Array.from(screenshot));
       })
-      .toBe(true);
+      .toBe(visible);
   }
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
@@ -137,6 +139,7 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       expect(bounds!.height).toBeLessThanOrEqual(120.01);
       const source = await img.getAttribute('data-image-source');
       const name = await img.getAttribute('alt');
+      const historyLayer = await page.evaluate(() => history.state?.__marTemporaryLayer);
       const previewResponse = source?.startsWith('/api/')
         ? page.waitForResponse((response) => {
             const previewUrl = new URL(source, page.url());
@@ -234,6 +237,10 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
         await page.screenshot({ path: testInfo.outputPath(`image-preview-${width}.png`) });
       await page.keyboard.press('Escape');
       await expect(dialog).toHaveCount(0);
+      // On mobile, closing the dialog also releases its temporary browser-history entry.
+      await expect
+        .poll(() => page.evaluate(() => history.state?.__marTemporaryLayer))
+        .toBe(historyLayer);
       await expect(thumbnail).toBeFocused();
     }
     await testInfo.attach(`markdown-images-${width}`, {
@@ -244,17 +251,18 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
   const gifThumbnail = page.getByRole('button', { name: /Animation/ }).getByRole('img');
   await gifThumbnail.scrollIntoViewIfNeeded();
   await expect.poll(() => gifThumbnail.evaluate((image) => image.naturalWidth)).toBe(12);
-  const gifSource = new URL((await gifThumbnail.getAttribute('src'))!, page.url());
-  expect(gifSource.searchParams.get('path')).toBe('output/animation.gif');
-  expect(gifSource.searchParams.has('maxWidth')).toBe(false);
-  expect(gifSource.searchParams.has('maxHeight')).toBe(false);
+  await expect(gifThumbnail).toHaveAttribute('src', /^blob:/u);
   await expectVisibleGifFrame(gifThumbnail);
   await gifThumbnail.click();
   const gifDialog = page.getByRole('dialog', { name: 'Animation', exact: true });
   const gifPreview = gifDialog.getByRole('img');
   await expect(gifPreview).toBeVisible();
-  expect(await gifPreview.evaluate((image) => image.currentSrc)).toBe(gifSource.href);
+  await expect(gifPreview).toHaveAttribute('src', /^blob:/u);
   await expectVisibleGifFrame(gifPreview);
+  for (let loop = 0; loop < 2; loop += 1) {
+    await expectVisibleGifFrame(gifPreview, false);
+    await expectVisibleGifFrame(gifPreview);
+  }
   await expect(gifDialog.getByRole('button', { name: '查看原图' })).toHaveCount(0);
 });
 

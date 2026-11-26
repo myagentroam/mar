@@ -321,7 +321,7 @@ describe('AgentMarkdown workspace images', () => {
     expect(imageResourceUrl.mock.calls).toEqual([['output/missing.png']]);
   });
 
-  it('uses the original GIF for opaque file URLs without inferring the format from alt text', async () => {
+  it('requests GIF playback for opaque file URLs without inferring the format from alt text', async () => {
     vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
     const imageResourceUrl = (path: string) =>
       `/api/files/${path.endsWith('GIF') ? 'anim-id' : 'still-id'}/content?revision=1`;
@@ -335,7 +335,8 @@ describe('AgentMarkdown workspace images', () => {
     app.use(i18n);
 
     const html = await renderToString(app);
-    expect(html).toContain('src="/api/files/anim-id/content?revision=1"');
+    expect(html).toContain('data-image-source="/api/files/anim-id/content?revision=1"');
+    expect(html).not.toContain(' src="/api/files/anim-id/content');
     expect(html).toContain('data-image-source="/api/files/anim-id/content?revision=1"');
     expect(html).toContain(
       'src="/api/files/still-id/content?revision=1&amp;maxWidth=320&amp;maxHeight=240"'
