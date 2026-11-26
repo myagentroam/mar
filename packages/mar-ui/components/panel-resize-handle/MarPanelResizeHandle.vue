@@ -19,10 +19,8 @@ const handle = ref<HTMLElement>();
 const currentWidth = ref<number>();
 let drag: { pointerId: number; x: number; width: number } | undefined;
 
-function resize(value: number): void {
-  const width = Math.max(props.min, Math.min(props.max, value));
-  currentWidth.value = width;
-  emit('resize', width);
+function clampWidth(width: number): number {
+  return Math.max(props.min, Math.min(props.max, width));
 }
 
 function settledWidth(): number | undefined {
@@ -51,7 +49,7 @@ function start(event: PointerEvent): void {
 
 function move(event: PointerEvent): void {
   if (drag?.pointerId !== event.pointerId) return;
-  resize(drag.width + props.direction * (event.clientX - drag.x));
+  emit('resize', clampWidth(drag.width + props.direction * (event.clientX - drag.x)));
 }
 
 function finish(event: PointerEvent): void {
@@ -80,9 +78,27 @@ function keydown(event: KeyboardEvent): void {
   else if (key === 'End') next = props.max;
   else next = width + (key === 'ArrowLeft' ? -1 : 1) * props.direction * 10;
   event.preventDefault();
-  resize(next);
+  emit('resize', clampWidth(next));
 }
 
+// CSS-sized panels can change width independently of input or focus.
+watch(
+  () => (props.width === undefined ? props.target : undefined),
+  (target, _previous, onCleanup) => {
+    if (target === undefined) {
+      currentWidth.value = undefined;
+      return;
+    }
+    const measure = () => {
+      currentWidth.value = clampWidth(target.offsetWidth);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(target, { box: 'border-box' });
+    onCleanup(() => observer.disconnect());
+  },
+  { immediate: true, flush: 'post' }
+);
 watch(() => props.gestureKey, cancel, { flush: 'sync' });
 onBeforeUnmount(cancel);
 </script>
@@ -100,7 +116,6 @@ onBeforeUnmount(cancel);
     :aria-valuemin="min"
     :aria-valuemax="max"
     :aria-valuenow="width ?? currentWidth"
-    @focus="currentWidth = target?.getBoundingClientRect().width"
     @keydown="keydown"
     @pointerdown="start"
     @pointermove="move"

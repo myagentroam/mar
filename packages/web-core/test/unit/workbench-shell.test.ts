@@ -87,17 +87,21 @@ describe('Shared workbench shell', () => {
   it('keeps resize layout attributes on the interactive separator', async () => {
     const html = await renderComponent(MarPanelResizeHandle, {
       target: undefined,
-      label: 'Resize workspace tree',
+      label: 'Resize sidebar',
       min: 180,
       max: 420,
+      width: 280,
       direction: 1,
-      class: 'workspace-tree-resize',
+      class: 'workbench-sidebar-resize',
+      'aria-controls': 'workbench-secondary-sidebar',
       style: { left: '280px' }
     });
     const separator = html.match(/<div\b[^>]*role="separator"[^>]*>/u)?.[0];
-    expect(separator).toContain('workspace-tree-resize');
+    expect(separator).toContain('workbench-sidebar-resize');
     expect(separator).toContain('left:280px');
-    expect(separator).toContain('aria-label="Resize workspace tree"');
+    expect(separator).toContain('aria-label="Resize sidebar"');
+    expect(separator).toContain('aria-controls="workbench-secondary-sidebar"');
+    expect(separator).toContain('aria-valuenow="280"');
   });
 
   it.each([

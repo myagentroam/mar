@@ -554,9 +554,11 @@ test('Scheduled tasks select a node, save multiple run times, and open execution
     'aria-current',
     'page'
   );
-  await expect(page.locator('.workspace-tree-resize')).toHaveCount(0);
+  const resizeSidebar = page.getByRole('separator', { name: '调整侧栏宽度' });
+  await expect(resizeSidebar).toBeVisible();
   await toggle.click();
   await expect(scheduleMenu).toBeHidden();
+  await expect(resizeSidebar).toBeHidden();
   await expect(header.getByRole('heading', { name: '我的定时' })).toBeVisible();
   await toggle.click();
   await scheduleMenu.getByRole('button', { name: '全部定时', exact: true }).click();

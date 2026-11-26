@@ -2577,6 +2577,86 @@ for (const language of [
   );
 }
 
+test('Scheduled tasks, Settings and Admin resize the shared desktop sidebar', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route(/\/api\/scheduled-tasks(?:\?.*)?$/, (route) =>
+    json(route, {
+      items: [],
+      nodes: [],
+      unavailableNodeIds: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      hasMore: false
+    })
+  );
+  await page.route('**/api/oauth-bindings', (route) => json(route, { bindings: [] }));
+  await page.route(/\/api\/resources(?:\?.*)?$/, (route) =>
+    json(route, { nodes: [], workspaces: [], page: 1, pageSize: 20, total: 0, hasMore: false })
+  );
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+
+  const rail = page.locator('.activity-rail');
+  const sidebar = page.locator('#workbench-secondary-sidebar');
+  const handle = page.getByRole('separator', { name: '调整侧栏宽度' });
+  const surface = page.locator('.workbench');
+  await expect(sidebar).toBeVisible();
+  let expectedWidth = (await sidebar.boundingBox())!.width;
+  for (const [name, delta] of [
+    ['定时任务', 35],
+    ['设置', 40],
+    ['管理', -25]
+  ] as const) {
+    const entry = rail.getByRole('button', { name, exact: true });
+    await entry.click();
+    await expect(entry).toHaveAttribute('aria-current', 'page');
+    await expect(handle).toBeVisible();
+    await expect
+      .poll(async () => (await sidebar.boundingBox())!.width)
+      .toBeCloseTo(expectedWidth, 0);
+    await expect(handle).toHaveAttribute('aria-controls', 'workbench-secondary-sidebar');
+
+    const { x, y, width } = (await handle.boundingBox())!;
+    await page.mouse.move(x + width / 2, y + 100);
+    await page.mouse.down();
+    await page.mouse.move(x + width / 2 + delta, y + 100, { steps: 5 });
+    expectedWidth += delta;
+    await expect
+      .poll(async () => (await sidebar.boundingBox())?.width, {
+        message: `${name} resizes the shared sidebar`
+      })
+      .toBeCloseTo(expectedWidth, 0);
+    await expect
+      .poll(async () => {
+        const box = (await sidebar.boundingBox())!;
+        return (await surface.boundingBox())!.x - (box.x + box.width);
+      })
+      .toBeCloseTo(0, 0);
+    await page.mouse.up();
+    await expect(entry).toHaveAttribute('aria-current', 'page');
+  }
+
+  await page.getByRole('button', { name: '收起侧栏' }).click();
+  await expect(handle).toBeHidden();
+  await page.getByRole('button', { name: '展开侧栏' }).click();
+  await expect(handle).toBeVisible();
+  await handle.press('ArrowRight');
+  expectedWidth += 10;
+  await expect(handle).toHaveAttribute('aria-valuenow', String(expectedWidth));
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeCloseTo(expectedWidth, 0);
+  await expect(rail.getByRole('button', { name: '管理', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page'
+  );
+  await rail.getByRole('button', { name: '工作', exact: true }).click();
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeCloseTo(expectedWidth, 0);
+  await page.reload();
+  await expect(handle).toBeVisible();
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeCloseTo(expectedWidth, 0);
+});
+
 for (const locale of ['zh-CN', 'en-US'] as const) {
   test(`Workspace sidebar resizing respects boundaries and restores after reload: ${locale}`, async ({
     page
@@ -2592,30 +2672,31 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await tree.getByRole('button', { name: /node-1/ }).click();
     await tree.getByRole('button', { name: 'project', exact: true }).click();
     const treeHandle = page.getByRole('separator', {
-      name: locale === 'zh-CN' ? '调整工作区树宽度' : 'Resize workspace tree'
+      name: locale === 'zh-CN' ? '调整侧栏宽度' : 'Resize sidebar'
     });
-    const filesHandle = page.getByRole('separator', {
-      name: locale === 'zh-CN' ? '调整文件区宽度' : 'Resize files panel'
+    const asideHandle = page.getByRole('separator', {
+      name: locale === 'zh-CN' ? '调整工作区侧栏宽度' : 'Resize workspace aside'
     });
-    const inspector = page.locator('.inspector-column');
-    await expect(filesHandle).toBeVisible();
+    const aside = page.locator('.workbench-aside');
+    await expect(asideHandle).toBeVisible();
+    await expect(aside).toHaveCSS('width', '320px');
     const initialTree = (await tree.boundingBox())!.width;
-    const initialFiles = (await inspector.boundingBox())!.width;
+    const initialAside = (await aside.boundingBox())!.width;
     await treeHandle.evaluate((element) => {
       element.addEventListener('pointermove', () => {
         requestAnimationFrame(() => {
-          const right = (selector: string) =>
-            document.querySelector(selector)!.getBoundingClientRect().right;
-          const treeRight = right('aside.workspace-tree');
+          const treeBox = document.querySelector('aside.workspace-tree')!.getBoundingClientRect();
+          const treeRight = treeBox.right;
           const box = element.getBoundingClientRect();
           const line = box.left + parseFloat(getComputedStyle(element, '::before').left);
           const sample = {
-            headerGap: right('[data-testid="workbench-brand"]') - treeRight,
+            headerGap:
+              document.querySelector('.workbench-header')!.getBoundingClientRect().left - treeRight,
             surfaceGap:
               document.querySelector('.workbench')!.getBoundingClientRect().left - treeRight,
             lineGap: line - (treeRight - 1),
-            top: box.top,
-            bottom: box.bottom
+            topGap: box.top - treeBox.top,
+            bottomGap: box.bottom - treeBox.bottom
           };
           const samples = JSON.parse(
             element.getAttribute('data-test-alignment') ?? '[]'
@@ -2629,7 +2710,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     });
     for (const [handle, delta] of [
       [treeHandle, 65],
-      [filesHandle, -100]
+      [asideHandle, -100]
     ] as const) {
       const box = (await handle.boundingBox())!;
       await page.mouse.move(box.x + box.width / 2, box.y + 100);
@@ -2645,8 +2726,8 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             headerGap: number;
             surfaceGap: number;
             lineGap: number;
-            top: number;
-            bottom: number;
+            topGap: number;
+            bottomGap: number;
           }[];
         });
         expect(samples.length).toBeGreaterThan(0);
@@ -2657,8 +2738,8 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           expect(Math.abs(sample.headerGap)).toBeLessThanOrEqual(0.5);
           expect(Math.abs(sample.surfaceGap)).toBeLessThanOrEqual(0.5);
           expect(Math.abs(sample.lineGap)).toBeLessThanOrEqual(0.5);
-          expect(sample.top).toBe(0);
-          expect(sample.bottom).toBe(1080);
+          expect(sample.topGap).toBe(0);
+          expect(sample.bottomGap).toBe(0);
         }
         if (locale === 'zh-CN') {
           await page.screenshot({ path: test.info().outputPath('sidebar-divider.png') });
@@ -2670,22 +2751,22 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       .poll(async () => (await tree.boundingBox())!.width)
       .toBeCloseTo(initialTree + 65, 0);
     await expect
-      .poll(async () => (await inspector.boundingBox())!.width)
-      .toBeCloseTo(initialFiles + 100, 0);
+      .poll(async () => (await aside.boundingBox())!.width)
+      .toBeCloseTo(initialAside + 100, 0);
     const saved = await page.evaluate(() => localStorage.getItem('mar.workbench.panel-widths.v1'));
     await page.reload();
-    await expect(filesHandle).toBeVisible();
+    await expect(asideHandle).toBeVisible();
     await expect
       .poll(async () => (await tree.boundingBox())!.width)
       .toBeCloseTo(initialTree + 65, 0);
     await expect
-      .poll(async () => (await inspector.boundingBox())!.width)
-      .toBeCloseTo(initialFiles + 100, 0);
+      .poll(async () => (await aside.boundingBox())!.width)
+      .toBeCloseTo(initialAside + 100, 0);
     for (const [handle, target, initial] of [
       [treeHandle, tree, initialTree + 65],
-      [filesHandle, inspector, initialFiles + 100]
+      [asideHandle, aside, initialAside + 100]
     ] as const) {
-      await expect(handle).not.toHaveAttribute('tabindex');
+      await expect(handle).toHaveAttribute('tabindex', '0');
       await handle.evaluate((element) => {
         element.addEventListener(
           'pointerdown',
@@ -2710,8 +2791,8 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await expect.poll(async () => (await target.boundingBox())!.width).toBeCloseTo(initial, 0);
     }
     for (const [handle, target, min, max, direction] of [
-      [treeHandle, tree, 220, 420, 1],
-      [filesHandle, inspector, 275, 600, -1]
+      [treeHandle, tree, 211, 411, 1],
+      [asideHandle, aside, 275, 600, -1]
     ] as const) {
       const dragTo = async (x: number) => {
         const box = (await handle.boundingBox())!;
@@ -2730,7 +2811,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       .poll(async () => (await page.locator('.conversation-panel').boundingBox())!.width)
       .toBeGreaterThanOrEqual(359);
     await page.setViewportSize({ width: 1000, height: 900 });
-    await expect(filesHandle).toBeHidden();
+    await expect(asideHandle).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(treeHandle).toBeHidden();
     await expect(page.locator('.workbench')).toHaveClass(/compact/);
@@ -2738,14 +2819,14 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page
       .getByRole('button', { name: locale === 'zh-CN' ? '展开侧栏' : 'Expand sidebar' })
       .click();
-    await expect.poll(async () => (await tree.boundingBox())!.width).toBe(420);
-    await expect.poll(async () => (await inspector.boundingBox())!.width).toBe(600);
+    await expect.poll(async () => (await tree.boundingBox())!.width).toBe(411);
+    await expect.poll(async () => (await aside.boundingBox())!.width).toBe(600);
     expect(saved).not.toBeNull();
     await page.evaluate(() => localStorage.setItem('mar.workbench.panel-widths.v1', '{'));
     await page.reload();
-    await expect(filesHandle).toBeVisible();
+    await expect(asideHandle).toBeVisible();
     await expect.poll(async () => (await tree.boundingBox())!.width).toBe(initialTree);
-    await expect.poll(async () => (await inspector.boundingBox())!.width).toBe(initialFiles);
+    await expect.poll(async () => (await aside.boundingBox())!.width).toBe(initialAside);
   });
 }
 

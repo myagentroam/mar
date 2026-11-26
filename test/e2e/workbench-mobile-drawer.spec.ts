@@ -148,6 +148,21 @@ test('Mobile brand menu dismisses over the resource drawer and omits unavailable
   ]);
 });
 
+test('Desktop sidebar separator reports its responsive width before focus', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&view=settings`);
+  const handle = page.getByRole('separator', { name: 'Resize sidebar' });
+  const sidebar = page.locator('#workbench-secondary-sidebar');
+  await expect(sidebar).toHaveCSS('width', '235px');
+  await expect(handle).toHaveAttribute('aria-valuenow', '235');
+  await expect(handle).not.toBeFocused();
+
+  await page.setViewportSize({ width: 800, height: 800 });
+  await expect(sidebar).toHaveCSS('width', '211px');
+  await expect(handle).toHaveAttribute('aria-valuenow', '211');
+  await expect(handle).not.toBeFocused();
+});
+
 test('Desktop activity panels cover resize handles without disabling uncovered dragging', async ({
   page
 }) => {
@@ -157,7 +172,7 @@ test('Desktop activity panels cover resize handles without disabling uncovered d
     element.style.setProperty('--mar-workbench-sidebar-width', '400px');
     element.style.setProperty('--mar-workbench-sidebar-total-width', '448px');
   });
-  const handle = page.locator('.workspace-tree-resize');
+  const handle = page.getByRole('separator', { name: 'Resize sidebar' });
   await expect(handle).toBeVisible();
   await page.getByRole('button', { name: 'Sessions & notifications', exact: true }).click();
   const panel = page.locator('.workbench-activity-panel');
