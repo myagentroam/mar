@@ -83,6 +83,7 @@ export function collectExecCandidates(
     const lifecycle = selected.map((fact) => invocations.get(fact.callId)!);
     const final = lifecycle.at(-1)!;
     const evidenceSequence = final.group.result!.record.sequence;
+    const terminalCallId = final.group.callId;
     const replacements: ContextGcReplacement[] = [];
     for (const invocation of lifecycle) {
       if (invocation.group.evidenceOnly) continue;
@@ -108,16 +109,17 @@ export function collectExecCandidates(
           providerAliasTargets: invocation.group.aliases
             .map(({ record, message }) => targetFor(record, message))
             .filter((target): target is ContextGcTarget => target !== undefined),
-          evidenceSequence
+          evidenceSequence,
+          terminalCallId
         });
       if (!existingTargets.has(contextGcTargetKey(resultTarget)))
         replacements.push({
           kind: 'EXEC_OUTPUT',
-          ...(resultTarget.observationId ? { terminalCallId: final.group.callId } : {}),
           callId: invocation.group.callId,
           target: resultTarget,
           replacementContent: contextGcExecOutputReplacement(invocation.result),
-          evidenceSequence
+          evidenceSequence,
+          terminalCallId
         });
     }
     if (replacements.length === 0) continue;

@@ -61,6 +61,7 @@ export type ContextGcReplacement =
       readonly replacementArguments: unknown;
       readonly providerAliasTargets: readonly ContextGcTarget[];
       readonly evidenceSequence: number;
+      readonly terminalCallId?: string;
     }
   | {
       readonly kind: 'EXEC_OUTPUT';
