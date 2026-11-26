@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
+import type { NodeOrchestration } from '../../src/orchestration/node-orchestration.js';
+import type { NodeRuntimeState } from '../../src/runtime-state.js';
+import type { SessionCatalogService } from '../../src/session/session-catalog-service.js';
 import { WorkspaceChangeService } from '../../src/workspace/workspace-change-service.js';
 import {
   WorkspaceSessionService,
@@ -21,6 +24,101 @@ function sessionState(service: WorkspaceSessionService) {
 }
 
 describe('Node Workspace watch', () => {
+  it('routes a committed whiteboard edit to collaboration navigation only', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-workspace-board-watch-'));
+    const database = new NodeDatabase(':memory:', 'node-workspace-board-watch');
+    const connector = new NodeConnector({ reconnect: false, database });
+    try {
+      const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
+      const core = connector as unknown as {
+        runtime: NodeRuntimeState;
+        orchestration: NodeOrchestration;
+        sessionCatalogService: SessionCatalogService;
+        send(type: string, payload: unknown): void;
+      };
+      const session = core.runtime.createAgentSession({
+        workspaceId: workspace.id,
+        cwd: root,
+        runner: 'mar-agent'
+      });
+      database.saveNativeSessionMetadata({
+        workspaceId: workspace.id,
+        runner: 'mar-agent',
+        externalSessionId: session.id
+      });
+      const { run } = core.runtime.createMessageRun({
+        sessionId: session.id,
+        clientMessageId: 'board-edit-run',
+        content: 'Prepare the board',
+        initiatedByUserId: 7
+      });
+      const send = vi.spyOn(core, 'send');
+      const navigation = vi.spyOn(core.sessionCatalogService, 'navigation');
+      const summary = { sessionIds: [], summaryAnchors: [session.id], limit: 20 };
+      const collaboration = {
+        ...summary,
+        treeAnchor: session.id,
+        collaboration: { boardSessionId: session.id }
+      };
+      const watch = (connection: string, sessionNavigation: typeof summary) =>
+        operation(connector, 'workspace.watch', {
+          workspaceId: workspace.id,
+          watchId: `watch-${connection}`,
+          workbenchConnectionId: connection,
+          __requestUserId: 7,
+          mode: 'initial',
+          topics: { sessionNavigation }
+        });
+      const snapshot = (connection: string) => ({
+        type: 'watch.workspace.snapshot',
+        topic: 'sessionNavigation',
+        workbenchConnectionId: connection
+      });
+      await watch('summary-page', summary);
+      await watch('collaboration-page', collaboration);
+      await vi.waitFor(() => {
+        for (const connection of ['summary-page', 'collaboration-page'])
+          expect(send).toHaveBeenCalledWith(
+            'watch.event',
+            expect.objectContaining(snapshot(connection))
+          );
+      });
+      navigation.mockClear();
+      send.mockClear();
+
+      core.orchestration.whiteboard.update(run.id, {
+        expectedBoardId: session.id,
+        ops: [{ op: 'add', content: 'Updated board entry' }]
+      });
+
+      await vi.waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          'watch.event',
+          expect.objectContaining({
+            ...snapshot('collaboration-page'),
+            payload: expect.objectContaining({
+              collaboration: expect.objectContaining({
+                board: expect.objectContaining({
+                  entries: [expect.objectContaining({ content: 'Updated board entry' })]
+                })
+              })
+            })
+          })
+        )
+      );
+      expect(navigation.mock.calls.map(([query]) => query)).toEqual([
+        { workspaceId: workspace.id, ...collaboration }
+      ]);
+      expect(send).not.toHaveBeenCalledWith(
+        'watch.event',
+        expect.objectContaining(snapshot('summary-page'))
+      );
+    } finally {
+      connector.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('publishes thirty sessions in the initial snapshot with a cursor for remaining sessions', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mar-workspace-session-page-'));
     const database = new NodeDatabase(':memory:', 'node-workspace-session-page');
@@ -142,13 +240,7 @@ describe('Node Workspace watch', () => {
   it('makes a removed lease inactive before cancelling its queued preparation', () => {
     const observed: boolean[] = [];
     const service = new WorkspaceWatchService(vi.fn(), vi.fn(), vi.fn(), (watch) => {
-      observed.push(
-        service.matches(
-          watch.workspaceId,
-          `${watch.sessionHash}:${watch.workbenchConnectionId}`,
-          watch.watchId
-        )
-      );
+      observed.push(service.isCurrent(watch));
     });
     const watch = service.create(
       'workspace-1',
@@ -248,7 +340,7 @@ describe('Node Workspace watch', () => {
       watch: {
         activeWatches: () => [watch],
         activeWorkspaceIds: (topic: string) => (topic === 'files' ? ['workspace-1'] : []),
-        matches: () => true,
+        isCurrent: () => true,
         nextRevision: vi.fn().mockReturnValue(1),
         nextSnapshotSequence: vi.fn().mockReturnValue(1)
       } as never,
@@ -297,7 +389,7 @@ describe('Node Workspace watch', () => {
       };
       const service = new WorkspaceWatchSnapshotService({
         requireWorkspace: () => workspace,
-        watch: { matches: () => active, activeWatches: () => (active ? [watch] : []) } as never,
+        watch: { isCurrent: () => active, activeWatches: () => (active ? [watch] : []) } as never,
         files: { prepare } as never,
         changes: {} as never,
         listSessions: async () => ({ sessions: [] }),
@@ -343,7 +435,7 @@ describe('Node Workspace watch', () => {
       const prepare = vi.fn(async () => undefined);
       const service = new WorkspaceWatchSnapshotService({
         requireWorkspace: () => workspace,
-        watch: { matches: () => true } as never,
+        watch: { isCurrent: () => true } as never,
         files: { prepare } as never,
         changes: {} as never,
         listSessions: async () => ({ sessions: [] }),
@@ -390,7 +482,7 @@ describe('Node Workspace watch', () => {
       requireWorkspace: () => ({ id: 'workspace-1', kind: 'DIRECTORY' }) as never,
       watch: {
         activeWatches: () => (active ? [watch] : []),
-        matches: () => active,
+        isCurrent: () => active,
         nextRevision: vi.fn().mockReturnValue(1),
         nextSnapshotSequence: vi.fn().mockReturnValue(1)
       } as never,
@@ -623,7 +715,7 @@ describe('Node Workspace watch', () => {
       requireWorkspace: () => ({ id: 'workspace-1', kind: 'DIRECTORY' }) as never,
       watch: {
         activeWatches: () => [watch],
-        matches: () => true,
+        isCurrent: () => true,
         nextRevision: vi.fn().mockReturnValue(1),
         nextSnapshotSequence: vi.fn().mockReturnValue(1)
       } as never,
@@ -664,7 +756,7 @@ describe('Node Workspace watch', () => {
       requireWorkspace: () => ({ id: 'workspace-1', kind: 'DIRECTORY' }) as never,
       watch: {
         activeWatches: () => [watch],
-        matches: () => true,
+        isCurrent: () => true,
         nextRevision: vi.fn().mockReturnValue(1),
         nextSnapshotSequence: vi.fn().mockReturnValue(1)
       } as never,
@@ -700,7 +792,7 @@ describe('Node Workspace watch', () => {
       requireWorkspace: () => ({ id: 'workspace-1', kind: 'DIRECTORY' }) as never,
       watch: {
         activeWatches: () => [watch],
-        matches: () => true,
+        isCurrent: () => true,
         nextRevision: vi.fn().mockReturnValue(1),
         nextSnapshotSequence: vi.fn().mockReturnValue(1)
       } as never,
@@ -748,7 +840,7 @@ describe('Node Workspace watch', () => {
       requireWorkspace: () => ({ id: 'workspace-1', kind: 'DIRECTORY' }) as never,
       watch: {
         activeWatches: () => watches,
-        matches: () => true,
+        isCurrent: () => true,
         nextRevision: vi.fn().mockReturnValue(1),
         nextSnapshotSequence: vi.fn().mockReturnValue(1)
       } as never,

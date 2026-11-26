@@ -493,7 +493,7 @@ export class NodeConnector {
         return session?.workspaceId === workspaceId && session.runner === 'mar-agent';
       },
       changed: (workspaceId) => {
-        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessionNavigation');
+        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'collaboration');
       },
       canRecover: (run, owner) => {
         if (this.database?.getSessionRecord(owner)?.workspaceId !== run.workspaceId) return false;
