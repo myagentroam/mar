@@ -5,7 +5,7 @@ import { createRunnerInteractionService } from '../../src/service/runner-interac
 import { createComposerReferenceService } from '../../src/service/composer-reference-service.js';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 
-function fixture(sessionEnabled = false) {
+function fixture(sessionEnabled = false, recalledText?: string) {
   const input = ref('');
   const runnerInteractions = createRunnerInteractionService({
     input,
@@ -24,6 +24,17 @@ function fixture(sessionEnabled = false) {
           inputHint: '',
           source: 'CODEX_APP_SERVER',
           interaction: 'TOGGLE',
+          available: true,
+          reasonCode: null
+        },
+        {
+          id: 'goal',
+          runner: 'codex',
+          label: 'Goal',
+          description: 'Set a goal',
+          inputHint: '/goal <objective>',
+          source: 'CODEX_APP_SERVER',
+          interaction: 'VALUE',
           available: true,
           reasonCode: null
         }
@@ -71,6 +82,11 @@ function fixture(sessionEnabled = false) {
     handleConversationScroll: vi.fn(),
     scrollToLatest: vi.fn(),
     scrollToLatestAfterLayout: vi.fn().mockResolvedValue(undefined),
+    sentHistory: {
+      reset: vi.fn(),
+      recall: (direction: 'older' | 'newer', replace: (text: string) => boolean) =>
+        direction === 'older' && recalledText !== undefined && replace(recalledText)
+    },
     editRange: vi.fn((start: number, end: number, text: string) => {
       input.value = input.value.slice(0, start) + text + input.value.slice(end);
       return true;
@@ -104,6 +120,37 @@ function dispatchComposerEscape(f: ReturnType<typeof fixture>, preventDefault = 
 }
 
 describe('Public Composer Input Coordination', () => {
+  it('deselects a pending command only after successful recall, without clearing slash-prefixed text', () => {
+    const savedText = '/goal quoted as ordinary text';
+    const f = fixture(false, savedText);
+    f.input.value = '/goal';
+    f.controller.onComposerInput();
+    dispatchComposerKey(f, 'Enter');
+    expect(f.runnerInteractions.selectedCommand.value?.id).toBe('goal');
+    expect(f.sendMessage).not.toHaveBeenCalled();
+
+    const replace = vi.fn((text: string) => {
+      f.input.value = text;
+      return true;
+    });
+    const historyKey = (key: string) =>
+      ({ key, altKey: true, preventDefault: vi.fn() }) as unknown as KeyboardEvent;
+    f.controller.onComposerKeydown(historyKey('ArrowDown'), replace);
+    expect(replace).not.toHaveBeenCalled();
+    expect(f.runnerInteractions.selectedCommand.value?.id).toBe('goal');
+    f.controller.onComposerKeydown(historyKey('ArrowUp'), () => false);
+    expect(f.runnerInteractions.selectedCommand.value?.id).toBe('goal');
+
+    f.controller.onComposerKeydown(historyKey('ArrowUp'), replace);
+    f.controller.onComposerCursor(savedText.length, 'ArrowUp');
+    expect(f.runnerInteractions.selectedCommand.value).toBeUndefined();
+    expect(f.input.value).toBe(savedText);
+    expect(f.commandPickerOpen.value).toBe(false);
+    expect(f.sendMessage).not.toHaveBeenCalled();
+    dispatchComposerKey(f, 'Enter');
+    expect(f.sendMessage).toHaveBeenCalledOnce();
+  });
+
   it.each(['@session #topic', '@session /topic'])(
     'keeps %s in session search without loading unrelated prompt or command sources',
     (value) => {

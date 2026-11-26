@@ -175,6 +175,7 @@ export function createWorkbenchComposerInteractionController(
         event.preventDefault();
         options.fileReferences.cancelSearch();
         options.fileReferences.close();
+        options.runnerInteractions.deselectCommand();
         options.runnerInteractions.dismissPicker();
         return;
       }

@@ -147,8 +147,12 @@ export function createRunnerInteractionService(options: {
     pickerCursor = cursor;
   }
 
-  function clearCommand(): void {
+  function deselectCommand(): void {
     selectedCommand.value = undefined;
+  }
+
+  function clearCommand(): void {
+    deselectCommand();
     if (options.input.value.trimStart().startsWith('/')) options.input.value = '';
   }
 
@@ -316,6 +320,7 @@ export function createRunnerInteractionService(options: {
     activeCommandStates,
     reset,
     updatePicker,
+    deselectCommand,
     clearCommand,
     selectCommand,
     selectSkill,
