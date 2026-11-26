@@ -1,8 +1,8 @@
-import type { NodeDatabase } from '../database.js';
-import type { NodeRuntimeState } from '../runtime-state.js';
-import type { NodeAgentSession } from '../session/contracts.js';
-import type { NativeSessionProjectionService } from '../session/native-session-projection-service.js';
-import { sessionActivityStatus } from './session-recent-activity.js';
+import type { NodeDatabase } from '../../database.js';
+import type { NodeRuntimeState } from '../../runtime-state.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
+import type { NativeSessionProjectionService } from '../../session/native-session-projection-service.js';
+import { sessionActivityStatus } from '../../service/session-recent-activity.js';
 
 type AgentListSession = Pick<
   NodeAgentSession,

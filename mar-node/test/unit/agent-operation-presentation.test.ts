@@ -5,10 +5,10 @@ import {
   agentOperationAction,
   agentOperationEvent,
   agentOperationPresentation
-} from '../../src/runner/mar-agent/agent-operation-presentation.js';
+} from '../../src/orchestration/agent-network/agent-operation-presentation.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
-import { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
-import { waitForAgentTargets } from '../../src/service/agent-network-wait.js';
+import { AgentNetworkObservations } from '../../src/orchestration/agent-network/agent-network-observations.js';
+import { waitForAgentTargets } from '../../src/orchestration/agent-network/agent-network-wait.js';
 
 function event(value: Record<string, unknown>): AgentEvent {
   return {

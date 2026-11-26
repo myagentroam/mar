@@ -179,6 +179,14 @@ agent_wait({
 
 原生协作工具的直接返回与 Code Mode `data` 使用相同的精简结果：保留目标身份、实际操作状态、等待取得的新消息或终态结论，以及部分失败、未知结果和错误码，不提供内部审计回执、队列项 ID 或内部执行关联 ID。`agent_start`、`agent_send` 的 `goal` 是跨执行持续推进的目标，区别于本次消息；省略或 `null` 保持现状，`objective` 设置或替换目标，`clear` 清除目标但不停止当前执行。
 
+### 协作白板
+
+每个 Agent 始终保留自己的白板，并可额外关注一块。Agent 拉起其他 Agent 时，新成员保留自有板，并沿用发起方关注的板；若发起方未关注其他板，则传递发起方的自有板。已脱钩的关注也会传递，但恢复前不会提供内容或允许写入。收到消息后开始工作的空闲 Agent 也适用。给正在工作的 Agent 发消息不会切换它关注的板。
+
+`boardAgentId` 就是板主的 Agent ID。`read` 可按该 ID 读取同一工作区的白板，即使板主空闲也能查看；省略 ID 则读取自有板。读取返回内容和最近最多十条变更摘要，不改变关注。`join` 用活动白板的 `boardAgentId` 替换额外关注；用 `whiteboard({ action: 'leave' })` 取消额外关注，不影响自有板。`update` 可指定自有板或正在关注的板。
+
+自有板和关注的板都会自动提供。编辑可唤醒休眠中的订阅者，不会启动空闲会话。关注的板在板主本轮工作结束后停止自动更新，但仍可按 ID 读取，不影响自有板。板主再次活动时，可以重新加入，或请板主从新一轮工作发消息恢复关注。
+
 ### Web 搜索与抓取
 
 开启 Hosted Web Search 时，Auto 与 Full access 均使用所选模型服务的原生托管搜索，不需要客户端 permission 声明，也不同时提供自托管搜索；关闭时使用 Server Compose 内置 SearXNG。Web Fetch 由 Node 本地直连执行，不读取模型凭据，也不会继承 Codex 凭据配置的 SOCKS5 代理；它可访问 Node 网络可达的任意 HTTP/HTTPS IP 或域名（包括内网），并默认接受自签名或其他不受信任的 HTTPS 证书。如需严格校验证书，在 Node 服务环境设置 `MAR_AGENT_WEB_FETCH_ALLOW_UNTRUSTED_TLS=0`。

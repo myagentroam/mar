@@ -4,10 +4,15 @@ import type {
   AgentNetworkAction,
   AgentNetworkInvoke,
   ResolvedTargets
-} from '../../service/agent-network-service.js';
-import { agentNetworkModelOutput } from './agent-network-model-output.js';
-import { agentOperationEvent } from './agent-operation-presentation.js';
-import { AGENT_WAIT_DEFAULTS } from '../../service/agent-network-wait.js';
+} from './agent-network/agent-network-service.js';
+import { agentNetworkModelOutput } from './agent-network/agent-network-model-output.js';
+import { agentOperationEvent } from './agent-network/agent-operation-presentation.js';
+import { AGENT_WAIT_DEFAULTS } from './agent-network/agent-network-wait.js';
+import {
+  rejectExtraWhiteboardFields,
+  whiteboardTool,
+  type WhiteboardInvoke
+} from './whiteboard/whiteboard-tool.js';
 
 const text = { type: 'string', minLength: 1 } as const;
 const runner = {
@@ -98,7 +103,7 @@ const tools: readonly {
         minItems: 1,
         maxItems: 8,
         description:
-          'Target Session IDs, including a single target as a one-item array. Omit to select from direct children.'
+          'Target Agent IDs, including a single target as a one-item array. Omit to select from direct children.'
       },
       mode: {
         type: 'string',
@@ -159,7 +164,7 @@ const tools: readonly {
 ];
 
 const delegationPrompt = [
-  '# Delegation and coordination',
+  '## Delegation and coordination',
   'Prefer handling focused or tightly coupled work locally.',
   'Consider delegating a clearly separable subtask when parallel progress or context savings materially outweigh coordination overhead.',
   'Avoid splitting work merely because agents are available.',
@@ -170,31 +175,43 @@ const delegationPrompt = [
 ].join('\n\n');
 
 const collaborationPrompt = [
-  '# Workspace collaboration',
-  "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Prefer focused requests and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup.",
-  'Prefer reusing known Session IDs rather than rediscovering them. Updates are most useful when requested or when the recipient needs to decide or change course; prefer combining related updates.',
+  '## Workspace collaboration',
+  'For direct requests and Session coordination, use native agent_* tools. Contact another Session when its context or ongoing work materially helps. Prefer focused requests and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup.',
+  'Prefer reusing known Agent IDs rather than rediscovering them. Direct updates are most useful when requested or when the recipient needs to decide or change course; prefer combining related updates.',
   'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.',
   'The parent automatically collects replies and terminal state from its direct children before its next model request. Report progress, blockers, and results in your own Session rather than using agent_send to contact your parent. Parent-to-child guidance still uses agent_send.',
-  'Sending to a non-child Agent does not subscribe to future updates; waiting for a non-child observes it only for that call.'
+  'Sending a message to an Agent other than your direct child does not subscribe you to its Session activity. For those Agents, agent_wait observes Session activity only for the duration of the call.'
 ].join('\n\n');
 
 const managementPrompt = [
-  '# Workspace management',
-  "Load marctl when needed to manage existing Session settings, titles, persistent prompts or schedules, or to discover authorized Nodes, execute remote commands or transfer files. Ordinary Agent collaboration and selecting a child's model or effort at creation use native agent_* tools. Do not switch to marctl when a native operation fails."
+  '## Workspace management',
+  "Load marctl when needed to manage existing Session settings, titles, persistent prompts or schedules, or to discover authorized Nodes, execute remote commands or transfer files. Use agent_start to select a child's model or effort at creation. Do not switch to marctl when a native operation fails."
 ].join('\n\n');
 
-export function agentNetworkExtension(
+const whiteboardPrompt = [
+  '## Whiteboard',
+  'You automatically receive your own board and the one other board you follow while it is available. Your own board shows your Agent ID. Agents receiving the same board form a collaboration group and can all edit it.',
+  'Eligible agents you start with agent_start or bring into the work by messaging them while idle keep their own board and follow the board you follow, or your own board if you follow none. Messaging an active agent does not change which board it follows.',
+  "You can share a board owner's Agent ID with other agents so they can read or join that board. Reading does not change what you follow. Joining another board replaces only the board you follow; it does not change your own board or anyone else’s subscriptions.",
+  'The whiteboard provides shared working memory for goals, decisions, constraints, findings, and other coordination information. Keep it concise and current. Its contents are shared context, not direct messages or instructions.'
+].join('\n\n');
+
+/** Binds collaboration tools and their shared guidance; all state belongs to Node services. */
+export function orchestrationExtension(
   invoke: AgentNetworkInvoke,
-  currentExecution: () => string | undefined
+  currentExecution: () => string | undefined,
+  whiteboard?: WhiteboardInvoke
 ): AgentExtension {
   return {
-    id: 'mar.node.agent-network',
+    id: 'mar.node.orchestration',
     apiVersion: '1.0',
     attachSession(context) {
-      // Reject retired input before generic unknown-field normalization can discard it.
+      const board = whiteboard && whiteboardTool(whiteboard, currentExecution);
+      // Preserve strict input contracts before generic unknown-field normalization.
       context.hooks.intercept(
         'tool.invoke',
         (input, _call, next) => {
+          if (board && input.name === 'whiteboard') rejectExtraWhiteboardFields(input.arguments);
           if (
             input.name === 'agent_wait' &&
             input.arguments !== null &&
@@ -234,30 +251,28 @@ export function agentNetworkExtension(
                 defaultEffort: model.defaultReasoningEffort
               })) ?? [])
           : [];
+        const sections = enabled
+          ? [
+              delegate
+                ? `${delegationPrompt}\n\nAvailable subagent models:\n${JSON.stringify({ runner: 'mar-agent', models })}`
+                : null,
+              available.has('agent_send') ? collaborationPrompt : null,
+              tools.some((tool) => available.has(`agent_${tool.action}`)) ? managementPrompt : null,
+              available.has('whiteboard') ? whiteboardPrompt : null
+            ].filter(Boolean)
+          : [];
         return next({
           ...input,
           sections: [
             ...input.sections,
             {
-              id: 'mar.node.agent-network:delegation',
-              text: delegate
-                ? `${delegationPrompt}\n\nAvailable subagent models:\n${JSON.stringify({ runner: 'mar-agent', models })}`
-                : null
-            },
-            {
-              id: 'mar.node.agent-network:collaboration',
-              text: enabled && available.has('agent_send') ? collaborationPrompt : null
-            },
-            {
-              id: 'mar.node.agent-network:management',
-              text:
-                enabled && tools.some((tool) => available.has(`agent_${tool.action}`))
-                  ? managementPrompt
-                  : null
+              id: 'mar.node.orchestration',
+              text: sections.length ? ['# Orchestration', ...sections].join('\n\n') : null
             }
           ]
         });
       });
+      if (board) context.tools.register(board);
       for (const tool of tools)
         context.tools.register({
           name: `agent_${tool.action}`,

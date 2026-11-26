@@ -2,14 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   agentNetworkExecutionCommand,
   executionAgentActor
-} from '../../src/service/agent-network-invoke.js';
+} from '../../src/orchestration/agent-network/agent-network-invoke.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import type {
   AgentNetworkActor,
   AgentNetworkService
-} from '../../src/service/agent-network-service.js';
-import type { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
+} from '../../src/orchestration/agent-network/agent-network-service.js';
+import type { AgentNetworkObservations } from '../../src/orchestration/agent-network/agent-network-observations.js';
 import { captureMarAgentExecutionInput } from '../../src/runner/mar-agent/execution-input.js';
 
 function fixture(available?: boolean) {

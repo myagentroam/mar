@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import type { ExtensionToolSpec, SessionExtensionContext } from '@myagentroam/agent/extensions';
 import { createToolCallScheduler } from '../../../mar-agent/dist/tools/scheduler.js';
-import { agentNetworkExtension } from '../../src/runner/mar-agent/agent-network-extension.js';
+import { orchestrationExtension } from '../../src/orchestration/orchestration-extension.js';
 
 async function registeredTools() {
   const tools = new Map<string, ExtensionToolSpec>();
@@ -9,7 +9,7 @@ async function registeredTools() {
     hooks: { intercept: vi.fn() },
     tools: { register: (tool: ExtensionToolSpec) => tools.set(tool.name, tool) }
   } as unknown as SessionExtensionContext;
-  await agentNetworkExtension(vi.fn(), () => 'execution').attachSession!(context);
+  await orchestrationExtension(vi.fn(), () => 'execution').attachSession!(context);
   return tools;
 }
 

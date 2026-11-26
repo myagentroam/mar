@@ -24,7 +24,7 @@ import { boundToolOutput } from '@myagentroam/protocol';
 import {
   agentOperationAction,
   agentOperationPresentation
-} from './agent-operation-presentation.js';
+} from '../../orchestration/agent-network/agent-operation-presentation.js';
 
 export interface MarAgentNormalizedItem {
   readonly itemId: string;

@@ -48,7 +48,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { AgentError, describeAgentError } from '../error.js';
 import { transformCoreModelStream } from '../extensions/model-stream.js';
 import type { ExtensionOperationContext } from '../extensions/operation.js';
-import { SESSION_CONTEXT_PROVIDER } from '../extensions/session-context.js';
+import {
+  SESSION_CONTEXT_PROVIDER,
+  type ExtensionRequestContext
+} from '../extensions/session-context.js';
 import { invokeCorePromptSubmission } from '../extensions/prompt-input.js';
 import {
   SessionInputCoordinator,
@@ -1026,7 +1029,7 @@ export function createSessionExecutionFactory(ports: {
             projectRequest: (history, tools) => ({
               messages: projectSessionRequestMessages(
                 history,
-                modelContext.worldState.entries,
+                modelContext.worldState.entries.filter(({ kind }) => kind !== 'provided-context'),
                 false,
                 tools.some((tool) => tool.name === 'code_exec'),
                 permissionPolicy.mode === 'auto'
@@ -1109,10 +1112,12 @@ export function createSessionExecutionFactory(ports: {
             await compactCoordinator.checkpoint(true);
             return;
           }
-          const preparedSkillAcknowledgements = new WeakMap<
+          const preparedAcknowledgements = new WeakMap<
             ModelRequest['messages'],
-            () => Promise<void>
+            { request?: () => Promise<void>; skills?: () => Promise<void> }
           >();
+          // A rebuilt candidate must not select context on the basis of input removed by a request hook.
+          const excludedContextInputs = new Set<string>();
           const prepareRound = createExecutionRoundPreparer<
             {
               candidateRequest: ModelRequest;
@@ -1120,6 +1125,8 @@ export function createSessionExecutionFactory(ports: {
               toolScope: RoundToolScope;
               discoveryRevision: number;
               replacesSkillContext: boolean;
+              acceptRequestContext: ExtensionRequestContext['accept'];
+              acknowledgeRequestContext: (() => Promise<void>) | undefined;
               acknowledgeSkillContext: (() => Promise<void>) | undefined;
             },
             PreparedExecutionRound<RoundToolScope>
@@ -1146,9 +1153,26 @@ export function createSessionExecutionFactory(ports: {
             buildCandidate: async () => {
               const skillLoads = sessionRuntime.pendingSkillContext();
               const capturedDiscoveryRevision = discoveryRevision;
+              const provider = coreExtensions.services.resolve(SESSION_CONTEXT_PROVIDER);
               const candidate = await prepareExecutionRoundRequest({
                 messages,
                 skillLoads,
+                ...(provider?.requestContext
+                  ? {
+                      requestContext: async () =>
+                        provider.requestContext!({
+                          signal: controller.signal,
+                          clientMessageIds: messages.flatMap((message) => {
+                            const id = message.metadata?.clientMessageId;
+                            return message.role === 'user' &&
+                              id !== undefined &&
+                              !excludedContextInputs.has(id)
+                              ? [id]
+                              : [];
+                          })
+                        })
+                    }
+                  : {}),
                 model: selectedModel,
                 requestBase: {
                   promptCacheKey: sessionId,
@@ -1190,6 +1214,8 @@ export function createSessionExecutionFactory(ports: {
               toolScope,
               discoveryRevision: capturedDiscoveryRevision,
               replacesSkillContext,
+              acceptRequestContext,
+              acknowledgeRequestContext,
               acknowledgeSkillContext
             }) => {
               if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
@@ -1216,9 +1242,27 @@ export function createSessionExecutionFactory(ports: {
               controller.signal.throwIfAborted();
               if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
                 return { retry: true as const };
+              if (
+                acceptRequestContext?.((id) => {
+                  if (
+                    prepared.messages.some(
+                      (message) =>
+                        message.role === 'user' && message.metadata?.clientMessageId === id
+                    )
+                  )
+                    return true;
+                  excludedContextInputs.add(id);
+                  return false;
+                }) === false
+              )
+                return { retry: true as const };
+              excludedContextInputs.clear();
               if (replacesSkillContext) selected.resetContinuation?.();
-              if (acknowledgeSkillContext)
-                preparedSkillAcknowledgements.set(prepared.messages, acknowledgeSkillContext);
+              if (acknowledgeRequestContext || acknowledgeSkillContext)
+                preparedAcknowledgements.set(prepared.messages, {
+                  ...(acknowledgeRequestContext && { request: acknowledgeRequestContext }),
+                  ...(acknowledgeSkillContext && { skills: acknowledgeSkillContext })
+                });
               return { round: { request: prepared, toolScope } };
             }
           });
@@ -1244,19 +1288,21 @@ export function createSessionExecutionFactory(ports: {
             prepareRound,
             runTools: executeRoundTools,
             startModel: async function* (request) {
-              let skillAcknowledgementFailed = false;
+              let contextAcknowledgementFailed = false;
               yield* modelLifecycle.start(request, async () => {
-                const acknowledgeSkills = preparedSkillAcknowledgements.get(request.messages);
-                if (acknowledgeSkills) {
-                  try {
-                    await acknowledgeSkills();
-                  } catch {
-                    // Keep the accepted loads pending; a sidecar failure cannot undo model completion.
-                    skillAcknowledgementFailed = true;
-                    coreExtensions.diagnose({
-                      code: 'MAR_AGENT_SKILL_CONTEXT_ACK_PERSIST_FAILED',
-                      sessionId
-                    });
+                const acknowledgements = preparedAcknowledgements.get(request.messages);
+                if (acknowledgements) {
+                  for (const [acknowledge, code] of [
+                    [acknowledgements.request, 'MAR_AGENT_REQUEST_CONTEXT_ACK_PERSIST_FAILED'],
+                    [acknowledgements.skills, 'MAR_AGENT_SKILL_CONTEXT_ACK_PERSIST_FAILED']
+                  ] as const) {
+                    if (!acknowledge) continue;
+                    try {
+                      await acknowledge();
+                    } catch {
+                      contextAcknowledgementFailed = true;
+                      coreExtensions.diagnose({ code, sessionId });
+                    }
                   }
                 }
                 await sessionRuntime.acknowledgeMcpDiscovery(request.messages, (receipts) =>
@@ -1268,9 +1314,9 @@ export function createSessionExecutionFactory(ports: {
                   })
                 );
               });
-              // A still-pending Skill may move on the next projection. Invalidate only after
-              // the adapter finishes the stream and publishes its new continuation baseline.
-              if (skillAcknowledgementFailed) selected.resetContinuation?.();
+              // A failed sidecar commit may change the next projection. Invalidate after the
+              // adapter finishes the stream and publishes its new continuation baseline.
+              if (contextAcknowledgementFailed) selected.resetContinuation?.();
             },
             recoverySignal: () => controller.signal,
             compactContext,

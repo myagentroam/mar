@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { AgentError } from '@myagentroam/agent';
-import type { NodeAgentSession } from '../session/contracts.js';
-import { isPlainRecord } from '../util/records.js';
-import { safeErrorCode } from '../util/safe-error.js';
+import type { NodeAgentSession } from '../../session/contracts.js';
+import { isPlainRecord } from '../../util/records.js';
+import { safeErrorCode } from '../../util/safe-error.js';
 import { parseAgentGoal, type AgentGoalChange } from './agent-network-goal.js';
 import type { AgentNetworkObservations } from './agent-network-observations.js';
 import {

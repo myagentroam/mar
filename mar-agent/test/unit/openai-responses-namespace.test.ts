@@ -51,6 +51,65 @@ afterEach(async () => {
 });
 
 describe('OpenAI Responses tool namespace on STANDARD transport', () => {
+  it('removes strict-mode null placeholders before calling a tool but keeps declared nulls', async () => {
+    const tool = {
+      name: 'start_probe',
+      description: 'Start a test task.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          runner: { type: 'string' },
+          clientMessageId: { type: 'string' },
+          goal: { anyOf: [{ type: 'null' }, { type: 'string' }] }
+        },
+        required: ['title'],
+        additionalProperties: false
+      }
+    };
+    const arguments_ = { title: 'Test', runner: null, clientMessageId: null, goal: null };
+    const fixture = await startHttpResponsesServer([
+      {
+        type: 'response.output_item.done',
+        item: {
+          type: 'function_call',
+          id: 'start-probe-item',
+          call_id: 'start-probe',
+          name: tool.name,
+          arguments: JSON.stringify(arguments_)
+        }
+      },
+      { type: 'response.completed', response: { id: 'strict-placeholder' } }
+    ]);
+    httpFixtures.push(fixture);
+    const adapter = registerAdapter(
+      new OpenAiResponsesAdapter(
+        configuration(fixture.baseUrl, {
+          responsesTransport: { transport: 'HTTP', httpVersion: '1.1' },
+          responsesPreviousResponseId: false
+        })
+      )
+    );
+    const events = await collect(adapter.start(toolRequest([tool]), new AbortController().signal));
+    expect(fixture.requests[0]!.tools).toEqual([
+      expect.objectContaining({
+        name: tool.name,
+        strict: true,
+        parameters: expect.objectContaining({
+          properties: expect.objectContaining({ runner: { type: ['string', 'null'] } })
+        })
+      })
+    ]);
+    expect(events.find(({ type }) => type === 'client_tool.call')).toMatchObject({
+      callId: 'start-probe',
+      name: tool.name
+    });
+    expect(events.find(({ type }) => type === 'client_tool.call')).toHaveProperty('arguments', {
+      title: 'Test',
+      goal: null
+    });
+  });
+
   it.each([undefined, 'mar'])(
     'omits unsupported array uniqueness for direct and deferred generic tools with namespace=%s',
     async (namespace) => {

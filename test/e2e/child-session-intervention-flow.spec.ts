@@ -9,8 +9,8 @@ import { FakeRunner } from '../../mar-node/src/fake-runner.js';
 import { MarAgentConversationNormalizer } from '../../mar-node/src/runner/mar-agent/conversation-normalizer.js';
 import type { RunnerRegistry } from '../../mar-node/src/runner/runner-registry.js';
 import type { NodeRuntimeState } from '../../mar-node/src/runtime-state.js';
-import type { AgentNetworkService } from '../../mar-node/src/service/agent-network-service.js';
-import type { AgentNetworkObservations } from '../../mar-node/src/service/agent-network-observations.js';
+import type { AgentNetworkService } from '../../mar-node/src/orchestration/agent-network/agent-network-service.js';
+import type { AgentNetworkObservations } from '../../mar-node/src/orchestration/agent-network/agent-network-observations.js';
 import type { RunEventService } from '../../mar-node/src/service/run-event-service.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 

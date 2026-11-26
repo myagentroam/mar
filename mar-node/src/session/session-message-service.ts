@@ -1,4 +1,8 @@
 import type { RunnerExecutionContext } from '../runner/execution-context.js';
+import {
+  ORCHESTRATION_INPUT_SOURCE,
+  type OrchestrationInputSource
+} from '../orchestration/input-source.js';
 import { RUNNER_EXECUTION_CONTEXT } from '../runner/execution-context.js';
 import { modelUsageGrantSchema } from '@myagentroam/protocol';
 import { randomUUID } from 'node:crypto';
@@ -147,6 +151,7 @@ export class SessionMessageService {
     readonly messageContent?: string;
     readonly clientMessageId?: string;
     readonly messageOrigin?: unknown;
+    readonly orchestrationSource?: OrchestrationInputSource;
     readonly attachments?: readonly unknown[];
     readonly attachmentIds?: readonly string[];
   }): Promise<unknown> {
@@ -171,6 +176,7 @@ export class SessionMessageService {
       __runnerContent: [input.content, input.messageContent].filter(Boolean).join('\n\n'),
       __goalRef: input.goal,
       ...(input.messageOrigin === undefined ? {} : { __marctlOrigin: input.messageOrigin }),
+      [ORCHESTRATION_INPUT_SOURCE]: input.orchestrationSource,
       ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
       ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds }),
       ...(input.initiatedByUserId === undefined
@@ -454,7 +460,11 @@ export class SessionMessageService {
               attachments,
               displayInput
             );
+          const orchestrationSource = (input as Record<PropertyKey, unknown>)[
+            ORCHESTRATION_INPUT_SOURCE
+          ] as OrchestrationInputSource | undefined;
           this.options.coordinator.prepare(submissionId, {
+            ...(orchestrationSource === undefined ? {} : { orchestrationSource }),
             restartMessage: {
               content: sourceContent,
               attachments,

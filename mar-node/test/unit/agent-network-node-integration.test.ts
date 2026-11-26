@@ -7,36 +7,451 @@ import { NodeDatabase } from '../../src/database.js';
 import * as executionPaths from '../../src/workspace/path-access.js';
 import { FakeRunner } from '../../src/fake-runner.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
-import { AgentNetworkService } from '../../src/service/agent-network-service.js';
+import { AgentNetworkService } from '../../src/orchestration/agent-network/agent-network-service.js';
 import type { NodeAgentSession } from '../../src/session/contracts.js';
 import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
 import type { GoalRuntime } from '../../src/service/goal-runtime.js';
-import { actorForAuthenticatedTerminal } from '../../src/service/agent-network-bindings.js';
+import { actorForAuthenticatedTerminal } from '../../src/orchestration/agent-network/agent-network-bindings.js';
 import {
   agentNetworkExecutionCommand,
   agentNetworkInvoke,
   invokeAgentNetwork
-} from '../../src/service/agent-network-invoke.js';
+} from '../../src/orchestration/agent-network/agent-network-invoke.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import {
   SESSION_CONTEXT_PROVIDER,
   type ExtensionOperationContext
 } from '@myagentroam/agent/extensions';
-import { agentNetworkExtension } from '../../src/runner/mar-agent/agent-network-extension.js';
+import { orchestrationExtension } from '../../src/orchestration/orchestration-extension.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import {
   AgentNetworkObservations,
   agentObservationFromRunEvent
-} from '../../src/service/agent-network-observations.js';
-import { waitForAgentTargets } from '../../src/service/agent-network-wait.js';
+} from '../../src/orchestration/agent-network/agent-network-observations.js';
+import { waitForAgentTargets } from '../../src/orchestration/agent-network/agent-network-wait.js';
 import { NodeRequestService } from '../../src/service/node-request-service.js';
 import { createEnvelope } from '@myagentroam/protocol';
 import { LocalAgentHost } from '../../../mar-agent/dist/host.js';
 import { SecretValue, type AgentModelConfiguration } from '../../../mar-agent/dist/index.js';
 import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
 import type { ModelEvent, ModelRequest } from '../../../mar-agent/dist/model/contracts.js';
+import { NodeOrchestration } from '../../src/orchestration/node-orchestration.js';
+import { WhiteboardService } from '../../src/orchestration/whiteboard/whiteboard-service.js';
+import { WhiteboardStore } from '../../src/orchestration/whiteboard/whiteboard-store.js';
 
 describe('Node Agent Network owner integration', () => {
+  it('inherits the board through real Node start, Goal and idle-send admission without switching an already active board', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mar-orchestration-admission-'));
+    const database = new NodeDatabase(':memory:', 'orchestration-admission');
+    const workspace = database.saveWorkspace({
+      path: directory,
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const connector = new NodeConnector({
+      reconnect: false,
+      database,
+      fakeRunner: new FakeRunner(),
+      fakeScript: () => [{ type: 'long-running' }],
+      capabilities: {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: process.version,
+        marAgent: { available: true },
+        codex: { available: false },
+        claudeCode: { available: false }
+      }
+    });
+    const core = connector as unknown as {
+      runtime: NodeRuntimeState;
+      orchestration: NodeOrchestration;
+      agentNetworkService: AgentNetworkService;
+      sessionLifecycleService: import('../../src/session/session-lifecycle-service.js').SessionLifecycleService;
+    };
+    const model = {
+      id: 'fixture',
+      name: 'Fixture',
+      modelId: 'fixture',
+      protocol: 'OPENAI_RESPONSES',
+      baseUrl: 'https://example.test',
+      credential: { type: 'INLINE_API_KEY', value: 'fixture-only' },
+      contextWindowTokens: 128000,
+      maxOutputTokens: 4096,
+      inputCapabilities: ['TEXT'],
+      outputCapabilities: ['TEXT'],
+      reasoningEfforts: [],
+      hostedWebSearch: false,
+      titleGeneration: false,
+      codeMode: false,
+      conversationModel: true,
+      subagentModel: true,
+      enabled: true,
+      sortOrder: 0
+    };
+    const resources = { marAgentModel: model, marAgentModels: [model] };
+    const create = async (clientMessageId: string, content?: string) => {
+      const result = await core.sessionLifecycleService.operations()[
+        content ? 'session.start' : 'session.create'
+      ]!({
+        workspaceId: workspace.id,
+        cwd: directory,
+        runner: 'mar-agent',
+        modelId: model.id,
+        __requestUserId: 7,
+        clientMessageId,
+        ...(content === undefined ? {} : { content }),
+        ...resources
+      });
+      return (result as { session: { id: string } }).session.id;
+    };
+    const actor = (sessionId: string) => ({
+      sessionId,
+      runId: core.runtime.activeSessionRun(sessionId)!.id,
+      requestUserId: 7,
+      runnerConfiguration: resources
+    });
+    const board = core.orchestration.whiteboard;
+    const seeBoards = (sessionId: string, boardAgentId?: string) =>
+      vi.waitFor(() => {
+        const runId = core.runtime.activeSessionRun(sessionId)!.id;
+        expect(board.capture(runId, []).views.map(({ snapshot }) => snapshot.boardId)).toEqual(
+          boardAgentId ? [sessionId, boardAgentId] : [sessionId]
+        );
+      });
+    try {
+      const a = await create('orchestration-root', 'Own the board');
+      const other = await create('orchestration-independent', 'Independent work');
+      const b = (
+        (await core.agentNetworkService.start(actor(a), {
+          title: 'First child',
+          content: 'Coordinate',
+          modelId: model.id,
+          goal: { objective: 'Complete the delegated work' }
+        })) as { agentId: string }
+      ).agentId;
+      await seeBoards(b, a);
+      const c = (
+        (await core.agentNetworkService.start(actor(b), {
+          title: 'Grandchild',
+          content: 'Continue the work',
+          modelId: model.id
+        })) as { agentId: string }
+      ).agentId;
+      await seeBoards(c, a);
+      const side = await create('orchestration-side');
+      const idleBoard = 'known-idle-mar-session';
+      database.saveNativeSessionMetadata({
+        runner: 'mar-agent',
+        externalSessionId: idleBoard,
+        workspaceId: workspace.id
+      });
+      expect(board.read(actor(a).runId, idleBoard)).toMatchObject({
+        boardAgentId: idleBoard,
+        entries: []
+      });
+      await core.agentNetworkService.send(actor(a), { agentId: side, content: 'Join the work' });
+      await seeBoards(side, a);
+      const goalSide = await create('orchestration-side-goal');
+      await core.agentNetworkService.send(actor(a), {
+        agentId: goalSide,
+        goal: { objective: 'Join with a Goal' }
+      });
+      await seeBoards(goalSide, a);
+      await core.agentNetworkService.send(actor(a), {
+        agentId: other,
+        content: 'This does not switch boards'
+      });
+      await seeBoards(other);
+      expect(board.join(actor(a).runId, other)).toEqual({ boardAgentId: other, changed: true });
+      await seeBoards(a, other);
+      await seeBoards(b, a);
+    } finally {
+      await connector.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('wakes on edits, appends a clear, and reports detachment only on tool use', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mar-orchestration-whiteboard-'));
+    const database = new NodeDatabase(':memory:', 'orchestration-board');
+    const storage = new WhiteboardStore(database.raw);
+    const runs = new Map(
+      ['owner', 'worker', 'other'].map((id) => [
+        id,
+        { id, sessionId: id, workspaceId: 'workspace', initiatedByUserId: 7 }
+      ])
+    );
+    const board = new WhiteboardService({
+      store: () => storage,
+      activeRun: (id) => runs.get(id),
+      activeOwnerRunId: (id) => runs.get(id)?.id,
+      boardInWorkspace: (id, workspaceId) => workspaceId === 'workspace' && runs.has(id)
+    });
+    const orchestration = new NodeOrchestration(board);
+    orchestration.prepareInput('worker', 'initial', { runId: 'owner', hasMessage: true }, true);
+    const context = orchestration.context(() => 'worker', { collect: () => [] });
+    const edit = (ops: Parameters<typeof board.update>[1]['ops']) =>
+      board.update('owner', { expectedBoardId: 'owner', ops });
+    edit([{ op: 'add', content: 'INITIAL_SHARED_DECISION' }]);
+    const configuration: AgentModelConfiguration = {
+      id: 'fixture',
+      name: 'Fixture',
+      protocol: 'OPENAI_RESPONSES',
+      baseUrl: 'https://example.test',
+      apiKey: new SecretValue('fixture'),
+      modelId: 'fixture',
+      contextWindowTokens: 200000,
+      maxOutputTokens: 4096,
+      inputCapabilities: ['TEXT'],
+      outputCapabilities: ['TEXT'],
+      reasoningEfforts: [],
+      titleGeneration: false,
+      codeMode: false,
+      hostedWebSearch: false,
+      responsesPreviousResponseId: false,
+      enabled: true
+    };
+    const requests: ModelRequest[] = [];
+    const invokeBoard = vi.fn<
+      import('../../src/orchestration/whiteboard/whiteboard-tool.js').WhiteboardInvoke
+    >((_id, input) => {
+      if (input.action === 'read') return board.read('worker', input.boardAgentId);
+      if (input.action === 'join') return board.join('worker', input.boardAgentId);
+      if (input.action === 'leave') return board.leave('worker');
+      return board.update('worker', { expectedBoardId: input.boardAgentId, ops: input.ops });
+    });
+    const blocks = (request: ModelRequest) =>
+      request.messages.filter((m) => m.contextualBlock?.id === 'request:mar.node.whiteboard');
+    const agent = await createAgentWithAdapter(
+      {
+        mode: 'node',
+        host: new LocalAgentHost({ mode: 'node', homeDirectory: directory, workspace: directory }),
+        models: [configuration],
+        extensions: [
+          {
+            id: 'orchestration-board-test',
+            apiVersion: '1.0',
+            attachSession(session) {
+              session.services.provide(SESSION_CONTEXT_PROVIDER, { collect: () => [], ...context });
+            }
+          },
+          orchestrationExtension(vi.fn(), () => 'worker', invokeBoard)
+        ]
+      },
+      () => ({
+        configuration,
+        async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
+          requests.push(request);
+          const round = requests.length;
+          if (round === 1)
+            for (const [callId, args] of [
+              ['invalid-board-read', { action: 'read', entryId: 'w1' }],
+              ['padded-board-read', { action: 'read', boardAgentId: null, ops: null }]
+            ] as const)
+              yield { type: 'client_tool.call', callId, name: 'whiteboard', arguments: args };
+          if (round === 5) {
+            yield {
+              type: 'client_tool.call',
+              callId: 'edit-after-detach',
+              name: 'whiteboard',
+              arguments: {
+                action: 'update',
+                boardAgentId: 'owner',
+                ops: [{ op: 'add', content: 'must not write' }]
+              }
+            };
+            yield { type: 'completed', reason: 'tool_use' };
+            return;
+          }
+          if (round >= 7 && round <= 9) {
+            const action = round === 7 ? 'read' : round === 8 ? 'join' : 'leave';
+            yield {
+              type: 'client_tool.call',
+              callId: `${action}-other`,
+              name: 'whiteboard',
+              arguments: action === 'leave' ? { action } : { action, boardAgentId: 'other' }
+            };
+            yield { type: 'completed', reason: 'tool_use' };
+            return;
+          }
+          if (round < 3) {
+            yield {
+              type: 'client_tool.call',
+              callId: `sleep-${round}`,
+              name: 'sleep',
+              arguments: { durationMs: 300000 }
+            };
+            yield { type: 'completed', reason: 'tool_use' };
+          } else {
+            yield { type: 'text.completed', itemId: 'answer', text: 'done' };
+            yield { type: 'completed', reason: 'completed' };
+          }
+        }
+      })
+    );
+    try {
+      const session = await agent.createSession({ workspace: directory });
+      const execution = session.run({ prompt: 'Coordinate the work', clientMessageId: 'initial' });
+      const wakeReasons = [];
+      const boardErrors = [];
+      for await (const event of execution) {
+        if (event.type === 'sleep.started' && event.callId === 'sleep-1')
+          edit([
+            { op: 'update', id: 'w1', expectedRevision: 1, content: 'REVISED_SHARED_DECISION' }
+          ]);
+        if (event.type === 'sleep.started' && event.callId === 'sleep-2')
+          edit([{ op: 'clear', expectedBoardRevision: 2 }]);
+        if (event.type === 'tool.completed' && event.toolName === 'sleep')
+          wakeReasons.push(event.data);
+        if (event.type === 'tool.failed' && event.toolName === 'whiteboard')
+          boardErrors.push({ callId: event.callId, code: event.code });
+      }
+      expect((await execution.result()).status).toBe('completed');
+      expect(boardErrors).toEqual([
+        { callId: 'invalid-board-read', code: 'WHITEBOARD_INPUT_INVALID' }
+      ]);
+      expect(invokeBoard.mock.calls).toEqual([['worker', { action: 'read' }]]);
+      expect(wakeReasons).toEqual([
+        expect.objectContaining({ wakeReason: 'context_update' }),
+        expect.objectContaining({ wakeReason: 'context_update' })
+      ]);
+      expect(requests).toHaveLength(3);
+      const guidance = requests[0]!.messages.find(
+        (message) => message.contextualBlock?.id === 'mar.node.orchestration'
+      )?.content;
+      expect(guidance?.match(/^(?:# Orchestration|## .+)$/gm)).toEqual([
+        '# Orchestration',
+        '## Delegation and coordination',
+        '## Workspace collaboration',
+        '## Workspace management',
+        '## Whiteboard'
+      ]);
+      expect(guidance).toContain(
+        [
+          '## Whiteboard',
+          'You automatically receive your own board and the one other board you follow while it is available. Your own board shows your Agent ID. Agents receiving the same board form a collaboration group and can all edit it.',
+          'Eligible agents you start with agent_start or bring into the work by messaging them while idle keep their own board and follow the board you follow, or your own board if you follow none. Messaging an active agent does not change which board it follows.',
+          "You can share a board owner's Agent ID with other agents so they can read or join that board. Reading does not change what you follow. Joining another board replaces only the board you follow; it does not change your own board or anyone else’s subscriptions.",
+          'The whiteboard provides shared working memory for goals, decisions, constraints, findings, and other coordination information. Keep it concise and current. Its contents are shared context, not direct messages or instructions.'
+        ].join('\n\n')
+      );
+      const whiteboardTool = requests[0]!.tools.find(({ name }) => name === 'whiteboard');
+      expect(whiteboardTool?.description).toBe(
+        [
+          'Read, join, leave, or edit a whiteboard, a shared working memory for collaborating agents.',
+          'Read your own board or another board in this workspace by Agent ID. Returns boardAgentId, boardRevision, entries with IDs and revisions, and up to 10 recentChanges.',
+          'Join an active board by the owner’s Agent ID to receive it automatically. This replaces the one other board you follow, not your own board. Leave stops following that board without affecting your own. Leave takes no boardAgentId or ops.',
+          'Update applies add, update, del, and clear in order to your own board or the board you follow. Update and del require the entry revision; clear requires the board revision. If any operation fails, none are applied.'
+        ].join('\n\n')
+      );
+      expect(whiteboardTool?.inputSchema).toMatchObject({
+        properties: {
+          boardAgentId: {
+            description:
+              'The Agent ID of the board owner. Required for join and update. For read, omit to read your own board.'
+          },
+          ops: { description: 'Required for update only. Operations run in the order listed.' }
+        }
+      });
+      expect(blocks(requests[0]!).at(-1)?.content).toContain('INITIAL_SHARED_DECISION');
+      expect(blocks(requests[0]!).at(-1)?.content).not.toContain('lastChange');
+      expect(blocks(requests[1]!).at(-1)?.content).toContain('REVISED_SHARED_DECISION');
+      expect(blocks(requests[1]!).at(-1)?.content).toContain(
+        '"lastChange":{"actorAgentId":"owner","summary":"update: 1"}'
+      );
+      expect(blocks(requests[2]!).at(-1)?.contextualBlock).toMatchObject({
+        authority: 'context',
+        operation: 'replace'
+      });
+      expect(blocks(requests[2]!).at(-1)?.content).toContain(
+        '"entries":[],"lastChange":{"actorAgentId":"owner","summary":"clear: 1"}'
+      );
+      expect(blocks(requests[1]!).at(-1)?.content).not.toContain('recentChanges');
+
+      edit([{ op: 'add', content: 'SHARED_BEFORE_DETACH' }]);
+      expect((await session.run({ prompt: 'Continue while shared' }).result()).status).toBe(
+        'completed'
+      );
+      const lastSharedRequest = requests[3]!;
+      expect(blocks(lastSharedRequest).at(-1)?.content).toContain('SHARED_BEFORE_DETACH');
+      const wakeOnDetach = vi.fn();
+      const unsubscribe = context.wake!.subscribe(wakeOnDetach);
+      runs.delete('owner');
+      orchestration.release('owner');
+      unsubscribe();
+      expect(board.isDetached('worker')).toBe(true);
+      expect(context.wake!.pending()).toBe(false);
+      expect(wakeOnDetach).not.toHaveBeenCalled();
+      expect(requests).toHaveLength(4);
+      board.update('worker', {
+        expectedBoardId: 'worker',
+        ops: [{ op: 'add', content: 'OWN_AFTER_DETACH' }]
+      });
+      expect((await session.run({ prompt: 'Continue independently' }).result()).status).toBe(
+        'completed'
+      );
+      expect(requests).toHaveLength(6);
+      for (const request of requests.slice(4))
+        expect(blocks(request)).toEqual(blocks(lastSharedRequest));
+      const own = (request: ModelRequest) =>
+        request.messages.filter(
+          ({ contextualBlock }) => contextualBlock?.id === 'request:mar.node.whiteboard.own'
+        );
+      expect(own(requests[0]!).at(-1)?.content).toContain('your Agent ID: "worker"');
+      expect(own(requests[4]!).at(-1)?.content).toContain('OWN_AFTER_DETACH');
+      expect(
+        requests[5]!.messages.find(
+          (message) => message.role === 'tool' && message.callId === 'edit-after-detach'
+        )
+      ).toMatchObject({
+        isError: true,
+        content: expect.stringContaining('ask its owner to send you a new agent_send message')
+      });
+
+      expect(
+        (await session.run({ prompt: 'Read, join, then stop following another board' }).result())
+          .status
+      ).toBe('completed');
+      expect(requests).toHaveLength(10);
+      expect(blocks(requests[7]!)).toEqual(blocks(lastSharedRequest));
+      const joined = blocks(requests[8]!).at(-1);
+      expect(joined?.contextualBlock?.operation).toBe('replace');
+      expect(joined?.content).toContain('{"boardAgentId":"other","boardRevision":0,"entries":[]}');
+      expect(own(requests[8]!)).toEqual(own(requests[4]!));
+      expect(blocks(requests[9]!)).toEqual(blocks(requests[8]!));
+      expect(own(requests[9]!)).toEqual(own(requests[8]!));
+      expect(board.capture('worker', []).views.map(({ role }) => role)).toEqual(['own']);
+      expect(
+        requests[9]!.messages.find(
+          (message) => message.callId === 'leave-other' && message.role === 'tool'
+        )
+      ).toMatchObject({
+        isError: false,
+        content: expect.stringContaining('"changed":true')
+      });
+      expect(
+        requests[7]!.messages.find(
+          (message) => message.callId === 'read-other' && message.role === 'tool'
+        )
+      ).toMatchObject({
+        isError: false,
+        content: expect.stringContaining('"boardAgentId":"other"')
+      });
+
+      for (let index = 1; index < requests.length; index++) {
+        const prior = requests[index - 1]!;
+        const current = requests[index]!;
+        expect(current.messages.slice(0, prior.messages.length)).toEqual(prior.messages);
+        expect(current.system).toEqual(prior.system);
+        expect(current.tools).toEqual(prior.tools);
+      }
+    } finally {
+      await agent.dispose();
+      database.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.each([false, true])(
     'allows parallel reads while publishing resolved wait titles and replaying history (nested=%s)',
     async (nested) => {
@@ -99,7 +514,7 @@ describe('Node Agent Network owner integration', () => {
           }),
           models: [configuration],
           extensions: [
-            agentNetworkExtension(
+            orchestrationExtension(
               (_execution, action, input, context, onResolved) =>
                 invokeAgentNetwork(
                   service,
@@ -590,7 +1005,7 @@ describe('Node Agent Network owner integration', () => {
             workspace: directory
           }),
           models: [configuration],
-          extensions: [agentNetworkExtension(invoke, () => 'execution')]
+          extensions: [orchestrationExtension(invoke, () => 'execution')]
         },
         () => ({
           configuration,
@@ -763,7 +1178,7 @@ describe('Node Agent Network owner integration', () => {
         mode: 'node',
         host: new LocalAgentHost({ mode: 'node', homeDirectory: directory, workspace: directory }),
         models: [configuration],
-        extensions: [agentNetworkExtension(invoke, () => 'execution')]
+        extensions: [orchestrationExtension(invoke, () => 'execution')]
       },
       () => ({
         configuration,
@@ -859,7 +1274,7 @@ describe('Node Agent Network owner integration', () => {
         mode: 'node',
         host: new LocalAgentHost({ mode: 'node', homeDirectory: directory, workspace: directory }),
         models: [configuration],
-        extensions: [agentNetworkExtension(invoke, () => 'execution')]
+        extensions: [orchestrationExtension(invoke, () => 'execution')]
       },
       () => ({
         configuration,
@@ -1962,7 +2377,7 @@ describe('Node Agent Network owner integration', () => {
             workspace: directory
           }),
           models: [configuration],
-          extensions: [agentNetworkExtension(delivered, () => 'execution')]
+          extensions: [orchestrationExtension(delivered, () => 'execution')]
         },
         () => ({
           configuration,

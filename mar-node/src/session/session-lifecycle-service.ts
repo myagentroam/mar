@@ -1,4 +1,5 @@
 import type { RunnerDefaultConfiguration, ScheduledNewSession } from '@myagentroam/protocol';
+import { ORCHESTRATION_INPUT_SOURCE } from '../orchestration/input-source.js';
 import {
   RUNNER_EXECUTION_CONTEXT,
   type RunnerExecutionContext
@@ -430,6 +431,9 @@ export class SessionLifecycleService {
               sessionId: messageSessionId,
               clientMessageId: input.clientMessageId,
               content: input.content,
+              [ORCHESTRATION_INPUT_SOURCE]: (input as Record<PropertyKey, unknown>)[
+                ORCHESTRATION_INPUT_SOURCE
+              ],
               ...(input.__marctlOrigin === undefined
                 ? {}
                 : { __marctlOrigin: input.__marctlOrigin }),

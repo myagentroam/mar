@@ -1,5 +1,5 @@
 import type { ExtensionSessionContextProvider } from '@myagentroam/agent/extensions';
-import { isPlainRecord } from '../util/records.js';
+import { isPlainRecord } from '../../util/records.js';
 
 type AgentObservation =
   | {

@@ -98,6 +98,9 @@ export function inputMetadataFromRecord(record: SessionRecord): ModelInputMetada
           ? 'parent_agent'
           : 'user',
     recordId: record.recordId,
+    ...(typeof payload.clientMessageId === 'string'
+      ? { clientMessageId: payload.clientMessageId }
+      : {}),
     ...(payload.smartCompaction === true ? { smartCompaction: true as const } : {}),
     ...(typeof source?.extensionId === 'string' && source.extensionId.length <= 128
       ? { extensionId: source.extensionId }

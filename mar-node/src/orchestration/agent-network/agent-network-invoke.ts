@@ -1,7 +1,7 @@
 import { AgentError } from '@myagentroam/agent';
 import type { ExtensionOperationContext } from '@myagentroam/agent/extensions';
-import type { NodeRuntimeState } from '../runtime-state.js';
-import type { ContinuousRunCoordinator } from './continuous-run-coordinator.js';
+import type { NodeRuntimeState } from '../../runtime-state.js';
+import type { ContinuousRunCoordinator } from '../../service/continuous-run-coordinator.js';
 import type {
   AgentNetworkAction,
   AgentNetworkActor,
@@ -11,9 +11,10 @@ import type {
 } from './agent-network-service.js';
 import { actorForAuthenticatedTerminal } from './agent-network-bindings.js';
 import type { AgentNetworkObservations } from './agent-network-observations.js';
-import { isPlainRecord } from '../util/records.js';
+import { isPlainRecord } from '../../util/records.js';
 import { randomUUID } from 'node:crypto';
 import { modelUsageGrantSchema } from '@myagentroam/protocol';
+import { requireOrchestrationExecution } from '../execution-actor.js';
 
 /** Bind each native invocation to the actual live Node Execution and its captured resources. */
 export function agentNetworkInvoke(input: {
@@ -44,27 +45,7 @@ export function executionAgentActor(input: {
   readonly coordinator: ContinuousRunCoordinator<unknown>;
 }): AgentNetworkActor {
   const { executionId } = input;
-  // Warm runtimes and execution credentials may retain the bootstrap Session ID.
-  const sessionId = input.runtime.getAgentSessionById(input.sessionId)?.id;
-  const execution = input.runtime.executionSnapshot(executionId);
-  const prepared = input.coordinator.pending(executionId);
-  const run = execution && input.runtime.getRun(execution.runId);
-  if (
-    !sessionId ||
-    !execution ||
-    !prepared ||
-    !run ||
-    execution.sessionId !== sessionId ||
-    prepared.sessionId !== sessionId ||
-    input.runtime.activeSessionRun(sessionId)?.id !== run.id ||
-    input.runtime.currentExecutionId(run.id) !== executionId ||
-    execution.status !== 'RUNNING' ||
-    !Number.isSafeInteger(run.initiatedByUserId)
-  )
-    throw new AgentError(
-      'AGENT_ACTOR_NOT_ACTIVE',
-      'The calling agent execution is no longer active.'
-    );
+  const { sessionId, run, prepared } = requireOrchestrationExecution(input);
   const captured =
     prepared.executionContext.runner === 'mar-agent' &&
     isPlainRecord(prepared.executionContext.runnerInput)

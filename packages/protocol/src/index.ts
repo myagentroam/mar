@@ -2476,7 +2476,7 @@ const toolCallPresentationSchema = z.discriminatedUnion('kind', [
     durationMs: z.number().int().min(1).max(1800000).optional(),
     startedAt: z.string().datetime().optional(),
     elapsedMs: z.number().int().nonnegative().optional(),
-    wakeReason: z.enum(['elapsed', 'steer', 'subagent_message']).optional()
+    wakeReason: z.enum(['elapsed', 'steer', 'subagent_message', 'context_update']).optional()
   })
 ]);
 export const toolPresentationSchema = z.union([

@@ -7,6 +7,7 @@ import { NODE_SCHEMA_MIGRATION_V22 } from './migrations/v022.js';
 import { NODE_SCHEMA_MIGRATION_V23 } from './migrations/v023.js';
 import { NODE_SCHEMA_MIGRATION_V24 } from './migrations/v024.js';
 import { NODE_SCHEMA_MIGRATION_V25 } from './migrations/v025.js';
+import { NODE_SCHEMA_MIGRATION_V26 } from './migrations/v026.js';
 import { normalizeSessionPrompt } from './runner/personal-instructions.js';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
@@ -50,7 +51,8 @@ export const NODE_SCHEMA_MIGRATIONS: readonly NodeSchemaMigration[] = [
   NODE_SCHEMA_MIGRATION_V22,
   NODE_SCHEMA_MIGRATION_V23,
   NODE_SCHEMA_MIGRATION_V24,
-  NODE_SCHEMA_MIGRATION_V25
+  NODE_SCHEMA_MIGRATION_V25,
+  NODE_SCHEMA_MIGRATION_V26
 ];
 const LEGACY_NODE_SCHEMA_V12 = NODE_SCHEMA_VERSION_V13 - 1;
 const OBSOLETE_NODE_SCHEMA_V16 = 16;
@@ -402,6 +404,11 @@ export class NodeDatabase {
     this.raw.exec('BEGIN IMMEDIATE');
     try {
       new ScheduledSessionStore(this.raw).removeForWorkspace(id);
+      this.raw
+        .prepare(
+          'DELETE FROM whiteboards WHERE owner_session_id IN (SELECT id FROM agent_sessions WHERE workspace_id=?)'
+        )
+        .run(id);
       this.raw.prepare('DELETE FROM agent_sessions WHERE workspace_id = ?').run(id);
       this.raw
         .prepare("DELETE FROM mcp_installations WHERE target_kind='WORKSPACE' AND target_id = ?")
@@ -716,6 +723,7 @@ export class NodeDatabase {
     this.raw.exec('BEGIN IMMEDIATE');
     try {
       const schedulesChanged = new ScheduledSessionStore(this.raw).unbindSession(sessionId);
+      this.raw.prepare('DELETE FROM whiteboards WHERE owner_session_id=?').run(sessionId);
       const removed =
         Number(this.raw.prepare('DELETE FROM agent_sessions WHERE id = ?').run(sessionId).changes) >
         0;

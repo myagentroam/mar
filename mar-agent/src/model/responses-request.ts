@@ -473,6 +473,36 @@ function responsesFunctionTool(tool: ModelRequest['tools'][number], nativeTools 
       };
 }
 
+/** Remove wire-only placeholders for optional, non-nullable function parameters. */
+export function responsesFunctionArguments(
+  request: ModelRequest,
+  name: string,
+  value: unknown
+): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  const args = Object.entries(value);
+  if (!args.some(([, argument]) => argument === null)) return value;
+  const tool =
+    request.tools.find((candidate) => candidate.name === name) ??
+    request.messages
+      .findLast((message) => message.toolSearchTools?.some((candidate) => candidate.name === name))
+      ?.toolSearchTools?.find((candidate) => candidate.name === name);
+  const schema = tool?.inputSchema;
+  if (schema?.type !== 'object' || hasOpenFunctionObject(schema)) return value;
+  const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const properties = record(schema.properties);
+  return Object.fromEntries(
+    args.filter(([key, argument]) => {
+      if (argument !== null || required.has(key) || !Object.hasOwn(properties, key)) return true;
+      const { type, enum: choices } = record(properties[key]);
+      if (Array.isArray(choices) && !choices.includes(null)) return false;
+      if (typeof type === 'string') return type === 'null';
+      if (Array.isArray(type)) return type.includes('null');
+      return true;
+    })
+  );
+}
+
 function hasOpenFunctionObject(value: unknown): boolean {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const schema = record(value);

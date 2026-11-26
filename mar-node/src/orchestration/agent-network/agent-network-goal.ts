@@ -1,4 +1,4 @@
-import { isPlainRecord } from '../util/records.js';
+import { isPlainRecord } from '../../util/records.js';
 
 export type AgentGoalChange =
   | { readonly kind: 'unchanged' }

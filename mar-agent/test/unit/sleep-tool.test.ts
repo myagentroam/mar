@@ -101,13 +101,13 @@ describe('sleep tool', () => {
       expect(
         structuredToolEventData('sleep', { durationMs: 1, elapsedMs: 0, wakeReason })
       ).toBeUndefined();
-    for (const wakeReason of ['elapsed', 'steer', 'subagent_message']) {
+    for (const wakeReason of ['elapsed', 'steer', 'subagent_message', 'context_update']) {
       const data = { durationMs: 1, elapsedMs: 0, wakeReason };
       expect(structuredToolEventData('sleep', data)).toEqual(data);
     }
   });
 
-  it.each(['steer', 'subagent_message'] as const)(
+  it.each(['steer', 'subagent_message', 'context_update'] as const)(
     'wakes for %s already pending or received during the wait without consuming it',
     async (wakeReason) => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
@@ -123,7 +123,9 @@ describe('sleep tool', () => {
         };
       };
       const input = context(
-        wakeReason === 'steer' ? { waitInterrupt: source } : { contextUpdates: source }
+        wakeReason === 'steer'
+          ? { waitInterrupt: source }
+          : { contextUpdates: { ...source, reason: () => wakeReason } }
       );
       const waiting = executeSleep({ durationMs: 300000 }, input);
       await vi.advanceTimersByTimeAsync(20);

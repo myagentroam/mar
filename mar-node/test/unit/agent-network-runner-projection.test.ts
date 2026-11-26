@@ -12,8 +12,8 @@ import { GenerationTimingTracker } from '../../src/service/generation-timing-tra
 import {
   AgentNetworkObservations,
   agentObservationFromRunEvent
-} from '../../src/service/agent-network-observations.js';
-import { waitForAgentTargets } from '../../src/service/agent-network-wait.js';
+} from '../../src/orchestration/agent-network/agent-network-observations.js';
+import { waitForAgentTargets } from '../../src/orchestration/agent-network/agent-network-wait.js';
 import { executionActivity } from './support/execution-activity.js';
 
 async function checkPublicMessage(item: unknown) {

@@ -298,7 +298,8 @@ export function structuredToolEventData(
     value.elapsedMs >= 0 &&
     (value.wakeReason === 'elapsed' ||
       value.wakeReason === 'steer' ||
-      value.wakeReason === 'subagent_message')
+      value.wakeReason === 'subagent_message' ||
+      value.wakeReason === 'context_update')
   )
     return {
       durationMs: value.durationMs,

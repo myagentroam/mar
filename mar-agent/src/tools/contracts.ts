@@ -236,5 +236,5 @@ export interface ViewImageResult {
 export interface SleepResult {
   durationMs: number;
   elapsedMs: number;
-  wakeReason: 'elapsed' | 'steer' | 'subagent_message';
+  wakeReason: 'elapsed' | 'steer' | 'subagent_message' | 'context_update';
 }

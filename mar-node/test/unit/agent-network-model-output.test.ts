@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { agentNetworkModelOutput } from '../../src/runner/mar-agent/agent-network-model-output.js';
+import { agentNetworkModelOutput } from '../../src/orchestration/agent-network/agent-network-model-output.js';
 
 it('bounds the model projection fairly while preserving the Node result', () => {
   const summary = '😀'.repeat(4096);

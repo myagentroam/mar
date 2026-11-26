@@ -24,6 +24,7 @@ import {
 import { ExtensionRequestBridge } from '../../src/extensions/model-request.js';
 import { AgentError } from '../../src/error.js';
 import { createExecutionModelContext } from '../../src/sdk/execution-model-context.js';
+import { SESSION_CONTEXT_PROVIDER } from '../../src/extensions/session-context.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -55,6 +56,420 @@ const model: AgentModelConfiguration = {
 };
 
 describe('Contextual prompt state', () => {
+  it('rebuilds a rejected request context before sending anything to the model', async () => {
+    const discarded = vi.fn();
+    const delivered = vi.fn();
+    const first = {
+      items: [{ id: 'shared', content: 'STALE_CAPTURE' }],
+      accept: () => false,
+      acknowledge: discarded
+    };
+    const current = {
+      items: [{ id: 'shared', content: 'CURRENT_CAPTURE' }],
+      accept: vi.fn(() => true),
+      acknowledge: delivered
+    };
+    const collect = vi.fn().mockReturnValueOnce(first).mockReturnValue(current);
+    const f = await fixture(
+      [
+        {
+          id: 'request-context-acceptance',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.services.provide(SESSION_CONTEXT_PROVIDER, {
+              collect: () => [],
+              requestContext: collect
+            });
+          }
+        }
+      ],
+      answer
+    );
+    expect((await f.session.run({ prompt: 'work' }).result()).status).toBe('completed');
+    expect(collect).toHaveBeenCalledTimes(2);
+    expect(f.adapter.requests).toHaveLength(1);
+    expect(JSON.stringify(f.adapter.requests[0]!.messages)).toContain('CURRENT_CAPTURE');
+    expect(JSON.stringify(f.adapter.requests[0]!.messages)).not.toContain('STALE_CAPTURE');
+    expect(discarded).not.toHaveBeenCalled();
+    expect(current.accept).toHaveBeenCalledTimes(1);
+    expect(delivered).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not accept context that depends on an input filtered from the final request', async () => {
+    const trigger = 'Reconnect using this message';
+    const accept = vi.fn(() => true);
+    const acknowledge = vi.fn();
+    let filter = true;
+    const f = await fixture(
+      [
+        {
+          id: 'context-input-filter',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.services.provide(SESSION_CONTEXT_PROVIDER, {
+              collect: () => [],
+              requestContext: ({ clientMessageIds }) =>
+                clientMessageIds.includes('reconnect')
+                  ? {
+                      items: [{ id: 'shared', content: 'PENDING_SHARED_VIEW' }],
+                      accept: (hasClientMessage) => hasClientMessage('reconnect') && accept(),
+                      acknowledge
+                    }
+                  : { items: [] }
+            });
+            context.hooks.intercept('model.request', (request, _call, next) =>
+              next(
+                filter
+                  ? {
+                      ...request,
+                      messages: request.messages.filter(
+                        (message) => message.role !== 'user' || message.content !== trigger
+                      )
+                    }
+                  : request
+              )
+            );
+          }
+        }
+      ],
+      answer
+    );
+    expect(
+      (await f.session.run({ prompt: trigger, clientMessageId: 'reconnect' }).result()).status
+    ).toBe('completed');
+    expect(f.adapter.requests).toHaveLength(1);
+    expect(JSON.stringify(f.adapter.requests[0]!.messages)).not.toContain('PENDING_SHARED_VIEW');
+    expect(accept).not.toHaveBeenCalled();
+    expect(acknowledge).not.toHaveBeenCalled();
+
+    filter = false;
+    expect((await f.session.run({ prompt: 'Continue.' }).result()).status).toBe('completed');
+    expect(JSON.stringify(f.adapter.requests[1]!.messages)).toContain('PENDING_SHARED_VIEW');
+    expect(accept).toHaveBeenCalledTimes(1);
+    expect(acknowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not recapture request context when a hook filters an unrelated input', async () => {
+    const requestContext = vi.fn(() => ({
+      items: [{ id: 'shared', content: 'INDEPENDENT_SHARED_VIEW' }],
+      accept: () => true
+    }));
+    const f = await fixture(
+      [
+        {
+          id: 'independent-request-context',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.services.provide(SESSION_CONTEXT_PROVIDER, {
+              collect: () => [],
+              requestContext
+            });
+            context.hooks.intercept('model.request', (request, _call, next) =>
+              next({
+                ...request,
+                messages: request.messages.filter(({ content }) => content !== 'Unrelated input')
+              })
+            );
+          }
+        }
+      ],
+      answer
+    );
+    const result = await f.session
+      .run({ prompt: 'Unrelated input', clientMessageId: 'unrelated' })
+      .result();
+    expect(result.status).toBe('completed');
+    expect(
+      f.adapter.requests[0]?.messages.some(({ content }) => content === 'Unrelated input')
+    ).toBe(false);
+    expect(f.adapter.requests[0]?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: expect.stringContaining('INDEPENDENT_SHARED_VIEW') })
+      ])
+    );
+    expect(requestContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not append context after its source detaches during preparation', async () => {
+    let attached = true;
+    let detach = false;
+    const body = 'SHARED_WHILE_ATTACHED';
+    const accepted = vi.fn((captured: boolean) => captured === attached);
+    const delivered = vi.fn();
+    const f = await fixture(
+      [
+        {
+          id: 'request-context-detach',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.services.provide(SESSION_CONTEXT_PROVIDER, {
+              collect: () => [],
+              requestContext: () => {
+                const captured = attached;
+                return {
+                  ...(captured && {
+                    items: [{ id: 'shared', content: body }],
+                    acknowledge: delivered
+                  }),
+                  accept: () => accepted(captured)
+                };
+              }
+            });
+            context.hooks.intercept('model.request', (request, _call, next) => {
+              if (detach) {
+                detach = false;
+                attached = false;
+              }
+              return next(request);
+            });
+          }
+        }
+      ],
+      answer
+    );
+    expect((await f.session.run({ prompt: 'work with the shared view' }).result()).status).toBe(
+      'completed'
+    );
+    detach = true;
+    expect((await f.session.run({ prompt: 'continue work' }).result()).status).toBe('completed');
+    expect(f.adapter.requests).toHaveLength(2);
+    const request = f.adapter.requests[1]!;
+    const prefix = f.adapter.requests[0]!.messages;
+    expect(request.messages.slice(0, prefix.length)).toEqual(prefix);
+    expect(
+      request.messages.filter(({ contextualBlock }) => contextualBlock?.id === 'request:shared')
+    ).toEqual([expect.objectContaining({ content: expect.stringContaining(body) })]);
+    expect(accepted.mock.calls).toEqual([[true], [true], [false]]);
+    expect(delivered).toHaveBeenCalledTimes(1);
+  });
+
+  it('can update one contextual block without removing an omitted block', async () => {
+    let updated = false;
+    const f = await fixture(
+      [
+        {
+          id: 'request-context-partial',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.services.provide(SESSION_CONTEXT_PROVIDER, {
+              collect: () => [],
+              requestContext: () => ({
+                items: updated
+                  ? [{ id: 'primary', content: 'updated primary' }]
+                  : [
+                      { id: 'primary', content: 'original primary' },
+                      { id: 'secondary', content: 'original secondary' }
+                    ]
+              })
+            });
+          }
+        }
+      ],
+      answer
+    );
+    expect((await f.session.run({ prompt: 'first' }).result()).status).toBe('completed');
+    updated = true;
+    expect((await f.session.run({ prompt: 'second' }).result()).status).toBe('completed');
+    const first = f.adapter.requests[0]!.messages;
+    const second = f.adapter.requests[1]!.messages;
+    expect(second.slice(0, first.length)).toEqual(first);
+    expect(
+      second.slice(first.length).flatMap(({ contextualBlock }) => contextualBlock ?? [])
+    ).toEqual([expect.objectContaining({ id: 'request:primary', operation: 'replace' })]);
+  });
+
+  it('anchors only the contextual blocks a request hook actually delivers', async () => {
+    let omit = 'SECONDARY_DATA';
+    let includeInstruction = false;
+    const acknowledge = vi.fn();
+    const f = await fixture(
+      [
+        {
+          id: 'request-context-filter-one-block',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.services.provide(SESSION_CONTEXT_PROVIDER, {
+              collect: () => [],
+              requestContext: () => ({
+                items: [
+                  { id: 'primary', content: 'PRIMARY_DATA' },
+                  { id: 'secondary', content: 'SECONDARY_DATA' }
+                ],
+                acknowledge
+              })
+            });
+            context.hooks.intercept('prompt.sections', (input, _call, next) =>
+              next(
+                includeInstruction
+                  ? {
+                      ...input,
+                      sections: [
+                        ...input.sections,
+                        { id: 'request:primary', text: 'PROMPT_SECTION' }
+                      ]
+                    }
+                  : input
+              )
+            );
+            context.hooks.intercept('model.request', (request, _call, next) =>
+              next(
+                omit
+                  ? {
+                      ...request,
+                      messages: request.messages.filter(
+                        (message) => message.role === 'opaque' || !message.content.includes(omit)
+                      )
+                    }
+                  : request
+              )
+            );
+          }
+        }
+      ],
+      answer
+    );
+    expect((await f.session.run({ prompt: 'first' }).result()).status).toBe('completed');
+    expect(acknowledge).toHaveBeenLastCalledWith(new Set(['primary']));
+    omit = '';
+    expect((await f.session.run({ prompt: 'second' }).result()).status).toBe('completed');
+    const [first, second] = f.adapter.requests;
+    expect(second!.messages.slice(0, first!.messages.length)).toEqual(first!.messages);
+    expect(
+      second!.messages
+        .slice(first!.messages.length)
+        .flatMap(({ contextualBlock }) =>
+          contextualBlock?.id.startsWith('request:') ? [contextualBlock.id] : []
+        )
+    ).toEqual(['request:secondary']);
+    expect(acknowledge).toHaveBeenLastCalledWith(new Set(['primary', 'secondary']));
+
+    includeInstruction = true;
+    omit = 'PRIMARY_DATA';
+    expect((await f.session.run({ prompt: 'third' }).result()).status).toBe('completed');
+    expect(f.adapter.requests[2]?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contextualBlock: expect.objectContaining({ id: 'request:primary', kind: 'instruction' })
+        })
+      ])
+    );
+    expect(acknowledge).toHaveBeenLastCalledWith(new Set(['secondary']));
+  });
+
+  it.each(['filtered', 'rewritten'] as const)(
+    'does not acknowledge or anchor a request context update %s before dispatch',
+    async (change) => {
+      let body = 'PREVIOUS_SHARED_SNAPSHOT';
+      let alterUpdate = false;
+      const rewritten = 'HOOK_REWROTE_SHARED_CONTEXT';
+      const acknowledge = vi.fn();
+      const f = await fixture(
+        [
+          {
+            id: 'filter-request-context-update',
+            apiVersion: '1.0',
+            attachSession(context) {
+              context.services.provide(SESSION_CONTEXT_PROVIDER, {
+                collect: () => [],
+                requestContext: () => ({ items: [{ id: 'shared', content: body }], acknowledge })
+              });
+              context.hooks.intercept('model.request', (request, _call, next) =>
+                next(
+                  alterUpdate
+                    ? {
+                        ...request,
+                        messages: request.messages.flatMap((message) => {
+                          if (message.role === 'opaque' || !message.content.includes(body))
+                            return [message];
+                          return change === 'filtered' ? [] : [{ ...message, content: rewritten }];
+                        })
+                      }
+                    : request
+                )
+              );
+            }
+          }
+        ],
+        answer
+      );
+      const run = (prompt: string) =>
+        expect(f.session.run({ prompt }).result()).resolves.toMatchObject({ status: 'completed' });
+      await run('initial context');
+      expect(acknowledge).toHaveBeenCalledTimes(1);
+
+      body = 'UPDATED_SHARED_SNAPSHOT';
+      alterUpdate = true;
+      f.agent.setSystemInstruction('UNRELATED_HOST_UPDATE');
+      await run('filter this update');
+      const filtered = f.adapter.requests[1]!;
+      expect(JSON.stringify(filtered.messages)).not.toContain(body);
+      expect(acknowledge).toHaveBeenCalledTimes(1);
+
+      alterUpdate = false;
+      await run('include the update now');
+      const next = f.adapter.requests[2]!;
+      const baseline = filtered.messages.filter(({ content }) => content !== rewritten);
+      expect(next.messages.slice(0, baseline.length)).toEqual(baseline);
+      expect(
+        next.messages.filter(({ content }) => content.includes('UNRELATED_HOST_UPDATE'))
+      ).toHaveLength(1);
+      expect(next.messages.at(-1)).toMatchObject({
+        contextualBlock: { id: 'request:shared', operation: 'replace' },
+        content: expect.stringContaining(body)
+      });
+      expect(acknowledge).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it('excludes live request context from Compact and reloads only the current view afterward', async () => {
+    let body = 'REQUEST_DATA_BEFORE_COMPACT';
+    const ids: (readonly string[])[] = [];
+    const acknowledge = vi.fn();
+    const f = await fixture(
+      [
+        {
+          id: 'request-context-test',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.services.provide(SESSION_CONTEXT_PROVIDER, {
+              collect: () => [],
+              requestContext: ({ clientMessageIds }) => {
+                ids.push(clientMessageIds);
+                return { items: [{ id: 'shared', content: body }], acknowledge };
+              }
+            });
+          }
+        }
+      ],
+      answer
+    );
+    const byId = (request: ModelRequest) =>
+      request.messages.filter((m) => m.contextualBlock?.id === 'request:shared');
+    expect(
+      (
+        await f.session
+          .run({ prompt: 'seed history', clientMessageId: 'effective-message' })
+          .result()
+      ).status
+    ).toBe('completed');
+    expect(ids[0]).toContain('effective-message');
+    expect(byId(f.adapter.requests.at(-1)!)[0]?.content).toContain(body);
+    expect(acknowledge).toHaveBeenCalledTimes(1);
+
+    expect((await f.session.compact().result()).status).toBe('completed');
+    const compact = f.adapter.requests.at(-1)!;
+    expect(compact.toolChoice).toBe('none');
+    expect(byId(compact)).toEqual([]);
+    expect(JSON.stringify(compact.messages)).not.toContain(body);
+    expect(acknowledge).toHaveBeenCalledTimes(1);
+
+    body = 'CURRENT_REQUEST_DATA';
+    expect((await f.session.run({ prompt: 'after compact' }).result()).status).toBe('completed');
+    expect(byId(f.adapter.requests.at(-1)!)).toEqual([
+      expect.objectContaining({ content: expect.stringContaining(body) })
+    ]);
+  });
+
   it.each(['run', 'compact'] as const)(
     'revokes the retired long-running block in the next %s request',
     async (mode) => {
@@ -669,13 +1084,17 @@ describe('Contextual prompt state', () => {
   );
 
   it('appends conditional removal and reorders only the dynamic instruction group', async () => {
-    let order = ['extension:a', 'extension:b'];
+    let order = ['extension:a'];
     const f = await fixture(
       [
         {
           id: 'ordered',
           apiVersion: '1.0',
           attachSession(context) {
+            context.services.provide(SESSION_CONTEXT_PROVIDER, {
+              collect: () => [],
+              requestContext: () => ({ items: [{ id: 'shared', content: 'Unchanged data' }] })
+            });
             context.hooks.intercept('prompt.sections', (input, _call, next) =>
               next({
                 ...input,
@@ -688,11 +1107,22 @@ describe('Contextual prompt state', () => {
       answer
     );
     await f.session.run({ prompt: 'first' }).result();
+    order = ['extension:a', 'extension:b'];
+    await f.session.run({ prompt: 'add' }).result();
     order = ['extension:b', 'extension:a'];
     await f.session.run({ prompt: 'reorder' }).result();
-    const blocks = f.adapter.requests[1]!.messages.filter(
-      (message) => message.contextualBlock?.source === 'extension'
+    const blocks = f.adapter.requests[2]!.messages.filter((message) =>
+      message.contextualBlock?.id.startsWith('extension:')
     );
+    expect(
+      f.adapter.requests
+        .slice(0, 3)
+        .map(
+          ({ messages }) =>
+            messages.filter(({ contextualBlock }) => contextualBlock?.id === 'request:shared')
+              .length
+        )
+    ).toEqual([1, 1, 1]);
     expect(blocks.map((message) => message.contextualBlock!.id)).toEqual([
       'extension:a',
       'extension:b',
@@ -702,11 +1132,11 @@ describe('Contextual prompt state', () => {
     order = ['extension:b'];
     await f.session.run({ prompt: 'remove' }).result();
     expect(
-      f.adapter.requests[2]!.messages.filter(
+      f.adapter.requests[3]!.messages.filter(
         (message) => message.contextualBlock?.id === 'extension:a'
       ).at(-1)?.contextualBlock?.operation
     ).toBe('remove');
-    expect(f.adapter.requests[0]!.system).toBe(f.adapter.requests[2]!.system);
+    expect(f.adapter.requests[0]!.system).toBe(f.adapter.requests[3]!.system);
   });
 
   it('clears private contextual history and rebuilds only the current Host snapshot', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAgentGoal } from '../../src/service/agent-network-goal.js';
+import { parseAgentGoal } from '../../src/orchestration/agent-network/agent-network-goal.js';
 
 describe('Agent Network Goal input', () => {
   it('leaves the Goal unchanged when omitted or null', () => {

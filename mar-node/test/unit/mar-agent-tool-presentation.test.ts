@@ -537,6 +537,12 @@ describe('MAR tool presentation projection', () => {
       { durationMs: 1800000 },
       { durationMs: 1800000, elapsedMs: 192000, wakeReason: 'subagent_message' },
       'SLEEP'
+    ],
+    [
+      'sleep',
+      { durationMs: 1800000 },
+      { durationMs: 1800000, elapsedMs: 40, wakeReason: 'context_update' },
+      'SLEEP'
     ]
   ])('projects structured %s facts identically on replay', (toolName, input, data, kind) => {
     const events = [

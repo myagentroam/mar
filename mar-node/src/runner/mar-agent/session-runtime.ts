@@ -6,8 +6,9 @@ import {
   SESSION_CONTEXT_PROVIDER,
   type ExtensionSessionContextProvider
 } from '@myagentroam/agent/extensions';
-import { agentNetworkExtension } from './agent-network-extension.js';
-import type { AgentNetworkInvoke } from '../../service/agent-network-service.js';
+import { orchestrationExtension } from '../../orchestration/orchestration-extension.js';
+import type { WhiteboardInvoke } from '../../orchestration/whiteboard/whiteboard-tool.js';
+import type { AgentNetworkInvoke } from '../../orchestration/agent-network/agent-network-service.js';
 import {
   createAgent,
   type ToolApprovalRequest,
@@ -49,7 +50,7 @@ export interface MarAgentSessionRuntime {
   readonly normalizer: MarAgentConversationNormalizer;
   readonly mcpLease: MarAgentMcpClientLease;
   readonly releaseEnvironment: (() => void) | undefined;
-  readonly releaseNetworkContext?: () => void;
+  readonly releaseOrchestrationContext?: () => void;
   readonly automaticTitleEnabled: boolean;
   models: MarAgentRuntimeModel[];
   modelFingerprint: string;
@@ -100,9 +101,13 @@ export interface MarAgentRuntimeResources {
   readonly resourceIdleTtlMs: number;
   readonly retainEnvironment?: (environment: Readonly<Record<string, string>>) => () => void;
   readonly customTitle: (sessionId: string) => string | undefined;
-  readonly attachNetworkContext?: (sessionId: string) => ExtensionSessionContextProvider & {
+  readonly attachOrchestrationContext?: (
+    sessionId: string,
+    currentExecution: () => string | undefined
+  ) => ExtensionSessionContextProvider & {
     close(): void;
     invoke?: AgentNetworkInvoke;
+    whiteboard?: WhiteboardInvoke;
   };
   readonly modelUsage: (
     runId: string,
@@ -138,11 +143,11 @@ export async function createSessionRuntime(
   let agent: Awaited<ReturnType<typeof createAgent>> | undefined;
   let models: MarAgentRuntimeModel[] = [];
   let releaseEnvironment: (() => void) | undefined;
-  let networkContext:
-    (ExtensionSessionContextProvider & { close(): void; invoke?: AgentNetworkInvoke }) | undefined;
+  let orchestrationContext:
+    ReturnType<NonNullable<MarAgentRuntimeResources['attachOrchestrationContext']>> | undefined;
   try {
     releaseEnvironment = dependencies.retainEnvironment?.(input.secretEnvironment ?? {});
-    networkContext = dependencies.attachNetworkContext?.(input.sessionId);
+    orchestrationContext = dependencies.attachOrchestrationContext?.(input.sessionId, currentRunId);
     const mcp = mcpLease.pool;
     const localHost = new LocalAgentHost({
       publishModelResource:
@@ -193,7 +198,7 @@ export async function createSessionRuntime(
       input.models.map((model) => model.id)
     );
     const runtimeSource = marAgentRuntimeExtensionSource(compactState);
-    const networkProvider = networkContext;
+    const orchestrationProvider = orchestrationContext;
     agent = await dependencies.createAgent({
       mode: 'node',
       host: localHost,
@@ -202,7 +207,7 @@ export async function createSessionRuntime(
       ),
       defaultModelId: input.model.id,
       extensions:
-        networkProvider === undefined
+        orchestrationProvider === undefined
           ? runtimeSource
           : {
               async resolve(request) {
@@ -212,15 +217,21 @@ export async function createSessionRuntime(
                   extensions: [
                     ...snapshot.extensions,
                     {
-                      id: 'mar.node.agent-network-context',
+                      id: 'mar.node.orchestration-context',
                       apiVersion: '1.0' as const,
                       attachSession(context) {
-                        context.services.provide(SESSION_CONTEXT_PROVIDER, networkProvider);
+                        context.services.provide(SESSION_CONTEXT_PROVIDER, orchestrationProvider);
                       }
                     },
-                    ...(networkProvider.invoke === undefined
+                    ...(orchestrationProvider.invoke === undefined
                       ? []
-                      : [agentNetworkExtension(networkProvider.invoke, currentRunId)])
+                      : [
+                          orchestrationExtension(
+                            orchestrationProvider.invoke,
+                            currentRunId,
+                            orchestrationProvider.whiteboard
+                          )
+                        ])
                   ]
                 };
               }
@@ -243,9 +254,9 @@ export async function createSessionRuntime(
       normalizer: new MarAgentConversationNormalizer(),
       mcpLease,
       releaseEnvironment,
-      ...(networkContext === undefined
+      ...(orchestrationContext === undefined
         ? {}
-        : { releaseNetworkContext: () => networkContext?.close() }),
+        : { releaseOrchestrationContext: () => orchestrationProvider?.close() }),
       automaticTitleEnabled: input.externalSessionId === undefined,
       models,
       compactState,
@@ -256,7 +267,7 @@ export async function createSessionRuntime(
   } catch (error) {
     for (const cleanup of [
       () => agent?.dispose(),
-      () => networkContext?.close(),
+      () => orchestrationContext?.close(),
       () => closeModelCredentialProviders(models),
       () => mcpLease.release(),
       () => releaseEnvironment?.()
@@ -326,7 +337,7 @@ export async function releaseSessionRuntime(runtime: MarAgentSessionRuntime): Pr
   const failures: unknown[] = [];
   for (const [resource, cleanup] of [
     ['agent', () => runtime.agent.dispose()],
-    ['network', () => runtime.releaseNetworkContext?.()],
+    ['orchestration', () => runtime.releaseOrchestrationContext?.()],
     ['mcp', () => runtime.mcpLease.release()],
     ['environment', () => runtime.releaseEnvironment?.()]
   ] as const) {

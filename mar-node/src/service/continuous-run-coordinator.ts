@@ -1,4 +1,5 @@
 import type { RunnerExecutionContext } from '../runner/execution-context.js';
+import type { OrchestrationInputSource } from '../orchestration/input-source.js';
 import type { ComposerAttachmentFile, PermissionStop } from '@myagentroam/protocol';
 import type { RunnerExecutionStatus } from '../runner/contracts.js';
 import type { GoalState } from './goal-runtime.js';
@@ -13,6 +14,7 @@ import { prepareComposerResourceInput } from './composer-message-input.js';
 import { nodeLog } from '../operational.js';
 
 export interface PreparedExecutionInput<TAttachment = unknown> {
+  readonly orchestrationSource?: OrchestrationInputSource;
   readonly restartMessage?: {
     readonly content: string;
     readonly attachments: readonly NodeMessageAttachmentInput[];
@@ -128,6 +130,10 @@ export interface ContinuousRunCoordinatorOptions {
     readonly userId: number;
   }) => Promise<string>;
   readonly afterExecutionStarted?: (input: PreparedExecutionInput<unknown>) => Promise<void>;
+  readonly prepareOrchestrationInput?: (
+    run: NodeAgentRun,
+    input: PreparedExecutionInput<unknown>
+  ) => void;
   readonly afterExecutionSteered?: (input: PreparedExecutionInput<unknown>) => Promise<void>;
   readonly afterExecutionStartFailed?: (
     input: PreparedExecutionInput<unknown>,
@@ -944,6 +950,7 @@ export class ContinuousRunCoordinator<TAttachment> {
         pending.personalInstructions,
         this.options.runtime.getAgentSession(pending.sessionId)?.sessionPrompt
       );
+      this.options.prepareOrchestrationInput?.(active, executionInput);
       this.options.control('run.start', {
         ...(pending.usageGrant === undefined ? {} : { usageGrant: pending.usageGrant }),
         runId: executionId,
