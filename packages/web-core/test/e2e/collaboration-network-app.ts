@@ -70,7 +70,7 @@ const snapshot: NavigationSnapshot = {
   collaboration: {
     anchor,
     peers,
-    truncated: false,
+    truncated: query.has('truncated'),
     sharing: [
       { ownerSessionId: anchor.id, followerSessionId: 'branch-2' },
       { ownerSessionId: anchor.id, followerSessionId: 'peer-a' },
@@ -87,12 +87,25 @@ const Fixture = defineComponent({
     const open = ref(false);
     const board = ref<string>();
     const opened = ref<string>();
+    const entry = ref(anchor);
+    const aside = ref<NavigationSession>();
     const detached = ref(false);
     const status = ref<'loading' | 'ready' | 'failed'>('ready');
+    const family = [anchor, parent, ...nodes];
+    const sessions = [...family, ...peers];
     const view = computed<NavigationSnapshot>(() => ({
       ...snapshot,
+      tree: {
+        anchorSessionId: entry.value.id,
+        parent: family.find(({ id }) => id === entry.value.parentSessionId) ?? null,
+        nodes: family.filter(
+          ({ id }) => id !== entry.value.id && id !== entry.value.parentSessionId
+        ),
+        truncated: false
+      },
       collaboration: {
         ...snapshot.collaboration!,
+        anchor: entry.value,
         ...(detached.value
           ? {
               peers: peers.filter(({ id }) => id !== 'peer-a'),
@@ -107,8 +120,7 @@ const Fixture = defineComponent({
           : {
               board: {
                 sessionId: board.value,
-                title: [anchor, parent, ...nodes, ...peers].find(({ id }) => id === board.value)!
-                  .title,
+                title: sessions.find(({ id }) => id === board.value)!.title,
                 revision: 1,
                 entries:
                   board.value === 'peer-a'
@@ -134,6 +146,18 @@ const Fixture = defineComponent({
     window.addEventListener('fixture-board-detached', () => (detached.value = true));
     window.addEventListener('fixture-board-failed', () => (status.value = 'failed'));
     window.addEventListener('fixture-board-recovered', () => (status.value = 'ready'));
+    const trigger = (session: NavigationSession) =>
+      h(WorkspaceSessionTreeButton, {
+        collaboration: true,
+        sessionId: session.id,
+        open: open.value && entry.value.id === session.id,
+        status: 'ready',
+        onShow: () => {
+          entry.value = session;
+          board.value = session.id;
+          open.value = true;
+        }
+      });
     return () =>
       h('main', { style: 'margin: 2rem; max-width: 68rem' }, [
         h(
@@ -142,26 +166,20 @@ const Fixture = defineComponent({
             style:
               'display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--mar-border-subtle)'
           },
-          [
-            h('h1', anchor.title),
-            h(WorkspaceSessionTreeButton, {
-              collaboration: true,
-              sessionId: anchor.id,
-              open: open.value,
-              status: 'ready',
-              onShow: () => {
-                board.value = anchor.id;
-                open.value = true;
-              }
-            })
-          ]
+          [h('h1', anchor.title), trigger(anchor)]
         ),
         h('p', '请检查依赖、文档与回归测试，准备发布。'),
         opened.value ? h('p', { role: 'status' }, opened.value) : null,
+        aside.value
+          ? h('aside', { 'aria-label': 'Aside' }, [
+              h('h2', aside.value.title),
+              trigger(aside.value)
+            ])
+          : null,
         open.value
           ? h(WorkspaceCollaborationDialog, {
-              anchor: anchor.id,
-              title: anchor.title,
+              anchor: entry.value.id,
+              title: entry.value.title,
               snapshot: view.value,
               status: status.value,
               canRetry: status.value === 'failed',
@@ -173,6 +191,7 @@ const Fixture = defineComponent({
               onBoard: (id: string | undefined) => (board.value = id),
               onOpen: (id: string, target: 'main' | 'aside') => {
                 opened.value = `${target}: ${id}`;
+                if (target === 'aside') aside.value = sessions.find((session) => session.id === id);
                 open.value = false;
               }
             })

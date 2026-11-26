@@ -6,6 +6,7 @@ import type {
   SessionGroup
 } from '@myagentroam/protocol';
 import { sessionGroup } from './session-presentation-service.js';
+import { collectSessionCollaborationScope } from './session-collaboration-scope.js';
 import type { NodeAgentSession } from './contracts.js';
 import type { NodeDatabase } from '../database.js';
 import type { NodeConversationTurn } from '../runtime-model.js';
@@ -285,6 +286,57 @@ export class SessionCatalogService {
       ];
     });
     const anchor = query.treeAnchor === undefined ? undefined : get(query.treeAnchor);
+    if (anchor && query.collaboration && collaboration) {
+      const scope = collectSessionCollaborationScope({
+        anchor,
+        limit: query.limit,
+        get,
+        children: (id, limit) => database.listChildSessionRecords(query.workspaceId, id, limit),
+        sharing: collaboration.whiteboard.relationships(query.workspaceId, collaboration.userId)
+      });
+      const requested = query.collaboration.boardSessionId;
+      const owner = requested === undefined ? undefined : get(requested);
+      const board = owner && collaboration.whiteboard.readPersisted(query.workspaceId, owner.id);
+      return {
+        sessions,
+        summaries,
+        tree: {
+          anchorSessionId: anchor.id,
+          parent: scope.parent ? project(scope.parent) : null,
+          nodes: scope.nodes.map(project),
+          truncated: scope.truncated
+        },
+        missingSessionIds,
+        collaboration: {
+          anchor: project(anchor),
+          peers: scope.peers.map(project),
+          sharing: scope.sharing,
+          truncated: scope.truncated,
+          ...(requested === undefined
+            ? {}
+            : {
+                board:
+                  board && owner
+                    ? {
+                        sessionId: owner.id,
+                        title: project(owner).title,
+                        revision: board.boardRevision,
+                        entries: board.entries.map(({ id, content }) => ({ id, content })),
+                        recentChanges: board.recentChanges.map((change) => {
+                          const actor = get(change.actorSessionId);
+                          return {
+                            revision: change.boardRevision,
+                            ...(actor === undefined ? {} : { actorTitle: project(actor).title }),
+                            at: change.at,
+                            summary: change.summary
+                          };
+                        })
+                      }
+                    : null
+              })
+        }
+      };
+    }
     const records = anchor === undefined ? [] : descendants(anchor.id);
     const activePaths = new Set<string>();
     // Records are breadth-first: propagate activity to ancestors in one reverse pass.
@@ -336,80 +388,7 @@ export class SessionCatalogService {
             nodes: [...selected.values()].sort(compare).map(project),
             truncated: records.length > query.limit
           };
-    if (!anchor || !tree || !query.collaboration || !collaboration)
-      return { sessions, summaries, tree, missingSessionIds };
-
-    const scope = new Set([anchor.id, ...selected.keys(), ...(parent ? [parent.id] : [])]);
-    const edges = collaboration.whiteboard.relationships(query.workspaceId, collaboration.userId);
-    const boards = new Set(
-      edges
-        .filter((edge) => scope.has(edge.ownerSessionId) || scope.has(edge.followerSessionId))
-        .map((edge) => edge.ownerSessionId)
-    );
-    const peers: ReturnType<typeof project>[] = [];
-    let truncated = tree.truncated;
-    const priority = ({ ownerSessionId, followerSessionId }: (typeof edges)[number]) =>
-      ownerSessionId === anchor.id || followerSessionId === anchor.id
-        ? 0
-        : scope.has(ownerSessionId) || scope.has(followerSessionId)
-          ? 1
-          : 2;
-    const prioritizedEdges = edges
-      .filter((edge) => boards.has(edge.ownerSessionId))
-      .sort((left, right) => priority(left) - priority(right));
-    const sharing = prioritizedEdges.filter((edge) => {
-      const additions = [edge.ownerSessionId, edge.followerSessionId].filter(
-        (id) => !scope.has(id)
-      );
-      const records = additions.map(get);
-      if (records.some((record) => record === undefined)) return false;
-      if (peers.length + records.length > 32) {
-        truncated = true;
-        return false;
-      }
-      for (const record of records) {
-        scope.add(record!.id);
-        peers.push(project(record!));
-      }
-      return true;
-    });
-    const requested = query.collaboration.boardSessionId;
-    const owner = requested === undefined ? undefined : get(requested);
-    const board = owner && collaboration.whiteboard.readPersisted(query.workspaceId, owner.id);
-    return {
-      sessions,
-      summaries,
-      tree,
-      missingSessionIds,
-      collaboration: {
-        anchor: project(anchor),
-        peers,
-        sharing,
-        truncated,
-        ...(requested === undefined
-          ? {}
-          : {
-              board:
-                board && owner
-                  ? {
-                      sessionId: owner.id,
-                      title: project(owner).title,
-                      revision: board.boardRevision,
-                      entries: board.entries.map(({ id, content }) => ({ id, content })),
-                      recentChanges: board.recentChanges.map((change) => {
-                        const actor = get(change.actorSessionId);
-                        return {
-                          revision: change.boardRevision,
-                          ...(actor === undefined ? {} : { actorTitle: project(actor).title }),
-                          at: change.at,
-                          summary: change.summary
-                        };
-                      })
-                    }
-                  : null
-            })
-      }
-    };
+    return { sessions, summaries, tree, missingSessionIds };
   }
 
   private navigationProjector(

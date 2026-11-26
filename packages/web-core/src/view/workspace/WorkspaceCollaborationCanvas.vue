@@ -30,7 +30,7 @@ const arrow = useId();
 const help = useId();
 const port = ref<HTMLElement>();
 const size = shallowRef({ width: 0, height: 0 });
-const graph = computed(() => buildCollaborationGraph(props.sessions, props.anchor, props.sharing));
+const graph = computed(() => buildCollaborationGraph(props.sessions, props.sharing));
 const labels = computed(() => new Map(props.sessions.map(({ id, title }) => [id, title])));
 const descriptions = computed(() => {
   const descriptions = new Map<string, string[]>();
@@ -74,15 +74,20 @@ watchEffect((cleanup) => {
   cleanup(() => observer.disconnect());
 });
 
-watch(graph, ({ edges }) => {
+watch(graph, ({ nodes, edges }) => {
   const viewport = port.value;
   const focused = viewport?.ownerDocument.activeElement;
-  if (!viewport || !(focused instanceof SVGPathElement) || !viewport.contains(focused)) return;
-  if (!focused.classList.contains('edge-hit-area')) return;
-  const { owner, follower } = focused.dataset;
-  if (
-    !edges.some(({ kind, from, to }) => kind === 'sharing' && from === owner && to === follower)
-  ) {
+  if (!viewport || !focused || !viewport.contains(focused)) return;
+  let removed = false;
+  if (focused instanceof HTMLButtonElement && focused.dataset.networkSession !== undefined) {
+    removed = !nodes.has(focused.dataset.networkSession);
+  } else if (focused instanceof SVGPathElement && focused.classList.contains('edge-hit-area')) {
+    const { owner, follower } = focused.dataset;
+    removed = !edges.some(
+      ({ kind, from, to }) => kind === 'sharing' && from === owner && to === follower
+    );
+  }
+  if (removed) {
     viewport.focus({ preventScroll: true });
   }
 });
@@ -382,6 +387,7 @@ function showFocusedEdge(event: FocusEvent) {
             v-tooltip="() => nodeTooltip(session.id)"
             type="button"
             class="network-node"
+            :data-network-session="session.id"
             :class="{ 'is-current': session.id === anchor, 'is-selected': session.id === selected }"
             :style="{
               left: `${graph.nodes.get(session.id)!.x}px`,

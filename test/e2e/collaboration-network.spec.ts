@@ -143,6 +143,86 @@ test('keeps stale board content hidden until the navigation retry succeeds', asy
   await expect(board.getByRole('button', { name: '在主工作面打开' })).toBeEnabled();
 });
 
+test('opens the full network from a deep Aside session and centers only its entry', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1480, height: 940 });
+  const { dialog, port } = await openNetwork(page, 'dark');
+  const layout = () =>
+    port.locator('.network-node').evaluateAll((nodes) =>
+      nodes
+        .map((node) => {
+          const { dataset, style } = node as HTMLElement;
+          return [dataset.networkSession, style.left, style.top].join(':');
+        })
+        .sort()
+    );
+  const mainLayout = await layout();
+  expect(mainLayout).toHaveLength(31);
+  const edgeLayout = () =>
+    port
+      .locator('.edge-parent, .edge-sharing')
+      .evaluateAll((paths) =>
+        paths
+          .map((path) => `${path.getAttribute('class')?.split(' ')[0]}:${path.getAttribute('d')}`)
+          .sort()
+      );
+  const mainEdges = await edgeLayout();
+  await port.getByRole('button', { name: '发布前冒烟' }).press('Enter');
+  await dialog.getByRole('button', { name: '在侧栏打开' }).click();
+  await expect(dialog).toBeHidden();
+  await page
+    .getByRole('complementary', { name: 'Aside' })
+    .getByRole('button', { name: '查看协作网络' })
+    .click();
+  const current = port.locator('[aria-current="true"]');
+  await expect(current).toHaveAccessibleName('发布前冒烟 当前会话');
+  await expect.poll(layout).toEqual(mainLayout);
+  await expect(port.locator('.edge-parent')).toHaveCount(27);
+  await expect(port.locator('.edge-sharing')).toHaveCount(6);
+  await expect.poll(edgeLayout).toEqual(mainEdges);
+  await expect(dialog.getByRole('heading', { name: '白板 · 发布前冒烟' })).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [viewport, node] = await Promise.all([port.boundingBox(), current.boundingBox()]);
+      return Math.hypot(
+        node!.x + node!.width / 2 - viewport!.x - viewport!.width / 2,
+        node!.y + node!.height / 2 - viewport!.y - viewport!.height / 2
+      );
+    })
+    .toBeLessThan(2);
+});
+
+test('keeps focus in the canvas when a selected peer disappears from the live network', async ({
+  page
+}) => {
+  const { dialog, port, current } = await openNetwork(page, 'dark');
+  const peer = port.getByRole('button', { name: '安全审查', exact: true });
+  await peer.press('Enter');
+  await expect(peer).toBeFocused();
+  await expect(peer).toHaveAttribute('aria-pressed', 'true');
+  await page.evaluate(() => window.dispatchEvent(new Event('fixture-board-detached')));
+  await expect(peer).toHaveCount(0);
+  await expect(port).toBeFocused();
+  await expect(dialog.getByRole('heading', { name: '白板 · 安全审查' })).toBeVisible();
+  await expect(dialog.getByText('核对权限审查的结论。')).toBeVisible();
+  await page.keyboard.press('Home');
+  await expect(port).toBeFocused();
+  await expect(current).toBeInViewport();
+});
+
+test('explains that the display limit can omit relationships as well as sessions', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}collaboration-network.html?truncated`);
+  await page.getByRole('button', { name: '查看协作网络' }).click();
+  const dialog = page.getByRole('dialog', { name: '协作网络', exact: true });
+  await expect(dialog.locator('.collaboration-feedback')).toHaveText(
+    '此网络超过显示上限，部分会话或连线已省略。'
+  );
+  await expect(dialog.locator('.network-node')).toHaveCount(31);
+});
+
 test('focuses the current session in a complex network, zooms at the pointer and reads a board in place', async ({
   page
 }, info) => {

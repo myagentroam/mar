@@ -21,7 +21,7 @@ export const workspaceEnUS = {
     loading: 'Loading collaboration network',
     missing: 'This session is no longer available.',
     unavailable: 'Unable to synchronize the collaboration network.',
-    truncated: 'Only some related sessions are shown.',
+    truncated: 'This network exceeds the display limit. Some sessions or connections are omitted.',
     noRelationships: 'No session relationships to show.',
     whiteboard: 'Whiteboard',
     boardTitle: 'Whiteboard · {title}',

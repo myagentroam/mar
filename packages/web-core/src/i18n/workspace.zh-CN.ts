@@ -21,7 +21,7 @@ export const workspaceZhCN = {
     loading: '正在加载协作网络',
     missing: '会话已不可用。',
     unavailable: '无法同步协作网络。',
-    truncated: '仅显示部分相关会话。',
+    truncated: '此网络超过显示上限，部分会话或连线已省略。',
     noRelationships: '没有可显示的会话关系。',
     whiteboard: '白板',
     boardTitle: '白板 · {title}',

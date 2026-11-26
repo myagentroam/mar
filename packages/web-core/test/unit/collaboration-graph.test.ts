@@ -15,7 +15,7 @@ it('keeps parent and board edges distinct in a bounded mixed graph', () => {
       parentSessionId: i < 8 ? 'current' : `child-${Math.floor((i - 8) / 8)}`
     }))
   ];
-  const graph = buildCollaborationGraph(nodes, 'current', [
+  const graph = buildCollaborationGraph(nodes, [
     { ownerSessionId: 'current', followerSessionId: 'child-0' },
     { ownerSessionId: 'current', followerSessionId: 'peer' },
     { ownerSessionId: 'unknown', followerSessionId: 'peer' }
@@ -48,7 +48,6 @@ it.each([null, 'a'])(
         { id: 'a', parentSessionId: null },
         { id: 'b', parentSessionId }
       ],
-      'a',
       [
         { ownerSessionId: 'a', followerSessionId: 'b' },
         { ownerSessionId: 'b', followerSessionId: 'a' }
