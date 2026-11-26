@@ -45,7 +45,7 @@ export function parseToolSearchInput(input: unknown): { query: string; limit: nu
     typeof value.query !== 'string' ||
     !value.query.trim() ||
     Buffer.byteLength(value.query) > TOOL_SEARCH_LIMITS.queryBytes ||
-    (value.limit != null &&
+    (value.limit !== undefined &&
       (!Number.isInteger(value.limit) ||
         Number(value.limit) < 1 ||
         Number(value.limit) > TOOL_SEARCH_LIMITS.maximumLimit))

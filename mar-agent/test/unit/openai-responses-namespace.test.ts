@@ -51,79 +51,41 @@ afterEach(async () => {
 });
 
 describe('OpenAI Responses tool namespace on STANDARD transport', () => {
-  it.each([false, true])('preserves all tool argument nulls (deferred=%s)', async (deferred) => {
-    const nested = {
+  it.each([false, true])('omits null fields (deferred=%s)', async (deferred) => {
+    const patch = {
       type: 'object',
-      properties: {
-        optional: { type: 'string' },
-        nullable: { type: ['string', 'null'] },
-        required: { type: 'null' }
-      },
-      required: ['required'],
+      properties: { objective: { type: 'string' }, name: { type: 'string' } },
+      required: ['objective'],
       additionalProperties: false
     };
     const tool = {
-      name: 'start_probe',
-      description: 'Start a test task.',
+      name: 'update_probe',
+      description: 'Update a test task.',
       inputSchema: {
         type: 'object',
         properties: {
           title: { type: 'string' },
           runner: { type: 'string' },
-          clientMessageId: { type: 'string' },
           goal: { anyOf: [{ type: 'null' }, { type: 'string' }] },
-          optionalNull: { type: 'null' },
           optionalConstant: { const: 'fixed' },
-          nested,
-          rows: { type: 'array', items: nested },
-          choice: { anyOf: [nested, { type: 'string' }] },
-          optionalUnion: { anyOf: [{ type: 'string' }, { type: 'number' }] },
-          ambiguous: {
-            anyOf: [
-              nested,
-              {
-                ...nested,
-                properties: { ...nested.properties, optional: { type: ['string', 'null'] } }
-              }
-            ]
-          },
-          tagged: {
-            anyOf: [
-              {
-                ...nested,
-                properties: { ...nested.properties, kind: { type: 'string', enum: ['a'] } },
-                required: ['required']
-              },
-              {
-                ...nested,
-                properties: {
-                  ...nested.properties,
-                  kind: { type: 'string', enum: ['b'] },
-                  optional: { type: ['string', 'null'] }
-                },
-                required: ['required']
-              }
-            ]
-          }
+          patch,
+          rows: { type: 'array', items: { anyOf: [patch, { type: 'null' }] } },
+          enabled: { type: 'boolean' },
+          limit: { type: 'integer' }
         },
         required: ['title'],
         additionalProperties: false
       }
     };
-    const wireNested = { optional: null, nullable: null, required: null };
     const arguments_ = {
       title: 'Test',
       runner: null,
-      clientMessageId: null,
       goal: null,
-      optionalNull: null,
       optionalConstant: null,
-      nested: wireNested,
-      rows: [wireNested],
-      choice: wireNested,
-      optionalUnion: null,
-      ambiguous: wireNested,
-      tagged: { ...wireNested, kind: 'a' }
+      patch: { objective: 'New work', name: null },
+      rows: [null, { objective: null, name: '' }],
+      enabled: false,
+      limit: 0
     };
     const fixture = await startHttpResponsesServer([
       {
@@ -175,19 +137,27 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         parameters: expect.objectContaining({
           properties: expect.objectContaining({
             runner: { type: ['string', 'null'] },
-            optionalNull: { type: 'null' },
+            goal: { anyOf: [{ type: 'null' }, { type: 'string' }] },
             optionalConstant: { anyOf: [{ const: 'fixed' }, { type: 'null' }] }
           })
         })
       })
     ]);
-    expect(events.find(({ type }) => type === 'client_tool.call')).toMatchObject({
+    expect(events).toContainEqual({
+      type: 'client_tool.call',
       callId: 'start-probe',
-      name: tool.name
+      name: tool.name,
+      arguments: {
+        title: 'Test',
+        patch: { objective: 'New work' },
+        rows: [null, { name: '' }],
+        enabled: false,
+        limit: 0
+      }
     });
-    expect(events.find(({ type }) => type === 'client_tool.call')).toHaveProperty(
-      'arguments',
-      arguments_
+    expect(events.find(({ type }) => type === 'response.item')).toHaveProperty(
+      'item.arguments',
+      JSON.stringify(arguments_)
     );
   });
 
@@ -766,7 +736,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         call_id: 'search-call',
         status: 'completed',
         execution: 'client',
-        arguments: { query: 'records', limit: 1 }
+        arguments: { query: 'records', limit: null }
       };
       const fixture = await startHttpResponsesServer(
         completedEvents('search-response', [searchCall])
@@ -786,7 +756,7 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         description: 'Search deferred tools.',
         inputSchema: {
           type: 'object',
-          properties: { query: { type: 'string' } },
+          properties: { query: { type: 'string' }, limit: { type: 'integer' } },
           required: ['query'],
           additionalProperties: false
         },
@@ -799,8 +769,12 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
         type: 'client_tool.call',
         callId: 'search-call',
         name: 'tool_search',
-        arguments: { query: 'records', limit: 1 }
+        arguments: { query: 'records' }
       });
+      expect(events.find(({ type }) => type === 'response.item')).toHaveProperty(
+        'item.arguments',
+        searchCall.arguments
+      );
       expect(fixture.requests[0]!.tools).toEqual([
         expect.objectContaining({ type: 'tool_search', execution: 'client' }),
         expect.objectContaining({ type: 'namespace', name: 'mar' })

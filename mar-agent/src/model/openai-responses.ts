@@ -73,6 +73,17 @@ const WEBSOCKET_SEND_FRAME_BYTES = 1024 * 1024;
 const OPENAI_RESPONSES_EARLY_EOF_REASON = 'OPENAI_RESPONSES_EARLY_EOF';
 const X_CODEX_TURN_STATE = 'x-codex-turn-state';
 
+/** Omit unset object fields for execution without changing array positions or provider history. */
+function responsesToolArguments(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(responsesToolArguments);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, field]) => field !== null)
+      .map(([key, field]) => [key, responsesToolArguments(field)])
+  );
+}
+
 interface PreparedResponsesRequest {
   readonly inputItemCount: number;
   readonly fullBody: ResponsesRequestBody;
@@ -557,7 +568,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
                 type: 'client_tool.call',
                 callId,
                 name: 'tool_search',
-                arguments: arguments_,
+                arguments: responsesToolArguments(arguments_),
                 ...(argumentError ? { argumentError } : {})
               },
               modelStreamEventObservedAt(raw)
@@ -592,7 +603,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
                 type: 'client_tool.call',
                 callId,
                 name,
-                arguments: args,
+                arguments: responsesToolArguments(args),
                 ...(argumentError ? { argumentError } : {})
               },
               modelStreamEventObservedAt(raw)

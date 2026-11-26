@@ -81,13 +81,13 @@ export function registerStart(
       type: 'object',
       properties: {
         title: { type: 'string', minLength: 1, maxLength: 80 },
-        description: { type: ['string', 'null'], minLength: 1, maxLength: 80 },
+        description: { type: 'string', minLength: 1, maxLength: 80 },
         content: { type: 'string', minLength: 1 },
-        role: { type: ['string', 'null'], enum: ['general-purpose', 'explore', null] },
-        modelId: { type: ['string', 'null'], minLength: 1 },
+        role: { type: 'string', enum: ['general-purpose', 'explore'] },
+        modelId: { type: 'string', minLength: 1 },
         effort: {
-          type: ['string', 'null'],
-          enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra', null]
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']
         }
       },
       required: ['title', 'content'],
@@ -97,10 +97,10 @@ export function registerStart(
       const input = raw as {
         title: string;
         content: string;
-        description?: string | null;
-        role?: StartInput['role'] | null;
-        modelId?: string | null;
-        effort?: AgentReasoningEffort | null;
+        description?: string;
+        role?: StartInput['role'];
+        modelId?: string;
+        effort?: AgentReasoningEffort;
       };
       const { data } = await startChild(
         context,
@@ -111,8 +111,8 @@ export function registerStart(
           description: input.description ?? input.title,
           prompt: input.content,
           role: input.role ?? 'general-purpose',
-          ...(input.modelId == null ? {} : { modelId: input.modelId }),
-          ...(input.effort == null ? {} : { reasoningEffort: input.effort })
+          ...(input.modelId === undefined ? {} : { modelId: input.modelId }),
+          ...(input.effort === undefined ? {} : { reasoningEffort: input.effort })
         },
         call,
         'model'

@@ -78,24 +78,20 @@ export function registerControlTools(
       properties: {
         agentId: { type: 'string', minLength: 1 },
         content: { type: 'string', minLength: 1 },
-        delivery: { type: ['string', 'null'], enum: ['append', 'replace', null] }
+        delivery: { type: 'string', enum: ['append', 'replace'] }
       },
       required: ['agentId', 'content'],
       additionalProperties: false
     },
     async execute(value, call) {
-      const { agentId, content, delivery } = value as {
-        agentId: string;
-        content: string;
-        delivery?: 'append' | 'replace' | null;
-      };
+      const input = value as { agentId: string; content: string; delivery?: 'append' | 'replace' };
       const data = await sendChild(
         context,
         agent,
         observations,
         warmObservations,
         admission,
-        { agentId, content, ...(delivery == null ? {} : { delivery }) },
+        input,
         call,
         'model'
       );

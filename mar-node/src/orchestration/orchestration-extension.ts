@@ -15,9 +15,8 @@ import {
 } from './whiteboard/whiteboard-tool.js';
 
 const text = { type: 'string', minLength: 1 } as const;
-const optionalText = { ...text, type: ['string', 'null'] } as const;
 const runner = {
-  ...optionalText,
+  ...text,
   description:
     'Runner type (for example mar-agent), not a model name; defaults to the current Runner.'
 } as const;
@@ -60,13 +59,13 @@ const tools: readonly {
       content: text,
       runner,
       modelId: {
-        ...optionalText,
+        ...text,
         description: 'Model configuration ID; omit to use the target Runner default.'
       },
-      effort: optionalText,
+      effort: text,
       title: text,
       goal,
-      clientMessageId: optionalText
+      clientMessageId: text
     },
     required: ['title', 'content']
   },
@@ -76,28 +75,20 @@ const tools: readonly {
     description: 'Send a message to an Agent, update its Goal, or decide an approval.',
     properties: {
       agentId: text,
-      content: { type: ['string', 'null'] },
+      content: { type: 'string' },
       goal,
       approval: {
-        anyOf: [
-          {
-            type: 'object',
-            additionalProperties: false,
-            required: ['approvalId', 'decision'],
-            properties: {
-              approvalId: text,
-              decision: { type: 'string', enum: ['approve', 'reject'] }
-            }
-          },
-          { type: 'null' }
-        ]
+        type: 'object',
+        additionalProperties: false,
+        required: ['approvalId', 'decision'],
+        properties: { approvalId: text, decision: { type: 'string', enum: ['approve', 'reject'] } }
       },
       delivery: {
-        type: ['string', 'null'],
-        enum: ['STEER', 'QUEUE', null],
+        type: 'string',
+        enum: ['STEER', 'QUEUE'],
         description: `${deliveryGuidance} QUEUE is consumed only after current work and earlier queued inputs finish; an active Goal must exit first.`
       },
-      clientMessageId: optionalText
+      clientMessageId: text
     },
     required: ['agentId']
   },
@@ -107,7 +98,7 @@ const tools: readonly {
     description: 'Wait for Agent messages or execution completion.',
     properties: {
       agentIds: {
-        type: ['array', 'null'],
+        type: 'array',
         items: text,
         minItems: 1,
         maxItems: 8,
@@ -115,19 +106,19 @@ const tools: readonly {
           'Target Agent IDs, including a single target as a one-item array. Omit to select from direct children.'
       },
       mode: {
-        type: ['string', 'null'],
-        enum: ['any', 'all', null],
+        type: 'string',
+        enum: ['any', 'all'],
         description:
           'For explicit agentIds: return when any or all targets meet the wait condition.'
       },
       waitFor: {
-        type: ['string', 'null'],
-        enum: ['message', 'completion', null],
+        type: 'string',
+        enum: ['message', 'completion'],
         description:
           'message waits for unread public output or a terminal execution; completion waits for a terminal execution, not necessarily success.'
       },
       waitMs: {
-        type: ['integer', 'null'],
+        type: 'integer',
         minimum: 0,
         maximum: 300000,
         description:
@@ -148,17 +139,17 @@ const tools: readonly {
     description: 'List the current collaboration tree or active Agents in the Workspace.',
     properties: {
       scope: {
-        type: ['string', 'null'],
-        enum: ['tree', 'active', null],
+        type: 'string',
+        enum: ['tree', 'active'],
         description:
           'Defaults to tree: the containing tree, including ancestors, peers and descendants.'
       },
       query: {
-        type: ['string', 'null'],
+        type: 'string',
         maxLength: 160,
         description: 'Optional case-insensitive title fragment within the scope.'
       },
-      limit: { type: ['integer', 'null'], minimum: 1, maximum: 100, description: 'Defaults to 10.' }
+      limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Defaults to 10.' }
     }
   },
   {
@@ -297,10 +288,7 @@ export function orchestrationExtension(
           async execute(input, call) {
             const executionId = currentExecution();
             if (!executionId) throw new Error('AGENT_ACTOR_NOT_ACTIVE');
-            // Validation has already rejected null for required operands.
-            const args = Object.fromEntries(
-              Object.entries(input as Record<string, unknown>).filter(([, value]) => value !== null)
-            );
+            const args = input as Record<string, unknown>;
             let operationInput = args;
             if (tool.action === 'wait')
               operationInput = {

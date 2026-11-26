@@ -118,10 +118,6 @@ describe('deferred tool search', () => {
       query: ' get_trace ',
       limit: 5
     });
-    expect(parseToolSearchInput({ query: ' get_trace ', limit: null })).toEqual({
-      query: ' get_trace ',
-      limit: 5
-    });
     for (const input of [
       { query: ' ' },
       { query: 'a', limit: 0 },
