@@ -44,6 +44,22 @@ test('shows historical whiteboard receipts and errors inside Agent collaboration
     '1',
     'No change'
   ]);
+  const facts = update.locator('.whiteboard-detail');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect
+    .poll(() =>
+      facts.locator('dt').evaluateAll((labels) => {
+        const [owner, revision, count, result] = labels.map(
+          (label) => label.getBoundingClientRect().top
+        );
+        return owner! < revision! && revision === count && count === result;
+      })
+    )
+    .toBe(true);
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect
+    .poll(() => facts.evaluate((element) => element.scrollWidth <= element.clientWidth))
+    .toBe(true);
   await expect(update.getByRole('link')).toHaveCount(0);
   await update.locator('.tool-detail-copy').click();
   await expect
