@@ -511,7 +511,10 @@ it('starts an eligible direct child through the independent extension', async ()
   expect(effectiveInstructions(childRequest)).not.toContain('non-recursive subagent');
   expect(childRequest.tools.some((tool) => tool.name === 'agent_start')).toBe(true);
   const sleep = childRequest.tools.find((tool) => tool.name === 'sleep')!;
-  expect(sleep.inputSchema.properties).toHaveProperty('permission');
+  expect(sleep.inputSchema.properties).toHaveProperty('durationMs');
+  expect(sleep.inputSchema.properties).not.toHaveProperty('permission');
+  const read = childRequest.tools.find((tool) => tool.name === 'read')!;
+  expect(read.inputSchema.properties).toHaveProperty('permission');
 });
 
 it('starts an eligible child from a real Code Mode cell with the supplied title', async () => {

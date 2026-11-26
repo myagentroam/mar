@@ -122,9 +122,11 @@ describe('Execution loop boundaries', () => {
       mailbox: {
         hasPending: () => pending,
         append: async () => {
-          expect(checkpoint).toHaveBeenLastCalledWith(expect.anything(), {
-            rolloutBudgetUnits: 100
-          });
+          expect(checkpoint).toHaveBeenLastCalledWith(
+            expect.anything(),
+            { rolloutBudgetUnits: 100 },
+            []
+          );
           pending = false;
           return true;
         },
@@ -186,7 +188,7 @@ describe('Execution loop boundaries', () => {
     const append = vi.fn(async () => {
       expect(state.observeUsage).toHaveBeenLastCalledWith(usage);
       expect(afterModel).toHaveBeenCalledOnce();
-      expect(checkpoint).toHaveBeenLastCalledWith(expect.anything(), usage);
+      expect(checkpoint).toHaveBeenLastCalledWith(expect.anything(), usage, []);
       pending = false;
       return true;
     });

@@ -5,7 +5,7 @@ import {
   type ExtensionPromptInput,
   type ExtensionPromptResult
 } from '../extensions/prompt-input.js';
-import type { SessionInputCoordinator } from '../extensions/session-input.js';
+import type { SessionInputCoordinator, SessionInputEntry } from '../extensions/session-input.js';
 import { imageMetadata } from '../session/catalog.js';
 import type { SessionRecord } from '../session/store/index.js';
 import type { SteerInput, SteerResult } from './types.js';
@@ -14,9 +14,8 @@ import type { SteerInput, SteerResult } from './types.js';
 export function createNativeSteer(input: {
   readonly executionId: string;
   readonly inputs: SessionInputCoordinator;
-  readonly signal: AbortSignal;
-  isOpen(): boolean;
-  operation<T>(action: (call: ExtensionOperationContext) => T): T;
+  readonly admissionSignal: AbortSignal;
+  operation<T>(action: (call: ExtensionOperationContext) => T, signal?: AbortSignal): T;
   admit(
     content: ExtensionPromptInput,
     call: ExtensionOperationContext,
@@ -45,7 +44,7 @@ export function createNativeSteer(input: {
       return Promise.resolve({ status: 'notAccepted' });
     const previous = retries.get(request.clientMessageId);
     if (previous) return previous;
-    if (!input.isOpen() || input.signal.aborted || input.inputs.hasIdleBarrier)
+    if (input.admissionSignal.aborted || input.inputs.hasIdleBarrier)
       return Promise.resolve({ status: 'notAccepted' });
     if (
       typeof request.clientMessageId !== 'string' ||
@@ -61,7 +60,6 @@ export function createNativeSteer(input: {
       ...(request.images === undefined ? {} : { images: request.images })
     });
     const result = Promise.withResolvers<SteerResult>();
-    const ready = Promise.withResolvers<void>();
     const entry = input.operation((call) =>
       input.inputs.accept(
         { kind: 'submit', input: content },
@@ -70,60 +68,93 @@ export function createNativeSteer(input: {
         'accepted'
       )
     );
-    entry.nativeSteer = { ready: ready.promise };
-    const aborted = () => ready.resolve();
-    input.signal.addEventListener('abort', aborted, { once: true });
+    const reservation: NonNullable<SessionInputEntry['nativeSteer']> = { pending: true };
+    entry.nativeSteer = reservation;
+    const releaseAdmission = () => {
+      delete reservation.pending;
+    };
+    const admissionController = new AbortController();
+    let writing = false;
     let committed = false;
+    const releaseReservation = () => {
+      input.inputs.cancelSteerReservation(entry);
+      releaseAdmission();
+    };
+    const aborted = () => {
+      admissionController.abort(input.admissionSignal.reason);
+      // A writer that has started owns the outcome until it reports whether it committed.
+      if (!writing) {
+        releaseReservation();
+        result.resolve({ status: 'notAccepted' });
+      }
+    };
+    input.admissionSignal.addEventListener('abort', aborted, { once: true });
+    const write = async (
+      actual: ExtensionPromptInput,
+      effective: ExtensionOperationContext
+    ): Promise<ExtensionPromptResult> => {
+      if (committed) return {};
+      effective.signal.throwIfAborted();
+      writing = true;
+      let record: SessionRecord;
+      try {
+        record = await input.receive(actual, request.clientMessageId, effective, source);
+      } catch (error) {
+        if (admissionController.signal.aborted) {
+          releaseReservation();
+          // I/O errors can leave a durable record. Only the writer's cancellation proves non-admission.
+          if (error === admissionController.signal.reason)
+            result.resolve({ status: 'notAccepted' });
+          else result.reject(error);
+        }
+        throw error;
+      } finally {
+        writing = false;
+      }
+      committed = true;
+      input.admissionSignal.removeEventListener('abort', aborted);
+      reservation.recordId = record.recordId;
+      const payload = record.payload as Record<string, unknown>;
+      const images = imageMetadata(payload.images);
+      const historyEntry: Extract<SteerResult, { status: 'accepted' }>['entry'] = {
+        kind: 'user',
+        recordId: record.recordId,
+        sequence: record.sequence,
+        timestamp: record.timestamp,
+        sessionId: record.sessionId,
+        executionId: record.executionId!,
+        turnId: record.turnId!,
+        text: payload.prompt as string,
+        clientMessageId: request.clientMessageId,
+        ...(images.length ? { images } : {})
+      };
+      // Neither Hook post-processing nor a failed observer can revoke the writer's receipt.
+      void input.notify(historyEntry).catch(() => input.diagnose());
+      releaseAdmission();
+      result.resolve({ status: 'accepted', entry: historyEntry });
+      input.wake();
+      return {};
+    };
     const admission = admissionTail
       .catch(() => undefined)
       .then(() =>
-        input.operation((call) =>
-          input.admit(content, call, async (actual, effective) => {
-            if (committed) return {};
-            effective.signal.throwIfAborted();
-            if (!input.isOpen()) {
-              result.resolve({ status: 'notAccepted' });
-              return {};
-            }
-            const record = await input.receive(actual, request.clientMessageId, effective, source);
-            committed = true;
-            entry.nativeSteer!.recordId = record.recordId;
-            const payload = record.payload as Record<string, unknown>;
-            const images = imageMetadata(payload.images);
-            const historyEntry: Extract<SteerResult, { status: 'accepted' }>['entry'] = {
-              kind: 'user',
-              recordId: record.recordId,
-              sequence: record.sequence,
-              timestamp: record.timestamp,
-              sessionId: record.sessionId,
-              executionId: record.executionId!,
-              turnId: record.turnId!,
-              text: payload.prompt as string,
-              clientMessageId: request.clientMessageId,
-              ...(images.length ? { images } : {})
-            };
-            // Neither Hook post-processing nor a failed observer can revoke the writer's receipt.
-            void input.notify(historyEntry).catch(() => input.diagnose());
-            ready.resolve();
-            result.resolve({ status: 'accepted', entry: historyEntry });
-            input.wake();
-            return {};
-          })
-        )
+        input.operation((call) => input.admit(content, call, write), admissionController.signal)
       );
     void admission
       .then(
         () => {
-          if (!committed) result.resolve({ status: 'handled' });
+          releaseAdmission();
+          if (!committed && !admissionController.signal.aborted)
+            result.resolve({ status: 'handled' });
         },
         (error) => {
-          if (!committed) result.reject(error);
-          else input.diagnose();
+          releaseAdmission();
+          if (committed) input.diagnose();
+          else if (!admissionController.signal.aborted) result.reject(error);
         }
       )
       .finally(() => {
-        ready.resolve();
-        input.signal.removeEventListener('abort', aborted);
+        input.admissionSignal.removeEventListener('abort', aborted);
       });
     admissionTail = result.promise;
     retries.set(request.clientMessageId, result.promise);
