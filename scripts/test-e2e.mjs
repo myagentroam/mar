@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { e2eOptions, smokeBuildFiles, assertSmokeReport } from './test-e2e-policy.mjs';
 import {
@@ -19,6 +20,7 @@ const testRunId = (process.env.MAR_TEST_RUN_ID ?? `e2e-${Date.now()}-${process.p
   '_'
 );
 process.env.MAR_TEST_RUN_ID = testRunId;
+const prebuiltWeb = options.mode === 'full' && process.env.MAR_E2E_PREBUILT_WEB === '1';
 if (!options.list && options.mode === 'smoke') {
   for (const file of smokeBuildFiles) {
     try {
@@ -26,6 +28,25 @@ if (!options.list && options.mode === 'smoke') {
     } catch {
       throw new Error(`SMOKE_BUILD_REQUIRED: ${file}`);
     }
+  }
+}
+if (!options.list && (options.mode === 'smoke' || prebuiltWeb)) {
+  const listeners = [];
+  async function reservePort() {
+    const listener = createServer();
+    listeners.push(listener);
+    return new Promise((resolve, reject) => {
+      listener.once('error', reject);
+      listener.listen(0, '127.0.0.1', () => resolve(String(listener.address().port)));
+    });
+  }
+  try {
+    process.env.MAR_E2E_WEB_PORT ??= await reservePort();
+    if (prebuiltWeb) process.env.MAR_E2E_SERVER_PORT ??= await reservePort();
+  } finally {
+    await Promise.all(
+      listeners.map((listener) => new Promise((resolve) => listener.close(resolve)))
+    );
   }
 }
 
@@ -62,8 +83,12 @@ const licenseHostPath = resolve(root, `test/runs/playwright-license-host-${testR
 const reportPath = resolve(root, `test/runs/playwright-results-${testRunId}.json`);
 try {
   if (!options.list && options.mode === 'full') {
-    const buildCode = await run('pnpm', ['--filter', '@myagentroam/web-console', 'build']);
-    if (buildCode !== 0 || interrupted) throw new Error('E2E_WEB_BUILD_FAILED');
+    if (prebuiltWeb) {
+      await access(resolve(root, 'mar-web-console/dist/index.html'));
+    } else {
+      const buildCode = await run('pnpm', ['--filter', '@myagentroam/web-console', 'build']);
+      if (buildCode !== 0 || interrupted) throw new Error('E2E_WEB_BUILD_FAILED');
+    }
   }
   if (!options.list && !['integration', 'fixtures'].includes(options.mode)) {
     database = resolvePlaywrightTestDatabase(testRunId);
