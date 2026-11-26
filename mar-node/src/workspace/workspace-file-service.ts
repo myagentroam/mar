@@ -16,7 +16,7 @@ import {
 import { revealWorkspaceFileInFileManager } from './workspace-file-manager-service.js';
 import {
   imagePreviews,
-  MAX_IMAGE_PREVIEW_SOURCE_BYTES,
+  imagePreviewSourceLimit,
   type ImagePreview
 } from '../service/image-preview-service.js';
 
@@ -107,7 +107,8 @@ export class WorkspaceFileService {
   async readContent(
     workspace: NodeWorkspace,
     input: Record<string, unknown>,
-    workspacePath = workspace.path
+    workspacePath = workspace.path,
+    maxFileBytes?: number
   ): Promise<unknown> {
     if (
       typeof input.path !== 'string' ||
@@ -127,7 +128,8 @@ export class WorkspaceFileService {
           dirname(target),
           basename(target),
           typeof input.offset === 'number' ? input.offset : 0,
-          typeof input.limit === 'number' ? input.limit : 512 * 1024
+          typeof input.limit === 'number' ? input.limit : 512 * 1024,
+          maxFileBytes
         )),
         path: input.path
       };
@@ -155,8 +157,8 @@ export class WorkspaceFileService {
     const offset = typeof input.offset === 'number' ? input.offset : 0;
     const limit = typeof input.limit === 'number' ? input.limit : 512 * 1024;
     return isFilePreviewAbsolutePath(path)
-      ? readAbsoluteFileContentRange(path, offset, limit)
-      : readWorkspaceFileContentRange(workspacePath, path, offset, limit);
+      ? readAbsoluteFileContentRange(path, offset, limit, maxFileBytes)
+      : readWorkspaceFileContentRange(workspacePath, path, offset, limit, maxFileBytes);
   }
 
   async previewImage(
@@ -165,6 +167,7 @@ export class WorkspaceFileService {
     workspacePath = workspace.path
   ): Promise<ImagePreview> {
     const preview = imagePreviewOptionsSchema.parse(input.preview);
+    const maxFileBytes = imagePreviewSourceLimit(preview);
     const chunks: Buffer[] = [];
     let offset = 0;
     let revision: string | undefined;
@@ -172,14 +175,13 @@ export class WorkspaceFileService {
       const chunk = (await this.readContent(
         workspace,
         { ...input, offset, limit: 512 * 1024 },
-        workspacePath
+        workspacePath,
+        maxFileBytes
       )) as {
-        readonly size: number;
         readonly sourceRevision: string;
         readonly contentBase64: string;
         readonly nextOffset: number | null;
       };
-      if (chunk.size > MAX_IMAGE_PREVIEW_SOURCE_BYTES) throw new Error('IMAGE_PREVIEW_TOO_LARGE');
       if (revision !== undefined && revision !== chunk.sourceRevision)
         throw new Error('FILE_CHANGED');
       revision = chunk.sourceRevision;

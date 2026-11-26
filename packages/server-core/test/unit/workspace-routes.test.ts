@@ -4,6 +4,7 @@ import { registerWorkspaceRoutes } from '../../src/workspace-routes.js';
 import { hashOpaque } from '../../src/session-token.js';
 import { SESSION_COOKIE_NAME } from '../../src/auth.js';
 import { sendError } from '../../src/http-errors.js';
+import { databaseError } from '../../src/domain-errors.js';
 import { NodeRequestError } from '../../src/node-request-error.js';
 import { NodeRequestChannel } from '../../src/node-request-channel.js';
 import type { UserNodeAuthorization } from '../../src/node-access-contracts.js';
@@ -14,7 +15,7 @@ const apps: ReturnType<typeof Fastify>[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
-function fixture(resources?: WorkspaceResourcePolicy) {
+function fixture(resources?: WorkspaceResourcePolicy, handleError?: typeof databaseError) {
   const app = Fastify();
   apps.push(app);
   const requestNode = vi.fn(async (..._args: unknown[]): Promise<unknown> => ({ workspaces: [] }));
@@ -38,8 +39,10 @@ function fixture(resources?: WorkspaceResourcePolicy) {
       revalidateTerminalAuthorizations
     },
     resources: resources ?? personalWorkspacePolicy(),
-    databaseError: (reply, error) =>
-      sendError(reply, 409, error instanceof Error ? error.message : 'NODE_RESPONSE_INVALID')
+    databaseError:
+      handleError ??
+      ((reply, error) =>
+        sendError(reply, 409, error instanceof Error ? error.message : 'NODE_RESPONSE_INVALID'))
   });
   return {
     app,
@@ -53,6 +56,41 @@ function fixture(resources?: WorkspaceResourcePolicy) {
     }
   };
 }
+
+it('relays bounded GIF previews and returns 413 without image data when Node rejects the size', async () => {
+  const { app, headers, requestNode } = fixture(undefined, databaseError);
+  const url =
+    '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=animation.gif&originalGif=1';
+  const bytes = Buffer.from('GIF89a');
+  requestNode.mockResolvedValueOnce({
+    image: { mime: 'image/gif', dataBase64: bytes.toString('base64'), resized: false }
+  });
+  const ok = await app.inject({ url, headers });
+  expect(ok.statusCode).toBe(200);
+  expect(ok.headers['content-type']).toBe('image/gif');
+  expect(ok.rawPayload).toEqual(bytes);
+  expect(requestNode).toHaveBeenCalledWith(
+    'node-1',
+    'workspace.file.content.read',
+    { workspaceId: 'workspace-1', path: 'animation.gif', preview: { originalGif: true } },
+    expect.anything(),
+    undefined
+  );
+  requestNode.mockRejectedValueOnce(
+    new NodeRequestError(
+      { error: 'IMAGE_PREVIEW_TOO_LARGE', message: 'The image preview is too large.' },
+      'request',
+      'node'
+    )
+  );
+  const rejected = await app.inject({ url, headers });
+  expect(rejected.statusCode).toBe(413);
+  expect(rejected.headers['content-type']).toContain('application/json');
+  expect(rejected.json().error.code).toBe('IMAGE_PREVIEW_TOO_LARGE');
+  for (const query of ['&download=1', '&maxWidth=320&maxHeight=240'])
+    expect((await app.inject({ url: `${url}${query}`, headers })).statusCode).toBe(400);
+  expect(requestNode).toHaveBeenCalledTimes(2);
+});
 describe('Shared Workspace HTTP routes', () => {
   it.each([undefined, '', 'modules/tool'])(
     'forwards authenticated fetch with repository scope %s and only its result marker',

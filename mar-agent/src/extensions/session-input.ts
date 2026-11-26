@@ -147,7 +147,7 @@ export interface ExtensionSessionBackend {
 
 export interface SessionInputEntry {
   /** SDK-owned admission barrier, never accepted from Extension input. */
-  nativeSteer?: { readonly ready: Promise<void>; recordId?: string; restored?: true };
+  nativeSteer?: { pending?: true; recordId?: string; restored?: true };
   readonly request: ExtensionSessionRequest;
   readonly source: ExtensionOperationContext;
   readonly action: ExtensionSessionAction;
@@ -225,7 +225,7 @@ export class SessionInputCoordinator {
       (request, call, next) => next(request, call),
       'accepted'
     );
-    entry.nativeSteer = { recordId, ready: Promise.resolve(), restored: true };
+    entry.nativeSteer = { recordId, restored: true };
     if (index >= 0) this.#pending[index] = entry;
     else this.#pending.unshift(entry);
   }
@@ -233,7 +233,11 @@ export class SessionInputCoordinator {
     const head = this.#pending.find(
       (entry) => entry.receipt.status !== 'cancelled' && !entry.source.signal.aborted
     );
-    return !!head && (head.request.kind !== 'submit' || head.request.input.delivery !== 'idle');
+    return (
+      !!head &&
+      !head.nativeSteer?.pending &&
+      (head.request.kind !== 'submit' || head.request.input.delivery !== 'idle')
+    );
   }
   get executing(): boolean {
     return this.#current.getStore()?.receipt.status === 'in-progress';
@@ -241,6 +245,7 @@ export class SessionInputCoordinator {
   get hasBoundaryCompactPending(): boolean {
     for (const entry of this.#pending) {
       if (entry.receipt.status === 'cancelled' || entry.source.signal.aborted) continue;
+      if (entry.nativeSteer?.pending) return false;
       if (entry.request.kind === 'submit' && entry.request.input.delivery === 'idle') return false;
       if (entry.request.kind === 'compact') return true;
     }
@@ -344,6 +349,12 @@ export class SessionInputCoordinator {
     const entry = this.#record(request, source, action, status);
     this.#pending.push(entry);
     return entry;
+  }
+
+  cancelSteerReservation(entry: SessionInputEntry): void {
+    // The admission owner calls this only when the writer cannot still commit.
+    if (entry.nativeSteer && !entry.nativeSteer.recordId && this.#active.has(entry))
+      this.#finish(entry, 'cancelled');
   }
 
   handled(
@@ -476,6 +487,13 @@ export class SessionInputCoordinator {
           head.receipt.status !== 'cancelled'
         )
           break;
+        // Reservations preserve FIFO order but never block a model boundary on a Hook or writer.
+        if (
+          head.nativeSteer?.pending &&
+          !head.source.signal.aborted &&
+          head.receipt.status !== 'cancelled'
+        )
+          break;
         const entry = this.#pending.shift()!;
         if (entry.receipt.status === 'cancelled' || entry.source.signal.aborted) {
           this.#finish(entry, 'cancelled');
@@ -526,13 +544,10 @@ export class SessionInputCoordinator {
     let effects = 0;
     let committed: ExtensionSessionActionResult | undefined;
     try {
-      if (entry.nativeSteer) {
-        await entry.nativeSteer.ready;
+      if (entry.nativeSteer && !entry.nativeSteer.recordId) {
         call.signal.throwIfAborted();
-        if (!entry.nativeSteer.recordId) {
-          this.#finish(entry, 'handled', { changed: false });
-          return false;
-        }
+        this.#finish(entry, 'handled', { changed: false });
+        return false;
       }
       const outcome = await this.#current.run(entry, () =>
         entry.action(entry.request, call, async (request, effective) => {

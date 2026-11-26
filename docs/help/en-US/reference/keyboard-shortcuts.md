@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-lastUpdated: 2026-11-24
+lastUpdated: 2026-11-26
 ---
 
 # Keyboard Shortcuts
@@ -18,6 +18,7 @@ While typing into a page in the [Workspace browser](../workbench/browser.md), `E
 | Composer                      | `Enter`                                                     | `Enter`                                                           | Send a message                                                                 | The desktop Composer is focused and the IME is not composing                                                |
 | Composer                      | `Shift/Alt+Enter`                                           | `Shift/Option+Enter`                                              | Insert a newline                                                               | The Composer is focused                                                                                     |
 | Composer                      | `Ctrl+Enter`                                                | `Control+Enter`                                                   | Steer the current task with the new message                                    | The Composer can send; when idle, sends normally                                                            |
+| Composer                      | `Alt+↑/↓`                                                   | `Option+↑/↓`                                                      | Recall older/newer sent message text                                           | Current session on your personal Node; the Composer is editable and the IME is not composing                |
 | Composer                      | `Esc`                                                       | `Esc`                                                             | Close the completion menu                                                      | An `@`, `#`, or `/` menu is open; keep the draft and do not stop the task                                   |
 | Composer                      | `Esc`                                                       | `Esc`                                                             | Stop the current task                                                          | The Composer is focused, no completion menu is open, the task is interruptible, and no message is sending   |
 | Composer                      | `@`                                                         | `@`                                                               | Open Workspace file and folder references                                      | The Composer is focused                                                                                     |

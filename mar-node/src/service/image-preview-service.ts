@@ -3,15 +3,20 @@ import sharp from 'sharp';
 import type { ImagePreviewOptions } from '@myagentroam/protocol';
 
 export const MAX_IMAGE_PREVIEW_SOURCE_BYTES = 32 * 1024 * 1024;
+export const MAX_GIF_PREVIEW_SOURCE_BYTES = 5 * 1024 * 1024;
 const MAX_CACHE_BYTES = 8 * 1024 * 1024;
 const MAX_CACHE_ENTRIES = 64;
 const MAX_PENDING = 16;
 const MAX_PENDING_BYTES = 64 * 1024 * 1024;
 
 export interface ImagePreview {
-  readonly mime: 'image/webp';
+  readonly mime: 'image/webp' | 'image/gif';
   readonly dataBase64: string;
   readonly resized: boolean;
+}
+
+export function imagePreviewSourceLimit(options: ImagePreviewOptions): number {
+  return 'originalGif' in options ? MAX_GIF_PREVIEW_SOURCE_BYTES : MAX_IMAGE_PREVIEW_SOURCE_BYTES;
 }
 
 /** Sources must be read through their original authorization boundary before every call. */
@@ -24,7 +29,13 @@ export class ImagePreviewService {
 
   async create(bytes: Buffer, options: ImagePreviewOptions): Promise<ImagePreview> {
     if (bytes.length === 0) throw new Error('IMAGE_PREVIEW_INVALID');
-    if (bytes.length > MAX_IMAGE_PREVIEW_SOURCE_BYTES) throw new Error('IMAGE_PREVIEW_TOO_LARGE');
+    if (bytes.length > imagePreviewSourceLimit(options)) throw new Error('IMAGE_PREVIEW_TOO_LARGE');
+    if ('originalGif' in options) {
+      const signature = bytes.toString('latin1', 0, 6);
+      if (signature !== 'GIF87a' && signature !== 'GIF89a')
+        throw new Error('IMAGE_PREVIEW_INVALID');
+      return { mime: 'image/gif', dataBase64: bytes.toString('base64'), resized: false };
+    }
     const key = createHash('sha256')
       .update(`${options.maxWidth}x${options.maxHeight}\0`)
       .update(bytes)
@@ -93,7 +104,7 @@ export class ImagePreviewService {
   fromImage(image: unknown, options: ImagePreviewOptions): Promise<ImagePreview> {
     const source = image as { readonly dataBase64?: unknown } | null;
     if (typeof source?.dataBase64 !== 'string') throw new Error('IMAGE_PREVIEW_INVALID');
-    if (source.dataBase64.length > Math.ceil(MAX_IMAGE_PREVIEW_SOURCE_BYTES / 3) * 4)
+    if (Buffer.byteLength(source.dataBase64, 'base64') > imagePreviewSourceLimit(options))
       throw new Error('IMAGE_PREVIEW_TOO_LARGE');
     if (this.pendingBytes + Math.floor((source.dataBase64.length * 3) / 4) > MAX_PENDING_BYTES)
       throw new Error('IMAGE_PREVIEW_BUSY');

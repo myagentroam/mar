@@ -386,7 +386,8 @@ export async function readWorkspaceFileContentRange(
   workspaceRoot: string,
   requestedPath: string,
   offset = 0,
-  limit = FILE_READ_LIMIT
+  limit = FILE_READ_LIMIT,
+  maxFileBytes?: number
 ): Promise<{
   readonly path: string;
   readonly size: number;
@@ -407,6 +408,8 @@ export async function readWorkspaceFileContentRange(
   const file = await resolveWorkspaceEntry(root, requestedPath, false);
   const metadata = await lstat(file);
   if (!metadata.isFile()) throw new Error('FILE_NOT_REGULAR');
+  if (maxFileBytes !== undefined && metadata.size > maxFileBytes)
+    throw new Error('IMAGE_PREVIEW_TOO_LARGE');
   if (offset > metadata.size) throw new Error('FILE_RANGE_INVALID');
   const length = Math.min(limit, metadata.size - offset);
   const source = Buffer.allocUnsafe(length);
@@ -431,7 +434,8 @@ export async function readWorkspaceFileContentRange(
 export async function readAbsoluteFileContentRange(
   requestedPath: string,
   offset = 0,
-  limit = FILE_READ_LIMIT
+  limit = FILE_READ_LIMIT,
+  maxFileBytes?: number
 ): Promise<{
   readonly path: string;
   readonly size: number;
@@ -449,6 +453,8 @@ export async function readAbsoluteFileContentRange(
   )
     throw new Error('FILE_RANGE_INVALID');
   const { file, metadata } = await resolveAbsoluteFile(requestedPath);
+  if (maxFileBytes !== undefined && metadata.size > maxFileBytes)
+    throw new Error('IMAGE_PREVIEW_TOO_LARGE');
   if (offset > metadata.size) throw new Error('FILE_RANGE_INVALID');
   const length = Math.min(limit, metadata.size - offset);
   const source = Buffer.allocUnsafe(length);

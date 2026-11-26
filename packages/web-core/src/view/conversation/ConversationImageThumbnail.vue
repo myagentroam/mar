@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MarIcon } from '@myagentroam/mar-ui/icons';
 import { computed, ref, watch } from 'vue';
+import { observeGifThumbnail } from '../../service/conversation-image-preview-loader.js';
 import { conversationThumbnailUrl } from '../../util/conversation-image-url.js';
 
 const props = defineProps<{ source: string; name: string; direct?: boolean | undefined }>();
@@ -10,6 +11,20 @@ const emit = defineEmits<{
 }>();
 const failed = ref(false);
 const thumbnail = computed(() => conversationThumbnailUrl(props.source, props.direct));
+const imageElement = ref<HTMLImageElement>();
+const gifSource = computed(() =>
+  props.direct && props.source.startsWith('/api/') ? props.source : undefined
+);
+const gifUrl = ref<string>();
+watch(
+  [imageElement, gifSource],
+  ([element, source], _old, onCleanup) => {
+    gifUrl.value = undefined;
+    if (element && source)
+      onCleanup(observeGifThumbnail(element, source, (url) => (gifUrl.value = url), unavailable));
+  },
+  { flush: 'post' }
+);
 watch(thumbnail, () => {
   failed.value = false;
 });
@@ -27,13 +42,14 @@ function unavailable(): void {
   <button
     type="button"
     class="conversation-user-image-button"
-    :class="{ 'is-unavailable': failed || !source }"
+    :class="{ 'is-unavailable': failed || !source, 'is-pending': gifSource && !gifUrl }"
     @click="open"
   >
     <img
       v-if="source && !failed"
+      ref="imageElement"
       class="conversation-user-image"
-      :src="thumbnail"
+      :src="gifSource ? gifUrl : thumbnail"
       :alt="name"
       loading="lazy"
       @error="unavailable"
@@ -64,7 +80,7 @@ function unavailable(): void {
   border: 1px solid var(--mar-conversation-border);
   border-radius: 6px;
 }
-.conversation-user-image-button.is-unavailable {
+.conversation-user-image-button:is(.is-unavailable, .is-pending) {
   min-width: 2.5rem;
   min-height: 2.5rem;
   align-items: center;

@@ -104,7 +104,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)('SDK sleep %s
           return call('agent_start', {
             title: 'Child progress',
             description: 'Child progress',
-            prompt: 'sleep child worker',
+            content: 'sleep child worker',
             role: 'explore'
           });
         if (parents.length === 2) return call('sleep', { durationMs: 300000 });

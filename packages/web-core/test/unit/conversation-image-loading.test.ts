@@ -55,14 +55,18 @@ describe('Conversation image loading', () => {
     }
   });
 
-  it('uses the original GIF in both the list and the decoded dialog for an opaque Run image URL', async () => {
+  it('loads the same original GIF through Web playback in the list and dialog', async () => {
     const service = createConversationImageService(ref('node'));
     const attachment = service.attachments('run', {
       attachments: [{ name: 'Animation', mime: 'image/gif', imageIndex: 0 }]
     })[0]!;
     service.open(attachment);
     const preview = service.preview.value!;
-    const fetch = vi.fn();
+    const bytes = Buffer.from(
+      'R0lGODlhDAAKAIAAAExpcQAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQFCgAAACwAAAAADAAKAAACCYSPqcvtD6OcBQAh+QQFWgAAACwAAAAADAAKAIBMaXHrAAACCYyPqcvtD6OcBQA7',
+      'base64'
+    );
+    const fetch = vi.fn(async (_url: string) => new Response(bytes));
     vi.stubGlobal('fetch', fetch);
     const thumbnail = renderComponent(ConversationImageThumbnail, {
       source: attachment.previewUrl,
@@ -76,13 +80,17 @@ describe('Conversation image loading', () => {
       onReady
     });
     try {
-      await flushComponent();
-      expect(thumbnail.findAll('img')[0]!.props.src).toBe(
-        '/api/agent-runs/run/images/0?nodeId=node'
-      );
+      await vi.waitFor(async () => {
+        await flushComponent();
+        expect(thumbnail.findAll('img')[0]!.props.src).toMatch(/^blob:/u);
+        expect(dialog.findAll('img')[0]!.props.src).toMatch(/^blob:/u);
+      });
       const image = dialog.findAll('img')[0]!;
-      expect(image.props.src).toBe(preview.url);
-      expect(fetch).not.toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+        '/api/agent-runs/run/images/0?nodeId=node&originalGif=1',
+        '/api/agent-runs/run/images/0?nodeId=node&originalGif=1'
+      ]);
       Object.assign(image, { decode: async () => {}, naturalWidth: 32, naturalHeight: 32 });
       await trigger(image, 'onLoad', { currentTarget: image });
       expect(onReady).toHaveBeenCalledExactlyOnceWith(false);

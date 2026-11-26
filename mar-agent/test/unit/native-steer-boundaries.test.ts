@@ -609,6 +609,253 @@ describe('native steer acceptance boundaries', () => {
     }
   });
 
+  it.each([
+    { ending: 'completed', observesAbort: true },
+    { ending: 'completed', observesAbort: false },
+    { ending: 'failed', observesAbort: true },
+    { ending: 'permission stop', observesAbort: true },
+    { ending: 'cancelled', observesAbort: true },
+    { ending: 'failed', observesAbort: false }
+  ] as const)(
+    'releases pending steer and runs the next input after $ending (Hook observes abort: $observesAbort)',
+    async ({ ending, observesAbort }) => {
+      const entered = Promise.withResolvers<AbortSignal>();
+      const cleanup = Promise.withResolvers<void>();
+      const hookExited = vi.fn();
+      const received = vi.fn();
+      const rejected = vi.fn();
+      const f = await fixture({
+        extensions: [
+          {
+            id: 'native-steer-admission-lifetime',
+            apiVersion: '1.0',
+            attachSession(context) {
+              context.hooks.intercept('prompt.submit', async (input, call, next) => {
+                if (input.text !== 'blocked steer') return next(input);
+                entered.resolve(call.signal);
+                try {
+                  await (observesAbort
+                    ? waitForRelease(cleanup.promise, call.signal)
+                    : cleanup.promise);
+                  return await next(input);
+                } finally {
+                  hookExited();
+                }
+              });
+            }
+          }
+        ],
+        script: async function* (request, index, signal, gate) {
+          if (index !== 0 || ending === 'completed') {
+            yield* answerScript(request, index, signal, gate);
+            return;
+          }
+          await waitForRelease(gate, signal);
+          if (ending === 'failed') throw new Error('model failed');
+          yield {
+            type: 'client_tool.call',
+            callId: 'permission-stop',
+            name: 'read',
+            arguments: {
+              reads: [{ path: 'not-opened.txt' }],
+              permission: { action: 'ask', reason: 'Stop without an approval handler.' }
+            }
+          };
+          yield { type: 'completed', reason: 'tool_use' };
+        }
+      });
+      const handle = f.session.run({ prompt: 'initial', permissionMode: 'auto' });
+      try {
+        await waitForGate(handle, f.started, 'initial model request');
+        void f.session
+          .steer({
+            expectedExecutionId: handle.executionId,
+            prompt: 'blocked steer',
+            clientMessageId: 'pending-admission'
+          })
+          .then(received, rejected);
+        await waitForGate(
+          handle,
+          entered.promise.then(() => {}),
+          'steer prompt Hook'
+        );
+        if (ending === 'cancelled') handle.cancel();
+        const outcome = vi.fn();
+        void handle.result().then(outcome, outcome);
+        f.release();
+        await vi.waitFor(() =>
+          expect(outcome).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining(
+              ending === 'permission stop'
+                ? {
+                    status: 'completed',
+                    permissionStop: expect.objectContaining({ action: 'ask' })
+                  }
+                : { status: ending }
+            )
+          )
+        );
+        expect((await entered.promise).aborted).toBe(true);
+        await vi.waitFor(() =>
+          expect(received).toHaveBeenCalledExactlyOnceWith({ status: 'notAccepted' })
+        );
+        expect(rejected).not.toHaveBeenCalled();
+        expect(hookExited).toHaveBeenCalledTimes(observesAbort ? 1 : 0);
+        const retry = f.session.run({ prompt: 'next input' });
+        expect(await retry.result()).toMatchObject({ status: 'completed' });
+        expect(userContents(f.requests[1]!)).not.toContain('blocked steer');
+        expect(await deferredUserRecords(f)).toHaveLength(0);
+      } finally {
+        cleanup.resolve();
+        f.release();
+        await handle.result();
+      }
+    }
+  );
+
+  it('applies a committed FIFO prefix without letting a pending steer stall the follow-up round', async () => {
+    const entered = Promise.withResolvers<AbortSignal>();
+    const cleanup = Promise.withResolvers<void>();
+    const laterHook = vi.fn();
+    const f = await fixture({
+      extensions: [
+        {
+          id: 'native-steer-pending-prefix',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.hooks.intercept('prompt.submit', async (input, call, next) => {
+              if (input.text === 'later') laterHook();
+              if (input.text === 'blocked') {
+                entered.resolve(call.signal);
+                await waitForRelease(cleanup.promise, call.signal);
+              }
+              return next(input);
+            });
+          }
+        }
+      ]
+    });
+    const handle = f.session.run({ prompt: 'initial' });
+    const steer = (prompt: string) =>
+      f.session.steer({ expectedExecutionId: handle.executionId, prompt, clientMessageId: prompt });
+    try {
+      await waitForGate(handle, f.started, 'initial model request');
+      expect(await steer('accepted')).toMatchObject({ status: 'accepted' });
+      const blocked = steer('blocked');
+      await waitForGate(
+        handle,
+        entered.promise.then(() => {}),
+        'steer prompt Hook'
+      );
+      const later = steer('later');
+      f.release();
+      const outcome = vi.fn();
+      void handle.result().then(outcome, outcome);
+      await vi.waitFor(() =>
+        expect(outcome).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ status: 'completed', finalAnswer: 'answer-1' })
+        )
+      );
+      await expect(Promise.all([blocked, later])).resolves.toEqual([
+        { status: 'notAccepted' },
+        { status: 'notAccepted' }
+      ]);
+      expect((await entered.promise).aborted).toBe(true);
+      expect(laterHook).not.toHaveBeenCalled();
+      expect(f.requests).toHaveLength(2);
+      expect(userContents(f.requests[1]!)).toEqual(['initial', 'accepted']);
+      expect(await deferredUserRecords(f)).toHaveLength(1);
+    } finally {
+      cleanup.resolve();
+      f.release();
+      await handle.result();
+    }
+  });
+
+  it.each(['before commit', 'after commit', 'with an uncertain commit'] as const)(
+    'preserves the writer outcome when closing steer %s',
+    async (closeAt) => {
+      const writerPaused = Promise.withResolvers<AbortSignal>();
+      const releaseWriter = Promise.withResolvers<void>();
+      const writerError = new Error('Writer could not confirm the durable outcome.');
+      const append = JsonlSessionStore.prototype.append;
+      const f = await fixture({
+        script: async function* (request, index, signal, gate) {
+          if (index === 0) {
+            await waitForRelease(gate, signal);
+            throw new Error('model failed');
+          }
+          yield* answerScript(request, index, signal, gate);
+        }
+      });
+      const writer = vi
+        .spyOn(JsonlSessionStore.prototype, 'append')
+        .mockImplementation(async function (this: JsonlSessionStore, sessionId, input, options) {
+          if (
+            input.type !== 'turn.user' ||
+            (input.payload as { clientMessageId?: string }).clientMessageId !== 'paused-steer'
+          )
+            return append.call(this, sessionId, input, options);
+          const record =
+            closeAt !== 'before commit'
+              ? await append.call(this, sessionId, input, options)
+              : undefined;
+          writerPaused.resolve(options?.signal!);
+          await releaseWriter.promise;
+          if (closeAt === 'with an uncertain commit') throw writerError;
+          return record ?? append.call(this, sessionId, input, options);
+        });
+      const handle = f.session.run({ prompt: 'initial' });
+      try {
+        await waitForGate(handle, f.started, 'initial model request');
+        const steer = f.session.steer({
+          expectedExecutionId: handle.executionId,
+          prompt: 'writer input',
+          clientMessageId: 'paused-steer'
+        });
+        const settled = vi.fn();
+        void steer.then(settled, settled);
+        await waitForGate(
+          handle,
+          writerPaused.promise.then(() => {}),
+          'steer writer'
+        );
+        const writerSignal = await writerPaused.promise;
+        f.release();
+        await vi.waitFor(() => expect(writerSignal.aborted).toBe(true));
+        expect(settled).not.toHaveBeenCalled();
+        releaseWriter.resolve();
+        const persisted = closeAt !== 'before commit';
+        if (closeAt === 'with an uncertain commit') {
+          await expect(steer).rejects.toBe(writerError);
+        } else if (closeAt === 'after commit') {
+          expect(await steer).toMatchObject({
+            status: 'accepted',
+            entry: { text: 'writer input', clientMessageId: 'paused-steer' }
+          });
+        } else {
+          expect(await steer).toEqual({ status: 'notAccepted' });
+        }
+        expect(await handle.result()).toMatchObject({ status: 'failed' });
+        expect(await f.session.run({ prompt: 'next input' }).result()).toMatchObject({
+          status: 'completed'
+        });
+        expect(userContents(f.requests[1]!)).toEqual(
+          persisted ? ['initial', 'writer input', 'next input'] : ['initial', 'next input']
+        );
+        expect(await deferredUserRecords(f)).toHaveLength(persisted ? 1 : 0);
+      } finally {
+        f.release();
+        releaseWriter.resolve();
+        try {
+          await handle.result();
+        } finally {
+          writer.mockRestore();
+        }
+      }
+    }
+  );
+
   it('returns handled without history, a live received event, or a follow-up model request', async () => {
     const text = 'extension handles this';
     const extension: AgentExtension = {

@@ -282,7 +282,6 @@ export function createSessionExecutionFactory(ports: {
     const manualCompactionId = mode === 'compact' ? randomUUID() : undefined;
     sessionRuntime.registerExecution(executionOwner);
     const inputs = sessionInputs();
-    let acceptsSteer = false;
     let exhaustedModelAttempt: ExhaustedModelAttemptSummary | undefined;
     const eventPorts = {
       hasRetainedLease: () => store.hasRetainedSessionLease(sessionId, sessionWriterOwner),
@@ -566,7 +565,10 @@ export function createSessionExecutionFactory(ports: {
           sessionSource.type === 'user' && !internal.automaticInput
         );
         executionOwner.bindViews({ toolSources: sources });
-        const operation = <T>(run: (call: ExtensionOperationContext) => T): T =>
+        const operation = <T>(
+          run: (call: ExtensionOperationContext) => T,
+          signal?: AbortSignal
+        ): T =>
           extensionManager.operations.run(
             {
               sessionId,
@@ -575,7 +577,7 @@ export function createSessionExecutionFactory(ports: {
               turnId,
               actor: 'sdk',
               entry: 'native-api',
-              signal: controller.signal
+              signal: signal ? AbortSignal.any([controller.signal, signal]) : controller.signal
             },
             run
           );
@@ -865,13 +867,11 @@ export function createSessionExecutionFactory(ports: {
             }
           });
           if (!entered) return { inputHandled: true as const };
-          acceptsSteer = true;
           executionOwner.acceptSteer(
             createNativeSteer({
               executionId,
               inputs,
-              signal: controller.signal,
-              isOpen: () => acceptsSteer,
+              admissionSignal: executionOwner.steerAdmissionSignal,
               operation,
               admit: (content, call, write) =>
                 invokeCorePromptSubmission(coreExtensions.hooks, content, call, write),
@@ -1283,9 +1283,7 @@ export function createSessionExecutionFactory(ports: {
             mailbox: {
               hasPending: () => inputs.hasBoundaryPending && !inputs.executing,
               append: appendMailboxMessages,
-              close: () => {
-                acceptsSteer = false;
-              }
+              close: () => executionOwner.closeSteerAdmission()
             }
           });
           compactRequests.seal();
@@ -1313,7 +1311,6 @@ export function createSessionExecutionFactory(ports: {
         };
       },
       beforeFailure: async (error) => {
-        acceptsSteer = false;
         executionOwner.stopSteer();
         await sessionRuntime.joinRecordProjection();
         await compactCoordinator.close(error).catch(() => undefined);

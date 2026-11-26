@@ -99,6 +99,10 @@ export class SessionExecution {
   >;
   // The handle exists before its first input is committed. This only gates entry to the mailbox.
   readonly #steerReady = Promise.withResolvers<void>();
+  readonly #steerAdmission = new AbortController();
+  get steerAdmissionSignal(): AbortSignal {
+    return this.#steerAdmission.signal;
+  }
   private readonly steer: NonNullable<SessionExecutionContext['steer']> = async (input, source) => {
     if (input.expectedExecutionId !== this.executionId) return { status: 'notAccepted' };
     if (!this.#bindings.steer) await this.#steerReady.promise;
@@ -114,13 +118,21 @@ export class SessionExecution {
   }
 
   acceptSteer(steer: NonNullable<SessionExecutionContext['steer']>): void {
+    if (this.steerAdmissionSignal.aborted) return;
     this.#bindings = { ...this.#bindings, steer };
     this.#steerReady.resolve();
   }
 
+  closeSteerAdmission(): void {
+    if (this.steerAdmissionSignal.aborted) return;
+    // Keep the binding for retries of already accepted IDs until the Execution tears down.
+    this.#steerReady.resolve();
+    this.#steerAdmission.abort(new AgentError('MAR_AGENT_CANCELLED', 'Steer admission closed.'));
+  }
+
   stopSteer(): void {
     delete this.#bindings.steer;
-    this.#steerReady.resolve();
+    this.closeSteerAdmission();
   }
 
   retireCompactRequests(reason: unknown): void {
@@ -339,8 +351,8 @@ export class SessionExecution {
       if (full.type === 'execution.completed') {
         this.controller.signal.throwIfAborted();
         this.completionAdmitted = true;
-        // Handled input never binds steer; keep existing receipts available until teardown.
-        this.#steerReady.resolve();
+        // Handled first input never binds steer; release startup waiters before Host publication.
+        this.closeSteerAdmission();
       }
       if (
         full.type === 'execution.completed' ||
@@ -587,7 +599,7 @@ export class SessionExecution {
 
   cancel(reason?: unknown): void {
     if (this.completionAdmitted) return;
+    this.closeSteerAdmission();
     this.controller.abort(reason);
-    this.#steerReady.resolve();
   }
 }

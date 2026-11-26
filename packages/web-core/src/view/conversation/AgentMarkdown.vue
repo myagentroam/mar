@@ -14,6 +14,7 @@ import { localePreferenceService, translate } from '../../service/locale-prefere
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
 import { conversationThumbnailUrl } from '../../util/conversation-image-url.js';
+import { observeGifThumbnail } from '../../service/conversation-image-preview-loader.js';
 import { CONVERSATION_MARKDOWN_CACHE_KEY } from '../../util/conversation-markdown-cache.js';
 import type { ConversationImageAttachment } from '../../service/conversation-image-service.js';
 
@@ -143,7 +144,8 @@ renderer.renderer.rules.image = (tokens, index, options, environment, self) => {
   const label = self.renderInlineAsText(token.children ?? [], options, environment);
   const renderImage = (direct = false) => {
     const fullSource = String(token.attrGet('src') ?? '');
-    token.attrSet('src', conversationThumbnailUrl(fullSource, direct));
+    if (direct && fullSource.startsWith('/api/')) token.attrs?.splice(token.attrIndex('src'), 1);
+    else token.attrSet('src', conversationThumbnailUrl(fullSource, direct));
     token.attrSet('data-image-source', fullSource);
     if (direct) token.attrSet('data-image-direct', 'true');
     token.attrSet('loading', 'lazy');
@@ -190,6 +192,27 @@ const tooltipService = inject(TOOLTIP_SERVICE_KEY, undefined);
 const markdownCache = inject(CONVERSATION_MARKDOWN_CACHE_KEY, undefined);
 let codeCopyButtons = new Set<HTMLButtonElement>();
 const copyResetTimers = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>();
+const gifThumbnails = new Map<HTMLImageElement, () => void>();
+
+// v-html owns the nodes; release each image binding as soon as its rendered node is replaced.
+function syncGifThumbnails(): void {
+  const images = new Set(
+    markdownRoot.value?.querySelectorAll<HTMLImageElement>('img[data-image-direct]') ?? []
+  );
+  for (const [image, release] of gifThumbnails) {
+    if (images.has(image)) continue;
+    release();
+    gifThumbnails.delete(image);
+  }
+  for (const image of images) {
+    const source = image.dataset.imageSource;
+    if (!source?.startsWith('/api/') || gifThumbnails.has(image)) continue;
+    gifThumbnails.set(
+      image,
+      observeGifThumbnail(image, source, (url) => (image.src = url))
+    );
+  }
+}
 
 // v-html buttons cannot use Vue directives; register only this rendered markdown's controls.
 function syncCodeTooltips(): void {
@@ -210,7 +233,11 @@ function syncCodeTooltips(): void {
 
 onMounted(syncCodeTooltips);
 onUpdated(syncCodeTooltips);
+onMounted(syncGifThumbnails);
+onUpdated(syncGifThumbnails);
 onBeforeUnmount(() => {
+  for (const release of gifThumbnails.values()) release();
+  gifThumbnails.clear();
   for (const button of codeCopyButtons) tooltipService?.remove(button);
   codeCopyButtons.clear();
   for (const timer of copyResetTimers.values()) clearTimeout(timer);
@@ -386,6 +413,11 @@ function onLinkClick(event: MouseEvent): void {
   border: 1px solid var(--mar-conversation-border);
   border-radius: 6px;
   object-fit: contain;
+}
+
+.agent-markdown :deep(img[data-image-direct]:not([src])) {
+  min-width: 2.5rem;
+  min-height: 1.5rem;
 }
 
 .agent-markdown :deep(> :last-child) {

@@ -2,6 +2,7 @@ import type { FastifyReply } from 'fastify';
 import { safePublicError, sendError, errorResponseOptions } from './http-errors.js';
 
 export function domainErrorStatus(code: string): number {
+  if (code === 'IMAGE_PREVIEW_TOO_LARGE') return 413;
   if (code === 'NODE_RESPONSE_INVALID') return 502;
   if (code === 'SCHEDULE_NOT_FOUND') return 404;
   if (code === 'SCHEDULE_OWNER_REQUIRED') return 403;

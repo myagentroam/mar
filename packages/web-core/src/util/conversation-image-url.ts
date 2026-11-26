@@ -1,7 +1,7 @@
-import type { ImagePreviewOptions } from '@myagentroam/protocol';
+import type { ImageResizeOptions } from '@myagentroam/protocol';
 
 /** Only controlled API resources accept image preview bounds. */
-export function conversationPreviewUrl(source: string, bounds: ImagePreviewOptions): string {
+export function conversationPreviewUrl(source: string, bounds: ImageResizeOptions): string {
   if (!source.startsWith('/api/')) return source;
   const url = new URL(source, 'http://localhost');
   url.searchParams.set('maxWidth', String(bounds.maxWidth));

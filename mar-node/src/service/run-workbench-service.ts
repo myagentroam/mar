@@ -11,7 +11,11 @@ import { imagePreviews } from './image-preview-service.js';
 
 export interface RunWorkbenchServiceOptions {
   readonly runtime: NodeRuntimeState;
-  readonly readImage: (runId: string, selector: number | string) => Promise<unknown | undefined>;
+  readonly readImage: (
+    runId: string,
+    selector: number | string,
+    gifPreview: boolean
+  ) => Promise<unknown | undefined>;
   readonly readModelResource?: (
     input: import('@myagentroam/protocol').ModelResourceReadInput
   ) => Promise<unknown | undefined>;
@@ -98,7 +102,11 @@ export class RunWorkbenchService {
     const native = reference.runId.startsWith('native-history:');
     if (native !== 'imageRef' in reference) throw new Error('RUN_IMAGE_INVALID');
     const selector = 'imageRef' in reference ? reference.imageRef : reference.imageIndex;
-    const image = await this.options.readImage(reference.runId, selector);
+    const image = await this.options.readImage(
+      reference.runId,
+      selector,
+      reference.preview !== undefined && 'originalGif' in reference.preview
+    );
     if (image === undefined) throw new Error('RUN_IMAGE_NOT_FOUND');
     return {
       image:
