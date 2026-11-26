@@ -133,7 +133,8 @@ describe('WhiteboardStore', () => {
       ])
     ).toMatchObject({
       boardRevision: 2,
-      added: [{ id: 'w3', revision: 1 }]
+      added: [{ id: 'w3', revision: 1 }],
+      entryChanges: { entries: ['final', 'third'], removedCount: 1 }
     });
     expect(store.read(OWNER)).toMatchObject({
       boardRevision: 2,
@@ -149,7 +150,11 @@ describe('WhiteboardStore', () => {
         { op: 'clear', expectedBoardRevision: 2 },
         { op: 'add', content: 'replacement after clear' }
       ])
-    ).toMatchObject({ boardRevision: 3, added: [{ id: 'w4', revision: 1 }] });
+    ).toMatchObject({
+      boardRevision: 3,
+      added: [{ id: 'w4', revision: 1 }],
+      entryChanges: { entries: ['replacement after clear'], removedCount: 2 }
+    });
     expect(store.read(OWNER)).toMatchObject({
       boardRevision: 3,
       entries: [{ id: 'w4', revision: 1, content: 'replacement after clear' }],
@@ -216,7 +221,7 @@ describe('WhiteboardStore', () => {
 
     expect(
       update(store, [{ op: 'update', id: 'w1', expectedRevision: 1, content: 'unchanged' }])
-    ).toMatchObject({ boardRevision: 1 });
+    ).toMatchObject({ boardRevision: 1, entryChanges: { entries: [], removedCount: 0 } });
     expect(store.read(OWNER)).toMatchObject({
       boardRevision: 1,
       entries: [{ id: 'w1', revision: 1, content: 'unchanged' }],
@@ -307,7 +312,7 @@ describe('WhiteboardService', () => {
     edit('B', 'D', 'B now follows D');
     expect(service.join('B', 'B')).toEqual({ boardAgentId: 'B', changed: false });
     expect(followedBoard(service, 'B')?.boardId).toBe('D');
-    expect(service.leave('B')).toEqual({ changed: true });
+    expect(service.leave('B')).toEqual({ boardAgentId: 'D', changed: true });
     expect(service.leave('B')).toEqual({ changed: false });
     expect(followedBoard(service, 'B')).toBeUndefined();
     expect(() => edit('B', 'D', 'B stopped following D')).toThrowError(
@@ -337,7 +342,7 @@ describe('WhiteboardService', () => {
     expect(service.isDetached('run-C')).toBe(true);
 
     const candidate = service.capture('run-B', ['run-A2']);
-    expect(service.leave('run-B')).toEqual({ changed: true });
+    expect(service.leave('run-B')).toEqual({ boardAgentId: 'A', changed: true });
     expect(service.isDetached('run-B')).toBe(false);
     expect(candidate.accept()).toBe(false);
     expect(service.capture('run-B', ['run-A2']).views.map(({ role }) => role)).toEqual(['own']);

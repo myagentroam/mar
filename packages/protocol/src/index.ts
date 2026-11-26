@@ -2487,6 +2487,12 @@ const toolCallPresentationSchema = z.discriminatedUnion('kind', [
     startedAt: z.string().datetime().optional(),
     elapsedMs: z.number().int().nonnegative().optional(),
     wakeReason: z.enum(['elapsed', 'steer', 'subagent_message', 'context_update']).optional()
+  }),
+  // Runner-owned public details; only the envelope belongs to the common protocol.
+  z.object({
+    kind: z.literal('EXTENSION'),
+    name: z.string().min(1).max(128),
+    data: z.record(z.unknown())
   })
 ]);
 export const toolPresentationSchema = z.union([
@@ -2588,34 +2594,40 @@ const toolOutputSnapshotSchema = z
 const readableToolOutputSchema = z.union([toolOutputSchema, toolOutputSnapshotSchema]);
 const toolCallItemSchema = conversationItemBaseSchema.extend({
   kind: z.literal('tool_call'),
-  payload: z.object({
-    namespace: z.string().min(1).max(128),
-    toolName: z.string().min(1).max(128),
-    title: z.string().min(1).max(500),
-    inputSummary: z.string().max(10000).nullable(),
-    outputSummary: z.string().max(10000).nullable(),
-    progressLabel: z.string().max(500).nullable(),
-    errorCode: z.string().max(80).nullable(),
-    errorMessage: z.string().max(1000).optional(),
-    truncated: z.boolean().optional(),
-    inputTruncated: z.literal(true).optional(),
-    outputSummaryTruncated: z.literal(true).optional(),
-    output: readableToolOutputSchema.optional(),
-    toolCategory: z.enum(['IMAGE_GENERATION']).optional(),
-    toolPresentation: toolCallPresentationSchema.optional(),
-    agentOperation: agentOperationPresentationSchema.optional(),
-    whiteboardOperation: whiteboardOperationPresentationSchema.optional(),
-    subagentOperation: subagentOperationSchema.optional(),
-    subagentCallDetail: subagentCallDetailSchema.optional(),
-    subagentWait: z.boolean().optional(),
-    subagentId: z.string().min(1).max(128).nullable().optional(),
-    subagentSessionId: z.string().min(1).max(128).optional(),
-    subagentModelId: z.string().min(1).max(128).optional(),
-    subagentModelName: z.string().min(1).max(128).optional(),
-    subagentReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional(),
-    subagentLatestMessage: subagentLatestMessageSchema.optional(),
-    attachments: z.array(conversationImageAttachmentSchema).max(32).optional()
-  })
+  // Validate the shared shape without dropping fields from the public Runner projection.
+  payload: z.intersection(
+    z.object({
+      namespace: z.string().min(1).max(128),
+      toolName: z.string().min(1).max(128),
+      title: z.string().min(1).max(500),
+      inputSummary: z.string().max(10000).nullable(),
+      outputSummary: z.string().max(10000).nullable(),
+      progressLabel: z.string().max(500).nullable(),
+      errorCode: z.string().max(80).nullable(),
+      errorMessage: z.string().max(1000).optional(),
+      truncated: z.boolean().optional(),
+      inputTruncated: z.literal(true).optional(),
+      outputSummaryTruncated: z.literal(true).optional(),
+      output: readableToolOutputSchema.optional(),
+      toolCategory: z.enum(['IMAGE_GENERATION']).optional(),
+      toolPresentation: toolCallPresentationSchema.optional(),
+      agentOperation: agentOperationPresentationSchema.optional(),
+      whiteboardOperation: whiteboardOperationPresentationSchema.optional(),
+      subagentOperation: subagentOperationSchema.optional(),
+      subagentCallDetail: subagentCallDetailSchema.optional(),
+      subagentWait: z.boolean().optional(),
+      subagentId: z.string().min(1).max(128).nullable().optional(),
+      subagentSessionId: z.string().min(1).max(128).optional(),
+      subagentModelId: z.string().min(1).max(128).optional(),
+      subagentModelName: z.string().min(1).max(128).optional(),
+      subagentReasoningEffort: z
+        .enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+        .optional(),
+      subagentLatestMessage: subagentLatestMessageSchema.optional(),
+      attachments: z.array(conversationImageAttachmentSchema).max(32).optional()
+    }),
+    z.record(z.unknown())
+  )
 });
 const commandExecutionItemSchema = conversationItemBaseSchema.extend({
   kind: z.literal('command_execution'),

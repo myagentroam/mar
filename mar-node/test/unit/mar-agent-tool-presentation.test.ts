@@ -11,6 +11,7 @@ import type { NodeConfig } from '../../src/config.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { createWebToolsExtensions } from '../../src/runner/mar-agent/web-tools-extensions.js';
 import { whiteboardTool } from '../../src/orchestration/whiteboard/whiteboard-tool.js';
+import { whiteboardOperationEvent } from '../../src/orchestration/whiteboard/whiteboard-presentation.js';
 import { WebToolService } from '../../src/service/web-tool-service.js';
 import { formatReadEventOutput } from '../../../mar-agent/src/tools/local/read.js';
 import {
@@ -34,6 +35,23 @@ function event(payload: Record<string, unknown>): AgentEvent {
 }
 
 describe('MAR tool presentation projection', () => {
+  it('keeps whole committed entry previews within the extension event byte limit', () => {
+    const content = '\u0000'.repeat(1024);
+    const result = whiteboardOperationEvent(
+      { action: 'update' },
+      {
+        data: { boardAgentId: 'owner', changed: true },
+        boardAgentName: 'Review board',
+        entryChanges: { entries: [content, content, 'later entry'], removedCount: 2 }
+      }
+    );
+    expect(result?.whiteboardOperation.entryChanges).toEqual({
+      entries: [content],
+      removedCount: 2,
+      truncated: true
+    });
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(8192);
+  });
   it.each([undefined, 'cell-call'])(
     'projects whiteboard receipts and errors (parent: %s)',
     async (parentCallId) => {
@@ -46,27 +64,38 @@ describe('MAR tool presentation projection', () => {
         entries: [{ id: 'w1', revision: 1, content: 'Board text' }]
       };
       const tool = whiteboardTool(
-        () => receipt,
+        (_executionId, input) => ({
+          data: input.action === 'read' ? receipt : { boardAgentId: 'owner', changed: true },
+          boardAgentName: 'Review board',
+          ...(input.action === 'update'
+            ? { entryChanges: { entries: ['Committed content'], removedCount: 1 } }
+            : {})
+        }),
         () => 'execution'
       );
-      const result = await tool.execute(
-        await tool.parseInput!(input),
-        {
-          operationId: 'operation',
-          sessionId: 'session',
-          sessionEpoch: 1,
-          actor: 'model',
-          entry: 'direct',
-          signal: AbortSignal.timeout(1000)
-        },
-        async () => {
-          throw new Error('Unexpected next call');
-        }
-      );
+      const execute = async (input: unknown) =>
+        tool.execute(
+          await tool.parseInput!(input),
+          {
+            operationId: 'operation',
+            sessionId: 'session',
+            sessionEpoch: 1,
+            actor: 'model',
+            entry: 'direct',
+            signal: AbortSignal.timeout(1000)
+          },
+          async () => {
+            throw new Error('Unexpected next call');
+          }
+        );
+      const result = await execute(input);
       expect(result.data).toEqual(receipt);
       const [start] = normalizer.normalize(event({ ...common, type: 'tool.started', input }));
-      expect(start?.payload).toMatchObject({ whiteboardOperation: { action: 'read' } });
-      expect(start?.payload.whiteboardOperation).not.toHaveProperty('entryCount');
+      expect(start?.payload.toolPresentation).toEqual({
+        kind: 'EXTENSION',
+        name: 'whiteboard',
+        data: { action: 'read' }
+      });
       const [done] = normalizer.normalize(
         event({
           ...common,
@@ -77,13 +106,69 @@ describe('MAR tool presentation projection', () => {
       );
       expect(done?.itemId).toBe(start?.itemId);
       expect(done?.payload).toMatchObject({ outputSummary: result.content });
-      expect(done?.payload.whiteboardOperation).toEqual({
-        action: 'read',
-        boardAgentId: 'owner',
-        boardRevision: 2,
-        entryCount: 1
+      expect(done?.payload.toolPresentation).toEqual({
+        kind: 'EXTENSION',
+        name: 'whiteboard',
+        data: {
+          action: 'read',
+          boardAgentId: 'owner',
+          boardAgentName: 'Review board',
+          boardRevision: 2,
+          entryCount: 1
+        }
       });
       expect(done?.payload).not.toHaveProperty('agentOperation');
+
+      const leaveInput = { action: 'leave' };
+      const leaveResult = await execute(leaveInput);
+      const successfulLeave = { ...common, callId: 'successful-leave' };
+      normalizer.normalize(event({ ...successfulLeave, type: 'tool.started', input: leaveInput }));
+      const [left] = normalizer.normalize(
+        event({
+          ...successfulLeave,
+          type: 'tool.completed',
+          summary: leaveResult.content,
+          data: leaveResult.eventData
+        })
+      );
+      expect(left?.payload.toolPresentation).toEqual({
+        kind: 'EXTENSION',
+        name: 'whiteboard',
+        data: {
+          action: 'leave',
+          boardAgentId: 'owner',
+          boardAgentName: 'Review board',
+          changed: true
+        }
+      });
+
+      const edit = { ...common, callId: 'edit' };
+      const editInput = {
+        action: 'update',
+        boardAgentId: 'owner',
+        ops: [{ op: 'add', content: 'Committed content' }]
+      };
+      const editResult = await execute(editInput);
+      expect(editResult.data).toEqual({ boardAgentId: 'owner', changed: true });
+      normalizer.normalize(event({ ...edit, type: 'tool.started', input: editInput }));
+      const [edited] = normalizer.normalize(
+        event({
+          ...edit,
+          type: 'tool.completed',
+          summary: editResult.content,
+          data: editResult.eventData
+        })
+      );
+      expect(edited?.payload.toolPresentation).toMatchObject({
+        kind: 'EXTENSION',
+        name: 'whiteboard',
+        data: {
+          action: 'update',
+          boardAgentId: 'owner',
+          boardAgentName: 'Review board',
+          entryChanges: { entries: ['Committed content'], removedCount: 1 }
+        }
+      });
 
       const join = { ...common, callId: 'join' };
       normalizer.normalize(
@@ -102,7 +187,11 @@ describe('MAR tool presentation projection', () => {
         payload: {
           errorCode: 'WHITEBOARD_UNAVAILABLE',
           errorMessage: 'Board is not active.',
-          whiteboardOperation: { action: 'join', boardAgentId: 'owner' }
+          toolPresentation: {
+            kind: 'EXTENSION',
+            name: 'whiteboard',
+            data: { action: 'join', boardAgentId: 'owner' }
+          }
         }
       });
 
@@ -115,7 +204,11 @@ describe('MAR tool presentation projection', () => {
       );
       expect(cancelled?.itemId).toBe(leaving?.itemId);
       expect(cancelled?.status).toBe('CANCELLED');
-      expect(cancelled?.payload.whiteboardOperation).toEqual({ action: 'leave' });
+      expect(cancelled?.payload.toolPresentation).toEqual({
+        kind: 'EXTENSION',
+        name: 'whiteboard',
+        data: { action: 'leave' }
+      });
     }
   );
   it('carries SDK source intervals through the public schema and snapshot reducer to file detail', () => {

@@ -551,12 +551,16 @@ if (new URL(location.href).searchParams.has('whiteboard-cards')) {
         toolName: 'whiteboard',
         inputSummary: '{"action":"update"}',
         outputSummary: '{"changed":false}',
-        whiteboardOperation: {
-          action: 'update',
-          boardAgentId: 'board-owner',
-          boardRevision: 0,
-          operationCount: 1,
-          changed: false
+        toolPresentation: {
+          kind: 'EXTENSION',
+          name: 'whiteboard',
+          data: {
+            action: 'update',
+            boardAgentId: 'board-owner',
+            boardRevision: 0,
+            operationCount: 1,
+            changed: false
+          }
         }
       }
     },
@@ -590,6 +594,35 @@ if (new URL(location.href).searchParams.has('whiteboard-cards')) {
         whiteboardOperation: { action: 'leave' }
       }
     }
+  );
+}
+if (new URL(location.href).searchParams.has('whiteboard-results')) {
+  const receipts = [
+    { action: 'read', boardAgentId: 'shared-board', entryCount: 3 },
+    { action: 'read', boardAgentId: 'empty-board', entryCount: 0 },
+    {
+      action: 'update',
+      boardAgentId: 'shared-board',
+      boardAgentName: '交付评审',
+      changed: true,
+      entryChanges: { entries: ['保留兼容接口', '新增回归覆盖'], removedCount: 1, truncated: true }
+    },
+    { action: 'join', boardAgentId: 'shared-board', changed: false },
+    { action: 'leave', changed: false },
+    { action: 'leave', boardAgentId: 'shared-board', boardAgentName: '交付评审', changed: true }
+  ];
+  detailSamples.push(
+    ...receipts.map((data, index): ToolDetailFixtureItem => ({
+      id: `whiteboard-result-${index}`,
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'whiteboard',
+        toolPresentation: { kind: 'EXTENSION', name: 'whiteboard', data },
+        outputSummary: '{"raw":"fixture receipt"}',
+        ...(index === 0 ? { outputSummaryTruncated: true } : {})
+      }
+    }))
   );
 }
 if (new URL(location.href).searchParams.has('agent-cards')) {

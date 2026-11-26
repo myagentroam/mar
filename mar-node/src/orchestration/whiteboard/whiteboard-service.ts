@@ -136,6 +136,9 @@ export class WhiteboardService {
   } {
     const run = this.requireRun(runId);
     const owner = boardId ?? run.sessionId;
+    // Read addresses a persisted Workspace resource, not another Run's state (agent_view)
+    // or its live sharing permissions (join/update). Only the caller needs an active Run;
+    // the owner's Run and initiating user are irrelevant. Read grants no follow or write access.
     if (owner !== run.sessionId && !this.options.boardInWorkspace(owner, run.workspaceId))
       throw new AgentError(
         'WHITEBOARD_UNAVAILABLE',
@@ -174,7 +177,11 @@ export class WhiteboardService {
 
   leave(runId: string) {
     this.requireRun(runId);
-    return { changed: this.follows.delete(runId) };
+    // A detached follow still identifies the board being left.
+    const binding = this.follows.get(runId)?.[0];
+    if (!binding) return { changed: false };
+    this.follows.delete(runId);
+    return { boardAgentId: binding.ownerSessionId, changed: true };
   }
 
   /** Preview the view for a request, without establishing a binding for a discarded candidate. */

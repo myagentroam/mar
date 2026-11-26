@@ -12,7 +12,10 @@ import {
   stringField
 } from '../../../util/conversation-presentation.js';
 import { agentOperationDetail } from '../../../util/agent-operation-presentation.js';
-import { whiteboardOperation } from '../../../util/whiteboard-operation-presentation.js';
+import {
+  whiteboardOperation,
+  whiteboardReceiptText
+} from '../../../util/whiteboard-operation-presentation.js';
 import {
   detailOnlyToolText,
   readFileDetail,
@@ -46,6 +49,37 @@ const payload = computed(() =>
 );
 const output = computed(() => readToolOutput(payload.value));
 const board = computed(() => whiteboardOperation(payload.value));
+const boardReceipt = computed(() =>
+  board.value && props.item.status === 'COMPLETED' ? whiteboardReceiptText(board.value) : undefined
+);
+const boardEntryChanges = computed(() =>
+  props.item.status === 'COMPLETED' && board.value?.action === 'update'
+    ? board.value.entryChanges
+    : undefined
+);
+const genericOutput = computed(() => {
+  if (!board.value) return output.value;
+  // The public record is still copyable; show only the truncation fact here.
+  const truncation = output.value?.truncation;
+  return truncation ? { blocks: [], truncation } : undefined;
+});
+const errorMessage = computed(() => stringField(payload.value, 'errorMessage'));
+const errorCode = computed(() => stringField(payload.value, 'errorCode'));
+const showPreview = computed(
+  () =>
+    !props.copyOnly &&
+    (!board.value ||
+      Boolean(
+        board.value.boardAgentId ||
+        boardReceipt.value ||
+        boardEntryChanges.value ||
+        payload.value.inputTruncated === true ||
+        genericOutput.value?.truncation ||
+        errorCode.value ||
+        errorMessage.value ||
+        props.item.permissionStop?.reason
+      ))
+);
 const selection = computed(() => {
   const p = payload.value;
   const agent = props.item.permissionStop ? undefined : agentOperationDetail(p, props.item.status);
@@ -109,7 +143,7 @@ const detailText = computed(() => {
     class="tool-detail"
     :class="{
       'mar-conversation-detail-body':
-        !copyOnly && (selection.kind !== 'fallback' || detailText || $slots.default)
+        showPreview && (selection.kind !== 'fallback' || detailText || $slots.default)
     }"
     :aria-label="translate('toolPresentation.detail.output')"
   >
@@ -118,7 +152,7 @@ const detailText = computed(() => {
       :record="item"
       @copy="(text, done) => emit('copy', text, done)"
     />
-    <ConversationDetailPreview v-if="!copyOnly">
+    <ConversationDetailPreview v-if="showPreview">
       <AgentOperationDetail v-if="selection.kind === 'agent'" :agent-detail="selection.value" />
       <ReadFileDetail
         v-else-if="selection.kind === 'read'"
@@ -210,18 +244,23 @@ const detailText = computed(() => {
         :permission-reason="item.permissionStop?.reason"
       />
       <template v-else-if="selection.kind === 'generic'">
-        <WhiteboardOperationDetail v-if="board" :operation="board" />
+        <WhiteboardOperationDetail
+          v-if="board"
+          :owner="board.boardAgentName ?? board.boardAgentId"
+          :receipt="boardReceipt"
+          :entry-changes="boardEntryChanges"
+        />
         <GenericToolDetail
-          :title="stringField(payload, 'title')"
+          :title="board ? undefined : stringField(payload, 'title')"
           :tool-name="stringField(payload, 'toolName')"
           :input-summary="
-            typeof payload.inputSummary === 'string' ? payload.inputSummary : undefined
+            !board && typeof payload.inputSummary === 'string' ? payload.inputSummary : undefined
           "
           :input-truncated="payload.inputTruncated === true"
-          :generic-output="output"
+          :generic-output="genericOutput"
           :progress-label="board ? undefined : stringField(payload, 'progressLabel')"
-          :error-code="stringField(payload, 'errorCode')"
-          :error-message="stringField(payload, 'errorMessage')"
+          :error-code="board && errorMessage ? undefined : errorCode"
+          :error-message="errorMessage"
           :permission-reason="item.permissionStop?.reason"
         />
       </template>

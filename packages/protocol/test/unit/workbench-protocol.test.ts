@@ -6,6 +6,7 @@ import {
   codexCredentialSummarySchema,
   conversationItemDeltaSchema,
   conversationItemSchema,
+  conversationSegmentPageSchema,
   conversationImageAttachmentSchema,
   runImageReadInputSchema,
   eventCursorSchema,
@@ -50,7 +51,7 @@ import {
 } from '../../src/index.js';
 
 describe('Workbench protocol contracts', () => {
-  it('retains whiteboard call facts without board contents or session targets', () => {
+  it('preserves runner-owned tool detail JSON in live items and history without relaxing core fields', () => {
     const item = {
       id: 'call',
       sessionId: 'session',
@@ -73,19 +74,44 @@ describe('Workbench protocol contracts', () => {
         errorCode: null
       }
     };
-    const facts = { action: 'read', boardAgentId: 'owner', boardRevision: 0, entryCount: 0 };
-    const withFacts = (whiteboardOperation: object) => ({
-      ...item,
-      payload: { ...item.payload, whiteboardOperation }
-    });
     expect(conversationItemSchema.parse(item).payload).toEqual(item.payload);
+    const payload = {
+      ...item.payload,
+      futurePublicFact: { value: 'projected by the Runner' },
+      whiteboardOperation: { action: 'read', boardAgentId: 'owner', future: { optional: true } },
+      toolPresentation: {
+        kind: 'EXTENSION',
+        name: 'example-new-tool',
+        data: { values: [true, 4, null, { content: 'runner-owned' }] }
+      }
+    };
+    const projectedItem = { ...item, payload };
+    expect(conversationItemSchema.parse(projectedItem).payload).toEqual(payload);
+    const page = conversationSegmentPageSchema.parse({
+      unit: 'SEGMENT',
+      segments: [
+        {
+          id: 'segment',
+          index: 0,
+          sessionId: 'session',
+          turnId: 'turn',
+          runId: null,
+          status: 'SUCCEEDED',
+          startedAt: 1,
+          completedAt: 2,
+          items: [projectedItem]
+        }
+      ],
+      nextCursor: null,
+      snapshotSequence: 1,
+      source: 'runtime',
+      readAt: 2,
+      latestVisibleAt: 2
+    });
+    expect(page.segments[0]?.items[0]?.payload).toEqual(payload);
     expect(
-      conversationItemSchema.parse(withFacts({ ...facts, entries: ['text'], targets: ['session'] }))
-        .payload
-    ).toEqual({ ...item.payload, whiteboardOperation: facts });
-    expect(conversationItemSchema.safeParse(withFacts({ ...facts, entryCount: -1 })).success).toBe(
-      false
-    );
+      conversationItemSchema.safeParse({ ...item, payload: { ...payload, toolName: 1 } }).success
+    ).toBe(false);
   });
 
   it('accepts only running and idle Session activity without the legacy managed state', () => {
