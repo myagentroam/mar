@@ -463,6 +463,7 @@ function pendingRequestHarness(
   const runs = runState.runs;
   const submission = createWorkbenchSubmissionService();
   const notice = vi.fn();
+  const recordComposerSend = vi.fn();
   const service = createWorkbenchSessionMessageService({
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId,
@@ -498,6 +499,7 @@ function pendingRequestHarness(
     selectedCommand,
     commandAvailable,
     submissionAvailable,
+    captureComposerSend: () => recordComposerSend,
     commandPickerOpen,
     deferredCommands: { value: [] },
     fastEnabled,
@@ -541,6 +543,7 @@ function pendingRequestHarness(
   } as never);
   return {
     service,
+    recordComposerSend,
     runs,
     replaceRuns: runState.replaceRuns,
     submission,
@@ -595,6 +598,49 @@ const acceptedResult = {
 };
 
 describe('Workbench Message Submission Status', () => {
+  it('records the captured Composer body on acceptance under the authoritative session identity', async () => {
+    const harness = pendingRequestHarness({ draft: true });
+    harness.inputValue.value = '  First message\nwith formatting  ';
+    harness.skillTokens.value = [
+      {
+        name: 'test-skill',
+        source: 'WORKSPACE',
+        skillFilePath: 'skills/test/SKILL.md',
+        available: true
+      }
+    ];
+    const sending = harness.service.sendFromComposer();
+    await Promise.resolve();
+    expect(harness.recordComposerSend).not.toHaveBeenCalled();
+    const payload = JSON.parse(harness.request.mock.calls[0]![1]!.body as string);
+    expect(parseComposerTags(payload.content)).toContainEqual(
+      expect.objectContaining({ kind: 'mar_skills' })
+    );
+    harness.inputValue.value = 'new draft';
+    harness.resolveRequest(acceptedResult);
+    await sending;
+    expect(harness.recordComposerSend).toHaveBeenCalledExactlyOnceWith(
+      { nodeId: 'node-1', workspaceId: workspace.id, sessionId: session.id },
+      payload.clientMessageId,
+      '  First message\nwith formatting  '
+    );
+    expect(harness.inputValue.value).toBe('new draft');
+  });
+
+  it('does not record failed Composer submissions or successful non-Composer sends', async () => {
+    const failed = pendingRequestHarness();
+    const sending = failed.service.sendFromComposer();
+    failed.rejectRequest(new Error('network failed'));
+    await sending;
+    expect(failed.recordComposerSend).not.toHaveBeenCalled();
+
+    const internal = pendingRequestHarness();
+    const continuation = internal.service.send();
+    internal.resolveRequest(acceptedResult);
+    await continuation;
+    expect(internal.recordComposerSend).not.toHaveBeenCalled();
+  });
+
   it('caches a late successful delivery without projecting it into another Workspace with the same Session id', async () => {
     const harness = pendingRequestHarness();
     const sending = harness.service.send();

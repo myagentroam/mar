@@ -60,6 +60,9 @@ import {
 } from './workspace-session-pane-loader.js';
 
 type PaneState = ReturnType<typeof createWorkspaceSessionPaneState>;
+type ComposerSendHistory = ReturnType<
+  typeof import('./composer-send-history-service.js').createComposerSendHistory
+>;
 type PresentationOptions = Parameters<PaneState['createPresentation']>[0];
 type QueueOptions = Parameters<PaneState['createQueueActions']>[0];
 type WatchOptions = Parameters<PaneState['createWatch']>[0];
@@ -114,6 +117,10 @@ interface SecondaryPanePorts {
 export function createWorkspaceSessionPaneController(
   options: {
     readonly state: PaneState;
+    readonly composerSendHistory: Pick<
+      ComposerSendHistory,
+      'captureSubmission' | 'createNavigation'
+    >;
     readonly view: Readonly<Ref<string>>;
     readonly watchConnection: {
       readonly waitReady: () => Promise<boolean>;
@@ -895,6 +902,7 @@ export function createWorkspaceSessionPaneController(
   const messaging = state.createMessaging({
     removeSessionExact: options.discovery.projection.removeExact,
     ...options.messaging,
+    captureComposerSend: options.composerSendHistory.captureSubmission,
     sessions: sessions,
     migrateSessionCache: (nodeId, workspaceId, previousId, nextId, session) => {
       options.identity.transfer(nodeId, workspaceId, previousId, nextId);
@@ -929,11 +937,20 @@ export function createWorkspaceSessionPaneController(
     openRun: realtime.openRun,
     errorMessage: common.errorMessage
   });
-  const sendMessage = (
-    intent?: 'REPLACE_CURRENT',
-    preserveDraft = false,
-    contentOverride?: string
-  ) => messaging.send(intent, preserveDraft, contentOverride);
+  const sentHistory = options.composerSendHistory.createNavigation();
+  watchRef(
+    [
+      () => state.workspaceTarget.value?.nodeId,
+      () => state.workspaceTarget.value?.workspaceId,
+      state.sessionId
+    ],
+    sentHistory.reset,
+    { flush: 'sync' }
+  );
+  const sendMessage = (intent?: 'REPLACE_CURRENT') => {
+    sentHistory.reset();
+    return messaging.sendFromComposer(intent);
+  };
   const continuationFor = (item: Parameters<typeof findPlanContinuation>[0]['item']) =>
     findPlanContinuation({
       item,
@@ -963,7 +980,7 @@ export function createWorkspaceSessionPaneController(
     notice: common.notice,
     continuationFor,
     execute: commands.execute,
-    send: sendMessage,
+    send: () => messaging.send(),
     errorMessage: common.errorMessage
   });
   const context = state.createContextCommands({
@@ -1081,18 +1098,34 @@ export function createWorkspaceSessionPaneController(
     runnerInteractions: runner,
     selectSkill: stageSkill,
     stopActiveRun: runControl.stopActiveRun,
-    sendMessage: (replaceCurrent, preserveDraft, contentOverride) =>
-      void sendMessage(
-        replaceCurrent ? 'REPLACE_CURRENT' : undefined,
-        preserveDraft,
-        contentOverride
-      ),
+    sendMessage: (replaceCurrent, preserveDraft, contentOverride) => {
+      const intent = replaceCurrent ? 'REPLACE_CURRENT' : undefined;
+      if (preserveDraft || contentOverride !== undefined)
+        void messaging.send(intent, preserveDraft, contentOverride);
+      else void sendMessage(intent);
+    },
+    sentHistory: {
+      reset: sentHistory.reset,
+      recall: (direction, replace) => {
+        const workspace = state.workspaceTarget.value;
+        const sessionId = state.sessionId.value;
+        return (
+          workspace !== undefined &&
+          sessionId !== undefined &&
+          !presentationOptions.draftOpen.value &&
+          !presentation.composerInputDisabled.value &&
+          !presentationOptions.loading.value &&
+          !submitting.value &&
+          sentHistory.recall({ ...workspace, sessionId }, direction, replace)
+        );
+      }
+    },
     loadRunnerProfiles: composer.loadProfiles,
     loadOlderConversationTurns: conversationWindow.paging.loadOlderConversationTurns,
     canLoadOlder: () => !conversationWindow.paging.olderHistoryError.value
   });
   function selectCommand(command: Parameters<typeof runner.selectCommand>[0]): void {
-    runner.selectCommand(command, (preserve) => void sendMessage(undefined, preserve));
+    runner.selectCommand(command, (preserve) => void messaging.send(undefined, preserve));
   }
   function selectSkill(skill: Parameters<typeof runner.selectSkill>[0]): void {
     runner.selectSkill(skill, stageSkill);
@@ -1459,6 +1492,7 @@ type PaneControllerPorts = Parameters<typeof createWorkspaceSessionPaneControlle
 export type WorkspaceSessionPaneServices = Pick<
   PaneControllerPorts,
   | 'view'
+  | 'composerSendHistory'
   | 'cache'
   | 'files'
   | 'capabilities'

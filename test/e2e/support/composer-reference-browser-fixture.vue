@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import ConversationComposer from '../../../packages/web-core/src/view/composer/ConversationComposer.vue';
+import ComposerAttachments from '../../../packages/web-core/src/view/composer/ComposerAttachments.vue';
 import ComposerReferencePicker from '../../../packages/web-core/src/view/composer/ComposerReferencePicker.vue';
 import ComposerCommandPicker from '../../../packages/web-core/src/view/composer/ComposerCommandPicker.vue';
 import { createComposerReferenceService } from '../../../packages/web-core/src/service/composer-reference-service.js';
@@ -8,6 +9,11 @@ import { createRunnerInteractionService } from '../../../packages/web-core/src/s
 import { createWorkbenchComposerInteractionController } from '../../../packages/web-core/src/service/workbench-composer-interaction-controller.js';
 import { serializeComposerMessage } from '../../../packages/web-core/src/service/composer-skill-token-service.js';
 import { consoleKeyboardShortcutService } from '../../../packages/web-core/src/service/console-keyboard-shortcut-service.js';
+import { createComposerSendHistory } from '../../../packages/web-core/src/service/composer-send-history-service.js';
+import type {
+  ComposerAttachment,
+  ComposerSkillToken
+} from '../../../packages/web-core/src/model/workbench.js';
 
 const input = ref('');
 const mobile = ref(new URLSearchParams(location.search).get('mobile') === '1');
@@ -16,6 +22,37 @@ const nodeReady = ref(true);
 const nodeId = ref('node');
 const workspaceId = ref('workspace');
 const currentSessionId = ref('current');
+const historyEnabled = new URLSearchParams(location.search).get('history') === '1';
+const history = createComposerSendHistory({ canUseNode: () => historyEnabled });
+if (historyEnabled) history.bindStorage(localStorage);
+const navigation = history.createNavigation();
+const historyTarget = {
+  nodeId: nodeId.value,
+  workspaceId: workspaceId.value,
+  sessionId: currentSessionId.value
+};
+const skillTokens: readonly ComposerSkillToken[] = historyEnabled
+  ? [
+      {
+        name: 'Fixture Skill',
+        source: 'WORKSPACE',
+        skillFilePath: 'fixture/SKILL.md',
+        available: true
+      }
+    ]
+  : [];
+const attachments: readonly ComposerAttachment[] = historyEnabled
+  ? [
+      {
+        ...historyTarget,
+        id: 'attachment',
+        file: new File(['contents'], 'local-draft.txt'),
+        previewUrl: null,
+        receivedBytes: 8,
+        status: 'COMPLETED'
+      }
+    ]
+  : [];
 const composer = ref<InstanceType<typeof ConversationComposer>>();
 const harness = reactive({
   calls: [] as string[],
@@ -80,6 +117,8 @@ const references = createComposerReferenceService(input, {
     } as T;
   }
 });
+if (historyEnabled)
+  references.selected.value = [{ type: 'file', path: 'selected.ts', label: 'selected.ts' }];
 const runner = createRunnerInteractionService({
   input,
   draftSessionOpen: ref(true),
@@ -109,6 +148,14 @@ const interactions = createWorkbenchComposerInteractionController({
   handleConversationScroll: () => {},
   scrollToLatest: () => {},
   scrollToLatestAfterLayout: async () => {},
+  ...(historyEnabled
+    ? {
+        sentHistory: {
+          reset: navigation.reset,
+          recall: (direction, replace) => navigation.recall(historyTarget, direction, replace)
+        }
+      }
+    : {}),
   editRange: (start, end, text) => composer.value?.replaceRange(start, end, text) ?? false
 });
 let releaseShortcuts: (() => void) | undefined;
@@ -128,7 +175,10 @@ function updateInput(value: string) {
 }
 function sendMessage() {
   harness.sends++;
-  harness.messages.push(serializeComposerMessage([], input.value, references.selected.value));
+  harness.messages.push(
+    serializeComposerMessage(skillTokens, input.value, references.selected.value)
+  );
+  history.captureSubmission(nodeId.value)?.(historyTarget, crypto.randomUUID(), input.value);
 }
 </script>
 
@@ -141,7 +191,7 @@ function sendMessage() {
       :loading="false"
       :mobile-viewport="mobile"
       :command-states="[]"
-      :skill-tokens="[]"
+      :skill-tokens="skillTokens"
       :file-references="references.selected.value"
       :completion="completion"
       @update:input="updateInput"
@@ -151,6 +201,9 @@ function sendMessage() {
       @submit="sendMessage"
       @remove-reference="references.remove"
     >
+      <template v-if="historyEnabled" #attachments>
+        <ComposerAttachments :attachments="attachments" />
+      </template>
       <template #picker>
         <ComposerReferencePicker
           :open="references.open.value"

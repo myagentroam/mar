@@ -24,6 +24,7 @@ const editorElement = ref<HTMLTextAreaElement>();
 const completionEditor = ref<{
   restoreFocus(cursor?: number): void;
   replaceRange(start: number, end: number, text: string): boolean;
+  replaceValue(text: string): string | undefined;
 }>();
 const composerElement = ref<HTMLElement>();
 const mobileComposerHeight = ref(0);
@@ -88,6 +89,13 @@ function requestCompletion(
   return props.completion.request(draft, signal, undefined, trigger);
 }
 
+function replaceBody(body: string): boolean {
+  const value = completionEditor.value?.replaceValue(body);
+  if (value === undefined) return false;
+  emit('update:input', value);
+  return true;
+}
+
 function onKeydown(event: KeyboardEvent): void {
   const editor = editorElement.value;
   if (event.isComposing) return;
@@ -107,7 +115,7 @@ function onKeydown(event: KeyboardEvent): void {
     else emit('removeSkill', props.skillTokens.at(-1)!.name);
     return;
   }
-  emit('keydown', event);
+  emit('keydown', event, replaceBody);
 }
 
 function onEditorInput(event?: InputEvent, source?: 'keyboard' | 'paste'): void {
@@ -126,7 +134,8 @@ function onEditorCursor(event: MouseEvent | KeyboardEvent): void {
       return;
   }
   const editor = editorElement.value;
-  if (editor !== undefined) emit('cursor', editor.selectionStart);
+  if (editor !== undefined)
+    emit('cursor', editor.selectionStart, event instanceof KeyboardEvent ? event.key : undefined);
 }
 
 function syncMobileComposerHeight(): void {
@@ -152,8 +161,8 @@ const emit = defineEmits<{
   'update:input': [value: string];
   submit: [];
   input: [cursor: number, source: 'keyboard' | 'paste'];
-  keydown: [event: KeyboardEvent];
-  cursor: [cursor: number];
+  keydown: [event: KeyboardEvent, replaceBody: (body: string) => boolean];
+  cursor: [cursor: number, key?: string];
   paste: [event: ClipboardEvent];
   dragenter: [event: DragEvent];
   dragleave: [event: DragEvent];

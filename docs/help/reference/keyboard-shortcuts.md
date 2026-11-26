@@ -1,6 +1,6 @@
 ---
 title: 键盘快捷键
-lastUpdated: 2026-11-24
+lastUpdated: 2026-11-26
 ---
 
 # 键盘快捷键
@@ -18,6 +18,7 @@ Aside 和文件标签聚焦后，使用方向键或 Home/End 移动焦点，再�
 | Composer                     | Enter                                             | Enter                                                   | 发送消息                                               | 桌面端输入框已聚焦，且输入法未在组字                                          |
 | Composer                     | Shift/Alt+Enter                                   | Shift/Option+Enter                                      | 换行                                                   | 输入框已聚焦                                                                  |
 | Composer                     | Ctrl+Enter                                        | Control+Enter                                           | 以 steer 方式发送消息                                  | 输入框可发送；空闲时按普通发送                                                |
+| Composer                     | Alt+↑/↓                                           | Option+↑/↓                                              | 回填更早／更新的已发送正文                             | 个人 Node 的当前会话；输入框可编辑，且输入法未在组字                          |
 | Composer                     | Esc                                               | Esc                                                     | 关闭补全菜单                                           | `@`、`#` 或 `/` 菜单已打开；保留输入，不停止任务                              |
 | Composer                     | Esc                                               | Esc                                                     | 停止当前任务                                           | 输入框已聚焦，未打开补全菜单，任务可中断且未在发送中                          |
 | Composer                     | @                                                 | @                                                       | 打开工作区文件或文件夹引用列表                         | 输入框已聚焦                                                                  |

@@ -41,11 +41,20 @@ interface WorkbenchComposerInteractionOptions {
   readonly scrollToLatest: () => void;
   readonly scrollToLatestAfterLayout: () => Promise<void>;
   readonly editRange: ComposerRangeEdit;
+  readonly sentHistory?: {
+    readonly reset: () => void;
+    readonly recall: (
+      direction: import('./composer-send-history-service.js').ComposerSendHistoryDirection,
+      replace: (body: string) => boolean
+    ) => boolean;
+  };
 }
 
 export function createWorkbenchComposerInteractionController(
   options: WorkbenchComposerInteractionOptions
 ) {
+  const handledHistoryKeys = new Set<string>();
+
   function registerShortcuts(owner: () => Element | undefined): () => void {
     const releases = [
       registerComposerShortcuts({
@@ -120,6 +129,7 @@ export function createWorkbenchComposerInteractionController(
     cursor = options.input.value.length,
     source: 'keyboard' | 'paste' = 'keyboard'
   ): void {
+    options.sentHistory?.reset();
     if (source === 'paste') {
       options.commandPickerOpen.value = false;
       options.fileReferences.cancelSearch();
@@ -142,12 +152,33 @@ export function createWorkbenchComposerInteractionController(
       void options.loadRunnerProfiles(options.workspaceTarget.value?.nodeId);
   }
 
-  function onComposerCursor(cursor: number): void {
+  function onComposerCursor(cursor: number, key?: string): void {
+    if (key !== undefined && handledHistoryKeys.delete(key)) return;
     updatePickers(cursor);
   }
 
-  function onComposerKeydown(event: KeyboardEvent): void {
+  function onComposerKeydown(event: KeyboardEvent, replaceBody?: (body: string) => boolean): void {
     if (event.isComposing) return;
+    if (!event.repeat) handledHistoryKeys.delete(event.key);
+    if (
+      options.sentHistory !== undefined &&
+      replaceBody !== undefined &&
+      event.altKey &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+    ) {
+      if (event.defaultPrevented) return;
+      if (options.sentHistory.recall(event.key === 'ArrowUp' ? 'older' : 'newer', replaceBody)) {
+        handledHistoryKeys.add(event.key);
+        event.preventDefault();
+        options.fileReferences.cancelSearch();
+        options.fileReferences.close();
+        options.runnerInteractions.dismissPicker();
+        return;
+      }
+    }
     if (options.fileReferences.open.value) {
       if (
         (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&

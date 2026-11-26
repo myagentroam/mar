@@ -4,6 +4,7 @@ import { startPromptCompletionViteFixture } from './support/prompt-completion-vi
 
 // @test-covers packages/web-core/src/view/composer/ComposerCommandPicker.vue
 // @test-covers packages/web-core/src/view/composer/ComposerReferencePicker.vue
+// @test-covers packages/web-core/src/service/composer-send-history-service.ts
 
 type ReferenceHarnessWindow = Window & {
   __referenceHarness: {
@@ -47,6 +48,62 @@ test('quick prompt matches and empty results keep the correct listbox name', asy
   await placeCursor(page, '#nonexistent'.length);
   await expect(listbox).toBeVisible();
   await expect(listbox.getByRole('option')).toHaveCount(0);
+});
+
+test('an unavailable Composer history step leaves reference-picker navigation unchanged', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}composer-reference-browser.html?history=1`);
+  const editor = page.locator('textarea.composer-input');
+  await editor.fill('@alpha');
+  const options = page.locator('.file-reference-picker [role=option]');
+  await expect(options).toHaveCount(2);
+  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+
+  await editor.press('Alt+ArrowDown');
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(editor).toHaveValue('@alpha');
+});
+
+test('Composer recall after reload replaces only text and never submits or restores the replaced draft', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}composer-reference-browser.html?history=1`);
+  const editor = page.locator('textarea.composer-input');
+  await editor.fill('first input\non two lines');
+  await editor.press('Enter');
+  await editor.fill('second input');
+  await editor.press('Enter');
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as ReferenceHarnessWindow).__referenceHarness.sends)
+    )
+    .toBe(2);
+  await page.reload();
+  await editor.fill('#review');
+  const listbox = page.getByRole('listbox', { name: 'Quick Prompts', exact: true });
+  await expect(listbox).toBeVisible();
+  await editor.dispatchEvent('keydown', { key: 'ArrowUp', altKey: true, isComposing: true });
+  await expect(editor).toHaveValue('#review');
+  await editor.press('Alt+ArrowUp');
+  await expect(editor).toHaveValue('second input');
+  await expect(listbox).toBeHidden();
+  await editor.press('Alt+ArrowUp');
+  await expect(editor).toHaveValue('first input\non two lines');
+  await editor.press('Alt+ArrowDown');
+  await editor.press('Alt+ArrowDown');
+  await expect(editor).toHaveValue('second input');
+  await editor.press('ControlOrMeta+z');
+  await expect(editor).toHaveValue('second input');
+  await expect(editor).toBeFocused();
+  await expect(page.getByText('local-draft.txt', { exact: true })).toBeVisible();
+  await expect(page.getByText('selected.ts', { exact: true })).toBeVisible();
+  await expect(page.getByText('Fixture Skill', { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as ReferenceHarnessWindow).__referenceHarness.sends
+    )
+  ).toBe(0);
 });
 
 test('mixed results render once and session selection removes the trigger in one undoable edit', async ({

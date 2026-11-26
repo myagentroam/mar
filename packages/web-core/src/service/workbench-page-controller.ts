@@ -17,6 +17,7 @@ import {
   createAccountStorage,
   unboundAccountStorage
 } from './account-storage-service.js';
+import { createComposerSendHistory } from './composer-send-history-service.js';
 import type { WorkbenchShellView, WorkbenchSurfaceView } from '../view/workbench-contract.js';
 import { clearMessages, showMessage } from './message-feedback-service.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
@@ -211,6 +212,14 @@ export function createWorkbenchPageController<
   const navigationService = baseState.navigation;
   const accountStorage = shallowRef(unboundAccountStorage);
   let storageUserId: number | undefined;
+  const composerSendHistory = createComposerSendHistory({
+    canUseNode: (nodeId) => {
+      const node = nodes.value.find((candidate) => candidate.id === nodeId);
+      return (
+        node?.ownership?.ownerType === 'PERSONAL' && node.ownership.ownerUserId === storageUserId
+      );
+    }
+  });
   provide(ACCOUNT_STORAGE_KEY, accountStorage);
   baseState.notifications.bindStorage(unboundAccountStorage);
 
@@ -800,6 +809,7 @@ export function createWorkbenchPageController<
 
   const sessionPaneServices: WorkspaceSessionPaneServices = {
     view,
+    composerSendHistory,
     cache: workspaceViewCacheService,
     capabilities: workbenchCapabilityService,
     profiles: runnerProfileService,
@@ -1345,6 +1355,7 @@ export function createWorkbenchPageController<
 
   function handleSignedOut(): void {
     // Disconnect persistent snapshots before clearing reactive Workspace state.
+    composerSendHistory.clearAccount();
     workbenchLayoutService.bindStorage({
       local: unboundAccountStorage,
       session: unboundAccountStorage
@@ -1401,6 +1412,7 @@ export function createWorkbenchPageController<
     const session = createAccountStorage(sessionStorage, userId);
     storageUserId = userId;
     accountStorage.value = local;
+    composerSendHistory.bindStorage(local);
     drafts.bindStorage(session);
     workbenchLayoutService.bindStorage({ local, session });
     workbenchRouteService.bindStorage(local);

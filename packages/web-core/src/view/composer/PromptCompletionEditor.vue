@@ -331,7 +331,15 @@ function replaceRange(start: number, end: number, text: string): boolean {
   editor.setSelectionRange(start, end);
   return document.execCommand('insertText', false, text);
 }
-defineExpose({ restoreFocus, replaceRange });
+function replaceValue(text: string): string | undefined {
+  if (!editor || editor.readOnly || editor.disabled || composing) return undefined;
+  service.cancel();
+  clearPreview();
+  // A history recall replaces the draft rather than adding an undoable edit.
+  editor.value = text;
+  return editor.value;
+}
+defineExpose({ restoreFocus, replaceRange, replaceValue });
 
 function focusin(event: FocusEvent) {
   if (event.target !== editor) return;

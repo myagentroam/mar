@@ -21,6 +21,7 @@ import { sessionSubmissionContext } from './workbench-submission-service.js';
 import { errorCode } from '../util/api-error.js';
 import { isTerminalRunStatus } from '../util/run-state.js';
 import type { DraftSettlement } from './session-draft-service.js';
+import type { RecordComposerSend } from './composer-send-history-service.js';
 
 type DeliveryIntent = 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
 
@@ -48,6 +49,7 @@ export interface WorkbenchSessionMessageOptions {
   readonly selectedCommand: Ref<RunnerCommand | undefined>;
   readonly commandAvailable?: (command: RunnerCommand) => boolean;
   readonly submissionAvailable?: () => boolean;
+  readonly captureComposerSend?: (nodeId: string) => RecordComposerSend | undefined;
   readonly commandPickerOpen: Ref<boolean>;
   readonly deferredCommands: Ref<readonly { command: RunnerCommand; input: string }[]>;
   readonly fastEnabled: Ref<boolean>;
@@ -138,7 +140,8 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     intentOverride?: Extract<DeliveryIntent, 'REPLACE_CURRENT'>,
     preserveDraft = false,
     contentOverride?: string,
-    commandOverride?: { readonly command: RunnerCommand; readonly input: string }
+    commandOverride?: { readonly command: RunnerCommand; readonly input: string },
+    fromComposer = false
   ): Promise<void> {
     if (
       !active() ||
@@ -187,6 +190,10 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     const command =
       commandOverride?.command ??
       (contentOverride === undefined ? options.selectedCommand.value : undefined);
+    const recordComposerSend =
+      fromComposer && command === undefined && body !== ''
+        ? options.captureComposerSend?.(submissionNodeId)
+        : undefined;
     if (command !== undefined && options.commandAvailable?.(command) === false) return;
     if (command === undefined && content.length === 0 && options.attachments.value.length === 0)
       return;
@@ -426,6 +433,11 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         }
       );
       if (!active()) return;
+      recordComposerSend?.(
+        { nodeId: submissionNodeId, workspaceId, sessionId: result.session.id },
+        clientMessageId,
+        originalInput
+      );
       options.consumeAttachments(outgoing);
       if (createdDraft) capturedDraft.createdSession?.(result.session);
       if (retryCandidate === attemptedRetryCandidate) retryCandidate = undefined;
@@ -524,5 +536,14 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     }
   }
 
-  return { send };
+  return {
+    send: (
+      intent?: Extract<DeliveryIntent, 'REPLACE_CURRENT'>,
+      preserveDraft?: boolean,
+      contentOverride?: string,
+      commandOverride?: { readonly command: RunnerCommand; readonly input: string }
+    ) => send(intent, preserveDraft, contentOverride, commandOverride),
+    sendFromComposer: (intent?: Extract<DeliveryIntent, 'REPLACE_CURRENT'>) =>
+      send(intent, false, undefined, undefined, true)
+  };
 }
