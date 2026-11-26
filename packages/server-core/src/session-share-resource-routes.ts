@@ -89,7 +89,7 @@ export function registerSessionShareResourceRoutes(input: {
           preview: preview.data
         })) as ImageResourceResponse;
         reply.header('cache-control', 'private, no-store');
-        return sendImageResource(reply, result, true);
+        return sendImageResource(reply, result, preview.data);
       }
       return sendWorkspaceFileContent({
         reply,
@@ -337,7 +337,7 @@ export function registerSessionShareResourceRoutes(input: {
         sessionHash: context.user.sessionHash,
         workspaceId: context.workspaceId
       })) as ImageResourceResponse;
-      return sendImageResource(reply, result, preview.data !== undefined);
+      return sendImageResource(reply, result, preview.data);
     });
   });
 }

@@ -86,7 +86,7 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
   await page.route('**/api/workspaces/workspace-1/files/content?**', (route) => {
     const query = new URL(route.request().url()).searchParams;
     if (query.get('path') === 'output/animation.gif') {
-      return query.has('maxWidth') || query.has('maxHeight')
+      return query.get('originalGif') !== '1' || query.has('maxWidth') || query.has('maxHeight')
         ? route.fulfill({ status: 422 })
         : route.fulfill({ contentType: 'image/gif', body: animation });
     }

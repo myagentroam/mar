@@ -15,7 +15,6 @@ describe('Conversation preview resource lifecycle', () => {
     'base64'
   );
   const source = '/api/files/opaque-id/content';
-  const limit = 5 * 1024 * 1024;
 
   it.each([false, true])(
     'loops GIF without changing its frame bytes (no loop block: %s)',
@@ -31,7 +30,7 @@ describe('Conversation preview resource lifecycle', () => {
       const revoke = vi.spyOn(URL, 'revokeObjectURL');
       const signal = new AbortController().signal;
       const preview = await loadConversationImagePreview(source, false, signal, true);
-      expect(fetch).toHaveBeenCalledExactlyOnceWith(source, {
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(`${source}?originalGif=1`, {
         credentials: 'same-origin',
         mode: 'same-origin',
         signal
@@ -45,46 +44,28 @@ describe('Conversation preview resource lifecycle', () => {
     }
   );
 
-  it.each([undefined, String(limit + 1)])(
-    'cancels an oversized GIF stream (length: %s)',
-    async (length) => {
-      const cancel = vi.fn();
-      const stream = new ReadableStream({
-        start: (controller) => controller.enqueue(new Uint8Array(limit + 1)),
-        cancel
-      });
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(
-          async () =>
-            new Response(stream, {
-              headers: length === undefined ? {} : { 'content-length': length }
-            })
-        )
-      );
-      const create = vi.spyOn(URL, 'createObjectURL');
-      await expect(
-        loadConversationImagePreview(source, false, new AbortController().signal, true)
-      ).rejects.toThrow('IMAGE_PREVIEW_TOO_LARGE');
-      expect(cancel).toHaveBeenCalledOnce();
-      expect(create).not.toHaveBeenCalled();
-    }
-  );
-
-  it('accepts GIF at the source byte limit and rejects other bytes in GIF mode', async () => {
-    const bytes = Buffer.alloc(limit);
-    gif.copy(bytes);
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(bytes))
-      .mockResolvedValueOnce(new Response('not a GIF'));
+  it('does not read a rejected GIF preview or retry with the original endpoint', async () => {
+    const response = new Response(null, { status: 413 });
+    const read = vi.spyOn(response, 'arrayBuffer');
+    const fetch = vi.fn(async () => response);
     vi.stubGlobal('fetch', fetch);
-    const signal = new AbortController().signal;
-    const preview = await loadConversationImagePreview(source, false, signal, true);
-    preview.release();
-    await expect(loadConversationImagePreview(source, false, signal, true)).rejects.toThrow(
-      'IMAGE_PREVIEW_INVALID'
+    const create = vi.spyOn(URL, 'createObjectURL');
+    await expect(
+      loadConversationImagePreview(source, false, new AbortController().signal, true)
+    ).rejects.toThrow('IMAGE_PREVIEW_FAILED');
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-GIF bytes in GIF mode', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not a GIF'))
     );
+    await expect(
+      loadConversationImagePreview(source, false, new AbortController().signal, true)
+    ).rejects.toThrow('IMAGE_PREVIEW_INVALID');
   });
 
   it('defers a GIF thumbnail until visible and releases its URL on disposal', async () => {
@@ -120,20 +101,25 @@ describe('Conversation preview resource lifecycle', () => {
 
   it('does not publish a GIF thumbnail after its binding is disposed', async () => {
     vi.stubGlobal('IntersectionObserver', undefined);
-    let resolveResponse!: (response: Response) => void;
-    const response = new Promise<Response>((resolve) => (resolveResponse = resolve));
+    const response = new Response(gif);
+    const read = vi.spyOn(response, 'arrayBuffer');
+    let signal: AbortSignal | null | undefined;
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => response)
+      vi.fn(async (_url: string, options: RequestInit) => {
+        signal = options.signal;
+        return response;
+      })
     );
     const show = vi.fn();
     const unavailable = vi.fn();
     const create = vi.spyOn(URL, 'createObjectURL');
-    const cancelled = vi.fn();
     const dispose = observeGifThumbnail({} as Element, source, show, unavailable);
     dispose();
-    resolveResponse(new Response(new ReadableStream({ cancel: cancelled })));
-    await vi.waitFor(() => expect(cancelled).toHaveBeenCalledOnce());
+    expect(signal?.aborted).toBe(true);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    await read.mock.results[0]?.value;
+    await Promise.resolve();
     expect(create).not.toHaveBeenCalled();
     expect(show).not.toHaveBeenCalled();
     expect(unavailable).not.toHaveBeenCalled();

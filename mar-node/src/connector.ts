@@ -520,7 +520,8 @@ export class NodeConnector {
         nextWorkbenchEvent: (payload) =>
           this.workbenchEventService.next('hosted-conversation', payload),
         emitWorkbenchEvent: (event) => this.workbenchEventService.publish(event),
-        readImage: (runId, imageRef) => this.runAttachmentService.readNative(runId, imageRef)
+        readImage: (runId, imageRef, gifPreview) =>
+          this.runAttachmentService.readNative(runId, imageRef, gifPreview)
       }
     });
     this.upgradeCoordinator = new NodeUpgradeCoordinator(
@@ -932,10 +933,10 @@ export class NodeConnector {
     });
     this.runWorkbenchService = new RunWorkbenchService({
       runtime: this.runtime,
-      readImage: async (runId, selector) =>
+      readImage: async (runId, selector, gifPreview) =>
         typeof selector === 'number'
           ? this.runAttachmentService.read(runId, selector)
-          : this.runAttachmentService.readNative(runId, selector),
+          : this.runAttachmentService.readNative(runId, selector, gifPreview),
       readModelResource: (input) => this.modelResourcePublicationService.read(input),
       respondUserInput: (runId, requestId, answers) =>
         this.runnerInteractionService.respondUserInput(runId, requestId, answers),

@@ -88,8 +88,8 @@ describe('Conversation image loading', () => {
       const image = dialog.findAll('img')[0]!;
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-        '/api/agent-runs/run/images/0?nodeId=node',
-        '/api/agent-runs/run/images/0?nodeId=node'
+        '/api/agent-runs/run/images/0?nodeId=node&originalGif=1',
+        '/api/agent-runs/run/images/0?nodeId=node&originalGif=1'
       ]);
       Object.assign(image, { decode: async () => {}, naturalWidth: 32, naturalHeight: 32 });
       await trigger(image, 'onLoad', { currentTarget: image });

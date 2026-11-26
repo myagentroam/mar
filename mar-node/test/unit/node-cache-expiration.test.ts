@@ -1,7 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import * as workspaceFiles from '../../src/workspace/files.js';
 import * as uploadFiles from 'node:fs/promises';
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  truncate,
+  writeFile
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -629,6 +638,43 @@ describe('Node process cache cleanup', () => {
     await writeFile(path, Buffer.alloc(5 * 1024 * 1024 + 1));
     expect(await service.readNative(runId, attachment!.imageRef as string)).toBeUndefined();
     service.dispose();
+  });
+
+  it('bounds native GIF preview reads even if the file grows after opening', async () => {
+    const root = await temporaryDirectory();
+    const path = join(root, 'image.gif');
+    const bytes = Buffer.from('GIF89a');
+    await writeFile(path, bytes);
+    const service = new RunAttachmentService(() => []);
+    const runId = 'native-history:gif-preview';
+    const [attachment] = service.registerNativeImages(
+      runId,
+      [root],
+      [{ name: 'image.gif', mime: 'image/gif', localPath: path }]
+    );
+    const imageRef = attachment!.imageRef as string;
+    try {
+      await expect(service.readNative(runId, imageRef, true)).resolves.toMatchObject({
+        dataBase64: bytes.toString('base64')
+      });
+      const actual = await vi.importActual<typeof uploadFiles>('node:fs/promises');
+      const open = vi.spyOn(uploadFiles, 'open').mockImplementationOnce(async (...args) => {
+        const handle = await actual.open(...args);
+        const read = handle.read.bind(handle);
+        vi.spyOn(handle, 'read').mockImplementationOnce(async (...readArgs) => {
+          await truncate(path, 5 * 1024 * 1024 + 1);
+          return read(...readArgs);
+        });
+        return handle;
+      });
+      await expect(service.readNative(runId, imageRef, true)).rejects.toThrow(
+        'IMAGE_PREVIEW_TOO_LARGE'
+      );
+      expect(open).toHaveBeenCalledOnce();
+      await expect(service.readNative(runId, imageRef)).resolves.toBeUndefined();
+    } finally {
+      service.dispose();
+    }
   });
 
   it('degrades invalid native source identities without breaking the history projection', async () => {

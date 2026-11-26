@@ -91,6 +91,7 @@ const FILE_CONTENT_QUERY_SCHEMA = z
     download: z.literal('1').optional(),
     maxWidth: z.string().optional(),
     maxHeight: z.string().optional(),
+    originalGif: z.literal('1').optional(),
     revision: z
       .string()
       .regex(/^\d{1,16}-\d{1,16}$/u)
@@ -636,7 +637,7 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
           'conversation.hosted.image.read',
           parsed.data
         )) as ImageResourceResponse;
-        return sendImageResource(reply, result, preview.data !== undefined);
+        return sendImageResource(reply, result, preview.data);
       } catch (error) {
         return databaseError(reply, error);
       }
@@ -693,7 +694,7 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
             }
           )) as ImageResourceResponse;
           reply.header('cache-control', 'private, no-store');
-          return sendImageResource(reply, result, true);
+          return sendImageResource(reply, result, preview.data);
         }
         const first = await readHostedFileContentChunk({
           nodeControl,

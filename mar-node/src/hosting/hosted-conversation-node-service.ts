@@ -35,7 +35,7 @@ export type {
   HostedConversationRuntime
 } from './runtime-contracts.js';
 import { resolveSessionRollbackTarget } from '../service/session-rollback-target.js';
-import { imagePreviews, MAX_IMAGE_PREVIEW_SOURCE_BYTES } from '../service/image-preview-service.js';
+import { imagePreviews, imagePreviewSourceLimit } from '../service/image-preview-service.js';
 import { modelUsageGrantSchema } from '@myagentroam/protocol';
 import { randomUUID } from 'node:crypto';
 import type { Stats } from 'node:fs';
@@ -115,7 +115,11 @@ interface HostedConversationNodeServiceOptions {
   readonly now?: () => number;
   readonly id?: () => string;
   readonly assertCanCreate?: () => Promise<void>;
-  readonly readImage: (runId: string, selector: string) => Promise<unknown | undefined>;
+  readonly readImage: (
+    runId: string,
+    selector: string,
+    gifPreview: boolean
+  ) => Promise<unknown | undefined>;
 }
 
 const MAX_FILE_READ_BYTES = 512 * 1024;
@@ -1060,7 +1064,11 @@ export class HostedConversationNodeService {
     this.options.store.requireConversation(payload.userId, input.conversationId);
     if (input.runId !== hostedConversationImageRunId(input.conversationId))
       throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
-    const image = await this.options.readImage(input.runId, input.imageRef);
+    const image = await this.options.readImage(
+      input.runId,
+      input.imageRef,
+      input.preview !== undefined && 'originalGif' in input.preview
+    );
     if (image === undefined) throw new Error('RUN_IMAGE_NOT_FOUND');
     return {
       image:
@@ -1083,7 +1091,7 @@ export class HostedConversationNodeService {
       if (!sameFileIdentity(before, pathMetadata))
         throw new Error('HOSTED_CONVERSATION_FILE_INVALID');
       if (offset > before.size) throw new Error('HOSTED_CONVERSATION_FILE_RANGE_INVALID');
-      if (input.preview !== undefined && before.size > MAX_IMAGE_PREVIEW_SOURCE_BYTES)
+      if (input.preview !== undefined && before.size > imagePreviewSourceLimit(input.preview))
         throw new Error('IMAGE_PREVIEW_TOO_LARGE');
       const buffer = Buffer.alloc(
         input.preview === undefined

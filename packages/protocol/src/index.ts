@@ -3288,12 +3288,17 @@ export const hostedConversationRollbackInputSchema = hostedConversationIdInputSc
   .strict();
 export type HostedConversationRollbackInput = z.infer<typeof hostedConversationRollbackInputSchema>;
 
-export const imagePreviewOptionsSchema = z
+export const imageResizeOptionsSchema = z
   .object({
     maxWidth: z.number().int().min(1).max(4096),
     maxHeight: z.number().int().min(1).max(4096)
   })
   .strict();
+export const imagePreviewOptionsSchema = z.union([
+  imageResizeOptionsSchema,
+  z.object({ originalGif: z.literal(true) }).strict()
+]);
+export type ImageResizeOptions = z.infer<typeof imageResizeOptionsSchema>;
 export type ImagePreviewOptions = z.infer<typeof imagePreviewOptionsSchema>;
 export const runImageReadInputSchema = z.union([
   z

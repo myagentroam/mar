@@ -19,7 +19,7 @@ import type {
 } from './session-run-contracts.js';
 import { createHash } from 'node:crypto';
 import { modelResourceReadInputSchema, runImageReadInputSchema } from '@myagentroam/protocol';
-import type { ImagePreviewOptions } from '@myagentroam/protocol';
+import type { ImageResizeOptions } from '@myagentroam/protocol';
 import {
   parseImagePreviewQuery,
   sendImageResource,
@@ -513,13 +513,16 @@ export function registerRunControlRoutes(input: {
     });
     if (!parsed.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
     const requestData = parsed.data;
+    const previewOptions = requestData.preview;
+    const originalGif = previewOptions !== undefined && 'originalGif' in previewOptions;
+    if (originalGif) reply.header('cache-control', 'private, no-store');
     const etag =
-      'imageIndex' in requestData
+      'imageIndex' in requestData && !originalGif
         ? runImageEtag(
             request.query.nodeId,
             request.params.runId,
             requestData.imageIndex,
-            requestData.preview
+            previewOptions
           )
         : undefined;
     try {
@@ -552,7 +555,7 @@ export function registerRunControlRoutes(input: {
           .header('cache-control', 'private, max-age=3600, must-revalidate')
           .header('etag', etag);
       }
-      return sendImageResource(reply, result, preview.data !== undefined);
+      return sendImageResource(reply, result, preview.data);
     } catch (error) {
       return databaseError(reply, error);
     }
@@ -674,7 +677,7 @@ function runImageEtag(
   nodeId: string,
   runId: string,
   imageIndex: number,
-  preview?: ImagePreviewOptions
+  preview?: ImageResizeOptions
 ): string {
   const digest = createHash('sha256')
     .update(

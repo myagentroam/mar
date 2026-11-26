@@ -1,15 +1,13 @@
 import { conversationPreviewUrl } from '../util/conversation-image-url.js';
 import { loopGif } from '../util/gif-loop.js';
 
-const MAX_GIF_BYTES = 5 * 1024 * 1024;
-
 export interface LoadedImagePreview {
   readonly url: string;
   readonly resized: boolean;
   readonly release: () => void;
 }
 
-/** Controlled GIFs use the original endpoint and are prepared locally for playback. */
+/** The server bounds GIF previews; playback preparation happens only in the browser. */
 export async function loadConversationImagePreview(
   source: string,
   original: boolean,
@@ -40,37 +38,16 @@ function objectPreview(blob: Blob, resized: boolean): LoadedImagePreview {
 }
 
 async function loadGifPreview(source: string, signal: AbortSignal): Promise<LoadedImagePreview> {
-  const response = await fetch(source, { credentials: 'same-origin', mode: 'same-origin', signal });
-  if (!response.ok || response.body === null) throw new Error('IMAGE_PREVIEW_FAILED');
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  let complete = false;
-  try {
-    if (Number(response.headers.get('content-length')) > MAX_GIF_BYTES)
-      throw new Error('IMAGE_PREVIEW_TOO_LARGE');
-    for (;;) {
-      signal.throwIfAborted();
-      const chunk = await reader.read();
-      if (chunk.done) {
-        complete = true;
-        break;
-      }
-      size += chunk.value.length;
-      if (size > MAX_GIF_BYTES) throw new Error('IMAGE_PREVIEW_TOO_LARGE');
-      chunks.push(chunk.value);
-    }
-  } finally {
-    if (!complete) void reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
+  const url = new URL(source, 'http://localhost');
+  url.searchParams.set('originalGif', '1');
+  const response = await fetch(`${url.pathname}${url.search}`, {
+    credentials: 'same-origin',
+    mode: 'same-origin',
+    signal
+  });
+  if (!response.ok) throw new Error('IMAGE_PREVIEW_FAILED');
+  const bytes = new Uint8Array(await response.arrayBuffer());
   signal.throwIfAborted();
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
   return objectPreview(new Blob([loopGif(bytes)], { type: 'image/gif' }), false);
 }
 

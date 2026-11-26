@@ -31,10 +31,25 @@ describe('Node Workbench Manifest and command control', () => {
     ).resolves.toHaveProperty('image');
     expect(readImage).toHaveBeenLastCalledWith(
       'native-history:session',
-      'file:session%3Aimage.png'
+      'file:session%3Aimage.png',
+      false
     );
     await expect(image({ runId: 'run-1', imageIndex: 0 })).resolves.toHaveProperty('image');
-    expect(readImage).toHaveBeenLastCalledWith('run-1', 0);
+    expect(readImage).toHaveBeenLastCalledWith('run-1', 0, false);
+    const gif = { mime: 'image/gif', dataBase64: Buffer.from('GIF89a').toString('base64') };
+    readImage.mockResolvedValueOnce(gif);
+    await expect(
+      image({
+        runId: 'native-history:session',
+        imageRef: 'file:session%3Aimage.gif',
+        preview: { originalGif: true }
+      })
+    ).resolves.toEqual({ image: { ...gif, resized: false } });
+    expect(readImage).toHaveBeenLastCalledWith(
+      'native-history:session',
+      'file:session%3Aimage.gif',
+      true
+    );
     readImage.mockClear();
     for (const invalid of [
       { runId: 'native-history:session', imageIndex: 0 },

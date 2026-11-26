@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, truncate, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -19,6 +19,39 @@ afterEach(async () => {
 });
 
 describe('image previews', () => {
+  it('returns GIF bytes unchanged at 5 MiB and rejects oversized GIF previews without blocking the file endpoint', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mar-gif-preview-'));
+    directories.push(directory);
+    const path = join(directory, 'animation.gif');
+    const limit = 5 * 1024 * 1024;
+    const signature = Buffer.from('GIF89a');
+    await writeFile(path, signature);
+    await truncate(path, limit);
+    const files = new WorkspaceFileService(() => undefined);
+    const workspace = { id: 'workspace-1', path: directory } as NodeWorkspace;
+    const request = { path: 'animation.gif', preview: { originalGif: true } };
+    const image = await files.previewImage(workspace, request);
+    expect(image).toMatchObject({ mime: 'image/gif', resized: false });
+    expect(Buffer.from(image.dataBase64, 'base64').equals(await readFile(path))).toBe(true);
+
+    await truncate(path, limit + 1);
+    await expect(files.previewImage(workspace, request)).rejects.toThrow('IMAGE_PREVIEW_TOO_LARGE');
+    await expect(
+      files.readContent(workspace, { path: request.path, limit: 6 })
+    ).resolves.toMatchObject({
+      size: limit + 1,
+      contentBase64: signature.toString('base64')
+    });
+    const service = new ImagePreviewService();
+    const dataBase64 = (await readFile(path)).toString('base64');
+    await expect(async () =>
+      service.fromImage({ dataBase64 }, { originalGif: true })
+    ).rejects.toThrow('IMAGE_PREVIEW_TOO_LARGE');
+    await expect(service.create(Buffer.from('not a GIF'), { originalGif: true })).rejects.toThrow(
+      'IMAGE_PREVIEW_INVALID'
+    );
+  });
+
   it('decodes real PNGs to bounded WebP without changing the source bytes', async () => {
     const service = new ImagePreviewService();
     const source = await png(640, 480);

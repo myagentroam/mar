@@ -9,6 +9,7 @@ import {
   readdir,
   rm,
   symlink,
+  truncate,
   utimes,
   writeFile
 } from 'node:fs/promises';
@@ -1183,6 +1184,28 @@ describe('Node hosted conversation files', () => {
     await expect(operation(input)).rejects.toThrow('HOSTED_CONVERSATION_FILE_NOT_FOUND');
     await fixture.service.dispose();
   });
+
+  it('applies the GIF preview limit to the actual Hosted file size without blocking original reads', async () => {
+    const fixture = await fileFixture();
+    const conversationId = await createConversation(fixture);
+    const paths = fixture.store.pathsForConversation(7, conversationId);
+    const target = join(paths.outputDirectory, 'animation.gif');
+    const bytes = Buffer.from('GIF89a');
+    await writeFile(target, bytes);
+    const [projected] = await fixture.store.reconcileFiles(7, conversationId);
+    const read = fixture.service.operations()['conversation.hosted.file.read']!;
+    const input = { conversationId, fileId: projected!.id, __requestUserId: 7 };
+    const preview = { originalGif: true };
+    await expect(read({ ...input, preview })).resolves.toEqual({
+      image: { mime: 'image/gif', dataBase64: bytes.toString('base64'), resized: false }
+    });
+    await truncate(target, 5 * 1024 * 1024 + 1);
+    await expect(read({ ...input, preview })).rejects.toThrow('IMAGE_PREVIEW_TOO_LARGE');
+    await expect(read({ ...input, limit: bytes.length })).resolves.toMatchObject({
+      content: bytes.toString('base64')
+    });
+    await fixture.service.dispose();
+  });
 });
 
 const model: MarAgentRuntimeModelConfiguration = {
@@ -1257,8 +1280,8 @@ async function fileFixture(
     revision: 1,
     name: 'Files',
     description: 'Files template',
-    allowedModels: [{ modelId: 'model', name: 'Model' }],
-    defaultModelId: 'model',
+    allowedModels: [{ modelId: model.id, name: model.name }],
+    defaultModelId: model.id,
     mcpIds: [],
     networkMode: 'NONE',
     quotas: {

@@ -5,6 +5,7 @@ import { serializeComposerTag } from '@myagentroam/protocol';
 import { registerSessionShareResourceRoutes } from '../../src/session-share-resource-routes.js';
 import type { SessionShares } from '../../src/session-shares.js';
 import { sendError } from '../../src/http-errors.js';
+import { databaseError } from '../../src/domain-errors.js';
 
 interface QueueItem {
   queueItemId: string;
@@ -18,7 +19,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-async function fixture() {
+async function fixture(handleError?: typeof databaseError) {
   const app = Fastify();
   apps.push(app);
   let active = true;
@@ -80,6 +81,7 @@ async function fixture() {
   app.register(
     async (scope) => {
       scope.setErrorHandler((error, _request, reply) => {
+        if (handleError !== undefined) return handleError(reply, error);
         const code = error instanceof Error ? error.message : 'NODE_RESPONSE_INVALID';
         return sendError(reply, code === 'QUEUE_VERSION_CONFLICT' ? 409 : 404, code);
       });
@@ -640,6 +642,40 @@ describe('Session-share resource routes', () => {
     expect(revoked.statusCode).toBe(404);
     expect(revoked.json().error.code).toBe('SESSION_SHARE_NOT_FOUND');
     expect(f.requestNode).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      resource: 'files/content?path=images%2Fsource.gif&originalGif=1',
+      operation: 'workspace.file.content.read'
+    },
+    {
+      resource: 'runs/native-history%3Asession-current/images/file%3Asource.gif?originalGif=1',
+      operation: 'run.image.read'
+    }
+  ])('keeps the GIF preview limit on shared $resource', async ({ resource, operation }) => {
+    const f = await fixture(databaseError);
+    const url = `/api/session-shares/share-one/${resource}`;
+    const bytes = Buffer.from('GIF89a');
+    f.requestNode
+      .mockResolvedValueOnce({
+        image: { mime: 'image/gif', resized: false, dataBase64: bytes.toString('base64') }
+      })
+      .mockRejectedValueOnce(new Error('IMAGE_PREVIEW_TOO_LARGE'));
+    const preview = await f.app.inject({ url });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers['content-type']).toBe('image/gif');
+    expect(preview.rawPayload).toEqual(bytes);
+    const oversized = await f.app.inject({ url, headers: { range: 'bytes=0-5' } });
+    expect(oversized.statusCode).toBe(413);
+    expect(oversized.json().error.code).toBe('IMAGE_PREVIEW_TOO_LARGE');
+    expect(f.requestNode).toHaveBeenCalledTimes(2);
+    expect(f.requestNode).toHaveBeenLastCalledWith(
+      'node-fixed',
+      operation,
+      expect.objectContaining({ preview: { originalGif: true } }),
+      expect.objectContaining({ userId: 7, sessionHash: 'share-session' })
+    );
   });
 
   it('rejects new file reads after share authorization is revoked', async () => {

@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
+import { lstat, mkdir, mkdtemp, open, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { imageRefSchema } from '@myagentroam/protocol';
 import type { CodexComposerInput } from '../runner/codex/codex-app-server.js';
 import type { NodeAgentSession } from '../session/contracts.js';
@@ -11,6 +12,7 @@ import {
   AttachmentDomainState,
   type SessionAttachmentRetention
 } from './attachment-domain-state.js';
+import { MAX_GIF_PREVIEW_SOURCE_BYTES } from './image-preview-service.js';
 
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const IMAGE_CACHE_TTL_MS = 60 * 60_000;
@@ -525,25 +527,24 @@ export class RunAttachmentService {
 
   async readNative(
     runId: string,
-    imageRef: string
+    imageRef: string,
+    gifPreview = false
   ): Promise<NodeMessageAttachmentInput | undefined> {
     const source = this.state.nativeHistoryImages.get(runId)?.get(imageRef);
     if (source === undefined) return undefined;
     try {
       if (source.kind === 'reader') {
+        if (gifPreview && source.byteSize !== undefined) assertGifPreviewSize(source.byteSize);
         const image = await source.read();
-        if (
-          image === undefined ||
-          image.name !== source.name ||
-          image.mime !== source.mime ||
-          !canonicalBase64(image.dataBase64)
-        )
+        if (image === undefined || image.name !== source.name || image.mime !== source.mime)
           return undefined;
         const byteSize = Buffer.byteLength(image.dataBase64, 'base64');
+        if (gifPreview) assertGifPreviewSize(byteSize);
         if (
           byteSize <= 0 ||
           byteSize > MAX_ATTACHMENT_BYTES ||
-          (source.byteSize !== undefined && source.byteSize !== byteSize)
+          (source.byteSize !== undefined && source.byteSize !== byteSize) ||
+          !canonicalBase64(image.dataBase64)
         )
           return undefined;
         return { name: source.name, mime: source.mime, dataBase64: image.dataBase64 };
@@ -556,13 +557,21 @@ export class RunAttachmentService {
       if (relation.length === 0 || relation.startsWith('..') || isAbsolute(relation))
         return undefined;
       const info = await lstat(actualPath);
-      if (!info.isFile() || info.size <= 0 || info.size > MAX_ATTACHMENT_BYTES) return undefined;
+      if (!info.isFile() || info.size <= 0) return undefined;
+      if (gifPreview) assertGifPreviewSize(info.size);
+      if (info.size > MAX_ATTACHMENT_BYTES) return undefined;
+      const bytes = gifPreview
+        ? await readNativeGifPreview(actualPath, info)
+        : await readFile(actualPath);
+      if (bytes === undefined) return undefined;
       return {
         name: source.name,
         mime: source.mime,
-        dataBase64: (await readFile(actualPath)).toString('base64')
+        dataBase64: bytes.toString('base64')
       };
-    } catch {
+    } catch (error) {
+      if (gifPreview && error instanceof Error && error.message === 'IMAGE_PREVIEW_TOO_LARGE')
+        throw error;
       return undefined;
     }
   }
@@ -603,6 +612,34 @@ function nativeImageReference(kind: 'file' | 'reader', identity: string): string
     return imageRefSchema.safeParse(reference).success ? reference : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function assertGifPreviewSize(size: number): void {
+  if (size > MAX_GIF_PREVIEW_SOURCE_BYTES) throw new Error('IMAGE_PREVIEW_TOO_LARGE');
+}
+
+/** Bind the byte budget to the opened file, not to a path that can change before reading. */
+async function readNativeGifPreview(path: string, expected: Stats): Promise<Buffer | undefined> {
+  const file = await open(path, 'r');
+  try {
+    const before = await file.stat();
+    if (!before.isFile() || before.dev !== expected.dev || before.ino !== expected.ino)
+      return undefined;
+    assertGifPreviewSize(before.size);
+    if (before.size <= 0 || before.size > MAX_ATTACHMENT_BYTES) return undefined;
+    const bytes = Buffer.allocUnsafe(before.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesRead } = await file.read(bytes, offset, bytes.length - offset, offset);
+      if (bytesRead === 0) return undefined;
+      offset += bytesRead;
+    }
+    const after = await file.stat();
+    assertGifPreviewSize(after.size);
+    return after.size === before.size ? bytes : undefined;
+  } finally {
+    await file.close();
   }
 }
 

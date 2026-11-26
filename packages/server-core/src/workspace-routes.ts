@@ -615,6 +615,7 @@ export function registerWorkspaceRoutes(input: {
       download?: string;
       maxWidth?: string;
       maxHeight?: string;
+      originalGif?: string;
     };
   }>('/api/workspaces/:workspaceId/files/content', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
@@ -648,7 +649,7 @@ export function registerWorkspaceRoutes(input: {
           }
         )) as ImageResourceResponse;
         reply.header('cache-control', 'private, no-store');
-        return sendImageResource(reply, result, true);
+        return sendImageResource(reply, result, preview.data);
       }
       return await sendWorkspaceFileContent({
         reply,
