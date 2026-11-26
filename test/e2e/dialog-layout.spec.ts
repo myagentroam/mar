@@ -316,6 +316,12 @@ for (const locale of ['en-US', 'zh-CN']) {
       await page.getByRole('button', { name: 'Open content' }).click();
       const dialog = page.getByRole('dialog');
       await expectBounded(dialog);
+      const description = dialog.locator('.workspace-session-cleanup-description');
+      await expect(description).toContainText(locale === 'en-US' ? 'cannot be undone' : '无法撤销');
+      await expect(description).toContainText(
+        locale === 'en-US' ? 'all of its child sessions' : '所有子会话'
+      );
+      await expect(description).not.toContainText(/native|原生/iu);
       await expect(dialog.locator('input')).toHaveValue('30');
       await dialog
         .getByRole('button', {

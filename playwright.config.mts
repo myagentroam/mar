@@ -22,16 +22,16 @@ if (testLicense) {
 const testDatabase =
   listing || integration || fixtures ? undefined : resolvePlaywrightTestDatabase(testRunId);
 const productionPackageRoot = process.env.MAR_E2E_PRODUCTION_PACKAGE?.trim();
+const singleServer = smoke || productionPackageRoot !== undefined;
 const portOffset = [...testRunId].reduce(
   (value, character) => (value * 31 + character.charCodeAt(0)) % 800,
   0
 );
 const webPort = process.env.MAR_E2E_WEB_PORT ?? String(5600 + portOffset * 2);
-const serverPort =
-  productionPackageRoot === undefined
-    ? (process.env.MAR_E2E_SERVER_PORT ?? String(Number(webPort) + 1))
-    : webPort;
-if (productionPackageRoot !== undefined) process.env.MAR_E2E_SERVER_PORT = serverPort;
+const serverPort = singleServer
+  ? webPort
+  : (process.env.MAR_E2E_SERVER_PORT ?? String(Number(webPort) + 1));
+if (singleServer) process.env.MAR_E2E_SERVER_PORT = serverPort;
 const origin = `http://127.0.0.1:${webPort}`;
 const licenseHostPath = `test/runs/playwright-license-host-${testRunId}.txt`;
 const serverCommand = 'node --import tsx test/e2e/support/playwright-server.ts';
@@ -85,10 +85,13 @@ export default defineConfig({
   webServer:
     listing || integration || fixtures
       ? []
-      : productionPackageRoot !== undefined
+      : singleServer
         ? [
             {
-              command: serverCommand,
+              command:
+                productionPackageRoot === undefined
+                  ? 'node mar-server/dist/main.js'
+                  : serverCommand,
               timeout: 180_000,
               env: {
                 MAR_TEST_RUN_ID: testRunId,
@@ -100,7 +103,7 @@ export default defineConfig({
                 MAR_PUBLIC_ORIGIN: origin,
                 MAR_SERVER_HOST: '127.0.0.1',
                 MAR_SERVER_PORT: serverPort,
-                MAR_WEB_ROOT: resolve(productionPackageRoot!, 'web')
+                MAR_WEB_ROOT: resolve(productionPackageRoot ?? 'mar-server', 'web')
               },
               url: `http://127.0.0.1:${serverPort}/health`,
               reuseExistingServer: false
@@ -124,7 +127,7 @@ export default defineConfig({
               reuseExistingServer: false
             },
             {
-              command: `pnpm --filter @myagentroam/web-console ${smoke ? 'exec vite preview' : 'dev'} --host 127.0.0.1 --port ${webPort} --strictPort`,
+              command: `pnpm --filter @myagentroam/web-console dev --host 127.0.0.1 --port ${webPort} --strictPort`,
               env: {
                 MAR_TEST_RUN_ID: testRunId,
                 MAR_DEV_WEB_EXTERNAL_ORIGIN: origin,

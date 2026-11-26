@@ -613,7 +613,8 @@ test('Admin Console renames Codex and Claude sessions and confirms native-sessio
   await sessionRow.getByRole('button', { name: '更多会话操作：我的会话' }).click();
   await page.getByRole('menuitem', { name: '删除' }).click();
   const deleteDialog = page.locator('.mar-message-box');
-  await expect(deleteDialog).toContainText('无法恢复');
+  await expect(deleteDialog).toContainText('所有子会话');
+  await expect(deleteDialog).toContainText('无法撤销');
   await deleteDialog.getByRole('button', { name: '删除会话' }).click();
   await expect(page.locator('.session-list')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '新建会话' })).toBeVisible();
@@ -682,7 +683,7 @@ test('Workspace session cleanup defaults to thirty days and refreshes the sessio
   await page.getByRole('button', { name: '更多工作区操作', exact: true }).click();
   await page.getByRole('menuitem', { name: '清理会话' }).click();
   const dialog = page.getByRole('dialog', { name: '清理会话' });
-  await expect(dialog).toContainText('置顶、活动、排队或正在查看的会话会保留');
+  await expect(dialog).toContainText('单独清理时会保留置顶、运行中、恢复中、排队或正在查看的会话');
   await expect(dialog.locator('input')).toHaveValue('30');
   await dialog.getByRole('button', { name: '清理会话' }).click();
 

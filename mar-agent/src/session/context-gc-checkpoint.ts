@@ -1004,36 +1004,14 @@ function replacementMatchesRecords(
       )
     );
   }
-  if (!isSuccessfulExecLifecycleEvidence(replacement, source, records, recordsBySequence))
-    return false;
+  const result = execReplacementResult(replacement, source, records, recordsBySequence);
+  if (!result) return false;
   if (replacement.kind === 'TOOL_CALL_INPUT')
     return isDeepStrictEqual(
       replacement.replacementArguments,
       contextGcExecInputReplacement(source.payload.arguments, replacement.toolName)
     );
-  const targetEvidence =
-    successfulToolEvidence(
-      records,
-      recordsBySequence,
-      source.sequence,
-      'exec',
-      replacement.callId
-    ) ??
-    successfulToolEvidence(
-      records,
-      recordsBySequence,
-      source.sequence,
-      'exec_wait',
-      replacement.callId
-    );
-  const result = normalizeContextGcExecResult(
-    source.payload.content,
-    targetEvidence?.completed.payload
-  );
-  return (
-    result !== undefined &&
-    replacement.replacementContent === contextGcExecOutputReplacement(result)
-  );
+  return replacement.replacementContent === contextGcExecOutputReplacement(result);
 }
 
 function toolNameForCallId(
@@ -1280,36 +1258,39 @@ function appliedPatchEvidenceForPath(
     : undefined;
 }
 
-function isSuccessfulExecLifecycleEvidence(
+function execReplacementResult(
   replacement: Extract<ContextGcReplacement, { kind: 'TOOL_CALL_INPUT' | 'EXEC_OUTPUT' }>,
   source: SessionRecord,
   records: readonly SessionRecord[],
   recordsBySequence: ReadonlyMap<number, SessionRecord>
-): boolean {
-  const expectedTerminal =
-    replacement.kind === 'EXEC_OUTPUT' ? replacement.terminalCallId : undefined;
+) {
+  const evidencePayload = recordsBySequence.get(replacement.evidenceSequence)?.payload;
+  // A Direct result identifies its own call; a cell result needs the nested call ID.
+  const terminalCallId =
+    replacement.terminalCallId ?? (isRecord(evidencePayload) ? evidencePayload.callId : undefined);
+  if (typeof terminalCallId !== 'string' || !terminalCallId) return undefined;
   const evidence =
     successfulToolEvidence(
       records,
       recordsBySequence,
       replacement.evidenceSequence,
       'exec',
-      expectedTerminal
+      terminalCallId
     ) ??
     successfulToolEvidence(
       records,
       recordsBySequence,
       replacement.evidenceSequence,
       'exec_wait',
-      expectedTerminal
+      terminalCallId
     );
   if (!evidence || !isRecord(evidence.call.payload) || !isRecord(evidence.result.payload))
-    return false;
+    return undefined;
   const finalResult = normalizeContextGcExecResult(
     evidence.result.payload.content,
     evidence.completed.payload
   );
-  if (!finalResult || finalResult.status === 'running') return false;
+  if (!finalResult || finalResult.status === 'running') return undefined;
   const targetCall =
     replacement.kind === 'TOOL_CALL_INPUT'
       ? source
@@ -1322,12 +1303,12 @@ function isSuccessfulExecLifecycleEvidence(
     (targetCall.payload.name !== 'exec' && targetCall.payload.name !== 'exec_wait') ||
     targetCall.payload.callId !== replacement.callId
   )
-    return false;
+    return undefined;
   const targetResult =
     replacement.kind === 'EXEC_OUTPUT'
       ? source
       : modelToolResultForCall(records, targetCall, evidence.result.sequence);
-  if (!targetResult) return false;
+  if (!targetResult || !isRecord(targetResult.payload)) return undefined;
   const targetEvidence = successfulToolEvidence(
     records,
     recordsBySequence,
@@ -1335,28 +1316,23 @@ function isSuccessfulExecLifecycleEvidence(
     targetCall.payload.name,
     replacement.callId
   );
-  if (!targetEvidence || targetEvidence.call.sequence !== targetCall.sequence) return false;
+  if (!targetEvidence || targetEvidence.call.sequence !== targetCall.sequence) return undefined;
+  const targetOutput = normalizeContextGcExecResult(
+    targetResult.payload.content,
+    targetEvidence.completed.payload
+  );
   if (targetEvidence.callId === evidence.callId)
-    return targetEvidence.call.sequence === evidence.call.sequence;
+    return targetEvidence.call.sequence === evidence.call.sequence ? targetOutput : undefined;
   const evidenceInput = evidence.call.payload.arguments;
   const targetInput = targetCall.payload.arguments;
-  if (!isRecord(evidenceInput) || !isRecord(targetInput)) return false;
-  const evidenceProcessId = evidenceInput.processId;
-  const targetOutput =
-    isRecord(targetResult.payload) && targetEvidence
-      ? normalizeContextGcExecResult(targetResult.payload.content, targetEvidence.completed.payload)
-      : undefined;
+  if (!isRecord(evidenceInput) || !isRecord(targetInput)) return undefined;
   const targetProcessId =
-    typeof targetInput.processId === 'string'
-      ? targetInput.processId
-      : typeof targetOutput?.processId === 'string'
-        ? targetOutput.processId
-        : undefined;
-  return (
-    typeof evidenceProcessId === 'string' &&
-    targetProcessId === evidenceProcessId &&
+    typeof targetInput.processId === 'string' ? targetInput.processId : targetOutput?.processId;
+  return typeof targetProcessId === 'string' &&
+    targetProcessId === evidenceInput.processId &&
     targetResult.sequence <= evidence.result.sequence
-  );
+    ? targetOutput
+    : undefined;
 }
 
 function triggerMatchesRecords(
@@ -1524,7 +1500,8 @@ function isContextGcReplacement(value: unknown): value is ContextGcReplacement {
         'target',
         'replacementArguments',
         'providerAliasTargets',
-        'evidenceSequence'
+        'evidenceSequence',
+        'terminalCallId'
       ]) &&
       value.target.role === 'tool_call' &&
       (value.toolName === 'apply_patch' ||
@@ -1533,6 +1510,9 @@ function isContextGcReplacement(value: unknown): value is ContextGcReplacement {
         value.toolName === 'code_exec' ||
         value.toolName === 'todo_write' ||
         value.toolName === 'todo') &&
+      (value.terminalCallId === undefined ||
+        ((value.toolName === 'exec' || value.toolName === 'exec_wait') &&
+          isNonemptyString(value.terminalCallId))) &&
       value.target.toolName === value.toolName &&
       Array.isArray(value.providerAliasTargets) &&
       value.providerAliasTargets.every(

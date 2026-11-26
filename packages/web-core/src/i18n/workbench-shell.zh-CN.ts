@@ -35,7 +35,7 @@ export const workbenchShellZhCN = {
     workspaceSessionCleanupDialog: {
       title: '清理会话',
       description:
-        '输入清理多少天前的会话。没有活动时间的会话也固定纳入清理，不受天数限制。此操作会永久删除符合条件的原生会话；置顶、活动、排队或正在查看的会话会保留。',
+        '符合条件的会话将永久删除，无法撤销。没有活动时间的会话也会纳入清理。单独清理时会保留置顶、运行中、恢复中、排队或正在查看的会话。删除父会话也会删除其所有子会话（含更深层级）；如果有子会话正在运行或恢复，父会话会保留。',
       inactiveDays: '清理多少天前的会话',
       inactiveDaysInvalid: '请输入 1 到 365 之间的整数天数。',
       cancel: '取消',
@@ -44,8 +44,7 @@ export const workbenchShellZhCN = {
       cleanupFailed: '无法清理会话。',
       completed: '清理完成',
       partiallyCompleted: '已完成部分清理',
-      timeLimitReached:
-        '已达到本次清理的时间预算，以下为已完成的统计，未处理的会话不计为失败。可再次发起清理，处理剩余会话。',
+      timeLimitReached: '本次未清理完。未处理的会话不计为失败。可再次发起清理，处理剩余会话。',
       remaining: '待处理',
       deleted: '已删除',
       skipped: '已跳过',

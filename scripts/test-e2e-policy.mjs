@@ -46,7 +46,7 @@ export const smokeBuildFiles = [
   'ee/server/dist/app.js',
   'mar-node/dist/main.js',
   'mar-agent/dist/index.js',
-  'mar-web-console/dist/index.html'
+  'mar-server/web/index.html'
 ];
 
 export function e2eOptions(arguments_, platform = process.platform) {

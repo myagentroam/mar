@@ -270,17 +270,16 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
     workbenchCompositionEnUS.generated.workbenchEntityService.unableToTheSession,
   'workbenchEntityService.unableToMoveThePinnedSession':
     workbenchCompositionEnUS.generated.workbenchEntityService.unableToMoveThePinnedSession,
-  'workbenchEntityService.thisPermanentlyDeletesTheNativeSessionAnd':
-    workbenchCompositionEnUS.generated.workbenchEntityService
-      .thisPermanentlyDeletesTheNativeSessionAnd,
+  'workbenchEntityService.confirmDeleteSession':
+    workbenchCompositionEnUS.generated.workbenchEntityService.confirmDeleteSession,
   'workbenchEntityService.deleteSession':
     workbenchCompositionEnUS.generated.workbenchEntityService.deleteSession,
   'workbenchEntityService.deleteSession2':
     workbenchCompositionEnUS.generated.workbenchEntityService.deleteSession2,
   'workbenchEntityService.cancel3':
     workbenchCompositionEnUS.generated.workbenchEntityService.cancel3,
-  'workbenchEntityService.theNativeSessionWasDeleted':
-    workbenchCompositionEnUS.generated.workbenchEntityService.theNativeSessionWasDeleted,
+  'workbenchEntityService.sessionDeleted':
+    workbenchCompositionEnUS.generated.workbenchEntityService.sessionDeleted,
   'workbenchEntityService.unableToDeleteTheSession':
     workbenchCompositionEnUS.generated.workbenchEntityService.unableToDeleteTheSession,
   'workbenchEntityService.deletingDisconnectsItAndRemovesItsServer':
@@ -561,8 +560,6 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
   'workbenchWorkspaceTreeController.cancel':
     workspaceEnUS.generated.workbenchWorkspaceTreeController.cancel,
   'workbenchWorkspaceTreeController.cleanupOldSessions': 'Clean up sessions',
-  'workbenchWorkspaceTreeController.cleanupOldSessionsDescription':
-    'Enter how many days of inactive sessions to clean up. Matching native sessions are permanently deleted; pinned, active, queued, or viewed sessions are kept.',
   'workbenchWorkspaceTreeController.inactiveDaysMustBeBetween':
     'Enter a whole number of days from 1 to 365.',
   'workbenchWorkspaceTreeController.cleanup': 'Clean up sessions',

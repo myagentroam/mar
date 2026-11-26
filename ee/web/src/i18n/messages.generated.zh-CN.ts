@@ -270,17 +270,16 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
     workbenchCompositionZhCN.generated.workbenchEntityService.unableToTheSession,
   'workbenchEntityService.unableToMoveThePinnedSession':
     workbenchCompositionZhCN.generated.workbenchEntityService.unableToMoveThePinnedSession,
-  'workbenchEntityService.thisPermanentlyDeletesTheNativeSessionAnd':
-    workbenchCompositionZhCN.generated.workbenchEntityService
-      .thisPermanentlyDeletesTheNativeSessionAnd,
+  'workbenchEntityService.confirmDeleteSession':
+    workbenchCompositionZhCN.generated.workbenchEntityService.confirmDeleteSession,
   'workbenchEntityService.deleteSession':
     workbenchCompositionZhCN.generated.workbenchEntityService.deleteSession,
   'workbenchEntityService.deleteSession2':
     workbenchCompositionZhCN.generated.workbenchEntityService.deleteSession2,
   'workbenchEntityService.cancel3':
     workbenchCompositionZhCN.generated.workbenchEntityService.cancel3,
-  'workbenchEntityService.theNativeSessionWasDeleted':
-    workbenchCompositionZhCN.generated.workbenchEntityService.theNativeSessionWasDeleted,
+  'workbenchEntityService.sessionDeleted':
+    workbenchCompositionZhCN.generated.workbenchEntityService.sessionDeleted,
   'workbenchEntityService.unableToDeleteTheSession':
     workbenchCompositionZhCN.generated.workbenchEntityService.unableToDeleteTheSession,
   'workbenchEntityService.deletingDisconnectsItAndRemovesItsServer':
@@ -560,8 +559,6 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
   'workbenchWorkspaceTreeController.cancel':
     workspaceZhCN.generated.workbenchWorkspaceTreeController.cancel,
   'workbenchWorkspaceTreeController.cleanupOldSessions': '清理会话',
-  'workbenchWorkspaceTreeController.cleanupOldSessionsDescription':
-    '输入清理多少天前的会话。此操作会永久删除符合条件的原生会话；置顶、活动、排队或正在查看的会话会保留。',
   'workbenchWorkspaceTreeController.inactiveDaysMustBeBetween': '请输入 1 到 365 之间的整数天数。',
   'workbenchWorkspaceTreeController.cleanup': '清理会话',
   'workbenchWorkspaceTreeController.oldSessionsCleanupCompleted':

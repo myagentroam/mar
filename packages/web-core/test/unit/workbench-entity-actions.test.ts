@@ -1,11 +1,12 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { ref } from 'vue';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const dialogs = vi.hoisted(() => ({ prompt: vi.fn(), confirm: vi.fn() }));
 vi.mock('../../src/service/message-box-service.js', () => ({ MarMessageBox: dialogs }));
 import { createWorkbenchEntityService } from '../../src/service/workbench-entity-service.js';
 import { createWorkbenchEntityController } from '../../src/service/workbench-entity-controller.js';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 import type { NodeSummary, Session } from '../../src/model/workbench.js';
 
@@ -31,6 +32,8 @@ function state(
 }
 
 beforeEach(() => vi.resetAllMocks());
+const originalLocale = localePreferenceService().locale.value;
+afterEach(() => localePreferenceService().setLocale(originalLocale));
 
 describe('Public workbench entity actions', () => {
   it('moves a dragged pinned session in one request and refreshes once', async () => {
@@ -241,21 +244,33 @@ describe('Public workbench entity actions', () => {
     expect(current.loading.value).toBe(false);
   });
 
-  it('reports confirmed session deletion as successful feedback', async () => {
-    dialogs.confirm.mockResolvedValue('confirm');
-    const request = vi.fn().mockResolvedValue(undefined);
-    const current = state(request);
+  it.each([
+    ['en-US', '“session/1”', 'all of its child sessions', 'cannot be undone', 'Session deleted.'],
+    ['zh-CN', '「session/1」', '所有子会话', '无法撤销', '会话已删除。']
+  ] as const)(
+    'explains what session deletion removes and confirms success (%s)',
+    async (locale, title, childSessions, irreversible, success) => {
+      localePreferenceService().setLocale(locale);
+      dialogs.confirm.mockResolvedValue('confirm');
+      const request = vi.fn().mockResolvedValue(undefined);
+      const current = state(request);
 
-    await expect(
-      current.service.deleteSession({ id: 'session/1', runner: 'codex' } as Session)
-    ).resolves.toBe(true);
+      await expect(
+        current.service.deleteSession({ id: 'session/1', runner: 'codex' } as Session)
+      ).resolves.toBe(true);
 
-    expect(request).toHaveBeenCalledWith('/api/agent-sessions/session%2F1?nodeId=node', {
-      method: 'DELETE'
-    });
-    expect(current.notice).toHaveBeenCalledWith(expect.any(String), 'success');
-    expect(current.loading.value).toBe(false);
-  });
+      const [message] = dialogs.confirm.mock.calls[0]!;
+      expect(message).toContain(title);
+      expect(message).toContain(childSessions);
+      expect(message).toContain(irreversible);
+      expect(message).not.toMatch(/原生|native/iu);
+      expect(request).toHaveBeenCalledWith('/api/agent-sessions/session%2F1?nodeId=node', {
+        method: 'DELETE'
+      });
+      expect(current.notice).toHaveBeenCalledWith(success, 'success');
+      expect(current.loading.value).toBe(false);
+    }
+  );
 
   it('clears only the parent relationship after confirmation and reports request failures', async () => {
     dialogs.confirm.mockResolvedValue('confirm');

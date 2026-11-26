@@ -232,9 +232,9 @@ export function createWorkbenchEntityService(options: {
     if (nodeId === undefined || options.canDeleteSession?.(session) === false) return false;
     try {
       await MarMessageBox.confirm(
-        translate('generated.workbenchEntityService.thisPermanentlyDeletesTheNativeSessionAnd', {
-          value0: runnerLabel(session.runner),
-          value1: options.sessionTitle(session)
+        translate('generated.workbenchEntityService.confirmDeleteSession', {
+          agent: runnerLabel(session.runner),
+          title: options.sessionTitle(session)
         }),
         translate('generated.workbenchEntityService.deleteSession'),
         {
@@ -261,10 +261,7 @@ export function createWorkbenchEntityService(options: {
         `/api/agent-sessions/${options.sessionPathId(session.id)}?nodeId=${encodeURIComponent(nodeId)}`,
         { method: 'DELETE' }
       );
-      options.notice(
-        translate('generated.workbenchEntityService.theNativeSessionWasDeleted'),
-        'success'
-      );
+      options.notice(translate('generated.workbenchEntityService.sessionDeleted'), 'success');
       return true;
     } catch (error) {
       options.notice(
