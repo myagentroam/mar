@@ -78,6 +78,7 @@ export class ExecutionLoop<TScope = unknown> {
     const { mode, messages } = input;
     let recoveringFromContextOverflow = false;
     const modelRetryState: ModelRetryState = { attempts: 0 };
+    let retryTpsStartedAt: number | undefined;
     while (true) {
       let stop: string | undefined;
       let sawTool = false;
@@ -91,7 +92,6 @@ export class ExecutionLoop<TScope = unknown> {
       const startedMessages = new Set<string>();
       const leadingMessageWhitespace = new Map<string, string>();
       let sawModelSemanticEvent = false;
-      let requestStartedAt: number;
       let firstModelResponseAt: number | undefined;
       let generation = new ModelGenerationTiming();
       let requestCompletedAt: number | undefined;
@@ -106,7 +106,7 @@ export class ExecutionLoop<TScope = unknown> {
       };
       const emitFinalPerformance = async (completedAt: number) => {
         if (mode === 'compact') return;
-        const requestDurationMs = completedAt - requestStartedAt;
+        const requestDurationMs = completedAt - tpsStartedAt;
         const outputTokens = requestOutputTokens;
         if (
           outputTokens === undefined ||
@@ -142,8 +142,10 @@ export class ExecutionLoop<TScope = unknown> {
           await input.appendContext(message);
         }
       };
+      const requestStartedAt = performance.now();
+      const tpsStartedAt = retryTpsStartedAt ?? requestStartedAt;
+      retryTpsStartedAt = undefined;
       try {
-        requestStartedAt = performance.now();
         for await (const event of input.startModel({
           ...round.request,
           retryState: modelRetryState
@@ -349,7 +351,11 @@ export class ExecutionLoop<TScope = unknown> {
           if (pendingTools.some((call) => call.argumentError !== undefined))
             pendingTools.splice(0, pendingTools.length);
           else if (pendingTools.length > 0) await persistToolCalls(pendingTools);
-          if (pendingTools.length === 0) continue;
+          if (pendingTools.length === 0) {
+            // Runtime recovery continues the same logical request unless it runs a tool.
+            retryTpsStartedAt = tpsStartedAt;
+            continue;
+          }
         } else if (
           mode === 'compact' &&
           !sawModelSemanticEvent &&
@@ -480,6 +486,7 @@ export class ExecutionLoop<TScope = unknown> {
           this.planOutputPrefixes.clear();
           if (await recoverModelStream(error, modelRetryState, input.recoverySignal())) {
             this.finalAnswer = '';
+            retryTpsStartedAt = tpsStartedAt;
             continue;
           }
           throw error;

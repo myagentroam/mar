@@ -8,6 +8,7 @@ import { LocalAgentHost } from '../../src/host.js';
 import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import type { ModelAdapter, ModelEvent } from '../../src/model/contracts.js';
+import { RecoverableModelError } from '../../src/model/errors/common.js';
 import type { SessionRecord } from '../../src/session/store/contracts.js';
 import {
   observeModelStreamEvent,
@@ -38,21 +39,36 @@ const model: AgentModelConfiguration = {
   enabled: true
 };
 
+type ScheduledEvent = readonly [number, ModelEvent, number?];
+
 async function measure(
-  schedule: readonly (readonly [number, ModelEvent, number?])[],
-  options: { readonly cancelAfterUsage?: boolean } = {}
+  schedule: readonly ScheduledEvent[],
+  options: {
+    readonly cancelAfterUsage?: boolean;
+    readonly interruptedAttempt?: {
+      readonly events: readonly ScheduledEvent[];
+      readonly at: number;
+    };
+  } = {}
 ) {
   const home = await mkdtemp(join(tmpdir(), 'mar-model-performance-'));
   const workspace = join(home, 'workspace');
   await mkdir(workspace);
   let now = 0;
+  let starts = 0;
   const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-  const adapter = {
+  const adapter: ModelAdapter = {
     configuration: model,
-    async *start(): AsyncIterable<ModelEvent> {
-      for (const [at, event, observedAt] of schedule) {
+    async *start({ retryState }): AsyncIterable<ModelEvent> {
+      const interruption = starts++ === 0 ? options.interruptedAttempt : undefined;
+      for (const [at, event, observedAt] of interruption?.events ?? schedule) {
         now = at;
         yield observeModelStreamEvent(structuredClone(event), observedAt);
+      }
+      if (interruption && retryState) {
+        now = interruption.at;
+        retryState.retryDelayMs = 0;
+        throw new RecoverableModelError('MAR_AGENT_MODEL_PROTOCOL_ERROR', 'Interrupted stream.');
       }
     }
   };
@@ -522,6 +538,68 @@ describe('Model output performance', () => {
     });
     expect(result.persisted).not.toContain('output.reset');
     expect(result.events.some((event) => (event.type as string) === 'output.reset')).toBe(false);
+  });
+
+  it('includes an interrupted stream that the Runtime retries in the TPS denominator', async () => {
+    const result = await measure(
+      [
+        [7_100, delta('B')],
+        [8_000, answer],
+        [8_000, usage(160)],
+        [8_000, complete]
+      ],
+      {
+        interruptedAttempt: {
+          events: [
+            [100, delta('A')],
+            [4_000, usage(600)]
+          ],
+          at: 7_000
+        }
+      }
+    );
+    expect(result.metrics).toHaveLength(3);
+    for (const event of result.metrics.slice(0, 2)) {
+      expect(event).toMatchObject({ latencyMs: 100 });
+      expect(event).not.toHaveProperty('tokensPerSecond');
+    }
+    expect(result.metrics[2]).toMatchObject({
+      latencyMs: 100,
+      outputTokens: 160,
+      outputDurationMs: 900,
+      tokensPerSecond: 20
+    });
+  });
+
+  it('starts new TPS timing after recovering a complete client tool call', async () => {
+    const result = await measure(
+      [
+        [7_100, delta('B')],
+        [8_000, answer],
+        [8_000, usage(160)],
+        [8_000, complete]
+      ],
+      {
+        interruptedAttempt: {
+          events: [
+            [
+              100,
+              {
+                type: 'client_tool.call',
+                callId: 'recovered-tool',
+                name: 'apply_patch',
+                arguments: '*** Begin Patch\n*** Add File: fixture.txt\n+ok\n*** End Patch'
+              }
+            ]
+          ],
+          at: 7_000
+        }
+      }
+    );
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ type: 'tool.completed', callId: 'recovered-tool' })
+    );
+    expect(result.metrics.at(-1)).toMatchObject({ outputTokens: 160, tokensPerSecond: 160 });
   });
 });
 
