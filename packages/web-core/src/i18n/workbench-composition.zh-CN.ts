@@ -18,12 +18,12 @@ export const workbenchCompositionZhCN = {
       unableToUpdateTheSessionName: '无法更新会话名称：{value0}',
       unableToTheSession: '无法{value0}会话：{value1}',
       unableToMoveThePinnedSession: '无法移动置顶会话：{value0}',
-      thisPermanentlyDeletesTheNativeSessionAnd:
-        '将永久删除“{value0}”的 {value1} 原生会话记录，且无法恢复。',
+      confirmDeleteSession:
+        '将永久删除 {agent} 会话「{title}」及其所有子会话（含更深层级），此操作无法撤销。',
       deleteSession: '确认删除会话',
       deleteSession2: '删除会话',
       cancel3: '取消',
-      theNativeSessionWasDeleted: '原生会话已删除。',
+      sessionDeleted: '会话已删除。',
       unableToDeleteTheSession: '无法删除会话：{value0}',
       deletingDisconnectsItAndRemovesItsServer:
         '删除“{value0}”将断开连接、删除 Server 保存的凭据和节点记录。目标机器需使用新的注册密钥才能重新绑定。',

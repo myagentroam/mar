@@ -35,7 +35,7 @@ export const workbenchShellEnUS = {
     workspaceSessionCleanupDialog: {
       title: 'Clean up sessions',
       description:
-        'Enter how many days of inactive sessions to clean up. Sessions with unknown activity times are always included, regardless of the number of days. Matching native sessions are permanently deleted; pinned, active, queued, or viewed sessions are kept.',
+        'Matching sessions are permanently deleted. This cannot be undone. Sessions without an activity time are also included. When evaluated individually, pinned, running, recovering, queued, or currently viewed sessions are kept. Deleting a parent also deletes all of its child sessions at every level. If any child is running or recovering, the parent is kept.',
       inactiveDays: 'Clean up sessions inactive for',
       inactiveDaysInvalid: 'Enter a whole number of days from 1 to 365.',
       cancel: 'Cancel',
@@ -45,7 +45,7 @@ export const workbenchShellEnUS = {
       completed: 'Cleanup complete',
       partiallyCompleted: 'Cleanup partially complete',
       timeLimitReached:
-        'This cleanup reached its time budget. The counts show completed work; unprocessed sessions are not counted as failures. Run cleanup again to process the remaining sessions.',
+        'Some sessions were not processed and do not count as failures. Run cleanup again to process the rest.',
       remaining: 'Not processed',
       deleted: 'Deleted',
       skipped: 'Skipped',

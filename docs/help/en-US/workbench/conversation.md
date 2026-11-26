@@ -1,6 +1,6 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-11-25
+lastUpdated: 2026-11-26
 ---
 
 # Conversations, Tools, and Notifications
@@ -75,7 +75,7 @@ In the Composer for the current MAR Agent session, enter `/clear` and select the
 
 ## Clean up Workspace sessions
 
-On Nodes that support it, choose **Clean up sessions** from the workspace-level more menu at the upper right of the current Workspace's **Sessions** pane. Enter how many days of inactive sessions to clean up; the default is 30 days. Matching native sessions are permanently deleted through the deletion capability supported by each Agent. Sessions with unknown activity times are included; pinned, active, queued, or viewed sessions are kept. When it completes, the page shows deleted, skipped, and failed counts, plus the actual deletion count for each Agent, and refreshes the current Workspace session list. After complete discovery, local-only records belonging to an available Agent are removed directly without extra native-presence probes, regardless of age; pinned, active, queued, or viewed records remain protected. Reaching the time budget returns settled partial counts, not failures for unprocessed records. You can run cleanup again; see [Clean up sessions](sessions.md#clean-up-sessions).
+On supported Nodes, choose **Clean up sessions** from the More menu at the upper right of the current Workspace's **Sessions** pane to permanently delete matching sessions. Cleanup refreshes the session list and shows the results. See [Clean up sessions](sessions.md#clean-up-sessions) for what gets deleted, what is kept, and what to do if cleanup does not finish.
 
 Approval cards require an explicit allow or reject action. Question cards require every answer before submission. File-change cards open the related diff when possible.
 

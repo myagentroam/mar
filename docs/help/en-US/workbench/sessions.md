@@ -39,7 +39,7 @@ A reasoning preview appears above each process status row and in collapsed reaso
 
 Scroll upward to the top of the conversation to load earlier messages. Earlier content is inserted above the existing messages while preserving your current message and its position in the viewport, without jumping to the start of the new page. Continue scrolling upward to read the earlier messages. If the top history marker remains in the viewport after the initial load, one additional page loads automatically while preserving your reading position; this does not continue through the entire history. No load button appears while idle, and loading or retrying shows only a small ring. After a failure, select **Failed to load. Retry** without clearing the messages already loaded. Once all history is loaded, no loading control or beginning-of-conversation message appears. **Sending** means the message is being submitted, not that the Agent has started. Activity comes from Node; when no specific action is available, the display says **Running** without inventing a reasoning summary. Run duration uses its start and completion times, including waits and continuation within that Run. Missing reliable timestamps hide the duration; a new Run after a Node restart starts a new clock.
 
-Use the session list to reopen, rename, pin, reorder, or delete sessions. On supported Nodes, title search is executed by Node against the selected Workspace's native Agent sessions, so it can find sessions that have not been loaded into the browser. Clear the search to restore the normal list. Search and pagination stay within the selected Workspace. Deleting removes the native Agent session record and cannot be undone; it does not delete Workspace files.
+Use the session list to reopen, rename, pin, reorder, or delete sessions. On supported Nodes, title search can find sessions in the current Workspace even if they have not been loaded into the list. Clear the search to restore the normal list. Search and pagination stay within the selected Workspace. Deleting a session also permanently deletes all of its child sessions at every level. This cannot be undone, but it does not delete Workspace files.
 
 Working sessions hide Delete. If a session starts working during deletion confirmation, the operation is not submitted. Rename and Pin remain available.
 
@@ -49,17 +49,17 @@ Changes do not interrupt the current execution. They apply from the next executi
 
 Sessions discovered from an external Agent appear normally. Their first message automatically validates and activates a safe continuation path; if validation fails, no Run is created.
 
-The first session load after a Node restart waits for native Agent discovery. Sessions can appear in separate batches as each Agent finishes; a slower Agent does not delay sessions already discovered. Custom titles are preserved when the corresponding session is found, rather than showing undiscovered historical sessions as new sessions first.
+After a Node restarts, sessions may appear in batches. A slower Agent does not delay sessions already found. Sessions keep their custom titles when they reappear in the list.
 
 ## Clean up sessions
 
-Choose **Clean up sessions** from the current Workspace session list's More menu, enter 1–365 days (30 by default), and confirm. Sessions whose activity predates the selected cutoff and sessions with unknown activity times, shown as `—`, are included. Unknown activity times are included regardless of the number of days. Pinned, running, queued, restarting, or currently viewed sessions are kept. After complete discovery succeeds, local-only records belonging to an available Agent are removed directly, without extra native-presence probes. This does not delete undiscovered native content.
+Choose **Clean up sessions** from the current Workspace session list's More menu, enter 1–365 days (30 by default), and confirm. Sessions whose activity predates the selected cutoff and sessions whose activity time is shown as `—` are included. When evaluated individually, pinned, running, queued, recovering after a restart, or currently viewed sessions are kept. If the scan finishes and the Agent is available but a session is not found, cleanup may remove its list entry regardless of its age. This removes only the list entry, not the contents of the session that was not found.
 
-Child sessions are evaluated by their own activity times, so a long-lived parent does not prevent expired children from being cleaned up. An eligible parent is deleted with all its descendants, even if a descendant is recent, pinned, queued, or currently viewed. A running or restarting descendant protects its ancestors from deletion. MAR Agent uses native batch deletion for the cascade, and counts include all members actually deleted.
+Child sessions are evaluated by their own activity times. Deleting a parent also deletes all of its child sessions at every level, even if a child is recent, pinned, queued, or currently viewed. If any child is running or recovering after a restart, the parent is kept. Deleted child sessions are included in the totals.
 
-Cleanup permanently deletes matching native sessions and cannot be undone; it does not delete Workspace files. The dialog shows the actual deleted, skipped, and failed counts, including deletions by Agent.
+Cleanup permanently deletes matching sessions and cannot be undone. It does not delete Workspace files. The dialog shows the actual deleted, skipped, and failed counts, including deletions by Agent.
 
-Cleanup runs within a time budget. When the budget is reached, the dialog shows **Cleanup partially complete** and actual settled counts, not a failure. Unprocessed records are not counted as failed; **Not processed** shows the remaining count when known. Run cleanup again to process the remainder. An admitted deletion settles before the response, and no new deletions start afterward. An offline Node or unavailable result still produces an error.
+If cleanup stops early with sessions left to process, the dialog shows **Cleanup partially complete**. Unprocessed sessions do not count as failures. **Not processed** shows the remaining count when known. Cleanup does not continue in the background; you can run it again. An offline Node or unavailable result still produces an error.
 
 ## Share a work session
 
@@ -73,7 +73,7 @@ Visitors see the original session's entire history and future messages. They use
 
 ## Automatic continuation after orderly shutdown
 
-In regular Workspaces, MAR Agent can continue after Node receives `SIGTERM` or `SIGINT`, finishes an orderly shutdown, and starts again. A later manual start after a normal stop also qualifies. After reconnecting to Server, Node rechecks current user and model authorization before restoring unfinished work, Goals, and the message queue in the same native session. A previously paused queue stays paused. New messages and queue changes are temporarily blocked for that session during recovery.
+In regular Workspaces, MAR Agent can continue after Node receives `SIGTERM` or `SIGINT`, finishes an orderly shutdown, and starts again. A later manual start after a normal stop also qualifies. After reconnecting to Server, Node rechecks current user and model authorization before restoring unfinished work, Goals, and the message queue in the same session. A previously paused queue stays paused. New messages and queue changes are temporarily blocked for that session during recovery.
 
 Ordinary runs show a “System restart continuation” history entry, not a message attributed to manual user input. An active Goal gets one Goal continuation without an additional ordinary continuation. The prompt asks the Agent to inspect the current state after a system restart before continuing. Old tool processes, terminals, approvals, questions, and background cells are not restored, and external actions are not guaranteed to happen exactly once. Queued inputs are prepared again in their original order, including their attachments; old attachment preview URLs are not guaranteed to remain valid.
 

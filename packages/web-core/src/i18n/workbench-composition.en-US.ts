@@ -18,12 +18,12 @@ export const workbenchCompositionEnUS = {
       unableToUpdateTheSessionName: 'Unable to update the session name: {value0}',
       unableToTheSession: 'Unable to {value0} the session: {value1}',
       unableToMoveThePinnedSession: 'Unable to move the pinned session: {value0}',
-      thisPermanentlyDeletesTheNativeSessionAnd:
-        'This permanently deletes the native {value0} session “{value1}” and cannot be undone.',
+      confirmDeleteSession:
+        'This permanently deletes the {agent} session “{title}” and all of its child sessions at every level. This action cannot be undone.',
       deleteSession: 'Delete session',
       deleteSession2: 'Delete session',
       cancel3: 'Cancel',
-      theNativeSessionWasDeleted: 'The native session was deleted.',
+      sessionDeleted: 'Session deleted.',
       unableToDeleteTheSession: 'Unable to delete the session: {value0}',
       deletingDisconnectsItAndRemovesItsServer:
         'Deleting “{value0}” disconnects it and removes its server credentials and node record. The machine will need a new registration key to reconnect.',
