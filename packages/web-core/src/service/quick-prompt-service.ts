@@ -1,6 +1,9 @@
 import { computed, ref } from 'vue';
 import type { QuickPrompt } from '../model/workbench.js';
 
+// Settings and the Composer share a default order independent of API recency and UI language.
+const phraseOrder = new Intl.Collator('en', { sensitivity: 'accent' });
+
 export function createQuickPromptService(options: {
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
 }) {
@@ -17,7 +20,12 @@ export function createQuickPromptService(options: {
       .request<{ prompts: readonly QuickPrompt[] }>('/api/quick-prompts')
       .then((result) => {
         if (inflight !== operation) return;
-        prompts.value = Array.isArray(result.prompts) ? result.prompts : [];
+        // Copy before sorting without requiring toSorted on the Web build's browser baseline.
+        prompts.value = Array.isArray(result.prompts)
+          ? [...result.prompts].sort((left, right) =>
+              phraseOrder.compare(left.phrase, right.phrase)
+            )
+          : [];
       })
       .catch(() => {
         if (inflight !== operation) return;

@@ -4,7 +4,9 @@ import ConversationComposer from '../../../packages/web-core/src/view/composer/C
 import ComposerAttachments from '../../../packages/web-core/src/view/composer/ComposerAttachments.vue';
 import ComposerReferencePicker from '../../../packages/web-core/src/view/composer/ComposerReferencePicker.vue';
 import ComposerCommandPicker from '../../../packages/web-core/src/view/composer/ComposerCommandPicker.vue';
+import QuickPromptSettings from '../../../packages/web-core/src/view/settings/QuickPromptSettings.vue';
 import { createComposerReferenceService } from '../../../packages/web-core/src/service/composer-reference-service.js';
+import { createQuickPromptService } from '../../../packages/web-core/src/service/quick-prompt-service.js';
 import { createRunnerInteractionService } from '../../../packages/web-core/src/service/runner-interaction-service.js';
 import { createWorkbenchComposerInteractionController } from '../../../packages/web-core/src/service/workbench-composer-interaction-controller.js';
 import { serializeComposerMessage } from '../../../packages/web-core/src/service/composer-skill-token-service.js';
@@ -119,12 +121,20 @@ const references = createComposerReferenceService(input, {
 });
 if (historyEnabled)
   references.selected.value = [{ type: 'file', path: 'selected.ts', label: 'selected.ts' }];
+const showQuickPromptSettings = new URLSearchParams(location.search).has('quick-prompt-settings');
+async function requestQuickPrompts<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init);
+  return response.json();
+}
+const quickPrompts = createQuickPromptService({ request: requestQuickPrompts });
 const runner = createRunnerInteractionService({
   input,
   draftSessionOpen: ref(true),
   selectedSession: ref(undefined),
   profile: ref(undefined),
-  quickPrompts: ref([{ id: 'review', phrase: 'review', prompt: 'Review\nchanges', updatedAt: 1 }])
+  quickPrompts: showQuickPromptSettings
+    ? quickPrompts.prompts
+    : ref([{ id: 'review', phrase: 'review', prompt: 'Review\nchanges', updatedAt: 1 }])
 });
 const interactions = createWorkbenchComposerInteractionController({
   input,
@@ -242,6 +252,14 @@ function sendMessage() {
       </template>
     </ConversationComposer>
     <button data-testid="send" @click="harness.sends++">Send</button>
+    <QuickPromptSettings
+      v-if="showQuickPromptSettings"
+      :prompts="quickPrompts.prompts.value"
+      :loading="quickPrompts.loading.value"
+      :failed="quickPrompts.failed.value"
+      :request="requestQuickPrompts"
+      :refresh="quickPrompts.refresh"
+    />
   </main>
 </template>
 <style scoped>

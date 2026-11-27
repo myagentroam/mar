@@ -5,6 +5,7 @@ import { startPromptCompletionViteFixture } from './support/prompt-completion-vi
 // @test-covers packages/web-core/src/view/composer/ComposerCommandPicker.vue
 // @test-covers packages/web-core/src/view/composer/ComposerReferencePicker.vue
 // @test-covers packages/web-core/src/service/composer-send-history-service.ts
+// @test-covers packages/web-core/src/service/quick-prompt-service.ts
 
 type ReferenceHarnessWindow = Window & {
   __referenceHarness: {
@@ -48,6 +49,44 @@ test('quick prompt matches and empty results keep the correct listbox name', asy
   await placeCursor(page, '#nonexistent'.length);
   await expect(listbox).toBeVisible();
   await expect(listbox.getByRole('option')).toHaveCount(0);
+});
+
+test('Settings and Composer share alphabetical quick-prompt order while matches rank by relevance', async ({
+  page
+}) => {
+  // The app's build target includes browsers without Array.prototype.toSorted().
+  await page.addInitScript(() => Reflect.deleteProperty(Array.prototype, 'toSorted'));
+  const phrases = ['Zulu', 'review-plan', 'review-code', 'review', 'pre-review', 'Arch'];
+  await page.route('**/api/quick-prompts', (route) =>
+    route.fulfill({
+      json: {
+        prompts: phrases.map((phrase, index) => ({
+          id: phrase,
+          phrase,
+          prompt: `${phrase} body`,
+          updatedAt: phrases.length - index
+        }))
+      }
+    })
+  );
+  await page.goto(`${fixture.url}composer-reference-browser.html?quick-prompt-settings`);
+  const alphabetical = ['#Arch', '#pre-review', '#review', '#review-code', '#review-plan', '#Zulu'];
+  await expect(page.locator('.quick-prompts .prompt-heading code')).toHaveText(alphabetical);
+
+  const editor = page.locator('textarea.composer-input');
+  const listbox = page.getByRole('listbox', { name: 'Quick Prompts', exact: true });
+  await editor.fill('#');
+  const candidateNames = listbox.getByRole('option').locator('.candidate-name');
+  await expect(candidateNames).toHaveText(alphabetical);
+
+  await editor.fill('#REVIEW');
+  await expect(candidateNames).toHaveText([
+    '#review',
+    '#review-code',
+    '#review-plan',
+    '#pre-review'
+  ]);
+  await expect(listbox.getByRole('option', { selected: true })).toContainText('#review');
 });
 
 test('an unavailable Composer history step leaves reference-picker navigation unchanged', async ({
