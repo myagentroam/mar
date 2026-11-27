@@ -526,7 +526,11 @@ export class NodeControl extends NodeIdentityControl {
   }
 
   async drainProjections(): Promise<void> {
-    await Promise.all([this.drainControlMessages(), this.messageProjector.drain()]);
+    await Promise.all([
+      this.drainControlMessages(),
+      this.messageProjector.drain(),
+      this.fileRelay.drainAuthentications()
+    ]);
   }
 
   override close(): void {

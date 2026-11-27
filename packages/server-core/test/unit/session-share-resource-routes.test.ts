@@ -63,6 +63,7 @@ async function fixture(handleError?: typeof databaseError) {
       return {
         file: {
           size: fileBytes.length,
+          sourceRevision: 'a'.repeat(64),
           offset,
           bytes: fileBytes.subarray(offset, offset + limit)
         }
@@ -418,7 +419,9 @@ describe('Session-share resource routes', () => {
   it('preserves file relay errors before starting a shared download', async () => {
     const f = await fixture(databaseError);
     f.requestNode
-      .mockResolvedValueOnce({ file: { size: 4, offset: 0, bytes: Buffer.of(1) } })
+      .mockResolvedValueOnce({
+        file: { size: 4, offset: 0, sourceRevision: 'a'.repeat(64), bytes: Buffer.of(1) }
+      })
       .mockRejectedValueOnce(new Error('FILE_RELAY_BUSY'));
 
     const response = await f.app.inject({

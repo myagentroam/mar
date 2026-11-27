@@ -92,6 +92,7 @@ describe('Executable HTML preview', () => {
           previewBoundaryVerified: boundaryVerified,
           file: {
             size: bytes.length,
+            sourceRevision: 'a'.repeat(64),
             offset: input.offset,
             bytes: bytes.subarray(input.offset, input.offset + input.limit)
           }
@@ -217,6 +218,7 @@ describe('Executable HTML preview', () => {
           previewBoundaryVerified: true,
           file: {
             size: bytes.length,
+            sourceRevision: 'a'.repeat(64),
             offset: input.offset,
             bytes: bytes.subarray(input.offset, input.offset + input.limit)
           }

@@ -17,6 +17,7 @@ interface FileConnection {
 export class NodeFileRelay {
   private readonly connections = new Map<string, FileConnection>();
   private readonly sockets = new Set<WebSocket>();
+  private readonly authentications = new Set<Promise<void>>();
   private closed = false;
 
   constructor(
@@ -79,7 +80,7 @@ export class NodeFileRelay {
       this.options.disconnected(socket);
     });
     socket.on('message', (raw, binary) => {
-      if (!binary || !Buffer.isBuffer(raw)) {
+      if (this.closed || socket.readyState !== socket.OPEN || !binary || !Buffer.isBuffer(raw)) {
         socket.terminate();
         return;
       }
@@ -105,7 +106,9 @@ export class NodeFileRelay {
           const control = this.options.currentControl(requested, controlBinding);
           if (!control) throw new Error('NODE_OFFLINE');
           authenticating = true;
-          void Promise.resolve(this.options.database.authenticateNode(requested, credential))
+          const authentication = Promise.resolve(
+            this.options.database.authenticateNode(requested, credential)
+          )
             .then((node) => {
               if (
                 this.closed ||
@@ -127,6 +130,8 @@ export class NodeFileRelay {
               });
             })
             .catch(() => socket.terminate());
+          this.authentications.add(authentication);
+          void authentication.then(() => this.authentications.delete(authentication));
           return;
         }
         if (this.socketFor(nodeId) !== socket || metadata.type !== 'file.response')
@@ -154,5 +159,10 @@ export class NodeFileRelay {
     this.closed = true;
     for (const nodeId of this.connections.keys()) this.disconnectNode(nodeId);
     for (const socket of this.sockets) socket.terminate();
+  }
+
+  /** Socket closure cannot cancel an admitted identity-store lookup. Drain it before pool release. */
+  async drainAuthentications(): Promise<void> {
+    await Promise.all(this.authentications);
   }
 }

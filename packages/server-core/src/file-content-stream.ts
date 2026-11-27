@@ -7,6 +7,31 @@ export interface FileContentChunk {
   readonly size: number;
   readonly offset: number;
   readonly bytes: Uint8Array;
+  readonly sourceRevision?: string;
+}
+
+type FileContentReader = (offset: number, limit: number) => Promise<FileContentChunk>;
+
+/** Pin one Workspace response to the size and revision already provided by the Node. */
+export async function readWorkspaceFileSnapshot(read: FileContentReader) {
+  const { size, offset, bytes, sourceRevision } = await read(0, 1);
+  if (
+    size < 0 ||
+    offset !== 0 ||
+    bytes.byteLength !== Math.min(1, size) ||
+    typeof sourceRevision !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(sourceRevision)
+  )
+    throw new Error('NODE_RESPONSE_INVALID');
+  return {
+    size,
+    read: async (offset: number, limit: number) => {
+      const chunk = await read(offset, limit);
+      if (chunk.size !== size || chunk.sourceRevision !== sourceRevision)
+        throw new Error('NODE_RESPONSE_INVALID');
+      return chunk;
+    }
+  };
 }
 
 export function registerFileChunkParser(app: FastifyInstance): void {
@@ -25,15 +50,15 @@ export async function sendWorkspaceFileContent(input: {
   range: string | undefined;
   path: string;
   download: boolean;
-  read: (offset: number, limit: number) => Promise<FileContentChunk>;
+  read: FileContentReader;
 }): Promise<FastifyReply> {
-  const { reply, read } = input;
-  const first = await read(0, 1);
-  const range = parseHttpByteRange(input.range, first.size);
+  const { reply } = input;
+  const { size, read } = await readWorkspaceFileSnapshot(input.read);
+  const range = parseHttpByteRange(input.range, size);
   if (range === null) return sendError(reply, 416, 'FILE_RANGE_INVALID');
   const start = range?.start ?? 0;
-  const end = range?.end ?? first.size - 1;
-  const length = first.size === 0 ? 0 : end - start + 1;
+  const end = range?.end ?? size - 1;
+  const length = size === 0 ? 0 : end - start + 1;
   const filename = input.path.split('/').at(-1) ?? 'file';
   const contentType = fileContentType(filename);
   const media = contentType.startsWith('audio/') || contentType.startsWith('video/');
@@ -51,8 +76,8 @@ export async function sendWorkspaceFileContent(input: {
     )
     .header('x-content-type-options', 'nosniff');
   if (contentType === 'image/svg+xml') reply.header('content-security-policy', 'sandbox');
-  if (range !== undefined && first.size > 0)
-    reply.code(206).header('content-range', `bytes ${start}-${end}/${first.size}`);
+  if (range !== undefined && size > 0)
+    reply.code(206).header('content-range', `bytes ${start}-${end}/${size}`);
   if (stream === undefined) return sendFileContentHead(reply, length);
   return reply.header('content-length', String(length)).send(stream);
 }

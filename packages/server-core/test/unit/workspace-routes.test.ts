@@ -221,6 +221,7 @@ describe('Shared Workspace HTTP routes', () => {
         file: {
           path: data.path,
           size: 10,
+          sourceRevision: 'a'.repeat(64),
           offset: data.offset,
           bytes: Buffer.from('0123456789').subarray(data.offset, data.offset + data.limit)
         }
@@ -291,6 +292,7 @@ describe('Shared Workspace HTTP routes', () => {
         file: {
           path,
           size: original.length,
+          sourceRevision: 'a'.repeat(64),
           offset,
           bytes: original.subarray(offset, offset + limit)
         }
@@ -312,7 +314,9 @@ describe('Shared Workspace HTTP routes', () => {
   ] as const)('preserves a first-chunk relay error on %s', async (route, code, status) => {
     const { app, requestNode, headers } = fixture(undefined, databaseError);
     requestNode
-      .mockResolvedValueOnce({ file: { size: 4, offset: 0, bytes: Buffer.of(1) } })
+      .mockResolvedValueOnce({
+        file: { size: 4, offset: 0, sourceRevision: 'a'.repeat(64), bytes: Buffer.of(1) }
+      })
       .mockRejectedValueOnce(new Error(code));
 
     const response = await app.inject({
@@ -330,6 +334,58 @@ describe('Shared Workspace HTTP routes', () => {
     ]);
   });
 
+  it('rejects a same-size Workspace revision change before sending download headers', async () => {
+    const { app, requestNode, headers } = fixture(undefined, databaseError);
+    requestNode
+      .mockResolvedValueOnce({
+        file: { size: 4, offset: 0, sourceRevision: 'a'.repeat(64), bytes: Buffer.of(1) }
+      })
+      .mockResolvedValueOnce({
+        file: { size: 4, offset: 1, sourceRevision: 'b'.repeat(64), bytes: Buffer.of(2, 3) }
+      });
+    const response = await app.inject({
+      url: '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=changed.bin&download=1',
+      headers: { ...headers, range: 'bytes=1-2' }
+    });
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
+    expect(response.headers['content-range']).toBeUndefined();
+    expect(response.headers['content-disposition']).toBeUndefined();
+  });
+
+  it('aborts a started Workspace download without emitting bytes from a new revision', async () => {
+    const { app, requestNode, headers } = fixture(undefined, databaseError);
+    const nextChunk = Promise.withResolvers<void>();
+    requestNode
+      .mockResolvedValueOnce({
+        file: { size: 4, offset: 0, sourceRevision: 'a'.repeat(64), bytes: Buffer.of(1) }
+      })
+      .mockResolvedValueOnce({
+        file: { size: 4, offset: 0, sourceRevision: 'a'.repeat(64), bytes: Buffer.of(1, 2) }
+      })
+      .mockImplementationOnce(async () => {
+        await nextChunk.promise;
+        return {
+          file: { size: 4, offset: 2, sourceRevision: 'b'.repeat(64), bytes: Buffer.of(3, 4) }
+        };
+      });
+    const origin = await app.listen({ host: '127.0.0.1', port: 0 });
+    try {
+      const response = await fetch(
+        `${origin}/api/workspaces/workspace-1/files/content?nodeId=node-1&path=changed.bin&download=1`,
+        { headers }
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-length')).toBe('4');
+      const body = response.body!.getReader();
+      expect(await body.read()).toMatchObject({ value: Uint8Array.of(1, 2), done: false });
+      nextChunk.resolve();
+      await expect(body.read()).rejects.toThrow();
+    } finally {
+      nextChunk.resolve();
+    }
+  });
+
   it.each(['clip.mp4', 'sound.mp3'])(
     'streams %s larger than 20 MiB without requiring an initial Range header',
     async (path) => {
@@ -341,6 +397,7 @@ describe('Shared Workspace HTTP routes', () => {
           file: {
             path,
             size,
+            sourceRevision: 'a'.repeat(64),
             offset: data.offset,
             bytes: Buffer.alloc(Math.min(data.limit, size - data.offset), 7)
           }
@@ -378,6 +435,7 @@ describe('Shared Workspace HTTP routes', () => {
           file: {
             path: 'sound.wav',
             size,
+            sourceRevision: 'a'.repeat(64),
             offset: data.offset,
             bytes: Buffer.alloc(Math.min(data.limit, size - data.offset), 9)
           }
@@ -399,7 +457,13 @@ describe('Shared Workspace HTTP routes', () => {
   it('retains the complete non-media preview limit and rejects invalid ranges', async () => {
     const { app, requestNode, headers } = fixture();
     requestNode.mockResolvedValue({
-      file: { path: 'large.docx', size: 20 * 1024 * 1024 + 1, offset: 0, bytes: Buffer.from([0]) }
+      file: {
+        path: 'large.docx',
+        size: 20 * 1024 * 1024 + 1,
+        offset: 0,
+        sourceRevision: 'a'.repeat(64),
+        bytes: Buffer.from([0])
+      }
     });
     const url = '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=large.docx';
     expect((await app.inject({ method: 'GET', url, headers })).statusCode).toBe(413);

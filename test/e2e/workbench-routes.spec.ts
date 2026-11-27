@@ -757,7 +757,13 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       data: { workspaceId: 'workspace-1', path: 'assets/logo.png', offset: 0, limit: 1 }
     });
     respondFile(fileSocket, contentSizeCommand, {
-      file: { path: 'assets/logo.png', size: 4, offset: 0, bytes: Uint8Array.of(0) }
+      file: {
+        path: 'assets/logo.png',
+        size: 4,
+        offset: 0,
+        sourceRevision: 'a'.repeat(64),
+        bytes: Uint8Array.of(0)
+      }
     });
     const contentCommand = await message(fileSocket);
     expect(contentCommand.payload).toMatchObject({
@@ -765,7 +771,13 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       data: { workspaceId: 'workspace-1', path: 'assets/logo.png', offset: 1, limit: 2 }
     });
     respondFile(fileSocket, contentCommand, {
-      file: { path: 'assets/logo.png', size: 4, offset: 1, bytes: Uint8Array.of(1, 2) }
+      file: {
+        path: 'assets/logo.png',
+        size: 4,
+        offset: 1,
+        sourceRevision: 'a'.repeat(64),
+        bytes: Uint8Array.of(1, 2)
+      }
     });
     const contentResponse = await contentRequest;
     expect(contentResponse.statusCode).toBe(206);
@@ -787,6 +799,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       file: {
         path: 'assets/large.bin',
         size: largeDownloadSize,
+        sourceRevision: 'b'.repeat(64),
         offset: 0,
         bytes: Uint8Array.of(0)
       }
@@ -806,6 +819,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
         file: {
           path: 'assets/large.bin',
           size: largeDownloadSize,
+          sourceRevision: 'b'.repeat(64),
           offset: downloadedBytes,
           bytes: Buffer.alloc(length)
         }
@@ -837,7 +851,13 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       }
     });
     respondFile(fileSocket, worktreeContentSizeCommand, {
-      file: { path: 'assets/linked.png', size: 2, offset: 0, bytes: Uint8Array.of(0) }
+      file: {
+        path: 'assets/linked.png',
+        size: 2,
+        offset: 0,
+        sourceRevision: 'c'.repeat(64),
+        bytes: Uint8Array.of(0)
+      }
     });
     const worktreeContentCommand = await message(fileSocket);
     expect(worktreeContentCommand.payload).toMatchObject({
@@ -851,7 +871,13 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       }
     });
     respondFile(fileSocket, worktreeContentCommand, {
-      file: { path: 'assets/linked.png', size: 2, offset: 0, bytes: Uint8Array.of(0, 1) }
+      file: {
+        path: 'assets/linked.png',
+        size: 2,
+        offset: 0,
+        sourceRevision: 'c'.repeat(64),
+        bytes: Uint8Array.of(0, 1)
+      }
     });
     expect((await worktreeContentRequest).rawPayload).toEqual(Buffer.from([0, 1]));
 
@@ -866,7 +892,13 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       data: { workspaceId: 'workspace-1', path: 'assets/logo.png', offset: 0, limit: 1 }
     });
     respondFile(fileSocket, contentHeadCommand, {
-      file: { path: 'assets/logo.png', size: 4, offset: 0, bytes: Uint8Array.of(0) }
+      file: {
+        path: 'assets/logo.png',
+        size: 4,
+        offset: 0,
+        sourceRevision: 'a'.repeat(64),
+        bytes: Uint8Array.of(0)
+      }
     });
     const contentHeadResponse = await contentHeadRequest;
     expect(contentHeadResponse.statusCode).toBe(200);
