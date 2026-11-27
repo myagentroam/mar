@@ -7,6 +7,7 @@ import type {
   ConversationSegment,
   HostedConversationSnapshot
 } from '../../packages/protocol/src/index.js';
+import { encodeTerminalMessage } from '../../packages/protocol/src/byte-frame.js';
 // The Server owns the runtime WebSocket dependency used by the relay client.
 // @ts-expect-error The dependency exposes no declaration for its ESM wrapper.
 import WsClient from '../../ee/server/node_modules/ws/wrapper.mjs';
@@ -185,7 +186,10 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
       .toContain('"type":"attach"');
     // Node is already required on both platforms; keep the marker out of input echo.
     const command = `node -p "'RELEASE_' + 'TERMINAL_OK'"\r`;
-    socket.send(JSON.stringify({ type: 'input', terminalId, data: command }));
+    // Input is a binary frame: JSON metadata plus the raw bytes as payload.
+    socket.send(
+      encodeTerminalMessage({ type: 'input', terminalId, data: Buffer.from(command, 'utf8') })
+    );
     await expect
       .poll(() => terminalOutput(frames))
       .toMatch(/(?:^|[\r\n])RELEASE_TERMINAL_OK[ \t]*[\r\n]/u);
