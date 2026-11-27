@@ -1,3 +1,4 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { TerminalManager } from '../../src/terminal.js';
 import { TerminalDirectService } from '../../src/service/terminal-direct-service.js';
@@ -26,7 +27,14 @@ function fixture() {
   const get = vi.fn(() => ({ state: 'RUNNING', workspaceId: null }));
   const authorizeAttach = vi.fn(() => ({
     attachmentId: 'attachment-a',
-    frames: [{ type: 'output', terminalId: 'terminal-a', sequence: 4, data: 'replayed' }]
+    frames: [
+      {
+        type: 'output',
+        terminalId: 'terminal-a',
+        sequence: 4,
+        data: new TextEncoder().encode('replayed')
+      }
+    ]
   }));
   const acceptFrame = vi.fn(async () => undefined);
   const detach = vi.fn();
@@ -53,10 +61,10 @@ function fixture() {
   const channel = {
     readyState: 'open',
     bufferedAmount: 0,
-    sent: [] as string[],
-    onmessage: null as null | ((event: { data: string }) => void),
+    sent: [] as Uint8Array[],
+    onmessage: null as null | ((event: { data: unknown }) => void),
     onclose: null as null | (() => void),
-    send(value: string) {
+    send(value: Uint8Array) {
       this.sent.push(value);
     },
     close() {
@@ -68,7 +76,7 @@ function fixture() {
     service.open(
       'transport-1234',
       channel as unknown as RTCDataChannel,
-      JSON.stringify({
+      encodeTerminalMessage({
         type: 'OPEN',
         directSessionId: command.directSessionId,
         grant
@@ -102,19 +110,34 @@ describe('Node Terminal direct attachment', () => {
         afterSequence: 3,
         readonly: false
       });
-      expect(f.channel.sent.map((raw) => JSON.parse(raw).type)).toEqual(['ATTACHED', 'output']);
+      expect(f.channel.sent.map((raw) => decodeTerminalMessage(raw).type)).toEqual([
+        'ATTACHED',
+        'output'
+      ]);
       await vi.waitFor(() =>
         expect(f.ready).toHaveBeenCalledWith(command.directSessionId, 'ATTACHED')
       );
-      f.emitFrame({ type: 'output', terminalId: 'terminal-a', sequence: 5, data: 'live' });
-      expect(JSON.parse(f.channel.sent.at(-1)!)).toMatchObject({ data: 'live', sequence: 5 });
+      f.emitFrame({
+        type: 'output',
+        terminalId: 'terminal-a',
+        sequence: 5,
+        data: new TextEncoder().encode('live')
+      });
+      expect(decodeTerminalMessage(f.channel.sent.at(-1)!)).toMatchObject({
+        data: new TextEncoder().encode('live'),
+        sequence: 5
+      });
       f.channel.onmessage?.({
-        data: JSON.stringify({ type: 'input', terminalId: 'terminal-a', data: 'pwd\n' })
+        data: encodeTerminalMessage({
+          type: 'input',
+          terminalId: 'terminal-a',
+          data: new TextEncoder().encode('pwd\n')
+        })
       });
       await vi.waitFor(() =>
         expect(f.acceptFrame).toHaveBeenCalledWith(
           'attachment-a',
-          expect.objectContaining({ type: 'input', data: 'pwd\n' })
+          expect.objectContaining({ type: 'input', data: new TextEncoder().encode('pwd\n') })
         )
       );
     } finally {
@@ -139,7 +162,7 @@ describe('Node Terminal direct attachment', () => {
       mismatched.service.open(
         'transport-other',
         mismatched.channel as unknown as RTCDataChannel,
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'OPEN',
           directSessionId: command.directSessionId,
           grant: command.grant
@@ -158,7 +181,11 @@ describe('Node Terminal direct attachment', () => {
       f.open();
       f.acceptFrame.mockRejectedValueOnce(new Error('TERMINAL_WRITE_DENIED'));
       f.channel.onmessage?.({
-        data: JSON.stringify({ type: 'input', terminalId: 'terminal-a', data: 'oops' })
+        data: encodeTerminalMessage({
+          type: 'input',
+          terminalId: 'terminal-a',
+          data: new TextEncoder().encode('oops')
+        })
       });
       await vi.waitFor(() => expect(f.channel.readyState).toBe('closed'));
       expect(f.detach).toHaveBeenCalledWith('attachment-a');
@@ -201,7 +228,7 @@ describe('Node Terminal direct attachment', () => {
           type: 'output',
           terminalId: 'terminal-a',
           sequence: 5,
-          data: 'live'
+          data: new TextEncoder().encode('live')
         })
       ).not.toThrow();
       expect(f.detach).toHaveBeenCalledWith('attachment-a');

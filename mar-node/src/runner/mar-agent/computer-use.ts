@@ -51,6 +51,17 @@ export class PyAutoGuiComputerUseProvider implements ComputerUseExecutionProvide
     return this.#provider.dispose();
   }
 
+  bindRemote(id: string, signal: AbortSignal) {
+    return this.#provider.bind({
+      runId: id,
+      sessionId: id,
+      mode: 'run',
+      enabled: true,
+      modelSupportsImages: true,
+      signal
+    });
+  }
+
   async bind(
     input: Parameters<ComputerUseProvider['bind']>[0]
   ): Promise<ComputerUseExecutionBinding | undefined> {

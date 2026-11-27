@@ -1,11 +1,12 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTerminalDirectClient } from '../../src/service/terminal-direct-client.js';
 
 class Channel extends EventTarget {
   readyState = 'open';
   bufferedAmount = 0;
-  readonly sent: string[] = [];
-  send(data: string) {
+  readonly sent: Uint8Array[] = [];
+  send(data: Uint8Array) {
     this.sent.push(data);
   }
   close() {
@@ -14,7 +15,7 @@ class Channel extends EventTarget {
     this.dispatchEvent(new Event('close'));
   }
   receive(data: object) {
-    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(data) }));
+    this.dispatchEvent(new MessageEvent('message', { data: encodeTerminalMessage(data).buffer }));
   }
 }
 
@@ -72,18 +73,28 @@ describe('Terminal direct client handshake', () => {
       expiresAt: Date.now() + 30_000
     });
     const connection = await connecting;
-    connection!.send({ type: 'input', terminalId: 'terminal-a', data: 'before' });
+    connection!.send({
+      type: 'input',
+      terminalId: 'terminal-a',
+      data: new TextEncoder().encode('before')
+    });
     expect(channel.sent).toEqual([]);
     channel.dispatchEvent(new Event('open'));
-    expect(JSON.parse(channel.sent[0]!)).toMatchObject({
+    expect(decodeTerminalMessage(channel.sent[0]!)).toMatchObject({
       type: 'OPEN',
       directSessionId: 'session-1234',
       grant: 'a'.repeat(32)
     });
     channel.receive({ type: 'ATTACHED', terminalId: 'terminal-a', afterSequence: 5 });
     expect(options.onAttached).toHaveBeenCalledOnce();
-    connection!.send({ type: 'input', terminalId: 'terminal-a', data: 'after' });
-    expect(JSON.parse(channel.sent[1]!)).toMatchObject({ data: 'after' });
+    connection!.send({
+      type: 'input',
+      terminalId: 'terminal-a',
+      data: new TextEncoder().encode('after')
+    });
+    expect(decodeTerminalMessage(channel.sent[1]!)).toMatchObject({
+      data: new TextEncoder().encode('after')
+    });
     client.handle({
       type: 'terminal.direct.closed',
       directSessionId: 'session-1234',

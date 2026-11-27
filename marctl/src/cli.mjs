@@ -5,6 +5,7 @@ import { MarctlError } from './errors.mjs';
 import { createTranslator } from './i18n/index.mjs';
 import { runTerminalSession } from './terminal.mjs';
 import { runScp } from './scp.mjs';
+import { runComputer } from './computer.mjs';
 import { parseSessionArgs } from './session-args.mjs';
 import { runSessionCommand, sessionExitCode } from './sessions.mjs';
 
@@ -108,6 +109,19 @@ export async function main(
 
     const nodeId = await resolveNodeId(marctlClient, args.nodeId, translate);
     const socketClass = WebSocketClass ?? (await import('ws')).default;
+    if (args.command === 'computer')
+      return await withCommandSignals((signal) =>
+        runComputer({
+          client: marctlClient,
+          WebSocketClass: socketClass,
+          nodeId,
+          directory: args.directory,
+          stdin,
+          stdout,
+          signal,
+          translate
+        })
+      );
     return await withCommandSignals((signal) =>
       runTerminalSession({
         client: marctlClient,
@@ -115,6 +129,7 @@ export async function main(
         nodeId,
         command: args.remoteCommand,
         raceConnections: true,
+        stdin,
         stdout,
         stderr,
         translate,
@@ -147,6 +162,10 @@ export async function main(
           writeLine(stderr, JSON.stringify({ progress: failure.progress }, null, 2));
       }
       return sessionExitCode(error);
+    }
+    if (args?.command === 'computer' && error instanceof MarctlError && error.code !== undefined) {
+      writeLine(stderr, `${program}: ${error.message} [${error.code}]`);
+      return error.code === 'OUTCOME_UNKNOWN' ? 6 : 1;
     }
     writeLine(
       stderr,
@@ -207,6 +226,7 @@ export function parseArgs(argv, translate = createTranslator()) {
       if (
         argument !== 'nodes' &&
         argument !== 'ssh' &&
+        argument !== 'computer' &&
         argument !== 'scp' &&
         argument !== 'agents' &&
         argument !== 'version'
@@ -242,6 +262,8 @@ export function parseArgs(argv, translate = createTranslator()) {
   if (help) return { help: true, ...(command === undefined ? {} : { command }) };
   if (version || command === 'version') return { version: true };
   if (command === 'nodes' && nodeId === undefined && remoteArgs.length === 0) return { command };
+  if (command === 'computer' && nodeId && remoteArgs.length === 1 && remoteArgs[0])
+    return { command, nodeId, directory: remoteArgs[0] };
   if (command === 'scp' && nodeId !== undefined && remoteArgs.length === 1)
     return {
       command,

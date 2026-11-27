@@ -13,6 +13,7 @@ export default Object.freeze({
   agents   查看和协调当前工作区中的会话。
   nodes    列出有权限的节点及连接状态。
   ssh      打开节点终端或执行远程命令。
+  computer 在已授权的 Node 桌面执行 Python 并保存 PNG。
   scp      在当前机器与节点之间、节点之间复制普通文件。
   version  显示已安装的 CLI 包版本。
   help     显示工具或指定子命令的帮助。
@@ -41,6 +42,16 @@ ${configurationHelp}
   快捷命令仅显示对应操作的帮助。用 marctl help <子命令> 查看详细说明。
   远程访问使用授权的 Node Terminal 传输，不是系统 SSH 或 SCP 协议。`,
   commandHelp: Object.freeze({
+    computer: `{program} — 使用 Python/PyAutoGUI 操作已授权的 Node 桌面
+
+{program} <node> <output-directory>
+  所需 Node 使用权与 SSH 相同，且目标 Node 须开启远程 Computer Use。
+  输出目录须已存在。从 stdin 每次发送一行 JSON。
+  先发 {"code":""}，再从 stdout 读取 observationId 和本地 PNG 路径（images）。
+  保持 stdin 打开。按截图坐标操作时，在 code 中传 Python，并将最新 observationId
+  填入 basedOnObservationId。可选 timeoutMs 默认为 30000。
+  关闭 stdin 即释放桌面。遇到 OUTCOME_UNKNOWN 时重新连接并观察，不要重放。
+`,
     agents: `{program} — 协调当前 MAR 工作区中的 Agent
 
 用法：
@@ -267,8 +278,11 @@ ${configurationHelp}`,
     terminalRemoteError: '远程终端返回错误。',
     terminalClosedBeforeAttach: '远程终端在附着前关闭。',
     terminalFrameInvalid: '终端帧无效。',
-    terminalInvalidJson: '终端返回了无效 JSON。',
-    terminalBinaryFrame: '终端返回了无效二进制帧。',
+    computerDirectory: '输出目录必须已存在。',
+    computerInput: 'Computer Use 输入超过体积上限。',
+    computerCleanupFailed: '脚本已执行，但桌面清理失败。不要重放脚本。',
+    computerUnknown: '桌面操作结果未知。请重新连接并观察，不要重放脚本。',
+    terminalBinaryFrame: '终端要求使用二进制帧。',
     terminalConnectionFailed: '终端连接失败。',
     terminalConnectionLost: '终端连接断开。',
     terminalUnexpectedFrame: '远程终端返回了意外帧。',

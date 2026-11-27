@@ -1,6 +1,8 @@
 import { createUuid } from '../util/uuid.js';
 import type { createWorkbenchDirectTransportCoordinator } from './workbench-direct-transport-coordinator.js';
 import {
+  decodeTerminalMessage,
+  encodeTerminalMessage,
   terminalDataFrameSchema,
   terminalDirectAttachedFrameSchema,
   type TerminalDirectBrowserMessage,
@@ -150,6 +152,7 @@ export function createTerminalDirectClient(options: TerminalDirectClientOptions)
       grantedSessionId = prepared.directSessionId;
       if (input.signal.aborted) throw new TerminalDirectError('TERMINAL_DIRECT_CANCELLED');
       const channel = transport.createChannel(`mar-terminal-${prepared.directSessionId}`);
+      channel.binaryType = 'arraybuffer';
       const session: Active = {
         transport,
         channel,
@@ -165,7 +168,7 @@ export function createTerminalDirectClient(options: TerminalDirectClientOptions)
       channel.addEventListener('open', () => {
         if (session.stopped) return;
         channel.send(
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'OPEN',
             directSessionId: prepared.directSessionId,
             grant: prepared.grant
@@ -173,13 +176,14 @@ export function createTerminalDirectClient(options: TerminalDirectClientOptions)
         );
       });
       channel.addEventListener('message', (event) => {
-        if (session.stopped || typeof event.data !== 'string' || event.data.length > 128 * 1024) {
+        if (session.stopped) return;
+        if (!(event.data instanceof ArrayBuffer) || event.data.byteLength > 128 * 1024) {
           dispose('TERMINAL_FRAME_INVALID');
           return;
         }
         let value: unknown;
         try {
-          value = JSON.parse(event.data);
+          value = decodeTerminalMessage(event.data);
         } catch {
           dispose('TERMINAL_FRAME_INVALID');
           return;
@@ -223,7 +227,7 @@ export function createTerminalDirectClient(options: TerminalDirectClientOptions)
             dispose('TERMINAL_BACKPRESSURE');
             return;
           }
-          channel.send(JSON.stringify(frame));
+          channel.send(encodeTerminalMessage(frame));
         },
         dispose: () => dispose()
       };

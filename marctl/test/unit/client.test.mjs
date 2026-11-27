@@ -90,25 +90,24 @@ test('requests the direct manifest and opens the management live channel', async
   assert.equal(socket.options.headers.Authorization, 'Bearer secret-key');
 });
 
-test('returns the Server binary-mode handshake instead of assuming a pipe terminal', async () => {
-  for (const binary of [true, false]) {
-    const client = new MarctlClient({
-      serverUrl: 'https://server.test',
-      key: 'secret-key',
-      fetchImpl: async () =>
-        response({ terminalId: 'terminal-1', ...(binary ? { binary: true } : {}) })
-    });
-    assert.deepEqual(
-      await client.createTerminal({
+test('opens a command terminal without a transport mode option', async () => {
+  const client = new MarctlClient({
+    serverUrl: 'https://server.test',
+    key: 'test-key',
+    fetchImpl: async (_url, options) => {
+      assert.deepEqual(JSON.parse(options.body), {
         nodeId: 'node-1',
         rows: 24,
         cols: 80,
-        command: 'node -e "test"',
-        binary: true
-      }),
-      { terminalId: 'terminal-1', binary }
-    );
-  }
+        command: 'cat'
+      });
+      return response({ terminalId: 'terminal-1' });
+    }
+  });
+  assert.equal(
+    await client.createTerminal({ nodeId: 'node-1', rows: 24, cols: 80, command: 'cat' }),
+    'terminal-1'
+  );
 });
 
 test('does not expose response bodies or credentials in request failures', async () => {

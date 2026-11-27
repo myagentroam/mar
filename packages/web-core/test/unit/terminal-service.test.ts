@@ -1,3 +1,4 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TerminalDirectError } from '../../src/service/terminal-direct-client.js';
 import { createTerminalService } from '../../src/service/terminal-service.js';
@@ -7,12 +8,12 @@ class Socket extends EventTarget {
   static readonly OPEN = 1;
   static instances: Socket[] = [];
   readyState = 1;
-  readonly sent: string[] = [];
+  readonly sent: Uint8Array[] = [];
   constructor(readonly url: string) {
     super();
     Socket.instances.push(this);
   }
-  send(data: string) {
+  send(data: Uint8Array) {
     this.sent.push(data);
   }
   close() {
@@ -20,7 +21,7 @@ class Socket extends EventTarget {
     this.dispatchEvent(new Event('close'));
   }
   frame(frame: object) {
-    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(frame) }));
+    this.dispatchEvent(new MessageEvent('message', { data: encodeTerminalMessage(frame).buffer }));
   }
 }
 
@@ -66,14 +67,56 @@ describe('Unified Terminal entry', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['direct', 'relay'])(
+    'sends large UTF-8 pastes in ordered binary frames over %s',
+    async (path) => {
+      const f = fixture();
+      if (path === 'direct') f.direct.attach.mockResolvedValue(f.directConnection);
+      await f.service.attach();
+      const terminalId = 'terminal-a';
+      if (path === 'direct') f.direct.attach.mock.calls[0]![0].onAttached();
+      else Socket.instances[0]!.frame({ type: 'attach', terminalId, afterSequence: 0 });
+      const data = '\u001b[200~' + '😀中'.repeat(14_000) + '\u001b[201~';
+      f.service.send({ type: 'input', terminalId, data });
+      const frames =
+        path === 'direct'
+          ? f.directConnection.send.mock.calls.map(([frame]) => frame)
+          : Socket.instances[0]!.sent.map(decodeTerminalMessage);
+      expect(frames.length).toBeGreaterThan(1);
+      expect(
+        frames.every(
+          (frame) =>
+            frame.type === 'input' &&
+            frame.terminalId === terminalId &&
+            frame.data instanceof Uint8Array &&
+            frame.data.length <= 32 * 1024
+        )
+      ).toBe(true);
+      expect(Buffer.concat(frames.map(({ data }) => Buffer.from(data))).toString('utf8')).toBe(
+        data
+      );
+      f.service.dispose();
+    }
+  );
+
   it('falls back to relay after direct disconnect, preserving replay and ignoring late direct frames', async () => {
     const f = fixture();
     f.direct.attach.mockResolvedValue(f.directConnection);
     await f.service.attach();
     const input = f.direct.attach.mock.calls[0]![0];
     input.onAttached();
-    input.onFrame({ type: 'output', terminalId: 'terminal-a', data: 'direct', sequence: 7 });
-    input.onFrame({ type: 'output', terminalId: 'terminal-a', data: 'duplicate', sequence: 7 });
+    input.onFrame({
+      type: 'output',
+      terminalId: 'terminal-a',
+      data: new TextEncoder().encode('direct'),
+      sequence: 7
+    });
+    input.onFrame({
+      type: 'output',
+      terminalId: 'terminal-a',
+      data: new TextEncoder().encode('duplicate'),
+      sequence: 7
+    });
     f.service.send({ type: 'input', terminalId: 'terminal-a', data: 'hello' });
     expect(f.directConnection.send).toHaveBeenCalledOnce();
     input.onDisconnected('TERMINAL_DIRECT_CLOSED');
@@ -83,17 +126,25 @@ describe('Unified Terminal entry', () => {
     Socket.instances[0]!.frame({
       type: 'output',
       terminalId: 'terminal-a',
-      data: 'replayed',
+      data: new TextEncoder().encode('replayed'),
       sequence: 7
     });
     Socket.instances[0]!.frame({
       type: 'output',
       terminalId: 'terminal-a',
-      data: 'relay',
+      data: new TextEncoder().encode('relay'),
       sequence: 8
     });
-    input.onFrame({ type: 'output', terminalId: 'terminal-a', data: 'late', sequence: 9 });
-    expect(f.onOutput.mock.calls).toEqual([['direct'], ['relay']]);
+    input.onFrame({
+      type: 'output',
+      terminalId: 'terminal-a',
+      data: new TextEncoder().encode('late'),
+      sequence: 9
+    });
+    expect(f.onOutput.mock.calls).toEqual([
+      [new TextEncoder().encode('direct')],
+      [new TextEncoder().encode('relay')]
+    ]);
     f.service.dispose();
     expect(f.directConnection.dispose).toHaveBeenCalled();
   });

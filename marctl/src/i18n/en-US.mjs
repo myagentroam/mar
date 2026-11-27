@@ -14,6 +14,7 @@ Commands:
   agents   Inspect and coordinate Sessions in the current Workspace.
   nodes    List accessible Nodes and their connection status.
   ssh      Open a Node terminal or execute a remote command.
+  computer Run Python on an authorized Node desktop and save PNG results.
   scp      Copy a regular file between this machine and Nodes, or between Nodes.
   version  Print the installed CLI package version.
   help     Show help for the CLI or a command.
@@ -42,6 +43,16 @@ Notes:
   Each alias shows only its own command help. Use marctl help <command> for details.
   Remote access uses authorized Node Terminal transport, not system SSH or SCP.`,
   commandHelp: Object.freeze({
+    computer: `{program} — Operate an authorized Node desktop with Python/PyAutoGUI
+
+{program} <node> <output-directory>
+  Requires the same Node access as SSH and remote Computer Use enabled on the Node.
+  Use an existing output directory. Send one JSON line at a time on stdin.
+  Start with {"code":""}; read observationId and local PNG paths (images) from stdout.
+  Keep stdin open. For screenshot-based actions, send Python in code and pass the latest
+  observationId as basedOnObservationId. Optional timeoutMs defaults to 30000.
+  EOF releases the desktop. On OUTCOME_UNKNOWN, reconnect and observe; do not replay.
+`,
     agents: `{program} — Coordinate Agents in the current MAR Workspace
 
 Usage:
@@ -283,8 +294,12 @@ No configuration, authorization, or Server connection is required.`
     terminalRemoteError: 'The remote terminal reported an error.',
     terminalClosedBeforeAttach: 'The remote terminal closed before attachment.',
     terminalFrameInvalid: 'The terminal frame was invalid.',
-    terminalInvalidJson: 'The terminal sent invalid JSON.',
-    terminalBinaryFrame: 'The terminal sent an invalid binary frame.',
+    computerDirectory: 'The output directory must already exist.',
+    computerInput: 'Computer Use input exceeds the size limit.',
+    computerCleanupFailed: 'The script completed, but desktop cleanup failed. Do not replay it.',
+    computerUnknown:
+      'The outcome of the desktop action is unknown. Reconnect and observe again. Do not replay the script.',
+    terminalBinaryFrame: 'The terminal requires a binary frame.',
     terminalBinaryUnavailable:
       'Binary copy requires a Server and Node that support pipe terminals.',
     terminalConnectionFailed: 'The terminal connection failed.',

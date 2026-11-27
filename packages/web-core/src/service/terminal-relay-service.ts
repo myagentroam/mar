@@ -1,4 +1,9 @@
 import type { ScopedHttpService } from './scoped-http-service.js';
+import {
+  decodeTerminalMessage,
+  encodeTerminalMessage,
+  terminalDataFrameSchema
+} from '@myagentroam/protocol';
 import { translate } from './locale-preference-service.js';
 
 interface TerminalRelayServiceOptions {
@@ -7,7 +12,7 @@ interface TerminalRelayServiceOptions {
   readonly workspaceId?: string;
   readonly http: ScopedHttpService;
   readonly onAttached: () => void;
-  readonly onOutput: (data: string) => void;
+  readonly onOutput: (data: Uint8Array) => void;
   readonly onExited: () => void;
   readonly onTerminalUnavailable: (code: string) => void;
   readonly onErrorFrame: (code: string) => void;
@@ -47,7 +52,8 @@ export function createTerminalRelayService(options: TerminalRelayServiceOptions)
   }
 
   function send(frame: object): void {
-    if (attached && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame));
+    if (attached && socket?.readyState === WebSocket.OPEN)
+      socket.send(encodeTerminalMessage(frame));
   }
 
   function clearReconnectTimers(): void {
@@ -110,6 +116,7 @@ export function createTerminalRelayService(options: TerminalRelayServiceOptions)
       );
       if (disposed) return;
       const current = new WebSocket(connectUrl(ticket.ticket));
+      current.binaryType = 'arraybuffer';
       socket = current;
       attached = false;
       attachTimer = window.setTimeout(() => {
@@ -149,15 +156,9 @@ export function createTerminalRelayService(options: TerminalRelayServiceOptions)
 
   function handleMessage(current: WebSocket, event: MessageEvent): void {
     if (socket !== current) return;
-    let frame: {
-      readonly type: string;
-      readonly terminalId: string;
-      readonly sequence?: number;
-      readonly data?: string;
-      readonly code?: string;
-    };
+    let frame;
     try {
-      frame = JSON.parse(String(event.data)) as typeof frame;
+      frame = terminalDataFrameSchema.parse(decodeTerminalMessage(event.data));
     } catch {
       current.close();
       return;
@@ -171,7 +172,7 @@ export function createTerminalRelayService(options: TerminalRelayServiceOptions)
       reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
       options.onReconnectStatus(undefined);
       options.onAttached();
-    } else if (frame.type === 'output' && typeof frame.data === 'string') {
+    } else if (frame.type === 'output') {
       if (typeof frame.sequence === 'number') lastSequence = Math.max(lastSequence, frame.sequence);
       if (typeof frame.sequence === 'number') {
         if (options.afterSequence !== undefined && frame.sequence <= options.afterSequence())

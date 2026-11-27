@@ -333,6 +333,7 @@ export class NodeControl extends NodeIdentityControl {
     readonly workspaceId?: string;
     readonly afterSequence?: unknown;
     readonly readonly?: unknown;
+    readonly computer?: boolean;
   }): {
     readonly ticket: string;
     readonly nodeId: string;

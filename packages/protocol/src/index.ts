@@ -25,6 +25,7 @@ export * from './mcp.js';
 export * from './git-identity.js';
 export * from './direct-transfer.js';
 export * from './terminal-direct.js';
+export * from './byte-frame.js';
 export * from './remote-desktop.js';
 export * from './browser-frame.js';
 export * from './browser-input.js';
@@ -49,7 +50,7 @@ export const healthStatusSchema = z.object({
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
 
 /** The only wire protocol version understood by this build. */
-export const NODE_PROTOCOL_VERSION = 3;
+export const NODE_PROTOCOL_VERSION = 4;
 export const WORKBENCH_PROTOCOL_VERSION = 1;
 
 export const nodePlatformSchema = z.enum(['windows', 'linux', 'macos']);
@@ -3764,13 +3765,18 @@ export const terminalDataFrameSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('input'),
     terminalId: z.string().min(1).max(128),
-    data: z.string().max(65536)
+    data: z.instanceof(Uint8Array).refine((bytes) => bytes.length > 0 && bytes.length <= 65536)
+  }),
+  z.object({
+    type: z.literal('eof'),
+    terminalId: z.string().min(1).max(128)
   }),
   z.object({
     type: z.literal('output'),
     terminalId: z.string().min(1).max(128),
     sequence: z.number().int().positive(),
-    data: z.string().max(65536)
+    stream: z.literal('stderr').optional(),
+    data: z.instanceof(Uint8Array).refine((bytes) => bytes.length > 0 && bytes.length <= 65536)
   }),
   z.object({ type: z.literal('close'), terminalId: z.string().min(1).max(128) }),
   z.object({
@@ -4269,8 +4275,9 @@ const FIXED_PUBLIC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   TERMINAL_GIT_OWNER_REQUIRED:
     'This terminal uses another user’s Git credentials. Open your own terminal.',
   TERMINAL_OWNER_REQUIRED: 'This terminal belongs to another user. Open your own terminal.',
-  TERMINAL_COMMAND_INVALID: 'The remote command must be non-empty and at most 8 KiB.',
+  TERMINAL_COMMAND_INVALID: 'The remote command must be non-empty and at most 64 KiB.',
   TERMINAL_COMMAND_START_FAILED: 'The remote command could not be started.',
+  COMPUTER_REMOTE_DISABLED: 'Remote Computer Use is disabled in the target Node configuration.',
   FILE_REVEAL_INVALID: 'The Workspace file manager target is invalid.',
   FILE_MANAGER_UNAVAILABLE: 'The local file manager is unavailable in this Node desktop session.',
   EXTERNAL_SESSION_ACTIVE:

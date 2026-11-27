@@ -18,6 +18,10 @@
   },
   "exports": {
     "./package.json": "./package.json",
+    "./byte-frame": {
+      "types": "./dist/byte-frame.d.ts",
+      "import": "./dist/byte-frame.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"

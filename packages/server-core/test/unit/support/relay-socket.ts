@@ -1,3 +1,4 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol';
 import { EventEmitter } from 'node:events';
 import { vi } from 'vitest';
 
@@ -16,5 +17,17 @@ export class RelaySocket extends EventEmitter {
   });
   receive(message: unknown) {
     this.emit('message', Buffer.from(JSON.stringify(message)), false);
+  }
+}
+
+export class TerminalRelaySocket extends RelaySocket {
+  override send(raw: string | Uint8Array, completed?: (error?: Error | null) => void) {
+    if (typeof raw === 'string') throw new Error('Expected a binary Terminal frame');
+    this.sent.push(decodeTerminalMessage(raw));
+    completed?.(null);
+  }
+
+  override receive(message: object) {
+    this.emit('message', Buffer.from(encodeTerminalMessage(message)), true);
   }
 }

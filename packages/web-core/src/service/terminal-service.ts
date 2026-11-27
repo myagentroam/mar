@@ -11,6 +11,7 @@ export interface TerminalServiceOptions extends RelayOptions {
 }
 
 const TERMINAL_END_CODES = new Set(['TERMINAL_CLOSED', 'TERMINAL_NOT_FOUND']);
+const INPUT_CHUNK_BYTES = 32 * 1024;
 const DENIED_CODES = new Set([
   'TERMINAL_NOT_AUTHORIZED',
   'RESOURCE_ACCESS_DENIED',
@@ -111,7 +112,7 @@ export function createTerminalService(options: TerminalServiceOptions) {
     options.onAttached();
   }
 
-  function onOutput(data: string, sequence?: number): void {
+  function onOutput(data: Uint8Array, sequence?: number): void {
     if (sequence !== undefined) {
       if (sequence <= lastSequence) return;
       lastSequence = sequence;
@@ -205,8 +206,26 @@ export function createTerminalService(options: TerminalServiceOptions) {
 
   function send(frame: object): void {
     if (!attached || disposed) return;
-    if (direct !== undefined) direct.send(frame);
-    else relay?.send(frame);
+    const path = direct ?? relay;
+    if (path === undefined) return;
+    if (!(
+      'type' in frame &&
+      frame.type === 'input' &&
+      'data' in frame &&
+      typeof frame.data === 'string'
+    )) {
+      path.send(frame);
+      return;
+    }
+    // Encode once; the Node's streaming PTY decoder preserves characters split across frames.
+    const bytes = new TextEncoder().encode(frame.data);
+    const epoch = generation;
+    for (
+      let offset = 0;
+      offset < bytes.length && attached && epoch === generation;
+      offset += INPUT_CHUNK_BYTES
+    )
+      path.send({ ...frame, data: bytes.subarray(offset, offset + INPUT_CHUNK_BYTES) });
   }
 
   function reconnect(): void {

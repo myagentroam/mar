@@ -245,7 +245,12 @@ export class ResourceAccessService {
         workspaceId !== undefined && this.canUseScheduledWorkspace(actorUserId, nodeId, workspaceId)
       );
     // Desktop access is Node-wide and cannot be delegated by a Workspace grant.
-    if (operation === 'desktop.describe') return this.canUseNode(actorUserId, nodeId);
+    if (
+      operation === 'desktop.describe' ||
+      operation === 'computer.use.open' ||
+      operation === 'computer.use.attach'
+    )
+      return this.canUseNode(actorUserId, nodeId);
     if (operation === 'workspace.git.settings.get' && workspaceId !== undefined)
       return (
         (await this.canUseWorkspace(actorUserId, nodeId, workspaceId)) ||

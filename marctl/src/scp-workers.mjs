@@ -96,16 +96,12 @@ async function withRemoteWorker(
     WebSocketClass,
     nodeId,
     command: workerCommand(mode, file, size, metadata, preserve, sourceBasename),
-    binary: true,
     raceConnections: true,
     signal: controller.signal,
     translate,
     attached: async ({ transport, terminalId }) => {
       const channel = new ByteChannel(
-        (bytes) =>
-          transport.send(
-            JSON.stringify({ type: 'input', terminalId, data: bytes.toString('base64') })
-          ),
+        (bytes) => transport.send({ type: 'input', terminalId, data: bytes }),
         controller
       );
       let sequence = 0;
@@ -116,10 +112,7 @@ async function withRemoteWorker(
             if (frame.sequence !== sequence + 1)
               throw new MarctlError('Copy output sequence is invalid.');
             sequence = frame.sequence;
-            const bytes = Buffer.from(frame.data, 'base64');
-            if (bytes.toString('base64') !== frame.data)
-              throw new MarctlError('Copy output is not valid base64.');
-            channel.feed(bytes);
+            if (frame.stream !== 'stderr') channel.feed(Buffer.from(frame.data));
           } else if (frame.type === 'exit') channel.finish(frame.exitCode ?? 1);
           else if (frame.type === 'error')
             channel.fail(new MarctlError(translate('errors.terminalRemoteError')));

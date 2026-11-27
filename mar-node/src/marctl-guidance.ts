@@ -11,7 +11,7 @@ export function hasMarctlContext(environment: Readonly<Record<string, string>>):
 }
 
 export const marctlManagementDescription =
-  'Use marctl to manage MAR Agent session settings (model, effort, title, and persistent prompts) and Workspace scheduled tasks, read paginated public history, discover authorized MAR Nodes, and execute commands or transfer files on those Nodes. Use native agent_* tools for other Agent lifecycle and collaboration operations.';
+  'Use marctl to manage MAR Agent session settings (model, effort, title, and persistent prompts) and Workspace scheduled tasks, read paginated public history, discover authorized MAR Nodes, execute commands or transfer files on those Nodes, or operate remote desktops with PyAutoGUI. Use native agent_* tools for other Agent lifecycle and collaboration operations.';
 
 const marctlHistory =
   'Use marctl agents history <id> [--cursor <cursor>] [--limit <1..100>] --json to read public history on demand; agents view returns state, Goal and recent activity only.';
@@ -30,22 +30,26 @@ const marctlSchedule = [
   'Use schedule update --task <task-id> --expected-revision <revision> with at least one of --name, --triggers-file, -m or --message-file. Supplying --triggers-file replaces all triggers; for a partial change, use the existing triggers and preserve any times and recurrence the user did not ask to change. Omit --triggers-file when only the name or prompt changes. Other users’ tasks receive proposals instead of direct updates. Re-read on revision conflict. If a schedule write has an unknown outcome, check with schedule list or get before retrying.'
 ].join('\n\n');
 
+const marctlComputer =
+  'Use marctl computer <node> <existing-output-directory> for remote Python/PyAutoGUI on a Node with remote Computer Use enabled. It uses the same Node permission and CLI credentials as SSH. Keep stdin open and send one JSON line at a time, starting with {"code":""}. Read observationId and local PNG paths (images) from stdout; for coordinate-based scripts, send Python in code and pass the latest observationId as basedOnObservationId. Close stdin when done. On OUTCOME_UNKNOWN, reconnect and observe; do not replay.';
+
 export const marctlManagementInstructions = [
   '## MAR Workspace management',
   'Use native agent_* tools for Agent discovery, creation, communication, observation, waiting and stopping. Do not switch to marctl when a native operation fails.',
   marctlHistory,
   marctlSessionSettings,
   marctlSchedule,
-  'marctl nodes lists authorized Nodes; marctl ssh executes remote commands and marctl scp transfers files. Use marctl help agents, nodes, ssh or scp for options.',
+  'marctl nodes lists authorized Nodes; marctl ssh executes remote commands and marctl scp transfers files. Use marctl help agents, nodes, ssh, scp or computer for options.',
+  marctlComputer,
   marctlSafety
 ].join('\n\n');
 
 export const marctlDescription =
-  'Use marctl agents to create, send to, wait for, stop, list and view Agents, configure models and effort, rename Sessions, manage prompts and schedules, or make explicitly authorized approval decisions; use nodes, ssh and scp for authorized Node operations.';
+  'Use marctl agents to create, send to, wait for, stop, list and view Agents, configure models and effort, rename Sessions, manage prompts and schedules, or make explicitly authorized approval decisions; use nodes, ssh, scp and computer for authorized Node operations.';
 
 export const marctlInstructions = [
   '## MAR Workspace CLI',
-  'Run marctl from the shell. Commands use the authenticated Node and Workspace; marctl help agents, nodes, ssh or scp shows options.',
+  'Run marctl from the shell. Commands use the authenticated Node and Workspace; marctl help agents, nodes, ssh, scp or computer shows options.',
   "Use agents start --title <title> -m <text> [--runner <runner>] [--parent <id>] [--relation child|peer] [--model-id <id>] [--effort <effort>] [--goal <objective>]. An Agent must supply a nonblank title; a manual terminal may omit it. From an Agent, omit --runner to use the calling Agent's type. From a terminal, specify --runner or --parent. Without --runner, the parent Session supplies the Agent type. Agents start a child by default; --relation peer starts an independent Session and cannot be used with --parent. In a terminal, explicit child requires --parent; omitting both starts a root. For MAR Agent, peers can use any authorized, enabled conversation model; children also require Subagent support. Start returns without waiting for completion.",
   'Use agents send <id> -m <text> [--steer|--queue], agents wait [<id>] [--wait-for message|completion] [--timeout <duration>], agents stop <id>, agents list [--scope tree|active], and agents view <id>. --timeout 0ms takes a snapshot; positive durations are used as requested. Stop targets the current Session execution and clears its Goal.',
   marctlHistory,
@@ -58,5 +62,6 @@ export const marctlInstructions = [
   marctlSessionSettings,
   marctlSchedule,
   'marctl nodes, ssh and scp use authorized Nodes.',
+  marctlComputer,
   marctlSafety
 ].join('\n\n');

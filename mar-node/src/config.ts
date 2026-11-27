@@ -23,6 +23,7 @@ export interface DirectTransferUdpPortRange {
 
 export interface ComputerUseConfig {
   readonly enabled: boolean;
+  readonly remoteEnabled?: boolean;
   /** Development/validation override; production distributions use the managed runtime path. */
   readonly runtimeExecutable?: string;
 }
@@ -233,11 +234,15 @@ function parseComputerUse(value: unknown): ComputerUseConfig | undefined {
     value === null ||
     Array.isArray(value) ||
     typeof (value as Record<string, unknown>)['enabled'] !== 'boolean' ||
-    Object.keys(value).some((key) => key !== 'enabled' && key !== 'runtimeExecutable')
+    Object.keys(value).some(
+      (key) => key !== 'enabled' && key !== 'runtimeExecutable' && key !== 'remoteEnabled'
+    )
   )
     throw new Error('NODE_CONFIG_INVALID');
   const input = value as Record<string, unknown>;
   const runtimeExecutable = input['runtimeExecutable'];
+  if (input['remoteEnabled'] !== undefined && typeof input['remoteEnabled'] !== 'boolean')
+    throw new Error('NODE_CONFIG_INVALID');
   if (
     runtimeExecutable !== undefined &&
     (typeof runtimeExecutable !== 'string' ||
@@ -247,6 +252,7 @@ function parseComputerUse(value: unknown): ComputerUseConfig | undefined {
     throw new Error('NODE_CONFIG_INVALID');
   return {
     enabled: input['enabled'] as boolean,
+    ...(input['remoteEnabled'] === undefined ? {} : { remoteEnabled: input['remoteEnabled'] }),
     ...(runtimeExecutable === undefined ? {} : { runtimeExecutable })
   };
 }

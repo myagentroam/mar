@@ -16,7 +16,11 @@ import {
   type TerminalPtyFactory
 } from '../../src/terminal.js';
 import { NodeTerminalChannel } from '../../src/service/node-terminal-channel.js';
-import { createEnvelope } from '@myagentroam/protocol';
+import {
+  createEnvelope,
+  decodeTerminalMessage,
+  encodeTerminalMessage
+} from '@myagentroam/protocol';
 
 class FakePty implements TerminalPty {
   paused = false;
@@ -69,6 +73,50 @@ class FakePty implements TerminalPty {
   }
 }
 
+it.each(['eof', 'disconnect'] as const)(
+  'keeps remote desktop data out of Terminal replay and history after %s',
+  async (ending) => {
+    const manager = new TerminalManager({ platform: 'linux' });
+    const database = new NodeDatabase(':memory:', 'terminal-computer');
+    const connector = new NodeConnector({ reconnect: false, database, terminalManager: manager });
+    let output!: (data: Buffer) => void;
+    let exit!: (code: number) => void;
+    try {
+      const terminal = manager.openComputer(() => ({
+        kill: () => true,
+        close: async () => undefined,
+        write: () => undefined,
+        end: () => exit(0),
+        onData: (listener) => {
+          output = listener;
+        },
+        onExit: (listener) => {
+          exit = listener;
+        }
+      }));
+      expect(database.getTerminalSession(terminal.id)).toBeUndefined();
+      const { attachmentId } = manager.authorizeAttach({ terminalId: terminal.id });
+      const frames: unknown[] = [];
+      manager.onFrame((frame) => frames.push(frame));
+      manager.startCommand(terminal.id);
+      output(Buffer.from([0x89, 0x50]));
+      expect(frames).toEqual([
+        { type: 'output', terminalId: terminal.id, sequence: 1, data: Uint8Array.of(0x89, 0x50) }
+      ]);
+      expect(
+        manager.synchronizeAttachment({ terminalId: terminal.id, attachmentId, afterSequence: 0 })
+      ).toEqual({ active: true, frames: [] });
+      if (ending === 'eof')
+        await manager.acceptFrame(attachmentId, { type: 'eof', terminalId: terminal.id });
+      else manager.detach(attachmentId);
+      await vi.waitFor(() => expect(manager.list()).toEqual([]));
+      expect(database.getTerminalSession(terminal.id)).toBeUndefined();
+    } finally {
+      await connector.stop();
+    }
+  }
+);
+
 function fakeFactory(output: {
   value?: FakePty;
   shell?: string;
@@ -114,7 +162,7 @@ describe('Node Admin Terminal', () => {
             type: 'output',
             terminalId: terminal.id,
             sequence,
-            data: sequence === 2 ? 'b' : 'c'
+            data: Uint8Array.of(sequence === 2 ? 98 : 99)
           }))
         ];
         const attachment = manager.authorizeAttach({ terminalId: terminal.id, afterSequence });
@@ -215,15 +263,17 @@ describe('Node Admin Terminal', () => {
         const address = server.address();
         if (address === null || typeof address === 'string') throw new Error('ADDRESS_INVALID');
         server.on('connection', (socket, request) => {
-          socket.on('message', (raw) => {
-            const message = JSON.parse(raw.toString());
+          socket.on('message', (raw, isBinary) => {
+            const message = isBinary ? decodeTerminalMessage(raw) : JSON.parse(raw.toString());
             if (message.type !== 'authenticate') return;
             if (request.url === '/api/node/connect') {
               controls.push(socket);
               socket.send(JSON.stringify(createEnvelope('authenticated', {})));
             } else {
               relays.push(socket);
-              socket.send(JSON.stringify({ type: 'authenticated', nodeId: 'terminal-node' }));
+              socket.send(
+                encodeTerminalMessage({ type: 'authenticated', nodeId: 'terminal-node' })
+              );
             }
           });
         });
@@ -251,19 +301,19 @@ describe('Node Admin Terminal', () => {
         const original = manager.open();
         const attachment = manager.authorizeAttach({ terminalId: original.id });
         relays[0]!.send(
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'attach',
             ticket: 'original-ticket',
             terminalId: original.id,
             attachmentId: attachment.attachmentId,
-            latestSequence: attachment.latestSequence
+            afterSequence: 0
           })
         );
         await once(relays[0]!, 'message');
         await manager.acceptFrame(attachment.attachmentId, {
           type: 'input',
           terminalId: original.id,
-          data: 'long-running-command\n'
+          data: new TextEncoder().encode('long-running-command\n')
         });
         if (code === 1006) controls[0]!.terminate();
         else controls[0]!.close(code, code === 1001 ? 'SERVER_SHUTDOWN' : 'NODE_REVOKED');
@@ -274,7 +324,7 @@ describe('Node Admin Terminal', () => {
           manager.acceptFrame(attachment.attachmentId, {
             type: 'input',
             terminalId: original.id,
-            data: 'stale-input'
+            data: new TextEncoder().encode('stale-input')
           })
         ).rejects.toThrow('TERMINAL_ATTACH_INVALID');
         expect(ptys).toHaveLength(1);
@@ -282,7 +332,10 @@ describe('Node Admin Terminal', () => {
         if (code !== 4003) {
           ptys[0]!.emitData('continued output');
           expect(manager.authorizeAttach({ terminalId: original.id }).frames).toEqual([
-            expect.objectContaining({ type: 'output', data: 'continued output' })
+            expect.objectContaining({
+              type: 'output',
+              data: new TextEncoder().encode('continued output')
+            })
           ]);
         }
         const detached = manager.open();
@@ -412,14 +465,15 @@ describe('Node Admin Terminal', () => {
       },
       terminate: async () => undefined
     });
-    const sent: { type: string; ticket?: string; frame?: { type: string; data?: string } }[] = [];
+    const sent: { type: string; ticket?: string; frame?: { type: string; data?: Uint8Array } }[] =
+      [];
     const callbacks: (() => void)[] = [];
     const socket = {
       readyState: 1,
       OPEN: 1,
       bufferedAmount: 0,
-      send(raw: string, callback?: () => void) {
-        const message = JSON.parse(raw);
+      send(raw: Uint8Array, callback?: () => void) {
+        const message = decodeTerminalMessage(raw) as any;
         sent.push(message);
         if (message.type === 'frame' && callback !== undefined) callbacks.push(callback);
         else callback?.();
@@ -434,22 +488,19 @@ describe('Node Admin Terminal', () => {
       reconnectDelay: () => 0,
       manager
     });
-    const access = channel as unknown as { socket: typeof socket; handle(raw: string): void };
+    const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
     access.socket = socket;
     try {
-      const terminals = [
-        manager.openCommand({}, 'fixture', true),
-        manager.openCommand({}, 'fixture', true)
-      ];
+      const terminals = [manager.openCommand({}, 'fixture'), manager.openCommand({}, 'fixture')];
       for (const [index, terminal] of terminals.entries()) {
         const attachment = manager.authorizeAttach({ terminalId: terminal.id });
         access.handle(
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'attach',
             ticket: `ticket-${index}`,
             terminalId: terminal.id,
             attachmentId: attachment.attachmentId,
-            latestSequence: attachment.latestSequence
+            afterSequence: 0
           })
         );
       }
@@ -476,20 +527,24 @@ describe('Node Admin Terminal', () => {
       socket.bufferedAmount = 300 * 1024;
       holders[0]!.value!.emitData('pending');
       expect(holders[0]!.value!.paused).toBe(true);
-      access.handle(JSON.stringify({ type: 'detach', ticket: 'ticket-0' }));
+      access.handle(encodeTerminalMessage({ type: 'detach', ticket: 'ticket-0' }));
       expect(holders[0]!.value!.paused).toBe(false);
       socket.bufferedAmount = 0;
       await vi.advanceTimersByTimeAsync(1000);
-      expect(sent.some((item) => item.frame?.data === 'pending')).toBe(false);
+      expect(
+        sent.some(
+          (item) => item.frame?.data && Buffer.from(item.frame.data).toString() === 'pending'
+        )
+      ).toBe(false);
 
       const resumed = manager.authorizeAttach({ terminalId: terminals[0]!.id });
       access.handle(
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'attach',
           ticket: 'ticket-resumed',
           terminalId: terminals[0]!.id,
           attachmentId: resumed.attachmentId,
-          latestSequence: resumed.latestSequence
+          afterSequence: resumed.latestSequence
         })
       );
       socket.bufferedAmount = 300 * 1024;
@@ -499,7 +554,12 @@ describe('Node Admin Terminal', () => {
       expect(holders[0]!.value!.paused).toBe(false);
       socket.bufferedAmount = 0;
       await vi.advanceTimersByTimeAsync(1000);
-      expect(sent.some((item) => item.frame?.data === 'disconnect-pending')).toBe(false);
+      expect(
+        sent.some(
+          (item) =>
+            item.frame?.data && Buffer.from(item.frame.data).toString() === 'disconnect-pending'
+        )
+      ).toBe(false);
     } finally {
       channel.stop();
       await manager.shutdown();
@@ -642,27 +702,25 @@ describe('Node Admin Terminal', () => {
         throw new Error('PTY_MUST_NOT_START');
       }
     });
-    const frames: { type: string; data?: string; exitCode?: number | null }[] = [];
+    const frames: { type: string; data?: Uint8Array; exitCode?: number | null }[] = [];
     try {
       manager.onFrame((frame) => frames.push(frame));
       const command = `${JSON.stringify(process.execPath)} -e 'process.stdin.once("data", bytes => { process.stdout.write(bytes); process.stdin.destroy(); })'`;
-      const terminal = manager.openCommand({}, command, true);
+      const terminal = manager.openCommand({}, command);
       const writer = manager.authorizeAttach({ terminalId: terminal.id });
       manager.startCommand(terminal.id);
       const bytes = Buffer.from([0, 255, 42, 10, 128]);
       await manager.acceptFrame(writer.attachmentId, {
         type: 'input',
         terminalId: terminal.id,
-        data: bytes.toString('base64')
+        data: bytes
       });
       await vi.waitFor(() => expect(manager.get(terminal.id).state).toBe('EXITED'), {
         timeout: 5_000
       });
       expect(
         Buffer.concat(
-          frames
-            .filter((frame) => frame.type === 'output')
-            .map((frame) => Buffer.from(frame.data!, 'base64'))
+          frames.filter((frame) => frame.type === 'output').map((frame) => Buffer.from(frame.data!))
         )
       ).toEqual(bytes);
       expect(frames.at(-1)).toMatchObject({ type: 'exit', exitCode: 0 });
@@ -676,7 +734,7 @@ describe('Node Admin Terminal', () => {
       platform: 'linux',
       profiles: [{ id: 'default', label: 'sh', shell: '/bin/sh', args: [], isDefault: true }]
     });
-    const frames: { type: string; data?: string; exitCode?: number | null }[] = [];
+    const frames: { type: string; data?: Uint8Array; exitCode?: number | null }[] = [];
     const database = new NodeDatabase(':memory:', 'node-terminal-responsive');
     const connector = new NodeConnector({
       reconnect: false,
@@ -694,8 +752,8 @@ describe('Node Admin Terminal', () => {
       readyState: 1,
       OPEN: 1,
       bufferedAmount: 0,
-      send(raw: string, callback?: () => void) {
-        const message = JSON.parse(raw);
+      send(raw: Uint8Array, callback?: () => void) {
+        const message = decodeTerminalMessage(raw) as any;
         if (message.type !== 'frame') {
           callback?.();
           return;
@@ -713,19 +771,19 @@ describe('Node Admin Terminal', () => {
       reconnectDelay: () => 0,
       manager
     });
-    const access = channel as unknown as { socket: typeof socket; handle(raw: string): void };
+    const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
     access.socket = socket;
     try {
       const command = `${JSON.stringify(process.execPath)} -e 'process.stdout.write(Buffer.alloc(262144, 42))'`;
-      const terminal = manager.openCommand({}, command, true);
+      const terminal = manager.openCommand({}, command);
       const attachment = manager.authorizeAttach({ terminalId: terminal.id });
       access.handle(
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'attach',
           ticket: 'pipe-ticket',
           terminalId: terminal.id,
           attachmentId: attachment.attachmentId,
-          latestSequence: attachment.latestSequence
+          afterSequence: 0
         })
       );
       await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0));
@@ -741,9 +799,7 @@ describe('Node Admin Terminal', () => {
       await vi.waitFor(() => expect(frames.at(-1)?.type).toBe('exit'), { timeout: 5_000 });
       expect(
         Buffer.concat(
-          frames
-            .filter((frame) => frame.type === 'output')
-            .map((frame) => Buffer.from(frame.data!, 'base64'))
+          frames.filter((frame) => frame.type === 'output').map((frame) => Buffer.from(frame.data!))
         )
       ).toEqual(Buffer.alloc(262144, 42));
       expect(frames.at(-1)).toMatchObject({ type: 'exit', exitCode: 0 });
@@ -758,15 +814,26 @@ describe('Node Admin Terminal', () => {
     'preserves real PTY tail output when a relay write takes longer than PTY exit cleanup',
     async () => {
       const manager = new TerminalManager({
-        profiles: [{ id: 'default', label: 'sh', shell: '/bin/sh', args: [], isDefault: true }]
+        profiles: [
+          {
+            id: 'default',
+            label: 'sh',
+            shell: '/bin/sh',
+            args: [
+              '-c',
+              `${JSON.stringify(process.execPath)} -e 'process.stdout.write("x".repeat(24576))'`
+            ],
+            isDefault: true
+          }
+        ]
       });
-      const frames: { type: string; data?: string; exitCode?: number | null }[] = [];
+      const frames: { type: string; data?: Uint8Array; exitCode?: number | null }[] = [];
       const socket = {
         readyState: 1,
         OPEN: 1,
         bufferedAmount: 0,
-        send(raw: string, callback?: () => void) {
-          const message = JSON.parse(raw);
+        send(raw: Uint8Array, callback?: () => void) {
+          const message = decodeTerminalMessage(raw) as any;
           if (message.type === 'frame') {
             frames.push(message.frame);
             if (callback) setTimeout(callback, 350);
@@ -782,27 +849,24 @@ describe('Node Admin Terminal', () => {
         reconnectDelay: () => 0,
         manager
       });
-      const access = channel as unknown as { socket: typeof socket; handle(raw: string): void };
+      const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
       access.socket = socket;
       try {
-        const terminal = manager.openCommand(
-          {},
-          `${JSON.stringify(process.execPath)} -e 'process.stdout.write("x".repeat(24576))'`
-        );
+        const terminal = manager.open();
         const attachment = manager.authorizeAttach({ terminalId: terminal.id });
         access.handle(
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'attach',
             ticket: 'pty-tail',
             terminalId: terminal.id,
             attachmentId: attachment.attachmentId,
-            latestSequence: attachment.latestSequence
+            afterSequence: 0
           })
         );
         await vi.waitFor(() => expect(frames.at(-1)?.type).toBe('exit'), { timeout: 10_000 });
         const output = frames
           .filter((frame) => frame.type === 'output')
-          .map((frame) => frame.data)
+          .map((frame) => Buffer.from(frame.data!).toString())
           .join('');
         expect(output.length).toBe(24576);
         expect(output.replaceAll('x', '')).toBe('');
@@ -848,20 +912,20 @@ describe('Node Admin Terminal', () => {
       reconnectDelay: () => 0,
       manager
     });
-    const access = channel as unknown as { socket: typeof socket; handle(raw: string): void };
+    const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
     access.socket = socket;
     try {
-      const terminal = manager.openCommand({}, 'fixture', true);
+      const terminal = manager.openCommand({}, 'fixture');
       const writer = manager.authorizeAttach({ terminalId: terminal.id });
       manager.startCommand(terminal.id);
       const observer = manager.authorizeAttach({ terminalId: terminal.id, readonly: true });
       access.handle(
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'attach',
           ticket: 'readonly-observer',
           terminalId: terminal.id,
           attachmentId: observer.attachmentId,
-          latestSequence: observer.latestSequence
+          afterSequence: 0
         })
       );
       output(Buffer.from('direct output'));
@@ -870,7 +934,7 @@ describe('Node Admin Terminal', () => {
         manager.acceptFrame(writer.attachmentId, {
           type: 'input',
           terminalId: terminal.id,
-          data: Buffer.from('input').toString('base64')
+          data: Buffer.from('input')
         })
       ).resolves.toBeUndefined();
     } finally {
@@ -896,7 +960,7 @@ describe('Node Admin Terminal', () => {
       })
     });
     try {
-      const terminal = manager.openCommand({}, 'fixture', true);
+      const terminal = manager.openCommand({}, 'fixture');
       const relay = manager.authorizeAttach({ terminalId: terminal.id });
       manager.startCommand(terminal.id);
       manager.setOutputBackpressure(terminal.id, new Set([relay.attachmentId]));
@@ -910,7 +974,7 @@ describe('Node Admin Terminal', () => {
         manager.acceptFrame(direct.attachmentId, {
           type: 'input',
           terminalId: terminal.id,
-          data: Buffer.from('input').toString('base64')
+          data: Buffer.from('input')
         })
       ).resolves.toBeUndefined();
     } finally {
@@ -1004,13 +1068,9 @@ describe('Node Admin Terminal', () => {
           }
         });
         const client = {
-          getTerminalManifest: async () => ({ binaryTerminal: true }),
-          createTerminal: async (input: { nodeId: string; command: string; binary: boolean }) => ({
-            terminalId: nodes
-              .get(input.nodeId)!
-              .manager.openCommand({}, input.command, input.binary).id,
-            binary: input.binary
-          }),
+          getTerminalManifest: async () => ({}),
+          createTerminal: async (input: { nodeId: string; command: string }) =>
+            nodes.get(input.nodeId)!.manager.openCommand({}, input.command).id,
           createAttachTicket: async (input: { nodeId: string; terminalId: string }) =>
             relay.createTicket({ ...input, user }).ticket,
           openTerminalWebSocket: (_Socket: unknown, input: { ticket: string }) => {
@@ -1078,13 +1138,14 @@ describe('Node Admin Terminal', () => {
       terminate: async () => undefined,
       ptyFactory: (...args) => fakeFactory(holders[next++]!)(...args)
     });
-    const sent: { ticket?: string; frame?: { type: string; data?: string; code?: string } }[] = [];
+    const sent: { ticket?: string; frame?: { type: string; data?: Uint8Array; code?: string } }[] =
+      [];
     const socket = {
       readyState: 1,
       OPEN: 1,
       bufferedAmount: 300 * 1024,
-      send(raw: string, callback?: () => void) {
-        sent.push(JSON.parse(raw));
+      send(raw: Uint8Array, callback?: () => void) {
+        sent.push(decodeTerminalMessage(raw));
         callback?.();
       },
       close: vi.fn()
@@ -1097,7 +1158,7 @@ describe('Node Admin Terminal', () => {
       reconnectDelay: () => 0,
       manager
     });
-    const access = channel as unknown as { socket: typeof socket; handle(raw: string): void };
+    const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
     access.socket = socket;
     try {
       const terminals = [manager.open(), manager.open()];
@@ -1106,12 +1167,12 @@ describe('Node Admin Terminal', () => {
       );
       for (const [index, terminal] of terminals.entries())
         access.handle(
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'attach',
             ticket: `overflow-${index}`,
             terminalId: terminal.id,
             attachmentId: attachments[index]!.attachmentId,
-            latestSequence: attachments[index]!.latestSequence
+            afterSequence: 0
           })
         );
       holders[1]!.value!.emitData('preserved');
@@ -1131,14 +1192,17 @@ describe('Node Admin Terminal', () => {
       await vi.waitFor(() =>
         expect(
           sent.some(
-            (message) => message.ticket === 'overflow-1' && message.frame?.data === 'preserved'
+            (message) =>
+              message.ticket === 'overflow-1' &&
+              message.frame?.data !== undefined &&
+              Buffer.from(message.frame.data).toString() === 'preserved'
           )
         ).toBe(true)
       );
       await manager.acceptFrame(attachments[1]!.attachmentId, {
         type: 'input',
         terminalId: terminals[1]!.id,
-        data: 'echo'
+        data: new TextEncoder().encode('echo')
       });
       expect(holders[1]!.value!.writes).toEqual(['echo']);
       expect(() => manager.authorizeAttach({ terminalId: terminals[0]!.id })).not.toThrow();
@@ -1174,7 +1238,7 @@ describe('Node Admin Terminal', () => {
     });
     const frames: unknown[] = [];
     manager.onFrame((frame) => frames.push(frame));
-    const terminal = manager.openCommand({}, 'node -e "test"', true);
+    const terminal = manager.openCommand({}, 'node -e "test"');
     const writer = manager.authorizeAttach({ terminalId: terminal.id, afterSequence: 0 });
     manager.startCommand(terminal.id);
     output(Buffer.from([0, 255, 42]));
@@ -1182,7 +1246,7 @@ describe('Node Admin Terminal', () => {
       type: 'output',
       terminalId: terminal.id,
       sequence: 1,
-      data: 'AP8q'
+      data: Uint8Array.of(0, 255, 42)
     });
     expect(
       manager.authorizeAttach({ terminalId: terminal.id, afterSequence: 0, readonly: true }).frames
@@ -1190,7 +1254,7 @@ describe('Node Admin Terminal', () => {
     await manager.acceptFrame(writer.attachmentId, {
       type: 'input',
       terminalId: terminal.id,
-      data: 'AP8q'
+      data: Uint8Array.of(0, 255, 42)
     });
     expect(writes).toEqual([Buffer.from([0, 255, 42])]);
     await expect(
@@ -1204,22 +1268,24 @@ describe('Node Admin Terminal', () => {
     expect(frames.at(-1)).toEqual({ type: 'exit', terminalId: terminal.id, exitCode: 0 });
   });
 
-  it('starts a command only after an authorized attachment and preserves its exit status', () => {
-    const holder: { value?: FakePty; shell?: string; args?: readonly string[] } = {};
-    const manager = new TerminalManager({ platform: 'linux', ptyFactory: fakeFactory(holder) });
+  it('starts a command only after an authorized attachment and preserves its exit status', async () => {
+    const manager = new TerminalManager({ platform: 'linux' });
     const frames: unknown[] = [];
     manager.onFrame((frame) => frames.push(frame));
     expect(() => manager.openCommand({}, '\0bad')).toThrow('TERMINAL_COMMAND_INVALID');
     const terminal = manager.openCommand({}, 'printf "%s" ready; exit 17');
-    expect(holder.value).toBeUndefined();
+    expect(frames).toEqual([]);
     const attachment = manager.authorizeAttach({ terminalId: terminal.id, afterSequence: 0 });
     expect(attachment.frames).toEqual([]);
     manager.startCommand(terminal.id);
-    expect(holder.args).toEqual(['-c', 'printf "%s" ready; exit 17']);
-    holder.value!.emitData('ready');
-    holder.value!.emitExit(17);
+    await vi.waitFor(() => expect(manager.get(terminal.id).state).toBe('EXITED'));
     expect(frames).toEqual([
-      { type: 'output', terminalId: terminal.id, sequence: 1, data: 'ready' },
+      {
+        type: 'output',
+        terminalId: terminal.id,
+        sequence: 1,
+        data: new TextEncoder().encode('ready')
+      },
       { type: 'exit', terminalId: terminal.id, exitCode: 17 }
     ]);
     expect(manager.get(terminal.id)).toMatchObject({ state: 'EXITED', exitCode: 17 });
@@ -1316,15 +1382,22 @@ describe('Node Admin Terminal', () => {
 
     const writer = manager.authorizeAttach({ terminalId: terminal.id, afterSequence: 0 });
     expect(writer.latestSequence).toBe(0);
+    const command = new TextEncoder().encode('echo 你好\n');
     await manager.acceptFrame(writer.attachmentId, {
       type: 'input',
       terminalId: terminal.id,
-      data: 'echo 你好\n'
+      data: command.subarray(0, 6)
+    });
+    expect(pty.writes).toEqual(['echo ']);
+    await manager.acceptFrame(writer.attachmentId, {
+      type: 'input',
+      terminalId: terminal.id,
+      data: command.subarray(6)
     });
     await manager.acceptFrame(writer.attachmentId, {
       type: 'input',
       terminalId: terminal.id,
-      data: 'git che\t'
+      data: new TextEncoder().encode('git che\t')
     });
     await manager.acceptFrame(writer.attachmentId, {
       type: 'resize',
@@ -1332,7 +1405,7 @@ describe('Node Admin Terminal', () => {
       rows: 40,
       cols: 100
     });
-    expect(pty.writes).toEqual(['echo 你好\n', 'git che\t']);
+    expect(pty.writes).toEqual(['echo ', '你好\n', 'git che\t']);
     expect(pty.resizes).toEqual([{ cols: 100, rows: 40 }]);
 
     pty.emitData('\u001b[31mfirst');
@@ -1347,7 +1420,12 @@ describe('Node Admin Terminal', () => {
       active: true,
       frames: [
         { type: 'error', terminalId: terminal.id, code: 'TERMINAL_REPLAY_GAP' },
-        { type: 'output', terminalId: terminal.id, sequence: 2, data: 'last!' }
+        {
+          type: 'output',
+          terminalId: terminal.id,
+          sequence: 2,
+          data: new TextEncoder().encode('last!')
+        }
       ]
     });
     const replay = manager.authorizeAttach({
@@ -1357,7 +1435,12 @@ describe('Node Admin Terminal', () => {
     });
     expect(replay.frames).toEqual([
       { type: 'error', terminalId: terminal.id, code: 'TERMINAL_REPLAY_GAP' },
-      { type: 'output', terminalId: terminal.id, sequence: 2, data: 'last!' }
+      {
+        type: 'output',
+        terminalId: terminal.id,
+        sequence: 2,
+        data: new TextEncoder().encode('last!')
+      }
     ]);
     expect(() => manager.authorizeAttach({ terminalId: terminal.id, afterSequence: 2 })).toThrow(
       'TERMINAL_ATTACH_CONFLICT'
@@ -1378,24 +1461,22 @@ describe('Node Admin Terminal', () => {
       manager.acceptFrame(writer.attachmentId, {
         type: 'input',
         terminalId: terminal.id,
-        data: 'stale'
+        data: new TextEncoder().encode('stale')
       })
     ).rejects.toThrow('TERMINAL_ATTACH_INVALID');
     await manager.acceptFrame(resumed.attachmentId, {
       type: 'input',
       terminalId: terminal.id,
-      data: 'current'
+      data: new TextEncoder().encode('current')
     });
-    const largeOutputFrames: string[] = [];
+    const largeOutputFrames: Uint8Array[] = [];
     const stopCapturingOutput = manager.onFrame((frame) => {
       if (frame.type === 'output') largeOutputFrames.push(frame.data);
     });
     pty.emitData(`${'a'.repeat(65_535)}😀`);
     stopCapturingOutput();
-    expect(largeOutputFrames).toHaveLength(2);
-    expect(largeOutputFrames[0]!.endsWith('\ud83d')).toBe(false);
-    expect(largeOutputFrames[0]).toHaveLength(65_535);
-    expect(largeOutputFrames[1]).toBe('😀');
+    expect(largeOutputFrames.every((frame) => frame.byteLength <= 32 * 1024)).toBe(true);
+    expect(Buffer.concat(largeOutputFrames).toString()).toBe(`${'a'.repeat(65_535)}😀`);
     await manager.close(terminal.id);
     expect(pty.kills).toBe(1);
     expect(terminated).toEqual([]);
@@ -1413,8 +1494,8 @@ describe('Node Admin Terminal', () => {
       const socket = {
         readyState: 1,
         OPEN: 1,
-        send(raw: string, callback?: () => void) {
-          sent.push(JSON.parse(raw));
+        send(raw: Uint8Array, callback?: () => void) {
+          sent.push(decodeTerminalMessage(raw));
           callback?.();
         },
         close() {}
@@ -1430,7 +1511,7 @@ describe('Node Admin Terminal', () => {
       (
         channel as unknown as {
           socket: typeof socket;
-          handle(raw: string): void;
+          handle(raw: Uint8Array): void;
         }
       ).socket = socket;
 
@@ -1440,15 +1521,15 @@ describe('Node Admin Terminal', () => {
       channelPty.emitData('authorized-before-channel');
       (
         channel as unknown as {
-          handle(raw: string): void;
+          handle(raw: Uint8Array): void;
         }
       ).handle(
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'attach',
           ticket: 'ticket-active',
           terminalId: channelTerminal.id,
           attachmentId: attachment.attachmentId,
-          latestSequence: attachment.latestSequence
+          afterSequence: 0
         })
       );
       expect(sent).toEqual([
@@ -1464,7 +1545,7 @@ describe('Node Admin Terminal', () => {
             type: 'output',
             terminalId: channelTerminal.id,
             sequence: 1,
-            data: 'authorized-before-channel'
+            data: new TextEncoder().encode('authorized-before-channel')
           }
         }
       ]);
@@ -1478,22 +1559,22 @@ describe('Node Admin Terminal', () => {
           type: 'output',
           terminalId: channelTerminal.id,
           sequence: 2,
-          data: 'live-after-channel'
+          data: new TextEncoder().encode('live-after-channel')
         }
       });
 
       channelManager.detach(attachment.attachmentId);
       (
         channel as unknown as {
-          handle(raw: string): void;
+          handle(raw: Uint8Array): void;
         }
       ).handle(
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'attach',
           ticket: 'ticket-stale',
           terminalId: channelTerminal.id,
           attachmentId: attachment.attachmentId,
-          latestSequence: attachment.latestSequence
+          afterSequence: 0
         })
       );
       expect(sent.at(-1)).toEqual({

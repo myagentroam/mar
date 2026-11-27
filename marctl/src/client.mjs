@@ -64,23 +64,33 @@ export class MarctlClient {
     return result;
   }
 
-  async createTerminal({ nodeId, rows, cols, command, binary = false }) {
+  async createTerminal({ nodeId, rows, cols, command }) {
     validateNodeId(nodeId, this.#translate);
     validateDimensions(rows, cols, this.#translate);
     if (command !== undefined && typeof command !== 'string')
       throw new MarctlError(this.#translate('errors.terminalCommandInvalid'));
     const body = { nodeId, rows, cols };
     if (command !== undefined) body.command = command;
-    if (binary) body.binary = true;
     const payload = await this.#requestJson('/api/marctl/terminals', {
       method: 'POST',
       body
     });
     if (!isRecord(payload) || !isNonEmptyString(payload.terminalId))
       throw new MarctlError(this.#translate('errors.serverInvalidTerminalId'));
-    return binary
-      ? { terminalId: payload.terminalId, binary: payload.binary === true }
-      : payload.terminalId;
+    return payload.terminalId;
+  }
+
+  async openComputer(nodeId, signal) {
+    validateNodeId(nodeId, this.#translate);
+    const result = await this.#requestJson('/api/marctl/computer', {
+      method: 'POST',
+      body: { nodeId },
+      preserveError: true,
+      signal
+    });
+    if (!isNonEmptyString(result?.terminalId) || !isNonEmptyString(result.ticket))
+      throw new MarctlError(this.#translate('errors.terminalFrameInvalid'));
+    return result;
   }
 
   async getTerminalManifest(nodeId) {
@@ -96,8 +106,7 @@ export class MarctlClient {
       throw new MarctlError(this.#translate('errors.serverInvalidManifest'));
     return {
       ...payload.manifest,
-      ...(payload.deferredRelay === true ? { deferredRelay: true } : {}),
-      ...(payload.binaryTerminal === true ? { binaryTerminal: true } : {})
+      ...(payload.deferredRelay === true ? { deferredRelay: true } : {})
     };
   }
 

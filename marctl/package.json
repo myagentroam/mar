@@ -22,6 +22,7 @@
     "test:unit": "node --test test/unit/*.test.mjs"
   },
   "dependencies": {
+    "@myagentroam/protocol": "workspace:*",
     "node-datachannel": "0.33.4",
     "ws": "8.21.3"
   }

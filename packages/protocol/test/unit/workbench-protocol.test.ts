@@ -919,8 +919,8 @@ describe('Workbench protocol contracts', () => {
     ).toBe(true);
   });
 
-  it('uses Node protocol v3 and rejects other envelopes', () => {
-    expect(NODE_PROTOCOL_VERSION).toBe(3);
+  it('uses Node protocol v4 and rejects other envelopes', () => {
+    expect(NODE_PROTOCOL_VERSION).toBe(4);
     expect(
       nodeEnvelopeSchema.safeParse({
         version: NODE_PROTOCOL_VERSION,
@@ -929,7 +929,7 @@ describe('Workbench protocol contracts', () => {
         payload: {}
       }).success
     ).toBe(true);
-    for (const version of [1, 2, 4])
+    for (const version of [1, 2, 3, 5])
       expect(
         nodeEnvelopeSchema.safeParse({
           version,
@@ -1467,14 +1467,17 @@ describe('Workbench protocol contracts', () => {
         .success
     ).toBe(false);
     expect(
-      terminalDataFrameSchema.safeParse({ type: 'input', terminalId: 'terminal-1', data: 'ls\n' })
-        .success
+      terminalDataFrameSchema.safeParse({
+        type: 'input',
+        terminalId: 'terminal-1',
+        data: new TextEncoder().encode('ls\n')
+      }).success
     ).toBe(true);
     expect(
       terminalDataFrameSchema.safeParse({
         type: 'input',
         terminalId: 'terminal-1',
-        data: 'x'.repeat(65537)
+        data: new Uint8Array(65537)
       }).success
     ).toBe(false);
     expect(

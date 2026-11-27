@@ -13,7 +13,10 @@ const MAX_BUFFER_BYTES = 2 * 1024 * 1024;
 const ipcBytes = new WeakMap();
 
 function sendIpc(target, message, onError = () => {}, onSent = () => {}) {
-  const bytes = Buffer.byteLength(JSON.stringify(message));
+  const { frame, ...metadata } = message;
+  const bytes =
+    Buffer.byteLength(JSON.stringify(metadata)) +
+    (frame?.byteLength ?? frame?.data?.byteLength ?? 0);
   const pending = ipcBytes.get(target) ?? 0;
   if (!target.connected || pending + bytes > MAX_BUFFER_BYTES) {
     onError(new Error('TERMINAL_CONNECTION_LOST'));
@@ -54,6 +57,7 @@ export function openDirectTerminalProcess({
     try {
       child = forkImpl(new URL('./direct-process.mjs', import.meta.url), [], {
         stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+        serialization: 'advanced',
         execArgv: []
       });
     } catch {
@@ -199,15 +203,15 @@ class IsolatedDirectTransport extends EventEmitter {
 
   send(frame) {
     if (this.#closed) return Promise.reject(new Error('TERMINAL_CONNECTION_LOST'));
-    const value = typeof frame === 'string' ? frame : JSON.stringify(frame);
-    const bytes = Buffer.byteLength(value);
+    const { data, ...metadata } = frame;
+    const bytes = Buffer.byteLength(JSON.stringify(metadata)) + (data?.byteLength ?? 0);
     if (this.#writeBytes + bytes > MAX_BUFFER_BYTES)
       return Promise.reject(new Error('TERMINAL_DIRECT_BUFFER_EXCEEDED'));
     const id = ++this.#nextId;
     return new Promise((resolve, reject) => {
       this.#writeBytes += bytes;
       this.#writes.set(id, { resolve, reject, bytes });
-      sendIpc(this.#child, { type: 'send', id, frame: value }, () =>
+      sendIpc(this.#child, { type: 'send', id, frame }, () =>
         this.fail(new Error('TERMINAL_CONNECTION_LOST'))
       );
     });
@@ -342,7 +346,7 @@ function runChild() {
         });
         sendIpc(process, { type: 'attached' });
         transport.on('message', (frame, isBinary) =>
-          sendIpc(process, { type: 'frame', frame: String(frame), isBinary }, abort)
+          sendIpc(process, { type: 'frame', frame: Buffer.from(frame), isBinary }, abort)
         );
         transport.on('error', (error) => {
           sendIpc(process, { type: 'failure', code: error.code ?? error.message });

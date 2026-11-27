@@ -2,9 +2,81 @@ import type { WebSocket } from 'ws';
 import type { TerminalDataFrame } from '@myagentroam/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { TerminalRelayService } from '../../src/terminal-relay-service.js';
-import { RelaySocket } from './support/relay-socket.js';
+import { TerminalRelaySocket as RelaySocket } from './support/relay-socket.js';
 
 describe('public Terminal relay', () => {
+  it.each(['login', 'node access'])(
+    'binds a computer ticket to its user and closes the desktop on %s revocation',
+    async (revocation) => {
+      const requestNode = vi.fn(async () => ({
+        attachment: { attachmentId: 'desktop-attachment', terminalId: 'desktop' }
+      }));
+      const authorizeNodeRequest = vi.fn(async () => false);
+      const relay = new TerminalRelayService({
+        database: { authenticateNode: async () => ({ id: 'node-1', disabled: false }) },
+        authorizeNodeRequest,
+        requestNode
+      });
+      const node = new RelaySocket();
+      const browser = new RelaySocket();
+      const user = { userId: 1, sessionHash: 'login' };
+      try {
+        relay.attachNode(node as unknown as WebSocket);
+        node.receive({ type: 'authenticate', nodeId: 'node-1', credential: 'fixture' });
+        await vi.waitFor(() => expect(node.sent[0]?.type).toBe('authenticated'));
+        const { ticket } = relay.createTicket({
+          nodeId: 'node-1',
+          terminalId: 'desktop',
+          user,
+          computer: true
+        });
+        for (const other of [
+          { ...user, userId: 2 },
+          { ...user, sessionHash: 'another-login' }
+        ]) {
+          const rejected = new RelaySocket();
+          relay.attachBrowser(rejected as unknown as WebSocket, ticket, other);
+          expect(rejected.close).toHaveBeenCalledWith(4008, 'TERMINAL_TICKET_INVALID');
+        }
+        const deferred = new RelaySocket();
+        relay.attachBrowser(deferred as unknown as WebSocket, { ticket, deferred: true }, user);
+        expect(deferred.close).toHaveBeenCalledWith(4008, 'TERMINAL_TICKET_INVALID');
+        expect(requestNode).not.toHaveBeenCalled();
+        relay.attachBrowser(browser as unknown as WebSocket, ticket, user);
+        await vi.waitFor(() => expect(node.sent.at(-1)?.type).toBe('attach'));
+        expect(requestNode).toHaveBeenCalledWith(
+          'node-1',
+          'computer.use.attach',
+          {
+            terminalId: 'desktop',
+            afterSequence: 0,
+            readonly: false
+          },
+          user
+        );
+        const reused = new RelaySocket();
+        relay.attachBrowser(reused as unknown as WebSocket, ticket, user);
+        expect(reused.close).toHaveBeenCalledWith(4008, 'TERMINAL_TICKET_INVALID');
+        node.receive({ type: 'attached', ticket, terminalId: 'desktop' });
+        if (revocation === 'login') relay.closeSession(user.sessionHash);
+        else {
+          await relay.revalidateAuthorizations();
+          expect(authorizeNodeRequest).toHaveBeenCalledWith(
+            1,
+            'node-1',
+            'computer.use.attach',
+            {},
+            undefined
+          );
+        }
+        expect(node.sent).toContainEqual({ type: 'close', ticket });
+        expect(browser.close).toHaveBeenCalled();
+      } finally {
+        relay.close();
+      }
+    }
+  );
+
   it('closes a data socket on storage failure instead of leaking an unhandled rejection', async () => {
     const relay = new TerminalRelayService({
       database: {
@@ -55,8 +127,7 @@ describe('public Terminal relay', () => {
       attachment: {
         attachmentId: 'attachment-1',
         terminalId: 'terminal-1',
-        latestSequence: 0,
-        frames: [{ type: 'output', terminalId: 'terminal-1', sequence: 1, data: 'before attach' }]
+        latestSequence: 1
       }
     }));
     const database = {
@@ -90,18 +161,37 @@ describe('public Terminal relay', () => {
           ticket: ticket.ticket,
           terminalId: 'terminal-1',
           attachmentId: 'attachment-1',
-          latestSequence: 0
+          afterSequence: 0
         })
       );
       expect(browser.sent).toEqual([]);
-      const frame = { type: 'input', terminalId: 'terminal-1', data: 'echo fixture\r' };
+      const frame = {
+        type: 'input',
+        terminalId: 'terminal-1',
+        data: new TextEncoder().encode('echo fixture\r')
+      };
       browser.receive(frame);
       expect(node.sent.at(-1)?.type).toBe('attach');
       node.receive({ type: 'attached', ticket: ticket.ticket, terminalId: 'terminal-1' });
-      await vi.waitFor(() => expect(browser.sent[0]?.type).toBe('attach'));
+      node.receive({
+        type: 'frame',
+        ticket: ticket.ticket,
+        frame: {
+          type: 'output',
+          terminalId: 'terminal-1',
+          sequence: 1,
+          data: new TextEncoder().encode('before attach')
+        }
+      });
+      await vi.waitFor(() => expect(browser.sent).toHaveLength(2));
       expect(browser.sent).toEqual([
         { type: 'attach', terminalId: 'terminal-1', afterSequence: 0 },
-        { type: 'output', terminalId: 'terminal-1', sequence: 1, data: 'before attach' }
+        {
+          type: 'output',
+          terminalId: 'terminal-1',
+          sequence: 1,
+          data: new TextEncoder().encode('before attach')
+        }
       ]);
       expect(requestNode).toHaveBeenCalledWith(
         'node-1',
@@ -336,7 +426,7 @@ describe('public Terminal relay', () => {
           type: 'output',
           terminalId: 'terminal-1',
           sequence: 1,
-          data: 'still responsive'
+          data: new TextEncoder().encode('still responsive')
         };
         node.receive({ type: 'frame', ticket: tickets[1]!.ticket, frame: live });
         await vi.waitFor(() => expect(browsers[1]!.sent.at(-1)).toEqual(live));
@@ -355,11 +445,12 @@ describe('public Terminal relay', () => {
         type: 'output' as const,
         terminalId: 'terminal-1',
         sequence,
-        data: '\0'.repeat(65_536)
+        data: new Uint8Array(65_536)
       }));
       const f = await frameFixture(mode === 'replay' ? frames : []);
       const send = f.browser.send.bind(f.browser);
-      f.browser.send = (raw: string, completed?: (error?: Error | null) => void) => {
+      f.browser.bufferedAmount = 880 * 1024;
+      f.browser.send = (raw, completed?: (error?: Error | null) => void) => {
         f.browser.bufferedAmount += Buffer.byteLength(raw);
         send(raw, completed);
       };
@@ -393,7 +484,7 @@ describe('public Terminal relay', () => {
       type: 'output',
       terminalId: 'terminal-1',
       sequence: index + 1,
-      data: 'snapshot'
+      data: new TextEncoder().encode('snapshot')
     }));
     const f = await frameFixture(frames);
     try {
@@ -408,7 +499,12 @@ describe('public Terminal relay', () => {
       f.node.receive({
         type: 'frame',
         ticket: f.ticket,
-        frame: { type: 'output', terminalId: 'terminal-1', sequence: 65, data: 'live' }
+        frame: {
+          type: 'output',
+          terminalId: 'terminal-1',
+          sequence: 65,
+          data: new TextEncoder().encode('live')
+        }
       });
       f.node.receive({
         type: 'frame',
@@ -434,8 +530,18 @@ describe('public Terminal relay', () => {
     'continues replay on successful write callback %s',
     async (success) => {
       const f = await frameFixture([
-        { type: 'output', terminalId: 'terminal-1', sequence: 1, data: 'first' },
-        { type: 'output', terminalId: 'terminal-1', sequence: 2, data: 'last' },
+        {
+          type: 'output',
+          terminalId: 'terminal-1',
+          sequence: 1,
+          data: new TextEncoder().encode('first')
+        },
+        {
+          type: 'output',
+          terminalId: 'terminal-1',
+          sequence: 2,
+          data: new TextEncoder().encode('last')
+        },
         { type: 'exit', terminalId: 'terminal-1', exitCode: 0 }
       ]);
       const send = f.browser.send.bind(f.browser);
@@ -471,7 +577,7 @@ describe('public Terminal relay', () => {
         type: 'output',
         terminalId: 'terminal-1',
         sequence,
-        data: 'snapshot'
+        data: new TextEncoder().encode('snapshot')
       }))
     );
     const send = f.browser.send.bind(f.browser);
@@ -485,7 +591,12 @@ describe('public Terminal relay', () => {
       f.node.receive({
         type: 'frame',
         ticket: f.ticket,
-        frame: { type: 'output', terminalId: 'terminal-1', sequence: 4, data: 'live' }
+        frame: {
+          type: 'output',
+          terminalId: 'terminal-1',
+          sequence: 4,
+          data: new TextEncoder().encode('live')
+        }
       });
       expect(f.browser.sent.filter((frame) => frame.type === 'output')).toHaveLength(1);
       f.browser.close();
@@ -505,7 +616,12 @@ describe('public Terminal relay', () => {
     'isolates a stalled replay on %s',
     async (failure) => {
       const f = await frameFixture([
-        { type: 'output', terminalId: 'terminal-1', sequence: 1, data: 'snapshot' }
+        {
+          type: 'output',
+          terminalId: 'terminal-1',
+          sequence: 1,
+          data: new TextEncoder().encode('snapshot')
+        }
       ]);
       const send = f.browser.send.bind(f.browser);
       let completed: ((error?: Error | null) => void) | undefined;
@@ -516,7 +632,7 @@ describe('public Terminal relay', () => {
       try {
         f.confirm();
         if (failure === 'queue overflow')
-          for (let sequence = 2; sequence <= 5; sequence++) {
+          for (let sequence = 2; sequence <= 18; sequence++) {
             f.node.receive({
               type: 'frame',
               ticket: f.ticket,
@@ -524,7 +640,7 @@ describe('public Terminal relay', () => {
                 type: 'output',
                 terminalId: 'terminal-1',
                 sequence,
-                data: '\0'.repeat(65_536)
+                data: new Uint8Array(65_536)
               }
             });
           }
@@ -587,8 +703,7 @@ async function frameFixture(frames: readonly TerminalDataFrame[]) {
       attachment: {
         terminalId: 'terminal-1',
         attachmentId: 'frame-attachment',
-        latestSequence: frames.length,
-        frames
+        latestSequence: frames.length
       }
     })
   });
@@ -606,7 +721,7 @@ async function frameFixture(frames: readonly TerminalDataFrame[]) {
       ticket,
       terminalId: 'terminal-1',
       attachmentId: 'frame-attachment',
-      latestSequence: frames.length
+      afterSequence: 0
     })
   );
   return {
@@ -614,6 +729,9 @@ async function frameFixture(frames: readonly TerminalDataFrame[]) {
     node,
     browser,
     ticket,
-    confirm: () => node.receive({ type: 'attached', ticket, terminalId: 'terminal-1' })
+    confirm: () => {
+      node.receive({ type: 'attached', ticket, terminalId: 'terminal-1' });
+      for (const frame of frames) node.receive({ type: 'frame', ticket, frame });
+    }
   };
 }

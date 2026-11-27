@@ -185,6 +185,7 @@ import {
 import { ConversationHostingLifecycleService } from './service/conversation-hosting-lifecycle-service.js';
 import { ConversationHostingEnablementService } from './service/conversation-hosting-enablement-service.js';
 import { ComputerUseEnablementService } from './service/computer-use-enablement-service.js';
+import { RemoteComputerPipe } from './computer-use/remote-pipe.js';
 import { NodeConfigMutations } from './service/node-config-mutations.js';
 import { safeErrorCode } from './util/safe-error.js';
 import { RuntimeCredentialControlService } from './service/runtime-credential-control-service.js';
@@ -1661,7 +1662,9 @@ export class NodeConnector {
               ? 'darwin'
               : 'linux'
       });
-    this.terminalManager.onSummary((summary) => this.workspaceCoordinator.persistTerminal(summary));
+    this.terminalManager.onSummary((summary, kind) => {
+      if (kind === 'terminal') this.workspaceCoordinator.persistTerminal(summary);
+    });
     this.terminalChannel = new NodeTerminalChannel({
       config: () => this.config,
       controlConnected: () => this.controlChannel.connected(),
@@ -2112,6 +2115,21 @@ export class NodeConnector {
       });
     this.operationRouter.registerAll(this.runnerService.operations());
     this.operationRouter.registerAll(this.terminalService.operations());
+    this.operationRouter.register('computer.use.open', (data) => {
+      if (
+        this.config?.computerUse?.enabled !== true ||
+        this.config.computerUse.remoteEnabled !== true
+      )
+        throw new Error('COMPUTER_REMOTE_DISABLED');
+      return this.terminalService.openComputer(
+        data,
+        (id) =>
+          new RemoteComputerPipe(
+            (signal) => this.computerUseProvider.bindRemote(`remote:${id}`, signal),
+            () => this.computerUseProvider.releaseSession(`remote:${id}`)
+          )
+      );
+    });
     this.operationRouter.registerAll(this.workspaceService.operations());
     this.operationRouter.registerAll(this.workspaceWorkbenchService.operations());
     this.operationRouter.registerAll(this.runWorkbenchService.operations());
@@ -2175,8 +2193,7 @@ export class NodeConnector {
     );
     this.operationRouter.register('node.upgrade.cancel', () => this.upgradeCoordinator.cancel());
     this.operationRouter.register('node.workbench.capabilities', async () => ({
-      manifest: await this.workbenchManifestService.read(),
-      binaryTerminal: true
+      manifest: await this.workbenchManifestService.read()
     }));
     this.operationAdmission = new NodeOperationAdmission(
       () => this.stopped,

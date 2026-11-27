@@ -1,3 +1,4 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTerminalRelayService } from '../../src/service/terminal-relay-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
@@ -6,12 +7,12 @@ class FakeSocket extends EventTarget {
   static readonly OPEN = 1;
   static instances: FakeSocket[] = [];
   readyState = 1;
-  sent: string[] = [];
+  sent: Uint8Array[] = [];
   constructor(readonly url: string) {
     super();
     FakeSocket.instances.push(this);
   }
-  send(value: string) {
+  send(value: Uint8Array) {
     this.sent.push(value);
   }
   close(code = 1006, reason = '') {
@@ -19,7 +20,7 @@ class FakeSocket extends EventTarget {
     this.dispatchEvent(Object.assign(new Event('close'), { code, reason }));
   }
   frame(value: object) {
-    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(value) }));
+    this.dispatchEvent(new MessageEvent('message', { data: encodeTerminalMessage(value).buffer }));
   }
 }
 
@@ -77,13 +78,19 @@ describe('Public Terminal Relay', () => {
     expect(new URL(socket.url).searchParams.get('ticket')).toBe('ticket + secret');
     f.service.send({ type: 'input' });
     expect(socket.sent).toEqual([]);
-    socket.frame({ type: 'attach', terminalId: 'other' });
+    socket.frame({ type: 'attach', terminalId: 'other', afterSequence: 0 });
     expect(f.onAttached).not.toHaveBeenCalled();
-    socket.frame({ type: 'attach', terminalId: 'terminal/a' });
-    f.service.send({ type: 'input', data: 'hello' });
-    expect(socket.sent).toEqual([JSON.stringify({ type: 'input', data: 'hello' })]);
-    socket.frame({ type: 'error', terminalId: 'terminal/a' });
-    socket.frame({ type: 'exit', terminalId: 'terminal/a' });
+    socket.frame({ type: 'attach', terminalId: 'terminal/a', afterSequence: 0 });
+    f.service.send({
+      type: 'input',
+      terminalId: 'terminal/a',
+      data: new TextEncoder().encode('hello')
+    });
+    expect(socket.sent.map(decodeTerminalMessage)).toEqual([
+      { type: 'input', terminalId: 'terminal/a', data: new TextEncoder().encode('hello') }
+    ]);
+    socket.frame({ type: 'error', terminalId: 'terminal/a', code: 'TERMINAL_ERROR' });
+    socket.frame({ type: 'exit', terminalId: 'terminal/a', exitCode: 0 });
     expect(f.onErrorFrame).toHaveBeenCalledWith('TERMINAL_ERROR');
     expect(f.onExited).toHaveBeenCalledOnce();
     f.service.dispose();
@@ -94,10 +101,25 @@ describe('Public Terminal Relay', () => {
     const f = fixture();
     await f.service.attach();
     const old = FakeSocket.instances[0]!;
-    old.frame({ type: 'output', terminalId: 'terminal/a', data: 'a', sequence: 8 });
-    old.frame({ type: 'output', terminalId: 'terminal/a', data: 'b', sequence: 3 });
+    old.frame({
+      type: 'output',
+      terminalId: 'terminal/a',
+      data: new TextEncoder().encode('a'),
+      sequence: 8
+    });
+    old.frame({
+      type: 'output',
+      terminalId: 'terminal/a',
+      data: new TextEncoder().encode('b'),
+      sequence: 3
+    });
     f.service.reconnect();
-    old.frame({ type: 'output', terminalId: 'terminal/a', data: 'late', sequence: 99 });
+    old.frame({
+      type: 'output',
+      terminalId: 'terminal/a',
+      data: new TextEncoder().encode('late'),
+      sequence: 99
+    });
     old.close();
     await vi.advanceTimersByTimeAsync(1000);
     expect(f.request).toHaveBeenCalledTimes(2);
@@ -105,7 +127,7 @@ describe('Public Terminal Relay', () => {
       nodeId: 'node-a',
       afterSequence: 8
     });
-    expect(f.onOutput.mock.calls).toEqual([['a'], ['b']]);
+    expect(f.onOutput.mock.calls).toEqual([[Uint8Array.of(97)], [Uint8Array.of(98)]]);
     f.service.dispose();
   });
 
@@ -123,7 +145,7 @@ describe('Public Terminal Relay', () => {
     f.request.mockResolvedValue({ ticket: 'ok' });
     await vi.advanceTimersByTimeAsync(10000);
     const socket = FakeSocket.instances[0]!;
-    socket.frame({ type: 'attach', terminalId: 'terminal/a' });
+    socket.frame({ type: 'attach', terminalId: 'terminal/a', afterSequence: 0 });
     socket.close();
     await vi.advanceTimersByTimeAsync(1000);
     expect(f.request).toHaveBeenCalledTimes(calls + 2);

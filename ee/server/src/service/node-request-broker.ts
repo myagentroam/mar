@@ -29,7 +29,10 @@ import { RelayAuditContextCache } from './relay-audit-context-cache.js';
 
 const BROWSER_WORKSPACE_SAVE_TIMEOUT_MS = 120_000;
 
-const FIXED_ADMIN_NODE_OPERATIONS = new Set<string>([
+// Fixed server-side operations still pass their own resource authorization below.
+const FIXED_SERVER_NODE_OPERATIONS = new Set<string>([
+  'computer.use.open',
+  'computer.use.attach',
   'chatgpt.login.start',
   'chatgpt.login.status',
   'chatgpt.login.ack',
@@ -68,6 +71,7 @@ const FIXED_ADMIN_NODE_OPERATIONS = new Set<string>([
   'run.approval.decide'
 ]);
 const AUDITED_MANAGEMENT_RELAY_OPERATIONS = new Set<string>([
+  'computer.use.open',
   'conversation.hosting.enable',
   'conversation.hosting.disable',
   'conversation.hosting.cleanup.execute',
@@ -163,7 +167,7 @@ export class NodeRequestBroker {
     if (socket !== undefined && !this.connectionPolicy.allows(socket, operation))
       return Promise.reject(new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED'));
     if (
-      !FIXED_ADMIN_NODE_OPERATIONS.has(operation) &&
+      !FIXED_SERVER_NODE_OPERATIONS.has(operation) &&
       !workbenchNodeOperationSchema.safeParse(operation).success
     )
       return Promise.reject(new NodeRequestAdmissionError('OPERATION_UNSUPPORTED'));

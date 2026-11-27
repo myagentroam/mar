@@ -4,6 +4,7 @@ import { chmodSync, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
 import { nodeExecutionEnvironment } from './node-execution-environment.js';
 import { nodeLog } from './operational.js';
@@ -12,7 +13,8 @@ import { TerminalPtyProcess } from './terminal-pty.js';
 import { TerminalPtyPool } from './terminal-pty-pool.js';
 import { safeErrorCode } from './util/safe-error.js';
 
-const MAX_FRAME_CHARACTERS = 65_536;
+const MAX_FRAME_CHARACTERS = 10_922;
+const MAX_PIPE_STDIN_BYTES = 4 * 1024 * 1024;
 const TERMINAL_COMMAND_MAX_BYTES = 64 * 1024;
 const DEFAULT_MAX_TERMINALS = 10;
 const DEFAULT_MAX_TERMINALS_PER_WORKSPACE = 5;
@@ -59,8 +61,10 @@ export interface TerminalPipe extends ManagedProcess {
   pause?(): void;
   resume?(): void;
   write(data: Buffer): void;
-  onData(listener: (data: Buffer) => void): void;
+  end?(): void;
+  onData(listener: (data: Buffer, stream?: 'stderr') => void): void;
   onExit(listener: (exitCode: number) => void): void;
+  close?(): Promise<void>;
 }
 
 export type TerminalPipeFactory = (
@@ -113,7 +117,8 @@ export interface TerminalAttachmentSynchronization {
 
 interface TerminalReplayFrame {
   readonly sequence: number;
-  readonly data: string;
+  readonly data: Uint8Array<ArrayBuffer>;
+  readonly stream?: 'stderr';
   readonly bytes: number;
 }
 
@@ -124,7 +129,8 @@ interface ManagedTerminal {
   pty: TerminalPty | undefined;
   pipe: TerminalPipe | undefined;
   readonly subscriptions: { dispose(): void }[];
-  readonly binary: boolean;
+  readonly usePipe: boolean;
+  readonly openComputer?: (id: string) => TerminalPipe;
   outputPaused?: boolean;
   outputBackpressureAttachments?: ReadonlySet<string>;
   deferredCommand?: {
@@ -149,7 +155,10 @@ interface ManagedTerminal {
 interface ManagedAttachment {
   readonly terminalId: string;
   readonly readonly: boolean;
+  readonly ptyInput?: StringDecoder;
 }
+
+type TerminalSummaryListener = (summary: TerminalSummary, kind: 'terminal' | 'computer') => void;
 
 /**
  * Owns terminal state, attachments and bounded output replay. PTY proxies own their
@@ -180,7 +189,7 @@ export class TerminalManager {
   private readonly closing = new Map<string, Promise<TerminalSummary>>();
   private readonly attachments = new Map<string, ManagedAttachment>();
   private readonly frameListeners = new Set<(frame: TerminalDataFrame) => void>();
-  private readonly summaryListeners = new Set<(summary: TerminalSummary) => void>();
+  private readonly summaryListeners = new Set<TerminalSummaryListener>();
   private idleTimer: NodeJS.Timeout | undefined;
 
   constructor(options: TerminalManagerOptions = {}) {
@@ -271,11 +280,7 @@ export class TerminalManager {
   }
 
   /** A command starts only after a relay or direct Terminal attachment is active. */
-  openCommand(
-    input: Parameters<TerminalManager['open']>[0],
-    command: unknown,
-    binary = false
-  ): TerminalSummary {
+  openCommand(input: Parameters<TerminalManager['open']>[0], command: unknown): TerminalSummary {
     if (
       typeof command !== 'string' ||
       command.trim().length === 0 ||
@@ -283,26 +288,32 @@ export class TerminalManager {
       command.includes('\0')
     )
       throw new Error('TERMINAL_COMMAND_INVALID');
-    return this.openInternal(input, command, binary);
+    return this.openInternal(input, command);
+  }
+
+  openComputer(open: (id: string) => TerminalPipe): TerminalSummary {
+    return this.openInternal({}, undefined, open);
   }
 
   startCommand(terminalId: string): void {
     const terminal = this.requireTerminal(terminalId);
     const deferred = terminal.deferredCommand;
-    if (terminal.state !== 'RUNNING' || deferred === undefined) return;
+    if (
+      terminal.state !== 'RUNNING' ||
+      terminal.pipe !== undefined ||
+      (deferred === undefined && terminal.openComputer === undefined)
+    )
+      return;
     delete terminal.deferredCommand;
     try {
-      if (terminal.binary) {
-        const pipe = this.pipeFactory(deferred.shell, deferred.args, deferred.options);
-        terminal.pipe = pipe;
-        if (terminal.outputPaused) pipe.pause?.();
-        pipe.onData((data) => this.recordBinaryOutput(terminal, data));
-        pipe.onExit((exitCode) => this.exited(terminal, exitCode));
-      } else {
-        const pty = this.ptyFactory(deferred.shell, deferred.args, deferred.options);
-        terminal.pty = pty;
-        this.listenToPty(terminal, pty);
-      }
+      const pipe =
+        terminal.openComputer !== undefined
+          ? terminal.openComputer(terminal.id)
+          : this.pipeFactory(deferred!.shell, deferred!.args, deferred!.options);
+      terminal.pipe = pipe;
+      if (terminal.outputPaused) pipe.pause?.();
+      pipe.onData((data, stream) => this.recordBinaryOutput(terminal, data, stream));
+      pipe.onExit((exitCode) => this.exited(terminal, exitCode));
     } catch {
       this.emit({ type: 'error', terminalId, code: 'TERMINAL_COMMAND_START_FAILED' });
       this.exited(terminal, 127);
@@ -312,7 +323,7 @@ export class TerminalManager {
   private openInternal(
     input: Parameters<TerminalManager['open']>[0] = {},
     command?: string,
-    binary = false
+    openComputer?: (id: string) => TerminalPipe
   ): TerminalSummary {
     const profileId = input.profileId ?? this.profiles.find((profile) => profile.isDefault)?.id;
     if (typeof profileId !== 'string') throw new Error('TERMINAL_PROFILE_INVALID');
@@ -345,7 +356,9 @@ export class TerminalManager {
             : ['-NoLogo', '-NoProfile', '-Command', command]
           : ['-c', command];
     const pty =
-      commandArgs === undefined ? this.ptyFactory(profile.shell, profile.args, options) : undefined;
+      commandArgs === undefined && openComputer === undefined
+        ? this.ptyFactory(profile.shell, profile.args, options)
+        : undefined;
     const createdAt = this.now();
     const terminal: ManagedTerminal = {
       id: randomUUID(),
@@ -354,7 +367,8 @@ export class TerminalManager {
       pty,
       pipe: undefined,
       subscriptions: [],
-      binary,
+      usePipe: command !== undefined || openComputer !== undefined,
+      ...(openComputer === undefined ? {} : { openComputer }),
       ...(commandArgs === undefined
         ? {}
         : { deferredCommand: { shell: profile.shell, args: commandArgs, options } }),
@@ -414,7 +428,11 @@ export class TerminalManager {
       throw new Error('TERMINAL_ATTACH_CONFLICT');
     }
     const attachmentId = randomUUID();
-    this.attachments.set(attachmentId, { terminalId: terminal.id, readonly });
+    this.attachments.set(attachmentId, {
+      terminalId: terminal.id,
+      readonly,
+      ...(!readonly && !terminal.usePipe ? { ptyInput: new StringDecoder('utf8') } : {})
+    });
     if (!readonly) terminal.writerAttachmentId = attachmentId;
     this.updateOutputPause(terminal);
     terminal.updatedAt = this.now();
@@ -457,6 +475,12 @@ export class TerminalManager {
     if (terminal?.writerAttachmentId === attachmentId) terminal.writerAttachmentId = undefined;
     if (terminal !== undefined) this.updateOutputPause(terminal);
     if (terminal !== undefined && !this.hasAttachment(terminal.id)) {
+      if (terminal.openComputer !== undefined) {
+        void this.close(terminal.id).catch(() =>
+          nodeLog('computer.remote.cleanup.failed', { terminalId: terminal.id })
+        );
+        return;
+      }
       terminal.detachedAt = this.now();
       terminal.lastUsedAt = terminal.detachedAt;
       this.notifySummary(terminal);
@@ -485,20 +509,23 @@ export class TerminalManager {
     terminal.updatedAt = this.now();
     terminal.lastUsedAt = terminal.updatedAt;
     if (parsed.data.type === 'input') {
-      if (terminal.binary) {
+      if (terminal.usePipe) {
         if (terminal.pipe === undefined) throw new Error('TERMINAL_COMMAND_NOT_STARTED');
-        const bytes = Buffer.from(parsed.data.data, 'base64');
-        if (bytes.length > 32 * 1024 || bytes.toString('base64') !== parsed.data.data)
-          throw new Error('TERMINAL_FRAME_INVALID');
-        terminal.pipe.write(bytes);
+        terminal.pipe.write(Buffer.from(parsed.data.data));
         return;
       }
       if (terminal.pty === undefined) throw new Error('TERMINAL_COMMAND_NOT_STARTED');
-      terminal.pty.write(parsed.data.data);
+      const input = attachment.ptyInput!.write(parsed.data.data);
+      if (input.length !== 0) terminal.pty.write(input);
+      return;
+    }
+    if (parsed.data.type === 'eof') {
+      if (terminal.pipe === undefined) throw new Error('TERMINAL_FRAME_INVALID');
+      terminal.pipe.end?.();
       return;
     }
     if (parsed.data.type === 'resize') {
-      if (terminal.binary) throw new Error('TERMINAL_FRAME_INVALID');
+      if (terminal.usePipe) throw new Error('TERMINAL_FRAME_INVALID');
       if (terminal.pty === undefined) throw new Error('TERMINAL_COMMAND_NOT_STARTED');
       terminal.pty.resize(parsed.data.cols, parsed.data.rows);
       terminal.cols = parsed.data.cols;
@@ -510,9 +537,9 @@ export class TerminalManager {
   }
 
   close(terminalId: string): Promise<TerminalSummary> {
-    const terminal = this.requireTerminal(terminalId);
     const pending = this.closing.get(terminalId);
     if (pending !== undefined) return pending;
+    const terminal = this.requireTerminal(terminalId);
     if (terminal.state !== 'RUNNING') return Promise.resolve(this.summary(terminal));
     terminal.state = 'CLOSED';
     terminal.updatedAt = this.now();
@@ -540,7 +567,8 @@ export class TerminalManager {
           }
           await terminal.pty.closed;
         }
-        if (terminal.pipe !== undefined) await this.terminate(terminal.pipe, this.platform);
+        if (terminal.pipe?.close !== undefined) await terminal.pipe.close();
+        else if (terminal.pipe !== undefined) await this.terminate(terminal.pipe, this.platform);
       } catch (error) {
         failures.push(error);
       } finally {
@@ -618,7 +646,7 @@ export class TerminalManager {
   private updateOutputPause(terminal: ManagedTerminal): void {
     const paused =
       terminal.state === 'RUNNING' &&
-      terminal.binary &&
+      terminal.usePipe &&
       terminal.writerAttachmentId !== undefined &&
       terminal.outputBackpressureAttachments?.has(terminal.writerAttachmentId) === true;
     if (Boolean(terminal.outputPaused) === paused) return;
@@ -627,7 +655,7 @@ export class TerminalManager {
     else terminal.pipe?.resume?.();
   }
 
-  onSummary(listener: (summary: TerminalSummary) => void): () => void {
+  onSummary(listener: TerminalSummaryListener): () => void {
     this.summaryListeners.add(listener);
     return () => this.summaryListeners.delete(listener);
   }
@@ -637,54 +665,41 @@ export class TerminalManager {
       (terminal) =>
         terminal.state === 'RUNNING' &&
         terminal.detachedAt !== undefined &&
-        this.now() - terminal.detachedAt >= this.idleTimeoutMs
+        this.now() - terminal.detachedAt >=
+          (terminal.openComputer === undefined ? this.idleTimeoutMs : 60_000)
     );
     await Promise.all(expired.map((terminal) => this.close(terminal.id)));
   }
 
   private recordOutput(terminal: ManagedTerminal, data: string): void {
     if (terminal.state !== 'RUNNING' || data.length === 0) return;
-    for (const part of splitFrameData(data)) {
+    for (const part of splitFrameData(data)) this.recordBinaryOutput(terminal, Buffer.from(part));
+  }
+
+  private recordBinaryOutput(terminal: ManagedTerminal, data: Buffer, stream?: 'stderr'): void {
+    if (terminal.state !== 'RUNNING') return;
+    for (let offset = 0; offset < data.length; offset += 32 * 1024) {
+      const part = Uint8Array.from(data.subarray(offset, offset + 32 * 1024));
       const frame: TerminalReplayFrame = {
         sequence: ++terminal.sequence,
         data: part,
-        bytes: Buffer.byteLength(part, 'utf8')
-      };
-      terminal.replay.push(frame);
-      terminal.replayBytes += frame.bytes;
-      while (terminal.replayBytes > this.maxReplayBytes && terminal.replay.length > 0) {
-        const removed = terminal.replay.shift();
-        if (removed !== undefined) terminal.replayBytes -= removed.bytes;
-      }
-      this.emit({
-        type: 'output',
-        terminalId: terminal.id,
-        sequence: frame.sequence,
-        data: frame.data
-      });
-    }
-  }
-
-  private recordBinaryOutput(terminal: ManagedTerminal, data: Buffer): void {
-    if (terminal.state !== 'RUNNING') return;
-    for (let offset = 0; offset < data.length; offset += 32 * 1024) {
-      const part = data.subarray(offset, offset + 32 * 1024);
-      const frame: TerminalReplayFrame = {
-        sequence: ++terminal.sequence,
-        data: part.toString('base64'),
+        ...(stream === undefined ? {} : { stream }),
         bytes: part.length
       };
-      terminal.replay.push(frame);
-      terminal.replayBytes += frame.bytes;
-      while (terminal.replayBytes > this.maxReplayBytes && terminal.replay.length > 0) {
-        const removed = terminal.replay.shift();
-        if (removed !== undefined) terminal.replayBytes -= removed.bytes;
+      if (terminal.openComputer === undefined) {
+        terminal.replay.push(frame);
+        terminal.replayBytes += frame.bytes;
+        while (terminal.replayBytes > this.maxReplayBytes && terminal.replay.length > 0) {
+          const removed = terminal.replay.shift();
+          if (removed !== undefined) terminal.replayBytes -= removed.bytes;
+        }
       }
       this.emit({
         type: 'output',
         terminalId: terminal.id,
         sequence: frame.sequence,
-        data: frame.data
+        data: frame.data,
+        ...(stream === undefined ? {} : { stream })
       });
     }
   }
@@ -797,6 +812,7 @@ export class TerminalManager {
     delete terminal.deferredCommand;
     for (const subscription of terminal.subscriptions.splice(0))
       this.disposeSubscription(terminal, subscription);
+    if (terminal.openComputer !== undefined) this.terminals.delete(terminal.id);
   }
 
   private replayFrames(
@@ -814,7 +830,8 @@ export class TerminalManager {
           type: 'output',
           terminalId: terminal.id,
           sequence: replay.sequence,
-          data: replay.data
+          data: replay.data,
+          ...(replay.stream === undefined ? {} : { stream: replay.stream })
         });
       }
     }
@@ -838,7 +855,8 @@ export class TerminalManager {
 
   private notifySummary(terminal: ManagedTerminal): TerminalSummary {
     const summary = this.summary(terminal);
-    for (const listener of this.summaryListeners) listener(summary);
+    for (const listener of this.summaryListeners)
+      listener(summary, terminal.openComputer === undefined ? 'terminal' : 'computer');
     return summary;
   }
 
@@ -947,18 +965,30 @@ function nodePipeFactory(
     windowsHide: true
   });
   child.stdin.on('error', () => undefined);
-  child.stderr.resume();
   return {
     pid: child.pid,
     kill: (signal) => child.kill(signal),
-    pause: () => child.stdout.pause(),
-    resume: () => child.stdout.resume(),
+    pause: () => {
+      child.stdout.pause();
+      child.stderr.pause();
+    },
+    resume: () => {
+      child.stdout.resume();
+      child.stderr.resume();
+    },
     write: (bytes) => {
-      if (child.stdin.destroyed) throw new Error('TERMINAL_PIPE_CLOSED');
+      if (child.stdin.destroyed || child.stdin.writableEnded)
+        throw new Error('TERMINAL_PIPE_CLOSED');
+      if (child.stdin.writableLength + bytes.length > MAX_PIPE_STDIN_BYTES)
+        throw new Error('TERMINAL_BACKPRESSURE');
       child.stdin.write(bytes);
+    },
+    end: () => {
+      if (!child.stdin.writableEnded) child.stdin.end();
     },
     onData: (listener) => {
       child.stdout.on('data', listener);
+      child.stderr.on('data', (data: Buffer) => listener(data, 'stderr'));
     },
     onExit: (listener) => {
       child.on('error', () => listener(127));
