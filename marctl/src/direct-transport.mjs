@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { DirectFallbackError, directControlError } from './direct-errors.mjs';
-import { rawToString, isRecord } from './direct-control.mjs';
+import { isRecord } from './direct-control.mjs';
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 
 export class DirectTerminalTransport extends EventEmitter {
   #channel;
@@ -86,12 +87,14 @@ export class DirectTerminalTransport extends EventEmitter {
         try {
           this.#openSent = true;
           if (
-            !this.#channel.sendMessage(
-              JSON.stringify({
-                type: 'OPEN',
-                directSessionId: this.#terminalSessionId,
-                grant
-              })
+            !this.#channel.sendMessageBinary(
+              Buffer.from(
+                encodeTerminalMessage({
+                  type: 'OPEN',
+                  directSessionId: this.#terminalSessionId,
+                  grant
+                })
+              )
             )
           )
             throw new Error('TERMINAL_ATTACH_FAILED');
@@ -107,8 +110,8 @@ export class DirectTerminalTransport extends EventEmitter {
   send(frame) {
     if (this.#closed || this.#channel.isOpen?.() !== true)
       throw new Error('TERMINAL_CONNECTION_LOST');
-    const value = typeof frame === 'string' ? frame : JSON.stringify(frame);
-    if (!this.#channel.sendMessage(value)) throw new Error('TERMINAL_INPUT_FAILED');
+    if (!this.#channel.sendMessageBinary(Buffer.from(encodeTerminalMessage(frame))))
+      throw new Error('TERMINAL_INPUT_FAILED');
   }
 
   close() {
@@ -158,7 +161,7 @@ export class DirectTerminalTransport extends EventEmitter {
     if (!this.#attached) {
       let frame;
       try {
-        frame = JSON.parse(rawToString(raw));
+        frame = decodeTerminalMessage(raw);
       } catch {
         this.#fail('TERMINAL_FRAME_INVALID');
         return;

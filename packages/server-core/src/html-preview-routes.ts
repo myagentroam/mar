@@ -1,15 +1,16 @@
 import { randomBytes } from 'node:crypto';
-import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { isAllowedOrigin, parseCookies, SESSION_COOKIE_NAME } from './auth.js';
 import { protectedAdmin, validCsrf, type SessionLookup } from './session.js';
 import { sendError, safeErrorCode } from './http-errors.js';
 import type { WorkspaceNodeControl } from './workspace-route-contracts.js';
 import {
-  fileContentChunks,
+  openFileContentStream,
   fileContentType,
   parseHttpByteRange,
-  sendFileContentHead
+  readWorkspaceFileSnapshot,
+  sendFileContentHead,
+  type FileContentChunk
 } from './file-content-stream.js';
 import { isSafeResourceText } from './workspace-http-support.js';
 import type { HtmlPreviewOrigin } from './html-preview-origin.js';
@@ -231,7 +232,7 @@ export function registerHtmlPreviewRoutes(input: {
           return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
         const path = htmlPreviewResourcePath(grant.directory, request.params['*']);
         if (path === undefined) return sendError(reply, 400, 'FILE_RANGE_INVALID');
-        const read = async (offset: number, limit: number) => {
+        const { size, read } = await readWorkspaceFileSnapshot(async (offset, limit) => {
           const current = await grantActor(grant);
           const response = (await nodeControl.requestNode(
             grant.nodeId,
@@ -246,23 +247,26 @@ export function registerHtmlPreviewRoutes(input: {
             { ...current, workspaceId: grant.workspaceId }
           )) as {
             previewBoundaryVerified?: unknown;
-            file?: { size: number; offset: number; contentBase64: string };
+            file?: FileContentChunk;
           };
           if (
             response.previewBoundaryVerified !== true ||
             !Number.isSafeInteger(response.file?.size) ||
             !Number.isSafeInteger(response.file?.offset) ||
-            typeof response.file?.contentBase64 !== 'string'
+            !(response.file?.bytes instanceof Uint8Array)
           )
             throw new Error('NODE_RESPONSE_INVALID');
           return response.file!;
-        };
-        const first = await read(0, 1);
-        const range = parseHttpByteRange(request.headers.range, first.size);
+        });
+        const range = parseHttpByteRange(request.headers.range, size);
         if (range === null) return sendError(reply, 416, 'FILE_RANGE_INVALID');
         const start = range?.start ?? 0;
-        const end = range?.end ?? first.size - 1;
-        const length = first.size === 0 ? 0 : end - start + 1;
+        const end = range?.end ?? size - 1;
+        const length = size === 0 ? 0 : end - start + 1;
+        const stream =
+          request.method === 'HEAD'
+            ? undefined
+            : await openFileContentStream(read, start, end, CHUNK_BYTES);
         const contentType = resourceContentType(path);
         reply
           .header('content-type', contentType)
@@ -278,12 +282,10 @@ export function registerHtmlPreviewRoutes(input: {
           );
         else if (contentType === 'image/svg+xml')
           reply.header('content-security-policy', 'sandbox');
-        if (range !== undefined && first.size > 0)
-          reply.code(206).header('content-range', `bytes ${start}-${end}/${first.size}`);
-        if (request.method === 'HEAD') return sendFileContentHead(reply, length);
-        return reply
-          .header('content-length', String(length))
-          .send(Readable.from(fileContentChunks(read, start, end, CHUNK_BYTES)));
+        if (range !== undefined && size > 0)
+          reply.code(206).header('content-range', `bytes ${start}-${end}/${size}`);
+        if (stream === undefined) return sendFileContentHead(reply, length);
+        return reply.header('content-length', String(length)).send(stream);
       } catch (error) {
         if (safeErrorCode(error) === 'UNAUTHENTICATED')
           return sendError(reply, 401, 'UNAUTHENTICATED');

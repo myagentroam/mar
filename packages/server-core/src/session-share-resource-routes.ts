@@ -107,7 +107,7 @@ export function registerSessionShareResourceRoutes(input: {
           if (
             !Number.isSafeInteger(result.file?.size) ||
             !Number.isSafeInteger(result.file?.offset) ||
-            typeof result.file?.contentBase64 !== 'string'
+            !(result.file?.bytes instanceof Uint8Array)
           )
             throw new Error('NODE_RESPONSE_INVALID');
           return result.file;
@@ -182,7 +182,7 @@ export function registerSessionShareResourceRoutes(input: {
         await call(request, 'workspace.files.upload.chunk', {
           uploadId: request.params.uploadId,
           offset: offset.data,
-          dataBase64: request.body.toString('base64')
+          bytes: request.body
         })
       );
     });

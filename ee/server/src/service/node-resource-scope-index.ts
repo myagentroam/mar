@@ -176,6 +176,7 @@ const RUN_RESULTS = new Set([
 const TERMINAL_RESULTS = new Set([
   'terminal.open',
   'terminal.command.open',
+  'terminal.copy.open',
   'terminal.attach.authorize'
 ]);
 

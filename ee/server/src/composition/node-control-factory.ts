@@ -43,7 +43,8 @@ export function createNodeControl(
           { allows: transport.allows, supportsScheduledTasks: transport.supportsScheduledTasks },
           brokerServices,
           log,
-          traffic
+          traffic,
+          transport.fileSocketFor
         );
         constructed.push(() => requestBroker.close());
         const workbenchRelay = new WorkbenchRelayService({

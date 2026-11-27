@@ -15,7 +15,7 @@ import { NodeControl } from '../../src/node-control.js';
 import type { ServerApplication } from '../../src/app.js';
 import { MailNotificationService } from '@myagentroam/server-core/mail-notification-service';
 import { RuntimeCredentialService } from '@myagentroam/server-core/runtime-credential-service';
-import { createEnvelope } from '@myagentroam/protocol';
+import { createEnvelope, encodeFileRelayFrame } from '@myagentroam/protocol';
 
 vi.mock('../../src/mysql/connection.js', async () => {
   const { mysql } = await import('./support/server-notification-pools.js');
@@ -188,6 +188,110 @@ describe('Server notification dependency close order', () => {
     expect(control.isNodeConnected('node-1')).toBe(false);
     expect(socket.send).not.toHaveBeenCalled();
   });
+  it.each(['resolve', 'reject'] as const)(
+    'drains admitted file authentication that will %s before pool close without acknowledging a closed socket',
+    async (outcome) => {
+      const { app, pending, control } = await ready();
+      const active = gate();
+      const started = gate();
+      const node = {
+        id: 'node-1',
+        ownerUserId: 1,
+        displayName: null,
+        registeredAddress: 'unknown',
+        metadata: '{}',
+        disabled: false,
+        lastHeartbeatAt: null
+      };
+      vi.spyOn(MysqlServerDatabase.prototype, 'authenticateNode')
+        .mockResolvedValueOnce(node)
+        .mockImplementationOnce(async () => {
+          started.release();
+          await active.promise;
+          mysql.events.push('file-authentication-settled');
+          if (outcome === 'reject') throw new Error('NODE_AUTHENTICATION_UNAVAILABLE');
+          return node;
+        });
+      vi.spyOn(MysqlServerDatabase.prototype, 'updateNodeHeartbeat').mockResolvedValue(undefined);
+      const socket = () => {
+        const emitter = new EventEmitter();
+        return Object.assign(emitter, {
+          OPEN: 1,
+          readyState: 1,
+          send: vi.fn((_data: string) => undefined),
+          close() {
+            if (this.readyState === 3) return;
+            this.readyState = 3;
+            emitter.emit('close');
+          },
+          terminate() {
+            this.close();
+          }
+        });
+      };
+      const client = socket();
+      const file = socket();
+      try {
+        control.attach(client as unknown as WebSocket);
+        client.emit(
+          'message',
+          JSON.stringify(
+            createEnvelope('authenticate', {
+              nodeId: 'node-1',
+              credential: 'fixture'
+            })
+          )
+        );
+        await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+        const report = createEnvelope('capabilities', {
+          platform: 'linux',
+          architecture: 'x64',
+          nodeVersion: 'v24',
+          nodeAppVersion: '0.11.39',
+          codex: { available: false },
+          claudeCode: { available: false }
+        });
+        client.emit('message', JSON.stringify(report));
+        const controlBinding = await vi.waitFor(() => {
+          const ack = client.send.mock.calls
+            .map(([raw]) => JSON.parse(raw))
+            .find((message) => message.type === 'ack' && message.replyTo === report.id);
+          expect(ack?.payload?.fileControlBinding).toEqual(expect.any(String));
+          return ack.payload.fileControlBinding as string;
+        });
+        control.attachFileRelay(file as unknown as WebSocket);
+        file.emit(
+          'message',
+          Buffer.from(
+            encodeFileRelayFrame({
+              type: 'file.authenticate',
+              nodeId: 'node-1',
+              credential: 'fixture',
+              controlBinding
+            })
+          ),
+          true
+        );
+        await started.promise;
+        const closing = app.close();
+        pending.release();
+        await nextTurn();
+        expect(mysql.events).not.toContain('pool-close');
+        active.release();
+        await closing;
+        expect(mysql.events.indexOf('file-authentication-settled')).toBeLessThan(
+          mysql.events.indexOf('pool-close')
+        );
+        expect(file.readyState).toBe(3);
+        expect(file.send).not.toHaveBeenCalled();
+      } finally {
+        pending.release();
+        active.release();
+        await app.close();
+      }
+    }
+  );
+
   it('drains admitted usage before pool close without acknowledging a replacement connection', async () => {
     const { app, pending, control } = await ready();
     const active = gate();

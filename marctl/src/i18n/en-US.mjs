@@ -14,6 +14,7 @@ Commands:
   agents   Inspect and coordinate Sessions in the current Workspace.
   nodes    List accessible Nodes and their connection status.
   ssh      Open a Node terminal or execute a remote command.
+  computer Run Python on an authorized Node desktop and save PNG results.
   scp      Copy a regular file between this machine and Nodes, or between Nodes.
   version  Print the installed CLI package version.
   help     Show help for the CLI or a command.
@@ -42,6 +43,17 @@ Notes:
   Each alias shows only its own command help. Use marctl help <command> for details.
   Remote access uses authorized Node Terminal transport, not system SSH or SCP.`,
   commandHelp: Object.freeze({
+    computer: `{program} — Operate an authorized Node desktop with Python/PyAutoGUI
+
+{program} [--no-reuse] <node> <output-directory>
+  --no-reuse       Bypass the relay pool for this invocation only.
+  Requires the same Node access as SSH and remote Computer Use enabled on the Node.
+  Use an existing output directory. Send one JSON line at a time on stdin.
+  Start with {"code":""}; read observationId and local PNG paths (images) from stdout.
+  Keep stdin open. For screenshot-based actions, send Python in code and pass the latest
+  observationId as basedOnObservationId. Optional timeoutMs defaults to 30000.
+  EOF releases the desktop. On OUTCOME_UNKNOWN, reconnect and observe; do not replay.
+`,
     agents: `{program} — Coordinate Agents in the current MAR Workspace
 
 Usage:
@@ -161,6 +173,7 @@ Arguments:
   [command ...]   A command for the remote shell; omit it for an interactive shell.
 
 Options (before <node>):
+  --no-reuse       Bypass the relay pool for this invocation; keep direct connections enabled.
   -h, --help       Show help and exit.
   -V, --version    Print the CLI package version and exit.
 
@@ -195,6 +208,7 @@ Arguments:
 Options:
   -p              Preserve source permissions and access/modification times.
   -q              Suppress progress output (already the default).
+  --no-reuse       Bypass the relay pool for this copy; place before the first endpoint.
   -h, --help       Show help and exit; place before the first endpoint.
   -V, --version    Print the CLI package version and exit; place before the first endpoint.
   --              Treat remaining arguments as literal paths.
@@ -209,7 +223,8 @@ Notes:
   Existing regular files are overwritten, retaining their permissions unless -p is used.
   Directory sources, symlinks, invalid destination filenames, and directory final targets
   are rejected. Recursive -r, multiple sources, and SSH connection options are unsupported.
-  Both Server and Node must support binary Terminal pipes; this is not system SCP.
+  Upgrade this CLI, Server and Node together for structured copy tasks and binary transfer.
+  This is not system SCP.
   File access uses the Node service account's permissions. Checksums are verified before
   atomic publication; failed transfers leave the original unchanged. Forced termination
   may leave a temporary file. Transfers are not retried.
@@ -283,8 +298,12 @@ No configuration, authorization, or Server connection is required.`
     terminalRemoteError: 'The remote terminal reported an error.',
     terminalClosedBeforeAttach: 'The remote terminal closed before attachment.',
     terminalFrameInvalid: 'The terminal frame was invalid.',
-    terminalInvalidJson: 'The terminal sent invalid JSON.',
-    terminalBinaryFrame: 'The terminal sent an invalid binary frame.',
+    computerDirectory: 'The output directory must already exist.',
+    computerInput: 'Computer Use input exceeds the size limit.',
+    computerCleanupFailed: 'The script completed, but desktop cleanup failed. Do not replay it.',
+    computerUnknown:
+      'The outcome of the desktop action is unknown. Reconnect and observe again. Do not replay the script.',
+    terminalBinaryFrame: 'The terminal requires a binary frame.',
     terminalBinaryUnavailable:
       'Binary copy requires a Server and Node that support pipe terminals.',
     terminalConnectionFailed: 'The terminal connection failed.',
@@ -302,6 +321,7 @@ No configuration, authorization, or Server connection is required.`
     sessionDeliveryRequired: 'Send requires exactly one of --steer or --queue, even when idle.',
     sshOptionsUnsupported: 'SSH options are not supported; use marssh <host>.',
     scpOptionsUnsupported: 'This SCP option is not supported by the Node Terminal transport.',
+    scpOpenInvalid: 'Invalid copy parameters.',
     commandFailed: 'The command failed.'
   })
 });

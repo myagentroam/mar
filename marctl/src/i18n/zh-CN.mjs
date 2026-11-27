@@ -13,6 +13,7 @@ export default Object.freeze({
   agents   查看和协调当前工作区中的会话。
   nodes    列出有权限的节点及连接状态。
   ssh      打开节点终端或执行远程命令。
+  computer 在已授权的 Node 桌面执行 Python 并保存 PNG。
   scp      在当前机器与节点之间、节点之间复制普通文件。
   version  显示已安装的 CLI 包版本。
   help     显示工具或指定子命令的帮助。
@@ -41,6 +42,17 @@ ${configurationHelp}
   快捷命令仅显示对应操作的帮助。用 marctl help <子命令> 查看详细说明。
   远程访问使用授权的 Node Terminal 传输，不是系统 SSH 或 SCP 协议。`,
   commandHelp: Object.freeze({
+    computer: `{program} — 使用 Python/PyAutoGUI 操作已授权的 Node 桌面
+
+{program} [--no-reuse] <node> <output-directory>
+  --no-reuse       仅本次调用绕过中继连接池。
+  所需 Node 使用权与 SSH 相同，且目标 Node 须开启远程 Computer Use。
+  输出目录须已存在。从 stdin 每次发送一行 JSON。
+  先发 {"code":""}，再从 stdout 读取 observationId 和本地 PNG 路径（images）。
+  保持 stdin 打开。按截图坐标操作时，在 code 中传 Python，并将最新 observationId
+  填入 basedOnObservationId。可选 timeoutMs 默认为 30000。
+  关闭 stdin 即释放桌面。遇到 OUTCOME_UNKNOWN 时重新连接并观察，不要重放。
+`,
     agents: `{program} — 协调当前 MAR 工作区中的 Agent
 
 用法：
@@ -152,6 +164,7 @@ ${configurationHelp}`,
   [command ...]   交给远端 Shell 的命令；省略时打开交互 Shell。
 
 选项（放在节点前）：
+  --no-reuse       仅本次调用绕过中继连接池，不禁用直连。
   -h, --help       显示帮助后退出。
   -V, --version    显示 CLI 包版本后退出。
 
@@ -184,6 +197,7 @@ ${configurationHelp}`,
 选项：
   -p              保留源文件权限及访问、修改时间。
   -q              不显示进度（默认已不显示）。
+  --no-reuse       仅本次复制绕过中继连接池，须放在首个文件端点前。
   -h, --help       显示帮助后退出，须放在第一个文件端点前。
   -V, --version    显示 CLI 包版本后退出，须放在第一个文件端点前。
   --              后续参数按字面路径处理。
@@ -197,7 +211,7 @@ ${configurationHelp}`,
   已有目标目录自动追加源文件名；目录路径必须已存在。
   已有普通文件默认覆盖，未使用 -p 时保留其权限。
   拒绝源目录、符号链接、接收平台不合法的文件名及最终目标目录；不支持递归 -r、多源及 SSH 连接选项。
-  Server 和 Node 均须支持二进制 Terminal pipe；这不是系统 SCP。
+  请一起更新 CLI、Server 和 Node，以支持结构化复制任务和二进制传输；这不是系统 SCP。
   文件访问遵循 Node 服务账号权限。完整校验后原子发布，失败不替换原文件；
   强制终止可能留下临时文件，传输不自动重试。
 
@@ -267,8 +281,11 @@ ${configurationHelp}`,
     terminalRemoteError: '远程终端返回错误。',
     terminalClosedBeforeAttach: '远程终端在附着前关闭。',
     terminalFrameInvalid: '终端帧无效。',
-    terminalInvalidJson: '终端返回了无效 JSON。',
-    terminalBinaryFrame: '终端返回了无效二进制帧。',
+    computerDirectory: '输出目录必须已存在。',
+    computerInput: 'Computer Use 输入超过体积上限。',
+    computerCleanupFailed: '脚本已执行，但桌面清理失败。不要重放脚本。',
+    computerUnknown: '桌面操作结果未知。请重新连接并观察，不要重放脚本。',
+    terminalBinaryFrame: '终端要求使用二进制帧。',
     terminalConnectionFailed: '终端连接失败。',
     terminalConnectionLost: '终端连接断开。',
     terminalUnexpectedFrame: '远程终端返回了意外帧。',
@@ -283,6 +300,7 @@ ${configurationHelp}`,
     sessionDeliveryRequired: 'send 必须且只能选择 --steer 或 --queue，即使目标空闲也需指定。',
     sshOptionsUnsupported: '不支持 SSH 选项，请使用 marssh <节点>。',
     scpOptionsUnsupported: 'Node Terminal 传输不支持此 SCP 选项。',
+    scpOpenInvalid: '复制参数无效。',
     terminalBinaryUnavailable: '二进制复制需要支持 pipe 终端的 Server 与 Node。',
     commandFailed: '命令执行失败。'
   })

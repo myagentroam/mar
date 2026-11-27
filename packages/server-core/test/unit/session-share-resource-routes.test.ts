@@ -63,8 +63,9 @@ async function fixture(handleError?: typeof databaseError) {
       return {
         file: {
           size: fileBytes.length,
+          sourceRevision: 'a'.repeat(64),
           offset,
-          contentBase64: fileBytes.subarray(offset, offset + limit).toString('base64')
+          bytes: fileBytes.subarray(offset, offset + limit)
         }
       };
     }
@@ -371,7 +372,7 @@ describe('Session-share resource routes', () => {
       {
         uploadId,
         offset: 0,
-        dataBase64: 'YWJj',
+        bytes: Buffer.from('abc'),
         workspaceId: 'workspace-fixed',
         sessionId: 'session-current'
       },
@@ -413,6 +414,23 @@ describe('Session-share resource routes', () => {
     });
     expect(invalid.statusCode).toBe(400);
     expect(f.requestNode).not.toHaveBeenCalled();
+  });
+
+  it('preserves file relay errors before starting a shared download', async () => {
+    const f = await fixture(databaseError);
+    f.requestNode
+      .mockResolvedValueOnce({
+        file: { size: 4, offset: 0, sourceRevision: 'a'.repeat(64), bytes: Buffer.of(1) }
+      })
+      .mockRejectedValueOnce(new Error('FILE_RELAY_BUSY'));
+
+    const response = await f.app.inject({
+      url: '/api/session-shares/share-one/files/content?path=large.bin&download=1'
+    });
+
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toMatchObject({ error: { code: 'FILE_RELAY_BUSY' } });
+    expect(response.headers['content-disposition']).toBeUndefined();
   });
 
   it('revalidates share admission for each chunk of a read-only Range response', async () => {

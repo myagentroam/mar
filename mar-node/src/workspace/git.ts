@@ -824,7 +824,7 @@ export async function readGitHistoryFileContentRange(
   readonly path: string;
   readonly size: number;
   readonly offset: number;
-  readonly contentBase64: string;
+  readonly bytes: Uint8Array;
   readonly nextOffset: number | null;
 }> {
   if (
@@ -843,7 +843,7 @@ export async function readGitHistoryFileContentRange(
   const size = Number(sizeResult.text.trim());
   if (!Number.isSafeInteger(size) || size < 0 || offset > size)
     throw new Error('FILE_RANGE_INVALID');
-  if (offset === size) return { path, size, offset, contentBase64: '', nextOffset: null };
+  if (offset === size) return { path, size, offset, bytes: new Uint8Array(), nextOffset: null };
   const result = await runReadOnlyGitAllowFailure(repository, ['cat-file', 'blob', object], {
     outputLimit: offset + limit,
     timeoutMs: GIT_HISTORY_TIMEOUT_MS
@@ -855,7 +855,7 @@ export async function readGitHistoryFileContentRange(
     path,
     size,
     offset,
-    contentBase64: content.toString('base64'),
+    bytes: content,
     nextOffset: nextOffset < size ? nextOffset : null
   };
 }

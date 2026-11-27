@@ -178,7 +178,7 @@ describe('Node hosted conversation files', () => {
       operations['conversation.hosted.files.upload.chunk']!({
         ...input,
         offset: 0,
-        dataBase64: Buffer.from('abc').toString('base64')
+        bytes: Buffer.from('abc')
       })
     );
     await expect(operations['conversation.hosted.files.upload.cancel']!(input)).rejects.toThrow(
@@ -274,7 +274,7 @@ describe('Node hosted conversation files', () => {
         conversationId,
         uploadId,
         offset: 1,
-        dataBase64: Buffer.from('bad').toString('base64'),
+        bytes: Buffer.from('bad'),
         __requestUserId: 7
       })
     ).rejects.toThrow('HOSTED_CONVERSATION_UPLOAD_OFFSET_INVALID');
@@ -282,14 +282,14 @@ describe('Node hosted conversation files', () => {
       conversationId,
       uploadId,
       offset: 0,
-      dataBase64: Buffer.from('abc').toString('base64'),
+      bytes: Buffer.from('abc'),
       __requestUserId: 7
     });
     await operations['conversation.hosted.files.upload.chunk']!({
       conversationId,
       uploadId,
       offset: 3,
-      dataBase64: Buffer.from('def').toString('base64'),
+      bytes: Buffer.from('def'),
       __requestUserId: 7
     });
     const completed = (await operations['conversation.hosted.files.upload.complete']!({
@@ -330,7 +330,7 @@ describe('Node hosted conversation files', () => {
         __requestUserId: 7
       })
     ).resolves.toMatchObject({
-      content: Buffer.from('bcd').toString('base64'),
+      bytes: Buffer.from('bcd'),
       offset: 1,
       nextOffset: 4,
       eof: false
@@ -377,7 +377,7 @@ describe('Node hosted conversation files', () => {
         conversationId,
         uploadId,
         offset: 0,
-        dataBase64: Buffer.from('x').toString('base64'),
+        bytes: Buffer.from('x'),
         __requestUserId: 7
       });
       return (await operations['conversation.hosted.files.upload.complete']!({
@@ -480,7 +480,7 @@ describe('Node hosted conversation files', () => {
       __requestUserId: 7
     })) as {
       readonly file: { readonly size: number; readonly updatedAt: number };
-      readonly content: string;
+      readonly bytes: Uint8Array;
       readonly nextOffset: number | null;
       readonly eof: boolean;
     };
@@ -491,7 +491,7 @@ describe('Node hosted conversation files', () => {
       updatedAt: expect.any(Number)
     });
     expect(first.file.updatedAt).toBeGreaterThan(projected!.updatedAt);
-    expect(Buffer.from(first.content, 'base64').toString('utf8')).toBe('current');
+    expect(Buffer.from(first.bytes).toString('utf8')).toBe('current');
     expect(first.nextOffset).toBe(7);
     expect(first.eof).toBe(false);
 
@@ -509,7 +509,7 @@ describe('Node hosted conversation files', () => {
       __requestUserId: 7
     })) as {
       readonly file: { readonly size: number; readonly updatedAt: number };
-      readonly content: string;
+      readonly bytes: Uint8Array;
       readonly eof: boolean;
     };
     expect(second.file).toMatchObject({
@@ -519,7 +519,7 @@ describe('Node hosted conversation files', () => {
     });
     expect(second.file.updatedAt).toBeGreaterThan(first.file.updatedAt);
     expect(second.file).not.toEqual(first.file);
-    expect(Buffer.from(second.content, 'base64').toString('utf8')).toBe('newer');
+    expect(Buffer.from(second.bytes).toString('utf8')).toBe('newer');
     expect(second.eof).toBe(true);
   });
 
@@ -538,7 +538,7 @@ describe('Node hosted conversation files', () => {
       __requestUserId: 7
     })) as {
       readonly file: { readonly size: number; readonly updatedAt: number };
-      readonly content: string;
+      readonly bytes: Uint8Array;
     };
     await new Promise((resolve) => setTimeout(resolve, 20));
     await writeFile(target, 'after!');
@@ -550,11 +550,11 @@ describe('Node hosted conversation files', () => {
       __requestUserId: 7
     })) as {
       readonly file: { readonly size: number; readonly updatedAt: number };
-      readonly content: string;
+      readonly bytes: Uint8Array;
     };
 
-    expect(Buffer.from(first.content, 'base64').toString('utf8')).toBe('before');
-    expect(Buffer.from(second.content, 'base64').toString('utf8')).toBe('after!');
+    expect(Buffer.from(first.bytes).toString('utf8')).toBe('before');
+    expect(Buffer.from(second.bytes).toString('utf8')).toBe('after!');
     expect(second.file.size).toBe(first.file.size);
     expect(second.file.updatedAt).toBeGreaterThan(first.file.updatedAt);
   });
@@ -576,7 +576,7 @@ describe('Node hosted conversation files', () => {
       conversationId,
       uploadId: created.upload.uploadId,
       offset: 0,
-      dataBase64: Buffer.from('upload').toString('base64'),
+      bytes: Buffer.from('upload'),
       __requestUserId: 7
     });
     await operations['conversation.hosted.files.upload.complete']!({
@@ -763,7 +763,7 @@ describe('Node hosted conversation files', () => {
       conversationId,
       uploadId: created.upload.uploadId,
       offset: 0,
-      dataBase64: Buffer.from('1234').toString('base64'),
+      bytes: Buffer.from('1234'),
       __requestUserId: 7
     });
     await operations['conversation.hosted.files.upload.complete']!({
@@ -1202,7 +1202,7 @@ describe('Node hosted conversation files', () => {
     await truncate(target, 5 * 1024 * 1024 + 1);
     await expect(read({ ...input, preview })).rejects.toThrow('IMAGE_PREVIEW_TOO_LARGE');
     await expect(read({ ...input, limit: bytes.length })).resolves.toMatchObject({
-      content: bytes.toString('base64')
+      bytes: bytes
     });
     await fixture.service.dispose();
   });

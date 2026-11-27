@@ -8,6 +8,7 @@ import {
   type ImageResourceResponse
 } from './image-resource-response.js';
 import {
+  encodeFileRelayFrame,
   toolResultResourceInputSchema,
   toolResultResourcePageSchema,
   hostedConversationConfigUpdateInputSchema,
@@ -38,6 +39,7 @@ import {
   hostedConversationUploadPreflightInputSchema,
   hostedConversationWatchInputSchema,
   type ConversationFileProjection,
+  type HostedConversationFileReadResult,
   type HostedConversationListInput
 } from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
@@ -52,6 +54,7 @@ import {
   fileContentChunks,
   fileContentType,
   parseHttpByteRange,
+  registerFileChunkParser,
   sendFileContentHead,
   type FileContentChunk
 } from './file-content-stream.js';
@@ -110,13 +113,12 @@ interface HostedRouteDependencies {
   readonly publicOrigin: string | undefined;
 }
 
-interface HostedFileContentChunk extends FileContentChunk {
-  readonly file: ConversationFileProjection;
-}
+type HostedFileContentChunk = FileContentChunk & HostedConversationFileReadResult;
 
 export function registerHostedConversationRoutes(input: HostedRouteDependencies): void {
   const { app, database, templates, models, marAgentRuntimeModels, nodeControl, publicOrigin } =
     input;
+  registerFileChunkParser(app);
   app.get<{
     Params: { nodeId: string; conversationId: string; resourceRef: string };
     Querystring: { cursor?: string; maxBytes?: string };
@@ -795,21 +797,23 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
         )
           throw new Error('HOSTED_CONVERSATION_INPUT_INVALID');
         await authorizeExistingConversation(input, actor, request.params);
-        const data = hostedConversationFileReadInputSchema.parse({
+        const {
+          bytes,
+          size: _size,
+          ...metadata
+        } = await readHostedFileContentChunk({
+          nodeControl,
+          actor,
+          nodeId: request.params.nodeId,
           conversationId: request.params.conversationId,
           fileId: request.params.fileId,
           ...(offset === undefined ? {} : { offset }),
           ...(limit === undefined ? {} : { limit })
         });
-        return reply.send(
-          await requestHostedConversationNode(
-            nodeControl,
-            actor,
-            request.params.nodeId,
-            'conversation.hosted.file.read',
-            data
-          )
-        );
+        return reply
+          .header('cache-control', 'private, no-store')
+          .type('application/octet-stream')
+          .send(Buffer.from(encodeFileRelayFrame({ type: 'file.read', ...metadata }, bytes)));
       } catch (error) {
         return databaseError(reply, error);
       }
@@ -903,16 +907,20 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
 
   app.post<{
     Params: { nodeId: string; conversationId: string; uploadId: string };
-    Body: unknown;
+    Querystring: { offset?: string };
+    Body: Buffer;
   }>(
     '/api/nodes/:nodeId/hosted-conversations/:conversationId/uploads/:uploadId/chunks',
     async (request, reply) => {
       const actor = writableActor(database, request, reply, publicOrigin);
       if (actor === undefined) return;
       try {
-        const data = parseBodyWithPath(hostedConversationUploadChunkInputSchema, request.body, {
+        const query = parsePublic(z.strictObject({ offset: z.string() }), request.query);
+        const data = parsePublic(hostedConversationUploadChunkInputSchema, {
           conversationId: request.params.conversationId,
-          uploadId: request.params.uploadId
+          uploadId: request.params.uploadId,
+          offset: parseBoundedInteger(query.offset, 0, Number.MAX_SAFE_INTEGER),
+          bytes: Buffer.isBuffer(request.body) ? request.body : undefined
         });
         await authorizeExistingConversation(input, actor, request.params);
         return reply.send(
@@ -1024,8 +1032,8 @@ async function readHostedFileContentChunk(input: {
   readonly nodeId: string;
   readonly conversationId: string;
   readonly fileId: string;
-  readonly offset: number;
-  readonly limit: number;
+  readonly offset?: number;
+  readonly limit?: number;
 }): Promise<HostedFileContentChunk> {
   const data = hostedConversationFileReadInputSchema.parse({
     conversationId: input.conversationId,
@@ -1046,24 +1054,21 @@ async function readHostedFileContentChunk(input: {
     !parsed.success ||
     parsed.data.file.id !== input.fileId ||
     parsed.data.file.conversationId !== input.conversationId ||
-    parsed.data.offset !== input.offset
+    parsed.data.offset !== (input.offset ?? 0)
   )
     throw new Error('NODE_RESPONSE_INVALID');
-  const contentLength = Buffer.from(parsed.data.content, 'base64').length;
-  const nextOffset = input.offset + contentLength;
+  const contentLength = parsed.data.bytes.byteLength;
+  const nextOffset = parsed.data.offset + contentLength;
   if (
-    contentLength > input.limit ||
+    contentLength > (input.limit ?? FILE_CONTENT_CHUNK_BYTES) ||
     nextOffset > parsed.data.file.size ||
-    (parsed.data.eof
-      ? parsed.data.nextOffset !== null || nextOffset !== parsed.data.file.size
-      : parsed.data.nextOffset !== nextOffset)
+    parsed.data.eof !== (nextOffset === parsed.data.file.size) ||
+    parsed.data.nextOffset !== (parsed.data.eof ? null : nextOffset)
   )
     throw new Error('NODE_RESPONSE_INVALID');
   return {
-    file: parsed.data.file,
-    size: parsed.data.file.size,
-    offset: parsed.data.offset,
-    contentBase64: parsed.data.content
+    ...parsed.data,
+    size: parsed.data.file.size
   };
 }
 

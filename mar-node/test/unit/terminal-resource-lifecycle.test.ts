@@ -363,7 +363,7 @@ describe('terminal resource lifecycle', () => {
         expect(manager.get(terminal.id)).toMatchObject({ state: 'EXITED', exitCode: 7 });
         expect(manager.list()).toHaveLength(1);
         expect(frames).toContainEqual(
-          expect.objectContaining({ type: 'output', data: 'last output' })
+          expect.objectContaining({ type: 'output', data: new TextEncoder().encode('last output') })
         );
         expect(frames).toContainEqual({ type: 'exit', terminalId: terminal.id, exitCode: 7 });
         expect(pty.data.size + pty.exits.size).toBe(0);
@@ -529,7 +529,7 @@ describe('terminal resource lifecycle', () => {
     const summaries: string[] = [];
     manager.onSummary((summary) => summaries.push(summary.state));
     try {
-      const terminal = manager.openCommand({}, 'fixture command', true);
+      const terminal = manager.openCommand({}, 'fixture command');
       manager.startCommand(terminal.id);
       const attachment = manager.authorizeAttach({ terminalId: terminal.id, readonly: false });
       manager.setOutputBackpressure(terminal.id, new Set([attachment.attachmentId]));
@@ -562,7 +562,7 @@ describe('terminal resource lifecycle', () => {
     const summaries: string[] = [];
     manager.onSummary((summary) => summaries.push(summary.state));
     try {
-      const terminal = manager.openCommand({}, 'fixture command', true);
+      const terminal = manager.openCommand({}, 'fixture command');
       manager.startCommand(terminal.id);
       const attachment = manager.authorizeAttach({ terminalId: terminal.id, readonly: false });
       manager.setOutputBackpressure(terminal.id, new Set([attachment.attachmentId]));

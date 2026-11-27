@@ -1130,8 +1130,7 @@ export class HostedConversationNodeService {
       };
       return hostedConversationFileReadResultSchema.parse({
         file: currentFile,
-        encoding: 'base64',
-        content: buffer.subarray(0, read.bytesRead).toString('base64'),
+        bytes: buffer.subarray(0, read.bytesRead),
         offset,
         nextOffset: eof ? null : next,
         eof

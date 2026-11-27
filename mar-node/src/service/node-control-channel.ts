@@ -28,6 +28,7 @@ export class NodeControlChannel {
   private socket: WebSocket | undefined;
   private inboundMuted = false;
   private authenticated = false;
+  private capabilityReportId: string | undefined;
   private preauthFrames = 0;
   private preauthBytes = 0;
   private readonly outbound = new ControlOutboundScheduler(
@@ -57,6 +58,7 @@ export class NodeControlChannel {
       return;
     this.clearConnectionTimers();
     this.authenticated = false;
+    this.capabilityReportId = undefined;
     this.preauthFrames = 0;
     this.preauthBytes = 0;
     this.outbound.reset();
@@ -111,6 +113,7 @@ export class NodeControlChannel {
       this.clearConnectionTimers();
       this.socket = undefined;
       this.authenticated = false;
+      this.capabilityReportId = undefined;
       this.preauthFrames = 0;
       this.preauthBytes = 0;
       this.outbound.reset();
@@ -139,7 +142,9 @@ export class NodeControlChannel {
     )
       return false;
     this.clearConnectionTimers();
-    this.socket.send(JSON.stringify(createEnvelope('capabilities', capabilities)));
+    const report = createEnvelope('capabilities', capabilities);
+    this.capabilityReportId = report.id;
+    this.socket.send(JSON.stringify(report));
     this.authenticated = true;
     this.attempts = 0;
     this.preauthFrames = 0;
@@ -159,6 +164,12 @@ export class NodeControlChannel {
     this.outbound.resume();
     return true;
   }
+
+  acceptCapabilitiesAck(requestId: string): boolean {
+    if (!this.connected() || requestId !== this.capabilityReportId) return false;
+    this.capabilityReportId = undefined;
+    return true;
+  }
   close(code?: number, reason?: string): void {
     this.socket?.close(code, reason);
   }
@@ -170,6 +181,7 @@ export class NodeControlChannel {
     this.socket?.close();
     this.socket = undefined;
     this.authenticated = false;
+    this.capabilityReportId = undefined;
     this.preauthFrames = 0;
     this.preauthBytes = 0;
   }
@@ -193,6 +205,7 @@ export class NodeControlChannel {
         return;
       }
     }
+    if (envelope.type === 'capabilities') this.capabilityReportId = envelope.id;
     this.outbound.enqueue(envelope, envelope.type === 'workbench.event' ? 'normal' : 'high');
   }
 

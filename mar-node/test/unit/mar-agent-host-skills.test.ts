@@ -33,6 +33,7 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
   expect(skill.description).toContain('Workspace scheduled tasks');
   expect(skill.description).toContain('discover authorized MAR Nodes');
   expect(skill.description).toContain('execute commands or transfer files on those Nodes');
+  expect(skill.description).toContain('operate remote desktops with PyAutoGUI');
   expect(skill.description).toContain('native agent_* tools');
   const content = await skill.load();
   for (const term of [
@@ -44,6 +45,11 @@ it('offers scoped CLI guidance only in an authorized Workspace execution', async
     'Omit the Session ID to use the current Session',
     'schedule list [--current | --session <session-id>]',
     'marctl nodes lists authorized Nodes',
+    'marctl computer <node> <existing-output-directory> for remote Python/PyAutoGUI',
+    'same Node permission and CLI credentials as SSH',
+    'starting with {"code":""}',
+    'latest observationId as basedOnObservationId',
+    'On OUTCOME_UNKNOWN, reconnect and observe; do not replay.',
     'Session IDs and parent relationships do not grant authorization.'
   ])
     expect(content).toContain(term);

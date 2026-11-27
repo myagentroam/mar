@@ -6,10 +6,6 @@ const path = require('node:path');
 const CHUNK = 32 * 1024;
 const WINDOW = 8;
 const MAX_BUFFERED_BYTES = WINDOW * (CHUNK + 4) + 64;
-const [mode, encodedPath, sizeArgument, encodedMetadata, preserveArgument, encodedSourceBasename] =
-  process.argv.slice(1);
-const target = Buffer.from(encodedPath ?? '', 'base64url').toString('utf8');
-const sourceBasename = Buffer.from(encodedSourceBasename ?? '', 'base64url').toString('utf8');
 const input = process.stdin[Symbol.asyncIterator]();
 let pending = Buffer.alloc(0);
 
@@ -53,7 +49,7 @@ function appendFilename(directory, filename) {
   return `${directory}${separator}${filename}`;
 }
 
-async function destinationPath() {
+async function destinationPath(target, sourceBasename) {
   const targetPath = process.platform === 'win32' ? path.win32 : path.posix;
   const directoryIntent = (
     process.platform === 'win32' ? /(?:^|[\\/])\.{0,2}$/u : /(?:^|\/)\.{0,2}$/u
@@ -94,7 +90,7 @@ async function destinationPath() {
   return target;
 }
 
-async function source() {
+async function source(target) {
   const before = await lstat(target);
   if (!before.isFile() || before.isSymbolicLink() || !Number.isSafeInteger(before.size))
     throw new Error('SCP_SOURCE_INVALID');
@@ -150,17 +146,25 @@ async function source() {
   }
 }
 
-async function destination() {
-  const destinationTarget = await destinationPath();
-  const size = Number(sizeArgument);
+async function destination({
+  path: target,
+  sourceBasename,
+  size,
+  sourceMode,
+  atimeMs,
+  mtimeMs,
+  preserve
+}) {
   if (!Number.isSafeInteger(size) || size < 0) throw new Error('SCP_SIZE_INVALID');
-  const metadata = Buffer.from(encodedMetadata ?? '', 'base64url');
-  if (metadata.length !== 20) throw new Error('SCP_METADATA_INVALID');
-  const sourceMode = metadata.readUInt32BE(0);
-  const atimeMs = metadata.readDoubleBE(4);
-  const mtimeMs = metadata.readDoubleBE(12);
-  if (sourceMode > 0o777 || !Number.isFinite(atimeMs) || !Number.isFinite(mtimeMs))
+  if (
+    !Number.isInteger(sourceMode) ||
+    sourceMode < 0 ||
+    sourceMode > 0o777 ||
+    !Number.isFinite(atimeMs) ||
+    !Number.isFinite(mtimeMs)
+  )
     throw new Error('SCP_METADATA_INVALID');
+  const destinationTarget = await destinationPath(target, sourceBasename);
   const filename = path.basename(destinationTarget);
   const temporary = appendFilename(
     path.dirname(destinationTarget),
@@ -216,9 +220,9 @@ async function destination() {
     const expectedHash = await readExact(32);
     if (received !== size || !hash.digest().equals(expectedHash))
       throw new Error('SCP_CHECKSUM_MISMATCH');
-    if (preserveArgument === '1') await handle.utimes(new Date(atimeMs), new Date(mtimeMs));
+    if (preserve) await handle.utimes(new Date(atimeMs), new Date(mtimeMs));
     await handle.chmod(
-      preserveArgument === '1'
+      preserve
         ? sourceMode
         : previous === undefined
           ? sourceMode & ~process.umask()
@@ -252,9 +256,12 @@ async function destination() {
 }
 
 async function main() {
-  if (!path.isAbsolute(target) || target.includes('\0')) throw new Error('SCP_PATH_INVALID');
-  if (mode === 'read') await source();
-  else if (mode === 'write') await destination();
+  const copy = JSON.parse(process.argv[2] ?? 'null');
+  const target = copy?.path;
+  if (typeof target !== 'string' || !path.isAbsolute(target) || target.includes('\0'))
+    throw new Error('SCP_PATH_INVALID');
+  if (copy.mode === 'read') await source(target);
+  else if (copy.mode === 'write') await destination(copy);
   else throw new Error('SCP_MODE_INVALID');
 }
 

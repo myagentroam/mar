@@ -1,3 +1,4 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
@@ -17,16 +18,18 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { resolveNodeId } from '../../src/cli.mjs';
 import { runScp } from '../../src/scp.mjs';
 import { parseScpEndpoint, scpSourceBasename } from '../../src/scp-endpoint.mjs';
 import { createTranslator } from '../../src/i18n/index.mjs';
 
 const translate = createTranslator();
+const workerPath = fileURLToPath(new URL('../../src/scp-worker.cjs', import.meta.url));
 
 function fakeNodeClient({
-  legacy = false,
   corrupt = false,
   closeAfterExit = false,
   onCreate,
@@ -53,8 +56,8 @@ function fakeNodeClient({
         this.emit('open');
         this.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: terminal.id, afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: terminal.id, afterSequence: 0 }),
+          true
         );
         this.start();
       });
@@ -62,32 +65,27 @@ function fakeNodeClient({
 
     start() {
       started += 1;
-      const child = spawn(
-        process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : '/bin/sh',
-        process.platform === 'win32'
-          ? ['/d', '/s', '/c', `"${this.terminal.command}"`]
-          : ['-c', this.terminal.command],
-        {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          windowsVerbatimArguments: process.platform === 'win32'
-        }
-      );
+      const child = spawn(process.execPath, [workerPath, JSON.stringify(this.terminal.copy)], {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
       this.terminal.child = child;
       child.stdin.on('error', () => {});
       child.stderr.resume();
       child.stdout.on('data', (bytes) => {
         for (let offset = 0; offset < bytes.length; offset += 32 * 1024) {
-          const data = bytes.subarray(offset, offset + 32 * 1024).toString('base64');
+          const data = bytes.subarray(offset, offset + 32 * 1024);
           const deliver = () =>
             this.emit(
               'message',
-              JSON.stringify({
-                type: 'output',
-                terminalId: this.terminal.id,
-                sequence: ++this.sequence,
-                data: corrupt ? 'not-base64!' : data
-              }),
-              false
+              corrupt
+                ? Buffer.of(0)
+                : encodeTerminalMessage({
+                    type: 'output',
+                    terminalId: this.terminal.id,
+                    sequence: ++this.sequence,
+                    data
+                  }),
+              true
             );
           if (onOutput) onOutput(bytes.subarray(offset, offset + 32 * 1024), deliver, this);
           else deliver();
@@ -96,8 +94,8 @@ function fakeNodeClient({
       child.on('close', (exitCode) => {
         this.emit(
           'message',
-          JSON.stringify({ type: 'exit', terminalId: this.terminal.id, exitCode }),
-          false
+          encodeTerminalMessage({ type: 'exit', terminalId: this.terminal.id, exitCode }),
+          true
         );
         if (closeAfterExit) {
           this.readyState = 3;
@@ -107,11 +105,14 @@ function fakeNodeClient({
     }
 
     send(text, callback) {
-      const frame = JSON.parse(text);
+      const frame = decodeTerminalMessage(text);
       if (frame.type === 'input') {
-        assert.ok(Buffer.from(frame.data, 'base64').length <= 32 * 1024);
-        const write = () =>
-          this.terminal.child.stdin.write(Buffer.from(frame.data, 'base64'), callback);
+        assert.ok(Buffer.from(frame.data).length <= 32 * 1024);
+        // A WebSocket write confirms transport acceptance, not a later worker stdin write.
+        const write = () => {
+          this.terminal.child.stdin.write(Buffer.from(frame.data));
+          callback?.();
+        };
         if (onInput) onInput(frame, write, this);
         else write();
       } else callback?.();
@@ -135,14 +136,15 @@ function fakeNodeClient({
       return nodes;
     },
     async getTerminalManifest() {
-      return { binaryTerminal: true };
+      return {};
     },
     async createTerminal(input) {
       const id = `terminal-${++counter}`;
       createdNodes.push(input.nodeId);
-      terminals.set(id, { id, command: input.command });
+      assert.equal(input.command, undefined);
+      terminals.set(id, { id, copy: input.copy });
       onCreate?.();
-      return { terminalId: id, binary: !legacy };
+      return id;
     },
     async createAttachTicket() {
       return 'ticket';
@@ -391,12 +393,17 @@ test('rejects source filenames that cannot be a Windows destination leaf', async
       [
         '-e',
         script,
-        'write',
-        Buffer.from(path.resolve('target')).toString('base64url'),
-        '0',
-        Buffer.alloc(20).toString('base64url'),
-        '0',
-        Buffer.from(filename).toString('base64url')
+        workerPath,
+        JSON.stringify({
+          mode: 'write',
+          path: path.resolve('target'),
+          size: 0,
+          sourceMode: 0,
+          atimeMs: 0,
+          mtimeMs: 0,
+          preserve: false,
+          sourceBasename: filename
+        })
       ],
       { stdio: ['pipe', 'pipe', 'pipe'] }
     );
@@ -491,7 +498,7 @@ test('refuses a symlink source and rejects an invalid binary output', async () =
     await writeFile(original, 'unchanged');
     await assert.rejects(
       copy(fakeNodeClient({ corrupt: true }), `linux://${source}`, original),
-      /not valid base64/
+      /terminal connection failed/i
     );
     assert.equal((await readFile(original)).toString(), 'unchanged');
     await assert.rejects(lstat(path.join(dir, 'nope')), { code: 'ENOENT' });
@@ -499,6 +506,58 @@ test('refuses a symlink source and rejects an invalid binary output', async () =
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test(
+  'cleans the local destination temporary file when a download is cancelled',
+  { timeout: 5000 },
+  async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-local-cancel-'));
+    const source = path.join(dir, 'source');
+    const target = path.join(dir, 'target');
+    const controller = new AbortController();
+    let copying;
+    let delivered = 0;
+    try {
+      const client = fakeNodeClient({
+        onOutput(bytes, deliver) {
+          // Send file size and metadata, but not the complete payload or its checksum.
+          if (delivered >= 28) return;
+          delivered += bytes.length;
+          deliver();
+        }
+      });
+      await writeFile(source, Buffer.alloc(1024 * 1024, 42));
+      await writeFile(target, 'original');
+      copying = assert.rejects(
+        runScp({
+          source: `linux://${source}`,
+          destination: target,
+          client,
+          WebSocketClass: class {},
+          resolveNodeId: async (host) => host,
+          translate,
+          signal: controller.signal
+        }),
+        /interrupted/
+      );
+      const deadline = Date.now() + 2000;
+      while ((await readdir(dir)).length === 2 && Date.now() < deadline) await delay(10);
+      assert.equal(
+        (await readdir(dir)).length,
+        3,
+        'destination worker has opened its temporary file'
+      );
+      controller.abort('SIGINT');
+      await copying;
+      assert.deepEqual((await readdir(dir)).sort(), ['source', 'target']);
+      assert.equal(await readFile(target, 'utf8'), 'original');
+    } finally {
+      controller.abort('SIGINT');
+      await copying?.catch(() => {});
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+);
 
 test('copies an empty file and never follows or replaces an existing destination symlink', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-empty-'));
@@ -538,7 +597,7 @@ test('reads a Windows file when path stat omits its device ID', async () => {
     `;
     const child = spawn(
       process.execPath,
-      ['-e', script, 'read', Buffer.from(source).toString('base64url')],
+      ['-e', script, workerPath, JSON.stringify({ mode: 'read', path: source })],
       {
         stdio: ['pipe', 'pipe', 'pipe']
       }
@@ -561,23 +620,6 @@ test('reads a Windows file when path stat omits its device ID', async () => {
   }
 });
 
-test('rejects a legacy Server response before attaching or starting a PTY command', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-legacy-'));
-  const client = fakeNodeClient({ legacy: true });
-  try {
-    const source = path.join(dir, 'source');
-    await writeFile(source, 'test');
-    await assert.rejects(
-      copy(client, `linux://${source}`, path.join(dir, 'destination')),
-      /binary|pipe/i
-    );
-    assert.equal(client.started, 0);
-    assert.equal(client.deleted, 1);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
 test('cancels Node resolution promptly and ignores its late result', async () => {
   const signals = new AbortController();
   let releaseResolution;
@@ -589,11 +631,11 @@ test('cancels Node resolution promptly and ignores its late result', async () =>
   const client = {
     async getTerminalManifest() {
       workerStarts += 1;
-      return { binaryTerminal: true };
+      return {};
     },
     async createTerminal() {
       workerStarts += 1;
-      return { terminalId: 'terminal-1', binary: true };
+      return 'terminal-1';
     },
     async deleteTerminal() {}
   };
@@ -676,7 +718,7 @@ test(
     });
     const client = fakeNodeClient({
       onInput(frame, write) {
-        if (Buffer.from(frame.data, 'base64').length > 1024 && !releaseWrite) {
+        if (Buffer.from(frame.data).length > 1024 && !releaseWrite) {
           releaseWrite = write;
           notifyBlocked();
         } else write();
@@ -737,7 +779,7 @@ test(
     let releaseWrite;
     const client = fakeNodeClient({
       onInput(frame, write, socket) {
-        if (Buffer.from(frame.data, 'base64').length > 1024 && !releaseWrite) {
+        if (Buffer.from(frame.data).length > 1024 && !releaseWrite) {
           releaseWrite = write;
           socket.readyState = 3;
           socket.emit('close');
@@ -799,12 +841,12 @@ test(
     });
     const client = fakeNodeClient({
       onInput(frame, write, socket) {
-        if (Buffer.from(frame.data, 'base64').length > 1024 && !releaseWrite) {
+        if (Buffer.from(frame.data).length > 1024 && !releaseWrite) {
           releaseWrite = write;
           socket.emit(
             'message',
-            JSON.stringify({ type: 'exit', terminalId: frame.terminalId, exitCode: 1 }),
-            false
+            encodeTerminalMessage({ type: 'exit', terminalId: frame.terminalId, exitCode: 1 }),
+            true
           );
           notifyExit();
         } else write();
@@ -847,12 +889,12 @@ for (const side of ['source', 'target']) {
         });
         const client = fakeNodeClient({
           onOutput(bytes, deliver, socket) {
-            sockets.set(socket.terminal.command.includes('" read ') ? 'source' : 'target', socket);
+            sockets.set(socket.terminal.copy.mode === 'read' ? 'source' : 'target', socket);
             deliver();
           },
           onInput(frame, write, socket) {
-            const bytes = Buffer.from(frame.data, 'base64');
-            const isSource = socket.terminal.command.includes('" read ');
+            const bytes = Buffer.from(frame.data);
+            const isSource = socket.terminal.copy.mode === 'read';
             if (
               !releaseWrite &&
               ((side === 'source' && !isSource && bytes.length > 1024) ||
@@ -863,12 +905,12 @@ for (const side of ['source', 'target']) {
               if (event === 'exit')
                 failed.emit(
                   'message',
-                  JSON.stringify({
+                  encodeTerminalMessage({
                     type: 'exit',
                     terminalId: failed.terminal.id,
                     exitCode: 1
                   }),
-                  false
+                  true
                 );
               else {
                 failed.readyState = 3;
@@ -990,8 +1032,8 @@ for (const direction of ['upload', 'download', 'Node-to-Node']) {
       });
       const client = fakeNodeClient({
         onInput(frame, write, socket) {
-          if (socket.terminal.command.includes('" write ')) {
-            pending = Buffer.concat([pending, Buffer.from(frame.data, 'base64')]);
+          if (socket.terminal.copy.mode === 'write') {
+            pending = Buffer.concat([pending, Buffer.from(frame.data)]);
             while (pending.length >= 4) {
               const length = pending.readUInt32BE();
               if (length === 0 || pending.length < length + 4) break;
@@ -1000,11 +1042,11 @@ for (const direction of ['upload', 'download', 'Node-to-Node']) {
               pending = pending.subarray(length + 4);
             }
           }
-          if (Buffer.from(frame.data, 'base64').length > 4) setTimeout(write, 40);
+          if (Buffer.from(frame.data).length > 4) setTimeout(write, 40);
           else write();
         },
         onOutput(bytes, deliver, socket) {
-          if (socket.terminal.command.includes('" write ')) {
+          if (socket.terminal.copy.mode === 'write') {
             if (!targetReady) {
               targetReady = true;
               deliver();
@@ -1028,16 +1070,16 @@ for (const direction of ['upload', 'download', 'Node-to-Node']) {
             const socket = originalOpen(...args);
             const send = socket.send.bind(socket);
             socket.send = (raw, callback) => {
-              const frame = JSON.parse(raw);
+              const frame = decodeTerminalMessage(raw);
               if (frame.type === 'input' && holding) {
                 held.push(() => send(raw, callback));
                 notifyBlocked();
               } else send(raw, callback);
             };
             socket.on('message', (raw) => {
-              const frame = JSON.parse(raw);
+              const frame = decodeTerminalMessage(raw);
               if (frame.type === 'output') {
-                pending = Buffer.concat([pending, Buffer.from(frame.data, 'base64')]);
+                pending = Buffer.concat([pending, Buffer.from(frame.data)]);
                 if (!targetReady && pending.length >= 28) {
                   pending = pending.subarray(28);
                   targetReady = true;
@@ -1107,25 +1149,25 @@ for (const side of ['target', 'source']) {
       let targetReady = false;
       const client = fakeNodeClient({
         onInput(frame, write, socket) {
-          if (side === 'source' && socket.terminal.command.includes('" read '))
-            frame.data = Buffer.alloc(Buffer.from(frame.data, 'base64').length).toString('base64');
+          if (side === 'source' && socket.terminal.copy.mode === 'read')
+            frame.data = Buffer.alloc(Buffer.from(frame.data).length);
           write();
         },
         onOutput(bytes, deliver, socket) {
-          if (side === 'source' || !socket.terminal.command.includes('" write ')) return deliver();
+          if (side === 'source' || socket.terminal.copy.mode !== 'write') return deliver();
           if (!targetReady) {
             targetReady = true;
             return deliver();
           }
           socket.emit(
             'message',
-            JSON.stringify({
+            encodeTerminalMessage({
               type: 'output',
               terminalId: socket.terminal.id,
               sequence: ++socket.sequence,
-              data: Buffer.alloc(bytes.length).toString('base64')
+              data: Buffer.alloc(bytes.length)
             }),
-            false
+            true
           );
         }
       });
@@ -1172,7 +1214,7 @@ test(
           if (socket.readyState === 1) socket.send(raw);
         });
         socket.on('message', (raw) =>
-          upstream.send(raw.toString(), (error) => {
+          upstream.send(raw, (error) => {
             if (error) socket.close();
           })
         );

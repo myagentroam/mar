@@ -523,7 +523,7 @@ describe('WhiteboardService', () => {
       expect.objectContaining({
         code: 'WHITEBOARD_DETACHED',
         publicMessage: expect.stringContaining(
-          'You can also join using the owner’s Agent ID once they are active again.'
+          'Ask the owner to send you a new agent_send message from a run using this board, or join using the owner’s Agent ID when they have an active run.'
         ),
         details: { recoveryAgentId: 'owner-A' }
       })

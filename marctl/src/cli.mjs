@@ -5,6 +5,7 @@ import { MarctlError } from './errors.mjs';
 import { createTranslator } from './i18n/index.mjs';
 import { runTerminalSession } from './terminal.mjs';
 import { runScp } from './scp.mjs';
+import { runComputer } from './computer.mjs';
 import { parseSessionArgs } from './session-args.mjs';
 import { runSessionCommand, sessionExitCode } from './sessions.mjs';
 
@@ -58,7 +59,13 @@ export async function main(
     }
 
     const config = await loadConfig({ env, translate });
-    const marctlClient = client ?? new MarctlClient({ ...config, translate });
+    const marctlClient =
+      client ??
+      new MarctlClient({
+        ...config,
+        translate,
+        reuseTerminalConnections: WebSocketClass === undefined && !args.noReuse
+      });
     if (args.command === 'nodes') {
       const nodes = await marctlClient.listNodes();
       writeLine(stdout, translate('nodesHeader'));
@@ -108,6 +115,19 @@ export async function main(
 
     const nodeId = await resolveNodeId(marctlClient, args.nodeId, translate);
     const socketClass = WebSocketClass ?? (await import('ws')).default;
+    if (args.command === 'computer')
+      return await withCommandSignals((signal) =>
+        runComputer({
+          client: marctlClient,
+          WebSocketClass: socketClass,
+          nodeId,
+          directory: args.directory,
+          stdin,
+          stdout,
+          signal,
+          translate
+        })
+      );
     return await withCommandSignals((signal) =>
       runTerminalSession({
         client: marctlClient,
@@ -115,6 +135,7 @@ export async function main(
         nodeId,
         command: args.remoteCommand,
         raceConnections: true,
+        stdin,
         stdout,
         stderr,
         translate,
@@ -147,6 +168,10 @@ export async function main(
           writeLine(stderr, JSON.stringify({ progress: failure.progress }, null, 2));
       }
       return sessionExitCode(error);
+    }
+    if (args?.command === 'computer' && error instanceof MarctlError && error.code !== undefined) {
+      writeLine(stderr, `${program}: ${error.message} [${error.code}]`);
+      return error.code === 'OUTCOME_UNKNOWN' ? 6 : 1;
     }
     writeLine(
       stderr,
@@ -184,6 +209,7 @@ export function parseArgs(argv, translate = createTranslator()) {
   let help = false;
   let version = false;
   let preserve = false;
+  let noReuse = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -207,6 +233,7 @@ export function parseArgs(argv, translate = createTranslator()) {
       if (
         argument !== 'nodes' &&
         argument !== 'ssh' &&
+        argument !== 'computer' &&
         argument !== 'scp' &&
         argument !== 'agents' &&
         argument !== 'version'
@@ -217,6 +244,10 @@ export function parseArgs(argv, translate = createTranslator()) {
     }
     if (command === 'nodes' || command === 'version')
       throw new MarctlError(translate('errors.invalidArguments'));
+    if (!separator && nodeId === undefined && argument === '--no-reuse') {
+      noReuse = true;
+      continue;
+    }
     if (command === 'scp') {
       if (!separator && argument.startsWith('-') && argument !== '-') {
         if (!/^-[pq]+$/u.test(argument))
@@ -242,17 +273,22 @@ export function parseArgs(argv, translate = createTranslator()) {
   if (help) return { help: true, ...(command === undefined ? {} : { command }) };
   if (version || command === 'version') return { version: true };
   if (command === 'nodes' && nodeId === undefined && remoteArgs.length === 0) return { command };
+  const relayOptions = noReuse ? { noReuse: true } : {};
+  if (command === 'computer' && nodeId && remoteArgs.length === 1 && remoteArgs[0])
+    return { command, nodeId, directory: remoteArgs[0], ...relayOptions };
   if (command === 'scp' && nodeId !== undefined && remoteArgs.length === 1)
     return {
       command,
       source: nodeId,
       destination: remoteArgs[0],
-      preserve
+      preserve,
+      ...relayOptions
     };
   if (command === 'ssh' && nodeId !== undefined && nodeId !== '')
     return {
       command,
       nodeId,
+      ...relayOptions,
       ...(remoteArgs.length === 0
         ? {}
         : { remoteCommand: remoteArgs.length === 1 ? remoteArgs[0] : remoteArgs.join(' ') })

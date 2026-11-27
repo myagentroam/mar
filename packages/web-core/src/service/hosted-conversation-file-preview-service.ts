@@ -96,12 +96,7 @@ export function createHostedConversationFilePreviewService(
             HostedConversationPreviewContent & { nextOffset: number | null; revision: string }
           > => {
             const read = await options.source.readFile(nextFile.id, 0, limit);
-            const decoded = decodeFilePreviewContent(
-              base64Bytes(read.content),
-              path,
-              read.eof,
-              nextFile.mimeType
-            );
+            const decoded = decodeFilePreviewContent(read.bytes, path, read.eof, nextFile.mimeType);
             return {
               path,
               size: read.file.size,
@@ -199,8 +194,4 @@ export function createHostedConversationFilePreviewService(
 export function projectedFilePath(file: ConversationFileProjection): string {
   const directory = file.category === 'OUTPUT' ? 'output' : 'inbox';
   return `${directory}/${file.relativePath.replaceAll('\\', '/')}`;
-}
-
-function base64Bytes(value: string): Uint8Array {
-  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 }

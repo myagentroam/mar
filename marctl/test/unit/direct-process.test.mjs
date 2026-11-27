@@ -1,3 +1,4 @@
+import { decodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { fork } from 'node:child_process';
@@ -266,8 +267,12 @@ test('bounds IPC writes and closes a connection that exceeds its buffer', async 
   const transport = await f.opening;
   try {
     const writing = assert.rejects(
-      transport.send('x'.repeat(2 * 1024 * 1024)),
-      /TERMINAL_CONNECTION_LOST/
+      transport.send({
+        type: 'input',
+        terminalId: 'terminal-1',
+        data: Buffer.alloc(2 * 1024 * 1024)
+      }),
+      /TERMINAL_DIRECT_BUFFER_EXCEEDED/
     );
     await writing;
     assert.equal(f.child.killed, false);
@@ -443,15 +448,15 @@ test(
         });
         transports.push(transport);
         const frames = [];
-        transport.on('message', (raw) => frames.push(JSON.parse(String(raw))));
+        transport.on('message', (raw) => frames.push(decodeTerminalMessage(raw)));
         const handoff = new Promise((resolve) =>
           transport.on('message', (raw) => {
-            if (JSON.parse(String(raw)).data === 'handoff') resolve();
+            if (Buffer.from(decodeTerminalMessage(raw).data).toString() === 'handoff') resolve();
           })
         );
         transport.activate();
         await handoff;
-        assert.equal(frames[0].data, 'handoff');
+        assert.equal(Buffer.from(frames[0].data).toString(), 'handoff');
         return transport;
       };
       const first = await open();
@@ -459,12 +464,14 @@ test(
       first.close();
       const echo = new Promise((resolve) =>
         second.on('message', (raw) => {
-          if (JSON.parse(String(raw)).data === 'still-alive') resolve();
+          if (Buffer.from(decodeTerminalMessage(raw).data).toString() === 'still-alive') resolve();
         })
       );
-      await second.send(
-        JSON.stringify({ type: 'input', terminalId: 'terminal-1', data: 'still-alive' })
-      );
+      await second.send({
+        type: 'input',
+        terminalId: 'terminal-1',
+        data: Buffer.from('still-alive')
+      });
       await echo;
     } finally {
       for (const transport of transports) transport.close();

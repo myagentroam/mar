@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
   createEnvelope,
+  encodeFileRelayEnvelope,
+  FILE_RELAY_MAX_FRAME_BYTES,
+  FILE_RELAY_MAX_PENDING,
+  isFileRelayOperation,
+  restoreFileRelayBody,
   nodeResponseErrorPayloadSchema,
   publicErrorMessage,
   type NodeEnvelope
@@ -15,8 +20,14 @@ type RequestObserver = (
   requestId: string,
   errorCode?: string
 ) => void;
+function fileOperationFor(operation: string, data: unknown) {
+  return isFileRelayOperation(operation, data) ? operation : undefined;
+}
+
 interface PendingRequest {
   readonly nodeId: string;
+  readonly fileSocket?: WebSocket;
+  readonly fileOperation?: ReturnType<typeof fileOperationFor>;
   readonly operation: string;
   readonly startedAt: number;
   readonly timer: NodeJS.Timeout;
@@ -34,7 +45,8 @@ export class NodeRequestChannel {
     private readonly socketFor: (nodeId: string) => WebSocket | undefined,
     private readonly log: (event: string, fields: Record<string, unknown>) => void = () =>
       undefined,
-    private readonly recordTraffic?: (bytes: number) => void
+    private readonly recordTraffic?: (bytes: number) => void,
+    private readonly fileSocketFor?: (nodeId: string) => WebSocket | undefined
   ) {}
 
   request(
@@ -83,9 +95,20 @@ export class NodeRequestChannel {
     signal?: AbortSignal
   ): Promise<unknown> {
     if (this.closed) return Promise.reject(new NodeRequestAdmissionError('NODE_CONTROL_CLOSED'));
-    const socket = this.socketFor(nodeId);
+    const fileOperation = fileOperationFor(operation, data);
+    const socket =
+      fileOperation === undefined ? this.socketFor(nodeId) : this.fileSocketFor?.(nodeId);
     if (socket === undefined || socket.readyState !== socket.OPEN)
-      return Promise.reject(new NodeRequestAdmissionError('NODE_OFFLINE'));
+      return Promise.reject(
+        new NodeRequestAdmissionError(fileOperation ? 'FILE_RELAY_UNAVAILABLE' : 'NODE_OFFLINE')
+      );
+    if (
+      fileOperation &&
+      ([...this.pending.values()].filter((entry) => entry.fileSocket === socket).length >=
+        FILE_RELAY_MAX_PENDING ||
+        socket.bufferedAmount >= FILE_RELAY_MAX_PENDING * FILE_RELAY_MAX_FRAME_BYTES)
+    )
+      return Promise.reject(new NodeRequestAdmissionError('FILE_RELAY_BUSY'));
     const id = randomUUID();
     const issuedAt = Date.now();
     const startedAt = performance.now();
@@ -120,6 +143,7 @@ export class NodeRequestChannel {
       this.pending.set(id, {
         nodeId,
         operation,
+        ...(fileOperation === undefined ? {} : { fileSocket: socket, fileOperation }),
         startedAt,
         timer,
         resolve,
@@ -136,43 +160,57 @@ export class NodeRequestChannel {
       signal?.addEventListener('abort', onAbort, { once: true });
       try {
         observe?.('requested', id);
-        const serialized = JSON.stringify(
-          createEnvelope(
-            'node.request',
-            {
+        const envelope = createEnvelope(
+          'node.request',
+          {
+            operation,
+            data,
+            userAuthorization: {
+              userId: user.userId,
+              sessionHash: user.sessionHash,
+              ...(user.marctlCaller === undefined ? {} : { marctlCaller: user.marctlCaller }),
+              ...(user.marctlExecutionResources === undefined
+                ? {}
+                : { marctlExecutionResources: user.marctlExecutionResources }),
+              ...(user.usageGrant === undefined ? {} : { usageGrant: user.usageGrant }),
+              nodeId,
               operation,
-              data,
-              userAuthorization: {
-                userId: user.userId,
-                sessionHash: user.sessionHash,
-                ...(user.marctlCaller === undefined ? {} : { marctlCaller: user.marctlCaller }),
-                ...(user.marctlExecutionResources === undefined
-                  ? {}
-                  : { marctlExecutionResources: user.marctlExecutionResources }),
-                ...(user.usageGrant === undefined ? {} : { usageGrant: user.usageGrant }),
-                nodeId,
-                operation,
-                requestId: id,
-                issuedAt,
-                expiresAt: issuedAt + Math.min(timeoutMs, 15_000)
-              }
-            },
-            { id }
-          )
+              requestId: id,
+              issuedAt,
+              expiresAt: issuedAt + Math.min(timeoutMs, 15_000)
+            }
+          },
+          { id }
         );
-        this.recordTraffic?.(Buffer.byteLength(serialized));
-        socket.send(serialized);
+        if (fileOperation === undefined) {
+          const serialized = JSON.stringify(envelope);
+          this.recordTraffic?.(Buffer.byteLength(serialized));
+          socket.send(serialized);
+        } else {
+          const frame = encodeFileRelayEnvelope(envelope, fileOperation);
+          this.recordTraffic?.(frame.byteLength);
+          socket.send(frame, (error) => {
+            if (error) this.fail(id, new Error('FILE_RELAY_UNAVAILABLE'));
+          });
+        }
       } catch (error) {
         this.fail(id, error instanceof Error ? error : new Error('NODE_SEND_FAILED'));
       }
     });
   }
 
-  resolve(nodeId: string, envelope: NodeEnvelope): void {
+  resolve(
+    nodeId: string,
+    envelope: NodeEnvelope,
+    file?: { socket: WebSocket; bytes: Uint8Array; declaredLength: unknown }
+  ): void {
     if (envelope.type !== 'node.response' || envelope.replyTo === undefined) return;
     const id = envelope.replyTo;
     const pending = this.pending.get(id);
-    if (pending === undefined || pending.nodeId !== nodeId) return;
+    if (pending === undefined || pending.nodeId !== nodeId || pending.fileSocket !== file?.socket)
+      return;
+    if (file && pending.fileOperation)
+      restoreFileRelayBody(envelope, pending.fileOperation, file.bytes, file.declaredLength);
     const payload = envelope.payload;
     if (
       typeof payload !== 'object' ||
@@ -261,6 +299,11 @@ export class NodeRequestChannel {
     for (const [id, pending] of this.pending) {
       if (pending.nodeId === nodeId) this.fail(id, error);
     }
+  }
+
+  rejectFileSocket(socket: WebSocket): void {
+    for (const [id, pending] of this.pending)
+      if (pending.fileSocket === socket) this.fail(id, new Error('FILE_RELAY_UNAVAILABLE'));
   }
 
   close(): void {

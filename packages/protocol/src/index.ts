@@ -25,6 +25,9 @@ export * from './mcp.js';
 export * from './git-identity.js';
 export * from './direct-transfer.js';
 export * from './terminal-direct.js';
+export * from './terminal-copy.js';
+export * from './byte-frame.js';
+export * from './file-relay.js';
 export * from './remote-desktop.js';
 export * from './browser-frame.js';
 export * from './browser-input.js';
@@ -49,7 +52,7 @@ export const healthStatusSchema = z.object({
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
 
 /** The only wire protocol version understood by this build. */
-export const NODE_PROTOCOL_VERSION = 3;
+export const NODE_PROTOCOL_VERSION = 4;
 export const WORKBENCH_PROTOCOL_VERSION = 1;
 
 export const nodePlatformSchema = z.enum(['windows', 'linux', 'macos']);
@@ -2831,21 +2834,6 @@ const uniqueProtocolIds = (
     context.addIssue({ code: 'custom', path, message: 'identifiers must be unique' });
 };
 
-const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const canonicalBase64 = (value: string): boolean => {
-  if (value.length === 0) return true;
-  if (value.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) return false;
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
-  if (padding === 2) return BASE64_ALPHABET.indexOf(value.at(-3)!) % 16 === 0;
-  if (padding === 1) return BASE64_ALPHABET.indexOf(value.at(-2)!) % 4 === 0;
-  return true;
-};
-const base64DecodedByteLength = (value: string): number => {
-  if (value.length === 0) return 0;
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
-  return (value.length * 3) / 4 - padding;
-};
-
 export const conversationTemplateStatusSchema = z.enum(['ACTIVE', 'ARCHIVED', 'DELETED']);
 export const conversationTemplateVersionStatusSchema = z.enum([
   'AVAILABLE',
@@ -3578,16 +3566,13 @@ export type HostedConversationFileDeleteResult = z.infer<
 export const hostedConversationFileReadResultSchema = z
   .object({
     file: conversationFileProjectionSchema,
-    encoding: z.literal('base64'),
-    content: z.string().max(Math.ceil((512 * 1024 * 4) / 3) + 4),
+    bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength <= 512 * 1024),
     offset: z.number().int().nonnegative(),
     nextOffset: z.number().int().nonnegative().nullable(),
     eof: z.boolean()
   })
   .strict()
   .superRefine((result, context) => {
-    if (!canonicalBase64(result.content))
-      context.addIssue({ code: 'custom', path: ['content'], message: 'file content is invalid' });
     if (result.nextOffset !== null && result.nextOffset <= result.offset)
       context.addIssue({
         code: 'custom',
@@ -3638,14 +3623,9 @@ export const hostedConversationUploadChunkInputSchema = hostedConversationIdInpu
   .extend({
     uploadId: protocolIdSchema,
     offset: z.number().int().nonnegative(),
-    dataBase64: z
-      .string()
-      .min(4)
-      .max(Math.ceil((512 * 1024 * 4) / 3) + 4)
-      .refine(
-        (value) => canonicalBase64(value) && base64DecodedByteLength(value) <= 512 * 1024,
-        'upload chunk is invalid'
-      )
+    bytes: z
+      .instanceof(Uint8Array)
+      .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= 512 * 1024)
   })
   .strict();
 export type HostedConversationUploadChunkInput = z.infer<
@@ -3764,13 +3744,18 @@ export const terminalDataFrameSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('input'),
     terminalId: z.string().min(1).max(128),
-    data: z.string().max(65536)
+    data: z.instanceof(Uint8Array).refine((bytes) => bytes.length > 0 && bytes.length <= 65536)
+  }),
+  z.object({
+    type: z.literal('eof'),
+    terminalId: z.string().min(1).max(128)
   }),
   z.object({
     type: z.literal('output'),
     terminalId: z.string().min(1).max(128),
     sequence: z.number().int().positive(),
-    data: z.string().max(65536)
+    stream: z.literal('stderr').optional(),
+    data: z.instanceof(Uint8Array).refine((bytes) => bytes.length > 0 && bytes.length <= 65536)
   }),
   z.object({ type: z.literal('close'), terminalId: z.string().min(1).max(128) }),
   z.object({
@@ -4269,9 +4254,14 @@ const FIXED_PUBLIC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   TERMINAL_GIT_OWNER_REQUIRED:
     'This terminal uses another user’s Git credentials. Open your own terminal.',
   TERMINAL_OWNER_REQUIRED: 'This terminal belongs to another user. Open your own terminal.',
-  TERMINAL_COMMAND_INVALID: 'The remote command must be non-empty and at most 8 KiB.',
+  TERMINAL_COMMAND_INVALID: 'The remote command must be non-empty and at most 64 KiB.',
   TERMINAL_COMMAND_START_FAILED: 'The remote command could not be started.',
+  COMPUTER_REMOTE_DISABLED: 'Remote Computer Use is disabled in the target Node configuration.',
   FILE_REVEAL_INVALID: 'The Workspace file manager target is invalid.',
+  FILE_RELAY_UNAVAILABLE:
+    'The Node file connection is unavailable. Check that the Node and Server run the same release.',
+  FILE_RELAY_BUSY:
+    'The Node file connection has too many requests in flight. Try again when a transfer finishes.',
   FILE_MANAGER_UNAVAILABLE: 'The local file manager is unavailable in this Node desktop session.',
   EXTERNAL_SESSION_ACTIVE:
     'This native session is currently active in another client. Try again later.',

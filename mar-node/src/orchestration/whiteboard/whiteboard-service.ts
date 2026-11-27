@@ -116,9 +116,13 @@ export class WhiteboardService {
     if (followed?.ownerSessionId === boardId) return followed;
     if (this.follows.get(run.id)?.[0]?.ownerSessionId === boardId) {
       const recoveryAgentId = this.options.canRecover?.(run, boardId) ? boardId : undefined;
+      const message = 'You still follow this whiteboard, but you cannot edit it right now.';
+      // A retained follow does not imply the caller can contact the owner or rejoin the board.
       throw new AgentError(
         'WHITEBOARD_DETACHED',
-        'If you still need this whiteboard, ask its owner to send you a new agent_send message from a run using the same whiteboard. Retry after that message arrives. You can also join using the owner’s Agent ID once they are active again.',
+        recoveryAgentId === undefined
+          ? message
+          : `${message} Ask the owner to send you a new agent_send message from a run using this board, or join using the owner’s Agent ID when they have an active run.`,
         recoveryAgentId === undefined ? undefined : { details: { recoveryAgentId } }
       );
     }

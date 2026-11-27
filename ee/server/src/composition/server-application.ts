@@ -485,8 +485,8 @@ export async function composeServerApplication(
       nodeControl: {
         requestNode: (...args) => nodeControl.requestNode(...args),
         createTerminalTicket: (input) => nodeControl.createTerminalTicket(input),
-        attachBrowserTerminal: (socket, ticket, user) =>
-          nodeControl.attachBrowserTerminal(socket, ticket, user),
+        attachCliMux: (...args) => nodeControl.attachCliMux(...args),
+        attachCliTerminal: (...args) => nodeControl.attachCliTerminal(...args),
         closeTerminal: (nodeId, terminalId) => nodeControl.closeTerminal(nodeId, terminalId),
         attachWorkbench: (socket, user) => nodeControl.attachBrowserWorkbench(socket, user)
       },
@@ -597,7 +597,8 @@ export async function composeServerApplication(
       publicOrigin,
       sessionShares,
       attachMarctl: marctl.attach,
-      attachMarctlLive: marctl.attachLive
+      attachMarctlLive: marctl.attachLive,
+      attachMarctlMux: marctl.attachMux
     });
     registerHtmlPreviewRoutes({
       app,

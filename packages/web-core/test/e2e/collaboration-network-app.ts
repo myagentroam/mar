@@ -30,18 +30,21 @@ function session(
   };
 }
 
+const titleMode = query.get('titleMode');
 const anchor = session(
   'release-current',
-  query.has('longTitles')
-    ? '发布协调：同步跨工作区的端到端验证结果和最终确认记录'.repeat(4)
-    : '发布协调',
+  titleMode === 'unbroken'
+    ? 'ReleaseVerificationAcrossWorkspaces'.repeat(8)
+    : titleMode === 'long'
+      ? '发布协调：同步跨工作区的端到端验证结果和最终确认记录'.repeat(4)
+      : '发布协调',
   'release-parent'
 );
 const parent: NavigationSession = { ...session('release-parent', '发布计划'), runner: 'codex' };
 const branches = ['依赖检查', '文档更新', '回归测试', '制品构建', '集成验收'].map((title, i) =>
   session(
     `branch-${i}`,
-    i === 2 && query.has('longTitles')
+    i === 2 && titleMode === 'long'
       ? '回归测试：核对跨浏览器发布结果与最终确认记录'.repeat(3)
       : title,
     anchor.id

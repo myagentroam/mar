@@ -29,7 +29,11 @@ import { RelayAuditContextCache } from './relay-audit-context-cache.js';
 
 const BROWSER_WORKSPACE_SAVE_TIMEOUT_MS = 120_000;
 
-const FIXED_ADMIN_NODE_OPERATIONS = new Set<string>([
+// Fixed server-side operations still pass their own resource authorization below.
+const FIXED_SERVER_NODE_OPERATIONS = new Set<string>([
+  'terminal.copy.open',
+  'computer.use.open',
+  'computer.use.attach',
   'chatgpt.login.start',
   'chatgpt.login.status',
   'chatgpt.login.ack',
@@ -68,6 +72,7 @@ const FIXED_ADMIN_NODE_OPERATIONS = new Set<string>([
   'run.approval.decide'
 ]);
 const AUDITED_MANAGEMENT_RELAY_OPERATIONS = new Set<string>([
+  'computer.use.open',
   'conversation.hosting.enable',
   'conversation.hosting.disable',
   'conversation.hosting.cleanup.execute',
@@ -105,6 +110,7 @@ const AUDITED_MANAGEMENT_RELAY_OPERATIONS = new Set<string>([
   'workspace.files.upload.cancel',
   'terminal.open',
   'terminal.command.open',
+  'terminal.copy.open',
   'node.skills.install',
   'node.skills.remove',
   'workspace.skills.install',
@@ -144,10 +150,14 @@ export class NodeRequestBroker {
       readonly gitForwarding: Pick<GitExecutionForwarding, 'prepare'>;
     },
     log: (event: string, fields: Record<string, unknown>) => void = () => undefined,
-    traffic?: ServerTrafficMetrics
+    traffic?: ServerTrafficMetrics,
+    fileSocketFor?: (nodeId: string) => WebSocket | undefined
   ) {
-    this.channel = new NodeRequestChannel(socketFor, log, (bytes) =>
-      traffic?.record('node', 'out', bytes)
+    this.channel = new NodeRequestChannel(
+      socketFor,
+      log,
+      (bytes) => traffic?.record('node', 'out', bytes),
+      fileSocketFor
     );
   }
 
@@ -163,7 +173,7 @@ export class NodeRequestBroker {
     if (socket !== undefined && !this.connectionPolicy.allows(socket, operation))
       return Promise.reject(new NodeRequestAdmissionError('NODE_UPGRADE_REQUIRED'));
     if (
-      !FIXED_ADMIN_NODE_OPERATIONS.has(operation) &&
+      !FIXED_SERVER_NODE_OPERATIONS.has(operation) &&
       !workbenchNodeOperationSchema.safeParse(operation).success
     )
       return Promise.reject(new NodeRequestAdmissionError('OPERATION_UNSUPPORTED'));
@@ -460,6 +470,20 @@ export class NodeRequestBroker {
 
   resolve(nodeId: string, envelope: NodeEnvelope): void {
     this.channel.resolve(nodeId, envelope);
+  }
+
+  resolveFile(
+    nodeId: string,
+    socket: WebSocket,
+    envelope: NodeEnvelope,
+    bytes: Uint8Array,
+    declaredLength: unknown
+  ): void {
+    this.channel.resolve(nodeId, envelope, { socket, bytes, declaredLength });
+  }
+
+  rejectFileSocket(socket: WebSocket): void {
+    this.channel.rejectFileSocket(socket);
   }
 
   rejectNode(nodeId: string, error: Error): void {

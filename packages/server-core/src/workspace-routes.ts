@@ -5,7 +5,6 @@ import {
   workspaceSymbolDefinitionSchema,
   workspaceSymbolIndexPreparationSchema
 } from '@myagentroam/protocol';
-import { Readable } from 'node:stream';
 import {
   parseImagePreviewQuery,
   sendImageResource,
@@ -24,9 +23,10 @@ import { normalizeWorkspaceGroupName } from './workspace-group.js';
 import { NodeRequestError } from './node-request-error.js';
 import {
   sendWorkspaceFileContent,
-  fileContentChunks,
+  openFileContentStream,
   fileContentType,
   parseHttpByteRange,
+  registerFileChunkParser,
   sendFileContentHead,
   type FileContentChunk
 } from './file-content-stream.js';
@@ -55,11 +55,7 @@ export function registerWorkspaceRoutes(input: {
   readonly resources: ResourceAccessService;
 }): void {
   const { app, database, nodeControl, publicOrigin, resources, databaseError } = input;
-  app.addContentTypeParser(
-    'application/octet-stream',
-    { parseAs: 'buffer', bodyLimit: WORKSPACE_UPLOAD_CHUNK_BYTES },
-    (_request, body, done) => done(null, body)
-  );
+  registerFileChunkParser(app);
   app.get<{ Querystring: { nodeId?: string } }>('/api/workspaces', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
     if (admin === undefined) return;
@@ -1064,7 +1060,7 @@ export function registerWorkspaceRoutes(input: {
             workspaceId: request.params.workspaceId,
             uploadId: request.params.uploadId,
             offset,
-            dataBase64: request.body.toString('base64')
+            bytes: request.body
           }
         )
       );
@@ -1413,6 +1409,10 @@ export function registerWorkspaceRoutes(input: {
         return sendError(reply, 413, 'FILE_PREVIEW_TOO_LARGE');
       if (start >= FILE_CONTENT_FULL_LIMIT || end >= FILE_CONTENT_FULL_LIMIT)
         return sendError(reply, 416, 'FILE_RANGE_INVALID');
+      const stream =
+        request.method === 'HEAD'
+          ? undefined
+          : await openFileContentStream(readChunk, start, end, FILE_CONTENT_CHUNK_BYTES);
       const filename = request.query.path.split('/').at(-1) ?? 'file';
       const contentType = fileContentType(filename);
       reply
@@ -1427,10 +1427,8 @@ export function registerWorkspaceRoutes(input: {
       if (contentType === 'image/svg+xml') reply.header('content-security-policy', 'sandbox');
       if (range !== undefined && first.size > 0)
         reply.code(206).header('content-range', `bytes ${start}-${end}/${first.size}`);
-      if (request.method === 'HEAD') return sendFileContentHead(reply, length);
-      return reply
-        .header('content-length', String(length))
-        .send(Readable.from(fileContentChunks(readChunk, start, end, FILE_CONTENT_CHUNK_BYTES)));
+      if (stream === undefined) return sendFileContentHead(reply, length);
+      return reply.header('content-length', String(length)).send(stream);
     } catch (error) {
       return databaseError(reply, error);
     }
@@ -1555,7 +1553,7 @@ async function readFileContentChunk(
     file === null ||
     !Number.isSafeInteger((file as FileContentChunk).size) ||
     !Number.isSafeInteger((file as FileContentChunk).offset) ||
-    typeof (file as FileContentChunk).contentBase64 !== 'string'
+    !((file as FileContentChunk).bytes instanceof Uint8Array)
   )
     throw new Error('NODE_RESPONSE_INVALID');
   return file as FileContentChunk;
@@ -1619,7 +1617,7 @@ async function readHistoryFileContentChunk(
     file === null ||
     !Number.isSafeInteger((file as FileContentChunk).size) ||
     !Number.isSafeInteger((file as FileContentChunk).offset) ||
-    typeof (file as FileContentChunk).contentBase64 !== 'string'
+    !((file as FileContentChunk).bytes instanceof Uint8Array)
   )
     throw new Error('NODE_RESPONSE_INVALID');
   return file as FileContentChunk;

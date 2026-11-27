@@ -20,7 +20,7 @@ export class TerminalRelaySender {
   send(value, key = '') {
     if (this.#closed || this.#socket.readyState !== 1)
       return Promise.reject(new Error('TERMINAL_CONNECTION_LOST'));
-    const bytes = Buffer.byteLength(value, 'utf8');
+    const bytes = value.byteLength;
     if (this.#pendingBytes + bytes > MAX_PENDING_BYTES)
       return Promise.reject(
         Object.assign(new Error('TERMINAL_RELAY_BUFFER_EXCEEDED'), {

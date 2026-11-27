@@ -1,11 +1,46 @@
-import type { FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Readable } from 'node:stream';
+import { FILE_RELAY_CHUNK_BYTES } from '@myagentroam/protocol';
 import { sendError } from './http-errors.js';
 
 export interface FileContentChunk {
   readonly size: number;
   readonly offset: number;
-  readonly contentBase64: string;
+  readonly bytes: Uint8Array;
+  readonly sourceRevision?: string;
+}
+
+type FileContentReader = (offset: number, limit: number) => Promise<FileContentChunk>;
+
+/** Pin one Workspace response to the size and revision already provided by the Node. */
+export async function readWorkspaceFileSnapshot(read: FileContentReader) {
+  const { size, offset, bytes, sourceRevision } = await read(0, 1);
+  if (
+    size < 0 ||
+    offset !== 0 ||
+    bytes.byteLength !== Math.min(1, size) ||
+    typeof sourceRevision !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(sourceRevision)
+  )
+    throw new Error('NODE_RESPONSE_INVALID');
+  return {
+    size,
+    read: async (offset: number, limit: number) => {
+      const chunk = await read(offset, limit);
+      if (chunk.size !== size || chunk.sourceRevision !== sourceRevision)
+        throw new Error('NODE_RESPONSE_INVALID');
+      return chunk;
+    }
+  };
+}
+
+export function registerFileChunkParser(app: FastifyInstance): void {
+  if (!app.hasContentTypeParser('application/octet-stream'))
+    app.addContentTypeParser(
+      'application/octet-stream',
+      { parseAs: 'buffer', bodyLimit: FILE_RELAY_CHUNK_BYTES },
+      (_request, body, done) => done(null, body)
+    );
 }
 
 /** Shared native resource response for account and share-authorized Workspace reads. */
@@ -15,20 +50,22 @@ export async function sendWorkspaceFileContent(input: {
   range: string | undefined;
   path: string;
   download: boolean;
-  read: (offset: number, limit: number) => Promise<FileContentChunk>;
+  read: FileContentReader;
 }): Promise<FastifyReply> {
-  const { reply, read } = input;
-  const first = await read(0, 1);
-  const range = parseHttpByteRange(input.range, first.size);
+  const { reply } = input;
+  const { size, read } = await readWorkspaceFileSnapshot(input.read);
+  const range = parseHttpByteRange(input.range, size);
   if (range === null) return sendError(reply, 416, 'FILE_RANGE_INVALID');
   const start = range?.start ?? 0;
-  const end = range?.end ?? first.size - 1;
-  const length = first.size === 0 ? 0 : end - start + 1;
+  const end = range?.end ?? size - 1;
+  const length = size === 0 ? 0 : end - start + 1;
   const filename = input.path.split('/').at(-1) ?? 'file';
   const contentType = fileContentType(filename);
   const media = contentType.startsWith('audio/') || contentType.startsWith('video/');
   if (!input.download && !media && range === undefined && length > 20 * 1024 * 1024)
     return sendError(reply, 413, 'FILE_PREVIEW_TOO_LARGE');
+  const stream =
+    input.method === 'HEAD' ? undefined : await openFileContentStream(read, start, end);
   reply
     .header('accept-ranges', 'bytes')
     .header('cache-control', 'private, no-store')
@@ -39,12 +76,10 @@ export async function sendWorkspaceFileContent(input: {
     )
     .header('x-content-type-options', 'nosniff');
   if (contentType === 'image/svg+xml') reply.header('content-security-policy', 'sandbox');
-  if (range !== undefined && first.size > 0)
-    reply.code(206).header('content-range', `bytes ${start}-${end}/${first.size}`);
-  if (input.method === 'HEAD') return sendFileContentHead(reply, length);
-  return reply
-    .header('content-length', String(length))
-    .send(Readable.from(fileContentChunks(read, start, end, 512 * 1024)));
+  if (range !== undefined && size > 0)
+    reply.code(206).header('content-range', `bytes ${start}-${end}/${size}`);
+  if (stream === undefined) return sendFileContentHead(reply, length);
+  return reply.header('content-length', String(length)).send(stream);
 }
 
 export function sendFileContentHead(reply: FastifyReply, length: number): FastifyReply {
@@ -57,17 +92,36 @@ export function sendFileContentHead(reply: FastifyReply, length: number): Fastif
   return reply;
 }
 
+/** Let route error handling see the first read failure before any download headers are set. */
+export async function openFileContentStream(
+  read: (offset: number, limit: number) => Promise<FileContentChunk>,
+  start: number,
+  end: number,
+  chunkSize = FILE_RELAY_CHUNK_BYTES
+): Promise<Readable> {
+  const chunks = fileContentChunks(read, start, end, chunkSize);
+  const first = await chunks.next();
+  return Readable.from(
+    (async function* () {
+      if (first.done) return;
+      yield first.value;
+      yield* chunks;
+    })()
+  );
+}
+
 export async function* fileContentChunks(
   readChunk: (offset: number, limit: number) => Promise<FileContentChunk>,
   start: number,
   end: number,
   chunkSize: number
-): AsyncGenerator<Buffer> {
+): AsyncGenerator<Uint8Array> {
   let offset = start;
   while (offset <= end) {
-    const part = await readChunk(offset, Math.min(chunkSize, end - offset + 1));
-    const content = Buffer.from(part.contentBase64, 'base64');
-    if (part.offset !== offset || content.length === 0 || content.length > end - offset + 1)
+    const limit = Math.min(chunkSize, end - offset + 1);
+    const part = await readChunk(offset, limit);
+    const content = part.bytes;
+    if (part.offset !== offset || content.length === 0 || content.length > limit)
       throw new Error('NODE_RESPONSE_INVALID');
     offset += content.length;
     yield content;

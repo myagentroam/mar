@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/protocol",
-  "version": "0.15.15",
+  "version": "0.15.16",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/myagentroam/mar.git",
@@ -18,6 +18,10 @@
   },
   "exports": {
     "./package.json": "./package.json",
+    "./byte-frame": {
+      "types": "./dist/byte-frame.d.ts",
+      "import": "./dist/byte-frame.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"

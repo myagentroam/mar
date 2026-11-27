@@ -2,30 +2,9 @@ import { MarctlError } from './errors.mjs';
 import { DirectRejectedError } from './direct-errors.mjs';
 import { parseFrame } from './terminal-frame.mjs';
 
-const MAX_INPUT_BYTES = 65536;
+const INPUT_CHUNK_BYTES = 32 * 1024;
 const DEFAULT_ROWS = 24;
 const DEFAULT_COLS = 80;
-
-export function splitInput(text, maxBytes = MAX_INPUT_BYTES) {
-  const value = Buffer.isBuffer(text) ? text.toString('utf8') : String(text);
-  const chunks = [];
-  let chunk = '';
-  let chunkBytes = 0;
-
-  for (const character of value) {
-    const characterBytes = Buffer.byteLength(character);
-    if (chunk !== '' && chunkBytes + characterBytes > maxBytes) {
-      chunks.push(chunk);
-      chunk = '';
-      chunkBytes = 0;
-    }
-    if (characterBytes > maxBytes) continue;
-    chunk += character;
-    chunkBytes += characterBytes;
-  }
-  if (chunk !== '') chunks.push(chunk);
-  return chunks;
-}
 
 export function runAttachedTerminal({
   transport,
@@ -33,6 +12,7 @@ export function runAttachedTerminal({
   commandMode,
   stdin,
   stdout,
+  stderr = process.stderr,
   signal,
   translate
 }) {
@@ -41,12 +21,15 @@ export function runAttachedTerminal({
     let inputEnabled = false;
     let rawModeEnabled = false;
     let inputTasks = 0;
+    let inputEnded = false;
+    let eofSent = false;
 
     const cleanup = () => {
       transport.removeListener?.('message', onMessage);
       transport.removeListener?.('error', onError);
       transport.removeListener?.('close', onClose);
       stdin.removeListener?.('data', onInput);
+      stdin.removeListener?.('end', onEnd);
       stdout.removeListener?.('resize', onResize);
       signal?.removeEventListener('abort', onAbort);
       if (rawModeEnabled) {
@@ -70,21 +53,39 @@ export function runAttachedTerminal({
     };
     const fail = (key) => finish(new MarctlError(translate(key)));
     const send = (frame) => {
-      return transport.send(JSON.stringify(frame));
+      return transport.send(frame);
+    };
+    const sendEof = () => {
+      if (commandMode && !settled && inputEnded && inputTasks === 0 && !eofSent) {
+        eofSent = true;
+        Promise.resolve()
+          .then(() => send({ type: 'eof', terminalId }))
+          .catch(() => fail('errors.terminalInputFailed'));
+      }
+    };
+    const onEnd = () => {
+      inputEnded = true;
+      sendEof();
     };
     const onInput = async (data) => {
       inputTasks += 1;
       stdin.pause?.();
       try {
-        for (const chunk of splitInput(data)) {
+        const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        for (let offset = 0; offset < bytes.length; offset += INPUT_CHUNK_BYTES) {
           if (settled) return;
-          await send({ type: 'input', terminalId, data: chunk });
+          await send({
+            type: 'input',
+            terminalId,
+            data: bytes.subarray(offset, offset + INPUT_CHUNK_BYTES)
+          });
         }
       } catch {
         fail('errors.terminalInputFailed');
       } finally {
         inputTasks -= 1;
         if (!settled && inputTasks === 0) stdin.resume?.();
+        sendEof();
       }
     };
     const onResize = () => {
@@ -100,8 +101,10 @@ export function runAttachedTerminal({
     const onMessage = (raw, isBinary) => {
       try {
         const frame = parseFrame(raw, isBinary, terminalId, translate);
-        if (frame.type === 'output') stdout.write(frame.data);
-        else if (frame.type === 'exit') {
+        if (frame.type === 'output') {
+          const output = frame.stream === 'stderr' ? stderr : stdout;
+          output.write(frame.data);
+        } else if (frame.type === 'exit') {
           finish(undefined, frame.exitCode === null ? 1 : frame.exitCode);
         } else if (frame.type === 'error') fail('errors.terminalRemoteError');
         else fail('errors.terminalUnexpectedFrame');
@@ -135,10 +138,15 @@ export function runAttachedTerminal({
           stdin.setRawMode(true);
           rawModeEnabled = true;
         }
-        stdin.resume?.();
         stdin.on?.('data', onInput);
-        stdout.on?.('resize', onResize);
-        onResize();
+        if (commandMode) {
+          stdin.once?.('end', onEnd);
+          if (stdin.readableEnded) onEnd();
+        } else {
+          stdout.on?.('resize', onResize);
+          onResize();
+        }
+        stdin.resume?.();
       } catch {
         fail(commandMode ? 'errors.terminalSessionFailed' : 'errors.terminalInteractiveInit');
       }
@@ -159,7 +167,7 @@ export function runAttachedTerminal({
 function sendCloseFrame(socket, terminalId) {
   if (!terminalId || !isSocketOpen(socket)) return;
   try {
-    Promise.resolve(socket.send(JSON.stringify({ type: 'close', terminalId }))).catch(() => {});
+    Promise.resolve(socket.send({ type: 'close', terminalId })).catch(() => {});
   } catch {
     // The DELETE request below remains the authoritative cleanup path.
   }

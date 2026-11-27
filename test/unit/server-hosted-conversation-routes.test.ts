@@ -1800,16 +1800,14 @@ describe('Server hosted conversation routes', () => {
       .mockResolvedValueOnce(hostedSnapshot())
       .mockResolvedValueOnce({
         file,
-        encoding: 'base64',
-        content: Buffer.from('a').toString('base64'),
+        bytes: Buffer.from('a'),
         offset: 0,
         nextOffset: 1,
         eof: false
       })
       .mockResolvedValueOnce({
         file,
-        encoding: 'base64',
-        content: Buffer.from('cde').toString('base64'),
+        bytes: Buffer.from('cde'),
         offset: 2,
         nextOffset: 5,
         eof: false

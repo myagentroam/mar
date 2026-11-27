@@ -12,10 +12,11 @@ export async function runTerminalSession({
   WebSocketClass,
   nodeId,
   command,
-  binary = false,
+  copy,
   attached,
   stdin = process.stdin,
   stdout = process.stdout,
+  stderr = process.stderr,
   signal,
   translate = createTranslator(),
   connectionTimeoutMs = DEFAULT_CONNECTION_TIMEOUT_MS,
@@ -31,23 +32,12 @@ export async function runTerminalSession({
 
   try {
     if (signal?.aborted) return signal.reason === 'SIGTERM' ? 143 : 130;
-    if (binary) {
-      if (command === undefined)
-        throw new MarctlError(translate('errors.terminalBinaryUnavailable'));
-      manifest = await client.getTerminalManifest(nodeId);
-      if (signal?.aborted) return signal.reason === 'SIGTERM' ? 143 : 130;
-      if (manifest?.binaryTerminal !== true)
-        throw new MarctlError(translate('errors.terminalBinaryUnavailable'));
-    }
-    const created = await client.createTerminal({
+    terminalId = await client.createTerminal({
       nodeId,
       ...dimensions,
       ...(command === undefined ? {} : { command }),
-      ...(binary ? { binary: true } : {})
+      ...(copy === undefined ? {} : { copy })
     });
-    terminalId = binary ? created?.terminalId : created;
-    if (binary && created?.binary !== true)
-      throw new MarctlError(translate('errors.terminalBinaryUnavailable'));
     if (signal?.aborted) return signal.reason === 'SIGTERM' ? 143 : 130;
     try {
       const openDirectTerminal =
@@ -87,6 +77,7 @@ export async function runTerminalSession({
               commandMode: command !== undefined,
               stdin,
               stdout,
+              stderr,
               signal,
               translate
             })
@@ -116,6 +107,7 @@ export async function runTerminalSession({
                 commandMode: command !== undefined,
                 stdin,
                 stdout,
+                stderr,
                 signal,
                 translate
               })

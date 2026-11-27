@@ -1,3 +1,4 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
@@ -70,20 +71,20 @@ class FakeChannel {
     return this.open;
   }
 
-  sendMessage(value) {
+  sendMessageBinary(value) {
     if (!this.open) return false;
-    const message = JSON.parse(value);
+    const message = decodeTerminalMessage(value);
     this.sent.push(message);
     if (this.attachOnOpen && message.type === 'OPEN') {
       this.onMessageCallback?.(
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'ATTACHED',
           terminalId: 'terminal-1',
           afterSequence: 0
         })
       );
       for (const frame of this.handoffFrames)
-        this.onMessageCallback?.(JSON.stringify({ terminalId: 'terminal-1', ...frame }));
+        this.onMessageCallback?.(encodeTerminalMessage({ terminalId: 'terminal-1', ...frame }));
     }
     return true;
   }
@@ -538,7 +539,7 @@ class FakeStdout extends EventEmitter {
   }
 
   write(value) {
-    this.output += value;
+    this.output += Buffer.from(value).toString();
   }
 }
 
@@ -771,7 +772,7 @@ test('captures an offer generated while the bootstrap channel is created', async
 test('delivers direct output and exit frames emitted in the ATTACHED handoff tick', async () => {
   const fixture = createDirectFixture({
     handoffFrames: [
-      { type: 'output', sequence: 1, data: 'direct output\n' },
+      { type: 'output', sequence: 1, data: Buffer.from('direct output\n') },
       { type: 'exit', exitCode: 17 }
     ]
   });

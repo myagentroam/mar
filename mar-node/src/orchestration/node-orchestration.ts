@@ -90,6 +90,8 @@ export class NodeOrchestration {
           }
           return true;
         };
+        // A missing followed view means no snapshot to deliver. Detachment preserves the follow;
+        // leave ends it. Neither clears the board or adds a marker to the model's existing context.
         const captured = views.map(
           ({ role, rootRunId, follow, snapshot: { boardId, ...snapshot }, latestChange }) => {
             const prior = delivered.get(role);

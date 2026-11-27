@@ -10,7 +10,7 @@ export class AuthenticationContextChangedError extends DOMException {
 
 export interface WorkbenchHttpService {
   readonly networkUnavailable: Readonly<Ref<boolean>>;
-  request<T>(path: string, init?: RequestInit): Promise<T>;
+  request<T>(path: string, init?: RequestInit & { responseType?: 'arrayBuffer' }): Promise<T>;
   renewCsrfToken(): Promise<string>;
   invalidateAuthentication(): void;
 }
@@ -76,15 +76,16 @@ export function createWorkbenchHttpService(
 
   async function request<T>(
     path: string,
-    init: RequestInit = {},
+    init: RequestInit & { responseType?: 'arrayBuffer' } = {},
     retriedAfterCsrfRenewal = false,
     generation = authenticationGeneration
   ): Promise<T> {
+    const { responseType, ...fetchInit } = init;
     const response = await fetchResponse(
       path,
       {
         credentials: 'same-origin',
-        ...init,
+        ...fetchInit,
         headers: {
           ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
           ...(init.method === undefined || init.method === 'GET'
@@ -107,7 +108,9 @@ export function createWorkbenchHttpService(
       throw error;
     }
     if (response.status === 204) return undefined as T;
-    const result = (await response.json()) as T;
+    const result = (await (responseType === 'arrayBuffer'
+      ? response.arrayBuffer()
+      : response.json())) as T;
     assertCurrent(generation);
     return result;
   }

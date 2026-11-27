@@ -393,7 +393,7 @@ export async function readWorkspaceFileContentRange(
   readonly size: number;
   readonly sourceRevision: string;
   readonly offset: number;
-  readonly contentBase64: string;
+  readonly bytes: Uint8Array;
   readonly nextOffset: number | null;
 }> {
   if (
@@ -405,29 +405,12 @@ export async function readWorkspaceFileContentRange(
   )
     throw new Error('FILE_RANGE_INVALID');
   const root = await resolveRegisteredWorkspaceRoot(workspaceRoot);
-  const file = await resolveWorkspaceEntry(root, requestedPath, false);
-  const metadata = await lstat(file);
+  const { path: file, metadata } = await resolveWorkspaceEntryMetadata(root, requestedPath);
   if (!metadata.isFile()) throw new Error('FILE_NOT_REGULAR');
-  if (maxFileBytes !== undefined && metadata.size > maxFileBytes)
-    throw new Error('IMAGE_PREVIEW_TOO_LARGE');
-  if (offset > metadata.size) throw new Error('FILE_RANGE_INVALID');
-  const length = Math.min(limit, metadata.size - offset);
-  const source = Buffer.allocUnsafe(length);
-  const handle = await open(file, 'r');
-  try {
-    const { bytesRead } = await handle.read(source, 0, length, offset);
-    const end = offset + bytesRead;
-    return {
-      path: relative(root, file).split(sep).join('/'),
-      size: metadata.size,
-      sourceRevision: fileSourceRevision(metadata),
-      offset,
-      contentBase64: source.subarray(0, bytesRead).toString('base64'),
-      nextOffset: end < metadata.size ? end : null
-    };
-  } finally {
-    await handle.close();
-  }
+  return {
+    path: relative(root, file).split(sep).join('/'),
+    ...(await readOpenedFileRange(file, offset, limit, maxFileBytes))
+  };
 }
 
 /** Reads one regular absolute file range using the Node account's filesystem permissions. */
@@ -441,7 +424,7 @@ export async function readAbsoluteFileContentRange(
   readonly size: number;
   readonly sourceRevision: string;
   readonly offset: number;
-  readonly contentBase64: string;
+  readonly bytes: Uint8Array;
   readonly nextOffset: number | null;
 }> {
   if (
@@ -452,22 +435,33 @@ export async function readAbsoluteFileContentRange(
     limit > FILE_READ_LIMIT
   )
     throw new Error('FILE_RANGE_INVALID');
-  const { file, metadata } = await resolveAbsoluteFile(requestedPath);
-  if (maxFileBytes !== undefined && metadata.size > maxFileBytes)
-    throw new Error('IMAGE_PREVIEW_TOO_LARGE');
-  if (offset > metadata.size) throw new Error('FILE_RANGE_INVALID');
-  const length = Math.min(limit, metadata.size - offset);
-  const source = Buffer.allocUnsafe(length);
+  const { file } = await resolveAbsoluteFile(requestedPath);
+  return { path: file, ...(await readOpenedFileRange(file, offset, limit, maxFileBytes)) };
+}
+
+async function readOpenedFileRange(
+  file: string,
+  offset: number,
+  limit: number,
+  maxFileBytes: number | undefined
+) {
   const handle = await open(file, 'r');
   try {
+    // Response metadata must describe the handle supplying the bytes, not an earlier path lookup.
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) throw new Error('FILE_NOT_REGULAR');
+    if (maxFileBytes !== undefined && metadata.size > maxFileBytes)
+      throw new Error('IMAGE_PREVIEW_TOO_LARGE');
+    if (offset > metadata.size) throw new Error('FILE_RANGE_INVALID');
+    const length = Math.min(limit, metadata.size - offset);
+    const source = Buffer.allocUnsafe(length);
     const { bytesRead } = await handle.read(source, 0, length, offset);
     const end = offset + bytesRead;
     return {
-      path: file,
       size: metadata.size,
       sourceRevision: fileSourceRevision(metadata),
       offset,
-      contentBase64: source.subarray(0, bytesRead).toString('base64'),
+      bytes: source.subarray(0, bytesRead),
       nextOffset: end < metadata.size ? end : null
     };
   } finally {

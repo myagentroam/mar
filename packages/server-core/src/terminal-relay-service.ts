@@ -1,9 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import type { AuditObserver } from './audit.js';
 import type { RawData, WebSocket } from 'ws';
-import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
+import {
+  decodeTerminalMessage,
+  encodeTerminalMessage,
+  terminalDataFrameSchema,
+  type TerminalDataFrame
+} from '@myagentroam/protocol';
 import type { NodeRequestAuthorization, UserNodeAuthorization } from './node-access-contracts.js';
 import { safeErrorCode } from './http-errors.js';
+import { attachTerminalMux, type TerminalRelaySocket } from './terminal-multiplex.js';
 
 const TERMINAL_TICKET_TTL_MS = 30_000;
 const MAX_TERMINAL_RELAYS_PER_USER = 10;
@@ -22,6 +28,8 @@ interface TerminalTicketRecord {
   readonly workspaceId?: string;
   readonly afterSequence: number;
   readonly readonly: boolean;
+  readonly computer: boolean;
+  readonly cli: boolean;
   readonly expiresAt: number;
   readonly timer: NodeJS.Timeout;
 }
@@ -35,10 +43,10 @@ interface TerminalRelayRecord {
   readonly userId: number;
   readonly workspaceId?: string;
   readonly readonly: boolean;
-  readonly browser: WebSocket;
-  initialFrames: readonly TerminalDataFrame[];
-  replayIndex: number;
-  pendingFrames: { readonly frame: TerminalDataFrame; readonly bytes: number }[];
+  readonly computer: boolean;
+  readonly cli: boolean;
+  readonly browser: TerminalRelaySocket;
+  pendingFrames: { readonly frame: TerminalDataFrame; readonly encoded: Uint8Array }[];
   pendingBytes: number;
   writing: boolean;
   flushImmediate: NodeJS.Immediate | undefined;
@@ -46,7 +54,7 @@ interface TerminalRelayRecord {
 }
 
 interface DeferredTerminalAttach {
-  readonly socket: WebSocket;
+  readonly socket: TerminalRelaySocket;
   readonly ticket: TerminalTicketRecord;
   readonly onMessage: (raw: RawData, isBinary: boolean) => void;
   readonly onClose: () => void;
@@ -55,8 +63,6 @@ interface DeferredTerminalAttach {
 interface TerminalAttachmentResponse {
   readonly attachmentId: string;
   readonly terminalId: string;
-  readonly latestSequence: number;
-  readonly frames: readonly TerminalDataFrame[];
 }
 
 export interface TerminalRelayOptions {
@@ -82,6 +88,7 @@ export interface TerminalRelayOptions {
   ) => Promise<unknown>;
 }
 
+/** Owns relay tickets, connection pairing and teardown; Node owns the attached processes. */
 export class TerminalRelayService {
   private directCount?: (sessionHash: string) => number;
   private closed = false;
@@ -95,7 +102,11 @@ export class TerminalRelayService {
     string,
     { readonly nodeId: string; expiresAt: number }
   >();
-  private readonly socketActivity = new Map<WebSocket, number>();
+  private readonly socketActivity = new Map<TerminalRelaySocket, number>();
+  private readonly muxSockets = new Map<
+    WebSocket,
+    { nodeId: string; user: UserNodeAuthorization; close: (code: number, reason: string) => void }
+  >();
   private readonly heartbeatTimer: NodeJS.Timeout;
 
   constructor(private readonly options: TerminalRelayOptions) {
@@ -114,15 +125,14 @@ export class TerminalRelayService {
     let nodeId: string | undefined;
     this.trackSocket(socket);
     socket.on('message', (raw, isBinary) => {
-      const serialized = raw.toString();
-      this.options.traffic?.record('terminal', 'in', Buffer.byteLength(serialized));
-      if (isBinary) {
+      if (!isBinary || !Buffer.isBuffer(raw)) {
         socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
         return;
       }
+      this.options.traffic?.record('terminal', 'in', raw.byteLength);
       void this.handleNodeMessage(
         socket,
-        serialized,
+        raw,
         () => nodeId,
         (value) => (nodeId = value)
       ).catch(() => socket.close(1011, 'TERMINAL_AUTHENTICATION_FAILED'));
@@ -143,6 +153,8 @@ export class TerminalRelayService {
     readonly workspaceId?: string;
     readonly afterSequence?: unknown;
     readonly readonly?: unknown;
+    readonly computer?: boolean;
+    readonly cli?: boolean;
   }): {
     readonly ticket: string;
     readonly nodeId: string;
@@ -173,6 +185,8 @@ export class TerminalRelayService {
       ...(input.workspaceId === undefined ? {} : { workspaceId: input.workspaceId }),
       afterSequence: afterSequence as number,
       readonly: input.readonly === true,
+      computer: input.computer === true,
+      cli: input.cli === true,
       expiresAt,
       timer: setTimeout(() => this.expireTicket(ticket), TERMINAL_TICKET_TTL_MS)
     };
@@ -181,21 +195,76 @@ export class TerminalRelayService {
     return { ticket, nodeId: record.nodeId, terminalId: record.terminalId, expiresAt };
   }
 
-  attachBrowser(socket: WebSocket, ticketValue: unknown, user: UserNodeAuthorization): void {
+  attachCliMux(
+    socket: WebSocket,
+    nodeId: string,
+    user: UserNodeAuthorization,
+    expiresAt: number,
+    authorize: () => Promise<UserNodeAuthorization | undefined>
+  ): void {
+    if (socket.readyState !== socket.OPEN) return;
+    if (this.closed || expiresAt <= Date.now()) {
+      socket.close(this.closed ? 1001 : 1008, this.closed ? 'SERVER_SHUTDOWN' : 'UNAUTHENTICATED');
+      return;
+    }
+    if (
+      [...this.muxSockets.values()].filter((entry) => entry.user.sessionHash === user.sessionHash)
+        .length >= MAX_TERMINAL_RELAYS_PER_USER
+    ) {
+      socket.close(4008, 'TERMINAL_RELAY_LIMIT_REACHED');
+      return;
+    }
+    this.trackSocket(socket);
+    const close = attachTerminalMux({
+      socket,
+      authorize,
+      attach: (stream, ticket, deferred, actor) => {
+        this.attachBrowser(stream, deferred ? { ticket, deferred: true } : ticket, actor, {
+          type: 'mux',
+          nodeId
+        });
+      }
+    });
+    this.muxSockets.set(socket, { nodeId, user, close });
+    const expiry = setTimeout(() => close(1008, 'UNAUTHENTICATED'), expiresAt - Date.now());
+    expiry.unref();
+    socket.once('close', () => {
+      clearTimeout(expiry);
+      this.muxSockets.delete(socket);
+    });
+  }
+
+  attachBrowser(
+    socket: TerminalRelaySocket,
+    ticketValue: unknown,
+    user: UserNodeAuthorization,
+    cli?:
+      | { readonly type: 'mux'; readonly nodeId: string }
+      | { readonly type: 'single'; readonly expiresAt: number }
+  ): void {
+    if (socket.readyState !== socket.OPEN) return;
+    if (cli?.type === 'single' && cli.expiresAt <= Date.now()) {
+      socket.close(1008, 'UNAUTHENTICATED');
+      return;
+    }
     const attach = browserAttachRequest(ticketValue);
     const ticket = attach === undefined ? undefined : this.tickets.get(attach.ticket);
     if (
       ticket === undefined ||
       ticket.expiresAt <= Date.now() ||
-      ticket.userSessionHash !== user.sessionHash
+      // Only the original pending attachment may activate a reserved ticket.
+      this.deferredAttaches.has(ticket.ticket) ||
+      // Only CLI attachments close the remote task when their transport disappears.
+      ticket.cli !== (cli !== undefined) ||
+      (cli?.type === 'mux' && ticket.nodeId !== cli.nodeId) ||
+      ticket.userSessionHash !== user.sessionHash ||
+      ticket.userId !== user.userId
     ) {
       socket.close(4008, 'TERMINAL_TICKET_INVALID');
       return;
     }
     if (
-      this.userRelayCount(user.sessionHash) +
-        this.userDeferredCount(user.sessionHash) +
-        (this.directCount?.(user.sessionHash) ?? 0) >=
+      this.countSession(user.sessionHash) + (this.directCount?.(user.sessionHash) ?? 0) >=
       MAX_TERMINAL_RELAYS_PER_USER
     ) {
       socket.close(4008, 'TERMINAL_RELAY_LIMIT_REACHED');
@@ -206,19 +275,24 @@ export class TerminalRelayService {
       socket.close(4008, 'NODE_OFFLINE');
       return;
     }
+    if (cli?.type === 'single') {
+      const expiry = setTimeout(() => socket.terminate(), cli.expiresAt - Date.now());
+      expiry.unref();
+      socket.once('close', () => clearTimeout(expiry));
+    }
     if (attach?.deferred === true) {
-      if (this.deferredAttaches.has(ticket.ticket)) {
+      if (ticket.computer) {
         socket.close(4008, 'TERMINAL_TICKET_INVALID');
         return;
       }
       const onMessage = (raw: RawData, isBinary: boolean) => {
-        if (isBinary) {
+        if (!isBinary || !Buffer.isBuffer(raw)) {
           socket.close(4002, 'TERMINAL_FRAME_INVALID');
           return;
         }
         let message: unknown;
         try {
-          message = JSON.parse(raw.toString());
+          message = decodeTerminalMessage(raw);
         } catch {
           socket.close(4002, 'TERMINAL_FRAME_INVALID');
           return;
@@ -257,6 +331,7 @@ export class TerminalRelayService {
     this.dropAuthorizing((record) => record.userSessionHash === sessionHash);
     for (const relay of [...this.relays.values()])
       if (relay.userSessionHash === sessionHash) this.closeRelay(relay, true);
+    this.closeMux((entry) => entry.user.sessionHash === sessionHash);
   }
 
   closeUser(userId: number): void {
@@ -264,6 +339,7 @@ export class TerminalRelayService {
     this.dropAuthorizing((record) => record.userId === userId);
     for (const relay of [...this.relays.values()])
       if (relay.userId === userId) this.closeRelay(relay, true);
+    this.closeMux((entry) => entry.user.userId === userId);
   }
 
   closeTerminal(nodeId: string, terminalId: string): void {
@@ -279,23 +355,28 @@ export class TerminalRelayService {
   }
 
   countSession(sessionHash: string): number {
-    return this.userRelayCount(sessionHash) + this.userDeferredCount(sessionHash);
+    return (
+      this.userRelayCount(sessionHash) +
+      this.userDeferredCount(sessionHash) +
+      [...this.authorizing.values()].filter((record) => record.userSessionHash === sessionHash)
+        .length
+    );
   }
 
   closeAllRelays(): void {
     this.dropTickets(() => true);
     this.dropAuthorizing(() => true);
     for (const relay of [...this.relays.values()]) this.closeRelay(relay, true);
+    this.closeMux(() => true);
   }
 
   async revalidateAuthorizations(): Promise<void> {
     const authorizationChecks = new Map<string, Promise<boolean>>();
-    const allowed = (record: {
-      readonly userId: number;
-      readonly nodeId: string;
-      readonly workspaceId?: string;
-    }): Promise<boolean> => {
-      const key = `${record.userId}\0${record.nodeId}\0${record.workspaceId ?? ''}`;
+    const allowed = (
+      record: { readonly userId: number; readonly nodeId: string; readonly workspaceId?: string },
+      computer: boolean
+    ): Promise<boolean> => {
+      const key = `${record.userId}\0${record.nodeId}\0${record.workspaceId ?? ''}\0${computer}`;
       const existing = authorizationChecks.get(key);
       if (existing !== undefined) return existing;
       const check = Promise.resolve()
@@ -303,7 +384,7 @@ export class TerminalRelayService {
           this.options.authorizeNodeRequest(
             record.userId,
             record.nodeId,
-            'terminal.attach.authorize',
+            computer ? 'computer.use.attach' : 'terminal.attach.authorize',
             {},
             record.workspaceId
           )
@@ -313,11 +394,17 @@ export class TerminalRelayService {
       return check;
     };
     for (const record of [...this.tickets.values()])
-      if (!(await allowed(record))) this.dropTickets((candidate) => candidate === record);
+      if (!(await allowed(record, record.computer)))
+        this.dropTickets((candidate) => candidate === record);
     for (const record of [...this.authorizing.values()])
-      if (!(await allowed(record))) this.dropAuthorizing((candidate) => candidate === record);
+      if (!(await allowed(record, record.computer)))
+        this.dropAuthorizing((candidate) => candidate === record);
     for (const relay of [...this.relays.values()])
-      if (!(await allowed(relay))) this.closeRelay(relay, true, 'TERMINAL_AUTHORIZATION_REVOKED');
+      if (!(await allowed(relay, relay.computer)))
+        this.closeRelay(relay, true, 'TERMINAL_AUTHORIZATION_REVOKED');
+    for (const entry of [...this.muxSockets.values()])
+      if (!(await allowed({ ...entry, userId: entry.user.userId }, true)))
+        this.closeMux((candidate) => candidate === entry);
   }
 
   closeNode(nodeId: string, terminate: boolean): void {
@@ -325,6 +412,14 @@ export class TerminalRelayService {
     this.dropAuthorizing((record) => record.nodeId === nodeId);
     for (const relay of [...this.relays.values()])
       if (relay.nodeId === nodeId) this.closeRelay(relay, terminate);
+    this.closeMux((entry) => entry.nodeId === nodeId);
+  }
+
+  private closeMux(
+    matches: (entry: { nodeId: string; user: UserNodeAuthorization }) => boolean
+  ): void {
+    for (const entry of this.muxSockets.values())
+      if (matches(entry)) entry.close(1008, 'TERMINAL_CONNECTION_CLOSED');
   }
 
   disconnectNode(nodeId: string): void {
@@ -357,15 +452,19 @@ export class TerminalRelayService {
     this.socketActivity.clear();
   }
 
-  private async authorizeBrowser(browser: WebSocket, ticket: TerminalTicketRecord): Promise<void> {
+  private async authorizeBrowser(
+    browser: TerminalRelaySocket,
+    ticket: TerminalTicketRecord
+  ): Promise<void> {
     try {
       const response = await this.options.requestNode(
         ticket.nodeId,
-        'terminal.attach.authorize',
+        ticket.computer ? 'computer.use.attach' : 'terminal.attach.authorize',
         {
           terminalId: ticket.terminalId,
           afterSequence: ticket.afterSequence,
-          readonly: ticket.readonly
+          readonly: ticket.readonly,
+          ...(ticket.cli ? { closeOnDisconnect: true } : {})
         },
         {
           userId: ticket.userId,
@@ -375,14 +474,32 @@ export class TerminalRelayService {
       );
       const attachment = terminalAttachmentResponse(response);
       const terminalSocket = this.sockets.get(ticket.nodeId);
+      const nodeAvailable =
+        terminalSocket !== undefined && terminalSocket.readyState === terminalSocket.OPEN;
       const authorizationActive = this.authorizing.get(ticket.ticket) === ticket;
       this.authorizing.delete(ticket.ticket);
+      const cancelled = !authorizationActive || browser.readyState !== browser.OPEN;
+      if (ticket.cli && (cancelled || !nodeAvailable)) {
+        // A successful authorization owns the writer. An unactivated race loser never gets here.
+        if (attachment?.terminalId === ticket.terminalId)
+          await this.options
+            .requestNode(
+              ticket.nodeId,
+              'terminal.close',
+              { terminalId: ticket.terminalId },
+              { userId: ticket.userId, sessionHash: ticket.userSessionHash }
+            )
+            .catch(() => undefined);
+        if (cancelled) {
+          browser.close();
+          return;
+        }
+      }
       if (
         !authorizationActive &&
         attachment !== undefined &&
         attachment.terminalId === ticket.terminalId &&
-        terminalSocket !== undefined &&
-        terminalSocket.readyState === terminalSocket.OPEN
+        nodeAvailable
       ) {
         this.retireTicket(ticket.ticket, ticket.nodeId);
         this.sendTerminal(terminalSocket, {
@@ -390,7 +507,7 @@ export class TerminalRelayService {
           ticket: ticket.ticket,
           terminalId: ticket.terminalId,
           attachmentId: attachment.attachmentId,
-          latestSequence: attachment.latestSequence
+          afterSequence: ticket.afterSequence
         });
         this.sendTerminal(terminalSocket, { type: 'detach', ticket: ticket.ticket });
         return;
@@ -399,17 +516,13 @@ export class TerminalRelayService {
         !authorizationActive ||
         attachment === undefined ||
         attachment.terminalId !== ticket.terminalId ||
-        terminalSocket === undefined ||
-        terminalSocket.readyState !== terminalSocket.OPEN
+        !nodeAvailable
       ) {
         if (browser.readyState === browser.OPEN)
           this.sendBrowser(browser, {
             type: 'error',
             terminalId: ticket.terminalId,
-            code:
-              terminalSocket === undefined || terminalSocket.readyState !== terminalSocket.OPEN
-                ? 'NODE_OFFLINE'
-                : 'TERMINAL_ATTACH_FAILED'
+            code: nodeAvailable ? 'TERMINAL_ATTACH_FAILED' : 'NODE_OFFLINE'
           });
         browser.close(4008, 'TERMINAL_ATTACH_FAILED');
         return;
@@ -421,7 +534,7 @@ export class TerminalRelayService {
           ticket: ticket.ticket,
           terminalId: ticket.terminalId,
           attachmentId: attachment.attachmentId,
-          latestSequence: attachment.latestSequence
+          afterSequence: ticket.afterSequence
         });
         this.sendTerminal(terminalSocket, { type: 'detach', ticket: ticket.ticket });
         return;
@@ -435,9 +548,9 @@ export class TerminalRelayService {
         userId: ticket.userId,
         ...(ticket.workspaceId === undefined ? {} : { workspaceId: ticket.workspaceId }),
         readonly: ticket.readonly,
+        computer: ticket.computer,
+        cli: ticket.cli,
         browser,
-        initialFrames: attachment.frames,
-        replayIndex: 0,
         pendingFrames: [],
         pendingBytes: 0,
         writing: false,
@@ -447,10 +560,11 @@ export class TerminalRelayService {
       this.relays.set(ticket.ticket, relay);
       this.trackSocket(browser);
       browser.on('message', (raw, isBinary) => {
-        const serialized = raw.toString();
-        this.options.traffic?.record('terminal', 'in', Buffer.byteLength(serialized));
-        if (isBinary) browser.close(4002, 'TERMINAL_FRAME_INVALID');
-        else this.forwardBrowserFrame(relay, serialized);
+        if (!isBinary || !Buffer.isBuffer(raw)) browser.close(4002, 'TERMINAL_FRAME_INVALID');
+        else {
+          this.options.traffic?.record('terminal', 'in', raw.byteLength);
+          this.forwardBrowserFrame(relay, raw);
+        }
       });
       browser.once('close', () => this.detachRelay(relay));
       this.sendTerminal(terminalSocket, {
@@ -458,7 +572,7 @@ export class TerminalRelayService {
         ticket: ticket.ticket,
         terminalId: ticket.terminalId,
         attachmentId: attachment.attachmentId,
-        latestSequence: attachment.latestSequence
+        afterSequence: ticket.afterSequence
       });
     } catch (error) {
       this.authorizing.delete(ticket.ticket);
@@ -472,7 +586,7 @@ export class TerminalRelayService {
     }
   }
 
-  private activateDeferredAttach(ticketValue: string, socket: WebSocket): void {
+  private activateDeferredAttach(ticketValue: string, socket: TerminalRelaySocket): void {
     const pending = this.deferredAttaches.get(ticketValue);
     if (pending === undefined || pending.socket !== socket) {
       socket.close(4008, 'TERMINAL_TICKET_INVALID');
@@ -488,11 +602,11 @@ export class TerminalRelayService {
     void this.authorizeBrowser(socket, ticket);
   }
 
-  private forwardBrowserFrame(relay: TerminalRelayRecord, raw: string): void {
+  private forwardBrowserFrame(relay: TerminalRelayRecord, raw: Uint8Array): void {
     if (this.relays.get(relay.ticket) !== relay || !relay.attached) return;
     let value: unknown;
     try {
-      value = JSON.parse(raw);
+      value = decodeTerminalMessage(raw);
     } catch {
       relay.browser.close(4002, 'TERMINAL_FRAME_INVALID');
       return;
@@ -501,7 +615,7 @@ export class TerminalRelayService {
     if (
       !frame.success ||
       frame.data.terminalId !== relay.terminalId ||
-      !['input', 'resize', 'close'].includes(frame.data.type)
+      !['input', 'eof', 'resize', 'close'].includes(frame.data.type)
     ) {
       relay.browser.close(4002, 'TERMINAL_FRAME_INVALID');
       return;
@@ -522,7 +636,7 @@ export class TerminalRelayService {
 
   private async handleNodeMessage(
     socket: WebSocket,
-    raw: string,
+    raw: Uint8Array,
     getNodeId: () => string | undefined,
     setNodeId: (nodeId: string) => void
   ): Promise<void> {
@@ -534,7 +648,7 @@ export class TerminalRelayService {
     }
     let message: unknown;
     try {
-      message = JSON.parse(raw);
+      message = decodeTerminalMessage(raw);
     } catch {
       socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
       return;
@@ -670,12 +784,13 @@ export class TerminalRelayService {
       socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
       return;
     }
-    const bytes = Buffer.byteLength(JSON.stringify(parsed.data));
+    const encoded = encodeTerminalMessage(parsed.data);
+    const bytes = encoded.byteLength;
     if (relay.pendingBytes + bytes > MAX_TERMINAL_SOCKET_BUFFERED_BYTES) {
       this.endBackpressuredRelay(relay, relay.pendingBytes + bytes);
       return;
     }
-    relay.pendingFrames.push({ frame: parsed.data, bytes });
+    relay.pendingFrames.push({ frame: parsed.data, encoded });
     relay.pendingBytes += bytes;
     this.flushBrowserFrames(relay);
   }
@@ -692,23 +807,19 @@ export class TerminalRelayService {
       this.detachRelay(relay);
       return;
     }
-    const snapshot = relay.initialFrames[relay.replayIndex];
-    const frame = snapshot ?? relay.pendingFrames[0]?.frame;
-    if (frame === undefined) return;
-    const bytes = Buffer.byteLength(JSON.stringify(frame));
+    const pending = relay.pendingFrames[0];
+    if (pending === undefined) return;
+    const { frame, encoded } = pending;
+    const bytes = encoded.byteLength;
     const buffered = relay.browser.bufferedAmount + bytes;
     if (buffered > MAX_TERMINAL_SOCKET_BUFFERED_BYTES) {
       this.endBackpressuredRelay(relay, buffered);
       return;
     }
-    if (snapshot !== undefined) {
-      if (++relay.replayIndex === relay.initialFrames.length) {
-        relay.initialFrames = [];
-        relay.replayIndex = 0;
-      }
-    } else relay.pendingBytes -= relay.pendingFrames.shift()!.bytes;
+    relay.pendingFrames.shift();
+    relay.pendingBytes -= bytes;
     relay.writing = true;
-    this.sendTerminal(relay.browser, frame, (error) => {
+    this.sendTerminal(relay.browser, encoded, (error) => {
       if (this.relays.get(relay.ticket) !== relay) return;
       relay.writing = false;
       if (error) {
@@ -742,7 +853,7 @@ export class TerminalRelayService {
       code: 'TERMINAL_BACKPRESSURE'
     };
     if (
-      relay.browser.bufferedAmount + Buffer.byteLength(JSON.stringify(frame)) <=
+      relay.browser.bufferedAmount + encodeTerminalMessage(frame).byteLength <=
       MAX_TERMINAL_SOCKET_BUFFERED_BYTES
     )
       this.sendBrowser(relay.browser, frame);
@@ -752,7 +863,6 @@ export class TerminalRelayService {
   private clearBrowserFrames(relay: TerminalRelayRecord): void {
     if (relay.flushImmediate !== undefined) clearImmediate(relay.flushImmediate);
     relay.flushImmediate = undefined;
-    relay.initialFrames = [];
     relay.pendingFrames = [];
     relay.pendingBytes = 0;
   }
@@ -805,6 +915,10 @@ export class TerminalRelayService {
   }
   private detachRelay(relay: TerminalRelayRecord): void {
     if (this.relays.get(relay.ticket) !== relay) return;
+    if (relay.cli) {
+      this.closeRelay(relay, true);
+      return;
+    }
     this.clearBrowserFrames(relay);
     this.relays.delete(relay.ticket);
     this.retireTicket(relay.ticket, relay.nodeId);
@@ -827,7 +941,7 @@ export class TerminalRelayService {
     if (socket !== undefined && socket.readyState === socket.OPEN)
       this.sendTerminal(
         socket,
-        terminate
+        terminate || relay.cli
           ? { type: 'close', ticket: relay.ticket }
           : { type: 'detach', ticket: relay.ticket }
       );
@@ -847,14 +961,14 @@ export class TerminalRelayService {
     ).length;
   }
   private sendTerminal(
-    socket: WebSocket,
+    socket: TerminalRelaySocket,
     message: object,
     completed?: (error?: Error | null) => void
   ): void {
     if (socket.readyState !== socket.OPEN) return;
     try {
-      const serialized = JSON.stringify(message);
-      this.options.traffic?.record('terminal', 'out', Buffer.byteLength(serialized));
+      const serialized = message instanceof Uint8Array ? message : encodeTerminalMessage(message);
+      this.options.traffic?.record('terminal', 'out', serialized.byteLength);
       if (completed === undefined) socket.send(serialized);
       else socket.send(serialized, completed);
     } catch (error) {
@@ -862,7 +976,7 @@ export class TerminalRelayService {
       socket.close(1011, 'TERMINAL_SEND_FAILED');
     }
   }
-  private sendBrowser(socket: WebSocket, frame: TerminalDataFrame): void {
+  private sendBrowser(socket: TerminalRelaySocket, frame: TerminalDataFrame): void {
     this.sendTerminal(socket, frame);
   }
 
@@ -879,7 +993,7 @@ export class TerminalRelayService {
     }
   }
 
-  private trackSocket(socket: WebSocket): void {
+  private trackSocket(socket: TerminalRelaySocket): void {
     this.socketActivity.set(socket, Date.now());
     socket.on('pong', () => this.socketActivity.set(socket, Date.now()));
     socket.once('close', () => this.socketActivity.delete(socket));
@@ -927,24 +1041,7 @@ function browserAttachRequest(
 function terminalAttachmentResponse(value: unknown): TerminalAttachmentResponse | undefined {
   if (!isRecord(value) || !isRecord(value.attachment)) return undefined;
   const attachment = value.attachment;
-  if (
-    !isIdentifier(attachment.attachmentId) ||
-    !isIdentifier(attachment.terminalId) ||
-    !Number.isSafeInteger(attachment.latestSequence) ||
-    (attachment.latestSequence as number) < 0 ||
-    !Array.isArray(attachment.frames)
-  )
+  if (!isIdentifier(attachment.attachmentId) || !isIdentifier(attachment.terminalId))
     return undefined;
-  const frames: TerminalDataFrame[] = [];
-  for (const frame of attachment.frames) {
-    const parsed = terminalDataFrameSchema.safeParse(frame);
-    if (!parsed.success || parsed.data.terminalId !== attachment.terminalId) return undefined;
-    frames.push(parsed.data);
-  }
-  return {
-    attachmentId: attachment.attachmentId,
-    terminalId: attachment.terminalId,
-    latestSequence: attachment.latestSequence as number,
-    frames
-  };
+  return { attachmentId: attachment.attachmentId, terminalId: attachment.terminalId };
 }

@@ -76,6 +76,21 @@ function gate<T>() {
   return { promise, release };
 }
 
+it.each([
+  { operation: 'computer.use.open', data: {} },
+  { operation: 'computer.use.attach', data: { terminalId: 'desktop', afterSequence: 0 } }
+])('dispatches $operation only after Node-wide authorization', async ({ operation, data }) => {
+  const f = fixture();
+  await expect(f.broker.request('n', operation, data, f.user)).rejects.toThrow(
+    'NODE_ACCESS_DENIED'
+  );
+  expect(f.sent).toHaveLength(0);
+  expect(f.authorize).toHaveBeenLastCalledWith(2, 'n', operation, data, undefined);
+  f.authorize.mockResolvedValueOnce(true);
+  await expect(f.call(operation, data, { accepted: true })).resolves.toEqual({ accepted: true });
+  expect(f.authorize).toHaveBeenLastCalledWith(2, 'n', operation, data, undefined);
+});
+
 it('relays the minimal schedule index only through the fixed internal operation on a business connection', async () => {
   const f = fixture();
   const scope = { workspaceId: 'w', afterTaskId: 'previous' };
@@ -318,7 +333,7 @@ describe('Node broker resource scope lifecycle', () => {
     expect(f.sent).toHaveLength(0);
     const pending = await f.begin('node.upgrade.request', { targetVersion: '0.11.38' }, 'w');
     expect(f.authorize).toHaveBeenCalledOnce();
-    expect(f.sent[0]).toMatchObject({ version: 3, payload: { operation: 'node.upgrade.request' } });
+    expect(f.sent[0]).toMatchObject({ version: 4, payload: { operation: 'node.upgrade.request' } });
     pending.reply({ accepted: true });
     await expect(pending.promise).resolves.toEqual({ accepted: true });
   });

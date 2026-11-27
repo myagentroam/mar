@@ -6,6 +6,7 @@ interface NodeControlMessageServiceOptions {
   readonly config: () => NodeConfig | undefined;
   readonly register: (nodeId: string, credential: string, payload?: unknown) => Promise<void>;
   readonly connected: (payload?: unknown) => void;
+  readonly fileBindingAck?: (requestId: string, binding: string) => void;
   readonly usageAck?: (payload: unknown) => void;
   readonly sessionGroupAck?: (payload: unknown) => void;
   readonly bindUsage?: (payload: unknown) => void;
@@ -101,7 +102,21 @@ export class NodeControlMessageService {
       this.options.usageAck?.(envelope.payload);
       return;
     }
-    if (envelope.type === 'ack') return;
+    if (envelope.type === 'ack') {
+      if (
+        envelope.replyTo !== undefined &&
+        typeof envelope.payload === 'object' &&
+        envelope.payload !== null &&
+        'type' in envelope.payload &&
+        envelope.payload.type === 'capabilities' &&
+        'fileControlBinding' in envelope.payload &&
+        typeof envelope.payload.fileControlBinding === 'string' &&
+        envelope.payload.fileControlBinding.length > 0 &&
+        envelope.payload.fileControlBinding.length <= 128
+      )
+        this.options.fileBindingAck?.(envelope.replyTo, envelope.payload.fileControlBinding);
+      return;
+    }
     if (envelope.type === 'session.group.ack') {
       this.options.sessionGroupAck?.(envelope.payload);
       return;

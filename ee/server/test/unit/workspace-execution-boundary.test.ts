@@ -40,23 +40,62 @@ describe('Workspace execution boundary across Server and Node', () => {
     );
   });
 
-  it('requires Node use for desktop discovery even with a usable Workspace context', async () => {
+  it.each(['desktop.describe', 'computer.use.open', 'computer.use.attach'])(
+    'requires Node use, not Node management or Workspace use, for %s',
+    async (operation) => {
+      const access = new ResourceAccessService(
+        {
+          raw: {
+            execute: async (sql: string) => {
+              const owner = sql.includes('FROM nodes')
+                ? 8
+                : sql.includes('FROM workspaces')
+                  ? 7
+                  : 0;
+              if (!owner) throw new Error('UNEXPECTED_QUERY');
+              return [[{ owner_type: 'PERSONAL', owner_user_id: owner }], []];
+            }
+          }
+        } as never,
+        { authorize: async () => ({ allowed: false }) } as never
+      );
+      expect(await access.canUseWorkspace(7, 'node-a', 'workspace-a')).toBe(true);
+      expect(await access.canRelay(7, 'node-a', operation, {}, 'workspace-a')).toBe(false);
+      expect(await access.canRelay(7, 'node-a', operation, {})).toBe(false);
+      expect(await access.canRelay(8, 'node-a', operation, {}, 'workspace-a')).toBe(true);
+      expect(await access.canRelay(8, 'node-a', operation, {})).toBe(true);
+    }
+  );
+
+  it('allows a granted organization member to use the remote desktop without management rights', async () => {
+    let granted = true;
     const access = new ResourceAccessService(
       {
         raw: {
-          execute: async (sql: string) => {
-            const owner = sql.includes('FROM nodes') ? 8 : sql.includes('FROM workspaces') ? 7 : 0;
-            if (!owner) throw new Error('UNEXPECTED_QUERY');
-            return [[{ owner_type: 'PERSONAL', owner_user_id: owner }], []];
+          execute: async (sql: string, values: readonly unknown[]) => {
+            if (sql.includes('FROM nodes'))
+              return [[{ owner_type: 'ORGANIZATION', owner_organization_id: 2 }], []];
+            if (sql.includes('FROM resource_grants')) {
+              expect(values).toEqual([7, 'NODE', 'NODE:node-a:', 7]);
+              return [granted ? [{}] : [], []];
+            }
+            throw new Error('UNEXPECTED_QUERY');
           }
         }
       } as never,
-      { authorize: async (userId: number) => ({ allowed: userId === 8 }) } as never
+      {
+        isPersonalAdmin: async () => false,
+        authorize: async (_actor: number, permission: string, resource: { granted?: boolean }) => ({
+          allowed: permission === 'RESOURCE_USE' && resource.granted === true
+        })
+      } as never
     );
-    expect(await access.canUseWorkspace(7, 'node-a', 'workspace-a')).toBe(true);
-    expect(await access.canRelay(7, 'node-a', 'desktop.describe', {}, 'workspace-a')).toBe(false);
-    expect(await access.canRelay(7, 'node-a', 'desktop.describe', {})).toBe(false);
-    expect(await access.canRelay(8, 'node-a', 'desktop.describe', {}, 'workspace-a')).toBe(true);
+    expect(await access.canManageNode(7, 'node-a')).toBe(false);
+    for (const operation of ['computer.use.open', 'computer.use.attach'])
+      expect(await access.canRelay(7, 'node-a', operation, {})).toBe(true);
+    granted = false;
+    for (const operation of ['computer.use.open', 'computer.use.attach'])
+      expect(await access.canRelay(7, 'node-a', operation, {})).toBe(false);
   });
 
   it('preserves personal Workspace authorization while rejecting a foreign execution directory', async () => {

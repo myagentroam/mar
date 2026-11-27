@@ -283,6 +283,9 @@ importers:
 
   marctl:
     dependencies:
+      '@myagentroam/protocol':
+        specifier: workspace:*
+        version: link:../packages/protocol
       node-datachannel:
         specifier: 0.33.4
         version: 0.33.4

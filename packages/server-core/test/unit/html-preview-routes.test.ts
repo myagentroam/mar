@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 import { hashOpaque } from '../../src/session-token.js';
+import { databaseError } from '../../src/domain-errors.js';
 import { sendError } from '../../src/http-errors.js';
 import {
   registerHtmlPreviewRoutes,
@@ -67,6 +68,7 @@ describe('Executable HTML preview', () => {
     let active = true;
     let configured = '';
     let boundaryVerified = true;
+    let relayBusy = false;
     const seen: string[] = [];
     const content: Record<string, string> = {
       'pages/demo/index.html': '<script type="module" src="./js/app.mjs"></script>',
@@ -85,14 +87,14 @@ describe('Executable HTML preview', () => {
         if (input.previewDirectory !== undefined) expect(input.previewDirectory).toBe('pages/demo');
         const bytes = Buffer.from(content[input.path] ?? '');
         if (!Object.hasOwn(content, input.path)) throw new Error('FILE_NOT_FOUND');
+        if (relayBusy && input.limit > 1) throw new Error('FILE_RELAY_BUSY');
         return {
           previewBoundaryVerified: boundaryVerified,
           file: {
             size: bytes.length,
+            sourceRevision: 'a'.repeat(64),
             offset: input.offset,
-            contentBase64: bytes
-              .subarray(input.offset, input.offset + input.limit)
-              .toString('base64')
+            bytes: bytes.subarray(input.offset, input.offset + input.limit)
           }
         };
       })
@@ -115,8 +117,7 @@ describe('Executable HTML preview', () => {
       nodeControl: nodeControl as never,
       originSetting: { read: async () => configured },
       publicOrigin: 'http://localhost',
-      databaseError: (reply, error) =>
-        sendError(reply, 404, error instanceof Error ? error.message : 'FILE_NOT_FOUND')
+      databaseError
     });
     app.get('/api/auth/me', async () => ({ userId: 1 }));
     try {
@@ -149,6 +150,12 @@ describe('Executable HTML preview', () => {
       expect(html.headers['content-type']).toContain('text/html');
       expect(html.headers['content-security-policy']).toContain('sandbox allow-scripts');
       expect(html.body).toContain('type="module"');
+      relayBusy = true;
+      const busy = await app.inject({ url: url.pathname });
+      expect(busy.statusCode).toBe(429);
+      expect(busy.json()).toMatchObject({ error: { code: 'FILE_RELAY_BUSY' } });
+      expect(busy.headers['content-type']).toContain('application/json');
+      relayBusy = false;
       const script = await app.inject({
         method: 'GET',
         url: url.pathname.replace('index.html', 'js/app.mjs')
@@ -211,10 +218,9 @@ describe('Executable HTML preview', () => {
           previewBoundaryVerified: true,
           file: {
             size: bytes.length,
+            sourceRevision: 'a'.repeat(64),
             offset: input.offset,
-            contentBase64: bytes
-              .subarray(input.offset, input.offset + input.limit)
-              .toString('base64')
+            bytes: bytes.subarray(input.offset, input.offset + input.limit)
           }
         };
       })

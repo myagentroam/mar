@@ -1,4 +1,6 @@
 import {
+  decodeTerminalMessage,
+  encodeTerminalMessage,
   terminalDataFrameSchema,
   terminalDirectNodeCommandSchema,
   terminalDirectOpenFrameSchema,
@@ -89,13 +91,13 @@ export class TerminalDirectService {
   }
 
   open(transportId: string, channel: RTCDataChannel, raw: unknown): void {
-    if (typeof raw !== 'string' || Buffer.byteLength(raw) > 4_096) {
+    if (byteLength(raw) > 4_099) {
       channel.close();
       return;
     }
     let parsed: ReturnType<typeof terminalDirectOpenFrameSchema.safeParse>;
     try {
-      parsed = terminalDirectOpenFrameSchema.safeParse(JSON.parse(raw));
+      parsed = terminalDirectOpenFrameSchema.safeParse(decodeTerminalMessage(raw));
     } catch {
       channel.close();
       return;
@@ -131,7 +133,7 @@ export class TerminalDirectService {
       session.attachmentId = attachment.attachmentId;
       session.opened = true;
       channel.send(
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'ATTACHED',
           terminalId: session.command.terminalId,
           afterSequence: session.command.afterSequence
@@ -169,20 +171,15 @@ export class TerminalDirectService {
   }
 
   private accept(session: Session, raw: unknown): void {
-    if (
-      !session.opened ||
-      typeof raw !== 'string' ||
-      Buffer.byteLength(raw) > MAX_FRAME_BYTES ||
-      session.expiresAt <= this.now()
-    ) {
+    if (!session.opened || byteLength(raw) > MAX_FRAME_BYTES || session.expiresAt <= this.now()) {
       this.remove(session, 'TERMINAL_FRAME_REJECTED');
       return;
     }
     try {
-      const frame = terminalDataFrameSchema.parse(JSON.parse(raw));
+      const frame = terminalDataFrameSchema.parse(decodeTerminalMessage(raw));
       if (
         frame.terminalId !== session.command.terminalId ||
-        !['input', 'resize', 'close'].includes(frame.type) ||
+        !['input', 'eof', 'resize', 'close'].includes(frame.type) ||
         session.attachmentId === undefined
       )
         throw new Error('TERMINAL_FRAME_INVALID');
@@ -194,14 +191,14 @@ export class TerminalDirectService {
     }
   }
 
-  private sendFrame(session: Session, frame: unknown): void {
+  private sendFrame(session: Session, frame: object): void {
     const channel = session.channel;
     if (channel?.readyState !== 'open') {
       this.remove(session);
       return;
     }
-    const value = JSON.stringify(frame);
-    if (channel.bufferedAmount + Buffer.byteLength(value) > MAX_BUFFERED_BYTES) {
+    const value = encodeTerminalMessage(frame);
+    if (channel.bufferedAmount + value.byteLength > MAX_BUFFERED_BYTES) {
       this.remove(session, 'TERMINAL_BACKPRESSURE');
       return;
     }
@@ -218,7 +215,7 @@ export class TerminalDirectService {
     if (code !== undefined && session.channel?.readyState === 'open') {
       try {
         session.channel.send(
-          JSON.stringify({ type: 'error', terminalId: session.command.terminalId, code })
+          encodeTerminalMessage({ type: 'error', terminalId: session.command.terminalId, code })
         );
       } catch {
         // A closing channel must not prevent attachment cleanup.
@@ -226,4 +223,8 @@ export class TerminalDirectService {
     }
     session.channel?.close();
   }
+}
+
+function byteLength(value: unknown): number {
+  return value instanceof ArrayBuffer || value instanceof Uint8Array ? value.byteLength : Infinity;
 }

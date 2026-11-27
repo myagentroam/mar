@@ -1,7 +1,7 @@
 interface RelaySocket {
   readonly readyState: number;
   readonly bufferedAmount?: number;
-  send(value: string, callback: (error?: Error) => void): void;
+  send(value: Uint8Array, callback: (error?: Error) => void): void;
 }
 
 export class TerminalRelaySender {
@@ -11,7 +11,7 @@ export class TerminalRelaySender {
       readonly onPendingChange?: (keys: ReadonlySet<string>) => void;
     }
   );
-  send(value: string, key?: string): Promise<void>;
+  send(value: Uint8Array, key?: string): Promise<void>;
   cancel(key: string): void;
   close(error?: Error): void;
 }

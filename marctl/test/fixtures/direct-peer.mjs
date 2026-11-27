@@ -1,3 +1,4 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 import assert from 'node:assert/strict';
 import { WebSocketServer } from 'ws';
 const native = await import('node-datachannel');
@@ -34,28 +35,34 @@ server.on('connection', (socket) => {
     channels.push(channel);
     if (!channel.getLabel().startsWith('mar-terminal-')) return;
     channel.onMessage((raw) => {
-      const message = JSON.parse(String(raw));
+      const message = decodeTerminalMessage(raw);
       if (message.type === 'OPEN') {
         assert.equal(message.grant, 'fixture-grant');
-        channel.sendMessage(
-          JSON.stringify({ type: 'ATTACHED', terminalId: 'terminal-1', afterSequence: 0 })
+        channel.sendMessageBinary(
+          Buffer.from(
+            encodeTerminalMessage({ type: 'ATTACHED', terminalId: 'terminal-1', afterSequence: 0 })
+          )
         );
-        channel.sendMessage(
-          JSON.stringify({
-            type: 'output',
-            terminalId: 'terminal-1',
-            sequence: 1,
-            data: 'handoff'
-          })
+        channel.sendMessageBinary(
+          Buffer.from(
+            encodeTerminalMessage({
+              type: 'output',
+              terminalId: 'terminal-1',
+              sequence: 1,
+              data: Buffer.from('handoff')
+            })
+          )
         );
       } else if (message.type === 'input') {
-        channel.sendMessage(
-          JSON.stringify({
-            type: 'output',
-            terminalId: 'terminal-1',
-            sequence: 2,
-            data: message.data
-          })
+        channel.sendMessageBinary(
+          Buffer.from(
+            encodeTerminalMessage({
+              type: 'output',
+              terminalId: 'terminal-1',
+              sequence: 2,
+              data: message.data
+            })
+          )
         );
       }
     });

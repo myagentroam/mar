@@ -1,3 +1,4 @@
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
@@ -7,7 +8,6 @@ import {
   DirectUnsafeError
 } from '../../src/direct-errors.mjs';
 import { runTerminalSession } from '../../src/terminal.mjs';
-import { splitInput } from '../../src/terminal-interaction.mjs';
 import { TerminalRelaySender } from '../../src/terminal-relay-sender.mjs';
 
 test('waits for the actual socket write before resolving or sending the next frame', async () => {
@@ -21,21 +21,21 @@ test('waits for the actual socket write before resolving or sending the next fra
     }
   });
   let completed = false;
-  const first = sender.send('first').then(() => {
+  const first = sender.send(Buffer.from('first')).then(() => {
     completed = true;
   });
-  const second = sender.send('second');
+  const second = sender.send(Buffer.from('second'));
   first.catch(() => {});
   second.catch(() => {});
   try {
     await Promise.resolve();
     assert.equal(completed, false);
-    assert.deepEqual(sent, ['first']);
+    assert.deepEqual(sent, [Buffer.from('first')]);
     callbacks.shift()();
     await first;
-    assert.deepEqual(sent, ['first']);
+    assert.deepEqual(sent, [Buffer.from('first')]);
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(sent, ['first', 'second']);
+    assert.deepEqual(sent, [Buffer.from('first'), Buffer.from('second')]);
     callbacks.shift()();
     await second;
   } finally {
@@ -57,7 +57,7 @@ test('yields between serial relay writes without a throughput timer', async (t) 
     },
     { onPendingChange: (keys) => pending.push([...keys]) }
   );
-  const frame = '中'.repeat(16 * 1024);
+  const frame = Buffer.alloc(48 * 1024, 0xff);
   const first = sender.send(frame, 'first');
   const second = sender.send(frame, 'second');
   assert.equal(sent.length, 1);
@@ -87,11 +87,14 @@ test('bounds congested relay queues and cancels pending sends on close or detach
     }
   };
   const sender = new TerminalRelaySender(socket);
-  const cancelled = assert.rejects(sender.send('stale', 'stale'), /TERMINAL_ATTACH_INVALID/);
+  const cancelled = assert.rejects(
+    sender.send(Buffer.from('stale'), 'stale'),
+    /TERMINAL_ATTACH_INVALID/
+  );
   sender.cancel('stale');
   await cancelled;
-  const queued = sender.send('x'.repeat(2 * 1024 * 1024), 'active');
-  await assert.rejects(sender.send('overflow'), /TERMINAL_RELAY_BUFFER_EXCEEDED/);
+  const queued = sender.send(Buffer.alloc(2 * 1024 * 1024), 'active');
+  await assert.rejects(sender.send(Buffer.from('overflow')), /TERMINAL_RELAY_BUFFER_EXCEEDED/);
   assert.equal(sent.length, 0);
   const closed = assert.rejects(queued, /TERMINAL_CONNECTION_LOST/);
   sender.close();
@@ -99,7 +102,7 @@ test('bounds congested relay queues and cancels pending sends on close or detach
   socket.bufferedAmount = 0;
   t.mock.timers.tick(60_000);
   assert.equal(sent.length, 0);
-  await assert.rejects(sender.send('late'), /TERMINAL_CONNECTION_LOST/);
+  await assert.rejects(sender.send(Buffer.from('late')), /TERMINAL_CONNECTION_LOST/);
 });
 
 test('resumes a congested relay and propagates socket send failure', async (t) => {
@@ -114,8 +117,8 @@ test('resumes a congested relay and propagates socket send failure', async (t) =
     }
   };
   const sender = new TerminalRelaySender(socket);
-  const first = sender.send('a'.repeat(64 * 1024));
-  const second = sender.send('b'.repeat(64 * 1024));
+  const first = sender.send(Buffer.alloc(64 * 1024));
+  const second = sender.send(Buffer.alloc(64 * 1024));
   t.mock.timers.tick(1000);
   assert.equal(sent.length, 0);
   socket.bufferedAmount = 0;
@@ -127,8 +130,8 @@ test('resumes a congested relay and propagates socket send failure', async (t) =
   socket.send = () => {
     throw new Error('socket send failed');
   };
-  const failure = assert.rejects(sender.send('failure'), /socket send failed/);
-  const tail = assert.rejects(sender.send('tail'), /socket send failed/);
+  const failure = assert.rejects(sender.send(Buffer.from('failure')), /socket send failed/);
+  const tail = assert.rejects(sender.send(Buffer.from('tail')), /socket send failed/);
   await Promise.all([failure, tail]);
   sender.close();
 });
@@ -144,7 +147,7 @@ class FakeSocket extends EventEmitter {
   }
 
   send(value, callback) {
-    this.sent.push(JSON.parse(value));
+    this.sent.push(decodeTerminalMessage(value));
     callback?.();
   }
 
@@ -182,7 +185,7 @@ class FakeStdout extends EventEmitter {
   }
 
   write(value) {
-    this.output += value;
+    this.output += Buffer.from(value).toString();
   }
 }
 
@@ -191,7 +194,7 @@ test('handles rejected asynchronous resize and close writes without leaking a te
   const sent = [];
   let deleted = 0;
   transport.send = (raw) => {
-    sent.push(JSON.parse(raw).type);
+    sent.push(raw.type);
     return Promise.reject(new Error('TERMINAL_CONNECTION_LOST'));
   };
   transport.close = () => {};
@@ -206,7 +209,6 @@ test('handles rejected asynchronous resize and close writes without leaking a te
         }
       },
       nodeId: 'node-1',
-      command: 'cat',
       stdin: new FakeStdin(),
       stdout: new FakeStdout(),
       signal: new AbortController().signal,
@@ -242,8 +244,8 @@ test('bounds UTF-8 input frames and preserves terminal lifecycle', async () => {
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
       });
       return socket;
@@ -268,21 +270,26 @@ test('bounds UTF-8 input frames and preserves terminal lifecycle', async () => {
   stdout.emit('resize');
   sockets[0].emit(
     'message',
-    JSON.stringify({ type: 'output', terminalId: 'terminal-1', sequence: 1, data: 'world' }),
-    false
+    encodeTerminalMessage({
+      type: 'output',
+      terminalId: 'terminal-1',
+      sequence: 1,
+      data: Buffer.from('world')
+    }),
+    true
   );
   sockets[0].emit(
     'message',
-    JSON.stringify({ type: 'exit', terminalId: 'terminal-1', exitCode: 7 }),
-    false
+    encodeTerminalMessage({ type: 'exit', terminalId: 'terminal-1', exitCode: 7 }),
+    true
   );
 
   assert.equal(await session, 7);
   assert.equal(stdout.output, 'world');
   assert.deepEqual(sockets[0].sent, [
     { type: 'resize', terminalId: 'terminal-1', rows: 24, cols: 80 },
-    { type: 'input', terminalId: 'terminal-1', data: 'hello' },
-    { type: 'input', terminalId: 'terminal-1', data: '\u0003' },
+    { type: 'input', terminalId: 'terminal-1', data: Uint8Array.from(Buffer.from('hello')) },
+    { type: 'input', terminalId: 'terminal-1', data: Uint8Array.of(3) },
     { type: 'resize', terminalId: 'terminal-1', rows: 24, cols: 80 },
     { type: 'close', terminalId: 'terminal-1' }
   ]);
@@ -312,32 +319,38 @@ test('relay readiness wins without allowing direct to attach a second writer', a
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
-        socket.emit('message', JSON.stringify({ type: 'ready', terminalId: 'terminal-1' }));
+        socket.emit(
+          'message',
+          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
+          true
+        );
       });
       return socket;
     },
     async deleteTerminal() {}
   };
   socket.send = (raw) => {
-    const frame = JSON.parse(raw);
+    const frame = decodeTerminalMessage(raw);
     socket.sent.push(frame);
     if (frame.type === 'activate')
       queueMicrotask(() => {
         socket.emit(
           'message',
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'attach',
             terminalId: 'terminal-1',
             afterSequence: 0
-          })
+          }),
+          true
         );
         socket.emit(
           'message',
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'exit',
             terminalId: 'terminal-1',
             exitCode: 4
-          })
+          }),
+          true
         );
       });
   };
@@ -378,7 +391,7 @@ test('waits for relay stdin writes while resize and interruption remain responsi
   const originalSend = socket.send.bind(socket);
   socket.send = (value, callback) => {
     originalSend(value);
-    if (JSON.parse(value).type === 'input') callbacks.push(callback);
+    if (decodeTerminalMessage(value).type === 'input') callbacks.push(callback);
     else callback?.();
   };
   const client = {
@@ -394,8 +407,8 @@ test('waits for relay stdin writes while resize and interruption remain responsi
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
       });
       return socket;
@@ -407,14 +420,13 @@ test('waits for relay stdin writes while resize and interruption remain responsi
     client,
     WebSocketClass: FakeSocket,
     nodeId: 'node-1',
-    command: 'cat',
     stdin,
     stdout,
     signal: signals.signal
   });
   try {
     await new Promise((resolve) => setImmediate(resolve));
-    stdin.emit('data', 'x'.repeat(128 * 1024));
+    stdin.emit('data', 'x'.repeat(64 * 1024));
     stdout.emit('resize');
     assert.equal(callbacks.length, 1);
     assert.equal(stdin.paused, true);
@@ -463,7 +475,11 @@ test('direct transport wins and closes the unactivated relay', async () => {
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
-        socket.emit('message', JSON.stringify({ type: 'ready', terminalId: 'terminal-1' }));
+        socket.emit(
+          'message',
+          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
+          true
+        );
       });
       return socket;
     },
@@ -477,11 +493,12 @@ test('direct transport wins and closes the unactivated relay', async () => {
     queueMicrotask(() =>
       transport.emit(
         'message',
-        JSON.stringify({
+        encodeTerminalMessage({
           type: 'exit',
           terminalId: 'terminal-1',
           exitCode: 6
-        })
+        }),
+        true
       )
     );
   };
@@ -550,7 +567,11 @@ for (const blocked of ['direct', 'relay']) {
         queueMicrotask(() => {
           socket.readyState = FakeSocket.OPEN;
           socket.emit('open');
-          socket.emit('message', JSON.stringify({ type: 'ready', terminalId: 'terminal-1' }));
+          socket.emit(
+            'message',
+            encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
+            true
+          );
         });
         return socket;
       },
@@ -638,20 +659,25 @@ test('a ready direct transport without an ICE victory cannot open a writer', asy
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
-        socket.emit('message', JSON.stringify({ type: 'ready', terminalId: 'terminal-1' }));
+        socket.emit(
+          'message',
+          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
+          true
+        );
       });
       return socket;
     },
     async deleteTerminal() {}
   };
   socket.send = (raw) => {
-    const frame = JSON.parse(raw);
+    const frame = decodeTerminalMessage(raw);
     socket.sent.push(frame);
     if (frame.type === 'activate')
       queueMicrotask(() =>
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 })
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         )
       );
   };
@@ -700,7 +726,8 @@ for (const unsafe of [false, true]) {
           relay.emit('open');
           relay.emit(
             'message',
-            JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 })
+            encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+            true
           );
         });
         return relay;
@@ -727,16 +754,16 @@ for (const unsafe of [false, true]) {
   });
 }
 
-test('shares one binary manifest across validation and both race paths', async () => {
+test('shares one manifest across both connection race paths', async () => {
   let queries = 0;
-  const manifest = { deferredRelay: true, binaryTerminal: true };
+  const manifest = { deferredRelay: true };
   const client = {
     async getTerminalManifest() {
       queries += 1;
       return manifest;
     },
     async createTerminal() {
-      return { terminalId: 'terminal-1', binary: true };
+      return 'terminal-1';
     },
     async createAttachTicket() {
       return 'ticket-1';
@@ -751,7 +778,6 @@ test('shares one binary manifest across validation and both race paths', async (
       client,
       nodeId: 'node-1',
       command: 'binary-worker',
-      binary: true,
       raceConnections: true,
       attached: async () => 0,
       openDirectTerminal: async (options) => {
@@ -807,24 +833,29 @@ test('releases the relay when direct preparation fails before the barrier', asyn
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
-        socket.emit('message', JSON.stringify({ type: 'ready', terminalId: 'terminal-1' }));
+        socket.emit(
+          'message',
+          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
+          true
+        );
       });
       return socket;
     },
     async deleteTerminal() {}
   };
   socket.send = (raw) => {
-    const frame = JSON.parse(raw);
+    const frame = decodeTerminalMessage(raw);
     socket.sent.push(frame);
     if (frame.type === 'activate')
       queueMicrotask(() =>
         socket.emit(
           'message',
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'attach',
             terminalId: 'terminal-1',
             afterSequence: 0
-          })
+          }),
+          true
         )
       );
   };
@@ -867,19 +898,21 @@ test('older server without deferred relay capability keeps sequential fallback',
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'attach',
             terminalId: 'terminal-1',
             afterSequence: 0
-          })
+          }),
+          true
         );
         socket.emit(
           'message',
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'exit',
             terminalId: 'terminal-1',
             exitCode: 3
-          })
+          }),
+          true
         );
       });
       return socket;
@@ -921,23 +954,23 @@ test('delivers relay output and exit frames emitted in the ATTACHED handoff tick
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
         socket.emit(
           'message',
-          JSON.stringify({
+          encodeTerminalMessage({
             type: 'output',
             terminalId: 'terminal-1',
             sequence: 1,
-            data: 'relay output\n'
+            data: Buffer.from('relay output\n')
           }),
-          false
+          true
         );
         socket.emit(
           'message',
-          JSON.stringify({ type: 'exit', terminalId: 'terminal-1', exitCode: 19 }),
-          false
+          encodeTerminalMessage({ type: 'exit', terminalId: 'terminal-1', exitCode: 19 }),
+          true
         );
       });
       return socket;
@@ -989,8 +1022,8 @@ test('runs one-shot commands without raw stdin and has no post-attach idle timeo
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
       });
       return socket;
@@ -1022,20 +1055,24 @@ test('runs one-shot commands without raw stdin and has no post-attach idle timeo
   stdin.emit('data', 'input');
   socket.emit(
     'message',
-    JSON.stringify({ type: 'output', terminalId: 'terminal-1', sequence: 1, data: 'done\n' }),
-    false
+    encodeTerminalMessage({
+      type: 'output',
+      terminalId: 'terminal-1',
+      sequence: 1,
+      data: Buffer.from('done\n')
+    }),
+    true
   );
   socket.emit(
     'message',
-    JSON.stringify({ type: 'exit', terminalId: 'terminal-1', exitCode: 23 }),
-    false
+    encodeTerminalMessage({ type: 'exit', terminalId: 'terminal-1', exitCode: 23 }),
+    true
   );
 
   assert.equal(await session, 23);
   assert.equal(stdout.output, 'done\n');
   assert.deepEqual(socket.sent, [
-    { type: 'resize', terminalId: 'terminal-1', rows: 24, cols: 80 },
-    { type: 'input', terminalId: 'terminal-1', data: 'input' },
+    { type: 'input', terminalId: 'terminal-1', data: Uint8Array.from(Buffer.from('input')) },
     { type: 'close', terminalId: 'terminal-1' }
   ]);
   assert.deepEqual(deleted, [{ nodeId: 'node-1', terminalId: 'terminal-1' }]);
@@ -1057,8 +1094,8 @@ test('maps a null remote exit code to a non-success CLI status', async () => {
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
       });
       return socket;
@@ -1078,8 +1115,8 @@ test('maps a null remote exit code to a non-success CLI status', async () => {
   await new Promise((resolve) => setImmediate(resolve));
   socket.emit(
     'message',
-    JSON.stringify({ type: 'exit', terminalId: 'terminal-1', exitCode: null }),
-    false
+    encodeTerminalMessage({ type: 'exit', terminalId: 'terminal-1', exitCode: null }),
+    true
   );
   assert.equal(await session, 1);
 });
@@ -1099,8 +1136,8 @@ test('preserves a received exit code when terminal cleanup fails', async () => {
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
       });
       return socket;
@@ -1122,8 +1159,8 @@ test('preserves a received exit code when terminal cleanup fails', async () => {
   await new Promise((resolve) => setImmediate(resolve));
   socket.emit(
     'message',
-    JSON.stringify({ type: 'exit', terminalId: 'terminal-1', exitCode: 23 }),
-    false
+    encodeTerminalMessage({ type: 'exit', terminalId: 'terminal-1', exitCode: 23 }),
+    true
   );
   assert.equal(await session, 23);
 });
@@ -1153,8 +1190,8 @@ for (const [signalName, exitCode] of [
           socket.emit('open');
           socket.emit(
             'message',
-            JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-            false
+            encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+            true
           );
         });
         return socket;
@@ -1176,10 +1213,7 @@ for (const [signalName, exitCode] of [
     await new Promise((resolve) => setImmediate(resolve));
     signals.abort(signalName);
     assert.equal(await session, exitCode);
-    assert.deepEqual(socket.sent, [
-      { type: 'resize', terminalId: 'terminal-1', rows: 24, cols: 80 },
-      { type: 'close', terminalId: 'terminal-1' }
-    ]);
+    assert.deepEqual(socket.sent, [{ type: 'close', terminalId: 'terminal-1' }]);
     assert.deepEqual(deleted, [{ nodeId: 'node-1', terminalId: 'terminal-1' }]);
   });
 }
@@ -1203,8 +1237,8 @@ test('does not recreate or re-run a command after relay disconnect', async () =>
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
       });
       return socket;
@@ -1254,8 +1288,8 @@ test('falls back to relay without recreating the command terminal', async () => 
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          false
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
       });
       return socket;
@@ -1278,8 +1312,8 @@ test('falls back to relay without recreating the command terminal', async () => 
   await new Promise((resolve) => setImmediate(resolve));
   socket.emit(
     'message',
-    JSON.stringify({ type: 'exit', terminalId: 'terminal-1', exitCode: 0 }),
-    false
+    encodeTerminalMessage({ type: 'exit', terminalId: 'terminal-1', exitCode: 0 }),
+    true
   );
 
   assert.equal(await session, 0);
@@ -1302,7 +1336,7 @@ test('a direct authorization rejection prevents a competing relay from attaching
     openTerminalWebSocket() {
       const socket = new FakeSocket();
       socket.send = (value) => {
-        if (JSON.parse(value).type === 'activate') attached += 1;
+        if (decodeTerminalMessage(value).type === 'activate') attached += 1;
       };
       return socket;
     },
@@ -1347,7 +1381,11 @@ test('a known direct rejection blocks relay activation while direct cleanup is p
       queueMicrotask(() => {
         socket.readyState = 1;
         socket.emit('open');
-        socket.emit('message', JSON.stringify({ type: 'ready', terminalId: 'terminal-1' }));
+        socket.emit(
+          'message',
+          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
+          true
+        );
       });
       return socket;
     }
@@ -1377,35 +1415,27 @@ test('a known direct rejection blocks relay activation while direct cleanup is p
   await assert.rejects(pending, (error) => error.code === 'DIRECT_TRANSFER_NOT_AUTHORIZED');
 });
 
-test('cancellation during binary manifest lookup prevents terminal creation', async () => {
+test('cancellation during terminal creation cleans up the late terminal without attaching', async () => {
   const controller = new AbortController();
-  let createCalls = 0;
   let deleteCalls = 0;
-  const client = {
-    async getTerminalManifest() {
-      controller.abort('SIGINT');
-      return { binaryTerminal: true };
-    },
-    async createTerminal() {
-      createCalls += 1;
-      return { terminalId: 'terminal-1', binary: true };
-    },
-    async deleteTerminal() {
-      deleteCalls += 1;
-    }
-  };
-
   const result = await runTerminalSession({
-    client,
+    client: {
+      async createTerminal() {
+        controller.abort('SIGINT');
+        return 'terminal-1';
+      },
+      async deleteTerminal({ terminalId }) {
+        assert.equal(terminalId, 'terminal-1');
+        deleteCalls += 1;
+      }
+    },
     nodeId: 'node-1',
     command: 'copy-worker',
-    binary: true,
-    signal: controller.signal
+    signal: controller.signal,
+    openDirectTerminal: async () => assert.fail('cancelled command must not attach')
   });
-
   assert.equal(result, 130);
-  assert.equal(createCalls, 0);
-  assert.equal(deleteCalls, 0);
+  assert.equal(deleteCalls, 1);
 });
 
 test('cancellation during direct setup never falls back to relay', async () => {
@@ -1484,7 +1514,8 @@ test('cancellation at relay attachment prevents a late attached callback', async
         socket.emit('open');
         socket.emit(
           'message',
-          JSON.stringify({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 })
+          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
+          true
         );
         controller.abort('SIGINT');
       });
@@ -1664,11 +1695,4 @@ test('bounds connection setup without applying a runtime timeout', async () => {
     /could not be opened/
   );
   assert.deepEqual(deleted, [{ nodeId: 'node-1', terminalId: 'terminal-1' }]);
-});
-
-test('splits input at the 65536-byte protocol limit without splitting code points', () => {
-  const chunks = splitInput('界'.repeat(40_000));
-  assert.ok(chunks.length > 1);
-  assert.ok(chunks.every((chunk) => Buffer.byteLength(chunk) <= 65536));
-  assert.equal(chunks.join(''), '界'.repeat(40_000));
 });

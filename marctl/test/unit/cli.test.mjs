@@ -95,6 +95,40 @@ test('dispatches the friendly executable names without changing marctl invocatio
   assert.deepEqual(executableArgs('/usr/local/bin/marctl', ['ssh', 'node-1']), ['ssh', 'node-1']);
 });
 
+test('uses --no-reuse only before the first SSH, SCP, or computer operand', () => {
+  assert.deepEqual(parseArgs(['ssh', '--no-reuse', 'node-1', 'uname', '-a']), {
+    command: 'ssh',
+    nodeId: 'node-1',
+    remoteCommand: 'uname -a',
+    noReuse: true
+  });
+  assert.deepEqual(parseArgs(['ssh', 'node-1', 'echo', '--no-reuse']), {
+    command: 'ssh',
+    nodeId: 'node-1',
+    remoteCommand: 'echo --no-reuse'
+  });
+  assert.deepEqual(parseArgs(['scp', '-p', '--no-reuse', 'node:///tmp/a', './b']), {
+    command: 'scp',
+    source: 'node:///tmp/a',
+    destination: './b',
+    preserve: true,
+    noReuse: true
+  });
+  assert.deepEqual(parseArgs(['scp', '--', '--no-reuse', 'node:///tmp/a']), {
+    command: 'scp',
+    source: '--no-reuse',
+    destination: 'node:///tmp/a',
+    preserve: false
+  });
+  assert.deepEqual(parseArgs(['computer', '--no-reuse', 'node-1', '.']), {
+    command: 'computer',
+    nodeId: 'node-1',
+    directory: '.',
+    noReuse: true
+  });
+  assert.throws(() => parseArgs(['nodes', '--no-reuse']), /Invalid command arguments/);
+});
+
 test('selects command help without consuming remote help flags or literal copy paths', () => {
   assert.deepEqual(parseArgs(['help']), { help: true });
   for (const command of ['nodes', 'ssh', 'scp', 'version']) {
@@ -144,6 +178,7 @@ test('shows offline bilingual help with the invoked alias or marctl subcommand o
         assert.equal(result.status, 0, `${alias}: ${result.stderr}`);
         assert.equal(result.stderr, '');
         assert.ok(result.stdout.includes(`${alias} [`), result.stdout);
+        if (command !== 'nodes') assert.match(result.stdout, /--no-reuse/u);
         assert.doesNotMatch(result.stdout, /\bmarctl (?:nodes|ssh|scp|version|help)\b/u);
         for (const other of ['marnodes', 'marssh', 'marscp'].filter((name) => name !== alias))
           assert.ok(!result.stdout.includes(other), result.stdout);
@@ -166,6 +201,16 @@ test('shows offline bilingual help with the invoked alias or marctl subcommand o
         assert.ok(!output.includes(alias), output);
       }
     }
+    let computer = '';
+    assert.equal(
+      await main(['computer', '--help'], {
+        env: { LC_ALL: locale, MAR_CTL_CONTEXT_REQUIRED: '1' },
+        stdout: { write: (value) => (computer += value) },
+        stderr: { write: (value) => assert.fail(value) }
+      }),
+      0
+    );
+    assert.match(computer, /--no-reuse/u);
     let output = '';
     assert.equal(
       await main(['help'], {

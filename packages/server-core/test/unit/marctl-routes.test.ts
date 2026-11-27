@@ -16,6 +16,79 @@ function createUserContext() {
 }
 
 describe('marctl execution-context authorization', () => {
+  it('opens Computer Use with the same marctl credentials and Node permission as SSH', async () => {
+    const { credentials, token } = createUserContext();
+    const actor = { userId: 1, sessionHash: 'a'.repeat(43) };
+    const source = {
+      type: 'execution',
+      sessionId: 'source-session',
+      executionId: 'execution'
+    } as const;
+    const scope = { nodeId: 'source-node', workspaceId: 'source-workspace' };
+    const execution = credentials.issue(actor, scope, source);
+    const app = Fastify();
+    const requestNode = vi.fn(async (_nodeId: string, operation: string) =>
+      operation === 'computer.use.open' ? { terminal: { id: 'computer-terminal' } } : {}
+    );
+    const canUseNode = vi.fn(async () => false);
+    const createTerminalTicket = vi.fn(() => ({ ticket: 'computer-ticket' }));
+    registerMarctlRoutes({
+      app,
+      userCredentials: credentials,
+      publicOrigin: 'http://localhost',
+      listNodes: async () => [
+        { id: 'desktop', connected: true, disabled: false, metadata: '{}', lastHeartbeatAt: null }
+      ],
+      canUseNode,
+      secrets: { resolve: async () => ({}) },
+      nodeControl: {
+        requestNode,
+        createTerminalTicket,
+        attachCliTerminal: vi.fn(),
+        attachWorkbench: vi.fn(),
+        closeTerminal: vi.fn()
+      }
+    });
+    const open = (key: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/marctl/computer',
+        headers: { authorization: `Bearer ${key}` },
+        payload: { nodeId: 'desktop' }
+      });
+    try {
+      expect((await open('invalid')).statusCode).toBe(401);
+      expect((await open(token)).statusCode).toBe(403);
+      expect(requestNode).not.toHaveBeenCalled();
+      canUseNode.mockResolvedValue(true);
+      const keys = [
+        token,
+        execution,
+        credentials.issue({ ...actor, scheduled: true }, scope, source)
+      ];
+      for (const key of keys) {
+        const user = await credentials.authenticate(`Bearer ${key}`);
+        const response = await open(key);
+        expect(response.statusCode).toBe(201);
+        expect(response.json()).toEqual({
+          terminalId: 'computer-terminal',
+          ticket: 'computer-ticket'
+        });
+        expect(requestNode).toHaveBeenLastCalledWith('desktop', 'computer.use.open', {}, user);
+        expect(createTerminalTicket).toHaveBeenLastCalledWith({
+          nodeId: 'desktop',
+          terminalId: 'computer-terminal',
+          user,
+          computer: true,
+          cli: true
+        });
+      }
+      expect(requestNode).toHaveBeenCalledTimes(keys.length);
+    } finally {
+      await app.close();
+    }
+  });
+
   it.each(['attach', 'attachLive'] as const)(
     'rejects deployment keys on the %s WebSocket without attaching a relay',
     async (method) => {
@@ -24,7 +97,7 @@ describe('marctl execution-context authorization', () => {
       const nodeControl = {
         requestNode: vi.fn(),
         createTerminalTicket: vi.fn(),
-        attachBrowserTerminal: vi.fn(),
+        attachCliTerminal: vi.fn(),
         attachWorkbench: vi.fn(),
         closeTerminal: vi.fn()
       };
@@ -53,7 +126,7 @@ describe('marctl execution-context authorization', () => {
           );
         }
         expect(nodeControl.attachWorkbench).not.toHaveBeenCalled();
-        expect(nodeControl.attachBrowserTerminal).not.toHaveBeenCalled();
+        expect(nodeControl.attachCliTerminal).not.toHaveBeenCalled();
         const socket = { close: vi.fn(), pause: vi.fn(), resume: vi.fn() };
         routes[method](
           socket as never,
@@ -61,7 +134,7 @@ describe('marctl execution-context authorization', () => {
         );
         await vi.waitFor(() =>
           expect(
-            method === 'attach' ? nodeControl.attachBrowserTerminal : nodeControl.attachWorkbench
+            method === 'attach' ? nodeControl.attachCliTerminal : nodeControl.attachWorkbench
           ).toHaveBeenCalledOnce()
         );
         expect(socket.close).not.toHaveBeenCalled();
@@ -95,7 +168,7 @@ describe('marctl execution-context authorization', () => {
       nodeControl: {
         requestNode,
         createTerminalTicket: vi.fn(),
-        attachBrowserTerminal: vi.fn(),
+        attachCliTerminal: vi.fn(),
         closeTerminal: vi.fn(),
         attachWorkbench: vi.fn()
       }
@@ -168,7 +241,7 @@ describe('marctl execution-context authorization', () => {
       nodeControl: {
         requestNode: vi.fn(),
         createTerminalTicket: vi.fn(() => ({ ticket: 'ticket' })),
-        attachBrowserTerminal: vi.fn(),
+        attachCliTerminal: vi.fn(),
         closeTerminal: vi.fn(),
         attachWorkbench: (socket, user) => relay.attach(socket, user)
       }
@@ -197,23 +270,20 @@ describe('marctl execution-context authorization', () => {
   it('requires user credentials for Node operations and removes deployment key endpoints', async () => {
     const { credentials, token } = createUserContext();
     const app = Fastify();
-    let supportsBinary = true;
     const requestNode = vi.fn(async (_nodeId: string, operation: string) =>
-      ['terminal.open', 'terminal.command.open'].includes(operation)
+      ['terminal.open', 'terminal.command.open', 'terminal.copy.open'].includes(operation)
         ? { terminal: { id: 'terminal-1' } }
         : operation === 'node.workbench.capabilities'
           ? {
               manifest: {
                 nodeGeneration: 'generation-1',
-                terminalDirect: { apiVersion: 1 },
-                binaryTerminal: supportsBinary
-              },
-              binaryTerminal: supportsBinary
+                terminalDirect: { apiVersion: 1 }
+              }
             }
           : { closed: true }
     );
     const createTerminalTicket = vi.fn(() => ({ ticket: 'ticket-1' }));
-    const attachBrowserTerminal = vi.fn();
+    const attachCliTerminal = vi.fn();
     const marctl = registerMarctlRoutes({
       app,
       userCredentials: credentials,
@@ -240,7 +310,7 @@ describe('marctl execution-context authorization', () => {
       nodeControl: {
         requestNode,
         createTerminalTicket,
-        attachBrowserTerminal,
+        attachCliTerminal,
         closeTerminal: vi.fn(),
         attachWorkbench: vi.fn()
       }
@@ -288,11 +358,9 @@ describe('marctl execution-context authorization', () => {
       });
       expect(manifest.json()).toEqual({
         deferredRelay: true,
-        binaryTerminal: true,
         manifest: {
           nodeGeneration: 'generation-1',
-          terminalDirect: { apiVersion: 1 },
-          binaryTerminal: true
+          terminalDirect: { apiVersion: 1 }
         }
       });
       const denied = await app.inject({
@@ -302,6 +370,48 @@ describe('marctl execution-context authorization', () => {
         payload: { nodeId: 'private-node', rows: 25, cols: 80 }
       });
       expect(denied.statusCode).toBe(403);
+      const copy = { mode: 'read', path: "/tmp/report 'quoted' 文档.bin" };
+      const openCopy = (payload: unknown, headers: Record<string, string> = auth) =>
+        app.inject({
+          method: 'POST',
+          url: '/api/marctl/terminals/copy',
+          headers,
+          payload: JSON.stringify(payload)
+        });
+      const expected = requestNode.mock.calls.length;
+      expect(
+        (await openCopy({ nodeId: 'node-1', copy }, { 'content-type': 'application/json' }))
+          .statusCode
+      ).toBe(401);
+      expect(
+        (
+          await openCopy(
+            { nodeId: 'private-node', copy },
+            { ...auth, 'content-type': 'application/json' }
+          )
+        ).statusCode
+      ).toBe(403);
+      for (const payload of [
+        { nodeId: 'node-1', copy: { ...copy, executable: '/bin/sh' } },
+        { nodeId: 'node-1', copy: { mode: 'write', path: copy.path } },
+        { nodeId: 'node-1', copy, command: 'echo ok' }
+      ])
+        expect(
+          (await openCopy(payload, { ...auth, 'content-type': 'application/json' })).statusCode
+        ).toBe(400);
+      expect(requestNode).toHaveBeenCalledTimes(expected);
+      const copyOpened = await openCopy(
+        { nodeId: 'node-1', copy },
+        { ...auth, 'content-type': 'application/json' }
+      );
+      expect(copyOpened.statusCode).toBe(201);
+      expect(copyOpened.json()).toEqual({ terminalId: 'terminal-1' });
+      expect(requestNode).toHaveBeenLastCalledWith(
+        'node-1',
+        'terminal.copy.open',
+        { copy },
+        { userId: 1, sessionHash: expect.any(String) }
+      );
       const opened = await app.inject({
         method: 'POST',
         url: '/api/marctl/terminals',
@@ -348,29 +458,30 @@ describe('marctl execution-context authorization', () => {
         },
         { userId: 1, sessionHash: expect.any(String) }
       );
-      supportsBinary = false;
       const existingOpens = requestNode.mock.calls.filter(
         ([, operation]) => operation === 'terminal.command.open'
       ).length;
-      const incompatible = await app.inject({
-        method: 'POST',
-        url: '/api/marctl/terminals',
-        headers: auth,
-        payload: { nodeId: 'node-1', rows: 25, cols: 80, command: 'copy', binary: true }
-      });
-      expect(incompatible.statusCode).toBe(409);
+      for (const extra of [{ binary: true }, { unexpected: true }]) {
+        const incompatible = await app.inject({
+          method: 'POST',
+          url: '/api/marctl/terminals',
+          headers: auth,
+          payload: { nodeId: 'node-1', rows: 25, cols: 80, command: 'copy', ...extra }
+        });
+        expect(incompatible.statusCode).toBe(400);
+        expect(incompatible.json().error.code).toBe('TERMINAL_OPEN_INVALID');
+      }
       expect(
         requestNode.mock.calls.filter(([, operation]) => operation === 'terminal.command.open')
       ).toHaveLength(existingOpens);
-      supportsBinary = true;
       const binary = await app.inject({
         method: 'POST',
         url: '/api/marctl/terminals',
         headers: auth,
-        payload: { nodeId: 'node-1', rows: 25, cols: 80, command: 'node -e "test"', binary: true }
+        payload: { nodeId: 'node-1', rows: 25, cols: 80, command: 'node -e "test"' }
       });
       expect(binary.statusCode).toBe(201);
-      expect(binary.json()).toEqual({ terminalId: 'terminal-1', binary: true });
+      expect(binary.json()).toEqual({ terminalId: 'terminal-1' });
       expect(requestNode).toHaveBeenCalledWith(
         'node-1',
         'terminal.command.open',
@@ -378,7 +489,6 @@ describe('marctl execution-context authorization', () => {
           rows: 25,
           cols: 80,
           command: 'node -e "test"',
-          binary: true,
           secretEnvironment: {
             MAR_CTL_CONTEXT_REQUIRED: '1',
             MAR_USERNAME: 'admin',
@@ -450,10 +560,11 @@ describe('marctl execution-context authorization', () => {
       const socket = { close: vi.fn() };
       marctl.attach(socket as never, { headers: auth, query: { ticket: 'ticket-1' } } as never);
       await vi.waitFor(() =>
-        expect(attachBrowserTerminal).toHaveBeenCalledWith(
+        expect(attachCliTerminal).toHaveBeenCalledWith(
           socket,
           'ticket-1',
-          expect.objectContaining({ userId: 1 })
+          expect.objectContaining({ userId: 1 }),
+          expect.any(Number)
         )
       );
       const deferredSocket = { close: vi.fn() };
@@ -465,10 +576,11 @@ describe('marctl execution-context authorization', () => {
         } as never
       );
       await vi.waitFor(() =>
-        expect(attachBrowserTerminal).toHaveBeenCalledWith(
+        expect(attachCliTerminal).toHaveBeenCalledWith(
           deferredSocket,
           { ticket: 'ticket-1', deferred: true },
-          expect.objectContaining({ userId: 1 })
+          expect.objectContaining({ userId: 1 }),
+          expect.any(Number)
         )
       );
     } finally {

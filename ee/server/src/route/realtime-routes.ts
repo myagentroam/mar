@@ -10,8 +10,9 @@ import { type SessionLookup } from '@myagentroam/server-core/session';
 import type { NodeControl } from '../node-control.js';
 import type { WebSocket } from 'ws';
 import type { FastifyRequest } from 'fastify';
+import { FILE_RELAY_MAX_FRAME_BYTES } from '@myagentroam/protocol';
 import { DesktopWebSocketDispatcher } from '../service/desktop-websocket-dispatcher.js';
-import { BROWSER_CONTROL_MAX_BYTES } from '@myagentroam/protocol';
+import { BROWSER_CONTROL_MAX_BYTES, MAX_TERMINAL_MUX_BYTES } from '@myagentroam/protocol';
 import { registerBrowserFileRoutes } from './browser-file-routes.js';
 
 export function registerRealtimeRoutes(input: {
@@ -25,26 +26,44 @@ export function registerRealtimeRoutes(input: {
     request: FastifyRequest<{ Querystring: { ticket?: string } }>
   ) => void;
   readonly attachMarctlLive?: (socket: WebSocket, request: FastifyRequest) => void;
+  readonly attachMarctlMux?: (
+    socket: WebSocket,
+    request: FastifyRequest<{ Querystring: { node?: string } }>
+  ) => void;
 }): void {
   const { app, database, nodeControl, publicOrigin } = input;
   app.register(async (routes) => {
+    const perMessageDeflate = {
+      clientNoContextTakeover: true,
+      serverNoContextTakeover: true,
+      threshold: 1024,
+      zlibDeflateOptions: { level: 3 }
+    };
     await routes.register(websocket, {
-      options: {
-        perMessageDeflate: {
-          clientNoContextTakeover: true,
-          serverNoContextTakeover: true,
-          threshold: 1024,
-          zlibDeflateOptions: { level: 3 }
-        }
-      }
+      options: { perMessageDeflate }
     });
     const desktopWebSockets = new DesktopWebSocketDispatcher(routes.websocketServer);
+    const fileWebSockets = new DesktopWebSocketDispatcher(
+      routes.websocketServer,
+      FILE_RELAY_MAX_FRAME_BYTES,
+      perMessageDeflate
+    );
     const browserWebSockets = new DesktopWebSocketDispatcher(
       routes.websocketServer,
       BROWSER_CONTROL_MAX_BYTES
     );
+    const terminalMuxWebSockets =
+      input.attachMarctlMux === undefined
+        ? undefined
+        : new DesktopWebSocketDispatcher(
+            routes.websocketServer,
+            MAX_TERMINAL_MUX_BYTES,
+            perMessageDeflate
+          );
     routes.addHook('preClose', async () => {
+      await terminalMuxWebSockets?.close();
       await browserWebSockets.close();
+      await fileWebSockets.close();
       await desktopWebSockets.close();
     });
     const desktopWire = async (request: FastifyRequest) => desktopWebSockets.mark(request.raw);
@@ -60,6 +79,14 @@ export function registerRealtimeRoutes(input: {
     routes.get('/api/node/connect', { websocket: true }, (socket) => nodeControl.attach(socket));
     routes.get('/api/node/terminal-connect', { websocket: true }, (socket) =>
       nodeControl.attachTerminal(socket)
+    );
+    routes.get(
+      '/api/node/file-connect',
+      {
+        websocket: true,
+        preValidation: async (request) => fileWebSockets.mark(request.raw)
+      },
+      (socket) => nodeControl.attachFileRelay(socket)
     );
     routes.get(
       '/api/node/browser-relay',
@@ -125,6 +152,15 @@ export function registerRealtimeRoutes(input: {
     if (input.attachMarctlLive !== undefined)
       routes.get('/api/marctl/live', { websocket: true }, (socket, request) =>
         input.attachMarctlLive!(socket, request)
+      );
+    if (input.attachMarctlMux !== undefined)
+      routes.get<{ Querystring: { node?: string } }>(
+        '/api/marctl/terminal-mux',
+        {
+          websocket: true,
+          preValidation: async (request) => terminalMuxWebSockets?.mark(request.raw)
+        },
+        (socket, request) => input.attachMarctlMux!(socket, request)
       );
   });
 }

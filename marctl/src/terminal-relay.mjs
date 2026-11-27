@@ -3,19 +3,21 @@ import { MarctlError } from './errors.mjs';
 import { TerminalRelaySender } from './terminal-relay-sender.mjs';
 import { parseFrame } from './terminal-frame.mjs';
 import { DirectFallbackError } from './direct-errors.mjs';
+import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 
 export async function openRelayTransport({
   client,
   WebSocketClass,
   nodeId,
   terminalId,
+  ticket: grantedTicket,
   translate,
   connectionTimeoutMs,
   signal
 }) {
-  const ticket = await client.createAttachTicket({ nodeId, terminalId });
+  const ticket = grantedTicket ?? (await client.createAttachTicket({ nodeId, terminalId }));
   if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
-  const socket = client.openTerminalWebSocket(WebSocketClass, { terminalId, ticket });
+  const socket = client.openTerminalWebSocket(WebSocketClass, { nodeId, terminalId, ticket });
   const transport = new BufferedRelayTransport({
     socket,
     terminalId,
@@ -45,6 +47,7 @@ export async function prepareRelayTransport({
   if (onPrepared) await onPrepared();
   if (signal?.aborted) throw new MarctlError(translate('errors.terminalAttachConnection'));
   const socket = client.openTerminalWebSocket(WebSocketClass, {
+    nodeId,
     terminalId,
     ticket,
     deferred: true
@@ -70,10 +73,11 @@ export async function prepareRelayTransport({
       }
       reject(new MarctlError(translate('errors.terminalAttachConnection')));
     };
-    const onMessage = (raw) => {
+    const onMessage = (raw, isBinary) => {
       let frame;
       try {
-        frame = JSON.parse(String(raw));
+        if (!isBinary) return fail();
+        frame = decodeTerminalMessage(raw);
       } catch {
         return fail();
       }
@@ -104,7 +108,7 @@ export async function prepareRelayTransport({
         connectionTimeoutMs
       });
       try {
-        socket.send(JSON.stringify({ type: 'activate', terminalId }));
+        socket.send(encodeTerminalMessage({ type: 'activate', terminalId }));
         await waitForAttachment(transport, signal);
         return transport;
       } catch (error) {
@@ -250,9 +254,10 @@ class BufferedRelayTransport extends EventEmitter {
     return this.#socket.readyState;
   }
 
-  send(value) {
+  send(frame) {
     if (this.#closed) throw new Error('TERMINAL_CONNECTION_LOST');
-    if (JSON.parse(value).type === 'input') return this.#sender.send(value);
+    const value = encodeTerminalMessage(frame);
+    if (frame.type === 'input' || frame.type === 'eof') return this.#sender.send(value);
     this.#socket.send(value);
   }
 

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
+import { terminalCopySchema } from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
 import { sendError } from './http-errors.js';
 
@@ -50,8 +51,22 @@ export function registerMarctlRoutes(
         readonly terminalId: string;
         readonly user: UserNodeAuthorization;
         readonly afterSequence?: number;
+        readonly computer?: boolean;
+        readonly cli?: boolean;
       }): { readonly ticket: string };
-      attachBrowserTerminal(socket: WebSocket, ticket: unknown, user: UserNodeAuthorization): void;
+      attachCliTerminal(
+        socket: WebSocket,
+        ticket: unknown,
+        user: UserNodeAuthorization,
+        expiresAt: number
+      ): void;
+      attachCliMux?(
+        socket: WebSocket,
+        nodeId: string,
+        user: UserNodeAuthorization,
+        expiresAt: number,
+        authorize: () => Promise<UserNodeAuthorization | undefined>
+      ): void;
       closeTerminal(nodeId: string, terminalId: string): void;
       attachWorkbench(socket: WebSocket, user: UserNodeAuthorization): void;
     };
@@ -63,6 +78,7 @@ export function registerMarctlRoutes(
     request: FastifyRequest<{ Querystring: { ticket?: string; deferred?: string } }>
   ): void;
   attachLive(socket: WebSocket, request: FastifyRequest): void;
+  attachMux(socket: WebSocket, request: FastifyRequest<{ Querystring: { node?: string } }>): void;
 } {
   const { app, userCredentials, nodeControl, publicOrigin } = input;
   const onError = input.onError ?? defaultDatabaseError;
@@ -80,6 +96,74 @@ export function registerMarctlRoutes(
   const authorizedNode = async (user: UserNodeAuthorization, nodeId: string) =>
     (await input.canUseNode(user.userId, nodeId)) &&
     (await input.listNodes()).some((node) => node.id === nodeId && !node.disabled);
+
+  // A separate route makes unsupported Servers fail instead of opening an interactive shell.
+  app.post<{ Body: { nodeId?: unknown; copy?: unknown } }>(
+    '/api/marctl/terminals/copy',
+    async (request, reply) => {
+      try {
+        const user = await authenticated(request, reply);
+        if (user === undefined) return;
+        const { nodeId, copy } = request.body ?? {};
+        const parsed = terminalCopySchema.safeParse(copy);
+        if (
+          typeof nodeId !== 'string' ||
+          nodeId.length === 0 ||
+          nodeId.length > 128 ||
+          !parsed.success ||
+          Object.keys(request.body ?? {}).some((key) => key !== 'nodeId' && key !== 'copy')
+        )
+          return sendError(reply, 400, 'SCP_OPEN_INVALID');
+        if (!(await authorizedNode(user, nodeId)))
+          return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+        const opened = await nodeControl.requestNode(
+          nodeId,
+          'terminal.copy.open',
+          { copy: parsed.data },
+          user
+        );
+        const terminalId = (opened as { terminal?: { id?: unknown } } | null)?.terminal?.id;
+        if (typeof terminalId !== 'string' || terminalId.length === 0)
+          throw new Error('TERMINAL_OPEN_RESPONSE_INVALID');
+        return reply.code(201).send({ terminalId });
+      } catch (error) {
+        return onError(reply, error);
+      }
+    }
+  );
+
+  app.post<{ Body: { nodeId?: unknown } }>('/api/marctl/computer', async (request, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    let terminalId: string | undefined;
+    let user: UserNodeAuthorization | undefined;
+    const nodeId = request.body?.nodeId;
+    try {
+      user = await authenticated(request, reply);
+      if (user === undefined) return;
+      if (typeof nodeId !== 'string' || nodeId.length === 0 || nodeId.length > 128)
+        return sendError(reply, 400, 'NODE_ID_REQUIRED');
+      if (!(await authorizedNode(user, nodeId)))
+        return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
+      const opened = await nodeControl.requestNode(nodeId, 'computer.use.open', {}, user);
+      const terminal = (opened as { terminal?: { id?: unknown } } | null)?.terminal;
+      if (typeof terminal?.id !== 'string') throw new Error('TERMINAL_OPEN_RESPONSE_INVALID');
+      terminalId = terminal.id;
+      const { ticket } = nodeControl.createTerminalTicket({
+        nodeId,
+        terminalId,
+        user,
+        computer: true,
+        cli: true
+      });
+      return reply.code(201).send({ terminalId, ticket });
+    } catch (error) {
+      if (terminalId !== undefined && user !== undefined && typeof nodeId === 'string')
+        await nodeControl
+          .requestNode(nodeId, 'terminal.close', { terminalId }, user)
+          .catch(() => undefined);
+      return onError(reply, error);
+    }
+  });
 
   registerMarctlSessionRoutes({
     ...input,
@@ -135,12 +219,13 @@ export function registerMarctlRoutes(
     }
   );
   app.post<{
-    Body: { nodeId?: unknown; rows?: unknown; cols?: unknown; command?: unknown; binary?: unknown };
+    Body: { nodeId?: unknown; rows?: unknown; cols?: unknown; command?: unknown };
   }>('/api/marctl/terminals', async (request, reply) => {
     try {
       const user = await authenticated(request, reply);
       if (user === undefined) return;
-      const { nodeId, rows, cols, command, binary } = request.body ?? {};
+      const body = request.body ?? {};
+      const { nodeId, rows, cols, command } = body;
       if (
         typeof nodeId !== 'string' ||
         nodeId.length === 0 ||
@@ -152,7 +237,7 @@ export function registerMarctlRoutes(
         !Number.isInteger(cols) ||
         cols < 1 ||
         cols > 1000 ||
-        (binary !== undefined && (binary !== true || command === undefined)) ||
+        Object.keys(body).some((key) => !['nodeId', 'rows', 'cols', 'command'].includes(key)) ||
         (command !== undefined &&
           (typeof command !== 'string' ||
             command.trim().length === 0 ||
@@ -162,21 +247,6 @@ export function registerMarctlRoutes(
         return sendError(reply, 400, 'TERMINAL_OPEN_INVALID');
       if (!(await authorizedNode(user, nodeId)))
         return sendError(reply, 403, 'RESOURCE_ACCESS_DENIED');
-      if (binary === true) {
-        const capabilities = await nodeControl.requestNode(
-          nodeId,
-          'node.workbench.capabilities',
-          {},
-          user
-        );
-        if (
-          capabilities === null ||
-          typeof capabilities !== 'object' ||
-          !('binaryTerminal' in capabilities) ||
-          capabilities.binaryTerminal !== true
-        )
-          return sendError(reply, 409, 'TERMINAL_BINARY_UNAVAILABLE');
-      }
       const result = await nodeControl.requestNode(
         nodeId,
         command === undefined ? 'terminal.open' : 'terminal.command.open',
@@ -184,7 +254,6 @@ export function registerMarctlRoutes(
           rows,
           cols,
           ...(command === undefined ? {} : { command }),
-          ...(binary === true ? { binary: true } : {}),
           secretEnvironment: {
             ...(await input.secrets.resolve(user.userId, nodeId)),
             ...(await userCredentials.environment(
@@ -206,7 +275,7 @@ export function registerMarctlRoutes(
       if (typeof terminalId !== 'string' || terminalId.length === 0)
         throw new Error('TERMINAL_OPEN_RESPONSE_INVALID');
       request.log.info({ event: 'marctl.terminal.open', nodeId }, 'marctl terminal opened');
-      return reply.code(201).send({ terminalId, ...(binary === true ? { binary: true } : {}) });
+      return reply.code(201).send({ terminalId });
     } catch (error) {
       return onError(reply, error);
     }
@@ -236,6 +305,7 @@ export function registerMarctlRoutes(
           nodeId,
           terminalId: request.params.terminalId,
           user,
+          cli: true,
           ...(afterSequence === undefined ? {} : { afterSequence: afterSequence as number })
         })
       );
@@ -269,6 +339,34 @@ export function registerMarctlRoutes(
     }
   );
   return {
+    attachMux(socket, request) {
+      const nodeId = request.query.node;
+      if (
+        !validOrigin(request) ||
+        typeof nodeId !== 'string' ||
+        !nodeId ||
+        nodeId.length > 128 ||
+        nodeControl.attachCliMux === undefined
+      ) {
+        socket.close(1008, 'TERMINAL_MUX_INVALID');
+        return;
+      }
+      const header = request.headers.authorization;
+      socket.pause();
+      void userCredentials
+        .authenticateContext(header)
+        .then(async (context) => {
+          if (context === undefined || !(await authorizedNode(context.user, nodeId))) {
+            socket.close(1008, 'UNAUTHENTICATED');
+            return;
+          }
+          nodeControl.attachCliMux?.(socket, nodeId, context.user, context.expiresAt, () =>
+            authenticatedSocket(header)
+          );
+        })
+        .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'))
+        .finally(() => socket.resume());
+    },
     attachLive(socket, request) {
       if (!validOrigin(request)) {
         socket.close(1008, 'ORIGIN_NOT_ALLOWED');
@@ -289,16 +387,18 @@ export function registerMarctlRoutes(
         socket.close(1008, 'ORIGIN_NOT_ALLOWED');
         return;
       }
-      void authenticatedSocket(request.headers.authorization)
-        .then((user) => {
-          if (user === undefined) socket.close(1008, 'UNAUTHENTICATED');
+      void userCredentials
+        .authenticateContext(request.headers.authorization)
+        .then((context) => {
+          if (context === undefined) socket.close(1008, 'UNAUTHENTICATED');
           else
-            nodeControl.attachBrowserTerminal(
+            nodeControl.attachCliTerminal(
               socket,
               request.query.deferred === '1'
                 ? { ticket: request.query.ticket, deferred: true }
                 : request.query.ticket,
-              user
+              context.user,
+              context.expiresAt
             );
         })
         .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'));

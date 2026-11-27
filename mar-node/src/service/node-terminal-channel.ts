@@ -1,5 +1,10 @@
 import WebSocket from 'ws';
-import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
+import {
+  decodeTerminalMessage,
+  encodeTerminalMessage,
+  terminalDataFrameSchema,
+  type TerminalDataFrame
+} from '@myagentroam/protocol';
 import type { NodeConfig } from '../config.js';
 import type { TerminalManager } from '../terminal.js';
 import { nodeTerminalConnectEndpoint } from '../connection/endpoints.js';
@@ -16,6 +21,7 @@ interface NodeTerminalChannelOptions {
   readonly manager: TerminalManager;
 }
 
+/** Owns the Node relay socket and its attachment mappings, not Terminal processes or history. */
 export class NodeTerminalChannel {
   private socket: WebSocket | undefined;
   private reconnectTimer: NodeJS.Timeout | undefined;
@@ -45,7 +51,7 @@ export class NodeTerminalChannel {
       this.send({ type: 'authenticate', nodeId: config.nodeId, credential: config.credential })
     );
     socket.on('message', (raw, isBinary) =>
-      isBinary ? socket.close(4002, 'TERMINAL_MESSAGE_INVALID') : this.handle(raw.toString())
+      isBinary ? this.handle(raw) : socket.close(4002, 'TERMINAL_MESSAGE_INVALID')
     );
     socket.once('close', () => {
       if (this.socket !== socket) return;
@@ -83,10 +89,10 @@ export class NodeTerminalChannel {
     }, this.options.reconnectDelay(this.attempts++));
   }
 
-  private handle(raw: string): void {
+  private handle(raw: unknown): void {
     let message: unknown;
     try {
-      message = JSON.parse(raw);
+      message = decodeTerminalMessage(raw);
     } catch {
       this.invalid();
       return;
@@ -109,10 +115,10 @@ export class NodeTerminalChannel {
         typeof message.ticket !== 'string' ||
         typeof message.terminalId !== 'string' ||
         typeof message.attachmentId !== 'string' ||
-        !Number.isSafeInteger(message.latestSequence) ||
-        (message.latestSequence as number) < 0 ||
+        !Number.isSafeInteger(message.afterSequence) ||
+        (message.afterSequence as number) < 0 ||
         Object.keys(message).some(
-          (key) => !['type', 'ticket', 'terminalId', 'attachmentId', 'latestSequence'].includes(key)
+          (key) => !['type', 'ticket', 'terminalId', 'attachmentId', 'afterSequence'].includes(key)
         )
       ) {
         this.invalid();
@@ -125,7 +131,7 @@ export class NodeTerminalChannel {
       const synchronization = this.options.manager.synchronizeAttachment({
         terminalId: message.terminalId,
         attachmentId: message.attachmentId,
-        afterSequence: message.latestSequence
+        afterSequence: message.afterSequence
       });
       if (!synchronization.active) {
         this.state.attachments.delete(message.ticket);
@@ -177,7 +183,7 @@ export class NodeTerminalChannel {
       }
       const parsed = terminalDataFrameSchema.safeParse(message.frame);
       const attachment = this.state.attachments.get(message.ticket);
-      if (!parsed.success || !['input', 'resize', 'close'].includes(parsed.data.type)) {
+      if (!parsed.success || !['input', 'eof', 'resize', 'close'].includes(parsed.data.type)) {
         this.invalid();
         return;
       }
@@ -212,7 +218,7 @@ export class NodeTerminalChannel {
       onPendingChange: (keys) => this.updatePausedTerminals(keys)
     });
     const attachment = this.state.attachments.get(ticket);
-    void this.sender.send(JSON.stringify({ type: 'frame', ticket, frame }), ticket).then(
+    void this.sender.send(encodeTerminalMessage({ type: 'frame', ticket, frame }), ticket).then(
       () => {
         if (frame.type === 'exit' && this.state.attachments.get(ticket) === attachment)
           this.state.attachments.delete(ticket);
@@ -255,7 +261,7 @@ export class NodeTerminalChannel {
     if (this.state.attachments.get(ticket) !== attachment) return;
     this.state.attachments.delete(ticket);
     this.sender?.cancel(ticket);
-    this.options.manager.detach(attachment.attachmentId);
+    this.options.manager.releaseRelayAttachment(attachment.attachmentId);
     this.send({
       type: 'frame',
       ticket,
@@ -266,7 +272,7 @@ export class NodeTerminalChannel {
     const socket = this.socket;
     if (socket === undefined || socket.readyState !== socket.OPEN) return;
     try {
-      socket.send(JSON.stringify(message));
+      socket.send(encodeTerminalMessage(message));
     } catch {
       socket.close(1011, 'TERMINAL_SEND_FAILED');
     }
@@ -276,10 +282,11 @@ export class NodeTerminalChannel {
   }
 
   private releaseAttachments(): void {
-    for (const attachment of this.state.attachments.values())
-      this.options.manager.detach(attachment.attachmentId);
+    const attachments = [...this.state.attachments.values()];
     this.state.attachments.clear();
     this.sender?.close();
     this.sender = undefined;
+    for (const attachment of attachments)
+      this.options.manager.releaseRelayAttachment(attachment.attachmentId);
   }
 }

@@ -27,11 +27,11 @@ import {
   type BrowserContext,
   type Page
 } from '@playwright/test';
-import type {
-  ConversationFileProjection,
-  HostedConversationFileReadResult,
-  HostedConversationFiles,
-  HostedConversationSnapshot
+import {
+  decodeFileRelayFrame,
+  type ConversationFileProjection,
+  type HostedConversationFiles,
+  type HostedConversationSnapshot
 } from '../../packages/protocol/src/index.js';
 import { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
@@ -178,9 +178,7 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
     );
 
     node = startNodeConnector(configPath);
-    const connectedNode = await waitForHostedNode(admin.context);
-    expect(connectedNode.conversationHosting).toMatchObject({ state: 'AVAILABLE' });
-    const nodeId = connectedNode.id;
+    const nodeId = await waitForHostedNode(admin.context);
 
     const workspaceResult = await writeJson<{ workspace: { id: string } }>(
       admin,
@@ -522,18 +520,20 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       source: 'AGENT',
       size: previousImageBytes.length
     });
-    const projectedImageRead = await readJson<HostedConversationFileReadResult>(
-      admin.context,
+    const projectedImageResponse = await admin.context.get(
       `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}/files/${projectedImage.id}?offset=0&limit=1024`
     );
-    expect(projectedImageRead).toMatchObject({
+    expect(projectedImageResponse.status()).toBe(200);
+    expect(projectedImageResponse.headers()['content-type']).toBe('application/octet-stream');
+    const projectedImageRead = decodeFileRelayFrame(await projectedImageResponse.body());
+    expect(projectedImageRead.metadata).toMatchObject({
+      type: 'file.read',
       file: { id: projectedImage.id },
-      encoding: 'base64',
       offset: 0,
       nextOffset: null,
       eof: true
     });
-    expect(Buffer.from(projectedImageRead.content, 'base64')).toEqual(previousImageBytes);
+    expect(Buffer.from(projectedImageRead.payload)).toEqual(previousImageBytes);
     const projectedImagePreview = await admin.context.get(
       `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}/files/${projectedImage.id}/content?revision=${projectedImage.updatedAt}-${projectedImage.size}&maxWidth=320&maxHeight=240`
     );
@@ -649,8 +649,7 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       name: 'hosted-member-image.png',
       mime: 'image/png'
     });
-    const reconnectedNode = await waitForHostedNode(admin.context, nodeId);
-    expect(reconnectedNode.conversationHosting).toMatchObject({ state: 'AVAILABLE' });
+    await waitForHostedNode(admin.context, nodeId);
     await expectOwnConversation(admin.context, nodeId, adminConversation.id, memberConversation.id);
     await expectOwnConversation(
       member.context,
@@ -998,6 +997,7 @@ function startNodeConnector(configPath: string, hostedImageSeed?: HostedImageSee
         ...unavailableCapabilities(),
         platform: 'linux',
         architecture: 'x64',
+        marAgent: { available: true },
       },
       conversationHostingProbe: async () => ({ available: true, version: '0.11.1' }),
       reconnect: false
@@ -1268,13 +1268,14 @@ function record(value: unknown): Record<string, unknown> | undefined {
 async function waitForHostedNode(
   context: APIRequestContext,
   expectedNodeId?: string
-): Promise<{ id: string; conversationHosting: unknown }> {
-  let selected: { id: string; conversationHosting: unknown } | undefined;
+): Promise<string> {
+  let selected: string | undefined;
+  // Registration can appear before the first capability report from initialized hosting storage.
   await expect
     .poll(
       async () => {
         const response = await context.get('/api/nodes');
-        if (!response.ok()) return false;
+        if (!response.ok()) return undefined;
         const body = (await response.json()) as {
           nodes?: Array<{
             id?: string;
@@ -1287,16 +1288,14 @@ async function waitForHostedNode(
             candidate.connected === true &&
             (expectedNodeId === undefined || candidate.id === expectedNodeId)
         );
-        if (typeof node?.id !== 'string') return false;
-        selected = {
-          id: node.id,
-          conversationHosting: node.capabilities?.conversationHosting
-        };
-        return true;
+        if (typeof node?.id !== 'string') return undefined;
+        const hosting = node.capabilities?.conversationHosting;
+        if (hosting?.state === 'AVAILABLE') selected = node.id;
+        return hosting;
       },
       { timeout: 30_000 }
     )
-    .toBe(true);
+    .toMatchObject({ state: 'AVAILABLE' });
   if (selected === undefined) throw new Error('HOSTED_NODE_NOT_CONNECTED');
   return selected;
 }

@@ -37,6 +37,9 @@ export class NodeIdentityControl {
   protected connectionFeatures(): Record<string, unknown> {
     return {};
   }
+  protected capabilityAckPayload(_socket: WebSocket): Record<string, unknown> {
+    return { type: 'capabilities' };
+  }
   protected onNodeConnected(nodeId: string, replaced: boolean): void {
     void nodeId;
     void replaced;
@@ -295,7 +298,7 @@ export class NodeIdentityControl {
             if (this.sockets.get(currentNodeId) === socket) {
               await this.onNodeCapabilities(currentNodeId, capabilities);
               if (this.sockets.get(currentNodeId) === socket)
-                this.send(socket, 'ack', { type: 'capabilities' }, envelope.id);
+                this.send(socket, 'ack', this.capabilityAckPayload(socket), envelope.id);
             }
           }
         });

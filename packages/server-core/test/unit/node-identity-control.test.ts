@@ -78,7 +78,7 @@ describe('public Node identity connection lifecycle', () => {
         expect(control.sendAuthenticatedNode('node-1', 'workbench.request', {})).toBe(admitted);
         if (admitted)
           expect(JSON.parse(socket.send.mock.calls.at(-1)![0])).toMatchObject({
-            version: 3,
+            version: 4,
             type: 'workbench.request'
           });
       } finally {
@@ -87,7 +87,7 @@ describe('public Node identity connection lifecycle', () => {
     }
   );
 
-  it('serializes a previous connection metadata write with replacement authentication and v3 capabilities', async () => {
+  it('serializes a previous connection metadata write with replacement authentication and current capabilities', async () => {
     const { control, store, attach } = fixture();
     let release!: () => void;
     let started!: () => void;
@@ -111,7 +111,7 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 3,
+          version: 4,
           id: 'old-auth',
           type: 'authenticate',
           payload: { nodeId: 'node-1', credential: 'fixture' }
@@ -121,7 +121,7 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 3,
+          version: 4,
           id: 'old-cap',
           type: 'capabilities',
           payload: {
@@ -237,7 +237,7 @@ describe('public Node identity connection lifecycle', () => {
     expect(control.isNodeConnected('node-2')).toBe(false);
   });
 
-  it.each([2, 4])(
+  it.each([3, 5])(
     'rejects wire v%i before authenticating or updating metadata',
     async (version) => {
       const { control, store, attach } = fixture();
@@ -341,8 +341,7 @@ describe('public Node identity connection lifecycle', () => {
         supportsControl: true,
         supportsMultiDisplay: true,
         supportsUnicodePaste: true,
-        transports: ['DIRECT', 'RELAY'],
-
+        transports: ['DIRECT', 'RELAY']
       };
       socket.receive('capabilities', {
         platform: 'linux',
@@ -415,7 +414,7 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 3,
+          version: 4,
           id: 'older-node-auth',
           type: 'authenticate',
           payload: { nodeId: 'node-1', credential: 'fixture' }
@@ -423,7 +422,7 @@ describe('public Node identity connection lifecycle', () => {
       );
       await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
       expect(JSON.parse(old.send.mock.calls[0]![0])).toMatchObject({
-        version: 3,
+        version: 4,
         type: 'authenticated',
         replyTo: 'older-node-auth'
       });

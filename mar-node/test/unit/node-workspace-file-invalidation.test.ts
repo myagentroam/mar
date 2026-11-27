@@ -351,7 +351,7 @@ async function connectorFixture() {
       await operation('workspace.files.upload.chunk', {
         uploadId,
         offset: 0,
-        dataBase64: Buffer.from(payload).toString('base64')
+        bytes: Buffer.from(payload)
       });
     return uploadId;
   };

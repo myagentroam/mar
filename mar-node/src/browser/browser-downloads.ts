@@ -204,7 +204,7 @@ export class BrowserDownloads {
       try {
         const { bytesRead } = await handle.read(content, 0, content.length, command.offset);
         return {
-          contentBase64: content.subarray(0, bytesRead).toString('base64'),
+          bytes: content.subarray(0, bytesRead),
           offset: command.offset
         };
       } finally {

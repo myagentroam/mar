@@ -3,8 +3,10 @@ import {
   access,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile
@@ -27,6 +29,7 @@ import {
   listWorkspaceDirectories,
   listWorkspaceFiles,
   normalizeFilePreviewPath,
+  readAbsoluteFileContentRange,
   readAbsoluteTextFile,
   readWorkspaceFileContentRange,
   readWorkspaceTextFile
@@ -39,6 +42,11 @@ import {
   systemdUnit,
   windowsServiceDefinition
 } from '../../src/service.js';
+
+vi.mock(import('node:fs/promises'), async (importOriginal) => {
+  const filesystem = await importOriginal();
+  return { ...filesystem, open: vi.fn(filesystem.open) };
+});
 
 const directories: string[] = [];
 const execFile = promisify(execFileCallback);
@@ -325,7 +333,7 @@ describe('Node path and reconnection safety', () => {
       size: 3,
       sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/u),
       offset: 1,
-      contentBase64: 'AQ==',
+      bytes: Buffer.from([1]),
       nextOffset: 2
     });
     await expect(readWorkspaceFileContentRange(root, 'binary.bin', 3, 1)).resolves.toEqual({
@@ -333,10 +341,41 @@ describe('Node path and reconnection safety', () => {
       size: 3,
       sourceRevision: firstRange.sourceRevision,
       offset: 3,
-      contentBase64: '',
+      bytes: Buffer.alloc(0),
       nextOffset: null
     });
   });
+
+  it.each(['workspace-relative', 'absolute'] as const)(
+    'reports the opened %s file revision after a same-size replacement',
+    async (kind) => {
+      const root = await temporaryDirectory();
+      const path = join(root, 'content.bin');
+      const replacement = join(root, 'replacement.bin');
+      await writeFile(path, Buffer.of(1, 2));
+      await writeFile(replacement, Buffer.of(3, 4));
+      const read = () =>
+        kind === 'absolute'
+          ? readAbsoluteFileContentRange(path, 0, 1)
+          : readWorkspaceFileContentRange(root, 'content.bin', 0, 1);
+      const first = await read();
+      const openFile = vi.mocked(open);
+      const actualOpen = openFile.getMockImplementation()!;
+      openFile.mockImplementationOnce(async (...args) => {
+        await rename(replacement, path);
+        return actualOpen(...args);
+      });
+      try {
+        const current = await read();
+        expect(current.size).toBe(first.size);
+        expect(current.bytes).toEqual(Buffer.of(3));
+        expect(current.sourceRevision).not.toBe(first.sourceRevision);
+        expect(current.sourceRevision).toBe((await read()).sourceRevision);
+      } finally {
+        openFile.mockReset();
+      }
+    }
+  );
 
   it('sorts quick-open entries by fuzzy score and honors VS Code exclude', async () => {
     const root = await temporaryDirectory();

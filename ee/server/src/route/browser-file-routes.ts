@@ -1,4 +1,3 @@
-import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
@@ -15,10 +14,29 @@ import {
   safePublicError,
   sendError
 } from '@myagentroam/server-core/http-errors';
-import { fileContentChunks } from '@myagentroam/server-core/file-content-stream';
+import { domainErrorStatus } from '@myagentroam/server-core/domain-errors';
+import {
+  openFileContentStream,
+  registerFileChunkParser,
+  sendFileContentHead
+} from '@myagentroam/server-core/file-content-stream';
 import type { NodeControl } from '../node-control.js';
 
 const target = z.object({ connectionId: z.string().min(1).max(512) });
+const chunkNumber = z
+  .string()
+  .regex(/^\d{1,16}$/u)
+  .transform(Number)
+  .pipe(z.number().int().nonnegative().safe());
+const uploadChunk = target
+  .extend({
+    attachmentId: z.string().uuid(),
+    chooserId: z.string().uuid(),
+    transferId: z.string().uuid(),
+    index: chunkNumber,
+    offset: chunkNumber
+  })
+  .strict();
 const downloadTarget = target.extend({ attachmentId: z.string().uuid() });
 const listTarget = downloadTarget.extend({
   offset: z.coerce.number().int().nonnegative().safe(),
@@ -34,6 +52,7 @@ export function registerBrowserFileRoutes(
   origin: string | undefined,
   node: Pick<NodeControl, 'uploadBrowserFile' | 'downloadBrowserFile' | 'openBrowserDownload'>
 ): void {
+  registerFileChunkParser(routes);
   function session(request: FastifyRequest, reply: FastifyReply, write: boolean) {
     if (write && !isAllowedOrigin(request, origin)) {
       void sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
@@ -55,7 +74,22 @@ export function registerBrowserFileRoutes(
       const user = session(request, reply, true);
       if (!user) return;
       const query = target.safeParse(request.query);
-      const parsed = browserUploadSchema.safeParse(request.body);
+      const chunk = Buffer.isBuffer(request.body)
+        ? uploadChunk.safeParse(request.query)
+        : undefined;
+      const parsed = chunk?.success
+        ? browserUploadSchema.safeParse({
+            attachmentId: chunk.data.attachmentId,
+            chooserId: chunk.data.chooserId,
+            command: {
+              action: 'chunk',
+              transferId: chunk.data.transferId,
+              index: chunk.data.index,
+              offset: chunk.data.offset,
+              bytes: request.body
+            }
+          })
+        : browserUploadSchema.safeParse(request.body);
       if (!query.success || !parsed.success) return sendError(reply, 400, 'BROWSER_UPLOAD_INVALID');
       try {
         await node.uploadBrowserFile(user, query.data.connectionId, parsed.data);
@@ -122,16 +156,20 @@ export function registerBrowserFileRoutes(
         attachmentId,
         id
       );
-      return reply
+      const stream =
+        request.method === 'HEAD'
+          ? undefined
+          : await openFileContentStream(read, 0, size - 1, BROWSER_DOWNLOAD_CHUNK_BYTES);
+      reply
         .header('cache-control', 'private, no-store')
         .header('content-type', 'application/octet-stream')
-        .header('content-length', size)
         .header('x-content-type-options', 'nosniff')
         .header(
           'content-disposition',
           `attachment; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/gu, (char) => `%${char.charCodeAt(0).toString(16)}`)}`
-        )
-        .send(Readable.from(fileContentChunks(read, 0, size - 1, BROWSER_DOWNLOAD_CHUNK_BYTES)));
+        );
+      if (stream === undefined) return sendFileContentHead(reply, size);
+      return reply.header('content-length', size).send(stream);
     } catch (error) {
       return fileError(reply, error, 'BROWSER_DOWNLOAD_FAILED');
     }
@@ -146,7 +184,11 @@ function fileError(reply: FastifyReply, error: unknown, fallback: string) {
       ? 504
       : failure.code === 'BROWSER_NOT_AUTHORIZED' || failure.code === 'BROWSER_LEASE_ENDED'
         ? 403
-        : 409,
+        : failure.code === 'FILE_RELAY_BUSY' ||
+            failure.code === 'FILE_RELAY_UNAVAILABLE' ||
+            failure.code === 'NODE_RESPONSE_INVALID'
+          ? domainErrorStatus(failure.code)
+          : 409,
     failure.code,
     errorResponseOptions(failure)
   );

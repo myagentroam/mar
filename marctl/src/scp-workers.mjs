@@ -1,55 +1,20 @@
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { gzipSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
+import { terminalCopySchema } from '@myagentroam/protocol';
 import { MarctlError } from './errors.mjs';
 import { DirectRejectedError } from './direct-errors.mjs';
 import { runTerminalSession } from './terminal.mjs';
 import { parseFrame } from './terminal-frame.mjs';
 import { ByteChannel } from './scp-channel.mjs';
+import { closeScpWorker } from './scp-worker-close.mjs';
 
-const script = gzipSync(readFileSync(new URL('./scp-worker.cjs', import.meta.url))).toString(
-  'base64'
-);
-const expression = `eval(require('zlib').gunzipSync(Buffer.from('${script}','base64')).toString())`;
+const workerPath = fileURLToPath(new URL('./scp-worker.cjs', import.meta.url));
 
-function workerArguments(mode, file, size, metadata, preserve, sourceBasename) {
-  const encoded = Buffer.from(file, 'utf8').toString('base64url');
-  return [
-    mode,
-    encoded,
-    ...(size === undefined
-      ? []
-      : [
-          String(size),
-          metadata.toString('base64url'),
-          preserve ? '1' : '0',
-          Buffer.from(sourceBasename, 'utf8').toString('base64url')
-        ])
-  ];
-}
-
-function workerCommand(mode, file, size, metadata, preserve, sourceBasename) {
-  return `node -e "${expression}" ${workerArguments(mode, file, size, metadata, preserve, sourceBasename).join(' ')}`;
-}
-
-async function withLocalWorker(
-  mode,
-  file,
-  size,
-  metadata,
-  preserve,
-  sourceBasename,
-  use,
-  controller
-) {
-  const child = spawn(
-    process.execPath,
-    ['-e', expression, ...workerArguments(mode, file, size, metadata, preserve, sourceBasename)],
-    {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true
-    }
-  );
+async function withLocalWorker(copy, use, controller) {
+  const child = spawn(process.execPath, [workerPath, JSON.stringify(copy)], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true
+  });
   child.stdin.on('error', () => undefined);
   child.stderr.resume();
   const channel = new ByteChannel(
@@ -70,42 +35,25 @@ async function withLocalWorker(
   try {
     return await use(channel);
   } finally {
-    if (child.exitCode === null) child.kill();
-    await closed;
+    await closeScpWorker(child, closed);
   }
 }
 
 async function withRemoteWorker(
-  {
-    client,
-    WebSocketClass,
-    nodeId,
-    file,
-    mode,
-    size,
-    metadata,
-    preserve,
-    sourceBasename,
-    translate,
-    controller
-  },
+  { client, WebSocketClass, nodeId, copy, translate, controller },
   use
 ) {
   return runTerminalSession({
     client,
     WebSocketClass,
     nodeId,
-    command: workerCommand(mode, file, size, metadata, preserve, sourceBasename),
-    binary: true,
+    copy,
     raceConnections: true,
     signal: controller.signal,
     translate,
     attached: async ({ transport, terminalId }) => {
       const channel = new ByteChannel(
-        (bytes) =>
-          transport.send(
-            JSON.stringify({ type: 'input', terminalId, data: bytes.toString('base64') })
-          ),
+        (bytes) => transport.send({ type: 'input', terminalId, data: bytes }),
         controller
       );
       let sequence = 0;
@@ -116,10 +64,7 @@ async function withRemoteWorker(
             if (frame.sequence !== sequence + 1)
               throw new MarctlError('Copy output sequence is invalid.');
             sequence = frame.sequence;
-            const bytes = Buffer.from(frame.data, 'base64');
-            if (bytes.toString('base64') !== frame.data)
-              throw new MarctlError('Copy output is not valid base64.');
-            channel.feed(bytes);
+            if (frame.stream !== 'stderr') channel.feed(Buffer.from(frame.data));
           } else if (frame.type === 'exit') channel.finish(frame.exitCode ?? 1);
           else if (frame.type === 'error')
             channel.fail(new MarctlError(translate('errors.terminalRemoteError')));
@@ -154,26 +99,23 @@ async function withRemoteWorker(
 }
 
 export async function withWorker(endpoint, mode, size, metadata, context, use) {
-  if (endpoint.nodeId === undefined)
-    return withLocalWorker(
-      mode,
-      endpoint.path,
-      size,
-      metadata,
-      context.preserve,
-      context.sourceBasename,
-      use,
-      context.controller
-    );
-  return withRemoteWorker(
-    {
-      ...context,
-      nodeId: endpoint.nodeId,
-      file: endpoint.path,
-      mode,
-      size,
-      metadata
-    },
-    use
-  );
+  const descriptor =
+    mode === 'read'
+      ? { mode, path: endpoint.path }
+      : {
+          mode,
+          path: endpoint.path,
+          size,
+          sourceMode: metadata.readUInt32BE(0),
+          atimeMs: metadata.readDoubleBE(4),
+          mtimeMs: metadata.readDoubleBE(12),
+          preserve: context.preserve,
+          sourceBasename: context.sourceBasename
+        };
+  const parsed = terminalCopySchema.safeParse(descriptor);
+  if (!parsed.success)
+    throw new MarctlError(context.translate('errors.scpOpenInvalid'), { code: 'SCP_OPEN_INVALID' });
+  const copy = parsed.data;
+  if (endpoint.nodeId === undefined) return withLocalWorker(copy, use, context.controller);
+  return withRemoteWorker({ ...context, nodeId: endpoint.nodeId, copy }, use);
 }
