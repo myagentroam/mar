@@ -380,22 +380,22 @@ export const conversationUiEnUS = {
       RESUME: 'resume'
     },
     whiteboardOperation: {
-      read: 'Read whiteboard',
-      join: 'Join whiteboard',
-      leave: 'Leave whiteboard',
-      update: 'Update whiteboard',
-      unknown: 'Whiteboard'
+      read: 'Read collaboration whiteboard',
+      join: 'Join collaboration whiteboard',
+      leave: 'Leave collaboration whiteboard',
+      update: 'Update collaboration whiteboard',
+      unknown: 'Collaboration whiteboard'
     },
     whiteboardDetail: {
-      boardAgentId: 'Board owner',
-      empty: 'Whiteboard is empty',
+      boardAgentId: 'Collaboration whiteboard owner',
+      empty: 'Collaboration whiteboard is empty',
       singleEntry: '1 entry',
       entries: '{count} entries',
       removedOne: 'Removed 1 entry',
       removed: 'Removed {count} entries',
       changesTruncated: 'More changed entries were omitted from this preview.',
-      unfollowed: 'Unfollowed the whiteboard',
-      noFollowedBoard: 'No additional whiteboard was being followed'
+      unfollowed: 'Unfollowed the collaboration whiteboard',
+      noFollowedBoard: 'No additional collaboration whiteboard was being followed'
     },
     subagentOperation: {
       START: 'Start',

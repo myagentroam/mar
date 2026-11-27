@@ -22,7 +22,7 @@ export interface CollaborationGraph extends GraphSize {
   readonly edges: readonly GraphEdge[];
 }
 
-export const collaborationNodeSize = { width: 156, height: 46 };
+export const collaborationNodeSize = { width: 156, height: 50 };
 export const MIN_COLLABORATION_SCALE = 0.1;
 export const MAX_COLLABORATION_SCALE = 1;
 const col = 180;
@@ -136,11 +136,13 @@ export function buildCollaborationGraph(
     const high = a.y + halfHeight;
     const low = b.y - halfHeight - 2;
     const mid = (high + low) / 2;
+    // Keep even wide curves straight for the full depth of the arrowhead.
+    const approach = low - 12;
     return {
       kind: 'parent',
       from,
       to,
-      path: `M ${a.x} ${high} C ${a.x} ${mid}, ${b.x} ${mid}, ${b.x} ${low}`
+      path: `M ${a.x} ${high} C ${a.x} ${mid}, ${b.x} ${mid}, ${b.x} ${approach} V ${low}`
     };
   });
   const unique = new Set<string>();

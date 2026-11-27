@@ -371,22 +371,22 @@ export const conversationUiZhCN = {
       RESUME: 'resume'
     },
     whiteboardOperation: {
-      read: '读取白板',
-      join: '加入白板',
-      leave: '离开白板',
-      update: '更新白板',
-      unknown: '白板'
+      read: '读取协作白板',
+      join: '加入协作白板',
+      leave: '离开协作白板',
+      update: '更新协作白板',
+      unknown: '协作白板'
     },
     whiteboardDetail: {
-      boardAgentId: '白板所有者',
-      empty: '白板为空',
+      boardAgentId: '协作白板所有者',
+      empty: '协作白板为空',
       singleEntry: '1 条记录',
       entries: '{count} 条记录',
       removedOne: '移除了 1 条记录',
       removed: '移除了 {count} 条记录',
       changesTruncated: '此处省略了部分更新内容。',
       unfollowed: '已取消关注',
-      noFollowedBoard: '没有额外关注的白板'
+      noFollowedBoard: '没有额外关注的协作白板'
     },
     subagentOperation: {
       START: '启动',
