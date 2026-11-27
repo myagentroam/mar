@@ -1,12 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { isAllowedOrigin, parseCookies, SESSION_COOKIE_NAME } from './auth.js';
 import { protectedAdmin, validCsrf, type SessionLookup } from './session.js';
 import { sendError, safeErrorCode } from './http-errors.js';
 import type { WorkspaceNodeControl } from './workspace-route-contracts.js';
 import {
-  fileContentChunks,
+  openFileContentStream,
   fileContentType,
   parseHttpByteRange,
   sendFileContentHead
@@ -263,6 +262,10 @@ export function registerHtmlPreviewRoutes(input: {
         const start = range?.start ?? 0;
         const end = range?.end ?? first.size - 1;
         const length = first.size === 0 ? 0 : end - start + 1;
+        const stream =
+          request.method === 'HEAD'
+            ? undefined
+            : await openFileContentStream(read, start, end, CHUNK_BYTES);
         const contentType = resourceContentType(path);
         reply
           .header('content-type', contentType)
@@ -280,10 +283,8 @@ export function registerHtmlPreviewRoutes(input: {
           reply.header('content-security-policy', 'sandbox');
         if (range !== undefined && first.size > 0)
           reply.code(206).header('content-range', `bytes ${start}-${end}/${first.size}`);
-        if (request.method === 'HEAD') return sendFileContentHead(reply, length);
-        return reply
-          .header('content-length', String(length))
-          .send(Readable.from(fileContentChunks(read, start, end, CHUNK_BYTES)));
+        if (stream === undefined) return sendFileContentHead(reply, length);
+        return reply.header('content-length', String(length)).send(stream);
       } catch (error) {
         if (safeErrorCode(error) === 'UNAUTHENTICATED')
           return sendError(reply, 401, 'UNAUTHENTICATED');

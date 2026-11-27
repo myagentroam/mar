@@ -5,7 +5,6 @@ import {
   workspaceSymbolDefinitionSchema,
   workspaceSymbolIndexPreparationSchema
 } from '@myagentroam/protocol';
-import { Readable } from 'node:stream';
 import {
   parseImagePreviewQuery,
   sendImageResource,
@@ -24,7 +23,7 @@ import { normalizeWorkspaceGroupName } from './workspace-group.js';
 import { NodeRequestError } from './node-request-error.js';
 import {
   sendWorkspaceFileContent,
-  fileContentChunks,
+  openFileContentStream,
   fileContentType,
   parseHttpByteRange,
   registerFileChunkParser,
@@ -1410,6 +1409,10 @@ export function registerWorkspaceRoutes(input: {
         return sendError(reply, 413, 'FILE_PREVIEW_TOO_LARGE');
       if (start >= FILE_CONTENT_FULL_LIMIT || end >= FILE_CONTENT_FULL_LIMIT)
         return sendError(reply, 416, 'FILE_RANGE_INVALID');
+      const stream =
+        request.method === 'HEAD'
+          ? undefined
+          : await openFileContentStream(readChunk, start, end, FILE_CONTENT_CHUNK_BYTES);
       const filename = request.query.path.split('/').at(-1) ?? 'file';
       const contentType = fileContentType(filename);
       reply
@@ -1424,10 +1427,8 @@ export function registerWorkspaceRoutes(input: {
       if (contentType === 'image/svg+xml') reply.header('content-security-policy', 'sandbox');
       if (range !== undefined && first.size > 0)
         reply.code(206).header('content-range', `bytes ${start}-${end}/${first.size}`);
-      if (request.method === 'HEAD') return sendFileContentHead(reply, length);
-      return reply
-        .header('content-length', String(length))
-        .send(Readable.from(fileContentChunks(readChunk, start, end, FILE_CONTENT_CHUNK_BYTES)));
+      if (stream === undefined) return sendFileContentHead(reply, length);
+      return reply.header('content-length', String(length)).send(stream);
     } catch (error) {
       return databaseError(reply, error);
     }

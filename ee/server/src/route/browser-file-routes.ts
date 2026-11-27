@@ -1,4 +1,3 @@
-import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
@@ -17,7 +16,7 @@ import {
 } from '@myagentroam/server-core/http-errors';
 import { domainErrorStatus } from '@myagentroam/server-core/domain-errors';
 import {
-  fileContentChunks,
+  openFileContentStream,
   registerFileChunkParser,
   sendFileContentHead
 } from '@myagentroam/server-core/file-content-stream';
@@ -157,9 +156,10 @@ export function registerBrowserFileRoutes(
         attachmentId,
         id
       );
-      const chunks = fileContentChunks(read, 0, size - 1, BROWSER_DOWNLOAD_CHUNK_BYTES);
-      // Admit the first chunk before committing download headers. HEAD never pulls bytes.
-      const first = request.method === 'HEAD' ? undefined : await chunks.next();
+      const stream =
+        request.method === 'HEAD'
+          ? undefined
+          : await openFileContentStream(read, 0, size - 1, BROWSER_DOWNLOAD_CHUNK_BYTES);
       reply
         .header('cache-control', 'private, no-store')
         .header('content-type', 'application/octet-stream')
@@ -168,16 +168,8 @@ export function registerBrowserFileRoutes(
           'content-disposition',
           `attachment; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/gu, (char) => `%${char.charCodeAt(0).toString(16)}`)}`
         );
-      if (first === undefined) return sendFileContentHead(reply, size);
-      return reply.header('content-length', size).send(
-        Readable.from(
-          (async function* () {
-            if (first.done) return;
-            yield first.value;
-            yield* chunks;
-          })()
-        )
-      );
+      if (stream === undefined) return sendFileContentHead(reply, size);
+      return reply.header('content-length', size).send(stream);
     } catch (error) {
       return fileError(reply, error, 'BROWSER_DOWNLOAD_FAILED');
     }

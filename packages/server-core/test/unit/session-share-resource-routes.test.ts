@@ -415,6 +415,21 @@ describe('Session-share resource routes', () => {
     expect(f.requestNode).not.toHaveBeenCalled();
   });
 
+  it('preserves file relay errors before starting a shared download', async () => {
+    const f = await fixture(databaseError);
+    f.requestNode
+      .mockResolvedValueOnce({ file: { size: 4, offset: 0, bytes: Buffer.of(1) } })
+      .mockRejectedValueOnce(new Error('FILE_RELAY_BUSY'));
+
+    const response = await f.app.inject({
+      url: '/api/session-shares/share-one/files/content?path=large.bin&download=1'
+    });
+
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toMatchObject({ error: { code: 'FILE_RELAY_BUSY' } });
+    expect(response.headers['content-disposition']).toBeUndefined();
+  });
+
   it('revalidates share admission for each chunk of a read-only Range response', async () => {
     const f = await fixture();
     const bytes = Buffer.alloc(512 * 1024 + 4, 0x61);

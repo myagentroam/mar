@@ -306,6 +306,30 @@ describe('Shared Workspace HTTP routes', () => {
     expect(requestNode.mock.calls.at(-1)?.[2]).not.toHaveProperty('preview');
   });
 
+  it.each([
+    ['/files/content', 'FILE_RELAY_BUSY', 429],
+    [`/git/commits/${'a'.repeat(40)}/files/content`, 'FILE_RELAY_UNAVAILABLE', 503]
+  ] as const)('preserves a first-chunk relay error on %s', async (route, code, status) => {
+    const { app, requestNode, headers } = fixture(undefined, databaseError);
+    requestNode
+      .mockResolvedValueOnce({ file: { size: 4, offset: 0, bytes: Buffer.of(1) } })
+      .mockRejectedValueOnce(new Error(code));
+
+    const response = await app.inject({
+      url: `/api/workspaces/workspace-1${route}?nodeId=node-1&path=clip.mp4&download=1`,
+      headers: { ...headers, range: 'bytes=1-2' }
+    });
+
+    expect(response.statusCode).toBe(status);
+    expect(response.json()).toMatchObject({ error: { code } });
+    expect(response.headers['content-range']).toBeUndefined();
+    expect(response.headers['content-disposition']).toBeUndefined();
+    expect(requestNode.mock.calls.map((call) => call[2])).toEqual([
+      expect.objectContaining({ offset: 0, limit: 1 }),
+      expect.objectContaining({ offset: 1, limit: 2 })
+    ]);
+  });
+
   it.each(['clip.mp4', 'sound.mp3'])(
     'streams %s larger than 20 MiB without requiring an initial Range header',
     async (path) => {

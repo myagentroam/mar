@@ -39,6 +39,8 @@ export async function sendWorkspaceFileContent(input: {
   const media = contentType.startsWith('audio/') || contentType.startsWith('video/');
   if (!input.download && !media && range === undefined && length > 20 * 1024 * 1024)
     return sendError(reply, 413, 'FILE_PREVIEW_TOO_LARGE');
+  const stream =
+    input.method === 'HEAD' ? undefined : await openFileContentStream(read, start, end);
   reply
     .header('accept-ranges', 'bytes')
     .header('cache-control', 'private, no-store')
@@ -51,10 +53,8 @@ export async function sendWorkspaceFileContent(input: {
   if (contentType === 'image/svg+xml') reply.header('content-security-policy', 'sandbox');
   if (range !== undefined && first.size > 0)
     reply.code(206).header('content-range', `bytes ${start}-${end}/${first.size}`);
-  if (input.method === 'HEAD') return sendFileContentHead(reply, length);
-  return reply
-    .header('content-length', String(length))
-    .send(Readable.from(fileContentChunks(read, start, end, 512 * 1024)));
+  if (stream === undefined) return sendFileContentHead(reply, length);
+  return reply.header('content-length', String(length)).send(stream);
 }
 
 export function sendFileContentHead(reply: FastifyReply, length: number): FastifyReply {
@@ -65,6 +65,24 @@ export function sendFileContentHead(reply: FastifyReply, length: number): Fastif
   reply.raw.setHeader('content-length', String(length));
   reply.raw.end();
   return reply;
+}
+
+/** Let route error handling see the first read failure before any download headers are set. */
+export async function openFileContentStream(
+  read: (offset: number, limit: number) => Promise<FileContentChunk>,
+  start: number,
+  end: number,
+  chunkSize = FILE_RELAY_CHUNK_BYTES
+): Promise<Readable> {
+  const chunks = fileContentChunks(read, start, end, chunkSize);
+  const first = await chunks.next();
+  return Readable.from(
+    (async function* () {
+      if (first.done) return;
+      yield first.value;
+      yield* chunks;
+    })()
+  );
 }
 
 export async function* fileContentChunks(
