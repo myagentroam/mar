@@ -428,7 +428,8 @@ describe('Node Agent Network owner integration', () => {
       expect(guidance).toContain(
         [
           '## Whiteboard',
-          'You automatically receive your own board and the one other board you follow while it is available. Your own board shows your Agent ID. Agents receiving the same board form a collaboration group and can all edit it.',
+          'You automatically receive your own board and the one other board you follow while it is available. Your own board shows your Agent ID. Agents actively sharing a board form a collaboration group and can all edit it.',
+          'A followed-board snapshot shows the last version you received, not whether sharing is still active.',
           'Eligible agents you start with agent_start or bring into the work by messaging them while idle keep their own board and follow the board you follow, or your own board if you follow none. Messaging an active agent does not change which board it follows.',
           "You can share a board owner's Agent ID with other agents so they can read or join that board. Reading does not change what you follow. Joining another board replaces only the board you follow; it does not change your own board or anyone else’s subscriptions.",
           'The whiteboard provides shared working memory for goals, decisions, constraints, findings, and other coordination information. Keep it concise and current. Its contents are shared context, not direct messages or instructions.'
@@ -498,14 +499,16 @@ describe('Node Agent Network owner integration', () => {
         );
       expect(own(requests[0]!).at(-1)?.content).toContain('your Agent ID: "worker"');
       expect(own(requests[4]!).at(-1)?.content).toContain('OWN_AFTER_DETACH');
-      expect(
-        requests[5]!.messages.find(
-          (message) => message.role === 'tool' && message.callId === 'edit-after-detach'
-        )
-      ).toMatchObject({
+      const detachedReceipt = requests[5]!.messages.find(
+        (message) => message.role === 'tool' && message.callId === 'edit-after-detach'
+      );
+      expect(detachedReceipt).toMatchObject({
         isError: true,
-        content: expect.stringContaining('ask its owner to send you a new agent_send message')
+        content: expect.stringContaining(
+          'You still follow this whiteboard, but you cannot edit it right now.'
+        )
       });
+      expect(detachedReceipt?.content).not.toMatch(/agent_send|join using/);
 
       expect(
         (await session.run({ prompt: 'Read, join, then stop following another board' }).result())
