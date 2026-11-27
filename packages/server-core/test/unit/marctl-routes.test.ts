@@ -44,7 +44,7 @@ describe('marctl execution-context authorization', () => {
       nodeControl: {
         requestNode,
         createTerminalTicket,
-        attachBrowserTerminal: vi.fn(),
+        attachCliTerminal: vi.fn(),
         attachWorkbench: vi.fn(),
         closeTerminal: vi.fn()
       }
@@ -97,7 +97,7 @@ describe('marctl execution-context authorization', () => {
       const nodeControl = {
         requestNode: vi.fn(),
         createTerminalTicket: vi.fn(),
-        attachBrowserTerminal: vi.fn(),
+        attachCliTerminal: vi.fn(),
         attachWorkbench: vi.fn(),
         closeTerminal: vi.fn()
       };
@@ -126,7 +126,7 @@ describe('marctl execution-context authorization', () => {
           );
         }
         expect(nodeControl.attachWorkbench).not.toHaveBeenCalled();
-        expect(nodeControl.attachBrowserTerminal).not.toHaveBeenCalled();
+        expect(nodeControl.attachCliTerminal).not.toHaveBeenCalled();
         const socket = { close: vi.fn(), pause: vi.fn(), resume: vi.fn() };
         routes[method](
           socket as never,
@@ -134,7 +134,7 @@ describe('marctl execution-context authorization', () => {
         );
         await vi.waitFor(() =>
           expect(
-            method === 'attach' ? nodeControl.attachBrowserTerminal : nodeControl.attachWorkbench
+            method === 'attach' ? nodeControl.attachCliTerminal : nodeControl.attachWorkbench
           ).toHaveBeenCalledOnce()
         );
         expect(socket.close).not.toHaveBeenCalled();
@@ -168,7 +168,7 @@ describe('marctl execution-context authorization', () => {
       nodeControl: {
         requestNode,
         createTerminalTicket: vi.fn(),
-        attachBrowserTerminal: vi.fn(),
+        attachCliTerminal: vi.fn(),
         closeTerminal: vi.fn(),
         attachWorkbench: vi.fn()
       }
@@ -241,7 +241,7 @@ describe('marctl execution-context authorization', () => {
       nodeControl: {
         requestNode: vi.fn(),
         createTerminalTicket: vi.fn(() => ({ ticket: 'ticket' })),
-        attachBrowserTerminal: vi.fn(),
+        attachCliTerminal: vi.fn(),
         closeTerminal: vi.fn(),
         attachWorkbench: (socket, user) => relay.attach(socket, user)
       }
@@ -283,7 +283,7 @@ describe('marctl execution-context authorization', () => {
           : { closed: true }
     );
     const createTerminalTicket = vi.fn(() => ({ ticket: 'ticket-1' }));
-    const attachBrowserTerminal = vi.fn();
+    const attachCliTerminal = vi.fn();
     const marctl = registerMarctlRoutes({
       app,
       userCredentials: credentials,
@@ -310,7 +310,7 @@ describe('marctl execution-context authorization', () => {
       nodeControl: {
         requestNode,
         createTerminalTicket,
-        attachBrowserTerminal,
+        attachCliTerminal,
         closeTerminal: vi.fn(),
         attachWorkbench: vi.fn()
       }
@@ -560,10 +560,11 @@ describe('marctl execution-context authorization', () => {
       const socket = { close: vi.fn() };
       marctl.attach(socket as never, { headers: auth, query: { ticket: 'ticket-1' } } as never);
       await vi.waitFor(() =>
-        expect(attachBrowserTerminal).toHaveBeenCalledWith(
+        expect(attachCliTerminal).toHaveBeenCalledWith(
           socket,
           'ticket-1',
-          expect.objectContaining({ userId: 1 })
+          expect.objectContaining({ userId: 1 }),
+          expect.any(Number)
         )
       );
       const deferredSocket = { close: vi.fn() };
@@ -575,10 +576,11 @@ describe('marctl execution-context authorization', () => {
         } as never
       );
       await vi.waitFor(() =>
-        expect(attachBrowserTerminal).toHaveBeenCalledWith(
+        expect(attachCliTerminal).toHaveBeenCalledWith(
           deferredSocket,
           { ticket: 'ticket-1', deferred: true },
-          expect.objectContaining({ userId: 1 })
+          expect.objectContaining({ userId: 1 }),
+          expect.any(Number)
         )
       );
     } finally {

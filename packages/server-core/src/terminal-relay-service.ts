@@ -9,11 +9,7 @@ import {
 } from '@myagentroam/protocol';
 import type { NodeRequestAuthorization, UserNodeAuthorization } from './node-access-contracts.js';
 import { safeErrorCode } from './http-errors.js';
-import {
-  attachTerminalMux,
-  TerminalMuxStream,
-  type TerminalRelaySocket
-} from './terminal-multiplex.js';
+import { attachTerminalMux, type TerminalRelaySocket } from './terminal-multiplex.js';
 
 const TERMINAL_TICKET_TTL_MS = 30_000;
 const MAX_TERMINAL_RELAYS_PER_USER = 10;
@@ -48,6 +44,7 @@ interface TerminalRelayRecord {
   readonly workspaceId?: string;
   readonly readonly: boolean;
   readonly computer: boolean;
+  readonly cli: boolean;
   readonly browser: TerminalRelaySocket;
   pendingFrames: { readonly frame: TerminalDataFrame; readonly encoded: Uint8Array }[];
   pendingBytes: number;
@@ -91,6 +88,7 @@ export interface TerminalRelayOptions {
   ) => Promise<unknown>;
 }
 
+/** Owns relay tickets, connection pairing and teardown; Node owns the attached processes. */
 export class TerminalRelayService {
   private directCount?: (sessionHash: string) => number;
   private closed = false;
@@ -221,7 +219,10 @@ export class TerminalRelayService {
       socket,
       authorize,
       attach: (stream, ticket, deferred, actor) => {
-        this.attachBrowser(stream, deferred ? { ticket, deferred: true } : ticket, actor, nodeId);
+        this.attachBrowser(stream, deferred ? { ticket, deferred: true } : ticket, actor, {
+          type: 'mux',
+          nodeId
+        });
       }
     });
     this.muxSockets.set(socket, { nodeId, user, close });
@@ -237,8 +238,15 @@ export class TerminalRelayService {
     socket: TerminalRelaySocket,
     ticketValue: unknown,
     user: UserNodeAuthorization,
-    cliNodeId?: string
+    cli?:
+      | { readonly type: 'mux'; readonly nodeId: string }
+      | { readonly type: 'single'; readonly expiresAt: number }
   ): void {
+    if (socket.readyState !== socket.OPEN) return;
+    if (cli?.type === 'single' && cli.expiresAt <= Date.now()) {
+      socket.close(1008, 'UNAUTHENTICATED');
+      return;
+    }
     const attach = browserAttachRequest(ticketValue);
     const ticket = attach === undefined ? undefined : this.tickets.get(attach.ticket);
     if (
@@ -246,8 +254,9 @@ export class TerminalRelayService {
       ticket.expiresAt <= Date.now() ||
       // Only the original pending attachment may activate a reserved ticket.
       this.deferredAttaches.has(ticket.ticket) ||
-      // Pooled disconnect closes CLI-owned resources, not browser attachments.
-      (cliNodeId !== undefined && (!ticket.cli || ticket.nodeId !== cliNodeId)) ||
+      // Only CLI attachments close the remote task when their transport disappears.
+      ticket.cli !== (cli !== undefined) ||
+      (cli?.type === 'mux' && ticket.nodeId !== cli.nodeId) ||
       ticket.userSessionHash !== user.sessionHash ||
       ticket.userId !== user.userId
     ) {
@@ -265,6 +274,11 @@ export class TerminalRelayService {
     if (terminalSocket === undefined || terminalSocket.readyState !== terminalSocket.OPEN) {
       socket.close(4008, 'NODE_OFFLINE');
       return;
+    }
+    if (cli?.type === 'single') {
+      const expiry = setTimeout(() => socket.terminate(), cli.expiresAt - Date.now());
+      expiry.unref();
+      socket.once('close', () => clearTimeout(expiry));
     }
     if (attach?.deferred === true) {
       if (ticket.computer) {
@@ -449,7 +463,8 @@ export class TerminalRelayService {
         {
           terminalId: ticket.terminalId,
           afterSequence: ticket.afterSequence,
-          readonly: ticket.readonly
+          readonly: ticket.readonly,
+          ...(ticket.cli ? { closeOnDisconnect: true } : {})
         },
         {
           userId: ticket.userId,
@@ -459,12 +474,13 @@ export class TerminalRelayService {
       );
       const attachment = terminalAttachmentResponse(response);
       const terminalSocket = this.sockets.get(ticket.nodeId);
+      const nodeAvailable =
+        terminalSocket !== undefined && terminalSocket.readyState === terminalSocket.OPEN;
       const authorizationActive = this.authorizing.get(ticket.ticket) === ticket;
       this.authorizing.delete(ticket.ticket);
-      if (
-        browser instanceof TerminalMuxStream &&
-        (!authorizationActive || browser.readyState !== browser.OPEN)
-      ) {
+      const cancelled = !authorizationActive || browser.readyState !== browser.OPEN;
+      if (ticket.cli && (cancelled || !nodeAvailable)) {
+        // A successful authorization owns the writer. An unactivated race loser never gets here.
         if (attachment?.terminalId === ticket.terminalId)
           await this.options
             .requestNode(
@@ -474,15 +490,16 @@ export class TerminalRelayService {
               { userId: ticket.userId, sessionHash: ticket.userSessionHash }
             )
             .catch(() => undefined);
-        browser.close();
-        return;
+        if (cancelled) {
+          browser.close();
+          return;
+        }
       }
       if (
         !authorizationActive &&
         attachment !== undefined &&
         attachment.terminalId === ticket.terminalId &&
-        terminalSocket !== undefined &&
-        terminalSocket.readyState === terminalSocket.OPEN
+        nodeAvailable
       ) {
         this.retireTicket(ticket.ticket, ticket.nodeId);
         this.sendTerminal(terminalSocket, {
@@ -499,17 +516,13 @@ export class TerminalRelayService {
         !authorizationActive ||
         attachment === undefined ||
         attachment.terminalId !== ticket.terminalId ||
-        terminalSocket === undefined ||
-        terminalSocket.readyState !== terminalSocket.OPEN
+        !nodeAvailable
       ) {
         if (browser.readyState === browser.OPEN)
           this.sendBrowser(browser, {
             type: 'error',
             terminalId: ticket.terminalId,
-            code:
-              terminalSocket === undefined || terminalSocket.readyState !== terminalSocket.OPEN
-                ? 'NODE_OFFLINE'
-                : 'TERMINAL_ATTACH_FAILED'
+            code: nodeAvailable ? 'TERMINAL_ATTACH_FAILED' : 'NODE_OFFLINE'
           });
         browser.close(4008, 'TERMINAL_ATTACH_FAILED');
         return;
@@ -536,6 +549,7 @@ export class TerminalRelayService {
         ...(ticket.workspaceId === undefined ? {} : { workspaceId: ticket.workspaceId }),
         readonly: ticket.readonly,
         computer: ticket.computer,
+        cli: ticket.cli,
         browser,
         pendingFrames: [],
         pendingBytes: 0,
@@ -901,7 +915,7 @@ export class TerminalRelayService {
   }
   private detachRelay(relay: TerminalRelayRecord): void {
     if (this.relays.get(relay.ticket) !== relay) return;
-    if (relay.browser instanceof TerminalMuxStream) {
+    if (relay.cli) {
       this.closeRelay(relay, true);
       return;
     }
@@ -927,7 +941,7 @@ export class TerminalRelayService {
     if (socket !== undefined && socket.readyState === socket.OPEN)
       this.sendTerminal(
         socket,
-        terminate || relay.browser instanceof TerminalMuxStream
+        terminate || relay.cli
           ? { type: 'close', ticket: relay.ticket }
           : { type: 'detach', ticket: relay.ticket }
       );

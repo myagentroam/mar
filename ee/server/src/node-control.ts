@@ -397,6 +397,15 @@ export class NodeControl extends NodeIdentityControl {
     this.terminalRelay.attachCliMux(...args);
   }
 
+  attachCliTerminal(
+    socket: WebSocket,
+    ticketValue: unknown,
+    user: UserNodeAuthorization,
+    expiresAt: number
+  ): void {
+    this.terminalRelay.attachBrowser(socket, ticketValue, user, { type: 'single', expiresAt });
+  }
+
   attachNodeDesktopRelay(socket: WebSocket): void {
     this.desktopRelaySockets.attachNode(socket);
   }

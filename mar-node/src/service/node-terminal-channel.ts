@@ -21,6 +21,7 @@ interface NodeTerminalChannelOptions {
   readonly manager: TerminalManager;
 }
 
+/** Owns the Node relay socket and its attachment mappings, not Terminal processes or history. */
 export class NodeTerminalChannel {
   private socket: WebSocket | undefined;
   private reconnectTimer: NodeJS.Timeout | undefined;
@@ -260,7 +261,7 @@ export class NodeTerminalChannel {
     if (this.state.attachments.get(ticket) !== attachment) return;
     this.state.attachments.delete(ticket);
     this.sender?.cancel(ticket);
-    this.options.manager.detach(attachment.attachmentId);
+    this.options.manager.releaseRelayAttachment(attachment.attachmentId);
     this.send({
       type: 'frame',
       ticket,
@@ -281,10 +282,11 @@ export class NodeTerminalChannel {
   }
 
   private releaseAttachments(): void {
-    for (const attachment of this.state.attachments.values())
-      this.options.manager.detach(attachment.attachmentId);
+    const attachments = [...this.state.attachments.values()];
     this.state.attachments.clear();
     this.sender?.close();
     this.sender = undefined;
+    for (const attachment of attachments)
+      this.options.manager.releaseRelayAttachment(attachment.attachmentId);
   }
 }

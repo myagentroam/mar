@@ -11,7 +11,106 @@ import { describe, expect, it, vi } from 'vitest';
 import { TerminalRelayService } from '../../src/terminal-relay-service.js';
 import { TerminalRelaySocket as RelaySocket } from './support/relay-socket.js';
 
+class SingleSocket extends RelaySocket {
+  terminate() {
+    this.close();
+  }
+}
+
 describe('public Terminal relay', () => {
+  it.each(['disconnect', 'expiry', 'unused preconnection'])(
+    'cleans up only an authorized CLI writer on single-stream %s',
+    async (reason) => {
+      vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+      const user = { userId: 1, sessionHash: 'active-login' };
+      const nodeId = 'node-1';
+      const authorization = Promise.withResolvers<unknown>();
+      const requestNode = vi.fn(async (_nodeId: string, operation: string) =>
+        operation === 'terminal.attach.authorize' ? authorization.promise : {}
+      );
+      const relay = new TerminalRelayService({
+        database: { authenticateNode: async () => ({ id: nodeId, disabled: false }) },
+        authorizeNodeRequest: async () => true,
+        requestNode
+      });
+      const node = new RelaySocket();
+      const socket = new SingleSocket();
+      try {
+        relay.attachNode(node as unknown as WebSocket);
+        node.receive({ type: 'authenticate', nodeId, credential: 'fixture' });
+        await vi.waitFor(() => expect(node.sent[0]?.type).toBe('authenticated'));
+        const { ticket } = relay.createTicket({ nodeId, terminalId: 'job', user, cli: true });
+        const deferred = reason === 'unused preconnection';
+        relay.attachBrowser(
+          socket as unknown as WebSocket,
+          deferred ? { ticket, deferred } : ticket,
+          user,
+          {
+            type: 'single',
+            expiresAt: Date.now() + 60_000
+          }
+        );
+        if (reason === 'expiry') await vi.advanceTimersByTimeAsync(60_000);
+        else socket.close();
+        authorization.resolve({ attachment: { attachmentId: 'writer', terminalId: 'job' } });
+        if (deferred) expect(requestNode).not.toHaveBeenCalled();
+        else
+          await vi.waitFor(() =>
+            expect(requestNode).toHaveBeenCalledWith(
+              nodeId,
+              'terminal.close',
+              { terminalId: 'job' },
+              user
+            )
+          );
+        expect(node.sent.some((frame) => frame.type === 'attach')).toBe(false);
+        expect(relay.countSession(user.sessionHash)).toBe(0);
+      } finally {
+        relay.close();
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it.each(['disconnect', 'expiry', 'browser disconnect'])(
+    'uses the owning ticket lifecycle on %s',
+    async (reason) => {
+      vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+      const nodeId = 'node-1';
+      const user = { userId: 1, sessionHash: 'login' };
+      const relay = new TerminalRelayService({
+        database: { authenticateNode: async () => ({ id: nodeId, disabled: false }) },
+        authorizeNodeRequest: async () => true,
+        requestNode: async () => ({ attachment: { attachmentId: 'attached', terminalId: 'job' } })
+      });
+      const node = new RelaySocket();
+      const socket = new SingleSocket();
+      const cli = reason !== 'browser disconnect';
+      try {
+        relay.attachNode(node as unknown as WebSocket);
+        node.receive({ type: 'authenticate', nodeId, credential: 'fixture' });
+        await vi.waitFor(() => expect(node.sent[0]?.type).toBe('authenticated'));
+        const { ticket } = relay.createTicket({ nodeId, terminalId: 'job', user, cli });
+        relay.attachBrowser(
+          socket as unknown as WebSocket,
+          ticket,
+          user,
+          cli ? { type: 'single', expiresAt: Date.now() + 60_000 } : undefined
+        );
+        await vi.waitFor(() =>
+          expect(node.sent.some((frame) => frame.type === 'attach')).toBe(true)
+        );
+        if (reason === 'expiry') await vi.advanceTimersByTimeAsync(60_000);
+        else socket.close();
+        expect(node.sent).toContainEqual({ type: cli ? 'close' : 'detach', ticket });
+        expect(relay.countSession(user.sessionHash)).toBe(0);
+      } finally {
+        relay.close();
+        vi.useRealTimers();
+      }
+    }
+  );
+
   it('isolates logical streams on a CLI relay and terminates the pooled connection on logout', async () => {
     const requestNode = vi.fn(async (_nodeId: string, _operation: string, data: unknown) => {
       const { terminalId } = data as { terminalId: string };

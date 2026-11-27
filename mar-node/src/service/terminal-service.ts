@@ -5,6 +5,20 @@ import type { NodeOperationHandler } from '../application/node-operation-contrac
 import type { TerminalManager } from '../terminal.js';
 import { parseSecretEnvironment } from '../mcp/secret-environment.js';
 
+const TERMINAL_OPEN_FIELDS = new Set([
+  'rows',
+  'cols',
+  'profileId',
+  'workspaceId',
+  'secretEnvironment',
+  '__requestUserId',
+  '__workspaceWatchSessionHash',
+  '__marctlCaller',
+  '__usageGrant',
+  '__requestAbortSignal'
+]);
+
+/** Owns Terminal operation validation and user-scoped environment leases; the manager owns processes. */
 export class TerminalService {
   private readonly terminalOwners = new Map<
     string,
@@ -84,8 +98,15 @@ export class TerminalService {
   }
 
   private open(data: unknown, commandMode = false): unknown {
-    if (data === null || typeof data !== 'object') throw new Error('TERMINAL_OPEN_INVALID');
+    if (data === null || typeof data !== 'object' || Array.isArray(data))
+      throw new Error('TERMINAL_OPEN_INVALID');
     const input = data as Record<string, unknown>;
+    if (
+      Object.keys(input).some(
+        (key) => !TERMINAL_OPEN_FIELDS.has(key) && !(commandMode && key === 'command')
+      )
+    )
+      throw new Error('TERMINAL_OPEN_INVALID');
     if (
       commandMode &&
       (input.workspaceId !== undefined ||
@@ -93,7 +114,6 @@ export class TerminalService {
         input.command.trim().length === 0)
     )
       throw new Error('TERMINAL_COMMAND_INVALID');
-    if (input.binary !== undefined) throw new Error('TERMINAL_OPEN_INVALID');
     const secretEnvironment = parseSecretEnvironment(input.secretEnvironment);
     if (
       (commandMode || secretEnvironment.MAR_GIT_TOKEN !== undefined) &&
@@ -110,7 +130,9 @@ export class TerminalService {
     const release = this.retainEnvironment?.(secretEnvironment);
     try {
       const options = {
-        ...input,
+        rows: input.rows,
+        cols: input.cols,
+        profileId: input.profileId,
         workspaceId: typeof input.workspaceId === 'string' ? input.workspaceId : null,
         environment: { ...secretEnvironment, MAR_CTL_CONTEXT_REQUIRED: '1' },
         ...(cwd === undefined ? {} : { cwd })

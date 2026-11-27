@@ -486,8 +486,7 @@ export async function composeServerApplication(
         requestNode: (...args) => nodeControl.requestNode(...args),
         createTerminalTicket: (input) => nodeControl.createTerminalTicket(input),
         attachCliMux: (...args) => nodeControl.attachCliMux(...args),
-        attachBrowserTerminal: (socket, ticket, user) =>
-          nodeControl.attachBrowserTerminal(socket, ticket, user),
+        attachCliTerminal: (...args) => nodeControl.attachCliTerminal(...args),
         closeTerminal: (nodeId, terminalId) => nodeControl.closeTerminal(nodeId, terminalId),
         attachWorkbench: (socket, user) => nodeControl.attachBrowserWorkbench(socket, user)
       },

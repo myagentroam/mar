@@ -54,7 +54,12 @@ export function registerMarctlRoutes(
         readonly computer?: boolean;
         readonly cli?: boolean;
       }): { readonly ticket: string };
-      attachBrowserTerminal(socket: WebSocket, ticket: unknown, user: UserNodeAuthorization): void;
+      attachCliTerminal(
+        socket: WebSocket,
+        ticket: unknown,
+        user: UserNodeAuthorization,
+        expiresAt: number
+      ): void;
       attachCliMux?(
         socket: WebSocket,
         nodeId: string,
@@ -382,16 +387,18 @@ export function registerMarctlRoutes(
         socket.close(1008, 'ORIGIN_NOT_ALLOWED');
         return;
       }
-      void authenticatedSocket(request.headers.authorization)
-        .then((user) => {
-          if (user === undefined) socket.close(1008, 'UNAUTHENTICATED');
+      void userCredentials
+        .authenticateContext(request.headers.authorization)
+        .then((context) => {
+          if (context === undefined) socket.close(1008, 'UNAUTHENTICATED');
           else
-            nodeControl.attachBrowserTerminal(
+            nodeControl.attachCliTerminal(
               socket,
               request.query.deferred === '1'
                 ? { ticket: request.query.ticket, deferred: true }
                 : request.query.ticket,
-              user
+              context.user,
+              context.expiresAt
             );
         })
         .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'));

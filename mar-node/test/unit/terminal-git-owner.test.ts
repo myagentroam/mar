@@ -53,7 +53,13 @@ describe('Personal Git terminal ownership', () => {
       command: 'echo okay',
       secretEnvironment: {}
     });
-    expect(manager.openCommand).toHaveBeenCalledWith(expect.any(Object), 'echo okay', false);
+    expect(manager.openCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: null,
+        environment: { MAR_CTL_CONTEXT_REQUIRED: '1' }
+      }),
+      'echo okay'
+    );
     expect(operations['terminal.list']!({ __requestUserId: 8 })).toEqual({ terminals: [shared] });
     expect(() =>
       operations['terminal.attach.authorize']!({ terminalId: command.id, __requestUserId: 8 })

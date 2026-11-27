@@ -371,6 +371,50 @@ describe('Node Admin Terminal', () => {
     15_000
   );
 
+  it('closes CLI jobs but keeps browser terminals when the Node data channel disconnects', async () => {
+    const cliPty = new FakePty();
+    const browserPty = new FakePty();
+    const ptyFactory = vi.fn(() => browserPty).mockReturnValueOnce(cliPty);
+    const manager = new TerminalManager({ ptyFactory });
+    const channel = new NodeTerminalChannel({
+      config: () => undefined,
+      controlConnected: () => true,
+      stopped: () => false,
+      reconnect: false,
+      reconnectDelay: () => 0,
+      manager
+    });
+    const receive = (channel as unknown as { handle(raw: Uint8Array): void }).handle.bind(channel);
+    try {
+      const cli = manager.open();
+      const browser = manager.open();
+      for (const [terminal, closeOnDisconnect] of [
+        [cli, true],
+        [browser, false]
+      ] as const) {
+        const attachment = manager.authorizeAttach({ terminalId: terminal.id, closeOnDisconnect });
+        receive(
+          encodeTerminalMessage({
+            type: 'attach',
+            ticket: terminal.id,
+            terminalId: terminal.id,
+            attachmentId: attachment.attachmentId,
+            afterSequence: 0
+          })
+        );
+      }
+      channel.disconnect();
+      expect(manager.get(cli.id).state).toBe('CLOSED');
+      expect(cliPty.kills).toBe(1);
+      expect(manager.get(browser.id).state).toBe('RUNNING');
+      expect(browserPty.kills).toBe(0);
+      expect(manager.authorizeAttach({ terminalId: browser.id }).terminalId).toBe(browser.id);
+    } finally {
+      channel.stop();
+      await manager.shutdown();
+    }
+  });
+
   it('waits for in-flight terminal cleanup on repeated close and shutdown', async () => {
     const pty = new FakePty();
     vi.spyOn(pty, 'kill').mockImplementation(() => {
@@ -1715,6 +1759,10 @@ describe('Node Admin Terminal', () => {
       kind: 'DIRECTORY',
       gitSummary: null
     });
+    for (const extra of [{ binary: false }, { unexpected: true }])
+      await expect(
+        operation(connector, 'terminal.open', { rows: 20, cols: 90, ...extra })
+      ).rejects.toThrow('TERMINAL_OPEN_INVALID');
     const opened = (await operation(connector, 'terminal.open', {
       rows: 20,
       cols: 90,

@@ -162,6 +162,7 @@ interface ManagedTerminal {
 interface ManagedAttachment {
   readonly terminalId: string;
   readonly readonly: boolean;
+  readonly closeOnDisconnect: boolean;
   readonly ptyInput?: StringDecoder;
 }
 
@@ -439,6 +440,7 @@ export class TerminalManager {
     readonly afterSequence?: unknown;
     readonly readonly?: unknown;
     readonly takeover?: unknown;
+    readonly closeOnDisconnect?: unknown;
   }): TerminalAttachment {
     if (typeof input.terminalId !== 'string') throw new Error('TERMINAL_NOT_FOUND');
     const terminal = this.requireTerminal(input.terminalId);
@@ -449,6 +451,11 @@ export class TerminalManager {
       throw new Error('TERMINAL_ATTACH_INVALID');
     if (input.takeover !== undefined && input.takeover !== false)
       throw new Error('TERMINAL_ATTACH_INVALID');
+    if (
+      (input.closeOnDisconnect !== undefined && typeof input.closeOnDisconnect !== 'boolean') ||
+      (readonly && input.closeOnDisconnect === true)
+    )
+      throw new Error('TERMINAL_ATTACH_INVALID');
     if (!readonly && terminal.writerAttachmentId !== undefined) {
       throw new Error('TERMINAL_ATTACH_CONFLICT');
     }
@@ -456,6 +463,7 @@ export class TerminalManager {
     this.attachments.set(attachmentId, {
       terminalId: terminal.id,
       readonly,
+      closeOnDisconnect: input.closeOnDisconnect === true,
       ...(!readonly && !terminal.usePipe ? { ptyInput: new StringDecoder('utf8') } : {})
     });
     if (!readonly) terminal.writerAttachmentId = attachmentId;
@@ -510,6 +518,21 @@ export class TerminalManager {
       terminal.lastUsedAt = terminal.detachedAt;
       this.notifySummary(terminal);
     }
+  }
+
+  /** A relay failure closes only its CLI writer; browser terminals remain reattachable. */
+  releaseRelayAttachment(attachmentId: string): void {
+    const attachment = this.attachments.get(attachmentId);
+    if (
+      attachment?.closeOnDisconnect === true &&
+      this.terminals.get(attachment.terminalId)?.writerAttachmentId === attachmentId
+    ) {
+      void this.close(attachment.terminalId).catch(() =>
+        nodeLog('terminal.relay.cleanup.failed', { terminalId: attachment.terminalId })
+      );
+      return;
+    }
+    this.detach(attachmentId);
   }
 
   /** Processes data frames from an already-authorized Server relay attachment. */

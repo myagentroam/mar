@@ -144,11 +144,13 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       script,
       `
       import { execFile } from 'node:child_process';
+      import { once } from 'node:events';
       import { promisify } from 'node:util';
       import { writeFile } from 'node:fs/promises';
       import { Writable } from 'node:stream';
       import { createRequire } from 'node:module';
       import { MarctlClient } from ${JSON.stringify(entry('src/client.mjs'))};
+      import { decodeTerminalMessage } from ${JSON.stringify(entry('node_modules/@myagentroam/protocol/dist/byte-frame.js'))};
       import { runTerminalSession } from ${JSON.stringify(entry('src/terminal.mjs'))};
       import { openDirectTerminal } from ${JSON.stringify(entry('src/direct.mjs'))};
       import { DirectFallbackError } from ${JSON.stringify(entry('src/direct-errors.mjs'))};
@@ -164,6 +166,33 @@ test('marctl executes and copies through isolated Server and Node, with real dir
         await run(scp, [${JSON.stringify(source)}, node + '://' + ${JSON.stringify(remote)}]);
         await run(scp, [node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copied)}]);
         await run(scp, ['--no-reuse', node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copiedWithoutPool)}]);
+        const single = new MarctlClient({ serverUrl: process.env.MAR_CTL_SERVER_URL, key: process.env.MAR_CTL_USER_TOKEN });
+        const abandoned = await single.createTerminal({ nodeId: node, rows: 24, cols: 80, command: 'printf "single-ready:%s;" "$$"; exec sleep 300' });
+        const ticket = await single.createAttachTicket({ nodeId: node, terminalId: abandoned });
+        const wire = single.openTerminalWebSocket(WebSocket, { nodeId: node, terminalId: abandoned, ticket });
+        try {
+          result.abandonedPid = await new Promise((resolve, reject) => {
+            let printed = '';
+            wire.once('error', reject);
+            wire.once('close', () => reject(new Error('SINGLE_TERMINAL_LOST')));
+            wire.on('message', (raw) => {
+              try {
+                const frame = decodeTerminalMessage(raw);
+                if (frame.type === 'error' || frame.type === 'exit') throw new Error('SINGLE_TERMINAL_FAILED');
+                if (frame.type === 'output') printed += Buffer.from(frame.data).toString();
+                const ready = /^single-ready:(\\d+);$/.exec(printed);
+                if (ready) resolve(Number(ready[1]));
+              } catch (error) { reject(error); }
+            });
+          });
+        } finally {
+          if (wire.readyState !== WebSocket.CLOSED) {
+            const closed = once(wire, 'close');
+            wire.terminate();
+            await closed;
+          }
+        }
+        result.abandoned = abandoned;
         const client = new MarctlClient({ serverUrl: process.env.MAR_CTL_SERVER_URL, key: process.env.MAR_CTL_USER_TOKEN, reuseTerminalConnections: true });
         try { await client.openComputer(node); }
         catch (error) { result.computer = error.code; }
@@ -203,11 +232,25 @@ test('marctl executes and copies through isolated Server and Node, with real dir
     const result = JSON.parse(await readFile(resultPath, 'utf8'));
     expect(result).toEqual({
       cli: 'cli-ok',
+      abandoned: expect.any(String),
+      abandonedPid: expect.any(Number),
       computer: 'COMPUTER_REMOTE_DISABLED',
       relay: { code: 0, output: 'relay' },
       relayAgain: { code: 0, output: 'relayAgain' },
       direct: { code: 0, output: 'direct' }
     });
+    await expect.poll(() => manager.get(result.abandoned).state).toBe('CLOSED');
+    await expect
+      .poll(() => {
+        try {
+          process.kill(result.abandonedPid, 0);
+          return true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+          throw error;
+        }
+      })
+      .toBe(false);
     expect(muxConnections).toBe(1);
     expect(await readFile(starts, 'utf8')).toBe('x');
     expect(await readFile(copied)).toEqual(bytes);
