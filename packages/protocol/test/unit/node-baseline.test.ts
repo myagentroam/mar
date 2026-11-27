@@ -35,13 +35,13 @@ const item = {
 };
 
 describe('Node 0.11.39 protocol baseline', () => {
-  it('requires wire v4 and rejects older and unknown versions', () => {
-    expect(NODE_PROTOCOL_VERSION).toBe(4);
-    for (const version of [2, 3, 4, 5]) {
+  it('retains wire v3 and rejects older and unknown versions', () => {
+    expect(NODE_PROTOCOL_VERSION).toBe(3);
+    for (const version of [2, 3, 4]) {
       expect(
         nodeEnvelopeSchema.safeParse({ version, id: 'request', type: 'heartbeat', payload: {} })
           .success
-      ).toBe(version === 4);
+      ).toBe(version === 3);
     }
   });
 

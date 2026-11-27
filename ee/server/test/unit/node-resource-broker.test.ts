@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createEnvelope } from '@myagentroam/protocol';
+import { createEnvelope, NODE_PROTOCOL_VERSION } from '@myagentroam/protocol';
 import { NodeRequestBroker } from '../../src/service/node-request-broker.js';
 import { testNodeBrokerServices } from '../../../../test/support/node-broker-services.js';
 
@@ -333,7 +333,10 @@ describe('Node broker resource scope lifecycle', () => {
     expect(f.sent).toHaveLength(0);
     const pending = await f.begin('node.upgrade.request', { targetVersion: '0.11.38' }, 'w');
     expect(f.authorize).toHaveBeenCalledOnce();
-    expect(f.sent[0]).toMatchObject({ version: 4, payload: { operation: 'node.upgrade.request' } });
+    expect(f.sent[0]).toMatchObject({
+      version: NODE_PROTOCOL_VERSION,
+      payload: { operation: 'node.upgrade.request' }
+    });
     pending.reply({ accepted: true });
     await expect(pending.promise).resolves.toEqual({ accepted: true });
   });

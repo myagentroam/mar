@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { WebSocket } from 'ws';
-import { createEnvelope } from '@myagentroam/protocol';
+import { createEnvelope, NODE_PROTOCOL_VERSION } from '@myagentroam/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeIdentityControl } from '../../src/node-identity-control.js';
 import { publicNode } from '../../src/node-projection.js';
@@ -78,7 +78,7 @@ describe('public Node identity connection lifecycle', () => {
         expect(control.sendAuthenticatedNode('node-1', 'workbench.request', {})).toBe(admitted);
         if (admitted)
           expect(JSON.parse(socket.send.mock.calls.at(-1)![0])).toMatchObject({
-            version: 4,
+            version: NODE_PROTOCOL_VERSION,
             type: 'workbench.request'
           });
       } finally {
@@ -111,7 +111,7 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 4,
+          version: NODE_PROTOCOL_VERSION,
           id: 'old-auth',
           type: 'authenticate',
           payload: { nodeId: 'node-1', credential: 'fixture' }
@@ -121,7 +121,7 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 4,
+          version: NODE_PROTOCOL_VERSION,
           id: 'old-cap',
           type: 'capabilities',
           payload: {
@@ -237,7 +237,7 @@ describe('public Node identity connection lifecycle', () => {
     expect(control.isNodeConnected('node-2')).toBe(false);
   });
 
-  it.each([3, 5])(
+  it.each([NODE_PROTOCOL_VERSION - 1, NODE_PROTOCOL_VERSION + 1])(
     'rejects wire v%i before authenticating or updating metadata',
     async (version) => {
       const { control, store, attach } = fixture();
@@ -414,7 +414,7 @@ describe('public Node identity connection lifecycle', () => {
       old.emit(
         'message',
         JSON.stringify({
-          version: 4,
+          version: NODE_PROTOCOL_VERSION,
           id: 'older-node-auth',
           type: 'authenticate',
           payload: { nodeId: 'node-1', credential: 'fixture' }
@@ -422,7 +422,7 @@ describe('public Node identity connection lifecycle', () => {
       );
       await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
       expect(JSON.parse(old.send.mock.calls[0]![0])).toMatchObject({
-        version: 4,
+        version: NODE_PROTOCOL_VERSION,
         type: 'authenticated',
         replyTo: 'older-node-auth'
       });

@@ -52,7 +52,7 @@ export const healthStatusSchema = z.object({
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
 
 /** The only wire protocol version understood by this build. */
-export const NODE_PROTOCOL_VERSION = 4;
+export const NODE_PROTOCOL_VERSION = 3;
 export const WORKBENCH_PROTOCOL_VERSION = 1;
 
 export const nodePlatformSchema = z.enum(['windows', 'linux', 'macos']);
