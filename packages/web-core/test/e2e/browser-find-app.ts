@@ -15,8 +15,7 @@ localePreferenceService().setLocale('en-US');
 document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 const browser = createWorkbenchBrowserService({
   send: () => false,
-  connectionId: () => undefined,
-  acquire: () => undefined
+  connectionId: () => undefined
 });
 browser.snapshot.value = {
   activeId: 'fixture',

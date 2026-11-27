@@ -5,8 +5,10 @@ import {
   type BrowserAttachmentPrepare,
   type BrowserAttachmentRoute,
   type BrowserDownloadRequest,
-  type BrowserUpload
+  type BrowserUpload,
+  type BrowserUploadStream
 } from '@myagentroam/protocol';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
 import { BrowserAttachment } from './browser-attachment.js';
 import type { BrowserSessionService } from './browser-session-service.js';
 import type { BrowserTabs } from './browser-tabs.js';
@@ -113,6 +115,18 @@ export class BrowserAttachmentService {
     const attachment = this.fileAttachment(userId, request.attachmentId);
     return attachment
       ? attachment.upload(request)
+      : Promise.reject(new Error('BROWSER_LEASE_ENDED'));
+  }
+
+  uploadStream(
+    userId: number,
+    request: BrowserUploadStream,
+    stream: NodeStream,
+    signal: AbortSignal
+  ): Promise<void> {
+    const attachment = this.fileAttachment(userId, request.attachmentId);
+    return attachment
+      ? attachment.uploadStream(request, stream, signal)
       : Promise.reject(new Error('BROWSER_LEASE_ENDED'));
   }
 

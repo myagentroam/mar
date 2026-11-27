@@ -93,6 +93,7 @@ describe('Workspace direct transfer coordinator', () => {
         transportSessionId,
         transfer: {
           direction: 'UPLOAD',
+          uploadId: '54b92a04-ee89-4393-8bc9-ccc6d132b9b0',
           resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'file' },
           fileName: 'file',
           size: 1,
@@ -140,7 +141,7 @@ describe('Workspace direct transfer coordinator', () => {
     }
   });
   it.each(['UPLOAD', 'DOWNLOAD'] as const)(
-    'only audits completed uploads, direction=%s',
+    'only audits completed Composer uploads, direction=%s',
     async (direction) => {
       const f = fixture();
       const transportSessionId = await prepareTransport(f);
@@ -159,7 +160,11 @@ describe('Workspace direct transfer coordinator', () => {
             size: 12,
             ...(direction === 'DOWNLOAD'
               ? { direction: 'DOWNLOAD' as const, revision: 'a'.repeat(64) }
-              : { direction: 'UPLOAD' as const, sha256: 'a'.repeat(64) })
+              : {
+                  direction: 'UPLOAD' as const,
+                  sha256: 'a'.repeat(64),
+                  composerAttachment: { id: 'attachment-one', mime: 'application/octet-stream' }
+                })
           }
         });
         const transfer = f.sendNode.mock.calls.find(
@@ -240,6 +245,7 @@ describe('Workspace direct transfer coordinator', () => {
       transportSessionId,
       transfer: {
         direction: 'UPLOAD',
+        uploadId: '54b92a04-ee89-4393-8bc9-ccc6d132b9b0',
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'large.bin' },
         fileName: 'large.bin',
         size: 12,
@@ -314,6 +320,7 @@ describe('Workspace direct transfer coordinator', () => {
       transportSessionId,
       transfer: {
         direction: 'UPLOAD',
+        uploadId: '54b92a04-ee89-4393-8bc9-ccc6d132b9b0',
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'large.bin' },
         fileName: 'large.bin',
         size: 12,

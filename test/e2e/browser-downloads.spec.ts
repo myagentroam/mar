@@ -57,7 +57,7 @@ test('Browser confirms a Workspace destination and distinguishes conflicts from 
     await expect(list.getByRole('alert')).toHaveText(
       'Could not confirm the save. Check whether reports/slow.bin is complete before retrying.'
     );
-    await expect(list.getByRole('link', { name: 'Save to device' })).toBeVisible();
+    await expect(list.getByRole('button', { name: 'Save to device' })).toBeVisible();
   } finally {
     await fixture.close();
   }
@@ -175,9 +175,9 @@ test('Browser shows received bytes, a determinate bar when size is known, and co
       items: [pending, { ...completing, state: 'ready', size: 1234 }]
     });
     const ready = dialog.getByRole('listitem').filter({ hasText: completing.name });
-    const save = ready.getByRole('link', { name: 'Save to device' });
-    await expect(save).toHaveAttribute('href', '/fixture-download/completing');
-    await expect(save).toHaveAttribute('download', '');
+    const save = ready.getByRole('button', { name: 'Save to device' });
+    await save.click();
+    await expect(page.locator('html')).toHaveAttribute('data-saved-download', 'completing');
     await expect(save).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     await expect(save.locator('svg')).toHaveCount(0);
     await expect(ready.getByRole('progressbar')).toHaveCount(0);
@@ -198,7 +198,7 @@ test('Browser loads paused download progress once the attachment subscription is
   try {
     await page.goto(`${fixture.url}browser-downloads.html?negotiateProgress`);
     await update(page, {
-      revision: 4,
+      revision: 5,
       items: [
         {
           id: 'paused',
@@ -215,7 +215,7 @@ test('Browser loads paused download progress once the attachment subscription is
     expect(await bar.getAttribute('value')).toBeNull();
 
     // Subscription starts projecting the counter but does not change the download revision.
-    await update(page, { revision: 4, startedCount: 1 });
+    await update(page, { revision: 5, startedCount: 1 });
     await expect(bar).toHaveAttribute('value', '25');
     await expect(page.getByText('Download started', { exact: true })).toHaveCount(0);
   } finally {
@@ -251,7 +251,7 @@ test('Browser confirms removing completed files, supports retry and removes ende
     await deletion.click();
     await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(ready.getByRole('alert')).toHaveText('Could not delete this download.');
-    await expect(ready.getByRole('link', { name: 'Save to device' })).toBeVisible();
+    await expect(ready.getByRole('button', { name: 'Save to device' })).toBeVisible();
     await update(page, { revision: 8, failDelete: false });
     await deletion.click();
     await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
@@ -259,9 +259,9 @@ test('Browser confirms removing completed files, supports retry and removes ende
     for (const [file, label] of [
       ['connection-lost.zip', 'Failed'],
       ['canceled.zip', 'Canceled']
-    ]) {
+    ] as const) {
       const row = dialog.getByRole('listitem').filter({ hasText: file });
-      await expect(row.getByText(label!, { exact: true })).toBeVisible();
+      await expect(row.getByText(label, { exact: true })).toBeVisible();
       await expect(row.getByRole('link')).toHaveCount(0);
       await row.getByRole('button', { name: 'Delete download' }).click();
       await expect(row).toHaveCount(0);

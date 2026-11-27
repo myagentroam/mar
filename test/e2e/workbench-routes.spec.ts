@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +14,10 @@ import {
   restoreFileRelayBody,
   type NodeEnvelope
 } from '../../packages/protocol/src/index.js';
+import {
+  decodeNodeRelayHandshake,
+  encodeNodeRelayHandshake
+} from '../../packages/protocol/src/node-stream-wire.js';
 import { createTestServerApp as createServerApp } from '../support/create-test-server-app.js';
 import { RunAttachmentService } from '../../mar-node/src/service/run-attachment-service.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
@@ -25,6 +30,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
   });
   let socket: WebSocket | undefined;
   let fileSocket: WebSocket | undefined;
+  let relaySocket: WebSocket | undefined;
   const attachments = new RunAttachmentService(() => [directory]);
   try {
     expect(
@@ -106,6 +112,51 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       payload: { type: 'capabilities', fileControlBinding: expect.any(String) }
     });
     const { fileControlBinding } = ack.payload as { fileControlBinding: string };
+    const relayUrl = `${baseUrl.replace('http', 'ws')}/api/node/relay`;
+    const rejectedRelay = new WebSocket(relayUrl);
+    try {
+      await opened(rejectedRelay);
+      const rejected = closed(rejectedRelay);
+      rejectedRelay.send(
+        encodeNodeRelayHandshake({
+          type: 'RELAY_AUTH',
+          nodeId,
+          credential,
+          controlBinding: 'not-the-control-binding'
+        })
+      );
+      await rejected;
+    } finally {
+      rejectedRelay.close();
+    }
+
+    relaySocket = new WebSocket(relayUrl);
+    relaySocket.binaryType = 'arraybuffer';
+    await opened(relaySocket);
+    const relayReady = new Promise<unknown>((resolve, reject) => {
+      relaySocket!.addEventListener(
+        'message',
+        (event) => {
+          try {
+            resolve(decodeNodeRelayHandshake(event.data));
+          } catch (error) {
+            reject(error);
+          }
+        },
+        { once: true }
+      );
+      void closed(relaySocket!).then(() => reject(new Error('NODE_RELAY_UNAVAILABLE')));
+    });
+    relaySocket.send(
+      encodeNodeRelayHandshake({
+        type: 'RELAY_AUTH',
+        nodeId,
+        credential,
+        controlBinding: fileControlBinding
+      })
+    );
+    expect(await relayReady).toEqual({ type: 'RELAY_READY' });
+
     fileSocket = new WebSocket(`${baseUrl.replace('http', 'ws')}/api/node/file-connect`);
     fileSocket.binaryType = 'arraybuffer';
     await opened(fileSocket);
@@ -784,55 +835,55 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
     expect(contentResponse.headers['content-range']).toBe('bytes 1-2/4');
     expect(contentResponse.rawPayload).toEqual(Buffer.from([1, 2]));
 
-    const largeDownloadSize = 20 * 1024 * 1024 + 1;
-    const largeDownloadRequest = app.inject({
+    const largePreviewSize = 20 * 1024 * 1024 + 1;
+    const largePreviewRequest = app.inject({
       method: 'GET',
-      url: `/api/workspaces/workspace-1/files/content?nodeId=${nodeId}&path=assets%2Flarge.bin&download=1`,
+      url: `/api/workspaces/workspace-1/files/content?nodeId=${nodeId}&path=assets%2Flarge.mp4`,
       headers
     });
-    const largeDownloadSizeCommand = await message(fileSocket);
-    expect(largeDownloadSizeCommand.payload).toMatchObject({
+    const largePreviewSizeCommand = await message(fileSocket);
+    expect(largePreviewSizeCommand.payload).toMatchObject({
       operation: 'workspace.file.content.read',
-      data: { workspaceId: 'workspace-1', path: 'assets/large.bin', offset: 0, limit: 1 }
+      data: { workspaceId: 'workspace-1', path: 'assets/large.mp4', offset: 0, limit: 1 }
     });
-    respondFile(fileSocket, largeDownloadSizeCommand, {
+    respondFile(fileSocket, largePreviewSizeCommand, {
       file: {
-        path: 'assets/large.bin',
-        size: largeDownloadSize,
+        path: 'assets/large.mp4',
+        size: largePreviewSize,
         sourceRevision: 'b'.repeat(64),
         offset: 0,
         bytes: Uint8Array.of(0)
       }
     });
-    let downloadedBytes = 0;
-    while (downloadedBytes < largeDownloadSize) {
-      const chunkCommand = await message(fileSocket, `large-download-${downloadedBytes}`);
+    let sentBytes = 0;
+    while (sentBytes < largePreviewSize) {
+      const chunkCommand = await message(fileSocket, `large-preview-${sentBytes}`);
       const data = (chunkCommand.payload as { data: { offset: number; limit: number } }).data;
-      const length = Math.min(512 * 1024, largeDownloadSize - downloadedBytes);
+      const length = Math.min(512 * 1024, largePreviewSize - sentBytes);
       expect(data).toMatchObject({
         workspaceId: 'workspace-1',
-        path: 'assets/large.bin',
-        offset: downloadedBytes,
+        path: 'assets/large.mp4',
+        offset: sentBytes,
         limit: length
       });
       respondFile(fileSocket, chunkCommand, {
         file: {
-          path: 'assets/large.bin',
-          size: largeDownloadSize,
+          path: 'assets/large.mp4',
+          size: largePreviewSize,
           sourceRevision: 'b'.repeat(64),
-          offset: downloadedBytes,
+          offset: sentBytes,
           bytes: Buffer.alloc(length)
         }
       });
-      downloadedBytes += length;
+      sentBytes += length;
     }
-    const largeDownloadResponse = await largeDownloadRequest;
-    expect(largeDownloadResponse.statusCode).toBe(200);
-    expect(largeDownloadResponse.headers['content-disposition']).toBe(
-      "attachment; filename*=UTF-8''large.bin"
+    const largePreviewResponse = await largePreviewRequest;
+    expect(largePreviewResponse.statusCode).toBe(200);
+    expect(largePreviewResponse.headers['content-disposition']).toBe(
+      "inline; filename*=UTF-8''large.mp4"
     );
-    expect(largeDownloadResponse.headers['content-length']).toBe(String(largeDownloadSize));
-    expect(largeDownloadResponse.rawPayload).toHaveLength(largeDownloadSize);
+    expect(largePreviewResponse.headers['content-length']).toBe(String(largePreviewSize));
+    expect(largePreviewResponse.rawPayload).toHaveLength(largePreviewSize);
 
     const worktreeContentRequest = app.inject({
       method: 'GET',
@@ -965,11 +1016,19 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
     });
     expect((await uploadPreflightRequest).statusCode).toBe(200);
 
+    const uploadSha256 = createHash('sha256').update('ok').digest('hex');
     const uploadCreateRequest = app.inject({
       method: 'POST',
       url: '/api/workspaces/workspace-1/uploads',
       headers,
-      payload: { nodeId, directory: 'src', name: 'main.ts', size: 2, overwrite: false }
+      payload: {
+        nodeId,
+        directory: 'src',
+        name: 'main.ts',
+        size: 2,
+        overwrite: false,
+        sha256: uploadSha256
+      }
     });
     const uploadCreateCommand = await message(socket);
     expect(uploadCreateCommand.payload).toMatchObject({
@@ -979,7 +1038,8 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
         directory: 'src',
         name: 'main.ts',
         size: 2,
-        overwrite: false
+        overwrite: false,
+        sha256: uploadSha256
       }
     });
     respond(socket, uploadCreateCommand, {
@@ -998,25 +1058,7 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       headers: { ...headers, 'content-type': 'application/octet-stream' },
       payload: Buffer.from('ok')
     });
-    const uploadChunkCommand = await message(fileSocket);
-    expect(uploadChunkCommand.payload).toMatchObject({
-      operation: 'workspace.files.upload.chunk',
-      data: {
-        workspaceId: 'workspace-1',
-        uploadId: '0b2df00e-39bf-4fbd-bb4a-af68dca11111',
-        offset: 0,
-        bytes: Uint8Array.of(111, 107)
-      }
-    });
-    respondFile(fileSocket, uploadChunkCommand, {
-      upload: {
-        uploadId: '0b2df00e-39bf-4fbd-bb4a-af68dca11111',
-        path: 'src/main.ts',
-        receivedBytes: 2,
-        size: 2
-      }
-    });
-    expect((await uploadChunkRequest).statusCode).toBe(200);
+    expect((await uploadChunkRequest).statusCode).toBe(404);
 
     const uploadCompleteRequest = app.inject({
       method: 'POST',
@@ -1163,9 +1205,35 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
     respond(socket, historyDiffCommand, { diff: { binary: false, text: 'history diff' } });
     expect((await historyDiffRequest).json()).toMatchObject({ diff: { text: 'history diff' } });
 
+    const historyContentUrl = `/api/workspaces/workspace-1/git/commits/${commit}/files/content?nodeId=${nodeId}&refs=${encodeURIComponent(historyRef)}&path=assets%2Flogo.png`;
+    const historyHeadRequest = app.inject({
+      method: 'HEAD',
+      url: historyContentUrl,
+      headers: { ...headers, range: 'bytes=0-0' }
+    });
+    const historyHeadCommand = await message(fileSocket);
+    expect(historyHeadCommand.payload).toMatchObject({
+      operation: 'workspace.git.commit.file.content.read',
+      data: {
+        workspaceId: 'workspace-1',
+        commit,
+        refs: [historyRef],
+        path: 'assets/logo.png',
+        offset: 0,
+        limit: 1
+      }
+    });
+    respondFile(fileSocket, historyHeadCommand, {
+      file: { path: 'assets/logo.png', size: 2, offset: 0, bytes: Uint8Array.of(0) }
+    });
+    const historyHead = await historyHeadRequest;
+    expect(historyHead.statusCode).toBe(206);
+    expect(historyHead.headers['content-range']).toBe('bytes 0-0/2');
+    expect(historyHead.rawPayload).toHaveLength(0);
+
     const historyContentRequest = app.inject({
       method: 'GET',
-      url: `/api/workspaces/workspace-1/git/commits/${commit}/files/content?nodeId=${nodeId}&refs=${encodeURIComponent(historyRef)}&path=assets%2Flogo.png`,
+      url: historyContentUrl,
       headers: { ...headers, range: 'bytes=0-1' }
     });
     const historyContentSizeCommand = await message(fileSocket);
@@ -1193,28 +1261,28 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
     });
     expect((await historyContentRequest).rawPayload).toEqual(Buffer.from([0, 1]));
 
-    const historyDownloadSize = 512 * 1024 + 1;
-    const historyDownloadRequest = app.inject({
+    const historyPreviewSize = 512 * 1024 + 1;
+    const historyPreviewRequest = app.inject({
       method: 'GET',
-      url: `/api/workspaces/workspace-1/git/commits/${commit}/files/content?nodeId=${nodeId}&refs=${encodeURIComponent(historyRef)}&path=assets%2Fhistory-large.bin&download=1`,
+      url: `/api/workspaces/workspace-1/git/commits/${commit}/files/content?nodeId=${nodeId}&refs=${encodeURIComponent(historyRef)}&path=assets%2Fhistory-large.mp4`,
       headers
     });
-    const historyDownloadSizeCommand = await message(fileSocket);
-    expect(historyDownloadSizeCommand.payload).toMatchObject({
+    const historyPreviewSizeCommand = await message(fileSocket);
+    expect(historyPreviewSizeCommand.payload).toMatchObject({
       operation: 'workspace.git.commit.file.content.read',
       data: {
         workspaceId: 'workspace-1',
         commit,
         refs: [historyRef],
-        path: 'assets/history-large.bin',
+        path: 'assets/history-large.mp4',
         offset: 0,
         limit: 1
       }
     });
-    respondFile(fileSocket, historyDownloadSizeCommand, {
+    respondFile(fileSocket, historyPreviewSizeCommand, {
       file: {
-        path: 'assets/history-large.bin',
-        size: historyDownloadSize,
+        path: 'assets/history-large.mp4',
+        size: historyPreviewSize,
         offset: 0,
         bytes: Uint8Array.of(0)
       }
@@ -1223,26 +1291,26 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
       [0, 512 * 1024],
       [512 * 1024, 1]
     ] as const) {
-      const historyDownloadCommand = await message(fileSocket, `history-download-${offset}`);
-      expect(historyDownloadCommand.payload).toMatchObject({
+      const historyPreviewCommand = await message(fileSocket, `history-preview-${offset}`);
+      expect(historyPreviewCommand.payload).toMatchObject({
         operation: 'workspace.git.commit.file.content.read',
         data: { offset, limit }
       });
-      respondFile(fileSocket, historyDownloadCommand, {
+      respondFile(fileSocket, historyPreviewCommand, {
         file: {
-          path: 'assets/history-large.bin',
-          size: historyDownloadSize,
+          path: 'assets/history-large.mp4',
+          size: historyPreviewSize,
           offset,
           bytes: Buffer.alloc(limit)
         }
       });
     }
-    const historyDownloadResponse = await historyDownloadRequest;
-    expect(historyDownloadResponse.statusCode).toBe(200);
-    expect(historyDownloadResponse.headers['content-disposition']).toBe(
-      "attachment; filename*=UTF-8''history-large.bin"
+    const historyPreviewResponse = await historyPreviewRequest;
+    expect(historyPreviewResponse.statusCode).toBe(200);
+    expect(historyPreviewResponse.headers['content-disposition']).toBe(
+      "inline; filename*=UTF-8''history-large.mp4"
     );
-    expect(historyDownloadResponse.rawPayload).toHaveLength(historyDownloadSize);
+    expect(historyPreviewResponse.rawPayload).toHaveLength(historyPreviewSize);
 
     const restoreRequest = app.inject({
       method: 'POST',
@@ -1313,14 +1381,24 @@ test('Fixed Workbench routes require Admin authorization and Files and Changes n
     const unavailableCommand = await message(socket);
     respondError(socket, unavailableCommand, 'CAPABILITY_UNAVAILABLE');
     expect((await unavailableProfile).statusCode).toBe(409);
+    const relayClosed = closed(relaySocket);
+    socket.close();
+    await relayClosed;
   } finally {
     attachments.dispose();
+    relaySocket?.close();
     fileSocket?.close();
     socket?.close();
     await app.shutdown();
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+function closed(socket: WebSocket): Promise<void> {
+  return new Promise((resolve) =>
+    socket.addEventListener('close', () => resolve(), { once: true })
+  );
+}
 
 function respond(socket: WebSocket, command: NodeEnvelope, result: unknown): void {
   socket.send(JSON.stringify(createEnvelope('node.response', { result }, { replyTo: command.id })));
@@ -1369,6 +1447,7 @@ function opened(socket: WebSocket): Promise<void> {
 }
 
 function message(socket: WebSocket, description = 'node-command'): Promise<NodeEnvelope> {
+  const timeout = new Error(`NODE_MESSAGE_TIMEOUT:${description}`);
   return new Promise((resolve, reject) => {
     const cleanup = (): void => {
       clearTimeout(timer);
@@ -1402,7 +1481,7 @@ function message(socket: WebSocket, description = 'node-command'): Promise<NodeE
     };
     const timer = setTimeout(() => {
       cleanup();
-      reject(new Error(`NODE_MESSAGE_TIMEOUT:${description}`));
+      reject(timeout);
     }, 5_000);
     socket.addEventListener('message', onMessage, { once: true });
     socket.addEventListener('error', onError, { once: true });

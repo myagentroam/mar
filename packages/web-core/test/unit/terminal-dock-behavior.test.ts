@@ -57,6 +57,7 @@ function fixture(http?: WorkbenchHttpService) {
   const props = reactive({
     nodeId: 'node-a',
     workspaceId: 'workspace-a',
+    openStream: vi.fn(),
     errorMessage: (error: unknown) => (error as Error).message,
     csrfToken: 'fixture-csrf',
     renewCsrfToken: async () => 'fixture-renewed',

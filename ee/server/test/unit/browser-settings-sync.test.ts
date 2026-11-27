@@ -28,7 +28,6 @@ it('reads the latest account settings at open or attach, and omits them for olde
     authorize: () => true,
     capability: () => ({ apiVersion: 1, ice: false, nodeGeneration: generation }),
     settings,
-    authenticateNode: async () => true,
     failed: vi.fn()
   });
   async function message(input: BrowserControlRequest['request']) {

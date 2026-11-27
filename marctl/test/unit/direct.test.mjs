@@ -2,10 +2,14 @@ import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/proto
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { openDirectConnection, openDirectTerminal } from '../../src/direct.mjs';
+import { openDirectConnection } from '../../src/direct.mjs';
 import { LiveControl } from '../../src/direct-control.mjs';
-import { DirectFallbackError, DirectUnsafeError } from '../../src/direct-errors.mjs';
-import { runTerminalSession } from '../../src/terminal.mjs';
+import { DirectFallbackError } from '../../src/direct-errors.mjs';
+import { NodeStreamMux } from '@myagentroam/protocol/node-stream-mux';
+import { decodeNodeStreamFrame } from '@myagentroam/protocol/node-stream-wire';
+import { NODE_STREAM_CHANNEL_LABEL } from '@myagentroam/protocol/node-stream-path';
+import { readTerminalRecords, writeTerminalRecord } from '@myagentroam/protocol/terminal-stream';
+import { NodeConnection } from '@myagentroam/protocol/node-connection';
 
 const FINGERPRINT = `sha-256 ${Array.from({ length: 32 }, () => 'AA').join(':')}`;
 const HOST_CANDIDATE = 'candidate:1 1 UDP 1 192.0.2.1 5000 typ host';
@@ -64,8 +68,23 @@ class FakeChannel {
     this.onOpenCallback = undefined;
     this.onMessageCallback = undefined;
     this.onClosedCallback = undefined;
-    this.attachOnOpen = attachOnOpen;
-    this.handoffFrames = handoffFrames;
+    this.inputs = [];
+    if (label === NODE_STREAM_CHANNEL_LABEL && attachOnOpen) {
+      this.mux = new NodeStreamMux({
+        maxStreams: 10,
+        send: async (bytes) => this.onMessageCallback?.(bytes),
+        accept: async () => async (stream) => {
+          for (const frame of [{ type: 'attach', afterSequence: 0 }, ...handoffFrames]) {
+            await stream.write(
+              writeTerminalRecord(encodeTerminalMessage({ terminalId: 'terminal-1', ...frame }))
+            );
+          }
+          if (handoffFrames.some(({ type }) => type === 'exit')) await stream.endWrite();
+          for await (const bytes of readTerminalRecords(stream))
+            this.inputs.push(decodeTerminalMessage(bytes));
+        }
+      });
+    }
   }
 
   onOpen(callback) {
@@ -88,19 +107,9 @@ class FakeChannel {
 
   sendMessageBinary(value) {
     if (!this.open) return false;
-    const message = decodeTerminalMessage(value);
+    const message = decodeNodeStreamFrame(value);
     this.sent.push(message);
-    if (this.attachOnOpen && message.type === 'OPEN') {
-      this.onMessageCallback?.(
-        encodeTerminalMessage({
-          type: 'ATTACHED',
-          terminalId: 'terminal-1',
-          afterSequence: 0
-        })
-      );
-      for (const frame of this.handoffFrames)
-        this.onMessageCallback?.(encodeTerminalMessage({ terminalId: 'terminal-1', ...frame }));
-    }
+    this.mux?.receive(value);
     return true;
   }
 
@@ -108,6 +117,7 @@ class FakeChannel {
     if (this.closed) return;
     this.closed = true;
     this.open = false;
+    this.mux?.disconnect();
     this.onClosedCallback?.();
   }
 }
@@ -127,7 +137,7 @@ class FakePeer {
 
   createDataChannel(label) {
     const channel = new FakeChannel(label, {
-      attachOnOpen: this.attachTerminal && label.startsWith('mar-terminal-'),
+      attachOnOpen: this.attachTerminal && label === NODE_STREAM_CHANNEL_LABEL,
       handoffFrames: this.handoffFrames
     });
     this.channels.push(channel);
@@ -365,7 +375,7 @@ for (const [timing, code, errorName] of [
     };
     let prepared = false;
     let rejected;
-    const pending = openDirectTerminal({
+    const pending = openDirectConnection({
       client: fixture.client,
       WebSocketClass: FakeSocket,
       nodeId: 'node-1',
@@ -402,7 +412,7 @@ for (const [timing, code, errorName] of [
 test('matches transport prepare rejection by request ID without waiting for timeout', async () => {
   const fixture = createDirectFixture({ transportError: 'DIRECT_TRANSFER_NOT_AUTHORIZED' });
   await assert.rejects(
-    openDirectTerminal({
+    openDirectConnection({
       client: fixture.client,
       WebSocketClass: FakeSocket,
       nodeId: 'node-1',
@@ -417,7 +427,7 @@ test('matches transport prepare rejection by request ID without waiting for time
 
 test('a transport error for a different request does not reject the connection', async () => {
   const fixture = createDirectFixture({ unrelatedTransportError: true });
-  const transport = await openDirectTerminal({
+  const transport = await openDirectConnection({
     client: fixture.client,
     WebSocketClass: FakeSocket,
     nodeId: 'node-1',
@@ -431,7 +441,7 @@ test('a transport error for a different request does not reject the connection',
 test('a transient transport prepare error remains eligible for fallback', async () => {
   const fixture = createDirectFixture({ transportError: 'DIRECT_TRANSFER_UNAVAILABLE' });
   await assert.rejects(
-    openDirectTerminal({
+    openDirectConnection({
       client: fixture.client,
       WebSocketClass: FakeSocket,
       nodeId: 'node-1',
@@ -446,7 +456,7 @@ test('a transient transport prepare error remains eligible for fallback', async 
 test('preserves a transport rejection received during the preparation barrier', async () => {
   const fixture = createDirectFixture();
   await assert.rejects(
-    openDirectTerminal({
+    openDirectConnection({
       client: fixture.client,
       WebSocketClass: FakeSocket,
       nodeId: 'node-1',
@@ -472,27 +482,6 @@ test('preserves a transport rejection received during the preparation barrier', 
   assert.equal(fixture.peer.channels.length, 0);
 });
 
-test('does not send OPEN when cancelled during the handoff', async () => {
-  const fixture = createDirectFixture();
-  const controller = new AbortController();
-  await assert.rejects(
-    openDirectTerminal({
-      client: fixture.client,
-      WebSocketClass: FakeSocket,
-      nodeId: 'node-1',
-      terminalId: 'terminal-1',
-      peerConnectionFactory: () => fixture.peer,
-      timeoutMs: 150,
-      signal: controller.signal,
-      beforeOpen: async () => controller.abort('SIGINT')
-    })
-  );
-  assert.equal(
-    fixture.peer.channels.flatMap((channel) => channel.sent).some((frame) => frame.type === 'OPEN'),
-    false
-  );
-});
-
 for (const code of [
   'TERMINAL_NOT_AUTHORIZED',
   'TERMINAL_DIRECT_LEASE_EXPIRED',
@@ -502,116 +491,61 @@ for (const code of [
 ]) {
   test(`rejects ${code} from direct prepare without relay fallback`, async () => {
     const fixture = createDirectFixture({ terminalError: code });
-    let relayCalls = 0;
-    const client = {
-      ...fixture.client,
-      async createTerminal() {
-        return 'terminal-1';
-      },
-      async deleteTerminal() {},
-      async createAttachTicket() {
-        relayCalls++;
-        return 'ticket';
-      }
+    const relay = {
+      closed: false,
+      close() {},
+      openStream: async () => assert.fail('An authorization rejection must not fall back')
     };
-    await assert.rejects(
-      runTerminalSession({
-        client,
-        WebSocketClass: FakeSocket,
-        nodeId: 'node-1',
-        command: 'echo test',
-        connectionTimeoutMs: 500,
-        openDirectTerminal: (options) =>
-          openDirectTerminal({ ...options, peerConnectionFactory: () => fixture.peer })
-      }),
-      (error) => error.code === code
-    );
-    assert.equal(relayCalls, 0);
-  });
-}
-
-test('allows relay fallback when direct prepare reports a transient transport failure', async () => {
-  const fixture = createDirectFixture({ terminalError: 'TERMINAL_DIRECT_UNAVAILABLE' });
-  await assert.rejects(
-    openDirectTerminal({
-      client: fixture.client,
-      WebSocketClass: FakeSocket,
-      nodeId: 'node-1',
-      terminalId: 'terminal-1',
-      peerConnectionFactory: () => fixture.peer,
-      timeoutMs: 500
-    }),
-    (error) => error instanceof DirectFallbackError && error.code === 'TERMINAL_DIRECT_UNAVAILABLE'
-  );
-});
-
-class FakeStdout extends EventEmitter {
-  constructor() {
-    super();
-    this.rows = 24;
-    this.columns = 80;
-    this.output = '';
-  }
-
-  write(value) {
-    this.output += Buffer.from(value).toString();
-  }
-}
-
-test('delegates the default native lifecycle to the authenticated client process boundary', async () => {
-  const transport = new EventEmitter();
-  let received;
-  const client = {
-    async openDirectTerminal(options) {
-      received = options;
-      return transport;
+    const lifetime = new AbortController();
+    const path = await openFixturePath(fixture, lifetime.signal);
+    const connection = new NodeConnection({ direct: async () => path, relay: async () => relay });
+    try {
+      await connection.ready({ signal: lifetime.signal });
+      await assert.rejects(connection.openStream(request(), { signal: lifetime.signal }), { code });
+    } finally {
+      connection.close();
     }
-  };
-  const options = { client, nodeId: 'node-1', terminalId: 'terminal-1' };
-  assert.equal(await openDirectTerminal(options), transport);
-  assert.equal(received, options);
-});
-
-test('waits for permission to send OPEN and disposes the isolated native owner once', async () => {
-  const fixture = createDirectFixture();
-  let release;
-  let cleaned = 0;
-  const permission = new Promise((resolve) => {
-    release = resolve;
   });
-  const opening = openDirectTerminal({
+}
+
+function request(options = {}) {
+  return { terminalId: 'terminal-1', onFrame() {}, onEnd() {}, ...options };
+}
+
+async function openFixturePath(fixture, signal, options = {}) {
+  const connection = await openDirectConnection({
     client: fixture.client,
     nodeId: 'node-1',
-    terminalId: 'terminal-1',
+    timeoutMs: 100,
     peerConnectionFactory: () => fixture.peer,
-    beforeOpen: () => permission,
-    cleanupNative: () => {
-      cleaned += 1;
+    ...options
+  });
+  try {
+    return await connection.openStreams(signal);
+  } catch (error) {
+    connection.close();
+    throw error;
+  }
+}
+
+test('cleans up the native peer exactly once when the common path closes', async () => {
+  let cleaned = 0;
+  const path = await openFixturePath(createDirectFixture(), new AbortController().signal, {
+    cleanupNative() {
+      cleaned++;
     }
   });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.ok(fixture.control.sent.some((message) => message.type === 'terminal.direct.prepare'));
-  assert.equal(
-    fixture.peer.channels.flatMap((channel) => channel.sent).some((frame) => frame.type === 'OPEN'),
-    false
-  );
-  release();
-  const transport = await opening;
-  transport.close();
-  transport.close();
+  path.close();
+  path.close();
   assert.equal(cleaned, 1);
 });
 
 test('opens a direct terminal with host-only signaling, fingerprint validation, and heartbeats', async () => {
   const fixture = createDirectFixture();
-  const transport = await openDirectTerminal({
-    client: fixture.client,
-    nodeId: 'node-1',
-    terminalId: 'terminal-1',
-    timeoutMs: 100,
-    heartbeatMs: 5,
-    peerConnectionFactory: () => fixture.peer
-  });
+  const signal = new AbortController().signal;
+  const transport = await openFixturePath(fixture, signal, { heartbeatMs: 5 });
+  const stream = await transport.openStream(request(), signal);
+  assert.ok(stream);
 
   const offer = fixture.control.sent.find(
     (message) => message.type === 'direct.signal' && message.signal.kind === 'OFFER'
@@ -627,9 +561,7 @@ test('opens a direct terminal with host-only signaling, fingerprint validation, 
     1
   );
   assert.ok(fixture.peer.remoteCandidates.length === 0);
-  assert.ok(
-    fixture.peer.channels.some((channel) => channel.label === 'mar-terminal-terminal-direct-1')
-  );
+  assert.ok(fixture.peer.channels.some((channel) => channel.label === NODE_STREAM_CHANNEL_LABEL));
   assert.equal(
     fixture.peer.channels.find((channel) => channel.label === 'mar-direct-transport')?.closed,
     true
@@ -658,7 +590,7 @@ test('reuses the manifest and waits at the preparation barrier before creating a
   const preparation = new Promise((resolve) => {
     prepared = resolve;
   });
-  const pending = openDirectTerminal({
+  const pending = openDirectConnection({
     client: fixture.client,
     manifest,
     nodeId: 'node-1',
@@ -701,7 +633,7 @@ test('announces ICE connectivity before DTLS and server confirmation without ope
     fixture.peer.iceStateCallback?.('completed');
   };
   let selected = 0;
-  const pending = openDirectTerminal({
+  const pending = openDirectConnection({
     client: fixture.client,
     nodeId: 'node-1',
     terminalId: 'terminal-1',
@@ -739,8 +671,8 @@ test('announces ICE connectivity before DTLS and server confirmation without ope
   );
   const transport = await pending;
   assert.equal(
-    fixture.peer.channels.some((channel) => channel.label.startsWith('mar-terminal-')),
-    true
+    fixture.peer.channels.some((channel) => channel.label === NODE_STREAM_CHANNEL_LABEL),
+    false
   );
   transport.close();
 });
@@ -768,7 +700,7 @@ test('captures an offer generated while the bootstrap channel is created', async
   }
 
   const fixture = createDirectFixture({ peer: new EagerOfferPeer() });
-  const transport = await openDirectTerminal({
+  const transport = await openDirectConnection({
     client: fixture.client,
     nodeId: 'node-1',
     terminalId: 'terminal-1',
@@ -784,41 +716,39 @@ test('captures an offer generated while the bootstrap channel is created', async
   transport.close();
 });
 
-test('delivers direct output and exit frames emitted in the ATTACHED handoff tick', async () => {
+test('delivers early Direct output and exit in order after stream activation', async () => {
   const fixture = createDirectFixture({
     handoffFrames: [
       { type: 'output', sequence: 1, data: Buffer.from('direct output\n') },
       { type: 'exit', exitCode: 17 }
     ]
   });
-  const stdout = new FakeStdout();
-  const client = {
-    ...fixture.client,
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async deleteTerminal() {}
-  };
-
-  const result = await runTerminalSession({
-    client,
-    WebSocketClass: FakeSocket,
-    nodeId: 'node-1',
-    command: 'printf direct',
-    stdin: new EventEmitter(),
-    stdout,
-    signals: new EventEmitter(),
-    openDirectTerminal: (options) =>
-      openDirectTerminal({
-        ...options,
-        timeoutMs: 100,
-        heartbeatMs: 1000,
-        peerConnectionFactory: () => fixture.peer
-      })
-  });
-
-  assert.equal(result, 17);
-  assert.equal(stdout.output, 'direct output\n');
+  const signal = new AbortController().signal;
+  const path = await openFixturePath(fixture, signal);
+  const frames = [];
+  const ended = Promise.withResolvers();
+  try {
+    const stream = await path.openStream(
+      request({
+        onFrame(raw) {
+          frames.push(decodeTerminalMessage(raw));
+        },
+        onEnd: ended.resolve
+      }),
+      signal
+    );
+    assert.ok(stream);
+    stream.activate();
+    await ended.promise;
+    assert.deepEqual(
+      frames.map(({ type }) => type),
+      ['attach', 'output', 'exit']
+    );
+    assert.equal(Buffer.from(frames[1].data).toString(), 'direct output\n');
+    assert.equal(frames[2].exitCode, 17);
+  } finally {
+    path.close();
+  }
 });
 
 test('cleans up a pre-OPEN setup timeout as a relay-safe fallback', async () => {
@@ -826,7 +756,7 @@ test('cleans up a pre-OPEN setup timeout as a relay-safe fallback', async () => 
   fixture.peer.setRemoteDescription = () => {};
 
   await assert.rejects(
-    openDirectTerminal({
+    openDirectConnection({
       client: fixture.client,
       nodeId: 'node-1',
       terminalId: 'terminal-1',
@@ -846,7 +776,7 @@ test('cleans up a pre-OPEN setup timeout as a relay-safe fallback', async () => 
 test('a losing direct transport never opens a terminal writer', async () => {
   const fixture = createDirectFixture();
   await assert.rejects(
-    openDirectTerminal({
+    openDirectConnection({
       client: fixture.client,
       nodeId: 'node-1',
       terminalId: 'terminal-1',
@@ -859,7 +789,7 @@ test('a losing direct transport never opens a terminal writer', async () => {
     (error) => error instanceof DirectFallbackError && error.code === 'DIRECT_RACE_CANCELLED'
   );
   assert.equal(
-    fixture.peer.channels.some((channel) => channel.label.startsWith('mar-terminal-')),
+    fixture.peer.channels.some((channel) => channel.label === NODE_STREAM_CHANNEL_LABEL),
     false
   );
   assert.equal(fixture.peer.closed, true);
@@ -911,36 +841,23 @@ test('a disconnected control socket interrupts the readiness handoff', async () 
 
 test('an already-cancelled attach on a warm Direct connection does not request a grant', async () => {
   const fixture = createDirectFixture();
-  const connection = await openDirectConnection({
-    client: fixture.client,
-    nodeId: 'node-1',
-    timeoutMs: 100,
-    peerConnectionFactory: () => fixture.peer
-  });
+  const path = await openFixturePath(fixture, new AbortController().signal);
   try {
-    await assert.rejects(
-      connection.attach({ terminalId: 'terminal-1', signal: AbortSignal.abort() }),
-      { code: 'DIRECT_RACE_CANCELLED' }
-    );
+    await assert.rejects(path.openStream(request(), AbortSignal.abort()), { name: 'AbortError' });
     assert.equal(
       fixture.control.sent.some(({ type }) => type === 'terminal.direct.prepare'),
       false
     );
-    assert.equal(connection.closed, false);
+    assert.equal(path.closed, false);
   } finally {
-    connection.close();
+    path.close();
   }
 });
 
 test('cancels a late grant without opening a channel or closing the warm connection', async () => {
   const fixture = createDirectFixture();
   const { control, peer } = fixture;
-  const connection = await openDirectConnection({
-    client: fixture.client,
-    nodeId: 'node-1',
-    timeoutMs: 100,
-    peerConnectionFactory: () => peer
-  });
+  const path = await openFixturePath(fixture, new AbortController().signal);
   const originalSend = control.onSend;
   let delayedRequest;
   control.onSend = (message) => {
@@ -952,7 +869,7 @@ test('cancels a late grant without opening a channel or closing the warm connect
   };
   try {
     const abort = new AbortController();
-    const cancelled = connection.attach({ terminalId: 'cancelled', signal: abort.signal });
+    const cancelled = path.openStream(request({ terminalId: 'cancelled' }), abort.signal);
     assert.ok(delayedRequest);
     abort.abort();
     await assert.rejects(cancelled, { code: 'DIRECT_RACE_CANCELLED' });
@@ -973,77 +890,59 @@ test('cancels a late grant without opening a channel or closing the warm connect
       [{ type: 'terminal.direct.cancel', directSessionId: 'cancelled-grant' }]
     );
     assert.equal(
-      peer.channels.some(({ label }) => label === 'mar-terminal-cancelled-grant'),
+      peer.channels.some(({ sent }) => sent.some(({ type }) => type === 'OPEN')),
       false
     );
-    assert.equal(connection.closed, false);
-    const next = await connection.attach({ terminalId: 'terminal-1' });
+    assert.equal(path.closed, false);
+    const next = await path.openStream(request(), new AbortController().signal);
     next.close();
   } finally {
-    connection.close();
+    path.close();
   }
 });
 
-test('accepts buffered native writes and resumes Direct input in order without resending', async () => {
+test('accepts native queued writes without retries and delivers Direct input in order', async () => {
   const peer = new FakePeer();
   const createChannel = peer.createDataChannel.bind(peer);
-  let bufferedAmount = 0;
-  let onLow;
   peer.createDataChannel = (label) => {
     const channel = createChannel(label);
-    if (!label.startsWith('mar-terminal-')) return channel;
+    if (label !== NODE_STREAM_CHANNEL_LABEL) return channel;
     const send = channel.sendMessageBinary.bind(channel);
-    channel.bufferedAmount = () => bufferedAmount;
-    channel.onBufferedAmountLow = (callback) => {
-      onLow = callback;
-    };
     channel.sendMessageBinary = (bytes) => {
       send(bytes);
-      if (channel.sent.at(-1).type === 'input') bufferedAmount = 600 * 1024;
-      return false; // Native SCTP reports queued writes as false, including OPEN.
+      return false;
     };
     return channel;
   };
-  const fixture = createDirectFixture({ peer });
-  const transport = await openDirectTerminal({
-    client: fixture.client,
-    nodeId: 'node-1',
-    terminalId: 'terminal-1',
-    timeoutMs: 100,
-    peerConnectionFactory: () => peer
-  });
+  const signal = new AbortController().signal;
+  const path = await openFixturePath(createDirectFixture({ peer }), signal);
   try {
+    const stream = await path.openStream(request(), signal);
     const channel = peer.channels.at(-1);
-    const write = (byte) =>
-      transport.send({ type: 'input', terminalId: 'terminal-1', data: Uint8Array.of(byte) });
-    const first = write(1);
-    const second = write(2);
+    for (const byte of [1, 2]) {
+      await stream.write(
+        encodeTerminalMessage({
+          type: 'input',
+          terminalId: 'terminal-1',
+          data: Uint8Array.of(byte)
+        })
+      );
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(channel.sent.filter(({ type }) => type === 'OPEN').length, 1);
     assert.deepEqual(
-      channel.sent.map((frame) => frame.type),
-      ['OPEN', 'input']
-    );
-    onLow(); // A delayed notification is not evidence the buffer is still low.
-    await Promise.resolve();
-    assert.equal(channel.sent.length, 2);
-    bufferedAmount = 0;
-    onLow();
-    await first;
-    assert.deepEqual(
-      channel.sent.slice(1).map((frame) => frame.data[0]),
+      channel.inputs.map(({ data }) => data[0]),
       [1, 2]
     );
-    bufferedAmount = 0;
-    onLow();
-    await second;
   } finally {
-    transport.close();
+    path.close();
   }
 });
 
 test('cancels a losing ICE candidate before terminal authorization or OPEN', async () => {
   const fixture = createDirectFixture();
   await assert.rejects(
-    openDirectTerminal({
+    openDirectConnection({
       client: fixture.client,
       nodeId: 'node-1',
       terminalId: 'terminal-1',
@@ -1060,36 +959,34 @@ test('cancels a losing ICE candidate before terminal authorization or OPEN', asy
     false
   );
   assert.equal(
-    fixture.peer.channels.some((channel) => channel.label.startsWith('mar-terminal-')),
+    fixture.peer.channels.some((channel) => channel.label === NODE_STREAM_CHANNEL_LABEL),
     false
   );
   assert.equal(fixture.peer.closed, true);
 });
 
-test('refuses relay fallback once OPEN was sent', async () => {
+test('cancels the Direct substream without replay when an OPEN goes unacknowledged', async () => {
   const fixture = createDirectFixture({ attach: false });
-  let closeCount = 0;
-  fixture.peer.close = () => {
-    closeCount += 1;
-    fixture.peer.closed = true;
-  };
-
-  await assert.rejects(
-    openDirectTerminal({
-      client: fixture.client,
-      nodeId: 'node-1',
-      terminalId: 'terminal-1',
-      timeoutMs: 5,
-      peerConnectionFactory: () => fixture.peer
-    }),
-    (error) => error instanceof DirectUnsafeError
-  );
-  const terminalChannel = fixture.peer.channels.find((channel) =>
-    channel.label.startsWith('mar-terminal-')
-  );
-  assert.ok(terminalChannel?.sent.some((message) => message.type === 'OPEN'));
-  assert.equal(fixture.peer.closed, true);
-  assert.equal(closeCount, 1);
+  const path = await openFixturePath(fixture, new AbortController().signal);
+  try {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 15);
+    try {
+      await assert.rejects(path.openStream(request(), abort.signal), {
+        code: 'NODE_STREAM_CANCELLED'
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    const channel = fixture.peer.channels.at(-1);
+    assert.deepEqual(
+      channel.sent.map(({ type }) => type),
+      ['OPEN', 'RESET']
+    );
+    assert.equal(path.closed, false);
+  } finally {
+    path.close();
+  }
 });
 
 test('rejects a remote fingerprint that does not match its SDP', async () => {
@@ -1098,7 +995,7 @@ test('rejects a remote fingerprint that does not match its SDP', async () => {
   });
 
   await assert.rejects(
-    openDirectTerminal({
+    openDirectConnection({
       client: fixture.client,
       nodeId: 'node-1',
       terminalId: 'terminal-1',

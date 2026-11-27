@@ -1,4 +1,6 @@
-import { encodeFileRelayFrame } from '../../packages/protocol/src/index.js';
+import { NodeStreamMux } from '../../packages/protocol/src/node-stream-mux.js';
+import { encodeNodeRelayHandshake } from '../../packages/protocol/src/node-stream-wire.js';
+import { encodeUploadOffset } from '../../packages/protocol/src/file-upload-stream.js';
 import { expect, test, type Page } from '@playwright/test';
 import {
   hostedConversationSnapshotSchema,
@@ -1390,45 +1392,32 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
       });
     }
   );
+  const hostedReadTickets = new Map<string, { offset: number; length: number }>();
   await page.route(
-    /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/files\/file-1\?offset=0&limit=(?:4096|524288)$/,
+    '**/api/nodes/node-1/hosted-conversations/conversation-1/files/file-1/metadata',
     async (route) => {
       fileRequests.push({
         method: route.request().method(),
         url: route.request().url(),
         body: route.request().postData() ?? ''
       });
-      await route.fulfill({
-        contentType: 'application/octet-stream',
-        body: Buffer.from(
-          encodeFileRelayFrame(
-            {
-              type: 'file.read',
-              file: snapshot.files[0],
-              offset: 0,
-              nextOffset: null,
-              eof: true
-            },
-            Buffer.from('result')
-          )
-        )
-      });
+      await json(route, snapshot.files[0]);
     }
   );
   await page.route(
-    /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/files\/file-1\/content\?download=1$/,
+    '**/api/nodes/node-1/hosted-conversations/conversation-1/files/file-1/stream-ticket',
     async (route) => {
       fileRequests.push({
         method: route.request().method(),
         url: route.request().url(),
         body: route.request().postData() ?? ''
       });
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/plain',
-        headers: { 'content-disposition': 'attachment; filename="result.txt"' },
-        body: 'result'
-      });
+      const { range } = route.request().postDataJSON() as {
+        range?: { offset: number; length: number };
+      };
+      const ticket = `read-${hostedReadTickets.size}`;
+      hostedReadTickets.set(ticket, range ?? { offset: 0, length: 6 });
+      await json(route, { ticket });
     }
   );
   await page.route(
@@ -1479,7 +1468,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     }
   );
   await page.route(
-    /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/uploads\/[^/]+\/chunks\?offset=\d+$/,
+    /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/uploads\/[^/]+\/stream-ticket$/,
     async (route) => {
       fileRequests.push({
         method: route.request().method(),
@@ -1489,20 +1478,45 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
       const uploadId = decodeURIComponent(
         new URL(route.request().url()).pathname.split('/').at(-2)!
       );
-      const upload = activeUploads.get(uploadId)!;
-      expect(route.request().headers()['content-type']).toBe('application/octet-stream');
-      const offset = Number(new URL(route.request().url()).searchParams.get('offset'));
-      expect(offset).toBe(upload.receivedBytes);
-      upload.receivedBytes = offset + route.request().postDataBuffer()!.byteLength;
-      await json(route, {
-        upload: {
-          ...upload,
-          conversationId: conversation.id,
-          status: 'UPLOADING'
-        }
-      });
+      await json(route, { ticket: uploadId });
     }
   );
+  await page.routeWebSocket(/\/api\/relay\/node-1(?:\?|$)/u, (socket) => {
+    const mux = new NodeStreamMux({
+      maxStreams: 8,
+      async send(bytes) {
+        socket.send(Buffer.from(bytes));
+      },
+      async accept({ kind, grant }) {
+        if (kind === 'hosted-file-download') {
+          const range = hostedReadTickets.get(grant);
+          if (range === undefined) return undefined;
+          return async (stream) => {
+            await stream.write(
+              Buffer.from('result').subarray(range.offset, range.offset + range.length)
+            );
+            await stream.endWrite();
+            for await (const _chunk of stream) throw new Error('Unexpected reverse DATA');
+          };
+        }
+        expect(kind).toBe('hosted-file-upload');
+        const upload = activeUploads.get(grant);
+        if (upload === undefined) return undefined;
+        return async (stream) => {
+          await stream.write(encodeUploadOffset(upload.receivedBytes));
+          for await (const bytes of stream) {
+            upload.receivedBytes += bytes.byteLength;
+            await stream.write(encodeUploadOffset(upload.receivedBytes));
+          }
+          expect(upload.receivedBytes).toBe(upload.size);
+          await stream.endWrite();
+        };
+      }
+    });
+    socket.onMessage((message) => mux.receive(message));
+    socket.onClose(() => mux.disconnect());
+    socket.send(Buffer.from(encodeNodeRelayHandshake({ type: 'RELAY_READY' })));
+  });
   await page.route(
     /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/uploads\/[^/]+\/complete$/,
     async (route) => {
@@ -2162,14 +2176,12 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
       () =>
         fileRequests.filter(
           (request) =>
-            request.method === 'GET' && new URL(request.url).pathname.endsWith('/files/file-1')
+            request.method === 'POST' &&
+            new URL(request.url).pathname.endsWith('/files/file-1/stream-ticket')
         ).length
     )
     .toBe(1);
-  const previewRead = fileRequests.find(
-    (request) => request.method === 'GET' && new URL(request.url).pathname.endsWith('/files/file-1')
-  );
-  expect(new URL(previewRead!.url).searchParams.get('limit')).toBe('4096');
+  expect([...hostedReadTickets.values()]).toEqual([{ offset: 0, length: 6 }]);
   const filePreview = page.getByRole('dialog', { name: 'output/result.txt 文件预览' });
   await expect(filePreview.locator('.cm-content')).toContainText('result');
   const downloadEvent = page.waitForEvent('download');

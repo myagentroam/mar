@@ -1,12 +1,23 @@
 import { createSocket } from 'node:dgram';
 import { isIP } from 'node:net';
 import {
-  directDataControlFrameSchema,
   type DirectNodeCommand,
   type DirectNodeEvent,
   type DirectTransferDescriptor,
   directNodeCommandSchema
 } from '@myagentroam/protocol';
+import {
+  bindNodeDirectPath,
+  NODE_STREAM_CHANNEL_LABEL,
+  rtcNodeStreamCarrier
+} from '@myagentroam/protocol/node-stream-path';
+import type { NodeStreamHandler } from '@myagentroam/protocol/node-stream-mux';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import { sendFileDownload } from './file-download-stream.js';
+import {
+  receiveWorkspaceUpload,
+  type WorkspaceUploadTarget
+} from '../workspace/workspace-upload-stream.js';
 import type { TerminalManager } from '../terminal.js';
 import { TerminalDirectService } from '../service/terminal-direct-service.js';
 import {
@@ -19,13 +30,6 @@ import {
 } from 'node-datachannel';
 import { RTCPeerConnection } from 'node-datachannel/polyfill';
 
-interface UploadTarget {
-  readonly offset: number;
-  write(bytes: Uint8Array): Promise<number>;
-  complete(size: number, signal?: AbortSignal): Promise<void>;
-  cancel(): Promise<void>;
-}
-
 interface DownloadSource {
   readonly offset: number;
   readonly chunks: AsyncIterable<Uint8Array>;
@@ -34,7 +38,7 @@ interface DownloadSource {
 export interface DirectTransferServiceOptions {
   readonly nodeGeneration: () => string;
   readonly send: (type: string, event: DirectNodeEvent) => void;
-  readonly openUpload?: (descriptor: DirectTransferDescriptor) => Promise<UploadTarget>;
+  readonly openUpload?: (descriptor: DirectTransferDescriptor) => Promise<WorkspaceUploadTarget>;
   readonly openDownload?: (descriptor: DirectTransferDescriptor) => Promise<DownloadSource>;
   readonly now?: () => number;
   readonly createPeerConnection?: (configuration: NodeRtcConfiguration) => RTCPeerConnection;
@@ -46,11 +50,16 @@ export interface DirectTransferServiceOptions {
   readonly terminalManager?: TerminalManager;
   readonly sendTerminalReady?: (directSessionId: string, phase?: 'ATTACHED') => void;
   readonly desktop?: Omit<DirectDesktopOptions, 'peer' | 'now' | 'nodeGeneration'>;
-  readonly openBrowserChannel?: (
-    route: { type: 'ice'; transportId: string; fingerprint: string },
-    channel: RTCDataChannel,
-    first: unknown
-  ) => void;
+  readonly acceptBrowserFile?: (
+    kind: string,
+    grant: string,
+    transportId: string,
+    signal: AbortSignal
+  ) => NodeStreamHandler | undefined;
+  readonly acceptBrowserPicture?: (
+    grant: string,
+    route: { type: 'ice'; transportId: string; fingerprint: string }
+  ) => NodeStreamHandler | undefined;
 }
 
 interface NodeRtcConfiguration extends RTCConfiguration {
@@ -70,7 +79,7 @@ interface ActiveTransport {
   readonly command: TransportCommand;
   readonly peer: RTCPeerConnection;
   readonly sentCandidateKeys: Set<string>;
-  readonly pendingChannels: Set<RTCDataChannel>;
+  nodeStreamPath?: ReturnType<typeof bindNodeDirectPath>;
   lastLeaseAliveAt: number;
   leaseExpiresAt: number;
   leaseTimer: ReturnType<typeof setInterval>;
@@ -79,11 +88,10 @@ interface ActiveTransport {
 interface ActiveTransfer {
   readonly command: TransferCommand;
   grant?: GrantCommand;
-  channel?: RTCDataChannel;
-  upload?: UploadTarget;
+  stream?: NodeStream;
+  upload?: WorkspaceUploadTarget;
   uploadCommitted: boolean;
   opened: boolean;
-  processing: Promise<void>;
   readonly controller: AbortController;
   preserveUpload?: boolean;
   cleanup?: Promise<void>;
@@ -96,8 +104,6 @@ const MAX_HOST_CANDIDATES = 32;
 const LOOPBACK_CANDIDATE_PRIORITY = '2130706431';
 const MAX_ACTIVE_TRANSPORTS = 128;
 const MAX_ACTIVE_TRANSFERS = 128;
-const DATA_CHANNEL_HIGH_WATER_BYTES = 4 * 1024 * 1024;
-const DATA_CHANNEL_LOW_WATER_BYTES = 1024 * 1024;
 const LEASE_GRACE_MS = 30_000;
 const LEASE_CHECK_MS = 5_000;
 
@@ -313,7 +319,6 @@ export class DirectTransferService {
       command,
       peer,
       sentCandidateKeys: new Set<string>(),
-      pendingChannels: new Set<RTCDataChannel>(),
       lastLeaseAliveAt: this.now(),
       leaseExpiresAt: command.expiresAt,
       leaseTimer: undefined as unknown as ReturnType<typeof setInterval>
@@ -404,7 +409,6 @@ export class DirectTransferService {
       command,
       uploadCommitted: false,
       opened: false,
-      processing: Promise.resolve(),
       controller: new AbortController(),
       lastLeaseAliveAt: this.now(),
       leaseExpiresAt: command.expiresAt,
@@ -457,198 +461,120 @@ export class DirectTransferService {
       channel.close();
       return;
     }
-    transport.pendingChannels.add(channel);
-    channel.addEventListener('close', () => transport.pendingChannels.delete(channel), {
-      once: true
-    });
-    channel.binaryType = 'arraybuffer';
-    let attached = false;
-    channel.onmessage = (event) => {
-      if (attached) return;
-      attached = true;
-      transport.pendingChannels.delete(channel);
-      if (channel.label.startsWith('mar-browser-')) {
-        const remoteFingerprint = fingerprint(transport.peer.remoteDescription?.sdp);
-        if (
-          transport.peer.connectionState !== 'connected' ||
-          !remoteFingerprint ||
-          !this.options.openBrowserChannel
-        ) {
-          channel.close();
-          return;
-        }
-        this.options.openBrowserChannel(
-          {
-            type: 'ice',
-            transportId: transport.command.directSessionId,
-            fingerprint: remoteFingerprint
-          },
-          channel,
-          event.data
-        );
-        return;
-      }
-      if (channel.label.startsWith('mar-terminal-')) {
-        this.terminalDirect?.open(transport.command.directSessionId, channel, event.data);
-        if (this.terminalDirect === undefined) channel.close();
-        return;
-      }
-      const pendingTransfer = this.transfers.get(openFrameSessionId(event.data) ?? '');
-      void this.openChannel(transport, channel, event.data).catch((error: unknown) => {
+    if (channel.label === NODE_STREAM_CHANNEL_LABEL) {
+      if (
+        transport.nodeStreamPath !== undefined ||
+        !channel.ordered ||
+        channel.maxRetransmits !== null ||
+        channel.maxPacketLifeTime !== null
+      ) {
         channel.close();
-        const id = openFrameSessionId(event.data);
-        if (id !== undefined && this.transfers.get(id) === pendingTransfer)
-          this.fail(id, errorCode(error), errorMessage(error));
+        return;
+      }
+      // One generic carrier per admitted ICE peer. The domain consumes only its own bound grants.
+      transport.nodeStreamPath = bindNodeDirectPath({
+        carrier: rtcNodeStreamCarrier(channel),
+        maxStreams: 32,
+        accept: async ({ kind, grant }, signal) =>
+          kind === 'terminal'
+            ? this.terminalDirect?.consume(transport.command.directSessionId, grant, signal)
+            : kind === 'file-download' || kind === 'file-upload'
+              ? this.acceptFile(transport, kind, grant)
+              : kind === 'browser-rfb'
+                ? this.acceptBrowserPicture(transport, grant)
+                : kind === 'browser-file-upload' || kind === 'browser-file-download'
+                  ? this.options.acceptBrowserFile?.(
+                      kind,
+                      grant,
+                      transport.command.directSessionId,
+                      signal
+                    )
+                  : undefined
       });
-    };
+      channel.addEventListener(
+        'close',
+        () => this.removeTransport(transport, 'DIRECT_CHANNEL_CLOSED'),
+        { once: true }
+      );
+      return;
+    }
+    channel.close();
   }
 
-  private async openChannel(
+  private acceptBrowserPicture(transport: ActiveTransport, grant: string) {
+    const remoteFingerprint = fingerprint(transport.peer.remoteDescription?.sdp);
+    if (transport.peer.connectionState !== 'connected' || !remoteFingerprint) return undefined;
+    return this.options.acceptBrowserPicture?.(grant, {
+      type: 'ice',
+      transportId: transport.command.directSessionId,
+      fingerprint: remoteFingerprint
+    });
+  }
+
+  private acceptFile(
     transport: ActiveTransport,
-    channel: RTCDataChannel,
-    data: unknown
-  ): Promise<void> {
-    if (typeof data !== 'string') throw new Error('DIRECT_OPEN_REQUIRED');
-    const parsed = directDataControlFrameSchema.parse(JSON.parse(data));
-    if (parsed.type !== 'OPEN') throw new Error('DIRECT_OPEN_REQUIRED');
-    const transfer = this.transfers.get(parsed.directSessionId);
+    kind: 'file-download' | 'file-upload',
+    token: string
+  ) {
+    const direction = kind === 'file-download' ? 'DOWNLOAD' : 'UPLOAD';
+    const transfer = [...this.transfers.values()].find(
+      (entry) =>
+        entry.grant?.grant === token &&
+        entry.command.transportSessionId === transport.command.directSessionId &&
+        entry.command.transfer.direction === direction
+    );
     const grant = transfer?.grant;
+    const openUpload = this.options.openUpload;
+    const openDownload = this.options.openDownload;
     if (
       transfer === undefined ||
       grant === undefined ||
-      transfer.command.transportSessionId !== transport.command.directSessionId ||
-      parsed.grant !== grant.grant ||
+      transfer.opened ||
       grant.openExpiresAt <= this.now() ||
-      grant.expiresAt <= this.now()
+      grant.expiresAt <= this.now() ||
+      (direction === 'UPLOAD' ? openUpload === undefined : openDownload === undefined)
     )
-      throw new Error('DIRECT_TRANSFER_GRANT_INVALID');
-    transfer.channel = channel;
+      return undefined;
     transfer.opened = true;
-    channel.onmessage = (event) => {
-      transfer.processing = transfer.processing
-        .then(() => {
-          if (this.current(transfer)) return this.channelMessage(transfer, event.data);
-        })
-        .catch((error: unknown) => {
-          if (this.current(transfer))
-            this.fail(transfer.command.directSessionId, errorCode(error), errorMessage(error));
+    return async (stream: NodeStream, streamSignal: AbortSignal) => {
+      transfer.stream = stream;
+      const signal = AbortSignal.any([streamSignal, transfer.controller.signal]);
+      const descriptor = transfer.command.transfer;
+      const size = transferredSize(descriptor);
+      try {
+        signal.throwIfAborted();
+        if (direction === 'UPLOAD' && openUpload !== undefined) {
+          const upload = await openUpload(descriptor);
+          transfer.upload = upload;
+          if (!this.current(transfer)) {
+            if (!transfer.preserveUpload) await this.cancelUpload(transfer);
+            return;
+          }
+          await receiveWorkspaceUpload(stream, upload, size, signal);
+          transfer.uploadCommitted = true;
+          await stream.endWrite();
+        } else if (openDownload !== undefined) {
+          const source = await openDownload(descriptor);
+          await sendFileDownload(stream, source.chunks, size, signal);
+        }
+        this.emit(transfer.command.directSessionId, {
+          type: 'direct.complete',
+          directSessionId: transfer.command.directSessionId,
+          size
         });
-    };
-    channel.onclose = () => {
-      if (this.transfers.get(transfer.command.directSessionId) === transfer)
-        void this.removeTransfer(transfer, 'DIRECT_CHANNEL_CLOSED');
-    };
-    transfer.processing = this.open(transfer);
-    await transfer.processing;
-  }
-
-  private async channelMessage(transfer: ActiveTransfer, data: unknown): Promise<void> {
-    if (!this.current(transfer)) return;
-    const descriptor = transfer.command.transfer;
-    const expectedSize = transferredSize(descriptor);
-    if (descriptor.direction === 'DOWNLOAD') {
-      if (typeof data !== 'string') throw new Error('DIRECT_FRAME_INVALID');
-      const control = directDataControlFrameSchema.parse(JSON.parse(data));
-      if (control.type !== 'ACK' || control.offset !== expectedSize)
-        throw new Error('DIRECT_FRAME_INVALID');
-      this.emit(transfer.command.directSessionId, {
-        type: 'direct.complete',
-        directSessionId: transfer.command.directSessionId,
-        size: expectedSize
-      });
-      await this.removeTransfer(transfer);
-      return;
-    }
-    if (typeof data === 'string') {
-      const control = directDataControlFrameSchema.parse(JSON.parse(data));
-      if (control.type !== 'COMPLETE' || transfer.upload === undefined)
-        throw new Error('DIRECT_FRAME_INVALID');
-      if (control.size !== descriptor.size) throw new Error('DIRECT_INTEGRITY_FAILED');
-      await transfer.upload.complete(control.size, transfer.controller.signal);
-      transfer.uploadCommitted = true;
-      if (!this.current(transfer)) return;
-      this.emit(transfer.command.directSessionId, {
-        type: 'direct.complete',
-        directSessionId: transfer.command.directSessionId,
-        size: control.size
-      });
-      await this.removeTransfer(transfer);
-      return;
-    }
-    const bytes = toBytes(data);
-    if (bytes.byteLength === 0 || bytes.byteLength > 256 * 1024 || transfer.upload === undefined)
-      throw new Error('DIRECT_CHUNK_INVALID');
-    const offset = await transfer.upload.write(bytes);
-    if (!this.current(transfer)) return;
-    transfer.channel?.send(JSON.stringify({ type: 'ACK', offset }));
-  }
-
-  private async open(transfer: ActiveTransfer): Promise<void> {
-    const descriptor = transfer.command.transfer;
-    if (descriptor.direction === 'UPLOAD') {
-      if (this.options.openUpload === undefined) throw new Error('DIRECT_UPLOAD_UNAVAILABLE');
-      transfer.upload = await this.options.openUpload(descriptor);
-      if (!this.current(transfer)) {
-        if (!transfer.preserveUpload) await this.cancelUpload(transfer);
-        return;
+        await this.removeTransfer(transfer);
+      } catch (error) {
+        if (!this.current(transfer)) return;
+        if (errorCode(streamSignal.reason) === 'NODE_STREAM_DISCONNECTED') {
+          await this.removeTransfer(transfer, 'DIRECT_CHANNEL_CLOSED');
+          return;
+        }
+        stream.reset(errorCode(error));
+        this.fail(transfer.command.directSessionId, errorCode(error), errorMessage(error));
+      } finally {
+        transfer.upload?.release?.();
       }
-      transfer.channel?.send(JSON.stringify({ type: 'ACK', offset: transfer.upload.offset }));
-      this.emit(transfer.command.directSessionId, {
-        type: 'direct.opened',
-        directSessionId: transfer.command.directSessionId,
-        offset: transfer.upload.offset
-      });
-      return;
-    }
-    if (this.options.openDownload === undefined) throw new Error('DIRECT_DOWNLOAD_UNAVAILABLE');
-    const source = await this.options.openDownload(descriptor);
-    if (!this.current(transfer)) return;
-    const expectedSize = transferredSize(descriptor);
-    transfer.channel?.send(JSON.stringify({ type: 'ACK', offset: source.offset }));
-    this.emit(transfer.command.directSessionId, {
-      type: 'direct.opened',
-      directSessionId: transfer.command.directSessionId,
-      offset: source.offset
-    });
-    for await (const chunk of source.chunks)
-      for (let offset = 0; offset < chunk.byteLength; offset += 256 * 1024) {
-        if (this.transfers.get(transfer.command.directSessionId) !== transfer) return;
-        const channel = transfer.channel;
-        if (channel === undefined) throw new Error('DIRECT_CHANNEL_CLOSED');
-        await this.waitForSendCapacity(transfer, channel);
-        const end = Math.min(chunk.byteLength, offset + 256 * 1024);
-        channel.send(
-          chunk.buffer.slice(chunk.byteOffset + offset, chunk.byteOffset + end) as ArrayBuffer
-        );
-      }
-    transfer.channel?.send(JSON.stringify({ type: 'COMPLETE', size: expectedSize }));
-  }
-
-  private async waitForSendCapacity(
-    transfer: ActiveTransfer,
-    channel: RTCDataChannel
-  ): Promise<void> {
-    if (channel.readyState !== 'open') throw new Error('DIRECT_CHANNEL_CLOSED');
-    if (channel.bufferedAmount <= DATA_CHANNEL_HIGH_WATER_BYTES) return;
-    channel.bufferedAmountLowThreshold = DATA_CHANNEL_LOW_WATER_BYTES;
-    await new Promise<void>((resolve, reject) => {
-      const complete = (error?: Error) => {
-        channel.removeEventListener('bufferedamountlow', available);
-        channel.removeEventListener('close', closed);
-        if (error === undefined) resolve();
-        else reject(error);
-      };
-      const available = () => complete();
-      const closed = () => complete(new Error('DIRECT_CHANNEL_CLOSED'));
-      channel.addEventListener('bufferedamountlow', available, { once: true });
-      channel.addEventListener('close', closed, { once: true });
-      if (
-        this.transfers.get(transfer.command.directSessionId) !== transfer ||
-        channel.readyState !== 'open'
-      )
-        closed();
-      else if (channel.bufferedAmount <= DATA_CHANNEL_LOW_WATER_BYTES) available();
-    });
+    };
   }
 
   private startLeaseWatch(
@@ -684,8 +610,7 @@ export class DirectTransferService {
     for (const transfer of [...this.transfers.values()])
       if (transfer.command.transportSessionId === transport.command.directSessionId)
         void this.removeTransfer(transfer, code ?? 'DIRECT_CONNECTION_FAILED');
-    for (const channel of transport.pendingChannels) channel.close();
-    transport.pendingChannels.clear();
+    transport.nodeStreamPath?.close();
     transport.peer.close();
     if (code !== undefined)
       this.options.send('direct.error', {
@@ -708,7 +633,8 @@ export class DirectTransferService {
         code === 'DIRECT_TRANSFER_CONTROL_UNAVAILABLE');
     transfer.preserveUpload = preserveWorkspaceUpload;
     transfer.controller.abort();
-    transfer.channel?.close();
+    if (code === undefined) transfer.stream?.close();
+    else transfer.stream?.reset(code);
     if (!transfer.uploadCommitted && !preserveWorkspaceUpload) await this.cancelUpload(transfer);
     if (code !== undefined)
       this.options.send('direct.error', {
@@ -744,15 +670,6 @@ function transferredSize(descriptor: DirectTransferDescriptor): number {
     : descriptor.size;
 }
 
-function openFrameSessionId(data: unknown): string | undefined {
-  if (typeof data !== 'string') return undefined;
-  try {
-    const value = JSON.parse(data) as { directSessionId?: unknown };
-    return typeof value.directSessionId === 'string' ? value.directSessionId : undefined;
-  } catch {
-    return undefined;
-  }
-}
 async function bindIceUdpMuxListener(
   range: { readonly begin: number; readonly end: number },
   create: (port: number) => IceUdpMuxListener,
@@ -852,13 +769,6 @@ function filterIceCandidates(
     return retained;
   });
   return { sdp: lines.join('\r\n') };
-}
-
-function toBytes(value: unknown): Uint8Array {
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (ArrayBuffer.isView(value))
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  throw new Error('DIRECT_CHUNK_INVALID');
 }
 
 function errorCode(error: unknown): string {

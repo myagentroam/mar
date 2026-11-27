@@ -6,7 +6,8 @@ import {
   sessionShareCreateInputSchema,
   sessionShareTargetSchema,
   sessionSharePasswordSchema,
-  sessionShareVisitorSchema
+  sessionShareVisitorSchema,
+  type DirectTransferDescriptor
 } from '@myagentroam/protocol';
 import { isAllowedOrigin, parseCookies, requestIp } from './auth.js';
 import { currentSession, protectedAdmin, validCsrf, type SessionLookup } from './session.js';
@@ -47,6 +48,12 @@ export function registerSessionShareRoutes(input: {
   readonly shares: SessionShares;
   readonly channels: SessionChannelService;
   readonly nodeControl: SessionRunNodeControl;
+  readonly issueFileStream?: (
+    nodeId: string,
+    user: UserNodeAuthorization,
+    descriptor: DirectTransferDescriptor,
+    share: { sessionId: string; allowed: () => Promise<boolean> }
+  ) => Promise<string>;
   readonly publicOrigin: string | undefined;
   readonly secureCookies: boolean;
   readonly profiles?: {
@@ -179,6 +186,7 @@ export function registerSessionShareRoutes(input: {
       registerSessionShareResourceRoutes({
         app: scope,
         nodeControl,
+        issueFileStream: input.issueFileStream,
         resolve: (request) =>
           shares.resolve(request.params.shareId, parseCookies(request)[SESSION_SHARE_COOKIE])
       });

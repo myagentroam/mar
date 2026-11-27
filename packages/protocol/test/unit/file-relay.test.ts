@@ -14,13 +14,13 @@ import {
 describe('binary file relay', () => {
   it('keeps a full chunk outside metadata and keeps the Terminal payload bound unchanged', () => {
     const bytes = new Uint8Array(FILE_RELAY_CHUNK_BYTES).fill(0xff);
-    const operation = 'workspace.files.upload.chunk';
-    const request = createEnvelope('node.request', { operation, data: { offset: 0, bytes } });
-    const wire = encodeFileRelayEnvelope(request, operation);
+    const operation = 'workspace.file.content.read';
+    const response = createEnvelope('node.response', { result: { file: { offset: 0, bytes } } });
+    const wire = encodeFileRelayEnvelope(response, operation);
     const { metadata, payload } = decodeFileRelayFrame(wire);
-    expect(metadata.type).toBe('file.request');
+    expect(metadata.type).toBe('file.response');
     expect(metadata.byteLength).toBe(bytes.length);
-    expect(metadata.envelope).toMatchObject({ payload: { data: { offset: 0 } } });
+    expect(metadata.envelope).toMatchObject({ payload: { result: { file: { offset: 0 } } } });
     expect(JSON.stringify(metadata)).not.toContain('255');
     expect(Buffer.compare(payload, bytes)).toBe(0);
     expect(() => decodeByteFrame(wire)).toThrow('BYTE_FRAME_LIMIT');
@@ -52,9 +52,9 @@ describe('binary file relay', () => {
 
   it('keeps Browser file authorization and other non-chunk operations on control', () => {
     const command = (action: string) => ({ payload: { command: { action } } });
-    expect(isFileRelayOperation('browser.upload', command('chunk'))).toBe(true);
+    expect(isFileRelayOperation('browser.upload', command('stream'))).toBe(false);
     expect(isFileRelayOperation('browser.upload', command('finish'))).toBe(false);
-    expect(isFileRelayOperation('browser.download', command('read'))).toBe(true);
+    expect(isFileRelayOperation('browser.download', command('stream'))).toBe(false);
     expect(isFileRelayOperation('browser.download', command('workspace'))).toBe(false);
     expect(isFileRelayOperation('workspace.file.content.read', { preview: {} })).toBe(false);
     expect(isFileRelayOperation('conversation.hosted.files.upload.complete', {})).toBe(false);

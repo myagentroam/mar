@@ -36,7 +36,6 @@ export * from './util/conversation-history.js';
 export * from './i18n/conversation-history.js';
 export * from './service/workbench-conversation-paging-service.js';
 export * from './service/workbench-conversation-realtime-service.js';
-export * from './service/terminal-relay-service.js';
 export * from './i18n/terminal.js';
 export * from './service/workbench-navigation-service.js';
 export * from './service/workbench-selection-persistence-service.js';

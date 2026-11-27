@@ -17,6 +17,10 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import mysql from 'mysql2/promise';
+// @ts-expect-error The production Server owns this runtime-only WebSocket client dependency.
+import { WebSocket as RelayWebSocket } from '../../ee/server/node_modules/ws/wrapper.mjs';
+import { openNodeRelayPath } from '../../packages/protocol/src/node-relay-path.js';
+import { sendFileUploadBody } from '../../packages/web-core/src/service/workspace-upload-stream.js';
 import {
   expect,
   request as playwrightRequest,
@@ -28,7 +32,6 @@ import {
   type Page
 } from '@playwright/test';
 import {
-  decodeFileRelayFrame,
   type ConversationFileProjection,
   type HostedConversationFiles,
   type HostedConversationSnapshot
@@ -283,10 +286,17 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       `UPDATE users SET organization_id=?,role='MEMBER',updated_at=? WHERE id=?`,
       [rootOrganizationId, Date.now(), memberUserId]
     );
-    await resources.createGrant(adminUserId, 'TEMPLATE', templateId, null, {
+    const templateGrant = {
       targetType: 'ORGANIZATION',
       targetOrganizationId: rootOrganizationId
-    });
+    } as const;
+    const templateGrantId = await resources.createGrant(
+      adminUserId,
+      'TEMPLATE',
+      templateId,
+      null,
+      templateGrant
+    );
 
     member = await login(webUrl, 'hosted-member', memberPassword, 'HostedMemberChanged123!');
     const memberCatalog = await readJson<{ templates: Array<{ id: string }> }>(
@@ -325,6 +335,20 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       memberConversation.id,
       adminConversation.id
     );
+    await expectTemplateMemberUploads(
+      webUrl,
+      member,
+      nodeId,
+      memberConversation.id,
+      adminConversation.id,
+      async () => {
+        const response = await admin!.context.delete(`/api/resource-grants/${templateGrantId}`, {
+          headers: { 'x-csrf-token': admin!.csrfToken }
+        });
+        expect(response.status()).toBe(204);
+      }
+    );
+    await resources.createGrant(adminUserId, 'TEMPLATE', templateId, null, templateGrant);
     const diskSessions = await expectUserDirectories(hostedRoot, [
       adminConversation.id,
       memberConversation.id
@@ -521,19 +545,11 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       size: previousImageBytes.length
     });
     const projectedImageResponse = await admin.context.get(
-      `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}/files/${projectedImage.id}?offset=0&limit=1024`
+      `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}/files/${projectedImage.id}/content`
     );
     expect(projectedImageResponse.status()).toBe(200);
-    expect(projectedImageResponse.headers()['content-type']).toBe('application/octet-stream');
-    const projectedImageRead = decodeFileRelayFrame(await projectedImageResponse.body());
-    expect(projectedImageRead.metadata).toMatchObject({
-      type: 'file.read',
-      file: { id: projectedImage.id },
-      offset: 0,
-      nextOffset: null,
-      eof: true
-    });
-    expect(Buffer.from(projectedImageRead.payload)).toEqual(previousImageBytes);
+    expect(projectedImageResponse.headers()['content-type']).toBe('image/png');
+    expect(await projectedImageResponse.body()).toEqual(previousImageBytes);
     const projectedImagePreview = await admin.context.get(
       `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}/files/${projectedImage.id}/content?revision=${projectedImage.updatedAt}-${projectedImage.size}&maxWidth=320&maxHeight=240`
     );
@@ -1514,6 +1530,147 @@ async function waitForHostedFile(
     .toBe(true);
   if (selected === undefined) throw new Error('HOSTED_CONVERSATION_OUTPUT_FILE_MISSING');
   return selected;
+}
+
+async function expectTemplateMemberUploads(
+  baseURL: string,
+  member: AuthenticatedContext,
+  nodeId: string,
+  conversationId: string,
+  otherConversationId: string,
+  revokeTemplate: () => Promise<void>
+): Promise<void> {
+  const endpoint = new URL(`/api/relay/${nodeId}`, baseURL);
+  endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : 'ws:';
+  const headers = { cookie: member.cookie, origin: new URL(baseURL).origin };
+  const withoutContext = new RelayWebSocket(endpoint, { headers });
+  const [deniedCode] = await once(withoutContext, 'close');
+  expect(deniedCode).toBe(1008);
+
+  endpoint.searchParams.set('hostedConversationId', otherConversationId);
+  const foreignContext = new RelayWebSocket(endpoint, { headers });
+  expect((await once(foreignContext, 'close'))[0]).toBe(1008);
+
+  endpoint.searchParams.set('hostedConversationId', conversationId);
+  const socket = new RelayWebSocket(endpoint, { headers });
+  socket.binaryType = 'arraybuffer';
+  const signal = AbortSignal.timeout(20_000);
+  const relay = await openNodeRelayPath({
+    carrier: {
+      send: (bytes) =>
+        new Promise((resolve, reject) =>
+          socket.send(bytes, (error?: Error) => (error ? reject(error) : resolve()))
+        ),
+      close: () => socket.close(),
+      onMessage: (receive) => socket.on('message', receive),
+      onClose: (receive) => socket.once('close', receive)
+    },
+    maxStreams: 4,
+    signal
+  });
+  try {
+    const base = `/api/nodes/${nodeId}/hosted-conversations/${conversationId}`;
+    const bytes = Uint8Array.from({ length: 400_017 }, (_, index) => (index * 97) % 251);
+    const file = new File([bytes], 'relay-body.bin', { type: 'application/octet-stream' });
+    const post = (path: string, data: object) =>
+      member.context.post(path, {
+        headers: { 'x-csrf-token': member.csrfToken },
+        data
+      });
+    const create = await post(`${base}/uploads`, {
+      name: file.name,
+      mimeType: file.type,
+      size: file.size,
+      clientRequestId: 'hosted-relay-body'
+    });
+    expect(create.ok()).toBe(true);
+    const {
+      upload: { uploadId }
+    } = (await create.json()) as { upload: { uploadId: string } };
+    const target = `${base}/uploads/${uploadId}`;
+    const response = await post(`${target}/stream-ticket`, {});
+    expect(response.ok()).toBe(true);
+    const { ticket } = (await response.json()) as { ticket: string };
+    await expect(relay.openStream({ kind: 'terminal', grant: ticket }, signal)).rejects.toThrow(
+      'RESOURCE_DENIED'
+    );
+    await expect(relay.openStream({ kind: 'file-upload', grant: ticket }, signal)).rejects.toThrow(
+      'RESOURCE_DENIED'
+    );
+    await sendFileUploadBody(
+      async () => {
+        const stream = await relay.openStream(
+          { kind: 'hosted-file-upload', grant: ticket },
+          signal
+        );
+        if (stream === undefined) throw new Error('Expected Hosted upload stream');
+        return stream;
+      },
+      file,
+      signal
+    );
+    await expect(
+      relay.openStream({ kind: 'hosted-file-upload', grant: ticket }, signal)
+    ).rejects.toThrow('RESOURCE_DENIED');
+    const complete = await post(`${target}/complete`, {});
+    expect(complete.ok()).toBe(true);
+    const { upload } = (await complete.json()) as {
+      upload: { receivedBytes: number; file: ConversationFileProjection };
+    };
+    expect(upload.receivedBytes).toBe(file.size);
+    const legacy = await member.context.get(
+      `${base}/files/${upload.file.id}?offset=0&limit=${file.size}`
+    );
+    expect(legacy.status()).toBe(404);
+    expect((await member.context.get(`${base}/files/${upload.file.id}/content`)).status()).toBe(
+      415
+    );
+    const projection = await readJson<ConversationFileProjection>(
+      member.context,
+      `${base}/files/${upload.file.id}/metadata`
+    );
+    expect(projection).toMatchObject({ id: upload.file.id, size: file.size });
+    const readTicket = await post(`${base}/files/${upload.file.id}/stream-ticket`, {
+      revision: `${projection.updatedAt}-${projection.size}`,
+      range: { offset: 3, length: file.size - 5 }
+    });
+    const { ticket: downloadGrant } = await expectJson<{ ticket: string }>(readTicket, 200);
+    await expect(
+      relay.openStream({ kind: 'hosted-file-upload', grant: downloadGrant }, signal)
+    ).rejects.toThrow('RESOURCE_DENIED');
+    const download = await relay.openStream(
+      { kind: 'hosted-file-download', grant: downloadGrant },
+      signal
+    );
+    if (download === undefined) throw new Error('Expected Hosted download stream');
+    const downloaded: Uint8Array[] = [];
+    for await (const chunk of download) downloaded.push(chunk);
+    await download.endWrite();
+    expect(Buffer.concat(downloaded)).toEqual(Buffer.from(bytes.subarray(3, -2)));
+
+    const pendingUpload = await post(`${base}/uploads`, {
+      name: 'revoked.bin',
+      mimeType: file.type,
+      size: file.size,
+      clientRequestId: 'hosted-relay-revoked'
+    });
+    expect(pendingUpload.ok(), await pendingUpload.text()).toBe(true);
+    const pending = (await pendingUpload.json()) as { upload: { uploadId: string } };
+    const pendingTarget = `${base}/uploads/${pending.upload.uploadId}`;
+    const pendingTicket = await post(`${pendingTarget}/stream-ticket`, {});
+    expect(pendingTicket.ok()).toBe(true);
+    const grant = ((await pendingTicket.json()) as { ticket: string }).ticket;
+    const stream = await relay.openStream({ kind: 'hosted-file-upload', grant }, signal);
+    if (stream === undefined) throw new Error('Expected Hosted upload stream');
+    const acks = stream[Symbol.asyncIterator]();
+    expect((await acks.next()).done).toBe(false);
+    await revokeTemplate();
+    await expect(acks.next()).rejects.toThrow('RESOURCE_DENIED');
+    expect(relay.closed).toBe(false);
+    expect((await post(`${pendingTarget}/complete`, {})).ok()).toBe(false);
+  } finally {
+    relay.close();
+  }
 }
 
 async function readJson<T>(context: APIRequestContext, url: string): Promise<T> {

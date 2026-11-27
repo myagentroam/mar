@@ -1,4 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { encodeUploadOffset } from '@myagentroam/protocol/file-upload-stream';
+import { NODE_STREAM_CHANNEL_LABEL } from '@myagentroam/protocol/node-stream-path';
+import {
+  decodeNodeStreamFrame,
+  encodeNodeStreamFrame,
+  type NodeStreamFrame
+} from '@myagentroam/protocol/node-stream-wire';
 import type { RTCPeerConnection as NodeRTCPeerConnection } from 'node-datachannel/polyfill';
 import {
   DirectTransferService,
@@ -7,7 +14,7 @@ import {
   type DirectTransferServiceOptions
 } from '../../src/connection/direct-transfer-service.js';
 import { createSocket } from 'node:dgram';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +33,9 @@ const createIceUdpMuxListener = (port: number) => ({
 class FakeDataChannel extends EventTarget {
   label = 'mar-file-transfer';
   binaryType: BinaryType = 'arraybuffer';
+  readonly ordered = true;
+  readonly maxRetransmits = null;
+  readonly maxPacketLifeTime = null;
   readyState = 'open' as RTCDataChannelState;
   bufferedAmount = 0;
   bufferedAmountLowThreshold = 0;
@@ -42,7 +52,9 @@ class FakeDataChannel extends EventTarget {
     this.dispatchEvent(new Event('close'));
   }
   receive(data: unknown): void {
-    this.onmessage?.(new MessageEvent('message', { data }));
+    const event = new MessageEvent('message', { data });
+    this.onmessage?.(event);
+    this.dispatchEvent(event);
   }
 }
 
@@ -183,6 +195,31 @@ function prepareTransfer(
   });
 }
 
+function openUploadCarrier(f: Awaited<ReturnType<typeof createFixture>>): FakeDataChannel {
+  const channel = new FakeDataChannel();
+  channel.label = NODE_STREAM_CHANNEL_LABEL;
+  f.peer.attach(channel);
+  return channel;
+}
+
+function sendUploadFrame(channel: FakeDataChannel, frame: NodeStreamFrame): void {
+  channel.receive(encodeNodeStreamFrame(frame).buffer);
+}
+
+function sendUploadOpen(channel: FakeDataChannel, streamId = 1): void {
+  sendUploadFrame(channel, { type: 'OPEN', streamId, kind: 'file-upload', grant: 'g'.repeat(32) });
+}
+
+function uploadOffsetFrame(offset: number, streamId = 1): NodeStreamFrame {
+  return { type: 'DATA', streamId, bytes: encodeUploadOffset(offset) };
+}
+
+function expectUploadOffset(channel: FakeDataChannel, offset: number, streamId = 1): void {
+  expect(channel.sent.map(decodeNodeStreamFrame)).toContainEqual(
+    uploadOffsetFrame(offset, streamId)
+  );
+}
+
 function uploadState(service: WorkspaceUploadService) {
   return service as unknown as {
     uploads: Map<
@@ -197,18 +234,18 @@ function uploadState(service: WorkspaceUploadService) {
 }
 
 describe('Node direct transfer service', () => {
-  it('closes unclaimed incoming channels before their transport and rejects late channels', async () => {
+  it('rejects channels outside the common wire immediately, including late arrivals', async () => {
     const f = await createFixture();
     try {
       await connectTransport(f);
       const bootstrap = new FakeDataChannel();
-      bootstrap.label = 'mar-direct-transport';
+      bootstrap.label = 'unsupported-channel';
       const closeBootstrap = vi.spyOn(bootstrap, 'close');
       const closePeer = vi.spyOn(f.peer, 'close');
       f.peer.attach(bootstrap);
 
-      f.service.close();
       expect(closeBootstrap).toHaveBeenCalledOnce();
+      f.service.close();
       expect(closeBootstrap.mock.invocationCallOrder[0]).toBeLessThan(
         closePeer.mock.invocationCallOrder[0]!
       );
@@ -474,28 +511,24 @@ describe('Node direct transfer service', () => {
       await connectTransport(f);
       prepareTransfer(f, {
         direction: 'UPLOAD',
+        uploadId: randomUUID(),
         sha256: '0'.repeat(64),
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x' },
         fileName: 'x',
         size: 1
       });
-      const channel = new FakeDataChannel();
-      f.peer.attach(channel);
-      channel.receive(
-        JSON.stringify({ type: 'OPEN', directSessionId: 'transfer-0001', grant: 'g'.repeat(32) })
-      );
-      await vi.waitFor(() =>
-        expect(channel.sent).toContain(JSON.stringify({ type: 'ACK', offset: 0 }))
-      );
-      channel.receive(new Uint8Array([1]));
+      const channel = openUploadCarrier(f);
+      sendUploadOpen(channel);
+      await vi.waitFor(() => expectUploadOffset(channel, 0));
+      sendUploadFrame(channel, { type: 'DATA', streamId: 1, bytes: Uint8Array.of(1) });
       await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
-      channel.receive(JSON.stringify({ type: 'COMPLETE', size: 1 }));
+      sendUploadFrame(channel, { type: 'FIN', streamId: 1 });
       channel.close();
       finishWrite(1);
       await new Promise((resolve) => setImmediate(resolve));
       expect(complete).not.toHaveBeenCalled();
       expect(cancel).not.toHaveBeenCalled();
-      expect(channel.sent).not.toContain(JSON.stringify({ type: 'ACK', offset: 1 }));
+      expect(channel.sent.map(decodeNodeStreamFrame)).not.toContainEqual(uploadOffsetFrame(1));
     } finally {
       f.service.dispose();
     }
@@ -520,16 +553,14 @@ describe('Node direct transfer service', () => {
       await connectTransport(f);
       prepareTransfer(f, {
         direction: 'UPLOAD',
+        uploadId: randomUUID(),
         sha256: '0'.repeat(64),
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x' },
         fileName: 'x',
         size: 1
       });
-      const channel = new FakeDataChannel();
-      f.peer.attach(channel);
-      channel.receive(
-        JSON.stringify({ type: 'OPEN', directSessionId: 'transfer-0001', grant: 'g'.repeat(32) })
-      );
+      const channel = openUploadCarrier(f);
+      sendUploadOpen(channel);
       await vi.waitFor(() => expect(openUpload).toHaveBeenCalledOnce());
       f.service.handle({
         type: 'direct.cancel',
@@ -538,8 +569,11 @@ describe('Node direct transfer service', () => {
       });
       finishOpen({ offset: 0, write: async () => 0, complete: async () => undefined, cancel });
       await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
-      expect(channel.readyState).toBe('closed');
-      expect(channel.sent).toEqual([]);
+      expect(channel.readyState).toBe('open');
+      expect(channel.sent.map(decodeNodeStreamFrame)).toEqual([
+        { type: 'OPENED', streamId: 1 },
+        { type: 'RESET', streamId: 1, code: 'DIRECT_TRANSFER_CANCELLED' }
+      ]);
       expect(f.events).not.toContainEqual(expect.objectContaining({ type: 'direct.opened' }));
     } finally {
       f.service.dispose();
@@ -569,20 +603,16 @@ describe('Node direct transfer service', () => {
       await connectTransport(f);
       prepareTransfer(f, {
         direction: 'UPLOAD',
+        uploadId: randomUUID(),
         sha256: '0'.repeat(64),
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x' },
         fileName: 'x',
         size: 0
       });
-      const channel = new FakeDataChannel();
-      f.peer.attach(channel);
-      channel.receive(
-        JSON.stringify({ type: 'OPEN', directSessionId: 'transfer-0001', grant: 'g'.repeat(32) })
-      );
-      await vi.waitFor(() =>
-        expect(channel.sent).toContain(JSON.stringify({ type: 'ACK', offset: 0 }))
-      );
-      channel.receive(JSON.stringify({ type: 'COMPLETE', size: 0 }));
+      const channel = openUploadCarrier(f);
+      sendUploadOpen(channel);
+      await vi.waitFor(() => expectUploadOffset(channel, 0));
+      sendUploadFrame(channel, { type: 'FIN', streamId: 1 });
       await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
       f.service.handle({
         type: 'direct.cancel',
@@ -612,9 +642,18 @@ describe('Node direct transfer service', () => {
       );
       const workspace = { id: 'workspace-1', path: root } as NodeWorkspace;
       const payload = Buffer.from('original');
+      const sha256 = createHash('sha256').update(payload).digest('hex');
+      const { uploadId } = await uploads.create(workspace, {
+        name: 'file.bin',
+        size: payload.length,
+        sha256,
+        overwrite: true,
+        streamStaging: true
+      });
       const descriptor = {
         direction: 'UPLOAD',
-        sha256: createHash('sha256').update(payload).digest('hex'),
+        uploadId,
+        sha256,
         resource: { kind: 'WORKSPACE_FILE', workspaceId: workspace.id, path: 'file.bin' },
         fileName: 'file.bin',
         size: payload.length,
@@ -623,58 +662,40 @@ describe('Node direct transfer service', () => {
       };
       const f = await createFixture({
         openUpload: async (input) => {
-          if (input.direction !== 'UPLOAD') throw new Error('Expected upload');
-          const upload = await uploads.createDirect(workspace, {
+          if (input.direction !== 'UPLOAD' || input.uploadId === undefined)
+            throw new Error('Expected staged upload');
+          return uploads.openStreamUpload(workspace, {
+            uploadId: input.uploadId,
             path: input.resource.path,
             size: input.size,
             sha256: input.sha256,
             overwrite: input.overwrite === true
           });
-          return {
-            offset: upload.receivedBytes,
-            write: (bytes) => uploads.writeDirect(upload.uploadId, bytes),
-            complete: (size) => uploads.completeDirect(upload.uploadId, size),
-            cancel: () => uploads.cancel(upload.uploadId)
-          };
         }
       });
       try {
         await writeFile(join(root, 'file.bin'), 'old target');
         await connectTransport(f);
         prepareTransfer(f, descriptor);
-        const first = new FakeDataChannel();
-        f.peer.attach(first);
-        first.receive(
-          JSON.stringify({ type: 'OPEN', directSessionId: 'transfer-0001', grant: 'g'.repeat(32) })
-        );
-        await vi.waitFor(() =>
-          expect(first.sent).toContain(JSON.stringify({ type: 'ACK', offset: 0 }))
-        );
-        first.receive(payload.subarray(0, 3));
-        await vi.waitFor(() =>
-          expect(first.sent).toContain(JSON.stringify({ type: 'ACK', offset: 3 }))
-        );
+        const first = openUploadCarrier(f);
+        sendUploadOpen(first);
+        await vi.waitFor(() => expectUploadOffset(first, 0));
+        sendUploadFrame(first, { type: 'DATA', streamId: 1, bytes: payload.subarray(0, 3) });
+        await vi.waitFor(() => expectUploadOffset(first, 3));
         if (connection === 'channel') first.close();
         else f.service.close('DIRECT_TRANSFER_CONTROL_UNAVAILABLE');
         expect(uploadState(uploads).uploads.size).toBe(1);
         expect(await readFile(join(root, 'file.bin'), 'utf8')).toBe('old target');
 
-        if (connection === 'control') await connectTransport(f);
+        await connectTransport(f);
 
         prepareTransfer(f, descriptor, 'transfer-0002');
-        const resumed = new FakeDataChannel();
-        f.peer.attach(resumed);
-        resumed.receive(
-          JSON.stringify({ type: 'OPEN', directSessionId: 'transfer-0002', grant: 'g'.repeat(32) })
-        );
-        await vi.waitFor(() =>
-          expect(resumed.sent).toContain(JSON.stringify({ type: 'ACK', offset: 3 }))
-        );
-        resumed.receive(payload.subarray(3));
-        await vi.waitFor(() =>
-          expect(resumed.sent).toContain(JSON.stringify({ type: 'ACK', offset: 8 }))
-        );
-        resumed.receive(JSON.stringify({ type: 'COMPLETE', size: payload.length }));
+        const resumed = openUploadCarrier(f);
+        sendUploadOpen(resumed);
+        await vi.waitFor(() => expectUploadOffset(resumed, 3));
+        sendUploadFrame(resumed, { type: 'DATA', streamId: 1, bytes: payload.subarray(3) });
+        await vi.waitFor(() => expectUploadOffset(resumed, 8));
+        sendUploadFrame(resumed, { type: 'FIN', streamId: 1 });
         await vi.waitFor(() =>
           expect(f.events).toContainEqual({
             type: 'direct.complete',
@@ -682,6 +703,8 @@ describe('Node direct transfer service', () => {
             size: 8
           })
         );
+        expect(await readFile(join(root, 'file.bin'), 'utf8')).toBe('old target');
+        await uploads.complete(uploadId);
         expect(await readFile(join(root, 'file.bin'), 'utf8')).toBe('original');
         expect(uploadState(uploads).uploads.size).toBe(0);
       } finally {
@@ -841,7 +864,7 @@ describe('Node direct transfer service', () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
-  it('routes multiple task DataChannels over one connected transport without closing its peer', async () => {
+  it('routes multiple upload streams over one carrier without closing its peer', async () => {
     const openUpload = vi.fn(async () => ({
       offset: 0,
       write: vi.fn(async (bytes: Uint8Array) => bytes.length),
@@ -850,11 +873,14 @@ describe('Node direct transfer service', () => {
     }));
     const f = await createFixture({ openUpload });
     await connectTransport(f);
-    for (const id of ['transfer-0001', 'transfer-0002']) {
+    const channel = openUploadCarrier(f);
+    for (const [index, id] of ['transfer-0001', 'transfer-0002'].entries()) {
+      const streamId = index + 1;
       prepareTransfer(
         f,
         {
           direction: 'UPLOAD',
+          uploadId: randomUUID(),
           sha256: '0'.repeat(64),
           resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: `${id}.bin` },
           fileName: `${id}.bin`,
@@ -862,17 +888,11 @@ describe('Node direct transfer service', () => {
         },
         id
       );
-      const channel = new FakeDataChannel();
-      f.peer.attach(channel);
-      channel.receive(JSON.stringify({ type: 'OPEN', directSessionId: id, grant: 'g'.repeat(32) }));
-      await vi.waitFor(() =>
-        expect(channel.sent).toContain(JSON.stringify({ type: 'ACK', offset: 0 }))
-      );
-      channel.receive(new Uint8Array([1]).buffer);
-      await vi.waitFor(() =>
-        expect(channel.sent).toContain(JSON.stringify({ type: 'ACK', offset: 1 }))
-      );
-      channel.receive(JSON.stringify({ type: 'COMPLETE', size: 1 }));
+      sendUploadOpen(channel, streamId);
+      await vi.waitFor(() => expectUploadOffset(channel, 0, streamId));
+      sendUploadFrame(channel, { type: 'DATA', streamId, bytes: Uint8Array.of(1) });
+      await vi.waitFor(() => expectUploadOffset(channel, 1, streamId));
+      sendUploadFrame(channel, { type: 'FIN', streamId });
       await vi.waitFor(() =>
         expect(f.events).toContainEqual({
           type: 'direct.complete',
@@ -898,19 +918,15 @@ describe('Node direct transfer service', () => {
     await connectTransport(f);
     prepareTransfer(f, {
       direction: 'UPLOAD',
+      uploadId: randomUUID(),
       sha256: '0'.repeat(64),
       resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'file.bin' },
       fileName: 'file.bin',
       size: 4
     });
-    const channel = new FakeDataChannel();
-    f.peer.attach(channel);
-    channel.receive(
-      JSON.stringify({ type: 'OPEN', directSessionId: 'transfer-0001', grant: 'g'.repeat(32) })
-    );
-    await vi.waitFor(() =>
-      expect(channel.sent).toContain(JSON.stringify({ type: 'ACK', offset: 2 }))
-    );
+    const channel = openUploadCarrier(f);
+    sendUploadOpen(channel);
+    await vi.waitFor(() => expectUploadOffset(channel, 2));
     channel.close();
     await vi.waitFor(() =>
       expect(f.events).toContainEqual(
@@ -919,6 +935,40 @@ describe('Node direct transfer service', () => {
     );
     expect(cancel).not.toHaveBeenCalled();
     f.service.dispose();
+  });
+
+  it('does not commit a short upload and keeps the shared carrier open', async () => {
+    const complete = vi.fn(async () => undefined);
+    const cancel = vi.fn(async () => undefined);
+    const f = await createFixture({
+      openUpload: async () => ({ offset: 0, write: async () => 1, complete, cancel })
+    });
+    try {
+      await connectTransport(f);
+      prepareTransfer(f, {
+        direction: 'UPLOAD',
+        uploadId: randomUUID(),
+        sha256: '0'.repeat(64),
+        resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x' },
+        fileName: 'x',
+        size: 2
+      });
+      const channel = openUploadCarrier(f);
+      sendUploadOpen(channel);
+      await vi.waitFor(() => expectUploadOffset(channel, 0));
+      sendUploadFrame(channel, { type: 'DATA', streamId: 1, bytes: Uint8Array.of(1) });
+      sendUploadFrame(channel, { type: 'FIN', streamId: 1 });
+      await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+      expect(channel.sent.map(decodeNodeStreamFrame)).toContainEqual({
+        type: 'RESET',
+        streamId: 1,
+        code: 'DIRECT_INTEGRITY_FAILED'
+      });
+      expect(complete).not.toHaveBeenCalled();
+      expect(channel.readyState).toBe('open');
+    } finally {
+      f.service.dispose();
+    }
   });
 
   it('streams only the requested Range and reports its transferred length', async () => {
@@ -940,15 +990,40 @@ describe('Node direct transfer service', () => {
       range: { offset: 4, length: 3 }
     });
     const channel = new FakeDataChannel();
+    channel.label = NODE_STREAM_CHANNEL_LABEL;
     f.peer.attach(channel);
     channel.receive(
-      JSON.stringify({ type: 'OPEN', directSessionId: 'transfer-0001', grant: 'g'.repeat(32) })
+      encodeNodeStreamFrame({
+        type: 'OPEN',
+        streamId: 1,
+        kind: 'file-download',
+        grant: 'g'.repeat(32)
+      }).buffer
     );
     await vi.waitFor(() =>
-      expect(channel.sent.some((value) => value instanceof ArrayBuffer)).toBe(true)
+      expect(channel.sent.map(decodeNodeStreamFrame)).toEqual([
+        { type: 'OPENED', streamId: 1 },
+        { type: 'DATA', streamId: 1, bytes: Uint8Array.of(4, 5, 6) },
+        { type: 'FIN', streamId: 1 }
+      ])
     );
-    expect(channel.sent.at(-1)).toBe(JSON.stringify({ type: 'COMPLETE', size: 3 }));
-    channel.receive(JSON.stringify({ type: 'ACK', offset: 3 }));
+    expect(f.events).not.toContainEqual(expect.objectContaining({ type: 'direct.complete' }));
+    channel.receive(
+      encodeNodeStreamFrame({
+        type: 'OPEN',
+        streamId: 2,
+        kind: 'file-download',
+        grant: 'g'.repeat(32)
+      }).buffer
+    );
+    await vi.waitFor(() =>
+      expect(channel.sent.map(decodeNodeStreamFrame)).toContainEqual({
+        type: 'RESET',
+        streamId: 2,
+        code: 'RESOURCE_DENIED'
+      })
+    );
+    channel.receive(encodeNodeStreamFrame({ type: 'FIN', streamId: 1 }).buffer);
     await vi.waitFor(() =>
       expect(f.events).toContainEqual({
         type: 'direct.complete',
@@ -974,6 +1049,7 @@ describe('Node direct transfer service', () => {
       expiresAt: 900,
       transfer: {
         direction: 'UPLOAD',
+        uploadId: randomUUID(),
         sha256: '0'.repeat(64),
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x' },
         fileName: 'x',
@@ -1013,19 +1089,15 @@ describe('Node direct transfer service', () => {
     await connectTransport(f);
     prepareTransfer(f, {
       direction: 'UPLOAD',
+      uploadId: randomUUID(),
       sha256: '0'.repeat(64),
       resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x' },
       fileName: 'x',
       size: 1
     });
-    const channel = new FakeDataChannel();
-    f.peer.attach(channel);
-    channel.receive(
-      JSON.stringify({ type: 'OPEN', directSessionId: 'transfer-0001', grant: 'g'.repeat(32) })
-    );
-    await vi.waitFor(() =>
-      expect(channel.sent).toContain(JSON.stringify({ type: 'ACK', offset: 0 }))
-    );
+    const channel = openUploadCarrier(f);
+    sendUploadOpen(channel);
+    await vi.waitFor(() => expectUploadOffset(channel, 0));
     f.setNow(180);
     f.service.handle({
       type: 'direct.heartbeat',

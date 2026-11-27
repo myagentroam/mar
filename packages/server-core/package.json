@@ -15,6 +15,11 @@
     "test:unit": "vitest run --config vitest.config.mts"
   },
   "exports": {
+    "./node-relay-channel": {
+      "development": "./src/node-relay-channel.ts",
+      "types": "./dist/node-relay-channel.d.ts",
+      "import": "./dist/node-relay-channel.js"
+    },
     "./node-file-relay": {
       "development": "./src/node-file-relay.ts",
       "types": "./dist/node-file-relay.d.ts",
@@ -159,11 +164,6 @@
       "development": "./src/browser-attachment-coordinator.ts",
       "types": "./dist/browser-attachment-coordinator.d.ts",
       "import": "./dist/browser-attachment-coordinator.js"
-    },
-    "./browser-relay-service": {
-      "development": "./src/browser-relay-service.ts",
-      "types": "./dist/browser-relay-service.d.ts",
-      "import": "./dist/browser-relay-service.js"
     },
     "./node-request-channel": {
       "development": "./src/node-request-channel.ts",

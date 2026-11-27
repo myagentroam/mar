@@ -1,58 +1,46 @@
 import { createUuid } from '../util/uuid.js';
-import type { createWorkbenchDirectTransportCoordinator } from './workbench-direct-transport-coordinator.js';
-import {
-  decodeTerminalMessage,
-  encodeTerminalMessage,
-  terminalDataFrameSchema,
-  terminalDirectAttachedFrameSchema,
-  type TerminalDirectBrowserMessage,
-  type TerminalDirectServerMessage,
-  type TerminalDataFrame
+import type {
+  TerminalDirectBrowserMessage,
+  TerminalDirectServerMessage
 } from '@myagentroam/protocol';
-import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
+import { NodeStreamError, type NodeStream } from '@myagentroam/protocol/node-stream';
+import type { NodeStreamOpen } from '@myagentroam/protocol/node-stream-mux';
+import type { NodeConnectionPath } from '@myagentroam/protocol/node-connection';
 
-export interface TerminalDockHandle {
-  toggle(): Promise<void>;
-  release(): Promise<void>;
-  closeAll(): Promise<boolean>;
+export interface TerminalAttachmentRequest {
+  readonly terminalId: string;
+  readonly workspaceId?: string;
+  readonly afterSequence: number;
 }
 
-type Transport = NonNullable<
-  ReturnType<ReturnType<typeof createWorkspaceDirectTransferService>['acquireTerminalTransport']>
->;
-
-export class TerminalDirectError extends Error {
-  constructor(readonly code: string) {
-    super(code);
-  }
-}
+type Binding = { readonly transportSessionId: string; readonly nodeGeneration: string };
+const UNAVAILABLE = new Set([
+  'NODE_OFFLINE',
+  'TERMINAL_DIRECT_TIMEOUT',
+  'TERMINAL_DIRECT_UNAVAILABLE',
+  'TERMINAL_DIRECT_CONTROL_UNAVAILABLE'
+]);
 
 interface Pending {
-  readonly transport: Transport;
   readonly resolve: (
     message: Extract<TerminalDirectServerMessage, { type: 'terminal.direct.prepared' }>
   ) => void;
-  readonly reject: (error: TerminalDirectError) => void;
+  readonly reject: (error: NodeStreamError) => void;
 }
 
 interface Active {
-  readonly transport: Transport;
-  readonly channel: RTCDataChannel;
-  readonly onFrame: (frame: TerminalDataFrame) => void;
-  readonly onAttached: () => void;
-  readonly onDisconnected: (code: string) => void;
-  attached: boolean;
-  stopped: boolean;
+  readonly scope: AbortController;
+  stream?: NodeStream;
   lastHeartbeat: number;
   timer?: ReturnType<typeof setInterval>;
-  attachTimer?: ReturnType<typeof setTimeout>;
+  removeAbort(): void;
 }
 
 export interface TerminalDirectClientOptions {
   readonly send: (message: TerminalDirectBrowserMessage) => boolean;
-  readonly acquire: (nodeId: string) => Transport | undefined;
 }
 
+/** Owns per-terminal grants and leases; the page transport owns the shared ICE carrier. */
 export function createTerminalDirectClient(options: TerminalDirectClientOptions) {
   const pending = new Map<string, Pending>();
   const active = new Map<string, Active>();
@@ -72,7 +60,7 @@ export function createTerminalDirectClient(options: TerminalDirectClientOptions)
       const waiting = pending.get(message.requestId ?? '');
       if (waiting !== undefined) {
         pending.delete(message.requestId!);
-        waiting.reject(new TerminalDirectError(message.code));
+        waiting.reject(new NodeStreamError(message.code));
       }
       return;
     }
@@ -83,177 +71,109 @@ export function createTerminalDirectClient(options: TerminalDirectClientOptions)
   }
 
   function stop(id: string, session: Active, code?: string): void {
-    if (session.stopped) return;
-    session.stopped = true;
-    active.delete(id);
+    if (!active.delete(id)) return;
     if (session.timer !== undefined) clearInterval(session.timer);
-    if (session.attachTimer !== undefined) clearTimeout(session.attachTimer);
-    session.channel.close();
+    session.removeAbort();
+    session.scope.abort(new NodeStreamError(code ?? 'NODE_STREAM_CANCELLED'));
+    if (code !== undefined) session.stream?.reset(code);
+    else session.stream?.close();
     options.send({ type: 'terminal.direct.cancel', directSessionId: id });
-    session.transport.release();
-    if (code !== undefined) session.onDisconnected(code);
   }
 
-  async function attach(input: {
-    readonly nodeId: string;
-    readonly terminalId: string;
-    readonly workspaceId?: string;
-    readonly afterSequence: number;
-    readonly readonly: boolean;
-    readonly onFrame: (frame: TerminalDataFrame) => void;
-    readonly onAttached: () => void;
-    readonly onDisconnected: (code: string) => void;
-    readonly signal: AbortSignal;
-  }): Promise<{ send(frame: object): void; dispose(): void } | undefined> {
-    const transport = options.acquire(input.nodeId);
-    if (transport === undefined) return undefined;
+  async function openStream(
+    nodeId: string,
+    input: TerminalAttachmentRequest,
+    binding: Binding,
+    path: NodeConnectionPath<NodeStreamOpen, NodeStream>,
+    signal: AbortSignal
+  ): Promise<NodeStream | undefined> {
     const requestId = createUuid().replaceAll('-', '');
-    let removeAbort = () => undefined;
-    let grantedSessionId: string | undefined;
+    let removeAbort = () => {};
+    let prepared: Extract<TerminalDirectServerMessage, { type: 'terminal.direct.prepared' }>;
     try {
-      const prepared = await new Promise<
-        Extract<TerminalDirectServerMessage, { type: 'terminal.direct.prepared' }>
-      >((resolve, reject) => {
+      prepared = await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           pending.delete(requestId);
-          reject(new TerminalDirectError('TERMINAL_DIRECT_TIMEOUT'));
+          reject(new NodeStreamError('TERMINAL_DIRECT_TIMEOUT'));
         }, 5_000);
         const abort = () => {
           pending.delete(requestId);
-          reject(new TerminalDirectError('TERMINAL_DIRECT_CANCELLED'));
+          reject(signal.reason);
         };
         removeAbort = () => {
           clearTimeout(timeout);
-          input.signal.removeEventListener('abort', abort);
+          signal.removeEventListener('abort', abort);
         };
-        input.signal.addEventListener('abort', abort, { once: true });
-        pending.set(requestId, {
-          transport,
-          resolve,
-          reject
-        });
-        if (
-          input.signal.aborted ||
+        signal.addEventListener('abort', abort, { once: true });
+        pending.set(requestId, { resolve, reject });
+        if (signal.aborted) abort();
+        else if (
           !options.send({
             type: 'terminal.direct.prepare',
             requestId,
-            nodeId: input.nodeId,
-            nodeGeneration: transport.nodeGeneration,
-            transportSessionId: transport.transportSessionId,
-            terminalId: input.terminalId,
-            ...(input.workspaceId === undefined ? {} : { workspaceId: input.workspaceId }),
-            afterSequence: input.afterSequence,
-            readonly: input.readonly
+            nodeId,
+            ...binding,
+            ...input,
+            readonly: false
           })
-        )
-          abort();
+        ) {
+          pending.delete(requestId);
+          reject(new NodeStreamError('TERMINAL_DIRECT_CONTROL_UNAVAILABLE'));
+        }
       });
+    } catch (error) {
+      signal.throwIfAborted();
+      if (error instanceof NodeStreamError && UNAVAILABLE.has(error.code)) return undefined;
+      throw error;
+    } finally {
       removeAbort();
-      grantedSessionId = prepared.directSessionId;
-      if (input.signal.aborted) throw new TerminalDirectError('TERMINAL_DIRECT_CANCELLED');
-      const channel = transport.createChannel(`mar-terminal-${prepared.directSessionId}`);
-      channel.binaryType = 'arraybuffer';
-      const session: Active = {
-        transport,
-        channel,
-        onFrame: input.onFrame,
-        onAttached: input.onAttached,
-        onDisconnected: input.onDisconnected,
-        attached: false,
-        stopped: false,
-        lastHeartbeat: Date.now()
-      };
-      active.set(prepared.directSessionId, session);
-      const dispose = (code?: string) => stop(prepared.directSessionId, session, code);
-      channel.addEventListener('open', () => {
-        if (session.stopped) return;
-        channel.send(
-          encodeTerminalMessage({
-            type: 'OPEN',
-            directSessionId: prepared.directSessionId,
-            grant: prepared.grant
-          })
-        );
-      });
-      channel.addEventListener('message', (event) => {
-        if (session.stopped) return;
-        if (!(event.data instanceof ArrayBuffer) || event.data.byteLength > 128 * 1024) {
-          dispose('TERMINAL_FRAME_INVALID');
-          return;
-        }
-        let value: unknown;
-        try {
-          value = decodeTerminalMessage(event.data);
-        } catch {
-          dispose('TERMINAL_FRAME_INVALID');
-          return;
-        }
-        if (!session.attached) {
-          const attached = terminalDirectAttachedFrameSchema.safeParse(value);
-          if (!attached.success || attached.data.terminalId !== input.terminalId) {
-            dispose('TERMINAL_ATTACH_FAILED');
-            return;
-          }
-          session.attached = true;
-          if (session.attachTimer !== undefined) clearTimeout(session.attachTimer);
-          session.onAttached();
-          return;
-        }
-        const frame = terminalDataFrameSchema.safeParse(value);
-        if (!frame.success || frame.data.terminalId !== input.terminalId) {
-          dispose('TERMINAL_FRAME_INVALID');
-          return;
-        }
-        session.onFrame(frame.data);
-      });
-      channel.addEventListener('close', () => dispose('TERMINAL_DIRECT_CLOSED'));
-      session.attachTimer = setTimeout(() => dispose('TERMINAL_DIRECT_TIMEOUT'), 15_000);
+    }
+    const id = prepared.directSessionId;
+    const cancelled = () => stop(id, session);
+    const session: Active = {
+      scope: new AbortController(),
+      lastHeartbeat: Date.now(),
+      removeAbort: () => signal.removeEventListener('abort', cancelled)
+    };
+    active.set(id, session);
+    signal.addEventListener('abort', cancelled, { once: true });
+    const opening = AbortSignal.any([signal, session.scope.signal]);
+    try {
+      opening.throwIfAborted();
+      // Beyond this boundary an uncertain OPEN must never fall back to Relay.
+      const stream = await path.openStream({ kind: 'terminal', grant: prepared.grant }, opening);
+      if (opening.aborted) {
+        stream?.close();
+        opening.throwIfAborted();
+      }
+      if (stream === undefined) {
+        stop(id, session);
+        return undefined;
+      }
+      session.stream = stream;
+      void stream.finished.then(() => stop(id, session));
       session.timer = setInterval(() => {
         if (
           Date.now() - session.lastHeartbeat > 30_000 ||
-          !options.send({
-            type: 'terminal.direct.heartbeat',
-            directSessionId: prepared.directSessionId
-          })
+          !options.send({ type: 'terminal.direct.heartbeat', directSessionId: id })
         )
-          dispose('TERMINAL_DIRECT_CONTROL_UNAVAILABLE');
+          stop(id, session, 'TERMINAL_DIRECT_CONTROL_UNAVAILABLE');
       }, 10_000);
-      if (input.signal.aborted) dispose();
-      else input.signal.addEventListener('abort', () => dispose(), { once: true });
-      return {
-        send(frame) {
-          if (!session.attached || session.stopped || channel.readyState !== 'open') return;
-          if (channel.bufferedAmount > 1024 * 1024) {
-            dispose('TERMINAL_BACKPRESSURE');
-            return;
-          }
-          channel.send(encodeTerminalMessage(frame));
-        },
-        dispose: () => dispose()
-      };
+      return stream;
     } catch (error) {
-      removeAbort();
-      if (grantedSessionId !== undefined)
-        options.send({ type: 'terminal.direct.cancel', directSessionId: grantedSessionId });
-      transport.release();
-      if (error instanceof TerminalDirectError) throw error;
-      throw new TerminalDirectError('TERMINAL_DIRECT_UNAVAILABLE');
+      const reason = opening.aborted ? opening.reason : error;
+      stop(id, session);
+      throw reason;
     }
   }
 
   function invalidate(): void {
     for (const [id, item] of pending) {
       pending.delete(id);
-      item.reject(new TerminalDirectError('TERMINAL_DIRECT_CONTROL_UNAVAILABLE'));
+      item.reject(new NodeStreamError('TERMINAL_DIRECT_CONTROL_UNAVAILABLE'));
     }
     for (const [id, item] of active) stop(id, item, 'TERMINAL_DIRECT_CONTROL_UNAVAILABLE');
   }
 
-  return { attach, handle, invalidate };
-}
-
-export interface WorkbenchTerminalView {
-  terminalDocks: Map<string, TerminalDockHandle>;
-  terminalDirectClient: ReturnType<typeof createWorkbenchDirectTransportCoordinator>['terminal'];
-  terminalReady: boolean;
+  return { openStream, handle, invalidate };
 }

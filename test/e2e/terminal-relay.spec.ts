@@ -4,18 +4,17 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import nodePackage from '../../mar-node/package.json' with { type: 'json' };
 import { expect, test } from '@playwright/test';
 // @ts-expect-error The production Server owns this runtime-only WebSocket client dependency.
 import WsClient from '../../ee/server/node_modules/ws/wrapper.mjs';
+import { decodeTerminalMessage, encodeTerminalMessage } from '../../packages/protocol/src/index.js';
+import { testRelayPath } from './support/node-relay-fixture.js';
+import { decodeNodeStreamFrame } from '../../packages/protocol/src/node-stream-wire.js';
 import {
-  createEnvelope,
-  decodeTerminalMessage,
-  encodeTerminalMessage,
-  type NodeEnvelope
-} from '../../packages/protocol/src/index.js';
+  readTerminalRecords,
+  writeTerminalRecord
+} from '../../packages/protocol/src/terminal-stream.js';
 import { createServerApp } from '../../ee/server/src/app.js';
-import { createTestServerApp } from '../support/create-test-server-app.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
 import { randomUUID } from 'node:crypto';
 import { NodeConnector } from '../../mar-node/src/connector.js';
@@ -40,7 +39,7 @@ test('marctl executes and copies through isolated Server and Node, with real dir
   const directory = await mkdtemp(join(tmpdir(), 'marctl-real-transport-'));
   let app: Awaited<ReturnType<typeof createServerApp>>['app'] | undefined;
   let connector: NodeConnector | undefined;
-  let socket: TestSocket | undefined;
+  let closeRelay: (() => void) | undefined;
   const manager = new TerminalManager({
     platform: 'linux',
     cwd: directory,
@@ -74,17 +73,37 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       })
     ).app;
     let muxConnections = 0;
+    let observedCliRelayCarriers = 0;
+    let cliRelayStreams = 0;
+    let closedPrivateCarriers = 0;
+    let privateRelayStreams = 0;
     const connectedPath = join(directory, 'pooled-direct-ready');
     const directConnections: { transports: number; streams: string[] }[] = [];
     app.server.on('upgrade', (request) => {
-      if (request.url?.startsWith('/api/marctl/terminal-mux?')) muxConnections++;
+      if (request.url?.startsWith('/api/relay/') && request.headers.authorization) muxConnections++;
     });
     let observingDirect = false;
     app.addHook('onRequest', async (request) => {
-      if (observingDirect || request.url !== '/api/marctl/live') return;
+      if (
+        observingDirect ||
+        (request.url !== '/api/marctl/live' && !request.url.startsWith('/api/relay/'))
+      )
+        return;
       // The WebSocket server is decorated on the realtime route scope, not the root app.
       observingDirect = true;
       request.server.websocketServer.on('connection', (wire, upgrade) => {
+        if (upgrade.url?.startsWith('/api/relay/') && upgrade.headers.authorization) {
+          observedCliRelayCarriers++;
+          const pooled = observedCliRelayCarriers === 1;
+          if (!pooled) wire.once('close', () => closedPrivateCarriers++);
+          wire.on('message', (raw, binary) => {
+            if (binary && decodeNodeStreamFrame(raw).type === 'OPEN') {
+              if (pooled) cliRelayStreams++;
+              else privateRelayStreams++;
+            }
+          });
+          return;
+        }
         if (upgrade.url !== '/api/marctl/live') return;
         const stats = { transports: 0, streams: [] as string[] };
         directConnections.push(stats);
@@ -106,6 +125,14 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       });
     });
     await app.listen({ host: '127.0.0.1', port: address.port });
+    expect(app.hasRoute({ method: 'GET', url: '/api/relay/:nodeId' })).toBe(true);
+    for (const url of [
+      '/api/node/terminal-connect',
+      '/api/terminals/:terminalId/connect',
+      '/api/marctl/terminals/:terminalId/connect',
+      '/api/marctl/terminals/connect'
+    ])
+      expect(app.hasRoute({ method: 'GET', url })).toBe(false);
     const admin = await adminHeaders(app);
     const registration = await app.inject({
       method: 'POST',
@@ -148,14 +175,28 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       payload: { nodeId, afterSequence: 0 }
     });
     expect(ticketResponse.statusCode, ticketResponse.body).toBe(201);
-    socket = new WsClient(
-      `${origin.replace('http', 'ws')}/api/terminals/${terminalId}/connect?ticket=${encodeURIComponent(ticketResponse.json<{ ticket: string }>().ticket)}`,
+    const socket = new WsClient(
+      `${origin.replace('http', 'ws')}/api/relay/${encodeURIComponent(nodeId)}`,
       { headers: { cookie: admin.cookie, origin } }
-    ) as TestSocket;
-    const frames: { type: string }[] = [];
-    socket.on('message', (raw) => frames.push(decodeTerminalMessage(raw) as { type: string }));
-    await opened(socket);
-    await expect.poll(() => frames.some((frame) => frame.type === 'attach')).toBe(true);
+    );
+    closeRelay = () => socket.terminate();
+    socket.on('error', () => socket.terminate());
+    const relay = await testRelayPath(socket);
+    closeRelay = relay.close;
+    const grant = ticketResponse.json<{ ticket: string }>().ticket;
+    const stream = await relay.openStream({ kind: 'terminal', grant }, AbortSignal.timeout(10_000));
+    if (!stream) throw new Error('NODE_RELAY_UNAVAILABLE');
+    const records = readTerminalRecords(stream);
+    const attachment = await records.next();
+    expect(decodeTerminalMessage(attachment.value)).toMatchObject({ type: 'attach', terminalId });
+    await expect(
+      relay.openStream({ kind: 'terminal', grant }, AbortSignal.timeout(10_000))
+    ).rejects.toThrow('RESOURCE_DENIED');
+    const drained = (async () => {
+      while (!(await records.next()).done) {
+        // Drain terminal output while the journey runs.
+      }
+    })().catch(() => {});
 
     const product = process.cwd();
     const entry = (file: string) => pathToFileURL(join(product, 'marctl', file)).href;
@@ -165,7 +206,7 @@ test('marctl executes and copies through isolated Server and Node, with real dir
     const copied = join(directory, 'copied.bin');
     const copiedWithoutPool = join(directory, 'copied-without-pool.bin');
     const starts = join(directory, 'starts.txt');
-    const bytes = Buffer.from(Array.from({ length: 65536 }, (_, index) => index % 256));
+    const bytes = Buffer.from(Array.from({ length: 384 * 1024 + 7 }, (_, index) => index % 256));
     await writeFile(source, bytes);
     const script = join(directory, 'journey.mjs');
     await writeFile(
@@ -176,13 +217,11 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       import { promisify } from 'node:util';
       import { readFile, writeFile } from 'node:fs/promises';
       import { setTimeout as sleep } from 'node:timers/promises';
-      import { Writable } from 'node:stream';
       import { createRequire } from 'node:module';
       import { MarctlClient } from ${JSON.stringify(entry('src/client.mjs'))};
       import { decodeTerminalMessage } from ${JSON.stringify(entry('node_modules/@myagentroam/protocol/dist/byte-frame.js'))};
-      import { runTerminalSession } from ${JSON.stringify(entry('src/terminal.mjs'))};
-      import { openDirectTerminal } from ${JSON.stringify(entry('src/direct.mjs'))};
-      import { DirectFallbackError } from ${JSON.stringify(entry('src/direct-errors.mjs'))};
+      import { openDirectConnection } from ${JSON.stringify(entry('src/direct.mjs'))};
+      import { connectTerminalBrokerRelay } from ${JSON.stringify(entry('src/terminal-broker-relay.mjs'))};
       const WebSocket = createRequire(${JSON.stringify(entry('package.json'))})('ws');
       const exec = promisify(execFile);
       const result = {};
@@ -201,10 +240,11 @@ test('marctl executes and copies through isolated Server and Node, with real dir
         await run(scp, [${JSON.stringify(source)}, node + '://' + ${JSON.stringify(remote)}]);
         await run(scp, [node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copied)}]);
         await run(scp, ['--no-reuse', node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copiedWithoutPool)}]);
+        result.afterPrivate = (await run(cli, [node, 'printf after-private'])).stdout;
         const single = new MarctlClient({ serverUrl: process.env.MAR_CTL_SERVER_URL, key: process.env.MAR_CTL_USER_TOKEN });
         const abandoned = await single.createTerminal({ nodeId: node, rows: 24, cols: 80, command: 'printf "single-ready:%s;" "$$"; exec sleep 300' });
         const ticket = await single.createAttachTicket({ nodeId: node, terminalId: abandoned });
-        const wire = single.openTerminalWebSocket(WebSocket, { nodeId: node, terminalId: abandoned, ticket });
+        const wire = single.openTerminalEndpoint({ nodeId: node, terminalId: abandoned, ticket });
         try {
           result.abandonedPid = await new Promise((resolve, reject) => {
             let printed = '';
@@ -223,7 +263,7 @@ test('marctl executes and copies through isolated Server and Node, with real dir
         } finally {
           if (wire.readyState !== WebSocket.CLOSED) {
             const closed = once(wire, 'close');
-            wire.terminate();
+            wire.close();
             await closed;
           }
         }
@@ -231,28 +271,48 @@ test('marctl executes and copies through isolated Server and Node, with real dir
         const client = new MarctlClient({ serverUrl: process.env.MAR_CTL_SERVER_URL, key: process.env.MAR_CTL_USER_TOKEN, reuseTerminalConnections: true });
         try { await client.openComputer(node); }
         catch (error) { result.computer = error.code; }
-        for (const mode of ['relay', 'relayAgain', 'direct']) {
-          let output = '';
-          const stdout = new Writable({ write(chunk, _encoding, done) { output += chunk.toString(); done(); } });
-          const open = mode !== 'direct' ? async () => { throw new DirectFallbackError('TEST_RELAY'); } : async (options) => {
-            try { return await openDirectTerminal(options); }
-            catch (error) { throw new Error('DIRECT_REQUIRED:' + error.code); }
-          };
-          const code = await runTerminalSession({ client, WebSocketClass: WebSocket, nodeId: node, command: 'printf ' + mode, stdout, openDirectTerminal: open, connectionTimeoutMs: 20000 });
-          result[mode] = { code, output };
-        }
+        const relayPath = await connectTerminalBrokerRelay({ serverUrl: process.env.MAR_CTL_SERVER_URL, key: process.env.MAR_CTL_USER_TOKEN, nodeId: node, client }, AbortSignal.timeout(20000));
+        const runOnPath = async (path, mode) => {
+          const terminalId = await client.createTerminal({ nodeId: node, rows: 24, cols: 80, command: 'printf ' + mode });
+          try {
+            let output = '';
+            let code;
+            let end;
+            const finished = new Promise(resolve => { end = resolve; });
+            const stream = await path.openStream({ terminalId, onEnd: end, onFrame(raw) {
+              const frame = decodeTerminalMessage(raw);
+              if (frame.type === 'output') output += Buffer.from(frame.data).toString();
+              if (frame.type === 'exit') code = frame.exitCode;
+              if (frame.type === 'error') throw new Error(frame.code);
+            } }, AbortSignal.timeout(20000));
+            if (!stream) throw new Error('TERMINAL_STREAM_REQUIRED');
+            stream.activate();
+            await finished;
+            result[mode] = { code, output };
+          } finally { await client.deleteTerminal({ nodeId: node, terminalId }); }
+        };
+        try {
+          await runOnPath(relayPath, 'relay');
+          await runOnPath(relayPath, 'relayAgain');
+        } finally { relayPath.close(); }
+        const lifetime = AbortSignal.timeout(20000);
+        const connection = await openDirectConnection({ client, WebSocketClass: WebSocket, nodeId: node, signal: lifetime });
+        try { await runOnPath(await connection.openStreams(lifetime), 'direct'); }
+        finally { connection.close(); }
       } catch (error) { result.error = String(error?.message ?? error); }
       await writeFile(${JSON.stringify(resultPath)}, JSON.stringify(result));
     `
     );
-    socket.send(
-      encodeTerminalMessage({
-        type: 'input',
-        terminalId,
-        data: new TextEncoder().encode(
-          `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}\n`
-        )
-      })
+    await stream.write(
+      writeTerminalRecord(
+        encodeTerminalMessage({
+          type: 'input',
+          terminalId,
+          data: new TextEncoder().encode(
+            `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}\n`
+          )
+        })
+      )
     );
     await expect
       .poll(
@@ -268,6 +328,7 @@ test('marctl executes and copies through isolated Server and Node, with real dir
     expect(result).toEqual({
       cli: 'cli-ok',
       warm: 'warm',
+      afterPrivate: 'after-private',
       abandoned: expect.any(String),
       abandonedPid: expect.any(Number),
       computer: 'COMPUTER_REMOTE_DISABLED',
@@ -287,16 +348,23 @@ test('marctl executes and copies through isolated Server and Node, with real dir
         }
       })
       .toBe(false);
-    expect(muxConnections).toBe(1);
+    expect(muxConnections).toBe(4);
+    expect(observedCliRelayCarriers).toBe(4);
+    expect(privateRelayStreams).toBeGreaterThanOrEqual(2); // Two forced Relay streams on one carrier.
+    expect(privateRelayStreams).toBeLessThanOrEqual(4);
+    await expect.poll(() => closedPrivateCarriers).toBe(3);
+    expect(cliRelayStreams).toBeLessThanOrEqual(1); // Only the initial cold command may use Relay.
     expect(directConnections[0]?.transports).toBe(1);
-    expect(directConnections[0]?.streams.length).toBeGreaterThanOrEqual(3);
+    expect(directConnections[0]?.streams.length).toBeGreaterThanOrEqual(4);
     expect(new Set(directConnections[0]?.streams).size).toBe(1);
     expect(await readFile(starts, 'utf8')).toBe('x');
     expect(await readFile(copied)).toEqual(bytes);
     expect(await readFile(copiedWithoutPool)).toEqual(bytes);
     expect(await readFile(remote)).toEqual(bytes);
+    stream.close();
+    await drained;
   } finally {
-    socket?.close();
+    closeRelay?.();
     try {
       await connector?.stop();
     } finally {
@@ -392,46 +460,94 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
     };
     await expect.poll(nodes).toEqual([expect.objectContaining({ connected: true })]);
     const nodeId = (await nodes())[0]!.id;
+    const registeredWorkspace = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces',
+      headers: admin,
+      payload: { nodeId, path: directory }
+    });
+    expect(registeredWorkspace.statusCode, registeredWorkspace.body).toBe(201);
+    const workspaceId = registeredWorkspace.json<{ workspace: { id: string } }>().workspace.id;
     const openedTerminal = await app.inject({
       method: 'POST',
       url: '/api/terminals',
       headers: admin,
-      payload: { nodeId }
+      payload: { nodeId, workspaceId }
     });
     expect(openedTerminal.statusCode, openedTerminal.body).toBe(201);
     const terminalId = openedTerminal.json<{ terminal: { id: string } }>().terminal.id;
-    const attach = async (afterSequence: number) => {
+    const issue = async (
+      options: { afterSequence?: number; readonly?: boolean; workspaceId?: string | undefined } = {}
+    ) => {
       const response = await app!.inject({
         method: 'POST',
         url: `/api/terminals/${terminalId}/attach-ticket`,
         headers: admin,
-        payload: { nodeId, afterSequence }
+        payload: { nodeId, workspaceId, ...options }
       });
       expect(response.statusCode).toBe(201);
-      const ticket = response.json<{ ticket: string }>().ticket;
+      return response.json<{ ticket: string }>().ticket;
+    };
+    const dial = async (cookie = admin.cookie) => {
       const socket = new WsClient(
-        `${baseUrl.replace('http', 'ws')}/api/terminals/${terminalId}/connect?ticket=${encodeURIComponent(ticket)}`,
-        { headers: { cookie: admin.cookie, origin: baseUrl } }
+        `${baseUrl.replace('http', 'ws')}/api/relay/${encodeURIComponent(nodeId)}`,
+        { headers: { cookie, origin: baseUrl } }
       );
       sockets.push(socket);
-      const frames: { type: string; sequence?: number; data?: Uint8Array }[] = [];
-      socket.on('message', (raw: { toString(): string }) =>
-        frames.push(decodeTerminalMessage(raw) as (typeof frames)[number])
-      );
-      await opened(socket as unknown as TestSocket);
-      await expect.poll(() => frames.some((frame) => frame.type === 'attach')).toBe(true);
-      return { socket, frames };
+      socket.on('error', () => socket.terminate());
+      return { socket, relay: await testRelayPath(socket) };
     };
-    const first = await attach(0);
+    const open = async (relay: Awaited<ReturnType<typeof testRelayPath>>, ticket: string) => {
+      const stream = await relay.openStream(
+        { kind: 'terminal', grant: ticket },
+        AbortSignal.timeout(10_000)
+      );
+      if (!stream) throw new Error('NODE_RELAY_UNAVAILABLE');
+      return stream;
+    };
+    const attach = async (relay: Awaited<ReturnType<typeof testRelayPath>>, ticket: string) => {
+      const stream = await open(relay, ticket);
+      const frames: { type: string; sequence?: number; data?: Uint8Array }[] = [];
+      void (async () => {
+        for await (const record of readTerminalRecords(stream))
+          frames.push(decodeTerminalMessage(record) as (typeof frames)[number]);
+      })().catch(() => stream.close());
+      await expect.poll(() => frames.some((frame) => frame.type === 'attach')).toBe(true);
+      return { frames, stream };
+    };
+    await expect(dial('invalid-session=fixture')).rejects.toThrow('NODE_RELAY_UNAVAILABLE');
+    const rejectedTakeover = await app.inject({
+      method: 'POST',
+      url: `/api/terminals/${terminalId}/attach-ticket`,
+      headers: admin,
+      payload: { nodeId, workspaceId, takeover: true }
+    });
+    expect(rejectedTakeover.statusCode).toBe(400);
+    const initial = await dial();
+    const ticket = await issue();
+    const first = await attach(initial.relay, ticket);
+    await expect(open(initial.relay, ticket)).rejects.toMatchObject({ code: 'RESOURCE_DENIED' });
+    const wrongScope = await issue({ workspaceId: undefined });
+    await expect(open(initial.relay, wrongScope)).rejects.toMatchObject({
+      code: 'TERMINAL_WORKSPACE_MISMATCH'
+    });
+    const conflicting = async () => {
+      const stream = await open(initial.relay, await issue());
+      return readTerminalRecords(stream).next();
+    };
+    await expect(conflicting()).rejects.toMatchObject({ code: 'TERMINAL_ATTACH_CONFLICT' });
+    const reader = await attach(initial.relay, await issue({ readonly: true }));
     const command = `const fs=require("node:fs");let tick=0;fs.appendFileSync(${JSON.stringify(startsPath)},"start\\n");setInterval(()=>{fs.writeFileSync(${JSON.stringify(statusPath + '.tmp')},JSON.stringify({pid:process.pid,shellPid:process.ppid,tick:++tick}));fs.renameSync(${JSON.stringify(statusPath + '.tmp')},${JSON.stringify(statusPath)});console.log("MAR_TICK "+process.pid+" "+tick)},100)`;
     // This is the only input frame: reconnect must never rerun the command.
     // Keep the interactive shell and its distinct foreground job alive across restart.
-    first.socket.send(
-      encodeTerminalMessage({
-        type: 'input',
-        terminalId,
-        data: new TextEncoder().encode(`${JSON.stringify(process.execPath)} -e '${command}'\n`)
-      })
+    await first.stream.write(
+      writeTerminalRecord(
+        encodeTerminalMessage({
+          type: 'input',
+          terminalId,
+          data: new TextEncoder().encode(`${JSON.stringify(process.execPath)} -e '${command}'\n`)
+        })
+      )
     );
     await expect
       .poll(() =>
@@ -442,6 +558,7 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
       )
       .toMatch(/MAR_TICK \d+ \d+/u);
     const before = await status();
+    await expect.poll(() => reader.frames.some((frame) => frame.type === 'output')).toBe(true);
     processIds = [before.pid, before.shellPid];
     expect(before.shellPid).not.toBe(before.pid);
     expect(process.kill(before.shellPid, 0)).toBe(true);
@@ -454,7 +571,7 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
       )
       .toContain(`MAR_TICK ${before.pid} `);
     const afterSequence = Math.max(...first.frames.map((frame) => frame.sequence ?? 0));
-    const disconnected = closed(first.socket as unknown as TestSocket);
+    const disconnected = closed(initial.socket as unknown as TestSocket);
     await app.shutdown();
     app = undefined;
     await disconnected;
@@ -470,12 +587,12 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
       .toEqual([expect.objectContaining({ id: nodeId, connected: true })]);
     const listed = await app.inject({
       method: 'GET',
-      url: `/api/terminals?nodeId=${nodeId}`,
+      url: `/api/terminals?nodeId=${nodeId}&workspaceId=${workspaceId}`,
       headers: admin
     });
     expect(listed.statusCode).toBe(200);
     expect(listed.json()).toMatchObject({ terminals: [{ id: terminalId, state: 'RUNNING' }] });
-    const resumed = await attach(afterSequence);
+    const resumed = await attach((await dial()).relay, await issue({ afterSequence }));
     const resumedAt = (await status()).tick;
     expect((await status()).shellPid).toBe(before.shellPid);
     await expect
@@ -560,324 +677,6 @@ test('A real Terminal shell and foreground job survive Server restart and reatta
   }
 });
 
-test('Admin Terminal uses one-use tickets and a dual-WebSocket relay with replay and closure restrictions', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'my-agent-roam-terminal-relay-'));
-  const app = createTestServerApp({
-    databasePath: join(directory, 'server.sqlite'),
-    secureCookies: false
-  });
-  let controlSocket: TestSocket | undefined;
-  let terminalSocket: TestSocket | undefined;
-  let browserSocket: TestSocket | undefined;
-  let readerSocket: TestSocket | undefined;
-  try {
-    const admin = await adminHeaders(app);
-    const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
-    const registration = await app.inject({
-      method: 'POST',
-      url: '/api/node-registration-tokens',
-      headers: admin
-    });
-    const control = new WsClient(`${baseUrl.replace('http', 'ws')}/api/node/connect`) as TestSocket;
-    controlSocket = control;
-    await opened(control);
-    control.send(
-      JSON.stringify(
-        createEnvelope('register', {
-          registrationToken: registration.json<{ token: string }>().token,
-          capabilities: {
-            platform: 'linux',
-            architecture: 'x64',
-            nodeAppVersion: nodePackage.version,
-            nodeVersion: process.version,
-            codex: { available: false },
-            claudeCode: { available: false }
-          }
-        })
-      )
-    );
-    const registered = await jsonMessage(control);
-    const registeredPayload = registered.payload as { nodeId: string; credential: string };
-    const nodeId = registeredPayload.nodeId;
-
-    const terminal = new WsClient(
-      `${baseUrl.replace('http', 'ws')}/api/node/terminal-connect`
-    ) as TestSocket;
-    terminalSocket = terminal;
-    await opened(terminal);
-    terminal.send(
-      encodeTerminalMessage({
-        type: 'authenticate',
-        nodeId,
-        credential: registeredPayload.credential
-      })
-    );
-    await expect(terminalMessage(terminal)).resolves.toEqual({ type: 'authenticated', nodeId });
-
-    const ticketResponse = await app.inject({
-      method: 'POST',
-      url: '/api/terminals/terminal-a/attach-ticket',
-      headers: admin,
-      payload: { nodeId, afterSequence: 0 }
-    });
-    expect(ticketResponse.statusCode).toBe(201);
-    const ticket = ticketResponse.json<{ ticket: string }>().ticket;
-    const browserUrl = `${baseUrl.replace('http', 'ws')}/api/terminals/terminal-a/connect?ticket=${encodeURIComponent(ticket)}`;
-    const browser = new WsClient(browserUrl, [], {
-      headers: { cookie: admin.cookie, origin: baseUrl }
-    }) as TestSocket;
-    browserSocket = browser;
-    await opened(browser);
-    const authorize = await jsonMessage(control);
-    expect(authorize).toMatchObject({
-      type: 'node.request',
-      payload: { operation: 'terminal.attach.authorize', data: { terminalId: 'terminal-a' } }
-    });
-    respond(control, authorize as NodeEnvelope, {
-      attachment: {
-        attachmentId: 'attachment-a',
-        terminalId: 'terminal-a',
-        latestSequence: 0
-      }
-    });
-    await expect(terminalMessage(terminal)).resolves.toEqual({
-      type: 'attach',
-      ticket,
-      terminalId: 'terminal-a',
-      attachmentId: 'attachment-a',
-      afterSequence: 0
-    });
-    terminal.send(encodeTerminalMessage({ type: 'attached', ticket, terminalId: 'terminal-a' }));
-    await expect(terminalMessage(browser)).resolves.toEqual({
-      type: 'attach',
-      terminalId: 'terminal-a',
-      afterSequence: 0
-    });
-
-    const readerTicketResponse = await app.inject({
-      method: 'POST',
-      url: '/api/terminals/terminal-a/attach-ticket',
-      headers: admin,
-      payload: { nodeId, afterSequence: 1, readonly: true }
-    });
-    const readerTicket = readerTicketResponse.json<{ ticket: string }>().ticket;
-    const reader = new WsClient(
-      `${baseUrl.replace('http', 'ws')}/api/terminals/terminal-a/connect?ticket=${encodeURIComponent(readerTicket)}`,
-      [],
-      { headers: { cookie: admin.cookie, origin: baseUrl } }
-    ) as TestSocket;
-    readerSocket = reader;
-    await opened(reader);
-    const readerAuthorize = await jsonMessage(control);
-    expect(readerAuthorize).toMatchObject({
-      type: 'node.request',
-      payload: { operation: 'terminal.attach.authorize', data: { readonly: true } }
-    });
-    respond(control, readerAuthorize as NodeEnvelope, {
-      attachment: {
-        attachmentId: 'attachment-reader',
-        terminalId: 'terminal-a',
-        latestSequence: 1
-      }
-    });
-    await expect(terminalMessage(terminal)).resolves.toEqual({
-      type: 'attach',
-      ticket: readerTicket,
-      terminalId: 'terminal-a',
-      attachmentId: 'attachment-reader',
-      afterSequence: 1
-    });
-    terminal.send(
-      encodeTerminalMessage({ type: 'attached', ticket: readerTicket, terminalId: 'terminal-a' })
-    );
-    await expect(terminalMessage(reader)).resolves.toEqual({
-      type: 'attach',
-      terminalId: 'terminal-a',
-      afterSequence: 1
-    });
-
-    browser.send(
-      encodeTerminalMessage({
-        type: 'input',
-        terminalId: 'terminal-a',
-        data: new TextEncoder().encode('echo ok\n')
-      })
-    );
-    await expect(terminalMessage(terminal)).resolves.toMatchObject({
-      type: 'frame',
-      ticket,
-      frame: {
-        type: 'input',
-        terminalId: 'terminal-a',
-        data: new TextEncoder().encode('echo ok\n')
-      }
-    });
-    terminal.send(
-      encodeTerminalMessage({
-        type: 'frame',
-        ticket,
-        frame: {
-          type: 'output',
-          terminalId: 'terminal-a',
-          sequence: 1,
-          data: new TextEncoder().encode('ok\n')
-        }
-      })
-    );
-    await expect(terminalMessage(browser)).resolves.toEqual({
-      type: 'output',
-      terminalId: 'terminal-a',
-      sequence: 1,
-      data: new TextEncoder().encode('ok\n')
-    });
-
-    const rejectedTakeover = await app.inject({
-      method: 'POST',
-      url: '/api/terminals/terminal-a/attach-ticket',
-      headers: admin,
-      payload: { nodeId, afterSequence: 1, takeover: true }
-    });
-    expect(rejectedTakeover.statusCode).toBe(400);
-    const conflictTicketResponse = await app.inject({
-      method: 'POST',
-      url: '/api/terminals/terminal-a/attach-ticket',
-      headers: admin,
-      payload: { nodeId, afterSequence: 1 }
-    });
-    const conflictTicket = conflictTicketResponse.json<{ ticket: string }>().ticket;
-    const competing = new WsClient(
-      `${baseUrl.replace('http', 'ws')}/api/terminals/terminal-a/connect?ticket=${encodeURIComponent(conflictTicket)}`,
-      [],
-      { headers: { cookie: admin.cookie, origin: baseUrl } }
-    ) as TestSocket;
-    await opened(competing);
-    const competingAuthorize = await jsonMessage(control);
-    expect(competingAuthorize).toMatchObject({
-      type: 'node.request',
-      payload: { operation: 'terminal.attach.authorize', data: { readonly: false } }
-    });
-    const competingClosed = closed(competing);
-    control.send(
-      JSON.stringify(
-        createEnvelope(
-          'node.response',
-          {
-            error: 'TERMINAL_ATTACH_CONFLICT',
-            message: 'Terminal is already attached.'
-          },
-          { replyTo: (competingAuthorize as NodeEnvelope).id }
-        )
-      )
-    );
-    await expect(terminalMessage(competing)).resolves.toMatchObject({
-      type: 'error',
-      terminalId: 'terminal-a',
-      code: 'TERMINAL_ATTACH_CONFLICT'
-    });
-    await expect(competingClosed).resolves.toMatchObject({ code: 4008 });
-    browser.send(
-      encodeTerminalMessage({
-        type: 'input',
-        terminalId: 'terminal-a',
-        data: new TextEncoder().encode('still connected\n')
-      })
-    );
-    await expect(terminalMessage(terminal)).resolves.toMatchObject({
-      type: 'frame',
-      ticket,
-      frame: {
-        type: 'input',
-        terminalId: 'terminal-a',
-        data: new TextEncoder().encode('still connected\n')
-      }
-    });
-    terminal.send(
-      encodeTerminalMessage({
-        type: 'frame',
-        ticket: readerTicket,
-        frame: {
-          type: 'output',
-          terminalId: 'terminal-a',
-          sequence: 2,
-          data: new TextEncoder().encode('reader stays\n')
-        }
-      })
-    );
-    await expect(terminalMessage(reader)).resolves.toEqual({
-      type: 'output',
-      terminalId: 'terminal-a',
-      sequence: 2,
-      data: new TextEncoder().encode('reader stays\n')
-    });
-
-    const replay = new WsClient(browserUrl, [], {
-      headers: { cookie: admin.cookie, origin: baseUrl }
-    });
-    await expect(closed(replay)).resolves.toMatchObject({ code: 4008 });
-
-    const unauthenticated = new WsClient(browserUrl, [], {
-      headers: { cookie: 'invalid-session=token', origin: baseUrl }
-    });
-    await expect(closed(unauthenticated)).resolves.toMatchObject({ code: 4001 });
-
-    browser.send(encodeTerminalMessage({ type: 'close', terminalId: 'terminal-a' }));
-    await expect(terminalMessage(terminal)).resolves.toMatchObject({
-      type: 'frame',
-      ticket,
-      frame: { type: 'close', terminalId: 'terminal-a' }
-    });
-    terminal.send(
-      encodeTerminalMessage({
-        type: 'frame',
-        ticket,
-        frame: { type: 'exit', terminalId: 'terminal-a', exitCode: 0 }
-      })
-    );
-    await expect(terminalMessage(browser)).resolves.toEqual({
-      type: 'exit',
-      terminalId: 'terminal-a',
-      exitCode: 0
-    });
-    await expect(closed(browser)).resolves.toMatchObject({ code: 1000 });
-    browserSocket = undefined;
-
-    const reconnectedTerminal = new WsClient(
-      `${baseUrl.replace('http', 'ws')}/api/node/terminal-connect`
-    ) as TestSocket;
-    await opened(reconnectedTerminal);
-    const previousTerminalClosed = closed(terminal);
-    const readerRelayClosed = closed(reader);
-    reconnectedTerminal.send(
-      encodeTerminalMessage({
-        type: 'authenticate',
-        nodeId,
-        credential: registeredPayload.credential
-      })
-    );
-    await expect(terminalMessage(reconnectedTerminal)).resolves.toEqual({
-      type: 'authenticated',
-      nodeId
-    });
-    await expect(previousTerminalClosed).resolves.toEqual({
-      code: 4000,
-      reason: 'TERMINAL_SOCKET_REPLACED'
-    });
-    await expect(readerRelayClosed).resolves.toEqual({
-      code: 1000,
-      reason: 'TERMINAL_RELAY_CLOSED'
-    });
-    terminalSocket = reconnectedTerminal;
-    readerSocket = undefined;
-  } finally {
-    browserSocket?.close();
-    readerSocket?.close();
-    terminalSocket?.close();
-    controlSocket?.close();
-    await app.shutdown();
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
 async function adminHeaders(app: Awaited<ReturnType<typeof createServerApp>>['app']): Promise<{
   readonly cookie: string;
   readonly 'x-csrf-token': string;
@@ -903,35 +702,13 @@ async function adminHeaders(app: Awaited<ReturnType<typeof createServerApp>>['ap
 }
 
 interface TestSocket {
-  send(raw: string | Uint8Array): void;
-  close(code?: number, reason?: string): void;
-  on(type: 'message', listener: (data: Uint8Array) => void): void;
-  addEventListener(
-    type: 'open' | 'error',
-    listener: () => void,
-    options?: { once?: boolean }
-  ): void;
+  close(): void;
+  addEventListener(type: 'error', listener: () => void, options?: { once?: boolean }): void;
   addEventListener(
     type: 'close',
     listener: (event: { readonly code: number; readonly reason: string }) => void,
     options?: { once?: boolean }
   ): void;
-  addEventListener(
-    type: 'message',
-    listener: (event: { readonly data: unknown }) => void,
-    options?: { once?: boolean }
-  ): void;
-}
-
-function respond(socket: TestSocket, command: NodeEnvelope, result: unknown): void {
-  socket.send(JSON.stringify(createEnvelope('node.response', { result }, { replyTo: command.id })));
-}
-
-function opened(socket: TestSocket): Promise<void> {
-  return new Promise((resolve, reject) => {
-    socket.addEventListener('open', () => resolve(), { once: true });
-    socket.addEventListener('error', () => reject(new Error('SOCKET_ERROR')), { once: true });
-  });
 }
 
 function closed(socket: TestSocket): Promise<{ readonly code: number; readonly reason: string }> {
@@ -942,39 +719,6 @@ function closed(socket: TestSocket): Promise<{ readonly code: number; readonly r
       { once: true }
     );
     socket.addEventListener('error', () => reject(new Error('SOCKET_ERROR')), { once: true });
-  });
-}
-
-function terminalMessage(socket: TestSocket): Promise<Record<string, unknown>> {
-  return jsonMessage(socket, decodeTerminalMessage);
-}
-
-function jsonMessage(
-  socket: TestSocket,
-  decode: (payload: unknown) => Record<string, unknown> = (data) => JSON.parse(String(data))
-): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('SOCKET_MESSAGE_TIMEOUT')), 5_000);
-    socket.addEventListener(
-      'message',
-      (event) => {
-        clearTimeout(timer);
-        try {
-          resolve(decode(event.data));
-        } catch (error) {
-          reject(error);
-        }
-      },
-      { once: true }
-    );
-    socket.addEventListener(
-      'error',
-      () => {
-        clearTimeout(timer);
-        reject(new Error('SOCKET_ERROR'));
-      },
-      { once: true }
-    );
   });
 }
 

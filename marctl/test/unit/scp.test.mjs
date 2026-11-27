@@ -135,9 +135,6 @@ function fakeNodeClient({
     async listNodes() {
       return nodes;
     },
-    async getTerminalManifest() {
-      return {};
-    },
     async createTerminal(input) {
       const id = `terminal-${++counter}`;
       createdNodes.push(input.nodeId);
@@ -146,10 +143,7 @@ function fakeNodeClient({
       onCreate?.();
       return id;
     },
-    async createAttachTicket() {
-      return 'ticket';
-    },
-    openTerminalWebSocket(_WebSocketClass, { terminalId }) {
+    openTerminalEndpoint({ terminalId }) {
       return new Socket(terminals.get(terminalId));
     },
     async deleteTerminal({ terminalId }) {
@@ -1065,8 +1059,8 @@ for (const direction of ['upload', 'download', 'Node-to-Node']) {
         await writeFile(source, payload);
         if (direction === 'download') {
           // Delay source ACK writes to exercise the worker's own read-ahead window.
-          const originalOpen = client.openTerminalWebSocket;
-          client.openTerminalWebSocket = (...args) => {
+          const originalOpen = client.openTerminalEndpoint;
+          client.openTerminalEndpoint = (...args) => {
             const socket = originalOpen(...args);
             const send = socket.send.bind(socket);
             socket.send = (raw, callback) => {
@@ -1196,7 +1190,7 @@ test(
     const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-websocket-'));
     const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     const client = fakeNodeClient();
-    const originalOpen = client.openTerminalWebSocket;
+    const originalOpen = client.openTerminalEndpoint;
     let control;
     let copying;
     let maxBufferedBytes = 0;
@@ -1209,7 +1203,7 @@ test(
           socket.on('message', () => socket.send('reply'));
           return;
         }
-        const upstream = originalOpen(class {}, { terminalId: parameters.get('terminalId') });
+        const upstream = originalOpen({ terminalId: parameters.get('terminalId') });
         upstream.on('message', (raw) => {
           if (socket.readyState === 1) socket.send(raw);
         });
@@ -1220,7 +1214,7 @@ test(
         );
         socket.once('close', () => upstream.close());
       });
-      client.openTerminalWebSocket = (_Socket, { terminalId }) => {
+      client.openTerminalEndpoint = ({ terminalId }) => {
         const socket = new WebSocket(`${url}/?terminalId=${encodeURIComponent(terminalId)}`);
         const originalSend = socket.send.bind(socket);
         socket.send = (...args) => {

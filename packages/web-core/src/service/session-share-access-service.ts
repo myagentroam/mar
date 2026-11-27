@@ -1,3 +1,11 @@
+import { NodeConnection } from '@myagentroam/protocol/node-connection';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import {
+  nodeRelayHandshakeSignal,
+  openBrowserNodeRelay,
+  type WorkbenchFileStreamRequest
+} from './workbench-node-connection-service.js';
+import { createWorkspaceFileStreamClient } from './workspace-file-stream-client.js';
 import { createUuid } from '../util/uuid.js';
 import { ref } from 'vue';
 import {
@@ -103,11 +111,49 @@ export function createSessionShareAccessService(
     if (event.key === visitorKey) refreshVisitor();
   };
   browser?.addEventListener?.('storage', onStorage);
+  let connection: NodeConnection<WorkbenchFileStreamRequest, NodeStream> | undefined;
+  const fileStreams = createWorkspaceFileStreamClient((nodeId, stream, signal) => {
+    if (
+      session.value?.share.nodeId !== nodeId ||
+      (stream.kind !== 'file-download' && stream.kind !== 'file-upload')
+    )
+      return Promise.reject(new Error('SESSION_SHARE_ACCESS_INVALID'));
+    connection ??= new NodeConnection({
+      async relay(lifetime) {
+        const path = await openBrowserNodeRelay(
+          new URL(`${base}/relay`, window.location.origin),
+          nodeRelayHandshakeSignal(lifetime)
+        );
+        return {
+          get closed() {
+            return path.closed;
+          },
+          close: () => path.close(),
+          async openStream(open, opening) {
+            const { ticket } = await request<{ ticket: string }>('/file-stream-ticket', {
+              method: 'POST',
+              body: JSON.stringify({ descriptor: open.descriptor }),
+              signal: opening
+            });
+            opening.throwIfAborted();
+            return path.openStream({ kind: open.kind, grant: ticket }, opening);
+          }
+        };
+      }
+    });
+    return connection.openStream(stream, { signal });
+  });
+  function closeFiles(): void {
+    connection?.close();
+    connection = undefined;
+  }
   function dispose(): void {
+    closeFiles();
     browser?.removeEventListener?.('storage', onStorage);
     cancelName();
   }
   function invalidate(code: string): void {
+    closeFiles();
     generation += 1;
     cancelName();
     session.value = undefined;
@@ -175,6 +221,7 @@ export function createSessionShareAccessService(
   }
   return {
     base,
+    fileStreams,
     session,
     visitor,
     invalidCode,

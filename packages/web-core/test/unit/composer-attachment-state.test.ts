@@ -4,7 +4,7 @@ import { createComposerAttachmentService } from '../../src/service/composer-atta
 import { createComposerAttachmentDragTracker } from '../../src/service/composer-attachment-drag-tracker.js';
 
 function file(name: string, size: number, type = 'text/plain'): File {
-  return { name, size, type } as File;
+  return new File([new Uint8Array(size)], name, { type });
 }
 
 describe('Web Composer Attachment State', () => {
@@ -17,10 +17,8 @@ describe('Web Composer Attachment State', () => {
       context: () => a,
       notice: vi.fn(),
       request: vi.fn().mockResolvedValue(undefined),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn(),
-      direct: { generation: () => 'generation', upload }
+
+      sendBody: upload
     });
     const main = owner.forTarget(() => a);
     const aside = owner.forTarget(() => b, 'aside');
@@ -64,10 +62,8 @@ describe('Web Composer Attachment State', () => {
       context: () => target.value,
       notice: vi.fn(),
       request: vi.fn().mockResolvedValue(undefined),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn(),
-      direct: { generation: () => 'generation', upload }
+
+      sendBody: upload
     });
     state.add([new File(['text'], 'a.txt')]);
     await vi.waitFor(() => expect(upload).toHaveBeenCalledOnce());
@@ -99,6 +95,28 @@ describe('Web Composer Attachment State', () => {
     state.clearAll();
   });
 
+  it('does not upload the attachment again over HTTP after a stream failure', async () => {
+    const request = vi.fn().mockResolvedValue(undefined);
+    const sendBody = vi.fn().mockRejectedValue(new Error('NODE_STREAM_DISCONNECTED'));
+    const state = createComposerAttachmentService({
+      context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
+      notice: vi.fn(),
+      request,
+
+      sendBody
+    });
+    vi.stubGlobal('window', { setTimeout: vi.fn() });
+    try {
+      state.add([new File(['text'], 'a.txt')]);
+      await vi.waitFor(() => expect(state.attachments.value[0]?.status).toBe('FAILED'));
+      expect(sendBody).toHaveBeenCalledOnce();
+      expect(request).not.toHaveBeenCalled();
+    } finally {
+      state.clearAll();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('applies attachment limits across sessions in the same Pane without consuming another Pane allowance', () => {
     const target = ref({ kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'a' });
     const notice = vi.fn();
@@ -106,9 +124,7 @@ describe('Web Composer Attachment State', () => {
       context: () => target.value,
       notice,
       request: vi.fn(() => new Promise<never>(() => undefined)),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
     const main = owner.forTarget(() => target.value, 'main');
     const aside = owner.forTarget(() => target.value, 'aside');
@@ -130,9 +146,7 @@ describe('Web Composer Attachment State', () => {
       context: () => ({ kind: 'workspace', nodeId: 'n', workspaceId: 'w' }),
       notice: vi.fn(),
       request: vi.fn(() => new Promise<never>(() => undefined)),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
     const target = () => ({ kind: 'workspace' as const, nodeId: 'n', workspaceId: 'w' });
     const main = owner.forTarget(target, 'main');
@@ -156,9 +170,7 @@ describe('Web Composer Attachment State', () => {
         context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
         notice: vi.fn(),
         request,
-        csrfToken: ref('csrf'),
-        renewCsrfToken: vi.fn(),
-        onUnauthenticated: vi.fn()
+        sendBody: vi.fn(async () => undefined)
       });
       state.add([file('sent.txt', 3)]);
       const sent = state.attachments.value[0]!;
@@ -170,9 +182,9 @@ describe('Web Composer Attachment State', () => {
       if (operation === 'remove') state.remove(sent.id);
       else state[operation]();
       expect(state.attachments.value).toEqual([]);
-      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).not.toHaveBeenCalled();
       retry();
-      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).not.toHaveBeenCalled();
     }
   );
 
@@ -182,16 +194,17 @@ describe('Web Composer Attachment State', () => {
       context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
       notice: vi.fn(),
       request,
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
     state.add([file('sent.txt', 3)]);
     const sent = state.attachments.value[0]!;
     sent.status = 'COMPLETED';
     state.retainForSubmission([sent])();
     state.remove(sent.id);
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledExactlyOnceWith(
+      `/api/workspaces/workspace-1/uploads/${sent.id}/cancel`,
+      expect.anything()
+    );
   });
 
   it('consumes only the submitted identities across workspace switches without cancelling owned files', () => {
@@ -201,9 +214,7 @@ describe('Web Composer Attachment State', () => {
       context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: workspaceId.value }),
       notice: vi.fn(),
       request,
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
     state.add([file('sent.txt', 3)]);
     const sent = state.attachments.value[0]!;
@@ -220,7 +231,7 @@ describe('Web Composer Attachment State', () => {
     expect(state.attachments.value).toEqual([other]);
     workspaceId.value = 'workspace-1';
     expect(state.attachments.value).toEqual([next]);
-    expect(request).toHaveBeenCalledTimes(3);
+    expect(request).not.toHaveBeenCalled();
   });
 
   it('Keeps the attachment highlighted when dragging into a Composer sub-area and clears the highlight after the drop completes', () => {
@@ -238,23 +249,30 @@ describe('Web Composer Attachment State', () => {
     expect(dragging).toBe(false);
   });
 
-  it('Creates attachments and starts uploads in a valid Workspace', () => {
+  it('Creates attachments and starts uploads in a valid Workspace', async () => {
     const request = vi.fn(() => new Promise<never>(() => undefined));
+    const sendBody = vi.fn(async () => undefined);
     const state = createComposerAttachmentService({
       context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: 'workspace-1' }),
       notice: vi.fn(),
       request,
-      csrfToken: { value: 'csrf' } as never,
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody
     });
 
     state.add([file('note.txt', 128)]);
     expect(state.attachments.value).toHaveLength(1);
-    expect(request).toHaveBeenCalledWith(
-      '/api/workspaces/workspace-1/uploads',
-      expect.objectContaining({ method: 'POST' })
+    await vi.waitFor(() =>
+      expect(sendBody).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodeId: 'node-1',
+          descriptor: expect.objectContaining({
+            direction: 'UPLOAD',
+            resource: expect.objectContaining({ workspaceId: 'workspace-1' })
+          })
+        })
+      )
     );
+    expect(request).not.toHaveBeenCalled();
   });
 
   it('Rejects attachments without a Workspace and does not start an upload', () => {
@@ -264,9 +282,7 @@ describe('Web Composer Attachment State', () => {
       context: () => undefined,
       notice,
       request,
-      csrfToken: { value: 'csrf' } as never,
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
 
     state.add([file('note.txt', 128)]);
@@ -278,23 +294,26 @@ describe('Web Composer Attachment State', () => {
     );
   });
 
-  it('Hides attachments when switching Workspaces, restores them on return, and leaves the original upload running', () => {
+  it('Hides attachments when switching Workspaces, restores them on return, and leaves the original upload running', async () => {
     const request = vi.fn(() => new Promise<never>(() => undefined));
     const workspaceId = ref('workspace-1');
+    const upload = vi.fn(() => new Promise<void>(() => undefined));
     const state = createComposerAttachmentService({
       context: () => ({ kind: 'workspace', nodeId: 'node-1', workspaceId: workspaceId.value }),
       notice: vi.fn(),
       request,
-      csrfToken: { value: 'csrf' } as never,
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: upload
     });
 
     state.add([file('attachment.txt', 128)]);
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledOnce());
     workspaceId.value = 'workspace-2';
     expect(state.attachments.value).toHaveLength(0);
     workspaceId.value = 'workspace-1';
     expect(state.attachments.value).toHaveLength(1);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(upload).toHaveBeenCalledOnce();
+    expect(state.attachments.value[0]?.status).toBe('UPLOADING');
+    expect(request).not.toHaveBeenCalled();
+    state.clearAll();
   });
 });

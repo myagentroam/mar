@@ -1273,7 +1273,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
               }
             "
             :node-id="tab.nodeId"
-            :direct="page.terminal.terminalDirectClient"
+            :open-stream="page.terminal.openNodeStream"
             :workspace-id="tab.workspaceId"
             :csrf-token="page.identity.csrfToken"
             :renew-csrf-token="page.identity.renewCsrfToken"

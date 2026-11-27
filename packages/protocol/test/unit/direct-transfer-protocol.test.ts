@@ -5,11 +5,12 @@ import {
   directTransferDescriptorSchema,
   nodeCapabilitiesSchema,
   nodeWorkbenchCapabilitiesSchema,
-  terminalDirectAttachedFrameSchema,
+  terminalDataFrameSchema,
   terminalDirectBrowserMessageSchema,
-  terminalDirectNodeCommandSchema,
-  terminalDirectOpenFrameSchema
+  terminalDirectNodeCommandSchema
 } from '../../src/index.js';
+
+const uploadId = '54b92a04-ee89-4393-8bc9-ccc6d132b9b0';
 
 describe('workspace direct transfer protocol', () => {
   describe.each([
@@ -45,9 +46,9 @@ describe('workspace direct transfer protocol', () => {
       }
     },
     {
-      name: 'ATTACHED',
-      schema: terminalDirectAttachedFrameSchema,
-      frame: { type: 'ATTACHED', terminalId: 'terminal-1' }
+      name: 'Terminal stream attach',
+      schema: terminalDataFrameSchema,
+      frame: { type: 'attach', terminalId: 'terminal-1' }
     }
   ])('$name replay cursor', ({ schema, frame }) => {
     it.each([0, 42, Number.MAX_SAFE_INTEGER])('preserves safe integer %s', (afterSequence) => {
@@ -89,6 +90,7 @@ describe('workspace direct transfer protocol', () => {
         resource,
         fileName: 'same.txt',
         size: 4,
+        uploadId,
         sha256: 'a'.repeat(64)
       }).success
     ).toBe(false);
@@ -112,13 +114,6 @@ describe('workspace direct transfer protocol', () => {
     expect(
       terminalDirectBrowserMessageSchema.safeParse({ ...terminal, transfer: {} }).success
     ).toBe(false);
-    expect(
-      terminalDirectOpenFrameSchema.safeParse({
-        type: 'OPEN',
-        directSessionId: 'terminal-session-01',
-        grant: 'a'.repeat(32)
-      }).success
-    ).toBe(true);
     expect(
       terminalDirectNodeCommandSchema.safeParse({
         type: 'terminal.direct.cancel',
@@ -215,6 +210,7 @@ describe('workspace direct transfer protocol', () => {
     expect(
       directTransferDescriptorSchema.parse({
         direction: 'UPLOAD',
+        uploadId,
         sha256: '0'.repeat(64),
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'large.bin' },
         fileName: 'large.bin',
@@ -245,6 +241,7 @@ describe('workspace direct transfer protocol', () => {
     expect(() =>
       directTransferDescriptorSchema.parse({
         direction: 'UPLOAD',
+        uploadId,
         sha256: '0'.repeat(64),
         resource: {
           kind: 'HOSTED_CONVERSATION_FILE',
@@ -260,6 +257,7 @@ describe('workspace direct transfer protocol', () => {
   it('requires a bounded full-file SHA-256 for uploads', () => {
     const descriptor = {
       direction: 'UPLOAD',
+      uploadId,
       resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'large.bin' },
       fileName: 'large.bin',
       size: 1024
@@ -271,6 +269,28 @@ describe('workspace direct transfer protocol', () => {
     expect(
       directTransferDescriptorSchema.parse({ ...descriptor, sha256: '0'.repeat(64) })
     ).toMatchObject({ sha256: '0'.repeat(64) });
+  });
+
+  it('requires exactly one ordinary staging ID or Composer attachment identity', () => {
+    const descriptor = {
+      direction: 'UPLOAD',
+      resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'large.bin' },
+      fileName: 'large.bin',
+      size: 1024,
+      sha256: '0'.repeat(64)
+    };
+    const composerAttachment = { id: 'composer-upload-1', mime: 'application/octet-stream' };
+    expect(directTransferDescriptorSchema.safeParse(descriptor).success).toBe(false);
+    expect(directTransferDescriptorSchema.safeParse({ ...descriptor, uploadId }).success).toBe(
+      true
+    );
+    expect(
+      directTransferDescriptorSchema.safeParse({ ...descriptor, composerAttachment }).success
+    ).toBe(true);
+    expect(
+      directTransferDescriptorSchema.safeParse({ ...descriptor, composerAttachment, uploadId })
+        .success
+    ).toBe(false);
   });
 
   it('accepts an ICE connection confirmation and rejects caller-supplied pair details', () => {

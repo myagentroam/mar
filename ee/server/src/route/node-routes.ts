@@ -2,7 +2,11 @@ import { registerNodeUpgradeRoutes } from '@myagentroam/server-core/node-upgrade
 import { registerRunnerRoutes } from '@myagentroam/server-core/runner-routes';
 import { registerTerminalRoutes } from '@myagentroam/server-core/terminal-routes';
 import type { FastifyInstance } from 'fastify';
-import { resourceOwnershipSchema, type ServerWorkbenchCapabilities } from '@myagentroam/protocol';
+import {
+  directTransferDescriptorSchema,
+  resourceOwnershipSchema,
+  type ServerWorkbenchCapabilities
+} from '@myagentroam/protocol';
 import { isAllowedOrigin } from '@myagentroam/server-core/auth';
 import type { openServerDatabase } from '../database.js';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
@@ -138,7 +142,7 @@ export function registerNodeRoutes(input: {
       await resources.assertCanManageNode(admin.userId, request.params.nodeId);
       if (ownership !== undefined)
         await mutations.changeNodeOwnership(admin.userId, request.params.nodeId, ownership);
-      if (ownership !== undefined) await nodeControl.revalidateTerminalAuthorizations();
+      if (ownership !== undefined) await nodeControl.revalidateDataAuthorizations();
       if (value === undefined) {
         const node = (await nodeControl.listNodes()).find(
           (candidate) => candidate.id === request.params.nodeId
@@ -184,6 +188,43 @@ export function registerNodeRoutes(input: {
       ? {}
       : { marctlServerUrlForNode: input.marctlServerUrlForNode })
   });
+
+  app.post<{ Params: { workspaceId: string }; Body: { nodeId?: unknown; descriptor?: unknown } }>(
+    '/api/workspaces/:workspaceId/file-stream-ticket',
+    async (request, reply) => {
+      if (!isAllowedOrigin(request, publicOrigin))
+        return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
+      const user = protectedAdmin(database, request, reply);
+      if (user === undefined) return;
+      if (!validCsrf(request, user)) return sendError(reply, 403, 'CSRF_INVALID');
+      const nodeId = request.body?.nodeId;
+      const descriptor = directTransferDescriptorSchema.safeParse(request.body?.descriptor);
+      if (
+        typeof nodeId !== 'string' ||
+        nodeId.length === 0 ||
+        nodeId.length > 128 ||
+        !descriptor.success ||
+        descriptor.data.resource.workspaceId !== request.params.workspaceId ||
+        (descriptor.data.direction === 'UPLOAD' &&
+          descriptor.data.resource.kind !== 'WORKSPACE_FILE')
+      )
+        return sendError(reply, 400, 'DIRECT_TRANSFER_INVALID');
+      try {
+        const ticket = await nodeControl.createWorkspaceFileStreamTicket(
+          nodeId,
+          { userId: user.userId, sessionHash: user.sessionHash },
+          descriptor.data
+        );
+        return reply.code(201).send({ ticket });
+      } catch (error) {
+        if (error instanceof Error && error.message === 'RESOURCE_DENIED')
+          return sendError(reply, 403, 'RESOURCE_DENIED');
+        if (error instanceof Error && error.message === 'NODE_STREAM_LIMIT')
+          return sendError(reply, 429, 'NODE_STREAM_LIMIT');
+        return databaseError(reply, error);
+      }
+    }
+  );
 
   app.get<{ Params: { nodeId: string } }>('/api/nodes/:nodeId/metrics', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);

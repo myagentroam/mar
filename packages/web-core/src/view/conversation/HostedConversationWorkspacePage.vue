@@ -322,7 +322,8 @@ const filePage = ref<{ focus(): void }>();
 const fileSurface = ref<InstanceType<typeof FilePreviewSurface>>();
 let closingFileSurface = false;
 const filePreview = createHostedConversationFilePreviewService({
-  source: props.workspace
+  source: props.workspace,
+  onDownloadError: (failure) => showMessage(hostedErrorMessage(failure), 'error', failure)
 });
 watch(
   filePreview.file,

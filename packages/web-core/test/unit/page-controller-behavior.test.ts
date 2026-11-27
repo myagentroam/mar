@@ -6,6 +6,7 @@ import * as snapshotRefresh from '../../src/service/session-snapshot-refresh-ser
 import * as directRead from '../../src/service/workspace-direct-file-read-service.js';
 import * as directObject from '../../src/service/workspace-direct-object-url-service.js';
 import * as directDownload from '../../src/service/workspace-direct-download-stream-service.js';
+import * as fileStreamClient from '../../src/service/workspace-file-stream-client.js';
 import * as draftOwner from '../../src/service/session-draft-service.js';
 import { createAccountStorage } from '../../src/service/account-storage-service.js';
 import * as attachmentOwner from '../../src/service/composer-attachment-service.js';
@@ -895,8 +896,15 @@ describe('Workbench controller composition behavior', () => {
     vi.stubGlobal('localStorage', local);
     vi.stubGlobal('sessionStorage', session);
     let release!: () => void;
-    const createGate = new Promise<void>((resolve) => {
+    const uploadGate = new Promise<void>((resolve) => {
       release = resolve;
+    });
+    const sendBody = vi.fn<
+      ReturnType<typeof fileStreamClient.createWorkspaceFileStreamClient>['upload']
+    >(() => uploadGate);
+    vi.spyOn(fileStreamClient, 'createWorkspaceFileStreamClient').mockReturnValue({
+      upload: sendBody,
+      download: vi.fn()
     });
     const paths: string[] = [];
     vi.mocked(fetch).mockImplementation(async (input, init) => {
@@ -912,12 +920,6 @@ describe('Workbench controller composition behavior', () => {
             mustChangePassword: false,
             csrfToken: `csrf-${username}`
           })
-        );
-      }
-      if (path.endsWith('/uploads')) {
-        await createGate;
-        return new Response(
-          JSON.stringify({ upload: { uploadId: 'old-upload', receivedBytes: 0, size: 5 } })
         );
       }
       return new Response(
@@ -950,7 +952,8 @@ describe('Workbench controller composition behavior', () => {
     const pane = owner.forTarget(() => target);
     pane.add([new File(['image'], 'private.png', { type: 'image/png' })]);
     owner.openPreview(pane.attachments.value[0]!);
-    expect(paths.some((path) => path.endsWith('/uploads'))).toBe(true);
+    await vi.waitFor(() => expect(sendBody).toHaveBeenCalledOnce());
+    expect(paths.some((path) => path.endsWith('/uploads'))).toBe(false);
     expect(
       session.getItem('mar.account.v1.1.mar.workbench.draft.node-a.shared-workspace')
     ).not.toBeNull();
@@ -958,6 +961,7 @@ describe('Workbench controller composition behavior', () => {
       await page.identity.login({ username: 'second', password: 'password' });
       expect(page.identity.admin.userId).toBe(2);
       expect(page.identity.accountKey).not.toBe(firstKey);
+      expect(sendBody.mock.calls[0]?.[0].signal?.aborted).toBe(true);
       expect(pane.attachments.value).toEqual([]);
       expect(owner.preview.value).toBeUndefined();
       expect(revoked).toHaveBeenCalledWith('blob:first-account');
@@ -1624,21 +1628,38 @@ describe('Workbench controller composition behavior', () => {
         workspaceDirectAvailable: () => true
       }));
     const bytes = new TextEncoder().encode('direct text');
-    const range = vi.spyOn(directRead, 'readWorkspaceDirectFileRange').mockResolvedValue({
+    vi.spyOn(directRead, 'readWorkspaceDirectFileRange').mockResolvedValue({
       bytes,
       size: bytes.length,
       offset: 0,
       nextOffset: null,
       revision: 'a'.repeat(64)
     });
-    const object = vi.spyOn(directObject, 'readWorkspaceDirectObjectUrl').mockResolvedValue({
-      url: 'blob:fixture',
-      size: 10,
-      revision: 'a'.repeat(64)
+    vi.spyOn(directObject, 'readWorkspaceFileObjectUrl').mockImplementation(
+      async (_name, _signal, receive) => {
+        await receive({ write: vi.fn(), close: vi.fn(), abort: vi.fn() });
+        return 'blob:fixture';
+      }
+    );
+    const download = vi.fn<
+      ReturnType<typeof fileStreamClient.createWorkspaceFileStreamClient>['download']
+    >(async ({ descriptor, sink }) => {
+      if (descriptor.direction === 'DOWNLOAD' && descriptor.range !== undefined) {
+        await sink.write(bytes);
+        await sink.close();
+      }
     });
-    const download = vi
-      .spyOn(directDownload, 'downloadWorkspaceDirectFile')
-      .mockResolvedValue('COMPLETED');
+    vi.spyOn(fileStreamClient, 'createWorkspaceFileStreamClient').mockReturnValue({
+      upload: vi.fn(),
+      download
+    });
+    vi.spyOn(directDownload, 'downloadWorkspaceFileToBrowser').mockImplementation(async (input) => {
+      await input.download({ write: vi.fn(), close: vi.fn(), abort: vi.fn() });
+      return 'COMPLETED';
+    });
+    const identity = { size: bytes.length, revision: 'b'.repeat(64) };
+    vi.spyOn(directRead, 'readWorkspaceDirectFileMetadata').mockResolvedValue(identity);
+    vi.spyOn(directRead, 'readGitDirectFileMetadata').mockResolvedValue(identity);
     const pwa = {
       state: ref({ offline: 'online', checked: false }),
       subscribe: () => () => {},
@@ -1673,39 +1694,41 @@ describe('Workbench controller composition behavior', () => {
       commit: 'b'.repeat(40),
       refs: ['main']
     });
-    expect(range.mock.calls.map(([input]) => input.resource.kind)).toEqual([
+    expect(download.mock.calls.map(([input]) => input.descriptor.resource.kind)).toEqual([
       'WORKSPACE_FILE',
       'GIT_COMMIT_BLOB'
     ]);
-    await page.files.fileWorkbench.openFile('photo.png');
+    download.mockClear();
+    await page.files.fileWorkbench.openFile('report.pdf');
     await page.files.fileWorkbench.openTab({
       kind: 'HISTORY_TEXT',
       nodeId: node.id,
       workspaceId: workspace.id,
-      path: 'history.png',
+      path: 'history.pdf',
       repositoryPath: '',
       worktreePath: '',
       commit: 'b'.repeat(40),
       refs: ['main']
     });
-    expect(object.mock.calls.map(([input]) => input.resource.kind)).toEqual([
+    expect(download.mock.calls.map(([input]) => input.descriptor.resource.kind)).toEqual([
       'WORKSPACE_FILE',
       'GIT_COMMIT_BLOB'
     ]);
+    download.mockClear();
     await page.files.fileWorkbench.downloadTarget({
       ...page.selection.workspaceTarget!,
-      path: 'download.txt'
+      path: 'download.png'
     });
     await page.files.fileWorkbench.downloadTarget({
       ...page.selection.workspaceTarget!,
-      path: 'history.txt',
+      path: 'history.png',
       history: { commit: 'b'.repeat(40), repositoryPath: '', refs: ['main'] }
     });
-    expect(download.mock.calls.map(([input]) => input.resource.kind)).toEqual([
+    expect(download.mock.calls.map(([input]) => input.descriptor.resource.kind)).toEqual([
       'WORKSPACE_FILE',
       'GIT_COMMIT_BLOB'
     ]);
-    const directReadsBeforeCapabilityChange = range.mock.calls.length;
+    download.mockClear();
     await captured.seedManifest!({
       ...manifest,
       directTransfer: {
@@ -1715,16 +1738,36 @@ describe('Workbench controller composition behavior', () => {
         gitCommitBlob: false
       }
     });
-    await page.files.fileWorkbench.openFile('fallback.txt');
-    expect(range).toHaveBeenCalledTimes(directReadsBeforeCapabilityChange);
+    await page.files.fileWorkbench.openFile('relay.txt');
+    expect(download).toHaveBeenCalledWith(
+      expect.objectContaining({
+        descriptor: expect.objectContaining({
+          resource: expect.objectContaining({ path: 'relay.txt' })
+        })
+      })
+    );
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/files/read?'))).toBe(
-      true
+      false
     );
   });
   it.each(['FILE_NOT_FOUND', 'PERMISSION_DENIED'])(
     'keeps a successful preview independent of a directory %s failure',
     async (code) => {
       const show = vi.spyOn(feedback, 'showMessage').mockImplementation(() => {});
+      const download = vi.fn(
+        async ({
+          sink
+        }: Parameters<
+          ReturnType<typeof fileStreamClient.createWorkspaceFileStreamClient>['download']
+        >[0]) => {
+          await sink.write(new TextEncoder().encode('safe'));
+          await sink.close();
+        }
+      );
+      vi.spyOn(fileStreamClient, 'createWorkspaceFileStreamClient').mockReturnValue({
+        upload: vi.fn(),
+        download
+      });
       const { page } = controller();
       const workspace = { id: 'workspace-a', path: '/project', kind: 'DIRECTORY' as const };
       await captured.seedNodes!([node]);
@@ -1743,17 +1786,10 @@ describe('Workbench controller composition behavior', () => {
         'fetch',
         vi.fn(async (request: string | URL | Request) => {
           const url = new URL(String(request), 'https://console.example.test');
-          return url.pathname.endsWith('/files/read')
+          return url.pathname.endsWith('/files/direct-metadata')
             ? new Response(
                 JSON.stringify({
-                  file: {
-                    path: 'missing/result.md',
-                    content: 'safe',
-                    encoding: 'utf-8',
-                    size: 4,
-                    nextOffset: null,
-                    revision: 'a'.repeat(64)
-                  }
+                  file: { size: 4, revision: 'a'.repeat(64) }
                 })
               )
             : new Response(JSON.stringify({ error: code }), { status: 404 });
@@ -1778,6 +1814,10 @@ describe('Workbench controller composition behavior', () => {
       expect(failed.loading.value).toBe(false);
       expect(page.files.fileWorkbench.frames.value[0]?.fileContent.value?.content).toBe('safe');
       expect(show).toHaveBeenCalledTimes(code === 'PERMISSION_DENIED' ? 1 : 0);
+      download.mockImplementationOnce(async ({ sink }) => {
+        await sink.write(new TextEncoder().encode('recovered'));
+        await sink.close();
+      });
       vi.stubGlobal(
         'fetch',
         vi.fn(
@@ -1785,10 +1825,7 @@ describe('Workbench controller composition behavior', () => {
             new Response(
               JSON.stringify({
                 file: {
-                  encoding: 'utf-8',
                   size: 9,
-                  content: 'recovered',
-                  nextOffset: null,
                   revision: 'b'.repeat(64)
                 }
               })
@@ -1888,6 +1925,13 @@ describe('Workbench controller composition behavior', () => {
 
   it('keeps Git changes when a file read reports an unavailable capability', async () => {
     const show = vi.spyOn(feedback, 'showMessage').mockImplementation(() => {});
+    vi.spyOn(fileStreamClient, 'createWorkspaceFileStreamClient').mockReturnValue({
+      upload: vi.fn(),
+      async download({ sink }) {
+        await sink.write(new TextEncoder().encode('recovered'));
+        await sink.close();
+      }
+    });
     const { page } = controller();
     const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
     await captured.seedNodes!([node]);
@@ -1923,13 +1967,7 @@ describe('Workbench controller composition behavior', () => {
         async () =>
           new Response(
             JSON.stringify({
-              file: {
-                encoding: 'utf-8',
-                size: 9,
-                content: 'recovered',
-                nextOffset: null,
-                revision: 'c'.repeat(64)
-              }
+              file: { size: 9, revision: 'c'.repeat(64) }
             })
           )
       )

@@ -5,22 +5,30 @@ import { createWorkspaceFileWorkbenchController } from '../../src/service/worksp
 import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
 import { createWorkspaceFilePreviewService } from '../../src/service/workspace-file-preview-service.js';
 
-it.each(['text', 'image'] as const)(
-  'recovers a historical %s file through the server when its direct transport fails',
+it.each(['text', 'pdf'] as const)(
+  'retries the same historical %s snapshot scope without an HTTP body fallback',
   async (kind) => {
-    const failure = new Error('Direct read failed');
-    const directGitFileReadRange = vi.fn().mockRejectedValue(failure);
-    const directGitFileObjectUrl = vi.fn().mockRejectedValue(failure);
-    const fetchContent = vi.fn().mockImplementation(
-      async () =>
-        new Response(kind === 'text' ? 'recovered' : 'r', {
-          headers: { 'content-range': kind === 'text' ? 'bytes 0-8/9' : 'bytes 0-0/9' }
-        })
-    );
+    const failure = new Error('Read failed');
+    const readPreviewRange = vi
+      .fn()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue({
+        offset: 0,
+        bytes: new TextEncoder().encode('recovered'),
+        size: 9,
+        nextOffset: null,
+        revision: 'r'
+      });
+    const readPreviewObject = vi.fn().mockRejectedValueOnce(failure).mockResolvedValue({
+      url: 'blob:historical',
+      size: 9,
+      revision: 'r'
+    });
+    const fetchContent = vi.fn();
     const previews = createWorkspaceFilePreviewService({
       access: createFileAccessFixture({
         http: { request: vi.fn() } as ScopedHttpService,
-        transfers: () => ({ directGitFileReadRange, directGitFileObjectUrl }),
+        transfers: () => ({ readPreviewRange, readPreviewObject }),
         fetchContent
       }),
       onWritten: vi.fn()
@@ -28,14 +36,13 @@ it.each(['text', 'image'] as const)(
     const target = {
       nodeId: 'node',
       workspaceId: 'workspace',
-      path: kind === 'text' ? 'module.ts' : 'image.png',
+      path: kind === 'text' ? 'module.ts' : 'report.pdf',
       history: { commit: 'a'.repeat(40), repositoryPath: 'nested-repo', refs: ['refs/heads/main'] }
     };
     try {
       await previews.open(1, target);
       expect(previews.page(1).error.value).toBe(failure);
-      expect(fetchContent).not.toHaveBeenCalled();
-
+      expect(previews.page(1).contentUrl.value).toBeUndefined();
       await previews.open(1, target, { serverOnly: true });
       expect(previews.page(1).error.value).toBeUndefined();
       expect(previews.page(1).fileContent.value).toMatchObject({
@@ -44,21 +51,13 @@ it.each(['text', 'image'] as const)(
         encoding: kind === 'text' ? 'utf-8' : 'base64'
       });
       expect(previews.page(1).target.value).toEqual(target);
-      if (kind === 'image') {
-        const url = new URL(previews.page(1).contentUrl.value!, 'http://localhost');
-        expect(url.pathname).toBe(
-          `/api/workspaces/workspace/git/commits/${target.history.commit}/files/content`
-        );
-        expect(Object.fromEntries(url.searchParams)).toMatchObject({
-          nodeId: target.nodeId,
-          path: target.path,
-          repositoryPath: target.history.repositoryPath,
-          refs: target.history.refs[0]
-        });
-        expect(directGitFileObjectUrl).toHaveBeenCalledOnce();
-      } else expect(directGitFileObjectUrl).not.toHaveBeenCalled();
-      expect(directGitFileReadRange).toHaveBeenCalledOnce();
-      expect(fetchContent).toHaveBeenCalledOnce();
+      const read = kind === 'text' ? readPreviewRange : readPreviewObject;
+      expect(read.mock.calls.map(([source]) => source)).toEqual([target, target]);
+      expect(kind === 'text' ? readPreviewObject : readPreviewRange).not.toHaveBeenCalled();
+      expect(previews.page(1).contentUrl.value).toBe(
+        kind === 'pdf' ? 'blob:historical' : undefined
+      );
+      expect(fetchContent).not.toHaveBeenCalled();
     } finally {
       previews.reset();
     }

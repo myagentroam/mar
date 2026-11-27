@@ -1058,10 +1058,9 @@ describe('Shared session selection', () => {
         const attachments = createComposerAttachmentService({
           context: () => target.value,
           request: vi.fn() as never,
-          csrfToken: ref('csrf'),
-          renewCsrfToken: vi.fn(),
-          onUnauthenticated: vi.fn(),
-          notice: vi.fn()
+
+          notice: vi.fn(),
+          sendBody: vi.fn(async () => undefined)
         });
         const pane = createWorkspaceSessionPaneState({
           submissions: paneSubmissions,

@@ -14,6 +14,31 @@ import {
   validNonce
 } from './terminal-ipc.mjs';
 
+/** A private broker keeps native teardown outside the foreground without touching the shared socket. */
+export function openPrivateTerminalBroker(config, request) {
+  let child;
+  let reap;
+  const endpoint = new TerminalBrokerClient(
+    { ...config, privateId: randomBytes(16).toString('hex') },
+    request,
+    undefined,
+    {
+      launch(privateConfig) {
+        child = launchBroker(privateConfig);
+        child.once('close', () => {
+          clearTimeout(reap);
+          child = undefined;
+        });
+      }
+    }
+  );
+  endpoint.once('close', () => {
+    // Give the private worker time to release the carrier, but do not leave it behind if native teardown stalls.
+    if (child !== undefined) reap = setTimeout(() => child?.kill('SIGKILL'), 1_000);
+  });
+  return endpoint;
+}
+
 /** Foreground WebSocket-shaped endpoint for a single logical Terminal attachment. */
 export class TerminalBrokerClient extends EventEmitter {
   readyState = 0;
@@ -195,4 +220,5 @@ function launchBroker(config) {
   child.stdin.on('error', () => {});
   child.stdin.end(JSON.stringify(config));
   child.unref();
+  return child;
 }

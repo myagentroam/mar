@@ -1,3 +1,4 @@
+import type { WorkspaceUploadService } from '../../src/workspace/workspace-upload-service.js';
 import { execFile as execFileCallback } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -21,7 +22,7 @@ import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { NodeRequestService } from '../../src/service/node-request-service.js';
 import { WorkspaceContentSearchService } from '../../src/workspace/workspace-content-search-service.js';
-import type { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
+import { WorkspaceFileService } from '../../src/workspace/workspace-file-service.js';
 import { safePublicError } from '../../src/util/safe-error.js';
 import { GitCommandError, readGitSummary } from '../../src/workspace/git.js';
 
@@ -355,6 +356,31 @@ describe('Node Files and Changes fixed operations', () => {
     ).rejects.toThrow('DIRECT_FILE_REVISION_CHANGED');
 
     database.close();
+  });
+
+  it('streams a Workspace file without treating timestamp changes as transfer errors', async () => {
+    const root = await temporaryDirectory();
+    const path = join(root, 'payload.bin');
+    const content = Buffer.alloc(640 * 1024, 0xa5);
+    await writeFile(path, content);
+    const database = new NodeDatabase(':memory:', 'node-file-stream-single-source');
+    try {
+      const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
+      const service = new WorkspaceFileService(() => undefined);
+      const source = service.readDirect(workspace, { path: 'payload.bin', size: content.length });
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of source) {
+        if (chunks.length === 0) {
+          const changedTime = new Date(Date.now() + 5_000);
+          await utimes(path, changedTime, changedTime);
+        }
+        chunks.push(chunk);
+      }
+      expect(chunks.length).toBeGreaterThan(1);
+      expect(Buffer.concat(chunks)).toEqual(content);
+    } finally {
+      database.close();
+    }
   });
 
   it('binds Git commit metadata and direct Range downloads to the immutable blob identity', async () => {
@@ -744,6 +770,9 @@ describe('Node Files and Changes fixed operations', () => {
       gitSummary: null
     });
     const connector = connectorFor(database);
+    const { workspaceUploadService: uploads } = connector as unknown as {
+      workspaceUploadService: WorkspaceUploadService;
+    };
     await expect(
       operation(connector, 'workspace.files.upload.preflight', {
         workspaceId: workspace.id,
@@ -781,18 +810,18 @@ describe('Node Files and Changes fixed operations', () => {
       overwrite: false
     })) as { readonly upload: { readonly uploadId: string } };
     await expect(
-      operation(connector, 'workspace.files.upload.chunk', {
+      uploads.write({
         uploadId: created.upload.uploadId,
         offset: 1,
         bytes: payload.subarray(0, 1)
       })
     ).rejects.toThrow('UPLOAD_OFFSET_INVALID');
-    await operation(connector, 'workspace.files.upload.chunk', {
+    await uploads.write({
       uploadId: created.upload.uploadId,
       offset: 0,
       bytes: payload.subarray(0, 512 * 1024)
     });
-    await operation(connector, 'workspace.files.upload.chunk', {
+    await uploads.write({
       uploadId: created.upload.uploadId,
       offset: 512 * 1024,
       bytes: payload.subarray(512 * 1024)
@@ -825,7 +854,7 @@ describe('Node Files and Changes fixed operations', () => {
       size: 3,
       overwrite: true
     })) as { readonly upload: { readonly uploadId: string } };
-    await operation(connector, 'workspace.files.upload.chunk', {
+    await uploads.write({
       uploadId: replacement.upload.uploadId,
       offset: 0,
       bytes: Buffer.from('new')

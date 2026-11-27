@@ -25,7 +25,7 @@ export function createSessionShareClientService(
     if (
       resource === undefined ||
       !new RegExp(
-        '^/(?:session|profiles|effective-skills|messages|interrupt|watch|turns|commands|html-preview/grants|files/(?:read|content|search|reference)|uploads(?:/[^/]+(?:/(?:chunks|complete|cancel))?)?|queue(?:/[^/]+(?:/execute)?)?|runs/[^/]+/(?:images/[^/]+|user-input/[^/]+|approvals/[^/]+/decision|interrupt))$',
+        '^/(?:session|profiles|effective-skills|messages|interrupt|watch|turns|commands|html-preview/grants|files/(?:direct-metadata|content|search|reference)|uploads/[^/]+/cancel|queue(?:/[^/]+(?:/execute)?)?|runs/[^/]+/(?:images/[^/]+|user-input/[^/]+|approvals/[^/]+/decision|interrupt))$',
         'u'
       ).test(resource)
     )

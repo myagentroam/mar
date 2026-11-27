@@ -564,12 +564,10 @@ it.each(['WORKTREE_DIFF', 'HISTORY_TEXT'] as const)(
   async (kind) => {
     for (const destination of ['another tab', 'another Workspace', 'closed tab'] as const) {
       let target = { nodeId: 'node', workspaceId: 'workspace' };
-      let release!: (value: undefined) => void;
-      const pending = new Promise<undefined>((resolve) => {
-        release = resolve;
-      });
-      const readObject = vi.fn((...args: unknown[]) =>
-        args.includes('A.pdf') ? pending : Promise.resolve(undefined)
+      const object = { url: 'blob:preview', size: 20, revision: 'r' };
+      const { promise: pending, resolve: release } = Promise.withResolvers<typeof object>();
+      const readObject = vi.fn(({ path }: { path: string }) =>
+        path === 'A.pdf' ? pending : Promise.resolve(object)
       );
       const focusPage = vi.fn(() => true);
       const port = {
@@ -595,17 +593,7 @@ it.each(['WORKTREE_DIFF', 'HISTORY_TEXT'] as const)(
         onRevealFailure: vi.fn(),
         access: createFileAccessFixture({
           http,
-          transfers: () => ({
-            directFileObjectUrl: readObject,
-            directGitFileObjectUrl: readObject,
-            directGitFileReadRange: async () => ({
-              offset: 0,
-              bytes: new Uint8Array([0]),
-              size: 20,
-              nextOffset: null,
-              revision: 'r'
-            })
-          })
+          transfers: () => ({ readPreviewObject: readObject })
         }),
         preview: { onWritten: vi.fn() },
         navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
@@ -628,13 +616,13 @@ it.each(['WORKTREE_DIFF', 'HISTORY_TEXT'] as const)(
         await nextTick();
         const active = owner.activeTabId.value;
         const calls = focusPage.mock.calls.length;
-        release(undefined);
+        release(object);
         await opening;
         await nextTick();
         expect(focusPage).toHaveBeenCalledTimes(calls);
         expect(owner.activeTabId.value).toBe(active);
       } finally {
-        release(undefined);
+        release(object);
         owner.dispose();
       }
     }

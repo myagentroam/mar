@@ -55,9 +55,12 @@ import { captureMobileLayerRoute } from './mobile-layer-history-service.js';
 import { createWorkbenchEntityService } from './workbench-entity-service.js';
 import { parseNodeUpgradeProgress } from '../model/node-upgrade.js';
 import { createWorkspaceUploadService } from './workspace-upload-service.js';
+import { createWorkspaceFileStreamClient } from './workspace-file-stream-client.js';
+import { createHostedFileDownloadService } from './hosted-file-download-service.js';
 import { createWorkbenchLiveService } from './workbench-live-service.js';
 import { createWorkbenchBrowserService } from './workbench-browser-service.js';
 import { createWorkbenchDirectTransportCoordinator } from './workbench-direct-transport-coordinator.js';
+import { createWorkbenchNodeConnectionService } from './workbench-node-connection-service.js';
 import { createWebPerformanceDiagnostics } from './web-performance-diagnostic-service.js';
 import { createWorkbenchLayoutService } from './workbench-layout-service.js';
 import {
@@ -113,7 +116,7 @@ import { createWorkbenchSubmissionOwner } from './workbench-submission-service.j
 import { WORKBENCH_HTTP_KEY } from './workbench-http-service.js';
 import type { WorkspaceFileWorkbenchHandle } from '../model/workspace-file-workbench.js';
 
-import type { TerminalDockHandle } from './terminal-direct-client.js';
+import type { TerminalDockHandle } from './terminal-service.js';
 import {
   createWorkbenchWorkspaceSelection,
   type WorkspaceSessionRestoration
@@ -131,6 +134,7 @@ import { createComposerSkillService } from './composer-skill-service.js';
 import { createQuickPromptService } from './quick-prompt-service.js';
 
 import { createHostedConversationWorkspaceService } from './hosted-conversation-workspace-service.js';
+import { sendFileUploadBody } from './workspace-upload-stream.js';
 import { promptCompletionPreferenceService } from './prompt-completion-preference-service.js';
 import { PromptCompletionClientService } from './prompt-completion-client-service.js';
 
@@ -307,6 +311,25 @@ export function createWorkbenchPageController<
   } = {};
   const hostedConversationWorkspace = createHostedConversationWorkspaceService({
     request,
+    downloads: createHostedFileDownloadService({
+      http: workbenchHttpService,
+      openStream: (nodeId, target, signal) => nodeConnections.openStream(nodeId, target, signal),
+      ...(options.pwaApplication === undefined
+        ? {}
+        : { activeWorker: options.pwaApplication.activeWorker })
+    }),
+    sendUploadBody: ({ nodeId, conversationId, uploadId }, file, signal, onProgress) =>
+      sendFileUploadBody(
+        () =>
+          nodeConnections.openStream(
+            nodeId,
+            { kind: 'hosted-file-upload', conversationId, uploadId },
+            signal
+          ),
+        file,
+        signal,
+        onProgress
+      ),
     workbenchConnectionId: () => workbenchConnectionId.value,
     heartbeatMs: SESSION_WATCH_HEARTBEAT_MS,
     requestTimeoutMs: SESSION_WATCH_REQUEST_TIMEOUT_MS,
@@ -357,8 +380,10 @@ export function createWorkbenchPageController<
     onNodeConnection: (nodeId, connected) => {
       scheduleInvalidation.value = { nodeId, verify: true, connectionOnly: true };
       updateNodeConnection(nodeId, connected);
-      if (!connected) directTransport.nodeInvalidated(nodeId);
-      else void refreshNodes().then(() => directTransport.refresh(nodeId, true));
+      if (!connected) {
+        directTransport.nodeInvalidated(nodeId);
+        nodeConnections.closeNode(nodeId);
+      } else void refreshNodes().then(() => directTransport.refresh(nodeId, true));
     },
     onNodeUpgrade: (nodeId, snapshot) => {
       const progress = snapshot === null ? null : parseNodeUpgradeProgress(snapshot);
@@ -367,6 +392,7 @@ export function createWorkbenchPageController<
     },
     onNodeReplaced: (nodeId) => {
       directTransport.nodeInvalidated(nodeId);
+      nodeConnections.closeNode(nodeId);
       if (nodeId !== workspaceNodeId.value) return;
       showMessage(
         translate('generated.workbenchPageController.aNewerInstanceWithTheSameIdentity'),
@@ -434,6 +460,7 @@ export function createWorkbenchPageController<
   } = workbenchLiveConnection;
 
   const directTransport = createWorkbenchDirectTransportCoordinator({
+    http: workbenchHttpService.request,
     nodes: () => nodes.value,
     selectedNode: () => workspaceNodeId.value,
     discover: async (nodeId) =>
@@ -445,13 +472,21 @@ export function createWorkbenchPageController<
     sendDirect: (message): boolean => workbenchLiveConnection.sendDirect(message),
     sendTerminalDirect: (message): boolean => workbenchLiveConnection.sendTerminalDirect(message)
   });
-  const { workspace: workspaceDirectTransfer, terminal: terminalDirectClient } = directTransport;
+  const { workspace: workspaceDirectTransfer } = directTransport;
+  const nodeConnections = createWorkbenchNodeConnectionService({
+    http: workbenchHttpService,
+    connectDirect: directTransport.connectNodePath
+  });
+  const fileStreams = createWorkspaceFileStreamClient(nodeConnections.openStream);
   const browser = createWorkbenchBrowserService({
     send: workbenchLiveConnection.sendBrowser,
     http: workbenchHttpService.request,
+    openStream: nodeConnections.openStream,
+    ...(options.pwaApplication === undefined
+      ? {}
+      : { activeDownloadWorker: options.pwaApplication.activeWorker }),
     connectionId: () =>
-      workbenchLiveConnection.connected.value ? workbenchConnectionId.value : undefined,
-    acquire: directTransport.acquireBrowser
+      workbenchLiveConnection.connected.value ? workbenchConnectionId.value : undefined
   });
   watch(
     workspaceTarget,
@@ -475,6 +510,7 @@ export function createWorkbenchPageController<
     manifest: (nodeId) => workbenchCapabilityService.restoreNodeManifest(nodeId),
     available: (nodeId) => workspaceDirectAvailable(nodeId),
     direct: workspaceDirectTransfer,
+    downloads: fileStreams,
     ...(options.pwaApplication === undefined
       ? {}
       : { activeWorker: options.pwaApplication.activeWorker })
@@ -518,18 +554,8 @@ export function createWorkbenchPageController<
     },
     notice,
     request,
-    csrfToken,
-    renewCsrfToken,
-    direct: {
-      generation: (nodeId) =>
-        nodeId === workspaceNodeId.value && nodeManifest.value?.directTransfer?.upload === true
-          ? nodeManifest.value.nodeGeneration
-          : undefined,
-      upload: (input) => {
-        return workspaceDirectTransfer.upload(input);
-      }
-    },
-    onUnauthenticated: () => returnToLogin()
+
+    sendBody: fileStreams.upload
   });
 
   const workbenchAsideService = createWorkbenchAsideService({ mobileViewport });
@@ -1024,18 +1050,8 @@ export function createWorkbenchPageController<
   const workspaceUploadService = createWorkspaceUploadService({
     storage: unboundAccountStorage,
     workspaceTarget,
-    csrfToken,
     request,
-    renewCsrfToken,
-    direct: {
-      generation: (nodeId) =>
-        nodeId === workspaceNodeId.value && nodeManifest.value?.directTransfer?.upload === true
-          ? nodeManifest.value.nodeGeneration
-          : undefined,
-      upload: (input) => {
-        return workspaceDirectTransfer.upload(input);
-      }
-    },
+    sendBody: fileStreams.upload,
     onFilesChanged: () => fileTools.invalidate('files'),
     onTaskChanged: workbenchNotificationService.recordUpload
   });
@@ -1389,6 +1405,7 @@ export function createWorkbenchPageController<
     restoringHostedConversationRoute.value = false;
     asidePane.clearSelection();
     directTransport.reset();
+    nodeConnections.reset();
     closeWorkbenchLive();
     workbenchCapabilityService.resetResources();
     workbenchWorkspaceSelectionService.clear();
@@ -2231,7 +2248,10 @@ export function createWorkbenchPageController<
     disposeWebVersionUpdateCheck: webUpdates.stop,
     stopWorkspaceWatch: () => watchCoordinator.current?.stopWorkspace(),
     closeWorkbenchLive,
-    disposeDirectTransport: directTransport.dispose,
+    disposeDirectTransport: () => {
+      directTransport.dispose();
+      nodeConnections.reset();
+    },
     clearNewSessionAttachments: clearAllNewSessionAttachments,
     releaseRunImagePreviews: () => retainRunImagePreviews([])
   });
@@ -2282,7 +2302,7 @@ export function createWorkbenchPageController<
     }),
     terminal: proxyRefs({
       terminalDocks,
-      terminalDirectClient,
+      openNodeStream: nodeConnections.openStream,
       terminalReady
     }),
     hosted: proxyRefs({

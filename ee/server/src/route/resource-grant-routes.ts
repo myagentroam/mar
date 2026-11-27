@@ -141,8 +141,8 @@ export function registerResourceGrantRoutes(input: {
       if (actor === undefined) return;
       try {
         const resourceType = await grants.removeGrant(actor.userId, request.params.grantId);
-        if (resourceType !== 'MODEL' && resourceType !== 'TEMPLATE')
-          await nodeControl.revalidateTerminalAuthorizations();
+        if (resourceType === 'TEMPLATE') await nodeControl.revalidateHostedFileAuthorizations();
+        else if (resourceType !== 'MODEL') await nodeControl.revalidateDataAuthorizations();
         return reply.code(204).send();
       } catch (error) {
         return databaseError(reply, error);

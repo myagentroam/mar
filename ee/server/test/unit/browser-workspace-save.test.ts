@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
-import { BROWSER_DOWNLOAD_CHUNK_BYTES } from '@myagentroam/protocol';
 import { SESSION_COOKIE_NAME } from '@myagentroam/server-core/auth';
 import { NodeRequestError } from '@myagentroam/server-core/node-request-error';
 import { hashOpaque } from '@myagentroam/server-core/session-token';
@@ -14,6 +13,7 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
   const scope = { nodeId: 'node', workspaceId: 'workspace' };
   const owner = { userId: 17, sessionHash: 'session-hash' };
   const connectionId = randomUUID();
+  const browserId = randomUUID();
   const upstreamRequestId = randomUUID();
   const send = vi.fn<Options['workbench']['sendDirectConnection']>(async () => 'delivered');
   const request = vi.fn<Options['request']>(async (_node, operation) => {
@@ -24,6 +24,7 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
       );
     return {};
   });
+  let allowed = true;
   const service = new BrowserWorkbenchService({
     workbench: { ownsActiveConnection: () => true, sendDirectConnection: send } as Pick<
       Options['workbench'],
@@ -31,10 +32,9 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
     > as Options['workbench'],
     direct: {} as Options['direct'],
     request,
-    authorize: () => true,
+    authorize: () => allowed,
     capability: () => ({ apiVersion: 1, ice: false, nodeGeneration: 'generation' }),
     settings: () => undefined,
-    authenticateNode: async () => true,
     failed: vi.fn()
   });
   try {
@@ -43,7 +43,7 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
       {
         type: 'browser.request',
         requestId: randomUUID(),
-        request: { ...scope, action: 'attach', browserId: randomUUID() }
+        request: { ...scope, action: 'attach', browserId }
       }
     );
     const event = send.mock.lastCall?.[1] as { result?: { attachmentId: string } };
@@ -64,7 +64,10 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
       {
         downloadBrowserFile: service.download.bind(service),
         uploadBrowserFile: vi.fn(),
-        openBrowserDownload: service.openDownload.bind(service)
+        createBrowserDownloadTicket: service.createDownloadTicket.bind(service),
+        createBrowserUploadTicket: service.createUploadTicket.bind(service),
+        openBrowserDirectFile: service.openDirectFile.bind(service),
+        closeBrowserDirectFile: service.closeDirectFile.bind(service)
       }
     );
     const payload = {
@@ -101,39 +104,85 @@ it('binds Browser downloads to the attachment and preserves structured HTTP fail
     const id = randomUUID();
     const download = () =>
       app.inject({
-        url: `/api/browser/downloads/file?${new URLSearchParams({ connectionId, attachmentId: payload.attachmentId, id })}`,
-        headers: { cookie: `${SESSION_COOKIE_NAME}=fixture-session` }
+        method: 'POST',
+        url: `/api/browser/downloads/stream-ticket?${new URLSearchParams({ connectionId })}`,
+        headers: {
+          origin,
+          cookie: `${SESSION_COOKIE_NAME}=fixture-session`,
+          'x-csrf-token': 'fixture-csrf'
+        },
+        payload: { attachmentId: payload.attachmentId, id }
       });
     const info = { id, name: 'sample.bin', state: 'ready', size: 3 };
     request.mockResolvedValueOnce({ ...info, id: randomUUID() });
     const wrongFile = await download();
     expect(wrongFile.statusCode).toBe(502);
     expect(wrongFile.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
-    request
-      .mockResolvedValueOnce(info)
-      .mockResolvedValueOnce({ offset: 'zero', bytes: Buffer.of(1, 2, 3) });
-    const malformed = await download();
-    expect(malformed.statusCode).toBe(502);
-    expect(malformed.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
+    const grant = randomUUID();
+    request.mockResolvedValueOnce(info).mockResolvedValueOnce({ grant });
+    const responseTicket = await download();
+    expect(responseTicket.statusCode).toBe(200);
+    const { ticket } = responseTicket.json();
+    const controller = new AbortController();
+    await expect(
+      service.authorizeFileStream('file-download', ticket, scope.nodeId, owner, controller.signal)
+    ).resolves.toBeUndefined();
+    await expect(
+      service.authorizeFileStream(
+        'browser-file-download',
+        ticket,
+        scope.nodeId,
+        { ...owner, sessionHash: 'other' },
+        controller.signal
+      )
+    ).resolves.toBeUndefined();
+    const opened = await service.authorizeFileStream(
+      'browser-file-download',
+      ticket,
+      scope.nodeId,
+      owner,
+      controller.signal
+    );
+    expect(opened).toMatchObject({ grant });
+    expect(request).toHaveBeenLastCalledWith(
+      scope.nodeId,
+      'download',
+      'generation',
+      {
+        workspaceId: scope.workspaceId,
+        browserId,
+        command: { action: 'stream', id, size: 3 }
+      },
+      owner
+    );
+    await expect(
+      service.authorizeFileStream(
+        'browser-file-download',
+        ticket,
+        scope.nodeId,
+        owner,
+        controller.signal
+      )
+    ).resolves.toBeUndefined();
+    allowed = false;
+    await service.revalidateFileAuthorizations();
+    expect(opened).toMatchObject({ revoked: { aborted: true } });
+    controller.abort();
   } finally {
     service.close();
     await app.close();
   }
 });
 
-it('accepts only an HTTP binary upload chunk and streams raw download bytes', async () => {
+it('admits Browser uploads and downloads without accepting HTTP file bodies', async () => {
   const app = Fastify();
   const origin = 'http://console.local';
   const user = { userId: 17, sessionHash: 'session-hash' };
   const write = vi.fn(async () => {});
   const bytes = Buffer.of(0, 0xff, 0x80);
-  const content = Buffer.concat([Buffer.alloc(BROWSER_DOWNLOAD_CHUNK_BYTES, 0xaa), bytes]);
-  const read = vi.fn(async (offset: number, limit: number) => ({
-    size: content.length,
-    offset,
-    bytes: content.subarray(offset, offset + limit)
-  }));
-  const openDownload = vi.fn(async () => ({ name: 'sample.bin', size: content.length, read }));
+  const ticket = { nodeId: 'node', name: 'sample.bin', size: bytes.length, ticket: randomUUID() };
+  const createBrowserDownloadTicket = vi.fn(async () => ticket);
+  const createBrowserUploadTicket = vi.fn(async () => ({ ticket: ticket.ticket }));
   registerBrowserFileRoutes(
     app,
     {
@@ -146,7 +195,14 @@ it('accepts only an HTTP binary upload chunk and streams raw download bytes', as
       })
     },
     origin,
-    { uploadBrowserFile: write, openBrowserDownload: openDownload, downloadBrowserFile: vi.fn() }
+    {
+      uploadBrowserFile: write,
+      createBrowserDownloadTicket,
+      createBrowserUploadTicket,
+      downloadBrowserFile: vi.fn(),
+      openBrowserDirectFile: vi.fn(),
+      closeBrowserDirectFile: vi.fn()
+    }
   );
   const connectionId = randomUUID();
   const attachmentId = randomUUID();
@@ -158,7 +214,11 @@ it('accepts only an HTTP binary upload chunk and streams raw download bytes', as
     cookie: `${SESSION_COOKIE_NAME}=fixture-session`,
     'x-csrf-token': 'fixture-csrf'
   };
-  const url = `/api/browser/uploads?${new URLSearchParams({ connectionId, attachmentId, chooserId, transferId, index: '0', offset: '0' })}`;
+  const url = `/api/browser/uploads?${new URLSearchParams({ connectionId })}`;
+  const uploadUrl = `/api/browser/uploads/stream-ticket?${new URLSearchParams({ connectionId })}`;
+  const upload = { attachmentId, chooserId, command: { action: 'stream', transferId, index: 0 } };
+  const prepareUpload = () =>
+    app.inject({ method: 'POST', url: uploadUrl, headers, payload: upload });
   try {
     const mismatched = await app.inject({
       method: 'POST',
@@ -178,67 +238,60 @@ it('accepts only an HTTP binary upload chunk and streams raw download bytes', as
     });
     expect(mismatched.statusCode).toBe(400);
     expect(write).not.toHaveBeenCalled();
-    const accepted = await app.inject({
+    const binary = await app.inject({
       method: 'POST',
       url,
       headers: { ...headers, 'content-type': 'application/octet-stream' },
       payload: bytes
     });
+    expect(binary.statusCode).toBe(415);
+    const accepted = await prepareUpload();
     expect(accepted.statusCode).toBe(200);
-    expect(write).toHaveBeenCalledExactlyOnceWith(user, connectionId, {
-      attachmentId,
-      chooserId,
-      command: { action: 'chunk', transferId, index: 0, offset: 0, bytes }
-    });
-    const downloadUrl = `/api/browser/downloads/file?${new URLSearchParams({ connectionId, attachmentId, id })}`;
-    const downloaded = await app.inject({ url: downloadUrl, headers });
+    expect(accepted.json()).toEqual({ ticket: ticket.ticket });
+    expect(createBrowserUploadTicket).toHaveBeenCalledExactlyOnceWith(user, connectionId, upload);
+    expect(write).not.toHaveBeenCalled();
+    const downloadUrl = `/api/browser/downloads/stream-ticket?${new URLSearchParams({ connectionId })}`;
+    const download = () =>
+      app.inject({ method: 'POST', url: downloadUrl, headers, payload: { attachmentId, id } });
+    const downloaded = await download();
     expect(downloaded.statusCode).toBe(200);
-    expect(downloaded.headers['content-length']).toBe(String(content.length));
-    expect(downloaded.rawPayload.equals(content)).toBe(true);
-    expect(openDownload).toHaveBeenCalledExactlyOnceWith(user, connectionId, attachmentId, id);
-    expect(read.mock.calls).toEqual([
-      [0, BROWSER_DOWNLOAD_CHUNK_BYTES],
-      [BROWSER_DOWNLOAD_CHUNK_BYTES, bytes.length]
-    ]);
+    expect(downloaded.json()).toEqual(ticket);
+    expect(createBrowserDownloadTicket).toHaveBeenCalledExactlyOnceWith(
+      user,
+      connectionId,
+      attachmentId,
+      id
+    );
+    expect((await app.inject({ url: '/api/browser/downloads/file', headers })).statusCode).toBe(
+      404
+    );
     for (const [code, status] of [
       ['FILE_RELAY_BUSY', 429],
       ['FILE_RELAY_UNAVAILABLE', 503]
     ] as const) {
-      write.mockRejectedValueOnce(new Error(code));
-      const failed = await app.inject({
-        method: 'POST',
-        url,
-        headers: { ...headers, 'content-type': 'application/octet-stream' },
-        payload: bytes
-      });
+      createBrowserUploadTicket.mockRejectedValueOnce(new Error(code));
+      const failed = await prepareUpload();
       expect(failed.statusCode).toBe(status);
       expect(failed.json()).toMatchObject({ error: { code } });
-      read.mockRejectedValueOnce(new Error(code));
-      const downloadFailed = await app.inject({ url: downloadUrl, headers });
+      createBrowserDownloadTicket.mockRejectedValueOnce(new Error(code));
+      const downloadFailed = await download();
       expect(downloadFailed.statusCode).toBe(status);
       expect(downloadFailed.json()).toMatchObject({ error: { code } });
       expect(downloadFailed.headers['content-disposition']).toBeUndefined();
     }
-    read.mockResolvedValueOnce({ size: bytes.length, offset: 1, bytes });
-    const invalid = await app.inject({ url: downloadUrl, headers });
-    expect(invalid.statusCode).toBe(502);
-    expect(invalid.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
+    const invalid = await app.inject({
+      method: 'POST',
+      url: downloadUrl,
+      headers,
+      payload: { attachmentId, id: 'invalid' }
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ error: { code: 'BROWSER_DOWNLOAD_INVALID' } });
 
-    read.mockClear();
-    openDownload.mockClear();
-    const head = await app.inject({ method: 'HEAD', url: downloadUrl, headers });
-    expect(head.statusCode).toBe(200);
-    expect(head.headers['content-length']).toBe(String(content.length));
-    expect(head.rawPayload).toHaveLength(0);
-    expect(openDownload).toHaveBeenCalledExactlyOnceWith(user, connectionId, attachmentId, id);
-    expect(read).not.toHaveBeenCalled();
-
-    openDownload.mockResolvedValueOnce({ name: 'empty.bin', size: 0, read });
-    const empty = await app.inject({ url: downloadUrl, headers });
+    createBrowserDownloadTicket.mockResolvedValueOnce({ ...ticket, name: 'empty.bin', size: 0 });
+    const empty = await download();
     expect(empty.statusCode).toBe(200);
-    expect(empty.headers['content-length']).toBe('0');
-    expect(empty.rawPayload).toHaveLength(0);
-    expect(read).not.toHaveBeenCalled();
+    expect(empty.json()).toMatchObject({ name: 'empty.bin', size: 0 });
   } finally {
     await app.close();
   }

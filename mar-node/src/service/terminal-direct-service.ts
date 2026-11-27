@@ -1,49 +1,41 @@
 import {
-  decodeTerminalMessage,
-  encodeTerminalMessage,
-  terminalDataFrameSchema,
   terminalDirectNodeCommandSchema,
-  terminalDirectOpenFrameSchema,
   type TerminalDirectNodeCommand
 } from '@myagentroam/protocol';
 import type { TerminalManager } from '../terminal.js';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import type { NodeStreamHandler } from '@myagentroam/protocol/node-stream-mux';
 import type { RTCPeerConnection } from 'node-datachannel/polyfill';
+import { TerminalStreamService } from './terminal-stream-service.js';
 
 type Prepare = Extract<TerminalDirectNodeCommand, { type: 'terminal.direct.prepare' }>;
 
 interface Session {
   readonly command: Prepare;
   readonly peer: RTCPeerConnection;
-  channel?: RTCDataChannel;
-  attachmentId?: string;
-  opened: boolean;
+  stream?: NodeStream;
   expiresAt: number;
   lastHeartbeat: number;
 }
 
 const MAX_SESSIONS = 128;
-const MAX_BUFFERED_BYTES = 1024 * 1024;
-const MAX_FRAME_BYTES = 128 * 1024;
 const HEARTBEAT_GRACE_MS = 30_000;
 
+/** Owns Direct Terminal grants and leases, not the ICE peer or Terminal process. */
 export class TerminalDirectService {
   private readonly sessions = new Map<string, Session>();
+  private readonly pendingGrants = new Map<string, Session>();
   private readonly timer: ReturnType<typeof setInterval>;
-  private readonly stopListening: () => void;
   private readonly now: () => number;
 
   constructor(
-    private readonly manager: TerminalManager,
+    manager: TerminalManager,
     private readonly sendReady: (sessionId: string, phase?: 'ATTACHED') => void,
     private readonly verifyTransport: (command: Prepare, peer: RTCPeerConnection) => boolean,
-    now: () => number = Date.now
+    now: () => number = Date.now,
+    private readonly streams = new TerminalStreamService(manager)
   ) {
     this.now = now;
-    this.stopListening = manager.onFrame((frame) => {
-      for (const session of this.sessions.values())
-        if (session.opened && session.command.terminalId === frame.terminalId)
-          this.sendFrame(session, frame);
-    });
     this.timer = setInterval(() => {
       for (const session of [...this.sessions.values()])
         if (
@@ -66,23 +58,25 @@ export class TerminalDirectService {
         !this.verifyTransport(command, peer) ||
         this.sessions.size >= MAX_SESSIONS ||
         this.sessions.has(command.directSessionId) ||
+        this.pendingGrants.has(command.grant) ||
         command.openExpiresAt <= this.now() ||
         command.expiresAt <= this.now()
       )
         return true;
-      this.sessions.set(command.directSessionId, {
+      const session: Session = {
         command,
         peer,
-        opened: false,
         expiresAt: command.expiresAt,
         lastHeartbeat: this.now()
-      });
+      };
+      this.sessions.set(command.directSessionId, session);
+      this.pendingGrants.set(command.grant, session);
       this.sendReady(command.directSessionId);
       return true;
     }
     const session = this.sessions.get(command.directSessionId);
     if (session === undefined) return true;
-    if (command.type === 'terminal.direct.cancel') this.remove(session);
+    if (command.type === 'terminal.direct.cancel') this.remove(session, command.code);
     else if (session.expiresAt > this.now() && command.expiresAt > this.now()) {
       session.expiresAt = command.expiresAt;
       session.lastHeartbeat = this.now();
@@ -90,75 +84,55 @@ export class TerminalDirectService {
     return true;
   }
 
-  open(transportId: string, channel: RTCDataChannel, raw: unknown): void {
-    if (byteLength(raw) > 4_099) {
-      channel.close();
-      return;
-    }
-    let parsed: ReturnType<typeof terminalDirectOpenFrameSchema.safeParse>;
-    try {
-      parsed = terminalDirectOpenFrameSchema.safeParse(decodeTerminalMessage(raw));
-    } catch {
-      channel.close();
-      return;
-    }
-    const session = parsed.success ? this.sessions.get(parsed.data.directSessionId) : undefined;
-    if (
-      session === undefined ||
-      session.channel !== undefined ||
-      session.opened ||
-      session.command.transportSessionId !== transportId ||
-      session.command.grant !== (parsed.success ? parsed.data.grant : undefined) ||
-      session.command.openExpiresAt <= this.now() ||
-      session.expiresAt <= this.now() ||
-      !this.verifyTransport(session.command, session.peer)
-    ) {
-      channel.close();
-      return;
-    }
-    session.channel = channel;
-    channel.onclose = () => this.remove(session);
-    channel.bufferedAmountLowThreshold = 256 * 1024;
-    channel.onbufferedamountlow = () => {
-      if (session.attachmentId !== undefined)
-        this.manager.setAttachmentBackpressure(session.attachmentId, false);
+  consume(transportId: string, grant: string, signal: AbortSignal): NodeStreamHandler | undefined {
+    const session = this.pendingGrants.get(grant);
+    if (!this.canOpen(session, transportId)) return undefined;
+    this.pendingGrants.delete(grant);
+    const { command } = session;
+    const abort = () => this.remove(session);
+    signal.addEventListener('abort', abort, { once: true });
+    return async (stream) => {
+      if (this.sessions.get(command.directSessionId) !== session) {
+        signal.removeEventListener('abort', abort);
+        stream.reset('RESOURCE_DENIED');
+        return;
+      }
+      session.stream = stream;
+      try {
+        await this.streams.attach(
+          {
+            terminalId: command.terminalId,
+            workspaceId: command.workspaceId ?? null,
+            afterSequence: command.afterSequence,
+            readonly: command.readonly,
+            closeOnDisconnect: command.closeOnDisconnect === true
+          },
+          stream,
+          signal,
+          () => this.attached(command.directSessionId)
+        );
+      } finally {
+        signal.removeEventListener('abort', abort);
+        delete session.stream;
+        this.remove(session);
+      }
     };
-    try {
-      const terminal = this.manager.get(session.command.terminalId);
-      if (
-        terminal.state !== 'RUNNING' ||
-        terminal.workspaceId !== (session.command.workspaceId ?? null)
-      )
-        throw new Error('TERMINAL_NOT_FOUND');
-      const attachment = this.manager.authorizeAttach({
-        terminalId: session.command.terminalId,
-        afterSequence: session.command.afterSequence,
-        readonly: session.command.readonly,
-        ...(session.command.closeOnDisconnect ? { closeOnDisconnect: true } : {})
-      });
-      session.attachmentId = attachment.attachmentId;
-      session.opened = true;
-      channel.send(
-        encodeTerminalMessage({
-          type: 'ATTACHED',
-          terminalId: session.command.terminalId,
-          afterSequence: session.command.afterSequence
-        })
-      );
-      for (const frame of attachment.frames) this.sendFrame(session, frame);
-      channel.onmessage = (event) => this.accept(session, event.data);
-      this.manager.startCommand(session.command.terminalId);
-      void Promise.resolve()
-        .then(() => this.sendReady(session.command.directSessionId, 'ATTACHED'))
-        .catch(() => console.warn('AUDIT_RECEIPT_UNAVAILABLE'));
-    } catch (error) {
-      this.remove(
-        session,
-        error instanceof Error && error.message === 'TERMINAL_ATTACH_CONFLICT'
-          ? 'TERMINAL_ATTACH_CONFLICT'
-          : 'TERMINAL_ATTACH_FAILED'
-      );
-    }
+  }
+
+  private attached(sessionId: string): void {
+    void Promise.resolve()
+      .then(() => this.sendReady(sessionId, 'ATTACHED'))
+      .catch(() => console.warn('AUDIT_RECEIPT_UNAVAILABLE'));
+  }
+
+  private canOpen(session: Session | undefined, transportId: string): session is Session {
+    return (
+      session !== undefined &&
+      session.command.transportSessionId === transportId &&
+      session.command.openExpiresAt > this.now() &&
+      session.expiresAt > this.now() &&
+      this.verifyTransport(session.command, session.peer)
+    );
   }
 
   removeTransport(transportId: string): void {
@@ -173,67 +147,16 @@ export class TerminalDirectService {
   dispose(): void {
     this.close();
     clearInterval(this.timer);
-    this.stopListening();
-  }
-
-  private accept(session: Session, raw: unknown): void {
-    if (!session.opened || byteLength(raw) > MAX_FRAME_BYTES || session.expiresAt <= this.now()) {
-      this.remove(session, 'TERMINAL_FRAME_REJECTED');
-      return;
-    }
-    try {
-      const frame = terminalDataFrameSchema.parse(decodeTerminalMessage(raw));
-      if (
-        frame.terminalId !== session.command.terminalId ||
-        !['input', 'eof', 'resize', 'close'].includes(frame.type) ||
-        session.attachmentId === undefined
-      )
-        throw new Error('TERMINAL_FRAME_INVALID');
-      void this.manager
-        .acceptFrame(session.attachmentId, frame)
-        .catch(() => this.remove(session, 'TERMINAL_FRAME_REJECTED'));
-    } catch {
-      this.remove(session, 'TERMINAL_FRAME_REJECTED');
-    }
-  }
-
-  private sendFrame(session: Session, frame: object): void {
-    const channel = session.channel;
-    if (channel?.readyState !== 'open') {
-      this.remove(session);
-      return;
-    }
-    const value = encodeTerminalMessage(frame);
-    if (channel.bufferedAmount + value.byteLength > MAX_BUFFERED_BYTES) {
-      this.remove(session, 'TERMINAL_BACKPRESSURE');
-      return;
-    }
-    try {
-      channel.send(value);
-      if (session.attachmentId !== undefined && channel.bufferedAmount > 512 * 1024)
-        this.manager.setAttachmentBackpressure(session.attachmentId, true);
-    } catch {
-      this.remove(session);
-    }
   }
 
   private remove(session: Session, code?: string): void {
-    if (!this.sessions.delete(session.command.directSessionId)) return;
-    if (session.attachmentId !== undefined)
-      this.manager.releaseTransportAttachment(session.attachmentId);
-    if (code !== undefined && session.channel?.readyState === 'open') {
-      try {
-        session.channel.send(
-          encodeTerminalMessage({ type: 'error', terminalId: session.command.terminalId, code })
-        );
-      } catch {
-        // A closing channel must not prevent attachment cleanup.
-      }
+    if (this.sessions.get(session.command.directSessionId) !== session) return;
+    this.sessions.delete(session.command.directSessionId);
+    if (this.pendingGrants.get(session.command.grant) === session)
+      this.pendingGrants.delete(session.command.grant);
+    if (session.stream !== undefined) {
+      if (code === 'TERMINAL_NOT_AUTHORIZED') session.stream.reset('RESOURCE_DENIED');
+      else session.stream.close();
     }
-    session.channel?.close();
   }
-}
-
-function byteLength(value: unknown): number {
-  return value instanceof ArrayBuffer || value instanceof Uint8Array ? value.byteLength : Infinity;
 }

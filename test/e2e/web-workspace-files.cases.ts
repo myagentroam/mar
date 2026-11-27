@@ -1,5 +1,7 @@
 import { grantClipboardPermissions } from './support/clipboard.js';
+import { readFile } from 'node:fs/promises';
 import { expect, test, type Locator } from '@playwright/test';
+import { mockWorkspaceFileRelay } from './support/mock-workspace-file-relay.js';
 import {
   emitMockSessionEvent,
   fulfillMockWorkspaceWatch,
@@ -973,6 +975,12 @@ test('Unknown-extension binaries use bounded detection and offer download withou
   const popup = await page.context().newPage();
   await mockConsoleApi(popup, 'MANAGED', ['history.read', 'turn.start'], []);
   await popup.unroute(fileReadRoute);
+  const relay = await mockWorkspaceFileRelay(popup, 'node-1', 'workspace-1', (path) => {
+    expect(path).toBe('archive.zip');
+    const bytes = Buffer.alloc(450_000);
+    Buffer.from('UEsAAA==', 'base64').copy(bytes);
+    return bytes;
+  });
   const popupFilesRoute = /\/api\/workspaces\/workspace-1\/files(?:\?.*)?$/;
   await popup.unroute(popupFilesRoute);
   await popup.route(popupFilesRoute, (route) =>
@@ -996,8 +1004,9 @@ test('Unknown-extension binaries use bounded detection and offer download withou
     standalonePreview.getByText('此文件类型暂不支持浏览器预览；你仍可使用右上角按钮下载文件。')
   ).toBeVisible();
   await popup.waitForTimeout(200);
-  expect(bodyRequests).toHaveLength(2);
+  expect(bodyRequests).toHaveLength(1);
   expect(bodyRequests.every((url) => new URL(url).pathname.endsWith('/files/read'))).toBe(true);
+  expect(relay().descriptors.map(({ range }) => range)).toEqual([{ offset: 0, length: 4096 }]);
   await popup.close();
 });
 
@@ -2112,6 +2121,10 @@ test('Ctrl+Shift+O opens Workspace files from fuzzy results', async ({ page }) =
       nextOffset: null
     }
   } as const;
+  const relay = await mockWorkspaceFileRelay(page.context(), 'node-1', 'workspace-1', (path) => {
+    expect(path).toBe(previewFileResponse.file.path);
+    return Buffer.from(previewFileResponse.file.content);
+  });
   await page
     .context()
     .route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) =>
@@ -2181,33 +2194,15 @@ test('Ctrl+Shift+O opens Workspace files from fuzzy results', async ({ page }) =
   await expect
     .poll(() => popup.evaluate(() => window.getSelection()?.toString() ?? ''))
     .toContain('export');
-  await popup.evaluate(() => {
-    HTMLAnchorElement.prototype.click = function click(): void {
-      const url = new URL(this.href);
-      (
-        window as unknown as {
-          __downloadQuery?: Record<string, string | null>;
-        }
-      ).__downloadQuery = {
-        nodeId: url.searchParams.get('nodeId'),
-        path: url.searchParams.get('path'),
-        download: url.searchParams.get('download')
-      };
-    };
-  });
+  const saved = popup.waitForEvent('download');
   await popup.getByRole('button', { name: '下载文件' }).click();
-  await expect
-    .poll(() =>
-      popup.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __downloadQuery?: Record<string, string | null>;
-            }
-          ).__downloadQuery
-      )
-    )
-    .toEqual({ nodeId: 'node-1', path: 'src/my-agent-roam.ts', download: '1' });
+  const download = await saved;
+  expect(download.suggestedFilename()).toBe('my-agent-roam.ts');
+  expect(await readFile((await download.path())!, 'utf8')).toBe(previewFileResponse.file.content);
+  expect(relay().descriptors.at(-1)).toMatchObject({
+    resource: { path: previewFileResponse.file.path }
+  });
+  expect(relay().descriptors.at(-1)?.range).toBeUndefined();
   if (!popup.isClosed()) {
     const closed = popup.waitForEvent('close');
     await popup
@@ -2252,6 +2247,10 @@ test('Standalone Markdown previews render Mermaid and allow HTTP images', async 
   const fileReadRoute = /\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/;
   await page.unroute(fileReadRoute);
   await page.context().route(fileReadRoute, (route) => json(route, preview));
+  await mockWorkspaceFileRelay(page.context(), 'node-1', 'workspace-1', (path) => {
+    expect(path).toBe(preview.file.path);
+    return Buffer.from(preview.file.content);
+  });
 
   await page.goto('/console');
   await page.getByLabel('密码').fill('test-password');

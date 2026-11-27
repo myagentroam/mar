@@ -1,4 +1,3 @@
-import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -7,7 +6,14 @@ import type {
   ConversationSegment,
   HostedConversationSnapshot
 } from '../../packages/protocol/src/index.js';
-import { encodeTerminalMessage } from '../../packages/protocol/src/byte-frame.js';
+import {
+  decodeTerminalMessage,
+  encodeTerminalMessage
+} from '../../packages/protocol/src/byte-frame.js';
+import {
+  readTerminalRecords,
+  writeTerminalRecord
+} from '../../packages/protocol/src/terminal-stream.js';
 // The Server owns the runtime WebSocket dependency used by the relay client.
 // @ts-expect-error The dependency exposes no declaration for its ESM wrapper.
 import WsClient from '../../ee/server/node_modules/ws/wrapper.mjs';
@@ -19,6 +25,7 @@ import {
   type ReleaseSmokeFixture
 } from './support/release-smoke-fixture.js';
 import { templateDraft } from './support/hosted-conversation-flow-fixture.js';
+import { testRelayPath } from './support/node-relay-fixture.js';
 
 const test = base.extend<{ smoke: ReleaseSmokeFixture }>({
   smoke: async ({ baseURL }, use) => {
@@ -115,10 +122,10 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
   expect(continuation.run.id).not.toBe(started.run.id);
   await expectRunSucceeded(continuation.run.id);
   await expect.poll(() => smoke.modelRequests.length).toBeGreaterThanOrEqual(2);
-  const file = `/api/workspaces/${workspaceId}/files/content?nodeId=${nodeId}&path=smoke.txt`;
+  const file = `/api/workspaces/${workspaceId}/files/read?nodeId=${nodeId}&path=smoke.txt`;
   const fileResponse = await smoke.api.get(file);
   expect(fileResponse.status()).toBe(200);
-  const original = await fileResponse.text();
+  const original = (await fileResponse.json()).file.content as string;
   expect(original).toBe('release smoke file\n');
   await smoke.write(
     `/api/workspaces/${workspaceId}/files/write`,
@@ -131,7 +138,7 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
     200,
     'PUT'
   );
-  expect(await (await smoke.api.get(file)).text()).toBe('release smoke updated\n');
+  expect((await (await smoke.api.get(file)).json()).file.content).toBe('release smoke updated\n');
   expect(await readFile(join(smoke.workspace, 'smoke.txt'), 'utf8')).toBe(
     'release smoke updated\n'
   );
@@ -154,11 +161,11 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
   const terminalId = opened.terminal.id;
   const { ticket } = await smoke.write<{ ticket: string }>(
     `/api/terminals/${terminalId}/attach-ticket`,
-    { nodeId },
+    { nodeId, workspaceId },
     201
   );
   const socket = new WsClient(
-    `${baseURL!.replace('http', 'ws')}/api/terminals/${terminalId}/connect?ticket=${encodeURIComponent(ticket)}`,
+    `${baseURL!.replace('http', 'ws')}/api/relay/${encodeURIComponent(nodeId)}`,
     [],
     {
       headers: {
@@ -169,26 +176,28 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
       }
     }
   );
-  const frames: Uint8Array[] = [];
-  socket.on('message', (data: unknown) => {
-    if (typeof data === 'string') frames.push(Buffer.from(data, 'binary'));
-    else if (data instanceof ArrayBuffer) frames.push(new Uint8Array(data));
-    else if (ArrayBuffer.isView(data))
-      frames.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-    else throw new TypeError('Unexpected terminal frame payload');
-  });
+  socket.on('error', () => socket.terminate());
   try {
-    await once(socket, 'open');
+    const relay = await testRelayPath(socket);
+    const stream = await relay.openStream(
+      { kind: 'terminal', grant: ticket },
+      AbortSignal.timeout(10_000)
+    );
+    if (stream === undefined) throw new Error('NODE_RELAY_UNAVAILABLE');
+    const frames: Uint8Array[] = [];
+    void (async () => {
+      for await (const record of readTerminalRecords(stream)) frames.push(record);
+    })().catch(() => stream.close());
     await expect
-      .poll(() =>
-        frames.map((frame) => Buffer.from(frame).toString('utf8')).join('\n')
-      )
-      .toContain('"type":"attach"');
+      .poll(() => frames.some((frame) => decodeTerminalMessage(frame).type === 'attach'))
+      .toBe(true);
     // Node is already required on both platforms; keep the marker out of input echo.
     const command = `node -p "'RELEASE_' + 'TERMINAL_OK'"\r`;
     // Input is a binary frame: JSON metadata plus the raw bytes as payload.
-    socket.send(
-      encodeTerminalMessage({ type: 'input', terminalId, data: Buffer.from(command, 'utf8') })
+    await stream.write(
+      writeTerminalRecord(
+        encodeTerminalMessage({ type: 'input', terminalId, data: Buffer.from(command, 'utf8') })
+      )
     );
     await expect
       .poll(() => terminalOutput(frames))

@@ -5,7 +5,6 @@ import { computed, ref, watch, type Ref } from 'vue';
 import { translate } from './locale-preference-service.js';
 import { errorCode } from '../util/api-error.js';
 import { errorMessage } from '../util/error-presentation.js';
-import type { DirectTransferDescriptor } from '@myagentroam/protocol';
 import { workspaceFileSha256 } from '../util/workspace-file-checksum.js';
 
 export interface WorkspaceUploadRequest {
@@ -26,9 +25,6 @@ export interface WorkspaceUploadTask extends Omit<WorkspaceUploadRequest, 'file'
   status: 'QUEUED' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
   error?: string;
   cancelled: boolean;
-  transport?: 'DIRECT' | 'SERVER';
-  directFallback?: boolean;
-  directCleanupPending?: boolean;
   cleanupUnconfirmed?: boolean;
 }
 
@@ -45,33 +41,21 @@ interface StoredWorkspaceUploadTask {
   readonly receivedBytes: number;
   readonly status: 'QUEUED' | 'UPLOADING' | 'FAILED' | 'INTERRUPTED';
   readonly error?: string;
-  readonly directCleanupPending?: boolean;
   readonly cleanupUnconfirmed?: boolean;
 }
 
 interface WorkspaceUploadOptions {
   readonly storage?: Storage;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
-  readonly csrfToken: Ref<string>;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
-  readonly renewCsrfToken: () => Promise<string>;
   readonly onFilesChanged: () => void;
   readonly onTaskChanged?: (task: WorkspaceUploadTask) => void;
-  readonly direct?: {
-    readonly generation: (nodeId: string) => string | undefined;
-    readonly upload: (input: {
-      readonly nodeId: string;
-      readonly nodeGeneration: string;
-      readonly descriptor: DirectTransferDescriptor;
-      readonly file: File;
-      readonly onProgress: (offset: number) => void;
-      readonly signal: AbortSignal;
-    }) => Promise<void>;
-  };
+  readonly sendBody: ReturnType<
+    typeof import('./workspace-file-stream-client.js').createWorkspaceFileStreamClient
+  >['upload'];
 }
 
 const STORAGE_KEY = 'mar.workspace-upload-tasks';
-const CHUNK_BYTES = 512 * 1024;
 const MAX_CONCURRENT_UPLOADS = 2;
 
 interface RecoveryReceiver {
@@ -110,7 +94,6 @@ export function parseStoredWorkspaceUploads(value: unknown): WorkspaceUploadTask
       item.receivedBytes < 0 ||
       item.receivedBytes > item.size ||
       (item.uploadId !== undefined && typeof item.uploadId !== 'string') ||
-      (item.directCleanupPending !== undefined && typeof item.directCleanupPending !== 'boolean') ||
       (item.cleanupUnconfirmed !== undefined && typeof item.cleanupUnconfirmed !== 'boolean')
     )
       return [];
@@ -128,9 +111,6 @@ export function parseStoredWorkspaceUploads(value: unknown): WorkspaceUploadTask
         status: 'INTERRUPTED',
         ...(typeof item.error === 'string' ? { error: item.error } : {}),
         cancelled: false,
-        directCleanupPending:
-          item.directCleanupPending === true ||
-          (item.directCleanupPending === undefined && item.uploadId === undefined),
         cleanupUnconfirmed: item.cleanupUnconfirmed === true
       }
     ];
@@ -148,8 +128,8 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   const tasks = ref<WorkspaceUploadTask[]>([]);
   const recoveryInput = ref<HTMLInputElement>();
   const pendingRecoveryId = ref<string>();
-  const activeRequests = new Map<string, XMLHttpRequest>();
-  const directRequests = new Map<string, AbortController>();
+  const bodyRequests = new Map<string, AbortController>();
+  const sourceDigests = new WeakMap<File, string>();
   const cancellations = new Map<string, Promise<boolean>>();
   const committing = new Set<string>();
   const disposedRecoveryEntries = new Map<string, StoredWorkspaceUploadTask>();
@@ -187,7 +167,6 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       overwrite: task.overwrite,
       ...(task.uploadId === undefined ? {} : { uploadId: task.uploadId }),
       receivedBytes: task.receivedBytes,
-      directCleanupPending: task.directCleanupPending === true,
       cleanupUnconfirmed: task.cleanupUnconfirmed === true,
       status: task.status as StoredWorkspaceUploadTask['status'],
       ...(task.error === undefined ? {} : { error: task.error })
@@ -294,15 +273,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   }
 
   function statusLabel(task: WorkspaceUploadTask): string {
-    if (task.status === 'UPLOADING') {
-      if (task.transport === 'DIRECT')
-        return translate('generated.workspaceUploadService.uploadingDirect');
-      if (task.transport === 'SERVER' && task.directFallback === true)
-        return translate('generated.workspaceUploadService.uploadingServerFallback');
-      if (task.transport === 'SERVER')
-        return translate('generated.workspaceUploadService.uploadingServer');
-      return translate('generated.workspaceUploadService.uploading');
-    }
+    if (task.status === 'UPLOADING') return translate('generated.workspaceUploadService.uploading');
     if (task.status === 'QUEUED') return translate('generated.workspaceUploadService.queued');
     if (task.status === 'COMPLETED') return translate('generated.workspaceUploadService.completed');
     if (task.status === 'CANCELLED') return translate('generated.workspaceUploadService.canceled');
@@ -350,83 +321,27 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     const owner = storage;
     try {
       if (task.file === undefined) throw new Error('UPLOAD_SOURCE_REQUIRED');
-      const generation = options.direct?.generation(task.nodeId);
-      const retainedDirectUpload = task.directCleanupPending === true;
-      if (retainedDirectUpload && task.uploadId === undefined && generation === undefined)
-        throw new Error('DIRECT_UNAVAILABLE');
-      if (task.uploadId === undefined && generation !== undefined) {
-        const directController = new AbortController();
-        directRequests.set(task.id, directController);
-        let uploadRequested = false;
-        try {
-          task.transport = 'DIRECT';
-          changed(task);
-          const path =
-            task.directory === '.' || task.directory === ''
-              ? task.name
-              : `${task.directory.replace(/\/+$/u, '')}/${task.name}`;
-          const sha256 = await workspaceFileSha256(task.file);
-          if (closed || task.cancelled) throw new Error('UPLOAD_CANCELLED');
-          uploadRequested = true;
-          task.directCleanupPending = true;
-          await options.direct!.upload({
-            nodeId: task.nodeId,
-            nodeGeneration: generation,
-            descriptor: {
-              direction: 'UPLOAD',
-              resource: { kind: 'WORKSPACE_FILE', workspaceId: task.workspaceId, path },
-              fileName: task.name,
-              size: task.size,
-              sha256,
-              overwrite: task.overwrite
-            },
-            file: task.file,
-            onProgress: (offset) => {
-              task.receivedBytes = offset;
-            },
-            signal: directController.signal
-          });
-          if (task.cancelled) throw new Error('UPLOAD_CANCELLED');
-          task.directCleanupPending = false;
-          task.cleanupUnconfirmed = false;
-          task.receivedBytes = task.size;
-          task.status = 'COMPLETED';
-          if (!closed && owner === storage) options.onFilesChanged();
-          changed(task);
-          return;
-        } catch (error) {
-          const code = errorCode(error);
-          if (closed || task.cancelled || code === 'UPLOAD_CANCELLED') throw error;
-          if (retainedDirectUpload) throw error;
-          if (
-            uploadRequested &&
-            code !== 'DIRECT_UNAVAILABLE' &&
-            code !== 'DIRECT_TRANSFER_INVALID' &&
-            code !== 'DIRECT_TRANSFER_UNAVAILABLE' &&
-            code !== 'DIRECT_PREPARE_TIMEOUT' &&
-            code !== 'DIRECT_SESSION_LIMIT_REACHED' &&
-            code !== 'DIRECT_TRANSFER_GRANT_INVALID'
-          )
-            throw error;
-          task.receivedBytes = 0;
-          task.directCleanupPending = false;
-          task.transport = 'SERVER';
-          task.directFallback = true;
-          changed(task);
-        } finally {
-          directRequests.delete(task.id);
-        }
-      }
-      if (closed || task.cancelled) return;
-      task.transport = 'SERVER';
+      const source = task.file;
+      const uploadController = new AbortController();
+      bodyRequests.set(task.id, uploadController);
+      const sha256 =
+        sourceDigests.get(source) ?? (await workspaceFileSha256(source, uploadController.signal));
+      sourceDigests.set(source, sha256);
+      if (closed || task.cancelled || owner !== storage) return;
+      let stagedPath: string | undefined;
       if (task.uploadId !== undefined) {
         try {
           const current = await options.request<{
-            upload: { readonly receivedBytes: number; readonly size: number };
+            upload: {
+              readonly receivedBytes: number;
+              readonly size: number;
+              readonly path: string;
+            };
           }>(
             `/api/workspaces/${encodeURIComponent(task.workspaceId)}/uploads/${encodeURIComponent(task.uploadId)}?nodeId=${encodeURIComponent(task.nodeId)}`
           );
           if (current.upload.size !== task.size) throw new Error('UPLOAD_SOURCE_MISMATCH');
+          stagedPath = current.upload.path;
           task.receivedBytes = current.upload.receivedBytes;
         } catch (error) {
           if (errorCode(error) !== 'UPLOAD_NOT_FOUND') throw error;
@@ -441,6 +356,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
             readonly uploadId: string;
             readonly receivedBytes: number;
             readonly size: number;
+            readonly path: string;
           };
         }>(`/api/workspaces/${encodeURIComponent(task.workspaceId)}/uploads`, {
           method: 'POST',
@@ -449,24 +365,41 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
             directory: task.directory,
             name: task.name,
             size: task.size,
-            overwrite: task.overwrite
+            overwrite: task.overwrite,
+            sha256
           })
         });
         if (owner !== storage) return;
         task.uploadId = created.upload.uploadId;
+        stagedPath = created.upload.path;
         task.receivedBytes = created.upload.receivedBytes;
         if (closed || task.cancelled) {
           await cancel(task);
           return;
         }
       }
-      while (task.receivedBytes < task.size) {
-        if (closed || task.cancelled) throw new Error('UPLOAD_CANCELLED');
-        const offset = task.receivedBytes;
-        const chunk = task.file.slice(offset, Math.min(task.size, offset + CHUNK_BYTES));
-        const result = await uploadChunk(task, offset, chunk);
-        task.receivedBytes = result.receivedBytes;
-      }
+      if (typeof stagedPath !== 'string') throw new Error('NODE_RESPONSE_INVALID');
+      await options.sendBody({
+        nodeId: task.nodeId,
+        descriptor: {
+          direction: 'UPLOAD',
+          uploadId: task.uploadId,
+          resource: {
+            kind: 'WORKSPACE_FILE',
+            workspaceId: task.workspaceId,
+            path: stagedPath
+          },
+          fileName: task.name,
+          size: task.size,
+          sha256,
+          overwrite: task.overwrite
+        },
+        file: source,
+        signal: uploadController.signal,
+        onProgress: (offset) => {
+          task.receivedBytes = offset;
+        }
+      });
       if (closed || task.cancelled) throw new Error('UPLOAD_CANCELLED');
       committing.add(task.id);
       const completed = await options.request<{ upload: { readonly receivedBytes: number } }>(
@@ -474,89 +407,25 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
         { method: 'POST', body: JSON.stringify({ nodeId: task.nodeId }) }
       );
       task.receivedBytes = completed.upload.receivedBytes;
+      delete task.uploadId;
       task.status = 'COMPLETED';
       if (!closed && owner === storage) options.onFilesChanged();
       changed(task);
     } catch (error) {
-      if (task.cancelled || errorCode(error) === 'UPLOAD_CANCELLED') {
-        task.status = task.directCleanupPending || task.cleanupUnconfirmed ? 'FAILED' : 'CANCELLED';
-        if (task.directCleanupPending) task.cleanupUnconfirmed = true;
-        changed(task);
-        return;
-      }
+      // Explicit cancellation is settled by the staging cleanup result, not the local abort.
+      if (task.cancelled) return;
       task.status = closed ? 'INTERRUPTED' : 'FAILED';
       task.error = errorMessage(error);
       changed(task);
     } finally {
-      activeRequests.delete(task.id);
-      directRequests.delete(task.id);
+      bodyRequests.delete(task.id);
       committing.delete(task.id);
     }
   }
 
-  async function uploadChunk(
-    task: WorkspaceUploadTask,
-    offset: number,
-    chunk: Blob
-  ): Promise<{ readonly receivedBytes: number }> {
-    let lastError: unknown;
-    let renewedCsrfToken = false;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (closed || task.cancelled) throw new Error('UPLOAD_CANCELLED');
-      try {
-        return await new Promise<{ readonly receivedBytes: number }>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          activeRequests.set(task.id, xhr);
-          xhr.open(
-            'POST',
-            `/api/workspaces/${encodeURIComponent(task.workspaceId)}/uploads/${encodeURIComponent(task.uploadId ?? '')}/chunks?nodeId=${encodeURIComponent(task.nodeId)}&offset=${offset}`
-          );
-          xhr.withCredentials = true;
-          xhr.setRequestHeader('content-type', 'application/octet-stream');
-          xhr.setRequestHeader('x-csrf-token', options.csrfToken.value);
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable)
-              task.receivedBytes = Math.min(task.size, offset + event.loaded);
-          };
-          xhr.onerror = () => reject(new Error('UPLOAD_NETWORK_FAILED'));
-          xhr.onabort = () => reject(new Error('UPLOAD_CANCELLED'));
-          xhr.onload = () => {
-            if (xhr.status < 200 || xhr.status >= 300) {
-              let code: string | undefined;
-              try {
-                code = (JSON.parse(xhr.responseText) as { error?: { code?: string } }).error?.code;
-              } catch {
-                code = undefined;
-              }
-              reject(new Error(code ?? `REQUEST_FAILED_${xhr.status}`));
-              return;
-            }
-            try {
-              const body = JSON.parse(xhr.responseText) as { upload?: { receivedBytes?: unknown } };
-              if (!Number.isSafeInteger(body.upload?.receivedBytes))
-                throw new Error('NODE_RESPONSE_INVALID');
-              resolve({ receivedBytes: body.upload?.receivedBytes as number });
-            } catch (error) {
-              reject(error);
-            }
-          };
-          xhr.send(chunk);
-        });
-      } catch (error) {
-        lastError = error;
-        if (closed || task.cancelled) throw error;
-        if (errorCode(error) === 'CSRF_INVALID') {
-          if (renewedCsrfToken) throw error;
-          renewedCsrfToken = true;
-          await options.renewCsrfToken();
-        }
-        task.receivedBytes = offset;
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error('UPLOAD_CHUNK_FAILED');
-  }
-
   async function cancel(task: WorkspaceUploadTask, remote = true): Promise<boolean> {
+    // Once complete has been submitted, only its authoritative response can settle this task.
+    if (committing.has(task.id) || task.status === 'COMPLETED') return false;
     const pending = cancellations.get(task.id);
     if (pending !== undefined) return pending;
     if (!closed) invalidateRecovery(task);
@@ -573,15 +442,10 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   }
 
   async function cancelUpload(task: WorkspaceUploadTask, remote = true): Promise<boolean> {
-    if (
-      (task.status === 'COMPLETED' || task.status === 'CANCELLED') &&
-      task.uploadId === undefined &&
-      !task.directCleanupPending
-    )
+    if ((task.status === 'COMPLETED' || task.status === 'CANCELLED') && task.uploadId === undefined)
       return true;
     task.cancelled = true;
-    directRequests.get(task.id)?.abort();
-    activeRequests.get(task.id)?.abort();
+    bodyRequests.get(task.id)?.abort();
     // Account teardown only aborts local transport. Do not send an old identity's
     // cleanup through a cookie that may now belong to another user.
     if (!remote) return true;
@@ -603,12 +467,6 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       }
       delete task.uploadId;
     }
-    if (task.directCleanupPending) {
-      task.cleanupUnconfirmed = true;
-      task.status = 'FAILED';
-      changed(task);
-      return false;
-    }
     task.cleanupUnconfirmed = false;
     task.status = 'CANCELLED';
     changed(task);
@@ -623,15 +481,16 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       recoveryInput.value?.click();
       return;
     }
-    if (task.uploadId !== undefined && !(await cancel(task))) return;
+    const resume = !task.cancelled && !task.cleanupUnconfirmed;
+    if (!resume && task.uploadId !== undefined && !(await cancel(task))) return;
     if (closed) return;
     invalidateRecovery(task);
     task.cancelled = false;
-    delete task.uploadId;
-    task.receivedBytes = 0;
+    if (!resume) {
+      delete task.uploadId;
+      task.receivedBytes = 0;
+    }
     delete task.error;
-    delete task.directFallback;
-    delete task.transport;
     task.status = 'QUEUED';
     changed(task);
     void drain();
@@ -678,10 +537,8 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       if (task.status === 'UPLOADING' && task.uploadId !== undefined && !committing.has(task.id))
         void cancel(task);
     }
-    for (const request of directRequests.values()) request.abort();
-    directRequests.clear();
-    for (const request of activeRequests.values()) request.abort();
-    activeRequests.clear();
+    for (const request of bodyRequests.values()) request.abort();
+    bodyRequests.clear();
   }
 
   const stopPersisting = watch(

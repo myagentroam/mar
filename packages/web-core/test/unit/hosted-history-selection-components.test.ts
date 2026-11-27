@@ -1,3 +1,4 @@
+import { unusedHostedFileDownloads } from '../support/hosted-file-downloads.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HostedConversationSummary } from '@myagentroam/protocol';
 import HostedWorkspace from '../../src/view/conversation/HostedConversationWorkspacePage.vue?unit-render';
@@ -78,6 +79,10 @@ async function fixture(hasUnread = false) {
     typeof createHostedConversationWorkspaceService
   >[0]['request'];
   const workspace = createHostedConversationWorkspaceService({
+    downloads: unusedHostedFileDownloads,
+    sendUploadBody: async () => {
+      throw new Error('Unexpected Hosted upload');
+    },
     request,
     workbenchConnectionId: () => 'connection-current',
     heartbeatMs: 60_000,

@@ -533,7 +533,7 @@ describe('Server MAR Agent model authorization routes', () => {
     });
 
     expect(response.statusCode).toBe(204);
-    expect(fixture.nodeControl.revalidateTerminalAuthorizations).not.toHaveBeenCalled();
+    expect(fixture.nodeControl.revalidateDataAuthorizations).not.toHaveBeenCalled();
     await app.close();
   });
 });
@@ -573,10 +573,10 @@ function routeFixture() {
   } as unknown as MysqlServerDatabase;
   const nodeControl = {
     requestNode: vi.fn(async () => ({ sessionId: 'session-1', runId: 'run-1' })),
-    revalidateTerminalAuthorizations: vi.fn(async () => undefined)
+    revalidateDataAuthorizations: vi.fn(async () => undefined)
   } as unknown as NodeControl & {
     requestNode: ReturnType<typeof vi.fn>;
-    revalidateTerminalAuthorizations: ReturnType<typeof vi.fn>;
+    revalidateDataAuthorizations: ReturnType<typeof vi.fn>;
   };
   const secrets = {
     resolve: vi.fn(async () => ({}))

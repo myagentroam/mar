@@ -21,7 +21,7 @@ import {
 } from '../../service/workbench-http-service.js';
 import { ApiError, errorCode } from '../../util/api-error.js';
 import { errorSummary } from '../../util/error-presentation.js';
-import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
+import type { OpenWorkbenchNodeStream } from '../../service/workbench-node-connection-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 
 const TerminalTabView = defineAsyncComponent(() => import('./TerminalTabView.vue'));
@@ -55,7 +55,7 @@ const props = defineProps<{
       ) => boolean)
     | undefined;
   readonly nodeId: string | undefined;
-  readonly direct?: Pick<ReturnType<typeof createTerminalDirectClient>, 'attach'>;
+  readonly openStream: OpenWorkbenchNodeStream;
   readonly workspaceId: string | undefined;
   readonly csrfToken: string;
   readonly renewCsrfToken: () => Promise<string>;
@@ -651,11 +651,9 @@ defineExpose({ closeAll, release, toggle: toggleTerminal });
           "
           :terminal-id="item.id"
           :node-id="nodeId ?? ''"
-          :direct="direct"
+          :open-stream="openStream"
           :workspace-id="workspaceId"
           :open-url="openBrowserLink ? openUrl : undefined"
-          :csrf-token="csrfToken"
-          :renew-csrf-token="renewCsrfToken"
           :windows-con-pty="capability?.supportsConPty === true"
           :windows-build-number="windowsBuildNumber"
           :active="item.id === activeTerminalId"

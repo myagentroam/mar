@@ -89,10 +89,8 @@ describe('shared Workbench state composition', () => {
       context: () => mainTarget.value,
       notice: vi.fn(),
       request: vi.fn().mockResolvedValue(undefined),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn(),
-      direct: { generation: () => 'generation', upload }
+
+      sendBody: upload
     });
     const main = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -273,9 +271,7 @@ describe('shared Workbench state composition', () => {
       context: () => mainTarget.value,
       notice: vi.fn(),
       request: vi.fn(),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       submissions,
@@ -313,9 +309,7 @@ describe('shared Workbench state composition', () => {
       context: () => mainTarget.value,
       notice: vi.fn(),
       request: vi.fn(),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -415,10 +409,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => mainTarget.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const { effectScope } = await import('vue');
     const scope = effectScope();
@@ -493,10 +486,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => mainTarget.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -597,10 +589,9 @@ describe('shared Workbench state composition', () => {
       const attachments = createComposerAttachmentService({
         context: () => mainTarget.value,
         request: vi.fn() as never,
-        renewCsrfToken: vi.fn(),
-        csrfToken: ref('csrf'),
-        onUnauthenticated: vi.fn(),
-        notice: vi.fn()
+
+        notice: vi.fn(),
+        sendBody: vi.fn(async () => undefined)
       });
       const submissions = createWorkbenchSubmissionOwner();
       const main = createWorkspaceSessionPaneState({
@@ -687,10 +678,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => mainTarget.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const submissions = createWorkbenchSubmissionOwner();
     const scope = effectScope();
@@ -788,10 +778,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => mainTarget.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -867,9 +856,7 @@ describe('shared Workbench state composition', () => {
       context: () => target.value,
       notice: vi.fn(),
       request: vi.fn(),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       draftTarget: target,
@@ -955,9 +942,7 @@ describe('shared Workbench state composition', () => {
         context: () => target.value,
         notice: vi.fn(),
         request: vi.fn(),
-        csrfToken: ref('csrf'),
-        renewCsrfToken: vi.fn(),
-        onUnauthenticated: vi.fn()
+        sendBody: vi.fn(async () => undefined)
       });
       const scope = effectScope();
       const pane = scope.run(() =>
@@ -1036,9 +1021,7 @@ describe('shared Workbench state composition', () => {
         context: () => target.value,
         notice: vi.fn(),
         request: vi.fn(),
-        csrfToken: ref('csrf'),
-        renewCsrfToken: vi.fn(),
-        onUnauthenticated: vi.fn()
+        sendBody: vi.fn(async () => undefined)
       });
       const scope = effectScope();
       const pane = scope.run(() =>
@@ -1110,10 +1093,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => mainTarget.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -1167,10 +1149,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => a.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -1226,10 +1207,9 @@ describe('shared Workbench state composition', () => {
       const attachments = createComposerAttachmentService({
         context: () => target.value,
         request: vi.fn() as never,
-        renewCsrfToken: vi.fn(),
-        csrfToken: ref('csrf'),
-        onUnauthenticated: vi.fn(),
-        notice: vi.fn()
+
+        notice: vi.fn(),
+        sendBody: vi.fn(async () => undefined)
       });
       const { effectScope } = await import('vue');
       const scope = effectScope();
@@ -1294,10 +1274,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => mainTarget.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const submissions = createWorkbenchSubmissionOwner();
     const main = createWorkspaceSessionPaneState({
@@ -1357,10 +1336,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => target.value,
       request: vi.fn(() => new Promise<never>(() => undefined)),
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const submissions = createWorkbenchSubmissionOwner();
     const pane = createWorkspaceSessionPaneState({
@@ -1408,10 +1386,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => mainTarget.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -1466,10 +1443,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => mainTarget.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const main = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -1522,10 +1498,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => target.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const pane = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -1594,10 +1569,9 @@ describe('shared Workbench state composition', () => {
       const attachments = createComposerAttachmentService({
         context: () => target.value,
         request: vi.fn() as never,
-        renewCsrfToken: vi.fn(),
-        csrfToken: ref('csrf'),
-        onUnauthenticated: vi.fn(),
-        notice: vi.fn()
+
+        notice: vi.fn(),
+        sendBody: vi.fn(async () => undefined)
       });
       const pane = createWorkspaceSessionPaneState({
         submissions: paneSubmissions,
@@ -1640,10 +1614,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => target.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const pane = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -1678,10 +1651,9 @@ describe('shared Workbench state composition', () => {
     const attachments = createComposerAttachmentService({
       context: () => target.value,
       request: vi.fn() as never,
-      renewCsrfToken: vi.fn(),
-      csrfToken: ref('csrf'),
-      onUnauthenticated: vi.fn(),
-      notice: vi.fn()
+
+      notice: vi.fn(),
+      sendBody: vi.fn(async () => undefined)
     });
     const pane = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,
@@ -1726,9 +1698,7 @@ describe('shared Workbench state composition', () => {
       context: () => target.value,
       notice: vi.fn(),
       request: vi.fn().mockResolvedValue(undefined),
-      csrfToken: ref('csrf'),
-      renewCsrfToken: vi.fn(),
-      onUnauthenticated: vi.fn()
+      sendBody: vi.fn(async () => undefined)
     });
     const pane = createWorkspaceSessionPaneState({
       submissions: paneSubmissions,

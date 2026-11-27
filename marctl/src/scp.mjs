@@ -8,7 +8,6 @@ export async function runScp({
   destination,
   preserve = false,
   client,
-  WebSocketClass,
   resolveNodeId,
   translate,
   signal
@@ -40,7 +39,6 @@ export async function runScp({
     });
     const context = {
       client,
-      WebSocketClass,
       translate,
       controller,
       preserve,

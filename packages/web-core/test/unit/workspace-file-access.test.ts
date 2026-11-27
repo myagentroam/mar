@@ -4,15 +4,38 @@ import type { ScopedHttpService } from '../../src/service/scoped-http-service.js
 
 function fixture() {
   const request = vi.fn(async (_path: string, _init?: RequestInit): Promise<unknown> => ({}));
+  const download = vi.fn();
   const access = createWorkspaceFileAccessService({
     request,
     http: { request } as ScopedHttpService,
     manifest: () => undefined,
     available: () => false,
-    direct: { download: vi.fn() }
+    direct: { download: vi.fn() },
+    downloads: { download }
   });
-  return { request, access };
+  return { request, access, download };
 }
+
+describe('Workspace binary preview file access', () => {
+  it.each([undefined, { commit: 'a'.repeat(40), repositoryPath: '', refs: ['main'] }])(
+    'leaves oversized snapshots downloadable without opening a preview stream (%j)',
+    async (history) => {
+      const { request, access, download } = fixture();
+      const file = { size: 20 * 1024 * 1024 + 1, revision: 'snapshot' };
+      request.mockResolvedValueOnce({ file });
+      const files = access.forWorkspace({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+      const controller = new AbortController();
+      await expect(
+        files.readPreviewObject(
+          { path: 'large.pdf', ...(history === undefined ? {} : { history }) },
+          controller.signal
+        )
+      ).resolves.toEqual(file);
+      expect(request).toHaveBeenCalledOnce();
+      expect(download).not.toHaveBeenCalled();
+    }
+  );
+});
 
 describe('Workspace attachment file access', () => {
   it('captures the full Workspace target and revalidates without a cached response', async () => {

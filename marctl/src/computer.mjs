@@ -11,16 +11,7 @@ const MAX_IMAGE = 16 * 1024 * 1024;
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 /** Runs a single non-resumable desktop attachment and publishes only completed results. */
-export async function runComputer({
-  client,
-  WebSocketClass,
-  nodeId,
-  directory,
-  stdin,
-  stdout,
-  signal,
-  translate
-}) {
+export async function runComputer({ client, nodeId, directory, stdin, stdout, signal, translate }) {
   directory = resolve(directory);
   if (!(await stat(directory).catch(() => undefined))?.isDirectory())
     throw new MarctlError(translate('errors.computerDirectory'));
@@ -48,7 +39,6 @@ export async function runComputer({
   try {
     transport = await openTerminalAttachment({
       client,
-      WebSocketClass,
       nodeId,
       terminalId,
       ticket,

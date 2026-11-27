@@ -1,34 +1,23 @@
 import { createUuid } from '../util/uuid.js';
-import type { DirectTransferResource } from '@myagentroam/protocol';
-import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
-import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 
-export async function readWorkspaceDirectObjectUrl(input: {
-  readonly direct: Pick<ReturnType<typeof createWorkspaceDirectTransferService>, 'download'>;
-  readonly nodeId: string;
-  readonly nodeGeneration: string;
-  readonly resource: DirectTransferResource;
-  readonly metadata: () => Promise<WorkspaceDirectFileIdentity | undefined>;
-  readonly signal?: AbortSignal;
-}): Promise<({ readonly url: string } & WorkspaceDirectFileIdentity) | undefined> {
-  let target: WorkspaceDirectObjectUrlSink | undefined;
+/** Owns staging until a complete object URL can be handed off to the preview. */
+export async function readWorkspaceFileObjectUrl(
+  fileName: string,
+  signal: AbortSignal | undefined,
+  download: (sink: WorkspaceDirectObjectUrlSink['sink']) => Promise<void>
+): Promise<string> {
+  signal?.throwIfAborted();
+  const target = await createWorkspaceDirectObjectUrlSink(fileName);
   try {
-    const identity = await input.metadata();
-    if (identity === undefined) return undefined;
-    input.signal?.throwIfAborted();
-    const fileName = input.resource.path.split('/').at(-1) ?? 'file';
-    target = await createWorkspaceDirectObjectUrlSink(fileName);
-    await input.direct.download({
-      nodeId: input.nodeId,
-      nodeGeneration: input.nodeGeneration,
-      descriptor: { direction: 'DOWNLOAD', resource: input.resource, fileName, ...identity },
-      sink: target.sink,
-      ...(input.signal === undefined ? {} : { signal: input.signal })
-    });
-    return { url: await target.objectUrl(), ...identity };
-  } catch {
-    await target?.sink.abort().catch(() => undefined);
-    return undefined;
+    signal?.throwIfAborted();
+    await download(target.sink);
+    signal?.throwIfAborted();
+    const url = await target.objectUrl();
+    signal?.throwIfAborted();
+    return url;
+  } catch (error) {
+    await target.sink.abort();
+    throw error;
   }
 }
 
@@ -70,7 +59,7 @@ export async function createWorkspaceDirectObjectUrlSink(
     getDirectory?: () => Promise<FileSystemDirectoryHandle>;
   };
   const locks = navigator.locks;
-  if (storage.getDirectory === undefined || locks?.request === undefined)
+  if (storage?.getDirectory === undefined || locks?.request === undefined)
     throw new Error('DIRECT_OPFS_UNAVAILABLE');
   const root = await storage.getDirectory();
   const previews = await root.getDirectoryHandle('mar-direct-preview', { create: true });

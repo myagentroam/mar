@@ -17,6 +17,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  openHostedFileStream,
+  openHostedUploadBody,
+  sendHostedUploadBody
+} from '../support/hosted-upload-stream.js';
 import type { HostedConversationRuntime } from '../../src/hosting/hosted-conversation-node-service.js';
 import { HostedConversationNodeService } from '../../src/hosting/hosted-conversation-node-service.js';
 import { HostedConversationStore } from '../../src/hosting/hosted-conversation-store.js';
@@ -174,20 +179,19 @@ describe('Node hosted conversation files', () => {
       __requestUserId: 7
     })) as { upload: { uploadId: string } };
     const input = { conversationId, uploadId: created.upload.uploadId, __requestUserId: 7 };
-    const chunk = Promise.resolve(
-      operations['conversation.hosted.files.upload.chunk']!({
-        ...input,
-        offset: 0,
-        bytes: Buffer.from('abc')
-      })
-    );
+    const upload = await openHostedUploadBody(fixture.service, input);
+    expect((await upload.offsets.next()).value).toBe(0);
     await expect(operations['conversation.hosted.files.upload.cancel']!(input)).rejects.toThrow(
       'HOSTED_CONVERSATION_FILE_CONFLICT'
     );
     await expect(operations['conversation.hosted.files.upload.complete']!(input)).rejects.toThrow(
       'HOSTED_CONVERSATION_FILE_CONFLICT'
     );
-    await chunk;
+    await upload.body.write(Buffer.from('abc'));
+    await upload.body.endWrite();
+    expect((await upload.offsets.next()).value).toBe(3);
+    expect((await upload.offsets.next()).done).toBe(true);
+    await upload.done;
     let finish!: () => void;
     const gate = new Promise<void>((resolve) => {
       finish = resolve;
@@ -246,6 +250,83 @@ describe('Node hosted conversation files', () => {
     await fixture.service.dispose();
   });
 
+  it('stages a streamed upload, releases the writer on disconnect and resumes at the Node offset', async () => {
+    const fixture = await fileFixture();
+    const conversationId = await createConversation(fixture);
+    const operations = fixture.service.operations();
+    const authorized = { conversationId, __requestUserId: 7 };
+    const created = (await operations['conversation.hosted.files.upload.create']!({
+      ...authorized,
+      clientRequestId: 'stream-upload',
+      name: 'stream.bin',
+      size: 7,
+      mimeType: 'application/octet-stream'
+    })) as { upload: { uploadId: string } };
+    const target = { ...authorized, uploadId: created.upload.uploadId };
+
+    const prepare = operations['conversation.hosted.files.upload.stream.prepare']!;
+    await expect(
+      Promise.resolve().then(() => prepare({ ...target, __requestUserId: 8 }))
+    ).rejects.toThrow('HOSTED_CONVERSATION_NOT_AUTHORIZED');
+    await expect(
+      Promise.resolve().then(() => prepare({ ...target, __sourceTemplateId: 'another-template' }))
+    ).rejects.toThrow('HOSTED_CONVERSATION_TEMPLATE_CONFLICT');
+    const { grant: stale } = (await prepare(target)) as { grant: string };
+    expect(fixture.service.consumeFileStream('file-upload', stale)).toBeUndefined();
+    fixture.service.clearFileStreamGrants();
+    expect(fixture.service.consumeFileStream('hosted-file-upload', stale)).toBeUndefined();
+
+    const first = await openHostedUploadBody(fixture.service, target);
+    expect(fixture.service.consumeFileStream('hosted-file-upload', first.grant)).toBeUndefined();
+    expect((await first.offsets.next()).value).toBe(0);
+    await first.body.write(Uint8Array.of(0, 0xff, 10));
+    expect((await first.offsets.next()).value).toBe(3);
+    await expect(operations['conversation.hosted.files.upload.complete']!(target)).rejects.toThrow(
+      'HOSTED_CONVERSATION_FILE_CONFLICT'
+    );
+    first.receiver.disconnect();
+    first.client.disconnect();
+    await first.done;
+    expect(operations['conversation.hosted.files.upload.status']!(target)).toMatchObject({
+      upload: { status: 'UPLOADING', receivedBytes: 3 }
+    });
+    await expect(operations['conversation.hosted.files.upload.complete']!(target)).rejects.toThrow(
+      'HOSTED_CONVERSATION_UPLOAD_INCOMPLETE'
+    );
+    expect(fixture.store.listFiles(7, conversationId)).toEqual([]);
+
+    const retry = await openHostedUploadBody(fixture.service, target);
+    expect((await retry.offsets.next()).value).toBe(3);
+    await retry.body.write(Uint8Array.of(13, 0, 0x80, 42));
+    await retry.body.endWrite();
+    expect((await retry.offsets.next()).value).toBe(7);
+    expect((await retry.offsets.next()).done).toBe(true);
+    expect(await retry.done).toBeUndefined();
+    expect(operations['conversation.hosted.files.upload.status']!(target)).toMatchObject({
+      upload: { status: 'UPLOADING', receivedBytes: 7 }
+    });
+    await operations['conversation.hosted.files.upload.complete']!(target);
+    const [file] = fixture.store.listFiles(7, conversationId);
+    expect(await readFile(fixture.store.filePath(7, file!))).toEqual(
+      Buffer.from([0, 0xff, 10, 13, 0, 0x80, 42])
+    );
+    const another = (await operations['conversation.hosted.files.upload.create']!({
+      ...authorized,
+      clientRequestId: 'stalled-upload',
+      name: 'stalled.bin',
+      size: 7,
+      mimeType: 'application/octet-stream'
+    })) as { upload: { uploadId: string } };
+    const stalled = await openHostedUploadBody(fixture.service, {
+      ...authorized,
+      uploadId: another.upload.uploadId
+    });
+    expect((await stalled.offsets.next()).value).toBe(0);
+    await fixture.service.dispose();
+    await expect(stalled.offsets.next()).rejects.toThrow('CONVERSATION_HOSTING_UNAVAILABLE');
+    await stalled.done;
+  });
+
   it('uploads strict contiguous chunks, projects a stable attachment and reads bounded content', async () => {
     const fixture = await fileFixture();
     const conversationId = await createConversation(fixture);
@@ -269,29 +350,21 @@ describe('Node hosted conversation files', () => {
       __requestUserId: 7
     })) as { upload: { uploadId: string } };
     const uploadId = created.upload.uploadId;
-    await expect(
-      operations['conversation.hosted.files.upload.chunk']!({
-        conversationId,
-        uploadId,
-        offset: 1,
-        bytes: Buffer.from('bad'),
-        __requestUserId: 7
-      })
-    ).rejects.toThrow('HOSTED_CONVERSATION_UPLOAD_OFFSET_INVALID');
-    await operations['conversation.hosted.files.upload.chunk']!({
-      conversationId,
-      uploadId,
-      offset: 0,
-      bytes: Buffer.from('abc'),
-      __requestUserId: 7
-    });
-    await operations['conversation.hosted.files.upload.chunk']!({
-      conversationId,
-      uploadId,
-      offset: 3,
-      bytes: Buffer.from('def'),
-      __requestUserId: 7
-    });
+    const target = { conversationId, uploadId, __requestUserId: 7 };
+    const oversized = await openHostedUploadBody(fixture.service, target);
+    expect((await oversized.offsets.next()).value).toBe(0);
+    await oversized.body.write(Buffer.from('invalid'));
+    await expect(oversized.offsets.next()).rejects.toThrow('DIRECT_INTEGRITY_FAILED');
+    await oversized.done;
+    const stream = await openHostedUploadBody(fixture.service, target);
+    expect((await stream.offsets.next()).value).toBe(0);
+    await stream.body.write(Buffer.from('abc'));
+    expect((await stream.offsets.next()).value).toBe(3);
+    await stream.body.write(Buffer.from('def'));
+    await stream.body.endWrite();
+    expect((await stream.offsets.next()).value).toBe(6);
+    expect((await stream.offsets.next()).done).toBe(true);
+    await stream.done;
     const completed = (await operations['conversation.hosted.files.upload.complete']!({
       conversationId,
       uploadId,
@@ -373,13 +446,11 @@ describe('Node hosted conversation files', () => {
         };
       };
     const complete = async (uploadId: string) => {
-      await operations['conversation.hosted.files.upload.chunk']!({
-        conversationId,
-        uploadId,
-        offset: 0,
-        bytes: Buffer.from('x'),
-        __requestUserId: 7
-      });
+      await sendHostedUploadBody(
+        fixture.service,
+        { conversationId, uploadId, __requestUserId: 7 },
+        Buffer.from('x')
+      );
       return (await operations['conversation.hosted.files.upload.complete']!({
         conversationId,
         uploadId,
@@ -455,6 +526,73 @@ describe('Node hosted conversation files', () => {
         prompt: expect.stringContaining('/workspace/inbox/image (1).png')
       })
     );
+  });
+
+  it('streams the requested range, rejects a short read, and checks the Hosted projection at open', async () => {
+    const fixture = await fileFixture();
+    const conversationId = await createConversation(fixture);
+    const paths = fixture.store.pathsForConversation(7, conversationId);
+    const path = join(paths.outputDirectory, 'download.bin');
+    const bytes = Buffer.alloc(640 * 1024);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
+    await writeFile(path, bytes);
+    const [file] = await fixture.store.reconcileFiles(7, conversationId);
+    const operations = fixture.service.operations();
+    const target = { conversationId, fileId: file!.id, __requestUserId: 7 };
+    const projection = (await operations['conversation.hosted.file.describe']!(target)) as {
+      updatedAt: number;
+      size: number;
+    };
+    const revision = `${projection.updatedAt}-${projection.size}`;
+    const prepare = operations['conversation.hosted.file.stream.prepare']!;
+    const open = async (extra: Record<string, unknown> = {}) => {
+      const { grant } = (await prepare({ ...target, revision, ...extra })) as { grant: string };
+      expect(fixture.service.consumeFileStream('file-download', grant)).toBeUndefined();
+      const stream = await openHostedFileStream(fixture.service, 'hosted-file-download', grant);
+      expect(fixture.service.consumeFileStream('hosted-file-download', grant)).toBeUndefined();
+      return stream;
+    };
+    await expect(
+      Promise.resolve().then(() => prepare({ ...target, revision, __requestUserId: 8 }))
+    ).rejects.toThrow('HOSTED_CONVERSATION_NOT_AUTHORIZED');
+    const bounded = await open({ range: { offset: 15, length: 300_017 } });
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of bounded.body) chunks.push(chunk);
+    await bounded.body.endWrite();
+    await bounded.done;
+    expect(Buffer.concat(chunks)).toEqual(bytes.subarray(15, 300_032));
+
+    const invalid = await open({ range: { offset: bytes.length, length: 1 } });
+    await expect(invalid.body[Symbol.asyncIterator]().next()).rejects.toThrow(
+      'HOSTED_CONVERSATION_FILE_RANGE_INVALID'
+    );
+    await invalid.done;
+
+    const interrupted = await open();
+    const iterator = interrupted.body[Symbol.asyncIterator]();
+    expect((await iterator.next()).done).toBe(false);
+    await truncate(path, 400_000);
+    await expect(
+      (async () => {
+        for (;;) if ((await iterator.next()).done) return;
+      })()
+    ).rejects.toThrow('HOSTED_CONVERSATION_FILE_INVALID');
+    await interrupted.done;
+
+    // A range that fits still transfers; the stream does not use filesystem changes as a revision.
+    const prefix = await open({ range: { offset: 0, length: 1 } });
+    const prefixChunks: Uint8Array[] = [];
+    for await (const chunk of prefix.body) prefixChunks.push(chunk);
+    await prefix.body.endWrite();
+    await prefix.done;
+    expect(Buffer.concat(prefixChunks)).toEqual(bytes.subarray(0, 1));
+
+    await fixture.store.reconcileFiles(7, conversationId);
+    const stale = await open();
+    await expect(stale.body[Symbol.asyncIterator]().next()).rejects.toThrow(
+      'HOSTED_CONVERSATION_FILE_CONFLICT'
+    );
+    await stale.done;
   });
 
   it('reads the current regular file when its size changes after projection', async () => {
@@ -572,13 +710,15 @@ describe('Node hosted conversation files', () => {
       mimeType: 'text/plain',
       __requestUserId: 7
     })) as { upload: { uploadId: string } };
-    await operations['conversation.hosted.files.upload.chunk']!({
-      conversationId,
-      uploadId: created.upload.uploadId,
-      offset: 0,
-      bytes: Buffer.from('upload'),
-      __requestUserId: 7
-    });
+    await sendHostedUploadBody(
+      fixture.service,
+      {
+        conversationId,
+        uploadId: created.upload.uploadId,
+        __requestUserId: 7
+      },
+      Buffer.from('upload')
+    );
     await operations['conversation.hosted.files.upload.complete']!({
       conversationId,
       uploadId: created.upload.uploadId,
@@ -759,13 +899,15 @@ describe('Node hosted conversation files', () => {
       mimeType: 'application/octet-stream',
       __requestUserId: 7
     })) as { upload: { uploadId: string } };
-    await operations['conversation.hosted.files.upload.chunk']!({
-      conversationId,
-      uploadId: created.upload.uploadId,
-      offset: 0,
-      bytes: Buffer.from('1234'),
-      __requestUserId: 7
-    });
+    await sendHostedUploadBody(
+      fixture.service,
+      {
+        conversationId,
+        uploadId: created.upload.uploadId,
+        __requestUserId: 7
+      },
+      Buffer.from('1234')
+    );
     await operations['conversation.hosted.files.upload.complete']!({
       conversationId,
       uploadId: created.upload.uploadId,

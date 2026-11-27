@@ -313,7 +313,7 @@ describe('Server conversation template routes', () => {
       headers
     });
     expect(removed.statusCode).toBe(204);
-    expect(fixture.nodeControl.revalidateTerminalAuthorizations).not.toHaveBeenCalled();
+    expect(fixture.nodeControl.revalidateDataAuthorizations).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -407,10 +407,10 @@ function routeFixture() {
             checkedAt: 2_000
           }
     ),
-    revalidateTerminalAuthorizations: vi.fn(async () => undefined)
+    revalidateDataAuthorizations: vi.fn(async () => undefined)
   } as unknown as NodeControl & {
     requestNode: ReturnType<typeof vi.fn>;
-    revalidateTerminalAuthorizations: ReturnType<typeof vi.fn>;
+    revalidateDataAuthorizations: ReturnType<typeof vi.fn>;
   };
   const templates = {
     listForUser: vi.fn(async () => []),

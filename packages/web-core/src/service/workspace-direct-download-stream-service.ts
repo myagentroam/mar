@@ -1,36 +1,46 @@
 import { createUuid } from '../util/uuid.js';
-import type { DirectTransferResource } from '@myagentroam/protocol';
-import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
-import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
+import type { WorkspaceDownloadSink } from './workspace-download-stream.js';
+import {
+  createWorkspaceDirectObjectUrlSink,
+  revokeWorkspaceDirectObjectUrl,
+  triggerBrowserFileDownload
+} from './workspace-direct-object-url-service.js';
 
-export type WorkspaceDirectDownloadResult = 'COMPLETED' | 'UNAVAILABLE' | 'CANCELLED' | 'FAILED';
+/** Chooses a browser sink before opening the stream; a failed transfer is never replayed. */
+export async function downloadWorkspaceFileToBrowser(input: {
+  readonly fileName: string;
+  readonly size: number;
+  readonly activeWorker?: () => Promise<ServiceWorker | undefined>;
+  readonly download: (sink: WorkspaceDownloadSink, signal?: AbortSignal) => Promise<void>;
+}): Promise<'COMPLETED' | 'CANCELLED'> {
+  const worker = await input.activeWorker?.();
+  if (worker !== undefined) {
+    const target = await createWorkspaceDirectDownloadStream(
+      input.fileName,
+      input.size,
+      async () => worker
+    );
+    try {
+      await input.download(target.sink, target.signal);
+      return 'COMPLETED';
+    } catch (error) {
+      await target.sink.abort().catch(() => undefined);
+      if (target.cancelled()) return 'CANCELLED';
+      throw error;
+    }
+  }
 
-export async function downloadWorkspaceDirectFile(input: {
-  readonly direct: Pick<ReturnType<typeof createWorkspaceDirectTransferService>, 'download'>;
-  readonly nodeId: string;
-  readonly nodeGeneration: string;
-  readonly resource: DirectTransferResource;
-  readonly metadata: () => Promise<WorkspaceDirectFileIdentity | undefined>;
-  readonly activeWorker: () => Promise<ServiceWorker | undefined>;
-}): Promise<WorkspaceDirectDownloadResult> {
-  let target: WorkspaceDirectDownloadStream | undefined;
+  const target = await createWorkspaceDirectObjectUrlSink(input.fileName);
   try {
-    const identity = await input.metadata();
-    if (identity === undefined) return 'UNAVAILABLE';
-    const fileName = input.resource.path.split('/').at(-1) ?? 'download';
-    target = await createWorkspaceDirectDownloadStream(fileName, identity.size, input.activeWorker);
-    await input.direct.download({
-      nodeId: input.nodeId,
-      nodeGeneration: input.nodeGeneration,
-      descriptor: { direction: 'DOWNLOAD', resource: input.resource, fileName, ...identity },
-      sink: target.sink,
-      signal: target.signal
-    });
+    await input.download(target.sink);
+    const url = await target.objectUrl();
+    triggerBrowserFileDownload(url, input.fileName);
+    // The browser may resolve the object URL after the anchor's click task.
+    setTimeout(() => revokeWorkspaceDirectObjectUrl(url), 60_000);
     return 'COMPLETED';
-  } catch {
-    await target?.sink.abort().catch(() => undefined);
-    if (target?.cancelled() === true) return 'CANCELLED';
-    return target?.started() === true ? 'FAILED' : 'UNAVAILABLE';
+  } catch (error) {
+    await target.sink.abort().catch(() => undefined);
+    throw error;
   }
 }
 
@@ -41,7 +51,6 @@ export interface WorkspaceDirectDownloadStream {
     abort(): Promise<void>;
   };
   readonly signal: AbortSignal;
-  started(): boolean;
   cancelled(): boolean;
 }
 
@@ -168,7 +177,6 @@ export async function createWorkspaceDirectDownloadStream(
 
   return {
     signal: abortController.signal,
-    started: () => downloadStarted,
     cancelled: () => wasCancelled,
     sink: {
       async write(bytes) {

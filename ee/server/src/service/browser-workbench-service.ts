@@ -1,13 +1,11 @@
-import type { IncomingHttpHeaders } from 'node:http';
-import type { WebSocket } from 'ws';
+import { parseBrowserStreamGrant } from '@myagentroam/protocol/browser-stream';
 import {
-  BROWSER_RELAY_READY,
   type BrowserControlRequest,
   type BrowserCapability,
   type BrowserSettingsSnapshot,
   type BrowserUpload,
+  type BrowserUploadStream,
   browserDownloadInfoSchema,
-  browserDownloadChunkSchema,
   type BrowserDownloadRequest,
   type BrowserNodeAttachmentCommand
 } from '@myagentroam/protocol';
@@ -16,7 +14,6 @@ import {
   BrowserScopeRevoked,
   type BrowserAttachmentIdentity
 } from '@myagentroam/server-core/browser-attachment-coordinator';
-import { BrowserRelayService } from '@myagentroam/server-core/browser-relay-service';
 import type { DirectTransferCoordinator } from '@myagentroam/server-core/direct-transfer-coordinator';
 import type {
   NodeRequestAuthorization,
@@ -27,18 +24,84 @@ import type {
   WorkbenchRelayService
 } from '@myagentroam/server-core/workbench-relay-service';
 import type { NodeRequestBroker } from './node-request-broker.js';
+import { FileStreamTickets } from './file-stream-tickets.js';
 
 type Scope = { nodeId: string; workspaceId: string };
+type FileTicket = Scope & {
+  user: UserNodeAuthorization;
+  connectionId: string;
+  generation: string;
+  browserId: string;
+} & (
+    | { kind: 'browser-file-download'; id: string; size: number }
+    | { kind: 'browser-file-upload'; upload: BrowserUploadStream }
+  );
 const browserUser = (identity: BrowserAttachmentIdentity): UserNodeAuthorization => ({
   userId: identity.userId,
   sessionHash: identity.sessionFingerprint
 });
 
 /** Composes Browser authorization and transport adapters with the shared Node
- * request channel. The coordinator owns grants and the relay owns socket pairing. */
+ * request channel. The coordinator owns grants and stream admissions. */
 export class BrowserWorkbenchService {
   private readonly attachments: BrowserAttachmentCoordinator;
-  private readonly relay: BrowserRelayService;
+  private readonly fileTickets = new FileStreamTickets<FileTicket>({
+    kind: (ticket) => ticket.kind,
+    allowed: (ticket) => this.canTransfer(ticket),
+    prepare: (ticket, signal) => this.prepareFileStream(ticket, signal)
+  });
+  private readonly directFiles = new Map<
+    string,
+    { user: UserNodeAuthorization; scope: AbortController }
+  >();
+
+  private async prepareFileStream(ticket: FileTicket, signal: AbortSignal, transportId?: string) {
+    if (!(await this.canTransfer(ticket))) throw new Error('BROWSER_LEASE_ENDED');
+    signal.throwIfAborted();
+    const { nodeId, workspaceId, browserId, generation, user, connectionId } = ticket;
+    if (
+      transportId !== undefined &&
+      !this.options.direct.authorizedTransport(
+        { ...user, workbenchConnectionId: connectionId },
+        transportId,
+        nodeId,
+        generation
+      )
+    )
+      throw new Error('BROWSER_ICE_UNAVAILABLE');
+    const payload =
+      ticket.kind === 'browser-file-upload'
+        ? ticket.upload
+        : {
+            workspaceId,
+            browserId,
+            command: { action: 'stream', id: ticket.id, size: ticket.size }
+          };
+    const result = await this.options.request(
+      nodeId,
+      ticket.kind === 'browser-file-upload' ? 'upload' : 'download',
+      generation,
+      { ...payload, ...(transportId !== undefined && { transportId }) },
+      user
+    );
+    if (
+      transportId !== undefined &&
+      result &&
+      typeof result === 'object' &&
+      'grant' in result &&
+      typeof result.grant === 'string'
+    ) {
+      const grant = result.grant;
+      const revoke = () => {
+        void this.options
+          .request(nodeId, 'attachment', generation, { action: 'revoke-file-stream', grant }, user)
+          .catch(this.options.failed);
+      };
+      if (signal.aborted) revoke();
+      else signal.addEventListener('abort', revoke, { once: true });
+    }
+    return result;
+  }
 
   constructor(
     private readonly options: {
@@ -52,7 +115,6 @@ export class BrowserWorkbenchService {
         generation: string,
         userId: number
       ) => Promise<BrowserSettingsSnapshot> | undefined;
-      authenticateNode: (nodeId: string, credential: string) => Promise<boolean>;
       failed: (error: unknown) => void;
     }
   ) {
@@ -105,7 +167,6 @@ export class BrowserWorkbenchService {
           );
         }
       },
-      closeRelay: (id) => this.relay.close(id),
       resource: async (nodeId, generation, { workspaceId, command }, identity) => {
         const settings =
           command.action === 'open'
@@ -121,7 +182,6 @@ export class BrowserWorkbenchService {
       },
       failed: options.failed
     });
-    this.relay = new BrowserRelayService(this.attachments, options.failed);
   }
 
   async message(
@@ -158,6 +218,23 @@ export class BrowserWorkbenchService {
     await this.options.request(nodeId, 'upload', generation, upload, user);
   }
 
+  async createUploadTicket(
+    user: UserNodeAuthorization,
+    connectionId: string,
+    upload: BrowserUploadStream
+  ) {
+    const identity = { userId: user.userId, sessionFingerprint: user.sessionHash, connectionId };
+    const target = await this.attachments.fileTarget(identity, upload.attachmentId);
+    const ticket = await this.fileTickets.issue({
+      ...target,
+      kind: 'browser-file-upload',
+      user,
+      connectionId,
+      upload
+    });
+    return { ticket };
+  }
+
   async download(
     user: UserNodeAuthorization,
     connectionId: string,
@@ -173,9 +250,8 @@ export class BrowserWorkbenchService {
     return this.options.request(nodeId, 'download', generation, download, user);
   }
 
-  /** Admission binds one HTTP response to the exact live browser and file, not
-   * to the disposable ICE/relay writer. Every pull still reauthorizes scope. */
-  async openDownload(
+  /** Admit the exact Browser attachment, then bind the save to the live Browser instance. */
+  async createDownloadTicket(
     user: UserNodeAuthorization,
     connectionId: string,
     attachmentId: string,
@@ -183,93 +259,116 @@ export class BrowserWorkbenchService {
   ) {
     const identity = { userId: user.userId, sessionFingerprint: user.sessionHash, connectionId };
     const target = await this.attachments.fileTarget(identity, attachmentId);
-    const { nodeId, workspaceId, browserId, generation } = target;
     const info = browserDownloadInfoSchema.safeParse(
       await this.options.request(
-        nodeId,
+        target.nodeId,
         'download',
-        generation,
+        target.generation,
         { attachmentId, command: { action: 'info', id } },
         user
       )
     );
     if (!info.success || info.data.id !== id) throw new Error('NODE_RESPONSE_INVALID');
-    const { size, name, state } = info.data;
-    if (state !== 'ready' || size === undefined) throw new Error('BROWSER_DOWNLOAD_NOT_READY');
-    const read = async (offset: number, limit: number) => {
-      if ((await this.authorize(identity, target))?.generation !== generation)
-        throw new Error('BROWSER_LEASE_ENDED');
-      const chunk = browserDownloadChunkSchema.safeParse(
-        await this.options.request(
-          nodeId,
-          'download',
-          generation,
-          { workspaceId, browserId, command: { action: 'read', id, offset, limit } },
-          user
-        )
-      );
-      if (!chunk.success) throw new Error('NODE_RESPONSE_INVALID');
-      return { size, ...chunk.data };
-    };
-    return { name, size, read };
-  }
-
-  attachNode(socket: WebSocket, headers: IncomingHttpHeaders): void {
-    const nodeId = headers['x-mar-node'];
-    const generation = headers['x-mar-node-generation'];
-    const id = headers['x-mar-browser-attachment'];
-    const credential = headers.authorization?.startsWith('Bearer ')
-      ? headers.authorization.slice(7)
-      : undefined;
-    socket.on('error', () => socket.terminate());
-    if (
-      typeof nodeId !== 'string' ||
-      typeof generation !== 'string' ||
-      typeof id !== 'string' ||
-      !credential
-    ) {
-      socket.terminate();
-      return;
-    }
-    void (async () => {
-      if (
-        this.options.capability(nodeId)?.nodeGeneration !== generation ||
-        !(await this.options.authenticateNode(nodeId, credential)) ||
-        this.options.capability(nodeId)?.nodeGeneration !== generation ||
-        !this.relay.node(id, nodeId, generation, socket)
-      ) {
-        socket.terminate();
-        return;
-      }
-      socket.send(BROWSER_RELAY_READY);
-    })().catch(() => socket.terminate());
-  }
-
-  attachBrowser(socket: WebSocket, user: UserNodeAuthorization, connectionId: string): void {
-    socket.on('error', () => socket.terminate());
-    if (!this.options.workbench.ownsActiveConnection(user, connectionId)) {
-      socket.terminate();
-      return;
-    }
-    const deadline = setTimeout(() => socket.terminate(), 15_000);
-    socket.once('close', () => clearTimeout(deadline));
-    socket.once('message', (data, binary) => {
-      if (binary) return socket.terminate();
-      void this.relay
-        .browser(
-          { userId: user.userId, sessionFingerprint: user.sessionHash, connectionId },
-          socket,
-          data.toString()
-        )
-        .then((paired) => {
-          clearTimeout(deadline);
-          if (!paired) socket.terminate();
-        })
-        .catch(() => socket.terminate());
+    if (info.data.state !== 'ready' || info.data.size === undefined)
+      throw new Error('BROWSER_DOWNLOAD_NOT_READY');
+    const { name, size } = info.data;
+    const ticket = await this.fileTickets.issue({
+      ...target,
+      kind: 'browser-file-download',
+      user,
+      connectionId,
+      id,
+      size
     });
+    return { nodeId: target.nodeId, name, size, ticket };
+  }
+
+  authorizeFileStream(
+    kind: string,
+    grant: string,
+    nodeId: string,
+    user: UserNodeAuthorization,
+    signal: AbortSignal
+  ) {
+    return this.fileTickets.authorize(kind, grant, nodeId, user, signal);
+  }
+
+  async openDirectFile(
+    kind: FileTicket['kind'],
+    ticket: string,
+    nodeId: string,
+    transportId: string,
+    user: UserNodeAuthorization
+  ) {
+    if (this.directFiles.size >= 1024 || this.directFiles.has(ticket))
+      throw new Error('NODE_STREAM_LIMIT');
+    const scope = new AbortController();
+    this.directFiles.set(ticket, { user, scope });
+    scope.signal.addEventListener('abort', () => this.directFiles.delete(ticket), { once: true });
+    try {
+      const admission = await this.fileTickets.authorize(
+        kind,
+        ticket,
+        nodeId,
+        user,
+        scope.signal,
+        (target, signal) => this.prepareFileStream(target, signal, transportId)
+      );
+      if (admission === undefined) throw new Error('BROWSER_NOT_AUTHORIZED');
+      if ('code' in admission) throw new Error(admission.code);
+      if (admission.revoked.aborted) throw new Error('BROWSER_LEASE_ENDED');
+      admission.revoked.addEventListener('abort', () => scope.abort(), { once: true });
+      return { grant: admission.grant };
+    } catch (error) {
+      scope.abort();
+      throw error;
+    }
+  }
+
+  closeDirectFile(ticket: string, user: UserNodeAuthorization): void {
+    const current = this.directFiles.get(ticket);
+    if (current?.user.userId === user.userId && current.user.sessionHash === user.sessionHash)
+      current.scope.abort();
+  }
+
+  revalidateFileAuthorizations(): Promise<void> {
+    return this.fileTickets.revalidate();
+  }
+
+  private async canTransfer(ticket: FileTicket): Promise<boolean> {
+    const { user, connectionId } = ticket;
+    const identity = { userId: user.userId, sessionFingerprint: user.sessionHash, connectionId };
+    if (ticket.kind === 'browser-file-upload') {
+      const target = await this.attachments
+        .fileTarget(identity, ticket.upload.attachmentId)
+        .catch(() => undefined);
+      return target?.generation === ticket.generation;
+    }
+    return (
+      (await this.authorize(identity, ticket).catch(() => undefined))?.generation ===
+      ticket.generation
+    );
+  }
+
+  async authorizePictureStream(
+    grant: string,
+    nodeId: string,
+    user: UserNodeAuthorization,
+    signal: AbortSignal
+  ) {
+    const open = parseBrowserStreamGrant(grant);
+    if (!open) return undefined;
+    const admission = await this.attachments.authorizeRelayStream(
+      { userId: user.userId, sessionFingerprint: user.sessionHash },
+      nodeId,
+      open,
+      signal
+    );
+    if (admission) return { grant, ...admission };
   }
 
   revokeConnection(id: string): void {
+    void this.fileTickets.revalidate();
     void this.attachments.revokeWhere(
       (identity) => identity.connectionId === id,
       'BROWSER_CONTROL_DISCONNECTED'
@@ -277,6 +376,7 @@ export class BrowserWorkbenchService {
   }
 
   revokeNode(id: string): void {
+    void this.fileTickets.revalidate();
     void this.attachments.revokeWhere(
       (_identity, target) => target.nodeId === id,
       'BROWSER_NODE_CHANGED'
@@ -284,6 +384,8 @@ export class BrowserWorkbenchService {
   }
 
   close(): void {
+    this.fileTickets.close();
+    for (const { scope } of this.directFiles.values()) scope.abort();
     void this.attachments.shutdown().catch(this.options.failed);
   }
 

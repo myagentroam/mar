@@ -1,11 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
-  BROWSER_DOWNLOAD_CHUNK_BYTES,
-  BROWSER_UPLOAD_REQUEST_BYTES,
   browserDownloadPageSchema,
   browserDownloadRequestSchema,
-  browserUploadSchema
+  browserUploadSchema,
+  browserUploadStreamSchema
 } from '@myagentroam/protocol';
 import { protectedAdmin, validCsrf, type SessionLookup } from '@myagentroam/server-core/session';
 import { isAllowedOrigin } from '@myagentroam/server-core/auth';
@@ -15,44 +14,38 @@ import {
   sendError
 } from '@myagentroam/server-core/http-errors';
 import { domainErrorStatus } from '@myagentroam/server-core/domain-errors';
-import {
-  openFileContentStream,
-  registerFileChunkParser,
-  sendFileContentHead
-} from '@myagentroam/server-core/file-content-stream';
 import type { NodeControl } from '../node-control.js';
 
 const target = z.object({ connectionId: z.string().min(1).max(512) });
-const chunkNumber = z
-  .string()
-  .regex(/^\d{1,16}$/u)
-  .transform(Number)
-  .pipe(z.number().int().nonnegative().safe());
-const uploadChunk = target
-  .extend({
-    attachmentId: z.string().uuid(),
-    chooserId: z.string().uuid(),
-    transferId: z.string().uuid(),
-    index: chunkNumber,
-    offset: chunkNumber
-  })
-  .strict();
 const downloadTarget = target.extend({ attachmentId: z.string().uuid() });
 const listTarget = downloadTarget.extend({
   offset: z.coerce.number().int().nonnegative().safe(),
   progress: z.literal('1').optional()
 });
-const fileTarget = downloadTarget.extend({ id: z.string().uuid() });
+const fileTarget = z.strictObject({ attachmentId: z.string().uuid(), id: z.string().uuid() });
+const directTarget = z.strictObject({
+  ticket: z.string().uuid(),
+  kind: z.enum(['browser-file-upload', 'browser-file-download']),
+  nodeId: z.string().min(1).max(512),
+  transportId: z.string().min(1).max(512)
+});
+const streamTicket = z.strictObject({ ticket: z.string().uuid() });
 
-/** File HTTP adapter. The Browser coordinator authorizes every RPC, including
- * each pull from a device download stream. HTTP owns device delivery only. */
+/** Browser file controls and admission; device saves carry their bytes on NodeConnection. */
 export function registerBrowserFileRoutes(
   routes: FastifyInstance,
   database: SessionLookup,
   origin: string | undefined,
-  node: Pick<NodeControl, 'uploadBrowserFile' | 'downloadBrowserFile' | 'openBrowserDownload'>
+  node: Pick<
+    NodeControl,
+    | 'uploadBrowserFile'
+    | 'downloadBrowserFile'
+    | 'createBrowserDownloadTicket'
+    | 'createBrowserUploadTicket'
+    | 'openBrowserDirectFile'
+    | 'closeBrowserDirectFile'
+  >
 ): void {
-  registerFileChunkParser(routes);
   function session(request: FastifyRequest, reply: FastifyReply, write: boolean) {
     if (write && !isAllowedOrigin(request, origin)) {
       void sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
@@ -67,38 +60,34 @@ export function registerBrowserFileRoutes(
     return { userId: user.userId, sessionHash: user.sessionHash };
   }
 
-  routes.post(
-    '/api/browser/uploads',
-    { bodyLimit: BROWSER_UPLOAD_REQUEST_BYTES },
-    async (request, reply) => {
-      const user = session(request, reply, true);
-      if (!user) return;
-      const query = target.safeParse(request.query);
-      const chunk = Buffer.isBuffer(request.body)
-        ? uploadChunk.safeParse(request.query)
-        : undefined;
-      const parsed = chunk?.success
-        ? browserUploadSchema.safeParse({
-            attachmentId: chunk.data.attachmentId,
-            chooserId: chunk.data.chooserId,
-            command: {
-              action: 'chunk',
-              transferId: chunk.data.transferId,
-              index: chunk.data.index,
-              offset: chunk.data.offset,
-              bytes: request.body
-            }
-          })
-        : browserUploadSchema.safeParse(request.body);
-      if (!query.success || !parsed.success) return sendError(reply, 400, 'BROWSER_UPLOAD_INVALID');
-      try {
-        await node.uploadBrowserFile(user, query.data.connectionId, parsed.data);
-        return reply.send({});
-      } catch (error) {
-        return fileError(reply, error, 'BROWSER_UPLOAD_FAILED');
-      }
+  routes.post('/api/browser/uploads', async (request, reply) => {
+    const user = session(request, reply, true);
+    if (!user) return;
+    const query = target.safeParse(request.query);
+    const parsed = browserUploadSchema.safeParse(request.body);
+    if (!query.success || !parsed.success) return sendError(reply, 400, 'BROWSER_UPLOAD_INVALID');
+    try {
+      await node.uploadBrowserFile(user, query.data.connectionId, parsed.data);
+      return reply.send({});
+    } catch (error) {
+      return fileError(reply, error, 'BROWSER_UPLOAD_FAILED');
     }
-  );
+  });
+
+  routes.post('/api/browser/uploads/stream-ticket', async (request, reply) => {
+    const user = session(request, reply, true);
+    if (!user) return;
+    const query = target.safeParse(request.query);
+    const upload = browserUploadStreamSchema.safeParse(request.body);
+    if (!query.success || !upload.success) return sendError(reply, 400, 'BROWSER_UPLOAD_INVALID');
+    try {
+      return reply
+        .header('cache-control', 'private, no-store')
+        .send(await node.createBrowserUploadTicket(user, query.data.connectionId, upload.data));
+    } catch (error) {
+      return fileError(reply, error, 'BROWSER_UPLOAD_FAILED');
+    }
+  });
 
   routes.get('/api/browser/downloads', async (request, reply) => {
     const user = session(request, reply, false);
@@ -143,36 +132,45 @@ export function registerBrowserFileRoutes(
     }
   );
 
-  routes.get('/api/browser/downloads/file', async (request, reply) => {
-    const user = session(request, reply, false);
+  routes.post('/api/browser/downloads/stream-ticket', async (request, reply) => {
+    const user = session(request, reply, true);
     if (!user) return;
-    const query = fileTarget.safeParse(request.query);
-    if (!query.success) return sendError(reply, 400, 'BROWSER_DOWNLOAD_INVALID');
-    const { connectionId, attachmentId, id } = query.data;
+    const query = target.safeParse(request.query);
+    const body = fileTarget.safeParse(request.body);
+    if (!query.success || !body.success) return sendError(reply, 400, 'BROWSER_DOWNLOAD_INVALID');
+    const { connectionId } = query.data;
+    const { attachmentId, id } = body.data;
     try {
-      const { name, size, read } = await node.openBrowserDownload(
-        user,
-        connectionId,
-        attachmentId,
-        id
+      reply.header('cache-control', 'private, no-store');
+      return reply.send(
+        await node.createBrowserDownloadTicket(user, connectionId, attachmentId, id)
       );
-      const stream =
-        request.method === 'HEAD'
-          ? undefined
-          : await openFileContentStream(read, 0, size - 1, BROWSER_DOWNLOAD_CHUNK_BYTES);
-      reply
-        .header('cache-control', 'private, no-store')
-        .header('content-type', 'application/octet-stream')
-        .header('x-content-type-options', 'nosniff')
-        .header(
-          'content-disposition',
-          `attachment; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/gu, (char) => `%${char.charCodeAt(0).toString(16)}`)}`
-        );
-      if (stream === undefined) return sendFileContentHead(reply, size);
-      return reply.header('content-length', size).send(stream);
     } catch (error) {
       return fileError(reply, error, 'BROWSER_DOWNLOAD_FAILED');
     }
+  });
+
+  routes.post('/api/browser/direct-file-streams', async (request, reply) => {
+    const user = session(request, reply, true);
+    if (!user) return;
+    const body = directTarget.safeParse(request.body);
+    if (!body.success) return sendError(reply, 400, 'BROWSER_RESOURCE_INVALID');
+    const { kind, ticket, nodeId, transportId } = body.data;
+    try {
+      const result = await node.openBrowserDirectFile(kind, ticket, nodeId, transportId, user);
+      return reply.header('cache-control', 'private, no-store').send(result);
+    } catch (error) {
+      return fileError(reply, error, 'BROWSER_FAILED');
+    }
+  });
+
+  routes.delete('/api/browser/direct-file-streams', async (request, reply) => {
+    const user = session(request, reply, true);
+    if (!user) return;
+    const params = streamTicket.safeParse(request.body);
+    if (!params.success) return sendError(reply, 400, 'BROWSER_RESOURCE_INVALID');
+    node.closeBrowserDirectFile(params.data.ticket, user);
+    return reply.code(204).send();
   });
 }
 

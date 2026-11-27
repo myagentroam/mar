@@ -41,10 +41,8 @@ describe('Workspace Pane composer drafts', () => {
         context: () => target.value,
         notice: vi.fn(),
         request: vi.fn().mockResolvedValue(undefined),
-        csrfToken: ref('csrf'),
-        renewCsrfToken: vi.fn(),
-        onUnauthenticated: vi.fn(),
-        direct: { generation: () => 'generation', upload }
+
+        sendBody: upload
       });
       const submissions = createWorkbenchSubmissionOwner();
       const createPane = (pane: 'main' | 'aside') =>
@@ -137,10 +135,8 @@ describe('Workspace Pane composer drafts', () => {
           attachments: createComposerAttachmentService({
             context: () => target.value,
             request: vi.fn() as never,
-            renewCsrfToken: vi.fn(),
-            csrfToken: ref('csrf'),
-            onUnauthenticated: vi.fn(),
-            notice: vi.fn()
+            notice: vi.fn(),
+            sendBody: vi.fn(async () => undefined)
           }),
           onConversationOverflow: vi.fn()
         })

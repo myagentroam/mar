@@ -39,16 +39,11 @@ async function withLocalWorker(copy, use, controller) {
   }
 }
 
-async function withRemoteWorker(
-  { client, WebSocketClass, nodeId, copy, translate, controller },
-  use
-) {
+async function withRemoteWorker({ client, nodeId, copy, translate, controller }, use) {
   return runTerminalSession({
     client,
-    WebSocketClass,
     nodeId,
     copy,
-    raceConnections: true,
     signal: controller.signal,
     translate,
     attached: async ({ transport, terminalId }) => {

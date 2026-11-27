@@ -8,7 +8,7 @@ import {
   type ImageResourceResponse
 } from './image-resource-response.js';
 import {
-  encodeFileRelayFrame,
+  conversationFileProjectionSchema,
   toolResultResourceInputSchema,
   toolResultResourcePageSchema,
   hostedConversationConfigUpdateInputSchema,
@@ -21,6 +21,8 @@ import {
   hostedConversationFileDeleteResultSchema,
   hostedConversationFileReadInputSchema,
   hostedConversationFileReadResultSchema,
+  hostedConversationFileStreamInputSchema,
+  hostedConversationFileTargetInputSchema,
   hostedConversationHistoryInputSchema,
   hostedConversationHistoryPageSchema,
   hostedConversationIdInputSchema,
@@ -33,12 +35,12 @@ import {
   hostedConversationRollbackInputSchema,
   hostedConversationSnapshotSchema,
   hostedConversationUnwatchInputSchema,
-  hostedConversationUploadChunkInputSchema,
   hostedConversationUploadControlInputSchema,
   hostedConversationUploadCreateInputSchema,
   hostedConversationUploadPreflightInputSchema,
   hostedConversationWatchInputSchema,
   type ConversationFileProjection,
+  type HostedConversationFileStreamInput,
   type HostedConversationFileReadResult,
   type HostedConversationListInput
 } from '@myagentroam/protocol';
@@ -54,7 +56,6 @@ import {
   fileContentChunks,
   fileContentType,
   parseHttpByteRange,
-  registerFileChunkParser,
   sendFileContentHead,
   type FileContentChunk
 } from './file-content-stream.js';
@@ -66,21 +67,30 @@ import { requestHostedConversationNode } from './hosted-http-support.js';
 import {
   authorizeExistingConversation,
   assertHostedSnapshotIdentity,
+  hostedConversationOwnerSnapshot,
   hostedRuntimeModels,
   hostedRuntimePayload
 } from './hosted-conversation-context.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
+
+/** Checks the Hosted resource that permits a template-only browser to establish a carrier. */
+export async function authorizeHostedRelayTarget(
+  input: Pick<HostedRouteDependencies, 'templates' | 'nodeControl'>,
+  actor: UserNodeAuthorization,
+  target: { readonly nodeId: string; readonly conversationId: string }
+): Promise<string> {
+  const { conversation } = await hostedConversationOwnerSnapshot(input.nodeControl, actor, target);
+  const template = await input.templates.assertCanUse(actor.userId, conversation.templateId);
+  if (template.id !== conversation.templateId || template.nodeId !== target.nodeId)
+    throw new Error('CONVERSATION_TEMPLATE_NOT_AUTHORIZED');
+  return template.id;
+}
 
 const EMPTY_BODY_SCHEMA = z.object({}).strict();
 const LIST_QUERY_SCHEMA = z
   .object({
     limit: z.string().optional(),
     cursor: z.string().optional()
-  })
-  .strict();
-const FILE_QUERY_SCHEMA = z
-  .object({
-    offset: z.string().optional(),
-    limit: z.string().optional()
   })
   .strict();
 const HISTORY_QUERY_SCHEMA = z
@@ -91,7 +101,6 @@ const HISTORY_QUERY_SCHEMA = z
   .strict();
 const FILE_CONTENT_QUERY_SCHEMA = z
   .object({
-    download: z.literal('1').optional(),
     maxWidth: z.string().optional(),
     maxHeight: z.string().optional(),
     originalGif: z.literal('1').optional(),
@@ -102,6 +111,22 @@ const FILE_CONTENT_QUERY_SCHEMA = z
   })
   .strict();
 const FILE_CONTENT_CHUNK_BYTES = 512 * 1024;
+export type HostedFileStreamTicket = {
+  readonly nodeId: string;
+  readonly user: UserNodeAuthorization;
+  readonly templateId: string;
+  readonly allowed: () => Promise<boolean>;
+} & (
+  | {
+      readonly kind: 'hosted-file-upload';
+      readonly conversationId: string;
+      readonly uploadId: string;
+    }
+  | {
+      readonly kind: 'hosted-file-download';
+      readonly descriptor: HostedConversationFileStreamInput;
+    }
+);
 interface HostedRouteDependencies {
   readonly searchBackendAvailable?: () => boolean;
   readonly app: FastifyInstance;
@@ -110,6 +135,7 @@ interface HostedRouteDependencies {
   readonly models: MarAgentModelService;
   readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;
   readonly nodeControl: HostedNodeControl;
+  readonly issueFileStreamTicket?: (input: HostedFileStreamTicket) => Promise<string>;
   readonly publicOrigin: string | undefined;
 }
 
@@ -118,7 +144,6 @@ type HostedFileContentChunk = FileContentChunk & HostedConversationFileReadResul
 export function registerHostedConversationRoutes(input: HostedRouteDependencies): void {
   const { app, database, templates, models, marAgentRuntimeModels, nodeControl, publicOrigin } =
     input;
-  registerFileChunkParser(app);
   app.get<{
     Params: { nodeId: string; conversationId: string; resourceRef: string };
     Querystring: { cursor?: string; maxBytes?: string };
@@ -679,9 +704,8 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
       if (actor === undefined) return;
       try {
         const preview = parseImagePreviewQuery(request.query);
-        if (!preview.success || (preview.data !== undefined && request.query.download === '1'))
-          return sendError(reply, 400, 'RUN_IMAGE_INVALID');
-        const query = parsePublic(FILE_CONTENT_QUERY_SCHEMA, request.query);
+        if (!preview.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
+        parsePublic(FILE_CONTENT_QUERY_SCHEMA, request.query);
         await authorizeExistingConversation(input, actor, request.params);
         if (preview.data !== undefined) {
           const result = (await requestHostedConversationNode(
@@ -707,6 +731,10 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
           offset: 0,
           limit: 1
         });
+        const contentType = fileContentType(first.file.relativePath);
+        // Only native image and player previews use HTTP bodies; original-file transfers use NodeConnection.
+        if (!/^(image|audio|video)\//u.test(contentType))
+          return sendError(reply, 415, 'FILE_PREVIEW_UNSUPPORTED');
         const range = parseHttpByteRange(request.headers.range, first.size);
         if (range === null) return sendError(reply, 416, 'FILE_RANGE_INVALID');
         const start = range?.start ?? 0;
@@ -726,15 +754,13 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
           if (!sameHostedFileProjection(first.file, firstContent.file))
             throw new Error('NODE_RESPONSE_INVALID');
         }
-        const contentType = fileContentType(first.file.relativePath);
-        const disposition = query.download === '1' ? 'attachment' : 'inline';
         reply
           .header('accept-ranges', 'bytes')
           .header('cache-control', 'private, no-store')
           .header('content-type', contentType)
           .header(
             'content-disposition',
-            `${disposition}; filename*=UTF-8''${encodeURIComponent(first.file.displayName)}`
+            `inline; filename*=UTF-8''${encodeURIComponent(first.file.displayName)}`
           )
           .header('x-content-type-options', 'nosniff');
         if (contentType === 'image/svg+xml') reply.header('content-security-policy', 'sandbox');
@@ -777,43 +803,30 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
 
   app.get<{
     Params: { nodeId: string; conversationId: string; fileId: string };
-    Querystring: { offset?: string; limit?: string };
   }>(
-    '/api/nodes/:nodeId/hosted-conversations/:conversationId/files/:fileId',
+    '/api/nodes/:nodeId/hosted-conversations/:conversationId/files/:fileId/metadata',
     async (request, reply) => {
       const actor = protectedAdmin(database, request, reply);
       if (actor === undefined) return;
       try {
-        const query = parsePublic(FILE_QUERY_SCHEMA, request.query);
-        const offset =
-          query.offset === undefined
-            ? undefined
-            : parseBoundedInteger(query.offset, 0, Number.MAX_SAFE_INTEGER);
-        const limit =
-          query.limit === undefined ? undefined : parseBoundedInteger(query.limit, 1, 512 * 1024);
-        if (
-          (query.offset !== undefined && offset === undefined) ||
-          (query.limit !== undefined && limit === undefined)
-        )
-          throw new Error('HOSTED_CONVERSATION_INPUT_INVALID');
-        await authorizeExistingConversation(input, actor, request.params);
-        const {
-          bytes,
-          size: _size,
-          ...metadata
-        } = await readHostedFileContentChunk({
-          nodeControl,
-          actor,
-          nodeId: request.params.nodeId,
-          conversationId: request.params.conversationId,
-          fileId: request.params.fileId,
-          ...(offset === undefined ? {} : { offset }),
-          ...(limit === undefined ? {} : { limit })
+        const { nodeId, conversationId, fileId } = request.params;
+        const target = hostedConversationFileTargetInputSchema.parse({ conversationId, fileId });
+        const templateId = await authorizeHostedRelayTarget(input, actor, {
+          nodeId,
+          conversationId
         });
-        return reply
-          .header('cache-control', 'private, no-store')
-          .type('application/octet-stream')
-          .send(Buffer.from(encodeFileRelayFrame({ type: 'file.read', ...metadata }, bytes)));
+        const file = conversationFileProjectionSchema.parse(
+          await requestHostedConversationNode(
+            nodeControl,
+            actor,
+            nodeId,
+            'conversation.hosted.file.describe',
+            { ...target, __sourceTemplateId: templateId }
+          )
+        );
+        if (file.id !== fileId || file.conversationId !== conversationId)
+          throw new Error('NODE_RESPONSE_INVALID');
+        return reply.header('cache-control', 'private, no-store').send(file);
       } catch (error) {
         return databaseError(reply, error);
       }
@@ -905,38 +918,80 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
     }
   });
 
-  app.post<{
-    Params: { nodeId: string; conversationId: string; uploadId: string };
-    Querystring: { offset?: string };
-    Body: Buffer;
-  }>(
-    '/api/nodes/:nodeId/hosted-conversations/:conversationId/uploads/:uploadId/chunks',
-    async (request, reply) => {
-      const actor = writableActor(database, request, reply, publicOrigin);
-      if (actor === undefined) return;
-      try {
-        const query = parsePublic(z.strictObject({ offset: z.string() }), request.query);
-        const data = parsePublic(hostedConversationUploadChunkInputSchema, {
-          conversationId: request.params.conversationId,
-          uploadId: request.params.uploadId,
-          offset: parseBoundedInteger(query.offset, 0, Number.MAX_SAFE_INTEGER),
-          bytes: Buffer.isBuffer(request.body) ? request.body : undefined
-        });
-        await authorizeExistingConversation(input, actor, request.params);
-        return reply.send(
-          await requestHostedConversationNode(
-            nodeControl,
-            actor,
-            request.params.nodeId,
-            'conversation.hosted.files.upload.chunk',
-            data
-          )
-        );
-      } catch (error) {
-        return databaseError(reply, error);
+  const issueFileStreamTicket = input.issueFileStreamTicket;
+  if (issueFileStreamTicket !== undefined) {
+    app.post<{
+      Params: { nodeId: string; conversationId: string; uploadId: string };
+    }>(
+      '/api/nodes/:nodeId/hosted-conversations/:conversationId/uploads/:uploadId/stream-ticket',
+      async (request, reply) => {
+        const actor = writableActor(database, request, reply, publicOrigin);
+        if (actor === undefined) return;
+        try {
+          const { nodeId } = request.params;
+          const { conversationId, uploadId } = hostedConversationUploadControlInputSchema.parse({
+            conversationId: request.params.conversationId,
+            uploadId: request.params.uploadId
+          });
+          const user = { userId: actor.userId, sessionHash: actor.sessionHash };
+          const templateId = await authorizeHostedRelayTarget(input, user, {
+            nodeId,
+            conversationId
+          });
+          return reply.send({
+            ticket: await issueFileStreamTicket({
+              kind: 'hosted-file-upload',
+              nodeId,
+              user,
+              conversationId,
+              uploadId,
+              templateId,
+              allowed: async () =>
+                (await input.templates.assertCanUse(user.userId, templateId)).nodeId === nodeId
+            })
+          });
+        } catch (error) {
+          return databaseError(reply, error);
+        }
       }
-    }
-  );
+    );
+    app.post<{
+      Params: { nodeId: string; conversationId: string; fileId: string };
+      Body: unknown;
+    }>(
+      '/api/nodes/:nodeId/hosted-conversations/:conversationId/files/:fileId/stream-ticket',
+      async (request, reply) => {
+        const actor = writableActor(database, request, reply, publicOrigin);
+        if (actor === undefined) return;
+        try {
+          const { nodeId, conversationId, fileId } = request.params;
+          const descriptor = parseBodyWithPath(
+            hostedConversationFileStreamInputSchema,
+            request.body,
+            { conversationId, fileId }
+          );
+          const user = { userId: actor.userId, sessionHash: actor.sessionHash };
+          const templateId = await authorizeHostedRelayTarget(input, user, {
+            nodeId,
+            conversationId
+          });
+          return reply.send({
+            ticket: await issueFileStreamTicket({
+              kind: 'hosted-file-download',
+              nodeId,
+              user,
+              templateId,
+              descriptor,
+              allowed: async () =>
+                (await templates.assertCanUse(user.userId, templateId)).nodeId === nodeId
+            })
+          });
+        } catch (error) {
+          return databaseError(reply, error);
+        }
+      }
+    );
+  }
 
   app.get<{
     Params: { nodeId: string; conversationId: string; uploadId: string };

@@ -41,7 +41,6 @@ import {
   hostedConversationSnapshotSchema,
   hostedConversationSummarySchema,
   hostedConversationUnwatchInputSchema,
-  hostedConversationUploadChunkInputSchema,
   hostedConversationUploadControlInputSchema,
   hostedConversationUploadCreateInputSchema,
   hostedConversationUploadPreflightInputSchema,
@@ -1092,14 +1091,6 @@ describe('conversation hosting protocol', () => {
       }).success
     ).toBe(false);
     expect(
-      hostedConversationUploadChunkInputSchema.safeParse({
-        conversationId: 'conversation-1',
-        uploadId: 'upload-1',
-        offset: 0,
-        bytes: new Uint8Array(512 * 1024 + 1)
-      }).success
-    ).toBe(false);
-    expect(
       hostedConversationUploadControlInputSchema.parse({
         conversationId: 'conversation-1',
         uploadId: 'upload-1'
@@ -1207,7 +1198,6 @@ describe('conversation hosting protocol', () => {
     const bufferDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'Buffer');
     let fileReadAccepted = false;
     let emptyFileReadAccepted = false;
-    let uploadChunkAccepted = false;
     try {
       Object.defineProperty(globalThis, 'Buffer', {
         configurable: true,
@@ -1228,12 +1218,6 @@ describe('conversation hosting protocol', () => {
         nextOffset: null,
         eof: true
       }).success;
-      uploadChunkAccepted = hostedConversationUploadChunkInputSchema.safeParse({
-        conversationId: 'conversation-1',
-        uploadId: 'upload-1',
-        offset: 0,
-        bytes: new TextEncoder().encode('part')
-      }).success;
     } finally {
       if (bufferDescriptor === undefined) delete (globalThis as { Buffer?: unknown }).Buffer;
       else Object.defineProperty(globalThis, 'Buffer', bufferDescriptor);
@@ -1241,7 +1225,6 @@ describe('conversation hosting protocol', () => {
 
     expect(fileReadAccepted).toBe(true);
     expect(emptyFileReadAccepted).toBe(true);
-    expect(uploadChunkAccepted).toBe(true);
     expect(
       hostedConversationFileReadResultSchema.safeParse({
         file: { ...file, size: 512 * 1024 + 1 },

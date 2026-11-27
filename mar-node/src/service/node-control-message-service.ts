@@ -2,11 +2,18 @@ import { nodeEnvelopeSchema, type NodeEnvelope } from '@myagentroam/protocol';
 import type { NodeConfig } from '../config.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 
+function controlBinding(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 128 ? value : undefined;
+}
+
 interface NodeControlMessageServiceOptions {
   readonly config: () => NodeConfig | undefined;
   readonly register: (nodeId: string, credential: string, payload?: unknown) => Promise<void>;
   readonly connected: (payload?: unknown) => void;
-  readonly fileBindingAck?: (requestId: string, binding: string) => void;
+  readonly dataBindingAck?: (
+    requestId: string,
+    bindings: { file?: string; relay?: string }
+  ) => void;
   readonly usageAck?: (payload: unknown) => void;
   readonly sessionGroupAck?: (payload: unknown) => void;
   readonly bindUsage?: (payload: unknown) => void;
@@ -108,13 +115,17 @@ export class NodeControlMessageService {
         typeof envelope.payload === 'object' &&
         envelope.payload !== null &&
         'type' in envelope.payload &&
-        envelope.payload.type === 'capabilities' &&
-        'fileControlBinding' in envelope.payload &&
-        typeof envelope.payload.fileControlBinding === 'string' &&
-        envelope.payload.fileControlBinding.length > 0 &&
-        envelope.payload.fileControlBinding.length <= 128
-      )
-        this.options.fileBindingAck?.(envelope.replyTo, envelope.payload.fileControlBinding);
+        envelope.payload.type === 'capabilities'
+      ) {
+        const payload = envelope.payload as Record<string, unknown>;
+        const file = controlBinding(payload.fileControlBinding);
+        const relay = controlBinding(payload.dataControlBinding);
+        if (file !== undefined || relay !== undefined)
+          this.options.dataBindingAck?.(envelope.replyTo, {
+            ...(file === undefined ? {} : { file }),
+            ...(relay === undefined ? {} : { relay })
+          });
+      }
       return;
     }
     if (envelope.type === 'session.group.ack') {

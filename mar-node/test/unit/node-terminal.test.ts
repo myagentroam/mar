@@ -15,7 +15,14 @@ import {
   type TerminalPty,
   type TerminalPtyFactory
 } from '../../src/terminal.js';
-import { NodeTerminalChannel } from '../../src/service/node-terminal-channel.js';
+import { TerminalStreamService } from '../../src/service/terminal-stream-service.js';
+import { NodeStreamMux } from '@myagentroam/protocol/node-stream-mux';
+import {
+  decodeNodeRelayHandshake,
+  decodeNodeStreamFrame,
+  encodeNodeRelayHandshake
+} from '@myagentroam/protocol/node-stream-wire';
+import { readTerminalRecords, writeTerminalRecord } from '@myagentroam/protocol/terminal-stream';
 import {
   createEnvelope,
   decodeTerminalMessage,
@@ -133,6 +140,47 @@ function fakeFactory(output: {
   };
 }
 
+function terminalStreamFixture(
+  manager: TerminalManager,
+  beforeSend?: (bytes: Uint8Array) => Promise<void>
+) {
+  const service = new TerminalStreamService(manager);
+  const client = new NodeStreamMux({
+    maxStreams: 4,
+    async send(bytes) {
+      node.receive(bytes);
+    }
+  });
+  const node = new NodeStreamMux({
+    maxStreams: 4,
+    accept: async ({ grant }) => service.consume(grant),
+    async send(bytes) {
+      await beforeSend?.(bytes);
+      client.receive(bytes);
+    }
+  });
+  return {
+    async open(terminalId: string, options?: { readonly?: boolean; closeOnDisconnect?: boolean }) {
+      const grant = service.issue({
+        terminalId,
+        workspaceId: null,
+        afterSequence: 0,
+        readonly: false,
+        closeOnDisconnect: false,
+        ...options
+      });
+      const stream = await client.openStream({ kind: 'terminal', grant });
+      if (stream === undefined) throw new Error('Expected a Terminal stream');
+      return stream;
+    },
+    close() {
+      client.disconnect();
+      node.disconnect();
+      service.clear();
+    }
+  };
+}
+
 describe('Node Admin Terminal', () => {
   it.each([
     { afterSequence: undefined, sequences: [2, 3], gap: true },
@@ -246,7 +294,7 @@ describe('Node Admin Terminal', () => {
       const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
       let connector: NodeConnector | undefined;
       const controls: WebSocket[] = [];
-      const relays: WebSocket[] = [];
+      const relays: NodeStreamMux[] = [];
       const exits: string[] = [];
       manager.onFrame((frame) => {
         if (frame.type === 'exit') exits.push(frame.terminalId);
@@ -263,18 +311,45 @@ describe('Node Admin Terminal', () => {
         const address = server.address();
         if (address === null || typeof address === 'string') throw new Error('ADDRESS_INVALID');
         server.on('connection', (socket, request) => {
-          socket.on('message', (raw, isBinary) => {
-            const message = isBinary ? decodeTerminalMessage(raw) : JSON.parse(raw.toString());
-            if (message.type !== 'authenticate') return;
-            if (request.url === '/api/node/connect') {
-              controls.push(socket);
-              socket.send(JSON.stringify(createEnvelope('authenticated', {})));
-            } else {
-              relays.push(socket);
-              socket.send(
-                encodeTerminalMessage({ type: 'authenticated', nodeId: 'terminal-node' })
-              );
-            }
+          if (request.url === '/api/node/connect') {
+            socket.on('message', (raw) => {
+              const message = JSON.parse(raw.toString());
+              if (message.type === 'authenticate') {
+                controls.push(socket);
+                socket.send(JSON.stringify(createEnvelope('authenticated', {})));
+              } else if (message.type === 'capabilities') {
+                socket.send(
+                  JSON.stringify(
+                    createEnvelope(
+                      'ack',
+                      {
+                        type: 'capabilities',
+                        dataControlBinding: `binding-${controls.length}`
+                      },
+                      { replyTo: message.id }
+                    )
+                  )
+                );
+              }
+            });
+            return;
+          }
+          if (request.url !== '/api/node/relay') return socket.close();
+          socket.once('message', (raw) => {
+            const auth = decodeNodeRelayHandshake(raw);
+            if (auth.type !== 'RELAY_AUTH' || auth.controlBinding !== `binding-${controls.length}`)
+              return socket.close();
+            const mux = new NodeStreamMux({
+              maxStreams: 4,
+              send: (bytes) =>
+                new Promise((resolve, reject) => {
+                  socket.send(bytes, (error) => (error ? reject(error) : resolve()));
+                })
+            });
+            socket.on('message', (bytes) => mux.receive(bytes));
+            socket.once('close', () => mux.disconnect());
+            socket.send(encodeNodeRelayHandshake({ type: 'RELAY_READY' }));
+            relays.push(mux);
           });
         });
         connector = new NodeConnector({
@@ -299,34 +374,33 @@ describe('Node Admin Terminal', () => {
         await connector.start();
         await vi.waitFor(() => expect(relays).toHaveLength(1));
         const original = manager.open();
-        const attachment = manager.authorizeAttach({ terminalId: original.id });
-        relays[0]!.send(
-          encodeTerminalMessage({
-            type: 'attach',
-            ticket: 'original-ticket',
-            terminalId: original.id,
-            attachmentId: attachment.attachmentId,
-            afterSequence: 0
-          })
-        );
-        await once(relays[0]!, 'message');
-        await manager.acceptFrame(attachment.attachmentId, {
-          type: 'input',
-          terminalId: original.id,
-          data: new TextEncoder().encode('long-running-command\n')
+        const { grant } = (await operation(connector, 'terminal.attach.authorize', {
+          terminalId: original.id
+        })) as { grant: string };
+        const stream = (await relays[0]!.openStream({ kind: 'terminal', grant }))!;
+        const records = readTerminalRecords(stream);
+        expect(decodeTerminalMessage((await records.next()).value!)).toMatchObject({
+          type: 'attach'
         });
+        const input = (data: string) =>
+          writeTerminalRecord(
+            encodeTerminalMessage({
+              type: 'input',
+              terminalId: original.id,
+              data: new TextEncoder().encode(data)
+            })
+          );
+        await stream.write(input('long-running-command\n'));
+        await vi.waitFor(() => expect(ptys[0]!.writes).toEqual(['long-running-command\n']));
         if (code === 1006) controls[0]!.terminate();
         else controls[0]!.close(code, code === 1001 ? 'SERVER_SHUTDOWN' : 'NODE_REVOKED');
         await vi.waitFor(() => expect(controls).toHaveLength(2), { timeout: 5_000 });
         await vi.waitFor(() => expect(relays).toHaveLength(2));
         expect(manager.get(original.id).state).toBe(code === 4003 ? 'CLOSED' : 'RUNNING');
-        await expect(
-          manager.acceptFrame(attachment.attachmentId, {
-            type: 'input',
-            terminalId: original.id,
-            data: new TextEncoder().encode('stale-input')
-          })
-        ).rejects.toThrow('TERMINAL_ATTACH_INVALID');
+        await stream.finished;
+        await expect(stream.write(input('stale-input'))).rejects.toThrow(
+          'NODE_STREAM_DISCONNECTED'
+        );
         expect(ptys).toHaveLength(1);
         expect(ptys[0]!.writes).toEqual(['long-running-command\n']);
         if (code !== 4003) {
@@ -371,46 +445,26 @@ describe('Node Admin Terminal', () => {
     15_000
   );
 
-  it('closes CLI jobs but keeps browser terminals when the Node data channel disconnects', async () => {
+  it('closes CLI jobs but keeps browser terminals when the shared data carrier disconnects', async () => {
     const cliPty = new FakePty();
     const browserPty = new FakePty();
-    const ptyFactory = vi.fn(() => browserPty).mockReturnValueOnce(cliPty);
-    const manager = new TerminalManager({ ptyFactory });
-    const channel = new NodeTerminalChannel({
-      config: () => undefined,
-      controlConnected: () => true,
-      stopped: () => false,
-      reconnect: false,
-      reconnectDelay: () => 0,
-      manager
+    const manager = new TerminalManager({
+      ptyFactory: vi.fn(() => browserPty).mockReturnValueOnce(cliPty)
     });
-    const receive = (channel as unknown as { handle(raw: Uint8Array): void }).handle.bind(channel);
+    const fixture = terminalStreamFixture(manager);
     try {
       const cli = manager.open();
       const browser = manager.open();
-      for (const [terminal, closeOnDisconnect] of [
-        [cli, true],
-        [browser, false]
-      ] as const) {
-        const attachment = manager.authorizeAttach({ terminalId: terminal.id, closeOnDisconnect });
-        receive(
-          encodeTerminalMessage({
-            type: 'attach',
-            ticket: terminal.id,
-            terminalId: terminal.id,
-            attachmentId: attachment.attachmentId,
-            afterSequence: 0
-          })
-        );
-      }
-      channel.disconnect();
-      expect(manager.get(cli.id).state).toBe('CLOSED');
+      await fixture.open(cli.id, { closeOnDisconnect: true });
+      await fixture.open(browser.id);
+      fixture.close();
+      await vi.waitFor(() => expect(manager.get(cli.id).state).toBe('CLOSED'));
       expect(cliPty.kills).toBe(1);
       expect(manager.get(browser.id).state).toBe('RUNNING');
       expect(browserPty.kills).toBe(0);
       expect(manager.authorizeAttach({ terminalId: browser.id }).terminalId).toBe(browser.id);
     } finally {
-      channel.stop();
+      fixture.close();
       await manager.shutdown();
     }
   });
@@ -485,131 +539,6 @@ describe('Node Admin Terminal', () => {
     }
   );
 
-  it('serializes relay writes, pauses producers and delivers exit after output', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setImmediate', 'clearImmediate'] });
-    const holders = [{}, {}] as { value?: FakePty }[];
-    let nextPty = 0;
-    const manager = new TerminalManager({
-      platform: 'linux',
-      pipeFactory: (shell, args, options) => {
-        const pty = fakeFactory(holders[nextPty++]!)(shell, args, options) as FakePty;
-        return {
-          pid: pty.pid,
-          kill: () => pty.kill(),
-          pause: () => pty.pause(),
-          resume: () => pty.resume(),
-          write: (bytes) => pty.write(bytes.toString()),
-          onData: (listener) => {
-            pty.onData((data) => listener(Buffer.from(data)));
-          },
-          onExit: (listener) => {
-            pty.onExit((event) => listener(event.exitCode));
-          }
-        };
-      },
-      terminate: async () => undefined
-    });
-    const sent: { type: string; ticket?: string; frame?: { type: string; data?: Uint8Array } }[] =
-      [];
-    const callbacks: (() => void)[] = [];
-    const socket = {
-      readyState: 1,
-      OPEN: 1,
-      bufferedAmount: 0,
-      send(raw: Uint8Array, callback?: () => void) {
-        const message = decodeTerminalMessage(raw) as (typeof sent)[number];
-        sent.push(message);
-        if (message.type === 'frame' && callback !== undefined) callbacks.push(callback);
-        else callback?.();
-      },
-      close: vi.fn()
-    };
-    const channel = new NodeTerminalChannel({
-      config: () => undefined,
-      controlConnected: () => true,
-      stopped: () => false,
-      reconnect: false,
-      reconnectDelay: () => 0,
-      manager
-    });
-    const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
-    access.socket = socket;
-    try {
-      const terminals = [manager.openCommand({}, 'fixture'), manager.openCommand({}, 'fixture')];
-      for (const [index, terminal] of terminals.entries()) {
-        const attachment = manager.authorizeAttach({ terminalId: terminal.id });
-        access.handle(
-          encodeTerminalMessage({
-            type: 'attach',
-            ticket: `ticket-${index}`,
-            terminalId: terminal.id,
-            attachmentId: attachment.attachmentId,
-            afterSequence: 0
-          })
-        );
-      }
-      holders[0]!.value!.emitData('a'.repeat(32_768));
-      holders[1]!.value!.emitData('b'.repeat(32_768));
-      expect(holders[1]!.value!.paused).toBe(true);
-      holders[1]!.value!.emitExit(0);
-      expect(sent.filter((item) => item.type === 'frame')).toHaveLength(1);
-      expect(holders[1]!.value!.paused).toBe(false);
-      expect(manager.get(terminals[0]!.id).state).toBe('RUNNING');
-      callbacks.shift()!();
-      await vi.advanceTimersByTimeAsync(1);
-      expect(sent.filter((item) => item.type === 'frame')).toHaveLength(2);
-      callbacks.shift()!();
-      await vi.advanceTimersByTimeAsync(1);
-      callbacks.shift()!();
-      expect(sent.filter((item) => item.type === 'frame').map((item) => item.frame!.type)).toEqual([
-        'output',
-        'output',
-        'exit'
-      ]);
-      expect(holders[1]!.value!.paused).toBe(false);
-
-      socket.bufferedAmount = 300 * 1024;
-      holders[0]!.value!.emitData('pending');
-      expect(holders[0]!.value!.paused).toBe(true);
-      access.handle(encodeTerminalMessage({ type: 'detach', ticket: 'ticket-0' }));
-      expect(holders[0]!.value!.paused).toBe(false);
-      socket.bufferedAmount = 0;
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(
-        sent.some(
-          (item) => item.frame?.data && Buffer.from(item.frame.data).toString() === 'pending'
-        )
-      ).toBe(false);
-
-      const resumed = manager.authorizeAttach({ terminalId: terminals[0]!.id });
-      access.handle(
-        encodeTerminalMessage({
-          type: 'attach',
-          ticket: 'ticket-resumed',
-          terminalId: terminals[0]!.id,
-          attachmentId: resumed.attachmentId,
-          afterSequence: resumed.latestSequence
-        })
-      );
-      socket.bufferedAmount = 300 * 1024;
-      holders[0]!.value!.emitData('disconnect-pending');
-      expect(holders[0]!.value!.paused).toBe(true);
-      channel.disconnect();
-      expect(holders[0]!.value!.paused).toBe(false);
-      socket.bufferedAmount = 0;
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(
-        sent.some(
-          (item) =>
-            item.frame?.data && Buffer.from(item.frame.data).toString() === 'disconnect-pending'
-        )
-      ).toBe(false);
-    } finally {
-      channel.stop();
-      await manager.shutdown();
-      vi.useRealTimers();
-    }
-  });
   it('adds the installed CLI bin to MAR child PATH without treating the context marker as authorization', async () => {
     const packageRoot = await mkdtemp(join(tmpdir(), 'mar-node-cli-env-'));
     const bin = join(packageRoot, 'node_modules', '.bin');
@@ -773,225 +702,52 @@ describe('Node Admin Terminal', () => {
     }
   });
 
-  it('drains real binary pipe output through delayed relay writes without blocking Node operations', async () => {
-    const manager = new TerminalManager({
-      platform: 'linux',
-      profiles: [{ id: 'default', label: 'sh', shell: '/bin/sh', args: [], isDefault: true }]
-    });
-    const frames: { type: string; data?: Uint8Array; exitCode?: number | null }[] = [];
-    const database = new NodeDatabase(':memory:', 'node-terminal-responsive');
-    const connector = new NodeConnector({
-      reconnect: false,
-      database,
-      terminalManager: manager,
-      capabilities: {
-        platform: 'linux',
-        architecture: 'x64',
-        nodeVersion: process.version,
-        codex: { available: false },
-        claudeCode: { available: false }
-      }
-    });
-    const socket = {
-      readyState: 1,
-      OPEN: 1,
-      bufferedAmount: 0,
-      send(raw: Uint8Array, callback?: () => void) {
-        const message = decodeTerminalMessage(raw) as {
-          type: string;
-          frame: (typeof frames)[number];
-        };
-        if (message.type !== 'frame') {
-          callback?.();
-          return;
-        }
-        frames.push(message.frame);
-        if (callback !== undefined) setTimeout(callback, 20);
-      },
-      close: vi.fn()
-    };
-    const channel = new NodeTerminalChannel({
-      config: () => undefined,
-      controlConnected: () => true,
-      stopped: () => false,
-      reconnect: false,
-      reconnectDelay: () => 0,
-      manager
-    });
-    const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
-    access.socket = socket;
-    try {
-      const command = `${JSON.stringify(process.execPath)} -e 'process.stdout.write(Buffer.alloc(262144, 42))'`;
-      const terminal = manager.openCommand({}, command);
-      const attachment = manager.authorizeAttach({ terminalId: terminal.id });
-      access.handle(
-        encodeTerminalMessage({
-          type: 'attach',
-          ticket: 'pipe-ticket',
-          terminalId: terminal.id,
-          attachmentId: attachment.attachmentId,
-          afterSequence: 0
-        })
-      );
-      await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0));
-      expect(frames.at(-1)?.type).not.toBe('exit');
-      // A fixed-operation request remains usable while the bulk relay is pending.
-      const capabilities = await operation(connector, 'node.workbench.capabilities', {});
-      expect(capabilities).toMatchObject({ manifest: { terminal: { available: true } } });
-      const opened = (await operation(connector, 'terminal.open', {})) as {
-        terminal: { id: string };
-      };
-      expect(manager.get(opened.terminal.id).state).toBe('RUNNING');
-      await operation(connector, 'terminal.close', { terminalId: opened.terminal.id });
-      await vi.waitFor(() => expect(frames.at(-1)?.type).toBe('exit'), { timeout: 5_000 });
-      expect(
-        Buffer.concat(
-          frames.filter((frame) => frame.type === 'output').map((frame) => Buffer.from(frame.data!))
-        )
-      ).toEqual(Buffer.alloc(262144, 42));
-      expect(frames.at(-1)).toMatchObject({ type: 'exit', exitCode: 0 });
-      expect(socket.close).not.toHaveBeenCalled();
-    } finally {
-      channel.stop();
-      await connector.stop();
-    }
-  });
-
   it.runIf(process.platform === 'linux')(
-    'preserves real PTY tail output when a relay write takes longer than PTY exit cleanup',
+    'preserves real PTY tail output and exit ordering when transport writes are pending',
     async () => {
+      const gate = Promise.withResolvers<void>();
+      const writing = Promise.withResolvers<void>();
       const manager = new TerminalManager({
         profiles: [
           {
             id: 'default',
             label: 'sh',
             shell: '/bin/sh',
+            isDefault: true,
             args: [
               '-c',
               `${JSON.stringify(process.execPath)} -e 'process.stdout.write("x".repeat(24576))'`
-            ],
-            isDefault: true
+            ]
           }
         ]
       });
-      const frames: { type: string; data?: Uint8Array; exitCode?: number | null }[] = [];
-      const socket = {
-        readyState: 1,
-        OPEN: 1,
-        bufferedAmount: 0,
-        send(raw: Uint8Array, callback?: () => void) {
-          const message = decodeTerminalMessage(raw) as {
-            type: string;
-            frame: (typeof frames)[number];
-          };
-          if (message.type === 'frame') {
-            frames.push(message.frame);
-            if (callback) setTimeout(callback, 350);
-          } else callback?.();
-        },
-        close: vi.fn()
-      };
-      const channel = new NodeTerminalChannel({
-        config: () => undefined,
-        controlConnected: () => true,
-        stopped: () => false,
-        reconnect: false,
-        reconnectDelay: () => 0,
-        manager
+      const fixture = terminalStreamFixture(manager, async (bytes) => {
+        if (decodeNodeStreamFrame(bytes).type === 'DATA') {
+          writing.resolve();
+          await gate.promise;
+        }
       });
-      const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
-      access.socket = socket;
       try {
         const terminal = manager.open();
-        const attachment = manager.authorizeAttach({ terminalId: terminal.id });
-        access.handle(
-          encodeTerminalMessage({
-            type: 'attach',
-            ticket: 'pty-tail',
-            terminalId: terminal.id,
-            attachmentId: attachment.attachmentId,
-            afterSequence: 0
-          })
-        );
-        await vi.waitFor(() => expect(frames.at(-1)?.type).toBe('exit'), { timeout: 10_000 });
-        const output = frames
-          .filter((frame) => frame.type === 'output')
-          .map((frame) => Buffer.from(frame.data!).toString())
-          .join('');
-        expect(output.length).toBe(24576);
-        expect(output.replaceAll('x', '')).toBe('');
+        const stream = await fixture.open(terminal.id);
+        await writing.promise;
+        await vi.waitFor(() => expect(manager.get(terminal.id).state).toBe('EXITED'));
+        gate.resolve();
+        const frames = [];
+        await stream.endWrite();
+        for await (const record of readTerminalRecords(stream))
+          frames.push(decodeTerminalMessage(record));
+        expect(frames[0]).toMatchObject({ type: 'attach' });
         expect(frames.at(-1)).toMatchObject({ type: 'exit', exitCode: 0 });
-        expect(socket.close).not.toHaveBeenCalled();
+        const bytes = Buffer.concat(frames.slice(1, -1).map((frame) => frame.data as Uint8Array));
+        expect(bytes).toEqual(Buffer.alloc(24576, 'x'));
       } finally {
-        channel.stop();
+        gate.resolve();
+        fixture.close();
         await manager.shutdown();
       }
     }
   );
-
-  it('does not pause a direct binary writer for a congested readonly relay observer', async () => {
-    let output!: (bytes: Buffer) => void;
-    const pause = vi.fn();
-    const manager = new TerminalManager({
-      platform: 'linux',
-      terminate: async () => undefined,
-      pipeFactory: () => ({
-        pid: 4242,
-        kill: () => true,
-        write: vi.fn(),
-        pause,
-        resume: vi.fn(),
-        onData: (listener) => {
-          output = listener;
-        },
-        onExit: () => undefined
-      })
-    });
-    const socket = {
-      readyState: 1,
-      OPEN: 1,
-      bufferedAmount: 300 * 1024,
-      send: vi.fn(),
-      close: vi.fn()
-    };
-    const channel = new NodeTerminalChannel({
-      config: () => undefined,
-      controlConnected: () => true,
-      stopped: () => false,
-      reconnect: false,
-      reconnectDelay: () => 0,
-      manager
-    });
-    const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
-    access.socket = socket;
-    try {
-      const terminal = manager.openCommand({}, 'fixture');
-      const writer = manager.authorizeAttach({ terminalId: terminal.id });
-      manager.startCommand(terminal.id);
-      const observer = manager.authorizeAttach({ terminalId: terminal.id, readonly: true });
-      access.handle(
-        encodeTerminalMessage({
-          type: 'attach',
-          ticket: 'readonly-observer',
-          terminalId: terminal.id,
-          attachmentId: observer.attachmentId,
-          afterSequence: 0
-        })
-      );
-      output(Buffer.from('direct output'));
-      expect(pause).not.toHaveBeenCalled();
-      await expect(
-        manager.acceptFrame(writer.attachmentId, {
-          type: 'input',
-          terminalId: terminal.id,
-          data: Buffer.from('input')
-        })
-      ).resolves.toBeUndefined();
-    } finally {
-      channel.stop();
-      await manager.shutdown();
-    }
-  });
 
   it('releases pipe backpressure immediately when the relay writer detaches or changes', async () => {
     const pause = vi.fn();
@@ -1059,234 +815,66 @@ describe('Node Admin Terminal', () => {
     }
   });
 
-  it.runIf(process.platform === 'linux')(
-    'copies through CLI, real Server relay and Node pipe channels while source operations remain responsive',
-    async () => {
-      const { TerminalRelayService } =
-        await import('../../../packages/server-core/src/terminal-relay-service.js');
-      const { runScp } = await import(new URL('../../../marctl/src/scp.mjs', import.meta.url).href);
-      const { createTranslator } = await import(
-        new URL('../../../marctl/src/i18n/index.mjs', import.meta.url).href
-      );
-      const directory = await mkdtemp(join(tmpdir(), 'mar-node-relay-chain-'));
-      const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
-      const nodes = new Map<string, { manager: TerminalManager; channel: NodeTerminalChannel }>();
-      const user = { userId: 1, sessionHash: 'relay-chain-user' };
-      const relay = new TerminalRelayService({
-        database: {
-          authenticateNode: (id, credential) =>
-            nodes.has(id) && credential === 'fixture-credential'
-              ? { id, disabled: false }
-              : undefined
-        },
-        authorizeNodeRequest: (userId, id) => userId === user.userId && nodes.has(id),
-        requestNode: async (id, operation, data) => {
-          expect(operation).toBe('terminal.attach.authorize');
-          return {
-            attachment: nodes
-              .get(id)!
-              .manager.authorizeAttach(data as Parameters<TerminalManager['authorizeAttach']>[0])
-          };
-        }
-      });
-      let connector: NodeConnector | undefined;
-      let copying: Promise<unknown> | undefined;
-      const closes: { side: string; code: number; reason: string }[] = [];
-      try {
-        await once(server, 'listening');
-        const address = server.address();
-        if (address === null || typeof address === 'string')
-          throw new Error('TEST_SERVER_ADDRESS_INVALID');
-        const serverUrl = `http://127.0.0.1:${address.port}`;
-        server.on('connection', (socket, request) => {
-          const url = new URL(request.url!, serverUrl);
-          socket.on('close', (code, reason) =>
-            closes.push({ side: url.pathname, code, reason: reason.toString() })
-          );
-          if (url.pathname === '/cli')
-            relay.attachBrowser(socket, url.searchParams.get('ticket')!, user);
-          else relay.attachNode(socket);
-        });
-        for (const id of ['source', 'target']) {
-          const manager = new TerminalManager({
-            cwd: directory,
-            platform: 'linux',
-            profiles: [{ id: 'default', label: 'sh', shell: '/bin/sh', args: [], isDefault: true }]
-          });
-          const channel = new NodeTerminalChannel({
-            config: () => ({
-              serverUrl,
-              nodeId: id,
-              credential: 'fixture-credential',
-              allowedRoots: [directory]
-            }),
-            manager,
-            controlConnected: () => true,
-            stopped: () => false,
-            reconnect: false,
-            reconnectDelay: () => 0
-          });
-          nodes.set(id, { manager, channel });
-          channel.connect();
-        }
-        await vi.waitFor(() =>
-          expect((relay as unknown as { sockets: Map<string, WebSocket> }).sockets.size).toBe(2)
-        );
-        connector = new NodeConnector({
-          reconnect: false,
-          database: new NodeDatabase(':memory:', 'relay-chain'),
-          terminalManager: nodes.get('source')!.manager,
-          capabilities: {
-            platform: 'linux',
-            architecture: 'x64',
-            nodeVersion: process.version,
-            codex: { available: false },
-            claudeCode: { available: false }
-          }
-        });
-        const client = {
-          getTerminalManifest: async () => ({}),
-          createTerminal: async (input: {
-            nodeId: string;
-            copy: Parameters<TerminalManager['openCopy']>[0];
-          }) => nodes.get(input.nodeId)!.manager.openCopy(input.copy).id,
-          createAttachTicket: async (input: { nodeId: string; terminalId: string }) =>
-            relay.createTicket({ ...input, user }).ticket,
-          openTerminalWebSocket: (_Socket: unknown, input: { ticket: string }) => {
-            const socket = new WebSocket(
-              `${serverUrl.replace('http:', 'ws:')}/cli?ticket=${encodeURIComponent(input.ticket)}`
-            );
-            socket.on('close', (code, reason) =>
-              closes.push({ side: 'CLI', code, reason: reason.toString() })
-            );
-            const send = socket.send.bind(socket);
-            socket.send = (data, callback) =>
-              send(data, (error) => {
-                if (typeof callback === 'function') setTimeout(() => callback(error), 5);
-              });
-            return socket;
-          },
-          deleteTerminal: async (input: { nodeId: string; terminalId: string }) => {
-            await nodes.get(input.nodeId)!.manager.close(input.terminalId);
-          }
-        };
-        const source = join(directory, 'source.bin');
-        const target = join(directory, 'target.bin');
-        const bytes = Buffer.alloc(512 * 1024);
-        for (let index = 0; index < bytes.length; index++) bytes[index] = index % 256;
-        await writeFile(source, bytes);
-        copying = runScp({
-          source: `source://${source}`,
-          destination: `target://${target}`,
-          client,
-          WebSocketClass: WebSocket,
-          resolveNodeId: async (id: string) => id,
-          translate: createTranslator()
-        });
-        copying!.catch(() => undefined);
-        await vi.waitFor(() => expect(relay.countSession(user.sessionHash)).toBe(2));
-        const capabilities = await operation(connector, 'node.workbench.capabilities', {});
-        expect(capabilities).toMatchObject({ manifest: { terminal: { available: true } } });
-        try {
-          expect(await copying).toBe(0);
-        } catch (error) {
-          console.error('Relay chain close diagnostics:', closes);
-          throw error;
-        }
-        const { readFile } = await import('node:fs/promises');
-        expect(await readFile(target)).toEqual(bytes);
-        await vi.waitFor(() => expect(relay.countSession(user.sessionHash)).toBe(0));
-      } finally {
-        for (const node of nodes.values()) node.channel.stop();
-        relay.close();
-        for (const socket of server.clients) socket.terminate();
-        await copying?.catch(() => undefined);
-        await connector?.stop();
-        await Promise.all([...nodes.values()].map((node) => node.manager.shutdown()));
-        await new Promise<void>((resolve) => server.close(() => resolve()));
-        await rm(directory, { recursive: true, force: true });
-      }
-    }
-  );
-
-  it('rejects only the overflowing relay and preserves another terminal on the shared data socket', async () => {
-    const holders = [{}, {}] as { value?: FakePty }[];
-    let next = 0;
+  it('resets a slow readonly observer without interrupting the writer or another stream', async () => {
+    let publish!: (data: Buffer) => void;
+    const pause = vi.fn();
+    const write = vi.fn();
     const manager = new TerminalManager({
       platform: 'linux',
-      terminate: async () => undefined,
-      ptyFactory: (...args) => fakeFactory(holders[next++]!)(...args)
+      ptyFactory: () => new FakePty(),
+      pipeFactory: () => ({
+        kill: () => true,
+        write,
+        pause,
+        resume: vi.fn(),
+        onData: (listener) => {
+          publish = listener;
+        },
+        onExit: () => undefined
+      })
     });
-    const sent: { ticket?: string; frame?: { type: string; data?: Uint8Array; code?: string } }[] =
-      [];
-    const socket = {
-      readyState: 1,
-      OPEN: 1,
-      bufferedAmount: 300 * 1024,
-      send(raw: Uint8Array, callback?: () => void) {
-        sent.push(decodeTerminalMessage(raw));
-        callback?.();
-      },
-      close: vi.fn()
-    };
-    const channel = new NodeTerminalChannel({
-      config: () => undefined,
-      controlConnected: () => true,
-      stopped: () => false,
-      reconnect: false,
-      reconnectDelay: () => 0,
-      manager
-    });
-    const access = channel as unknown as { socket: typeof socket; handle(raw: Uint8Array): void };
-    access.socket = socket;
+    const fixture = terminalStreamFixture(manager);
     try {
-      const terminals = [manager.open(), manager.open()];
-      const attachments = terminals.map((terminal) =>
-        manager.authorizeAttach({ terminalId: terminal.id })
-      );
-      for (const [index, terminal] of terminals.entries())
-        access.handle(
-          encodeTerminalMessage({
-            type: 'attach',
-            ticket: `overflow-${index}`,
-            terminalId: terminal.id,
-            attachmentId: attachments[index]!.attachmentId,
-            afterSequence: 0
-          })
-        );
-      holders[1]!.value!.emitData('preserved');
-      holders[0]!.value!.emitData('x'.repeat(3 * 1024 * 1024));
-      await Promise.resolve();
-      expect(socket.close).not.toHaveBeenCalled();
-      expect(sent).toContainEqual({
-        type: 'frame',
-        ticket: 'overflow-0',
-        frame: {
-          type: 'error',
-          terminalId: terminals[0]!.id,
-          code: 'TERMINAL_BACKPRESSURE'
-        }
+      const shell = manager.open();
+      const command = manager.openCommand({}, 'fixture');
+      const writer = manager.authorizeAttach({ terminalId: command.id });
+      manager.startCommand(command.id);
+      const observer = await fixture.open(command.id, { readonly: true });
+      const observed = readTerminalRecords(observer);
+      expect(decodeTerminalMessage((await observed.next()).value)).toMatchObject({
+        type: 'attach'
       });
-      socket.bufferedAmount = 0;
-      await vi.waitFor(() =>
-        expect(
-          sent.some(
-            (message) =>
-              message.ticket === 'overflow-1' &&
-              message.frame?.data !== undefined &&
-              Buffer.from(message.frame.data).toString() === 'preserved'
+      const other = await fixture.open(shell.id);
+      const otherRecords = readTerminalRecords(other);
+      expect(decodeTerminalMessage((await otherRecords.next()).value)).toMatchObject({
+        type: 'attach'
+      });
+      publish(Buffer.alloc(3 * 1024 * 1024, 42));
+      await observer.finished;
+      await expect(observed.next()).rejects.toThrow('TERMINAL_BACKPRESSURE');
+      expect(pause).not.toHaveBeenCalled();
+      expect(manager.get(command.id).state).toBe('RUNNING');
+      await expect(
+        manager.acceptFrame(writer.attachmentId, {
+          type: 'input',
+          terminalId: command.id,
+          data: Buffer.from('input')
+        })
+      ).resolves.toBeUndefined();
+      expect(write).toHaveBeenCalledWith(Buffer.from('input'));
+      await expect(
+        other.write(
+          writeTerminalRecord(
+            encodeTerminalMessage({
+              type: 'input',
+              terminalId: shell.id,
+              data: Buffer.from('still connected')
+            })
           )
-        ).toBe(true)
-      );
-      await manager.acceptFrame(attachments[1]!.attachmentId, {
-        type: 'input',
-        terminalId: terminals[1]!.id,
-        data: new TextEncoder().encode('echo')
-      });
-      expect(holders[1]!.value!.writes).toEqual(['echo']);
-      expect(() => manager.authorizeAttach({ terminalId: terminals[0]!.id })).not.toThrow();
+        )
+      ).resolves.toBeUndefined();
     } finally {
-      channel.stop();
+      fixture.close();
       await manager.shutdown();
     }
   });
@@ -1560,111 +1148,6 @@ describe('Node Admin Terminal', () => {
     expect(pty.kills).toBe(1);
     expect(terminated).toEqual([]);
     await manager.shutdown();
-
-    {
-      const channelHolder: { value?: FakePty } = {};
-      const channelManager = new TerminalManager({
-        platform: 'linux',
-        ptyFactory: fakeFactory(channelHolder),
-        idleTimeoutMs: 60_000,
-        terminate: async () => undefined
-      });
-      const sent: unknown[] = [];
-      const socket = {
-        readyState: 1,
-        OPEN: 1,
-        send(raw: Uint8Array, callback?: () => void) {
-          sent.push(decodeTerminalMessage(raw));
-          callback?.();
-        },
-        close() {}
-      };
-      const channel = new NodeTerminalChannel({
-        config: () => undefined,
-        controlConnected: () => true,
-        stopped: () => false,
-        reconnect: false,
-        reconnectDelay: () => 0,
-        manager: channelManager
-      });
-      (
-        channel as unknown as {
-          socket: typeof socket;
-          handle(raw: Uint8Array): void;
-        }
-      ).socket = socket;
-
-      const channelTerminal = channelManager.open();
-      const channelPty = channelHolder.value as FakePty;
-      const attachment = channelManager.authorizeAttach({ terminalId: channelTerminal.id });
-      channelPty.emitData('authorized-before-channel');
-      (
-        channel as unknown as {
-          handle(raw: Uint8Array): void;
-        }
-      ).handle(
-        encodeTerminalMessage({
-          type: 'attach',
-          ticket: 'ticket-active',
-          terminalId: channelTerminal.id,
-          attachmentId: attachment.attachmentId,
-          afterSequence: 0
-        })
-      );
-      expect(sent).toEqual([
-        {
-          type: 'attached',
-          ticket: 'ticket-active',
-          terminalId: channelTerminal.id
-        },
-        {
-          type: 'frame',
-          ticket: 'ticket-active',
-          frame: {
-            type: 'output',
-            terminalId: channelTerminal.id,
-            sequence: 1,
-            data: new TextEncoder().encode('authorized-before-channel')
-          }
-        }
-      ]);
-
-      channelPty.emitData('live-after-channel');
-      await vi.waitFor(() => expect(sent).toHaveLength(3));
-      expect(sent.at(-1)).toEqual({
-        type: 'frame',
-        ticket: 'ticket-active',
-        frame: {
-          type: 'output',
-          terminalId: channelTerminal.id,
-          sequence: 2,
-          data: new TextEncoder().encode('live-after-channel')
-        }
-      });
-
-      channelManager.detach(attachment.attachmentId);
-      (
-        channel as unknown as {
-          handle(raw: Uint8Array): void;
-        }
-      ).handle(
-        encodeTerminalMessage({
-          type: 'attach',
-          ticket: 'ticket-stale',
-          terminalId: channelTerminal.id,
-          attachmentId: attachment.attachmentId,
-          afterSequence: 0
-        })
-      );
-      expect(sent.at(-1)).toEqual({
-        type: 'detach',
-        ticket: 'ticket-stale',
-        reason: 'TERMINAL_ATTACH_FAILED'
-      });
-
-      channel.stop();
-      await channelManager.shutdown();
-    }
   });
 
   it.each(['close', 'exit', 'shutdown'] as const)(

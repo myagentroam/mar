@@ -5,10 +5,10 @@ import {
   readWorkspaceDirectFileRange
 } from '../../src/service/workspace-direct-file-read-service.js';
 import {
-  readWorkspaceDirectObjectUrl,
+  readWorkspaceFileObjectUrl,
   revokeWorkspaceDirectObjectUrl
 } from '../../src/service/workspace-direct-object-url-service.js';
-import { downloadWorkspaceDirectFile } from '../../src/service/workspace-direct-download-stream-service.js';
+import { downloadWorkspaceFileToBrowser } from '../../src/service/workspace-direct-download-stream-service.js';
 
 const resource = {
   kind: 'WORKSPACE_FILE' as const,
@@ -18,6 +18,29 @@ const resource = {
   worktreePath: '/linked tree'
 };
 const identity = { size: 3, revision: 'revision-7' };
+
+function stubPreviewStorage(getFile: () => Promise<File>) {
+  const removeEntry = vi.fn(async () => undefined);
+  const writable = {
+    write: vi.fn(async () => undefined),
+    close: vi.fn(async () => undefined),
+    abort: vi.fn(async () => undefined)
+  };
+  const managed = {
+    entries: () => [],
+    removeEntry,
+    getFileHandle: async () => ({ createWritable: async () => writable, getFile })
+  };
+  vi.stubGlobal('navigator', {
+    locks: { request: async (_name: string, run: () => Promise<void>) => run() },
+    storage: {
+      getDirectory: async () => ({
+        getDirectoryHandle: async () => ({ getDirectoryHandle: async () => managed })
+      })
+    }
+  });
+  return { removeEntry, writable };
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -183,55 +206,49 @@ describe('Workspace direct file operations', () => {
   });
 
   it('retains preview ownership on success and removes temporary output on body failure', async () => {
-    const removeEntry = vi.fn(async () => undefined);
-    const writable = {
-      write: vi.fn(async () => undefined),
-      close: vi.fn(async () => undefined),
-      abort: vi.fn(async () => undefined)
-    };
-    vi.stubGlobal('navigator', {
-      storage: {
-        getDirectory: async () => ({
-          getDirectoryHandle: async () => ({
-            removeEntry,
-            getFileHandle: async () => ({
-              createWritable: async () => writable,
-              getFile: async () => new File(['abc'], 'image.bin')
-            })
-          })
-        })
-      }
-    });
+    const { removeEntry, writable } = stubPreviewStorage(
+      async () => new File(['abc'], 'image.bin')
+    );
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:owned-preview');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
-    const direct = {
-      download: vi.fn(async (input) => {
-        await input.sink.close();
-      })
-    };
-    const operation = {
-      direct,
-      nodeId: 'node',
-      nodeGeneration: 'old',
-      resource,
-      metadata: async () => identity
-    };
-    await expect(readWorkspaceDirectObjectUrl(operation)).resolves.toEqual({
-      url: 'blob:owned-preview',
-      ...identity
-    });
+    const download = vi.fn<Parameters<typeof readWorkspaceFileObjectUrl>[2]>((sink) =>
+      sink.close()
+    );
+    const read = () => readWorkspaceFileObjectUrl('image.bin', undefined, download);
+    await expect(read()).resolves.toBe('blob:owned-preview');
     expect(removeEntry).not.toHaveBeenCalled();
     revokeWorkspaceDirectObjectUrl('blob:owned-preview');
     await Promise.resolve();
     expect(removeEntry).toHaveBeenCalledOnce();
-    direct.download.mockRejectedValueOnce(new Error('BODY_FAILED'));
-    await expect(readWorkspaceDirectObjectUrl(operation)).resolves.toBeUndefined();
+    download.mockRejectedValueOnce(new Error('BODY_FAILED'));
+    await expect(read()).rejects.toThrow('BODY_FAILED');
     expect(writable.abort).toHaveBeenCalledOnce();
     expect(removeEntry).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['metadata', 'before-start', 'after-start', 'cancel', 'success'] as const)(
-    'keeps browser download fallback semantics at %s',
+  it.each([false, true])(
+    'removes cancelled staging before publishing a URL (closed=%s)',
+    async (closed) => {
+      const controller = new AbortController();
+      const getFile = vi.fn(async () => new File(['abc'], 'image.png'));
+      const { removeEntry, writable } = stubPreviewStorage(getFile);
+      const createUrl = vi.spyOn(URL, 'createObjectURL');
+      await expect(
+        readWorkspaceFileObjectUrl('image.png', controller.signal, async (sink) => {
+          await sink.write(Uint8Array.of(1, 2, 3));
+          if (closed) await sink.close();
+          controller.abort();
+        })
+      ).rejects.toMatchObject({ name: 'AbortError' });
+      expect(writable.abort).toHaveBeenCalledTimes(closed ? 0 : 1);
+      expect(removeEntry).toHaveBeenCalledOnce();
+      expect(getFile).not.toHaveBeenCalled();
+      expect(createUrl).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['before-start', 'after-start', 'cancel', 'success'] as const)(
+    'does not replay the browser download at %s',
     async (phase) => {
       const ports: MessagePort[] = [];
       const messages: unknown[] = [];
@@ -257,46 +274,34 @@ describe('Workspace direct file operations', () => {
           remove: vi.fn()
         })
       });
-      const direct = {
-        download: vi.fn(async (input) => {
+      const download = vi.fn<Parameters<typeof downloadWorkspaceFileToBrowser>[0]['download']>(
+        async (sink, signal) => {
           if (phase === 'before-start') throw new Error('PREPARE_FAILED');
           if (phase === 'cancel') {
             const cancelled = new Promise<void>((resolve) =>
-              input.signal!.addEventListener('abort', () => resolve(), { once: true })
+              signal!.addEventListener('abort', () => resolve(), { once: true })
             );
             ports[0]!.postMessage({ type: 'cancel', reason: 'DIRECT_DOWNLOAD_CANCELLED' });
             await cancelled;
             throw new Error('CANCELLED');
           }
-          await input.sink.write(new Uint8Array([1, 2, 3]));
+          await sink.write(new Uint8Array([1, 2, 3]));
           if (phase === 'after-start') throw new Error('CONSUMER_FAILED');
-          await input.sink.close();
-        })
-      };
+          await sink.close();
+        }
+      );
       try {
-        await expect(
-          downloadWorkspaceDirectFile({
-            direct,
-            nodeId: 'node',
-            nodeGeneration: 'old',
-            resource,
-            activeWorker: async () => navigator.serviceWorker.controller ?? undefined,
-            metadata: async () => {
-              if (phase === 'metadata') throw new Error('HTTP_FAILED');
-              return identity;
-            }
-          })
-        ).resolves.toBe(
-          phase === 'success'
-            ? 'COMPLETED'
-            : phase === 'cancel'
-              ? 'CANCELLED'
-              : phase === 'after-start'
-                ? 'FAILED'
-                : 'UNAVAILABLE'
-        );
+        const result = downloadWorkspaceFileToBrowser({
+          fileName: 'image.bin',
+          size: identity.size,
+          activeWorker: async () => navigator.serviceWorker.controller ?? undefined,
+          download
+        });
+        if (phase === 'before-start') await expect(result).rejects.toThrow('PREPARE_FAILED');
+        else if (phase === 'after-start') await expect(result).rejects.toThrow('CONSUMER_FAILED');
+        else await expect(result).resolves.toBe(phase === 'success' ? 'COMPLETED' : 'CANCELLED');
         expect(click).toHaveBeenCalledTimes(phase === 'after-start' || phase === 'success' ? 1 : 0);
-        expect(direct.download).toHaveBeenCalledTimes(phase === 'metadata' ? 0 : 1);
+        expect(download).toHaveBeenCalledOnce();
       } finally {
         for (const port of ports) port.close();
       }

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NodeWorkbenchManifest } from '../../src/model/workbench.js';
 import { createWorkbenchDirectTransportCoordinator } from '../../src/service/workbench-direct-transport-coordinator.js';
-import { createTerminalDirectClient } from '../../src/service/terminal-direct-client.js';
 
 const clients = vi.hoisted(() => ({
   workspace: {
@@ -19,7 +18,7 @@ const clients = vi.hoisted(() => ({
     download: vi.fn(),
     handle: vi.fn()
   },
-  terminal: { invalidate: vi.fn(), handle: vi.fn(), attach: vi.fn() }
+  terminal: { invalidate: vi.fn(), handle: vi.fn(), openStream: vi.fn() }
 }));
 vi.mock('../../src/service/workspace-direct-transfer-service.js', () => ({
   createWorkspaceDirectTransferService: vi.fn(() => clients.workspace)
@@ -277,27 +276,34 @@ describe('Workbench direct transport coordination', () => {
 
   it('invalidates only one Node and prevents its new Terminal acquisitions', async () => {
     const f = fixture();
-    const acquire = vi.mocked(createTerminalDirectClient).mock.calls.at(-1)![0].acquire;
+    const connect = f.coordinator.connectNodePath;
+    const signal = new AbortController().signal;
+    clients.workspace.ensureTransport.mockResolvedValue('DIRECT_AVAILABLE');
+    clients.workspace.acquireTerminalTransport.mockReturnValue({
+      readyStreamPath: async () => ({ closed: false }),
+      release: vi.fn()
+    });
     f.coordinator.selectNode('one');
     f.coordinator.connectionReady('connection', false);
     await f.coordinator.refresh('one');
     f.coordinator.selectNode('two');
     await f.coordinator.refresh('two');
-    acquire('one');
-    acquire('two');
+    await connect('one', signal);
+    await connect('two', signal);
     expect(clients.workspace.acquireTerminalTransport.mock.calls).toEqual([
       ['one', 'generation'],
       ['two', 'generation']
     ]);
+    f.discover.mockResolvedValueOnce(undefined);
     f.coordinator.nodeInvalidated('one');
-    acquire('one');
+    await expect(connect('one', signal)).rejects.toThrow('NODE_DIRECT_UNAVAILABLE');
     expect(clients.workspace.acquireTerminalTransport).toHaveBeenCalledTimes(2);
     expect(f.coordinator.isConnected('one')).toBe(false);
     expect(f.coordinator.isConnected('two')).toBe(true);
     // Other Nodes must not lose their active Terminal sessions.
     expect(clients.terminal.invalidate).toHaveBeenCalledTimes(1);
     await f.coordinator.refresh('one');
-    acquire('one');
+    await expect(connect('one', signal)).resolves.toMatchObject({ closed: false });
     expect(clients.workspace.acquireTerminalTransport).toHaveBeenCalledTimes(3);
     f.coordinator.dispose();
   });

@@ -1,21 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { MarctlClient } from './client.mjs';
-import { DirectFallbackError } from './direct-errors.mjs';
 import { openDirectConnection } from './direct.mjs';
+import { connectTerminalBrokerRelay } from './terminal-broker-relay.mjs';
 import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
 import {
   decodeByteFrame,
-  decodeTerminalMux,
   encodeTerminalMessage,
-  encodeByteFrame,
-  encodeTerminalMux,
-  MAX_TERMINAL_MUX_BYTES,
-  TERMINAL_MUX
+  encodeByteFrame
 } from '@myagentroam/protocol/byte-frame';
+import { NodeConnection } from '@myagentroam/protocol/node-connection';
 import {
-  IPC_BUFFER_LIMIT,
   IPC_HANDSHAKE_MS,
   ipcProof,
   matchesIpcProof,
@@ -26,9 +22,10 @@ import {
 } from './terminal-ipc.mjs';
 
 const IDLE_MS = 10 * 60_000;
+const PRIVATE_START_IDLE_MS = 10_000;
 const MAX_STREAMS = 10;
 
-/** Owns both paths to one Node; IPC clients own independent remote tasks and never migrate them. */
+/** Shares one NodeConnection with admitted IPC clients and owns its idle lifetime. */
 export async function startTerminalBroker(
   config,
   {
@@ -38,20 +35,34 @@ export async function startTerminalBroker(
   } = {}
 ) {
   const { serverUrl, key, nodeId } = config;
+  const privateBroker = config.privateId !== undefined;
   const client = new MarctlClient(config);
   const lifecycle = new AbortController();
   const peers = new Set();
-  const relayStreams = new Map();
-  let wire;
-  let relayAttempt;
-  let direct;
-  let directAttempt;
+  const connection = new NodeConnection({
+    direct: async (signal) => {
+      const direct = await openDirect({
+        client,
+        WebSocketClass: WebSocket,
+        nodeId,
+        signal,
+        // Keep the native module initialized for the broker's lifetime.
+        cleanupNative: () => {}
+      });
+      try {
+        return await direct.openStreams(signal);
+      } catch (error) {
+        direct.close();
+        throw error;
+      }
+    },
+    relay: (signal) => connectTerminalBrokerRelay({ serverUrl, key, nodeId, client }, signal)
+  });
   let admitted = 0;
-  let lastStream = 0;
   let idle;
   const server = createServer((socket) => {
     const ipc = new TerminalIpc(socket);
-    if (lifecycle.signal.aborted || peers.size >= 20) return ipc.close();
+    if (lifecycle.signal.aborted || peers.size >= (privateBroker ? 1 : 20)) return ipc.close();
     peers.add(ipc);
     const pending = new AbortController();
     let state = 'hello';
@@ -65,6 +76,7 @@ export async function startTerminalBroker(
       pending.abort();
       peers.delete(ipc);
       release?.();
+      if (privateBroker) return stop();
       if (
         state === 'admitted' ||
         state === 'ready' ||
@@ -109,7 +121,7 @@ export async function startTerminalBroker(
           admitted++;
           state = 'admitted';
           clearTimeout(idle);
-          void readyPath().then(
+          void connection.ready({ signal: pending.signal }).then(
             () => {
               if (!socket.destroyed) {
                 state = 'ready';
@@ -146,46 +158,21 @@ export async function startTerminalBroker(
         });
 
         async function attach() {
-          if (direct && !direct.closed) {
-            let transport;
-            try {
-              transport = await direct.attach({ terminalId, computer, signal: pending.signal });
-            } catch (error) {
-              if (!(error instanceof DirectFallbackError) || pending.signal.aborted) throw error;
-              // Only an error before Direct OPEN allows the same task to use Relay.
-            }
-            if (transport) {
-              if (socket.destroyed) return transport.close();
-              forward = (frame) => transport.sendEncoded(frame);
-              release = () => transport.close();
-              state = 'active';
-              transport.on('message', (raw) => ipc.send(raw));
-              transport.on('error', () => ipc.end());
-              transport.on('close', () => ipc.end());
-              ipc.send(encodeTerminalMessage({ type: 'attach', terminalId, afterSequence: 0 }));
-              transport.activate();
-              return;
-            }
-          }
-          const socketWire = await connectRelay();
-          const grant = ticket ?? (await client.createAttachTicket({ nodeId, terminalId }));
-          if (socket.destroyed) return;
-          if (socketWire.readyState !== WebSocket.OPEN || lastStream === 0xffffffff)
-            throw new Error('TERMINAL_CONNECTION_LOST');
-          const stream = ++lastStream;
-          relayStreams.set(stream, ipc);
-          release = () => {
-            if (relayStreams.delete(stream) && socketWire.readyState === WebSocket.OPEN)
-              socketWire.send(encodeTerminalMux(TERMINAL_MUX.close, stream));
-          };
-          forward = (frame) => sendRelay(socketWire, TERMINAL_MUX.data, stream, frame);
-          state = 'active';
-          await sendRelay(
-            socketWire,
-            TERMINAL_MUX.open,
-            stream,
-            encodeByteFrame({ ticket: grant, deferred: false })
+          const stream = await connection.openStream(
+            {
+              terminalId,
+              ticket,
+              computer,
+              onFrame: (bytes) => new Promise((resolve) => ipc.send(bytes, resolve)),
+              onEnd: () => ipc.end()
+            },
+            { signal: pending.signal }
           );
+          if (socket.destroyed) return stream.close();
+          forward = stream.write;
+          release = stream.close;
+          state = 'active';
+          stream.activate?.();
         }
       } catch {
         ipc.close();
@@ -195,110 +182,22 @@ export async function startTerminalBroker(
 
   function scheduleIdle() {
     clearTimeout(idle);
-    if (!lifecycle.signal.aborted && admitted === 0) idle = setTimeout(stop, idleMs);
-  }
-
-  function readyPath() {
-    if (direct && !direct.closed) return Promise.resolve();
-    if (direct) {
-      // Rebuild a previously usable path once, without delaying callers on a ready relay.
-      direct = undefined;
-      directAttempt = undefined;
-    }
-    directAttempt ??= openDirect({
-      client,
-      WebSocketClass: WebSocket,
-      nodeId,
-      signal: lifecycle.signal,
-      // Keep the native module initialized for the broker's lifetime.
-      cleanupNative: () => {}
-    }).then((connection) => {
-      if (lifecycle.signal.aborted) connection.close();
-      else direct = connection;
-    });
-    return Promise.any([
-      connectRelay(),
-      directAttempt.then(() => {
-        if (!direct || direct.closed) throw new Error('DIRECT_UNAVAILABLE');
-      })
-    ]);
-  }
-
-  function connectRelay() {
-    if (lifecycle.signal.aborted) return Promise.reject(new Error('TERMINAL_CONNECTION_LOST'));
-    relayAttempt ??= new Promise((resolve, reject) => {
-      const url = new URL('/api/marctl/terminal-mux', serverUrl);
-      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-      url.searchParams.set('node', nodeId);
-      const socketWire = new WebSocket(url, {
-        headers: { Authorization: `Bearer ${key}` },
-        maxPayload: MAX_TERMINAL_MUX_BYTES
-      });
-      wire = socketWire;
-      let ready = false;
-      const admissionTimer = setTimeout(() => socketWire.terminate(), IPC_HANDSHAKE_MS);
-      socketWire.on('error', reject);
-      socketWire.once('close', () => {
-        clearTimeout(admissionTimer);
-        reject(new Error('TERMINAL_CONNECTION_LOST'));
-        relayAttempt = undefined;
-        wire = undefined;
-        for (const stream of relayStreams.values()) stream.end();
-        relayStreams.clear();
-      });
-      socketWire.on('message', (raw, binary) => {
-        try {
-          if (!binary || !Buffer.isBuffer(raw)) throw new Error('TERMINAL_MUX_INVALID');
-          const { type, stream, payload } = decodeTerminalMux(raw);
-          if (!ready) {
-            if (type !== TERMINAL_MUX.ready) throw new Error('TERMINAL_MUX_INVALID');
-            ready = true;
-            clearTimeout(admissionTimer);
-            resolve(socketWire);
-            return;
-          }
-          if (type === TERMINAL_MUX.ready || type === TERMINAL_MUX.open || stream > lastStream)
-            throw new Error('TERMINAL_MUX_INVALID');
-          const ipc = relayStreams.get(stream);
-          if (!ipc) return;
-          if (type === TERMINAL_MUX.close) {
-            relayStreams.delete(stream);
-            ipc.end();
-          } else ipc.send(payload);
-        } catch {
-          socketWire.terminate();
-        }
-      });
-    });
-    return relayAttempt;
+    if (!lifecycle.signal.aborted && admitted === 0)
+      idle = setTimeout(stop, privateBroker ? PRIVATE_START_IDLE_MS : idleMs);
   }
 
   function stop() {
     if (lifecycle.signal.aborted) return;
     lifecycle.abort();
     clearTimeout(idle);
-    relayStreams.clear();
     for (const channel of peers) channel.close();
-    wire?.terminate();
-    direct?.close();
     server.close();
+    connection.close();
   }
 
   await listenTerminalBroker(server, address);
   scheduleIdle();
   return { close: stop };
-}
-
-function sendRelay(socket, type, stream, data) {
-  const frame = encodeTerminalMux(type, stream, data);
-  if (
-    socket.readyState !== WebSocket.OPEN ||
-    socket.bufferedAmount + frame.length > IPC_BUFFER_LIMIT
-  )
-    throw new Error('TERMINAL_CONNECTION_LOST');
-  return new Promise((resolve, reject) =>
-    socket.send(frame, (error) => (error ? reject(error) : resolve()))
-  );
 }
 
 async function run() {

@@ -1,16 +1,14 @@
 import {
+  binaryFilePreviewKind,
   decodeFilePreviewContent,
   FILE_TYPE_PROBE_LIMIT_BYTES,
   TEXT_FILE_PREVIEW_LIMIT_BYTES,
   usesHttpRangeFilePreview
 } from '../util/file-preview.js';
 
-/** Media stays URL-backed so native players can read and seek before the file is complete. */
-export async function readFilePreviewObject<T>(
-  path: string,
-  readComplete: () => Promise<T | undefined>
-): Promise<T | undefined> {
-  return usesHttpRangeFilePreview(path) ? undefined : readComplete();
+/** Retains native HTTP image policy and lets media players seek without a full download. */
+export function usesNativeHttpFilePreview(path: string): boolean {
+  return binaryFilePreviewKind(path) === 'image' || usesHttpRangeFilePreview(path);
 }
 
 interface FilePreviewReadResult {

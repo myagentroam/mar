@@ -3516,9 +3516,12 @@ export const hostedConversationFilesSchema = z
   .strict();
 export type HostedConversationFiles = z.infer<typeof hostedConversationFilesSchema>;
 
-export const hostedConversationFileReadInputSchema = hostedConversationIdInputSchema
+export const hostedConversationFileTargetInputSchema = hostedConversationIdInputSchema
+  .extend({ fileId: protocolIdSchema })
+  .strict();
+
+export const hostedConversationFileReadInputSchema = hostedConversationFileTargetInputSchema
   .extend({
-    fileId: protocolIdSchema,
     preview: imagePreviewOptionsSchema.optional(),
     offset: z.number().int().nonnegative().optional(),
     limit: z
@@ -3531,11 +3534,20 @@ export const hostedConversationFileReadInputSchema = hostedConversationIdInputSc
   .strict();
 export type HostedConversationFileReadInput = z.infer<typeof hostedConversationFileReadInputSchema>;
 
-export const hostedConversationFileDeleteInputSchema = hostedConversationIdInputSchema
+export const hostedConversationFileStreamInputSchema = hostedConversationFileTargetInputSchema
   .extend({
-    fileId: protocolIdSchema
+    revision: z.string().regex(/^\d{1,16}-\d{1,16}$/u),
+    range: z
+      .object({ offset: z.number().int().nonnegative(), length: z.number().int().nonnegative() })
+      .strict()
+      .optional()
   })
   .strict();
+export type HostedConversationFileStreamInput = z.infer<
+  typeof hostedConversationFileStreamInputSchema
+>;
+
+export const hostedConversationFileDeleteInputSchema = hostedConversationFileTargetInputSchema;
 export type HostedConversationFileDeleteInput = z.infer<
   typeof hostedConversationFileDeleteInputSchema
 >;
@@ -3617,19 +3629,6 @@ export const hostedConversationUploadCreateInputSchema = hostedConversationUploa
   .strict();
 export type HostedConversationUploadCreateInput = z.infer<
   typeof hostedConversationUploadCreateInputSchema
->;
-
-export const hostedConversationUploadChunkInputSchema = hostedConversationIdInputSchema
-  .extend({
-    uploadId: protocolIdSchema,
-    offset: z.number().int().nonnegative(),
-    bytes: z
-      .instanceof(Uint8Array)
-      .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= 512 * 1024)
-  })
-  .strict();
-export type HostedConversationUploadChunkInput = z.infer<
-  typeof hostedConversationUploadChunkInputSchema
 >;
 
 export const hostedConversationUploadControlInputSchema = hostedConversationIdInputSchema
@@ -3733,7 +3732,7 @@ export const terminalDataFrameSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('attach'),
     terminalId: z.string().min(1).max(128),
-    afterSequence: z.number().int().nonnegative()
+    afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
   }),
   z.object({
     type: z.literal('resize'),
@@ -4076,7 +4075,6 @@ export const workbenchNodeOperationSchema = z.enum([
   'workspace.symbol.definition',
   'workspace.files.upload.preflight',
   'workspace.files.upload.create',
-  'workspace.files.upload.chunk',
   'workspace.files.upload.status',
   'workspace.files.upload.complete',
   'workspace.files.upload.cancel',
@@ -4143,11 +4141,13 @@ export const workbenchNodeOperationSchema = z.enum([
   'conversation.hosted.tool-resource.read',
   'conversation.hosted.files.list',
   'conversation.hosted.file.read',
+  'conversation.hosted.file.describe',
+  'conversation.hosted.file.stream.prepare',
   'conversation.hosted.file.delete',
   'conversation.hosted.files.upload.preflight',
   'conversation.hosted.files.upload.create',
-  'conversation.hosted.files.upload.chunk',
   'conversation.hosted.files.upload.status',
+  'conversation.hosted.files.upload.stream.prepare',
   'conversation.hosted.files.upload.complete',
   'conversation.hosted.files.upload.cancel',
   'conversation.hosted.delete'

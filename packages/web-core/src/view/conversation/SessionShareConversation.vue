@@ -29,6 +29,7 @@ import SessionShareNameDialog from './SessionShareNameDialog.vue';
 import ComposerCommandPicker from '../composer/ComposerCommandPicker.vue';
 import ComposerReferencePicker from '../composer/ComposerReferencePicker.vue';
 import { createWorkbenchComposerInteractionController } from '../../service/workbench-composer-interaction-controller.js';
+import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import type { EffectiveWorkspaceSkill } from '../../service/effective-workspace-skill-service.js';
 const props = defineProps<{ access: ReturnType<typeof createSessionShareAccessService> }>();
 const emit = defineEmits<{
@@ -131,7 +132,10 @@ const name = (visitor: { visitorId: string; name?: string | undefined }) =>
   visitor.name ??
   translate('sessionShare.anonymous', { id: visitor.visitorId.replaceAll('-', '').slice(-6) });
 function keydown(event: KeyboardEvent): void {
-  if (!event.isComposing) interaction.onComposerKeydown(event);
+  if (event.isComposing) return;
+  interaction.onComposerKeydown(event);
+  // Standalone shares have no Workbench keyboard listener.
+  consoleKeyboardShortcutService.handle(event, 'pane');
 }
 function paste(event: ClipboardEvent): void {
   const files = event.clipboardData?.files;
@@ -159,11 +163,16 @@ function cancelName(): void {
 function closeParticipants(): void {
   showParticipants.value = false;
 }
+let unregisterComposerShortcuts: (() => void) | undefined;
 onMounted(() => {
+  unregisterComposerShortcuts = interaction.registerShortcuts(
+    () => composer.value?.$el.querySelector('textarea') ?? undefined
+  );
   observer.addEventListener('change', onResize);
   void chat.start();
 });
 onBeforeUnmount(() => {
+  unregisterComposerShortcuts?.();
   observer.removeEventListener('change', onResize);
   props.access.cancelName();
   images.dispose();

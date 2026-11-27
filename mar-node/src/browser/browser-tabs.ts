@@ -4,8 +4,10 @@ import {
   BROWSER_CONTROL_MAX_BYTES,
   isBrowserWorkspacePreview,
   type BrowserTabSnapshot,
-  type BrowserUpload
+  type BrowserUpload,
+  type BrowserUploadStream
 } from '@myagentroam/protocol';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
 import type { BrowserContext, CDPSession, Frame, Page, Request } from 'playwright';
 import { BrowserDownloads } from './browser-downloads.js';
 import { BrowserDialogs } from './browser-dialogs.js';
@@ -273,10 +275,22 @@ export class BrowserTabs {
     return this.files.receive(request);
   }
 
+  uploadStream(
+    request: BrowserUploadStream,
+    stream: NodeStream,
+    signal: AbortSignal
+  ): Promise<void> {
+    return this.files.receiveStream(request, stream, signal);
+  }
+
   async download(command: Parameters<BrowserDownloads['execute']>[0]): Promise<unknown> {
     const result = await this.downloads.execute(command, this.options.workspacePath);
     if (command.action === 'workspace') this.options.workspaceFilesChanged?.();
     return result;
+  }
+
+  readDownloadStream(id: string, size: number, signal: AbortSignal) {
+    return this.downloads.readStream(id, size, signal);
   }
 
   get activeDownloadCount(): number {

@@ -2,24 +2,7 @@ import { EventEmitter } from 'node:events';
 import { MarctlError } from './errors.mjs';
 import { TerminalRelaySender } from './terminal-relay-sender.mjs';
 import { parseFrame } from './terminal-frame.mjs';
-import { DirectFallbackError } from './direct-errors.mjs';
-import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
-
-export async function openRelayTransport({
-  client,
-  WebSocketClass,
-  nodeId,
-  terminalId,
-  ticket: grantedTicket,
-  translate,
-  connectionTimeoutMs,
-  signal
-}) {
-  const ticket = grantedTicket ?? (await client.createAttachTicket({ nodeId, terminalId }));
-  if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
-  const socket = client.openTerminalWebSocket(WebSocketClass, { nodeId, terminalId, ticket });
-  return attachTerminalSocket({ socket, terminalId, translate, connectionTimeoutMs, signal });
-}
+import { encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 
 export async function attachTerminalSocket({
   socket,
@@ -28,7 +11,7 @@ export async function attachTerminalSocket({
   connectionTimeoutMs,
   signal
 }) {
-  const transport = new BufferedRelayTransport({
+  const transport = new BufferedTerminalEndpoint({
     socket,
     terminalId,
     translate,
@@ -43,104 +26,14 @@ export async function attachTerminalSocket({
   }
 }
 
-export async function prepareRelayTransport({
-  client,
-  WebSocketClass,
-  nodeId,
-  terminalId,
-  ticket: grantedTicket,
-  translate,
-  connectionTimeoutMs,
-  signal,
-  onPrepared
-}) {
-  const ticket = grantedTicket ?? (await client.createAttachTicket({ nodeId, terminalId }));
-  if (onPrepared) await onPrepared();
-  if (signal?.aborted) throw new MarctlError(translate('errors.terminalAttachConnection'));
-  const socket = client.openTerminalWebSocket(WebSocketClass, {
-    nodeId,
-    terminalId,
-    ticket,
-    deferred: true
-  });
-  // Keep an error listener after readiness until the socket is discarded.
-  socket.on('error', () => {});
-  let activated = false;
-  const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => fail(), connectionTimeoutMs);
-    const cleanup = () => {
-      clearTimeout(timer);
-      socket.removeListener?.('message', onMessage);
-      socket.removeListener?.('error', fail);
-      socket.removeListener?.('close', fail);
-      signal?.removeEventListener('abort', fail);
-    };
-    const fail = () => {
-      cleanup();
-      try {
-        socket.close();
-      } catch {
-        /* Connection not yet established. */
-      }
-      reject(new MarctlError(translate('errors.terminalAttachConnection')));
-    };
-    const onMessage = (raw, isBinary) => {
-      let frame;
-      try {
-        if (!isBinary) return fail();
-        frame = decodeTerminalMessage(raw);
-      } catch {
-        return fail();
-      }
-      if (frame?.type !== 'ready' || frame.terminalId !== terminalId) return fail();
-      cleanup();
-      resolve();
-    };
-    socket.on('message', onMessage);
-    socket.on('error', fail);
-    socket.on('close', fail);
-    signal?.addEventListener('abort', fail, { once: true });
-    if (signal?.aborted) fail();
-  });
-  await ready;
-  return {
-    async activate(signal) {
-      if (signal?.aborted) {
-        socket.close();
-        throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
-      }
-      if (activated || socket.readyState !== 1)
-        throw new MarctlError(translate('errors.terminalAttachConnection'));
-      activated = true;
-      const transport = new BufferedRelayTransport({
-        socket,
-        terminalId,
-        translate,
-        connectionTimeoutMs
-      });
-      try {
-        socket.send(encodeTerminalMessage({ type: 'activate', terminalId }));
-        await waitForAttachment(transport, signal);
-        return transport;
-      } catch (error) {
-        transport.close();
-        throw error;
-      }
-    },
-    close() {
-      socket.close();
-    }
-  };
-}
-
 async function waitForAttachment(transport, signal) {
   if (!signal) return transport.waitForAttachment();
-  if (signal.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
+  if (signal.aborted) throw signal.reason;
   let cancel;
   const cancelled = new Promise((_, reject) => {
     cancel = () => {
       transport.close();
-      reject(new DirectFallbackError('DIRECT_RACE_CANCELLED'));
+      reject(signal.reason);
     };
     signal.addEventListener('abort', cancel, { once: true });
   });
@@ -151,7 +44,8 @@ async function waitForAttachment(transport, signal) {
   }
 }
 
-class BufferedRelayTransport extends EventEmitter {
+/** Buffers task records across the local IPC attachment handoff, not across Node reconnects. */
+class BufferedTerminalEndpoint extends EventEmitter {
   #socket;
   #sender;
   #terminalId;

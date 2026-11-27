@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
-import { copyFile, open, rm, stat } from 'node:fs/promises';
+import { constants, createReadStream } from 'node:fs';
+import { copyFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   BROWSER_DOWNLOAD_PAGE_SIZE,
   type BrowserDownloadInfo,
-  type BrowserDownloadRead,
   type BrowserDownloadRequest
 } from '@myagentroam/protocol';
 import type { CDPSession, Page } from 'playwright';
@@ -131,7 +130,7 @@ export class BrowserDownloads {
   }
 
   async execute(
-    command: BrowserDownloadRequest['command'] | BrowserDownloadRead['command'],
+    command: BrowserDownloadRequest['command'],
     workspacePath?: () => string | undefined
   ): Promise<unknown> {
     if (command.action === 'list') {
@@ -173,7 +172,7 @@ export class BrowserDownloads {
     if (entry.deleting) throw new Error('BROWSER_DOWNLOAD_ENDED');
     const location = entry.location;
     if (!location) throw new Error('BROWSER_DOWNLOAD_NOT_READY');
-    // Info admits a save. The HTTP response may wait between pull requests.
+    // Keep an admitted artifact available while the client opens its body stream.
     entry.recentSaveUntil = performance.now() + SAVE_GRACE_MS;
     if (command.action === 'info') return entry.info;
     if (command.action === 'workspace') {
@@ -195,31 +194,28 @@ export class BrowserDownloads {
       }
       return {};
     }
-    const content = Buffer.alloc(
-      Math.min(command.limit, Math.max(0, location.size - command.offset))
-    );
-    entry.readers = (entry.readers ?? 0) + 1;
-    try {
-      const handle = await open(location.path, 'r');
-      try {
-        const { bytesRead } = await handle.read(content, 0, content.length, command.offset);
-        return {
-          bytes: content.subarray(0, bytesRead),
-          offset: command.offset
-        };
-      } finally {
-        await handle.close();
-      }
-    } finally {
-      entry.readers--;
-      entry.recentSaveUntil = performance.now() + SAVE_GRACE_MS;
-    }
   }
 
   async cancelActive(): Promise<void> {
     await Promise.allSettled(
       [...this.active].map(({ info }) => this.execute({ action: 'cancel', id: info.id }))
     );
+  }
+
+  /** Pins the settled artifact for retention and opens its body once per save. */
+  async *readStream(id: string, size: number, signal: AbortSignal): AsyncIterable<Uint8Array> {
+    signal.throwIfAborted();
+    const entry = this.entries.get(id);
+    if (!entry || entry.deleting) throw new Error('BROWSER_DOWNLOAD_ENDED');
+    const { location } = entry;
+    if (!location || location.size !== size) throw new Error('BROWSER_DOWNLOAD_NOT_READY');
+    entry.readers = (entry.readers ?? 0) + 1;
+    try {
+      yield* createReadStream(location.path, { signal });
+    } finally {
+      entry.readers--;
+      entry.recentSaveUntil = performance.now() + SAVE_GRACE_MS;
+    }
   }
 
   private deleteEntry(entry: Entry): Promise<void> {

@@ -1,6 +1,7 @@
 import type { DirectTransferDescriptor, DirectTransferResource } from '@myagentroam/protocol';
 import { sha256 } from '../util/sha256.js';
 import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
+import type { WorkspaceDownloadSink } from './workspace-download-stream.js';
 
 import type {
   WorkspaceDirectFileIdentity,
@@ -70,10 +71,7 @@ export async function directFileContentRevision(
   return sha256(file.bytes);
 }
 
-export async function readWorkspaceDirectFileRange(input: {
-  readonly direct: Pick<ReturnType<typeof createWorkspaceDirectTransferService>, 'download'>;
-  readonly nodeId: string;
-  readonly nodeGeneration: string;
+type FileRangeInput = {
   readonly resource: DirectTransferResource;
   readonly fileName: string;
   readonly offset: number;
@@ -81,7 +79,33 @@ export async function readWorkspaceDirectFileRange(input: {
   readonly identity?: WorkspaceDirectFileIdentity;
   readonly metadata: () => Promise<WorkspaceDirectFileIdentity | undefined>;
   readonly signal?: AbortSignal;
-}): Promise<WorkspaceDirectFileRange> {
+};
+
+export function readWorkspaceDirectFileRange(
+  input: FileRangeInput & {
+    readonly direct: Pick<ReturnType<typeof createWorkspaceDirectTransferService>, 'download'>;
+    readonly nodeId: string;
+    readonly nodeGeneration: string;
+  }
+): Promise<WorkspaceDirectFileRange> {
+  return readWorkspaceFileRange(input, (transfer) =>
+    input.direct.download({
+      ...transfer,
+      nodeId: input.nodeId,
+      nodeGeneration: input.nodeGeneration
+    })
+  );
+}
+
+/** Assembles only the requested preview range; transport selection belongs to the caller. */
+export async function readWorkspaceFileRange(
+  input: FileRangeInput,
+  download: (transfer: {
+    readonly descriptor: Extract<DirectTransferDescriptor, { direction: 'DOWNLOAD' }>;
+    readonly sink: WorkspaceDownloadSink;
+    readonly signal?: AbortSignal;
+  }) => Promise<void>
+): Promise<WorkspaceDirectFileRange> {
   const identity = input.identity ?? (await input.metadata());
   if (identity === undefined) throw new Error('DIRECT_METADATA_UNAVAILABLE');
   input.signal?.throwIfAborted();
@@ -95,42 +119,32 @@ export async function readWorkspaceDirectFileRange(input: {
     };
   const range = { offset: input.offset, length };
 
-  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  const bytes = new Uint8Array(length);
   let received = 0;
-  const descriptor: DirectTransferDescriptor = {
+  const descriptor = {
     direction: 'DOWNLOAD',
     resource: input.resource,
     fileName: input.fileName,
     revision: identity.revision,
     size: identity.size,
     range
-  };
-  await input.direct.download({
-    nodeId: input.nodeId,
-    nodeGeneration: input.nodeGeneration,
+  } as const;
+  await download({
     descriptor,
     sink: {
-      async write(bytes) {
-        const copy = new Uint8Array(bytes.byteLength);
-        copy.set(bytes);
-        chunks.push(copy);
-        received += copy.byteLength;
+      async write(chunk) {
+        if (received + chunk.byteLength > length) throw new Error('DIRECT_INTEGRITY_FAILED');
+        bytes.set(chunk, received);
+        received += chunk.byteLength;
       },
       async close() {},
       async abort() {
-        chunks.length = 0;
         received = 0;
       }
     },
     ...(input.signal === undefined ? {} : { signal: input.signal })
   });
   if (received !== length) throw new Error('DIRECT_INTEGRITY_FAILED');
-  const bytes = new Uint8Array(length);
-  let cursor = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, cursor);
-    cursor += chunk.byteLength;
-  }
   return {
     ...identity,
     offset: input.offset,

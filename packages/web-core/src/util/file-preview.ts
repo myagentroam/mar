@@ -37,6 +37,7 @@ export interface WorkspaceFileTarget {
 
 const MAX_INLINE_TEXT_SEARCH_MATCHES = 5_000;
 export const TEXT_FILE_PREVIEW_LIMIT_BYTES = 512 * 1024;
+export const MAX_BINARY_PREVIEW_BYTES = 20 * 1024 * 1024;
 export const FILE_TYPE_PROBE_LIMIT_BYTES = 4 * 1024;
 
 const IMAGE_EXTENSIONS = new Set([

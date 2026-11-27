@@ -13,13 +13,9 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 type FileOperation =
-  | 'workspace.files.upload.chunk'
   | 'workspace.file.content.read'
   | 'workspace.git.commit.file.content.read'
-  | 'conversation.hosted.files.upload.chunk'
-  | 'conversation.hosted.file.read'
-  | 'browser.upload'
-  | 'browser.download';
+  | 'conversation.hosted.file.read';
 
 /** Only bulk file chunks use this channel, not control actions or generated image resources. */
 export function isFileRelayOperation(
@@ -27,19 +23,11 @@ export function isFileRelayOperation(
   data: unknown
 ): operation is FileOperation {
   switch (operation) {
-    case 'workspace.files.upload.chunk':
     case 'workspace.git.commit.file.content.read':
-    case 'conversation.hosted.files.upload.chunk':
       return true;
     case 'workspace.file.content.read':
     case 'conversation.hosted.file.read':
       return record(data)?.preview === undefined;
-    case 'browser.upload':
-    case 'browser.download':
-      return (
-        record(record(record(data)?.payload)?.command)?.action ===
-        (operation === 'browser.upload' ? 'chunk' : 'read')
-      );
     default:
       return false;
   }
@@ -52,15 +40,7 @@ export const decodeFileRelayFrame = codec.decode.bind(codec);
 function bodyPath(envelope: NodeEnvelope, operation: FileOperation): readonly string[] {
   const payload = record(envelope.payload);
   if (!payload) throw new Error('MESSAGE_INVALID');
-  if (envelope.type === 'node.request') {
-    if (
-      operation === 'workspace.files.upload.chunk' ||
-      operation === 'conversation.hosted.files.upload.chunk'
-    )
-      return ['data'];
-    if (operation === 'browser.upload') return ['data', 'payload', 'command'];
-    return [];
-  }
+  if (envelope.type === 'node.request') return [];
   if (envelope.type !== 'node.response') throw new Error('MESSAGE_INVALID');
   if ('error' in payload) return [];
   if (
@@ -68,8 +48,7 @@ function bodyPath(envelope: NodeEnvelope, operation: FileOperation): readonly st
     operation === 'workspace.git.commit.file.content.read'
   )
     return ['result', 'file'];
-  if (operation === 'conversation.hosted.file.read' || operation === 'browser.download')
-    return ['result'];
+  if (operation === 'conversation.hosted.file.read') return ['result'];
   return [];
 }
 
@@ -94,7 +73,6 @@ export function encodeFileRelayEnvelope(envelope: NodeEnvelope, operation: FileO
   const type = envelope.type === 'node.request' ? 'file.request' : 'file.response';
   if (path.length === 0) return encodeFileRelayFrame({ type, envelope });
   const { metadata, bytes } = stripBody(envelope.payload, path);
-  if (type === 'file.request' && bytes.byteLength === 0) throw new Error('MESSAGE_INVALID');
   return encodeFileRelayFrame(
     { type, envelope: { ...envelope, payload: metadata }, byteLength: bytes.byteLength },
     bytes
@@ -114,12 +92,7 @@ export function restoreFileRelayBody(
   }
   let slot = record(envelope.payload);
   for (const key of path) slot = record(slot?.[key]);
-  if (
-    !slot ||
-    'bytes' in slot ||
-    declaredLength !== bytes.byteLength ||
-    (envelope.type === 'node.request' && bytes.byteLength === 0)
-  )
+  if (!slot || 'bytes' in slot || declaredLength !== bytes.byteLength)
     throw new Error('MESSAGE_INVALID');
   slot.bytes = bytes;
 }

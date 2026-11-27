@@ -87,6 +87,7 @@ export async function ready(configure?: (app: ServerApplication) => void) {
   const control = sessionRoutes.mock.calls[0]![0].nodeControl as unknown as {
     close(): void;
     attach: import('../../../src/node-control.js').NodeControl['attach'];
+    attachFileRelay: import('../../../src/node-control.js').NodeControl['attachFileRelay'];
     attachBrowserWorkbench: import('../../../src/node-control.js').NodeControl['attachBrowserWorkbench'];
     isNodeConnected(nodeId: string): boolean;
     messageProjector: {

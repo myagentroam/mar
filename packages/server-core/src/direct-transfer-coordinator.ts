@@ -203,7 +203,13 @@ export class DirectTransferCoordinator {
   }
 
   private auditUpload(session: DirectSession, eventType: string, errorCode?: string): void {
-    if (session.purpose !== 'TRANSFER' || session.transfer.direction !== 'UPLOAD') return;
+    // When the task owns a staging ID, its complete/cancel RPC owns outcome audit.
+    if (
+      session.purpose !== 'TRANSFER' ||
+      session.transfer.direction !== 'UPLOAD' ||
+      session.transfer.uploadId !== undefined
+    )
+      return;
     emitAudit(this.options.audits ?? {}, {
       eventType,
       actorUserId: session.userId,

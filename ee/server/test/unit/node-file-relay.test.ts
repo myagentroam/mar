@@ -61,14 +61,8 @@ it('carries only authorized file chunks on a separate binary socket and settles 
       if (dropResponse) await new Promise<void>((resolve) => heldRequests.push(resolve));
       const { operation, data } = envelope.payload as {
         operation: string;
-        data: { bytes?: Uint8Array };
+        data: { full?: boolean };
       };
-      if (operation === 'browser.upload' || operation === 'browser.download') {
-        const result =
-          operation === 'browser.upload' ? {} : { offset: 0, bytes: Buffer.of(255, 0) };
-        reply('node.response', { result }, envelope.id);
-        return;
-      }
       if (operation === 'conversation.hosted.file.read') {
         reply(
           'node.response',
@@ -80,9 +74,14 @@ it('carries only authorized file chunks on a separate binary socket and settles 
       reply(
         'node.response',
         {
-          result: operation.endsWith('.chunk')
-            ? { received: data.bytes?.length }
-            : { file: { bytes: Buffer.from([0, 0xff, 8]) } }
+          result: {
+            file: {
+              bytes:
+                data.full === true
+                  ? Buffer.alloc(FILE_RELAY_CHUNK_BYTES, 0xff)
+                  : Buffer.of(0, 0xff, 8)
+            }
+          }
         },
         envelope.id
       );
@@ -116,13 +115,13 @@ it('carries only authorized file chunks on a separate binary socket and settles 
     inbound.mockClear();
     const bytes = Buffer.alloc(FILE_RELAY_CHUNK_BYTES, 0xff);
     await expect(
-      request.request('node-1', 'workspace.files.upload.chunk', { bytes }, user)
-    ).resolves.toEqual({ received: bytes.length });
+      request.request('node-1', 'workspace.file.content.read', { full: true }, user)
+    ).resolves.toEqual({ file: { bytes } });
     expect(outbound).toHaveBeenCalledExactlyOnceWith(expect.any(Number));
-    expect(outbound.mock.calls[0]![0]).toBeGreaterThan(bytes.length);
     expect(inbound).toHaveBeenCalledExactlyOnceWith(expect.any(Number));
+    expect(inbound.mock.calls[0]![0]).toBeGreaterThan(bytes.length);
     expect(received.mock.calls[0]![0].payload).toMatchObject({
-      data: { bytes },
+      data: { full: true },
       userAuthorization: { userId: 1 }
     });
     await expect(
@@ -131,14 +130,6 @@ it('carries only authorized file chunks on a separate binary socket and settles 
     await expect(
       request.request('node-1', 'conversation.hosted.file.read', {}, user)
     ).rejects.toMatchObject({ code: 'HOSTED_CONVERSATION_NOT_AUTHORIZED', source: 'node' });
-    const upload = { payload: { command: { action: 'chunk', bytes: Buffer.of(0, 255) } } };
-    await expect(request.request('node-1', 'browser.upload', upload, user)).resolves.toEqual({});
-    expect(received.mock.lastCall?.[0].payload).toMatchObject({ data: upload });
-    const download = { payload: { command: { action: 'read' } } };
-    await expect(request.request('node-1', 'browser.download', download, user)).resolves.toEqual({
-      offset: 0,
-      bytes: Buffer.of(255, 0)
-    });
     expect(relay.socketFor('node-1')?.extensions).toBe('permessage-deflate');
     expect(control.send).not.toHaveBeenCalled();
     const controlRequest = request.request('node-1', 'workspace.files.upload.complete', {}, user);

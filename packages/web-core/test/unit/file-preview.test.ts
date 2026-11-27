@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   readFilePreview,
-  readFilePreviewObject
+  usesNativeHttpFilePreview
 } from '../../src/service/file-preview-read-service.js';
 import {
   binaryFilePreviewKind,
@@ -24,17 +24,14 @@ import {
 } from '../../src/util/file-preview.js';
 
 describe('Web unified file preview classification', () => {
-  it.each(['clip.mp4', 'sound.mp3', 'image.png', 'manual.pdf'])(
-    'selects the shared preview transport before starting complete reads for %s',
-    async (path) => {
-      const read = vi.fn(async () => ({ url: 'blob:complete-preview' }));
-      const result = await readFilePreviewObject(path, read);
-      expect(read).toHaveBeenCalledTimes(usesHttpRangeFilePreview(path) ? 0 : 1);
-      expect(result).toEqual(
-        usesHttpRangeFilePreview(path) ? undefined : { url: 'blob:complete-preview' }
-      );
-    }
+  it.each(['clip.mp4', 'sound.mp3', 'image.png', 'image.svg'])(
+    'classifies %s as a native HTTP preview',
+    (path) => expect(usesNativeHttpFilePreview(path)).toBe(true)
   );
+
+  it('does not classify PDF as a native HTTP preview', () => {
+    expect(usesNativeHttpFilePreview('manual.pdf')).toBe(false);
+  });
 
   it.each(['demo.MP4', 'movie.webm', 'recording.mov', 'music.mp3', 'sound.wav', 'music.flac'])(
     'keeps %s on HTTP Range rather than complete-file object URLs',

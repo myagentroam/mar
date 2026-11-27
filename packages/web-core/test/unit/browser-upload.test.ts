@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { BrowserUpload } from '@myagentroam/protocol';
+import type { BrowserUpload, BrowserUploadStream } from '@myagentroam/protocol';
+import { encodeUploadOffset } from '@myagentroam/protocol/file-upload-stream';
+import { NodeStream } from '@myagentroam/protocol/node-stream';
 import { expect, it } from 'vitest';
 import { uploadBrowserFiles } from '../../src/service/browser-upload.js';
 import type { WorkbenchHttpService } from '../../src/service/workbench-http-service.js';
@@ -10,15 +12,14 @@ it.each(['NETWORK_UNAVAILABLE', 'NODE_REQUEST_TIMEOUT'])(
   async (code) => {
     const actions: string[] = [];
     const http = (async (path, init) => {
-      if (init!.body instanceof Blob) {
-        expect(new URL(path, 'https://test.invalid').searchParams.get('offset')).toBe('0');
-        expect(init!.headers).toEqual({ 'content-type': 'application/octet-stream' });
-        expect(await init!.body.text()).toBe('text');
-        actions.push('chunk');
-        return {};
-      }
-      const { command } = JSON.parse(init!.body as string) as BrowserUpload;
+      expect(typeof init!.body).toBe('string');
+      const { command } = JSON.parse(init!.body as string) as BrowserUpload | BrowserUploadStream;
       actions.push(command.action);
+      if (command.action === 'stream') {
+        expect(path).toBe('/api/browser/uploads/stream-ticket?connectionId=workbench');
+        expect(command.index).toBe(0);
+        return { ticket: 'file-ticket' };
+      }
       if (command.action === 'finish') throw new ApiError(code, 'Response not received.');
       return {};
     }) as WorkbenchHttpService['request'];
@@ -29,9 +30,29 @@ it.each(['NETWORK_UNAVAILABLE', 'NODE_REQUEST_TIMEOUT'])(
         'workbench',
         { attachmentId: randomUUID(), chooserId: randomUUID() },
         [new File(['text'], 'upload.txt')],
-        { signal: new AbortController().signal, finishing: () => actions.push('finishing') }
+        {
+          signal: new AbortController().signal,
+          finishing: () => actions.push('finishing'),
+          async openStream(ticket) {
+            expect(ticket).toBe('file-ticket');
+            const stream = new NodeStream(
+              1,
+              async (frame) => {
+                if (frame.type === 'DATA') {
+                  expect(Buffer.from(frame.bytes).toString()).toBe('text');
+                  actions.push('body');
+                  stream.receive({ type: 'DATA', streamId: 1, bytes: encodeUploadOffset(4) });
+                }
+                if (frame.type === 'FIN') stream.receive({ type: 'FIN', streamId: 1 });
+              },
+              () => undefined
+            );
+            stream.receive({ type: 'DATA', streamId: 1, bytes: encodeUploadOffset(0) });
+            return stream;
+          }
+        }
       )
     ).rejects.toThrow('BROWSER_OUTCOME_UNKNOWN');
-    expect(actions).toEqual(['begin', 'file', 'chunk', 'finishing', 'finish']);
+    expect(actions).toEqual(['begin', 'file', 'stream', 'body', 'finishing', 'finish']);
   }
 );

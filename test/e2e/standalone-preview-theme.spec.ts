@@ -1,5 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { NodeStreamMux } from '../../packages/protocol/src/node-stream-mux.js';
+import { encodeNodeRelayHandshake } from '../../packages/protocol/src/node-stream-wire.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
+import { mockWorkspaceFileRelay } from './support/mock-workspace-file-relay.js';
 
 // @test-covers packages/web-core/src/view/workspace/StandaloneFilePreviewPage.vue
 // @test-covers packages/web-core/src/styles/code-syntax-theme.css
@@ -12,27 +16,163 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+async function mockWorkspaceFileStream(
+  page: Page,
+  path: string,
+  bytes: Buffer,
+  ready?: Promise<void>
+) {
+  let oldBodyRequests = 0;
+  await page.route(/\/api\/workspaces\/workspace\/files\/(read|content)\?/u, (route) => {
+    oldBodyRequests++;
+    return route.abort();
+  });
+  const snapshot = await mockWorkspaceFileRelay(page, 'node', 'workspace', async (requestPath) => {
+    expect(requestPath).toBe(path);
+    await ready;
+    return bytes;
+  });
+  return () => ({ ...snapshot(), oldBodyRequests });
+}
+
+test('Standalone Workspace image uses only HTTP until the user downloads it', async ({ page }) => {
+  const bytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  );
+  const snapshot = await mockWorkspaceFileStream(page, 'picture.png', bytes);
+  let workbenchSockets = 0;
+  await page.routeWebSocket('**/api/workbench/live', () => {
+    workbenchSockets++;
+  });
+  await page.route('**/api/workspaces/workspace/files/content?**', (route) =>
+    route.fulfill({ contentType: 'image/png', body: bytes })
+  );
+  await page.goto(
+    `${fixture.url}standalone-preview.html?standaloneFile=1&nodeId=node&workspaceId=workspace&path=picture.png`
+  );
+  const image = page.locator('img[src*="/files/content"]');
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+    .toBe(1);
+  expect(snapshot()).toMatchObject({ carriers: 0, descriptors: [] });
+  expect(workbenchSockets).toBe(0);
+
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: /^(Download file|下载文件)$/iu }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe('picture.png');
+  expect(await readFile(await download.path())).toEqual(bytes);
+  expect(snapshot()).toMatchObject({
+    carriers: 1,
+    descriptors: [{ resource: { path: 'picture.png' } }],
+    oldBodyRequests: 0
+  });
+});
+
+test('Standalone Workspace surfaces a stream grant failure without retrying the HTTP body', async ({
+  page
+}) => {
+  const snapshot = await mockWorkspaceFileStream(
+    page,
+    'guide.md',
+    Buffer.from('# Not authorized\n')
+  );
+  await page.route('**/api/workspaces/workspace/file-stream-ticket', (route) =>
+    route.fulfill({ status: 403, json: { code: 'RESOURCE_DENIED' } })
+  );
+  await page.goto(
+    `${fixture.url}standalone-preview.html?markdownPreview=1&nodeId=node&workspaceId=workspace&path=guide.md`
+  );
+  await expect(page.locator('.standalone-error')).toBeVisible();
+  expect(snapshot()).toMatchObject({ carriers: 1, oldBodyRequests: 0 });
+});
+
+test('Standalone Hosted preview and download share a Relay without HTTP file bodies', async ({
+  page
+}) => {
+  await page.addInitScript(() => sessionStorage.setItem('mar.user.csrf-token', 'fixture-csrf'));
+  const bytes = Buffer.from('Hosted snapshot z\u00e9ro\n');
+  const filePath = '**/api/nodes/node/hosted-conversations/conversation/files/file';
+  const descriptors: Array<{ range?: { offset: number; length: number } }> = [];
+  let carriers = 0;
+  let oldRequests = 0;
+  await page.route(`${filePath}/content**`, (route) => {
+    oldRequests++;
+    return route.abort();
+  });
+  await page.route(`${filePath}/metadata`, (route) =>
+    route.fulfill({
+      json: {
+        id: 'file',
+        conversationId: 'conversation',
+        category: 'UPLOAD',
+        relativePath: 'file.txt',
+        displayName: 'file.txt',
+        mimeType: 'text/plain',
+        size: bytes.byteLength,
+        source: 'USER',
+        createdAt: 1,
+        updatedAt: 2
+      }
+    })
+  );
+  await page.route(`${filePath}/stream-ticket`, (route) => {
+    const descriptor = route.request().postDataJSON() as {
+      revision: string;
+      range?: { offset: number; length: number };
+    };
+    expect(descriptor.revision).toBe(`2-${bytes.byteLength}`);
+    descriptors.push(descriptor);
+    return route.fulfill({ json: { ticket: String(descriptors.length - 1) } });
+  });
+  await page.routeWebSocket(/\/api\/relay\/node\?hostedConversationId=conversation$/u, (socket) => {
+    carriers++;
+    const mux = new NodeStreamMux({
+      maxStreams: 2,
+      async send(frame) {
+        socket.send(Buffer.from(frame));
+      },
+      async accept({ kind, grant }) {
+        const descriptor = descriptors[Number(grant)];
+        if (kind !== 'hosted-file-download' || descriptor === undefined) return undefined;
+        return async (stream) => {
+          const { offset, length } = descriptor.range ?? { offset: 0, length: bytes.byteLength };
+          await stream.write(bytes.subarray(offset, offset + length));
+          await stream.endWrite();
+          for await (const _chunk of stream) throw new Error('Unexpected reverse DATA');
+        };
+      }
+    });
+    socket.onMessage((message) => mux.receive(message));
+    socket.onClose(() => mux.disconnect());
+    socket.send(Buffer.from(encodeNodeRelayHandshake({ type: 'RELAY_READY' })));
+  });
+  await page.goto(
+    `${fixture.url}standalone-preview.html?standaloneFile=1&source=hosted&nodeId=node&workspaceId=conversation&conversationId=conversation&fileId=file&path=file.txt&mimeType=text/plain&size=${bytes.byteLength}`
+  );
+  await expect(page.locator('.cm-content')).toContainText('Hosted snapshot z\u00e9ro');
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: /^(Download file|下载文件)$/iu }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe('file.txt');
+  expect(await readFile(await download.path())).toEqual(bytes);
+  expect(descriptors.map((descriptor) => descriptor.range)).toEqual([
+    { offset: 0, length: bytes.byteLength },
+    undefined
+  ]);
+  expect(carriers).toBe(1);
+  expect(oldRequests).toBe(0);
+});
+
 for (const width of [1280, 390]) {
   test(`Standalone legacy source remains readable and read-only on a writable Node at ${width}px`, async ({
     page
   }) => {
     await page.setViewportSize({ width, height: 844 });
     const bytes = Buffer.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4, 13, 10]);
-    await page.route('**/api/workspaces/workspace/files/read?**', (route) =>
-      route.fulfill({
-        json: {
-          file: {
-            path: 'DisplayBoard.c',
-            size: bytes.length,
-            encoding: 'base64',
-            content: bytes.toString('base64'),
-            truncated: false,
-            nextOffset: null,
-            revision: 'source-revision'
-          }
-        }
-      })
-    );
+    const snapshot = await mockWorkspaceFileStream(page, 'DisplayBoard.c', bytes);
     await page.goto(
       `${fixture.url}standalone-preview.html?standaloneFile=1&nodeId=node&workspaceId=workspace&path=DisplayBoard.c&write=1`
     );
@@ -42,6 +182,7 @@ for (const width of [1280, 390]) {
     await expect(page.locator('.mar-file-preview-eyebrow')).toContainText('GB18030');
     await expect(page.getByRole('button', { name: /^(Edit file|编辑文件)$/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^(Save|保存)$/ })).toHaveCount(0);
+    expect(snapshot()).toMatchObject({ carriers: 1, oldBodyRequests: 0 });
   });
 }
 
@@ -52,21 +193,7 @@ for (const theme of ['daylight', 'dark', 'custom']) {
     const ready = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await page.route('**/api/workspaces/workspace/files/read?**', async (route) => {
-      await ready;
-      await route.fulfill({
-        json: {
-          file: {
-            path: 'guide.md',
-            size: content.length,
-            encoding: 'utf-8',
-            content,
-            truncated: false,
-            nextOffset: null
-          }
-        }
-      });
-    });
+    await mockWorkspaceFileStream(page, 'guide.md', Buffer.from(content), ready);
     await page.goto(
       `${fixture.url}standalone-preview.html?markdownPreview=1&nodeId=node&workspaceId=workspace&path=guide.md&theme=${theme}`
     );
@@ -155,19 +282,10 @@ test('Standalone preview errors remain readable on the light surface', async ({ 
 test('Standalone Markdown prints complete pages without the console viewport clipping', async ({
   page
 }) => {
-  await page.route('**/api/workspaces/workspace/files/read?**', (route) =>
-    route.fulfill({
-      json: {
-        file: {
-          path: 'guide.md',
-          size: 12000,
-          encoding: 'utf-8',
-          content: '# Print preview\n\n' + 'Long readable paragraph.\n\n'.repeat(150),
-          truncated: false,
-          nextOffset: null
-        }
-      }
-    })
+  await mockWorkspaceFileStream(
+    page,
+    'guide.md',
+    Buffer.from('# Print preview\n\n' + 'Long readable paragraph.\n\n'.repeat(150))
   );
   await page.goto(
     `${fixture.url}standalone-preview.html?markdownPreview=1&nodeId=node&workspaceId=workspace&path=guide.md`

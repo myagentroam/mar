@@ -1,4 +1,7 @@
-import { registerSessionShareRealtimeRoute } from '@myagentroam/server-core/session-share-routes';
+import {
+  registerSessionShareRealtimeRoute,
+  SESSION_SHARE_COOKIE
+} from '@myagentroam/server-core/session-share-routes';
 import type { SessionShares } from '@myagentroam/server-core/session-shares';
 import {
   registerWorkbenchRoute,
@@ -12,8 +15,11 @@ import type { WebSocket } from 'ws';
 import type { FastifyRequest } from 'fastify';
 import { FILE_RELAY_MAX_FRAME_BYTES } from '@myagentroam/protocol';
 import { DesktopWebSocketDispatcher } from '../service/desktop-websocket-dispatcher.js';
-import { BROWSER_CONTROL_MAX_BYTES, MAX_TERMINAL_MUX_BYTES } from '@myagentroam/protocol';
 import { registerBrowserFileRoutes } from './browser-file-routes.js';
+import { MAX_NODE_STREAM_FRAME_BYTES } from '@myagentroam/protocol/node-stream-wire';
+import { isAllowedOrigin, parseCookies } from '@myagentroam/server-core/auth';
+import type { MarctlUserCredentials } from '@myagentroam/server-core/marctl-user-credentials';
+import type { UserNodeAuthorization } from '@myagentroam/server-core/node-access-contracts';
 
 export function registerRealtimeRoutes(input: {
   readonly app: FastifyInstance;
@@ -21,15 +27,17 @@ export function registerRealtimeRoutes(input: {
   readonly nodeControl: NodeControl;
   readonly publicOrigin: string | undefined;
   readonly sessionShares?: SessionShares;
-  readonly attachMarctl?: (
-    socket: WebSocket,
-    request: FastifyRequest<{ Querystring: { ticket?: string } }>
-  ) => void;
+  readonly relayAccess?: {
+    readonly credentials: Pick<MarctlUserCredentials, 'authenticateContext'>;
+    readonly canUseNode: (userId: number, nodeId: string) => Promise<boolean>;
+    readonly canAccessNodeContainer: (userId: number, nodeId: string) => Promise<boolean>;
+    readonly canAccessHostedConversation?: (
+      user: UserNodeAuthorization,
+      nodeId: string,
+      conversationId: string
+    ) => Promise<boolean>;
+  };
   readonly attachMarctlLive?: (socket: WebSocket, request: FastifyRequest) => void;
-  readonly attachMarctlMux?: (
-    socket: WebSocket,
-    request: FastifyRequest<{ Querystring: { node?: string } }>
-  ) => void;
 }): void {
   const { app, database, nodeControl, publicOrigin } = input;
   app.register(async (routes) => {
@@ -43,31 +51,22 @@ export function registerRealtimeRoutes(input: {
       options: { perMessageDeflate }
     });
     const desktopWebSockets = new DesktopWebSocketDispatcher(routes.websocketServer);
+    const nodeRelayWebSockets = new DesktopWebSocketDispatcher(
+      routes.websocketServer,
+      MAX_NODE_STREAM_FRAME_BYTES,
+      perMessageDeflate
+    );
     const fileWebSockets = new DesktopWebSocketDispatcher(
       routes.websocketServer,
       FILE_RELAY_MAX_FRAME_BYTES,
       perMessageDeflate
     );
-    const browserWebSockets = new DesktopWebSocketDispatcher(
-      routes.websocketServer,
-      BROWSER_CONTROL_MAX_BYTES
-    );
-    const terminalMuxWebSockets =
-      input.attachMarctlMux === undefined
-        ? undefined
-        : new DesktopWebSocketDispatcher(
-            routes.websocketServer,
-            MAX_TERMINAL_MUX_BYTES,
-            perMessageDeflate
-          );
     routes.addHook('preClose', async () => {
-      await terminalMuxWebSockets?.close();
-      await browserWebSockets.close();
       await fileWebSockets.close();
+      await nodeRelayWebSockets.close();
       await desktopWebSockets.close();
     });
     const desktopWire = async (request: FastifyRequest) => desktopWebSockets.mark(request.raw);
-    const browserWire = async (request: FastifyRequest) => browserWebSockets.mark(request.raw);
     if (input.sessionShares !== undefined)
       registerSessionShareRealtimeRoute({
         app: routes,
@@ -76,10 +75,118 @@ export function registerRealtimeRoutes(input: {
         publicOrigin,
         attach: (socket, user, share) => nodeControl.attachBrowserWorkbench(socket, user, share)
       });
+    const shares = input.sessionShares;
+    if (shares !== undefined) {
+      const access = new WeakMap<FastifyRequest, Awaited<ReturnType<typeof shares.resolve>>>();
+      routes.get<{ Params: { shareId: string } }>(
+        '/api/session-shares/:shareId/relay',
+        {
+          websocket: true,
+          preValidation: async (request, reply) => {
+            if (!isAllowedOrigin(request, publicOrigin)) return reply.code(403).send();
+            try {
+              access.set(
+                request,
+                await shares.resolve(
+                  request.params.shareId,
+                  parseCookies(request)[SESSION_SHARE_COOKIE]
+                )
+              );
+              nodeRelayWebSockets.mark(request.raw);
+            } catch {
+              return reply.code(403).send();
+            }
+          }
+        },
+        (socket, request) => {
+          const { record, context } = access.get(request)!;
+          nodeControl.attachShareFileRelay(socket, {
+            shareId: record.id,
+            expiresAt: record.expiresAt,
+            nodeId: context.nodeId,
+            user: context.user
+          });
+        }
+      );
+    }
     routes.get('/api/node/connect', { websocket: true }, (socket) => nodeControl.attach(socket));
-    routes.get('/api/node/terminal-connect', { websocket: true }, (socket) =>
-      nodeControl.attachTerminal(socket)
+    routes.get(
+      '/api/node/relay',
+      {
+        websocket: true,
+        preValidation: async (request) => nodeRelayWebSockets.mark(request.raw)
+      },
+      (socket) => nodeControl.attachNodeRelay(socket)
     );
+    const relayAccess = input.relayAccess;
+    if (relayAccess !== undefined)
+      routes.get<{ Params: { nodeId: string }; Querystring: { hostedConversationId?: string } }>(
+        '/api/relay/:nodeId',
+        {
+          websocket: true,
+          preValidation: async (request) => nodeRelayWebSockets.mark(request.raw)
+        },
+        (socket, request) => {
+          const nodeId = request.params.nodeId;
+          if (
+            !nodeId ||
+            nodeId.length > 128 ||
+            (request.headers.origin !== undefined && !isAllowedOrigin(request, publicOrigin))
+          ) {
+            socket.close(1008, 'NODE_RELAY_AUTH_INVALID');
+            return;
+          }
+          const header = request.headers.authorization;
+          socket.on('error', () => socket.terminate());
+          socket.pause();
+          void (async () => {
+            const bearer =
+              header === undefined
+                ? undefined
+                : await relayAccess.credentials.authenticateContext(header);
+            const user =
+              header === undefined
+                ? authorizeRealtimeConnection(socket, request, database, publicOrigin)
+                : bearer?.user;
+            if (user === undefined) {
+              if (header !== undefined) socket.close(1008, 'NODE_RELAY_AUTH_INVALID');
+              return;
+            }
+            const admit =
+              header === undefined ? relayAccess.canAccessNodeContainer : relayAccess.canUseNode;
+            const normalAccess = await admit(user.userId, nodeId);
+            const conversationId = request.query.hostedConversationId;
+            // A template-only session may use this same endpoint, but only Hosted grants.
+            if (
+              !normalAccess &&
+              !(
+                header === undefined &&
+                typeof conversationId === 'string' &&
+                (await relayAccess.canAccessHostedConversation?.(user, nodeId, conversationId))
+              )
+            ) {
+              socket.close(1008, 'NODE_RELAY_AUTH_INVALID');
+              return;
+            }
+            // Cookie authorization may have ended while Node access was being checked.
+            if (
+              header === undefined &&
+              authorizeRealtimeConnection(socket, request, database, publicOrigin)?.sessionHash !==
+                user.sessionHash
+            )
+              return;
+            nodeControl.attachClientRelay(
+              socket,
+              nodeId,
+              { userId: user.userId, sessionHash: user.sessionHash },
+              bearer?.expiresAt,
+              !normalAccess
+            );
+          })()
+            .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'))
+            .finally(() => socket.resume());
+        }
+      );
     routes.get(
       '/api/node/file-connect',
       {
@@ -87,25 +194,6 @@ export function registerRealtimeRoutes(input: {
         preValidation: async (request) => fileWebSockets.mark(request.raw)
       },
       (socket) => nodeControl.attachFileRelay(socket)
-    );
-    routes.get(
-      '/api/node/browser-relay',
-      { websocket: true, preValidation: browserWire },
-      (socket, request) => nodeControl.attachNodeBrowserRelay(socket, request.headers)
-    );
-    routes.get<{ Querystring: { connectionId?: string } }>(
-      '/api/browser/relay',
-      { websocket: true, preValidation: browserWire },
-      (socket, request) => {
-        const user = authorizeRealtimeConnection(socket, request, database, publicOrigin);
-        if (!user) return;
-        if (typeof request.query.connectionId !== 'string') return socket.terminate();
-        nodeControl.attachBrowserRelay(
-          socket,
-          { userId: user.userId, sessionHash: user.sessionHash },
-          request.query.connectionId
-        );
-      }
     );
     registerBrowserFileRoutes(routes, database, publicOrigin, nodeControl);
     routes.get(
@@ -131,36 +219,9 @@ export function registerRealtimeRoutes(input: {
       publicOrigin,
       attach: (socket, user) => nodeControl.attachBrowserWorkbench(socket, user)
     });
-    routes.get<{ Params: { terminalId: string }; Querystring: { ticket?: string } }>(
-      '/api/terminals/:terminalId/connect',
-      { websocket: true },
-      (socket, request) => {
-        const admin = authorizeRealtimeConnection(socket, request, database, publicOrigin);
-        if (admin !== undefined)
-          nodeControl.attachBrowserTerminal(socket, request.query.ticket, {
-            userId: admin.userId,
-            sessionHash: admin.sessionHash
-          });
-      }
-    );
-    if (input.attachMarctl !== undefined)
-      routes.get<{ Params: { terminalId: string }; Querystring: { ticket?: string } }>(
-        '/api/marctl/terminals/:terminalId/connect',
-        { websocket: true },
-        (socket, request) => input.attachMarctl!(socket, request)
-      );
     if (input.attachMarctlLive !== undefined)
       routes.get('/api/marctl/live', { websocket: true }, (socket, request) =>
         input.attachMarctlLive!(socket, request)
-      );
-    if (input.attachMarctlMux !== undefined)
-      routes.get<{ Querystring: { node?: string } }>(
-        '/api/marctl/terminal-mux',
-        {
-          websocket: true,
-          preValidation: async (request) => terminalMuxWebSockets?.mark(request.raw)
-        },
-        (socket, request) => input.attachMarctlMux!(socket, request)
       );
   });
 }

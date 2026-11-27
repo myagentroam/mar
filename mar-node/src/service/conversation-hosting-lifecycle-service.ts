@@ -53,6 +53,12 @@ export class ConversationHostingLifecycleService {
   handler(operation: string): NodeOperationHandler | undefined {
     return this.resources?.operations[operation];
   }
+  consumeFileStream(kind: string, grant: string) {
+    return this.resources?.service.consumeFileStream(kind, grant);
+  }
+  clearFileStreamGrants(): void {
+    this.resources?.service.clearFileStreamGrants();
+  }
   prepareForDisable(): (() => void) | undefined {
     return this.resources?.service.prepareForDisable() ?? (this.resources ? undefined : () => {});
   }

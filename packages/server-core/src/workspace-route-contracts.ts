@@ -16,7 +16,7 @@ export interface WorkspaceNodeControl {
     timeoutMs?: number
   ): Promise<unknown>;
   ownsWorkbenchConnection(sessionHash: string, connectionId: string): boolean;
-  revalidateTerminalAuthorizations(): Promise<void>;
+  revalidateDataAuthorizations(): Promise<void>;
 }
 
 /** Resource persistence and product-specific ownership decisions remain with the host. */

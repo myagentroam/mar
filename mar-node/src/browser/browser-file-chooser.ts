@@ -3,13 +3,15 @@ import { mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  BROWSER_UPLOAD_CHUNK_BYTES,
   type BrowserFileChooser as ChooserSnapshot,
-  type BrowserUpload
+  type BrowserUpload,
+  type BrowserUploadStream
 } from '@myagentroam/protocol';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
 import type { FileChooser, Page } from 'playwright';
+import { receiveFileUpload } from '../connection/file-upload-stream.js';
 
-type StagedFile = { path: string; size: number; received: number };
+type StagedFile = { path: string; size: number; received: number; complete: boolean };
 type Transfer = { id: string; directory: string; files: StagedFile[] };
 type Selection = {
   id: string;
@@ -17,6 +19,7 @@ type Selection = {
   timer: ReturnType<typeof setTimeout> | undefined;
   busy: Promise<void> | undefined;
   transfer: Transfer | undefined;
+  lifetime: AbortController;
 };
 
 const windowsDeviceName = /^(?:con|prn|aux|nul|(?:com|lpt)[1-9¹²³]) *(?:\.|$)/iu;
@@ -45,7 +48,8 @@ export class BrowserFileChooser {
         chooser,
         timer: undefined,
         busy: undefined,
-        transfer: undefined
+        transfer: undefined,
+        lifetime: new AbortController()
       };
       this.pending = selection;
       this.touch(selection);
@@ -84,6 +88,69 @@ export class BrowserFileChooser {
     }
   }
 
+  async receiveStream(
+    { chooserId, command }: BrowserUploadStream,
+    stream: NodeStream,
+    signal: AbortSignal
+  ): Promise<void> {
+    const selection = this.pending;
+    if (selection?.id !== chooserId) throw new Error('BROWSER_FILE_CHOOSER_ENDED');
+    const transfer = selection.transfer;
+    const file = transfer?.files[command.index];
+    if (selection.busy || transfer?.id !== command.transferId || !file || file.complete)
+      throw new Error('BROWSER_UPLOAD_INVALID');
+    this.touch(selection);
+    const abort = () => stream.reset('BROWSER_FILE_CHOOSER_ENDED');
+    selection.lifetime.signal.addEventListener('abort', abort, { once: true });
+    selection.busy = this.writeStream(selection, file, stream, signal);
+    try {
+      await selection.busy;
+      selection.lifetime.signal.throwIfAborted();
+      file.complete = true;
+    } finally {
+      selection.lifetime.signal.removeEventListener('abort', abort);
+      selection.busy = undefined;
+    }
+    await stream.endWrite();
+  }
+
+  private async writeStream(
+    selection: Selection,
+    file: StagedFile,
+    stream: NodeStream,
+    signal: AbortSignal
+  ): Promise<void> {
+    const handle = await open(file.path, 'r+');
+    try {
+      await receiveFileUpload(
+        stream,
+        {
+          offset: file.received,
+          async write(bytes) {
+            let offset = 0;
+            while (offset < bytes.length) {
+              const { bytesWritten } = await handle.write(
+                bytes,
+                offset,
+                bytes.length - offset,
+                file.received + offset
+              );
+              if (bytesWritten === 0) throw new Error('BROWSER_UPLOAD_FAILED');
+              offset += bytesWritten;
+            }
+            file.received += offset;
+            selection.timer?.refresh();
+            return file.received;
+          }
+        },
+        file.size,
+        signal
+      );
+    } finally {
+      await handle.close();
+    }
+  }
+
   private async write(
     selection: Selection,
     command: Exclude<BrowserUpload['command'], { action: 'cancel' }>
@@ -115,39 +182,11 @@ export class BrowserFileChooser {
         await mkdir(directory, { recursive: true });
         const path = join(directory, name);
         await writeFile(path, '');
-        transfer.files.push({ path, size, received: 0 });
-        return;
-      }
-      case 'chunk': {
-        const file = transfer.files[command.index];
-        const { bytes } = command;
-        if (
-          !file ||
-          command.offset !== file.received ||
-          bytes.length > BROWSER_UPLOAD_CHUNK_BYTES ||
-          bytes.length > file.size - file.received
-        )
-          throw new Error('BROWSER_UPLOAD_INVALID');
-        const handle = await open(file.path, 'r+');
-        try {
-          for (let offset = 0; offset < bytes.length;) {
-            const { bytesWritten } = await handle.write(
-              bytes,
-              offset,
-              bytes.length - offset,
-              file.received + offset
-            );
-            if (bytesWritten === 0) throw new Error('BROWSER_UPLOAD_FAILED');
-            offset += bytesWritten;
-          }
-          file.received += bytes.length;
-        } finally {
-          await handle.close();
-        }
+        transfer.files.push({ path, size, received: 0, complete: false });
         return;
       }
       case 'finish': {
-        if (!transfer.files.length || transfer.files.some((file) => file.received !== file.size))
+        if (!transfer.files.length || transfer.files.some((file) => !file.complete))
           throw new Error('BROWSER_UPLOAD_INVALID');
         this.clear(selection);
         const page = selection.chooser.page();
@@ -176,6 +215,7 @@ export class BrowserFileChooser {
 
   private clear(selection: Selection): void {
     clearTimeout(selection.timer);
+    selection.lifetime.abort();
     this.pending = undefined;
     this.changed();
   }

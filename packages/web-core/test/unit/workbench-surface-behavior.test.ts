@@ -225,7 +225,11 @@ function pageFixture() {
       workspaceRunActivity: (_nodeId: string, _workspaceId: string) => undefined,
       hasUnreadWorkspace: (_nodeId: string, _workspaceId: string) => false
     },
-    terminal: shallowReactive({ terminalReady: true, terminalDocks: new Map() }),
+    terminal: shallowReactive({
+      terminalReady: true,
+      terminalDocks: new Map(),
+      openNodeStream: vi.fn()
+    }),
     registration: shallowReactive({
       workspaceRegistrationNodeId: undefined as string | undefined,
       workspaceRegistrationReady: false,

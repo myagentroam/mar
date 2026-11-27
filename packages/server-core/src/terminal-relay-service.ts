@@ -1,23 +1,24 @@
 import { randomUUID } from 'node:crypto';
-import type { AuditObserver } from './audit.js';
-import type { RawData, WebSocket } from 'ws';
-import {
-  decodeTerminalMessage,
-  encodeTerminalMessage,
-  terminalDataFrameSchema,
-  type TerminalDataFrame
-} from '@myagentroam/protocol';
 import type { NodeRequestAuthorization, UserNodeAuthorization } from './node-access-contracts.js';
 import { safeErrorCode } from './http-errors.js';
-import { attachTerminalMux, type TerminalRelaySocket } from './terminal-multiplex.js';
+import { definiteNodeRejection } from './node-request-error.js';
 
 const TERMINAL_TICKET_TTL_MS = 30_000;
 const MAX_TERMINAL_RELAYS_PER_USER = 10;
-const MAX_TERMINAL_SOCKET_BUFFERED_BYTES = 1024 * 1024;
-const TERMINAL_HEARTBEAT_INTERVAL_MS = 15_000;
-const TERMINAL_HEARTBEAT_TIMEOUT_MS = 45_000;
-const RETIRED_TICKET_TTL_MS = 60_000;
-const MAX_RETIRED_TICKETS = 1_024;
+const TERMINAL_STREAM_REJECTION_CODES = new Set([
+  'NODE_ACCESS_DENIED',
+  'RESOURCE_ACCESS_DENIED',
+  'SESSION_UNAUTHENTICATED',
+  'TERMINAL_ATTACH_CONFLICT',
+  'TERMINAL_CLOSED',
+  'TERMINAL_GIT_OWNER_REQUIRED',
+  'TERMINAL_NOT_AUTHORIZED',
+  'TERMINAL_NOT_FOUND',
+  'TERMINAL_OWNER_REQUIRED',
+  'TERMINAL_WORKSPACE_MISMATCH',
+  'USER_AUTHORIZATION_REQUIRED',
+  'WORKSPACE_ACCESS_DENIED'
+]);
 
 interface TerminalTicketRecord {
   readonly ticket: string;
@@ -34,117 +35,26 @@ interface TerminalTicketRecord {
   readonly timer: NodeJS.Timeout;
 }
 
-interface TerminalRelayRecord {
-  readonly ticket: string;
-  readonly nodeId: string;
-  readonly terminalId: string;
-  readonly afterSequence: number;
-  readonly userSessionHash: string;
-  readonly userId: number;
-  readonly workspaceId?: string;
-  readonly readonly: boolean;
-  readonly computer: boolean;
-  readonly cli: boolean;
-  readonly browser: TerminalRelaySocket;
-  pendingFrames: { readonly frame: TerminalDataFrame; readonly encoded: Uint8Array }[];
-  pendingBytes: number;
-  writing: boolean;
-  flushImmediate: NodeJS.Immediate | undefined;
-  attached: boolean;
-}
-
-interface DeferredTerminalAttach {
-  readonly socket: TerminalRelaySocket;
-  readonly ticket: TerminalTicketRecord;
-  readonly onMessage: (raw: RawData, isBinary: boolean) => void;
-  readonly onClose: () => void;
-}
-
-interface TerminalAttachmentResponse {
-  readonly attachmentId: string;
-  readonly terminalId: string;
-}
-
 export interface TerminalRelayOptions {
-  readonly database: Partial<AuditObserver> & {
-    authenticateNode(
-      nodeId: string,
-      credential: string
-    ):
-      | { readonly id: string; readonly disabled: boolean }
-      | undefined
-      | Promise<{ readonly id: string; readonly disabled: boolean } | undefined>;
-  };
   readonly authorizeNodeRequest: NodeRequestAuthorization;
-  readonly traffic?: {
-    record(channel: 'terminal', direction: 'in' | 'out', bytes: number): void;
-    backpressure(channel: 'terminal', bytes: number): void;
-  };
   readonly requestNode: (
     nodeId: string,
     operation: string,
     data: unknown,
-    user: UserNodeAuthorization
+    user: UserNodeAuthorization,
+    timeoutMs?: number,
+    signal?: AbortSignal
   ) => Promise<unknown>;
 }
 
-/** Owns relay tickets, connection pairing and teardown; Node owns the attached processes. */
+/** Owns Relay attachment tickets and authorization lifetime; the shared relay carries the bytes and Node owns the terminals. */
 export class TerminalRelayService {
   private directCount?: (sessionHash: string) => number;
   private closed = false;
-  private readonly authenticating = new WeakSet<WebSocket>();
-  private readonly sockets = new Map<string, WebSocket>();
   private readonly tickets = new Map<string, TerminalTicketRecord>();
-  private readonly authorizing = new Map<string, TerminalTicketRecord>();
-  private readonly deferredAttaches = new Map<string, DeferredTerminalAttach>();
-  private readonly relays = new Map<string, TerminalRelayRecord>();
-  private readonly retiredTickets = new Map<
-    string,
-    { readonly nodeId: string; expiresAt: number }
-  >();
-  private readonly socketActivity = new Map<TerminalRelaySocket, number>();
-  private readonly muxSockets = new Map<
-    WebSocket,
-    { nodeId: string; user: UserNodeAuthorization; close: (code: number, reason: string) => void }
-  >();
-  private readonly heartbeatTimer: NodeJS.Timeout;
+  private readonly streams = new Map<TerminalTicketRecord, AbortController>();
 
-  constructor(private readonly options: TerminalRelayOptions) {
-    this.heartbeatTimer = setInterval(
-      () => this.heartbeatSockets(),
-      TERMINAL_HEARTBEAT_INTERVAL_MS
-    );
-    this.heartbeatTimer.unref();
-  }
-
-  attachNode(socket: WebSocket): void {
-    if (this.closed) {
-      socket.close(1001, 'SERVER_SHUTDOWN');
-      return;
-    }
-    let nodeId: string | undefined;
-    this.trackSocket(socket);
-    socket.on('message', (raw, isBinary) => {
-      if (!isBinary || !Buffer.isBuffer(raw)) {
-        socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
-        return;
-      }
-      this.options.traffic?.record('terminal', 'in', raw.byteLength);
-      void this.handleNodeMessage(
-        socket,
-        raw,
-        () => nodeId,
-        (value) => (nodeId = value)
-      ).catch(() => socket.close(1011, 'TERMINAL_AUTHENTICATION_FAILED'));
-    });
-    socket.on('close', () => {
-      this.socketActivity.delete(socket);
-      if (nodeId !== undefined && this.sockets.get(nodeId) === socket) {
-        this.sockets.delete(nodeId);
-        this.closeNode(nodeId, false);
-      }
-    });
-  }
+  constructor(private readonly options: TerminalRelayOptions) {}
 
   createTicket(input: {
     readonly nodeId: string;
@@ -188,164 +98,95 @@ export class TerminalRelayService {
       computer: input.computer === true,
       cli: input.cli === true,
       expiresAt,
-      timer: setTimeout(() => this.expireTicket(ticket), TERMINAL_TICKET_TTL_MS)
+      timer: setTimeout(() => this.tickets.delete(ticket), TERMINAL_TICKET_TTL_MS)
     };
     record.timer.unref();
     this.tickets.set(ticket, record);
     return { ticket, nodeId: record.nodeId, terminalId: record.terminalId, expiresAt };
   }
 
-  attachCliMux(
-    socket: WebSocket,
+  async authorizeStream(
+    ticketValue: string,
     nodeId: string,
     user: UserNodeAuthorization,
-    expiresAt: number
-  ): void {
-    if (socket.readyState !== socket.OPEN) return;
-    if (this.closed || expiresAt <= Date.now()) {
-      socket.close(this.closed ? 1001 : 1008, this.closed ? 'SERVER_SHUTDOWN' : 'UNAUTHENTICATED');
-      return;
-    }
+    cli: boolean,
+    signal: AbortSignal
+  ): Promise<{ grant: string; revoked: AbortSignal } | { code: string } | undefined> {
+    const ticket = this.tickets.get(ticketValue);
     if (
-      [...this.muxSockets.values()].filter((entry) => entry.user.sessionHash === user.sessionHash)
-        .length >= MAX_TERMINAL_RELAYS_PER_USER
-    ) {
-      socket.close(4008, 'TERMINAL_RELAY_LIMIT_REACHED');
-      return;
-    }
-    this.trackSocket(socket);
-    const close = attachTerminalMux({
-      socket,
-      attach: (stream, ticket, deferred) => {
-        this.attachBrowser(stream, deferred ? { ticket, deferred: true } : ticket, user, {
-          type: 'mux',
-          nodeId
-        });
-      }
-    });
-    this.muxSockets.set(socket, { nodeId, user, close });
-    const expiry = setTimeout(() => close(1008, 'UNAUTHENTICATED'), expiresAt - Date.now());
-    expiry.unref();
-    socket.once('close', () => {
-      clearTimeout(expiry);
-      this.muxSockets.delete(socket);
-    });
-  }
-
-  attachBrowser(
-    socket: TerminalRelaySocket,
-    ticketValue: unknown,
-    user: UserNodeAuthorization,
-    cli?:
-      | { readonly type: 'mux'; readonly nodeId: string }
-      | { readonly type: 'single'; readonly expiresAt: number }
-  ): void {
-    if (socket.readyState !== socket.OPEN) return;
-    if (cli?.type === 'single' && cli.expiresAt <= Date.now()) {
-      socket.close(1008, 'UNAUTHENTICATED');
-      return;
-    }
-    const attach = browserAttachRequest(ticketValue);
-    const ticket = attach === undefined ? undefined : this.tickets.get(attach.ticket);
-    if (
+      this.closed ||
+      signal.aborted ||
       ticket === undefined ||
       ticket.expiresAt <= Date.now() ||
-      // Only the original pending attachment may activate a reserved ticket.
-      this.deferredAttaches.has(ticket.ticket) ||
-      // Only CLI attachments close the remote task when their transport disappears.
-      ticket.cli !== (cli !== undefined) ||
-      (cli?.type === 'mux' && ticket.nodeId !== cli.nodeId) ||
-      ticket.userSessionHash !== user.sessionHash ||
-      ticket.userId !== user.userId
-    ) {
-      socket.close(4008, 'TERMINAL_TICKET_INVALID');
-      return;
-    }
+      ticket.nodeId !== nodeId ||
+      ticket.cli !== cli ||
+      ticket.userId !== user.userId ||
+      ticket.userSessionHash !== user.sessionHash
+    )
+      return undefined;
     if (
       this.countSession(user.sessionHash) + (this.directCount?.(user.sessionHash) ?? 0) >=
       MAX_TERMINAL_RELAYS_PER_USER
-    ) {
-      socket.close(4008, 'TERMINAL_RELAY_LIMIT_REACHED');
-      return;
-    }
-    const terminalSocket = this.sockets.get(ticket.nodeId);
-    if (terminalSocket === undefined || terminalSocket.readyState !== terminalSocket.OPEN) {
-      socket.close(4008, 'NODE_OFFLINE');
-      return;
-    }
-    if (cli?.type === 'single') {
-      const expiry = setTimeout(() => socket.terminate(), cli.expiresAt - Date.now());
-      expiry.unref();
-      socket.once('close', () => clearTimeout(expiry));
-    }
-    if (attach?.deferred === true) {
-      if (ticket.computer) {
-        socket.close(4008, 'TERMINAL_TICKET_INVALID');
-        return;
-      }
-      const onMessage = (raw: RawData, isBinary: boolean) => {
-        if (!isBinary || !Buffer.isBuffer(raw)) {
-          socket.close(4002, 'TERMINAL_FRAME_INVALID');
-          return;
-        }
-        let message: unknown;
-        try {
-          message = decodeTerminalMessage(raw);
-        } catch {
-          socket.close(4002, 'TERMINAL_FRAME_INVALID');
-          return;
-        }
-        if (
-          !isRecord(message) ||
-          message.type !== 'activate' ||
-          message.terminalId !== ticket.terminalId ||
-          Object.keys(message).some((key) => !['type', 'terminalId'].includes(key))
-        ) {
-          socket.close(4002, 'TERMINAL_FRAME_INVALID');
-          return;
-        }
-        this.activateDeferredAttach(ticket.ticket, socket);
-      };
-      const onClose = () => {
-        const pending = this.deferredAttaches.get(ticket.ticket);
-        if (pending?.socket === socket) this.clearDeferredAttach(pending, true);
-      };
-      const pending: DeferredTerminalAttach = { socket, ticket, onMessage, onClose };
-      this.deferredAttaches.set(ticket.ticket, pending);
-      this.trackSocket(socket);
-      socket.on('message', onMessage);
-      socket.once('close', onClose);
-      this.sendTerminal(socket, { type: 'ready', terminalId: ticket.terminalId });
-      return;
-    }
-    this.tickets.delete(ticket.ticket);
+    )
+      return { code: 'NODE_STREAM_LIMIT' };
+    this.tickets.delete(ticketValue);
     clearTimeout(ticket.timer);
-    this.authorizing.set(ticket.ticket, ticket);
-    void this.authorizeBrowser(socket, ticket);
+    const scope = new AbortController();
+    this.streams.set(ticket, scope);
+    const finish = () => {
+      this.streams.delete(ticket);
+      signal.removeEventListener('abort', finish);
+      scope.abort();
+    };
+    signal.addEventListener('abort', finish, { once: true });
+    try {
+      const response = await this.options.requestNode(
+        ticket.nodeId,
+        ticket.computer ? 'computer.use.attach' : 'terminal.attach.authorize',
+        {
+          terminalId: ticket.terminalId,
+          afterSequence: ticket.afterSequence,
+          readonly: ticket.readonly,
+          ...(ticket.workspaceId === undefined ? {} : { workspaceId: ticket.workspaceId }),
+          ...(cli ? { closeOnDisconnect: true } : {})
+        },
+        {
+          ...user,
+          ...(ticket.workspaceId === undefined ? {} : { workspaceId: ticket.workspaceId })
+        },
+        undefined,
+        scope.signal
+      );
+      if (
+        !scope.signal.aborted &&
+        response &&
+        typeof response === 'object' &&
+        'grant' in response &&
+        typeof response.grant === 'string' &&
+        isIdentifier(response.grant)
+      ) {
+        return { grant: response.grant, revoked: scope.signal };
+      }
+    } catch (error) {
+      finish();
+      const code = definiteNodeRejection(error) ?? safeErrorCode(error);
+      if (TERMINAL_STREAM_REJECTION_CODES.has(code)) return { code };
+      return { code: 'NODE_STREAM_UNAVAILABLE' };
+    }
+    finish();
+    return { code: 'NODE_STREAM_UNAVAILABLE' };
   }
 
   closeSession(sessionHash: string): void {
-    this.dropTickets((record) => record.userSessionHash === sessionHash);
-    this.dropAuthorizing((record) => record.userSessionHash === sessionHash);
-    for (const relay of [...this.relays.values()])
-      if (relay.userSessionHash === sessionHash) this.closeRelay(relay, true);
-    this.closeMux((entry) => entry.user.sessionHash === sessionHash);
+    this.revoke((record) => record.userSessionHash === sessionHash);
   }
 
   closeUser(userId: number): void {
-    this.dropTickets((record) => record.userId === userId);
-    this.dropAuthorizing((record) => record.userId === userId);
-    for (const relay of [...this.relays.values()])
-      if (relay.userId === userId) this.closeRelay(relay, true);
-    this.closeMux((entry) => entry.user.userId === userId);
+    this.revoke((record) => record.userId === userId);
   }
 
   closeTerminal(nodeId: string, terminalId: string): void {
-    for (const pending of [...this.deferredAttaches.values()])
-      if (pending.ticket.nodeId === nodeId && pending.ticket.terminalId === terminalId)
-        this.clearDeferredAttach(pending, true, 'TERMINAL_CLOSED');
-    for (const relay of [...this.relays.values()])
-      if (relay.nodeId === nodeId && relay.terminalId === terminalId) this.closeRelay(relay, true);
+    this.revoke((record) => record.nodeId === nodeId && record.terminalId === terminalId);
   }
 
   setDirectCoordination(input: { readonly directCount: (sessionHash: string) => number }): void {
@@ -353,19 +194,12 @@ export class TerminalRelayService {
   }
 
   countSession(sessionHash: string): number {
-    return (
-      this.userRelayCount(sessionHash) +
-      this.userDeferredCount(sessionHash) +
-      [...this.authorizing.values()].filter((record) => record.userSessionHash === sessionHash)
-        .length
-    );
+    return [...this.streams.keys()].filter((ticket) => ticket.userSessionHash === sessionHash)
+      .length;
   }
 
   closeAllRelays(): void {
-    this.dropTickets(() => true);
-    this.dropAuthorizing(() => true);
-    for (const relay of [...this.relays.values()]) this.closeRelay(relay, true);
-    this.closeMux(() => true);
+    this.revoke(() => true);
   }
 
   async revalidateAuthorizations(): Promise<void> {
@@ -394,653 +228,33 @@ export class TerminalRelayService {
     for (const record of [...this.tickets.values()])
       if (!(await allowed(record, record.computer)))
         this.dropTickets((candidate) => candidate === record);
-    for (const record of [...this.authorizing.values()])
-      if (!(await allowed(record, record.computer)))
-        this.dropAuthorizing((candidate) => candidate === record);
-    for (const relay of [...this.relays.values()])
-      if (!(await allowed(relay, relay.computer)))
-        this.closeRelay(relay, true, 'TERMINAL_AUTHORIZATION_REVOKED');
-    for (const entry of [...this.muxSockets.values()])
-      // The pool needs Node access; the individual streams above check their operation.
-      if (!(await allowed({ ...entry, userId: entry.user.userId }, false)))
-        this.closeMux((candidate) => candidate === entry);
-  }
-
-  closeNode(nodeId: string, terminate: boolean): void {
-    this.dropTickets((record) => record.nodeId === nodeId);
-    this.dropAuthorizing((record) => record.nodeId === nodeId);
-    for (const relay of [...this.relays.values()])
-      if (relay.nodeId === nodeId) this.closeRelay(relay, terminate);
-    this.closeMux((entry) => entry.nodeId === nodeId);
-  }
-
-  private closeMux(
-    matches: (entry: { nodeId: string; user: UserNodeAuthorization }) => boolean
-  ): void {
-    for (const entry of this.muxSockets.values())
-      if (matches(entry)) entry.close(1008, 'TERMINAL_CONNECTION_CLOSED');
+    for (const [record, scope] of this.streams)
+      if (!(await allowed(record, record.computer))) scope.abort();
   }
 
   disconnectNode(nodeId: string): void {
-    this.closeNode(nodeId, false);
-    this.sockets.get(nodeId)?.close(1001, 'NODE_OFFLINE');
-    this.sockets.delete(nodeId);
-  }
-
-  shutdownNode(nodeId: string, code: number, reason: string): void {
-    this.closeNode(nodeId, true);
-    const socket = this.sockets.get(nodeId);
-    if (socket !== undefined) {
-      this.sendTerminal(socket, { type: 'shutdown' });
-      socket.close(code, reason);
-    }
-    this.sockets.delete(nodeId);
+    this.revoke((record) => record.nodeId === nodeId);
   }
 
   close(): void {
     this.closed = true;
-    clearInterval(this.heartbeatTimer);
     this.closeAllRelays();
-    for (const socket of this.sockets.values()) {
-      this.sendTerminal(socket, { type: 'shutdown' });
-      socket.close(1001, 'SERVER_SHUTDOWN');
-    }
-    for (const socket of this.socketActivity.keys())
-      if (socket.readyState === socket.OPEN) socket.close(1001, 'SERVER_SHUTDOWN');
-    this.sockets.clear();
-    this.socketActivity.clear();
   }
 
-  private async authorizeBrowser(
-    browser: TerminalRelaySocket,
-    ticket: TerminalTicketRecord
-  ): Promise<void> {
-    try {
-      const response = await this.options.requestNode(
-        ticket.nodeId,
-        ticket.computer ? 'computer.use.attach' : 'terminal.attach.authorize',
-        {
-          terminalId: ticket.terminalId,
-          afterSequence: ticket.afterSequence,
-          readonly: ticket.readonly,
-          ...(ticket.cli ? { closeOnDisconnect: true } : {})
-        },
-        {
-          userId: ticket.userId,
-          sessionHash: ticket.userSessionHash,
-          ...(ticket.workspaceId === undefined ? {} : { workspaceId: ticket.workspaceId })
-        }
-      );
-      const attachment = terminalAttachmentResponse(response);
-      const terminalSocket = this.sockets.get(ticket.nodeId);
-      const nodeAvailable =
-        terminalSocket !== undefined && terminalSocket.readyState === terminalSocket.OPEN;
-      const authorizationActive = this.authorizing.get(ticket.ticket) === ticket;
-      this.authorizing.delete(ticket.ticket);
-      const cancelled = !authorizationActive || browser.readyState !== browser.OPEN;
-      if (ticket.cli && (cancelled || !nodeAvailable)) {
-        // A successful authorization owns the writer. An unactivated race loser never gets here.
-        if (attachment?.terminalId === ticket.terminalId)
-          await this.options
-            .requestNode(
-              ticket.nodeId,
-              'terminal.close',
-              { terminalId: ticket.terminalId },
-              { userId: ticket.userId, sessionHash: ticket.userSessionHash }
-            )
-            .catch(() => undefined);
-        if (cancelled) {
-          browser.close();
-          return;
-        }
-      }
-      if (
-        !authorizationActive &&
-        attachment !== undefined &&
-        attachment.terminalId === ticket.terminalId &&
-        nodeAvailable
-      ) {
-        this.retireTicket(ticket.ticket, ticket.nodeId);
-        this.sendTerminal(terminalSocket, {
-          type: 'attach',
-          ticket: ticket.ticket,
-          terminalId: ticket.terminalId,
-          attachmentId: attachment.attachmentId,
-          afterSequence: ticket.afterSequence
-        });
-        this.sendTerminal(terminalSocket, { type: 'detach', ticket: ticket.ticket });
-        return;
-      }
-      if (
-        !authorizationActive ||
-        attachment === undefined ||
-        attachment.terminalId !== ticket.terminalId ||
-        !nodeAvailable
-      ) {
-        if (browser.readyState === browser.OPEN)
-          this.sendBrowser(browser, {
-            type: 'error',
-            terminalId: ticket.terminalId,
-            code: nodeAvailable ? 'TERMINAL_ATTACH_FAILED' : 'NODE_OFFLINE'
-          });
-        browser.close(4008, 'TERMINAL_ATTACH_FAILED');
-        return;
-      }
-      if (browser.readyState !== browser.OPEN) {
-        this.retireTicket(ticket.ticket, ticket.nodeId);
-        this.sendTerminal(terminalSocket, {
-          type: 'attach',
-          ticket: ticket.ticket,
-          terminalId: ticket.terminalId,
-          attachmentId: attachment.attachmentId,
-          afterSequence: ticket.afterSequence
-        });
-        this.sendTerminal(terminalSocket, { type: 'detach', ticket: ticket.ticket });
-        return;
-      }
-      const relay: TerminalRelayRecord = {
-        ticket: ticket.ticket,
-        nodeId: ticket.nodeId,
-        terminalId: ticket.terminalId,
-        afterSequence: ticket.afterSequence,
-        userSessionHash: ticket.userSessionHash,
-        userId: ticket.userId,
-        ...(ticket.workspaceId === undefined ? {} : { workspaceId: ticket.workspaceId }),
-        readonly: ticket.readonly,
-        computer: ticket.computer,
-        cli: ticket.cli,
-        browser,
-        pendingFrames: [],
-        pendingBytes: 0,
-        writing: false,
-        flushImmediate: undefined,
-        attached: false
-      };
-      this.relays.set(ticket.ticket, relay);
-      this.trackSocket(browser);
-      browser.on('message', (raw, isBinary) => {
-        if (!isBinary || !Buffer.isBuffer(raw)) browser.close(4002, 'TERMINAL_FRAME_INVALID');
-        else {
-          this.options.traffic?.record('terminal', 'in', raw.byteLength);
-          this.forwardBrowserFrame(relay, raw);
-        }
-      });
-      browser.once('close', () => this.detachRelay(relay));
-      this.sendTerminal(terminalSocket, {
-        type: 'attach',
-        ticket: ticket.ticket,
-        terminalId: ticket.terminalId,
-        attachmentId: attachment.attachmentId,
-        afterSequence: ticket.afterSequence
-      });
-    } catch (error) {
-      this.authorizing.delete(ticket.ticket);
-      if (browser.readyState === browser.OPEN)
-        this.sendBrowser(browser, {
-          type: 'error',
-          terminalId: ticket.terminalId,
-          code: safeErrorCode(error, 'TERMINAL_ATTACH_FAILED')
-        });
-      browser.close(4008, 'TERMINAL_ATTACH_FAILED');
-    }
+  private revoke(matches: (record: TerminalTicketRecord) => boolean): void {
+    this.dropTickets(matches);
+    for (const [record, scope] of this.streams) if (matches(record)) scope.abort();
   }
 
-  private activateDeferredAttach(ticketValue: string, socket: TerminalRelaySocket): void {
-    const pending = this.deferredAttaches.get(ticketValue);
-    if (pending === undefined || pending.socket !== socket) {
-      socket.close(4008, 'TERMINAL_TICKET_INVALID');
-      return;
-    }
-    const ticket = this.tickets.get(ticketValue);
-    if (ticket !== pending.ticket || ticket.expiresAt <= Date.now()) {
-      this.clearDeferredAttach(pending, true, 'TERMINAL_TICKET_INVALID');
-      return;
-    }
-    this.clearDeferredAttach(pending, true);
-    this.authorizing.set(ticket.ticket, ticket);
-    void this.authorizeBrowser(socket, ticket);
-  }
-
-  private forwardBrowserFrame(relay: TerminalRelayRecord, raw: Uint8Array): void {
-    if (this.relays.get(relay.ticket) !== relay || !relay.attached) return;
-    let value: unknown;
-    try {
-      value = decodeTerminalMessage(raw);
-    } catch {
-      relay.browser.close(4002, 'TERMINAL_FRAME_INVALID');
-      return;
-    }
-    const frame = terminalDataFrameSchema.safeParse(value);
-    if (
-      !frame.success ||
-      frame.data.terminalId !== relay.terminalId ||
-      !['input', 'eof', 'resize', 'close'].includes(frame.data.type)
-    ) {
-      relay.browser.close(4002, 'TERMINAL_FRAME_INVALID');
-      return;
-    }
-    const socket = this.sockets.get(relay.nodeId);
-    if (
-      socket === undefined ||
-      socket.readyState !== socket.OPEN ||
-      socket.bufferedAmount > MAX_TERMINAL_SOCKET_BUFFERED_BYTES
-    ) {
-      if (socket !== undefined && socket.bufferedAmount > MAX_TERMINAL_SOCKET_BUFFERED_BYTES)
-        this.options.traffic?.backpressure('terminal', socket.bufferedAmount);
-      this.closeRelay(relay, false);
-      return;
-    }
-    this.sendTerminal(socket, { type: 'frame', ticket: relay.ticket, frame: frame.data });
-  }
-
-  private async handleNodeMessage(
-    socket: WebSocket,
-    raw: Uint8Array,
-    getNodeId: () => string | undefined,
-    setNodeId: (nodeId: string) => void
-  ): Promise<void> {
-    const connectedNodeId = getNodeId();
-    if (this.closed || socket.readyState !== socket.OPEN) return;
-    if (connectedNodeId !== undefined && this.sockets.get(connectedNodeId) !== socket) {
-      socket.close(4001, 'NODE_UNAUTHENTICATED');
-      return;
-    }
-    let message: unknown;
-    try {
-      message = decodeTerminalMessage(raw);
-    } catch {
-      socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
-      return;
-    }
-    if (!isRecord(message) || typeof message.type !== 'string') {
-      socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
-      return;
-    }
-    if (getNodeId() === undefined) {
-      if (
-        message.type !== 'authenticate' ||
-        !isIdentifier(message.nodeId) ||
-        typeof message.credential !== 'string' ||
-        message.credential.length === 0 ||
-        Object.keys(message).some((key) => !['type', 'nodeId', 'credential'].includes(key))
-      ) {
-        socket.close(4001, 'NODE_UNAUTHENTICATED');
-        return;
-      }
-      if (this.authenticating.has(socket)) {
-        socket.close(4002, 'TERMINAL_ALREADY_AUTHENTICATING');
-        return;
-      }
-      this.authenticating.add(socket);
-      let node: Awaited<ReturnType<TerminalRelayOptions['database']['authenticateNode']>>;
-      try {
-        node = await this.options.database.authenticateNode(message.nodeId, message.credential);
-      } finally {
-        this.authenticating.delete(socket);
-      }
-      if (this.closed || socket.readyState !== socket.OPEN || !this.socketActivity.has(socket))
-        return;
-      if (node === undefined || node.disabled) {
-        socket.close(4001, node?.disabled ? 'NODE_DISABLED' : 'NODE_UNAUTHENTICATED');
-        return;
-      }
-      const previous = this.sockets.get(node.id);
-      if (previous !== undefined && previous !== socket) {
-        this.closeNode(node.id, false);
-        previous.close(4000, 'TERMINAL_SOCKET_REPLACED');
-      }
-      this.sockets.set(node.id, socket);
-      setNodeId(node.id);
-      this.sendTerminal(socket, { type: 'authenticated', nodeId: node.id });
-      return;
-    }
-    if (
-      message.type === 'detach' &&
-      typeof message.ticket === 'string' &&
-      message.reason === 'TERMINAL_ATTACH_FAILED' &&
-      Object.keys(message).every((key) => ['type', 'ticket', 'reason'].includes(key))
-    ) {
-      const relay = this.relays.get(message.ticket);
-      const retired = this.retiredTickets.get(message.ticket);
-      if (
-        relay === undefined &&
-        retired !== undefined &&
-        retired.nodeId === getNodeId() &&
-        retired.expiresAt > Date.now()
-      )
-        return;
-      if (relay === undefined || relay.nodeId !== getNodeId()) {
-        socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
-        return;
-      }
-      this.closeRelay(relay, false, message.reason);
-      return;
-    }
-    if (
-      message.type === 'attached' &&
-      typeof message.ticket === 'string' &&
-      isIdentifier(message.terminalId) &&
-      Object.keys(message).every((key) => ['type', 'ticket', 'terminalId'].includes(key))
-    ) {
-      const relay = this.relays.get(message.ticket);
-      const retired = this.retiredTickets.get(message.ticket);
-      if (
-        relay === undefined &&
-        retired !== undefined &&
-        retired.nodeId === getNodeId() &&
-        retired.expiresAt > Date.now()
-      )
-        return;
-      if (
-        relay === undefined ||
-        relay.nodeId !== getNodeId() ||
-        relay.terminalId !== message.terminalId
-      ) {
-        socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
-        return;
-      }
-      if (relay.browser.readyState !== relay.browser.OPEN) {
-        this.detachRelay(relay);
-        return;
-      }
-      if (relay.attached) return;
-      relay.attached = true;
-      this.sendBrowser(relay.browser, {
-        type: 'attach',
-        terminalId: relay.terminalId,
-        afterSequence: relay.afterSequence
-      });
-      this.flushBrowserFrames(relay);
-      return;
-    }
-    if (
-      message.type !== 'frame' ||
-      typeof message.ticket !== 'string' ||
-      Object.keys(message).some((key) => !['type', 'ticket', 'frame'].includes(key))
-    ) {
-      socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
-      return;
-    }
-    const parsed = terminalDataFrameSchema.safeParse(message.frame);
-    const relay = this.relays.get(message.ticket);
-    const retired = this.retiredTickets.get(message.ticket);
-    if (
-      parsed.success &&
-      relay === undefined &&
-      retired !== undefined &&
-      retired.nodeId === getNodeId() &&
-      retired.expiresAt > Date.now() &&
-      ['output', 'exit', 'error'].includes(parsed.data.type)
-    )
-      return;
-    if (
-      !parsed.success ||
-      relay === undefined ||
-      relay.nodeId !== getNodeId() ||
-      parsed.data.terminalId !== relay.terminalId ||
-      !['output', 'exit', 'error'].includes(parsed.data.type)
-    ) {
-      socket.close(4002, 'TERMINAL_MESSAGE_INVALID');
-      return;
-    }
-    const encoded = encodeTerminalMessage(parsed.data);
-    const bytes = encoded.byteLength;
-    if (relay.pendingBytes + bytes > MAX_TERMINAL_SOCKET_BUFFERED_BYTES) {
-      this.endBackpressuredRelay(relay, relay.pendingBytes + bytes);
-      return;
-    }
-    relay.pendingFrames.push({ frame: parsed.data, encoded });
-    relay.pendingBytes += bytes;
-    this.flushBrowserFrames(relay);
-  }
-
-  private flushBrowserFrames(relay: TerminalRelayRecord): void {
-    if (
-      this.relays.get(relay.ticket) !== relay ||
-      !relay.attached ||
-      relay.writing ||
-      relay.flushImmediate !== undefined
-    )
-      return;
-    if (relay.browser.readyState !== relay.browser.OPEN) {
-      this.detachRelay(relay);
-      return;
-    }
-    const pending = relay.pendingFrames[0];
-    if (pending === undefined) return;
-    const { frame, encoded } = pending;
-    const bytes = encoded.byteLength;
-    const buffered = relay.browser.bufferedAmount + bytes;
-    if (buffered > MAX_TERMINAL_SOCKET_BUFFERED_BYTES) {
-      this.endBackpressuredRelay(relay, buffered);
-      return;
-    }
-    relay.pendingFrames.shift();
-    relay.pendingBytes -= bytes;
-    relay.writing = true;
-    this.sendTerminal(relay.browser, encoded, (error) => {
-      if (this.relays.get(relay.ticket) !== relay) return;
-      relay.writing = false;
-      if (error) {
-        this.closeRelay(relay, false, 'TERMINAL_SEND_FAILED');
-        return;
-      }
-      if (
-        frame.type === 'exit' ||
-        (frame.type === 'error' &&
-          ['TERMINAL_BACKPRESSURE', 'TERMINAL_FRAME_REJECTED'].includes(frame.code))
-      ) {
-        this.closeRelay(
-          relay,
-          false,
-          frame.type === 'exit' ? 'TERMINAL_RELAY_CLOSED' : 'TERMINAL_RELAY_FAILED'
-        );
-        return;
-      }
-      relay.flushImmediate = setImmediate(() => {
-        relay.flushImmediate = undefined;
-        this.flushBrowserFrames(relay);
-      });
-    });
-  }
-
-  private endBackpressuredRelay(relay: TerminalRelayRecord, bytes: number): void {
-    this.options.traffic?.backpressure('terminal', bytes);
-    const frame: TerminalDataFrame = {
-      type: 'error',
-      terminalId: relay.terminalId,
-      code: 'TERMINAL_BACKPRESSURE'
-    };
-    if (
-      relay.browser.bufferedAmount + encodeTerminalMessage(frame).byteLength <=
-      MAX_TERMINAL_SOCKET_BUFFERED_BYTES
-    )
-      this.sendBrowser(relay.browser, frame);
-    this.closeRelay(relay, false, 'TERMINAL_BACKPRESSURE');
-  }
-
-  private clearBrowserFrames(relay: TerminalRelayRecord): void {
-    if (relay.flushImmediate !== undefined) clearImmediate(relay.flushImmediate);
-    relay.flushImmediate = undefined;
-    relay.pendingFrames = [];
-    relay.pendingBytes = 0;
-  }
-
-  private dropTickets(predicate: (record: TerminalTicketRecord) => boolean): void {
-    for (const [ticket, record] of this.tickets)
-      if (predicate(record)) {
-        const pending = this.deferredAttaches.get(ticket);
-        if (pending === undefined) {
-          this.tickets.delete(ticket);
-          clearTimeout(record.timer);
-        } else this.clearDeferredAttach(pending, true, 'TERMINAL_CLOSED');
-      }
-  }
-  private dropAuthorizing(predicate: (record: TerminalTicketRecord) => boolean): void {
-    for (const [ticket, record] of this.authorizing)
-      if (predicate(record)) this.authorizing.delete(ticket);
-  }
-  private expireTicket(ticket: string): void {
-    const record = this.tickets.get(ticket);
-    if (record !== undefined) {
-      const pending = this.deferredAttaches.get(ticket);
-      if (pending === undefined) {
-        this.tickets.delete(ticket);
-        clearTimeout(record.timer);
-      } else this.clearDeferredAttach(pending, true, 'TERMINAL_TICKET_INVALID');
-    }
-  }
-
-  private clearDeferredAttach(
-    pending: DeferredTerminalAttach,
-    dropTicket: boolean,
-    closeReason?: string
-  ): void {
-    if (this.deferredAttaches.get(pending.ticket.ticket) !== pending) return;
-    this.deferredAttaches.delete(pending.ticket.ticket);
-    pending.socket.removeListener('message', pending.onMessage);
-    pending.socket.removeListener('close', pending.onClose);
-    this.socketActivity.delete(pending.socket);
-    if (dropTicket && this.tickets.get(pending.ticket.ticket) === pending.ticket) {
-      this.tickets.delete(pending.ticket.ticket);
-      clearTimeout(pending.ticket.timer);
-    }
-    if (
-      closeReason !== undefined &&
-      (pending.socket.readyState === pending.socket.OPEN ||
-        pending.socket.readyState === pending.socket.CLOSING)
-    )
-      pending.socket.close(4008, closeReason);
-  }
-  private detachRelay(relay: TerminalRelayRecord): void {
-    if (this.relays.get(relay.ticket) !== relay) return;
-    if (relay.cli) {
-      this.closeRelay(relay, true);
-      return;
-    }
-    this.clearBrowserFrames(relay);
-    this.relays.delete(relay.ticket);
-    this.retireTicket(relay.ticket, relay.nodeId);
-    this.socketActivity.delete(relay.browser);
-    const socket = this.sockets.get(relay.nodeId);
-    if (socket !== undefined && socket.readyState === socket.OPEN)
-      this.sendTerminal(socket, { type: 'detach', ticket: relay.ticket });
-  }
-  private closeRelay(
-    relay: TerminalRelayRecord,
-    terminate: boolean,
-    reason = terminate ? 'TERMINAL_CLOSED' : 'TERMINAL_RELAY_CLOSED'
-  ): void {
-    if (this.relays.get(relay.ticket) !== relay) return;
-    this.clearBrowserFrames(relay);
-    this.relays.delete(relay.ticket);
-    this.retireTicket(relay.ticket, relay.nodeId);
-    this.socketActivity.delete(relay.browser);
-    const socket = this.sockets.get(relay.nodeId);
-    if (socket !== undefined && socket.readyState === socket.OPEN)
-      this.sendTerminal(
-        socket,
-        terminate || relay.cli
-          ? { type: 'close', ticket: relay.ticket }
-          : { type: 'detach', ticket: relay.ticket }
-      );
-    if (
-      relay.browser.readyState === relay.browser.OPEN ||
-      relay.browser.readyState === relay.browser.CLOSING
-    )
-      relay.browser.close(1000, reason);
-  }
-  private userRelayCount(sessionHash: string): number {
-    return [...this.relays.values()].filter((relay) => relay.userSessionHash === sessionHash)
-      .length;
-  }
-  private userDeferredCount(sessionHash: string): number {
-    return [...this.deferredAttaches.values()].filter(
-      (pending) => pending.ticket.userSessionHash === sessionHash
-    ).length;
-  }
-  private sendTerminal(
-    socket: TerminalRelaySocket,
-    message: object,
-    completed?: (error?: Error | null) => void
-  ): void {
-    if (socket.readyState !== socket.OPEN) return;
-    try {
-      const serialized = message instanceof Uint8Array ? message : encodeTerminalMessage(message);
-      this.options.traffic?.record('terminal', 'out', serialized.byteLength);
-      if (completed === undefined) socket.send(serialized);
-      else socket.send(serialized, completed);
-    } catch (error) {
-      completed?.(error instanceof Error ? error : new Error('TERMINAL_SEND_FAILED'));
-      socket.close(1011, 'TERMINAL_SEND_FAILED');
-    }
-  }
-  private sendBrowser(socket: TerminalRelaySocket, frame: TerminalDataFrame): void {
-    this.sendTerminal(socket, frame);
-  }
-
-  private retireTicket(ticket: string, nodeId: string): void {
-    const now = Date.now();
-    for (const [candidate, record] of this.retiredTickets)
-      if (record.expiresAt <= now) this.retiredTickets.delete(candidate);
-    this.retiredTickets.delete(ticket);
-    this.retiredTickets.set(ticket, { nodeId, expiresAt: now + RETIRED_TICKET_TTL_MS });
-    while (this.retiredTickets.size > MAX_RETIRED_TICKETS) {
-      const oldest = this.retiredTickets.keys().next().value as string | undefined;
-      if (oldest === undefined) break;
-      this.retiredTickets.delete(oldest);
-    }
-  }
-
-  private trackSocket(socket: TerminalRelaySocket): void {
-    this.socketActivity.set(socket, Date.now());
-    socket.on('pong', () => this.socketActivity.set(socket, Date.now()));
-    socket.once('close', () => this.socketActivity.delete(socket));
-  }
-
-  private heartbeatSockets(): void {
-    const now = Date.now();
-    for (const [socket, lastActivity] of this.socketActivity) {
-      if (socket.readyState !== socket.OPEN) {
-        this.socketActivity.delete(socket);
-        continue;
-      }
-      if (now - lastActivity >= TERMINAL_HEARTBEAT_TIMEOUT_MS) {
-        socket.terminate();
-        continue;
-      }
-      try {
-        socket.ping();
-      } catch {
-        socket.terminate();
-      }
+  private dropTickets(matches: (record: TerminalTicketRecord) => boolean): void {
+    for (const [ticket, record] of this.tickets) {
+      if (!matches(record)) continue;
+      this.tickets.delete(ticket);
+      clearTimeout(record.timer);
     }
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 function isIdentifier(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 128;
-}
-function browserAttachRequest(
-  value: unknown
-): { readonly ticket: string; readonly deferred: boolean } | undefined {
-  if (typeof value === 'string') return { ticket: value, deferred: false };
-  if (
-    !isRecord(value) ||
-    value.deferred !== true ||
-    !isIdentifier(value.ticket) ||
-    Object.keys(value).some((key) => !['ticket', 'deferred'].includes(key))
-  )
-    return undefined;
-  return { ticket: value.ticket, deferred: true };
-}
-function terminalAttachmentResponse(value: unknown): TerminalAttachmentResponse | undefined {
-  if (!isRecord(value) || !isRecord(value.attachment)) return undefined;
-  const attachment = value.attachment;
-  if (!isIdentifier(attachment.attachmentId) || !isIdentifier(attachment.terminalId))
-    return undefined;
-  return { attachmentId: attachment.attachmentId, terminalId: attachment.terminalId };
 }

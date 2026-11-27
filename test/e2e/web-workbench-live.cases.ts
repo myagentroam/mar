@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { emitMockSessionEvent, mockConsoleApi, json, write } from './support/web-console-api.js';
+import { mockWorkspaceFileRelay } from './support/mock-workspace-file-relay.js';
 import { createWorkbenchNotificationProxy } from './support/workbench-notification-proxy.js';
 
 const systemNotificationTest = test.extend<{
@@ -867,13 +868,11 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await page.addInitScript(() => {
     // This case explicitly verifies the Daylight palette, independent of the default theme.
     localStorage.setItem('mar.theme', 'daylight');
-    HTMLAnchorElement.prototype.click = function click(): void {
-      (
-        window as unknown as {
-          __lastDownload?: { href: string; filename: string };
-        }
-      ).__lastDownload = { href: this.href, filename: this.download };
-    };
+  });
+  const source = 'export const answer = 42;';
+  const relay = await mockWorkspaceFileRelay(page, 'node-1', 'workspace-1', (path) => {
+    expect(path).toBe('src/main.ts');
+    return Buffer.from(source);
   });
   await page.route('**/api/nodes', (route) =>
     json(route, {
@@ -1093,22 +1092,12 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.getByText('export const answer = 42;')).toBeVisible();
   await expect(preview.locator('.cm-gutterElement').filter({ hasText: '1' })).toBeVisible();
   await expect(preview.locator('.cm-content')).toContainText('export const answer = 42;');
+  const saved = page.waitForEvent('download');
   await preview.getByRole('button', { name: '下载文件' }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __lastDownload?: { href: string; filename: string };
-            }
-          ).__lastDownload
-      )
-    )
-    .toMatchObject({
-      href: expect.stringMatching(/\/api\/workspaces\/workspace-1\/files\/content\?.*download=1/u),
-      filename: 'main.ts'
-    });
+  const download = await saved;
+  expect(download.suggestedFilename()).toBe('main.ts');
+  expect(await readFile((await download.path())!, 'utf8')).toBe(source);
+  expect(relay().carriers).toBe(1);
   await page.keyboard.press('Escape');
   await expect(preview).toHaveCount(0);
   const managedStatus = page.locator('.session-list .mar-session-activity.running');

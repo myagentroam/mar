@@ -38,7 +38,6 @@ export const browserCapabilitySchema = z.strictObject({
   ice: z.boolean()
 });
 export type BrowserCapability = z.infer<typeof browserCapabilitySchema>;
-export const BROWSER_RELAY_READY = 'BROWSER_RELAY_READY';
 
 export const browserAttachmentRouteSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('relay') }),
@@ -71,6 +70,7 @@ export type BrowserAttachmentRoute = z.infer<typeof browserAttachmentRouteSchema
 
 // Internal Node operations, not part of the generic Workbench operation allowlist.
 export const browserNodeAttachmentCommandSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('revoke-file-stream'), grant: id }),
   z.strictObject({
     action: z.literal('prepare'),
     grant: browserAttachmentPrepareSchema,

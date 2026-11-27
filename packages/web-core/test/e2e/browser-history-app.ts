@@ -10,8 +10,7 @@ const scope = { nodeId: 'history-node', workspaceId: 'history-workspace' };
 const profile = { id: '57fd173b-d545-4a6f-823b-945462de9b21', kind: 'live', persistent: true };
 const browser = createWorkbenchBrowserService({
   send: () => false,
-  connectionId: () => undefined,
-  acquire: () => undefined
+  connectionId: () => undefined
 });
 let items = Array.from({ length: 32 }, (_, i) => ({
   url: `https://example.test/${i + 1}`,

@@ -105,6 +105,26 @@ afterEach(() => {
 });
 
 describe('Workspace file preview service', () => {
+  it.each([defaultTarget.path, 'mar-attachment://00000000-0000-4000-8000-000000000001/notes.txt'])(
+    'keeps one stream snapshot and does not retry a failed range over HTTP (%s)',
+    async (path) => {
+      const failure = new Error('DIRECT_FILE_REVISION_CHANGED');
+      const readPreviewRange = vi
+        .fn<NonNullable<WorkspaceFilePreviewTransfers['readPreviewRange']>>()
+        .mockResolvedValueOnce(directRange('first', 100, 5, 'snapshot'))
+        .mockRejectedValueOnce(failure);
+      const { preview, request, fetchContent } = createHarness({ transfers: { readPreviewRange } });
+      const page = preview.page(1);
+      await preview.open(1, fileTarget({ path }), { serverOnly: true });
+      expect(readPreviewRange).toHaveBeenCalledTimes(2);
+      expect(readPreviewRange.mock.calls[0]?.[2]).toBeUndefined();
+      expect(readPreviewRange.mock.calls[1]?.[2]).toEqual({ revision: 'snapshot', size: 100 });
+      expect(page.error.value).toBe(failure);
+      expect(page.fileContent.value?.content).toBe('');
+      expect(request).not.toHaveBeenCalled();
+      expect(fetchContent).not.toHaveBeenCalled();
+    }
+  );
   it('keeps read failures on their file page and clears them when retrying', async () => {
     const failure = new Error('File was not found.');
     const retry = deferred<ReturnType<typeof textFile>>();
@@ -504,43 +524,118 @@ describe('Workspace file preview service', () => {
     });
   });
 
-  it('keeps media previews on a Range-capable content URL', async () => {
-    const target = fileTarget({ path: 'media/demo.mp4' });
-    const directFileObjectUrl = vi.fn(async () => 'blob:unused');
-    const { preview, request, fetchContent } = createHarness({
-      transfers: { directFileObjectUrl }
-    });
+  it.each(['media/demo.mp4', 'image.png', 'image.jpg', 'image.svg'])(
+    'keeps %s on its specialized content URL',
+    async (path) => {
+      const target = fileTarget({ path });
+      const readPreviewObject = vi.fn();
+      const { preview, request, fetchContent } = createHarness({
+        transfers: { readPreviewObject }
+      });
 
-    await preview.open(1, target);
+      await preview.open(1, target);
 
-    const contentUrl = preview.page(1).contentUrl.value;
-    expect(contentUrl).toContain('/api/workspaces/workspace-1/files/content?');
-    expect(new URL(contentUrl!, 'http://workspace.test').searchParams.get('path')).toBe(
-      'media/demo.mp4'
+      const contentUrl = preview.page(1).contentUrl.value;
+      expect(contentUrl).toContain('/api/workspaces/workspace-1/files/content?');
+      expect(new URL(contentUrl!, 'http://workspace.test').searchParams.get('path')).toBe(path);
+      expect(readPreviewObject).not.toHaveBeenCalled();
+      expect(fetchContent).not.toHaveBeenCalled();
+      expect(request).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['image.png', 'image.svg', 'media/clip.mp4', 'media/song.mp3'])(
+    'keeps the Git preview and size probe for %s on HTTP even when ICE is ready',
+    async (path) => {
+      const directGitFileReadRange = vi.fn().mockResolvedValue(directRange('old'));
+      const readPreviewRange = vi.fn();
+      const readPreviewObject = vi.fn();
+      const fetchContent = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(null, { status: 206, headers: { 'content-range': 'bytes 0-0/1024' } })
+        );
+      const { preview } = createHarness({
+        transfers: { directGitFileReadRange, readPreviewRange, readPreviewObject },
+        fetchContent
+      });
+      const history = { commit: 'a'.repeat(40), repositoryPath: '', refs: ['main'] };
+
+      await preview.open(1, fileTarget({ path, history }));
+
+      const { contentUrl, fileContent } = preview.page(1);
+      expect(contentUrl.value).toContain(`/git/commits/${history.commit}/files/content?`);
+      expect(fileContent.value?.size).toBe(1024);
+      expect(fetchContent).toHaveBeenCalledExactlyOnceWith(
+        contentUrl.value,
+        expect.objectContaining({ method: 'HEAD', headers: { range: 'bytes=0-0' } })
+      );
+      expect(directGitFileReadRange).not.toHaveBeenCalled();
+      expect(readPreviewRange).not.toHaveBeenCalled();
+      expect(readPreviewObject).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps Git media playable without using the range length as the file size', async () => {
+    const fetchContent = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 206, headers: { 'content-length': '1' } }));
+    const { preview } = createHarness({ fetchContent });
+    const history = { commit: 'a'.repeat(40), repositoryPath: '', refs: ['main'] };
+
+    await preview.open(1, fileTarget({ path: 'media/clip.mp4', history }));
+
+    expect(preview.page(1).contentUrl.value).toContain(
+      `/git/commits/${history.commit}/files/content?`
     );
-    expect(directFileObjectUrl).not.toHaveBeenCalled();
+    expect(preview.page(1).fileContent.value?.size).toBeUndefined();
+    expect(preview.page(1).error.value).toBeUndefined();
+  });
+
+  it('keeps metadata and no content URL for an oversized binary preview', async () => {
+    const readPreviewObject = vi.fn().mockResolvedValue({ size: 25_000_000, revision: 'r' });
+    const { preview, fetchContent } = createHarness({ transfers: { readPreviewObject } });
+
+    await preview.open(1, fileTarget({ path: 'large.pdf' }));
+
+    expect(preview.page(1).fileContent.value).toMatchObject({ size: 25_000_000, content: '' });
+    expect(preview.page(1).contentUrl.value).toBeUndefined();
+    expect(preview.page(1).error.value).toBeUndefined();
     expect(fetchContent).not.toHaveBeenCalled();
-    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('downloads through the file service even when a preview object URL exists', async () => {
+    const readPreviewObject = vi.fn().mockResolvedValue({ url: 'blob:preview', size: 4 });
+    const directFileDownload = vi.fn().mockResolvedValue('COMPLETED');
+    const { preview } = createHarness({ transfers: { readPreviewObject, directFileDownload } });
+
+    await preview.open(1, fileTarget({ path: 'report.pdf' }));
+    expect(preview.page(1).contentUrl.value).toBe('blob:preview');
+    await preview.download(1);
+
+    expect(directFileDownload).toHaveBeenCalledExactlyOnceWith('report.pdf', undefined, undefined);
+    expect(preview.page(1).contentUrl.value).toBe('blob:preview');
   });
 
   it('releases blob previews on replacement, late resolution, and close', async () => {
-    const pendingReplacement = deferred<string | undefined>();
-    const directFileObjectUrl = vi
-      .fn<NonNullable<WorkspaceFilePreviewTransfers['directFileObjectUrl']>>()
-      .mockResolvedValueOnce('blob:first')
+    const object = (url: string) => ({ url, size: 4, revision: 'r' });
+    const pendingReplacement = deferred<ReturnType<typeof object>>();
+    const readPreviewObject = vi
+      .fn<NonNullable<WorkspaceFilePreviewTransfers['readPreviewObject']>>()
+      .mockResolvedValueOnce(object('blob:first'))
       .mockImplementationOnce(() => pendingReplacement.promise)
-      .mockResolvedValueOnce('blob:latest');
-    const { preview } = createHarness({ transfers: { directFileObjectUrl } });
+      .mockResolvedValueOnce(object('blob:latest'));
+    const { preview } = createHarness({ transfers: { readPreviewObject } });
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
 
-    await preview.open(1, fileTarget({ path: 'first.png' }));
-    const replacing = preview.open(1, fileTarget({ path: 'second.png' }));
-    const replacementSignal = directFileObjectUrl.mock.calls[1]?.[3];
+    await preview.open(1, fileTarget({ path: 'first.pdf' }));
+    const replacing = preview.open(1, fileTarget({ path: 'second.pdf' }));
+    const replacementSignal = readPreviewObject.mock.calls[1]?.[1];
     expect(replacementSignal).toBeInstanceOf(AbortSignal);
     expect(revoke).toHaveBeenCalledWith('blob:first');
-    await preview.open(1, fileTarget({ path: 'third.png' }));
+    await preview.open(1, fileTarget({ path: 'third.pdf' }));
     expect(replacementSignal?.aborted).toBe(true);
-    pendingReplacement.resolve('blob:stale');
+    pendingReplacement.resolve(object('blob:stale'));
     await replacing;
 
     expect(revoke).toHaveBeenCalledWith('blob:stale');
@@ -707,27 +802,12 @@ describe('Workspace file preview service', () => {
     expect(fetchContent).not.toHaveBeenCalled();
   });
 
-  it.each([
-    { result: 'COMPLETED' as const, browserFallback: false },
-    { result: 'UNAVAILABLE' as const, browserFallback: true },
-    { result: 'CANCELLED' as const, browserFallback: false },
-    { result: 'FAILED' as const, browserFallback: false }
-  ])(
-    'handles direct download result $result according to its availability',
-    async ({ result, browserFallback }) => {
+  it.each(['COMPLETED', 'CANCELLED'] as const)(
+    'does not start an HTTP download when the file stream is %s',
+    async (result) => {
       const directFileDownload = vi.fn(async () => result);
-      const anchor = {
-        href: '',
-        download: '',
-        style: { display: '' },
-        click: vi.fn(),
-        remove: vi.fn()
-      };
-      const append = vi.fn();
-      vi.stubGlobal('document', {
-        createElement: vi.fn(() => anchor),
-        body: { append }
-      });
+      const createElement = vi.fn();
+      vi.stubGlobal('document', { createElement });
       const { preview } = createHarness({ transfers: { directFileDownload } });
 
       await preview.downloadTarget(fileTarget({ path: 'docs/guide.txt' }));
@@ -737,13 +817,18 @@ describe('Workspace file preview service', () => {
         undefined,
         undefined
       );
-      expect(anchor.click).toHaveBeenCalledTimes(browserFallback ? 1 : 0);
-      if (browserFallback) {
-        expect(anchor.href).toContain('download=1');
-        expect(anchor.download).toBe('guide.txt');
-        expect(append).toHaveBeenCalledExactlyOnceWith(anchor);
-        expect(anchor.remove).toHaveBeenCalledOnce();
-      }
+      expect(createElement).not.toHaveBeenCalled();
     }
   );
+
+  it('preserves an explicit download failure without using the HTTP preview URL', async () => {
+    const directFileDownload = vi.fn().mockRejectedValue(new Error('NODE_STREAM_DISCONNECTED'));
+    const createElement = vi.fn();
+    vi.stubGlobal('document', { createElement });
+    const { preview, fetchContent } = createHarness({ transfers: { directFileDownload } });
+
+    await expect(preview.downloadTarget(fileTarget())).rejects.toThrow('NODE_STREAM_DISCONNECTED');
+    expect(createElement).not.toHaveBeenCalled();
+    expect(fetchContent).not.toHaveBeenCalled();
+  });
 });

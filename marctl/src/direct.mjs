@@ -1,34 +1,15 @@
-import {
-  DirectFallbackError,
-  DirectUnsafeError,
-  DirectRejectedError,
-  directControlError
-} from './direct-errors.mjs';
+import { DirectFallbackError, DirectRejectedError, directControlError } from './direct-errors.mjs';
 import { randomUUID } from 'node:crypto';
 import { LiveControl, cancelSession, withTimeout, isRecord } from './direct-control.mjs';
-import { DirectTerminalTransport } from './direct-transport.mjs';
+import { openDirectStreamPath } from './direct-stream-path.mjs';
+import { openDirectTerminalStream } from './direct-terminal-stream.mjs';
 
 export const DIRECT_PREPARE_TIMEOUT_MS = 5000;
 export const DIRECT_SETUP_TIMEOUT_MS = 15000;
 export const DIRECT_ICE_TIMEOUT_MS = 3000;
 export const DIRECT_HEARTBEAT_MS = 10000;
 
-export async function openDirectTerminal(options) {
-  if (
-    options.peerConnectionFactory === undefined &&
-    typeof options.client.openDirectTerminal === 'function'
-  )
-    return options.client.openDirectTerminal(options);
-  const connection = await openDirectConnection(options);
-  try {
-    return await connection.attach({ ...options, closeConnection: connection.close });
-  } catch (error) {
-    connection.close();
-    throw error;
-  }
-}
-
-/** Owns one ICE peer and control socket; each attach owns only its DataChannel and grant. */
+/** Owns one ICE peer and control socket; the caller owns the Peer lifetime. */
 export async function openDirectConnection(options) {
   const {
     client,
@@ -319,32 +300,29 @@ export async function openDirectConnection(options) {
         return closed;
       },
       close,
-      attach: ({
-        terminalId,
-        computer,
-        afterSequence,
-        signal,
-        beforeOpen,
-        closeConnection,
-        onRejected
-      }) => {
-        if (closed) throw new DirectFallbackError('DIRECT_CONTROL_UNAVAILABLE');
-        return attachDirect({
-          nodeId,
-          manifest,
-          transportSessionId,
-          live,
-          peer,
-          heartbeatMs,
-          timeoutMs,
-          terminalId,
-          computer,
-          afterSequence,
-          signal,
-          beforeOpen,
-          closeConnection,
-          onRejected
-        });
+      openStreams: async (lifetime) => {
+        const path = await openDirectStreamPath(peer, timeoutMs, lifetime, close);
+        return {
+          get closed() {
+            return closed || path.closed;
+          },
+          close() {
+            path.close();
+            close();
+          },
+          openStream: (request, signal) =>
+            openDirectTerminalStream({
+              path,
+              live,
+              nodeId,
+              nodeGeneration: manifest.nodeGeneration,
+              transportSessionId,
+              heartbeatMs,
+              timeoutMs,
+              request,
+              signal
+            })
+        };
       }
     };
   } catch (caughtError) {
@@ -359,100 +337,7 @@ export async function openDirectConnection(options) {
     live?.close();
     peer?.close?.();
     cleanupNative?.();
-    if (
-      error instanceof DirectRejectedError ||
-      error instanceof DirectFallbackError ||
-      error instanceof DirectUnsafeError
-    )
-      throw error;
-    throw new DirectFallbackError(errorCode(error));
-  }
-}
-
-async function attachDirect({
-  nodeId,
-  manifest,
-  transportSessionId,
-  live,
-  peer,
-  heartbeatMs,
-  timeoutMs,
-  terminalId,
-  computer,
-  afterSequence = 0,
-  signal,
-  beforeOpen,
-  closeConnection,
-  onRejected
-}) {
-  if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
-  let preparation;
-  let terminalSessionId;
-  let transport;
-  try {
-    preparation = live.request(
-      {
-        type: 'terminal.direct.prepare',
-        requestId: requestId(),
-        nodeId,
-        nodeGeneration: manifest.nodeGeneration,
-        transportSessionId,
-        terminalId,
-        ...(computer ? { computer: true } : {}),
-        afterSequence,
-        readonly: false
-      },
-      (message, request) =>
-        message.type === 'terminal.direct.prepared' &&
-        message.requestId === request.requestId &&
-        typeof message.directSessionId === 'string' &&
-        typeof message.grant === 'string',
-      'TERMINAL_DIRECT_PREPARE_FAILED'
-    );
-    const terminalPrepared = await withTimeout(
-      preparation,
-      timeoutMs,
-      'TERMINAL_DIRECT_PREPARE_FAILED',
-      signal
-    );
-    terminalSessionId = terminalPrepared.directSessionId;
-    const channel = peer.createDataChannel(`mar-terminal-${terminalSessionId}`, {
-      unordered: false
-    });
-    transport = new DirectTerminalTransport({
-      channel,
-      live,
-      transportSessionId,
-      terminalSessionId,
-      terminalId,
-      heartbeatMs,
-      closeConnection
-    });
-    if (beforeOpen) await beforeOpen();
-    if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
-    await withTimeout(
-      transport.waitForAttachment(terminalPrepared.grant),
-      timeoutMs,
-      'TERMINAL_DIRECT_TIMEOUT',
-      signal
-    );
-    return transport;
-  } catch (error) {
-    const unsafeFallback = transport?.openSent === true;
-    if (error instanceof DirectRejectedError) onRejected?.(error);
-    if (transport !== undefined) await transport.cancelAndDispose();
-    else if (terminalSessionId !== undefined)
-      await cancelSession(live, 'terminal.direct.cancel', terminalSessionId);
-    else {
-      // Abort only this attach. Its bounded prepare wait can still receive a grant on the warm peer.
-      void preparation?.then(
-        ({ directSessionId }) => live.send({ type: 'terminal.direct.cancel', directSessionId }),
-        () => undefined
-      );
-    }
-    if (error instanceof DirectRejectedError) throw error;
-    if (unsafeFallback) throw new DirectUnsafeError('DIRECT_OPEN_CANCEL_UNCONFIRMED');
-    if (error instanceof DirectFallbackError || error instanceof DirectUnsafeError) throw error;
+    if (error instanceof DirectRejectedError || error instanceof DirectFallbackError) throw error;
     throw new DirectFallbackError(errorCode(error));
   }
 }

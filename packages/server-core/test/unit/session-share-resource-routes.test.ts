@@ -117,16 +117,14 @@ describe('Session-share resource routes', () => {
   it('uses the fixed share target for file reads and exposes effective skills through the existing inspect operations', async () => {
     const f = await fixture();
     const file = await f.app.inject({
-      url: '/api/session-shares/share-one/files/read?path=notes.txt&offset=0&limit=10&nodeId=attacker&workspaceId=other&sessionId=other'
+      url: '/api/session-shares/share-one/files/direct-metadata?path=notes.txt&nodeId=attacker&workspaceId=other&sessionId=other'
     });
     expect(file.statusCode).toBe(200);
     expect(f.requestNode).toHaveBeenCalledWith(
       'node-fixed',
-      'workspace.file.read',
+      'workspace.file.direct.metadata',
       {
         path: 'notes.txt',
-        offset: 0,
-        limit: 10,
         workspaceId: 'workspace-fixed',
         sessionId: 'session-current'
       },
@@ -325,98 +323,33 @@ describe('Session-share resource routes', () => {
     expect(f.executedContent).toEqual([editedContent]);
   });
 
-  it('implements the attachment upload request protocol and keeps its target fixed', async () => {
+  it('retires attachment HTTP bodies and keeps cancellation in the authorized share scope', async () => {
     const f = await fixture();
+    const base = '/api/session-shares/share-one/uploads';
     const uploadId = '00000000-0000-4000-8000-000000000011';
-    const created = await f.app.inject({
-      method: 'POST',
-      url: '/api/session-shares/share-one/uploads',
-      payload: {
-        name: 'notes.txt',
-        size: 3,
-        mime: 'text/plain',
-        overwrite: false,
-        composerAttachmentId: '00000000-0000-4000-8000-000000000012'
-      }
-    });
-    expect(created.statusCode).toBe(200);
-    expect(f.requestNode).toHaveBeenLastCalledWith(
-      'node-fixed',
-      'workspace.files.upload.create',
-      {
-        name: 'notes.txt',
-        size: 3,
-        mime: 'text/plain',
-        overwrite: false,
-        composerAttachmentId: '00000000-0000-4000-8000-000000000012',
-        workspaceId: 'workspace-fixed',
-        sessionId: 'session-current'
-      },
-      expect.objectContaining({
-        userId: 7,
-        sessionHash: 'share-session',
-        workspaceId: 'workspace-fixed'
-      })
-    );
-
-    const chunk = await f.app.inject({
-      method: 'POST',
-      url: '/api/session-shares/share-one/uploads/' + uploadId + '/chunks?offset=0',
-      headers: { 'content-type': 'application/octet-stream' },
-      payload: Buffer.from('abc')
-    });
-    expect(chunk.statusCode).toBe(200);
-    expect(f.requestNode).toHaveBeenLastCalledWith(
-      'node-fixed',
-      'workspace.files.upload.chunk',
-      {
-        uploadId,
-        offset: 0,
-        bytes: Buffer.from('abc'),
-        workspaceId: 'workspace-fixed',
-        sessionId: 'session-current'
-      },
-      expect.objectContaining({
-        userId: 7,
-        sessionHash: 'share-session',
-        workspaceId: 'workspace-fixed'
-      })
-    );
-    for (const action of ['complete', 'cancel']) {
-      const response = await f.app.inject({
-        method: 'POST',
-        url: '/api/session-shares/share-one/uploads/' + uploadId + '/' + action
-      });
-      expect(response.statusCode).toBe(200);
-      expect(f.requestNode).toHaveBeenLastCalledWith(
-        'node-fixed',
-        'workspace.files.upload.' + action,
-        { uploadId, workspaceId: 'workspace-fixed', sessionId: 'session-current' },
-        expect.objectContaining({
-          userId: 7,
-          sessionHash: 'share-session',
-          workspaceId: 'workspace-fixed'
-        })
-      );
+    for (const url of [
+      base,
+      `${base}/${uploadId}/chunks?offset=0`,
+      `${base}/${uploadId}/complete`
+    ]) {
+      expect((await f.app.inject({ method: 'POST', url })).statusCode).toBe(404);
     }
-
-    f.requestNode.mockClear();
-    const invalid = await f.app.inject({
-      method: 'POST',
-      url: '/api/session-shares/share-one/uploads',
-      payload: {
-        name: 'notes.txt',
-        size: 3,
-        mime: 'text/plain',
-        overwrite: true,
-        composerAttachmentId: '00000000-0000-4000-8000-000000000012'
-      }
-    });
-    expect(invalid.statusCode).toBe(400);
     expect(f.requestNode).not.toHaveBeenCalled();
+    const response = await f.app.inject({ method: 'POST', url: `${base}/${uploadId}/cancel` });
+    expect(response.statusCode).toBe(200);
+    expect(f.requestNode).toHaveBeenCalledExactlyOnceWith(
+      'node-fixed',
+      'workspace.files.upload.cancel',
+      { uploadId, workspaceId: 'workspace-fixed', sessionId: 'session-current' },
+      expect.objectContaining({
+        userId: 7,
+        sessionHash: 'share-session',
+        workspaceId: 'workspace-fixed'
+      })
+    );
   });
 
-  it('preserves file relay errors before starting a shared download', async () => {
+  it('preserves file relay errors before starting a native shared preview', async () => {
     const f = await fixture(databaseError);
     f.requestNode
       .mockResolvedValueOnce({
@@ -425,7 +358,7 @@ describe('Session-share resource routes', () => {
       .mockRejectedValueOnce(new Error('FILE_RELAY_BUSY'));
 
     const response = await f.app.inject({
-      url: '/api/session-shares/share-one/files/content?path=large.bin&download=1'
+      url: '/api/session-shares/share-one/files/content?path=large.mp4'
     });
 
     expect(response.statusCode).toBe(429);
@@ -438,7 +371,7 @@ describe('Session-share resource routes', () => {
     const bytes = Buffer.alloc(512 * 1024 + 4, 0x61);
     f.setFileBytes(bytes);
     const response = await f.app.inject({
-      url: '/api/session-shares/share-one/files/content?path=large.bin',
+      url: '/api/session-shares/share-one/files/content?path=large.mp4',
       headers: { range: 'bytes=0-524288' }
     });
     expect(response.statusCode).toBe(206);
@@ -700,7 +633,7 @@ describe('Session-share resource routes', () => {
     const f = await fixture();
     f.setActive(false);
     const response = await f.app.inject({
-      url: '/api/session-shares/share-one/files/read?path=notes.txt&offset=0&limit=10'
+      url: '/api/session-shares/share-one/files/direct-metadata?path=notes.txt'
     });
     expect(response.statusCode).toBe(404);
     expect(response.json().error.code).toBe('SESSION_SHARE_NOT_FOUND');

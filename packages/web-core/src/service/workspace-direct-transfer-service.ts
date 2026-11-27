@@ -1,4 +1,15 @@
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
 import { createUuid } from '../util/uuid.js';
+import {
+  receiveWorkspaceDownload,
+  type WorkspaceDownloadSink
+} from './workspace-download-stream.js';
+import { sendWorkspaceUpload } from './workspace-upload-stream.js';
+import {
+  bindNodeDirectPath,
+  NODE_STREAM_CHANNEL_LABEL,
+  rtcNodeStreamCarrier
+} from '@myagentroam/protocol/node-stream-path';
 import type {
   DirectBrowserMessage,
   DirectPrepareRequest,
@@ -36,7 +47,8 @@ interface TransportSession {
   readonly request: TransportRequest;
   readonly directSessionId: string;
   readonly peer: RTCPeerConnection;
-  readonly bootstrapChannel: RTCDataChannel;
+  readonly streamChannel: RTCDataChannel;
+  readonly streamPath: ReturnType<typeof bindNodeDirectPath>;
   readonly sentCandidateKeys: Set<string>;
   readonly desktopChannels: Map<
     string,
@@ -52,60 +64,47 @@ interface TransportSession {
   heartbeat?: ReturnType<typeof setInterval>;
 }
 
-interface TransferRequestBase {
+interface TransferRequest {
   readonly requestId: string;
   readonly nodeId: string;
   readonly nodeGeneration: string;
   readonly transportSessionId: string;
   readonly descriptor: DirectTransferDescriptor;
+  readonly resolve: (stream: NodeStream | undefined) => void;
+  readonly reject: (error: Error) => void;
+  readonly removeAbort: () => void;
+  readonly timer: ReturnType<typeof setTimeout>;
+}
+
+interface TransferSession {
+  readonly directSessionId: string;
+  readonly request: TransferRequest;
+  readonly path: TransportSession['streamPath'];
+  readonly scope: AbortController;
+  heartbeat?: ReturnType<typeof setInterval>;
+  stream?: NodeStream;
+  opening: boolean;
+}
+
+export interface FileTransferInput {
+  readonly nodeId: string;
+  readonly nodeGeneration: string;
+  readonly descriptor: DirectTransferDescriptor;
   readonly onProgress?: (offset: number) => void;
   readonly signal?: AbortSignal;
-  timer: ReturnType<typeof setTimeout>;
 }
 
-interface UploadRequest extends TransferRequestBase {
-  readonly descriptor: Extract<DirectTransferDescriptor, { direction: 'UPLOAD' }>;
-  readonly file: File;
-  readonly resolve: () => void;
-  readonly reject: (error: Error) => void;
-}
-
-interface DownloadRequest extends TransferRequestBase {
-  readonly descriptor: Extract<DirectTransferDescriptor, { direction: 'DOWNLOAD' }>;
-  readonly sink: {
-    write(bytes: Uint8Array): Promise<void>;
-    close(): Promise<void>;
-    abort(): Promise<void>;
-  };
-  readonly resolve: () => void;
-  readonly reject: (error: Error) => void;
-}
-
-type TransferRequest = UploadRequest | DownloadRequest;
-
-interface TransferSessionBase {
-  readonly directSessionId: string;
-  readonly channel: RTCDataChannel;
-  heartbeat?: ReturnType<typeof setInterval>;
-  grant?: string;
-  opened: boolean;
-}
-
-interface UploadSession extends TransferSessionBase {
-  readonly request: UploadRequest;
-  sending: boolean;
-  completeSent: boolean;
-}
-
-interface DownloadSession extends TransferSessionBase {
-  readonly request: DownloadRequest;
-  processing: Promise<void>;
-  received: number;
-  dataComplete: boolean;
-  serverComplete: boolean;
-}
-
-type TransferSession = UploadSession | DownloadSession;
+const FILE_PREPARE_UNAVAILABLE = new Set([
+  'DIRECT_UNAVAILABLE',
+  'DIRECT_TRANSFER_UNAVAILABLE',
+  'DIRECT_PREPARE_TIMEOUT',
+  'DIRECT_CONNECTION_FAILED',
+  'DIRECT_CHANNEL_CLOSED',
+  'DIRECT_TRANSFER_CONTROL_UNAVAILABLE',
+  'DIRECT_NODE_OFFLINE',
+  'DIRECT_NODE_INVALIDATED',
+  'DIRECT_NETWORK_CHANGED'
+]);
 
 export interface WorkspaceDirectTransferServiceOptions {
   readonly send: (message: DirectBrowserMessage) => boolean;
@@ -156,6 +155,7 @@ export function createWorkspaceDirectTransferService(
     | {
         readonly transportSessionId: string;
         readonly nodeGeneration: string;
+        readyStreamPath(signal: AbortSignal): Promise<TransportSession['streamPath'] | undefined>;
         createChannel(label: string): RTCDataChannel;
         release(): void;
       }
@@ -172,6 +172,12 @@ export function createWorkspaceDirectTransferService(
     return {
       transportSessionId: transport.directSessionId,
       nodeGeneration: transport.request.nodeGeneration,
+      async readyStreamPath(signal) {
+        if (!(await waitForStreamChannel(transport.streamChannel, signal))) return undefined;
+        return transportReady(transport) && !transport.streamPath.closed && !released
+          ? transport.streamPath
+          : undefined;
+      },
       createChannel: (label) => {
         if (!transportReady(transport) || transportsByNode.get(nodeId) !== transport)
           throw new Error('DIRECT_TRANSPORT_UNAVAILABLE');
@@ -329,85 +335,84 @@ export function createWorkspaceDirectTransferService(
       failTransportRequest(request.requestId, 'DIRECT_TRANSFER_UNAVAILABLE');
   }
 
-  function upload(input: {
-    readonly nodeId: string;
-    readonly nodeGeneration: string;
-    readonly descriptor: DirectTransferDescriptor;
-    readonly file: File;
-    readonly onProgress?: (offset: number) => void;
-    readonly signal?: AbortSignal;
-  }): Promise<void> {
-    if (input.descriptor.direction !== 'UPLOAD')
-      return Promise.reject(new Error('DIRECT_TRANSFER_INVALID'));
-    const transport = connectedTransport(input.nodeId, input.nodeGeneration);
-    if (transport === undefined) return Promise.reject(new Error('DIRECT_UNAVAILABLE'));
-    let resolve!: () => void;
-    let reject!: (error: Error) => void;
-    const promise = new Promise<void>((complete, fail) => {
-      resolve = complete;
-      reject = fail;
-    });
-    const requestId = randomId();
-    const request: UploadRequest = {
-      requestId,
-      nodeId: input.nodeId,
-      nodeGeneration: input.nodeGeneration,
-      transportSessionId: transport.directSessionId,
-      descriptor: input.descriptor,
-      file: input.file,
-      ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-      resolve,
-      reject,
-      timer: setTimeout(
-        () => failTransferRequest(requestId, 'DIRECT_PREPARE_TIMEOUT'),
-        PREPARE_TIMEOUT_MS
-      )
-    };
-    transferRequests.set(requestId, request);
-    bindAbort(request);
-    if (!sendTransferPrepare(request))
-      failTransferRequest(requestId, 'DIRECT_TRANSFER_UNAVAILABLE');
-    return promise;
+  async function upload(input: FileTransferInput & { readonly file: File }): Promise<void> {
+    if (input.descriptor.direction !== 'UPLOAD') throw new Error('DIRECT_TRANSFER_INVALID');
+    const signal = input.signal ?? new AbortController().signal;
+    const stream = await openFileStream(
+      input.nodeId,
+      input.nodeGeneration,
+      input.descriptor,
+      signal
+    );
+    if (stream === undefined) throw new Error('DIRECT_UNAVAILABLE');
+    try {
+      await sendWorkspaceUpload(stream, input.file, signal, input.onProgress);
+    } catch (error) {
+      stream.close();
+      throw workspaceTransferError(error);
+    }
   }
 
-  function download(input: {
-    readonly nodeId: string;
-    readonly nodeGeneration: string;
-    readonly descriptor: DirectTransferDescriptor;
-    readonly sink: DownloadRequest['sink'];
-    readonly onProgress?: (offset: number) => void;
-    readonly signal?: AbortSignal;
-  }): Promise<void> {
-    if (input.descriptor.direction !== 'DOWNLOAD')
-      return Promise.reject(new Error('DIRECT_TRANSFER_INVALID'));
-    const transport = connectedTransport(input.nodeId, input.nodeGeneration);
-    if (transport === undefined) return Promise.reject(new Error('DIRECT_UNAVAILABLE'));
-    let resolve!: () => void;
-    let reject!: (error: Error) => void;
-    const promise = new Promise<void>((complete, fail) => {
-      resolve = complete;
-      reject = fail;
-    });
+  async function download(
+    input: FileTransferInput & { readonly sink: WorkspaceDownloadSink }
+  ): Promise<void> {
+    try {
+      if (input.descriptor.direction !== 'DOWNLOAD') throw new Error('DIRECT_TRANSFER_INVALID');
+      const signal = input.signal ?? new AbortController().signal;
+      const stream = await openFileStream(
+        input.nodeId,
+        input.nodeGeneration,
+        input.descriptor,
+        signal
+      );
+      if (stream === undefined) throw new Error('DIRECT_UNAVAILABLE');
+      try {
+        await receiveWorkspaceDownload(
+          stream,
+          input.sink,
+          transferredSize(input.descriptor),
+          signal,
+          input.onProgress
+        );
+      } catch (error) {
+        stream.close();
+        throw workspaceTransferError(error);
+      }
+    } catch (error) {
+      await input.sink.abort().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** Prepares authorization and leases only; consumers own the resulting file byte stream. */
+  function openFileStream(
+    nodeId: string,
+    nodeGeneration: string,
+    descriptor: DirectTransferDescriptor,
+    signal: AbortSignal
+  ): Promise<NodeStream | undefined> {
+    if (signal.aborted) return Promise.reject(new Error('DIRECT_TRANSFER_CANCELLED'));
+    const transport = connectedTransport(nodeId, nodeGeneration);
+    if (transport === undefined || transport.streamPath.closed) return Promise.resolve(undefined);
     const requestId = randomId();
-    const request: DownloadRequest = {
+    const { promise, resolve, reject } = Promise.withResolvers<NodeStream | undefined>();
+    const abort = () => failTransferRequest(requestId, 'DIRECT_TRANSFER_CANCELLED');
+    const request: TransferRequest = {
       requestId,
-      nodeId: input.nodeId,
-      nodeGeneration: input.nodeGeneration,
+      nodeId,
+      nodeGeneration,
       transportSessionId: transport.directSessionId,
-      descriptor: input.descriptor,
-      sink: input.sink,
-      ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      descriptor,
       resolve,
       reject,
+      removeAbort: () => signal.removeEventListener('abort', abort),
       timer: setTimeout(
         () => failTransferRequest(requestId, 'DIRECT_PREPARE_TIMEOUT'),
         PREPARE_TIMEOUT_MS
       )
     };
     transferRequests.set(requestId, request);
-    bindAbort(request);
+    signal.addEventListener('abort', abort, { once: true });
     if (!sendTransferPrepare(request))
       failTransferRequest(requestId, 'DIRECT_TRANSFER_UNAVAILABLE');
     return promise;
@@ -423,20 +428,6 @@ export function createWorkspaceDirectTransferService(
       transportSessionId: request.transportSessionId,
       transfer: request.descriptor
     });
-  }
-
-  function bindAbort(request: TransferRequest): void {
-    request.signal?.addEventListener(
-      'abort',
-      () => {
-        const session = [...transfers.values()].find((item) => item.request === request);
-        if (session !== undefined) {
-          options.send({ type: 'direct.cancel', directSessionId: session.directSessionId });
-          void finishTransfer(session, new Error('DIRECT_TRANSFER_CANCELLED'));
-        } else failTransferRequest(request.requestId, 'DIRECT_TRANSFER_CANCELLED');
-      },
-      { once: true }
-    );
   }
 
   function handle(message: DirectServerMessage): void {
@@ -467,12 +458,17 @@ export function createWorkspaceDirectTransferService(
     if (request === undefined) return;
     try {
       const peer = createPeerConnection();
-      const bootstrapChannel = peer.createDataChannel('mar-direct-transport', { ordered: true });
+      // The SDP bootstrap is also the carrier; byte streams do not create their own channels.
+      const streamChannel = peer.createDataChannel(NODE_STREAM_CHANNEL_LABEL, { ordered: true });
       const transport: TransportSession = {
         request,
         directSessionId,
         peer,
-        bootstrapChannel,
+        streamChannel,
+        streamPath: bindNodeDirectPath({
+          carrier: rtcNodeStreamCarrier(streamChannel),
+          maxStreams: 32
+        }),
         sentCandidateKeys: new Set(),
         desktopChannels: new Map(),
         desktopWaiters: new Map(),
@@ -483,6 +479,11 @@ export function createWorkspaceDirectTransferService(
       peer.ondatachannel = (event) => receiveDesktopChannel(transport, event.channel);
       transportsBySession.set(directSessionId, transport);
       transportsByNode.set(request.nodeId, transport);
+      streamChannel.addEventListener(
+        'close',
+        () => closeTransport(transport, 'DIRECT_CHANNEL_CLOSED', false),
+        { once: true }
+      );
       configureTransport(transport);
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
@@ -541,7 +542,7 @@ export function createWorkspaceDirectTransferService(
         finishTransportIfReady(transport);
       }
       if (peer.connectionState === 'failed' || peer.connectionState === 'closed')
-        closeTransport(transport, 'DIRECT_CONNECTION_FAILED');
+        closeTransport(transport, 'DIRECT_CONNECTION_FAILED', false);
     };
   }
 
@@ -558,7 +559,7 @@ export function createWorkspaceDirectTransferService(
       return;
     }
     if (message.type === 'direct.error' || message.type === 'direct.closed')
-      closeTransport(transport, message.code);
+      closeTransport(transport, message.code, false);
   }
 
   function finishTransportIfReady(transport: TransportSession): void {
@@ -606,168 +607,63 @@ export function createWorkspaceDirectTransferService(
       request.transportSessionId !== transport.directSessionId ||
       !transportReady(transport)
     ) {
+      options.send({ type: 'direct.cancel', directSessionId });
       if (request !== undefined) failTransferRequest(requestId, 'DIRECT_TRANSFER_UNAVAILABLE');
       return;
     }
-    clearTimeout(request.timer);
-    const channel = transport.peer.createDataChannel(`mar-direct-${directSessionId}`, {
-      ordered: true
-    });
-    channel.binaryType = 'arraybuffer';
-    const session: TransferSession =
-      'file' in request
-        ? {
-            request,
-            directSessionId,
-            channel,
-            opened: false,
-            sending: false,
-            completeSent: false
-          }
-        : {
-            request,
-            directSessionId,
-            channel,
-            opened: false,
-            processing: Promise.resolve(),
-            received: 0,
-            dataComplete: false,
-            serverComplete: false
-          };
-    transfers.set(directSessionId, session);
-    channel.addEventListener('open', () => openTransferIfReady(session), { once: true });
-    channel.addEventListener(
-      'close',
-      () => {
-        if (transfers.get(directSessionId) !== session || transferPayloadComplete(session)) return;
-        void finishTransfer(session, new Error('DIRECT_CHANNEL_CLOSED'));
-      },
-      { once: true }
-    );
-    channel.addEventListener('message', (event) => {
-      if (session.request.descriptor.direction === 'UPLOAD')
-        void handleUploadChannel(session as UploadSession, event.data);
-      else handleDownloadChannel(session as DownloadSession, event.data);
+    transfers.set(directSessionId, {
+      request,
+      directSessionId,
+      path: transport.streamPath,
+      scope: new AbortController(),
+      opening: false
     });
   }
 
   function handleTransferMessage(session: TransferSession, message: DirectServerMessage): void {
     if (message.type === 'direct.grant') {
-      session.grant = message.grant;
-      openTransferIfReady(session);
-      return;
-    }
-    if (message.type === 'direct.complete') {
-      if (session.request.descriptor.direction === 'UPLOAD') {
-        if (message.size !== session.request.descriptor.size)
-          void finishTransfer(session, new Error('DIRECT_INTEGRITY_FAILED'));
-        else void finishTransfer(session);
-      } else {
-        const download = session as DownloadSession;
-        download.serverComplete = true;
-        if (download.dataComplete) void finishTransfer(download);
-      }
+      void openTransfer(session, message.grant);
       return;
     }
     if (message.type === 'direct.error' || message.type === 'direct.closed')
-      void finishTransfer(session, new Error(message.code));
+      finishTransfer(session, message.code);
   }
 
-  function transferPayloadComplete(session: TransferSession): boolean {
-    return session.request.descriptor.direction === 'UPLOAD'
-      ? (session as UploadSession).completeSent
-      : (session as DownloadSession).dataComplete;
-  }
-
-  function openTransferIfReady(session: TransferSession): void {
-    if (session.opened || session.grant === undefined || session.channel.readyState !== 'open')
-      return;
-    session.opened = true;
-    session.channel.send(
-      JSON.stringify({
-        type: 'OPEN',
-        directSessionId: session.directSessionId,
-        grant: session.grant
-      })
-    );
+  async function openTransfer(session: TransferSession, grant: string): Promise<void> {
+    if (session.opening) return;
+    session.opening = true;
     session.heartbeat = setInterval(
       () => options.send({ type: 'direct.heartbeat', directSessionId: session.directSessionId }),
       HEARTBEAT_MS
     );
-  }
-
-  async function handleUploadChannel(session: UploadSession, data: unknown): Promise<void> {
-    if (typeof data !== 'string') return;
+    const signal = session.scope.signal;
     try {
-      const frame = JSON.parse(data) as { type?: unknown; offset?: unknown };
-      if (frame.type !== 'ACK' || !Number.isSafeInteger(frame.offset))
-        throw new Error('DIRECT_FRAME_INVALID');
-      const offset = frame.offset as number;
-      if (offset < 0 || offset > session.request.file.size)
-        throw new Error('DIRECT_OFFSET_INVALID');
-      session.request.onProgress?.(offset);
-      if (session.sending || session.completeSent) return;
-      if (offset === session.request.file.size) {
-        session.completeSent = true;
-        session.channel.send(
-          JSON.stringify({
-            type: 'COMPLETE',
-            size: session.request.descriptor.size
-          })
-        );
+      const kind =
+        session.request.descriptor.direction === 'UPLOAD' ? 'file-upload' : 'file-download';
+      // A rejected OPEN is final. Undefined means no OPEN reached the carrier.
+      const stream = await session.path.openStream({ kind, grant }, signal);
+      if (signal.aborted) {
+        stream?.close();
         return;
       }
-      session.sending = true;
-      try {
-        const chunk = await session.request.file
-          .slice(offset, Math.min(session.request.file.size, offset + 256 * 1024))
-          .arrayBuffer();
-        if (session.request.signal?.aborted === true) throw new Error('DIRECT_TRANSFER_CANCELLED');
-        session.channel.send(chunk);
-      } finally {
-        session.sending = false;
+      clearTimeout(session.request.timer);
+      if (stream === undefined) {
+        options.send({ type: 'direct.cancel', directSessionId: session.directSessionId });
+        session.request.resolve(undefined);
+        finishTransfer(session);
+        return;
       }
+      session.stream = stream;
+      session.request.resolve(stream);
+      // FIN/RESET settles the bytes. Node also reports completion to retire its Server lease.
+      void stream.finished.then(() => finishTransfer(session));
     } catch (error) {
-      await finishTransfer(
-        session,
-        error instanceof Error ? error : new Error('DIRECT_TRANSFER_FAILED')
-      );
+      if (signal.aborted) return;
+      const code = error instanceof Error ? error.message : 'DIRECT_TRANSFER_FAILED';
+      if (code !== 'NODE_STREAM_DISCONNECTED')
+        options.send({ type: 'direct.cancel', directSessionId: session.directSessionId });
+      finishTransfer(session, code);
     }
-  }
-
-  function handleDownloadChannel(session: DownloadSession, data: unknown): void {
-    session.processing = session.processing
-      .then(async () => {
-        const expectedSize = transferredSize(session.request.descriptor);
-        if (typeof data !== 'string') {
-          const bytes = toBytes(data);
-          if (bytes.byteLength === 0 || session.received + bytes.byteLength > expectedSize)
-            throw new Error('DIRECT_INTEGRITY_FAILED');
-          await session.request.sink.write(bytes);
-          session.received += bytes.byteLength;
-          session.request.onProgress?.(session.received);
-          return;
-        }
-        const frame = JSON.parse(data) as { type?: unknown; size?: unknown };
-        if (frame.type === 'ACK') return;
-        if (
-          frame.type !== 'COMPLETE' ||
-          frame.size !== expectedSize ||
-          session.received !== expectedSize
-        )
-          throw new Error('DIRECT_INTEGRITY_FAILED');
-        await session.request.sink.close();
-        session.dataComplete = true;
-        session.channel.send(JSON.stringify({ type: 'ACK', offset: session.received }));
-        if (session.serverComplete) await finishTransfer(session);
-      })
-      .catch(
-        (error: unknown) =>
-          void finishTransfer(
-            session,
-            error instanceof Error ? error : new Error('DIRECT_TRANSFER_FAILED')
-          )
-      );
   }
 
   function failTransportRequest(requestId: string, code: string): void {
@@ -868,12 +764,12 @@ export function createWorkspaceDirectTransferService(
     transportRequests.delete(transport.request.requestId);
     clearTimeout(transport.request.timer);
     if (transport.heartbeat !== undefined) clearInterval(transport.heartbeat);
+    transport.streamPath.close();
     for (const transfer of [...transfers.values()])
       if (transfer.request.transportSessionId === transport.directSessionId)
-        void finishTransfer(transfer, new Error(code));
+        finishTransfer(transfer, code);
     if (notifyServer)
       options.send({ type: 'direct.cancel', directSessionId: transport.directSessionId });
-    transport.bootstrapChannel.close();
     transport.peer.close();
     return true;
   }
@@ -881,34 +777,37 @@ export function createWorkspaceDirectTransferService(
   function failTransferRequest(requestId: string, code: string): void {
     const request = transferRequests.get(requestId);
     if (request === undefined) return;
+    const session = [...transfers.values()].find((item) => item.request === request);
+    if (session !== undefined) {
+      options.send({ type: 'direct.cancel', directSessionId: session.directSessionId });
+      finishTransfer(
+        session,
+        session.opening && code === 'DIRECT_PREPARE_TIMEOUT' ? 'DIRECT_OPEN_TIMEOUT' : code
+      );
+      return;
+    }
     transferRequests.delete(requestId);
     clearTimeout(request.timer);
-    if ('sink' in request)
-      void request.sink.abort().finally(() => {
-        request.reject(new Error(code));
-        releaseDeferredTransport(request.nodeId);
-      });
-    else {
-      request.reject(new Error(code));
-      releaseDeferredTransport(request.nodeId);
-    }
+    request.removeAbort();
+    if (FILE_PREPARE_UNAVAILABLE.has(code)) request.resolve(undefined);
+    else request.reject(new Error(code));
+    releaseDeferredTransport(request.nodeId);
   }
 
-  async function finishTransfer(session: TransferSession, error?: Error): Promise<void> {
+  function finishTransfer(session: TransferSession, code?: string): void {
     if (!transfers.delete(session.directSessionId)) return;
-    transferRequests.delete(session.request.requestId);
-    clearTimeout(session.request.timer);
+    const request = session.request;
+    transferRequests.delete(request.requestId);
+    clearTimeout(request.timer);
+    request.removeAbort();
     if (session.heartbeat !== undefined) clearInterval(session.heartbeat);
-    session.channel.close();
-    if (session.request.descriptor.direction === 'DOWNLOAD') {
-      const download = session as DownloadSession;
-      if (error !== undefined) {
-        await download.request.sink.abort().catch(() => undefined);
-        download.request.reject(error);
-      } else download.request.resolve();
-    } else if (error === undefined) (session.request as UploadRequest).resolve();
-    else (session.request as UploadRequest).reject(error);
-    releaseDeferredTransport(session.request.nodeId);
+    if (code !== undefined) {
+      if (session.stream !== undefined) session.stream.reset(code);
+      else if (!session.opening && FILE_PREPARE_UNAVAILABLE.has(code)) request.resolve(undefined);
+      else request.reject(workspaceTransferError(new Error(code)));
+    }
+    session.scope.abort();
+    releaseDeferredTransport(request.nodeId);
   }
 
   function connectedTransport(nodeId: string, generation: string): TransportSession | undefined {
@@ -1019,13 +918,13 @@ export function createWorkspaceDirectTransferService(
     transportNodeIds: (): string[] => [...transportsByNode.keys()],
     isConnected,
     acquireTerminalTransport: acquireClientTransport,
-    acquireBrowserTransport: acquireClientTransport,
     acquireDesktopTransport,
     networkInfo,
     probe,
     ensureTransport,
     upload,
     download,
+    openFileStream,
     handle,
     invalidateControlConnection,
     invalidateNetwork,
@@ -1154,6 +1053,26 @@ function transportReady(transport: TransportSession): boolean {
   );
 }
 
+async function waitForStreamChannel(
+  channel: RTCDataChannel,
+  signal: AbortSignal
+): Promise<boolean> {
+  signal.throwIfAborted();
+  if (channel.readyState !== 'connecting') return channel.readyState === 'open';
+  return new Promise((resolve, reject) => {
+    const listeners = new AbortController();
+    const finish = () => {
+      listeners.abort();
+      if (signal.aborted) reject(signal.reason);
+      else resolve(channel.readyState === 'open');
+    };
+    const options = { once: true, signal: listeners.signal };
+    channel.addEventListener('open', finish, options);
+    channel.addEventListener('close', finish, options);
+    signal.addEventListener('abort', finish, options);
+  });
+}
+
 async function applySignal(peer: RTCPeerConnection, signal: DirectSignal): Promise<void> {
   if (signal.kind === 'CANDIDATE') {
     if (!safeHostCandidate(signal.candidate.candidate))
@@ -1169,16 +1088,10 @@ async function applySignal(peer: RTCPeerConnection, signal: DirectSignal): Promi
   }
 }
 
-function transferredSize(
-  descriptor: Extract<DirectTransferDescriptor, { direction: 'DOWNLOAD' }>
-): number {
-  return descriptor.range?.length ?? descriptor.size;
-}
-function toBytes(value: unknown): Uint8Array {
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (ArrayBuffer.isView(value))
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  throw new Error('DIRECT_FRAME_INVALID');
+function transferredSize(descriptor: DirectTransferDescriptor): number {
+  return descriptor.direction === 'DOWNLOAD'
+    ? (descriptor.range?.length ?? descriptor.size)
+    : descriptor.size;
 }
 function fingerprint(sdp: string | undefined): string | undefined {
   return sdp?.match(/^a=fingerprint:(sha-256 [A-F0-9:]+)\r?$/imu)?.[1];
@@ -1229,4 +1142,9 @@ function errorCode(error: unknown): string {
   return error instanceof Error && /^[A-Z][A-Z0-9_]{0,127}$/u.test(error.message)
     ? error.message
     : 'DIRECT_CONNECTION_FAILED';
+}
+
+function workspaceTransferError(error: unknown): Error {
+  if (!(error instanceof Error)) return new Error('DIRECT_TRANSFER_FAILED');
+  return error.message === 'NODE_STREAM_DISCONNECTED' ? new Error('DIRECT_CHANNEL_CLOSED') : error;
 }

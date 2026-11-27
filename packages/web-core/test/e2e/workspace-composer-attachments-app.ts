@@ -34,20 +34,13 @@ createTooltipApp(
           if (path.endsWith('/cancel')) return undefined as T;
           throw new Error(`Unexpected server upload: ${path}`);
         },
-        csrfToken: ref('fixture'),
-        renewCsrfToken: async () => 'fixture',
-        onUnauthenticated: () => {
-          throw new Error('Unexpected authentication failure');
-        },
-        direct: {
-          generation: () => 'fixture',
-          upload: ({ descriptor }) => {
-            if (descriptor.direction !== 'UPLOAD' || descriptor.composerAttachment === undefined)
-              throw new Error('Expected a Composer attachment upload');
-            const attachmentId = descriptor.composerAttachment.id;
-            uploads.value++;
-            return new Promise<void>((resolve) => pending.set(attachmentId, resolve));
-          }
+
+        sendBody: ({ descriptor }) => {
+          if (descriptor.direction !== 'UPLOAD' || descriptor.composerAttachment === undefined)
+            throw new Error('Expected a Composer attachment upload');
+          const attachmentId = descriptor.composerAttachment.id;
+          uploads.value++;
+          return new Promise<void>((resolve) => pending.set(attachmentId, resolve));
         }
       });
       const drafts = createSessionDraftService({ target: targets.main });

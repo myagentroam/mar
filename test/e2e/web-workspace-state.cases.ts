@@ -1,3 +1,4 @@
+import { mockWorkspaceUploadRelay } from './support/mock-workspace-upload-relay.js';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
 import { serializeComposerTag } from '../../packages/protocol/src/composer-tags.js';
@@ -1793,6 +1794,9 @@ test('Main and Aside keep independent session watches through width constraints 
     activity: 'RUNNING',
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
   }));
+  await mockWorkspaceUploadRelay(page, {
+    received: (_upload, body) => expect(body).toEqual(Buffer.from('note'))
+  });
   const watches: { sessionId: string; method: string; mode?: string; position?: string }[] = [];
   const messages: { sessionId: string; content: string }[] = [];
   const approvals: { runId: string; approvalId: string; decision: string }[] = [];
@@ -2113,21 +2117,13 @@ test('Main and Aside keep independent session watches through width constraints 
 
   await page.setViewportSize({ width: 1920, height: 900 });
   await asideComposer.fill('retained Aside draft');
-  await page.route('**/api/workspaces/workspace-1/uploads', (route) =>
-    json(route, { upload: { uploadId: 'aside-draft-upload', receivedBytes: 0, size: 4 } })
-  );
-  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/chunks(?:\?.*)?$/, (route) =>
-    json(route, { upload: { receivedBytes: 4 } })
-  );
-  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/complete$/, (route) =>
-    json(route, { upload: { receivedBytes: 4 } })
-  );
   await aside.locator('.attachment-file-input').setInputFiles({
     name: 'aside-note.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('note')
   });
   await expect(aside.locator('.composer-attachments')).toContainText('aside-note.txt');
+  await expect(aside.getByText('已上传', { exact: true })).toBeVisible();
   await expect(aside.locator('.composer-keyboard-hint')).toBeHidden();
   const actions = await aside.locator('.composer-toolbar').evaluate((el) => {
     const stop = el.querySelector('.composer-stop-button')!.getBoundingClientRect();

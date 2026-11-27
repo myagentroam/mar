@@ -7,9 +7,18 @@ export async function assertRegularFile(path: string, expectedSize: number): Pro
 }
 
 export async function openRegularFile(path: string) {
-  return open(path, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => {
     throw new Error('HOSTED_CONVERSATION_FILE_INVALID');
   });
+  try {
+    // Hosted output can come from a sandbox; enforce its existing regular-file and link policy.
+    const metadata = await handle.stat();
+    assertRegularFileMetadata(metadata);
+    return { handle, metadata };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
 }
 
 export async function regularFileMetadata(path: string) {

@@ -3,21 +3,24 @@
  * Captures full resource identity; attachment checks intentionally use uncached relay reads.
  * Preview UI/generations, file tab state and subscription lifetimes remain with their callers.
  */
-import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
+import {
+  isComposerAttachmentResourcePath,
+  type DirectTransferResource
+} from '@myagentroam/protocol';
 import type { NodeWorkbenchManifest, WorkspaceTarget } from '../model/workbench.js';
 import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 import type { WorkspaceFilePreviewTarget } from '../model/workspace-file-preview.js';
+import { MAX_BINARY_PREVIEW_BYTES } from '../util/file-preview.js';
 import type { ScopedHttpService } from './scoped-http-service.js';
 import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
-import { readWorkspaceDirectObjectUrl } from './workspace-direct-object-url-service.js';
-import {
-  downloadWorkspaceDirectFile,
-  type WorkspaceDirectDownloadResult
-} from './workspace-direct-download-stream-service.js';
+import type { createWorkspaceFileStreamClient } from './workspace-file-stream-client.js';
+import { readWorkspaceFileObjectUrl } from './workspace-direct-object-url-service.js';
+import { downloadWorkspaceFileToBrowser } from './workspace-direct-download-stream-service.js';
 import {
   readWorkspaceDirectFileMetadata,
   readGitDirectFileMetadata,
-  readWorkspaceDirectFileRange
+  readWorkspaceDirectFileRange,
+  readWorkspaceFileRange
 } from './workspace-direct-file-read-service.js';
 
 export interface WorkspaceFileAttachmentAccess {
@@ -25,7 +28,7 @@ export interface WorkspaceFileAttachmentAccess {
   sourceUrl(file: { readonly path: string }, revision?: number): string;
 }
 
-function workspaceFilePreviewUrl(target: WorkspaceFilePreviewTarget, download = false): string {
+function workspaceFilePreviewUrl(target: WorkspaceFilePreviewTarget): string {
   const parameters = new URLSearchParams({ nodeId: target.nodeId, path: target.path });
   const history = target.history;
   const repositoryPath = history?.repositoryPath ?? target.repositoryPath;
@@ -33,7 +36,6 @@ function workspaceFilePreviewUrl(target: WorkspaceFilePreviewTarget, download = 
     parameters.set('repositoryPath', repositoryPath);
   if (target.worktreePath !== undefined) parameters.set('worktreePath', target.worktreePath);
   for (const name of history?.refs ?? []) parameters.append('refs', name);
-  if (download) parameters.set('download', '1');
   const base = `/api/workspaces/${encodeURIComponent(target.workspaceId)}`;
   return `${base}${history === undefined ? '/files/content' : `/git/commits/${encodeURIComponent(history.commit)}/files/content`}?${parameters}`;
 }
@@ -45,13 +47,14 @@ export function createWorkspaceFileAccessService(input: {
   manifest: (nodeId: string) => NodeWorkbenchManifest | undefined;
   available: (nodeId: string) => boolean;
   direct: Pick<ReturnType<typeof createWorkspaceDirectTransferService>, 'download'>;
+  downloads: Pick<ReturnType<typeof createWorkspaceFileStreamClient>, 'download'>;
   activeWorker?: () => Promise<ServiceWorker | undefined>;
 }) {
   function forWorkspace(source: WorkspaceTarget) {
     const workspace = { nodeId: source.nodeId, workspaceId: source.workspaceId };
     type FileSource = Omit<WorkspaceFilePreviewTarget, 'nodeId' | 'workspaceId'>;
-    function contentUrl(file: FileSource, download = false): string {
-      return workspaceFilePreviewUrl({ ...file, ...workspace }, download);
+    function contentUrl(file: FileSource): string {
+      return workspaceFilePreviewUrl({ ...file, ...workspace });
     }
     function readUrl(file: FileSource, limit: number): string {
       const parameters = new URLSearchParams({
@@ -88,6 +91,76 @@ export function createWorkspaceFileAccessService(input: {
         credentials: 'same-origin',
         ...init
       });
+    }
+    function previewResource(file: FileSource) {
+      const { path, history, worktreePath, repositoryPath } = file;
+      const { workspaceId } = workspace;
+      const resource =
+        history === undefined
+          ? {
+              kind: 'WORKSPACE_FILE' as const,
+              path,
+              workspaceId,
+              ...(worktreePath === undefined ? {} : { worktreePath }),
+              ...(repositoryPath === undefined ? {} : { repositoryPath })
+            }
+          : {
+              kind: 'GIT_COMMIT_BLOB' as const,
+              path,
+              workspaceId,
+              commit: history.commit,
+              refs: [...history.refs],
+              ...(history.repositoryPath === '' ? {} : { repositoryPath: history.repositoryPath })
+            };
+      return resource;
+    }
+    function previewMetadata(resource: ReturnType<typeof previewResource>, signal: AbortSignal) {
+      const { nodeId } = workspace;
+      const request = input.request;
+      return resource.kind === 'GIT_COMMIT_BLOB'
+        ? readGitDirectFileMetadata({ request, nodeId, resource, refs: resource.refs, signal })
+        : readWorkspaceDirectFileMetadata({ request, nodeId, resource, signal });
+    }
+    function readPreviewRange(
+      file: FileSource,
+      length: number,
+      identity: WorkspaceDirectFileIdentity | undefined,
+      signal: AbortSignal
+    ) {
+      const resource = previewResource(file);
+      const { nodeId } = workspace;
+      return readWorkspaceFileRange(
+        {
+          resource,
+          length,
+          offset: 0,
+          fileName: file.path.split('/').at(-1) ?? 'file',
+          ...(identity === undefined ? {} : { identity }),
+          signal,
+          metadata: () => previewMetadata(resource, signal)
+        },
+        (transfer) => input.downloads.download({ ...transfer, nodeId })
+      );
+    }
+    async function readPreviewObject(
+      file: FileSource,
+      signal: AbortSignal
+    ): Promise<WorkspaceDirectFileIdentity & { readonly url?: string }> {
+      const resource = previewResource(file);
+      const identity = await previewMetadata(resource, signal);
+      signal.throwIfAborted();
+      if (identity === undefined) throw new Error('NODE_RESPONSE_INVALID');
+      if (identity.size > MAX_BINARY_PREVIEW_BYTES) return identity;
+      const fileName = file.path.split('/').at(-1) ?? 'file';
+      const url = await readWorkspaceFileObjectUrl(fileName, signal, (sink) =>
+        input.downloads.download({
+          nodeId: workspace.nodeId,
+          descriptor: { direction: 'DOWNLOAD', resource, fileName, ...identity },
+          sink,
+          signal
+        })
+      );
+      return { url, ...identity };
     }
     function workspaceDirectFile(
       path: string,
@@ -209,54 +282,24 @@ export function createWorkspaceFileAccessService(input: {
       }).catch(() => undefined);
     }
 
-    async function directWorkspaceFileObjectUrl(
-      path: string,
-      worktreePath?: string,
-      repositoryPath?: string,
-      signal?: AbortSignal
-    ): Promise<string | undefined> {
-      const target = workspaceDirectFile(path, worktreePath, repositoryPath, signal);
-      return target === undefined
-        ? undefined
-        : (
-            await readWorkspaceDirectObjectUrl({
-              ...target,
-              ...(signal === undefined ? {} : { signal })
-            })
-          )?.url;
-    }
-
     async function directWorkspaceFileDownload(
       path: string,
       worktreePath?: string,
       repositoryPath?: string
-    ): Promise<WorkspaceDirectDownloadResult> {
-      if (input.manifest(workspace.nodeId)?.directTransfer?.download !== true) return 'UNAVAILABLE';
-      const target = workspaceDirectFile(path, worktreePath, repositoryPath);
-      return target === undefined || input.activeWorker === undefined
-        ? 'UNAVAILABLE'
-        : downloadWorkspaceDirectFile({
-            ...target,
-            activeWorker: input.activeWorker
-          });
-    }
-
-    async function directGitFileObjectUrl(
-      commit: string,
-      path: string,
-      repositoryPath: string,
-      refs: readonly string[],
-      signal?: AbortSignal
-    ): Promise<string | undefined> {
-      const target = gitDirectFile(commit, path, repositoryPath, refs, signal);
-      return target === undefined
-        ? undefined
-        : (
-            await readWorkspaceDirectObjectUrl({
-              ...target,
-              ...(signal === undefined ? {} : { signal })
-            })
-          )?.url;
+    ) {
+      const resource = {
+        kind: 'WORKSPACE_FILE' as const,
+        workspaceId: workspace.workspaceId,
+        path,
+        ...(worktreePath === undefined ? {} : { worktreePath }),
+        ...(repositoryPath === undefined ? {} : { repositoryPath })
+      };
+      const identity = await readWorkspaceDirectFileMetadata({
+        request: input.request,
+        nodeId: workspace.nodeId,
+        resource
+      });
+      return download(resource, identity);
     }
 
     async function directGitFileDownload(
@@ -264,28 +307,55 @@ export function createWorkspaceFileAccessService(input: {
       path: string,
       repositoryPath: string,
       refs: readonly string[]
-    ): Promise<WorkspaceDirectDownloadResult> {
-      if (input.manifest(workspace.nodeId)?.directTransfer?.download !== true) return 'UNAVAILABLE';
-      const target = gitDirectFile(commit, path, repositoryPath, refs);
-      return target === undefined || input.activeWorker === undefined
-        ? 'UNAVAILABLE'
-        : downloadWorkspaceDirectFile({
-            ...target,
-            activeWorker: input.activeWorker
-          });
+    ) {
+      const resource = {
+        kind: 'GIT_COMMIT_BLOB' as const,
+        workspaceId: workspace.workspaceId,
+        path,
+        commit,
+        refs: [...refs],
+        ...(repositoryPath.length === 0 ? {} : { repositoryPath })
+      };
+      const identity = await readGitDirectFileMetadata({
+        request: input.request,
+        nodeId: workspace.nodeId,
+        resource,
+        refs: resource.refs
+      });
+      return download(resource, identity);
+    }
+
+    async function download(
+      resource: DirectTransferResource,
+      identity: WorkspaceDirectFileIdentity | undefined
+    ) {
+      if (identity === undefined) throw new Error('NODE_RESPONSE_INVALID');
+      const fileName = resource.path.split('/').at(-1) ?? 'download';
+      return downloadWorkspaceFileToBrowser({
+        fileName,
+        size: identity.size,
+        ...(input.activeWorker === undefined ? {} : { activeWorker: input.activeWorker }),
+        download: (sink, signal) =>
+          input.downloads.download({
+            nodeId: workspace.nodeId,
+            descriptor: { direction: 'DOWNLOAD', resource, fileName, ...identity },
+            sink,
+            ...(signal === undefined ? {} : { signal })
+          })
+      });
     }
 
     return {
       attachments,
       contentUrl,
       read,
+      readPreviewRange,
+      readPreviewObject,
       write,
       fetchFile,
       directFileReadRange: directWorkspaceFileReadRange,
-      directFileObjectUrl: directWorkspaceFileObjectUrl,
       directFileDownload: directWorkspaceFileDownload,
       directGitFileReadRange,
-      directGitFileObjectUrl,
       directGitFileDownload
     };
   }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { EventEmitter, once } from 'node:events';
+import { once } from 'node:events';
 import { lstat, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -10,16 +10,17 @@ import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { WebSocketServer } from 'ws';
+import { decodeByteFrame, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
+import { NodeStreamMux } from '@myagentroam/protocol/node-stream-mux';
 import {
-  decodeByteFrame,
-  decodeTerminalMux,
-  encodeTerminalMessage,
-  encodeTerminalMux,
-  TERMINAL_MUX
-} from '@myagentroam/protocol/byte-frame';
+  decodeNodeStreamFrame,
+  encodeNodeRelayHandshake
+} from '@myagentroam/protocol/node-stream-wire';
+import { readTerminalRecords, writeTerminalRecord } from '@myagentroam/protocol/terminal-stream';
 import { startTerminalBroker } from '../../src/terminal-broker.mjs';
 import { listenTerminalBroker } from '../../src/terminal-ipc.mjs';
 import { TerminalBrokerClient } from '../../src/terminal-broker-client.mjs';
+import { MarctlClient } from '../../src/client.mjs';
 
 async function fixture(t, { admit = true } = {}) {
   const ws = new WebSocketServer({ host: '127.0.0.1', port: 0 });
@@ -33,28 +34,35 @@ async function fixture(t, { admit = true } = {}) {
   const closed = [];
   let connections = 0;
   ws.on('connection', (socket, request) => {
-    assert.equal(request.url, '/api/marctl/terminal-mux?node=node');
+    assert.equal(request.url, '/api/relay/node');
     assert.equal(request.headers.authorization, `Bearer ${config.key}`);
     connections++;
-    if (admit) socket.send(encodeTerminalMux(TERMINAL_MUX.ready, 0));
+    const mux = new NodeStreamMux({
+      maxStreams: 10,
+      send: (bytes) =>
+        new Promise((resolve, reject) =>
+          socket.send(bytes, (error) => (error ? reject(error) : resolve()))
+        ),
+      accept: async ({ kind, grant }) => {
+        assert.equal(kind, 'terminal');
+        return async (stream) => {
+          await stream.write(
+            writeTerminalRecord(encodeTerminalMessage({ type: 'attach', terminalId: grant }))
+          );
+          for await (const frame of readTerminalRecords(stream))
+            await stream.write(writeTerminalRecord(frame));
+        };
+      }
+    });
+    if (typeof admit === 'function' ? admit(connections) : admit)
+      socket.send(encodeNodeRelayHandshake({ type: 'RELAY_READY' }));
+    socket.once('close', () => mux.disconnect());
     socket.on('message', (data, binary) => {
       assert.equal(binary, true);
-      const { type, stream, payload } = decodeTerminalMux(data);
-      if (type === TERMINAL_MUX.close) {
-        closed.push(stream);
-        return;
-      }
-      if (type === TERMINAL_MUX.open) {
-        const { metadata } = decodeByteFrame(payload);
-        opened.push({ stream, ...metadata });
-        socket.send(
-          encodeTerminalMux(
-            TERMINAL_MUX.data,
-            stream,
-            encodeTerminalMessage({ type: 'attach', terminalId: metadata.ticket })
-          )
-        );
-      } else socket.send(encodeTerminalMux(TERMINAL_MUX.data, stream, payload));
+      const frame = decodeNodeStreamFrame(data);
+      if (frame.type === 'RESET') closed.push(frame.streamId);
+      if (frame.type === 'OPEN') opened.push({ stream: frame.streamId, ticket: frame.grant });
+      mux.receive(data);
     });
   });
   t.after(async () => {
@@ -126,7 +134,7 @@ test(
     await delay(280);
     assert.equal(wire.readyState, wire.OPEN);
     assert.deepEqual(f.opened, []);
-    wire.send(encodeTerminalMux(TERMINAL_MUX.ready, 0));
+    wire.send(encodeNodeRelayHandshake({ type: 'RELAY_READY' }));
     assert.equal(decodeByteFrame((await attached)[0]).metadata.terminalId, 'pending');
     endpoint.close();
   }
@@ -136,46 +144,80 @@ test(
   'an unavailable pooled handshake falls back before OPEN but a dispatched stream is not replayed',
   { timeout: 8_000 },
   async (t) => {
-    const f = await fixture(t);
-    const { port } = f.ws.address();
+    const f = await fixture(t, { admit: (connection) => connection !== 2 });
     const broker = await startTerminalBroker(f.config);
     t.after(() => broker.close());
-    const single = new EventEmitter();
-    single.close = () => single.emit('close');
-    let fallbackCalls = 0;
-    const openSingle = () => {
-      fallbackCalls++;
-      queueMicrotask(() => single.emit('open'));
-      return single;
-    };
+    const client = new MarctlClient({ ...f.config, reuseTerminalConnections: true });
     const connect = (ticket) =>
-      new TerminalBrokerClient(f.config, { terminalId: ticket, ticket }, openSingle);
+      client.openTerminalEndpoint({ nodeId: f.config.nodeId, terminalId: ticket, ticket });
     const dispatched = connect('dispatched');
     await once(dispatched, 'message');
     const lost = once(dispatched, 'close');
     for (const socket of f.ws.clients) socket.terminate();
     await lost;
-    assert.equal(fallbackCalls, 0);
+    assert.equal(f.connections(), 1);
     assert.equal(f.opened.length, 1);
 
     // An HTTP upgrade alone is not admission: the Server can still refuse the pool.
-    await new Promise((resolve) => f.ws.close(resolve));
-    const rejected = new WebSocketServer({ host: '127.0.0.1', port });
-    await once(rejected, 'listening');
-    t.after(() => new Promise((resolve) => rejected.close(resolve)));
-    const upgrading = once(rejected, 'connection');
+    const upgrading = once(f.ws, 'connection');
     const beforeOpen = connect('not-dispatched');
-    const fallback = once(beforeOpen, 'open');
+    t.after(() => beforeOpen.close());
+    const fallback = once(beforeOpen, 'message');
     const [unadmitted] = await upgrading;
     let sentBeforeAdmission = 0;
     unadmitted.on('message', () => sentBeforeAdmission++);
     // Let the independent IPC handshake finish if the broker incorrectly relies on upgrade alone.
     await delay(100);
     unadmitted.close(4008, 'TERMINAL_RELAY_LIMIT_REACHED');
-    await fallback;
+    const [bytes] = await fallback;
+    assert.equal(decodeByteFrame(bytes).metadata.terminalId, 'not-dispatched');
     assert.equal(sentBeforeAdmission, 0);
-    assert.equal(fallbackCalls, 1);
+    assert.equal(f.connections(), 3);
+    assert.deepEqual(
+      f.opened.map(({ ticket }) => ticket),
+      ['dispatched', 'not-dispatched']
+    );
     beforeOpen.close();
+  }
+);
+
+test(
+  'private attachments open and release separate carriers without touching the shared broker',
+  { timeout: 8_000 },
+  async (t) => {
+    const f = await fixture(t);
+    const broker = await startTerminalBroker(f.config);
+    t.after(() => broker.close());
+    const pooled = new MarctlClient({ ...f.config, reuseTerminalConnections: true });
+    const privateClient = new MarctlClient(f.config);
+    async function attach(client, terminalId) {
+      const socket = client.openTerminalEndpoint({
+        nodeId: f.config.nodeId,
+        terminalId,
+        ticket: terminalId
+      });
+      t.after(() => socket.close());
+      const [bytes] = await once(socket, 'message');
+      assert.equal(decodeByteFrame(bytes).metadata.terminalId, terminalId);
+      return socket;
+    }
+    const shared = await attach(pooled, 'shared');
+    const firstWire = [...f.ws.clients][0];
+    for (const terminalId of ['private-a', 'private-b']) {
+      const local = await attach(privateClient, terminalId);
+      const wire = [...f.ws.clients].find((candidate) => candidate !== firstWire);
+      const closed = once(wire, 'close');
+      local.close();
+      await closed;
+      assert.equal(shared.readyState, 1);
+      assert.equal(firstWire.readyState, firstWire.OPEN);
+    }
+    await attach(pooled, 'shared-again');
+    assert.equal(f.connections(), 3);
+    assert.deepEqual(
+      f.opened.map(({ ticket }) => ticket),
+      ['shared', 'private-a', 'private-b', 'shared-again']
+    );
   }
 );
 
@@ -215,10 +257,10 @@ test(
 );
 
 test(
-  'reuses a single warm Direct peer for different operations without moving the active relay stream',
+  'reuses warm paths across operations and reconnects only after losing both paths',
   { timeout: 6000 },
   async (t) => {
-    const f = await fixture(t);
+    const f = await fixture(t, { admit: (attempt) => attempt === 1 });
     let ready;
     const connected = new Promise((resolve) => {
       ready = resolve;
@@ -244,21 +286,21 @@ test(
       get closed() {
         return lost;
       },
-      attach: async ({ terminalId, computer }) => {
+      openStream: async ({ terminalId, computer, onFrame }) => {
         attached.push([terminalId, computer]);
-        return Object.assign(new EventEmitter(), {
-          sendEncoded(raw) {
-            this.emit('message', raw);
+        return {
+          write: onFrame,
+          activate() {
+            onFrame(encodeTerminalMessage({ type: 'attach', terminalId, afterSequence: 0 }));
           },
-          activate() {},
           close() {
             closed.push(terminalId);
           }
-        });
+        };
       },
       close: () => directCloses++
     };
-    ready(direct);
+    ready({ openStreams: async () => direct, close: direct.close });
     const directSsh = open('ssh');
     await once(directSsh, 'message');
     directSsh.close();
@@ -282,20 +324,27 @@ test(
     lost = true;
     const recovering = open('while-recovering');
     await once(recovering, 'message');
-    assert.equal(directSetups, 2);
+    assert.equal(directSetups, 1);
+    assert.equal(directCloses, 1);
     assert.equal(relay.readyState, 1);
     assert.deepEqual(
       f.opened.map(({ ticket }) => ticket),
       ['cold-relay', 'while-recovering']
     );
-    replacement.resolve({ attach: direct.attach, close: direct.close });
+    const relayClosed = once(relay, 'close');
+    for (const socket of f.ws.clients) socket.terminate();
+    await relayClosed;
+    replacement.resolve({
+      openStreams: async () => ({ openStream: direct.openStream, close: direct.close }),
+      close: direct.close
+    });
     const recovered = open('recovered');
     await once(recovered, 'message');
     assert.deepEqual(attached.at(-1), ['recovered', false]);
     assert.equal(directSetups, 2);
-    assert.equal(f.connections(), 1);
+    assert.equal(f.connections(), 2);
     broker.close();
-    assert.equal(directCloses, 1);
+    assert.equal(directCloses, 2);
   }
 );
 

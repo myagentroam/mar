@@ -1,12 +1,22 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { runImageReadInputSchema } from '@myagentroam/protocol';
+import {
+  directTransferDescriptorSchema,
+  runImageReadInputSchema,
+  type DirectTransferDescriptor
+} from '@myagentroam/protocol';
 import type { SessionShares } from './session-shares.js';
 import type { SessionRunNodeControl } from './session-run-contracts.js';
 import { effectiveSkills } from './skill-target-routes.js';
-import { parseFileRange, parseResourcePage, isSafeResourceText } from './workspace-http-support.js';
-import { sendWorkspaceFileContent, type FileContentChunk } from './file-content-stream.js';
+import { parseResourcePage, isSafeResourceText } from './workspace-http-support.js';
+import {
+  fileContentType,
+  isNativeFilePreviewType,
+  sendWorkspaceFileContent,
+  type FileContentChunk
+} from './file-content-stream.js';
 import { sendError } from './http-errors.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 import {
   parseImagePreviewQuery,
   sendImageResource,
@@ -22,15 +32,17 @@ export function registerSessionShareResourceRoutes(input: {
   app: FastifyInstance;
   nodeControl: SessionRunNodeControl;
   resolve: (request: Request) => Promise<Resolved>;
+  issueFileStream?:
+    | ((
+        nodeId: string,
+        user: UserNodeAuthorization,
+        descriptor: DirectTransferDescriptor,
+        share: { sessionId: string; allowed: () => Promise<boolean> }
+      ) => Promise<string>)
+    | undefined;
 }) {
   const { nodeControl } = input;
   void input.app.register(async (app) => {
-    if (!app.hasContentTypeParser('application/octet-stream'))
-      app.addContentTypeParser(
-        'application/octet-stream',
-        { parseAs: 'buffer', bodyLimit: 512 * 1024 },
-        (_request, body, done) => done(null, body)
-      );
     const access = new WeakMap<FastifyRequest, Resolved>();
     app.addHook('preHandler', async (request) => {
       access.set(request, await input.resolve(request as Request));
@@ -60,29 +72,67 @@ export function registerSessionShareResourceRoutes(input: {
       });
       return { result, queue, items };
     }
-    app.get<{
-      Params: { shareId: string };
-      Querystring: { path?: string; offset?: string; limit?: string };
-    }>('/files/read', async (request, reply) => {
-      const range = parseFileRange(request.query);
-      if (!range || !isSafeResourceText(request.query.path))
-        return sendError(reply, 400, 'FILE_RANGE_INVALID');
-      return reply.send(
-        await call(request, 'workspace.file.read', { path: request.query.path, ...range })
-      );
+    app.get<{ Querystring: { path?: string } }>(
+      '/files/direct-metadata',
+      async (request, reply) => {
+        if (!isSafeResourceText(request.query.path))
+          return sendError(reply, 400, 'FILE_RANGE_INVALID');
+        return reply.send(
+          await call(request, 'workspace.file.direct.metadata', { path: request.query.path })
+        );
+      }
+    );
+    app.post('/file-stream-ticket', async (request, reply) => {
+      const value = z
+        .strictObject({ descriptor: directTransferDescriptorSchema })
+        .safeParse(request.body);
+      if (!value.success) return sendError(reply, 400, 'SESSION_SHARE_INPUT_INVALID');
+      const { context } = access.get(request)!;
+      const { descriptor } = value.data;
+      const { resource } = descriptor;
+      if (
+        resource.kind !== 'WORKSPACE_FILE' ||
+        resource.workspaceId !== context.workspaceId ||
+        resource.repositoryPath !== undefined ||
+        resource.worktreePath !== undefined
+      )
+        return sendError(reply, 403, 'RESOURCE_DENIED');
+      if (
+        descriptor.direction === 'UPLOAD' &&
+        (descriptor.composerAttachment === undefined ||
+          descriptor.uploadId !== undefined ||
+          descriptor.resumeOffset !== undefined ||
+          descriptor.overwrite !== false ||
+          resource.path !== descriptor.fileName ||
+          !z.string().uuid().safeParse(descriptor.composerAttachment.id).success ||
+          descriptor.composerAttachment.mime.length > 120 ||
+          descriptor.size < 1 ||
+          descriptor.size > 5 * 1024 * 1024)
+      )
+        return sendError(reply, 400, 'UPLOAD_INVALID');
+      if (!input.issueFileStream) return sendError(reply, 409, 'NODE_STREAM_UNAVAILABLE');
+      const ticket = await input.issueFileStream(context.nodeId, context.user, descriptor, {
+        sessionId: context.sessionId,
+        allowed: async () => {
+          const current = (await input.resolve(request as Request)).context;
+          return (
+            current.sessionId === context.sessionId &&
+            current.nodeId === context.nodeId &&
+            current.workspaceId === context.workspaceId &&
+            current.user.sessionHash === context.user.sessionHash
+          );
+        }
+      });
+      return reply.send({ ticket });
     });
     app.get<{
       Params: { shareId: string };
       Querystring: { path?: string; download?: string } & ImagePreviewQuery;
     }>('/files/content', async (request, reply) => {
-      if (
-        !isSafeResourceText(request.query.path) ||
-        (request.query.download !== undefined && request.query.download !== '1')
-      )
+      if (!isSafeResourceText(request.query.path) || request.query.download !== undefined)
         return sendError(reply, 400, 'FILE_RANGE_INVALID');
       const preview = parseImagePreviewQuery(request.query);
-      if (!preview.success || (preview.data !== undefined && request.query.download === '1'))
-        return sendError(reply, 400, 'RUN_IMAGE_INVALID');
+      if (!preview.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
       if (preview.data !== undefined) {
         const result = (await call(request, 'workspace.file.content.read', {
           path: request.query.path,
@@ -91,12 +141,13 @@ export function registerSessionShareResourceRoutes(input: {
         reply.header('cache-control', 'private, no-store');
         return sendImageResource(reply, result, preview.data);
       }
+      const type = fileContentType(request.query.path);
+      if (!isNativeFilePreviewType(type)) return sendError(reply, 400, 'FILE_RANGE_INVALID');
       return sendWorkspaceFileContent({
         reply,
         method: request.method,
         range: request.headers.range,
         path: request.query.path,
-        download: request.query.download === '1',
         read: async (offset, limit) => {
           access.set(request, await input.resolve(request));
           const result = (await call(request, 'workspace.file.content.read', {
@@ -142,60 +193,18 @@ export function registerSessionShareResourceRoutes(input: {
       ]);
       return reply.send({ skills: effectiveSkills(nodeResult, workspaceResult) });
     });
-    const uploadSchema = z
-      .object({
-        name: z.string().min(1).max(512),
-        size: z
-          .number()
-          .int()
-          .min(1)
-          .max(5 * 1024 * 1024),
-        mime: z.string().min(1).max(120),
-        overwrite: z.literal(false),
-        composerAttachmentId: z.string().uuid()
-      })
-      .strict();
-    app.post<{ Body: unknown }>('/uploads', async (request, reply) => {
-      const value = uploadSchema.safeParse(request.body);
-      if (!value.success) return sendError(reply, 400, 'UPLOAD_INVALID');
-      return reply.send(await call(request, 'workspace.files.upload.create', value.data));
-    });
-    app.post<{
-      Params: { shareId: string; uploadId: string };
-      Querystring: { offset?: string };
-      Body: Buffer;
-    }>('/uploads/:uploadId/chunks', async (request, reply) => {
-      const offset = z.coerce
-        .number()
-        .int()
-        .nonnegative()
-        .max(Number.MAX_SAFE_INTEGER)
-        .safeParse(request.query.offset);
-      if (
-        !offset.success ||
-        !Buffer.isBuffer(request.body) ||
-        !request.body.length ||
-        request.body.length > 512 * 1024
-      )
-        return sendError(reply, 400, 'UPLOAD_CHUNK_INVALID');
-      return reply.send(
-        await call(request, 'workspace.files.upload.chunk', {
-          uploadId: request.params.uploadId,
-          offset: offset.data,
-          bytes: request.body
-        })
-      );
-    });
-    for (const action of ['complete', 'cancel'] as const)
-      app.post<{ Params: { shareId: string; uploadId: string } }>(
-        `/uploads/:uploadId/${action}`,
-        async (request, reply) =>
-          reply.send(
-            await call(request, `workspace.files.upload.${action}`, {
-              uploadId: request.params.uploadId
-            })
-          )
-      );
+    app.post<{ Params: { uploadId: string } }>(
+      '/uploads/:uploadId/cancel',
+      async (request, reply) => {
+        if (!z.string().uuid().safeParse(request.params.uploadId).success)
+          return sendError(reply, 400, 'UPLOAD_INVALID');
+        return reply.send(
+          await call(request, 'workspace.files.upload.cancel', {
+            uploadId: request.params.uploadId
+          })
+        );
+      }
+    );
     app.get('/queue', async (request, reply) => {
       const { result, queue, items } = await sessionQueue(request);
       return reply.send({ ...result, queue: { ...queue, items } });

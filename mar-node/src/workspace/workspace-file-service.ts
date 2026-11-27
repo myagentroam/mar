@@ -4,6 +4,7 @@ import { lstat, realpath } from 'node:fs/promises';
 import { imagePreviewOptionsSchema, isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import type { NodeWorkspace } from './contracts.js';
 import {
+  describeFileContent,
   listWorkspaceFiles,
   mutateWorkspaceFile,
   normalizeFilePreviewPath,
@@ -11,6 +12,7 @@ import {
   readWorkspaceFileContentRange,
   readAbsoluteTextFile,
   readWorkspaceTextFile,
+  streamFileContent,
   writeWorkspaceTextFile
 } from './files.js';
 import { revealWorkspaceFileInFileManager } from './workspace-file-manager-service.js';
@@ -120,31 +122,49 @@ export class WorkspaceFileService {
           (input.limit as number) > 512 * 1024))
     )
       throw new Error('FILE_RANGE_INVALID');
-    if (input.path.startsWith('mar-attachment:')) {
-      if (input.previewDirectory !== undefined) throw new Error('FILE_PATH_ESCAPE');
-      const target = await this.resolveAttachmentResource(workspace.id, input.path);
-      return {
-        ...(await readWorkspaceFileContentRange(
-          dirname(target),
-          basename(target),
-          typeof input.offset === 'number' ? input.offset : 0,
-          typeof input.limit === 'number' ? input.limit : 512 * 1024,
-          maxFileBytes
-        )),
-        path: input.path
-      };
+    const source = await this.resolveContentSource(
+      workspace,
+      input.path,
+      workspacePath,
+      input.previewDirectory
+    );
+    const offset = typeof input.offset === 'number' ? input.offset : 0;
+    const limit = typeof input.limit === 'number' ? input.limit : 512 * 1024;
+    const result =
+      source.root === undefined
+        ? await readAbsoluteFileContentRange(source.path, offset, limit, maxFileBytes)
+        : await readWorkspaceFileContentRange(
+            source.root,
+            source.path,
+            offset,
+            limit,
+            maxFileBytes
+          );
+    return source.attachment ? { ...result, path: input.path } : result;
+  }
+
+  private async resolveContentSource(
+    workspace: NodeWorkspace,
+    requestedPath: string,
+    workspacePath: string,
+    previewDirectory?: unknown
+  ) {
+    if (requestedPath.startsWith('mar-attachment:')) {
+      if (previewDirectory !== undefined) throw new Error('FILE_PATH_ESCAPE');
+      const target = await this.resolveAttachmentResource(workspace.id, requestedPath);
+      return { path: basename(target), root: dirname(target), attachment: true };
     }
-    const path = normalizeFilePreviewPath(input.path);
+    const path = normalizeFilePreviewPath(requestedPath);
     if (workspacePath !== workspace.path && isFilePreviewAbsolutePath(path))
       throw new Error('FILE_PATH_ESCAPE');
-    if (input.previewDirectory !== undefined) {
+    if (previewDirectory !== undefined) {
       if (
-        typeof input.previewDirectory !== 'string' ||
+        typeof previewDirectory !== 'string' ||
         isFilePreviewAbsolutePath(path) ||
-        isFilePreviewAbsolutePath(input.previewDirectory)
+        isFilePreviewAbsolutePath(previewDirectory)
       )
         throw new Error('FILE_PATH_ESCAPE');
-      const root = await realpath(resolve(workspacePath, input.previewDirectory));
+      const root = await realpath(resolve(workspacePath, previewDirectory));
       const target = await realpath(resolve(workspacePath, path));
       const suffix = relative(root, target);
       if (
@@ -154,11 +174,7 @@ export class WorkspaceFileService {
       )
         throw new Error('FILE_PATH_ESCAPE');
     }
-    const offset = typeof input.offset === 'number' ? input.offset : 0;
-    const limit = typeof input.limit === 'number' ? input.limit : 512 * 1024;
-    return isFilePreviewAbsolutePath(path)
-      ? readAbsoluteFileContentRange(path, offset, limit, maxFileBytes)
-      : readWorkspaceFileContentRange(workspacePath, path, offset, limit, maxFileBytes);
+    return { path, root: isFilePreviewAbsolutePath(path) ? undefined : workspacePath };
   }
 
   async previewImage(
@@ -208,12 +224,11 @@ export class WorkspaceFileService {
     return target;
   }
 
-  readDirect(
+  async *readDirect(
     workspace: NodeWorkspace,
     input: {
       readonly path: string;
       readonly size: number;
-      readonly revision: string;
       readonly range?: {
         readonly offset: number;
         readonly length: number;
@@ -221,43 +236,8 @@ export class WorkspaceFileService {
     },
     workspacePath = workspace.path
   ): AsyncIterable<Uint8Array> {
-    const readContent = this.readContent.bind(this);
-    return (async function* () {
-      const initial = (await readContent(
-        workspace,
-        { path: input.path, offset: input.range?.offset ?? 0, limit: 1 },
-        workspacePath
-      )) as { readonly size: number; readonly sourceRevision: string };
-      if (initial.size !== input.size || initial.sourceRevision !== input.revision)
-        throw new Error('DIRECT_FILE_REVISION_CHANGED');
-      let offset = input.range?.offset ?? 0;
-      const endOffset =
-        input.range === undefined ? input.size : input.range.offset + input.range.length;
-      while (offset < endOffset) {
-        const range = (await readContent(
-          workspace,
-          {
-            path: input.path,
-            offset,
-            limit: Math.min(512 * 1024, endOffset - offset)
-          },
-          workspacePath
-        )) as {
-          readonly size: number;
-          readonly sourceRevision: string;
-          readonly bytes: Uint8Array;
-          readonly nextOffset: number | null;
-        };
-        if (range.size !== input.size || range.sourceRevision !== input.revision)
-          throw new Error('DIRECT_FILE_REVISION_CHANGED');
-        const bytes = range.bytes;
-        offset += bytes.length;
-        if (bytes.length > 0) yield bytes;
-        if (offset === endOffset) break;
-        if (range.nextOffset !== offset) throw new Error('DIRECT_FILE_REVISION_CHANGED');
-      }
-      if (offset !== endOffset) throw new Error('DIRECT_FILE_REVISION_CHANGED');
-    })();
+    const source = await this.resolveContentSource(workspace, input.path, workspacePath);
+    yield* streamFileContent(source.path, source.root, input);
   }
 
   async directMetadata(
@@ -269,6 +249,7 @@ export class WorkspaceFileService {
     readonly revision: string;
     readonly range?: { readonly offset: number; readonly length: number };
   }> {
+    if (typeof input.path !== 'string') throw new Error('FILE_RANGE_INVALID');
     if (
       input.offset !== undefined ||
       input.length !== undefined ||
@@ -280,6 +261,7 @@ export class WorkspaceFileService {
         (input.offset as number) < 0 ||
         !Number.isSafeInteger(input.length) ||
         (input.length as number) < 1 ||
+        (input.length as number) > 512 * 1024 ||
         !Number.isSafeInteger(input.size) ||
         (input.size as number) < 0 ||
         typeof input.revision !== 'string' ||
@@ -290,21 +272,9 @@ export class WorkspaceFileService {
       const length = input.length as number;
       const expectedSize = input.size as number;
       if (offset + length > expectedSize) throw new Error('FILE_RANGE_INVALID');
-      const read = (await this.readContent(
-        workspace,
-        { ...input, offset, limit: length },
-        workspacePath
-      )) as {
-        readonly size: number;
-        readonly sourceRevision: string;
-        readonly bytes: Uint8Array;
-      };
-      const bytes = read.bytes;
-      if (
-        read.size !== expectedSize ||
-        read.sourceRevision !== input.revision ||
-        bytes.length !== length
-      )
+      const source = await this.resolveContentSource(workspace, input.path, workspacePath);
+      const metadata = await describeFileContent(source.path, source.root);
+      if (metadata.size !== expectedSize || metadata.revision !== input.revision)
         throw new Error('DIRECT_FILE_REVISION_CHANGED');
       return {
         size: expectedSize,
@@ -312,12 +282,8 @@ export class WorkspaceFileService {
         range: { offset, length }
       };
     }
-    const metadata = (await this.readContent(
-      workspace,
-      { ...input, offset: 0, limit: 1 },
-      workspacePath
-    )) as { readonly size: number; readonly sourceRevision: string };
-    return { size: metadata.size, revision: metadata.sourceRevision };
+    const source = await this.resolveContentSource(workspace, input.path, workspacePath);
+    return describeFileContent(source.path, source.root);
   }
 
   async write(workspace: NodeWorkspace, input: Record<string, unknown>): Promise<unknown> {

@@ -5,13 +5,12 @@ import {
   browserAttachmentEventSchema,
   type BrowserAttachmentEvent,
   type BrowserAttachmentMessage,
-  type BrowserAttachmentOpen,
   type BrowserPictureQuality,
   type BrowserTabSnapshot
 } from '@myagentroam/protocol';
 import { BrowserViewport, type BrowserDrawnView } from './browser-viewport.js';
 
-type Link = WebSocket | RTCDataChannel;
+import type { BrowserMessageLink } from './browser-record-link.js';
 export type BrowserStreamSample = Readonly<{ bitsPerSecond: number; framesPerSecond: number }>;
 
 /** Owns one already-selected data path, its decoder and local stream counters. Its caller owns
@@ -32,9 +31,8 @@ export class BrowserAttachmentClient {
   private sentSize: { width: number; height: number } | undefined;
 
   constructor(
-    private readonly link: Link,
+    private readonly link: BrowserMessageLink,
     private readonly canvas: HTMLCanvasElement,
-    private readonly open: BrowserAttachmentOpen,
     private readonly options: {
       snapshot(snapshot: BrowserTabSnapshot): void;
       selection?(id: string, text: string): void;
@@ -54,12 +52,12 @@ export class BrowserAttachmentClient {
       ended(code: string): void;
     }
   ) {
-    link.binaryType = 'arraybuffer';
-    link.addEventListener('open', this.sendOpen);
-    link.addEventListener('message', this.onMessage);
-    link.addEventListener('close', this.onClose);
-    link.addEventListener('error', this.onClose);
-    if (this.linkOpen()) this.sendOpen();
+    link.subscribe(
+      (data) => {
+        void this.receive(data).catch(() => this.end('BROWSER_INVALID_MESSAGE'));
+      },
+      () => this.end('BROWSER_DISCONNECTED')
+    );
   }
 
   send(command: Exclude<BrowserAttachmentMessage, { type: 'ack' }>): boolean {
@@ -85,26 +83,9 @@ export class BrowserAttachmentClient {
     clearInterval(this.sampleTimer);
     clearTimeout(this.resizeTimer);
     this.resizeObserver?.disconnect();
-    this.link.removeEventListener('open', this.sendOpen);
-    this.link.removeEventListener('message', this.onMessage);
-    this.link.removeEventListener('close', this.onClose);
-    this.link.removeEventListener('error', this.onClose);
     this.viewport?.close();
     this.link.close();
   }
-
-  private readonly sendOpen = (): void => {
-    this.link.removeEventListener('open', this.sendOpen);
-    this.sendText(this.open);
-  };
-
-  private readonly onClose = (): void => this.end('BROWSER_DISCONNECTED');
-
-  private readonly onMessage = (event: Event): void => {
-    void this.receive((event as MessageEvent<unknown>).data).catch(() =>
-      this.end('BROWSER_INVALID_MESSAGE')
-    );
-  };
 
   private async receive(data: unknown): Promise<void> {
     if (this.closed) return;
@@ -166,10 +147,10 @@ export class BrowserAttachmentClient {
       }
       return;
     }
-    if (!this.viewport || !this.ready || !(data instanceof ArrayBuffer))
+    if (!this.viewport || !this.ready || !(data instanceof Uint8Array))
       throw new Error('Unexpected browser frame');
     this.receivedBytes += data.byteLength;
-    const frame = await this.viewport.receive(new Uint8Array(data));
+    const frame = await this.viewport.receive(data);
     if (this.closed || !frame || !this.sendText({ type: 'ack', sequence: frame.sequence })) return;
     if (frame.viewport?.viewVersion === this.version && frame.viewport) {
       this.drawn = true;
@@ -214,22 +195,9 @@ export class BrowserAttachmentClient {
     return true;
   }
 
-  private linkOpen(): boolean {
-    const state: string | number = this.link.readyState;
-    return state === 'open' || state === 1;
-  }
-
-  private sendText(value: BrowserAttachmentMessage | BrowserAttachmentOpen): boolean {
+  private sendText(value: BrowserAttachmentMessage): boolean {
     const text = JSON.stringify(value);
-    const bytes = new TextEncoder().encode(text).byteLength;
-    if (
-      !this.linkOpen() ||
-      bytes > BROWSER_CONTROL_MAX_BYTES ||
-      this.link.bufferedAmount + bytes > 2 * BROWSER_CONTROL_MAX_BYTES
-    ) {
-      this.end('BROWSER_LINK_UNAVAILABLE');
-      return false;
-    }
+    if (this.closed) return false;
     try {
       this.link.send(text);
       return true;

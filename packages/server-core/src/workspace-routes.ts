@@ -25,6 +25,7 @@ import {
   sendWorkspaceFileContent,
   openFileContentStream,
   fileContentType,
+  isNativeFilePreviewType,
   parseHttpByteRange,
   registerFileChunkParser,
   sendFileContentHead,
@@ -41,7 +42,6 @@ import {
   requestUserNode
 } from './workspace-http-support.js';
 
-const WORKSPACE_UPLOAD_CHUNK_BYTES = 512 * 1024;
 const FILE_CONTENT_CHUNK_BYTES = 512 * 1024;
 const FILE_CONTENT_FULL_LIMIT = 20 * 1024 * 1024;
 const FILE_WRITE_LIMIT = 8 * 1024 * 1024;
@@ -293,7 +293,7 @@ export function registerWorkspaceRoutes(input: {
           ...(displayName === undefined ? {} : { displayName: displayName.trim() })
         }
       );
-      await nodeControl.revalidateTerminalAuthorizations();
+      await nodeControl.revalidateDataAuthorizations();
       return reply.send({
         ...(ownership === undefined ? {} : { ownership }),
         ...(displayName === undefined ? {} : { displayName: displayName.trim() })
@@ -620,11 +620,9 @@ export function registerWorkspaceRoutes(input: {
     if (!isSafeResourceText(request.query.path)) return sendError(reply, 400, 'FILE_RANGE_INVALID');
     if (request.query.worktreePath !== undefined && !isSafeResourceText(request.query.worktreePath))
       return sendError(reply, 400, 'GIT_REPOSITORY_INVALID');
-    if (request.query.download !== undefined && request.query.download !== '1')
-      return sendError(reply, 400, 'FILE_RANGE_INVALID');
+    if (request.query.download !== undefined) return sendError(reply, 400, 'FILE_RANGE_INVALID');
     const preview = parseImagePreviewQuery(request.query);
-    if (!preview.success || (preview.data !== undefined && request.query.download === '1'))
-      return sendError(reply, 400, 'RUN_IMAGE_INVALID');
+    if (!preview.success) return sendError(reply, 400, 'RUN_IMAGE_INVALID');
     try {
       if (preview.data !== undefined) {
         const result = (await requestUserNode(
@@ -647,12 +645,13 @@ export function registerWorkspaceRoutes(input: {
         reply.header('cache-control', 'private, no-store');
         return sendImageResource(reply, result, preview.data);
       }
+      if (!isNativeFilePreviewType(fileContentType(request.query.path)))
+        return sendError(reply, 415, 'FILE_PREVIEW_UNSUPPORTED');
       return await sendWorkspaceFileContent({
         reply,
         method: request.method,
         range: request.headers.range,
         path: request.query.path,
-        download: request.query.download === '1',
         read: (offset, limit) =>
           readFileContentChunk(
             nodeControl,
@@ -982,8 +981,7 @@ export function registerWorkspaceRoutes(input: {
       name?: unknown;
       size?: unknown;
       overwrite?: unknown;
-      composerAttachmentId?: unknown;
-      mime?: unknown;
+      sha256?: unknown;
     };
   }>('/api/workspaces/:workspaceId/uploads', async (request, reply) => {
     if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
@@ -1000,13 +998,10 @@ export function registerWorkspaceRoutes(input: {
       !Number.isSafeInteger(body.size) ||
       (body.size as number) < 0 ||
       typeof body.overwrite !== 'boolean' ||
-      ((body.composerAttachmentId !== undefined || body.mime !== undefined) &&
-        (typeof body.composerAttachmentId !== 'string' ||
-          !isUuid(body.composerAttachmentId) ||
-          typeof body.mime !== 'string' ||
-          body.mime.length === 0 ||
-          body.mime.length > 120 ||
-          body.directory !== undefined))
+      typeof body.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(body.sha256) ||
+      'composerAttachmentId' in body ||
+      'mime' in body
     )
       return sendError(reply, 400, 'UPLOAD_INVALID');
     try {
@@ -1017,52 +1012,8 @@ export function registerWorkspaceRoutes(input: {
           name: body.name,
           size: body.size,
           overwrite: body.overwrite,
-          ...(typeof body.composerAttachmentId === 'string'
-            ? { composerAttachmentId: body.composerAttachmentId, mime: body.mime as string }
-            : {})
+          sha256: body.sha256
         })
-      );
-    } catch (error) {
-      return databaseError(reply, error);
-    }
-  });
-
-  app.post<{
-    Params: { workspaceId: string; uploadId: string };
-    Querystring: { nodeId?: string; offset?: string };
-    Body: Buffer;
-  }>('/api/workspaces/:workspaceId/uploads/:uploadId/chunks', async (request, reply) => {
-    if (!isAllowedOrigin(request, publicOrigin)) return sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
-    const admin = protectedAdmin(database, request, reply);
-    if (admin === undefined) return;
-    if (!validCsrf(request, admin)) return sendError(reply, 403, 'CSRF_INVALID');
-    const offset =
-      request.query.offset === undefined
-        ? undefined
-        : parseBoundedInteger(request.query.offset, 0, Number.MAX_SAFE_INTEGER);
-    if (
-      !isNonEmptyString(request.query.nodeId) ||
-      offset === undefined ||
-      !isNonEmptyString(request.params.uploadId) ||
-      !Buffer.isBuffer(request.body) ||
-      request.body.length === 0 ||
-      request.body.length > WORKSPACE_UPLOAD_CHUNK_BYTES
-    )
-      return sendError(reply, 400, 'UPLOAD_CHUNK_INVALID');
-    try {
-      return reply.send(
-        await requestUserNode(
-          nodeControl,
-          admin,
-          request.query.nodeId,
-          'workspace.files.upload.chunk',
-          {
-            workspaceId: request.params.workspaceId,
-            uploadId: request.params.uploadId,
-            offset,
-            bytes: request.body
-          }
-        )
       );
     } catch (error) {
       return databaseError(reply, error);
@@ -1384,7 +1335,12 @@ export function registerWorkspaceRoutes(input: {
     if (invalid !== undefined) return sendError(reply, 400, invalid);
     if (!gitCommitPattern.test(request.params.commit))
       return sendError(reply, 400, 'GIT_HISTORY_COMMIT_INVALID');
-    if (!isSafeResourceText(request.query.path)) return sendError(reply, 400, 'FILE_RANGE_INVALID');
+    if (!isSafeResourceText(request.query.path) || request.query.download !== undefined)
+      return sendError(reply, 400, 'FILE_RANGE_INVALID');
+    const filename = request.query.path.split('/').at(-1) ?? 'file';
+    const contentType = fileContentType(filename);
+    if (!isNativeFilePreviewType(contentType))
+      return sendError(reply, 415, 'FILE_PREVIEW_UNSUPPORTED');
     const readChunk = (offset: number, limit: number) =>
       readHistoryFileContentChunk(
         nodeControl,
@@ -1401,11 +1357,10 @@ export function registerWorkspaceRoutes(input: {
       const range = parseHttpByteRange(request.headers.range, first.size);
       if (range === null) return sendError(reply, 416, 'FILE_RANGE_INVALID');
       const start = range?.start ?? 0;
-      const download = request.query.download === '1';
       const end =
         range === undefined ? first.size - 1 : Math.min(range.end, FILE_CONTENT_FULL_LIMIT - 1);
       const length = first.size === 0 ? 0 : end - start + 1;
-      if (!download && range === undefined && length > FILE_CONTENT_FULL_LIMIT)
+      if (range === undefined && length > FILE_CONTENT_FULL_LIMIT)
         return sendError(reply, 413, 'FILE_PREVIEW_TOO_LARGE');
       if (start >= FILE_CONTENT_FULL_LIMIT || end >= FILE_CONTENT_FULL_LIMIT)
         return sendError(reply, 416, 'FILE_RANGE_INVALID');
@@ -1413,16 +1368,11 @@ export function registerWorkspaceRoutes(input: {
         request.method === 'HEAD'
           ? undefined
           : await openFileContentStream(readChunk, start, end, FILE_CONTENT_CHUNK_BYTES);
-      const filename = request.query.path.split('/').at(-1) ?? 'file';
-      const contentType = fileContentType(filename);
       reply
         .header('accept-ranges', 'bytes')
         .header('cache-control', 'private, no-store')
         .header('content-type', contentType)
-        .header(
-          'content-disposition',
-          `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(filename)}`
-        )
+        .header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`)
         .header('x-content-type-options', 'nosniff');
       if (contentType === 'image/svg+xml') reply.header('content-security-policy', 'sandbox');
       if (range !== undefined && first.size > 0)

@@ -5,6 +5,7 @@ import {
   json,
   mockConsoleApi
 } from './support/web-console-api.js';
+import { mockWorkspaceFileRelay } from './support/mock-workspace-file-relay.js';
 
 async function prepareFiles(page: Page, extraFiles: string[] = []): Promise<void> {
   await mockConsoleApi(
@@ -20,6 +21,11 @@ async function prepareFiles(page: Page, extraFiles: string[] = []): Promise<void
     true
   );
   const files = ['first.ts', 'second.ts', 'README.md', ...extraFiles];
+  const contentFor = (path: string) =>
+    path.endsWith('.md') ? '# Preview\n' : `export const value = '${path}';\n`;
+  await mockWorkspaceFileRelay(page.context(), 'node-1', 'workspace-1', (path) =>
+    Buffer.from(contentFor(path))
+  );
   await page.context().route(/\/api\/workspaces\/workspace-1\/files(?:\?.*)?$/, (route) =>
     json(route, {
       files: {
@@ -31,7 +37,7 @@ async function prepareFiles(page: Page, extraFiles: string[] = []): Promise<void
   );
   await page.context().route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) => {
     const path = new URL(route.request().url()).searchParams.get('path') ?? 'first.ts';
-    const content = path.endsWith('.md') ? '# Preview\n' : `export const value = '${path}';\n`;
+    const content = contentFor(path);
     return json(route, {
       file: {
         path,

@@ -1,4 +1,11 @@
 import { expect, test, type WebSocketRoute } from '@playwright/test';
+import { encodeTerminalMessage } from '../../packages/protocol/src/index.js';
+import { writeTerminalRecord } from '../../packages/protocol/src/terminal-stream.js';
+import {
+  decodeNodeStreamFrame,
+  encodeNodeRelayHandshake,
+  encodeNodeStreamFrame
+} from '../../packages/protocol/src/node-stream-wire.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
@@ -226,14 +233,33 @@ test('Desktop Terminal contains gestures and overlays reconnect status without r
     json(route, { authenticated: true, userId: 1, username: 'admin', isAdmin: true })
   );
   const connections: WebSocketRoute[] = [];
-  await page.routeWebSocket('**/api/terminals/terminal-1/connect?*', (socket) => {
-    connections.push(socket);
+  await page.routeWebSocket('**/api/relay/node-1', (socket) => {
+    socket.onMessage((message) => {
+      const frame = decodeNodeStreamFrame(message);
+      if (frame.type !== 'OPEN') return;
+      expect(frame.kind).toBe('terminal');
+      socket.send(Buffer.from(encodeNodeStreamFrame({ type: 'OPENED', streamId: frame.streamId })));
+      socket.send(
+        Buffer.from(
+          encodeNodeStreamFrame({
+            type: 'DATA',
+            streamId: frame.streamId,
+            bytes: writeTerminalRecord(
+              encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 })
+            )
+          })
+        )
+      );
+      connections.push(socket);
+    });
+    socket.send(Buffer.from(encodeNodeRelayHandshake({ type: 'RELAY_READY' })));
   });
   await page.goto(`${fixture.url}new-session-group.html`);
   const resources = page.locator('.workspace-tree');
   await resources.getByRole('button', { name: /node-1/ }).click();
   await resources.getByRole('button', { name: 'project' }).click();
-  await page.getByRole('tab', { name: /^(Terminal|终端)$/ }).click();
+  await page.getByRole('button', { name: /^(Add Aside tab|添加辅助面标签页)$/u }).click();
+  await page.getByRole('menuitem', { name: /^(Terminal|终端)$/u }).click();
   const body = page.locator('.terminal-dock .admin-terminal-body:visible');
   await expect(body.locator('.xterm')).toBeVisible();
   await expect(body).toHaveCSS('overscroll-behavior', 'contain');
@@ -241,11 +267,9 @@ test('Desktop Terminal contains gestures and overlays reconnect status without r
 
   const host = body.locator('.xterm-host');
   const status = body.getByRole('status');
-  const attached = JSON.stringify({ type: 'attach', terminalId: 'terminal-1' });
   await expect.poll(() => connections.length).toBe(1);
-  connections[0]!.send(attached);
   const outputPosition = () =>
-    host.evaluate(({ offsetTop, offsetHeight }) => [offsetTop, offsetHeight]);
+    host.evaluate(({ offsetTop, offsetHeight }: HTMLElement) => [offsetTop, offsetHeight]);
   const original = await outputPosition();
   await connections[0]!.close({ code: 1011 });
   await expect(status).toBeVisible();
@@ -256,7 +280,6 @@ test('Desktop Terminal contains gestures and overlays reconnect status without r
   expect(banner.y + banner.height).toBeLessThan(output.y + output.height);
   await expect(status).toHaveCSS('pointer-events', 'none');
   await expect.poll(() => connections.length).toBe(2);
-  connections[1]!.send(attached);
   await expect(status).toHaveCount(0);
   expect(await outputPosition()).toEqual(original);
 });

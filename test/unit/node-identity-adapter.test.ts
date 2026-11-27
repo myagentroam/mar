@@ -5,9 +5,15 @@ describe('enterprise Node identity persistence boundary', () => {
   it('rejects outstanding requests when an authenticated connection is replaced', () => {
     const rejectNode = vi.fn();
     const activateNodeConnection = vi.fn();
+    const disconnectData = vi.fn();
     const receiver = {
       requestBroker: { rejectNode },
       runtimeCredentials: { activateNodeConnection },
+      consumers: {},
+      dataRelay: { disconnectNode: disconnectData },
+      fileRelay: { disconnectNode: vi.fn() },
+      desktopDirect: { revokeNode: vi.fn() },
+      desktopRelay: { revokeNode: vi.fn() },
       workbenchRelay: { broadcast: vi.fn() }
     };
     const hooks = NodeControl.prototype as unknown as {
@@ -15,6 +21,7 @@ describe('enterprise Node identity persistence boundary', () => {
     };
     hooks.onNodeConnected.call(receiver, 'node-1', false);
     expect(rejectNode).not.toHaveBeenCalled();
+    expect(disconnectData).not.toHaveBeenCalled();
     expect(activateNodeConnection).toHaveBeenCalledExactlyOnceWith('node-1');
     hooks.onNodeConnected.call(receiver, 'node-1', true);
     expect(rejectNode).toHaveBeenCalledWith(
@@ -22,6 +29,7 @@ describe('enterprise Node identity persistence boundary', () => {
       expect.objectContaining({ message: 'NODE_CONNECTION_REPLACED' })
     );
     expect(rejectNode).toHaveBeenCalledOnce();
+    expect(disconnectData).toHaveBeenCalledExactlyOnceWith('node-1');
     expect(activateNodeConnection).toHaveBeenNthCalledWith(2, 'node-1');
   });
   it.each(['revokeNode', 'deleteNode'] as const)(
@@ -39,7 +47,7 @@ describe('enterprise Node identity persistence boundary', () => {
         database: { [operation]: write },
         closeNode: close,
         closeManagedNode: close,
-        terminalRelay: { shutdownNode: vi.fn() }
+        terminalRelay: { disconnectNode: vi.fn() }
       };
       const result = NodeControl.prototype[operation].call(
         receiver as unknown as NodeControl,
@@ -61,7 +69,7 @@ describe('enterprise Node identity persistence boundary', () => {
         database: { [operation]: vi.fn().mockRejectedValue(new Error('DATABASE_UNAVAILABLE')) },
         closeNode: close,
         closeManagedNode: close,
-        terminalRelay: { shutdownNode: vi.fn() }
+        terminalRelay: { disconnectNode: vi.fn() }
       };
       await expect(
         NodeControl.prototype[operation].call(receiver as unknown as NodeControl, 'node-1', 1)

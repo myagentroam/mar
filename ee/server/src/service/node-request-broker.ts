@@ -46,6 +46,7 @@ const FIXED_SERVER_NODE_OPERATIONS = new Set<string>([
   'workspace.list',
   'workspace.sessions.cleanup',
   'workspace.diff',
+  'workspace.file.stream.prepare',
   'session.start',
   'session.list',
   'session.discover',
@@ -222,6 +223,20 @@ export class NodeRequestBroker {
     return this.dispatch(nodeId, operation, data, user, workspaceId, timeoutMs, connection, signal);
   }
 
+  canUseWorkspaceFile(
+    userId: number,
+    nodeId: string,
+    workspaceId: string
+  ): boolean | Promise<boolean> {
+    return this.authorize(
+      userId,
+      nodeId,
+      'workspace.file.stream.prepare',
+      { workspaceId },
+      workspaceId
+    );
+  }
+
   requestScheduledTaskIndex(
     nodeId: string,
     data: { workspaceId: string; afterTaskId?: string }
@@ -336,7 +351,8 @@ export class NodeRequestBroker {
     operation: string,
     data: unknown,
     user: UserNodeAuthorization,
-    timeoutMs = 15_000
+    timeoutMs = 15_000,
+    signal?: AbortSignal
   ): Promise<unknown> {
     if (
       !operation.startsWith('conversation.hosted.') ||
@@ -352,7 +368,8 @@ export class NodeRequestBroker {
       user,
       undefined,
       timeoutMs,
-      this.socketFor(nodeId)
+      this.socketFor(nodeId),
+      signal
     );
   }
 

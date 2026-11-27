@@ -106,14 +106,14 @@ test('an open context expires files from completion, not from download start or 
     await expect
       .poll(async () => (await list()).find(({ name }) => name === 'late')?.state)
       .toBe('ready');
-    // A fresh HTTP save protects the expiring file across the hourly sweep.
+    // A fresh save protects the expiring file across the hourly sweep.
     await downloads.execute({ action: 'info', id: old.id });
     clock.mockReturnValue(30 * 24 * hour);
     await vi.advanceTimersByTimeAsync(hour);
-    expect(await downloads.execute({ action: 'read', id: old.id, offset: 0, limit: 3 })).toEqual({
-      bytes: Buffer.from('old'),
-      offset: 0
-    });
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of downloads.readStream(old.id, 3, new AbortController().signal))
+      chunks.push(chunk);
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from('old'));
     const before = changed.mock.calls.length;
     clock.mockReturnValue(30 * 24 * hour + hour);
     await vi.advanceTimersByTimeAsync(hour);

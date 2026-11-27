@@ -101,18 +101,3 @@ export const terminalDirectNodeEventSchema = z
     phase: z.enum(['PREPARED', 'ATTACHED']).optional()
   })
   .strict();
-
-export const terminalDirectOpenFrameSchema = z
-  .object({
-    type: z.literal('OPEN'),
-    directSessionId: id,
-    grant: z.string().min(32).max(4096)
-  })
-  .strict();
-export const terminalDirectAttachedFrameSchema = z
-  .object({
-    type: z.literal('ATTACHED'),
-    terminalId: resourceId,
-    afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
-  })
-  .strict();
