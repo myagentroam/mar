@@ -405,6 +405,45 @@ describe('Workspace-bound marctl agents', () => {
     expect(network[2]).toMatchObject({ input: { modelId: 'runner-default' } });
   });
 
+  it.each([undefined, 'source'])(
+    'relays explicit peer starts without fallback for caller %s',
+    async (executionSource) => {
+      const f = await fixture(true, false, executionSource ? { executionSource } : {});
+      const original = f.requestNode.getMockImplementation()!;
+      const request = (input: Record<string, unknown>) =>
+        f.app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers: f.headers,
+          payload: { action: 'network', command: { operation: 'start', input } }
+        });
+      const base = {
+        title: 'Peer',
+        content: 'Coordinate',
+        runner: 'codex',
+        clientMessageId: 'peer-msg'
+      };
+      for (const input of [
+        { ...base, relation: 'invalid' },
+        { ...base, relation: 'peer', parentSessionId: 'source' },
+        ...(!executionSource ? [{ ...base, relation: 'child' }] : [])
+      ]) {
+        expect((await request(input)).statusCode).toBe(400);
+        expect(f.requestNode).not.toHaveBeenCalled();
+      }
+      f.requestNode.mockImplementation(async (...args) => {
+        if (args[1] === 'agent.network') throw new Error('MARCTL_EXECUTION_CREDENTIAL_INVALID');
+        return original(...args);
+      });
+      expect((await request({ ...base, relation: 'peer' })).statusCode).not.toBe(200);
+      const relays = f.requestNode.mock.calls.filter((call) => call[1] === 'agent.network');
+      expect(relays).toHaveLength(1);
+      expect(relays[0]?.[2]).toMatchObject({ action: 'start-peer', input: base });
+      expect(relays[0]?.[2].input).not.toHaveProperty('parentSessionId');
+      expect(relays[0]?.[2].input).not.toHaveProperty('relation');
+    }
+  );
+
   it.each(['start', 'send'] as const)(
     'prepares MAR model resources for an authenticated non-MAR Execution %s',
     async (operation) => {

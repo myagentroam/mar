@@ -54,7 +54,7 @@ const tools: readonly {
     action: 'start',
     parallelSafety: 'safe',
     description:
-      'Start a child Agent with a task and optional Goal; returns without waiting for completion.',
+      'Start an Agent with a task and optional Goal; returns without waiting for completion.',
     properties: {
       content: text,
       runner,
@@ -64,6 +64,12 @@ const tools: readonly {
       },
       effort: text,
       title: text,
+      relation: {
+        type: 'string',
+        enum: ['child', 'peer'],
+        description:
+          'Defaults to child (your direct subagent). Use peer for an independent Session with no parent or automatic result collection.'
+      },
       goal,
       clientMessageId: text
     },
@@ -180,10 +186,8 @@ const collaborationPrompt = [
   'Sending a message to an Agent other than your direct child does not subscribe you to its Session activity. For those Agents, agent_wait observes Session activity only for the duration of the call.'
 ].join('\n\n');
 
-const managementPrompt = [
-  '## Workspace management',
-  "Load marctl when needed to manage existing Session settings, titles, persistent prompts or schedules, or to discover authorized Nodes, execute remote commands or transfer files. Use agent_start to select a child's model or effort at creation. Do not switch to marctl when a native operation fails."
-].join('\n\n');
+const managementPrompt =
+  '## Workspace management\n\nLoad marctl when needed to manage existing Session settings, titles, persistent prompts or schedules, or to discover authorized Nodes, execute remote commands or transfer files. Do not switch to marctl when a native operation fails.';
 
 const whiteboardPrompt = [
   '## Whiteboard',
@@ -240,10 +244,11 @@ export function orchestrationExtension(
         const models = delegate
           ? (context.models
               ?.list()
-              .filter((model) => model.conversationModel && model.subagentModel)
+              .filter((model) => model.conversationModel)
               .map((model) => ({
                 id: model.id,
                 name: model.name,
+                subagentModel: model.subagentModel,
                 supportedEfforts: model.reasoningEfforts,
                 defaultEffort: model.defaultReasoningEffort
               })) ?? [])
@@ -251,7 +256,7 @@ export function orchestrationExtension(
         const sections = enabled
           ? [
               delegate
-                ? `${delegationPrompt}\n\nAvailable subagent models:\n${JSON.stringify({ runner: 'mar-agent', models })}`
+                ? `${delegationPrompt}\n\nYou can start an independent Session with agent_start and relation: "peer". Use agent_start to select a new Agent's model or effort at creation. Any listed model can run a peer. A child requires a model marked subagentModel: true.\n\nAvailable MAR Agent models for agent_start:\n${JSON.stringify({ runner: 'mar-agent', models })}`
                 : null,
               available.has('agent_send') ? collaborationPrompt : null,
               tools.some((tool) => available.has(`agent_${tool.action}`)) ? managementPrompt : null,

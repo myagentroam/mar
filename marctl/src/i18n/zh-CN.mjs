@@ -46,6 +46,7 @@ ${configurationHelp}
 用法：
   {program} start [-m <text> | --message-file <file|->]
     [--runner <runner>] [--parent <id>] [--model-id <id>] [--effort <value>]
+    [--relation child|peer]
     [--title <name>] [--goal <objective> | --clear-goal]
     [--client-message-id <id>] [--json]
   {program} send <id> [-m <text> | --message-file <file|->]
@@ -87,6 +88,8 @@ ${configurationHelp}
   Agent 内调用 start 时，省略 --runner 则沿用调用方的 Agent 类型。
   从终端调用时须指定 --runner 或 --parent。
   省略 --runner 时继承父会话的 Agent 类型。
+  Agent 默认创建子会话；--relation peer 创建独立会话，不能与 --parent 同用。
+  从终端显式创建 child 须指定 --parent；未指定关系和父会话时创建根会话。
   start 不等待。
   send 默认使用 --steer，用于即时沟通或纠偏。无法在当前执行内交付时，
   Node 可能中断当前执行。--goal 设置或替换目标；--clear-goal 清除目标。

@@ -14,6 +14,7 @@ import {
 import type { ExtensionOperationContext, ToolWaitInterrupt } from '@myagentroam/agent/extensions';
 
 export type AgentNetworkAction = 'start' | 'send' | 'wait' | 'stop' | 'list' | 'view';
+type AgentStartRelation = 'child' | 'peer';
 export type ResolvedTargets = (sessions: readonly NodeAgentSession[]) => Promise<void>;
 export type AgentNetworkInvoke = (
   executionId: string,
@@ -67,6 +68,7 @@ interface AgentNetworkServiceOptions {
       readonly modelId?: string;
       readonly effort?: string;
       readonly title?: string;
+      readonly relation?: AgentStartRelation;
       readonly parentSessionId?: string;
       readonly goal: AgentGoalChange;
     },
@@ -160,6 +162,7 @@ export class AgentNetworkService {
       readonly modelId?: string;
       readonly effort?: string;
       readonly title?: string;
+      readonly relation?: AgentStartRelation;
       readonly parentSessionId?: string;
       readonly goal?: unknown;
       readonly clientMessageId?: string;
@@ -180,10 +183,13 @@ export class AgentNetworkService {
       !validOptionalString(input.modelId) ||
       !validOptionalString(input.effort) ||
       !validOptionalString(input.title) ||
+      (input.relation !== undefined && input.relation !== 'child' && input.relation !== 'peer') ||
       !validOptionalString(input.parentSessionId) ||
       !validOptionalString(input.clientMessageId)
     )
       throw new AgentError('AGENT_START_INVALID', 'The agent start input is invalid.');
+    if (input.relation === 'peer' && input.parentSessionId !== undefined)
+      throw new AgentError('AGENT_START_INVALID', 'A peer session cannot have a parent.');
     const { goal: _goal, ...start } = input;
     const created = await this.options.start(
       actor,

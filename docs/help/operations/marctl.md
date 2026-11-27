@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-27
 ---
 
 # 使用 marctl 管理节点
@@ -141,9 +141,11 @@ marctl agents goal clear <session-id> --json
 
 `start`、`send` 和 `goal set` 可用 `-m` / `--message` 直接传文本，也可用 `--message-file` 读取 UTF-8 文件或 stdin，两种选项互斥。文本中的文件路径指向目标获授权可访问的资源，不会自动上传 CLI 主机上的文件。`goal set` 拒绝保留目标 `--clear`；清除目标请显式使用 `goal clear`。
 
-`start` 在工作区根目录创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以各 Agent 实际支持的能力为准。Agent 内调用时，省略 `--runner` 则沿用调用方的 Agent 类型。从终端调用时，须指定 `--runner` 或 `--parent`；省略 `--runner` 时继承父会话的 Agent 类型。省略 `--model-id` 时使用目标 Agent 的配置，不继承 Coordinator 模型。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限，无论是否来自父会话；指定的配置只影响新建会话。`--message-file -` 从 UTF-8 stdin 读取。保存返回的原生会话 ID，标题不是唯一寻址身份。
+`start` 在当前工作区创建会话并提交首条消息，支持 `mar-agent`、`codex`、`claude-code`、`opencode`，以各 Agent 实际支持的能力为准。Agent 内调用时，省略 `--runner` 则沿用调用方的 Agent 类型。从终端调用时，须指定 `--runner` 或 `--parent`；省略 `--runner` 时继承父会话的 Agent 类型。省略 `--model-id` 时使用目标 Runner 的默认模型。MAR 横向会话可使用获授权、已启用的对话模型，子会话还要求模型支持 Subagent；默认模型也须满足对应条件。创建会话不会覆盖 Web Composer 已保存的默认模型、思考强度或权限。`--message-file -` 从 UTF-8 stdin 读取。保存返回的 Agent ID，标题不是唯一寻址身份。
 
-Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来源；终端用户可用 `--parent` 指定合法父会话，Node 校验同一 Workspace 后保存正式 `parentSessionId`。没有父会话则为空，创建后不能修改。`list --scope tree` 返回当前会话所在协作树，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Agent 的原生会话历史。parent 只表示创建来源，不是权限、当前调度者或任务依赖；发送消息与接手不改变它。删除父会话会按 Node 的关系树删除后代；旧会话不从消息或标题推断关系。
+Agent 内执行 `start` 默认创建自己的直接子会话；用 `--relation peer` 创建独立横向会话，不自动向发起方回报。终端未指定 `--relation` 时，有 `--parent` 创建子会话，否则创建独立根会话。终端显式使用 `--relation child` 须指定 `--parent`；`--relation peer` 不能与 `--parent` 同用。旧 Node 不支持时，横向启动会失败，不会改为创建子会话。
+
+`list --scope tree` 返回当前会话所在协作树，`graph <session-id>` 返回包含根的创建后代树。graph 默认最多 100 个节点，`--limit` 支持 1..100；结果包含 `rootSessionId`、`nodes` 和 `truncated`，只查询 Node 已知会话，不扫描 Agent 的原生会话历史。父子归属创建后不可修改，不代表权限、当前调度者或任务依赖。删除父会话会删除其后代，不影响独立会话；旧会话不从消息或标题推断关系。
 
 按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池；角色、范围和验收条件可放入首条普通消息，持久指令通过 `prompt` 设置。各 Agent 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
 

@@ -15,6 +15,7 @@ export async function prepareAgentNetworkRequest({ args, stdin, translate, sessi
     'cursor',
     'limit',
     'query',
+    'relation',
     'parentSessionId',
     'scope',
     'waitFor',

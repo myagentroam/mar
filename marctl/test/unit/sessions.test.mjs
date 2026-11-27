@@ -1181,6 +1181,32 @@ test('parses closed Session commands including creation and rejects scope overri
   ])
     assert.throws(() => parseArgs(['agents', ...args]));
 });
+
+test('sends an explicit peer relationship without a parent', async () => {
+  let body;
+  const status = await main(
+    ['agents', 'start', '--relation', 'peer', '--title', 'Peer', '-m', 'task', '--json'],
+    {
+      env,
+      client: {
+        async sessionCommand(input) {
+          body = input;
+          return { agentId: 'peer' };
+        }
+      },
+      stdout: { write() {} },
+      stderr: { write: (value) => assert.fail(value) }
+    }
+  );
+  assert.equal(status, 0);
+  assert.equal(body.command.operation, 'start');
+  assert.equal(body.command.input.relation, 'peer');
+  assert.equal(Object.hasOwn(body.command.input, 'parentSessionId'), false);
+  assert.throws(() => parseArgs(['agents', 'start', '--relation', 'unknown', '-m', 'task']));
+  assert.throws(() =>
+    parseArgs(['agents', 'start', '--relation', 'peer', '--parent', 'source', '-m', 'task'])
+  );
+});
 test('supports direct messages while rejecting images and ambiguous input', () => {
   for (const content of ['--help', '-h', '--json', '--review'])
     assert.equal(parseArgs(['agents', 'send', 's', '--steer', '-m', content]).message, content);
@@ -1548,6 +1574,7 @@ for (const locale of ['en_US.UTF-8', 'zh_CN.UTF-8']) {
       for (const flag of [
         '--runner',
         '--parent',
+        '--relation child|peer',
         '--goal',
         '--clear-goal',
         '--scope',
