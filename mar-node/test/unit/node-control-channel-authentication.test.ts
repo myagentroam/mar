@@ -1,10 +1,87 @@
 import { once } from 'node:events';
-import { WebSocketServer } from 'ws';
-import { createEnvelope, type NodeCapabilities } from '@myagentroam/protocol';
+import { WebSocketServer, type WebSocket } from 'ws';
+import {
+  createEnvelope,
+  decodeFileRelayFrame,
+  encodeFileRelayFrame,
+  type NodeCapabilities,
+  type NodeEnvelope
+} from '@myagentroam/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeControlChannel } from '../../src/service/node-control-channel.js';
+import { NodeConnector } from '../../src/connector.js';
+import { NodeDatabase } from '../../src/database.js';
 
 describe('Node control authentication', () => {
+  it('opens the independent file channel only after the current capability report is acknowledged', async () => {
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await once(server, 'listening');
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing test listener');
+    const connector = new NodeConnector({
+      database: new NodeDatabase(':memory:', 'node-1'),
+      reconnect: false,
+      config: {
+        serverUrl: `http://127.0.0.1:${address.port}`,
+        nodeId: 'node-1',
+        credential: 'fixture',
+        allowedRoots: []
+      }
+    });
+    const owners = connector as unknown as {
+      controlChannel: NodeControlChannel;
+      fileChannel: { connect(binding: string): void };
+    };
+    const openFile = vi.spyOn(owners.fileChannel, 'connect');
+    const fileHandshake = vi.fn();
+    let control: WebSocket | undefined;
+    let report: NodeEnvelope | undefined;
+    server.on('connection', (socket, request) => {
+      if (request.url === '/api/node/connect') {
+        control = socket;
+        socket.on('message', (raw) => {
+          const message = JSON.parse(raw.toString()) as NodeEnvelope;
+          if (message.type === 'authenticate') {
+            socket.send(JSON.stringify(createEnvelope('authenticated', { nodeId: 'node-1' })));
+          } else if (message.type === 'capabilities') report = message;
+        });
+      } else if (request.url === '/api/node/file-connect') {
+        socket.once('message', (raw) => {
+          fileHandshake(decodeFileRelayFrame(raw).metadata);
+          socket.send(encodeFileRelayFrame({ type: 'file.authenticated' }));
+        });
+      }
+    });
+    try {
+      owners.controlChannel.connect();
+      await vi.waitFor(() => expect(report).toBeDefined());
+      const ack = (type: string, replyTo: string, fileControlBinding?: string) =>
+        control!.send(
+          JSON.stringify(createEnvelope('ack', { type, fileControlBinding }, { replyTo }))
+        );
+      ack('heartbeat', report!.id, 'wrong-type-binding');
+      ack('capabilities', 'other-report', 'stale-binding');
+      ack('capabilities', report!.id);
+      const pong = once(control!, 'pong');
+      control!.ping();
+      await pong;
+      expect(openFile).not.toHaveBeenCalled();
+      ack('capabilities', report!.id, 'current-binding');
+      await vi.waitFor(() =>
+        expect(fileHandshake).toHaveBeenCalledExactlyOnceWith({
+          type: 'file.authenticate',
+          nodeId: 'node-1',
+          credential: 'fixture',
+          controlBinding: 'current-binding'
+        })
+      );
+    } finally {
+      await connector.stop();
+      for (const socket of server.clients) socket.terminate();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('mutes inbound work during cleanup while retaining the outgoing control channel', async () => {
     const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await once(server, 'listening');

@@ -393,7 +393,7 @@ export async function readWorkspaceFileContentRange(
   readonly size: number;
   readonly sourceRevision: string;
   readonly offset: number;
-  readonly contentBase64: string;
+  readonly bytes: Uint8Array;
   readonly nextOffset: number | null;
 }> {
   if (
@@ -422,7 +422,7 @@ export async function readWorkspaceFileContentRange(
       size: metadata.size,
       sourceRevision: fileSourceRevision(metadata),
       offset,
-      contentBase64: source.subarray(0, bytesRead).toString('base64'),
+      bytes: source.subarray(0, bytesRead),
       nextOffset: end < metadata.size ? end : null
     };
   } finally {
@@ -441,7 +441,7 @@ export async function readAbsoluteFileContentRange(
   readonly size: number;
   readonly sourceRevision: string;
   readonly offset: number;
-  readonly contentBase64: string;
+  readonly bytes: Uint8Array;
   readonly nextOffset: number | null;
 }> {
   if (
@@ -467,7 +467,7 @@ export async function readAbsoluteFileContentRange(
       size: metadata.size,
       sourceRevision: fileSourceRevision(metadata),
       offset,
-      contentBase64: source.subarray(0, bytesRead).toString('base64'),
+      bytes: source.subarray(0, bytesRead),
       nextOffset: end < metadata.size ? end : null
     };
   } finally {

@@ -120,7 +120,7 @@ export class BrowserFileChooser {
       }
       case 'chunk': {
         const file = transfer.files[command.index];
-        const bytes = Buffer.from(command.data, 'base64');
+        const { bytes } = command;
         if (
           !file ||
           command.offset !== file.received ||

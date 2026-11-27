@@ -1,11 +1,21 @@
-import type { FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Readable } from 'node:stream';
+import { FILE_RELAY_CHUNK_BYTES } from '@myagentroam/protocol';
 import { sendError } from './http-errors.js';
 
 export interface FileContentChunk {
   readonly size: number;
   readonly offset: number;
-  readonly contentBase64: string;
+  readonly bytes: Uint8Array;
+}
+
+export function registerFileChunkParser(app: FastifyInstance): void {
+  if (!app.hasContentTypeParser('application/octet-stream'))
+    app.addContentTypeParser(
+      'application/octet-stream',
+      { parseAs: 'buffer', bodyLimit: FILE_RELAY_CHUNK_BYTES },
+      (_request, body, done) => done(null, body)
+    );
 }
 
 /** Shared native resource response for account and share-authorized Workspace reads. */
@@ -62,12 +72,13 @@ export async function* fileContentChunks(
   start: number,
   end: number,
   chunkSize: number
-): AsyncGenerator<Buffer> {
+): AsyncGenerator<Uint8Array> {
   let offset = start;
   while (offset <= end) {
-    const part = await readChunk(offset, Math.min(chunkSize, end - offset + 1));
-    const content = Buffer.from(part.contentBase64, 'base64');
-    if (part.offset !== offset || content.length === 0 || content.length > end - offset + 1)
+    const limit = Math.min(chunkSize, end - offset + 1);
+    const part = await readChunk(offset, limit);
+    const content = part.bytes;
+    if (part.offset !== offset || content.length === 0 || content.length > limit)
       throw new Error('NODE_RESPONSE_INVALID');
     offset += content.length;
     yield content;

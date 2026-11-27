@@ -166,13 +166,13 @@ export class WorkspaceUploadService {
       typeof input.uploadId !== 'string' ||
       !Number.isSafeInteger(input.offset) ||
       (input.offset as number) < 0 ||
-      typeof input.dataBase64 !== 'string'
+      !(input.bytes instanceof Uint8Array)
     )
       throw new Error('UPLOAD_CHUNK_INVALID');
     const upload = this.require(input.uploadId);
     if (upload.writing) throw new Error('UPLOAD_OFFSET_INVALID');
     if (input.offset !== upload.receivedBytes) throw new Error('UPLOAD_OFFSET_INVALID');
-    const bytes = Buffer.from(input.dataBase64, 'base64');
+    const { bytes } = input;
     if (bytes.length === 0 || bytes.length > CHUNK_BYTES) throw new Error('UPLOAD_CHUNK_INVALID');
     if (upload.receivedBytes + bytes.length > upload.size) throw new Error('UPLOAD_SIZE_INVALID');
     upload.writing = true;
@@ -242,7 +242,7 @@ export class WorkspaceUploadService {
     const status = await this.write({
       uploadId,
       offset: this.status(uploadId).receivedBytes,
-      dataBase64: Buffer.from(bytes).toString('base64')
+      bytes
     });
     return status.receivedBytes;
   }

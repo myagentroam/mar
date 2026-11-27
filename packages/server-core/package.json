@@ -15,6 +15,11 @@
     "test:unit": "vitest run --config vitest.config.mts"
   },
   "exports": {
+    "./node-file-relay": {
+      "development": "./src/node-file-relay.ts",
+      "types": "./dist/node-file-relay.d.ts",
+      "import": "./dist/node-file-relay.js"
+    },
     "./scheduled-task-index": {
       "development": "./src/scheduled-task-index.ts",
       "types": "./dist/scheduled-task-index.d.ts",

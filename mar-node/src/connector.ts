@@ -108,6 +108,7 @@ import {
   type RunnerImageAttachment
 } from './service/run-attachment-service.js';
 import { NodeTerminalChannel } from './service/node-terminal-channel.js';
+import { NodeFileChannel } from './service/node-file-channel.js';
 import { WorkspaceWorkbenchService } from './workspace/workspace-workbench-service.js';
 import { NativeSessionWatchService } from './service/native-session-watch-service.js';
 import { SessionWatchSlotCoordinator } from './service/session-watch-slot-coordinator.js';
@@ -346,6 +347,7 @@ export class NodeConnector {
   private readonly runAttachmentService: RunAttachmentService;
   private readonly modelResourcePublicationService: ModelResourcePublicationService;
   private readonly terminalChannel: NodeTerminalChannel;
+  private readonly fileChannel: NodeFileChannel;
   private readonly codexClient: CodexRunner;
   private readonly codexRunController: CodexManagedRunController<RunnerImageAttachment>;
   private readonly claudeClient: ClaudeCodeRunner;
@@ -1700,6 +1702,7 @@ export class NodeConnector {
         this.browserUse.disconnect();
         this.upgradeCredentials.disconnect();
         this.terminalChannel.disconnect();
+        this.fileChannel.disconnect();
         if (code === 4000 && reason === 'NODE_CONNECTION_REPLACED')
           nodeLog('node.connection.replaced', {
             message:
@@ -1754,6 +1757,10 @@ export class NodeConnector {
         this.browserUse.setFeatures(payload);
         this.upgradeCredentials.setFeatures(payload);
       },
+      fileBindingAck: (requestId, binding) => {
+        // A second socket can reach the Server before the capability report on control.
+        if (this.controlChannel.acceptCapabilitiesAck(requestId)) this.fileChannel.connect(binding);
+      },
       close: (code, reason) => this.controlChannel.close(code, reason),
       inspectWorkspace: (envelope) => this.workspaceCoordinator.inspect(envelope),
       handleNodeRequest: (envelope) => this.nodeRequests.handle(envelope),
@@ -1804,6 +1811,13 @@ export class NodeConnector {
           this.executeNodeOperation(operation, data)
         ),
       send: (type, payload, replyTo) => this.send(type, payload, replyTo)
+    });
+    this.fileChannel = new NodeFileChannel({
+      config: () => this.config,
+      controlConnected: () => !this.stopped && this.controlChannel.connected(),
+      reconnect: this.reconnect,
+      reconnectDelay: nextReconnectDelay,
+      request: (envelope, reply) => this.nodeRequests.handle(envelope, reply)
     });
     const workspaceApplication = composeWorkspaceApplication({
       config: () => this.config,
@@ -2711,6 +2725,7 @@ export class NodeConnector {
     // so the lifecycle is persisted before this synchronous shutdown returns.
     const terminalDrain = this.terminalManager.shutdown();
     this.terminalChannel.stop();
+    this.fileChannel.disconnect();
     this.runtimeCredentials.close();
     this.chatgptLogins.close();
     const scheduledDrain = this.scheduledSessions.stop();

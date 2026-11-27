@@ -90,9 +90,7 @@ describe('Executable HTML preview', () => {
           file: {
             size: bytes.length,
             offset: input.offset,
-            contentBase64: bytes
-              .subarray(input.offset, input.offset + input.limit)
-              .toString('base64')
+            bytes: bytes.subarray(input.offset, input.offset + input.limit)
           }
         };
       })
@@ -212,9 +210,7 @@ describe('Executable HTML preview', () => {
           file: {
             size: bytes.length,
             offset: input.offset,
-            contentBase64: bytes
-              .subarray(input.offset, input.offset + input.limit)
-              .toString('base64')
+            bytes: bytes.subarray(input.offset, input.offset + input.limit)
           }
         };
       })

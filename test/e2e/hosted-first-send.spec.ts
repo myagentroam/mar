@@ -139,7 +139,11 @@ async function openDraft(
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
     const body =
-      method === 'POST' ? (route.request().postDataJSON() as Record<string, unknown>) : {};
+      method !== 'POST'
+        ? {}
+        : path.endsWith('/chunks')
+          ? { bytes: route.request().postDataBuffer() }
+          : (route.request().postDataJSON() as Record<string, unknown>);
     if (method === 'POST') requests.push({ path, body });
     if (path.endsWith('/watch')) {
       if (path.includes('/created/') && method === 'POST' && failWatch) {
@@ -306,9 +310,7 @@ test('Hosted first send retains attachment bytes after initial Watch failure and
     'complete',
     'messages'
   ]);
-  expect(Buffer.from(String(writes[3]!.body['dataBase64']), 'base64').toString()).toBe(
-    'Original attachment bytes'
-  );
+  expect((writes[3]!.body['bytes'] as Buffer).toString()).toBe('Original attachment bytes');
   expect(f.messages()[0]!.body).toMatchObject({
     prompt: 'Original first message',
     attachmentIds: ['original-file']

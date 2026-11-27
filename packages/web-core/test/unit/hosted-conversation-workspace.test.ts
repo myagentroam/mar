@@ -811,8 +811,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     const probe = {
       file,
       offset: 0,
-      encoding: 'base64' as const,
-      content: btoa('before'),
+      bytes: new TextEncoder().encode('before'),
       nextOffset: 6,
       eof: false
     };
@@ -822,7 +821,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       .mockResolvedValueOnce({
         ...probe,
         file: { ...file, updatedAt: 2 },
-        content: btoa('after!')
+        bytes: new TextEncoder().encode('after!')
       });
     const preview = createHostedConversationFilePreviewService({
       source: { selectedConversationId: ref(file.conversationId), readFile, contentUrl: vi.fn() }
@@ -838,7 +837,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     readFile.mockResolvedValue({
       ...probe,
       file: { ...file, updatedAt: 2 },
-      content: btoa('recovered'),
+      bytes: new TextEncoder().encode('recovered'),
       eof: true,
       nextOffset: null
     });
@@ -882,8 +881,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     const readFile = vi.fn(async () => ({
       file,
       offset: 0,
-      encoding: 'base64' as const,
-      content: btoa('preview'),
+      bytes: new TextEncoder().encode('preview'),
       nextOffset: 7,
       eof: false
     }));
@@ -928,8 +926,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
         readFile: async () => ({
           file,
           offset: 0,
-          encoding: 'base64',
-          content: Buffer.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]).toString('base64'),
+          bytes: Buffer.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]),
           nextOffset: null,
           eof: true
         }),
@@ -969,8 +966,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     const readFile = vi.fn(async () => ({
       file,
       offset: 0,
-      encoding: 'base64' as const,
-      content: Buffer.from(bytes).toString('base64'),
+      bytes: Buffer.from(bytes),
       nextOffset: null,
       eof: true
     }));

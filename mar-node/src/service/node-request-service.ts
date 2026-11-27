@@ -1,4 +1,4 @@
-import type { NodeEnvelope } from '@myagentroam/protocol';
+import { isFileRelayOperation, type NodeEnvelope } from '@myagentroam/protocol';
 import { nodeLog } from '../operational.js';
 import { validUserAuthorization } from '../connection/authorization.js';
 import { safePublicError } from '../util/safe-error.js';
@@ -32,14 +32,23 @@ export class NodeRequestService {
     this.waits.clear();
   }
 
-  async handle(envelope: NodeEnvelope): Promise<void> {
+  async handle(
+    envelope: NodeEnvelope,
+    fileReply?: NodeRequestServiceOptions['send']
+  ): Promise<void> {
+    const send = fileReply ?? this.options.send;
     const payload = envelope.payload as {
       operation?: unknown;
       data?: unknown;
       userAuthorization?: unknown;
     };
-    if (typeof payload.operation !== 'string' || !this.options.databaseAvailable()) {
-      this.sendError(envelope.id, new Error('MESSAGE_INVALID'), 'MESSAGE_INVALID');
+    if (
+      !payload ||
+      typeof payload.operation !== 'string' ||
+      !this.options.databaseAvailable() ||
+      isFileRelayOperation(payload.operation, payload.data) !== (fileReply !== undefined)
+    ) {
+      this.sendError(send, envelope.id, new Error('MESSAGE_INVALID'), 'MESSAGE_INVALID');
       return;
     }
     if (
@@ -51,6 +60,7 @@ export class NodeRequestService {
       )
     ) {
       this.sendError(
+        send,
         envelope.id,
         new Error('USER_AUTHORIZATION_REQUIRED'),
         'USER_AUTHORIZATION_REQUIRED'
@@ -127,7 +137,7 @@ export class NodeRequestService {
             })()
           : payload.data;
       const result = await this.options.execute(payload.operation, data);
-      this.options.send('node.response', { result }, envelope.id);
+      send('node.response', { result }, envelope.id);
       const durationMs = Math.round(performance.now() - startedAt);
       if (durationMs >= 250)
         nodeLog('node.operation.completed', {
@@ -146,15 +156,20 @@ export class NodeRequestService {
         error: failure.code,
         ...(failure.details === undefined ? {} : { errorDetails: failure.details })
       });
-      this.options.send('node.response', nodeResponseFailure(failure), envelope.id);
+      send('node.response', nodeResponseFailure(failure), envelope.id);
     } finally {
       if (controller && this.waits.get(envelope.id) === controller) this.waits.delete(envelope.id);
     }
   }
 
-  private sendError(replyTo: string, error: unknown, fallback: string): void {
+  private sendError(
+    send: NodeRequestServiceOptions['send'],
+    replyTo: string,
+    error: unknown,
+    fallback: string
+  ): void {
     const failure = safePublicError(error, fallback);
-    this.options.send('node.response', nodeResponseFailure(failure), replyTo);
+    send('node.response', nodeResponseFailure(failure), replyTo);
   }
 }
 

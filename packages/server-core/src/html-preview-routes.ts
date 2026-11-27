@@ -246,13 +246,13 @@ export function registerHtmlPreviewRoutes(input: {
             { ...current, workspaceId: grant.workspaceId }
           )) as {
             previewBoundaryVerified?: unknown;
-            file?: { size: number; offset: number; contentBase64: string };
+            file?: { size: number; offset: number; bytes: Uint8Array };
           };
           if (
             response.previewBoundaryVerified !== true ||
             !Number.isSafeInteger(response.file?.size) ||
             !Number.isSafeInteger(response.file?.offset) ||
-            typeof response.file?.contentBase64 !== 'string'
+            !(response.file?.bytes instanceof Uint8Array)
           )
             throw new Error('NODE_RESPONSE_INVALID');
           return response.file!;

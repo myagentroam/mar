@@ -14,6 +14,22 @@ export async function uploadBrowserFiles(
 ): Promise<void> {
   const send = (command: BrowserUpload['command']) => {
     lifecycle.signal.throwIfAborted();
+    if (command.action === 'chunk') {
+      const { bytes, transferId, index, offset } = command;
+      const query = new URLSearchParams({
+        connectionId,
+        ...selection,
+        transferId,
+        index: String(index),
+        offset: String(offset)
+      });
+      return request(`/api/browser/uploads?${query}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: new Blob([new Uint8Array(bytes)]),
+        signal: lifecycle.signal
+      });
+    }
     return request(`/api/browser/uploads?${new URLSearchParams({ connectionId })}`, {
       method: 'POST',
       body: JSON.stringify({ ...selection, command }),
@@ -33,9 +49,7 @@ export async function uploadBrowserFiles(
       const bytes = new Uint8Array(
         await file.slice(offset, offset + BROWSER_UPLOAD_CHUNK_BYTES).arrayBuffer()
       );
-      let binary = '';
-      for (const byte of bytes) binary += String.fromCharCode(byte);
-      await send({ action: 'chunk', transferId, index, offset, data: btoa(binary) });
+      await send({ action: 'chunk', transferId, index, offset, bytes });
     }
   }
   lifecycle.finishing();

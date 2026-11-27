@@ -325,7 +325,7 @@ describe('Node path and reconnection safety', () => {
       size: 3,
       sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/u),
       offset: 1,
-      contentBase64: 'AQ==',
+      bytes: Buffer.from([1]),
       nextOffset: 2
     });
     await expect(readWorkspaceFileContentRange(root, 'binary.bin', 3, 1)).resolves.toEqual({
@@ -333,7 +333,7 @@ describe('Node path and reconnection safety', () => {
       size: 3,
       sourceRevision: firstRange.sourceRevision,
       offset: 3,
-      contentBase64: '',
+      bytes: Buffer.alloc(0),
       nextOffset: null
     });
   });

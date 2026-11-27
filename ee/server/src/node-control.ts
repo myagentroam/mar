@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import type { ModelUsageStore } from '@myagentroam/server-core/model-usage-store';
 import {
   resolveNodeRuntimeCredential,
   runtimeCredentialConnectionError
 } from '@myagentroam/server-core/runtime-credential-channel';
 import { NodeIdentityControl } from '@myagentroam/server-core/node-identity-control';
+import { NodeFileRelay } from '@myagentroam/server-core/node-file-relay';
 import type { DirectTransferCoordinator } from '@myagentroam/server-core/direct-transfer-coordinator';
 import type { TerminalDirectCoordinator } from '@myagentroam/server-core/terminal-direct-coordinator';
 import type { RemoteDesktopDirectCoordinator } from '@myagentroam/server-core/remote-desktop-direct-coordinator';
@@ -71,6 +73,7 @@ export interface NodeBrokerTransport {
 }
 
 export interface NodeControlTransport extends NodeBrokerTransport {
+  fileSocketFor(nodeId: string): WebSocket | undefined;
   capabilities: NodeIdentityControl['nodeCapabilities'];
   supportsScheduledTasks: NodeControl['supportsScheduledTasks'];
   request: NodeControl['requestNode'];
@@ -153,6 +156,8 @@ export class NodeControl extends NodeIdentityControl {
   private readonly desktopRelaySockets: RemoteDesktopRelaySockets;
   private readonly browser: BrowserWorkbenchService | undefined;
   private readonly terminalRelay: TerminalRelayService;
+  private readonly fileRelay: NodeFileRelay;
+  private readonly fileControlBindings = new WeakMap<WebSocket, string>();
   private readonly messageProjector: NodeMessageProjector;
 
   constructor(
@@ -163,10 +168,27 @@ export class NodeControl extends NodeIdentityControl {
   ) {
     super(database, (direction, bytes) => traffic?.record('node', direction, bytes));
     this.runtimeCredentials = consumers.runtimeCredentials;
+    this.fileRelay = new NodeFileRelay({
+      database,
+      recordIncoming: (bytes) => traffic?.record('node', 'in', bytes),
+      currentControl: (nodeId, binding) => {
+        const control = this.sockets.get(nodeId);
+        return control &&
+          control.readyState === control.OPEN &&
+          this.allowsNodeBusiness(control) &&
+          this.fileControlBindings.get(control) === binding
+          ? control
+          : undefined;
+      },
+      response: (nodeId, socket, envelope, bytes, declaredLength) =>
+        this.requestBroker.resolveFile(nodeId, socket, envelope, bytes, declaredLength),
+      disconnected: (socket) => this.requestBroker.rejectFileSocket(socket)
+    });
     let components: NodeControlComponents;
     try {
       components = createComponents({
         socketFor: (nodeId) => this.sockets.get(nodeId),
+        fileSocketFor: (nodeId) => this.fileRelay.socketFor(nodeId),
         allows: (socket, operation) =>
           this.allowsNodeBusiness(socket) ||
           operation === 'node.upgrade.request' ||
@@ -202,6 +224,15 @@ export class NodeControl extends NodeIdentityControl {
     this.messageProjector = components.messageProjector;
   }
 
+  protected override capabilityAckPayload(socket: WebSocket): Record<string, unknown> {
+    const payload = super.capabilityAckPayload(socket);
+    if (!this.allowsNodeBusiness(socket)) return payload;
+    // Do not pair a delayed handshake with a different control connection for the same Node.
+    const fileControlBinding = this.fileControlBindings.get(socket) ?? randomUUID();
+    this.fileControlBindings.set(socket, fileControlBinding);
+    return { ...payload, fileControlBinding };
+  }
+
   runtimeCredentialCapability(nodeId: string) {
     return this.nodeCapabilities(nodeId)?.marAgentRuntimeCredentials;
   }
@@ -227,6 +258,7 @@ export class NodeControl extends NodeIdentityControl {
 
   protected override onNodeConnected(nodeId: string, replaced: boolean): void {
     if (replaced) {
+      this.fileRelay.disconnectNode(nodeId);
       this.requestBroker.rejectNode(nodeId, new Error('NODE_CONNECTION_REPLACED'));
       this.desktopDirect.revokeNode(nodeId, 'NODE_CONNECTION_REPLACED');
       this.desktopRelay.revokeNode(nodeId);
@@ -291,6 +323,7 @@ export class NodeControl extends NodeIdentityControl {
       );
   }
   protected override onNodeDisconnected(nodeId: string): void {
+    this.fileRelay.disconnectNode(nodeId);
     this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     this.browser?.revokeNode(nodeId);
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
@@ -307,6 +340,9 @@ export class NodeControl extends NodeIdentityControl {
   }
 
   protected override onBusinessAdmissionRevoked(nodeId: string): void {
+    const control = this.sockets.get(nodeId);
+    if (control) this.fileControlBindings.delete(control);
+    this.fileRelay.disconnectNode(nodeId);
     this.browser?.revokeNode(nodeId);
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
     this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
@@ -324,6 +360,10 @@ export class NodeControl extends NodeIdentityControl {
    */
   attachTerminal(socket: WebSocket): void {
     this.terminalRelay.attachNode(socket);
+  }
+
+  attachFileRelay(socket: WebSocket): void {
+    this.fileRelay.attach(socket);
   }
 
   createTerminalTicket(input: {
@@ -502,6 +542,7 @@ export class NodeControl extends NodeIdentityControl {
       () => super.close(),
       () => this.requestBroker.close(),
       () => this.terminalRelay.close(),
+      () => this.fileRelay.close(),
       () => this.closeAllWorkbench()
     ]) {
       try {

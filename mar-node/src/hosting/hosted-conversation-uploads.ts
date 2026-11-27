@@ -180,7 +180,7 @@ export class HostedConversationUploads {
     if (upload.status !== 'UPLOADING') throw new Error('HOSTED_CONVERSATION_UPLOAD_STATE_INVALID');
     if (input.offset !== upload.receivedBytes)
       throw new Error('HOSTED_CONVERSATION_UPLOAD_OFFSET_INVALID');
-    const chunk = Buffer.from(input.dataBase64, 'base64');
+    const chunk = input.bytes;
     if (upload.receivedBytes + chunk.byteLength > upload.size)
       throw new Error('HOSTED_CONVERSATION_UPLOAD_SIZE_INVALID');
     await assertUploadTemporaryFile(upload.temporaryPath, upload.receivedBytes);

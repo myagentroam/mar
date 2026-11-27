@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const BROWSER_UPLOAD_CHUNK_BYTES = 128 * 1024;
-export const BROWSER_UPLOAD_REQUEST_BYTES = 4 * Math.ceil(BROWSER_UPLOAD_CHUNK_BYTES / 3) + 1024;
+export const BROWSER_UPLOAD_REQUEST_BYTES = BROWSER_UPLOAD_CHUNK_BYTES;
 
 const id = z.string().uuid();
 export const browserFileChooserSchema = z.strictObject({ id, multiple: z.boolean() });
@@ -27,11 +27,9 @@ export const browserUploadCommandSchema = z.discriminatedUnion('action', [
     transferId: id,
     index: z.number().int().nonnegative().safe(),
     offset: z.number().int().nonnegative().safe(),
-    data: z
-      .string()
-      .min(4)
-      .max(4 * Math.ceil(BROWSER_UPLOAD_CHUNK_BYTES / 3))
-      .refine((value) => value.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/u.test(value))
+    bytes: z
+      .instanceof(Uint8Array)
+      .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= BROWSER_UPLOAD_CHUNK_BYTES)
   }),
   z.strictObject({ action: z.literal('finish'), transferId: id }),
   z.strictObject({ action: z.literal('cancel') })
@@ -62,7 +60,9 @@ export const browserDownloadPageSchema = z.strictObject({
 });
 export const browserDownloadChunkSchema = z.strictObject({
   offset: z.number().int().nonnegative().safe(),
-  contentBase64: z.string().max(4 * Math.ceil(BROWSER_DOWNLOAD_CHUNK_BYTES / 3))
+  bytes: z
+    .instanceof(Uint8Array)
+    .refine((bytes) => bytes.byteLength <= BROWSER_DOWNLOAD_CHUNK_BYTES)
 });
 const offset = z.number().int().nonnegative().safe();
 const downloadRead = z.strictObject({

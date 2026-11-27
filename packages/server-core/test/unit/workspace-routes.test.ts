@@ -222,9 +222,7 @@ describe('Shared Workspace HTTP routes', () => {
           path: data.path,
           size: 10,
           offset: data.offset,
-          contentBase64: Buffer.from('0123456789')
-            .subarray(data.offset, data.offset + data.limit)
-            .toString('base64')
+          bytes: Buffer.from('0123456789').subarray(data.offset, data.offset + data.limit)
         }
       };
     });
@@ -294,7 +292,7 @@ describe('Shared Workspace HTTP routes', () => {
           path,
           size: original.length,
           offset,
-          contentBase64: original.subarray(offset, offset + limit).toString('base64')
+          bytes: original.subarray(offset, offset + limit)
         }
       };
     });
@@ -320,9 +318,7 @@ describe('Shared Workspace HTTP routes', () => {
             path,
             size,
             offset: data.offset,
-            contentBase64: Buffer.alloc(Math.min(data.limit, size - data.offset), 7).toString(
-              'base64'
-            )
+            bytes: Buffer.alloc(Math.min(data.limit, size - data.offset), 7)
           }
         };
       });
@@ -359,9 +355,7 @@ describe('Shared Workspace HTTP routes', () => {
             path: 'sound.wav',
             size,
             offset: data.offset,
-            contentBase64: Buffer.alloc(Math.min(data.limit, size - data.offset), 9).toString(
-              'base64'
-            )
+            bytes: Buffer.alloc(Math.min(data.limit, size - data.offset), 9)
           }
         };
       });
@@ -381,7 +375,7 @@ describe('Shared Workspace HTTP routes', () => {
   it('retains the complete non-media preview limit and rejects invalid ranges', async () => {
     const { app, requestNode, headers } = fixture();
     requestNode.mockResolvedValue({
-      file: { path: 'large.docx', size: 20 * 1024 * 1024 + 1, offset: 0, contentBase64: 'AA==' }
+      file: { path: 'large.docx', size: 20 * 1024 * 1024 + 1, offset: 0, bytes: Buffer.from([0]) }
     });
     const url = '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=large.docx';
     expect((await app.inject({ method: 'GET', url, headers })).statusCode).toBe(413);
@@ -404,9 +398,7 @@ describe('Shared Workspace HTTP routes', () => {
             path: 'clip.mp4',
             size,
             offset: data.offset,
-            contentBase64: Buffer.alloc(Math.min(data.limit, size - data.offset), 5).toString(
-              'base64'
-            )
+            bytes: Buffer.alloc(Math.min(data.limit, size - data.offset), 5)
           }
         };
       });
@@ -428,7 +420,7 @@ describe('Shared Workspace HTTP routes', () => {
   it('rejects Git requests beyond the existing 20 MiB window before streaming', async () => {
     const { app, requestNode, headers } = fixture();
     requestNode.mockResolvedValue({
-      file: { path: 'clip.mp4', size: 20 * 1024 * 1024 + 1, offset: 0, contentBase64: 'AA==' }
+      file: { path: 'clip.mp4', size: 20 * 1024 * 1024 + 1, offset: 0, bytes: Buffer.from([0]) }
     });
     const url = `/api/workspaces/workspace-1/git/commits/${'a'.repeat(40)}/files/content?nodeId=node-1&path=clip.mp4`;
     expect((await app.inject({ method: 'GET', url, headers })).statusCode).toBe(413);
@@ -454,7 +446,7 @@ describe('Shared Workspace HTTP routes', () => {
             path: 'clip.mp4',
             size,
             offset,
-            contentBase64: Buffer.alloc(limit, 7).toString('base64')
+            bytes: Buffer.alloc(limit, 7)
           }
         };
       });
@@ -527,7 +519,12 @@ describe('Shared Workspace HTTP routes', () => {
     expect(requestNode).toHaveBeenCalledWith(
       'node-1',
       'workspace.files.upload.chunk',
-      { workspaceId: 'workspace-1', uploadId: 'upload-1', offset: 0, dataBase64: 'AAH/' },
+      {
+        workspaceId: 'workspace-1',
+        uploadId: 'upload-1',
+        offset: 0,
+        bytes: Buffer.from([0, 1, 255])
+      },
       { userId: 1, sessionHash: 'session-hash', workspaceId: 'workspace-1' },
       undefined
     );

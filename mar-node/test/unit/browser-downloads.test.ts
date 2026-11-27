@@ -111,7 +111,7 @@ test('an open context expires files from completion, not from download start or 
     clock.mockReturnValue(30 * 24 * hour);
     await vi.advanceTimersByTimeAsync(hour);
     expect(await downloads.execute({ action: 'read', id: old.id, offset: 0, limit: 3 })).toEqual({
-      contentBase64: Buffer.from('old').toString('base64'),
+      bytes: Buffer.from('old'),
       offset: 0
     });
     const before = changed.mock.calls.length;

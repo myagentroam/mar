@@ -10,6 +10,7 @@ import { type SessionLookup } from '@myagentroam/server-core/session';
 import type { NodeControl } from '../node-control.js';
 import type { WebSocket } from 'ws';
 import type { FastifyRequest } from 'fastify';
+import { FILE_RELAY_MAX_FRAME_BYTES } from '@myagentroam/protocol';
 import { DesktopWebSocketDispatcher } from '../service/desktop-websocket-dispatcher.js';
 import { BROWSER_CONTROL_MAX_BYTES, MAX_TERMINAL_MUX_BYTES } from '@myagentroam/protocol';
 import { registerBrowserFileRoutes } from './browser-file-routes.js';
@@ -42,6 +43,11 @@ export function registerRealtimeRoutes(input: {
       options: { perMessageDeflate }
     });
     const desktopWebSockets = new DesktopWebSocketDispatcher(routes.websocketServer);
+    const fileWebSockets = new DesktopWebSocketDispatcher(
+      routes.websocketServer,
+      FILE_RELAY_MAX_FRAME_BYTES,
+      perMessageDeflate
+    );
     const browserWebSockets = new DesktopWebSocketDispatcher(
       routes.websocketServer,
       BROWSER_CONTROL_MAX_BYTES
@@ -57,6 +63,7 @@ export function registerRealtimeRoutes(input: {
     routes.addHook('preClose', async () => {
       await terminalMuxWebSockets?.close();
       await browserWebSockets.close();
+      await fileWebSockets.close();
       await desktopWebSockets.close();
     });
     const desktopWire = async (request: FastifyRequest) => desktopWebSockets.mark(request.raw);
@@ -72,6 +79,14 @@ export function registerRealtimeRoutes(input: {
     routes.get('/api/node/connect', { websocket: true }, (socket) => nodeControl.attach(socket));
     routes.get('/api/node/terminal-connect', { websocket: true }, (socket) =>
       nodeControl.attachTerminal(socket)
+    );
+    routes.get(
+      '/api/node/file-connect',
+      {
+        websocket: true,
+        preValidation: async (request) => fileWebSockets.mark(request.raw)
+      },
+      (socket) => nodeControl.attachFileRelay(socket)
     );
     routes.get(
       '/api/node/browser-relay',

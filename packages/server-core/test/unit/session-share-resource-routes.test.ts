@@ -64,7 +64,7 @@ async function fixture(handleError?: typeof databaseError) {
         file: {
           size: fileBytes.length,
           offset,
-          contentBase64: fileBytes.subarray(offset, offset + limit).toString('base64')
+          bytes: fileBytes.subarray(offset, offset + limit)
         }
       };
     }
@@ -371,7 +371,7 @@ describe('Session-share resource routes', () => {
       {
         uploadId,
         offset: 0,
-        dataBase64: 'YWJj',
+        bytes: Buffer.from('abc'),
         workspaceId: 'workspace-fixed',
         sessionId: 'session-current'
       },

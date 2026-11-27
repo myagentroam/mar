@@ -496,7 +496,7 @@ export class WorkspaceWorkbenchService {
             refs
           );
           if (range.size !== descriptor.size) throw new Error('DIRECT_FILE_REVISION_CHANGED');
-          const bytes = Buffer.from(range.contentBase64, 'base64');
+          const bytes = range.bytes;
           offset += bytes.length;
           if (bytes.length > 0) yield bytes;
           if (offset === rangeEnd) break;
@@ -541,7 +541,7 @@ export class WorkspaceWorkbenchService {
         length,
         this.refs(input)
       );
-      const bytes = Buffer.from(range.contentBase64, 'base64');
+      const bytes = range.bytes;
       if (range.size !== size || bytes.length !== length)
         throw new Error('DIRECT_FILE_REVISION_CHANGED');
       return {

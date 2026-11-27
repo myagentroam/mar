@@ -150,10 +150,14 @@ export class NodeRequestBroker {
       readonly gitForwarding: Pick<GitExecutionForwarding, 'prepare'>;
     },
     log: (event: string, fields: Record<string, unknown>) => void = () => undefined,
-    traffic?: ServerTrafficMetrics
+    traffic?: ServerTrafficMetrics,
+    fileSocketFor?: (nodeId: string) => WebSocket | undefined
   ) {
-    this.channel = new NodeRequestChannel(socketFor, log, (bytes) =>
-      traffic?.record('node', 'out', bytes)
+    this.channel = new NodeRequestChannel(
+      socketFor,
+      log,
+      (bytes) => traffic?.record('node', 'out', bytes),
+      fileSocketFor
     );
   }
 
@@ -466,6 +470,20 @@ export class NodeRequestBroker {
 
   resolve(nodeId: string, envelope: NodeEnvelope): void {
     this.channel.resolve(nodeId, envelope);
+  }
+
+  resolveFile(
+    nodeId: string,
+    socket: WebSocket,
+    envelope: NodeEnvelope,
+    bytes: Uint8Array,
+    declaredLength: unknown
+  ): void {
+    this.channel.resolve(nodeId, envelope, { socket, bytes, declaredLength });
+  }
+
+  rejectFileSocket(socket: WebSocket): void {
+    this.channel.rejectFileSocket(socket);
   }
 
   rejectNode(nodeId: string, error: Error): void {

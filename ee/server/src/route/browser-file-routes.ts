@@ -15,10 +15,28 @@ import {
   safePublicError,
   sendError
 } from '@myagentroam/server-core/http-errors';
-import { fileContentChunks } from '@myagentroam/server-core/file-content-stream';
+import { domainErrorStatus } from '@myagentroam/server-core/domain-errors';
+import {
+  fileContentChunks,
+  registerFileChunkParser
+} from '@myagentroam/server-core/file-content-stream';
 import type { NodeControl } from '../node-control.js';
 
 const target = z.object({ connectionId: z.string().min(1).max(512) });
+const chunkNumber = z
+  .string()
+  .regex(/^\d{1,16}$/u)
+  .transform(Number)
+  .pipe(z.number().int().nonnegative().safe());
+const uploadChunk = target
+  .extend({
+    attachmentId: z.string().uuid(),
+    chooserId: z.string().uuid(),
+    transferId: z.string().uuid(),
+    index: chunkNumber,
+    offset: chunkNumber
+  })
+  .strict();
 const downloadTarget = target.extend({ attachmentId: z.string().uuid() });
 const listTarget = downloadTarget.extend({
   offset: z.coerce.number().int().nonnegative().safe(),
@@ -34,6 +52,7 @@ export function registerBrowserFileRoutes(
   origin: string | undefined,
   node: Pick<NodeControl, 'uploadBrowserFile' | 'downloadBrowserFile' | 'openBrowserDownload'>
 ): void {
+  registerFileChunkParser(routes);
   function session(request: FastifyRequest, reply: FastifyReply, write: boolean) {
     if (write && !isAllowedOrigin(request, origin)) {
       void sendError(reply, 403, 'ORIGIN_NOT_ALLOWED');
@@ -55,7 +74,22 @@ export function registerBrowserFileRoutes(
       const user = session(request, reply, true);
       if (!user) return;
       const query = target.safeParse(request.query);
-      const parsed = browserUploadSchema.safeParse(request.body);
+      const chunk = Buffer.isBuffer(request.body)
+        ? uploadChunk.safeParse(request.query)
+        : undefined;
+      const parsed = chunk?.success
+        ? browserUploadSchema.safeParse({
+            attachmentId: chunk.data.attachmentId,
+            chooserId: chunk.data.chooserId,
+            command: {
+              action: 'chunk',
+              transferId: chunk.data.transferId,
+              index: chunk.data.index,
+              offset: chunk.data.offset,
+              bytes: request.body
+            }
+          })
+        : browserUploadSchema.safeParse(request.body);
       if (!query.success || !parsed.success) return sendError(reply, 400, 'BROWSER_UPLOAD_INVALID');
       try {
         await node.uploadBrowserFile(user, query.data.connectionId, parsed.data);
@@ -146,7 +180,9 @@ function fileError(reply: FastifyReply, error: unknown, fallback: string) {
       ? 504
       : failure.code === 'BROWSER_NOT_AUTHORIZED' || failure.code === 'BROWSER_LEASE_ENDED'
         ? 403
-        : 409,
+        : failure.code === 'FILE_RELAY_BUSY' || failure.code === 'FILE_RELAY_UNAVAILABLE'
+          ? domainErrorStatus(failure.code)
+          : 409,
     failure.code,
     errorResponseOptions(failure)
   );

@@ -168,7 +168,7 @@ export class WorkspaceFileService {
   ): Promise<ImagePreview> {
     const preview = imagePreviewOptionsSchema.parse(input.preview);
     const maxFileBytes = imagePreviewSourceLimit(preview);
-    const chunks: Buffer[] = [];
+    const chunks: Uint8Array[] = [];
     let offset = 0;
     let revision: string | undefined;
     for (;;) {
@@ -179,13 +179,13 @@ export class WorkspaceFileService {
         maxFileBytes
       )) as {
         readonly sourceRevision: string;
-        readonly contentBase64: string;
+        readonly bytes: Uint8Array;
         readonly nextOffset: number | null;
       };
       if (revision !== undefined && revision !== chunk.sourceRevision)
         throw new Error('FILE_CHANGED');
       revision = chunk.sourceRevision;
-      chunks.push(Buffer.from(chunk.contentBase64, 'base64'));
+      chunks.push(chunk.bytes);
       if (chunk.nextOffset === null) break;
       if (chunk.nextOffset <= offset) throw new Error('FILE_RANGE_INVALID');
       offset = chunk.nextOffset;
@@ -245,12 +245,12 @@ export class WorkspaceFileService {
         )) as {
           readonly size: number;
           readonly sourceRevision: string;
-          readonly contentBase64: string;
+          readonly bytes: Uint8Array;
           readonly nextOffset: number | null;
         };
         if (range.size !== input.size || range.sourceRevision !== input.revision)
           throw new Error('DIRECT_FILE_REVISION_CHANGED');
-        const bytes = Buffer.from(range.contentBase64, 'base64');
+        const bytes = range.bytes;
         offset += bytes.length;
         if (bytes.length > 0) yield bytes;
         if (offset === endOffset) break;
@@ -297,9 +297,9 @@ export class WorkspaceFileService {
       )) as {
         readonly size: number;
         readonly sourceRevision: string;
-        readonly contentBase64: string;
+        readonly bytes: Uint8Array;
       };
-      const bytes = Buffer.from(read.contentBase64, 'base64');
+      const bytes = read.bytes;
       if (
         read.size !== expectedSize ||
         read.sourceRevision !== input.revision ||

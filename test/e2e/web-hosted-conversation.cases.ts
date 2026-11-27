@@ -1,3 +1,4 @@
+import { encodeFileRelayFrame } from '../../packages/protocol/src/index.js';
 import { expect, test, type Page } from '@playwright/test';
 import {
   hostedConversationSnapshotSchema,
@@ -1101,7 +1102,9 @@ test('Hosted reply images appear inline and open previews only for projected fil
   const preview = page.getByRole('dialog', { name: 'Output chart', exact: true });
   await expect(preview).toBeVisible();
   await previewResponse;
-  await expect.poll(() => preview.locator('img').evaluate((image) => image.naturalWidth)).toBe(16);
+  await expect
+    .poll(() => preview.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(16);
   await page.keyboard.press('Escape');
   await expect(preview).toBeHidden();
 
@@ -1112,7 +1115,9 @@ test('Hosted reply images appear inline and open previews only for projected fil
     files: [{ ...chart, updatedAt: chart.updatedAt + 1 }],
     error: null
   });
-  await expect.poll(() => thumbnail.evaluate((image) => image.naturalWidth)).toBe(32);
+  await expect
+    .poll(() => thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(32);
   expect(rawRequests).toEqual([]);
 });
 
@@ -1393,13 +1398,20 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
         url: route.request().url(),
         body: route.request().postData() ?? ''
       });
-      await json(route, {
-        file: snapshot.files[0],
-        encoding: 'base64',
-        content: 'cmVzdWx0',
-        offset: 0,
-        nextOffset: null,
-        eof: true
+      await route.fulfill({
+        contentType: 'application/octet-stream',
+        body: Buffer.from(
+          encodeFileRelayFrame(
+            {
+              type: 'file.read',
+              file: snapshot.files[0],
+              offset: 0,
+              nextOffset: null,
+              eof: true
+            },
+            Buffer.from('result')
+          )
+        )
       });
     }
   );
@@ -1467,7 +1479,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     }
   );
   await page.route(
-    /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/uploads\/[^/]+\/chunks$/,
+    /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/uploads\/[^/]+\/chunks\?offset=\d+$/,
     async (route) => {
       fileRequests.push({
         method: route.request().method(),
@@ -1478,11 +1490,10 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
         new URL(route.request().url()).pathname.split('/').at(-2)!
       );
       const upload = activeUploads.get(uploadId)!;
-      const input = JSON.parse(route.request().postData() ?? '{}') as {
-        offset: number;
-        dataBase64: string;
-      };
-      upload.receivedBytes = input.offset + Buffer.from(input.dataBase64, 'base64').byteLength;
+      expect(route.request().headers()['content-type']).toBe('application/octet-stream');
+      const offset = Number(new URL(route.request().url()).searchParams.get('offset'));
+      expect(offset).toBe(upload.receivedBytes);
+      upload.receivedBytes = offset + route.request().postDataBuffer()!.byteLength;
       await json(route, {
         upload: {
           ...upload,

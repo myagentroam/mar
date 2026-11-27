@@ -72,6 +72,52 @@ describe('Server hosted conversation routes', () => {
     }
   });
 
+  it('forwards an authorized upload chunk as bytes and rejects a mismatched request body', async () => {
+    const fixture = routeFixture();
+    const app = Fastify();
+    registerHostedConversationRoutes({ app, ...fixture, publicOrigin: undefined });
+    const url =
+      '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1/chunks?offset=7';
+    const bytes = Buffer.of(0, 0x80, 0xff);
+    const method = 'POST' as const;
+    try {
+      expect(
+        (
+          await app.inject({
+            method,
+            url,
+            headers,
+            payload: { dataBase64: bytes.toString('base64') }
+          })
+        ).statusCode
+      ).toBe(400);
+      expect(fixture.nodeControl.requestHostedConversationNode).not.toHaveBeenCalled();
+      const request = {
+        method,
+        url,
+        headers: { ...headers, 'content-type': 'application/octet-stream' },
+        payload: bytes
+      };
+      fixture.templates.assertCanUse.mockRejectedValueOnce(
+        new Error('CONVERSATION_TEMPLATE_NOT_AUTHORIZED')
+      );
+      expect((await app.inject(request)).statusCode).toBe(403);
+      expect(
+        fixture.nodeControl.requestHostedConversationNode.mock.calls.some(
+          (call) => call[1] === 'conversation.hosted.files.upload.chunk'
+        )
+      ).toBe(false);
+      expect((await app.inject(request)).statusCode).toBe(200);
+      expect(fixture.nodeControl.requestHostedConversationNode.mock.lastCall?.slice(0, 3)).toEqual([
+        'node-1',
+        'conversation.hosted.files.upload.chunk',
+        { conversationId: 'conversation-1', uploadId: 'upload-1', offset: 7, bytes }
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('streams large logical hosted files with range, attachment, and SVG safety semantics', async () => {
     const fixture = routeFixture();
     const imageContent = Buffer.alloc(1_980_000, 0xab);
@@ -132,8 +178,7 @@ describe('Server hosted conversation routes', () => {
         const nextOffset = input.offset + chunk.length;
         return {
           file,
-          encoding: 'base64',
-          content: chunk.toString('base64'),
+          bytes: chunk,
           offset: input.offset,
           nextOffset: nextOffset === content.length ? null : nextOffset,
           eof: nextOffset === content.length
@@ -310,8 +355,7 @@ describe('Server hosted conversation routes', () => {
                   ...file,
                   updatedAt: 2_000
                 },
-          encoding: 'base64',
-          content: chunk.toString('base64'),
+          bytes: chunk,
           offset: input.offset,
           nextOffset: nextOffset === content.length ? null : nextOffset,
           eof: nextOffset === content.length
@@ -338,6 +382,56 @@ describe('Server hosted conversation routes', () => {
       error: { code: 'NODE_RESPONSE_INVALID' }
     });
     await app.close();
+  });
+
+  it('does not frame a chunk with mismatched file identity, offset, length, or EOF', async () => {
+    const fixture = routeFixture();
+    const file = {
+      id: 'file-1',
+      conversationId: 'conversation-1',
+      category: 'OUTPUT',
+      relativePath: 'report.txt',
+      displayName: 'report.txt',
+      mimeType: 'text/plain',
+      size: 4,
+      source: 'AGENT',
+      createdAt: 1_000,
+      updatedAt: 1_000
+    } as const;
+    const valid = { file, offset: 1, bytes: Buffer.of(0xff), nextOffset: 2, eof: false };
+    let chunk: unknown = valid;
+    fixture.nodeControl.requestHostedConversationNode.mockImplementation(
+      async (_nodeId, operation) => {
+        if (operation === 'conversation.hosted.get') return hostedSnapshot();
+        if (operation === 'conversation.hosted.file.read') return chunk;
+        throw new Error(`UNEXPECTED_OPERATION_${operation}`);
+      }
+    );
+    const app = Fastify();
+    registerHostedConversationRoutes({ app, ...fixture, publicOrigin: undefined });
+    const read = () =>
+      app.inject({
+        url: '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-1?offset=1&limit=1',
+        headers: { cookie: headers.cookie }
+      });
+    try {
+      expect((await read()).statusCode).toBe(200);
+      for (const invalid of [
+        { ...valid, file: { ...file, id: 'another-file' } },
+        { ...valid, file: { ...file, conversationId: 'another-conversation' } },
+        { ...valid, offset: 0, nextOffset: 1 },
+        { ...valid, bytes: Buffer.of(1, 2), nextOffset: 3 },
+        { ...valid, eof: true, nextOffset: null },
+        { ...valid, file: { ...file, size: 2 } }
+      ]) {
+        chunk = invalid;
+        const response = await read();
+        expect(response.statusCode).toBe(502);
+        expect(response.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   it('validates and forwards logical hosted file deletion without accepting paths', async () => {
@@ -615,6 +709,7 @@ const model: MarAgentRuntimeModelConfiguration = {
   inputCapabilities: ['TEXT'],
   outputCapabilities: ['TEXT'],
   reasoningEfforts: ['high'],
+  contextGcMode: 'auto',
   hostedWebSearch: false,
   responsesPreviousResponseId: false,
   enabled: true

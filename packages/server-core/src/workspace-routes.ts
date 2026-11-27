@@ -27,6 +27,7 @@ import {
   fileContentChunks,
   fileContentType,
   parseHttpByteRange,
+  registerFileChunkParser,
   sendFileContentHead,
   type FileContentChunk
 } from './file-content-stream.js';
@@ -55,11 +56,7 @@ export function registerWorkspaceRoutes(input: {
   readonly resources: ResourceAccessService;
 }): void {
   const { app, database, nodeControl, publicOrigin, resources, databaseError } = input;
-  app.addContentTypeParser(
-    'application/octet-stream',
-    { parseAs: 'buffer', bodyLimit: WORKSPACE_UPLOAD_CHUNK_BYTES },
-    (_request, body, done) => done(null, body)
-  );
+  registerFileChunkParser(app);
   app.get<{ Querystring: { nodeId?: string } }>('/api/workspaces', async (request, reply) => {
     const admin = protectedAdmin(database, request, reply);
     if (admin === undefined) return;
@@ -1064,7 +1061,7 @@ export function registerWorkspaceRoutes(input: {
             workspaceId: request.params.workspaceId,
             uploadId: request.params.uploadId,
             offset,
-            dataBase64: request.body.toString('base64')
+            bytes: request.body
           }
         )
       );
@@ -1555,7 +1552,7 @@ async function readFileContentChunk(
     file === null ||
     !Number.isSafeInteger((file as FileContentChunk).size) ||
     !Number.isSafeInteger((file as FileContentChunk).offset) ||
-    typeof (file as FileContentChunk).contentBase64 !== 'string'
+    !((file as FileContentChunk).bytes instanceof Uint8Array)
   )
     throw new Error('NODE_RESPONSE_INVALID');
   return file as FileContentChunk;
@@ -1619,7 +1616,7 @@ async function readHistoryFileContentChunk(
     file === null ||
     !Number.isSafeInteger((file as FileContentChunk).size) ||
     !Number.isSafeInteger((file as FileContentChunk).offset) ||
-    typeof (file as FileContentChunk).contentBase64 !== 'string'
+    !((file as FileContentChunk).bytes instanceof Uint8Array)
   )
     throw new Error('NODE_RESPONSE_INVALID');
   return file as FileContentChunk;

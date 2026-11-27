@@ -1,3 +1,4 @@
+import { encodeFileRelayFrame } from '@myagentroam/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../src/util/api-error.js';
 import {
@@ -499,7 +500,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
         if (path.endsWith('/preflight'))
           return { files: [{ name: 'note.txt', status: 'READY' }] } as never;
         if (path.endsWith('/uploads')) return { upload } as never;
-        if (stage === 'complete' && path.endsWith('/chunks'))
+        if (stage === 'complete' && path.includes('/chunks?offset='))
           return { upload: { ...upload, receivedBytes: 3 } } as never;
         if (stage === 'complete' && path.endsWith('/complete'))
           return {
@@ -718,7 +719,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
             status: 'UPLOADING'
           }
         } as never;
-      if (path.endsWith('/chunks'))
+      if (path.includes('/chunks?offset='))
         return {
           upload: {
             uploadId: 'upload-1',
@@ -744,14 +745,10 @@ describe('Web Hosted Conversation Workspace Service', () => {
           }
         } as never;
       if (path.includes('/files/file-uploaded'))
-        return {
-          file: uploadedFile,
-          encoding: 'base64',
-          content: 'YWJj',
-          offset: 0,
-          nextOffset: null,
-          eof: true
-        } as never;
+        return encodeFileRelayFrame(
+          { type: 'file.read', file: uploadedFile, offset: 0, nextOffset: null, eof: true },
+          new TextEncoder().encode('abc')
+        ).buffer as never;
       return undefined as never;
     });
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
@@ -772,18 +769,18 @@ describe('Web Hosted Conversation Workspace Service', () => {
       file: { id: 'file-uploaded' }
     });
     await expect(workspace.readFile('file-uploaded')).resolves.toMatchObject({
-      content: 'YWJj',
+      bytes: new TextEncoder().encode('abc'),
       eof: true
     });
 
-    expect(JSON.parse(String(requests[2]?.init?.body))).toEqual({
-      offset: 0,
-      dataBase64: 'YWJj'
-    });
+    expect(requests[2]?.init?.headers).toEqual({ 'content-type': 'application/octet-stream' });
+    expect(new Uint8Array(requests[2]?.init?.body as ArrayBuffer)).toEqual(
+      new TextEncoder().encode('abc')
+    );
     expect(requests.map((entry) => entry.path)).toEqual([
       '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/preflight',
       '/api/nodes/node-1/hosted-conversations/conversation-1/uploads',
-      '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1/chunks',
+      '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1/chunks?offset=0',
       '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1/complete',
       '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-uploaded?offset=0&limit=524288'
     ]);
@@ -1021,7 +1018,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
             status: 'UPLOADING'
           }
         } as never;
-      if (path.endsWith('/chunks')) throw new Error('NETWORK_FAILED');
+      if (path.includes('/chunks?offset=')) throw new Error('NETWORK_FAILED');
       if (path.endsWith('/cancel'))
         return {
           upload: {
@@ -1117,31 +1114,33 @@ describe('Web Hosted Conversation Workspace Service', () => {
       path: '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-cancelled/cancel',
       init: { method: 'POST', body: '{}' }
     });
-    expect(requests.some((entry) => entry.path.endsWith('/chunks'))).toBe(false);
+    expect(requests.some((entry) => entry.path.includes('/chunks?offset='))).toBe(false);
   });
 
   it('Requires file chunk responses to match the request offset and projected size to prevent download loops or misaligned assembly', async () => {
     const workspace = service(
       async () =>
-        ({
-          file: {
-            id: 'file-1',
-            conversationId: 'conversation-1',
-            category: 'OUTPUT',
-            relativePath: 'result.txt',
-            displayName: 'result.txt',
-            mimeType: 'text/plain',
-            size: 3,
-            source: 'AGENT',
-            createdAt: 2,
-            updatedAt: 2
+        encodeFileRelayFrame(
+          {
+            type: 'file.read',
+            file: {
+              id: 'file-1',
+              conversationId: 'conversation-1',
+              category: 'OUTPUT',
+              relativePath: 'result.txt',
+              displayName: 'result.txt',
+              mimeType: 'text/plain',
+              size: 3,
+              source: 'AGENT',
+              createdAt: 2,
+              updatedAt: 2
+            },
+            offset: 0,
+            nextOffset: 1,
+            eof: false
           },
-          encoding: 'base64',
-          content: 'YQ==',
-          offset: 0,
-          nextOffset: 1,
-          eof: false
-        }) as never
+          Uint8Array.of(97)
+        ).buffer as never
     );
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
 
