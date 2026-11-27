@@ -95,6 +95,13 @@ function select(next: BoardSelection) {
   if (boardId.value !== previousBoard) emit('board', boardId.value);
 }
 
+function readClippedBoardTitle() {
+  const label = boardHeadingLabel.value;
+  if (label && label.clientHeight > 0 && label.scrollHeight > label.clientHeight) {
+    return label.textContent?.trim() || undefined;
+  }
+}
+
 function time(at: number) {
   return new Intl.DateTimeFormat(currentLocale(), {
     dateStyle: 'short',
@@ -169,13 +176,9 @@ function time(at: number) {
           :aria-label="translate('collaboration.whiteboard')"
         >
           <div class="board-heading">
-            <h3
-              v-tooltip="() => readOverflowText(boardHeadingLabel)"
-              class="board-title"
-              tabindex="0"
-            >
-              <MarIcon name="collection" />
-              <span ref="boardHeadingLabel" class="clip-title">
+            <h3 v-tooltip="readClippedBoardTitle" class="board-title" tabindex="0">
+              <span class="board-title-icon"><MarIcon name="collection" /></span>
+              <span ref="boardHeadingLabel" class="board-title-label">
                 {{
                   boardTitle
                     ? translate(
@@ -269,15 +272,27 @@ function time(at: number) {
 }
 .board-heading .board-title {
   display: flex;
-  align-items: center;
+  align-items: start;
   gap: 0.375rem;
   margin: 0;
   font-size: var(--mar-font-size-body);
   font-weight: 400;
+  line-height: 1.5;
 }
-.board-title :deep(.mar-icon) {
+.board-title-icon {
   flex: none;
+  display: grid;
+  place-items: center;
+  block-size: 1lh;
   color: var(--mar-text-secondary);
+}
+.board-title-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  /* Legacy clamping preserves scroll height for the overflow-only tooltip. */
+  -webkit-line-clamp: 2;
+  min-inline-size: 0;
+  overflow: clip;
 }
 .collaboration-inspector small {
   font-size: var(--mar-font-size-meta);

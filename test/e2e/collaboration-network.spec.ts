@@ -12,9 +12,13 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-async function openNetwork(page: Page, theme: 'dark' | 'daylight', longTitles = false) {
+async function openNetwork(
+  page: Page,
+  theme: 'dark' | 'daylight',
+  titleMode?: 'long' | 'unbroken'
+) {
   await page.goto(
-    `${fixture.url}collaboration-network.html?theme=${theme}${longTitles ? '&longTitles' : ''}`
+    `${fixture.url}collaboration-network.html?theme=${theme}${titleMode ? `&titleMode=${titleMode}` : ''}`
   );
   await page.getByRole('button', { name: '查看协作网络' }).click();
   const dialog = page.getByRole('dialog', { name: '协作网络', exact: true });
@@ -22,6 +26,15 @@ async function openNetwork(page: Page, theme: 'dark' | 'daylight', longTitles = 
   const current = port.locator('[aria-current="true"]');
   await expect(current).toBeVisible();
   return { dialog, port, current };
+}
+
+function boardTitleLayout(label: Locator) {
+  return label.evaluate((el) => ({
+    lines: Math.round(
+      el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)
+    ),
+    clipped: el.scrollHeight > el.clientHeight
+  }));
 }
 
 async function edgeHitPoint(edge: Locator, distance = 0) {
@@ -57,7 +70,7 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
   page
 }, info) => {
   await page.setViewportSize({ width: 1480, height: 940 });
-  const { dialog, port, current } = await openNetwork(page, 'dark', true);
+  const { dialog, port, current } = await openNetwork(page, 'dark', 'long');
   const board = dialog.getByRole('region', { name: '白板', exact: true });
   const child = port.getByRole('button', { name: /^回归测试：核对[^·]+$/ });
   const anchorName = (await current.locator('.network-node-title').textContent())!;
@@ -84,11 +97,16 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
   const heading = board.getByRole('heading', { name: `白板 · ${childName}`, exact: true });
   await expect(heading).toHaveCSS('font-weight', '400');
   const clippedTitle = heading.getByText(`白板 · ${childName}`, { exact: true });
-  await expect(clippedTitle).toHaveCSS('white-space', 'nowrap');
-  await expect(clippedTitle).toHaveCSS('text-overflow', 'ellipsis');
-  await expect
-    .poll(() => clippedTitle.evaluate((el) => el.scrollWidth > el.clientWidth))
-    .toBe(true);
+  await expect.poll(() => boardTitleLayout(clippedTitle)).toEqual({ lines: 2, clipped: true });
+  const [clippedBox, clippedIconBox] = await Promise.all([
+    clippedTitle.boundingBox(),
+    heading.locator('[data-mar-icon="collection"]').boundingBox()
+  ]);
+  expect(
+    Math.abs(
+      clippedBox!.y + clippedBox!.height / 4 - clippedIconBox!.y - clippedIconBox!.height / 2
+    )
+  ).toBeLessThan(1);
   await heading.hover();
   await expect(tooltip).toHaveText(`白板 · ${childName}`);
   await page.mouse.move(1, 1);
@@ -113,6 +131,10 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
   await expect(shared).toHaveAttribute('aria-pressed', 'true');
   await expect(child).toHaveAttribute('aria-pressed', 'false');
   await expect(board.getByText('发布前先核对回归结果。')).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath('collaboration-network-board-title-desktop.png'),
+    animations: 'disabled'
+  });
   await sharedHeading.hover();
   await expect(tooltip).toHaveText(`共享白板 · ${anchorName}`);
   await page.screenshot({
@@ -257,7 +279,7 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await expect(heading).toBeVisible();
   await expect(board.getByRole('button', { name: /打开/ })).toHaveCount(0);
   const [titleBox, boardIconBox] = await Promise.all([
-    heading.locator('.clip-title').boundingBox(),
+    heading.locator('.board-title-label').boundingBox(),
     heading.locator('[data-mar-icon="collection"]').boundingBox()
   ]);
   expect(
@@ -411,15 +433,37 @@ test('keeps the three zoom controls together and fits the network at 320px in En
 
 test.describe('narrow viewport', () => {
   test.use({ viewport: { width: 390, height: 844 } });
-  test('keeps long board headings on one line at a mobile width', async ({ page }, info) => {
-    const { dialog, port, current } = await openNetwork(page, 'daylight', true);
+  test('wraps an unbroken board title before truncating it', async ({ page }) => {
+    const { dialog } = await openNetwork(page, 'daylight', 'unbroken');
     const board = dialog.getByRole('region', { name: '白板', exact: true });
-    const label = board.getByRole('heading', { name: /^白板 · 发布协调/ }).locator('.clip-title');
-    await expect(label).toHaveCSS('white-space', 'nowrap');
-    await expect.poll(() => label.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    const heading = board.getByRole('heading', { name: /^白板 · ReleaseVerification/ });
+    const label = heading.locator('.board-title-label');
+    await expect.poll(() => boardTitleLayout(label)).toEqual({ lines: 2, clipped: true });
+    expect(await label.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+    await dialog.getByRole('button', { name: '定位', exact: true }).focus();
+    await page.keyboard.press('Tab');
+    await expect(heading).toBeFocused();
+    await expect(dialog.getByRole('tooltip')).toHaveText((await label.textContent())!.trim());
+  });
+
+  test('clamps long board headings to two lines at a mobile width without wrapping short ones', async ({
+    page
+  }, info) => {
+    const { dialog, port, current } = await openNetwork(page, 'daylight', 'long');
+    const board = dialog.getByRole('region', { name: '白板', exact: true });
+    const label = board
+      .getByRole('heading', { name: /^白板 · 发布协调/ })
+      .locator('.board-title-label');
+    await expect.poll(() => boardTitleLayout(label)).toEqual({ lines: 2, clipped: true });
     const edge = port.getByRole('button', { name: /^安全审查 向 发布协调/ });
     await edge.press('Enter');
-    await expect(board.getByRole('heading', { name: '共享白板 · 安全审查' })).toBeVisible();
+    const short = board.getByRole('heading', { name: '共享白板 · 安全审查' });
+    await expect
+      .poll(() => boardTitleLayout(short.locator('.board-title-label')))
+      .toEqual({
+        lines: 1,
+        clipped: false
+      });
     await current.click();
     await expect(label).toBeVisible();
     await page.screenshot({
