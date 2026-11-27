@@ -1,7 +1,6 @@
 import { testNodeBrokerServices } from '../support/node-broker-services.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  NODE_PROTOCOL_VERSION,
   createEnvelope,
   scheduledTasksApiVersion,
   workbenchNodeOperationSchema
@@ -610,7 +609,7 @@ describe('Node controlled relay contract', () => {
     vi.useRealTimers();
   });
 
-  it('Server accepts only the current Node protocol version', async () => {
+  it('Server rejects an invalid envelope version through the existing message error path', async () => {
     const database = new ServerDatabase(':memory:');
     const control = createTestNodeControl(database, (userId, nodeId) =>
       database.userOwnsNode(userId, nodeId)
@@ -619,14 +618,15 @@ describe('Node controlled relay contract', () => {
     const socket = {
       readyState: 1,
       OPEN: 1,
+      close: vi.fn(),
       send(raw: string) {
         sent.push(JSON.parse(raw));
       }
     };
-    (
+    await (
       control as unknown as {
         handleMessage(
-          socket: { readonly readyState: number; readonly OPEN: number; send(raw: string): void },
+          socket: unknown,
           raw: string,
           setNodeId: (nodeId: string) => void,
           getNodeId: () => string | undefined
@@ -635,8 +635,8 @@ describe('Node controlled relay contract', () => {
     ).handleMessage(
       socket,
       JSON.stringify({
-        version: NODE_PROTOCOL_VERSION + 1,
-        id: 'legacy',
+        version: '3',
+        id: 'malformed-envelope',
         type: 'register',
         payload: {}
       }),
@@ -648,12 +648,14 @@ describe('Node controlled relay contract', () => {
         expect.objectContaining({
           type: 'error',
           payload: expect.objectContaining({
-            code: 'PROTOCOL_VERSION_UNSUPPORTED',
-            message: 'Protocol version is unsupported.'
+            code: 'MESSAGE_INVALID',
+            message: 'Message is invalid.'
           })
         })
       )
     );
+    expect(socket.close).not.toHaveBeenCalled();
+    control.close();
     database.close();
   });
 

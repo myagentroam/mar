@@ -919,25 +919,16 @@ describe('Workbench protocol contracts', () => {
     ).toBe(true);
   });
 
-  it('uses Node protocol v3 and rejects other envelopes', () => {
-    expect(NODE_PROTOCOL_VERSION).toBe(3);
-    expect(
-      nodeEnvelopeSchema.safeParse({
-        version: NODE_PROTOCOL_VERSION,
-        id: 'node-request',
-        type: 'node.request',
-        payload: {}
-      }).success
-    ).toBe(true);
-    for (const version of [1, 2, 4, 5])
-      expect(
-        nodeEnvelopeSchema.safeParse({
-          version,
-          id: 'node-request',
-          type: 'node.request',
-          payload: {}
-        }).success
-      ).toBe(false);
+  it('accepts Node envelopes of any positive safe integer version', () => {
+    const envelope = { id: 'node-request', type: 'node.request', payload: {} };
+    for (const version of [
+      NODE_PROTOCOL_VERSION - 1,
+      NODE_PROTOCOL_VERSION,
+      NODE_PROTOCOL_VERSION + 1
+    ])
+      expect(nodeEnvelopeSchema.parse({ ...envelope, version }).version).toBe(version);
+    for (const version of [0, -1, 3.5, '3', undefined, Number.MAX_SAFE_INTEGER + 1])
+      expect(nodeEnvelopeSchema.safeParse({ ...envelope, version }).success).toBe(false);
   });
 
   it('requires an explanatory reason for unavailable capability', () => {

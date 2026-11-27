@@ -1,6 +1,6 @@
 ---
 title: Upgrade MyAgentRoam
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-27
 ---
 
 # Upgrade MyAgentRoam
@@ -11,7 +11,7 @@ Server, Web, EE, shared cores, Node, Agent, and Protocol share one version, star
 
 The unified product preserves the existing enterprise schema, migration history, License activation, and private data directory. Community and Enterprise use the same installation; activation does not migrate the database. No migration from the retired personal product is provided.
 
-Deploy matching Server and Web versions, with the Server version at least as new as Node. The minimum supported Node version is `0.11.39`. Upgrade Server/Web before Node, never the reverse. After switching versions, refresh open browser pages to load the matching Web. Nodes using wire v2 can no longer connect or receive pushed upgrades; update them manually on their hosts first. A registered wire v3 Node below the current business baseline cannot continue Workspace, session, or other business operations. If it supports push upgrades, it can still connect so an authorized user can request or cancel an upgrade. Do not rely on it for business operations until the upgrade completes. Node SQLite and Server MySQL retain their existing migration chains; back up before migration, since databases are not automatically downgraded.
+Deploy matching Server and Web versions, with the Server version at least as new as Node. Workspace, session, and other work requires Node `0.11.39` or later. Upgrade Server/Web before Node, never the reverse. After switching versions, refresh open browser pages to load the matching Web. Node and Server do not reject valid messages solely because their control protocol version numbers differ. Unsupported operations still return their usual errors. This does not guarantee interoperability with older releases. Registered Nodes below the minimum application version cannot continue normal work. If they can still connect and support push upgrades, authorized users can request or cancel an upgrade. Otherwise, update them manually on their hosts. Node SQLite and Server MySQL retain their existing migration chains; back up before migration, since databases are not automatically downgraded.
 
 ## Legacy database formats
 

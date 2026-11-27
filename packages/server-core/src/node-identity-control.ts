@@ -1,6 +1,5 @@
 import type { WebSocket } from 'ws';
 import {
-  NODE_PROTOCOL_VERSION,
   createEnvelope,
   nodeCapabilitiesSchema,
   nodeEnvelopeSchema,
@@ -219,17 +218,7 @@ export class NodeIdentityControl {
   ): Promise<void> {
     let envelope: NodeEnvelope;
     try {
-      const parsed: unknown = JSON.parse(raw);
-      const version =
-        typeof parsed === 'object' && parsed !== null && 'version' in parsed
-          ? (parsed as { version?: unknown }).version
-          : undefined;
-      if (version !== NODE_PROTOCOL_VERSION) {
-        this.sendError(socket, 'PROTOCOL_VERSION_UNSUPPORTED');
-        socket.close(1008, 'PROTOCOL_VERSION_UNSUPPORTED');
-        return;
-      }
-      envelope = nodeEnvelopeSchema.parse(parsed);
+      envelope = nodeEnvelopeSchema.parse(JSON.parse(raw));
     } catch {
       this.sendError(socket, 'MESSAGE_INVALID');
       return;

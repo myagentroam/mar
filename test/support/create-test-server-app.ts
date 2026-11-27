@@ -113,6 +113,7 @@ export function createTestServerApp(
     secrets,
     resources: {
       canAccessNodeContainer: canManageNode,
+      canUseNode: canManageNode,
       canManageNode,
       canRegisterWorkspace: canManageNode,
       canManageNodeSecrets: canManageNode,
