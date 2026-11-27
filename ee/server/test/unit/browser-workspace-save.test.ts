@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
+import { BROWSER_DOWNLOAD_CHUNK_BYTES } from '@myagentroam/protocol';
 import { SESSION_COOKIE_NAME } from '@myagentroam/server-core/auth';
 import { NodeRequestError } from '@myagentroam/server-core/node-request-error';
 import { hashOpaque } from '@myagentroam/server-core/session-token';
@@ -7,7 +8,7 @@ import { expect, it, vi } from 'vitest';
 import { registerBrowserFileRoutes } from '../../src/route/browser-file-routes.js';
 import { BrowserWorkbenchService } from '../../src/service/browser-workbench-service.js';
 
-it('binds Workspace save to the attachment and returns a correlated unknown outcome to HTTP', async () => {
+it('binds Browser downloads to the attachment and preserves structured HTTP failures', async () => {
   type Options = ConstructorParameters<typeof BrowserWorkbenchService>[0];
   const app = Fastify();
   const scope = { nodeId: 'node', workspaceId: 'workspace' };
@@ -63,7 +64,7 @@ it('binds Workspace save to the attachment and returns a correlated unknown outc
       {
         downloadBrowserFile: service.download.bind(service),
         uploadBrowserFile: vi.fn(),
-        openBrowserDownload: vi.fn()
+        openBrowserDownload: service.openDownload.bind(service)
       }
     );
     const payload = {
@@ -97,6 +98,23 @@ it('binds Workspace save to the attachment and returns a correlated unknown outc
       owner,
       scope.workspaceId
     );
+    const id = randomUUID();
+    const download = () =>
+      app.inject({
+        url: `/api/browser/downloads/file?${new URLSearchParams({ connectionId, attachmentId: payload.attachmentId, id })}`,
+        headers: { cookie: `${SESSION_COOKIE_NAME}=fixture-session` }
+      });
+    const info = { id, name: 'sample.bin', state: 'ready', size: 3 };
+    request.mockResolvedValueOnce({ ...info, id: randomUUID() });
+    const wrongFile = await download();
+    expect(wrongFile.statusCode).toBe(502);
+    expect(wrongFile.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
+    request
+      .mockResolvedValueOnce(info)
+      .mockResolvedValueOnce({ offset: 'zero', bytes: Buffer.of(1, 2, 3) });
+    const malformed = await download();
+    expect(malformed.statusCode).toBe(502);
+    expect(malformed.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
   } finally {
     service.close();
     await app.close();
@@ -109,8 +127,13 @@ it('accepts only an HTTP binary upload chunk and streams raw download bytes', as
   const user = { userId: 17, sessionHash: 'session-hash' };
   const write = vi.fn(async () => {});
   const bytes = Buffer.of(0, 0xff, 0x80);
-  const read = vi.fn(async (offset: number) => ({ size: bytes.length, offset, bytes }));
-  const openDownload = vi.fn(async () => ({ name: 'sample.bin', size: bytes.length, read }));
+  const content = Buffer.concat([Buffer.alloc(BROWSER_DOWNLOAD_CHUNK_BYTES, 0xaa), bytes]);
+  const read = vi.fn(async (offset: number, limit: number) => ({
+    size: content.length,
+    offset,
+    bytes: content.subarray(offset, offset + limit)
+  }));
+  const openDownload = vi.fn(async () => ({ name: 'sample.bin', size: content.length, read }));
   registerBrowserFileRoutes(
     app,
     {
@@ -167,15 +190,16 @@ it('accepts only an HTTP binary upload chunk and streams raw download bytes', as
       chooserId,
       command: { action: 'chunk', transferId, index: 0, offset: 0, bytes }
     });
-    const downloaded = await app.inject({
-      url: `/api/browser/downloads/file?${new URLSearchParams({ connectionId, attachmentId, id })}`,
-      headers
-    });
+    const downloadUrl = `/api/browser/downloads/file?${new URLSearchParams({ connectionId, attachmentId, id })}`;
+    const downloaded = await app.inject({ url: downloadUrl, headers });
     expect(downloaded.statusCode).toBe(200);
-    expect(downloaded.headers['content-length']).toBe(String(bytes.length));
-    expect(downloaded.rawPayload).toEqual(bytes);
+    expect(downloaded.headers['content-length']).toBe(String(content.length));
+    expect(downloaded.rawPayload.equals(content)).toBe(true);
     expect(openDownload).toHaveBeenCalledExactlyOnceWith(user, connectionId, attachmentId, id);
-    expect(read).toHaveBeenCalledExactlyOnceWith(0, bytes.length);
+    expect(read.mock.calls).toEqual([
+      [0, BROWSER_DOWNLOAD_CHUNK_BYTES],
+      [BROWSER_DOWNLOAD_CHUNK_BYTES, bytes.length]
+    ]);
     for (const [code, status] of [
       ['FILE_RELAY_BUSY', 429],
       ['FILE_RELAY_UNAVAILABLE', 503]
@@ -189,7 +213,32 @@ it('accepts only an HTTP binary upload chunk and streams raw download bytes', as
       });
       expect(failed.statusCode).toBe(status);
       expect(failed.json()).toMatchObject({ error: { code } });
+      read.mockRejectedValueOnce(new Error(code));
+      const downloadFailed = await app.inject({ url: downloadUrl, headers });
+      expect(downloadFailed.statusCode).toBe(status);
+      expect(downloadFailed.json()).toMatchObject({ error: { code } });
+      expect(downloadFailed.headers['content-disposition']).toBeUndefined();
     }
+    read.mockResolvedValueOnce({ size: bytes.length, offset: 1, bytes });
+    const invalid = await app.inject({ url: downloadUrl, headers });
+    expect(invalid.statusCode).toBe(502);
+    expect(invalid.json()).toMatchObject({ error: { code: 'NODE_RESPONSE_INVALID' } });
+
+    read.mockClear();
+    openDownload.mockClear();
+    const head = await app.inject({ method: 'HEAD', url: downloadUrl, headers });
+    expect(head.statusCode).toBe(200);
+    expect(head.headers['content-length']).toBe(String(content.length));
+    expect(head.rawPayload).toHaveLength(0);
+    expect(openDownload).toHaveBeenCalledExactlyOnceWith(user, connectionId, attachmentId, id);
+    expect(read).not.toHaveBeenCalled();
+
+    openDownload.mockResolvedValueOnce({ name: 'empty.bin', size: 0, read });
+    const empty = await app.inject({ url: downloadUrl, headers });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.headers['content-length']).toBe('0');
+    expect(empty.rawPayload).toHaveLength(0);
+    expect(read).not.toHaveBeenCalled();
   } finally {
     await app.close();
   }

@@ -384,7 +384,7 @@ describe('Server hosted conversation routes', () => {
     await app.close();
   });
 
-  it('does not frame a chunk with mismatched file identity, offset, length, or EOF', async () => {
+  it('rejects mismatched file chunks, including empty chunks before EOF', async () => {
     const fixture = routeFixture();
     const file = {
       id: 'file-1',
@@ -421,6 +421,7 @@ describe('Server hosted conversation routes', () => {
         { ...valid, file: { ...file, conversationId: 'another-conversation' } },
         { ...valid, offset: 0, nextOffset: 1 },
         { ...valid, bytes: Buffer.of(1, 2), nextOffset: 3 },
+        { ...valid, bytes: Buffer.alloc(0), nextOffset: valid.offset },
         { ...valid, eof: true, nextOffset: null },
         { ...valid, file: { ...file, size: 2 } }
       ]) {

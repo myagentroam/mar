@@ -18,7 +18,8 @@ import {
 import { domainErrorStatus } from '@myagentroam/server-core/domain-errors';
 import {
   fileContentChunks,
-  registerFileChunkParser
+  registerFileChunkParser,
+  sendFileContentHead
 } from '@myagentroam/server-core/file-content-stream';
 import type { NodeControl } from '../node-control.js';
 
@@ -156,16 +157,27 @@ export function registerBrowserFileRoutes(
         attachmentId,
         id
       );
-      return reply
+      const chunks = fileContentChunks(read, 0, size - 1, BROWSER_DOWNLOAD_CHUNK_BYTES);
+      // Admit the first chunk before committing download headers. HEAD never pulls bytes.
+      const first = request.method === 'HEAD' ? undefined : await chunks.next();
+      reply
         .header('cache-control', 'private, no-store')
         .header('content-type', 'application/octet-stream')
-        .header('content-length', size)
         .header('x-content-type-options', 'nosniff')
         .header(
           'content-disposition',
           `attachment; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/gu, (char) => `%${char.charCodeAt(0).toString(16)}`)}`
+        );
+      if (first === undefined) return sendFileContentHead(reply, size);
+      return reply.header('content-length', size).send(
+        Readable.from(
+          (async function* () {
+            if (first.done) return;
+            yield first.value;
+            yield* chunks;
+          })()
         )
-        .send(Readable.from(fileContentChunks(read, 0, size - 1, BROWSER_DOWNLOAD_CHUNK_BYTES)));
+      );
     } catch (error) {
       return fileError(reply, error, 'BROWSER_DOWNLOAD_FAILED');
     }
@@ -180,7 +192,9 @@ function fileError(reply: FastifyReply, error: unknown, fallback: string) {
       ? 504
       : failure.code === 'BROWSER_NOT_AUTHORIZED' || failure.code === 'BROWSER_LEASE_ENDED'
         ? 403
-        : failure.code === 'FILE_RELAY_BUSY' || failure.code === 'FILE_RELAY_UNAVAILABLE'
+        : failure.code === 'FILE_RELAY_BUSY' ||
+            failure.code === 'FILE_RELAY_UNAVAILABLE' ||
+            failure.code === 'NODE_RESPONSE_INVALID'
           ? domainErrorStatus(failure.code)
           : 409,
     failure.code,

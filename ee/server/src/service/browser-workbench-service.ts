@@ -184,7 +184,7 @@ export class BrowserWorkbenchService {
     const identity = { userId: user.userId, sessionFingerprint: user.sessionHash, connectionId };
     const target = await this.attachments.fileTarget(identity, attachmentId);
     const { nodeId, workspaceId, browserId, generation } = target;
-    const info = browserDownloadInfoSchema.parse(
+    const info = browserDownloadInfoSchema.safeParse(
       await this.options.request(
         nodeId,
         'download',
@@ -193,12 +193,13 @@ export class BrowserWorkbenchService {
         user
       )
     );
-    const { size, name, state } = info;
+    if (!info.success || info.data.id !== id) throw new Error('NODE_RESPONSE_INVALID');
+    const { size, name, state } = info.data;
     if (state !== 'ready' || size === undefined) throw new Error('BROWSER_DOWNLOAD_NOT_READY');
     const read = async (offset: number, limit: number) => {
       if ((await this.authorize(identity, target))?.generation !== generation)
         throw new Error('BROWSER_LEASE_ENDED');
-      const chunk = browserDownloadChunkSchema.parse(
+      const chunk = browserDownloadChunkSchema.safeParse(
         await this.options.request(
           nodeId,
           'download',
@@ -207,7 +208,8 @@ export class BrowserWorkbenchService {
           user
         )
       );
-      return { size, ...chunk };
+      if (!chunk.success) throw new Error('NODE_RESPONSE_INVALID');
+      return { size, ...chunk.data };
     };
     return { name, size, read };
   }
