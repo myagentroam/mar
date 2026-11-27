@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import type { RunnerCommandState } from '../../src/model/workbench.js';
+import { createQuickPromptService } from '../../src/service/quick-prompt-service.js';
 import {
   createRunnerInteractionService,
   quickPromptAtCursor,
@@ -365,7 +366,7 @@ describe('Web Runner Interaction Status', () => {
     expect(input.value).toBe('Before Please review the code After');
   });
 
-  it('ranks quick prompts by exact, prefix, then substring matches and selects the exact match on Enter', () => {
+  it('shares alphabetical quick-prompt order and ranks filtered matches without reordering ties', async () => {
     type Options = Parameters<typeof createRunnerInteractionService>[0];
     const input = ref('#');
     const prompts = [
@@ -376,16 +377,21 @@ describe('Web Runner Interaction Status', () => {
       { id: 'prefix-2', phrase: 'rfl-all', prompt: 'review everything', updatedAt: 2 },
       { id: 'contains-2', phrase: 'my-rfl', prompt: 'review mine', updatedAt: 1 }
     ];
+    const service = createQuickPromptService({ request: vi.fn().mockResolvedValue({ prompts }) });
+    await service.refresh();
+    const alphabetical = ['body', 'contains', 'contains-2', 'exact', 'prefix-2', 'prefix'];
+    expect(service.prompts.value.map((prompt) => prompt.id)).toEqual(alphabetical);
+    expect(prompts.map((prompt) => prompt.updatedAt)).toEqual([6, 5, 4, 3, 2, 1]);
     const state = createRunnerInteractionService({
       input,
       draftSessionOpen: { value: false } as Options['draftSessionOpen'],
       selectedSession: { value: undefined } as Options['selectedSession'],
       profile: { value: undefined } as Options['profile'],
-      quickPrompts: ref(prompts)
+      quickPrompts: service.prompts
     });
 
     state.updatePicker();
-    expect(state.visibleQuickPrompts.value).toEqual(prompts);
+    expect(state.visibleQuickPrompts.value.map((prompt) => prompt.id)).toEqual(alphabetical);
 
     for (const query of ['#rfl', '#RfL']) {
       input.value = '#';
@@ -396,8 +402,8 @@ describe('Web Runner Interaction Status', () => {
       expect(state.activeCommandIndex.value).toBe(0);
       expect(state.visibleQuickPrompts.value.map((prompt) => prompt.id)).toEqual([
         'exact',
-        'prefix',
         'prefix-2',
+        'prefix',
         'contains',
         'contains-2'
       ]);
@@ -418,7 +424,7 @@ describe('Web Runner Interaction Status', () => {
 
     input.value = '#';
     state.updatePicker();
-    expect(state.visibleQuickPrompts.value).toEqual(prompts);
+    expect(state.visibleQuickPrompts.value.map((prompt) => prompt.id)).toEqual(alphabetical);
     input.value = '#missing';
     state.updatePicker();
     expect(state.visibleQuickPrompts.value).toEqual([]);

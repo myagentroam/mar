@@ -49,9 +49,10 @@ for (const viewport of [
     await prepare(page);
     await page.addInitScript((theme) => localStorage.setItem('mar.theme', theme), viewport.theme);
     const longBody = 'Review this prompt without losing any content.\n'.repeat(20);
+    const longPhrase = 'long'.repeat(20);
     const prompts = [
       { id: 'short', phrase: 'review', prompt: 'Review and fix related issues.', updatedAt: 1 },
-      { id: 'long', phrase: 'long'.repeat(20), prompt: longBody, updatedAt: 2 }
+      { id: 'long', phrase: longPhrase, prompt: longBody, updatedAt: 2 }
     ];
     const writes: string[] = [];
     await page.route('**/api/quick-prompts**', (route) => {
@@ -62,8 +63,9 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     const rows = page.locator('.prompt-item');
     await expect(rows).toHaveCount(2);
-    const editAction = rows.first().getByRole('button', { name: 'Edit', exact: true });
-    const deleteAction = rows.first().getByRole('button', { name: 'Delete', exact: true });
+    const shortRow = rows.filter({ has: page.getByText('#review', { exact: true }) });
+    const editAction = shortRow.getByRole('button', { name: 'Edit', exact: true });
+    const deleteAction = shortRow.getByRole('button', { name: 'Delete', exact: true });
     await expect(editAction).toHaveClass(/mar-ui-button--default/);
     await expect(editAction).toHaveClass(/mar-ui-button--inline/);
     await expect(deleteAction).toHaveClass(/mar-ui-button--danger/);
@@ -77,7 +79,7 @@ for (const viewport of [
         );
       })
     ).toBe(true);
-    const geometry = await rows.first().evaluate((row) => {
+    const geometry = await shortRow.evaluate((row) => {
       const heading = row.querySelector('.prompt-heading')!.getBoundingClientRect();
       const actions = row.querySelector('.prompt-actions')!.getBoundingClientRect();
       const body = row.querySelector('p')!.getBoundingClientRect();
@@ -110,14 +112,16 @@ for (const viewport of [
       path: testInfo.outputPath('quick-prompts.png'),
       animations: 'disabled'
     });
-    const editButton = rows.last().getByRole('button', { name: 'Edit', exact: true });
+    const editButton = rows
+      .filter({ has: page.getByText(`#${longPhrase}`, { exact: true }) })
+      .getByRole('button', { name: 'Edit', exact: true });
     await editButton.focus();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog').getByRole('textbox', { name: /Prompt$/ })).toHaveValue(
       longBody
     );
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
-    await rows.first().getByRole('button', { name: 'Delete', exact: true }).click();
+    await deleteAction.click();
     await expect(page.getByRole('dialog')).toContainText('#review');
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
     expect(writes).toEqual([]);

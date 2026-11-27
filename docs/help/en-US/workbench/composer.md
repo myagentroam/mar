@@ -1,6 +1,6 @@
 ---
 title: Messages and Composer
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-27
 ---
 
 # Messages and Composer
@@ -13,7 +13,7 @@ Press `Enter` to send and `Shift+Enter` for a newline on desktop. During a manag
 
 Type `/` to open commands supported by the current Agent and, under the skills group, the skills already loaded in the current workspace. Clicking a command, or pressing Enter while the menu cursor is on its match, runs it. Unknown `/xxx` input is sent as a regular message; supported slash commands can also accept arguments, such as `/goal <objective>`. Selected skills appear as removable tags above the message body without being sent immediately. Click a tag's close control to remove it. When the message body is empty and the caret is at the start, Backspace removes selected skills from last to first. Sending supplies the selected skills as resource inputs in selection order, without displaying them in the sent message. Files and folders selected with `@` also appear as removable Composer tags and are hidden after sending; uploaded attachments still display a file list. Configuration controls are disabled when the active run requires a fixed mode. The first message to external history validates continuation automatically; a failed validation does not create a Run.
 
-Create a phrase and prompt in **Settings → Quick Prompts**. Type `#phrase` to filter and insert the prompt body. Matching is case-insensitive: exact matches come before prefix matches, followed by substring matches; ties keep their original order. The first result is selected by default; press Enter on desktop to insert it. Selecting one replaces only the matching `#phrase`; it does not send the message or remove the remaining draft or attachments.
+Create a phrase and prompt in **Settings → Quick Prompts**. Type `#` to see all suggestions in the same case-insensitive alphabetical order as the Settings list. Keep typing to filter by phrase. Exact matches come first, then prefix matches, then substring matches; ties stay alphabetical. The first result is selected by default; press Enter on desktop to insert it. Selecting one replaces only the matching `#phrase`; it does not send the message or remove the remaining draft or attachments.
 
 In a session on your personal Node, press `Alt+↑/↓` (`Option+↑/↓` on macOS) in the message box to browse text you successfully sent from this browser. Recall replaces the text and deselects any Slash command you have not submitted. Current attachments, references, and Skills stay as they are. Recall does not send the message or restore the replaced draft. The browser keeps up to 30 entries per session; entries expire after 30 days without use. Signing out clears this local history.
 
