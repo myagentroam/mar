@@ -162,3 +162,53 @@ describe('uncollected exec terminal results', () => {
     ).rejects.toMatchObject({ code: 'MAR_AGENT_PROCESS_NOT_FOUND' });
   });
 });
+
+describe('exec terminal replay capacity', () => {
+  it.each(['running', 'completed', 'running with a pending poll'] as const)(
+    'discards only the target replay on explicit cancel when the process is %s',
+    async (state) => {
+      const { tool, owner, start } = await fixture(1);
+      const poll = (processId: string) =>
+        tool.execute({ action: 'poll', processId }, undefined, owner);
+      const collect = async (stdout: string) => {
+        const process = await start();
+        expect(process.result.status).toBe('running');
+        process.state.stdout.write(stdout);
+        process.close();
+        const { processId } = process.result;
+        expect(await poll(processId)).toMatchObject({ status: 'completed', stdout, exitCode: 0 });
+        return processId;
+      };
+      const replays: string[] = [];
+      for (let i = 0; i < TOOL_EXECUTION_LIMITS.execMaxCompletedResults; i++) {
+        replays.push(await collect(`kept ${i}`));
+      }
+
+      const target = await start();
+      expect(target.result.status).toBe('running');
+      const { processId } = target.result;
+      target.state.stdout.write('target output');
+      if (state === 'completed') target.close(3);
+      const pendingPoll = state === 'running with a pending poll' ? poll(processId) : undefined;
+      const cancel = tool.execute({ action: 'cancel', processId }, undefined, owner);
+      if (state !== 'completed') target.close();
+      const [cancelled, polled] = await Promise.all([cancel, pendingPoll]);
+      expect(cancelled.status).toBe(state === 'completed' ? 'completed' : 'cancelled');
+      if (state === 'completed') expect(cancelled.exitCode).toBe(3);
+      if (pendingPoll) expect(polled).toMatchObject({ status: 'cancelled' });
+      expect(cancelled.stdout + (polled?.stdout ?? '')).toBe('target output');
+      await expect(poll(processId)).rejects.toMatchObject({ code: 'MAR_AGENT_PROCESS_NOT_FOUND' });
+      for (const [i, replay] of replays.entries()) {
+        expect(await poll(replay)).toMatchObject({ cached: true, stdout: `kept ${i}` });
+      }
+
+      // A genuine collection releases the live slot and evicts exactly the oldest replay.
+      const newest = await collect('new replay');
+      await expect(poll(replays[0]!)).rejects.toMatchObject({
+        code: 'MAR_AGENT_PROCESS_NOT_FOUND'
+      });
+      expect(await poll(replays[1]!)).toMatchObject({ cached: true, stdout: 'kept 1' });
+      expect(await poll(newest)).toMatchObject({ cached: true, stdout: 'new replay' });
+    }
+  );
+});
