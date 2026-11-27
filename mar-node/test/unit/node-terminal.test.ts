@@ -160,7 +160,10 @@ function terminalStreamFixture(
     }
   });
   return {
-    async open(terminalId: string, options?: { readonly?: boolean; closeOnDisconnect?: boolean }) {
+    async open(
+      terminalId: string,
+      options?: { afterSequence?: number; readonly?: boolean; closeOnDisconnect?: boolean }
+    ) {
       const grant = service.issue({
         terminalId,
         workspaceId: null,
@@ -444,6 +447,77 @@ describe('Node Admin Terminal', () => {
     },
     15_000
   );
+
+  it('resumes an interrupted replay of short records before queued live output and exit', async () => {
+    const pty = new FakePty();
+    const manager = new TerminalManager({ ptyFactory: () => pty });
+    const replayStarted = Promise.withResolvers<void>();
+    const resumeReplay = Promise.withResolvers<void>();
+    let gateReplay = false;
+    let writes = 0;
+    const fixture = terminalStreamFixture(manager, async (bytes) => {
+      if (gateReplay && decodeNodeStreamFrame(bytes).type === 'DATA' && ++writes === 2) {
+        replayStarted.resolve();
+        await resumeReplay.promise;
+      }
+    });
+    const line = 'job completed\n';
+    const count = 22_000;
+    const checkpoint = 64;
+    try {
+      const terminal = manager.open();
+      for (let i = 0; i < count; i++) pty.emitData(line);
+      for (const reattach of [false, true]) {
+        gateReplay = reattach;
+        const afterSequence = reattach ? checkpoint : 0;
+        const lastSequence = reattach ? count : checkpoint;
+        const stream = await fixture.open(terminal.id, { afterSequence });
+        const records = readTerminalRecords(stream);
+        expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({
+          type: 'attach',
+          afterSequence
+        });
+        if (reattach) {
+          await replayStarted.promise;
+          pty.emitData('live output');
+          pty.emitExit(17);
+          await stream.endWrite();
+          resumeReplay.resolve();
+        }
+        const output: Uint8Array[] = [];
+        const sequences: number[] = [];
+        for (let i = afterSequence; i < lastSequence; i++) {
+          const frame = decodeTerminalMessage((await records.next()).value);
+          sequences.push(frame.sequence as number);
+          output.push(frame.data as Uint8Array);
+        }
+        const length = lastSequence - afterSequence;
+        expect(sequences).toEqual(Array.from({ length }, (_, i) => afterSequence + i + 1));
+        expect(Buffer.concat(output).toString()).toBe(line.repeat(length));
+        if (reattach) {
+          expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({
+            type: 'output',
+            sequence: count + 1,
+            data: new TextEncoder().encode('live output')
+          });
+          expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({
+            type: 'exit',
+            exitCode: 17
+          });
+          expect((await records.next()).done).toBe(true);
+        } else {
+          stream.close();
+          await records.return(undefined);
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          expect(manager.get(terminal.id).state).toBe('RUNNING');
+        }
+      }
+    } finally {
+      resumeReplay.resolve();
+      fixture.close();
+      await manager.shutdown();
+    }
+  }, 15_000);
 
   it('closes CLI jobs but keeps browser terminals when the shared data carrier disconnects', async () => {
     const cliPty = new FakePty();

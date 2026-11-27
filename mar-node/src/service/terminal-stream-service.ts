@@ -76,10 +76,24 @@ export class TerminalStreamService {
 
     const { attachmentId } = attachment;
     let queued = 0;
-    let output = Promise.resolve();
     const finished = Promise.withResolvers<void>();
     const finish = () => finished.resolve();
     signal.addEventListener('abort', finish, { once: true });
+    const disconnected = () => stream.reset('TERMINAL_STREAM_DISCONNECTED');
+    // Replay is already bounded by the manager. Encode one record at a time and let
+    // the stream window pace it; only new output competes for the live queue budget.
+    let output = Promise.resolve()
+      .then(async () => {
+        if (signal.aborted) return;
+        await stream.write(
+          writeTerminalRecord(encodeTerminalMessage({ type: 'attach', terminalId, afterSequence }))
+        );
+        for (const frame of attachment.frames) {
+          if (signal.aborted) return;
+          await stream.write(writeTerminalRecord(encodeTerminalMessage(frame)));
+        }
+      })
+      .catch(disconnected);
     const enqueue = (frame: TerminalDataFrame) => {
       if (signal.aborted) return;
       const bytes = writeTerminalRecord(encodeTerminalMessage(frame));
@@ -100,15 +114,13 @@ export class TerminalStreamService {
           queued -= bytes.length;
           if (queued <= 256 * 1024) this.manager.setAttachmentBackpressure(attachmentId, false);
         })
-        .catch(() => stream.reset('TERMINAL_STREAM_DISCONNECTED'));
+        .catch(disconnected);
     };
     const stop = this.manager.onFrame((frame) => {
       if (frame.terminalId === terminalId) enqueue(frame);
     });
 
     try {
-      enqueue({ type: 'attach', terminalId, afterSequence });
-      for (const frame of attachment.frames) enqueue(frame);
       if (!signal.aborted) {
         this.manager.startCommand(terminalId);
         onAttached?.();

@@ -4,12 +4,7 @@ import type { WorkspaceFilePreviewTarget } from '../../src/model/workspace-file-
 
 type Access = ReturnType<ReturnType<typeof createWorkspaceFileAccessService>['forWorkspace']>;
 type TransferName =
-  | 'directFileDownload'
-  | 'directFileReadRange'
-  | 'directGitFileDownload'
-  | 'directGitFileReadRange'
-  | 'readPreviewRange'
-  | 'readPreviewObject';
+  'directFileDownload' | 'directGitFileDownload' | 'readPreviewRange' | 'readPreviewObject';
 export type WorkspaceFilePreviewTransfers = Partial<Pick<Access, TransferName>>;
 
 export function createFileAccessFixture(input: {
@@ -21,17 +16,10 @@ export function createFileAccessFixture(input: {
     request: input.http.request,
     http: input.http,
     ...(input.fetchContent === undefined ? {} : { fetchContent: input.fetchContent }),
-    manifest: () => undefined,
-    available: () => false,
-    direct: { download: async () => {} },
     downloads: { download: async () => {} }
   });
-  return (target: WorkspaceFilePreviewTarget) => {
-    const {
-      readPreviewRange: _range,
-      readPreviewObject: _object,
-      ...legacy
-    } = access.forWorkspace(target);
-    return { ...legacy, ...input.transfers() };
-  };
+  return (target: WorkspaceFilePreviewTarget): Access => ({
+    ...access.forWorkspace(target),
+    ...input.transfers()
+  });
 }

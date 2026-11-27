@@ -507,9 +507,6 @@ export function createWorkbenchPageController<
   const fileAccess = createWorkspaceFileAccessService({
     request,
     http: workspaceToolsHttp,
-    manifest: (nodeId) => workbenchCapabilityService.restoreNodeManifest(nodeId),
-    available: (nodeId) => workspaceDirectAvailable(nodeId),
-    direct: workspaceDirectTransfer,
     downloads: fileStreams,
     ...(options.pwaApplication === undefined
       ? {}

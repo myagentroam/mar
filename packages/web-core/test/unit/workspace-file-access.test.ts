@@ -8,9 +8,6 @@ function fixture() {
   const access = createWorkspaceFileAccessService({
     request,
     http: { request } as ScopedHttpService,
-    manifest: () => undefined,
-    available: () => false,
-    direct: { download: vi.fn() },
     downloads: { download }
   });
   return { request, access, download };

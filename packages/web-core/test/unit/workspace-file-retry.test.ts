@@ -1,4 +1,7 @@
-import { createFileAccessFixture } from '../support/file-access-fixture.js';
+import {
+  createFileAccessFixture,
+  type WorkspaceFilePreviewTransfers
+} from '../support/file-access-fixture.js';
 import { expect, it, vi } from 'vitest';
 import type { WorkspaceFileOpenIntent } from '../../src/util/workspace-file-tab.js';
 import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
@@ -43,7 +46,7 @@ it.each(['text', 'pdf'] as const)(
       await previews.open(1, target);
       expect(previews.page(1).error.value).toBe(failure);
       expect(previews.page(1).contentUrl.value).toBeUndefined();
-      await previews.open(1, target, { serverOnly: true });
+      await previews.open(1, target);
       expect(previews.page(1).error.value).toBeUndefined();
       expect(previews.page(1).fileContent.value).toMatchObject({
         content: kind === 'text' ? 'recovered' : '',
@@ -68,23 +71,19 @@ it.each(['repository', 'worktree', 'history'] as const)(
   'retries the original %s file without changing its tab or target',
   async (scope) => {
     const failure = new Error('Read failed');
-    const request = vi
-      .fn()
+    const request = vi.fn();
+    const http = { request } as ScopedHttpService;
+    const fetchContent = vi.fn();
+    const readPreviewRange = vi
+      .fn<NonNullable<WorkspaceFilePreviewTransfers['readPreviewRange']>>()
       .mockRejectedValueOnce(failure)
       .mockResolvedValue({
-        file: {
-          encoding: 'utf-8',
-          content: 'recovered',
-          size: 9,
-          nextOffset: null,
-          revision: 'r1'
-        }
+        bytes: new TextEncoder().encode('recovered'),
+        offset: 0,
+        size: 9,
+        nextOffset: null,
+        revision: 'r1'
       });
-    const http = { request } as ScopedHttpService;
-    const fetchContent = vi
-      .fn()
-      .mockRejectedValueOnce(failure)
-      .mockImplementation(async () => new Response('recovered'));
     const target = { nodeId: 'node', workspaceId: 'workspace' };
     const owner = createWorkspaceFileWorkbenchController({
       target: () => target,
@@ -98,7 +97,11 @@ it.each(['repository', 'worktree', 'history'] as const)(
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
-      access: createFileAccessFixture({ http, fetchContent, transfers: () => ({}) }),
+      access: createFileAccessFixture({
+        http,
+        fetchContent,
+        transfers: () => ({ readPreviewRange })
+      }),
       preview: { onWritten: vi.fn() },
       navigation: { http, onFailure: vi.fn(), onFileTarget: vi.fn() }
     });
@@ -137,17 +140,26 @@ it.each(['repository', 'worktree', 'history'] as const)(
       expect(owner.tabList.value).toHaveLength(1);
       expect(frame.targetLine.value).toBe(12);
       expect(frame.targetColumn.value).toBe(3);
-      const url = (
-        scope === 'history' ? fetchContent.mock.calls.at(-1)?.[0] : request.mock.calls.at(-1)?.[0]
-      ) as string;
-      const parsed = new URL(url, 'http://fixture');
-      expect(parsed.searchParams.get('repositoryPath')).toBe('nested-repo');
-      if (scope === 'worktree')
-        expect(parsed.searchParams.get('worktreePath')).toBe('/other-worktree');
-      if (scope === 'history') {
-        expect(parsed.pathname).toContain('a'.repeat(40));
-        expect(parsed.searchParams.getAll('refs')).toEqual(['refs/heads/main']);
-      }
+      expect(readPreviewRange.mock.calls.map(([source]) => source)).toEqual([
+        originalTarget,
+        originalTarget
+      ]);
+      expect(originalTarget).toMatchObject(
+        scope === 'history'
+          ? {
+              history: {
+                repositoryPath: 'nested-repo',
+                commit: 'a'.repeat(40),
+                refs: ['refs/heads/main']
+              }
+            }
+          : {
+              repositoryPath: 'nested-repo',
+              ...(scope === 'worktree' && { worktreePath: '/other-worktree' })
+            }
+      );
+      expect(request).not.toHaveBeenCalled();
+      expect(fetchContent).not.toHaveBeenCalled();
     } finally {
       owner.dispose();
     }

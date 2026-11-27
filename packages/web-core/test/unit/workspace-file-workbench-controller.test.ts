@@ -33,7 +33,7 @@ it.each([
       access: createFileAccessFixture({
         http,
         transfers: () => ({
-          directFileReadRange: async () => ({
+          readPreviewRange: async () => ({
             bytes,
             size: bytes.length,
             offset: 0,
@@ -97,7 +97,7 @@ it.each([false, true])(
       onRevealFailure: vi.fn(),
       access: createFileAccessFixture({
         http,
-        transfers: () => ({ directFileReadRange: range, directGitFileReadRange: range })
+        transfers: () => ({ readPreviewRange: range })
       }),
       preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
@@ -170,7 +170,7 @@ it.each(['close background', 'close source', 'switch tabs'] as const)(
         access: createFileAccessFixture({
           http,
           transfers: () => ({
-            directFileReadRange: async () => ({
+            readPreviewRange: async () => ({
               bytes,
               size: bytes.length,
               offset: 0,
@@ -277,7 +277,7 @@ it('opens previews independently of a slow reveal and prevents its late failure 
     access: createFileAccessFixture({
       http,
       transfers: () => ({
-        directFileReadRange: async () => ({
+        readPreviewRange: async () => ({
           bytes,
           size: bytes.length,
           offset: 0,
@@ -329,7 +329,7 @@ it('shows an unknown-extension tab while its bounded content read is pending', a
     comparison: async () => undefined,
     onOpenFailure: vi.fn(),
     onRevealFailure: vi.fn(),
-    access: createFileAccessFixture({ http, transfers: () => ({ directFileReadRange: read }) }),
+    access: createFileAccessFixture({ http, transfers: () => ({ readPreviewRange: read }) }),
     preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
@@ -409,7 +409,7 @@ it('retains historical cursor location when opening and restoring a text tab', a
     access: createFileAccessFixture({
       http,
       transfers: () => ({
-        directGitFileReadRange: async () => ({
+        readPreviewRange: async () => ({
           offset: 0,
           bytes,
           size: bytes.length,
@@ -513,7 +513,7 @@ it.each(['WORKTREE_DIFF', 'HISTORY_TEXT'] as const)(
       access: createFileAccessFixture({
         http,
         transfers: () => ({
-          directGitFileReadRange: async () => ({
+          readPreviewRange: async () => ({
             offset: 0,
             bytes: new Uint8Array([0]),
             size: 20,
@@ -638,85 +638,109 @@ it.each([
   ['slides.pptx', 'presentation'],
   ['clip.mp4', 'video'],
   ['sound.mp3', 'audio']
-] as const)('opens Git %s in its %s format with the correct Server source', async (path, kind) => {
-  const target = { nodeId: 'node', workspaceId: 'workspace' };
-  const commit = 'b'.repeat(40);
-  const http = createScopedHttpService();
-  for (const history of [false, true]) {
-    const owner = createWorkspaceFileWorkbenchController({
-      externalTarget: () => target,
-      fileWriteEnabled: () => false,
-      onPopupBlocked: vi.fn(),
-      target: () => target,
-      page: () => undefined,
-      prewarmEnabled: () => false,
-      resolveRepositoryPath: (repositoryPath) => repositoryPath,
-      reveal: async () => {},
-      comparison: async () => undefined,
-      onOpenFailure: vi.fn(),
-      onRevealFailure: vi.fn(),
-      access: createFileAccessFixture({
-        http,
-        transfers: () => ({
-          directGitFileReadRange: async () => ({
-            offset: 0,
-            bytes: new Uint8Array([0]),
-            size: 20,
-            nextOffset: null,
-            revision: 'revision'
-          })
-        })
-      }),
-      preview: { onWritten: vi.fn() },
-      navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
-    });
-    try {
-      const params = new URLSearchParams({
-        standaloneFile: '1',
-        fileTabKind: history ? 'HISTORY_DIFF' : 'WORKTREE_DIFF',
-        ...target,
-        path,
-        repositoryPath: 'packages/media',
-        gitFile: '1',
-        worktreePath: '',
-        ...(history ? { commit, refs: 'refs/heads/main' } : {})
+] as const)(
+  'opens Git %s in its %s format using the correct preview source',
+  async (path, kind) => {
+    const target = { nodeId: 'node', workspaceId: 'workspace' };
+    const commit = 'b'.repeat(40);
+    const http = createScopedHttpService();
+    const native = kind === 'image' || kind === 'video' || kind === 'audio';
+    for (const history of [false, true]) {
+      const readPreviewObject = vi.fn().mockResolvedValue({
+        size: 20,
+        revision: 'revision',
+        url: 'blob:git-preview'
       });
-      const intent = standaloneFileOpenIntent(`/console?${params}`)?.tab;
-      expect(intent).toBeDefined();
-      await owner.openTab(intent!);
-      const frame = owner.frames.value[0]!;
-      expect(owner.tabList.value).toMatchObject([
-        {
-          kind: history ? 'HISTORY_TEXT' : 'WORKTREE_PREVIEW',
+      const fetchContent = vi.fn(
+        async () =>
+          new Response(null, { status: 206, headers: { 'content-range': 'bytes 0-0/20' } })
+      );
+      const owner = createWorkspaceFileWorkbenchController({
+        externalTarget: () => target,
+        fileWriteEnabled: () => false,
+        onPopupBlocked: vi.fn(),
+        target: () => target,
+        page: () => undefined,
+        prewarmEnabled: () => false,
+        resolveRepositoryPath: (repositoryPath) => repositoryPath,
+        reveal: async () => {},
+        comparison: async () => undefined,
+        onOpenFailure: vi.fn(),
+        onRevealFailure: vi.fn(),
+        access: createFileAccessFixture({
+          http,
+          fetchContent,
+          transfers: () => ({ readPreviewObject })
+        }),
+        preview: { onWritten: vi.fn() },
+        navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
+      });
+      try {
+        const params = new URLSearchParams({
+          standaloneFile: '1',
+          fileTabKind: history ? 'HISTORY_DIFF' : 'WORKTREE_DIFF',
+          ...target,
           path,
           repositoryPath: 'packages/media',
-          ...(history ? { commit } : { gitFile: true })
+          gitFile: '1',
+          worktreePath: '',
+          ...(history ? { commit, refs: 'refs/heads/main' } : {})
+        });
+        const intent = standaloneFileOpenIntent(`/console?${params}`)?.tab;
+        expect(intent).toBeDefined();
+        await owner.openTab(intent!);
+        const frame = owner.frames.value[0]!;
+        expect(owner.tabList.value).toMatchObject([
+          {
+            kind: history ? 'HISTORY_TEXT' : 'WORKTREE_PREVIEW',
+            path,
+            repositoryPath: 'packages/media',
+            ...(history ? { commit } : { gitFile: true })
+          }
+        ]);
+        expect(
+          filePreviewKind(frame.fileContent.value!.path, frame.fileContent.value!.encoding)
+        ).toBe(kind);
+        expect(frame.loading.value).toBe(false);
+        if (!native) {
+          expect(frame.contentUrl.value).toBe('blob:git-preview');
+          expect(readPreviewObject).toHaveBeenCalledExactlyOnceWith(
+            {
+              ...target,
+              path,
+              ...(history
+                ? {
+                    history: { commit, repositoryPath: 'packages/media', refs: ['refs/heads/main'] }
+                  }
+                : { repositoryPath: 'packages/media' })
+            },
+            expect.any(AbortSignal)
+          );
+          expect(fetchContent).not.toHaveBeenCalled();
+          continue;
         }
-      ]);
-      expect(
-        filePreviewKind(frame.fileContent.value!.path, frame.fileContent.value!.encoding)
-      ).toBe(kind);
-      expect(frame.loading.value).toBe(false);
-      const url = new URL(frame.contentUrl.value!, 'http://test.local');
-      expect(url.pathname).toBe(
-        `/api/workspaces/workspace${history ? `/git/commits/${commit}` : ''}/files/content`
-      );
-      expect(url.searchParams.get('repositoryPath')).toBe('packages/media');
-      expect(url.searchParams.get('path')).toBe(path);
-      if (history) expect(url.searchParams.getAll('refs')).toEqual(['refs/heads/main']);
-      if (history && path === 'photo.png') {
-        const cached = owner.snapshot();
-        owner.restore(cached);
-        await vi.waitFor(() =>
-          expect(owner.frames.value[0]?.contentUrl.value).toBe(url.pathname + url.search)
+        expect(readPreviewObject).not.toHaveBeenCalled();
+        const url = new URL(frame.contentUrl.value!, 'http://test.local');
+        expect(url.pathname).toBe(
+          `/api/workspaces/workspace${history ? `/git/commits/${commit}` : ''}/files/content`
         );
-        expect(owner.tabList.value).toHaveLength(1);
+        expect(url.searchParams.get('repositoryPath')).toBe('packages/media');
+        expect(url.searchParams.get('path')).toBe(path);
+        if (history) expect(url.searchParams.getAll('refs')).toEqual(['refs/heads/main']);
+        if (history && path === 'photo.png') {
+          const cached = owner.snapshot();
+          owner.restore(cached);
+          await vi.waitFor(() =>
+            expect(owner.frames.value[0]?.contentUrl.value).toBe(url.pathname + url.search)
+          );
+          expect(owner.tabList.value).toHaveLength(1);
+        }
+      } finally {
+        owner.dispose();
       }
-    } finally {
-      owner.dispose();
     }
   }
-});
+);
 import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
 import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
 import type { WorkspaceFileOpenIntent } from '../../src/util/workspace-file-tab.js';
@@ -750,7 +774,7 @@ function createQuotePaneWorkbench(
     comparison,
     access: createFileAccessFixture({
       http,
-      transfers: () => ({ directFileReadRange: read })
+      transfers: () => ({ readPreviewRange: read })
     }),
     preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
@@ -1094,12 +1118,17 @@ it('owns file navigation independently of tool visibility and removes closed loc
 it('releases an in-flight preview when its confirmed tab closes', async () => {
   let signal: AbortSignal | undefined;
   let finish!: () => void;
-  const pending = new Promise<undefined>((resolve) => {
-    finish = () => resolve(undefined);
+  const pending = new Promise<WorkspaceDirectFileRange>((resolve) => {
+    finish = () =>
+      resolve({ bytes: new Uint8Array(), size: 0, offset: 0, nextOffset: null, revision: 'r' });
   });
-  const directFileReadRange = vi.fn(
-    (...args: [string, number, number, string?, unknown?, string?, AbortSignal?]) => {
-      signal = args[6];
+  const readPreviewRange = vi.fn(
+    (
+      ...args: Parameters<
+        ReturnType<ReturnType<typeof createFileAccessFixture>>['readPreviewRange']
+      >
+    ) => {
+      signal = args[3];
       return pending;
     }
   );
@@ -1116,7 +1145,7 @@ it('releases an in-flight preview when its confirmed tab closes', async () => {
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => undefined,
-    access: createFileAccessFixture({ http, transfers: () => ({ directFileReadRange }) }),
+    access: createFileAccessFixture({ http, transfers: () => ({ readPreviewRange }) }),
     preview: { onWritten: () => {} },
     navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
   });
@@ -1251,7 +1280,7 @@ it.each(['target', 'failure'] as const)(
       access: createFileAccessFixture({
         http,
         transfers: () => ({
-          directFileReadRange: async () => ({
+          readPreviewRange: async () => ({
             bytes,
             size: bytes.length,
             offset: 0,
@@ -1391,7 +1420,7 @@ it('keeps full reset semantics for target switches and explicit reset', async ()
     access: createFileAccessFixture({
       http,
       transfers: () => ({
-        directFileReadRange: async () => ({
+        readPreviewRange: async () => ({
           bytes: new TextEncoder().encode('text'),
           size: 4,
           offset: 0,
@@ -1451,11 +1480,13 @@ it('aborts a pending preview read on dispose and ignores its late result', async
   const pendingRead = new Promise<WorkspaceDirectFileRange>((resolve) => {
     finishRead = resolve;
   });
-  const directFileReadRange = vi.fn(
+  const readPreviewRange = vi.fn(
     (
-      ...args: [string, number, number, string?, unknown?, string?, AbortSignal?]
+      ...args: Parameters<
+        ReturnType<ReturnType<typeof createFileAccessFixture>>['readPreviewRange']
+      >
     ): Promise<WorkspaceDirectFileRange> => {
-      readSignal = args[6];
+      readSignal = args[3];
       return pendingRead;
     }
   );
@@ -1472,7 +1503,7 @@ it('aborts a pending preview read on dispose and ignores its late result', async
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => undefined,
-    access: createFileAccessFixture({ http, transfers: () => ({ directFileReadRange }) }),
+    access: createFileAccessFixture({ http, transfers: () => ({ readPreviewRange }) }),
     preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
@@ -1561,7 +1592,7 @@ it('restores before the page mounts and delivers only the latest ordinary open f
     access: createFileAccessFixture({
       http,
       transfers: () => ({
-        directFileReadRange: async () => ({
+        readPreviewRange: async () => ({
           revision: 'r',
           size: 0,
           offset: 0,
@@ -1638,7 +1669,7 @@ it.each(['diff', 'scoped-file'] as const)(
       access: createFileAccessFixture({
         http,
         transfers: () => ({
-          directFileReadRange: async () => ({
+          readPreviewRange: async () => ({
             revision: 'r',
             size: 0,
             offset: 0,

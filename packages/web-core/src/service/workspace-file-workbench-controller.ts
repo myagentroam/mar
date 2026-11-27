@@ -371,7 +371,6 @@ export function createWorkspaceFileWorkbenchController(options: {
       readonly column?: number;
       readonly worktreePath?: string;
       readonly repositoryPath?: string;
-      readonly serverOnly: boolean;
       readonly existingPreview?: WorkspaceFilePreviewFrame;
     }
   ): Promise<void> {
@@ -402,7 +401,6 @@ export function createWorkspaceFileWorkbenchController(options: {
       },
       {
         textPreview,
-        serverOnly: input.serverOnly,
         ...(entry.size === null ? {} : { size: entry.size })
       }
     );
@@ -482,7 +480,6 @@ export function createWorkspaceFileWorkbenchController(options: {
     const opening = openEntry(
       { path, name: path.split('/').at(-1) ?? path, kind: 'FILE', size: null },
       {
-        serverOnly: false,
         ...(line === undefined ? {} : { line }),
         ...(column === undefined ? {} : { column }),
         ...(worktreePath === undefined ? {} : { worktreePath }),
@@ -846,7 +843,6 @@ export function createWorkspaceFileWorkbenchController(options: {
     navigation.clear(id);
     const size = frame.fileContent.value?.size;
     await previews.open(id, target, {
-      serverOnly: true,
       ...(size === undefined ? {} : { size })
     });
   }

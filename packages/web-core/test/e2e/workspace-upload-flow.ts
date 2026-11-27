@@ -154,9 +154,6 @@ async function inspectPreview<T>(
       if (isImage) return fetch(url, init);
       throw new Error('Unexpected HTTP content URL');
     },
-    manifest: () => undefined,
-    available: () => false,
-    direct,
     downloads: isImage
       ? {
           async download() {
@@ -213,9 +210,6 @@ export const harness = {
     const access = createWorkspaceFileAccessService({
       request: http.request,
       http,
-      manifest: () => undefined,
-      available: () => false,
-      direct,
       downloads: relayFiles
     }).forWorkspace(target.value!);
     return commit === undefined

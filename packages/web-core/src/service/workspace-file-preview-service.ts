@@ -7,17 +7,11 @@ import type {
   WorkspaceFilePreviewTarget
 } from '../model/workspace-file-preview.js';
 import { directFileContentRevision } from './workspace-direct-file-read-service.js';
-import {
-  decodeFilePreviewRead,
-  readFilePreview,
-  usesNativeHttpFilePreview
-} from './file-preview-read-service.js';
+import { readFilePreview, usesNativeHttpFilePreview } from './file-preview-read-service.js';
 import { revokeWorkspaceDirectObjectUrl } from './workspace-direct-object-url-service.js';
 import {
-  binaryFilePreviewKind,
   decodeFilePreviewContent,
   shouldReadTextFilePreview,
-  TEXT_FILE_PREVIEW_LIMIT_BYTES,
   usesRawFilePreview
 } from '../util/file-preview.js';
 import { apiErrorFromResponse, errorCode } from '../util/api-error.js';
@@ -36,10 +30,7 @@ interface FileRead {
 }
 
 export function createWorkspaceFilePreviewService(input: {
-  readonly access: (
-    target: WorkspaceFilePreviewTarget
-  ) => Omit<WorkspaceFileAccess, 'readPreviewRange' | 'readPreviewObject'> &
-    Partial<Pick<WorkspaceFileAccess, 'readPreviewRange' | 'readPreviewObject'>>;
+  readonly access: (target: WorkspaceFilePreviewTarget) => WorkspaceFileAccess;
   readonly onWritten: (target: WorkspaceFilePreviewTarget) => void | Promise<void>;
 }) {
   function createPage() {
@@ -99,7 +90,6 @@ export function createWorkspaceFilePreviewService(input: {
     options: {
       readonly size?: number;
       readonly textPreview?: boolean;
-      readonly serverOnly?: boolean;
     } = {}
   ): Promise<WorkspaceFilePreviewContent | undefined> {
     const state = internalPage(id);
@@ -119,7 +109,9 @@ export function createWorkspaceFilePreviewService(input: {
     state.target.value = fixedTarget;
     state.downloading.value = false;
     releaseUrl(state);
-    const textPreview = options.textPreview ?? shouldReadTextFilePreview(target.path);
+    const nativePreview = usesNativeHttpFilePreview(target.path);
+    const textPreview =
+      !nativePreview && (options.textPreview ?? shouldReadTextFilePreview(target.path));
     state.fileContent.value = {
       path: target.path,
       ...(options.size === undefined ? {} : { size: options.size }),
@@ -130,16 +122,22 @@ export function createWorkspaceFilePreviewService(input: {
     state.loading.value = true;
     state.error.value = undefined;
     try {
-      // Explicit reload uses the same live connection; serverOnly is for legacy readers below.
-      const readObject = transfers.readPreviewObject;
-      const kind = binaryFilePreviewKind(target.path);
-      if (
-        readObject !== undefined &&
-        usesRawFilePreview(target.path) &&
-        !usesNativeHttpFilePreview(target.path) &&
-        !(target.history !== undefined && textPreview)
-      ) {
-        const { url, size } = await readObject(fixedTarget, readController.signal);
+      // Native media retains HTTP caching and playback; file body reads have no HTTP fallback.
+      if (nativePreview) {
+        if (target.history !== undefined) {
+          const size = await readHttpPreviewSize(
+            fixedTarget,
+            transfers,
+            readController.signal
+          ).catch(() => undefined);
+          if (!current()) return;
+          if (size !== undefined) state.fileContent.value = { ...state.fileContent.value, size };
+        }
+        state.contentUrl.value = transfers.contentUrl(fixedTarget);
+        return state.fileContent.value;
+      }
+      if (usesRawFilePreview(target.path) && !(target.history !== undefined && textPreview)) {
+        const { url, size } = await transfers.readPreviewObject(fixedTarget, readController.signal);
         if (!current()) {
           if (url !== undefined) revokeWorkspaceDirectObjectUrl(url);
           return;
@@ -148,144 +146,33 @@ export function createWorkspaceFilePreviewService(input: {
         state.fileContent.value = { ...state.fileContent.value, size };
         return state.fileContent.value;
       }
-      const readRange = transfers.readPreviewRange;
-      if (
-        readRange !== undefined &&
-        (target.history !== undefined ? textPreview : !usesRawFilePreview(target.path))
-      ) {
-        let identity: WorkspaceDirectFileIdentity | undefined;
-        const result = await readFilePreview(async (limit) => {
-          const range = await readRange(fixedTarget, limit, identity, readController.signal);
-          readController.signal.throwIfAborted();
-          identity = { revision: range.revision, size: range.size };
-          const decoded = decodeFilePreviewContent(
-            range.bytes,
-            target.path,
-            range.nextOffset === null
-          );
-          const revision =
-            target.history === undefined && !isComposerAttachmentResourcePath(target.path)
-              ? await directFileContentRevision(range)
-              : undefined;
-          return {
-            ...decoded,
-            size: range.size,
-            nextOffset: range.nextOffset,
-            ...(revision === undefined ? {} : { revision })
-          };
-        }, current);
-        if (!current()) return;
-        state.fileContent.value = previewContent(target.path, result);
-        return state.fileContent.value;
-      }
-      if (fixedTarget.history !== undefined) {
-        const history = fixedTarget.history;
-        const fallback = transfers.contentUrl(fixedTarget);
-        if (textPreview) {
-          const direct = options.serverOnly
-            ? undefined
-            : await transfers.directGitFileReadRange?.(
-                history.commit,
-                target.path,
-                history.repositoryPath,
-                history.refs,
-                0,
-                TEXT_FILE_PREVIEW_LIMIT_BYTES,
-                undefined,
-                readController.signal
-              );
-          if (!current()) return;
-          let bytes: Uint8Array<ArrayBuffer>, size: number;
-          if (direct !== undefined) {
-            bytes = direct.bytes;
-            size = direct.size;
-          } else {
-            const response = await transfers.fetchFile(fixedTarget, {
-              signal: readController.signal,
-              headers: { range: `bytes=0-${TEXT_FILE_PREVIEW_LIMIT_BYTES - 1}` }
-            });
-            if (!response.ok)
-              throw apiErrorFromResponse(await response.json().catch(() => ({})), response.status);
-            bytes = new Uint8Array(await response.arrayBuffer());
-            const total = response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1];
-            size = total === undefined ? bytes.byteLength : Number(total);
-          }
-          if (!Number.isSafeInteger(size) || size < bytes.byteLength)
-            throw new Error('NODE_RESPONSE_INVALID');
-          const decoded = decodeFilePreviewContent(bytes, target.path, bytes.byteLength === size);
-          if (current())
-            state.fileContent.value = {
-              path: target.path,
-              size,
-              ...decoded,
-              truncated: decoded.encoding === 'utf-8' && bytes.byteLength < size
-            };
-          return current() ? state.fileContent.value : undefined;
-        }
-        if (kind === 'unsupported') return state.fileContent.value;
-        // Keep native preview metadata and playback on the same HTTP resource.
-        const size = await readHttpPreviewSize(fixedTarget, transfers, readController.signal).catch(
-          () => undefined
-        );
-        if (!current()) return;
-        state.fileContent.value = {
-          path: target.path,
-          ...(size === undefined ? {} : { size }),
-          encoding: 'base64',
-          content: '',
-          truncated: false
-        };
-        state.contentUrl.value = fallback;
-        return state.fileContent.value;
-      }
-      if (usesRawFilePreview(target.path)) {
-        state.contentUrl.value = transfers.contentUrl(fixedTarget);
-        return state.fileContent.value;
-      }
-      let directStarted = false;
+      if (target.history !== undefined && !textPreview) return state.fileContent.value;
       let identity: WorkspaceDirectFileIdentity | undefined;
-      async function read(limit: number, allowDirect: boolean): Promise<FileRead> {
-        const direct = allowDirect
-          ? await transfers.directFileReadRange?.(
-              target.path,
-              0,
-              limit,
-              target.worktreePath,
-              identity,
-              target.repositoryPath,
-              readController.signal
-            )
-          : undefined;
+      const result = await readFilePreview(async (limit) => {
+        const range = await transfers.readPreviewRange(
+          fixedTarget,
+          limit,
+          identity,
+          readController.signal
+        );
         readController.signal.throwIfAborted();
-        if (direct !== undefined) {
-          directStarted = true;
-          identity = { revision: direct.revision, size: direct.size };
-          const revision = await directFileContentRevision(direct);
-          const decoded = decodeFilePreviewContent(
-            direct.bytes,
-            target.path,
-            direct.nextOffset === null
-          );
-          return {
-            ...decoded,
-            size: direct.size,
-            nextOffset: direct.nextOffset,
-            ...(revision === undefined ? {} : { revision })
-          };
-        }
-        if (allowDirect && directStarted) throw new Error('DIRECT_FILE_READ_FAILED');
-        const result = await transfers.read(target, limit, readController.signal);
-        if (!isFileRead(result)) throw new Error('NODE_RESPONSE_INVALID');
-        return decodeFilePreviewRead(result.file, target.path);
-      }
-      let result: FileRead;
-      try {
-        result = await readFilePreview((limit) => read(limit, !options.serverOnly), current);
-      } catch (error) {
-        if (!directStarted || options.serverOnly || !current()) throw error;
-        identity = undefined;
-        result = await readFilePreview((limit) => read(limit, false), current);
-      }
+        identity = { revision: range.revision, size: range.size };
+        const decoded = decodeFilePreviewContent(
+          range.bytes,
+          target.path,
+          range.nextOffset === null
+        );
+        const revision =
+          target.history === undefined && !isComposerAttachmentResourcePath(target.path)
+            ? await directFileContentRevision(range)
+            : undefined;
+        return {
+          ...decoded,
+          size: range.size,
+          nextOffset: range.nextOffset,
+          ...(revision === undefined ? {} : { revision })
+        };
+      }, current);
       if (!current()) return;
       state.fileContent.value = previewContent(target.path, result);
       return state.fileContent.value;

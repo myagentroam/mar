@@ -17,16 +17,8 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function textFile(content: string, revision = 'server-revision', size?: number) {
-  return {
-    file: {
-      encoding: 'utf-8' as const,
-      size: size ?? new TextEncoder().encode(content).byteLength,
-      content,
-      nextOffset: null,
-      revision
-    }
-  };
+function contentRevision(content: string) {
+  return createHash('sha256').update(content).digest('hex');
 }
 
 function directRange(
@@ -64,7 +56,12 @@ function createHarness(
     readonly onWritten?: (target: WorkspaceFilePreviewTarget) => void;
   } = {}
 ) {
-  const request = vi.fn(options.request ?? (async () => textFile('server text')));
+  const request = vi.fn(
+    options.request ??
+      (async () => {
+        throw new Error('Unexpected HTTP request');
+      })
+  );
   const http: ScopedHttpService = {
     async request<T>(path: string, init?: RequestInit): Promise<T> {
       return (await request(path, init)) as T;
@@ -83,20 +80,15 @@ function createHarness(
   const preview = createWorkspaceFilePreviewService({
     access: createFileAccessFixture({
       http,
-      transfers: () => options.transfers ?? {},
+      transfers: () => ({
+        readPreviewRange: async () => directRange('preview text'),
+        ...options.transfers
+      }),
       fetchContent
     }),
     onWritten
   });
   return { preview, request, fetchContent, onWritten };
-}
-
-async function openServerText(
-  preview: ReturnType<typeof createWorkspaceFilePreviewService>,
-  id: number,
-  target: WorkspaceFilePreviewTarget = defaultTarget
-) {
-  await preview.open(id, target, { serverOnly: true, textPreview: true });
 }
 
 afterEach(() => {
@@ -115,7 +107,7 @@ describe('Workspace file preview service', () => {
         .mockRejectedValueOnce(failure);
       const { preview, request, fetchContent } = createHarness({ transfers: { readPreviewRange } });
       const page = preview.page(1);
-      await preview.open(1, fileTarget({ path }), { serverOnly: true });
+      await preview.open(1, fileTarget({ path }));
       expect(readPreviewRange).toHaveBeenCalledTimes(2);
       expect(readPreviewRange.mock.calls[0]?.[2]).toBeUndefined();
       expect(readPreviewRange.mock.calls[1]?.[2]).toEqual({ revision: 'snapshot', size: 100 });
@@ -127,53 +119,56 @@ describe('Workspace file preview service', () => {
   );
   it('keeps read failures on their file page and clears them when retrying', async () => {
     const failure = new Error('File was not found.');
-    const retry = deferred<ReturnType<typeof textFile>>();
-    const request = vi
+    const retry = deferred<WorkspaceDirectFileRange>();
+    const readPreviewRange = vi
       .fn()
       .mockRejectedValueOnce(failure)
-      .mockImplementationOnce(() => retry.promise);
-    const { preview } = createHarness({ request });
+      .mockReturnValueOnce(retry.promise);
+    const { preview } = createHarness({ transfers: { readPreviewRange } });
     const page = preview.page(1);
 
-    await openServerText(preview, 1);
+    await preview.open(1, defaultTarget);
     expect(page.error.value).toBe(failure);
     expect(page.loading.value).toBe(false);
     expect(preview.page(2).error.value).toBeUndefined();
 
-    const opening = openServerText(preview, 1);
+    const opening = preview.open(1, defaultTarget);
     expect(page.error.value).toBeUndefined();
     expect(page.loading.value).toBe(true);
-    retry.resolve(textFile('Recovered content'));
+    retry.resolve(directRange('Recovered content'));
     await opening;
     expect(page.fileContent.value?.content).toBe('Recovered content');
     expect(page.error.value).toBeUndefined();
     expect(page.loading.value).toBe(false);
   });
 
-  it('cancels an in-flight server read when its tab closes', async () => {
-    const pending = deferred<ReturnType<typeof textFile>>();
-    const { preview, request } = createHarness({ request: () => pending.promise });
-    const opening = preview.open(1, defaultTarget, { serverOnly: true });
-    const signal = request.mock.calls[0]?.[1]?.signal;
+  it('cancels an in-flight stream read when its tab closes', async () => {
+    const pending = deferred<WorkspaceDirectFileRange>();
+    const readPreviewRange = vi.fn<NonNullable<WorkspaceFilePreviewTransfers['readPreviewRange']>>(
+      () => pending.promise
+    );
+    const { preview } = createHarness({ transfers: { readPreviewRange } });
+    const opening = preview.open(1, defaultTarget);
+    const signal = readPreviewRange.mock.calls[0]?.[3];
     expect(signal).toBeInstanceOf(AbortSignal);
     preview.close(1);
     expect(signal?.aborted).toBe(true);
-    pending.resolve(textFile('late'));
+    pending.resolve(directRange('late'));
     await opening;
     expect(preview.page(1).error.value).toBeUndefined();
   });
 
   it('cancels the previous direct range when opening a new target in the tab', async () => {
-    const pending = deferred<WorkspaceDirectFileRange | undefined>();
-    const directFileReadRange = vi.fn(
-      (..._args: Parameters<NonNullable<WorkspaceFilePreviewTransfers['directFileReadRange']>>) =>
-        pending.promise
-    );
-    const { preview } = createHarness({ transfers: { directFileReadRange } });
+    const pending = deferred<WorkspaceDirectFileRange>();
+    const readPreviewRange = vi
+      .fn<NonNullable<WorkspaceFilePreviewTransfers['readPreviewRange']>>()
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(directRange('next'));
+    const { preview } = createHarness({ transfers: { readPreviewRange } });
     const opening = preview.open(1, defaultTarget);
-    const signal = directFileReadRange.mock.calls[0]?.[6] as AbortSignal | undefined;
+    const signal = readPreviewRange.mock.calls[0]?.[3];
     expect(signal).toBeInstanceOf(AbortSignal);
-    const next = preview.open(1, fileTarget({ path: 'next.txt' }), { serverOnly: true });
+    const next = preview.open(1, fileTarget({ path: 'next.txt' }));
     expect(signal?.aborted).toBe(true);
     pending.resolve(directRange('late'));
     await Promise.all([opening, next]);
@@ -182,8 +177,8 @@ describe('Workspace file preview service', () => {
 
   it('reads ordinary text through one bounded direct probe', async () => {
     const content = 'Hello, preview.';
-    const directFileReadRange = vi.fn(async () => directRange(content));
-    const { preview, request } = createHarness({ transfers: { directFileReadRange } });
+    const readPreviewRange = vi.fn(async () => directRange(content));
+    const { preview, request } = createHarness({ transfers: { readPreviewRange } });
 
     await preview.open(1, defaultTarget);
 
@@ -195,12 +190,9 @@ describe('Workspace file preview service', () => {
       truncated: false,
       revision: createHash('sha256').update(content).digest('hex')
     });
-    expect(directFileReadRange).toHaveBeenCalledExactlyOnceWith(
-      'notes.txt',
-      0,
+    expect(readPreviewRange).toHaveBeenCalledExactlyOnceWith(
+      defaultTarget,
       4096,
-      undefined,
-      undefined,
       undefined,
       expect.any(AbortSignal)
     );
@@ -208,8 +200,8 @@ describe('Workspace file preview service', () => {
   });
 
   it('keeps an empty text file readable with its empty-content revision', async () => {
-    const directFileReadRange = vi.fn(async () => directRange(''));
-    const { preview } = createHarness({ transfers: { directFileReadRange } });
+    const readPreviewRange = vi.fn(async () => directRange(''));
+    const { preview } = createHarness({ transfers: { readPreviewRange } });
 
     await preview.open(1, defaultTarget);
 
@@ -221,12 +213,9 @@ describe('Workspace file preview service', () => {
       truncated: false,
       revision: createHash('sha256').update('').digest('hex')
     });
-    expect(directFileReadRange).toHaveBeenCalledExactlyOnceWith(
-      'notes.txt',
-      0,
+    expect(readPreviewRange).toHaveBeenCalledExactlyOnceWith(
+      defaultTarget,
       4096,
-      undefined,
-      undefined,
       undefined,
       expect.any(AbortSignal)
     );
@@ -234,22 +223,23 @@ describe('Workspace file preview service', () => {
 
   it('limits a large text preview to the probe and configured preview ranges', async () => {
     const previewBytes = new Uint8Array(512 * 1024).fill('x'.charCodeAt(0));
-    const directFileReadRange = vi.fn(async (_path: string, _offset: number, length: number) =>
-      length === 4096
-        ? directRange('x'.repeat(4096), 900_000, 4096, 'large-file-revision')
-        : {
-            revision: 'large-file-revision',
-            size: 900_000,
-            offset: 0,
-            bytes: previewBytes,
-            nextOffset: 512 * 1024
-          }
+    const readPreviewRange = vi.fn<NonNullable<WorkspaceFilePreviewTransfers['readPreviewRange']>>(
+      async (_target, length) =>
+        length === 4096
+          ? directRange('x'.repeat(4096), 900_000, 4096, 'large-file-revision')
+          : {
+              revision: 'large-file-revision',
+              size: 900_000,
+              offset: 0,
+              bytes: previewBytes,
+              nextOffset: 512 * 1024
+            }
     );
-    const { preview } = createHarness({ transfers: { directFileReadRange } });
+    const { preview } = createHarness({ transfers: { readPreviewRange } });
 
     await preview.open(1, defaultTarget);
 
-    expect(directFileReadRange.mock.calls.map((call) => call[2])).toEqual([4096, 512 * 1024]);
+    expect(readPreviewRange.mock.calls.map((call) => call[1])).toEqual([4096, 512 * 1024]);
     expect(preview.page(1).fileContent.value).toMatchObject({
       size: 900_000,
       encoding: 'utf-8',
@@ -271,7 +261,7 @@ describe('Workspace file preview service', () => {
     const { preview, request } = createHarness();
 
     for (const [index, target] of targets.entries()) {
-      await preview.open(index + 1, target, { serverOnly: true, textPreview: true });
+      await preview.open(index + 1, target);
       await expect(preview.save(index + 1, 'edited', 'expected-revision')).rejects.toThrow(
         'FILE_WRITE_INVALID'
       );
@@ -283,25 +273,23 @@ describe('Workspace file preview service', () => {
   it('captures the write target, content, and expected revision and accepts the saved identity', async () => {
     const target = fileTarget({ workspaceId: 'workspace one', path: 'docs/edit.txt' });
     const { preview, request, onWritten } = createHarness({
-      request: async (_path, init) =>
-        init?.method === 'PUT'
-          ? { file: { revision: 'revision-after-save', size: 8 } }
-          : textFile('before', 'revision-before')
+      transfers: { readPreviewRange: async () => directRange('before') },
+      request: async () => ({ file: { revision: 'revision-after-save', size: 8 } })
     });
-    await openServerText(preview, 1, target);
+    await preview.open(1, target);
 
-    await expect(preview.save(1, 'after λ', 'revision-before')).resolves.toBe(
+    await expect(preview.save(1, 'after λ', contentRevision('before'))).resolves.toBe(
       'revision-after-save'
     );
 
-    const [writePath, writeInit] = request.mock.calls[1]!;
+    const [writePath, writeInit] = request.mock.calls[0]!;
     expect(writePath).toBe('/api/workspaces/workspace%20one/files/write');
     expect(writeInit?.method).toBe('PUT');
     expect(JSON.parse(String(writeInit?.body))).toEqual({
       nodeId: 'node-1',
       path: 'docs/edit.txt',
       content: 'after λ',
-      expectedRevision: 'revision-before'
+      expectedRevision: contentRevision('before')
     });
     expect(preview.page(1).fileContent.value).toMatchObject({
       path: 'docs/edit.txt',
@@ -315,12 +303,12 @@ describe('Workspace file preview service', () => {
   it('preserves the original text when the revision-checked write conflicts', async () => {
     const conflict = new Error('FILE_WRITE_CONFLICT');
     const { preview } = createHarness({
-      request: async (_path, init) => {
-        if (init?.method === 'PUT') throw conflict;
-        return textFile('original text', 'revision-before');
+      transfers: { readPreviewRange: async () => directRange('original text') },
+      request: async () => {
+        throw conflict;
       }
     });
-    await openServerText(preview, 1);
+    await preview.open(1, defaultTarget);
     const original = preview.page(1).fileContent.value;
 
     await expect(preview.save(1, 'replacement text', 'stale-revision')).rejects.toBe(conflict);
@@ -328,7 +316,7 @@ describe('Workspace file preview service', () => {
     expect(preview.page(1).fileContent.value).toBe(original);
     expect(preview.page(1).fileContent.value).toMatchObject({
       content: 'original text',
-      revision: 'revision-before'
+      revision: contentRevision('original text')
     });
   });
 
@@ -345,11 +333,8 @@ describe('Workspace file preview service', () => {
     let readIndex = 0;
     let writeIndex = 0;
     const { preview, onWritten } = createHarness({
-      request: async (_path, init) => {
-        if (init?.method === 'PUT') return writeRequests[writeIndex++]!.promise;
-        const content = readContents[readIndex++]!;
-        return textFile(content, `read-revision-${readIndex}`);
-      }
+      transfers: { readPreviewRange: async () => directRange(readContents[readIndex++]!) },
+      request: () => writeRequests[writeIndex++]!.promise
     });
     const originalTargets = [
       fileTarget({ path: 'reload.txt' }),
@@ -358,18 +343,18 @@ describe('Workspace file preview service', () => {
     ];
 
     for (const [index, target] of originalTargets.entries()) {
-      await openServerText(preview, index + 1, target);
+      await preview.open(index + 1, target);
     }
     const saves = [
-      preview.save(1, 'late reload write', 'read-revision-1'),
-      preview.save(2, 'late replacement write', 'read-revision-2'),
-      preview.save(3, 'late closed write', 'read-revision-3')
+      preview.save(1, 'late reload write', contentRevision(readContents[0]!)),
+      preview.save(2, 'late replacement write', contentRevision(readContents[1]!)),
+      preview.save(3, 'late closed write', contentRevision(readContents[2]!))
     ];
 
-    await openServerText(preview, 1, originalTargets[0]!);
-    await openServerText(preview, 2, fileTarget({ path: 'new-target.txt' }));
+    await preview.open(1, originalTargets[0]!);
+    await preview.open(2, fileTarget({ path: 'new-target.txt' }));
     preview.close(3);
-    await openServerText(preview, 3, fileTarget({ path: 'reopened.txt' }));
+    await preview.open(3, fileTarget({ path: 'reopened.txt' }));
 
     writeRequests[0]!.resolve({ file: { revision: 'saved-reload', size: 17 } });
     writeRequests[1]!.resolve({ file: { revision: 'saved-replacement', size: 23 } });
@@ -379,34 +364,34 @@ describe('Workspace file preview service', () => {
     expect(preview.page(1).fileContent.value).toMatchObject({
       path: 'reload.txt',
       content: 'reload wins',
-      revision: 'read-revision-4'
+      revision: contentRevision(readContents[3]!)
     });
     expect(preview.page(2).fileContent.value).toMatchObject({
       path: 'new-target.txt',
       content: 'replacement wins',
-      revision: 'read-revision-5'
+      revision: contentRevision(readContents[4]!)
     });
     expect(preview.page(3).fileContent.value).toMatchObject({
       path: 'reopened.txt',
       content: 'reopened after close',
-      revision: 'read-revision-6'
+      revision: contentRevision(readContents[5]!)
     });
     expect(onWritten).toHaveBeenCalledTimes(3);
   });
 
   it('keeps a successful write successful when its refresh callback throws', async () => {
     const { preview } = createHarness({
-      request: async (_path, init) =>
-        init?.method === 'PUT'
-          ? { file: { revision: 'revision-after-save', size: 7 } }
-          : textFile('before', 'revision-before'),
+      transfers: { readPreviewRange: async () => directRange('before') },
+      request: async () => ({ file: { revision: 'revision-after-save', size: 7 } }),
       onWritten: () => {
         throw new Error('REFRESH_FAILED');
       }
     });
-    await openServerText(preview, 1);
+    await preview.open(1, defaultTarget);
 
-    await expect(preview.save(1, 'after', 'revision-before')).resolves.toBe('revision-after-save');
+    await expect(preview.save(1, 'after', contentRevision('before'))).resolves.toBe(
+      'revision-after-save'
+    );
     expect(preview.page(1).fileContent.value).toMatchObject({
       content: 'after',
       revision: 'revision-after-save',
@@ -414,66 +399,30 @@ describe('Workspace file preview service', () => {
     });
   });
 
-  it('restarts a failed direct read at server offset zero with the same workspace resource', async () => {
+  it('surfaces a failed expanded stream read without switching resources or retrying over HTTP', async () => {
     const target = fileTarget({
       path: 'src/file.txt',
       repositoryPath: 'repo/root',
       worktreePath: 'repo/worktree'
     });
-    const directFileReadRange: NonNullable<
-      WorkspaceFilePreviewTransfers['directFileReadRange']
-    > = async (_path, _offset, _length, _worktreePath, identity) => {
-      if (identity === undefined) {
-        return directRange('p'.repeat(4096), 9000, 4096, 'direct-revision');
-      }
-      throw new Error('DIRECT_FILE_READ_FAILED');
-    };
-    const directRead = vi.fn(directFileReadRange);
-    let serverReadIndex = 0;
-    const { preview, request } = createHarness({
-      transfers: { directFileReadRange: directRead },
-      request: async () => {
-        serverReadIndex += 1;
-        return serverReadIndex === 1
-          ? {
-              file: {
-                encoding: 'utf-8',
-                size: 9000,
-                content: 'server probe from zero',
-                nextOffset: 4096,
-                revision: 'server-revision'
-              }
-            }
-          : {
-              file: {
-                encoding: 'utf-8',
-                size: 9000,
-                content: 'server body from zero',
-                nextOffset: null,
-                revision: 'server-revision'
-              }
-            };
-      }
-    });
+    const failure = new Error('DIRECT_FILE_READ_FAILED');
+    const readPreviewRange = vi
+      .fn<NonNullable<WorkspaceFilePreviewTransfers['readPreviewRange']>>()
+      .mockResolvedValueOnce(directRange('p'.repeat(4096), 9000, 4096, 'stream-revision'))
+      .mockRejectedValueOnce(failure);
+    const { preview, request, fetchContent } = createHarness({ transfers: { readPreviewRange } });
 
     await preview.open(1, target);
 
-    expect(directRead.mock.calls).toHaveLength(2);
-    expect(directRead.mock.calls[1]?.[4]).toEqual({ revision: 'direct-revision', size: 9000 });
-    expect(request.mock.calls).toHaveLength(2);
-    for (const [path] of request.mock.calls) {
-      const url = new URL(path, 'http://workspace.test');
-      expect(url.searchParams.get('nodeId')).toBe('node-1');
-      expect(url.searchParams.get('path')).toBe('src/file.txt');
-      expect(url.searchParams.get('repositoryPath')).toBe('repo/root');
-      expect(url.searchParams.get('worktreePath')).toBe('repo/worktree');
-      expect(url.searchParams.get('offset')).toBe('0');
-    }
-    expect(preview.page(1).fileContent.value).toMatchObject({
-      content: 'server body from zero',
-      revision: 'server-revision',
-      truncated: false
-    });
+    const signal = expect.any(AbortSignal);
+    expect(readPreviewRange.mock.calls).toEqual([
+      [target, 4096, undefined, signal],
+      [target, 512 * 1024, { revision: 'stream-revision', size: 9000 }, signal]
+    ]);
+    expect(preview.page(1).error.value).toBe(failure);
+    expect(preview.page(1).fileContent.value?.content).toBe('');
+    expect(request).not.toHaveBeenCalled();
+    expect(fetchContent).not.toHaveBeenCalled();
   });
 
   it('pins history read identity and refs before fetching the selected revision', async () => {
@@ -482,41 +431,21 @@ describe('Workspace file preview service', () => {
       path: 'docs/guide.txt',
       history: { commit: 'commit/42', repositoryPath: 'repo root', refs }
     });
-    const directGitFileReadRange = vi.fn(async () => undefined);
-    const fetchContent = vi.fn<typeof fetch>(
-      async () =>
-        new Response('historic', {
-          status: 206,
-          headers: { 'content-range': 'bytes 0-7/8' }
-        })
-    );
-    const { preview } = createHarness({
-      transfers: { directGitFileReadRange },
-      fetchContent
-    });
+    const readPreviewRange = vi.fn(async () => directRange('historic'));
+    const { preview, request, fetchContent } = createHarness({ transfers: { readPreviewRange } });
     const opening = preview.open(1, historyTarget);
     refs.splice(0, refs.length, 'changed-after-open');
 
     await opening;
 
-    expect(directGitFileReadRange).toHaveBeenCalledExactlyOnceWith(
-      'commit/42',
-      'docs/guide.txt',
-      'repo root',
-      ['main', 'release/1'],
-      0,
-      512 * 1024,
+    expect(readPreviewRange).toHaveBeenCalledExactlyOnceWith(
+      { ...historyTarget, history: { ...historyTarget.history, refs: ['main', 'release/1'] } },
+      4096,
       undefined,
       expect.any(AbortSignal)
     );
-    const [fetchUrl, fetchInit] = fetchContent.mock.calls[0]!;
-    const url = new URL(String(fetchUrl), 'http://workspace.test');
-    expect(url.pathname).toBe('/api/workspaces/workspace-1/git/commits/commit%2F42/files/content');
-    expect(url.searchParams.get('nodeId')).toBe('node-1');
-    expect(url.searchParams.get('path')).toBe('docs/guide.txt');
-    expect(url.searchParams.get('repositoryPath')).toBe('repo root');
-    expect(url.searchParams.getAll('refs')).toEqual(['main', 'release/1']);
-    expect((fetchInit?.headers as Record<string, string>).range).toBe('bytes=0-524287');
+    expect(request).not.toHaveBeenCalled();
+    expect(fetchContent).not.toHaveBeenCalled();
     expect(preview.page(1).fileContent.value).toMatchObject({
       path: 'docs/guide.txt',
       content: 'historic',
@@ -547,7 +476,6 @@ describe('Workspace file preview service', () => {
   it.each(['image.png', 'image.svg', 'media/clip.mp4', 'media/song.mp3'])(
     'keeps the Git preview and size probe for %s on HTTP even when ICE is ready',
     async (path) => {
-      const directGitFileReadRange = vi.fn().mockResolvedValue(directRange('old'));
       const readPreviewRange = vi.fn();
       const readPreviewObject = vi.fn();
       const fetchContent = vi
@@ -556,7 +484,7 @@ describe('Workspace file preview service', () => {
           new Response(null, { status: 206, headers: { 'content-range': 'bytes 0-0/1024' } })
         );
       const { preview } = createHarness({
-        transfers: { directGitFileReadRange, readPreviewRange, readPreviewObject },
+        transfers: { readPreviewRange, readPreviewObject },
         fetchContent
       });
       const history = { commit: 'a'.repeat(40), repositoryPath: '', refs: ['main'] };
@@ -570,11 +498,32 @@ describe('Workspace file preview service', () => {
         contentUrl.value,
         expect.objectContaining({ method: 'HEAD', headers: { range: 'bytes=0-0' } })
       );
-      expect(directGitFileReadRange).not.toHaveBeenCalled();
       expect(readPreviewRange).not.toHaveBeenCalled();
       expect(readPreviewObject).not.toHaveBeenCalled();
     }
   );
+
+  it('leaves a known binary Git file without a viewer downloadable without reading its body', async () => {
+    const readPreviewRange = vi.fn();
+    const readPreviewObject = vi.fn();
+    const { preview, request, fetchContent } = createHarness({
+      transfers: { readPreviewRange, readPreviewObject }
+    });
+    const target = fileTarget({
+      path: 'archive.zip',
+      history: { commit: 'a'.repeat(40), repositoryPath: '', refs: ['main'] }
+    });
+    await preview.open(1, target, { textPreview: false });
+    expect(preview.page(1).fileContent.value).toMatchObject({
+      path: target.path,
+      encoding: 'base64'
+    });
+    expect(preview.page(1).contentUrl.value).toBeUndefined();
+    expect(readPreviewRange).not.toHaveBeenCalled();
+    expect(readPreviewObject).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+    expect(fetchContent).not.toHaveBeenCalled();
+  });
 
   it('keeps Git media playable without using the range length as the file size', async () => {
     const fetchContent = vi
@@ -645,11 +594,11 @@ describe('Workspace file preview service', () => {
   });
 
   it('keeps the latest page when reads for replaced targets resolve out of order', async () => {
-    const readA = deferred<WorkspaceDirectFileRange | undefined>();
-    const readB = deferred<WorkspaceDirectFileRange | undefined>();
+    const readA = deferred<WorkspaceDirectFileRange>();
+    const readB = deferred<WorkspaceDirectFileRange>();
     let call = 0;
-    const directFileReadRange = vi.fn(() => (call++ === 0 ? readA.promise : readB.promise));
-    const { preview } = createHarness({ transfers: { directFileReadRange } });
+    const readPreviewRange = vi.fn(() => (call++ === 0 ? readA.promise : readB.promise));
+    const { preview } = createHarness({ transfers: { readPreviewRange } });
 
     const openingA = preview.open(1, fileTarget({ path: 'a.txt' }));
     const openingB = preview.open(1, fileTarget({ path: 'b.txt' }));
@@ -668,21 +617,21 @@ describe('Workspace file preview service', () => {
   });
 
   it('isolates late successes and failures after reset and close', async () => {
-    const resetSuccess = deferred<WorkspaceDirectFileRange | undefined>();
-    const resetFailure = deferred<WorkspaceDirectFileRange | undefined>();
-    const closeSuccess = deferred<WorkspaceDirectFileRange | undefined>();
-    const closeFailure = deferred<WorkspaceDirectFileRange | undefined>();
+    const resetSuccess = deferred<WorkspaceDirectFileRange>();
+    const resetFailure = deferred<WorkspaceDirectFileRange>();
+    const closeSuccess = deferred<WorkspaceDirectFileRange>();
+    const closeFailure = deferred<WorkspaceDirectFileRange>();
     const pendingByPath = new Map([
       ['reset-stale-success.txt', resetSuccess],
       ['reset-stale-failure.txt', resetFailure],
       ['close-stale-success.txt', closeSuccess],
       ['close-stale-failure.txt', closeFailure]
     ]);
-    const directFileReadRange = vi.fn(
-      (path: string) =>
+    const readPreviewRange = vi.fn<NonNullable<WorkspaceFilePreviewTransfers['readPreviewRange']>>(
+      ({ path }) =>
         pendingByPath.get(path)?.promise ?? Promise.resolve(directRange(`fresh:${path}`))
     );
-    const { preview } = createHarness({ transfers: { directFileReadRange } });
+    const { preview } = createHarness({ transfers: { readPreviewRange } });
 
     const resetOldSuccess = preview.open(1, fileTarget({ path: 'reset-stale-success.txt' }));
     const resetOldFailure = preview.open(2, fileTarget({ path: 'reset-stale-failure.txt' }));
@@ -712,18 +661,20 @@ describe('Workspace file preview service', () => {
   });
 
   it('refuses writes while loading and settles loading when the page closes', async () => {
-    const read = deferred<ReturnType<typeof textFile>>();
-    const { preview, request } = createHarness({ request: async () => read.promise });
+    const read = deferred<WorkspaceDirectFileRange>();
+    const readPreviewRange = vi.fn(() => read.promise);
+    const { preview, request } = createHarness({ transfers: { readPreviewRange } });
     const page = preview.page(7);
     const opening = preview.open(7, fileTarget());
     expect(page.loading.value).toBe(true);
     await expect(preview.save(7, 'edited', 'a'.repeat(64))).rejects.toThrow('FILE_WRITE_INVALID');
     preview.close(7);
     expect(page.loading.value).toBe(false);
-    read.resolve(textFile('late result'));
+    read.resolve(directRange('late result'));
     await opening;
     expect(page.loading.value).toBe(false);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(readPreviewRange).toHaveBeenCalledOnce();
+    expect(request).not.toHaveBeenCalled();
     expect(page.error.value).toBeUndefined();
   });
 
@@ -734,7 +685,12 @@ describe('Workspace file preview service', () => {
     'keeps partial or binary previews read-only ($encoding, $nextOffset)',
     async ({ encoding, nextOffset }) => {
       const { preview, request } = createHarness({
-        request: async () => ({ file: { ...textFile('bounded').file, encoding, nextOffset } })
+        transfers: {
+          readPreviewRange: async () =>
+            encoding === 'utf-8'
+              ? directRange('bounded', 9, nextOffset)
+              : { ...directRange('', 3), bytes: Uint8Array.of(0, 1, 2) }
+        }
       });
       await preview.open(8, fileTarget());
       await expect(preview.save(8, 'edited', 'a'.repeat(64))).rejects.toThrow('FILE_WRITE_INVALID');
@@ -743,14 +699,9 @@ describe('Workspace file preview service', () => {
   );
 
   it('decodes legacy source in a read-only preview and refuses to save it', async () => {
+    const bytes = Uint8Array.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]);
     const { preview, request } = createHarness({
-      request: async () => ({
-        file: {
-          ...textFile('').file,
-          encoding: 'base64',
-          content: Buffer.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]).toString('base64')
-        }
-      })
+      transfers: { readPreviewRange: async () => ({ ...directRange('', bytes.length), bytes }) }
     });
     await preview.open(8, fileTarget({ path: 'DisplayBoard.c' }));
     expect(preview.page(8).fileContent.value).toMatchObject({
@@ -766,17 +717,10 @@ describe('Workspace file preview service', () => {
     const bytes = Uint8Array.from([47, 47, 32, 0xd6, 0xd0, 0xce, 0xc4]);
     const { preview, request, fetchContent } = createHarness({
       transfers: {
-        directFileReadRange: async () => ({
-          revision: 'legacy-revision',
-          size: bytes.length,
+        readPreviewRange: async ({ history }) => ({
           offset: 0,
           bytes,
-          nextOffset: null
-        }),
-        directGitFileReadRange: async () => ({
-          offset: 0,
-          bytes,
-          revision: 'history-revision',
+          revision: history === undefined ? 'legacy-revision' : 'history-revision',
           size: bytes.length,
           nextOffset: null
         })
