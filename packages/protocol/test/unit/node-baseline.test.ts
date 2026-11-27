@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   conversationItemSchema,
+  createEnvelope,
   marAgentNodeModelSummarySchema,
-  marAgentRuntimeModelConfigurationSchema,
-  NODE_PROTOCOL_VERSION,
-  nodeEnvelopeSchema
+  marAgentRuntimeModelConfigurationSchema
 } from '../../src/index.js';
 
 const model = {
@@ -35,14 +34,8 @@ const item = {
 };
 
 describe('Node 0.11.39 protocol baseline', () => {
-  it('retains wire v3 and rejects older and unknown versions', () => {
-    expect(NODE_PROTOCOL_VERSION).toBe(3);
-    for (const version of [2, 3, 4]) {
-      expect(
-        nodeEnvelopeSchema.safeParse({ version, id: 'request', type: 'heartbeat', payload: {} })
-          .success
-      ).toBe(version === 3);
-    }
+  it('continues writing wire v3', () => {
+    expect(createEnvelope('heartbeat', {}).version).toBe(3);
   });
 
   it('uses one runtime credential representation and rejects a bare static key', () => {

@@ -139,7 +139,7 @@ interface ManagedTerminal {
   readonly usePipe: boolean;
   readonly openComputer?: (id: string) => TerminalPipe;
   outputPaused?: boolean;
-  outputBackpressureAttachments?: ReadonlySet<string>;
+  outputBackpressureAttachments?: Set<string>;
   deferredCommand?: {
     readonly executable: string;
     readonly args: readonly string[];
@@ -506,6 +506,7 @@ export class TerminalManager {
     this.attachments.delete(attachmentId);
     const terminal = this.terminals.get(attachment.terminalId);
     if (terminal?.writerAttachmentId === attachmentId) terminal.writerAttachmentId = undefined;
+    terminal?.outputBackpressureAttachments?.delete(attachmentId);
     if (terminal !== undefined) this.updateOutputPause(terminal);
     if (terminal !== undefined && !this.hasAttachment(terminal.id)) {
       if (terminal.openComputer !== undefined) {
@@ -520,8 +521,8 @@ export class TerminalManager {
     }
   }
 
-  /** A relay failure closes only its CLI writer; browser terminals remain reattachable. */
-  releaseRelayAttachment(attachmentId: string): void {
+  /** Transport loss closes its CLI writer; browser terminals remain reattachable. */
+  releaseTransportAttachment(attachmentId: string): void {
     const attachment = this.attachments.get(attachmentId);
     if (
       attachment?.closeOnDisconnect === true &&
@@ -682,12 +683,13 @@ export class TerminalManager {
     return () => this.frameListeners.delete(listener);
   }
 
-  /** A relay can pause only its own pipe writer, never an unrelated direct writer or PTY. */
-  setOutputBackpressure(terminalId: string, attachmentIds: ReadonlySet<string>): void {
-    const terminal = this.terminals.get(terminalId);
+  /** Each transport can pause its own pipe writer, not a different attachment or a PTY. */
+  setAttachmentBackpressure(attachmentId: string, paused: boolean): void {
+    const attachment = this.attachments.get(attachmentId);
+    const terminal = attachment && this.terminals.get(attachment.terminalId);
     if (terminal === undefined) return;
-    if (attachmentIds.size === 0) delete terminal.outputBackpressureAttachments;
-    else terminal.outputBackpressureAttachments = new Set(attachmentIds);
+    if (paused) (terminal.outputBackpressureAttachments ??= new Set()).add(attachmentId);
+    else terminal.outputBackpressureAttachments?.delete(attachmentId);
     this.updateOutputPause(terminal);
   }
 

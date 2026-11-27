@@ -14,38 +14,47 @@ export const DIRECT_ICE_TIMEOUT_MS = 3000;
 export const DIRECT_HEARTBEAT_MS = 10000;
 
 export async function openDirectTerminal(options) {
+  if (
+    options.peerConnectionFactory === undefined &&
+    typeof options.client.openDirectTerminal === 'function'
+  )
+    return options.client.openDirectTerminal(options);
+  const connection = await openDirectConnection(options);
+  try {
+    return await connection.attach({ ...options, closeConnection: connection.close });
+  } catch (error) {
+    connection.close();
+    throw error;
+  }
+}
+
+/** Owns one ICE peer and control socket; each attach owns only its DataChannel and grant. */
+export async function openDirectConnection(options) {
   const {
     client,
     WebSocketClass,
     nodeId,
-    terminalId,
-    afterSequence = 0,
     timeoutMs = DIRECT_SETUP_TIMEOUT_MS,
     heartbeatMs = DIRECT_HEARTBEAT_MS,
     peerConnectionFactory,
     onPrepared,
     onIceConnected,
     onTransportReady,
-    beforeOpen,
     onRejected,
     cleanupNative: cleanupNativeImpl,
     signal
   } = options;
   let { manifest } = options;
-  if (peerConnectionFactory === undefined && typeof client.openDirectTerminal === 'function')
-    return client.openDirectTerminal(options);
   if (manifest === undefined && typeof client.getTerminalManifest !== 'function')
     throw new DirectFallbackError('DIRECT_MANIFEST_UNAVAILABLE');
 
   let live;
   let peer;
   let bootstrapChannel;
-  let terminalChannel;
   let transportSessionId;
-  let terminalSessionId;
-  let transport;
-  let unsafeFallback = false;
+  let closeConnection;
   let transportControlCleanup;
+  let transportDisconnectCleanup;
   let transportNegotiationActive = true;
   let preparationError;
   let cleanupNative = cleanupNativeImpl;
@@ -73,10 +82,13 @@ export async function openDirectTerminal(options) {
       preparationError ??= error;
       rejectPreparation(preparationError);
     };
+    transportDisconnectCleanup = live.onDisconnect(() =>
+      failPreparation(new DirectFallbackError('DIRECT_CONTROL_CLOSED'))
+    );
     // Node errors carry a session ID, not necessarily the browser's request ID.
     // Listen before prepare and native initialization, then correlate with prepared.
     transportControlCleanup = live.onControl((message) => {
-      if (dispatchControl) dispatchControl(message);
+      if (dispatchControl && transportNegotiationActive) dispatchControl(message);
       else if (
         (message.type === 'direct.error' || message.type === 'direct.closed') &&
         typeof message.directSessionId === 'string'
@@ -226,8 +238,14 @@ export async function openDirectTerminal(options) {
         }
       });
       peer.onStateChange((state) => {
-        if (!transportNegotiationActive || settled) return;
         const normalizedState = String(state).toLowerCase();
+        if (!transportNegotiationActive || settled) {
+          if (normalizedState === 'failed' || normalizedState === 'closed') {
+            if (closeConnection) closeConnection();
+            else failPreparation(new DirectFallbackError('DIRECT_CONNECTION_FAILED'));
+          }
+          return;
+        }
         if (normalizedState === 'connected') {
           if (!connected) {
             connected = true;
@@ -250,56 +268,165 @@ export async function openDirectTerminal(options) {
     });
     try {
       await withTimeout(
-        transportReady,
+        Promise.race([transportReady, preparationFailure]),
         Math.min(timeoutMs, DIRECT_ICE_TIMEOUT_MS),
         'DIRECT_SETUP_TIMEOUT',
         signal
       );
     } finally {
       transportNegotiationActive = false;
-      transportControlCleanup?.();
-      transportControlCleanup = undefined;
     }
     bootstrapChannel?.close?.();
-    if (onTransportReady) await onTransportReady();
+    // Keep observing the peer and control socket until ownership passes to the caller.
+    if (onTransportReady)
+      await withTimeout(
+        Promise.race([preparationFailure, onTransportReady()]),
+        timeoutMs,
+        'DIRECT_SETUP_TIMEOUT',
+        signal
+      );
+    if (preparationError) throw preparationError;
+    transportControlCleanup();
+    transportDisconnectCleanup();
 
-    const terminalPrepared = await withTimeout(
-      live.request(
-        {
-          type: 'terminal.direct.prepare',
-          requestId: requestId(),
+    let closed = false;
+    const close = (reason = 'CLI_CLOSED') => {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
+      disconnect();
+      live.send({ type: 'direct.cancel', directSessionId: transportSessionId, reason });
+      live.close();
+      peer.close?.();
+      cleanupNative?.();
+    };
+    const unsubscribe = live.onControl((message) => {
+      if (
+        message.directSessionId === transportSessionId &&
+        (message.type === 'direct.error' || message.type === 'direct.closed')
+      )
+        close();
+    });
+    const disconnect = live.onDisconnect(() => close());
+    const heartbeat = setInterval(() => {
+      if (!live.send({ type: 'direct.heartbeat', directSessionId: transportSessionId })) close();
+    }, heartbeatMs);
+    heartbeat.unref?.();
+    closeConnection = close;
+    return {
+      get closed() {
+        return closed;
+      },
+      close,
+      attach: ({
+        terminalId,
+        computer,
+        afterSequence,
+        signal,
+        beforeOpen,
+        closeConnection,
+        onRejected
+      }) => {
+        if (closed) throw new DirectFallbackError('DIRECT_CONTROL_UNAVAILABLE');
+        return attachDirect({
           nodeId,
-          nodeGeneration: manifest.nodeGeneration,
+          manifest,
           transportSessionId,
+          live,
+          peer,
+          heartbeatMs,
+          timeoutMs,
           terminalId,
+          computer,
           afterSequence,
-          readonly: false
-        },
-        (message, request) =>
-          message.type === 'terminal.direct.prepared' &&
-          message.requestId === request.requestId &&
-          typeof message.directSessionId === 'string' &&
-          typeof message.grant === 'string',
-        'TERMINAL_DIRECT_PREPARE_FAILED'
-      ),
+          signal,
+          beforeOpen,
+          closeConnection,
+          onRejected
+        });
+      }
+    };
+  } catch (caughtError) {
+    transportNegotiationActive = false;
+    const error = preparationError ?? caughtError;
+    transportControlCleanup?.();
+    transportDisconnectCleanup?.();
+    if (error instanceof DirectRejectedError) onRejected?.(error);
+    bootstrapChannel?.close?.();
+    if (transportSessionId !== undefined)
+      await cancelSession(live, 'direct.cancel', transportSessionId);
+    live?.close();
+    peer?.close?.();
+    cleanupNative?.();
+    if (
+      error instanceof DirectRejectedError ||
+      error instanceof DirectFallbackError ||
+      error instanceof DirectUnsafeError
+    )
+      throw error;
+    throw new DirectFallbackError(errorCode(error));
+  }
+}
+
+async function attachDirect({
+  nodeId,
+  manifest,
+  transportSessionId,
+  live,
+  peer,
+  heartbeatMs,
+  timeoutMs,
+  terminalId,
+  computer,
+  afterSequence = 0,
+  signal,
+  beforeOpen,
+  closeConnection,
+  onRejected
+}) {
+  if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
+  let preparation;
+  let terminalSessionId;
+  let transport;
+  try {
+    preparation = live.request(
+      {
+        type: 'terminal.direct.prepare',
+        requestId: requestId(),
+        nodeId,
+        nodeGeneration: manifest.nodeGeneration,
+        transportSessionId,
+        terminalId,
+        ...(computer ? { computer: true } : {}),
+        afterSequence,
+        readonly: false
+      },
+      (message, request) =>
+        message.type === 'terminal.direct.prepared' &&
+        message.requestId === request.requestId &&
+        typeof message.directSessionId === 'string' &&
+        typeof message.grant === 'string',
+      'TERMINAL_DIRECT_PREPARE_FAILED'
+    );
+    const terminalPrepared = await withTimeout(
+      preparation,
       timeoutMs,
       'TERMINAL_DIRECT_PREPARE_FAILED',
       signal
     );
     terminalSessionId = terminalPrepared.directSessionId;
-    terminalChannel = peer.createDataChannel(`mar-terminal-${terminalSessionId}`, {
+    const channel = peer.createDataChannel(`mar-terminal-${terminalSessionId}`, {
       unordered: false
     });
-
     transport = new DirectTerminalTransport({
-      channel: terminalChannel,
+      channel,
       live,
-      peer,
       transportSessionId,
       terminalSessionId,
       terminalId,
       heartbeatMs,
-      cleanupNative
+      closeConnection
     });
     if (beforeOpen) await beforeOpen();
     if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
@@ -310,29 +437,19 @@ export async function openDirectTerminal(options) {
       signal
     );
     return transport;
-  } catch (caughtError) {
-    const error = preparationError ?? caughtError;
-    transportControlCleanup?.();
-    transportControlCleanup = undefined;
-    unsafeFallback = transport?.openSent === true;
+  } catch (error) {
+    const unsafeFallback = transport?.openSent === true;
     if (error instanceof DirectRejectedError) onRejected?.(error);
-    if (transport !== undefined) {
-      await transport.cancelAndDispose().catch(() => undefined);
-      transport.dispose({ skipCancel: true });
+    if (transport !== undefined) await transport.cancelAndDispose();
+    else if (terminalSessionId !== undefined)
+      await cancelSession(live, 'terminal.direct.cancel', terminalSessionId);
+    else {
+      // Abort only this attach. Its bounded prepare wait can still receive a grant on the warm peer.
+      void preparation?.then(
+        ({ directSessionId }) => live.send({ type: 'terminal.direct.cancel', directSessionId }),
+        () => undefined
+      );
     }
-    bootstrapChannel?.close?.();
-    terminalChannel?.close?.();
-    try {
-      if (transport === undefined && terminalSessionId !== undefined)
-        await cancelSession(live, 'terminal.direct.cancel', terminalSessionId);
-      if (transport === undefined && transportSessionId !== undefined)
-        await cancelSession(live, 'direct.cancel', transportSessionId);
-    } catch {
-      // Direct setup cleanup is best effort before relay fallback.
-    }
-    live?.close();
-    if (transport === undefined) peer?.close?.();
-    if (transport === undefined) cleanupNative?.();
     if (error instanceof DirectRejectedError) throw error;
     if (unsafeFallback) throw new DirectUnsafeError('DIRECT_OPEN_CANCEL_UNCONFIRMED');
     if (error instanceof DirectFallbackError || error instanceof DirectUnsafeError) throw error;

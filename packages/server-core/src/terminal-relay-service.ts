@@ -199,8 +199,7 @@ export class TerminalRelayService {
     socket: WebSocket,
     nodeId: string,
     user: UserNodeAuthorization,
-    expiresAt: number,
-    authorize: () => Promise<UserNodeAuthorization | undefined>
+    expiresAt: number
   ): void {
     if (socket.readyState !== socket.OPEN) return;
     if (this.closed || expiresAt <= Date.now()) {
@@ -217,9 +216,8 @@ export class TerminalRelayService {
     this.trackSocket(socket);
     const close = attachTerminalMux({
       socket,
-      authorize,
-      attach: (stream, ticket, deferred, actor) => {
-        this.attachBrowser(stream, deferred ? { ticket, deferred: true } : ticket, actor, {
+      attach: (stream, ticket, deferred) => {
+        this.attachBrowser(stream, deferred ? { ticket, deferred: true } : ticket, user, {
           type: 'mux',
           nodeId
         });
@@ -403,7 +401,8 @@ export class TerminalRelayService {
       if (!(await allowed(relay, relay.computer)))
         this.closeRelay(relay, true, 'TERMINAL_AUTHORIZATION_REVOKED');
     for (const entry of [...this.muxSockets.values()])
-      if (!(await allowed({ ...entry, userId: entry.user.userId }, true)))
+      // The pool needs Node access; the individual streams above check their operation.
+      if (!(await allowed({ ...entry, userId: entry.user.userId }, false)))
         this.closeMux((candidate) => candidate === entry);
   }
 

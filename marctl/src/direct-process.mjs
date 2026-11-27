@@ -41,6 +41,7 @@ export function openDirectTerminalProcess({
   connection,
   nodeId,
   terminalId,
+  computer,
   manifest,
   afterSequence = 0,
   timeoutMs = 15000,
@@ -157,7 +158,16 @@ export function openDirectTerminalProcess({
       child,
       {
         type: 'start',
-        options: { connection, nodeId, terminalId, manifest, afterSequence, timeoutMs, heartbeatMs }
+        options: {
+          connection,
+          nodeId,
+          terminalId,
+          computer,
+          manifest,
+          afterSequence,
+          timeoutMs,
+          heartbeatMs
+        }
       },
       () => fail(setupError())
     );

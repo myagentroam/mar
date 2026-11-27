@@ -238,7 +238,7 @@ describe('public Node identity connection lifecycle', () => {
   });
 
   it.each([NODE_PROTOCOL_VERSION - 1, NODE_PROTOCOL_VERSION + 1])(
-    'rejects wire v%i before authenticating or updating metadata',
+    'authenticates wire v%i and acknowledges heartbeat without switching its output version',
     async (version) => {
       const { control, store, attach } = fixture();
       try {
@@ -252,13 +252,28 @@ describe('public Node identity connection lifecycle', () => {
             payload: { nodeId: 'node-1', credential: 'fixture' }
           })
         );
+        const lastSent = () => JSON.parse(socket.send.mock.calls.at(-1)?.[0] ?? 'null');
         await vi.waitFor(() =>
-          expect(socket.close).toHaveBeenCalledWith(1008, 'PROTOCOL_VERSION_UNSUPPORTED')
+          expect(lastSent()).toMatchObject({
+            type: 'authenticated',
+            version: NODE_PROTOCOL_VERSION,
+            replyTo: 'auth'
+          })
         );
-        expect(store.authenticateNode).not.toHaveBeenCalled();
-        expect(store.updateNodeHeartbeat).not.toHaveBeenCalled();
-        expect(control.isNodeConnected('node-1')).toBe(false);
-        expect(control.sendAuthenticatedNode('node-1', 'node.upgrade.request', {})).toBe(false);
+        socket.emit(
+          'message',
+          JSON.stringify({ ...createEnvelope('heartbeat', {}, { id: 'heartbeat' }), version })
+        );
+        await vi.waitFor(() =>
+          expect(lastSent()).toMatchObject({
+            type: 'ack',
+            version: NODE_PROTOCOL_VERSION,
+            replyTo: 'heartbeat'
+          })
+        );
+        expect(store.authenticateNode).toHaveBeenCalledExactlyOnceWith('node-1', 'fixture');
+        expect(control.isNodeConnected('node-1')).toBe(true);
+        expect(socket.close).not.toHaveBeenCalled();
       } finally {
         control.close();
       }

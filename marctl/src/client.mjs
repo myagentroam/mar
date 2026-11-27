@@ -153,7 +153,20 @@ export class MarctlClient {
     });
   }
 
-  openTerminalWebSocket(WebSocketClass, { nodeId, terminalId, ticket, deferred = false }) {
+  openPooledTerminal(WebSocketClass, { nodeId, terminalId, ticket, computer }) {
+    if (!this.#reuseTerminalConnections) return undefined;
+    return new TerminalBrokerClient(
+      { serverUrl: this.#serverUrl, key: this.#key, nodeId },
+      { terminalId, ticket, computer },
+      async () =>
+        this.openTerminalWebSocket(WebSocketClass, {
+          terminalId,
+          ticket: ticket ?? (await this.createAttachTicket({ nodeId, terminalId }))
+        })
+    );
+  }
+
+  openTerminalWebSocket(WebSocketClass, { terminalId, ticket, deferred = false }) {
     validateTerminalId(terminalId, this.#translate);
     if (!isNonEmptyString(ticket))
       throw new MarctlError(this.#translate('errors.terminalTicketInvalid'));
@@ -166,18 +179,10 @@ export class MarctlClient {
     if (deferred) url.searchParams.set('deferred', '1');
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
 
-    const openSingle = () =>
-      new WebSocketClass(url.toString(), {
+    try {
+      return new WebSocketClass(url.toString(), {
         headers: { Authorization: `Bearer ${this.#key}` }
       });
-    try {
-      if (this.#reuseTerminalConnections && nodeId !== undefined)
-        return new TerminalBrokerClient(
-          { serverUrl: this.#serverUrl, key: this.#key, nodeId },
-          { ticket, deferred },
-          openSingle
-        );
-      return openSingle();
     } catch {
       throw new MarctlError(this.#translate('errors.terminalConnectionStart'));
     }

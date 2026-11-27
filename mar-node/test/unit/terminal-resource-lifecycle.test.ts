@@ -532,7 +532,7 @@ describe('terminal resource lifecycle', () => {
       const terminal = manager.openCommand({}, 'fixture command');
       manager.startCommand(terminal.id);
       const attachment = manager.authorizeAttach({ terminalId: terminal.id, readonly: false });
-      manager.setOutputBackpressure(terminal.id, new Set([attachment.attachmentId]));
+      manager.setAttachmentBackpressure(attachment.attachmentId, true);
       await expect(manager.close(terminal.id)).rejects.toBe(failure);
       expect(terminate).toHaveBeenCalledOnce();
       expect(summaries).toContain('CLOSED');
@@ -565,7 +565,7 @@ describe('terminal resource lifecycle', () => {
       const terminal = manager.openCommand({}, 'fixture command');
       manager.startCommand(terminal.id);
       const attachment = manager.authorizeAttach({ terminalId: terminal.id, readonly: false });
-      manager.setOutputBackpressure(terminal.id, new Set([attachment.attachmentId]));
+      manager.setAttachmentBackpressure(attachment.attachmentId, true);
       expect(() => exit!(0)).toThrow(failure);
       expect(summaries).toContain('EXITED');
     } finally {

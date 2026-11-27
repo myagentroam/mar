@@ -118,6 +118,11 @@ export class TerminalDirectService {
     }
     session.channel = channel;
     channel.onclose = () => this.remove(session);
+    channel.bufferedAmountLowThreshold = 256 * 1024;
+    channel.onbufferedamountlow = () => {
+      if (session.attachmentId !== undefined)
+        this.manager.setAttachmentBackpressure(session.attachmentId, false);
+    };
     try {
       const terminal = this.manager.get(session.command.terminalId);
       if (
@@ -128,7 +133,8 @@ export class TerminalDirectService {
       const attachment = this.manager.authorizeAttach({
         terminalId: session.command.terminalId,
         afterSequence: session.command.afterSequence,
-        readonly: session.command.readonly
+        readonly: session.command.readonly,
+        ...(session.command.closeOnDisconnect ? { closeOnDisconnect: true } : {})
       });
       session.attachmentId = attachment.attachmentId;
       session.opened = true;
@@ -204,6 +210,8 @@ export class TerminalDirectService {
     }
     try {
       channel.send(value);
+      if (session.attachmentId !== undefined && channel.bufferedAmount > 512 * 1024)
+        this.manager.setAttachmentBackpressure(session.attachmentId, true);
     } catch {
       this.remove(session);
     }
@@ -211,7 +219,8 @@ export class TerminalDirectService {
 
   private remove(session: Session, code?: string): void {
     if (!this.sessions.delete(session.command.directSessionId)) return;
-    if (session.attachmentId !== undefined) this.manager.detach(session.attachmentId);
+    if (session.attachmentId !== undefined)
+      this.manager.releaseTransportAttachment(session.attachmentId);
     if (code !== undefined && session.channel?.readyState === 'open') {
       try {
         session.channel.send(

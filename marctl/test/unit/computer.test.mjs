@@ -18,6 +18,7 @@ import {
 import { runComputer } from '../../src/computer.mjs';
 import { main } from '../../src/cli.mjs';
 import { MarctlClient } from '../../src/client.mjs';
+import { DirectFallbackError } from '../../src/direct-errors.mjs';
 import { startTerminalBroker } from '../../src/terminal-broker.mjs';
 
 const terminalId = 'desktop';
@@ -57,7 +58,9 @@ async function fixture(t, onInput, args = {}) {
   };
   const openWebSocket = args.mux
     ? await pooledSocket(t, socket, emit)
-    : () => {
+    : (_WebSocket, { ticket, deferred }) => {
+        assert.equal(ticket, 'ticket');
+        assert.equal(deferred, undefined);
         queueMicrotask(() => emit({ type: 'attach', afterSequence: 0 }));
         return socket;
       };
@@ -69,7 +72,16 @@ async function fixture(t, onInput, args = {}) {
       async openComputer() {
         return { terminalId, ticket: 'ticket' };
       },
-      openTerminalWebSocket: openWebSocket,
+      async getTerminalManifest() {
+        return { deferredRelay: true };
+      },
+      async openDirectTerminal({ computer }) {
+        assert.equal(computer, true);
+        throw new DirectFallbackError('DIRECT_UNAVAILABLE');
+      },
+      ...(args.mux
+        ? { openPooledTerminal: openWebSocket }
+        : { openTerminalWebSocket: openWebSocket }),
       async deleteTerminal(args) {
         deletions.push(args);
       }
@@ -148,7 +160,7 @@ async function pooledSocket(t, desktop, emit) {
     }
   }
   return (_WebSocket, attachment) =>
-    client.openTerminalWebSocket(UnexpectedSingleConnection, attachment);
+    client.openPooledTerminal(UnexpectedSingleConnection, attachment);
 }
 
 test(
@@ -157,7 +169,7 @@ test(
   (t) => assertPngResult(t, { mux: true, code: 'log("ready")' })
 );
 
-test('computer saves the result of an observation on a single-stream relay', (t) =>
+test('computer falls back to its single-stream relay when the independent Direct path is unavailable', (t) =>
   assertPngResult(t, { mux: false, code: '' }));
 
 async function assertPngResult(t, { mux, code }) {

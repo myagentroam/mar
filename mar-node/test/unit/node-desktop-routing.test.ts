@@ -1,4 +1,4 @@
-import { createEnvelope, type NodeEnvelope } from '@myagentroam/protocol';
+import { createEnvelope, NODE_PROTOCOL_VERSION, type NodeEnvelope } from '@myagentroam/protocol';
 import { once } from 'node:events';
 import { WebSocketServer } from 'ws';
 import { describe, expect, it, vi } from 'vitest';
@@ -42,7 +42,7 @@ describe('Node desktop control routing', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('routes through the connector to Relay when Direct does not own ready', async () => {
+  it('routes newer-version ready through the connector to Relay when Direct does not own it', async () => {
     const database = new NodeDatabase(':memory:', 'desktop-routing');
     const connector = new NodeConnector({ database });
     const owners = connector as unknown as {
@@ -61,7 +61,12 @@ describe('Node desktop control routing', () => {
     owners.directTransferService = { handleDesktop: direct, shutdown: async () => {} };
     owners.relayDesktopService = { handle: relay, shutdown: async () => {} };
     const ready = { attachmentId: 'relay-attachment' };
-    owners.handleMessage(JSON.stringify(createEnvelope('desktop.ready', ready)));
+    owners.handleMessage(
+      JSON.stringify({
+        ...createEnvelope('desktop.ready', ready),
+        version: NODE_PROTOCOL_VERSION + 1
+      })
+    );
     expect(direct).toHaveBeenCalledWith({ type: 'desktop.ready', ...ready });
     expect(relay).toHaveBeenCalledWith({ type: 'desktop.ready', ...ready });
     relay.mockClear();

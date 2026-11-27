@@ -7,6 +7,7 @@ export class LiveControl {
   #closed = false;
   #waiters = new Set();
   #listeners = new Set();
+  #disconnects = new Set();
   #onMessage;
   #onError;
   #onClose;
@@ -42,7 +43,9 @@ export class LiveControl {
         waiter.resolve(message);
       }
     };
-    this.#onError = () => this.#fail(new DirectFallbackError('DIRECT_CONTROL_UNAVAILABLE'));
+    this.#onError = () => {
+      if (!this.#closed) this.#fail(new DirectFallbackError('DIRECT_CONTROL_UNAVAILABLE'));
+    };
     this.#onClose = () => this.#fail(new DirectFallbackError('DIRECT_CONTROL_CLOSED'));
     socket.on?.('message', this.#onMessage);
     socket.on?.('error', this.#onError);
@@ -101,6 +104,11 @@ export class LiveControl {
     return () => this.#listeners.delete(listener);
   }
 
+  onDisconnect(listener) {
+    this.#disconnects.add(listener);
+    return () => this.#disconnects.delete(listener);
+  }
+
   send(message) {
     if (this.#closed || (this.#socket.readyState !== undefined && this.#socket.readyState !== 1))
       return false;
@@ -118,7 +126,7 @@ export class LiveControl {
     this.#fail(new DirectFallbackError('DIRECT_CONTROL_CLOSED'));
     this.#listeners.clear();
     this.#socket.removeListener?.('message', this.#onMessage);
-    this.#socket.removeListener?.('error', this.#onError);
+    // Closing an upgrade in flight can emit an asynchronous error on the socket.
     this.#socket.removeListener?.('close', this.#onClose);
     try {
       this.#socket.close();
@@ -161,12 +169,13 @@ export class LiveControl {
   }
 
   #fail(error) {
-    if (this.#closed && this.#waiters.size === 0) return;
     for (const waiter of [...this.#waiters]) {
       this.#waiters.delete(waiter);
       clearTimeout(waiter.timer);
       waiter.reject(error);
     }
+    for (const listener of [...this.#disconnects]) listener();
+    this.#disconnects.clear();
   }
 }
 
@@ -180,12 +189,13 @@ export async function cancelSession(live, type, directSessionId) {
     'DIRECT_CANCEL_TIMEOUT',
     1000
   );
-  live.send({
+  const sent = live.send({
     type,
     directSessionId,
     ...(type === 'direct.cancel' ? { reason: 'CLI_FALLBACK' } : {})
   });
-  await closed.catch(() => undefined);
+  const acknowledgement = closed.catch(() => undefined);
+  if (sent) await acknowledgement;
 }
 
 export function withTimeout(promise, timeoutMs, code, signal) {

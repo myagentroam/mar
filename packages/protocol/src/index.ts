@@ -51,7 +51,7 @@ export const healthStatusSchema = z.object({
 
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
 
-/** The only wire protocol version understood by this build. */
+/** The Node control envelope version written by this build. */
 export const NODE_PROTOCOL_VERSION = 3;
 export const WORKBENCH_PROTOCOL_VERSION = 1;
 
@@ -4156,10 +4156,10 @@ export type WorkbenchNodeOperation = z.infer<typeof workbenchNodeOperationSchema
 
 /**
  * A small, explicit envelope keeps WebSocket messages independently parseable
- * and makes it safe to reject future message kinds without guessing payloads.
+ * without rejecting a peer by version number. Message handlers still validate their payloads.
  */
 export const nodeEnvelopeSchema = z.object({
-  version: z.literal(NODE_PROTOCOL_VERSION),
+  version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   id: z.string().min(1).max(128),
   type: z.string().min(1).max(80),
   replyTo: z.string().min(1).max(128).optional(),

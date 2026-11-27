@@ -297,7 +297,26 @@ test('Admin creates a one-use token and Node registers, sends heartbeats, and ca
     const registered = await onceMessage(socket);
     expect(registered.type).toBe('registered');
     const nodeId = (registered.payload as { nodeId: string }).nodeId;
-    socket.send(JSON.stringify(createEnvelope('heartbeat', {})));
+    const unknownOperation = {
+      ...createEnvelope('unknown.operation', {}),
+      version: registered.version + 1
+    };
+    const rejected = onceMessage(socket);
+    socket.send(JSON.stringify(unknownOperation));
+    await expect(rejected).resolves.toMatchObject({
+      version: registered.version,
+      type: 'error',
+      replyTo: unknownOperation.id,
+      payload: { code: 'MESSAGE_TYPE_UNKNOWN' }
+    });
+    const heartbeat = { ...createEnvelope('heartbeat', {}), version: unknownOperation.version };
+    const acknowledged = onceMessage(socket);
+    socket.send(JSON.stringify(heartbeat));
+    await expect(acknowledged).resolves.toMatchObject({
+      version: registered.version,
+      type: 'ack',
+      replyTo: heartbeat.id
+    });
     await expect
       .poll(async () => {
         const nodes = await app.inject({
