@@ -8,6 +8,7 @@ export async function raceTerminalConnections({
   WebSocketClass,
   nodeId,
   terminalId,
+  ticket,
   translate,
   connectionTimeoutMs,
   signal
@@ -74,6 +75,7 @@ export async function raceTerminalConnections({
     WebSocketClass,
     nodeId,
     terminalId,
+    ticket,
     translate,
     connectionTimeoutMs,
     signal: relayAbort.signal,

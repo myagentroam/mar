@@ -45,7 +45,7 @@ ${configurationHelp}
     computer: `{program} — 使用 Python/PyAutoGUI 操作已授权的 Node 桌面
 
 {program} [--no-reuse] <node> <output-directory>
-  --no-reuse       仅本次调用绕过中继连接池。
+  --no-reuse       仅本次调用绕过连接池。
   所需 Node 使用权与 SSH 相同，且目标 Node 须开启远程 Computer Use。
   输出目录须已存在。从 stdin 每次发送一行 JSON。
   先发 {"code":""}，再从 stdout 读取 observationId 和本地 PNG 路径（images）。
@@ -164,7 +164,7 @@ ${configurationHelp}`,
   [command ...]   交给远端 Shell 的命令；省略时打开交互 Shell。
 
 选项（放在节点前）：
-  --no-reuse       仅本次调用绕过中继连接池，不禁用直连。
+  --no-reuse       仅本次调用绕过连接池，不禁用直连。
   -h, --help       显示帮助后退出。
   -V, --version    显示 CLI 包版本后退出。
 
@@ -197,7 +197,7 @@ ${configurationHelp}`,
 选项：
   -p              保留源文件权限及访问、修改时间。
   -q              不显示进度（默认已不显示）。
-  --no-reuse       仅本次复制绕过中继连接池，须放在首个文件端点前。
+  --no-reuse       仅本次复制绕过连接池，须放在首个文件端点前。
   -h, --help       显示帮助后退出，须放在第一个文件端点前。
   -V, --version    显示 CLI 包版本后退出，须放在第一个文件端点前。
   --              后续参数按字面路径处理。

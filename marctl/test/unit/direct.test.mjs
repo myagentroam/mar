@@ -2,7 +2,8 @@ import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/proto
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { openDirectTerminal } from '../../src/direct.mjs';
+import { openDirectConnection, openDirectTerminal } from '../../src/direct.mjs';
+import { LiveControl } from '../../src/direct-control.mjs';
 import { DirectFallbackError, DirectUnsafeError } from '../../src/direct-errors.mjs';
 import { runTerminalSession } from '../../src/terminal.mjs';
 
@@ -11,6 +12,20 @@ const HOST_CANDIDATE = 'candidate:1 1 UDP 1 192.0.2.1 5000 typ host';
 const SRFLX_CANDIDATE = 'candidate:2 1 UDP 1 198.51.100.1 5001 typ srflx';
 const SDP = (candidate = HOST_CANDIDATE) =>
   `v=0\r\na=fingerprint:${FINGERPRINT}\r\na=candidate:${candidate.replace(/^candidate:/u, '')}\r\n`;
+
+test('closing an in-flight control upgrade handles its asynchronous socket error', async () => {
+  const socket = new EventEmitter();
+  socket.readyState = 0;
+  socket.close = () =>
+    queueMicrotask(() => {
+      socket.emit('error', new Error('Upgrade cancelled'));
+      socket.emit('close');
+    });
+  const control = new LiveControl(socket, 100);
+  const closed = new Promise((resolve) => socket.once('close', resolve));
+  control.close();
+  await closed;
+});
 
 class FakeSocket extends EventEmitter {
   constructor(onSend) {
@@ -849,6 +864,180 @@ test('a losing direct transport never opens a terminal writer', async () => {
   );
   assert.equal(fixture.peer.closed, true);
   assert.ok(fixture.control.sent.some((message) => message.type === 'direct.cancel'));
+});
+
+test('does not publish a reusable Direct connection closed during the readiness handoff', async () => {
+  const fixture = createDirectFixture();
+  await assert.rejects(
+    openDirectConnection({
+      client: fixture.client,
+      nodeId: 'node-1',
+      timeoutMs: 100,
+      peerConnectionFactory: () => fixture.peer,
+      onTransportReady: () => {
+        fixture.control.emit(
+          'message',
+          JSON.stringify({
+            type: 'direct.closed',
+            directSessionId: 'transport-1',
+            code: 'DIRECT_TRANSFER_CANCELLED'
+          }),
+          false
+        );
+      }
+    }),
+    { code: 'DIRECT_TRANSFER_CANCELLED' }
+  );
+  assert.equal(fixture.peer.closed, true);
+});
+
+test('a disconnected control socket interrupts the readiness handoff', async () => {
+  const fixture = createDirectFixture();
+  await assert.rejects(
+    openDirectConnection({
+      client: fixture.client,
+      nodeId: 'node-1',
+      timeoutMs: 100,
+      peerConnectionFactory: () => fixture.peer,
+      onTransportReady: async () => {
+        fixture.control.close();
+        await new Promise(() => {});
+      }
+    }),
+    { code: 'DIRECT_CONTROL_CLOSED' }
+  );
+  assert.equal(fixture.peer.closed, true);
+});
+
+test('an already-cancelled attach on a warm Direct connection does not request a grant', async () => {
+  const fixture = createDirectFixture();
+  const connection = await openDirectConnection({
+    client: fixture.client,
+    nodeId: 'node-1',
+    timeoutMs: 100,
+    peerConnectionFactory: () => fixture.peer
+  });
+  try {
+    await assert.rejects(
+      connection.attach({ terminalId: 'terminal-1', signal: AbortSignal.abort() }),
+      { code: 'DIRECT_RACE_CANCELLED' }
+    );
+    assert.equal(
+      fixture.control.sent.some(({ type }) => type === 'terminal.direct.prepare'),
+      false
+    );
+    assert.equal(connection.closed, false);
+  } finally {
+    connection.close();
+  }
+});
+
+test('cancels a late grant without opening a channel or closing the warm connection', async () => {
+  const fixture = createDirectFixture();
+  const { control, peer } = fixture;
+  const connection = await openDirectConnection({
+    client: fixture.client,
+    nodeId: 'node-1',
+    timeoutMs: 100,
+    peerConnectionFactory: () => peer
+  });
+  const originalSend = control.onSend;
+  let delayedRequest;
+  control.onSend = (message) => {
+    if (message.type === 'terminal.direct.prepare' && message.terminalId === 'cancelled') {
+      delayedRequest = message;
+      return;
+    }
+    originalSend(message);
+  };
+  try {
+    const abort = new AbortController();
+    const cancelled = connection.attach({ terminalId: 'cancelled', signal: abort.signal });
+    assert.ok(delayedRequest);
+    abort.abort();
+    await assert.rejects(cancelled, { code: 'DIRECT_RACE_CANCELLED' });
+
+    control.emit(
+      'message',
+      JSON.stringify({
+        type: 'terminal.direct.prepared',
+        requestId: delayedRequest.requestId,
+        directSessionId: 'cancelled-grant',
+        grant: 'g'.repeat(64)
+      }),
+      false
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(
+      control.sent.filter(({ type }) => type === 'terminal.direct.cancel'),
+      [{ type: 'terminal.direct.cancel', directSessionId: 'cancelled-grant' }]
+    );
+    assert.equal(
+      peer.channels.some(({ label }) => label === 'mar-terminal-cancelled-grant'),
+      false
+    );
+    assert.equal(connection.closed, false);
+    const next = await connection.attach({ terminalId: 'terminal-1' });
+    next.close();
+  } finally {
+    connection.close();
+  }
+});
+
+test('accepts buffered native writes and resumes Direct input in order without resending', async () => {
+  const peer = new FakePeer();
+  const createChannel = peer.createDataChannel.bind(peer);
+  let bufferedAmount = 0;
+  let onLow;
+  peer.createDataChannel = (label) => {
+    const channel = createChannel(label);
+    if (!label.startsWith('mar-terminal-')) return channel;
+    const send = channel.sendMessageBinary.bind(channel);
+    channel.bufferedAmount = () => bufferedAmount;
+    channel.onBufferedAmountLow = (callback) => {
+      onLow = callback;
+    };
+    channel.sendMessageBinary = (bytes) => {
+      send(bytes);
+      if (channel.sent.at(-1).type === 'input') bufferedAmount = 600 * 1024;
+      return false; // Native SCTP reports queued writes as false, including OPEN.
+    };
+    return channel;
+  };
+  const fixture = createDirectFixture({ peer });
+  const transport = await openDirectTerminal({
+    client: fixture.client,
+    nodeId: 'node-1',
+    terminalId: 'terminal-1',
+    timeoutMs: 100,
+    peerConnectionFactory: () => peer
+  });
+  try {
+    const channel = peer.channels.at(-1);
+    const write = (byte) =>
+      transport.send({ type: 'input', terminalId: 'terminal-1', data: Uint8Array.of(byte) });
+    const first = write(1);
+    const second = write(2);
+    assert.deepEqual(
+      channel.sent.map((frame) => frame.type),
+      ['OPEN', 'input']
+    );
+    onLow(); // A delayed notification is not evidence the buffer is still low.
+    await Promise.resolve();
+    assert.equal(channel.sent.length, 2);
+    bufferedAmount = 0;
+    onLow();
+    await first;
+    assert.deepEqual(
+      channel.sent.slice(1).map((frame) => frame.data[0]),
+      [1, 2]
+    );
+    bufferedAmount = 0;
+    onLow();
+    await second;
+  } finally {
+    transport.close();
+  }
 });
 
 test('cancels a losing ICE candidate before terminal authorization or OPEN', async () => {

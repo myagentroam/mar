@@ -24,6 +24,7 @@ interface DirectTerminalSession extends DirectTransferBrowserIdentity {
   readonly nodeGeneration: string;
   readonly transportSessionId: string;
   readonly terminalId: string;
+  readonly computer?: true;
   readonly workspaceId?: string;
   readonly readonly: boolean;
   readonly grant: string;
@@ -38,13 +39,15 @@ export interface TerminalDirectCoordinatorOptions {
   readonly authorize: (
     userId: number,
     nodeId: string,
-    workspaceId: string | undefined
+    workspaceId: string | undefined,
+    computer?: true
   ) => boolean | Promise<boolean>;
   readonly preflight: (
     nodeId: string,
     terminalId: string,
     workspaceId: string | undefined,
-    identity: DirectTransferBrowserIdentity
+    identity: DirectTransferBrowserIdentity,
+    computer?: true
   ) => Promise<void>;
   readonly sendNode: (nodeId: string, message: TerminalDirectNodeCommand) => boolean;
   readonly sendBrowser: (
@@ -182,6 +185,20 @@ export class TerminalDirectCoordinator {
   }
 
   private async prepare(identity: DirectTransferBrowserIdentity, request: Prepare): Promise<void> {
+    if (
+      request.computer &&
+      (!identity.cliTerminal ||
+        request.workspaceId !== undefined ||
+        request.readonly ||
+        request.afterSequence !== 0)
+    ) {
+      await this.error(
+        identity.workbenchConnectionId,
+        request.requestId,
+        'TERMINAL_NOT_AUTHORIZED'
+      );
+      return;
+    }
     const transport = this.options.transport.terminalTransport(
       identity,
       request.transportSessionId,
@@ -196,7 +213,14 @@ export class TerminalDirectCoordinator {
       );
       return;
     }
-    if (!(await this.options.authorize(identity.userId, request.nodeId, request.workspaceId))) {
+    if (
+      !(await this.options.authorize(
+        identity.userId,
+        request.nodeId,
+        request.workspaceId,
+        request.computer
+      ))
+    ) {
       await this.error(
         identity.workbenchConnectionId,
         request.requestId,
@@ -221,7 +245,8 @@ export class TerminalDirectCoordinator {
         request.nodeId,
         request.terminalId,
         request.workspaceId,
-        identity
+        identity,
+        request.computer
       );
     } catch (error) {
       const reason = error instanceof NodeRequestError ? error.code : '';
@@ -254,7 +279,14 @@ export class TerminalDirectCoordinator {
       );
       return;
     }
-    if (!(await this.options.authorize(identity.userId, request.nodeId, request.workspaceId))) {
+    if (
+      !(await this.options.authorize(
+        identity.userId,
+        request.nodeId,
+        request.workspaceId,
+        request.computer
+      ))
+    ) {
       await this.error(
         identity.workbenchConnectionId,
         request.requestId,
@@ -283,6 +315,7 @@ export class TerminalDirectCoordinator {
       nodeGeneration: request.nodeGeneration,
       transportSessionId: request.transportSessionId,
       terminalId: request.terminalId,
+      ...(request.computer ? { computer: true } : {}),
       ...(request.workspaceId === undefined ? {} : { workspaceId: request.workspaceId }),
       readonly: request.readonly,
       grant: randomBytes(32).toString('base64url'),
@@ -302,6 +335,7 @@ export class TerminalDirectCoordinator {
         ...(session.workspaceId === undefined ? {} : { workspaceId: session.workspaceId }),
         afterSequence: request.afterSequence,
         readonly: request.readonly,
+        ...(identity.cliTerminal && !request.readonly ? { closeOnDisconnect: true } : {}),
         grant: session.grant,
         browserFingerprint: current.browserFingerprint,
         nodeFingerprint: current.nodeFingerprint,
@@ -324,7 +358,12 @@ export class TerminalDirectCoordinator {
         session.nodeId,
         session.nodeGeneration
       ) !== undefined &&
-      (await this.options.authorize(session.userId, session.nodeId, session.workspaceId))
+      (await this.options.authorize(
+        session.userId,
+        session.nodeId,
+        session.workspaceId,
+        session.computer
+      ))
     );
   }
 

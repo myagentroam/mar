@@ -43,7 +43,7 @@ function fixture() {
     get,
     authorizeAttach,
     acceptFrame,
-    detach,
+    releaseTransportAttachment: detach,
     startCommand,
     onFrame: (handler: (frame: unknown) => void) => {
       listener = handler;

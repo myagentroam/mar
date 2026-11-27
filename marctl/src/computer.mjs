@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { decodeByteFrame } from '@myagentroam/protocol/byte-frame';
 import { MarctlError } from './errors.mjs';
 import { parseFrame } from './terminal-frame.mjs';
-import { openRelayTransport } from './terminal-relay.mjs';
+import { openTerminalAttachment } from './terminal.mjs';
 
 const MAX_REQUEST = 1024 * 1024;
 const MAX_IMAGE = 16 * 1024 * 1024;
@@ -46,12 +46,13 @@ export async function runComputer({
   const invalid = () => new MarctlError(translate('errors.terminalFrameInvalid'));
 
   try {
-    transport = await openRelayTransport({
+    transport = await openTerminalAttachment({
       client,
       WebSocketClass,
       nodeId,
       terminalId,
       ticket,
+      computer: true,
       signal,
       translate,
       connectionTimeoutMs: 15_000

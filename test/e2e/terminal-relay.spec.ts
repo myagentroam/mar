@@ -74,8 +74,36 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       })
     ).app;
     let muxConnections = 0;
+    const connectedPath = join(directory, 'pooled-direct-ready');
+    const directConnections: { transports: number; streams: string[] }[] = [];
     app.server.on('upgrade', (request) => {
       if (request.url?.startsWith('/api/marctl/terminal-mux?')) muxConnections++;
+    });
+    let observingDirect = false;
+    app.addHook('onRequest', async (request) => {
+      if (observingDirect || request.url !== '/api/marctl/live') return;
+      // The WebSocket server is decorated on the realtime route scope, not the root app.
+      observingDirect = true;
+      request.server.websocketServer.on('connection', (wire, upgrade) => {
+        if (upgrade.url !== '/api/marctl/live') return;
+        const stats = { transports: 0, streams: [] as string[] };
+        directConnections.push(stats);
+        wire.on('message', (raw, binary) => {
+          if (binary) return;
+          const frame = JSON.parse(raw.toString());
+          if (frame.type === 'direct.prepare') stats.transports++;
+          if (frame.type === 'terminal.direct.prepare')
+            stats.streams.push(frame.transportSessionId);
+        });
+        if (directConnections.length === 1) {
+          const send = wire.send.bind(wire) as typeof wire.send;
+          wire.send = ((raw: string | Uint8Array, ...args: unknown[]) => {
+            if (typeof raw === 'string' && JSON.parse(raw).type === 'direct.opened')
+              void writeFile(connectedPath, 'ready');
+            return Reflect.apply(send, wire, [raw, ...args]);
+          }) as typeof wire.send;
+        }
+      });
     });
     await app.listen({ host: '127.0.0.1', port: address.port });
     const admin = await adminHeaders(app);
@@ -146,7 +174,8 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       import { execFile } from 'node:child_process';
       import { once } from 'node:events';
       import { promisify } from 'node:util';
-      import { writeFile } from 'node:fs/promises';
+      import { readFile, writeFile } from 'node:fs/promises';
+      import { setTimeout as sleep } from 'node:timers/promises';
       import { Writable } from 'node:stream';
       import { createRequire } from 'node:module';
       import { MarctlClient } from ${JSON.stringify(entry('src/client.mjs'))};
@@ -163,6 +192,12 @@ test('marctl executes and copies through isolated Server and Node, with real dir
         const scp = ${JSON.stringify(join(product, 'marctl/bin/marscp.mjs'))};
         const run = (bin, args) => exec(process.execPath, [bin, ...args], { timeout: 30000, maxBuffer: 1024 * 1024 });
         result.cli = (await run(cli, [node, ${JSON.stringify(`printf x >> ${JSON.stringify(starts)}; printf cli-ok`)}])).stdout;
+        const deadline = Date.now() + 15000;
+        while (!(await readFile(${JSON.stringify(connectedPath)}, 'utf8').catch(() => ''))) {
+          if (Date.now() >= deadline) throw new Error('POOLED_DIRECT_NOT_READY');
+          await sleep(30);
+        }
+        result.warm = (await run(cli, [node, 'printf warm'])).stdout;
         await run(scp, [${JSON.stringify(source)}, node + '://' + ${JSON.stringify(remote)}]);
         await run(scp, [node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copied)}]);
         await run(scp, ['--no-reuse', node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copiedWithoutPool)}]);
@@ -232,6 +267,7 @@ test('marctl executes and copies through isolated Server and Node, with real dir
     const result = JSON.parse(await readFile(resultPath, 'utf8'));
     expect(result).toEqual({
       cli: 'cli-ok',
+      warm: 'warm',
       abandoned: expect.any(String),
       abandonedPid: expect.any(Number),
       computer: 'COMPUTER_REMOTE_DISABLED',
@@ -252,6 +288,9 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       })
       .toBe(false);
     expect(muxConnections).toBe(1);
+    expect(directConnections[0]?.transports).toBe(1);
+    expect(directConnections[0]?.streams.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(directConnections[0]?.streams).size).toBe(1);
     expect(await readFile(starts, 'utf8')).toBe('x');
     expect(await readFile(copied)).toEqual(bytes);
     expect(await readFile(copiedWithoutPool)).toEqual(bytes);

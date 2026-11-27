@@ -6,7 +6,6 @@ import {
   encodeTerminalMux,
   TERMINAL_MUX
 } from '@myagentroam/protocol';
-import type { UserNodeAuthorization } from './node-access-contracts.js';
 
 const MAX_STREAMS = 10;
 const MAX_BUFFERED = 1024 * 1024;
@@ -68,13 +67,7 @@ export class TerminalMuxStream extends EventEmitter implements TerminalRelaySock
 /** Demultiplexes a credential-bound socket; existing relay owns each authorized stream. */
 export function attachTerminalMux(input: {
   socket: WebSocket;
-  authorize: () => Promise<UserNodeAuthorization | undefined>;
-  attach: (
-    stream: TerminalMuxStream,
-    ticket: string,
-    deferred: boolean,
-    user: UserNodeAuthorization
-  ) => void;
+  attach: (stream: TerminalMuxStream, ticket: string, deferred: boolean) => void;
 }): (code: number, reason: string) => void {
   const { socket } = input;
   const streams = new Map<number, TerminalMuxStream>();
@@ -114,18 +107,7 @@ export function attachTerminalMux(input: {
           return;
         }
         streams.set(stream, endpoint);
-        void input
-          .authorize()
-          .then((user) => {
-            if (socket.readyState !== socket.OPEN || endpoint.readyState !== endpoint.OPEN) return;
-            if (user === undefined) close(1008, 'UNAUTHENTICATED');
-            else input.attach(endpoint, ticket, deferred, user);
-          })
-          .catch(() => {
-            // A cancelled OPEN no longer owns a stream and cannot close its siblings.
-            if (socket.readyState === socket.OPEN && endpoint.readyState === endpoint.OPEN)
-              close(1011, 'USER_AUTHORIZATION_UNAVAILABLE');
-          });
+        input.attach(endpoint, ticket, deferred);
         return;
       }
       if (stream > lastStream) throw new Error('TERMINAL_MUX_INVALID');

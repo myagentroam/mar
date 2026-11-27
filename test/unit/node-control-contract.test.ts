@@ -6,6 +6,10 @@ import {
   scheduledTasksApiVersion,
   workbenchNodeOperationSchema
 } from '../../packages/protocol/src/index.js';
+import {
+  decodeTerminalMessage,
+  encodeTerminalMessage
+} from '../../packages/protocol/src/byte-frame.js';
 import { ServerDatabase } from '../../ee/server/src/database.js';
 import type { AuditEvent as AuditInput } from '../../packages/server-core/src/audit.js';
 import { createTestNodeControl, testNodeConsumers } from '../support/create-test-node-control.js';
@@ -1361,8 +1365,8 @@ describe('Node controlled relay contract', () => {
     const terminal = {
       readyState: 1,
       OPEN: 1,
-      send(raw: string) {
-        terminalSent.push(JSON.parse(raw));
+      send(raw: Uint8Array) {
+        terminalSent.push(decodeTerminalMessage(raw));
       },
       close(_code: number, reason: string) {
         terminalClosed.push(reason);
@@ -1383,15 +1387,18 @@ describe('Node controlled relay contract', () => {
       once() {}
     };
     const user = { userId: 1, sessionHash: 'a'.repeat(43) };
-    const ticket = relay.createTicket({ nodeId: 'node-a', terminalId: 'terminal-a', user });
+    const ticket = relay.createTicket({
+      nodeId: 'node-a',
+      terminalId: 'terminal-a',
+      afterSequence: 3,
+      user
+    });
     relay.attachBrowser(browser as never, ticket.ticket, user);
     relay.closeSession(user.sessionHash);
     resolveAuthorization({
       attachment: {
         attachmentId: 'attachment-a',
-        terminalId: 'terminal-a',
-        latestSequence: 7,
-        frames: []
+        terminalId: 'terminal-a'
       }
     });
     await vi.waitFor(() =>
@@ -1401,7 +1408,7 @@ describe('Node controlled relay contract', () => {
           ticket: ticket.ticket,
           terminalId: 'terminal-a',
           attachmentId: 'attachment-a',
-          latestSequence: 7
+          afterSequence: 3
         },
         { type: 'detach', ticket: ticket.ticket }
       ])
@@ -1412,7 +1419,7 @@ describe('Node controlled relay contract', () => {
       relay as unknown as {
         handleNodeMessage(
           socket: typeof terminal,
-          raw: string,
+          raw: Uint8Array,
           getNodeId: () => string | undefined,
           setNodeId: (nodeId: string) => void
         ): Promise<void>;
@@ -1420,7 +1427,7 @@ describe('Node controlled relay contract', () => {
     ).handleNodeMessage.bind(relay);
     await handleNodeMessage(
       terminal,
-      JSON.stringify({
+      encodeTerminalMessage({
         type: 'detach',
         ticket: ticket.ticket,
         reason: 'TERMINAL_ATTACH_FAILED'
@@ -1460,7 +1467,7 @@ describe('Node controlled relay contract', () => {
     });
     await handleNodeMessage(
       terminal,
-      JSON.stringify({
+      encodeTerminalMessage({
         type: 'detach',
         ticket: 'active-ticket',
         reason: 'TERMINAL_ATTACH_FAILED'
@@ -1496,9 +1503,10 @@ describe('Node controlled relay contract', () => {
     const terminal = {
       readyState: 1,
       OPEN: 1,
-      send(raw: string) {
-        terminalSent.push(JSON.parse(raw));
-      }
+      send(raw: Uint8Array) {
+        terminalSent.push(decodeTerminalMessage(raw));
+      },
+      close: vi.fn()
     };
     const closed: string[] = [];
     const browser = (name: string) => ({
@@ -1536,6 +1544,7 @@ describe('Node controlled relay contract', () => {
     expect([...relays.keys()]).toEqual(['allowed']);
     expect(closed).toEqual(['denied:TERMINAL_AUTHORIZATION_REVOKED']);
     expect(terminalSent).toEqual([{ type: 'close', ticket: 'denied' }]);
+    expect(terminal.close).not.toHaveBeenCalled();
     expect(database.userCanRequestNode).toHaveBeenCalledWith(
       2,
       'node-a',

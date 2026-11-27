@@ -99,15 +99,25 @@ export function createNodeControl(
         constructed.push(() => terminalRelay.close());
         const terminalDirect = new TerminalDirectCoordinator({
           transport: directTransfers,
-          authorize: async (userId, nodeId, workspaceId) => {
+          authorize: async (userId, nodeId, workspaceId, computer) => {
             if (transport.capabilities(nodeId)?.terminalDirect?.apiVersion !== 1) return false;
-            return authorize(userId, nodeId, 'terminal.attach.authorize', {}, workspaceId);
+            return authorize(
+              userId,
+              nodeId,
+              computer ? 'computer.use.attach' : 'terminal.attach.authorize',
+              {},
+              workspaceId
+            );
           },
-          preflight: async (nodeId, terminalId, workspaceId, identity) => {
+          preflight: async (nodeId, terminalId, workspaceId, identity, computer) => {
             await transport.request(
               nodeId,
               'terminal.direct.preflight',
-              { terminalId, ...(workspaceId === undefined ? {} : { workspaceId }) },
+              {
+                terminalId,
+                ...(computer ? { computer } : {}),
+                ...(workspaceId === undefined ? {} : { workspaceId })
+              },
               {
                 userId: identity.userId,
                 sessionHash: identity.sessionHash,

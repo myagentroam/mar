@@ -517,7 +517,7 @@ describe('Node Admin Terminal', () => {
       OPEN: 1,
       bufferedAmount: 0,
       send(raw: Uint8Array, callback?: () => void) {
-        const message = decodeTerminalMessage(raw) as any;
+        const message = decodeTerminalMessage(raw) as (typeof sent)[number];
         sent.push(message);
         if (message.type === 'frame' && callback !== undefined) callbacks.push(callback);
         else callback?.();
@@ -797,7 +797,10 @@ describe('Node Admin Terminal', () => {
       OPEN: 1,
       bufferedAmount: 0,
       send(raw: Uint8Array, callback?: () => void) {
-        const message = decodeTerminalMessage(raw) as any;
+        const message = decodeTerminalMessage(raw) as {
+          type: string;
+          frame: (typeof frames)[number];
+        };
         if (message.type !== 'frame') {
           callback?.();
           return;
@@ -877,7 +880,10 @@ describe('Node Admin Terminal', () => {
         OPEN: 1,
         bufferedAmount: 0,
         send(raw: Uint8Array, callback?: () => void) {
-          const message = decodeTerminalMessage(raw) as any;
+          const message = decodeTerminalMessage(raw) as {
+            type: string;
+            frame: (typeof frames)[number];
+          };
           if (message.type === 'frame') {
             frames.push(message.frame);
             if (callback) setTimeout(callback, 350);
@@ -1007,12 +1013,12 @@ describe('Node Admin Terminal', () => {
       const terminal = manager.openCommand({}, 'fixture');
       const relay = manager.authorizeAttach({ terminalId: terminal.id });
       manager.startCommand(terminal.id);
-      manager.setOutputBackpressure(terminal.id, new Set([relay.attachmentId]));
+      manager.setAttachmentBackpressure(relay.attachmentId, true);
       expect(pause).toHaveBeenCalledOnce();
       manager.detach(relay.attachmentId);
       expect(resume).toHaveBeenCalledOnce();
       const direct = manager.authorizeAttach({ terminalId: terminal.id });
-      manager.setOutputBackpressure(terminal.id, new Set([relay.attachmentId]));
+      manager.setAttachmentBackpressure(relay.attachmentId, true);
       expect(pause).toHaveBeenCalledOnce();
       await expect(
         manager.acceptFrame(direct.attachmentId, {

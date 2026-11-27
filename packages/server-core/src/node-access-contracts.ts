@@ -4,6 +4,8 @@ export interface UserNodeAuthorization {
   readonly usageGrant?: ModelUsageGrant | undefined;
   readonly userId: number;
   readonly sessionHash: string;
+  /** Set only on authenticated marctl Workbench connections. */
+  readonly cliTerminal?: true;
   /** Server-only context; never forwarded as a Node credential field. */
   readonly workspaceId?: string;
   /** Server-verified marctl caller; never derived from a request body or environment. */

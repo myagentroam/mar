@@ -28,7 +28,7 @@ export class NodeTerminalChannel {
   private attempts = 0;
   private readonly state = new TerminalRelayState();
   private sender: TerminalRelaySender | undefined;
-  private readonly pausedTerminals = new Set<string>();
+  private pausedAttachments = new Set<string>();
 
   constructor(private readonly options: NodeTerminalChannelOptions) {
     options.manager.onFrame((frame) => this.publish(frame));
@@ -215,7 +215,7 @@ export class NodeTerminalChannel {
     const socket = this.socket;
     if (socket === undefined || socket.readyState !== socket.OPEN) return;
     this.sender ??= new TerminalRelaySender(socket, {
-      onPendingChange: (keys) => this.updatePausedTerminals(keys)
+      onPendingChange: (keys) => this.updatePausedAttachments(keys)
     });
     const attachment = this.state.attachments.get(ticket);
     void this.sender.send(encodeTerminalMessage({ type: 'frame', ticket, frame }), ticket).then(
@@ -232,25 +232,17 @@ export class NodeTerminalChannel {
     );
   }
 
-  private updatePausedTerminals(keys: ReadonlySet<string>): void {
-    const pending = new Map<string, Set<string>>();
+  private updatePausedAttachments(keys: ReadonlySet<string>): void {
+    const pending = new Set<string>();
     for (const key of keys) {
       const attachment = this.state.attachments.get(key);
-      if (attachment !== undefined) {
-        const ids = pending.get(attachment.terminalId) ?? new Set<string>();
-        ids.add(attachment.attachmentId);
-        pending.set(attachment.terminalId, ids);
-      }
+      if (attachment !== undefined) pending.add(attachment.attachmentId);
     }
-    for (const terminalId of this.pausedTerminals) {
-      if (pending.has(terminalId)) continue;
-      this.pausedTerminals.delete(terminalId);
-      this.options.manager.setOutputBackpressure(terminalId, new Set());
-    }
-    for (const [terminalId, attachmentIds] of pending) {
-      this.pausedTerminals.add(terminalId);
-      this.options.manager.setOutputBackpressure(terminalId, attachmentIds);
-    }
+    for (const id of this.pausedAttachments)
+      if (!pending.has(id)) this.options.manager.setAttachmentBackpressure(id, false);
+    for (const id of pending)
+      if (!this.pausedAttachments.has(id)) this.options.manager.setAttachmentBackpressure(id, true);
+    this.pausedAttachments = pending;
   }
 
   private rejectAttachment(
@@ -261,7 +253,7 @@ export class NodeTerminalChannel {
     if (this.state.attachments.get(ticket) !== attachment) return;
     this.state.attachments.delete(ticket);
     this.sender?.cancel(ticket);
-    this.options.manager.releaseRelayAttachment(attachment.attachmentId);
+    this.options.manager.releaseTransportAttachment(attachment.attachmentId);
     this.send({
       type: 'frame',
       ticket,
@@ -287,6 +279,6 @@ export class NodeTerminalChannel {
     this.sender?.close();
     this.sender = undefined;
     for (const attachment of attachments)
-      this.options.manager.releaseRelayAttachment(attachment.attachmentId);
+      this.options.manager.releaseTransportAttachment(attachment.attachmentId);
   }
 }

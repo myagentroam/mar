@@ -64,8 +64,7 @@ export function registerMarctlRoutes(
         socket: WebSocket,
         nodeId: string,
         user: UserNodeAuthorization,
-        expiresAt: number,
-        authorize: () => Promise<UserNodeAuthorization | undefined>
+        expiresAt: number
       ): void;
       closeTerminal(nodeId: string, terminalId: string): void;
       attachWorkbench(socket: WebSocket, user: UserNodeAuthorization): void;
@@ -360,9 +359,7 @@ export function registerMarctlRoutes(
             socket.close(1008, 'UNAUTHENTICATED');
             return;
           }
-          nodeControl.attachCliMux?.(socket, nodeId, context.user, context.expiresAt, () =>
-            authenticatedSocket(header)
-          );
+          nodeControl.attachCliMux?.(socket, nodeId, context.user, context.expiresAt);
         })
         .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'))
         .finally(() => socket.resume());
@@ -374,10 +371,18 @@ export function registerMarctlRoutes(
       }
       // Preserve an immediate resume while user authentication is still in flight.
       socket.pause();
-      void authenticatedSocket(request.headers.authorization)
-        .then((user) => {
-          if (user === undefined) socket.close(1008, 'UNAUTHENTICATED');
-          else nodeControl.attachWorkbench(socket, user);
+      void userCredentials
+        .authenticateContext(request.headers.authorization)
+        .then((context) => {
+          if (context === undefined || context.expiresAt <= Date.now()) {
+            socket.close(1008, 'UNAUTHENTICATED');
+            return;
+          }
+          if (socket.readyState !== socket.OPEN) return;
+          const expiry = setTimeout(() => socket.terminate(), context.expiresAt - Date.now());
+          expiry.unref();
+          socket.once('close', () => clearTimeout(expiry));
+          nodeControl.attachWorkbench(socket, { ...context.user, cliTerminal: true });
         })
         .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'))
         .finally(() => socket.resume());
@@ -404,8 +409,4 @@ export function registerMarctlRoutes(
         .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'));
     }
   };
-
-  async function authenticatedSocket(header: unknown) {
-    return userCredentials.authenticate(header);
-  }
 }

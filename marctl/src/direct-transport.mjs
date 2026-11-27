@@ -3,14 +3,17 @@ import { DirectFallbackError, directControlError } from './direct-errors.mjs';
 import { isRecord } from './direct-control.mjs';
 import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol/byte-frame';
 
+const BUFFER_LOW_BYTES = 256 * 1024;
+const BUFFER_HIGH_BYTES = 512 * 1024;
+
 export class DirectTerminalTransport extends EventEmitter {
   #channel;
   #live;
-  #peer;
   #transportSessionId;
   #terminalSessionId;
   #terminalId;
-  #cleanupNative;
+  #closeConnection;
+  #unsubscribeDisconnect;
   #heartbeatTimer;
   #unsubscribeLive;
   #closed = false;
@@ -21,35 +24,39 @@ export class DirectTerminalTransport extends EventEmitter {
   #attachmentReject;
   #openSent = false;
   #cancelSent = false;
+  #draining;
 
   constructor({
     channel,
     live,
-    peer,
     transportSessionId,
     terminalSessionId,
     terminalId,
     heartbeatMs,
-    cleanupNative
+    closeConnection
   }) {
     super();
     this.#channel = channel;
     this.#live = live;
-    this.#peer = peer;
     this.#transportSessionId = transportSessionId;
     this.#terminalSessionId = terminalSessionId;
     this.#terminalId = terminalId;
-    this.#cleanupNative = cleanupNative;
+    this.#closeConnection = closeConnection;
     this.#channel.onMessage?.((raw) => this.#handleMessage(raw));
     this.#channel.onClosed?.(() => this.#fail('TERMINAL_DIRECT_CLOSED'));
     this.#channel.onError?.(() => this.#fail('TERMINAL_CONNECTION_FAILED'));
+    this.#channel.setBufferedAmountLowThreshold?.(BUFFER_LOW_BYTES);
+    this.#channel.onBufferedAmountLow?.(() => {
+      if (!this.#draining || this.#channel.bufferedAmount() > BUFFER_LOW_BYTES) return;
+      this.#draining.resolve();
+      this.#draining = undefined;
+    });
     this.#unsubscribeLive = this.#live.onControl((message) => this.#handleControl(message));
+    this.#unsubscribeDisconnect = this.#live.onDisconnect(() =>
+      this.#fail('TERMINAL_CONNECTION_LOST')
+    );
     this.#heartbeatTimer = setInterval(() => {
       if (
-        !this.#live.send({
-          type: 'direct.heartbeat',
-          directSessionId: this.#transportSessionId
-        }) ||
         !this.#live.send({
           type: 'terminal.direct.heartbeat',
           directSessionId: this.#terminalSessionId
@@ -86,18 +93,15 @@ export class DirectTerminalTransport extends EventEmitter {
         opened = true;
         try {
           this.#openSent = true;
-          if (
-            !this.#channel.sendMessageBinary(
-              Buffer.from(
-                encodeTerminalMessage({
-                  type: 'OPEN',
-                  directSessionId: this.#terminalSessionId,
-                  grant
-                })
-              )
+          this.#channel.sendMessageBinary(
+            Buffer.from(
+              encodeTerminalMessage({
+                type: 'OPEN',
+                directSessionId: this.#terminalSessionId,
+                grant
+              })
             )
-          )
-            throw new Error('TERMINAL_ATTACH_FAILED');
+          );
         } catch {
           this.#fail('TERMINAL_ATTACH_FAILED');
         }
@@ -108,10 +112,24 @@ export class DirectTerminalTransport extends EventEmitter {
   }
 
   send(frame) {
+    return this.sendEncoded(encodeTerminalMessage(frame));
+  }
+
+  async sendEncoded(frame) {
+    while (this.#draining) await this.#draining.promise;
     if (this.#closed || this.#channel.isOpen?.() !== true)
       throw new Error('TERMINAL_CONNECTION_LOST');
-    if (!this.#channel.sendMessageBinary(Buffer.from(encodeTerminalMessage(frame))))
-      throw new Error('TERMINAL_INPUT_FAILED');
+    // Native send can return false after queueing the frame: wait for drain, never resend it.
+    this.#channel.sendMessageBinary(Buffer.from(frame));
+    if (this.#channel.bufferedAmount?.() > BUFFER_HIGH_BYTES && this.#channel.onBufferedAmountLow) {
+      let resolve;
+      const promise = new Promise((done) => {
+        resolve = done;
+      });
+      this.#draining = { promise, resolve };
+      await promise;
+      if (this.#closed) throw new Error('TERMINAL_CONNECTION_LOST');
+    }
   }
 
   close() {
@@ -122,6 +140,8 @@ export class DirectTerminalTransport extends EventEmitter {
     if (this.#closed) return;
     this.#closed = true;
     clearInterval(this.#heartbeatTimer);
+    this.#draining?.resolve();
+    this.#draining = undefined;
     if (!skipCancel) this.#sendCancel();
     this.#attachmentReject?.(new DirectFallbackError('TERMINAL_DIRECT_CLOSED'));
     this.#attachmentResolve = undefined;
@@ -129,9 +149,8 @@ export class DirectTerminalTransport extends EventEmitter {
     this.#unsubscribeLive?.();
     this.#unsubscribeLive = undefined;
     this.#channel.close?.();
-    this.#peer.close?.();
-    this.#live.close();
-    this.#cleanupNative?.();
+    this.#unsubscribeDisconnect();
+    this.#closeConnection?.();
     this.#emit('close');
   }
 
@@ -144,15 +163,8 @@ export class DirectTerminalTransport extends EventEmitter {
       'DIRECT_CANCEL_TIMEOUT',
       1000
     );
-    const transportClosed = this.#live.waitFor(
-      (message) =>
-        message.type === 'direct.closed' && message.directSessionId === this.#transportSessionId,
-      undefined,
-      'DIRECT_CANCEL_TIMEOUT',
-      1000
-    );
     this.#sendCancel();
-    await Promise.allSettled([terminalClosed, transportClosed]);
+    await terminalClosed.catch(() => undefined);
     this.dispose({ skipCancel: true });
   }
 
@@ -228,11 +240,6 @@ export class DirectTerminalTransport extends EventEmitter {
     this.#live.send({
       type: 'terminal.direct.cancel',
       directSessionId: this.#terminalSessionId
-    });
-    this.#live.send({
-      type: 'direct.cancel',
-      directSessionId: this.#transportSessionId,
-      reason: 'CLI_CLOSED'
     });
   }
 }

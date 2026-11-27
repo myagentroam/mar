@@ -117,7 +117,6 @@ describe('public Terminal relay', () => {
       return { attachment: { attachmentId: terminalId, terminalId } };
     });
     const user = { userId: 1, sessionHash: 'active-login' };
-    const authorize = vi.fn(async () => user);
     const relay = new TerminalRelayService({
       database: { authenticateNode: async () => ({ id: 'node-1', disabled: false }) },
       authorizeNodeRequest: async () => true,
@@ -139,13 +138,7 @@ describe('public Terminal relay', () => {
         computer: true,
         cli: true
       }).ticket;
-      relay.attachCliMux(
-        wire as unknown as WebSocket,
-        'node-1',
-        user,
-        Date.now() + 60_000,
-        authorize
-      );
+      relay.attachCliMux(wire as unknown as WebSocket, 'node-1', user, Date.now() + 60_000);
       wire.openStream(1, ssh);
       wire.openStream(2, makeTicket('wrong-node', 'node-2'));
       wire.openStream(3, computer);
@@ -161,7 +154,6 @@ describe('public Terminal relay', () => {
         expect(node.sent.filter((frame) => frame.type === 'attach')).toHaveLength(2)
       );
       expect(relay.countSession(user.sessionHash)).toBe(2);
-      expect(authorize).toHaveBeenCalledTimes(4);
       expect(requestNode.mock.calls.map(([, operation]) => operation)).toEqual([
         'terminal.attach.authorize',
         'computer.use.attach'
@@ -172,9 +164,10 @@ describe('public Terminal relay', () => {
         [TERMINAL_MUX.close, 4]
       ]);
 
-      const cancelledAuthorization = Promise.withResolvers<typeof user>();
-      authorize.mockImplementationOnce(() => cancelledAuthorization.promise);
+      const cancelledAuthorization = Promise.withResolvers<never>();
+      requestNode.mockImplementationOnce(() => cancelledAuthorization.promise);
       wire.openStream(5, makeTicket('cancelled'));
+      await vi.waitFor(() => expect(requestNode).toHaveBeenCalledTimes(3));
       wire.emit('message', Buffer.from(encodeTerminalMux(TERMINAL_MUX.close, 5)), true);
       cancelledAuthorization.reject(new Error('USER_AUTHORIZATION_UNAVAILABLE'));
       await new Promise<void>((resolve) => setImmediate(resolve));
@@ -188,6 +181,32 @@ describe('public Terminal relay', () => {
       relay.closeSession(user.sessionHash);
       expect(node.sent).toContainEqual({ type: 'close', ticket: computer });
       expect(wire.readyState).toBe(3);
+    } finally {
+      relay.close();
+    }
+  });
+
+  it('revalidates the shared mux against Node use, not the desktop operation', async () => {
+    let canUse = true;
+    const relay = new TerminalRelayService({
+      database: { authenticateNode: async () => undefined },
+      authorizeNodeRequest: async (_user, _node, operation) =>
+        canUse && operation === 'terminal.attach.authorize',
+      requestNode: async () => ({})
+    });
+    const socket = new MuxSocket();
+    try {
+      relay.attachCliMux(
+        socket as unknown as WebSocket,
+        'node-1',
+        { userId: 1, sessionHash: 'active-login' },
+        Date.now() + 60_000
+      );
+      await relay.revalidateAuthorizations();
+      expect(socket.readyState).toBe(1);
+      canUse = false;
+      await relay.revalidateAuthorizations();
+      expect(socket.readyState).toBe(3);
     } finally {
       relay.close();
     }
@@ -216,13 +235,7 @@ describe('public Terminal relay', () => {
       node.receive({ type: 'authenticate', nodeId, credential: 'fixture' });
       await vi.waitFor(() => expect(node.sent[0]?.type).toBe('authenticated'));
       for (const wire of [first, second])
-        relay.attachCliMux(
-          wire as unknown as WebSocket,
-          nodeId,
-          user,
-          Date.now() + 60_000,
-          async () => user
-        );
+        relay.attachCliMux(wire as unknown as WebSocket, nodeId, user, Date.now() + 60_000);
       const makeTicket = (terminalId: string) =>
         relay.createTicket({ nodeId, terminalId, user, cli: true }).ticket;
       first.openStream(1, makeTicket('cancelled-shell'));
@@ -282,13 +295,7 @@ describe('public Terminal relay', () => {
         computer: true,
         cli: true
       });
-      relay.attachCliMux(
-        wire as unknown as WebSocket,
-        nodeId,
-        user,
-        Date.now() + 60_000,
-        async () => user
-      );
+      relay.attachCliMux(wire as unknown as WebSocket, nodeId, user, Date.now() + 60_000);
       wire.openStream(1, ticket);
       await vi.waitFor(() => expect(node.sent.some((frame) => frame.type === 'attach')).toBe(true));
 

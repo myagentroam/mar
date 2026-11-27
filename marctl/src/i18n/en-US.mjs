@@ -46,7 +46,7 @@ Notes:
     computer: `{program} — Operate an authorized Node desktop with Python/PyAutoGUI
 
 {program} [--no-reuse] <node> <output-directory>
-  --no-reuse       Bypass the relay pool for this invocation only.
+  --no-reuse       Bypass the connection pool for this invocation only.
   Requires the same Node access as SSH and remote Computer Use enabled on the Node.
   Use an existing output directory. Send one JSON line at a time on stdin.
   Start with {"code":""}; read observationId and local PNG paths (images) from stdout.
@@ -173,7 +173,7 @@ Arguments:
   [command ...]   A command for the remote shell; omit it for an interactive shell.
 
 Options (before <node>):
-  --no-reuse       Bypass the relay pool for this invocation; keep direct connections enabled.
+  --no-reuse       Bypass the connection pool for this invocation; keep direct connections enabled.
   -h, --help       Show help and exit.
   -V, --version    Print the CLI package version and exit.
 
@@ -208,7 +208,7 @@ Arguments:
 Options:
   -p              Preserve source permissions and access/modification times.
   -q              Suppress progress output (already the default).
-  --no-reuse       Bypass the relay pool for this copy; place before the first endpoint.
+  --no-reuse       Bypass the connection pool for this copy; place before the first endpoint.
   -h, --help       Show help and exit; place before the first endpoint.
   -V, --version    Print the CLI package version and exit; place before the first endpoint.
   --              Treat remaining arguments as literal paths.

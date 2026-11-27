@@ -178,7 +178,10 @@ export class TerminalService {
     if (data === null || typeof data !== 'object') throw new Error('TERMINAL_ATTACH_INVALID');
     const input = data as Record<string, unknown>;
     this.assertOwner(input);
-    if (this.terminalOwners.get(String(input.terminalId))?.kind === 'COMPUTER')
+    if (
+      (this.terminalOwners.get(String(input.terminalId))?.kind === 'COMPUTER') !==
+      (input.computer === true)
+    )
       throw new Error('TERMINAL_ATTACH_INVALID');
     const terminal = this.terminalManager.get(String(input.terminalId));
     if (terminal.state !== 'RUNNING') throw new Error('TERMINAL_CLOSED');

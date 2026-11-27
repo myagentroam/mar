@@ -18,6 +18,16 @@ export async function openRelayTransport({
   const ticket = grantedTicket ?? (await client.createAttachTicket({ nodeId, terminalId }));
   if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
   const socket = client.openTerminalWebSocket(WebSocketClass, { nodeId, terminalId, ticket });
+  return attachTerminalSocket({ socket, terminalId, translate, connectionTimeoutMs, signal });
+}
+
+export async function attachTerminalSocket({
+  socket,
+  terminalId,
+  translate,
+  connectionTimeoutMs,
+  signal
+}) {
   const transport = new BufferedRelayTransport({
     socket,
     terminalId,
@@ -38,12 +48,13 @@ export async function prepareRelayTransport({
   WebSocketClass,
   nodeId,
   terminalId,
+  ticket: grantedTicket,
   translate,
   connectionTimeoutMs,
   signal,
   onPrepared
 }) {
-  const ticket = await client.createAttachTicket({ nodeId, terminalId });
+  const ticket = grantedTicket ?? (await client.createAttachTicket({ nodeId, terminalId }));
   if (onPrepared) await onPrepared();
   if (signal?.aborted) throw new MarctlError(translate('errors.terminalAttachConnection'));
   const socket = client.openTerminalWebSocket(WebSocketClass, {
@@ -181,7 +192,9 @@ class BufferedRelayTransport extends EventEmitter {
             return;
           }
           if (frame.type === 'error')
-            throw new MarctlError(this.#translate('errors.terminalRemoteError'));
+            throw new MarctlError(this.#translate('errors.terminalRemoteError'), {
+              code: frame.code
+            });
           this.#queueOrEmit('message', raw, isBinary);
           return;
         }

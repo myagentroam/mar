@@ -23,6 +23,7 @@ export interface DirectTransferBrowserIdentity {
   readonly userId: number;
   readonly sessionHash: string;
   readonly workbenchConnectionId: string;
+  readonly cliTerminal?: true;
 }
 
 interface DirectSessionBase extends DirectTransferBrowserIdentity {

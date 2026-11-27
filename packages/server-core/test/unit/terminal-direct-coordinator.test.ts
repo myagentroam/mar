@@ -50,6 +50,48 @@ function fixture() {
 }
 
 describe('Terminal direct coordinator', () => {
+  it('admits a Computer Use grant only on an authorized CLI connection and only from sequence zero', async () => {
+    const f = fixture();
+    const cli = { ...identity, cliTerminal: true } as const;
+    const desktop = {
+      ...request,
+      workspaceId: undefined,
+      computer: true,
+      afterSequence: 0
+    } as const;
+    try {
+      await f.coordinator.handleBrowser(identity, desktop);
+      await f.coordinator.handleBrowser(cli, { ...desktop, workspaceId: 'workspace-a' });
+      await f.coordinator.handleBrowser(cli, { ...desktop, readonly: true });
+      await f.coordinator.handleBrowser(cli, { ...desktop, afterSequence: 1 });
+      expect(f.preflight).not.toHaveBeenCalled();
+      for (const [, response] of f.sendBrowser.mock.calls)
+        expect(response).toMatchObject({
+          type: 'terminal.direct.error',
+          code: 'TERMINAL_NOT_AUTHORIZED'
+        });
+
+      await f.coordinator.handleBrowser(cli, desktop);
+      expect(f.authorize).toHaveBeenCalledWith(cli.userId, desktop.nodeId, undefined, true);
+      expect(f.preflight).toHaveBeenCalledWith(
+        desktop.nodeId,
+        desktop.terminalId,
+        undefined,
+        cli,
+        true
+      );
+      expect(f.sendNode).toHaveBeenCalledWith(
+        desktop.nodeId,
+        expect.objectContaining({
+          type: 'terminal.direct.prepare',
+          closeOnDisconnect: true,
+          afterSequence: 0
+        })
+      );
+    } finally {
+      f.coordinator.close();
+    }
+  });
   it.each([false, true])('attaches once per direct session, readonly=%s', async (readonly) => {
     const f = fixture();
     try {
@@ -76,7 +118,13 @@ describe('Terminal direct coordinator', () => {
     const f = fixture();
     try {
       await f.coordinator.handleBrowser(identity, request);
-      expect(f.preflight).toHaveBeenCalledWith('node-a', 'terminal-a', 'workspace-a', identity);
+      expect(f.preflight).toHaveBeenCalledWith(
+        'node-a',
+        'terminal-a',
+        'workspace-a',
+        identity,
+        undefined
+      );
       expect(f.sendBrowser).not.toHaveBeenCalled();
       const prepare = f.sendNode.mock.calls[0]![1] as Extract<
         TerminalDirectNodeCommand,

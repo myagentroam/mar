@@ -21,13 +21,18 @@ export class TerminalBrokerClient extends EventEmitter {
   #single;
   #timer;
 
-  constructor(config, { ticket, deferred }, openSingle, { launch = launchBroker } = {}) {
+  constructor(
+    config,
+    { terminalId, ticket, computer = false },
+    openSingle,
+    { launch = launchBroker, address = terminalBrokerAddress(config) } = {}
+  ) {
     super();
     // Setup begins on the next turn so the owning transport can subscribe first.
     void Promise.resolve().then(async () => {
       if (this.readyState !== 0) return;
       try {
-        const socket = await connectBroker(config, launch, () => this.readyState === 0);
+        const socket = await connectBroker(config, address, launch, () => this.readyState === 0);
         if (this.readyState !== 0) return socket.destroy();
         this.#local = new TerminalIpc(socket);
         const nonce = randomBytes(16).toString('hex');
@@ -60,7 +65,12 @@ export class TerminalBrokerClient extends EventEmitter {
               return;
             }
             if (!challenged || metadata.type !== 'ready') return this.#local.close();
-            const request = encodeByteFrame({ type: 'open', ticket, deferred });
+            const request = encodeByteFrame({
+              type: 'open',
+              terminalId,
+              ...(ticket === undefined ? {} : { ticket }),
+              computer
+            });
             clearTimeout(this.#timer);
             // Once OPEN is dispatched, never retry the same attachment on a different connection.
             this.readyState = 1;
@@ -108,10 +118,17 @@ export class TerminalBrokerClient extends EventEmitter {
     this.emit('close');
   }
 
-  #fallback(openSingle) {
+  async #fallback(openSingle) {
     if (this.readyState !== 0 || this.#single) return;
     try {
-      this.#single = openSingle();
+      if (!openSingle) return this.#closed();
+      const socket = openSingle();
+      this.#single = socket?.then ? await socket : socket;
+      if (this.readyState !== 0) {
+        this.#single.on('error', () => {});
+        this.#single.close();
+        return;
+      }
       this.#single.on('open', () => {
         if (this.readyState !== 0) return;
         this.readyState = 1;
@@ -126,8 +143,7 @@ export class TerminalBrokerClient extends EventEmitter {
   }
 }
 
-async function connectBroker(config, launch, alive) {
-  const address = terminalBrokerAddress(config);
+async function connectBroker(config, address, launch, alive) {
   const deadline = Date.now() + 2_000;
   let started = false;
   while (alive()) {

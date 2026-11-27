@@ -127,7 +127,11 @@ describe('marctl execution-context authorization', () => {
         }
         expect(nodeControl.attachWorkbench).not.toHaveBeenCalled();
         expect(nodeControl.attachCliTerminal).not.toHaveBeenCalled();
-        const socket = { close: vi.fn(), pause: vi.fn(), resume: vi.fn() };
+        const socket = Object.assign(new RelaySocket(), {
+          pause: vi.fn(),
+          resume: vi.fn(),
+          terminate: vi.fn()
+        });
         routes[method](
           socket as never,
           { headers: { authorization: `Bearer ${token}` }, query: { ticket: 'ticket' } } as never
@@ -138,6 +142,12 @@ describe('marctl execution-context authorization', () => {
           ).toHaveBeenCalledOnce()
         );
         expect(socket.close).not.toHaveBeenCalled();
+        if (method === 'attachLive')
+          expect(nodeControl.attachWorkbench).toHaveBeenCalledWith(
+            socket,
+            expect.objectContaining({ cliTerminal: true })
+          );
+        socket.close();
       } finally {
         await app.close();
       }
@@ -203,12 +213,12 @@ describe('marctl execution-context authorization', () => {
   });
   it('buffers an immediate resume until asynchronous user authentication attaches the relay', async () => {
     const { credentials, token } = createUserContext();
-    const authenticate = credentials.authenticate.bind(credentials);
+    const authenticate = credentials.authenticateContext.bind(credentials);
     let releaseAuthentication!: () => void;
     const authenticationReady = new Promise<void>((resolve) => {
       releaseAuthentication = resolve;
     });
-    vi.spyOn(credentials, 'authenticate').mockImplementation(async (header) => {
+    vi.spyOn(credentials, 'authenticateContext').mockImplementation(async (header) => {
       await authenticationReady;
       return authenticate(header);
     });
