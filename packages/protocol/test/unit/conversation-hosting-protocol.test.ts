@@ -1096,7 +1096,7 @@ describe('conversation hosting protocol', () => {
         conversationId: 'conversation-1',
         uploadId: 'upload-1',
         offset: 0,
-        dataBase64: Buffer.alloc(512 * 1024 + 1).toString('base64')
+        bytes: new Uint8Array(512 * 1024 + 1)
       }).success
     ).toBe(false);
     expect(
@@ -1161,8 +1161,7 @@ describe('conversation hosting protocol', () => {
     expect(
       hostedConversationFileReadResultSchema.parse({
         file,
-        encoding: 'base64',
-        content: Buffer.from('part').toString('base64'),
+        bytes: new TextEncoder().encode('part'),
         offset: 0,
         nextOffset: 4,
         eof: false
@@ -1192,7 +1191,7 @@ describe('conversation hosting protocol', () => {
     });
   });
 
-  it('validates hosted file Base64 in browser runtimes without Node Buffer', () => {
+  it('validates hosted file bytes in browser runtimes without Node Buffer', () => {
     const file = {
       id: 'file-1',
       conversationId: 'conversation-1',
@@ -1217,16 +1216,14 @@ describe('conversation hosting protocol', () => {
       });
       fileReadAccepted = hostedConversationFileReadResultSchema.safeParse({
         file,
-        encoding: 'base64',
-        content: 'cmVzdWx0',
+        bytes: new TextEncoder().encode('result'),
         offset: 0,
         nextOffset: null,
         eof: true
       }).success;
       emptyFileReadAccepted = hostedConversationFileReadResultSchema.safeParse({
         file: { ...file, size: 0 },
-        encoding: 'base64',
-        content: '',
+        bytes: new Uint8Array(0),
         offset: 0,
         nextOffset: null,
         eof: true
@@ -1235,7 +1232,7 @@ describe('conversation hosting protocol', () => {
         conversationId: 'conversation-1',
         uploadId: 'upload-1',
         offset: 0,
-        dataBase64: 'cGFydA=='
+        bytes: new TextEncoder().encode('part')
       }).success;
     } finally {
       if (bufferDescriptor === undefined) delete (globalThis as { Buffer?: unknown }).Buffer;
@@ -1247,9 +1244,8 @@ describe('conversation hosting protocol', () => {
     expect(uploadChunkAccepted).toBe(true);
     expect(
       hostedConversationFileReadResultSchema.safeParse({
-        file: { ...file, size: 1 },
-        encoding: 'base64',
-        content: 'AB==',
+        file: { ...file, size: 512 * 1024 + 1 },
+        bytes: new Uint8Array(512 * 1024 + 1),
         offset: 0,
         nextOffset: null,
         eof: true
