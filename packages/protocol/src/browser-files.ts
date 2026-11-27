@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-export const BROWSER_UPLOAD_CHUNK_BYTES = 128 * 1024;
-export const BROWSER_UPLOAD_REQUEST_BYTES = BROWSER_UPLOAD_CHUNK_BYTES;
-
 const id = z.string().uuid();
 export const browserFileChooserSchema = z.strictObject({ id, multiple: z.boolean() });
 
@@ -22,15 +19,6 @@ export const browserUploadCommandSchema = z.discriminatedUnion('action', [
       .regex(/^[^/\\\u0000-\u001f]+$/u),
     size: z.number().int().nonnegative().safe()
   }),
-  z.strictObject({
-    action: z.literal('chunk'),
-    transferId: id,
-    index: z.number().int().nonnegative().safe(),
-    offset: z.number().int().nonnegative().safe(),
-    bytes: z
-      .instanceof(Uint8Array)
-      .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= BROWSER_UPLOAD_CHUNK_BYTES)
-  }),
   z.strictObject({ action: z.literal('finish'), transferId: id }),
   z.strictObject({ action: z.literal('cancel') })
 ]);
@@ -41,9 +29,16 @@ export const browserUploadSchema = z.strictObject({
   command: browserUploadCommandSchema
 });
 export type BrowserUpload = z.infer<typeof browserUploadSchema>;
+export const browserUploadStreamSchema = browserUploadSchema.extend({
+  command: z.strictObject({
+    action: z.literal('stream'),
+    transferId: id,
+    index: z.number().int().nonnegative().safe()
+  })
+});
+export type BrowserUploadStream = z.infer<typeof browserUploadStreamSchema>;
 export type BrowserFileChooser = z.infer<typeof browserFileChooserSchema>;
 
-export const BROWSER_DOWNLOAD_CHUNK_BYTES = 512 * 1024;
 export const browserDownloadInfoSchema = z.strictObject({
   id,
   name: z.string().max(255),
@@ -58,19 +53,7 @@ export const browserDownloadPageSchema = z.strictObject({
   items: z.array(browserDownloadInfoSchema).max(downloadPageSize),
   more: z.boolean()
 });
-export const browserDownloadChunkSchema = z.strictObject({
-  offset: z.number().int().nonnegative().safe(),
-  bytes: z
-    .instanceof(Uint8Array)
-    .refine((bytes) => bytes.byteLength <= BROWSER_DOWNLOAD_CHUNK_BYTES)
-});
 const offset = z.number().int().nonnegative().safe();
-const downloadRead = z.strictObject({
-  action: z.literal('read'),
-  id,
-  offset,
-  limit: z.number().int().positive().max(BROWSER_DOWNLOAD_CHUNK_BYTES)
-});
 export const browserDownloadRequestSchema = z.strictObject({
   attachmentId: id,
   command: z.discriminatedUnion('action', [
@@ -81,12 +64,16 @@ export const browserDownloadRequestSchema = z.strictObject({
     z.strictObject({ action: z.literal('info'), id })
   ])
 });
-/** Only the authenticated Server may issue these reads after admitting a save. */
-export const browserDownloadReadSchema = z.strictObject({
+/** Trusted Server request after admission of a device save, independent of the picture stream. */
+export const browserDownloadStreamSchema = z.strictObject({
   workspaceId: z.string().min(1),
   browserId: id,
-  command: downloadRead
+  command: z.strictObject({
+    action: z.literal('stream'),
+    id,
+    size: z.number().int().nonnegative().safe()
+  })
 });
-export type BrowserDownloadRead = z.infer<typeof browserDownloadReadSchema>;
+export type BrowserDownloadStream = z.infer<typeof browserDownloadStreamSchema>;
 export type BrowserDownloadInfo = z.infer<typeof browserDownloadInfoSchema>;
 export type BrowserDownloadRequest = z.infer<typeof browserDownloadRequestSchema>;

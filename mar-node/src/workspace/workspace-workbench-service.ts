@@ -1,7 +1,10 @@
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import { createHash } from 'node:crypto';
 import { isAbsolute, win32 } from 'node:path';
-import type { DirectTransferDescriptor } from '@myagentroam/protocol';
+import {
+  directTransferDescriptorSchema,
+  type DirectTransferDescriptor
+} from '@myagentroam/protocol';
 import type { NodeWorkspace } from './contracts.js';
 import type { WorkspaceInspection } from './git.js';
 import {
@@ -23,7 +26,9 @@ import { WorkspaceChangeService } from './workspace-change-service.js';
 import { WorkspaceCodeNavigationService } from './workspace-code-navigation-service.js';
 import { WorkspaceContentSearchService } from './workspace-content-search-service.js';
 import { WorkspaceFileService } from './workspace-file-service.js';
+import { WorkspaceFileStreamService } from './workspace-file-stream-service.js';
 import { WorkspaceUploadService } from './workspace-upload-service.js';
+import type { WorkspaceUploadTarget } from './workspace-upload-stream.js';
 import { WorkspaceWatchController } from '../service/workspace-watch-controller.js';
 import { WorkspaceWatchService } from './workspace-watch-service.js';
 import {
@@ -59,12 +64,17 @@ export interface WorkspaceWorkbenchServiceOptions {
 }
 
 export class WorkspaceWorkbenchService {
+  readonly fileStreams: WorkspaceFileStreamService;
   private readonly contentSearch: WorkspaceContentSearchService;
   private readonly codeNavigation: WorkspaceCodeNavigationService;
   private readonly snapshots: WorkspaceWatchSnapshotService;
   private readonly watchController: WorkspaceWatchController;
 
   constructor(private readonly options: WorkspaceWorkbenchServiceOptions) {
+    this.fileStreams = new WorkspaceFileStreamService({
+      openUpload: (descriptor) => this.openFileUpload(descriptor),
+      openDownload: (descriptor) => this.directDownload(descriptor)
+    });
     this.contentSearch = new WorkspaceContentSearchService(options.files);
     this.codeNavigation = new WorkspaceCodeNavigationService({
       files: options.files,
@@ -93,6 +103,7 @@ export class WorkspaceWorkbenchService {
       'workspace.file.write': (data) => this.writeFile(record(data)),
       'workspace.file.content.read': (data) => this.readFileContent(record(data)),
       'workspace.file.direct.metadata': (data) => this.directFileMetadata(record(data)),
+      'workspace.file.stream.prepare': (data) => this.prepareFileStream(record(data)),
       'workspace.files.search': (data) => this.searchFiles(record(data)),
       'workspace.files.mutate': (data) => this.mutateFile(record(data)),
       'workspace.files.reveal': (data) => {
@@ -104,9 +115,8 @@ export class WorkspaceWorkbenchService {
       'workspace.symbol.definition': (data) => this.symbolDefinition(record(data)),
       'workspace.files.upload.preflight': (data) => this.preflight(record(data)),
       'workspace.files.upload.create': (data) => this.createUpload(record(data)),
-      'workspace.files.upload.chunk': (data) => this.writeUpload(record(data)),
       'workspace.files.upload.status': (data) => ({
-        upload: this.options.uploads.status(record(data).uploadId)
+        upload: this.options.uploads.status(record(data).uploadId, record(data).workspaceId)
       }),
       'workspace.files.upload.complete': (data) => this.completeUpload(record(data)),
       'workspace.files.upload.cancel': (data) => this.cancelUpload(record(data)),
@@ -217,20 +227,18 @@ export class WorkspaceWorkbenchService {
   }
   private async createUpload(input: Record<string, unknown>): Promise<unknown> {
     return {
-      upload: await this.options.uploads.create(
-        this.options.requireWorkspace(input.workspaceId),
-        input
-      )
+      upload: await this.options.uploads.create(this.options.requireWorkspace(input.workspaceId), {
+        ...input,
+        streamStaging: input.sha256 !== undefined
+      })
     };
   }
-  private async writeUpload(input: Record<string, unknown>): Promise<unknown> {
-    return { upload: await this.options.uploads.write(input) };
-  }
   private async completeUpload(input: Record<string, unknown>): Promise<unknown> {
+    this.options.uploads.status(input.uploadId, input.workspaceId);
     return { upload: await this.options.uploads.complete(input.uploadId) };
   }
   private async cancelUpload(input: Record<string, unknown>): Promise<unknown> {
-    await this.options.uploads.cancel(input.uploadId);
+    await this.options.uploads.cancel(input.uploadId, input.workspaceId);
     return { cancelled: true };
   }
   private async currentChanges(input: Record<string, unknown>): Promise<unknown> {
@@ -437,6 +445,43 @@ export class WorkspaceWorkbenchService {
     };
   }
 
+  private prepareFileStream(data: Record<string, unknown>): { grant: string } {
+    const descriptor = directTransferDescriptorSchema.parse(data.descriptor);
+    if (descriptor.resource.workspaceId !== data.workspaceId) throw new Error('WORKSPACE_MISMATCH');
+    this.options.requireWorkspace(data.workspaceId);
+    return { grant: this.fileStreams.prepare(descriptor) };
+  }
+
+  async openFileUpload(descriptor: DirectTransferDescriptor): Promise<WorkspaceUploadTarget> {
+    if (descriptor.direction !== 'UPLOAD' || descriptor.resource.kind !== 'WORKSPACE_FILE')
+      throw new Error('DIRECT_RESOURCE_UNSUPPORTED');
+    const workspace = this.options.requireWorkspace(descriptor.resource.workspaceId);
+    const uploads = this.options.uploads;
+    if (descriptor.uploadId !== undefined)
+      return uploads.openStreamUpload(workspace, {
+        uploadId: descriptor.uploadId,
+        path: descriptor.resource.path,
+        size: descriptor.size,
+        sha256: descriptor.sha256,
+        overwrite: descriptor.overwrite === true
+      });
+    // Ordinary uploads can only take the writer lease of an explicitly staged task.
+    if (descriptor.composerAttachment === undefined) throw new Error('DIRECT_TRANSFER_INVALID');
+    const upload = await uploads.createComposerUpload(workspace, {
+      path: descriptor.resource.path,
+      size: descriptor.size,
+      sha256: descriptor.sha256,
+      overwrite: descriptor.overwrite === true,
+      attachment: descriptor.composerAttachment
+    });
+    return {
+      offset: upload.receivedBytes,
+      write: (bytes) => uploads.writeDirect(upload.uploadId, bytes),
+      complete: (size, signal) => uploads.completeDirect(upload.uploadId, size, signal),
+      cancel: () => uploads.cancel(upload.uploadId)
+    };
+  }
+
   async directDownload(descriptor: DirectTransferDescriptor): Promise<{
     readonly offset: number;
     readonly chunks: AsyncIterable<Uint8Array>;
@@ -461,7 +506,6 @@ export class WorkspaceWorkbenchService {
           {
             path: descriptor.resource.path,
             size: descriptor.size,
-            revision: descriptor.revision,
             ...(descriptor.range === undefined ? {} : { range: descriptor.range })
           },
           await this.fileRepository(workspace, input)
@@ -473,36 +517,36 @@ export class WorkspaceWorkbenchService {
       workspaceId: workspace.id,
       path: resource.path,
       commit: resource.commit,
+      ...(resource.refs === undefined ? {} : { refs: resource.refs }),
       ...(resource.repositoryPath === undefined ? {} : { repositoryPath: resource.repositoryPath }),
       ...(resource.worktreePath === undefined ? {} : { worktreePath: resource.worktreePath })
     };
     const repository = await this.gitRepository(input);
     if (descriptor.revision !== gitResourceRevision(resource.commit, resource.path))
       throw new Error('DIRECT_FILE_REVISION_CHANGED');
-    const refs = this.refs(input);
+    const source = await openGitHistoryFileContent(
+      repository,
+      resource.commit,
+      resource.path,
+      this.refs(input)
+    );
+    if (source.size !== descriptor.size) throw new Error('DIRECT_FILE_REVISION_CHANGED');
+    if (descriptor.range === undefined) return { offset: 0, chunks: source.chunks };
+    const { offset, length } = descriptor.range;
+    const end = offset + length;
     return {
-      offset: descriptor.range?.offset ?? 0,
+      offset,
       chunks: (async function* () {
-        let offset = descriptor.range?.offset ?? 0;
-        const rangeStart = descriptor.range?.offset ?? 0;
-        const rangeEnd = rangeStart + (descriptor.range?.length ?? descriptor.size);
-        while (offset < rangeEnd) {
-          const range = await readGitHistoryFileContentRange(
-            repository,
-            resource.commit,
-            resource.path,
-            offset,
-            Math.min(512 * 1024, rangeEnd - offset),
-            refs
-          );
-          if (range.size !== descriptor.size) throw new Error('DIRECT_FILE_REVISION_CHANGED');
-          const bytes = range.bytes;
-          offset += bytes.length;
-          if (bytes.length > 0) yield bytes;
-          if (offset === rangeEnd) break;
-          if (range.nextOffset !== offset) throw new Error('DIRECT_FILE_REVISION_CHANGED');
+        // Read the blob once; repeated cat-file per chunk would reread the growing prefix.
+        let position = 0;
+        for await (const bytes of source.chunks) {
+          const next = position + bytes.byteLength;
+          const first = Math.max(position, offset);
+          const last = Math.min(next, end);
+          if (first < last) yield bytes.subarray(first - position, last - position);
+          if (next >= end && end < source.size) return;
+          position = next;
         }
-        if (offset !== rangeEnd) throw new Error('DIRECT_FILE_REVISION_CHANGED');
       })()
     };
   }

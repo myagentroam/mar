@@ -379,14 +379,16 @@ export async function mockConsoleApi(
 
       readonly url: string;
       readyState = ConsoleMockWorkbenchWebSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: Event) => void) | null = null;
+      onclose: ((event: Event) => void) | null = null;
 
-      constructor(url: string | URL, protocols?: string | string[]) {
-        const value = String(url);
+      constructor(url: string | URL) {
         super();
-        this.url = value;
-        // Keep tooling sockets native even when this init script runs before a domain mock.
-        if (!new URL(value, location.href).pathname.startsWith('/api/'))
-          return new BrowserWebSocket(url, protocols);
+        this.url = String(url);
+        // Playwright can wrap this socket and forward non-Relay connections via DOM event handlers.
+        for (const type of ['open', 'message', 'close'] as const)
+          this.addEventListener(type, (event) => this[`on${type}`]?.(event));
         ConsoleMockWorkbenchWebSocket.instances.push(this);
         queueMicrotask(() => {
           if (this.readyState !== ConsoleMockWorkbenchWebSocket.CONNECTING) return;
@@ -449,7 +451,16 @@ export async function mockConsoleApi(
     }
     Object.defineProperty(window, 'WebSocket', {
       configurable: true,
-      value: ConsoleMockWorkbenchWebSocket
+      value: new Proxy(ConsoleMockWorkbenchWebSocket, {
+        construct(MockSocket, args) {
+          const [url, protocols] = args as ConstructorParameters<typeof WebSocket>;
+          // Keep tooling sockets and the binary Relay native for Playwright's socket fixtures.
+          const pathname = new URL(url, location.href).pathname;
+          return !pathname.startsWith('/api/') || pathname.startsWith('/api/relay/')
+            ? new BrowserWebSocket(url, protocols)
+            : new MockSocket(url);
+        }
+      })
     });
     Object.defineProperty(window, '__consoleMockWorkbenchWebSocket', {
       configurable: true,

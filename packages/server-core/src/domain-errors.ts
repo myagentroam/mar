@@ -93,8 +93,6 @@ export function domainErrorStatus(code: string): number {
         code === 'HOSTED_CONVERSATION_ROLLBACK_TARGET_INVALID' ||
         code === 'HOSTED_CONVERSATION_FILE_CONFLICT' ||
         code === 'HOSTED_CONVERSATION_UPLOAD_STATE_INVALID' ||
-        code === 'HOSTED_CONVERSATION_UPLOAD_OFFSET_INVALID' ||
-        code === 'HOSTED_CONVERSATION_UPLOAD_SIZE_INVALID' ||
         code === 'HOSTED_CONVERSATION_UPLOAD_INCOMPLETE' ||
         code === 'CODEX_CREDENTIAL_SCOPE_CONFLICT' ||
         code === 'MAIL_TEMPLATE_REVISION_CONFLICT' ||

@@ -3,7 +3,8 @@ import type {
   HostedConversationFileReadResult
 } from '@myagentroam/protocol';
 import { computed, ref, shallowRef } from 'vue';
-import { readFilePreview } from './file-preview-read-service.js';
+import { readFilePreview, usesNativeHttpFilePreview } from './file-preview-read-service.js';
+import { revokeWorkspaceDirectObjectUrl } from './workspace-direct-object-url-service.js';
 import {
   decodeFilePreviewContent,
   filePreviewKind,
@@ -30,11 +31,14 @@ interface HostedConversationFilePreviewOptions {
     readonly readFile: (
       fileId: string,
       offset?: number,
-      limit?: number
+      limit?: number,
+      signal?: AbortSignal
     ) => Promise<HostedConversationFileReadResult>;
-    readonly contentUrl: (file: ConversationFileProjection, download?: boolean) => string;
+    readonly contentUrl: (file: ConversationFileProjection) => string;
+    readonly downloadFile: (fileId: string, signal: AbortSignal) => Promise<void>;
+    readonly previewObjectUrl: (fileId: string, signal: AbortSignal) => Promise<string | undefined>;
   };
-  readonly triggerDownload?: (url: string, name: string) => void;
+  readonly onDownloadError?: (error: unknown) => void;
 }
 
 /** Adapts stable Hosted file IDs to the shared read-only file preview shell. */
@@ -54,15 +58,16 @@ export function createHostedConversationFilePreviewService(
     const current = content.value;
     return current === undefined ? 'unsupported' : filePreviewKind(current.path, current.encoding);
   });
-  const triggerDownload =
-    options.triggerDownload ??
-    ((url: string, name: string) => {
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = name;
-      anchor.click();
-    });
   let previewSequence = 0;
+  let lifetime: AbortController | undefined;
+  let previewObject: string | undefined;
+
+  function release(): void {
+    lifetime?.abort();
+    lifetime = undefined;
+    if (previewObject !== undefined) revokeWorkspaceDirectObjectUrl(previewObject);
+    previewObject = undefined;
+  }
 
   async function openFile(
     nextFile: ConversationFileProjection,
@@ -70,8 +75,12 @@ export function createHostedConversationFilePreviewService(
     nextTargetColumn?: number
   ): Promise<void> {
     const sequence = ++previewSequence;
+    release();
+    const controller = new AbortController();
+    lifetime = controller;
     const path = projectedFilePath(nextFile);
-    const text = shouldReadTextFilePreview(path, nextFile.mimeType);
+    const nativeHttp = usesNativeHttpFilePreview(path);
+    const text = !nativeHttp && shouldReadTextFilePreview(path, nextFile.mimeType);
     downloading.value = false;
     file.value = nextFile;
     visible.value = true;
@@ -95,7 +104,7 @@ export function createHostedConversationFilePreviewService(
           ): Promise<
             HostedConversationPreviewContent & { nextOffset: number | null; revision: string }
           > => {
-            const read = await options.source.readFile(nextFile.id, 0, limit);
+            const read = await options.source.readFile(nextFile.id, 0, limit, controller.signal);
             const decoded = decodeFilePreviewContent(read.bytes, path, read.eof, nextFile.mimeType);
             return {
               path,
@@ -119,8 +128,19 @@ export function createHostedConversationFilePreviewService(
           truncated: false
         };
       }
-      if (content.value.encoding === 'base64' && filePreviewKind(path, 'base64') !== 'unsupported')
-        contentUrl.value = options.source.contentUrl(nextFile);
+      if (nativeHttp) contentUrl.value = options.source.contentUrl(nextFile);
+      else if (
+        content.value.encoding === 'base64' &&
+        filePreviewKind(path, 'base64') !== 'unsupported'
+      ) {
+        const url = await options.source.previewObjectUrl(nextFile.id, controller.signal);
+        if (!matchesPreview(sequence, nextFile)) {
+          if (url !== undefined) revokeWorkspaceDirectObjectUrl(url);
+          return;
+        }
+        previewObject = url;
+        contentUrl.value = url;
+      }
       visible.value = true;
     } catch (failure) {
       if (matchesPreview(sequence, nextFile)) error.value = failure;
@@ -140,6 +160,7 @@ export function createHostedConversationFilePreviewService(
 
   function close(): void {
     previewSequence += 1;
+    release();
     visible.value = false;
     loading.value = false;
     error.value = undefined;
@@ -151,17 +172,26 @@ export function createHostedConversationFilePreviewService(
     contentUrl.value = undefined;
   }
 
-  function download(): void {
+  async function download(): Promise<void> {
     const currentFile = file.value;
+    const current = lifetime;
     const conversationId = options.source.selectedConversationId.value;
     if (
       currentFile === undefined ||
+      current === undefined ||
       conversationId === undefined ||
       currentFile.conversationId !== conversationId ||
       downloading.value
     )
       return;
-    triggerDownload(options.source.contentUrl(currentFile, true), currentFile.displayName);
+    downloading.value = true;
+    try {
+      await options.source.downloadFile(currentFile.id, current.signal);
+    } catch (failure) {
+      if (!current.signal.aborted) options.onDownloadError?.(failure);
+    } finally {
+      if (current === lifetime) downloading.value = false;
+    }
   }
 
   function matchesPreview(sequence: number, expectedFile: ConversationFileProjection): boolean {

@@ -413,6 +413,53 @@ export async function readWorkspaceFileContentRange(
   };
 }
 
+/** Opens the authorized file once; reads after admission never resolve or inspect the path again. */
+export async function* streamFileContent(
+  requestedPath: string,
+  workspaceRoot: string | undefined,
+  expected: {
+    readonly size: number;
+    readonly range?: { readonly offset: number; readonly length: number };
+  }
+): AsyncIterable<Uint8Array> {
+  const { path } = await resolveFileContentSource(requestedPath, workspaceRoot);
+  const handle = await open(path, 'r');
+  try {
+    let offset = expected.range?.offset ?? 0;
+    let remaining = expected.range?.length ?? expected.size;
+    while (remaining > 0) {
+      const bytes = Buffer.allocUnsafe(Math.min(remaining, FILE_READ_LIMIT));
+      const { bytesRead } = await handle.read(bytes, 0, bytes.length, offset);
+      if (bytesRead === 0) return; // The download sender rejects a short response.
+      offset += bytesRead;
+      remaining -= bytesRead;
+      yield bytes.subarray(0, bytesRead);
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Describes the file for a grant without pre-reading any of its bytes. */
+export async function describeFileContent(
+  requestedPath: string,
+  workspaceRoot: string | undefined
+) {
+  const { metadata } = await resolveFileContentSource(requestedPath, workspaceRoot);
+  return { size: metadata.size, revision: fileSourceRevision(metadata) };
+}
+
+async function resolveFileContentSource(requestedPath: string, workspaceRoot: string | undefined) {
+  if (workspaceRoot === undefined) {
+    const { file, metadata } = await resolveAbsoluteFile(requestedPath);
+    return { path: file, metadata };
+  }
+  const root = await resolveRegisteredWorkspaceRoot(workspaceRoot);
+  const { path, metadata } = await resolveWorkspaceEntryMetadata(root, requestedPath);
+  if (!metadata.isFile()) throw new Error('FILE_NOT_REGULAR');
+  return { path, metadata };
+}
+
 /** Reads one regular absolute file range using the Node account's filesystem permissions. */
 export async function readAbsoluteFileContentRange(
   requestedPath: string,

@@ -12,8 +12,7 @@ const negotiateProgress = new URLSearchParams(location.search).has('negotiatePro
 localePreferenceService().setLocale(fixtureLocale === 'zh-CN' ? 'zh-CN' : 'en-US');
 const browser = createWorkbenchBrowserService({
   send: () => false,
-  connectionId: () => undefined,
-  acquire: () => undefined
+  connectionId: () => undefined
 });
 type Update = {
   revision: number;
@@ -112,7 +111,10 @@ browser.deleteDownload = async (id) => {
     items: items.filter((item) => item.id !== id)
   });
 };
-browser.downloadHref = (id) => `/fixture-download/${id}`;
+browser.downloadTargetKey = () => 'fixture-attachment';
+browser.saveDownload = async (id) => {
+  document.documentElement.dataset.savedDownload = id;
+};
 const saved = new Set<string>();
 browser.saveDownloadToWorkspace = async (_id, path) => {
   if (path === 'reports/slow.bin') throw new ApiError('BROWSER_OUTCOME_UNKNOWN', 'Not confirmed.');

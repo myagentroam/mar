@@ -4,6 +4,7 @@ import type { NodeDatabase } from '../database.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { TerminalManager } from '../terminal.js';
 import { parseSecretEnvironment } from '../mcp/secret-environment.js';
+import { TerminalStreamService } from './terminal-stream-service.js';
 
 const TERMINAL_OPEN_FIELDS = new Set([
   'rows',
@@ -20,6 +21,7 @@ const TERMINAL_OPEN_FIELDS = new Set([
 
 /** Owns Terminal operation validation and user-scoped environment leases; the manager owns processes. */
 export class TerminalService {
+  readonly streams: TerminalStreamService;
   private readonly terminalOwners = new Map<
     string,
     {
@@ -36,6 +38,7 @@ export class TerminalService {
       environment: Readonly<Record<string, string>>
     ) => () => void
   ) {
+    this.streams = new TerminalStreamService(terminalManager);
     terminalManager.onSummary((summary) => {
       if (summary.state !== 'RUNNING') {
         this.terminalOwners.get(summary.id)?.release();
@@ -169,9 +172,27 @@ export class TerminalService {
       throw new Error('TERMINAL_ATTACH_INVALID');
     if (computer && (input.readonly === true || (input.afterSequence ?? 0) !== 0))
       throw new Error('TERMINAL_ATTACH_INVALID');
-    const attachment = this.terminalManager.authorizeAttach(input);
-    const { frames: _, ...identity } = attachment;
-    return { attachment: identity, terminal: this.terminalManager.get(attachment.terminalId) };
+    const terminal = this.terminalManager.get(String(input.terminalId));
+    const afterSequence = input.afterSequence ?? 0;
+    if (terminal.state !== 'RUNNING') throw new Error('TERMINAL_CLOSED');
+    if (terminal.workspaceId !== (input.workspaceId ?? null))
+      throw new Error('TERMINAL_WORKSPACE_MISMATCH');
+    if (
+      typeof afterSequence !== 'number' ||
+      !Number.isSafeInteger(afterSequence) ||
+      afterSequence < 0 ||
+      (input.readonly === true && input.closeOnDisconnect === true)
+    )
+      throw new Error('TERMINAL_ATTACH_INVALID');
+    return {
+      grant: this.streams.issue({
+        terminalId: terminal.id,
+        workspaceId: terminal.workspaceId,
+        afterSequence,
+        readonly: input.readonly === true,
+        closeOnDisconnect: input.closeOnDisconnect === true
+      })
+    };
   }
 
   private preflightDirect(data: unknown): unknown {

@@ -63,6 +63,10 @@ export function hostedConversationFileForPath(
 
 interface HostedConversationWorkspaceServiceOptions {
   readonly request: HostedConversationRequest;
+  readonly sendUploadBody: Parameters<
+    typeof createHostedConversationFileService
+  >[0]['sendUploadBody'];
+  readonly downloads: Parameters<typeof createHostedConversationFileService>[0]['downloads'];
   readonly workbenchConnectionId: () => string | undefined;
   readonly heartbeatMs: number;
   readonly requestTimeoutMs: number;
@@ -867,26 +871,35 @@ export function createHostedConversationWorkspaceService(
     }
   }
 
-  const { deleteFile, readFile, contentUrl, uploadFile, clearUploads } =
-    createHostedConversationFileService({
-      request: options.request,
-      requireContext: requireSelectedContext,
-      templateChanging: () => templateChanging.value,
-      removeFile: (context, fileId) => {
-        if (sameSelectedContext(context) && snapshot.value !== undefined)
-          replaceSnapshot({
-            ...snapshot.value,
-            files: snapshot.value.files.filter((file) => file.id !== fileId)
-          });
-      },
-      acceptFile: (context, file) => {
-        if (sameSelectedContext(context) && snapshot.value !== undefined) {
-          const files = new Map(snapshot.value.files.map((candidate) => [candidate.id, candidate]));
-          files.set(file.id, file);
-          replaceSnapshot({ ...snapshot.value, files: [...files.values()] });
-        }
+  const {
+    deleteFile,
+    readFile,
+    contentUrl,
+    downloadFile,
+    previewObjectUrl,
+    uploadFile,
+    clearUploads
+  } = createHostedConversationFileService({
+    request: options.request,
+    sendUploadBody: options.sendUploadBody,
+    downloads: options.downloads,
+    requireContext: requireSelectedContext,
+    templateChanging: () => templateChanging.value,
+    removeFile: (context, fileId) => {
+      if (sameSelectedContext(context) && snapshot.value !== undefined)
+        replaceSnapshot({
+          ...snapshot.value,
+          files: snapshot.value.files.filter((file) => file.id !== fileId)
+        });
+    },
+    acceptFile: (context, file) => {
+      if (sameSelectedContext(context) && snapshot.value !== undefined) {
+        const files = new Map(snapshot.value.files.map((candidate) => [candidate.id, candidate]));
+        files.set(file.id, file);
+        replaceSnapshot({ ...snapshot.value, files: [...files.values()] });
       }
-    });
+    }
+  });
 
   return {
     clear: () => {
@@ -941,6 +954,8 @@ export function createHostedConversationWorkspaceService(
     deleteConversation,
     deleteFile,
     readFile,
+    downloadFile,
+    previewObjectUrl,
     contentUrl,
     uploadFile
   };

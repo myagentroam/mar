@@ -1,3 +1,4 @@
+import { unusedHostedFileDownloads } from '../support/hosted-file-downloads.js';
 import { describe, expect, it, vi } from 'vitest';
 import { ref, watch } from 'vue';
 import { ApiError } from '../../src/util/api-error.js';
@@ -154,6 +155,10 @@ function deferred<T>() {
 
 function service(request: HostedConversationRequest) {
   return createHostedConversationWorkspaceService({
+    downloads: unusedHostedFileDownloads,
+    sendUploadBody: async () => {
+      throw new Error('Unexpected Hosted upload');
+    },
     request,
     workbenchConnectionId: () => 'connection-current',
     heartbeatMs: 60_000,
@@ -168,6 +173,10 @@ function recoveryHarness() {
   let recoveringFailure: unknown;
   const expired = vi.fn();
   const workspace = createHostedConversationWorkspaceService({
+    downloads: unusedHostedFileDownloads,
+    sendUploadBody: async () => {
+      throw new Error('Unexpected Hosted upload');
+    },
     request: async (path, init) => {
       expect(path).toMatch(/\/watch$/u);
       if (init?.method === 'DELETE') return undefined as never;
@@ -232,6 +241,10 @@ describe('Web Hosted Conversation Workspace Service', () => {
   it('retains the request timeout instead of a transport AbortError in inline diagnostics', async () => {
     vi.useFakeTimers();
     const workspace = createHostedConversationWorkspaceService({
+      downloads: unusedHostedFileDownloads,
+      sendUploadBody: async () => {
+        throw new Error('Unexpected Hosted upload');
+      },
       request: (_path, init) =>
         new Promise((_resolve, reject) => {
           init?.signal?.addEventListener(
@@ -753,19 +766,19 @@ describe('Web Hosted Conversation Workspace Service', () => {
       throw new Error('BINARY_BASE64_READ_FORBIDDEN');
     });
     const contentUrl = vi.fn(
-      (candidate: { readonly id: string }, download = false) =>
-        `/api/nodes/node-1/hosted-conversations/conversation-1/files/${candidate.id}/content${
-          download ? '?download=1' : ''
-        }`
+      (candidate: { readonly id: string }) =>
+        `/api/nodes/node-1/hosted-conversations/conversation-1/files/${candidate.id}/content`
     );
-    const triggerDownload = vi.fn();
+    const downloadFile = vi.fn(async () => {});
+    const previewObjectUrl = vi.fn();
     const preview = createHostedConversationFilePreviewService({
       source: {
         selectedConversationId: ref('conversation-1'),
         readFile,
-        contentUrl
-      },
-      triggerDownload
+        contentUrl,
+        downloadFile,
+        previewObjectUrl
+      }
     });
 
     await preview.openFile(file);
@@ -777,21 +790,15 @@ describe('Web Hosted Conversation Workspace Service', () => {
       '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-large-image/content'
     );
     await preview.download();
-    expect(triggerDownload).toHaveBeenCalledWith(
-      '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-large-image/content?download=1',
-      'large-preview.png'
-    );
-    expect(contentUrl).toHaveBeenNthCalledWith(1, file);
-    expect(contentUrl).toHaveBeenNthCalledWith(2, file, true);
+    expect(downloadFile).toHaveBeenCalledWith(file.id, expect.any(AbortSignal));
+    expect(contentUrl).toHaveBeenCalledExactlyOnceWith(file);
+    expect(previewObjectUrl).not.toHaveBeenCalled();
     expect(readFile).not.toHaveBeenCalled();
 
     const workspace = service(async () => undefined as never);
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
     expect(workspace.contentUrl(file)).toBe(
       '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-large-image/content'
-    );
-    expect(workspace.contentUrl(file, true)).toBe(
-      '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-large-image/content?download=1'
     );
   });
 
@@ -824,7 +831,13 @@ describe('Web Hosted Conversation Workspace Service', () => {
         bytes: new TextEncoder().encode('after!')
       });
     const preview = createHostedConversationFilePreviewService({
-      source: { selectedConversationId: ref(file.conversationId), readFile, contentUrl: vi.fn() }
+      source: {
+        selectedConversationId: ref(file.conversationId),
+        readFile,
+        contentUrl: vi.fn(),
+        downloadFile: vi.fn(),
+        previewObjectUrl: vi.fn()
+      }
     });
 
     await preview.openFile(file);
@@ -889,14 +902,16 @@ describe('Web Hosted Conversation Workspace Service', () => {
       source: {
         selectedConversationId: ref('conversation-1'),
         readFile,
-        contentUrl: vi.fn()
+        contentUrl: vi.fn(),
+        downloadFile: vi.fn(),
+        previewObjectUrl: vi.fn()
       }
     });
 
     await preview.openFile(file, 23, 7);
 
-    expect(readFile).toHaveBeenNthCalledWith(1, file.id, 0, 4096);
-    expect(readFile).toHaveBeenNthCalledWith(2, file.id, 0, 512 * 1024);
+    expect(readFile).toHaveBeenNthCalledWith(1, file.id, 0, 4096, expect.any(AbortSignal));
+    expect(readFile).toHaveBeenNthCalledWith(2, file.id, 0, 512 * 1024, expect.any(AbortSignal));
     expect(readFile).toHaveBeenCalledTimes(2);
     expect(preview.content.value).toMatchObject({
       path: 'output/reports/large.txt',
@@ -930,7 +945,9 @@ describe('Web Hosted Conversation Workspace Service', () => {
           nextOffset: null,
           eof: true
         }),
-        contentUrl: vi.fn()
+        contentUrl: vi.fn(),
+        downloadFile: vi.fn(),
+        previewObjectUrl: vi.fn()
       }
     });
     await preview.openFile(file);
@@ -972,12 +989,18 @@ describe('Web Hosted Conversation Workspace Service', () => {
     }));
     const contentUrl = vi.fn(() => '/controlled-content');
     const preview = createHostedConversationFilePreviewService({
-      source: { selectedConversationId: ref('conversation-1'), readFile, contentUrl }
+      source: {
+        selectedConversationId: ref('conversation-1'),
+        readFile,
+        contentUrl,
+        downloadFile: vi.fn(),
+        previewObjectUrl: vi.fn()
+      }
     });
 
     await preview.openFile(file);
 
-    expect(readFile).toHaveBeenCalledExactlyOnceWith(file.id, 0, 4096);
+    expect(readFile).toHaveBeenCalledExactlyOnceWith(file.id, 0, 4096, expect.any(AbortSignal));
     expect(preview.visible.value).toBe(true);
     expect(preview.kind.value).toBe(text ? 'text' : 'unsupported');
     expect(preview.content.value?.content).toBe(text ? new TextDecoder().decode(bytes) : '');

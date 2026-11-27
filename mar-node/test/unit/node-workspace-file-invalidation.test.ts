@@ -97,8 +97,8 @@ describe('Workspace successful file mutation invalidation', () => {
         expect(await readFile(join(root, 'uploaded.txt'), 'utf8')).toBe('payload');
       } else if (action === 'direct upload') {
         const bytes = Buffer.from('direct payload');
-        const upload = await internals.workspaceUploadService.createDirect(workspace, {
-          path: 'direct.txt',
+        const upload = await internals.workspaceUploadService.create(workspace, {
+          name: 'direct.txt',
           size: bytes.length,
           overwrite: false,
           sha256: createHash('sha256').update(bytes).digest('hex')
@@ -173,8 +173,8 @@ describe('Workspace successful file mutation invalidation', () => {
       operation('workspace.files.upload.complete', { uploadId: collision })
     ).rejects.toThrow('UPLOAD_TARGET_EXISTS');
     await operation('workspace.files.upload.cancel', { uploadId: collision });
-    const direct = await internals.workspaceUploadService.createDirect(workspace, {
-      path: 'corrupt.txt',
+    const direct = await internals.workspaceUploadService.create(workspace, {
+      name: 'corrupt.txt',
       size: 1,
       overwrite: false,
       sha256: '0'.repeat(64)
@@ -341,18 +341,29 @@ async function connectorFixture() {
     events.push(`${id}:${topic} topic`);
   });
   const upload = async (name: string, payload: string, size = Buffer.byteLength(payload)) => {
+    const bytes = Buffer.from(payload);
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
     const result = (await operation('workspace.files.upload.create', {
       name,
       size,
-      overwrite: false
+      overwrite: false,
+      sha256
     })) as { upload: { uploadId: string } };
-    const uploadId = result.upload.uploadId;
-    if (payload.length > 0)
-      await operation('workspace.files.upload.chunk', {
+    const { uploadId } = result.upload;
+    if (bytes.length > 0) {
+      const stream = internals.workspaceUploadService.openStreamUpload(workspace, {
         uploadId,
-        offset: 0,
-        bytes: Buffer.from(payload)
+        path: name,
+        size,
+        overwrite: false,
+        sha256
       });
+      try {
+        await stream.write(bytes);
+      } finally {
+        stream.release();
+      }
+    }
     return uploadId;
   };
   return {

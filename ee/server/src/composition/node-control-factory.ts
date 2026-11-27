@@ -91,9 +91,7 @@ export function createNodeControl(
           revoked: (connectionId, code) => directTransfers.revokeConnection(connectionId, code)
         });
         const terminalRelay = new TerminalRelayService({
-          database,
           authorizeNodeRequest: authorize,
-          ...(traffic === undefined ? {} : { traffic }),
           requestNode: transport.request
         });
         constructed.push(() => terminalRelay.close());
@@ -256,8 +254,6 @@ export function createNodeControl(
             if (socket && transport.allows(socket, 'browser.resource'))
               return transport.capabilities(nodeId)?.browser;
           },
-          authenticateNode: async (nodeId, credential) =>
-            Boolean(await database.authenticateNode(nodeId, credential)),
           settings: (nodeId, generation, userId) => {
             const capability = transport.capabilities(nodeId);
             if (capability?.browserSettings && capability.browser?.nodeGeneration === generation)

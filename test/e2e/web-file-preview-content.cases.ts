@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { mockWorkspaceFileRelay } from './support/mock-workspace-file-relay.js';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
 for (const [path, content] of [
@@ -63,6 +64,10 @@ for (const [path, content] of [
     const popup = await page.context().newPage();
     await mockConsoleApi(popup, 'MANAGED', ['history.read', 'turn.start'], []);
     await popup.unroute(fileReadRoute);
+    const relay = await mockWorkspaceFileRelay(popup, 'node-1', 'workspace-1', (requested) => {
+      expect(requested).toBe(path);
+      return bytes;
+    });
     await popup.goto('/console');
     await popup.getByLabel('密码').fill('test-password');
     await popup.getByRole('button', { name: '进入控制台' }).click();
@@ -78,7 +83,12 @@ for (const [path, content] of [
     );
     await expect(standalone.locator('.cm-content')).toHaveText(content, { useInnerText: true });
     await expect(standalone.getByText('正在加载预览…')).toBeHidden();
-    expect(reads).toEqual([...expectedReads, ...expectedReads]);
+    expect(reads).toEqual(expectedReads);
+    expect(relay().descriptors.map(({ range }) => range)).toEqual(
+      bytes.length === 0
+        ? []
+        : expectedReads.map((limit) => ({ offset: 0, length: Math.min(limit, bytes.length) }))
+    );
     await popup.close();
   });
 }

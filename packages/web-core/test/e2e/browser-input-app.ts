@@ -27,8 +27,7 @@ document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { ca
 const scope = { nodeId: 'test-node', workspaceId: 'test-workspace' };
 const browser = createWorkbenchBrowserService({
   send: () => false,
-  connectionId: () => undefined,
-  acquire: () => undefined
+  connectionId: () => undefined
 });
 browser.snapshot.value = { tabs: [], viewVersion: 1 };
 if (fixtureOptions.has('zoom')) {

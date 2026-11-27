@@ -1,6 +1,13 @@
+import { mockWorkspaceUploadRelay } from './support/mock-workspace-upload-relay.js';
 import { grantClipboardPermissions } from './support/clipboard.js';
 import { expect, test } from '@playwright/test';
-import { fulfillMockSessionWatch, mockConsoleApi, json, write } from './support/web-console-api.js';
+import {
+  fulfillMockSessionWatch,
+  fulfillMockWorkspaceWatch,
+  mockConsoleApi,
+  json,
+  write
+} from './support/web-console-api.js';
 
 // Composer, attachments, commands, and context
 
@@ -205,21 +212,13 @@ test('Composer converts large pasted text into TXT attachments instead of editor
     readonly body: string;
   }[] = [];
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
-  let uploadedName = '';
-  await page.route('**/api/workspaces/workspace-1/uploads', async (route) => {
-    uploadedName = (await route.request().postDataJSON()).name as string;
-    return json(route, {
-      upload: { uploadId: 'long-text-upload', receivedBytes: 0, size: 20_000 }
-    });
+  const pastedText = Array.from({ length: 100 }, (_, index) => `line-${index}`).join('\n');
+  let uploaded: { name: string; body: string } | undefined;
+  await mockWorkspaceUploadRelay(page, {
+    received: (upload, body) => {
+      uploaded = { name: upload.fileName, body: body.toString('utf8') };
+    }
   });
-  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/chunks(?:\?.*)?$/, (route) =>
-    json(route, {
-      upload: { receivedBytes: route.request().postDataBuffer()?.byteLength ?? 0 }
-    })
-  );
-  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/complete$/, (route) =>
-    json(route, {})
-  );
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
@@ -232,22 +231,24 @@ test('Composer converts large pasted text into TXT attachments instead of editor
 
   const composer = page.getByRole('textbox', { name: '输入消息' });
   await composer.fill('保留正文');
-  const result = await composer.evaluate((editor) => {
+  const result = await composer.evaluate((editor, text) => {
     const clipboardData = new DataTransfer();
-    clipboardData.setData(
-      'text/plain',
-      Array.from({ length: 100 }, (_, index) => `line-${index}`).join('\n')
-    );
+    clipboardData.setData('text/plain', text);
     const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData });
     editor.dispatchEvent(event);
     return { defaultPrevented: event.defaultPrevented, childNodes: editor.childNodes.length };
-  });
+  }, pastedText);
 
   expect(result.defaultPrevented).toBe(true);
   expect(result.childNodes).toBeLessThan(10);
   await expect(composer).toHaveValue('保留正文');
   await expect(page.getByText(/pasted-text-\d{8}-\d{6}\.txt/)).toBeVisible();
-  expect(uploadedName).toMatch(/^pasted-text-\d{8}-\d{6}\.txt$/);
+  await expect
+    .poll(() => uploaded)
+    .toEqual({
+      name: expect.stringMatching(/^pasted-text-\d{8}-\d{6}\.txt$/),
+      body: pastedText
+    });
 });
 
 test('Composer image paste prevents default rich-text insertion', async ({ page, browserName }) => {
@@ -257,23 +258,12 @@ test('Composer image paste prevents default rich-text insertion', async ({ page,
   );
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   let uploadCompleted = false;
-  await page.route('**/api/workspaces/workspace-1/uploads', (route) =>
-    json(route, { upload: { uploadId: 'pasted-image-upload', receivedBytes: 0, size: 5 } })
-  );
-  await page.route(
-    /\/api\/workspaces\/workspace-1\/uploads\/pasted-image-upload\/chunks(?:\?.*)?$/,
-    (route) =>
-      json(route, {
-        upload: { receivedBytes: route.request().postDataBuffer()?.byteLength ?? 0 }
-      })
-  );
-  await page.route(
-    /\/api\/workspaces\/workspace-1\/uploads\/pasted-image-upload\/complete$/,
-    (route) => {
+  await mockWorkspaceUploadRelay(page, {
+    received: (_upload, body) => {
+      expect(body).toEqual(Buffer.from('image'));
       uploadCompleted = true;
-      return json(route, {});
     }
-  );
+  });
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
@@ -529,46 +519,31 @@ test('New sessions open Composer directly and submit settings with the first mes
     if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/agent-sessions')
       sessionListRequests += 1;
   });
+  await page.route('**/api/workspaces/workspace-1/watch', (route) =>
+    fulfillMockWorkspaceWatch(
+      page,
+      route,
+      {
+        id: 'session-1',
+        workspaceId: 'workspace-1',
+        runner: 'codex',
+        customTitle: '新建会话',
+        activity: 'IDLE',
+        control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
+      },
+      'GIT_WORKSPACE'
+    )
+  );
   let composerUploadCount = 0;
   let composerUploadShouldFail = false;
-  let releaseFirstUpload: (() => void) | undefined;
-  let blockFirstUpload = true;
-  await page.route('**/api/workspaces/workspace-1/uploads', (route) => {
-    composerUploadCount += 1;
-    return write(route, writes, {
-      upload: { uploadId: `composer-upload-${composerUploadCount}`, receivedBytes: 0, size: 4096 }
-    });
-  });
-  await page.route(
-    /\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/chunks(?:\?.*)?$/,
-    async (route) => {
-      if (composerUploadShouldFail)
-        return route.fulfill({
-          contentType: 'application/json',
-          status: 409,
-          body: JSON.stringify({ error: { code: 'UPLOAD_TARGET_EXISTS' } })
-        });
-      if (blockFirstUpload) {
-        await new Promise<void>((resolve) => {
-          releaseFirstUpload = resolve;
-        });
-        blockFirstUpload = false;
-      }
-      const url = new URL(route.request().url());
-      const offset = Number(url.searchParams.get('offset') ?? '0');
-      return new Promise<void>((resolve) => setTimeout(resolve, 120)).then(() =>
-        write(route, writes, {
-          upload: { receivedBytes: offset + (route.request().postDataBuffer()?.length ?? 0) }
-        })
-      );
+  const firstUpload = Promise.withResolvers<void>();
+  await mockWorkspaceUploadRelay(page, {
+    error: () => (composerUploadShouldFail ? 'UPLOAD_TARGET_EXISTS' : undefined),
+    beforeBody: async () => {
+      if (++composerUploadCount === 1) await firstUpload.promise;
+      await new Promise<void>((resolve) => setTimeout(resolve, 120));
     }
-  );
-  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/complete$/, (route) =>
-    write(route, writes, { upload: { receivedBytes: 4096 } })
-  );
-  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/cancel$/, (route) =>
-    route.fulfill({ status: 204 })
-  );
+  });
   await page.route('**/api/agent-sessions/start', (route) =>
     write(route, writes, {
       session: {
@@ -957,7 +932,7 @@ test('New sessions open Composer directly and submit settings with the first mes
   await expect(page.locator('.composer-command-states')).toContainText('计划模式');
   await expect(page.getByText('附件仍在上传或上传失败，完成后才能发送。')).toHaveCount(0);
   expect(writes.some((entry) => entry.url === '/api/agent-sessions/start')).toBe(false);
-  releaseFirstUpload?.();
+  firstUpload.resolve();
   await page.locator('.attachment-file-input').setInputFiles([
     {
       name: 'diagram.png',
@@ -1128,15 +1103,7 @@ test('Runner menus show only Runners supported by the current Node Profile', asy
 
 test('Composer image attachments open an enlarged preview', async ({ page }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-  await page.route('**/api/workspaces/workspace-1/uploads', (route) =>
-    json(route, { upload: { uploadId: 'image-preview-upload', receivedBytes: 0, size: 4 } })
-  );
-  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/chunks(?:\?.*)?$/, (route) =>
-    json(route, { upload: { receivedBytes: 4 } })
-  );
-  await page.route(/\/api\/workspaces\/workspace-1\/uploads\/[^/]+\/complete$/, (route) =>
-    json(route, { upload: { receivedBytes: 4 } })
-  );
+  await mockWorkspaceUploadRelay(page);
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
@@ -1150,7 +1117,10 @@ test('Composer image attachments open an enlarged preview', async ({ page }) => 
   await page.locator('.attachment-file-input').setInputFiles({
     name: 'diagram.png',
     mimeType: 'image/png',
-    buffer: Buffer.from('png')
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aM1sAAAAASUVORK5CYII=',
+      'base64'
+    )
   });
 
   await page.getByRole('button', { name: '放大查看附件 diagram.png' }).click();

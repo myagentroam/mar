@@ -6,6 +6,9 @@ import type {
   BrowserTabSnapshot,
   BrowserUpload
 } from '@myagentroam/protocol';
+import { parseBrowserStreamGrant } from '@myagentroam/protocol/browser-stream';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import type { OpenWorkbenchNodeStream } from '../../src/service/workbench-node-connection-service.js';
 import { createWorkbenchBrowserService } from '../../src/service/workbench-browser-service.js';
 import type { WorkbenchHttpService } from '../../src/service/workbench-http-service.js';
 
@@ -24,7 +27,6 @@ vi.mock('../../src/service/browser-attachment-client.js', () => ({
     constructor(
       _link: unknown,
       _canvas: unknown,
-      open: BrowserAttachmentOpen,
       callbacks: {
         snapshot: (value: BrowserTabSnapshot) => void;
         frame: NonNullable<typeof mock.frame>;
@@ -32,7 +34,6 @@ vi.mock('../../src/service/browser-attachment-client.js', () => ({
         attached: () => void;
       }
     ) {
-      mock.open = open;
       mock.snapshot = callbacks.snapshot;
       mock.frame = callbacks.frame;
       mock.ended = callbacks.ended;
@@ -42,6 +43,19 @@ vi.mock('../../src/service/browser-attachment-client.js', () => ({
     close() {}
   }
 }));
+
+function fixtureStream(transport?: string | (() => string | undefined)): OpenWorkbenchNodeStream {
+  return async (_node, request, signal) => {
+    if (request.kind !== 'browser-rfb') throw new Error('Unexpected fixture stream');
+    const grant = await request.prepare(
+      typeof transport === 'function' ? transport() : transport,
+      signal
+    );
+    if (!grant) throw new Error('Browser fixture refused to attach');
+    mock.open = parseBrowserStreamGrant(grant);
+    return {} as NodeStream;
+  };
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -60,7 +74,7 @@ it.each([true, undefined])(
     const requests: BrowserControlRequest['request'][] = [];
     const service = createWorkbenchBrowserService({
       connectionId: () => 'workbench',
-      acquire: () => undefined,
+      openStream: fixtureStream(),
       send({ requestId, request }) {
         requests.push(request);
         queueMicrotask(() =>
@@ -123,11 +137,9 @@ it.each([
   const requests: BrowserControlRequest['request'][] = [];
   const service = createWorkbenchBrowserService({
     connectionId: () => 'workbench',
-    acquire: () => ({
-      transportSessionId: 'direct',
-      createChannel: () => ({}) as RTCDataChannel,
-      release() {}
-    }),
+    openStream: fixtureStream(() =>
+      requests.filter(({ action }) => action === 'attach').length === 0 ? 'direct' : undefined
+    ),
     send({ requestId, request }) {
       requests.push(request);
       queueMicrotask(() =>
@@ -236,11 +248,9 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
         return true;
       },
       connectionId: () => 'workbench',
-      acquire: () => ({
-        transportSessionId: 'transport',
-        createChannel: () => ({}) as RTCDataChannel,
-        release() {}
-      })
+      openStream: fixtureStream(() =>
+        transition === 'fallback' && requests.length > 0 ? undefined : 'transport'
+      )
     });
     const scope = { nodeId: 'node', workspaceId: 'workspace' };
     const capability = {
@@ -270,11 +280,6 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
     attached(0, firstId);
     await first;
     expect(mock.open?.rfb).toBe(true);
-    const relaySocket = vi.fn(class {});
-    if (transition === 'fallback') {
-      vi.stubGlobal('window', { location: { origin: 'https://workbench.test' } });
-      vi.stubGlobal('WebSocket', relaySocket);
-    }
     if (transition !== 'reopen') mock.ended!('BROWSER_DISCONNECTED');
     const next =
       transition === 'fallback' ? undefined : service.show(scope, capability, view, resume, view);
@@ -295,7 +300,7 @@ it.each(['reopen', 'fallback', 'reopen during fallback'] as const)(
       expect(mock.open?.rfb).toBe(true);
     } else {
       expect(requests[2]?.request).not.toHaveProperty('transportId');
-      await vi.waitFor(() => expect(relaySocket).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(mock.open?.attachmentId).toBe(nextId));
       expect(mock.open?.rfb).toBe(true);
     }
     service.hide();
@@ -313,11 +318,7 @@ it('holds the upload state until cancellation settles, not until the aborted upl
       return true;
     },
     connectionId: () => 'workbench',
-    acquire: () => ({
-      transportSessionId: 'transport',
-      createChannel: () => ({}) as RTCDataChannel,
-      release() {}
-    }),
+    openStream: fixtureStream('transport'),
     http: ((_path, init) => {
       const request = JSON.parse(init!.body as string) as BrowserUpload;
       sent.push(request);
@@ -372,11 +373,7 @@ it.each(['cancel', 'delete', 'workspace'] as const)(
         return true;
       },
       connectionId: () => 'workbench',
-      acquire: () => ({
-        transportSessionId: 'transport',
-        createChannel: () => ({}) as RTCDataChannel,
-        release() {}
-      }),
+      openStream: fixtureStream('transport'),
       http: http as WorkbenchHttpService['request']
     });
     const attachmentId = randomUUID();

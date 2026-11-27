@@ -6,14 +6,6 @@ export class DirectFallbackError extends Error {
   }
 }
 
-export class DirectUnsafeError extends Error {
-  constructor(code = 'DIRECT_CANCEL_UNCONFIRMED') {
-    super(code);
-    this.name = 'DirectUnsafeError';
-    this.code = code;
-  }
-}
-
 const directRejections = new Set([
   'DIRECT_TRANSFER_NOT_AUTHORIZED',
   'DIRECT_SESSION_LIMIT_REACHED',

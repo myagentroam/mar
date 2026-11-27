@@ -28,7 +28,7 @@ const more = ref(false);
 const loading = ref(false);
 const failed = ref(false);
 const changing = ref<string>();
-const actionFailure = ref<{ id: string; action: 'cancel' | 'delete' }>();
+const actionFailure = ref<{ id: string; action: 'cancel' | 'delete' | 'save' }>();
 const saveFeedback = ref<{
   id: string;
   path: string;
@@ -139,9 +139,9 @@ async function change(item: BrowserDownloadInfo, action: 'cancel' | 'delete'): P
 }
 
 async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
-  const href = props.browser.downloadHref(item.id);
+  const target = props.browser.downloadTargetKey();
   const browserId = props.browser.browserId();
-  if (!href || !browserId || changing.value) return;
+  if (!target || !browserId || changing.value) return;
   changing.value = item.id;
   saveFeedback.value = undefined;
   try {
@@ -156,7 +156,7 @@ async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
         inputValidator: (value) => value.trim().length > 0 && value.length <= 4096
       }
     );
-    if (lifetime.signal.aborted || props.browser.downloadHref(item.id) !== href) return;
+    if (lifetime.signal.aborted || props.browser.downloadTargetKey() !== target) return;
     let outcome: keyof typeof saveLabels = 'saved';
     try {
       await props.browser.saveDownloadToWorkspace(item.id, path);
@@ -184,6 +184,19 @@ async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
       saveFeedback.value = { id: item.id, path, outcome };
   } catch {
     // Closing the destination prompt does not dispatch a save.
+  } finally {
+    changing.value = undefined;
+  }
+}
+
+async function saveToDevice(item: BrowserDownloadInfo): Promise<void> {
+  if (changing.value || status.value !== 'ready') return;
+  changing.value = item.id;
+  actionFailure.value = undefined;
+  try {
+    await props.browser.saveDownload(item.id);
+  } catch {
+    if (!lifetime.signal.aborted) actionFailure.value = { id: item.id, action: 'save' };
   } finally {
     changing.value = undefined;
   }
@@ -258,10 +271,8 @@ async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
           <MarButton
             v-if="item.state === 'ready'"
             text
-            tag="a"
-            :href="browser.downloadHref(item.id) ?? ''"
-            :disabled="changing === item.id || status !== 'ready'"
-            download
+            :disabled="!!changing || status !== 'ready'"
+            @click="saveToDevice(item)"
             >{{ t('browser.downloadSave') }}</MarButton
           >
           <MarButton
@@ -301,7 +312,9 @@ async function saveToWorkspace(item: BrowserDownloadInfo): Promise<void> {
             t(
               actionFailure.action === 'cancel'
                 ? 'browser.downloadCancelFailed'
-                : 'browser.downloadDeleteFailed'
+                : actionFailure.action === 'delete'
+                  ? 'browser.downloadDeleteFailed'
+                  : 'browser.downloadFailed'
             )
           }}
         </p>

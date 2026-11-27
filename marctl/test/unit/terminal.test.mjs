@@ -2,11 +2,6 @@ import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/proto
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import {
-  DirectFallbackError,
-  DirectRejectedError,
-  DirectUnsafeError
-} from '../../src/direct-errors.mjs';
 import { runTerminalSession } from '../../src/terminal.mjs';
 import { TerminalRelaySender } from '../../src/terminal-relay-sender.mjs';
 
@@ -212,7 +207,7 @@ test('handles rejected asynchronous resize and close writes without leaking a te
       stdin: new FakeStdin(),
       stdout: new FakeStdout(),
       signal: new AbortController().signal,
-      openDirectTerminal: async () => transport
+      attach: async () => transport
     }),
     /terminal resize|终端尺寸/
   );
@@ -232,12 +227,8 @@ test('bounds UTF-8 input frames and preserves terminal lifecycle', async () => {
       assert.deepEqual(input, { nodeId: 'node-1', rows: 24, cols: 80 });
       return 'terminal-1';
     },
-    async createAttachTicket(input) {
-      assert.deepEqual(input, { nodeId: 'node-1', terminalId: 'terminal-1' });
-      return 'ticket-1';
-    },
-    openTerminalWebSocket(SocketClass) {
-      const socket = new SocketClass();
+    openTerminalEndpoint() {
+      const socket = new FakeSocket();
       sockets.push(socket);
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
@@ -257,7 +248,6 @@ test('bounds UTF-8 input frames and preserves terminal lifecycle', async () => {
 
   const session = runTerminalSession({
     client,
-    WebSocketClass: FakeSocket,
     nodeId: 'node-1',
     stdin,
     stdout,
@@ -298,91 +288,6 @@ test('bounds UTF-8 input frames and preserves terminal lifecycle', async () => {
   assert.equal(stdin.paused, true);
 });
 
-test('relay readiness wins without allowing direct to attach a second writer', async () => {
-  const socket = new FakeSocket();
-  const stdout = new FakeStdout();
-  const directAttached = false;
-  let created = 0;
-  const client = {
-    async createTerminal() {
-      created += 1;
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket(_Socket, options) {
-      assert.equal(options.deferred, true);
-      queueMicrotask(() => {
-        socket.readyState = FakeSocket.OPEN;
-        socket.emit('open');
-        socket.emit(
-          'message',
-          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
-          true
-        );
-      });
-      return socket;
-    },
-    async deleteTerminal() {}
-  };
-  socket.send = (raw) => {
-    const frame = decodeTerminalMessage(raw);
-    socket.sent.push(frame);
-    if (frame.type === 'activate')
-      queueMicrotask(() => {
-        socket.emit(
-          'message',
-          encodeTerminalMessage({
-            type: 'attach',
-            terminalId: 'terminal-1',
-            afterSequence: 0
-          }),
-          true
-        );
-        socket.emit(
-          'message',
-          encodeTerminalMessage({
-            type: 'exit',
-            terminalId: 'terminal-1',
-            exitCode: 4
-          }),
-          true
-        );
-      });
-  };
-  const result = await runTerminalSession({
-    client,
-    WebSocketClass: FakeSocket,
-    nodeId: 'node-1',
-    command: 'test',
-    stdin: new FakeStdin(),
-    stdout,
-    signal: new AbortController().signal,
-    raceConnections: true,
-    openDirectTerminal: async ({ signal, onPrepared, onIceConnected }) => {
-      await onPrepared();
-      return new Promise((resolve, reject) => {
-        signal.addEventListener(
-          'abort',
-          () => {
-            assert.equal(typeof onIceConnected, 'function');
-            reject(new DirectFallbackError('DIRECT_RACE_CANCELLED'));
-          },
-          { once: true }
-        );
-      });
-    }
-  });
-  assert.equal(result, 4);
-  assert.equal(created, 1);
-  assert.equal(directAttached, false);
-  assert.equal(socket.sent.filter((frame) => frame.type === 'activate').length, 1);
-});
-
 test('waits for relay stdin writes while resize and interruption remain responsive', async () => {
   const stdin = new FakeStdin();
   const stdout = new FakeStdout();
@@ -398,10 +303,7 @@ test('waits for relay stdin writes while resize and interruption remain responsi
     async createTerminal() {
       return 'terminal-1';
     },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
+    openTerminalEndpoint() {
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
@@ -418,7 +320,6 @@ test('waits for relay stdin writes while resize and interruption remain responsi
   const signals = new AbortController();
   const session = runTerminalSession({
     client,
-    WebSocketClass: FakeSocket,
     nodeId: 'node-1',
     stdin,
     stdout,
@@ -454,490 +355,6 @@ test('waits for relay stdin writes while resize and interruption remain responsi
   }
 });
 
-test('direct transport wins and closes the unactivated relay', async () => {
-  const socket = new FakeSocket();
-  const stdout = new FakeStdout();
-  let created = 0;
-  let directAttach = 0;
-  const client = {
-    async createTerminal() {
-      created += 1;
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket(_Socket, options) {
-      assert.equal(options.deferred, true);
-      queueMicrotask(() => {
-        socket.readyState = FakeSocket.OPEN;
-        socket.emit('open');
-        socket.emit(
-          'message',
-          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
-          true
-        );
-      });
-      return socket;
-    },
-    async deleteTerminal() {}
-  };
-  const transport = new EventEmitter();
-  transport.readyState = 1;
-  transport.send = () => {};
-  transport.close = () => {};
-  transport.activate = () => {
-    queueMicrotask(() =>
-      transport.emit(
-        'message',
-        encodeTerminalMessage({
-          type: 'exit',
-          terminalId: 'terminal-1',
-          exitCode: 6
-        }),
-        true
-      )
-    );
-  };
-  const result = await runTerminalSession({
-    client,
-    WebSocketClass: FakeSocket,
-    nodeId: 'node-1',
-    command: 'test',
-    stdin: new FakeStdin(),
-    stdout,
-    signal: new AbortController().signal,
-    raceConnections: true,
-    openDirectTerminal: async ({ onPrepared, onIceConnected }) => {
-      await onPrepared();
-      onIceConnected();
-      directAttach += 1;
-      return transport;
-    }
-  });
-  assert.equal(result, 6);
-  assert.equal(created, 1);
-  assert.equal(directAttach, 1);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.ok(
-    socket.readyState === FakeSocket.CLOSED || socket.readyState === 0,
-    'unused relay must be closed or never opened'
-  );
-  assert.equal(
-    socket.sent.some((frame) => frame.type === 'activate'),
-    false
-  );
-});
-
-for (const blocked of ['direct', 'relay']) {
-  test(`waits for ${blocked} preparation before either connection starts`, async () => {
-    const socket = new FakeSocket();
-    const manifest = { deferredRelay: true };
-    let manifestQueries = 0;
-    let relayStarted = false;
-    let iceStarted = false;
-    let release;
-    let preparing;
-    const gate = new Promise((resolve) => {
-      release = resolve;
-    });
-    const preparation = new Promise((resolve) => {
-      preparing = resolve;
-    });
-    const client = {
-      async createTerminal() {
-        return 'terminal-1';
-      },
-      async getTerminalManifest() {
-        manifestQueries += 1;
-        return manifest;
-      },
-      async createAttachTicket() {
-        if (blocked === 'relay') {
-          preparing();
-          await gate;
-        }
-        return 'ticket-1';
-      },
-      openTerminalWebSocket() {
-        relayStarted = true;
-        queueMicrotask(() => {
-          socket.readyState = FakeSocket.OPEN;
-          socket.emit('open');
-          socket.emit(
-            'message',
-            encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
-            true
-          );
-        });
-        return socket;
-      },
-      async deleteTerminal() {}
-    };
-    const pending = runTerminalSession({
-      client,
-      WebSocketClass: FakeSocket,
-      nodeId: 'node-1',
-      raceConnections: true,
-      attached: async () => 0,
-      openDirectTerminal: async (options) => {
-        assert.equal(options.manifest, manifest);
-        if (blocked === 'direct') {
-          preparing();
-          await gate;
-        }
-        await options.onPrepared();
-        iceStarted = true;
-        options.onIceConnected();
-        return { close() {} };
-      }
-    });
-    await preparation;
-    assert.equal(relayStarted, false);
-    assert.equal(iceStarted, false);
-    release();
-    assert.equal(await pending, 0);
-    assert.equal(manifestQueries, 1);
-    assert.equal(iceStarted, true);
-    assert.equal(
-      socket.sent.some((frame) => frame.type === 'activate'),
-      false
-    );
-  });
-}
-
-test('releases direct preparation when relay ticket creation fails', async () => {
-  let iceStarted = false;
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      throw new Error('TICKET_UNAVAILABLE');
-    },
-    openTerminalWebSocket() {
-      assert.fail('A failed ticket must not open a relay.');
-    },
-    async deleteTerminal() {}
-  };
-  const result = await runTerminalSession({
-    client,
-    nodeId: 'node-1',
-    raceConnections: true,
-    attached: async () => 0,
-    openDirectTerminal: async ({ onPrepared, onIceConnected }) => {
-      await onPrepared();
-      iceStarted = true;
-      onIceConnected();
-      return { close() {} };
-    }
-  });
-  assert.equal(result, 0);
-  assert.equal(iceStarted, true);
-});
-
-test('a ready direct transport without an ICE victory cannot open a writer', async () => {
-  const socket = new FakeSocket();
-  let directOpened = false;
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
-      queueMicrotask(() => {
-        socket.readyState = FakeSocket.OPEN;
-        socket.emit('open');
-        socket.emit(
-          'message',
-          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
-          true
-        );
-      });
-      return socket;
-    },
-    async deleteTerminal() {}
-  };
-  socket.send = (raw) => {
-    const frame = decodeTerminalMessage(raw);
-    socket.sent.push(frame);
-    if (frame.type === 'activate')
-      queueMicrotask(() =>
-        socket.emit(
-          'message',
-          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          true
-        )
-      );
-  };
-  const result = await runTerminalSession({
-    client,
-    WebSocketClass: FakeSocket,
-    nodeId: 'node-1',
-    raceConnections: true,
-    attached: async ({ transport }) => {
-      assert.equal(transport.constructor.name, 'BufferedRelayTransport');
-      return 0;
-    },
-    openDirectTerminal: async ({ onPrepared, onTransportReady }) => {
-      await onPrepared();
-      if (onTransportReady) await onTransportReady();
-      directOpened = true;
-      return { close() {} };
-    }
-  });
-  assert.equal(result, 0);
-  assert.equal(directOpened, false);
-  assert.equal(socket.sent.filter((frame) => frame.type === 'activate').length, 1);
-});
-
-for (const unsafe of [false, true]) {
-  test(`an ICE winner ${unsafe ? 'does not fall back after OPEN' : 'can fall back before OPEN'}`, async () => {
-    const relay = new FakeSocket();
-    let created = 0;
-    let tickets = 0;
-    const client = {
-      async createTerminal() {
-        created += 1;
-        return 'terminal-1';
-      },
-      async getTerminalManifest() {
-        return { deferredRelay: true };
-      },
-      async createAttachTicket() {
-        tickets += 1;
-        return `ticket-${tickets}`;
-      },
-      openTerminalWebSocket(_Socket, options) {
-        if (options.deferred) return new FakeSocket();
-        queueMicrotask(() => {
-          relay.readyState = FakeSocket.OPEN;
-          relay.emit('open');
-          relay.emit(
-            'message',
-            encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-            true
-          );
-        });
-        return relay;
-      },
-      async deleteTerminal() {}
-    };
-    const pending = runTerminalSession({
-      client,
-      WebSocketClass: FakeSocket,
-      nodeId: 'node-1',
-      raceConnections: true,
-      attached: async () => 0,
-      openDirectTerminal: async ({ onPrepared, onIceConnected }) => {
-        await onPrepared();
-        onIceConnected();
-        if (unsafe) throw new DirectUnsafeError('DIRECT_OPEN_CANCEL_UNCONFIRMED');
-        throw new DirectFallbackError('DIRECT_SETUP_TIMEOUT');
-      }
-    });
-    if (unsafe) await assert.rejects(pending);
-    else assert.equal(await pending, 0);
-    assert.equal(created, 1);
-    assert.equal(tickets, unsafe ? 1 : 2);
-  });
-}
-
-test('shares one manifest across both connection race paths', async () => {
-  let queries = 0;
-  const manifest = { deferredRelay: true };
-  const client = {
-    async getTerminalManifest() {
-      queries += 1;
-      return manifest;
-    },
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
-      return new FakeSocket();
-    },
-    async deleteTerminal() {}
-  };
-  assert.equal(
-    await runTerminalSession({
-      client,
-      nodeId: 'node-1',
-      command: 'binary-worker',
-      raceConnections: true,
-      attached: async () => 0,
-      openDirectTerminal: async (options) => {
-        assert.equal(options.manifest, manifest);
-        await options.onPrepared();
-        options.onIceConnected();
-        return { close() {} };
-      }
-    }),
-    0
-  );
-  assert.equal(queries, 1);
-});
-
-test('settles both failed preparation paths without leaving a pending barrier', async () => {
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      throw new Error('TICKET_UNAVAILABLE');
-    },
-    async deleteTerminal() {}
-  };
-  await assert.rejects(
-    runTerminalSession({
-      client,
-      nodeId: 'node-1',
-      raceConnections: true,
-      openDirectTerminal: async () => {
-        throw new DirectFallbackError('DIRECT_UNSUPPORTED');
-      }
-    })
-  );
-});
-
-test('releases the relay when direct preparation fails before the barrier', async () => {
-  const socket = new FakeSocket();
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
-      queueMicrotask(() => {
-        socket.readyState = FakeSocket.OPEN;
-        socket.emit('open');
-        socket.emit(
-          'message',
-          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
-          true
-        );
-      });
-      return socket;
-    },
-    async deleteTerminal() {}
-  };
-  socket.send = (raw) => {
-    const frame = decodeTerminalMessage(raw);
-    socket.sent.push(frame);
-    if (frame.type === 'activate')
-      queueMicrotask(() =>
-        socket.emit(
-          'message',
-          encodeTerminalMessage({
-            type: 'attach',
-            terminalId: 'terminal-1',
-            afterSequence: 0
-          }),
-          true
-        )
-      );
-  };
-  const result = await runTerminalSession({
-    client,
-    WebSocketClass: FakeSocket,
-    nodeId: 'node-1',
-    raceConnections: true,
-    attached: async ({ transport }) => {
-      assert.equal(transport.constructor.name, 'BufferedRelayTransport');
-      return 0;
-    },
-    openDirectTerminal: async () => {
-      throw new DirectFallbackError('DIRECT_UNSUPPORTED');
-    }
-  });
-  assert.equal(result, 0);
-  assert.equal(socket.sent.filter((frame) => frame.type === 'activate').length, 1);
-});
-
-test('older server without deferred relay capability keeps sequential fallback', async () => {
-  const socket = new FakeSocket();
-  let directAttempts = 0;
-  let terminalCount = 0;
-  const client = {
-    async createTerminal() {
-      terminalCount += 1;
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { nodeGeneration: 'generation-1' };
-    },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket(_Socket, options) {
-      assert.equal(options.deferred, undefined);
-      queueMicrotask(() => {
-        socket.readyState = FakeSocket.OPEN;
-        socket.emit('open');
-        socket.emit(
-          'message',
-          encodeTerminalMessage({
-            type: 'attach',
-            terminalId: 'terminal-1',
-            afterSequence: 0
-          }),
-          true
-        );
-        socket.emit(
-          'message',
-          encodeTerminalMessage({
-            type: 'exit',
-            terminalId: 'terminal-1',
-            exitCode: 3
-          }),
-          true
-        );
-      });
-      return socket;
-    },
-    async deleteTerminal() {}
-  };
-  const exit = await runTerminalSession({
-    client,
-    WebSocketClass: FakeSocket,
-    nodeId: 'node-1',
-    command: 'test',
-    stdin: new FakeStdin(),
-    stdout: new FakeStdout(),
-    signal: new AbortController().signal,
-    raceConnections: true,
-    openDirectTerminal: async () => {
-      directAttempts += 1;
-      throw new DirectFallbackError('DIRECT_UNAVAILABLE');
-    }
-  });
-  assert.equal(exit, 3);
-  assert.equal(terminalCount, 1);
-  assert.equal(directAttempts, 1);
-});
-
 test('delivers relay output and exit frames emitted in the ATTACHED handoff tick', async () => {
   const socket = new FakeSocket();
   const stdout = new FakeStdout();
@@ -945,10 +362,7 @@ test('delivers relay output and exit frames emitted in the ATTACHED handoff tick
     async createTerminal() {
       return 'terminal-1';
     },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
+    openTerminalEndpoint() {
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
@@ -980,7 +394,6 @@ test('delivers relay output and exit frames emitted in the ATTACHED handoff tick
 
   const result = await runTerminalSession({
     client,
-    WebSocketClass: FakeSocket,
     nodeId: 'node-1',
     command: 'printf relay',
     stdin: new EventEmitter(),
@@ -1013,10 +426,7 @@ test('runs one-shot commands without raw stdin and has no post-attach idle timeo
       });
       return 'terminal-1';
     },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
+    openTerminalEndpoint() {
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
@@ -1035,7 +445,6 @@ test('runs one-shot commands without raw stdin and has no post-attach idle timeo
 
   const session = runTerminalSession({
     client,
-    WebSocketClass: FakeSocket,
     nodeId: 'node-1',
     command: 'echo hello && date',
     stdin,
@@ -1085,10 +494,7 @@ test('maps a null remote exit code to a non-success CLI status', async () => {
     async createTerminal() {
       return 'terminal-1';
     },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
+    openTerminalEndpoint() {
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
@@ -1105,7 +511,6 @@ test('maps a null remote exit code to a non-success CLI status', async () => {
 
   const session = runTerminalSession({
     client,
-    WebSocketClass: FakeSocket,
     nodeId: 'node-1',
     command: 'unknown-status-command',
     stdin: new EventEmitter(),
@@ -1127,10 +532,7 @@ test('preserves a received exit code when terminal cleanup fails', async () => {
     async createTerminal() {
       return 'terminal-1';
     },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
+    openTerminalEndpoint() {
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
@@ -1149,7 +551,6 @@ test('preserves a received exit code when terminal cleanup fails', async () => {
 
   const session = runTerminalSession({
     client,
-    WebSocketClass: FakeSocket,
     nodeId: 'node-1',
     command: 'exit 23',
     stdin: new EventEmitter(),
@@ -1181,10 +582,7 @@ for (const [signalName, exitCode] of [
       async createTerminal() {
         return 'terminal-1';
       },
-      async createAttachTicket() {
-        return 'ticket-1';
-      },
-      openTerminalWebSocket() {
+      openTerminalEndpoint() {
         queueMicrotask(() => {
           socket.readyState = FakeSocket.OPEN;
           socket.emit('open');
@@ -1203,7 +601,6 @@ for (const [signalName, exitCode] of [
 
     const session = runTerminalSession({
       client,
-      WebSocketClass: FakeSocket,
       nodeId: 'node-1',
       command: 'long-running-command',
       stdin,
@@ -1228,10 +625,7 @@ test('does not recreate or re-run a command after relay disconnect', async () =>
       createCalls += 1;
       return 'terminal-1';
     },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
+    openTerminalEndpoint() {
       queueMicrotask(() => {
         socket.readyState = FakeSocket.OPEN;
         socket.emit('open');
@@ -1250,7 +644,6 @@ test('does not recreate or re-run a command after relay disconnect', async () =>
 
   const session = runTerminalSession({
     client,
-    WebSocketClass: FakeSocket,
     nodeId: 'node-1',
     command: 'long-running-command',
     stdin: new EventEmitter(),
@@ -1262,157 +655,6 @@ test('does not recreate or re-run a command after relay disconnect', async () =>
   await assert.rejects(session, /terminal connection was lost/);
   assert.equal(createCalls, 1);
   assert.deepEqual(deleted, [{ nodeId: 'node-1', terminalId: 'terminal-1' }]);
-});
-
-test('falls back to relay without recreating the command terminal', async () => {
-  const socket = new FakeSocket();
-  const signals = new AbortController();
-  let createCalls = 0;
-  let attachCalls = 0;
-  const client = {
-    async createTerminal() {
-      createCalls += 1;
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { nodeGeneration: 'generation-1', terminalDirect: { apiVersion: 1, transport: true } };
-    },
-    async createAttachTicket(input) {
-      attachCalls += 1;
-      assert.deepEqual(input, { nodeId: 'node-1', terminalId: 'terminal-1' });
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
-      queueMicrotask(() => {
-        socket.readyState = FakeSocket.OPEN;
-        socket.emit('open');
-        socket.emit(
-          'message',
-          encodeTerminalMessage({ type: 'attach', terminalId: 'terminal-1', afterSequence: 0 }),
-          true
-        );
-      });
-      return socket;
-    },
-    async deleteTerminal() {}
-  };
-
-  const session = runTerminalSession({
-    client,
-    WebSocketClass: FakeSocket,
-    nodeId: 'node-1',
-    command: 'uname -a',
-    stdin: new EventEmitter(),
-    stdout: new FakeStdout(),
-    signal: signals.signal,
-    openDirectTerminal: async () => {
-      throw new DirectFallbackError('DIRECT_SETUP_TIMEOUT');
-    }
-  });
-  await new Promise((resolve) => setImmediate(resolve));
-  socket.emit(
-    'message',
-    encodeTerminalMessage({ type: 'exit', terminalId: 'terminal-1', exitCode: 0 }),
-    true
-  );
-
-  assert.equal(await session, 0);
-  assert.equal(createCalls, 1);
-  assert.equal(attachCalls, 1);
-});
-
-test('a direct authorization rejection prevents a competing relay from attaching', async () => {
-  let attached = 0;
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
-      const socket = new FakeSocket();
-      socket.send = (value) => {
-        if (decodeTerminalMessage(value).type === 'activate') attached += 1;
-      };
-      return socket;
-    },
-    async deleteTerminal() {}
-  };
-  await assert.rejects(
-    runTerminalSession({
-      client,
-      WebSocketClass: FakeSocket,
-      nodeId: 'node-1',
-      command: 'true',
-      stdout: new FakeStdout(),
-      raceConnections: true,
-      openDirectTerminal: async () => {
-        throw new DirectRejectedError('TERMINAL_NOT_AUTHORIZED');
-      }
-    }),
-    (error) => error.code === 'TERMINAL_NOT_AUTHORIZED'
-  );
-  assert.equal(attached, 0);
-});
-
-test('a known direct rejection blocks relay activation while direct cleanup is pending', async () => {
-  const socket = new FakeSocket();
-  let releaseCleanup;
-  let reported;
-  const failure = new Promise((resolve) => {
-    reported = resolve;
-  });
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async deleteTerminal() {},
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      return 'ticket';
-    },
-    openTerminalWebSocket() {
-      queueMicrotask(() => {
-        socket.readyState = 1;
-        socket.emit('open');
-        socket.emit(
-          'message',
-          encodeTerminalMessage({ type: 'ready', terminalId: 'terminal-1' }),
-          true
-        );
-      });
-      return socket;
-    }
-  };
-  const pending = runTerminalSession({
-    client,
-    nodeId: 'node-1',
-    raceConnections: true,
-    openDirectTerminal: async ({ onPrepared, onRejected }) => {
-      await onPrepared();
-      const error = new DirectRejectedError('DIRECT_TRANSFER_NOT_AUTHORIZED');
-      onRejected(error);
-      reported();
-      await new Promise((resolve) => {
-        releaseCleanup = resolve;
-      });
-      throw error;
-    }
-  });
-  await failure;
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(
-    socket.sent.some((frame) => frame.type === 'activate'),
-    false
-  );
-  releaseCleanup();
-  await assert.rejects(pending, (error) => error.code === 'DIRECT_TRANSFER_NOT_AUTHORIZED');
 });
 
 test('cancellation during terminal creation cleans up the late terminal without attaching', async () => {
@@ -1432,68 +674,10 @@ test('cancellation during terminal creation cleans up the late terminal without 
     nodeId: 'node-1',
     command: 'copy-worker',
     signal: controller.signal,
-    openDirectTerminal: async () => assert.fail('cancelled command must not attach')
+    attach: async () => assert.fail('cancelled command must not attach')
   });
   assert.equal(result, 130);
   assert.equal(deleteCalls, 1);
-});
-
-test('cancellation during direct setup never falls back to relay', async () => {
-  const controller = new AbortController();
-  let tickets = 0;
-  let receivedSignal;
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async deleteTerminal() {},
-    async createAttachTicket() {
-      tickets++;
-      throw new Error('must not fallback');
-    }
-  };
-  const result = await runTerminalSession({
-    client,
-    nodeId: 'node-1',
-    signal: controller.signal,
-    openDirectTerminal: async ({ signal }) => {
-      receivedSignal = signal;
-      controller.abort('SIGTERM');
-      throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
-    }
-  });
-  assert.equal(receivedSignal, controller.signal);
-  assert.equal(result, 143);
-  assert.equal(tickets, 0);
-});
-
-test('cancellation during relay ticket creation prevents a late attachment', async () => {
-  const controller = new AbortController();
-  let openCount = 0;
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async deleteTerminal() {},
-    async createAttachTicket() {
-      controller.abort('SIGINT');
-      return 'ticket';
-    },
-    openTerminalWebSocket() {
-      openCount++;
-      throw new Error('must not attach');
-    }
-  };
-  const result = await runTerminalSession({
-    client,
-    nodeId: 'node-1',
-    signal: controller.signal,
-    openDirectTerminal: async () => {
-      throw new DirectFallbackError('DIRECT_UNAVAILABLE');
-    }
-  });
-  assert.equal(result, 130);
-  assert.equal(openCount, 0);
 });
 
 test('cancellation at relay attachment prevents a late attached callback', async () => {
@@ -1505,10 +689,7 @@ test('cancellation at relay attachment prevents a late attached callback', async
       return 'terminal-1';
     },
     async deleteTerminal() {},
-    async createAttachTicket() {
-      return 'ticket';
-    },
-    openTerminalWebSocket() {
+    openTerminalEndpoint() {
       queueMicrotask(() => {
         socket.readyState = 1;
         socket.emit('open');
@@ -1526,9 +707,6 @@ test('cancellation at relay attachment prevents a late attached callback', async
     client,
     nodeId: 'node-1',
     signal: controller.signal,
-    openDirectTerminal: async () => {
-      throw new DirectFallbackError('DIRECT_UNAVAILABLE');
-    },
     attached: async () => {
       attached = true;
       return 0;
@@ -1538,132 +716,6 @@ test('cancellation at relay attachment prevents a late attached callback', async
   assert.equal(attached, false);
 });
 
-test('cancellation releases a connection race without granting a late writer', async () => {
-  const controller = new AbortController();
-  let releaseTicket;
-  let started;
-  const preparing = new Promise((resolve) => {
-    started = resolve;
-  });
-  let opened = 0;
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async deleteTerminal() {},
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      started();
-      return new Promise((resolve) => {
-        releaseTicket = resolve;
-      });
-    },
-    openTerminalWebSocket() {
-      opened++;
-      throw new Error('late relay');
-    }
-  };
-  const pending = runTerminalSession({
-    client,
-    nodeId: 'node-1',
-    signal: controller.signal,
-    raceConnections: true,
-    openDirectTerminal: async ({ onPrepared, signal }) => {
-      await onPrepared();
-      if (signal.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
-      opened++;
-      throw new Error('late direct');
-    }
-  });
-  await preparing;
-  controller.abort('SIGINT');
-  assert.equal(await pending, 130);
-  releaseTicket('ticket');
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(opened, 0);
-});
-
-test('cancellation after a direct candidate wins reaches the pending direct handoff', async () => {
-  const controller = new AbortController();
-  let selected;
-  const won = new Promise((resolve) => {
-    selected = resolve;
-  });
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async deleteTerminal() {},
-    async getTerminalManifest() {
-      return { deferredRelay: true };
-    },
-    async createAttachTicket() {
-      return 'ticket';
-    },
-    openTerminalWebSocket() {
-      return new FakeSocket();
-    }
-  };
-  const pending = runTerminalSession({
-    client,
-    nodeId: 'node-1',
-    signal: controller.signal,
-    raceConnections: true,
-    openDirectTerminal: async ({ onPrepared, onIceConnected, signal }) => {
-      await onPrepared();
-      onIceConnected();
-      selected();
-      await new Promise((_, reject) =>
-        signal.addEventListener(
-          'abort',
-          () => reject(new DirectFallbackError('DIRECT_RACE_CANCELLED')),
-          { once: true }
-        )
-      );
-    }
-  });
-  await won;
-  controller.abort('SIGTERM');
-  assert.equal(await pending, 143);
-});
-
-test('does not fall back after direct OPEN has made execution unsafe', async () => {
-  let attachCalls = 0;
-  let deleted = 0;
-  const client = {
-    async createTerminal() {
-      return 'terminal-1';
-    },
-    async createAttachTicket() {
-      attachCalls += 1;
-      return 'ticket-1';
-    },
-    async deleteTerminal() {
-      deleted += 1;
-    }
-  };
-
-  await assert.rejects(
-    runTerminalSession({
-      client,
-      WebSocketClass: FakeSocket,
-      nodeId: 'node-1',
-      command: 'uname -a',
-      stdin: new EventEmitter(),
-      stdout: new FakeStdout(),
-      signal: new AbortController().signal,
-      openDirectTerminal: async () => {
-        throw new DirectUnsafeError('DIRECT_OPEN_CANCEL_UNCONFIRMED');
-      }
-    }),
-    /Direct terminal setup could not be safely canceled/
-  );
-  assert.equal(attachCalls, 0);
-  assert.equal(deleted, 1);
-});
-
 test('bounds connection setup without applying a runtime timeout', async () => {
   const socket = new FakeSocket();
   const deleted = [];
@@ -1671,10 +723,7 @@ test('bounds connection setup without applying a runtime timeout', async () => {
     async createTerminal() {
       return 'terminal-1';
     },
-    async createAttachTicket() {
-      return 'ticket-1';
-    },
-    openTerminalWebSocket() {
+    openTerminalEndpoint() {
       return socket;
     },
     async deleteTerminal(input) {
@@ -1685,7 +734,6 @@ test('bounds connection setup without applying a runtime timeout', async () => {
   await assert.rejects(
     runTerminalSession({
       client,
-      WebSocketClass: FakeSocket,
       nodeId: 'node-1',
       stdin: new EventEmitter(),
       stdout: new FakeStdout(),

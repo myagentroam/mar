@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sendHostedUploadBody } from '../../mar-node/test/support/hosted-upload-stream.js';
 const filesystemGate = vi.hoisted(() => ({ wait: undefined as undefined | (() => Promise<void>) }));
 vi.mock('node:fs/promises', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs/promises')>();
@@ -61,7 +62,7 @@ describe('Node hosted conversation runtime', () => {
         __requestUserId: 7
       })
     ).resolves.toEqual({ image });
-    expect(readImage).toHaveBeenCalledWith(runId, 'file:session%3Agenerated.png');
+    expect(readImage).toHaveBeenCalledWith(runId, 'file:session%3Agenerated.png', false);
 
     readImage.mockClear();
     await expect(
@@ -1044,13 +1045,15 @@ describe('Node hosted conversation runtime', () => {
       mimeType: 'text/plain',
       __requestUserId: 7
     })) as { upload: { uploadId: string } };
-    await operations['conversation.hosted.files.upload.chunk']!({
-      conversationId: conversation.id,
-      uploadId: upload.upload.uploadId,
-      offset: 0,
-      dataBase64: Buffer.from('x').toString('base64'),
-      __requestUserId: 7
-    });
+    await sendHostedUploadBody(
+      fixture.service,
+      {
+        conversationId: conversation.id,
+        uploadId: upload.upload.uploadId,
+        __requestUserId: 7
+      },
+      Buffer.from('x')
+    );
     const completed = (await operations['conversation.hosted.files.upload.complete']!({
       conversationId: conversation.id,
       uploadId: upload.upload.uploadId,

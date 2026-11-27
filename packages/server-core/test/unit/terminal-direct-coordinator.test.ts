@@ -190,6 +190,17 @@ describe('Terminal direct coordinator', () => {
         identity.workbenchConnectionId,
         expect.objectContaining({ code: 'TERMINAL_DIRECT_UNAVAILABLE' })
       );
+      f.preflight.mockRejectedValueOnce(
+        new NodeRequestError(
+          { error: 'TERMINAL_OWNER_REQUIRED', message: 'The caller does not own the terminal.' },
+          'request-1235'
+        )
+      );
+      await f.coordinator.handleBrowser(identity, request);
+      expect(f.sendBrowser).toHaveBeenLastCalledWith(
+        identity.workbenchConnectionId,
+        expect.objectContaining({ code: 'TERMINAL_NOT_AUTHORIZED' })
+      );
       expect(f.sendNode).not.toHaveBeenCalled();
     } finally {
       f.coordinator.close();

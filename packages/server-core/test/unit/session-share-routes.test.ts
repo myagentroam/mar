@@ -36,11 +36,15 @@ async function fixture() {
   const shares = new SessionShares({ store, authorize: async () => true, nodeControl, invalidate });
   const submitMessage = vi.fn(async () => ({ delivery: 'QUEUED' }));
   const interrupt = vi.fn(async () => ({ interrupted: true }));
+  const issueFileStream = vi.fn<
+    NonNullable<Parameters<typeof registerSessionShareRoutes>[0]['issueFileStream']>
+  >(async () => 'stream-ticket');
   registerSessionShareRoutes({
     app,
     shares,
     channels: new SessionChannelService({ submitMessage, interrupt, executeCommand: vi.fn() }),
     nodeControl,
+    issueFileStream,
     database: {
       findCurrentUserSession: (id) => (id === 'account' ? actor : undefined),
       userDisplayName: async () => 'Owner'
@@ -70,6 +74,7 @@ async function fixture() {
     headers,
     created,
     base,
+    issueFileStream,
     url,
     submitMessage,
     interrupt,
@@ -80,6 +85,72 @@ async function fixture() {
 }
 
 describe('Session sharing HTTP adaptation', () => {
+  it('only issues file tickets through a link-scoped principal for the original file operations', async () => {
+    const f = await fixture();
+    const auth = await f.app.inject({
+      method: 'POST',
+      url: f.base + '/auth',
+      payload: { password: f.created.password }
+    });
+    expect(auth.statusCode).toBe(200);
+    const cookie = String(auth.headers['set-cookie']).split(';')[0]!;
+    const resource = {
+      kind: 'WORKSPACE_FILE',
+      workspaceId: 'workspace-one',
+      path: 'notes.txt'
+    } as const;
+    const descriptor = {
+      direction: 'DOWNLOAD',
+      resource,
+      fileName: 'notes.txt',
+      size: 1,
+      revision: 'revision'
+    } as const;
+    const issue = (headers: Record<string, string>, value: unknown) =>
+      f.app.inject({
+        method: 'POST',
+        url: f.base + '/file-stream-ticket',
+        headers,
+        payload: { descriptor: value }
+      });
+    expect((await issue(f.headers, descriptor)).statusCode).toBe(401);
+    const headers = { cookie, origin: 'http://localhost' };
+    expect(
+      (await issue(headers, { ...descriptor, resource: { ...resource, workspaceId: 'other' } }))
+        .statusCode
+    ).toBe(403);
+    expect(
+      (
+        await issue(headers, {
+          direction: 'UPLOAD',
+          resource,
+          fileName: 'notes.txt',
+          size: 1,
+          overwrite: false,
+          sha256: '0'.repeat(64)
+        })
+      ).statusCode
+    ).toBe(400);
+    expect(f.issueFileStream).not.toHaveBeenCalled();
+    const issued = await issue(headers, descriptor);
+    expect(issued.statusCode).toBe(200);
+    expect(issued.json()).toEqual({ ticket: 'stream-ticket' });
+    expect(f.issueFileStream).toHaveBeenCalledExactlyOnceWith(
+      'node-one',
+      expect.objectContaining({
+        channel: true,
+        userId: 7,
+        sessionHash: expect.not.stringMatching(/^account$/u)
+      }),
+      descriptor,
+      expect.objectContaining({ sessionId: 'session-one' })
+    );
+    const authorization = f.issueFileStream.mock.calls[0]![3];
+    expect(await authorization.allowed()).toBe(true);
+    f.rows.delete(f.created.share.id);
+    await expect(authorization.allowed()).rejects.toThrow('SESSION_SHARE_NOT_FOUND');
+  });
+
   it('copies share passwords only through authenticated same-origin CSRF-protected management', async () => {
     const f = await fixture();
     const url =

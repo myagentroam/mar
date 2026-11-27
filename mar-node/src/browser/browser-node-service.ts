@@ -1,17 +1,18 @@
 import { join } from 'node:path';
 import { chromium } from 'playwright';
-import { WebSocket } from 'ws';
 import { z } from 'zod';
 import {
-  BROWSER_CONTROL_MAX_BYTES,
-  BROWSER_RELAY_READY,
   browserNodeAttachmentCommandSchema,
   browserUploadSchema,
+  browserUploadStreamSchema,
   browserDownloadRequestSchema,
-  browserDownloadReadSchema,
+  browserDownloadStreamSchema,
   type BrowserAttachmentRoute
 } from '@myagentroam/protocol';
-import { openBrowserIceChannel, openBrowserRelayChannel } from './browser-data-channel.js';
+import { NodeStreamGrants } from '../connection/node-stream-grants.js';
+import { parseBrowserStreamGrant } from '@myagentroam/protocol/browser-stream';
+import type { NodeStreamHandler } from '@myagentroam/protocol/node-stream-mux';
+import { serveBrowserStream } from './browser-stream-channel.js';
 import { createBrowserLauncher } from './browser-launcher.js';
 import { chromiumProfileLock } from './browser-profile-lock.js';
 import {
@@ -26,13 +27,13 @@ const nodeRequest = z.object({
   payload: z.record(z.string(), z.unknown())
 });
 
-/** Connector-facing Browser composition. Owns the runtime and relay sockets; workspace admission, identity and ICE negotiation stay with the Connector. */
+/** Connector-facing Browser composition. Owns the runtime and stream admission; workspace admission, identity and ICE negotiation stay with the Connector. */
 export class BrowserNodeService {
   private readonly browser: BrowserRuntime;
   private readonly launcher: ReturnType<typeof createBrowserLauncher>;
   private readonly resource;
   private readonly profile;
-  private readonly relaySockets = new Set<WebSocket>();
+  private readonly fileGrants = new NodeStreamGrants();
 
   constructor(
     private readonly options: {
@@ -41,7 +42,6 @@ export class BrowserNodeService {
       requireWorkspace: (id: string) => void;
       workspacePath: (id: string) => string | undefined;
       workspaceFilesChanged?: (id: string) => void;
-      relay: () => { endpoint: string; nodeId: string; credential: string };
       failed: (error: unknown) => void;
     }
   ) {
@@ -82,19 +82,42 @@ export class BrowserNodeService {
     const result = nodeRequest.safeParse(value);
     if (!result.success) return Promise.reject(new Error('BROWSER_RESOURCE_INVALID'));
     const { generation, payload, __requestUserId } = result.data;
+    const { transportId, ...filePayload } = payload;
+    const binding = typeof transportId === 'string' ? transportId : undefined;
     if (generation !== this.options.generation)
       return Promise.reject(new Error('BROWSER_NODE_CHANGED'));
     if (operation === 'attachment') return this.attachment(payload, __requestUserId);
     if (operation === 'upload') {
+      const stream = browserUploadStreamSchema.safeParse(filePayload);
+      if (stream.success) {
+        return Promise.resolve({
+          grant: this.fileGrants.issue(
+            'browser-file-upload',
+            (file, signal) =>
+              this.browser.attachments.uploadStream(__requestUserId, stream.data, file, signal),
+            binding
+          )
+        });
+      }
       const upload = browserUploadSchema.safeParse(payload);
       if (!upload.success) return Promise.reject(new Error('BROWSER_UPLOAD_INVALID'));
       return this.browser.attachments.upload(__requestUserId, upload.data);
     }
     if (operation === 'download') {
-      const read = browserDownloadReadSchema.safeParse(payload);
-      if (read.success) {
-        this.options.requireWorkspace(read.data.workspaceId);
-        return this.browser.readDownload(__requestUserId, read.data);
+      const stream = browserDownloadStreamSchema.safeParse(filePayload);
+      if (stream.success) {
+        const input = stream.data;
+        this.options.requireWorkspace(input.workspaceId);
+        return Promise.resolve({
+          grant: this.fileGrants.issue(
+            'browser-file-download',
+            (file, signal) => {
+              this.options.requireWorkspace(input.workspaceId);
+              return this.browser.streamDownload(__requestUserId, input, file, signal);
+            },
+            binding
+          )
+        });
       }
       const download = browserDownloadRequestSchema.safeParse(payload);
       if (!download.success) return Promise.reject(new Error('BROWSER_DOWNLOAD_INVALID'));
@@ -106,12 +129,21 @@ export class BrowserNodeService {
     });
   }
 
-  openIce(
-    route: Extract<BrowserAttachmentRoute, { type: 'ice' }>,
-    channel: RTCDataChannel,
-    first: unknown
-  ): void {
-    openBrowserIceChannel(this.browser.attachments, route, channel, first, this.options.failed);
+  consumeFileStream(
+    kind: string,
+    grant: string,
+    direct?: { binding: string; signal: AbortSignal }
+  ) {
+    return this.fileGrants.consume(kind, grant, direct);
+  }
+
+  consumePictureStream(
+    grant: string,
+    route: BrowserAttachmentRoute
+  ): NodeStreamHandler | undefined {
+    const open = parseBrowserStreamGrant(grant);
+    if (!open) return undefined;
+    return (stream) => serveBrowserStream(this.browser.attachments, open, route, stream);
   }
 
   agentAction(
@@ -124,7 +156,7 @@ export class BrowserNodeService {
   }
 
   async disconnect(): Promise<void> {
-    for (const socket of this.relaySockets) socket.terminate();
+    this.fileGrants.clear();
     await this.browser.attachments.disconnect('BROWSER_CONTROL_DISCONNECTED');
   }
 
@@ -137,6 +169,7 @@ export class BrowserNodeService {
     const result = browserNodeAttachmentCommandSchema.safeParse(payload);
     if (!result.success) throw new Error('BROWSER_RESOURCE_INVALID');
     const command = result.data;
+    if (command.action === 'revoke-file-stream') return this.fileGrants.revoke(command.grant);
     if (command.action === 'renew')
       return this.browser.attachments.renew(command.attachmentId, command.expiresAt);
     if (command.action === 'revoke') return this.browser.revokeAttachment(userId, command);
@@ -149,48 +182,6 @@ export class BrowserNodeService {
       command.settings
     );
     this.browser.attachments.prepare(grant);
-    if (grant.route.type === 'relay') {
-      try {
-        await this.connectRelay(grant.attachmentId, grant.expiresAt);
-      } catch (error) {
-        await this.browser.attachments.revoke(grant.attachmentId, 'BROWSER_RELAY_UNAVAILABLE');
-        throw error;
-      }
-    }
     return {};
-  }
-
-  private connectRelay(id: string, expiresAt: number): Promise<void> {
-    const { endpoint, nodeId, credential } = this.options.relay();
-    const socket = new WebSocket(endpoint, {
-      maxPayload: BROWSER_CONTROL_MAX_BYTES,
-      perMessageDeflate: false,
-      headers: {
-        Authorization: `Bearer ${credential}`,
-        'X-Mar-Node': nodeId,
-        'X-Mar-Node-Generation': this.options.generation,
-        'X-Mar-Browser-Attachment': id
-      }
-    });
-    this.relaySockets.add(socket);
-    socket.once('close', () => this.relaySockets.delete(socket));
-    return new Promise<void>((resolve, reject) => {
-      const fail = () => {
-        clearTimeout(deadline);
-        socket.terminate();
-        reject(new Error('BROWSER_RELAY_UNAVAILABLE'));
-      };
-      const deadline = setTimeout(fail, Math.max(1, expiresAt - Date.now()));
-      socket.on('error', fail);
-      socket.once('close', fail);
-      socket.once('message', (data, binary) => {
-        if (binary || data.toString() !== BROWSER_RELAY_READY) return fail();
-        clearTimeout(deadline);
-        socket.off('close', fail);
-        socket.off('error', fail);
-        openBrowserRelayChannel(this.browser.attachments, id, socket, this.options.failed);
-        resolve();
-      });
-    });
   }
 }

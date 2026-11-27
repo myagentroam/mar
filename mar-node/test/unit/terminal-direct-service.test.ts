@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TerminalManager } from '../../src/terminal.js';
 import { TerminalDirectService } from '../../src/service/terminal-direct-service.js';
 import type { RTCPeerConnection } from 'node-datachannel/polyfill';
+import { NodeStreamMux } from '@myagentroam/protocol/node-stream-mux';
+import { readTerminalRecords, writeTerminalRecord } from '@myagentroam/protocol/terminal-stream';
 
 const fingerprint = `sha-256 ${'AA:'.repeat(31)}AA`;
 const command = {
@@ -44,6 +46,7 @@ function fixture() {
     authorizeAttach,
     acceptFrame,
     releaseTransportAttachment: detach,
+    setAttachmentBackpressure: () => undefined,
     startCommand,
     onFrame: (handler: (frame: unknown) => void) => {
       listener = handler;
@@ -58,30 +61,6 @@ function fixture() {
     () => true,
     () => now
   );
-  const channel = {
-    readyState: 'open',
-    bufferedAmount: 0,
-    sent: [] as Uint8Array[],
-    onmessage: null as null | ((event: { data: unknown }) => void),
-    onclose: null as null | (() => void),
-    send(value: Uint8Array) {
-      this.sent.push(value);
-    },
-    close() {
-      this.readyState = 'closed';
-      this.onclose?.();
-    }
-  };
-  const open = (grant = command.grant) =>
-    service.open(
-      'transport-1234',
-      channel as unknown as RTCDataChannel,
-      encodeTerminalMessage({
-        type: 'OPEN',
-        directSessionId: command.directSessionId,
-        grant
-      })
-    );
   return {
     service,
     peer,
@@ -90,168 +69,129 @@ function fixture() {
     authorizeAttach,
     acceptFrame,
     detach,
-    channel,
-    open,
+    startCommand,
     emitFrame: (frame: unknown) => listener(frame),
     advance: (ms: number) => (now += ms)
   };
 }
 
 describe('Node Terminal direct attachment', () => {
-  it('waits for an authenticated OPEN before allocating a writer and replays output in order', async () => {
+  it('consumes grants only on their bound ICE peer and revokes one stream without closing the carrier', async () => {
     const f = fixture();
+    const client: NodeStreamMux = new NodeStreamMux({
+      maxStreams: 4,
+      send: async (frame): Promise<void> => node.receive(frame)
+    });
+    const node = new NodeStreamMux({
+      maxStreams: 4,
+      send: async (frame) => client.receive(frame),
+      accept: async ({ grant }, signal) =>
+        f.service.consume(command.transportSessionId, grant, signal)
+    });
     try {
       expect(f.service.handle(command, () => f.peer)).toBe(true);
-      expect(f.ready).toHaveBeenCalledWith(command.directSessionId);
+      expect(
+        f.service.consume('other-transport', command.grant, new AbortController().signal)
+      ).toBeUndefined();
       expect(f.authorizeAttach).not.toHaveBeenCalled();
-      f.open();
-      expect(f.authorizeAttach).toHaveBeenCalledWith({
-        terminalId: 'terminal-a',
-        afterSequence: 3,
-        readonly: false
+      const stream = (await client.openStream({ kind: 'terminal', grant: command.grant }))!;
+      const records = readTerminalRecords(stream);
+      expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({
+        type: 'attach',
+        terminalId: command.terminalId
       });
-      expect(f.channel.sent.map((raw) => decodeTerminalMessage(raw).type)).toEqual([
-        'ATTACHED',
-        'output'
-      ]);
-      await vi.waitFor(() =>
-        expect(f.ready).toHaveBeenCalledWith(command.directSessionId, 'ATTACHED')
-      );
-      f.emitFrame({
-        type: 'output',
-        terminalId: 'terminal-a',
-        sequence: 5,
-        data: new TextEncoder().encode('live')
-      });
-      expect(decodeTerminalMessage(f.channel.sent.at(-1)!)).toMatchObject({
-        data: new TextEncoder().encode('live'),
-        sequence: 5
-      });
-      f.channel.onmessage?.({
-        data: encodeTerminalMessage({
-          type: 'input',
-          terminalId: 'terminal-a',
-          data: new TextEncoder().encode('pwd\n')
-        })
-      });
-      await vi.waitFor(() =>
-        expect(f.acceptFrame).toHaveBeenCalledWith(
-          'attachment-a',
-          expect.objectContaining({ type: 'input', data: new TextEncoder().encode('pwd\n') })
-        )
-      );
-    } finally {
-      f.service.dispose();
-    }
-    expect(f.detach).toHaveBeenCalledWith('attachment-a');
-  });
-
-  it('rejects another grant, a mismatched transport and a second OPEN', () => {
-    const wrong = fixture();
-    try {
-      expect(wrong.service.handle(command, () => wrong.peer)).toBe(true);
-      wrong.open('b'.repeat(32));
-      expect(wrong.authorizeAttach).not.toHaveBeenCalled();
-      expect(wrong.channel.readyState).toBe('closed');
-    } finally {
-      wrong.service.dispose();
-    }
-    const mismatched = fixture();
-    try {
-      mismatched.service.handle(command, () => mismatched.peer);
-      mismatched.service.open(
-        'transport-other',
-        mismatched.channel as unknown as RTCDataChannel,
-        encodeTerminalMessage({
-          type: 'OPEN',
-          directSessionId: command.directSessionId,
-          grant: command.grant
-        })
-      );
-      expect(mismatched.authorizeAttach).not.toHaveBeenCalled();
-    } finally {
-      mismatched.service.dispose();
-    }
-  });
-
-  it('stops the attachment on a revoked lease or forbidden input', async () => {
-    const f = fixture();
-    try {
-      f.service.handle(command, () => f.peer);
-      f.open();
-      f.acceptFrame.mockRejectedValueOnce(new Error('TERMINAL_WRITE_DENIED'));
-      f.channel.onmessage?.({
-        data: encodeTerminalMessage({
-          type: 'input',
-          terminalId: 'terminal-a',
-          data: new TextEncoder().encode('oops')
-        })
-      });
-      await vi.waitFor(() => expect(f.channel.readyState).toBe('closed'));
-      expect(f.detach).toHaveBeenCalledWith('attachment-a');
-    } finally {
-      f.service.dispose();
-    }
-  });
-
-  it('does not revive an expired writer with a late control heartbeat', () => {
-    const f = fixture();
-    try {
-      f.service.handle({ ...command, expiresAt: 1_001_000 }, () => f.peer);
-      f.open();
-      f.advance(1_001);
+      expect(f.authorizeAttach).toHaveBeenCalledOnce();
+      await expect(
+        client.openStream({ kind: 'terminal', grant: command.grant })
+      ).rejects.toMatchObject({ code: 'RESOURCE_DENIED' });
+      await records.next(); // Replay after the application attachment record.
       f.service.handle(
         {
-          type: 'terminal.direct.heartbeat',
+          type: 'terminal.direct.cancel',
           directSessionId: command.directSessionId,
-          expiresAt: 1_031_000
+          code: 'TERMINAL_NOT_AUTHORIZED'
         },
         () => f.peer
       );
-      expect(f.channel.readyState).toBe('closed');
-      expect(f.detach).toHaveBeenCalledWith('attachment-a');
+      await expect(records.next()).rejects.toMatchObject({ code: 'RESOURCE_DENIED' });
+      await vi.waitFor(() => expect(f.detach).toHaveBeenCalledOnce());
+      expect(client.closed).toBe(false);
+      const replacement = { ...command, grant: 'b'.repeat(32), directSessionId: 'other-session-1' };
+      expect(f.service.handle(replacement, () => f.peer)).toBe(true);
+      const next = await client.openStream({ kind: 'terminal', grant: replacement.grant });
+      expect(next).toBeDefined();
+      next?.close();
     } finally {
+      client.disconnect();
+      node.disconnect();
       f.service.dispose();
     }
   });
 
-  it('detaches a failed DataChannel without interrupting Terminal output', () => {
-    const f = fixture();
-    try {
-      f.service.handle(command, () => f.peer);
-      f.open();
-      f.channel.send = () => {
-        throw new Error('channel closed during output');
-      };
-      expect(() =>
-        f.emitFrame({
+  it.each(['lease expiry', 'forbidden input', 'carrier loss'] as const)(
+    'releases the writer after %s',
+    async (failure) => {
+      const f = fixture();
+      const client: NodeStreamMux = new NodeStreamMux({
+        maxStreams: 4,
+        send: async (frame): Promise<void> => node.receive(frame)
+      });
+      const node = new NodeStreamMux({
+        maxStreams: 4,
+        send: async (frame) => client.receive(frame),
+        accept: async ({ grant }, signal) =>
+          f.service.consume(command.transportSessionId, grant, signal)
+      });
+      try {
+        f.service.handle({ ...command, expiresAt: 1_001_000 }, () => f.peer);
+        await expect(
+          client.openStream({ kind: 'terminal', grant: 'b'.repeat(32) })
+        ).rejects.toMatchObject({ code: 'RESOURCE_DENIED' });
+        expect(f.authorizeAttach).not.toHaveBeenCalled();
+        const stream = (await client.openStream({ kind: 'terminal', grant: command.grant }))!;
+        const records = readTerminalRecords(stream);
+        expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({
+          type: 'attach'
+        });
+        expect(decodeTerminalMessage((await records.next()).value)).toMatchObject({
           type: 'output',
-          terminalId: 'terminal-a',
-          sequence: 5,
-          data: new TextEncoder().encode('live')
-        })
-      ).not.toThrow();
-      expect(f.detach).toHaveBeenCalledWith('attachment-a');
-    } finally {
-      f.service.dispose();
+          sequence: 4
+        });
+        expect(f.startCommand).toHaveBeenCalledOnce();
+        expect(f.ready).toHaveBeenCalledWith(command.directSessionId, 'ATTACHED');
+        if (failure === 'lease expiry') {
+          f.advance(1_001);
+          f.service.handle(
+            {
+              type: 'terminal.direct.heartbeat',
+              directSessionId: command.directSessionId,
+              expiresAt: 1_031_000
+            },
+            () => f.peer
+          );
+        } else if (failure === 'forbidden input') {
+          await stream.write(
+            writeTerminalRecord(
+              encodeTerminalMessage({
+                type: 'resize',
+                terminalId: 'wrong-terminal',
+                rows: 24,
+                cols: 80
+              })
+            )
+          );
+          expect(f.acceptFrame).not.toHaveBeenCalled();
+        } else {
+          node.disconnect();
+          client.disconnect();
+        }
+        await vi.waitFor(() => expect(f.detach).toHaveBeenCalledExactlyOnceWith('attachment-a'));
+        expect(client.closed).toBe(failure === 'carrier loss');
+      } finally {
+        client.disconnect();
+        node.disconnect();
+        f.service.dispose();
+      }
     }
-  });
-
-  it('detaches on an invalid frame even if the error response cannot be sent', () => {
-    const f = fixture();
-    try {
-      f.service.handle(command, () => f.peer);
-      f.open();
-      f.channel.send = () => {
-        throw new Error('channel closed during error response');
-      };
-      expect(() =>
-        f.channel.onmessage?.({ data: '{"type":"input","terminalId":"other"}' })
-      ).not.toThrow();
-      expect(f.channel.readyState).toBe('closed');
-      expect(f.detach).toHaveBeenCalledWith('attachment-a');
-    } finally {
-      f.service.dispose();
-    }
-  });
+  );
 });

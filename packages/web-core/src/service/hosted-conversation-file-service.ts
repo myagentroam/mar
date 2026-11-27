@@ -1,7 +1,5 @@
 import {
   hostedConversationFileDeleteResultSchema,
-  hostedConversationFileReadResultSchema,
-  decodeFileRelayFrame,
   hostedConversationUploadPreflightResultSchema,
   hostedConversationUploadSchema,
   type ConversationFileProjection,
@@ -10,6 +8,7 @@ import {
   type HostedConversationUpload
 } from '@myagentroam/protocol';
 import type { WorkbenchHttpService } from './workbench-http-service.js';
+import type { createHostedFileDownloadService } from './hosted-file-download-service.js';
 
 interface FileTarget {
   readonly nodeId: string;
@@ -19,12 +18,19 @@ interface FileTarget {
 /** Owns file requests and upload sequences; retiring uploads stops follow-up writes, not accepted commits. */
 export function createHostedConversationFileService(options: {
   readonly request: WorkbenchHttpService['request'];
+  readonly downloads: ReturnType<typeof createHostedFileDownloadService>;
+  readonly sendUploadBody: (
+    target: FileTarget & { readonly uploadId: string },
+    file: File,
+    signal: AbortSignal,
+    onProgress: (offset: number) => void
+  ) => Promise<void>;
   readonly requireContext: () => FileTarget;
   readonly templateChanging: () => boolean;
   readonly removeFile: (target: FileTarget, fileId: string) => void;
   readonly acceptFile: (target: FileTarget, file: ConversationFileProjection) => void;
 }) {
-  let uploadGeneration = 0;
+  let uploads = new AbortController();
   function responseInvalid(): Error {
     return new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');
   }
@@ -56,52 +62,22 @@ export function createHostedConversationFileService(options: {
   async function readFile(
     fileId: string,
     offset = 0,
-    limit = 512 * 1024
+    limit = 512 * 1024,
+    signal = new AbortController().signal
   ): Promise<HostedConversationFileReadResult> {
-    const context = options.requireContext();
-    const response = await options.request<ArrayBuffer>(
-      `${conversationBasePath(context)}/files/${encodeURIComponent(fileId)}?offset=${offset}&limit=${limit}`,
-      { responseType: 'arrayBuffer' }
-    );
-    let decoded: ReturnType<typeof decodeFileRelayFrame>;
-    try {
-      decoded = decodeFileRelayFrame(response);
-    } catch {
-      throw responseInvalid();
-    }
-    const { type, ...metadata } = decoded.metadata;
-    const parsed = hostedConversationFileReadResultSchema.safeParse({
-      ...metadata,
-      bytes: decoded.payload
-    });
-    if (
-      type !== 'file.read' ||
-      'bytes' in metadata ||
-      !parsed.success ||
-      parsed.data.file.id !== fileId ||
-      parsed.data.file.conversationId !== context.conversationId ||
-      parsed.data.offset !== offset
-    )
-      throw responseInvalid();
-    const contentBytes = parsed.data.bytes.byteLength;
-    const nextOffset = offset + contentBytes;
-    if (
-      contentBytes > limit ||
-      nextOffset > parsed.data.file.size ||
-      (parsed.data.eof
-        ? parsed.data.nextOffset !== null || nextOffset !== parsed.data.file.size
-        : parsed.data.nextOffset !== nextOffset)
-    )
-      throw responseInvalid();
-    return parsed.data;
+    const { nodeId, conversationId } = options.requireContext();
+    const file = await options.downloads.describe({ nodeId, conversationId, fileId }, signal);
+    signal.throwIfAborted();
+    const bytes = await options.downloads.readRange(nodeId, file, offset, limit, signal);
+    const nextOffset = offset + bytes.byteLength;
+    const eof = nextOffset === file.size;
+    return { file, bytes, offset, nextOffset: eof ? null : nextOffset, eof };
   }
 
-  function contentUrl(file: ConversationFileProjection, download = false): string {
+  function contentUrl(file: ConversationFileProjection): string {
     const context = options.requireContext();
     if (file.conversationId !== context.conversationId) throw responseInvalid();
-    return `${conversationBasePath(context)}/files/${encodeURIComponent(file.id)}/content${
-      download ? '?download=1' : ''
-    }`;
+    return `${conversationBasePath(context)}/files/${encodeURIComponent(file.id)}/content`;
   }
 
   async function uploadFile(
@@ -111,9 +87,11 @@ export function createHostedConversationFileService(options: {
     signal?: AbortSignal
   ): Promise<HostedConversationUpload> {
     const context = options.requireContext();
-    const generation = uploadGeneration;
+    const lifetime = uploads;
+    const bodySignal =
+      signal === undefined ? lifetime.signal : AbortSignal.any([signal, lifetime.signal]);
     const requireCurrent = () => {
-      if (generation !== uploadGeneration) throw new Error('UPLOAD_CANCELLED');
+      lifetime.signal.throwIfAborted();
     };
     if (options.templateChanging()) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const mimeType = file.type.trim() || 'application/octet-stream';
@@ -152,31 +130,23 @@ export function createHostedConversationFileService(options: {
       context.conversationId
     );
     requireCurrent();
-    const chunkSize = 512 * 1024;
     try {
-      signal?.throwIfAborted();
+      bodySignal.throwIfAborted();
       onProgress?.(upload);
-      for (let offset = upload.receivedBytes; offset < file.size; offset += chunkSize) {
-        const end = Math.min(file.size, offset + chunkSize);
-        const chunk = await file.slice(offset, end).arrayBuffer();
-        requireCurrent();
-        signal?.throwIfAborted();
-        if (chunk.byteLength !== end - offset) throw responseInvalid();
-        upload = parseUploadResponse(
-          await options.request<unknown>(
-            `${conversationBasePath(context)}/uploads/${encodeURIComponent(upload.uploadId)}/chunks?offset=${offset}`,
-            {
-              method: 'POST',
-              headers: { 'content-type': 'application/octet-stream' },
-              body: chunk,
-              ...(signal === undefined ? {} : { signal })
-            }
-          ),
-          context.conversationId
+      if (upload.receivedBytes < file.size) {
+        await options.sendUploadBody(
+          {
+            nodeId: context.nodeId,
+            conversationId: context.conversationId,
+            uploadId: upload.uploadId
+          },
+          file,
+          bodySignal,
+          (offset) => {
+            upload = { ...upload, receivedBytes: offset };
+            onProgress?.(upload);
+          }
         );
-        requireCurrent();
-        if (upload.receivedBytes !== end) throw responseInvalid();
-        onProgress?.(upload);
       }
       requireCurrent();
       signal?.throwIfAborted();
@@ -194,7 +164,7 @@ export function createHostedConversationFileService(options: {
       requireCurrent();
       if (upload.status !== 'COMPLETED' || upload.file === undefined) throw responseInvalid();
     } catch (error) {
-      if (generation === uploadGeneration)
+      if (lifetime === uploads)
         await options
           .request(
             `${conversationBasePath(context)}/uploads/${encodeURIComponent(upload.uploadId)}/cancel`,
@@ -212,9 +182,19 @@ export function createHostedConversationFileService(options: {
     deleteFile,
     readFile,
     contentUrl,
+    downloadFile: (fileId: string, signal: AbortSignal) => {
+      const { nodeId, conversationId } = options.requireContext();
+      return options.downloads.download({ nodeId, conversationId, fileId }, signal);
+    },
+    async previewObjectUrl(fileId: string, signal: AbortSignal) {
+      const { nodeId, conversationId } = options.requireContext();
+      const file = await options.downloads.describe({ nodeId, conversationId, fileId }, signal);
+      return options.downloads.objectUrl(nodeId, file, signal);
+    },
     uploadFile,
     clearUploads: () => {
-      uploadGeneration += 1;
+      uploads.abort(new Error('UPLOAD_CANCELLED'));
+      uploads = new AbortController();
     }
   };
 }

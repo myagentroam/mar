@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BROWSER_CONTROL_MAX_BYTES, BROWSER_TAB_LIMIT } from '@myagentroam/protocol';
+import { NodeStream } from '@myagentroam/protocol/node-stream';
 import { chromium } from 'playwright';
 import { BrowserTabs } from '../../src/browser/browser-tabs.js';
 
@@ -183,6 +184,35 @@ try {
       assert(chooser);
       return { attachmentId: crypto.randomUUID(), chooserId: chooser.id };
     };
+    async function sendFile(
+      selection: Awaited<ReturnType<typeof choose>>,
+      transferId: string,
+      index: number,
+      text: string
+    ) {
+      const sender = new NodeStream(
+        1,
+        async (frame) => receiver.receive(frame),
+        () => {}
+      );
+      const receiver = new NodeStream(
+        1,
+        async (frame) => sender.receive(frame),
+        () => {}
+      );
+      const received = tabs.uploadStream(
+        { ...selection, command: { action: 'stream', transferId, index } },
+        receiver,
+        new AbortController().signal
+      );
+      await Promise.all([
+        received,
+        (async () => {
+          await sender.write(Buffer.from(text));
+          await sender.endWrite();
+        })()
+      ]);
+    }
     async function stage(selection: Awaited<ReturnType<typeof choose>>) {
       const transferId = crypto.randomUUID();
       await tabs.upload({ ...selection, command: { action: 'begin', transferId } });
@@ -190,10 +220,7 @@ try {
         ...selection,
         command: { action: 'file', transferId, index: 0, name: 'stale.txt', size: 2 }
       });
-      await tabs.upload({
-        ...selection,
-        command: { action: 'chunk', transferId, index: 0, offset: 0, data: 'b2s=' }
-      });
+      await sendFile(selection, transferId, 0, 'ok');
       return { ...selection, command: { action: 'finish' as const, transferId } };
     }
     const uploadDirectories = async () =>
@@ -232,23 +259,14 @@ try {
       ...selection,
       command: { action: 'file', transferId, index: 0, name: 'smoke.txt', size: 2 }
     });
+    await assert.rejects(sendFile(selection, oldTransfer, 0, 'no'), /BROWSER_UPLOAD_INVALID/);
+    await assert.rejects(sendFile(selection, transferId, 0, 'o'), /DIRECT_INTEGRITY_FAILED/);
     await assert.rejects(
-      tabs.upload({
-        ...selection,
-        command: {
-          action: 'chunk',
-          transferId: oldTransfer,
-          index: 0,
-          offset: 0,
-          data: 'bm8='
-        }
-      }),
+      tabs.upload({ ...selection, command: { action: 'finish', transferId } }),
       /BROWSER_UPLOAD_INVALID/
     );
-    await tabs.upload({
-      ...selection,
-      command: { action: 'chunk', transferId, index: 0, offset: 0, data: 'b2s=' }
-    });
+    await sendFile(selection, transferId, 0, 'k');
+    await assert.rejects(sendFile(selection, transferId, 0, ''), /BROWSER_UPLOAD_INVALID/);
     await tabs.upload({ ...selection, command: { action: 'finish', transferId } });
     assert.equal(
       await fileInput.evaluate((input: HTMLInputElement) => input.files?.[0]?.text()),

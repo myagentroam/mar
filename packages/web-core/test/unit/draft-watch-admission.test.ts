@@ -1,3 +1,4 @@
+import { unusedHostedFileDownloads } from '../support/hosted-file-downloads.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computed, effectScope, ref } from 'vue';
 import type { Session, WorkspaceTarget } from '../../src/model/workbench.js';
@@ -130,6 +131,10 @@ function fixture() {
     openSession: async () => {}
   });
   const hosted = createHostedConversationWorkspaceService({
+    downloads: unusedHostedFileDownloads,
+    sendUploadBody: async () => {
+      throw new Error('Unexpected Hosted upload');
+    },
     request,
     workbenchConnectionId: () => connectionId.value,
     ...timing

@@ -11,7 +11,7 @@ import type { WorkbenchAsideView } from '../service/workbench-aside-service.js';
 import type { WorkbenchSelectionView } from '../service/workbench-session-selection-service.js';
 import type { WorkbenchSessionListView } from '../service/workspace-session-service.js';
 import type { WorkbenchHostedView } from '../service/hosted-conversation-workspace-service.js';
-import type { WorkbenchTerminalView } from '../service/terminal-direct-client.js';
+import type { WorkbenchTerminalView } from '../service/terminal-service.js';
 import type { WorkbenchTreeView } from '../service/workbench-workspace-tree-controller.js';
 import type { WorkbenchLayoutView } from '../service/workbench-layout-service.js';
 import type { WorkbenchApplicationView } from '../service/workbench-page-interaction-service.js';

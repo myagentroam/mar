@@ -20,10 +20,8 @@ async function previewFiles(page: Page) {
     const previews = await root.getDirectoryHandle('mar-direct-preview');
     const managed = await previews.getDirectoryHandle('managed-v1');
     const files: number[] = [];
-    const entries = managed as FileSystemDirectoryHandle & {
-      values(): AsyncIterableIterator<FileSystemFileHandle>;
-    };
-    for await (const handle of entries.values()) files.push((await handle.getFile()).size);
+    for await (const handle of managed.values())
+      files.push((await (handle as FileSystemFileHandle).getFile()).size);
     return files;
   });
 }

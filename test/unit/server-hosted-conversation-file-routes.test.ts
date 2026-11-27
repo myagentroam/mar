@@ -72,53 +72,58 @@ describe('Server hosted conversation routes', () => {
     }
   });
 
-  it('forwards an authorized upload chunk as bytes and rejects a mismatched request body', async () => {
+  it('issues upload stream tickets only for the authorized Hosted owner and retires HTTP body uploads', async () => {
     const fixture = routeFixture();
     const app = Fastify();
-    registerHostedConversationRoutes({ app, ...fixture, publicOrigin: undefined });
-    const url =
-      '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1/chunks?offset=7';
-    const bytes = Buffer.of(0, 0x80, 0xff);
+    const issueFileStreamTicket = vi.fn(
+      async (_ticket: { allowed(): Promise<boolean> }) => 'ticket-1'
+    );
+    registerHostedConversationRoutes({
+      app,
+      ...fixture,
+      publicOrigin: undefined,
+      issueFileStreamTicket
+    });
+    const url = '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1';
     const method = 'POST' as const;
     try {
       expect(
         (
           await app.inject({
             method,
-            url,
+            url: `${url}/chunks?offset=7`,
             headers,
-            payload: { dataBase64: bytes.toString('base64') }
+            payload: {}
           })
         ).statusCode
-      ).toBe(400);
+      ).toBe(404);
       expect(fixture.nodeControl.requestHostedConversationNode).not.toHaveBeenCalled();
-      const request = {
-        method,
-        url,
-        headers: { ...headers, 'content-type': 'application/octet-stream' },
-        payload: bytes
-      };
+      const request = { method, url: `${url}/stream-ticket`, headers, payload: {} };
       fixture.templates.assertCanUse.mockRejectedValueOnce(
         new Error('CONVERSATION_TEMPLATE_NOT_AUTHORIZED')
       );
       expect((await app.inject(request)).statusCode).toBe(403);
-      expect(
-        fixture.nodeControl.requestHostedConversationNode.mock.calls.some(
-          (call) => call[1] === 'conversation.hosted.files.upload.chunk'
-        )
-      ).toBe(false);
-      expect((await app.inject(request)).statusCode).toBe(200);
-      expect(fixture.nodeControl.requestHostedConversationNode.mock.lastCall?.slice(0, 3)).toEqual([
-        'node-1',
-        'conversation.hosted.files.upload.chunk',
-        { conversationId: 'conversation-1', uploadId: 'upload-1', offset: 7, bytes }
-      ]);
+      expect(issueFileStreamTicket).not.toHaveBeenCalled();
+      const response = await app.inject(request);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ ticket: 'ticket-1' });
+      const [ticket] = issueFileStreamTicket.mock.lastCall!;
+      expect(ticket).toMatchObject({
+        kind: 'hosted-file-upload',
+        nodeId: 'node-1',
+        conversationId: 'conversation-1',
+        uploadId: 'upload-1',
+        templateId: 'template-1',
+        user: { userId: 7, sessionHash: 'session-hash' }
+      });
+      fixture.templates.assertCanUse.mockResolvedValueOnce({ ...template, nodeId: 'node-2' });
+      await expect(ticket.allowed()).resolves.toBe(false);
     } finally {
       await app.close();
     }
   });
 
-  it('streams large logical hosted files with range, attachment, and SVG safety semantics', async () => {
+  it('streams native Hosted previews with range, inline disposition, and SVG safety semantics', async () => {
     const fixture = routeFixture();
     const imageContent = Buffer.alloc(1_980_000, 0xab);
     const svgContent = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>');
@@ -149,9 +154,9 @@ describe('Server hosted conversation routes', () => {
     const emptyFile = {
       ...svgFile,
       id: 'file-empty',
-      relativePath: 'empty.mts',
-      displayName: 'empty.mts',
-      mimeType: 'application/octet-stream',
+      relativePath: 'empty.mp4',
+      displayName: 'empty.mp4',
+      mimeType: 'video/mp4',
       size: 0
     } as const;
     fixture.nodeControl.requestHostedConversationNode.mockImplementation(
@@ -227,10 +232,7 @@ describe('Server hosted conversation routes', () => {
       url: `${imageUrl}?download=1`,
       headers: { cookie: headers.cookie, range: 'bytes=0-1' }
     });
-    expect(download.statusCode).toBe(206);
-    expect(download.headers['content-disposition']).toBe(
-      "attachment; filename*=UTF-8''large-preview.png"
-    );
+    expect(download.statusCode).toBe(400);
 
     const svg = await app.inject({
       method: 'GET',
@@ -272,7 +274,7 @@ describe('Server hosted conversation routes', () => {
     const fileReads = fixture.nodeControl.requestHostedConversationNode.mock.calls.filter(
       (call) => call[1] === 'conversation.hosted.file.read'
     );
-    expect(fileReads.length).toBeGreaterThan(8);
+    expect(fileReads.length).toBeGreaterThan(6);
     expect(fileReads.every((call) => !('path' in (call[2] as Record<string, unknown>)))).toBe(true);
     expect(fixture.nodeControl.requestNode).not.toHaveBeenCalled();
     await app.close();
@@ -331,9 +333,9 @@ describe('Server hosted conversation routes', () => {
       id: 'file-changing',
       conversationId: 'conversation-1',
       category: 'OUTPUT',
-      relativePath: 'report.txt',
-      displayName: 'report.txt',
-      mimeType: 'text/plain',
+      relativePath: 'report.mp4',
+      displayName: 'report.mp4',
+      mimeType: 'video/mp4',
       size: content.length,
       source: 'AGENT',
       createdAt: 1_000,
@@ -390,9 +392,9 @@ describe('Server hosted conversation routes', () => {
       id: 'file-1',
       conversationId: 'conversation-1',
       category: 'OUTPUT',
-      relativePath: 'report.txt',
-      displayName: 'report.txt',
-      mimeType: 'text/plain',
+      relativePath: 'report.mp4',
+      displayName: 'report.mp4',
+      mimeType: 'video/mp4',
       size: 4,
       source: 'AGENT',
       createdAt: 1_000,
@@ -401,9 +403,12 @@ describe('Server hosted conversation routes', () => {
     const valid = { file, offset: 1, bytes: Buffer.of(0xff), nextOffset: 2, eof: false };
     let chunk: unknown = valid;
     fixture.nodeControl.requestHostedConversationNode.mockImplementation(
-      async (_nodeId, operation) => {
+      async (_nodeId, operation, payload) => {
         if (operation === 'conversation.hosted.get') return hostedSnapshot();
-        if (operation === 'conversation.hosted.file.read') return chunk;
+        if (operation === 'conversation.hosted.file.read')
+          return (payload as { offset: number }).offset === 0
+            ? { ...valid, offset: 0, nextOffset: 1 }
+            : chunk;
         throw new Error(`UNEXPECTED_OPERATION_${operation}`);
       }
     );
@@ -411,11 +416,11 @@ describe('Server hosted conversation routes', () => {
     registerHostedConversationRoutes({ app, ...fixture, publicOrigin: undefined });
     const read = () =>
       app.inject({
-        url: '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-1?offset=1&limit=1',
-        headers: { cookie: headers.cookie }
+        url: '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-1/content',
+        headers: { cookie: headers.cookie, range: 'bytes=1-1' }
       });
     try {
-      expect((await read()).statusCode).toBe(200);
+      expect((await read()).statusCode).toBe(206);
       for (const invalid of [
         { ...valid, file: { ...file, id: 'another-file' } },
         { ...valid, file: { ...file, conversationId: 'another-conversation' } },

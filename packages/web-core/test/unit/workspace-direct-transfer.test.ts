@@ -1,4 +1,9 @@
 import { createHash } from 'node:crypto';
+import { encodeUploadOffset } from '@myagentroam/protocol/file-upload-stream';
+import {
+  decodeNodeStreamFrame,
+  encodeNodeStreamFrame
+} from '@myagentroam/protocol/node-stream-wire';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWorkspaceDirectDownloadStream } from '../../src/service/workspace-direct-download-stream-service.js';
 import {
@@ -72,6 +77,31 @@ class FakeDataChannel extends EventTarget {
     this.onmessage?.(new MessageEvent('message', { data }));
     this.dispatchEvent(new MessageEvent('message', { data }));
   }
+}
+
+async function openUploadStream(channel: FakeDataChannel, offset: number, streamId = 1) {
+  await vi.waitFor(() =>
+    expect(channel.sent.map(decodeNodeStreamFrame)).toContainEqual({
+      type: 'OPEN',
+      streamId,
+      kind: 'file-upload',
+      grant: 'g'.repeat(32)
+    })
+  );
+  channel.receive(encodeNodeStreamFrame({ type: 'OPENED', streamId }).buffer);
+  channel.receive(
+    encodeNodeStreamFrame({ type: 'DATA', streamId, bytes: encodeUploadOffset(offset) }).buffer
+  );
+  await vi.waitFor(() =>
+    expect(channel.sent.map(decodeNodeStreamFrame)).toContainEqual({ type: 'FIN', streamId })
+  );
+}
+
+function completeUploadStream(channel: FakeDataChannel, offset: number, streamId = 1) {
+  channel.receive(
+    encodeNodeStreamFrame({ type: 'DATA', streamId, bytes: encodeUploadOffset(offset) }).buffer
+  );
+  channel.receive(encodeNodeStreamFrame({ type: 'FIN', streamId }).buffer);
 }
 
 class FakePeerConnection extends EventTarget {
@@ -217,7 +247,7 @@ describe('Workspace direct transfer browser service', () => {
     const f = fixture(['transport-request']);
     await connect(f);
     expect(f.service.isConnected('node-1', 'generation-1')).toBe(true);
-    expect(f.peers[0]!.channels[0]?.label).toBe('mar-direct-transport');
+    expect(f.peers[0]!.channels[0]?.label).toBe('mar-node-stream');
     expect(f.peers[0]!.channels[0]?.readyState).toBe('open');
     await expect(f.service.ensureTransport('node-1', 'generation-1')).resolves.toBe(
       'DIRECT_AVAILABLE'
@@ -228,6 +258,54 @@ describe('Workspace direct transfer browser service', () => {
     ).toHaveLength(1);
     f.service.close();
     expect(f.peers[0]!.channels[0]?.readyState).toBe('closed');
+  });
+
+  it('opens separate byte streams on the channel that established ICE', async () => {
+    const f = fixture(['transport-request']);
+    await connect(f);
+    try {
+      const terminal = f.service.acquireTerminalTransport('node-1', 'generation-1')!;
+      const file = f.service.acquireTerminalTransport('node-1', 'generation-1')!;
+      const peer = f.peers[0]!;
+      const carrier = peer.channels[0]!;
+      carrier.readyState = 'connecting';
+      const abort = new AbortController();
+      const waiting = terminal.readyStreamPath(abort.signal);
+      abort.abort();
+      await expect(waiting).rejects.toMatchObject({ name: 'AbortError' });
+      carrier.readyState = 'open';
+      carrier.dispatchEvent(new Event('open'));
+      const signal = new AbortController().signal;
+      const path = (await terminal.readyStreamPath(signal))!;
+      expect(await file.readyStreamPath(signal)).toBe(path);
+      const terminalStream = path.openStream(
+        { kind: 'terminal', grant: 'terminal-ticket' },
+        signal
+      );
+      const fileStream = path.openStream({ kind: 'file', grant: 'file-ticket' }, signal);
+      expect(carrier.sent.map(decodeNodeStreamFrame)).toEqual([
+        { type: 'OPEN', streamId: 1, kind: 'terminal', grant: 'terminal-ticket' },
+        { type: 'OPEN', streamId: 2, kind: 'file', grant: 'file-ticket' }
+      ]);
+      carrier.receive(encodeNodeStreamFrame({ type: 'OPENED', streamId: 1 }).buffer);
+      carrier.receive(encodeNodeStreamFrame({ type: 'OPENED', streamId: 2 }).buffer);
+      (await terminalStream)!.close();
+      terminal.release();
+      await (await fileStream)!.write(Uint8Array.of(0, 255, 42));
+      expect(carrier.sent.slice(2).map(decodeNodeStreamFrame)).toEqual([
+        { type: 'RESET', streamId: 1, code: 'NODE_STREAM_CANCELLED' },
+        { type: 'DATA', streamId: 2, bytes: Uint8Array.of(0, 255, 42) }
+      ]);
+      expect(peer.channels).toHaveLength(1);
+      expect(carrier.readyState).toBe('open');
+      file.release();
+      carrier.close();
+      expect(path.closed).toBe(true);
+      expect(f.service.isConnected('node-1', 'generation-1')).toBe(false);
+      expect(peer.connectionState).toBe('closed');
+    } finally {
+      f.service.close();
+    }
   });
 
   it('exposes the selected candidate pair network category after connecting', async () => {
@@ -307,6 +385,7 @@ describe('Workspace direct transfer browser service', () => {
       file: new File(['x'], 'x.txt'),
       descriptor: {
         direction: 'UPLOAD',
+        uploadId: '54b92a04-ee89-4393-8bc9-ccc6d132b9b0',
         sha256: '0'.repeat(64),
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x.txt' },
         fileName: 'x.txt',
@@ -323,7 +402,7 @@ describe('Workspace direct transfer browser service', () => {
       purpose: 'TRANSFER',
       expiresAt: Date.now() + 60_000
     });
-    const channel = f.peers[0]!.channels[1]!;
+    const channel = f.peers[0]!.channels[0]!;
     f.service.handle({
       type: 'direct.grant',
       directSessionId: 'upload-session',
@@ -331,20 +410,45 @@ describe('Workspace direct transfer browser service', () => {
       openExpiresAt: Date.now() + 30_000,
       expiresAt: Date.now() + 60_000
     });
-    channel.receive(JSON.stringify({ type: 'ACK', offset: 0 }));
-    await vi.waitFor(() =>
-      expect(channel.sent.some((value) => value instanceof ArrayBuffer)).toBe(true)
-    );
+    await openUploadStream(channel, 0);
 
     f.service.releaseTransport('node-1');
     expect(f.peers[0]!.connectionState).toBe('connected');
     expect(f.service.transportNodeIds()).toEqual(['node-1']);
 
-    channel.receive(JSON.stringify({ type: 'ACK', offset: 1 }));
+    completeUploadStream(channel, 1);
     f.service.handle({ type: 'direct.complete', directSessionId: 'upload-session', size: 1 });
     await expect(upload).resolves.toBeUndefined();
     expect(f.peers[0]!.connectionState).toBe('closed');
     expect(f.service.transportNodeIds()).toEqual([]);
+  });
+
+  it('does not send a prepare for an already cancelled upload', async () => {
+    const f = fixture(['transport-request', 'upload-request']);
+    await connect(f);
+    try {
+      const sent = f.sent.length;
+      await expect(
+        f.service.upload({
+          nodeId: 'node-1',
+          nodeGeneration: 'generation-1',
+          file: new File(['x'], 'x.txt'),
+          signal: AbortSignal.abort(),
+          descriptor: {
+            direction: 'UPLOAD',
+            uploadId: '54b92a04-ee89-4393-8bc9-ccc6d132b9b0',
+            sha256: '0'.repeat(64),
+            resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x.txt' },
+            fileName: 'x.txt',
+            size: 1
+          }
+        })
+      ).rejects.toThrow('DIRECT_TRANSFER_CANCELLED');
+      expect(f.sent).toHaveLength(sent);
+      expect(f.peers[0]!.channels).toHaveLength(1);
+    } finally {
+      f.service.close();
+    }
   });
 
   it('invalidates a transport retained by a Terminal reference after expiry', async () => {
@@ -372,6 +476,7 @@ describe('Workspace direct transfer browser service', () => {
       file: new File(['original'], 'x.txt'),
       descriptor: {
         direction: 'UPLOAD',
+        uploadId: '54b92a04-ee89-4393-8bc9-ccc6d132b9b0',
         sha256: '0'.repeat(64),
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x.txt' },
         fileName: 'x.txt',
@@ -388,7 +493,7 @@ describe('Workspace direct transfer browser service', () => {
       purpose: 'TRANSFER',
       expiresAt: Date.now() + 60_000
     });
-    const channel = f.peers[0]!.channels[1]!;
+    const channel = f.peers[0]!.channels[0]!;
     f.service.handle({
       type: 'direct.grant',
       directSessionId: 'upload-session',
@@ -396,13 +501,13 @@ describe('Workspace direct transfer browser service', () => {
       openExpiresAt: Date.now() + 30_000,
       expiresAt: Date.now() + 60_000
     });
-    channel.receive(JSON.stringify({ type: 'ACK', offset: 3 }));
-    await vi.waitFor(() =>
-      expect(channel.sent.some((value) => value instanceof ArrayBuffer)).toBe(true)
-    );
-    const chunk = channel.sent.find((value) => value instanceof ArrayBuffer) as ArrayBuffer;
-    expect(new Uint8Array(chunk)).toEqual(new TextEncoder().encode('ginal'));
-    channel.receive(JSON.stringify({ type: 'ACK', offset: 8 }));
+    await openUploadStream(channel, 3);
+    expect(channel.sent.map(decodeNodeStreamFrame)).toContainEqual({
+      type: 'DATA',
+      streamId: 1,
+      bytes: new TextEncoder().encode('ginal')
+    });
+    completeUploadStream(channel, 8);
     f.service.handle({ type: 'direct.complete', directSessionId: 'upload-session', size: 8 });
     await expect(upload).resolves.toBeUndefined();
   });
@@ -416,6 +521,7 @@ describe('Workspace direct transfer browser service', () => {
       file: new File(['x'], 'x.txt'),
       descriptor: {
         direction: 'UPLOAD',
+        uploadId: '54b92a04-ee89-4393-8bc9-ccc6d132b9b0',
         sha256: '0'.repeat(64),
         resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'x.txt' },
         fileName: 'x.txt',
@@ -432,7 +538,7 @@ describe('Workspace direct transfer browser service', () => {
       purpose: 'TRANSFER',
       expiresAt: Date.now() + 60_000
     });
-    const channel = f.peers[0]!.channels[1]!;
+    const channel = f.peers[0]!.channels[0]!;
     f.service.handle({
       type: 'direct.grant',
       directSessionId: 'upload-session',
@@ -440,16 +546,13 @@ describe('Workspace direct transfer browser service', () => {
       openExpiresAt: Date.now() + 30_000,
       expiresAt: Date.now() + 60_000
     });
-    channel.receive(JSON.stringify({ type: 'ACK', offset: 0 }));
-    await vi.waitFor(() =>
-      expect(channel.sent.some((value) => value instanceof ArrayBuffer)).toBe(true)
-    );
+    await openUploadStream(channel, 0);
 
     f.service.releaseTransport('node-1');
     await expect(f.service.ensureTransport('node-1', 'generation-1')).resolves.toBe(
       'DIRECT_AVAILABLE'
     );
-    channel.receive(JSON.stringify({ type: 'ACK', offset: 1 }));
+    completeUploadStream(channel, 1);
     f.service.handle({ type: 'direct.complete', directSessionId: 'upload-session', size: 1 });
 
     await expect(upload).resolves.toBeUndefined();
@@ -489,7 +592,7 @@ describe('Workspace direct transfer browser service', () => {
     f.service.close();
   });
 
-  it('opens independent upload channels over one transport', async () => {
+  it('opens independent upload streams over one carrier', async () => {
     const f = fixture(['transport-request', 'upload-request-1', 'upload-request-2']);
     await connect(f);
     for (const [index, requestId] of ['upload-request-1', 'upload-request-2'].entries()) {
@@ -500,6 +603,7 @@ describe('Workspace direct transfer browser service', () => {
         file: new File(['x'], 'x.txt'),
         descriptor: {
           direction: 'UPLOAD',
+          uploadId: '54b92a04-ee89-4393-8bc9-ccc6d132b9b0',
           sha256: '0'.repeat(64),
           resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: `x-${index}.txt` },
           fileName: 'x.txt',
@@ -516,7 +620,7 @@ describe('Workspace direct transfer browser service', () => {
         purpose: 'TRANSFER',
         expiresAt: Date.now() + 60_000
       });
-      const channel = f.peers[0]!.channels[index + 1]!;
+      const channel = f.peers[0]!.channels[0]!;
       f.service.handle({
         type: 'direct.grant',
         directSessionId,
@@ -524,14 +628,8 @@ describe('Workspace direct transfer browser service', () => {
         openExpiresAt: Date.now() + 30_000,
         expiresAt: Date.now() + 60_000
       });
-      expect(channel.sent[0]).toBe(
-        JSON.stringify({ type: 'OPEN', directSessionId, grant: 'g'.repeat(32) })
-      );
-      channel.receive(JSON.stringify({ type: 'ACK', offset: 0 }));
-      await vi.waitFor(() =>
-        expect(channel.sent.some((value) => value instanceof ArrayBuffer)).toBe(true)
-      );
-      channel.receive(JSON.stringify({ type: 'ACK', offset: 1 }));
+      await openUploadStream(channel, 0, index + 1);
+      completeUploadStream(channel, 1, index + 1);
       f.service.handle({
         type: 'direct.complete',
         directSessionId,
@@ -540,63 +638,100 @@ describe('Workspace direct transfer browser service', () => {
       await expect(upload).resolves.toBeUndefined();
     }
     expect(f.peers).toHaveLength(1);
+    expect(f.peers[0]!.channels).toHaveLength(1);
     expect(f.peers[0]!.connectionState).toBe('connected');
     f.service.close();
   });
 
-  it('verifies and acknowledges a bounded Range download without closing the transport', async () => {
-    const sink = {
-      write: vi.fn(async () => undefined),
-      close: vi.fn(async () => undefined),
-      abort: vi.fn(async () => undefined)
-    };
-    const f = fixture(['transport-request', 'download-request']);
-    await connect(f);
-    const download = f.service.download({
-      nodeId: 'node-1',
-      nodeGeneration: 'generation-1',
-      sink,
-      descriptor: {
-        direction: 'DOWNLOAD',
-        resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'large.bin' },
-        fileName: 'large.bin',
-        revision: 'revision-1',
-        size: 10,
-        range: { offset: 4, length: 3 }
+  it.each([true, false])(
+    'validates a Range download without closing its carrier (complete: %s)',
+    async (complete) => {
+      const sink = {
+        write: vi.fn(async () => undefined),
+        close: vi.fn(async () => undefined),
+        abort: vi.fn(async () => undefined)
+      };
+      const f = fixture(['transport-request', 'download-request']);
+      await connect(f);
+      const download = f.service.download({
+        nodeId: 'node-1',
+        nodeGeneration: 'generation-1',
+        sink,
+        descriptor: {
+          direction: 'DOWNLOAD',
+          resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'large.bin' },
+          fileName: 'large.bin',
+          revision: 'revision-1',
+          size: 10,
+          range: { offset: 4, length: 3 }
+        }
+      });
+      const rejected = complete
+        ? undefined
+        : expect(download).rejects.toThrow('DIRECT_INTEGRITY_FAILED');
+      f.service.handle({
+        type: 'direct.prepared',
+        requestId: 'download-request',
+        directSessionId: 'download-session',
+        transportSessionId: 'transport-session',
+        nodeId: 'node-1',
+        nodeGeneration: 'generation-1',
+        purpose: 'TRANSFER',
+        expiresAt: Date.now() + 60_000
+      });
+      const channel = f.peers[0]!.channels[0]!;
+      expect(f.peers[0]!.channels).toHaveLength(1);
+      f.service.handle({
+        type: 'direct.grant',
+        directSessionId: 'download-session',
+        grant: 'g'.repeat(32),
+        openExpiresAt: Date.now() + 30_000,
+        expiresAt: Date.now() + 60_000
+      });
+      const open = decodeNodeStreamFrame(channel.sent[0]);
+      expect(open).toEqual({
+        type: 'OPEN',
+        streamId: 1,
+        kind: 'file-download',
+        grant: 'g'.repeat(32)
+      });
+      channel.receive(encodeNodeStreamFrame({ type: 'OPENED', streamId: 1 }).buffer);
+      channel.receive(
+        encodeNodeStreamFrame({
+          type: 'DATA',
+          streamId: 1,
+          bytes: complete ? Uint8Array.of(1, 2, 3) : Uint8Array.of(1, 2)
+        }).buffer
+      );
+      channel.receive(encodeNodeStreamFrame({ type: 'FIN', streamId: 1 }).buffer);
+      if (!complete) {
+        await rejected;
+        expect(sink.close).not.toHaveBeenCalled();
+        expect(sink.abort).toHaveBeenCalledOnce();
+        expect(channel.sent.map(decodeNodeStreamFrame)).toContainEqual({
+          type: 'RESET',
+          streamId: 1,
+          code: 'NODE_STREAM_CANCELLED'
+        });
+        expect(channel.readyState).toBe('open');
+        f.service.close();
+        return;
       }
-    });
-    f.service.handle({
-      type: 'direct.prepared',
-      requestId: 'download-request',
-      directSessionId: 'download-session',
-      transportSessionId: 'transport-session',
-      nodeId: 'node-1',
-      nodeGeneration: 'generation-1',
-      purpose: 'TRANSFER',
-      expiresAt: Date.now() + 60_000
-    });
-    const channel = f.peers[0]!.channels[1]!;
-    f.service.handle({
-      type: 'direct.grant',
-      directSessionId: 'download-session',
-      grant: 'g'.repeat(32),
-      openExpiresAt: Date.now() + 30_000,
-      expiresAt: Date.now() + 60_000
-    });
-    channel.receive(new Uint8Array([1, 2, 3]).buffer);
-    channel.receive(JSON.stringify({ type: 'COMPLETE', size: 3 }));
-    await vi.waitFor(() => expect(sink.close).toHaveBeenCalledOnce());
-    expect(channel.sent).toContain(JSON.stringify({ type: 'ACK', offset: 3 }));
-    channel.close();
-    f.service.handle({
-      type: 'direct.complete',
-      directSessionId: 'download-session',
-      size: 3
-    });
-    await expect(download).resolves.toBeUndefined();
-    expect(f.peers[0]!.connectionState).toBe('connected');
-    f.service.close();
-  });
+      await vi.waitFor(() =>
+        expect(channel.sent.map(decodeNodeStreamFrame)).toContainEqual({ type: 'FIN', streamId: 1 })
+      );
+      expect(sink.write).toHaveBeenCalledWith(Uint8Array.of(1, 2, 3));
+      expect(sink.close).toHaveBeenCalledOnce();
+      f.service.handle({
+        type: 'direct.complete',
+        directSessionId: 'download-session',
+        size: 3
+      });
+      await expect(download).resolves.toBeUndefined();
+      expect(f.peers[0]!.connectionState).toBe('connected');
+      f.service.close();
+    }
+  );
 
   it('closes all transports when the page control connection is invalidated', async () => {
     const f = fixture(['transport-request']);
@@ -830,7 +965,6 @@ describe('Workspace direct download stream', () => {
     expect(click).toHaveBeenCalledOnce();
     expect(append).toHaveBeenCalledTimes(2);
     expect(remove).toHaveBeenCalledOnce();
-    expect(stream.started()).toBe(true);
   });
 
   it('aborts the direct transfer when the browser cancels the download', async () => {

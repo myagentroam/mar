@@ -37,17 +37,15 @@ test('UUID, SHA-256, upload initialization and sharing work in a non-secure HTTP
       });
       const uploads = createWorkspaceUploadService({
         workspaceTarget: { value: { nodeId: 'node', workspaceId: 'workspace' } },
-        csrfToken: { value: 'fixture-csrf' },
-        request: async () => {
-          throw new Error('Unexpected relay request');
+        request: async <T>(path: string) => {
+          if (path.endsWith('/uploads'))
+            return { upload: { uploadId: 'upload', path: 'sample.txt', receivedBytes: 0 } } as T;
+          if (path.endsWith('/complete')) return { upload: { receivedBytes: 3 } } as T;
+          throw new Error('Unexpected upload control request');
         },
-        renewCsrfToken: async () => 'fixture-csrf',
         onFilesChanged: complete,
-        direct: {
-          generation: () => 'generation',
-          upload: async ({ descriptor }: { descriptor: { sha256: string } }) => {
-            uploadedDigest = descriptor.sha256;
-          }
+        sendBody: async ({ descriptor }: { descriptor: { sha256: string } }) => {
+          uploadedDigest = descriptor.sha256;
         }
       });
       const file = new File(['abc'], 'sample.txt');

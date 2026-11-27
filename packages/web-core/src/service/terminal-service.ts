@@ -1,19 +1,47 @@
-import type { createTerminalDirectClient } from './terminal-direct-client.js';
-import { TerminalDirectError } from './terminal-direct-client.js';
-import { createTerminalRelayService } from './terminal-relay-service.js';
+import {
+  decodeTerminalMessage,
+  encodeTerminalMessage,
+  terminalDataFrameSchema
+} from '@myagentroam/protocol';
+import { NodeStreamError, type NodeStream } from '@myagentroam/protocol/node-stream';
+import { readTerminalRecords, writeTerminalRecord } from '@myagentroam/protocol/terminal-stream';
+import type { OpenWorkbenchNodeStream } from './workbench-node-connection-service.js';
+import { ApiError } from '../util/api-error.js';
 import { translate } from './locale-preference-service.js';
 
-type RelayOptions = Parameters<typeof createTerminalRelayService>[0];
-type DirectClient = Pick<ReturnType<typeof createTerminalDirectClient>, 'attach'>;
+export interface TerminalDockHandle {
+  toggle(): Promise<void>;
+  release(): Promise<void>;
+  closeAll(): Promise<boolean>;
+}
 
-export interface TerminalServiceOptions extends RelayOptions {
-  readonly direct?: DirectClient;
+export interface WorkbenchTerminalView {
+  terminalDocks: Map<string, TerminalDockHandle>;
+  openNodeStream: OpenWorkbenchNodeStream;
+  terminalReady: boolean;
+}
+
+export interface TerminalServiceOptions {
+  readonly terminalId: string;
+  readonly nodeId: string;
+  readonly workspaceId?: string;
+  readonly openStream: OpenWorkbenchNodeStream;
+  readonly onAttached: () => void;
+  readonly onOutput: (data: Uint8Array) => void;
+  readonly onExited: () => void;
+  readonly onTerminalUnavailable: (code: string) => void;
+  readonly onErrorFrame: (code: string) => void;
+  readonly onReconnectStatus: (message: string | undefined) => void;
 }
 
 const TERMINAL_END_CODES = new Set(['TERMINAL_CLOSED', 'TERMINAL_NOT_FOUND']);
 const INPUT_CHUNK_BYTES = 32 * 1024;
+const ATTACH_TIMEOUT_MS = 20_000;
+const MAX_PENDING_INPUT_BYTES = 2 * 1024 * 1024;
 const DENIED_CODES = new Set([
+  'RESOURCE_DENIED',
   'TERMINAL_NOT_AUTHORIZED',
+  'TERMINAL_OWNER_REQUIRED',
   'RESOURCE_ACCESS_DENIED',
   'WORKSPACE_ACCESS_DENIED',
   'SESSION_UNAUTHENTICATED',
@@ -23,9 +51,10 @@ const DENIED_CODES = new Set([
   'NODE_ACCESS_DENIED'
 ]);
 
+/** Owns one Terminal attachment and its replay cursor, not the shared carrier or PTY. */
 export function createTerminalService(options: TerminalServiceOptions) {
-  let relay: ReturnType<typeof createTerminalRelayService> | undefined;
-  let direct: { send(frame: object): void; dispose(): void } | undefined;
+  let attachment: { send(frame: object): void; dispose(): void } | undefined;
+  let attaching: Promise<void> | undefined;
   let abort: AbortController | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let countdown: ReturnType<typeof setInterval> | undefined;
@@ -46,12 +75,11 @@ export function createTerminalService(options: TerminalServiceOptions) {
 
   function stopPath(): void {
     attached = false;
+    attaching = undefined;
     abort?.abort();
     abort = undefined;
-    relay?.dispose();
-    relay = undefined;
-    direct?.dispose();
-    direct = undefined;
+    attachment?.dispose();
+    attachment = undefined;
   }
 
   function terminalFailure(code: string): boolean {
@@ -64,11 +92,16 @@ export function createTerminalService(options: TerminalServiceOptions) {
     }
     if (TERMINAL_END_CODES.has(code)) {
       terminalUnavailable = true;
+      stopTimers();
+      stopPath();
       options.onTerminalUnavailable(code);
       return true;
     }
     if (DENIED_CODES.has(code)) {
       terminalUnavailable = true;
+      stopTimers();
+      stopPath();
+      options.onReconnectStatus(undefined);
       options.onErrorFrame(code);
       return true;
     }
@@ -120,93 +153,112 @@ export function createTerminalService(options: TerminalServiceOptions) {
     options.onOutput(data);
   }
 
-  function beginRelay(epoch: number): void {
-    if (disposed || terminalUnavailable || epoch !== generation) return;
-    relay?.dispose();
-    relay = createTerminalRelayService({
-      ...options,
-      managed: true,
-      afterSequence: () => lastSequence,
-      onSequence: (sequence) => {
-        lastSequence = sequence;
-      },
-      onOutput: (data) => onOutput(data),
-      onAttached: () => {
-        if (epoch === generation) onAttached();
-      },
-      onDisconnected: (code) => {
-        if (epoch !== generation || disposed || terminalUnavailable) return;
-        if (terminalFailure(code)) return;
-        stopPath();
-        scheduleReconnect();
-      },
-      onErrorFrame: (code) => {
-        if (epoch === generation && !terminalFailure(code)) options.onErrorFrame(code);
-      },
-      onReconnectStatus: () => undefined,
-      onTerminalUnavailable: (code) => {
-        if (epoch !== generation) return;
-        terminalUnavailable = true;
-        options.onTerminalUnavailable(code);
-      }
-    });
-    void relay.attach();
+  function streamLost(epoch: number, error?: unknown): void {
+    if (epoch !== generation || disposed || terminalUnavailable) return;
+    if (
+      (error instanceof NodeStreamError || error instanceof ApiError) &&
+      terminalFailure(error.code)
+    )
+      return;
+    generation += 1;
+    stopPath();
+    scheduleReconnect();
   }
 
-  async function connect(forceRelay = false): Promise<void> {
+  async function doConnect(): Promise<void> {
     if (disposed || terminalUnavailable) return;
-    generation += 1;
-    const epoch = generation;
+    const epoch = ++generation;
     stopPath();
-    const controller = new AbortController();
-    abort = controller;
-    if (forceRelay || options.direct === undefined) {
-      beginRelay(epoch);
-      return;
-    }
+    abort = new AbortController();
+    const signal = abort.signal;
+    let stream: NodeStream | undefined;
+    const handshake = new AbortController();
+    const deadline = setTimeout(() => handshake.abort(), ATTACH_TIMEOUT_MS);
+    const opening = AbortSignal.any([signal, handshake.signal]);
+    const onTimeout = () => streamLost(epoch);
+    handshake.signal.addEventListener('abort', onTimeout, { once: true });
+    const clearDeadline = () => {
+      clearTimeout(deadline);
+      handshake.signal.removeEventListener('abort', onTimeout);
+    };
+    signal.addEventListener('abort', clearDeadline, { once: true });
     try {
-      const connection = await options.direct.attach({
-        nodeId: options.nodeId,
-        terminalId: options.terminalId,
-        ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
-        afterSequence: lastSequence,
-        readonly: false,
-        onFrame: (frame) => {
-          if (epoch !== generation || disposed) return;
-          if (frame.type === 'output') onOutput(frame.data, frame.sequence);
-          else if (frame.type === 'exit') options.onExited();
-          else if (frame.type === 'error') {
-            if (terminalFailure(frame.code)) return;
-            options.onErrorFrame(frame.code);
+      stream = await options.openStream(
+        options.nodeId,
+        {
+          kind: 'terminal',
+          terminalId: options.terminalId,
+          ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
+          afterSequence: lastSequence
+        },
+        opening
+      );
+      opening.throwIfAborted();
+      const current = stream;
+      let pendingBytes = 0;
+      let write = Promise.resolve();
+      attachment = {
+        send(frame) {
+          const record = writeTerminalRecord(encodeTerminalMessage(frame));
+          pendingBytes += record.byteLength;
+          if (pendingBytes > MAX_PENDING_INPUT_BYTES) {
+            streamLost(epoch);
+            return;
           }
+          write = write
+            .then(async () => {
+              if (!signal.aborted) await current.write(record);
+              pendingBytes -= record.byteLength;
+            })
+            .catch((error: unknown) => streamLost(epoch, error));
         },
-        onAttached: () => {
-          if (epoch === generation) onAttached();
-        },
-        onDisconnected: (code) => {
-          if (epoch !== generation || disposed || terminalUnavailable) return;
-          if (terminalFailure(code)) return;
-          void connect(true);
-        },
-        signal: controller.signal
-      });
-      if (epoch !== generation || disposed) {
-        connection?.dispose();
-        return;
-      }
-      if (connection === undefined) beginRelay(epoch);
-      else direct = connection;
+        dispose: () => current.close()
+      };
+      void (async () => {
+        try {
+          for await (const record of readTerminalRecords(current)) {
+            if (signal.aborted) return;
+            const frame = terminalDataFrameSchema.parse(decodeTerminalMessage(record));
+            if (frame.terminalId !== options.terminalId) throw new Error('TERMINAL_FRAME_INVALID');
+            if (frame.type === 'attach') {
+              if (!attached) {
+                clearDeadline();
+                onAttached();
+              }
+            } else if (frame.type === 'output') onOutput(frame.data, frame.sequence);
+            else if (frame.type === 'exit') {
+              terminalUnavailable = true;
+              stopPath();
+              options.onExited();
+              return;
+            } else if (frame.type === 'error' && !terminalFailure(frame.code)) {
+              options.onErrorFrame(frame.code);
+            }
+          }
+          streamLost(epoch);
+        } catch (error) {
+          streamLost(epoch, error);
+        }
+      })();
     } catch (error) {
-      if (epoch !== generation || disposed) return;
-      const code =
-        error instanceof TerminalDirectError ? error.code : 'TERMINAL_DIRECT_UNAVAILABLE';
-      if (!terminalFailure(code)) beginRelay(epoch);
+      clearDeadline();
+      stream?.close();
+      streamLost(epoch, error);
     }
+  }
+
+  function connect(): Promise<void> {
+    if (attaching !== undefined) return attaching;
+    const task = doConnect().finally(() => {
+      if (attaching === task) attaching = undefined;
+    });
+    attaching = task;
+    return task;
   }
 
   function send(frame: object): void {
     if (!attached || disposed) return;
-    const path = direct ?? relay;
+    const path = attachment;
     if (path === undefined) return;
     if (!(
       'type' in frame &&
@@ -230,6 +282,7 @@ export function createTerminalService(options: TerminalServiceOptions) {
 
   function reconnect(): void {
     if (disposed || terminalUnavailable) return;
+    attaching = undefined;
     void connect();
   }
 
@@ -241,5 +294,5 @@ export function createTerminalService(options: TerminalServiceOptions) {
     options.onReconnectStatus(undefined);
   }
 
-  return { attach: connect, send, reconnect, dispose };
+  return { attach: () => (attached ? Promise.resolve() : connect()), send, reconnect, dispose };
 }

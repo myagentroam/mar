@@ -28,7 +28,7 @@ async function openNetwork(
   return { dialog, port, current };
 }
 
-function boardTitleLayout(label: Locator) {
+function titleLayout(label: Locator) {
   return label.evaluate((el) => ({
     lines: Math.round(
       el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)
@@ -71,7 +71,7 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
 }, info) => {
   await page.setViewportSize({ width: 1480, height: 940 });
   const { dialog, port, current } = await openNetwork(page, 'dark', 'long');
-  const board = dialog.getByRole('region', { name: '白板', exact: true });
+  const board = dialog.getByRole('region', { name: '协作白板', exact: true });
   const child = port.getByRole('button', { name: /^回归测试：核对[^·]+$/ });
   const anchorName = (await current.locator('.network-node-title').textContent())!;
   const childName = (await child.textContent())!.trim();
@@ -94,10 +94,10 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
   await expect(tooltip).toHaveText(childName);
   await expect(child.locator('.network-node-title')).toHaveCSS('font-weight', '400');
   await child.press('Enter');
-  const heading = board.getByRole('heading', { name: `白板 · ${childName}`, exact: true });
+  const heading = board.getByRole('heading', { name: `协作白板 · ${childName}`, exact: true });
   await expect(heading).toHaveCSS('font-weight', '400');
-  const clippedTitle = heading.getByText(`白板 · ${childName}`, { exact: true });
-  await expect.poll(() => boardTitleLayout(clippedTitle)).toEqual({ lines: 2, clipped: true });
+  const clippedTitle = heading.getByText(`协作白板 · ${childName}`, { exact: true });
+  await expect.poll(() => titleLayout(clippedTitle)).toEqual({ lines: 2, clipped: true });
   const [clippedBox, clippedIconBox] = await Promise.all([
     clippedTitle.boundingBox(),
     heading.locator('[data-mar-icon="collection"]').boundingBox()
@@ -108,24 +108,24 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
     )
   ).toBeLessThan(1);
   await heading.hover();
-  await expect(tooltip).toHaveText(`白板 · ${childName}`);
+  await expect(tooltip).toHaveText(`协作白板 · ${childName}`);
   await page.mouse.move(1, 1);
   await dialog.getByRole('button', { name: '定位', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(heading).toBeFocused();
-  await expect(tooltip).toHaveText(`白板 · ${childName}`);
+  await expect(tooltip).toHaveText(`协作白板 · ${childName}`);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
   await expect(tooltip).not.toBeVisible();
 
-  await expect(board.getByRole('group', { name: '切换白板' })).toHaveCount(0);
-  await expect(board.getByText('白板暂无内容。')).toBeVisible();
-  const shared = port.getByRole('button', { name: `${anchorName} 向 ${childName} 共享白板` });
+  await expect(board.getByRole('group', { name: '切换协作白板' })).toHaveCount(0);
+  await expect(board.getByText('协作白板暂无内容。')).toBeVisible();
+  const shared = port.getByRole('button', { name: `${anchorName} 向 ${childName} 共享协作白板` });
   await port.focus();
   await page.keyboard.press('Tab');
   await expect(shared).toBeFocused();
   await page.keyboard.press('Space');
-  const sharedHeading = board.getByRole('heading', { name: `共享白板 · ${anchorName}` });
+  const sharedHeading = board.getByRole('heading', { name: `共享协作白板 · ${anchorName}` });
   await expect(sharedHeading).toBeVisible();
   await expect(shared).toBeFocused();
   await expect(shared).toHaveAttribute('aria-pressed', 'true');
@@ -136,7 +136,7 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
     animations: 'disabled'
   });
   await sharedHeading.hover();
-  await expect(tooltip).toHaveText(`共享白板 · ${anchorName}`);
+  await expect(tooltip).toHaveText(`共享协作白板 · ${anchorName}`);
   await page.screenshot({
     path: info.outputPath('collaboration-network-long-titles.png'),
     animations: 'disabled'
@@ -145,12 +145,64 @@ test('shows clipped titles on demand and distinguishes shared boards from the se
   await expect(heading).toBeVisible();
   await expect(shared).toHaveAttribute('aria-pressed', 'false');
   await expect(child).toHaveAttribute('aria-pressed', 'true');
-  await expect(board.getByText('白板暂无内容。')).toBeVisible();
+  await expect(board.getByText('协作白板暂无内容。')).toBeVisible();
+});
+
+test('keeps a two-line current node highlighted while another board is selected', async ({
+  page
+}, info) => {
+  await page.setViewportSize({ width: 1480, height: 940 });
+  const { dialog, port, current } = await openNetwork(page, 'dark', 'long');
+  const zoomIn = dialog.getByRole('button', { name: '放大', exact: true });
+  await zoomIn.focus();
+  for (let step = 0; step < 14; step++) await page.keyboard.press('Enter');
+  await expect(dialog.locator('output')).toHaveText('100%');
+  await dialog.getByRole('button', { name: '定位', exact: true }).click();
+
+  const currentTitle = current.locator('.network-node-title');
+  await expect.poll(() => titleLayout(currentTitle)).toEqual({ lines: 2, clipped: true });
+  await expect(current).toHaveCSS('border-top-color', 'rgb(77, 163, 255)');
+  const child = port.getByRole('button', { name: /^回归测试：核对[^·]+$/ });
+  await expect
+    .poll(() => titleLayout(child.locator('.network-node-title')))
+    .toEqual({
+      lines: 2,
+      clipped: true
+    });
+  await child.click();
+  await expect(child).toHaveAttribute('aria-pressed', 'true');
+  await expect(child).not.toHaveCSS('border-top-color', 'rgb(77, 163, 255)');
+  await expect(current).toHaveAttribute('aria-pressed', 'false');
+  await expect(current).toHaveCSS('border-top-color', 'rgb(77, 163, 255)');
+  const [nodeBox, badgeBox] = await Promise.all([
+    current.boundingBox(),
+    current.getByText('当前会话', { exact: true }).boundingBox()
+  ]);
+  expect(badgeBox!.y + badgeBox!.height).toBeLessThan(nodeBox!.y + nodeBox!.height - 1);
+
+  const arrows = await port.locator('.edge-parent').evaluateAll((edges) =>
+    edges.map((edge) => {
+      const path = edge as SVGPathElement;
+      const length = path.getTotalLength();
+      const beforeArrow = path.getPointAtLength(length - 8);
+      const tip = path.getPointAtLength(length);
+      const markerId = path.getAttribute('marker-end')!.slice(5, -1);
+      const marker = document.getElementById(markerId)!.firstElementChild!;
+      return {
+        straight: Math.abs(tip.x - beforeArrow.x) < 0.1 && tip.y - beforeArrow.y > 7.9,
+        sameStroke: getComputedStyle(path).stroke === getComputedStyle(marker).stroke
+      };
+    })
+  );
+  expect(arrows).toHaveLength(27);
+  expect(arrows.every(({ straight, sameStroke }) => straight && sameStroke)).toBe(true);
+  await page.mouse.move(1, 1);
+  await dialog.screenshot({ path: info.outputPath('collaboration-network-current-node.png') });
 });
 
 test('keeps stale board content hidden until the navigation retry succeeds', async ({ page }) => {
   const { dialog, port, current } = await openNetwork(page, 'dark');
-  const board = dialog.getByRole('region', { name: '白板', exact: true });
+  const board = dialog.getByRole('region', { name: '协作白板', exact: true });
   const more = dialog.getByRole('button', { name: '会话操作：发布协调', exact: true });
   const content = board.getByText('发布前先核对回归结果。');
   await expect(content).toBeVisible();
@@ -161,7 +213,7 @@ test('keeps stale board content hidden until the navigation retry succeeds', asy
   await expect(port).toBeFocused();
   await expect(content).toBeHidden();
   await dialog.getByRole('button', { name: '重试' }).click();
-  await expect(board.getByRole('status', { name: '正在读取白板' })).toBeVisible();
+  await expect(board.getByRole('status', { name: '正在读取协作白板' })).toBeVisible();
   await expect(content).toBeHidden();
   await expect(more).toBeDisabled();
   await expect(current).toBeVisible();
@@ -208,7 +260,7 @@ test('opens the full network from a deep Aside session and centers only its entr
   await expect(port.locator('.edge-parent')).toHaveCount(27);
   await expect(port.locator('.edge-sharing')).toHaveCount(6);
   await expect.poll(edgeLayout).toEqual(mainEdges);
-  await expect(dialog.getByRole('heading', { name: '白板 · 发布前冒烟' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: '协作白板 · 发布前冒烟' })).toBeVisible();
   await expect
     .poll(async () => {
       const [viewport, node] = await Promise.all([port.boundingBox(), current.boundingBox()]);
@@ -231,7 +283,7 @@ test('keeps focus in the canvas when a selected peer disappears from the live ne
   await page.evaluate(() => window.dispatchEvent(new Event('fixture-board-detached')));
   await expect(peer).toHaveCount(0);
   await expect(port).toBeFocused();
-  await expect(dialog.getByRole('heading', { name: '白板 · 安全审查' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: '协作白板 · 安全审查' })).toBeVisible();
   await expect(dialog.getByText('核对权限审查的结论。')).toBeVisible();
   await page.keyboard.press('Home');
   await expect(port).toBeFocused();
@@ -270,12 +322,12 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await expect(port.locator('.edge-sharing')).toHaveCount(6);
   const scale = dialog.locator('output');
   await expect.poll(async () => Number.parseInt(await scale.innerText())).toBeLessThan(80);
-  const board = dialog.getByRole('region', { name: '白板', exact: true });
+  const board = dialog.getByRole('region', { name: '协作白板', exact: true });
   await expect(board.getByText('发布前先核对回归结果。')).toBeVisible();
   await expect(board.getByRole('heading', { name: '最近变更' })).toBeVisible();
   await expect(board.getByText('Added 2 entries')).toBeVisible();
   await expect(board.getByText('只读', { exact: true })).toHaveCount(0);
-  const heading = board.getByRole('heading', { name: '白板 · 发布协调' });
+  const heading = board.getByRole('heading', { name: '协作白板 · 发布协调' });
   await expect(heading).toBeVisible();
   await expect(board.getByRole('button', { name: /打开/ })).toHaveCount(0);
   const [titleBox, boardIconBox] = await Promise.all([
@@ -286,7 +338,7 @@ test('focuses the current session in a complex network, zooms at the pointer and
     Math.abs(titleBox!.y + titleBox!.height / 2 - boardIconBox!.y - boardIconBox!.height / 2)
   ).toBeLessThan(1);
   await expect(dialog.getByText('会话详情', { exact: true })).toHaveCount(0);
-  await expect(current).toHaveAccessibleDescription(/父会话：发布计划.*关注 安全审查 的白板/);
+  await expect(current).toHaveAccessibleDescription(/父会话：发布计划.*关注 安全审查 的协作白板/);
   await page.screenshot({
     path: info.outputPath('collaboration-network-desktop.png'),
     animations: 'disabled'
@@ -318,12 +370,12 @@ test('focuses the current session in a complex network, zooms at the pointer and
     await expect(edge).toHaveAttribute('aria-pressed', 'true');
     await expect(port.locator('.is-selected-edge')).toHaveCount(1);
   };
-  await clickEdge('安全审查 向 发布协调 共享白板');
+  await clickEdge('安全审查 向 发布协调 共享协作白板');
   await expect(board.getByText('核对权限审查的结论。')).toBeVisible();
   await expect(board.getByText('Added 2 entries')).toBeVisible();
-  await clickEdge('发布协调 向 安全审查 共享白板');
+  await clickEdge('发布协调 向 安全审查 共享协作白板');
   await expect(board.getByText('发布前先核对回归结果。')).toBeVisible();
-  await expect(board.getByRole('heading', { name: '共享白板 · 发布协调' })).toBeVisible();
+  await expect(board.getByRole('heading', { name: '共享协作白板 · 发布协调' })).toBeVisible();
   await expect(dialog.getByText('Added 2 entries')).toBeVisible();
   await page.screenshot({
     path: info.outputPath('collaboration-network-whiteboard.png'),
@@ -334,7 +386,7 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await expect(page.getByRole('button', { name: '查看协作网络' })).toBeFocused();
   await page.getByRole('button', { name: '查看协作网络' }).click();
   await current.click();
-  const detachedEdge = port.getByRole('button', { name: '安全审查 向 发布协调 共享白板' });
+  const detachedEdge = port.getByRole('button', { name: '安全审查 向 发布协调 共享协作白板' });
   await detachedEdge.press('Enter');
   await expect(detachedEdge).toBeFocused();
   await expect(board.getByText('Added 2 entries')).toBeVisible();
@@ -343,7 +395,7 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await expect(port).toBeFocused();
   await expect(board.getByText('核对权限审查的结论。')).toBeVisible();
   await expect(port.locator('.is-selected-edge')).toHaveCount(0);
-  await expect(board.getByRole('heading', { name: '共享白板 · 安全审查' })).toBeVisible();
+  await expect(board.getByRole('heading', { name: '共享协作白板 · 安全审查' })).toBeVisible();
 });
 
 test('opens the same node menu by More and right click without selecting that node', async ({
@@ -372,7 +424,7 @@ test('opens the same node menu by More and right click without selecting that no
   await expect(aside).toBeFocused();
   await expect(current).toHaveAttribute('aria-pressed', 'true');
   await expect(node).toHaveAttribute('aria-pressed', 'false');
-  await expect(dialog.getByRole('heading', { name: '白板 · 发布协调' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: '协作白板 · 发布协调' })).toBeVisible();
   await page.screenshot({
     path: info.outputPath('collaboration-network-node-menu.png'),
     animations: 'disabled'
@@ -389,6 +441,17 @@ test('keeps the three zoom controls together and fits the network at 320px in En
   await page.goto(`${fixture.url}collaboration-network.html?theme=dark&locale=en-US`);
   await page.getByRole('button', { name: 'View collaboration network' }).click();
   const dialog = page.getByRole('dialog', { name: 'Collaboration network', exact: true });
+  await expect(
+    dialog.getByRole('heading', { name: 'Collaboration whiteboard · 发布协调' })
+  ).toBeVisible();
+  const legendLineCounts = await dialog.locator('.network-legend > span').evaluateAll((items) =>
+    items.map((item) => {
+      const label = document.createRange();
+      label.selectNodeContents(item.lastChild!);
+      return label.getClientRects().length;
+    })
+  );
+  expect(legendLineCounts).toEqual([1, 1]);
   const controls = dialog.getByRole('group', { name: 'Canvas controls' });
   const zoom = controls.getByRole('group', { name: 'Zoom', exact: true });
   const out = zoom.getByRole('button', { name: 'Zoom out' });
@@ -435,10 +498,10 @@ test.describe('narrow viewport', () => {
   test.use({ viewport: { width: 390, height: 844 } });
   test('wraps an unbroken board title before truncating it', async ({ page }) => {
     const { dialog } = await openNetwork(page, 'daylight', 'unbroken');
-    const board = dialog.getByRole('region', { name: '白板', exact: true });
-    const heading = board.getByRole('heading', { name: /^白板 · ReleaseVerification/ });
+    const board = dialog.getByRole('region', { name: '协作白板', exact: true });
+    const heading = board.getByRole('heading', { name: /^协作白板 · ReleaseVerification/ });
     const label = heading.locator('.board-title-label');
-    await expect.poll(() => boardTitleLayout(label)).toEqual({ lines: 2, clipped: true });
+    await expect.poll(() => titleLayout(label)).toEqual({ lines: 2, clipped: true });
     expect(await label.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
     await dialog.getByRole('button', { name: '定位', exact: true }).focus();
     await page.keyboard.press('Tab');
@@ -450,16 +513,16 @@ test.describe('narrow viewport', () => {
     page
   }, info) => {
     const { dialog, port, current } = await openNetwork(page, 'daylight', 'long');
-    const board = dialog.getByRole('region', { name: '白板', exact: true });
+    const board = dialog.getByRole('region', { name: '协作白板', exact: true });
     const label = board
-      .getByRole('heading', { name: /^白板 · 发布协调/ })
+      .getByRole('heading', { name: /^协作白板 · 发布协调/ })
       .locator('.board-title-label');
-    await expect.poll(() => boardTitleLayout(label)).toEqual({ lines: 2, clipped: true });
+    await expect.poll(() => titleLayout(label)).toEqual({ lines: 2, clipped: true });
     const edge = port.getByRole('button', { name: /^安全审查 向 发布协调/ });
     await edge.press('Enter');
-    const short = board.getByRole('heading', { name: '共享白板 · 安全审查' });
+    const short = board.getByRole('heading', { name: '共享协作白板 · 安全审查' });
     await expect
-      .poll(() => boardTitleLayout(short.locator('.board-title-label')))
+      .poll(() => titleLayout(short.locator('.board-title-label')))
       .toEqual({
         lines: 1,
         clipped: false
@@ -710,16 +773,16 @@ test.describe('touch viewport', () => {
       .poll(async () => Number.parseInt(await scale.innerText()))
       .toBeGreaterThanOrEqual(80);
     await dialog.getByRole('button', { name: '定位', exact: true }).tap();
-    const reverse = port.getByRole('button', { name: '发布协调 向 安全审查 共享白板' });
+    const reverse = port.getByRole('button', { name: '发布协调 向 安全审查 共享协作白板' });
     const reverseHit = await edgeHitPoint(reverse);
     await page.touchscreen.tap(reverseHit.x, reverseHit.y);
     await expect(reverse).toHaveAttribute('aria-pressed', 'true');
-    await expect(dialog.getByRole('heading', { name: '共享白板 · 发布协调' })).toBeVisible();
-    const edge = port.getByRole('button', { name: '安全审查 向 发布协调 共享白板' });
+    await expect(dialog.getByRole('heading', { name: '共享协作白板 · 发布协调' })).toBeVisible();
+    const edge = port.getByRole('button', { name: '安全审查 向 发布协调 共享协作白板' });
     const hit = await edgeHitPoint(edge, 9);
     await page.touchscreen.tap(hit.x, hit.y);
     await expect(edge).toHaveAttribute('aria-pressed', 'true');
-    await expect(dialog.getByRole('heading', { name: '共享白板 · 安全审查' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '共享协作白板 · 安全审查' })).toBeVisible();
     await page.screenshot({
       path: info.outputPath('collaboration-network-mobile.png'),
       animations: 'disabled'

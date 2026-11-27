@@ -2,7 +2,6 @@ import type { NodeCapabilities } from '@myagentroam/protocol';
 import { saveNodeConfig, type NodeConfig } from '../config.js';
 import type { NodeMetrics } from '../operational.js';
 import type { NodeControlChannel } from './node-control-channel.js';
-import type { NodeTerminalChannel } from './node-terminal-channel.js';
 
 interface NodeConnectionLifecycleServiceOptions {
   readonly config: () => NodeConfig | undefined;
@@ -14,7 +13,6 @@ interface NodeConnectionLifecycleServiceOptions {
   readonly stopped: () => boolean;
   readonly setCapabilities: (capabilities: NodeCapabilities) => void;
   readonly control: NodeControlChannel;
-  readonly terminal: NodeTerminalChannel;
   readonly metrics: NodeMetrics;
   readonly heartbeatMs: number;
   readonly refreshMs: number;
@@ -72,7 +70,6 @@ export class NodeConnectionLifecycleService {
   connected(connection?: object): void {
     if (!this.options.control.ready(this.options.capabilities(), connection)) return;
     if (this.heartbeat !== undefined) clearInterval(this.heartbeat);
-    this.options.terminal.connect();
     this.options.control.send('heartbeat', {});
     this.options.onConnected?.();
     this.options.metrics.heartbeatSent();

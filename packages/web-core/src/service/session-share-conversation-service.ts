@@ -293,11 +293,9 @@ export function createSessionShareConversationService(options: {
         ? { kind: 'session', ...workspaceTarget.value, sessionId: target.sessionId }
         : undefined,
     request,
-    resourceUrl: client.resourceUrl,
-    notice: options.notice,
-    csrfToken: ref(''),
-    renewCsrfToken: async () => '',
-    onUnauthenticated: () => access.invalidate('SESSION_SHARE_CREDENTIAL_INVALID')
+
+    sendBody: access.fileStreams.upload,
+    notice: options.notice
   });
   const attachmentsPending = computed(() =>
     attachments.attachments.value.some((value) => value.status !== 'COMPLETED')

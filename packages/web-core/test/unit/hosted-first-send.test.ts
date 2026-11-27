@@ -1,3 +1,4 @@
+import { unusedHostedFileDownloads } from '../support/hosted-file-downloads.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHostedConversationEntryService } from '../../src/service/hosted-conversation-entry-service.js';
 import { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
@@ -88,6 +89,7 @@ function fixture() {
     body: Record<string, unknown>;
     signal?: AbortSignal | null | undefined;
   }[] = [];
+  const bodyStreams: AbortSignal[] = [];
   const file = {
     id: 'f',
     conversationId: 'c',
@@ -155,11 +157,6 @@ function fixture() {
       file.relativePath = `uploads/${file.displayName}`;
       return { upload: upload() } as never;
     }
-    if (path.endsWith('/chunks')) {
-      await uploadGate;
-      receivedBytes = 5;
-      return { upload: upload() } as never;
-    }
     if (path.endsWith('/complete')) return { upload: upload(true) } as never;
     if (path.endsWith('/messages')) {
       if (failMessage) throw new TypeError('Failed to fetch');
@@ -171,6 +168,15 @@ function fixture() {
     throw new Error(`Unexpected request: ${path}`);
   });
   const workspace = createHostedConversationWorkspaceService({
+    downloads: unusedHostedFileDownloads,
+    sendUploadBody: async (_target, selectedFile, signal, progress) => {
+      bodyStreams.push(signal);
+      expect(writes.at(-1)?.path.endsWith('/uploads')).toBe(true);
+      await uploadGate;
+      signal.throwIfAborted();
+      receivedBytes = selectedFile.size;
+      progress(receivedBytes);
+    },
     request,
     workbenchConnectionId: () => 'connection',
     heartbeatMs: 60000,
@@ -196,6 +202,7 @@ function fixture() {
     workspace,
     select,
     writes,
+    bodyStreams,
     request,
     setFailWatch: (v: boolean) => {
       failWatch = v;
@@ -329,10 +336,10 @@ describe('Hosted first message ownership', () => {
       'hosted-conversations',
       'preflight',
       'uploads',
-      'chunks',
       'complete',
       'messages'
     ]);
+    expect(f.bodyStreams).toHaveLength(1);
     expect(f.writes.at(-1)?.body).toMatchObject({ prompt: 'Original draft', attachmentIds: ['f'] });
     expect(f.entry.prompt.value).toBe('');
     expect(f.entry.attachments.value).toEqual([]);
@@ -349,9 +356,9 @@ describe('Hosted first message ownership', () => {
       );
       await vi.waitFor(() =>
         expect(
-          f.writes.some((w) =>
-            w.path.endsWith(gateName === 'create' ? 'hosted-conversations' : '/chunks')
-          )
+          gateName === 'create'
+            ? f.writes.some((w) => w.path.endsWith('/hosted-conversations'))
+            : f.bodyStreams.length === 1
         ).toBe(true)
       );
       f.entry.suspend();
@@ -362,6 +369,7 @@ describe('Hosted first message ownership', () => {
       expect(f.writes.some((w) => w.path.endsWith('/cancel'))).toBe(false);
       expect(f.writes.some((w) => w.path.endsWith('/messages'))).toBe(false);
       expect(f.writes.every((w) => !w.signal?.aborted)).toBe(true);
+      expect(f.bodyStreams.every((signal) => !signal.aborted)).toBe(true);
       f.entry.resume();
       await f.entry.submit();
       expect(f.writes.filter((w) => w.path.endsWith('hosted-conversations'))).toHaveLength(1);
@@ -420,9 +428,9 @@ describe('Hosted first message ownership', () => {
       );
       await vi.waitFor(() =>
         expect(
-          f.writes.some((w) =>
-            w.path.endsWith(stage === 'create' ? '/hosted-conversations' : '/chunks')
-          )
+          stage === 'create'
+            ? f.writes.some((w) => w.path.endsWith('/hosted-conversations'))
+            : f.bodyStreams.length === 1
         ).toBe(true)
       );
       f.entry.dispose();
@@ -432,6 +440,7 @@ describe('Hosted first message ownership', () => {
       expect(f.entry.attachments.value).toEqual([]);
       expect(f.workspace.selectedConversationId.value).toBe('history');
       expect(f.writes.every((w) => !w.signal?.aborted)).toBe(true);
+      expect(f.bodyStreams.every((signal) => !signal.aborted)).toBe(true);
       expect(f.writes.some((w) => w.path.endsWith('/cancel') || w.path.endsWith('/messages'))).toBe(
         false
       );

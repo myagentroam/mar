@@ -137,7 +137,7 @@ MAR Agent 会扫描 HOME 与工作区中的标准 Skill 目录，先向模型提
 
 Node Agent Network 不设置旧的 16 个创建或并发限制；独立 SDK Subagent 扩展保留自己的准入策略。
 
-协作工具为 `agent_start`、`agent_send`、`agent_wait`、`agent_stop`、`agent_list` 和 `agent_view`。`agent_start` 接受文本任务和非空标题，启动后立即返回 `agentId`，不等待任务完成。默认创建直接子会话；`relation: "peer"` 创建独立的横向会话，不自动向发起方回报，可按返回的 Agent ID 显式等待或发消息。横向会话可使用获授权、已启用的对话模型；子会话还要求模型支持 Subagent。两种启动方式都沿用白板自动共享规则。对应 CLI 用法见 [marctl](../operations/marctl.md)。
+协作工具为 `agent_start`、`agent_send`、`agent_wait`、`agent_stop`、`agent_list` 和 `agent_view`。`agent_start` 接受文本任务和非空标题，启动后立即返回 `agentId`，不等待任务完成。默认创建直接子会话；`relation: "peer"` 创建独立的横向会话，不自动向发起方回报，可按返回的 Agent ID 显式等待或发消息。横向会话可使用获授权、已启用的对话模型；子会话还要求模型支持 Subagent。两种启动方式都沿用协作白板自动共享规则。对应 CLI 用法见 [marctl](../operations/marctl.md)。
 
 `agent_send` 可发送文本消息、更新 Goal 或对获授权会话的审批作决定；可指定投递意图，包括替换当前执行。`agent_wait` 默认等待直接子会话终态 30 秒，`waitMs=0` 只查看快照，正数按传入时长等待。`agent_stop` 只需会话 ID，停止目标当前执行并清除 Goal；列表和查看工具用于发现获授权的会话及其状态。
 
@@ -183,9 +183,9 @@ agent_wait({
 
 ### 协作白板
 
-每个 Agent 始终保留自己的白板，并可额外关注一块。Agent 拉起其他 Agent 时，新成员保留自有板，并沿用发起方关注的板；若发起方未关注其他板，则传递发起方的自有板。已脱钩的关注也会传递，但恢复前不会提供内容或允许写入。收到消息后开始工作的空闲 Agent 也适用。给正在工作的 Agent 发消息不会切换它关注的板。
+每个 Agent 始终保留自己的协作白板，并可额外关注一块。Agent 拉起其他 Agent 时，新成员保留自有板，并沿用发起方关注的板；若发起方未关注其他板，则传递发起方的自有板。已脱钩的关注也会传递，但恢复前不会提供内容或允许写入。收到消息后开始工作的空闲 Agent 也适用。给正在工作的 Agent 发消息不会切换它关注的板。
 
-`boardAgentId` 就是板主的 Agent ID。`read` 可按该 ID 读取同一工作区的白板，即使板主空闲也能查看；省略 ID 则读取自有板。读取返回内容和最近最多十条变更摘要，不改变关注。`join` 用活动白板的 `boardAgentId` 替换额外关注；用 `whiteboard({ action: 'leave' })` 取消额外关注，不影响自有板。`update` 可指定自有板或正在关注的板。
+`boardAgentId` 就是板主的 Agent ID。`read` 可按该 ID 读取同一工作区的协作白板，即使板主空闲也能查看；省略 ID 则读取自有板。读取返回内容和最近最多十条变更摘要，不改变关注。`join` 用活动协作白板的 `boardAgentId` 替换额外关注；用 `whiteboard({ action: 'leave' })` 取消额外关注，不影响自有板。`update` 可指定自有板或正在关注的板。
 
 自有板和关注的板都会自动提供。编辑可唤醒休眠中的订阅者，不会启动空闲会话。关注的板在板主本轮工作结束后停止自动更新，但仍可按 ID 读取，不影响自有板。板主再次活动时，可以重新加入，或请板主从新一轮工作发消息恢复关注。
 

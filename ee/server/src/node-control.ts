@@ -6,6 +6,7 @@ import {
 } from '@myagentroam/server-core/runtime-credential-channel';
 import { NodeIdentityControl } from '@myagentroam/server-core/node-identity-control';
 import { NodeFileRelay } from '@myagentroam/server-core/node-file-relay';
+import { NodeRelayChannel } from '@myagentroam/server-core/node-relay-channel';
 import type { DirectTransferCoordinator } from '@myagentroam/server-core/direct-transfer-coordinator';
 import type { TerminalDirectCoordinator } from '@myagentroam/server-core/terminal-direct-coordinator';
 import type { RemoteDesktopDirectCoordinator } from '@myagentroam/server-core/remote-desktop-direct-coordinator';
@@ -24,6 +25,7 @@ import {
   remoteDesktopDirectNodeEventSchema,
   remoteDesktopRelayNodeEventSchema,
   type MarctlExecutionCredentialRequest,
+  type DirectTransferDescriptor,
   type NodeCapabilities,
   type NodeEnvelope,
   type PublicError
@@ -36,6 +38,10 @@ import type {
   RelayedWorkbenchEvent
 } from '@myagentroam/server-core/workbench-relay-service';
 import type { NodeRequestBroker } from './service/node-request-broker.js';
+import { WorkspaceFileStreamTickets } from './service/workspace-file-stream-tickets.js';
+import { FileStreamTickets } from './service/file-stream-tickets.js';
+import type { HostedFileStreamTicket } from '@myagentroam/server-core/hosted-conversation-routes';
+import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
 import type { UserNodeAuthorization } from '@myagentroam/server-core/node-access-contracts';
 import type { TerminalRelayService } from '@myagentroam/server-core/terminal-relay-service';
 import type {
@@ -45,7 +51,6 @@ import type {
 import { ServerTrafficMetrics } from './service/server-traffic-metrics.js';
 import type { RuntimeCredentialService } from '@myagentroam/server-core/runtime-credential-service';
 import type { BrowserWorkbenchService } from './service/browser-workbench-service.js';
-import type { IncomingHttpHeaders } from 'node:http';
 import {
   resolveScheduledRunAuthorization,
   resolveExecutionPreparation,
@@ -157,7 +162,12 @@ export class NodeControl extends NodeIdentityControl {
   private readonly browser: BrowserWorkbenchService | undefined;
   private readonly terminalRelay: TerminalRelayService;
   private readonly fileRelay: NodeFileRelay;
-  private readonly fileControlBindings = new WeakMap<WebSocket, string>();
+  private readonly dataRelay: NodeRelayChannel;
+  private readonly fileStreamTickets: WorkspaceFileStreamTickets;
+  private readonly hostedFileTickets: FileStreamTickets<HostedFileStreamTicket>;
+  private readonly dataClients = new Map<WebSocket, UserNodeAuthorization>();
+  private readonly shareDataClients = new Map<WebSocket, string>();
+  private readonly dataControlBindings = new WeakMap<WebSocket, string>();
   private readonly messageProjector: NodeMessageProjector;
 
   constructor(
@@ -168,18 +178,29 @@ export class NodeControl extends NodeIdentityControl {
   ) {
     super(database, (direction, bytes) => traffic?.record('node', direction, bytes));
     this.runtimeCredentials = consumers.runtimeCredentials;
+    this.dataRelay = new NodeRelayChannel({
+      admitNode: async ({ nodeId, credential, controlBinding }) => {
+        const control = this.currentDataControl(nodeId, controlBinding);
+        if (control === undefined) return undefined;
+        const node = await database.authenticateNode(nodeId, credential);
+        if (node?.id !== nodeId || node.disabled) return undefined;
+        return () => this.currentDataControl(nodeId, controlBinding) === control;
+      },
+      maxStreams: { perClient: 24, perNode: 256 },
+      maxBufferedBytes: 8 * 1024 * 1024,
+      ...(traffic === undefined
+        ? {}
+        : {
+            traffic: {
+              record: (direction, bytes) => traffic.record('node', direction, bytes),
+              backpressure: (bytes) => traffic.backpressure('node', bytes)
+            }
+          })
+    });
     this.fileRelay = new NodeFileRelay({
       database,
       recordIncoming: (bytes) => traffic?.record('node', 'in', bytes),
-      currentControl: (nodeId, binding) => {
-        const control = this.sockets.get(nodeId);
-        return control &&
-          control.readyState === control.OPEN &&
-          this.allowsNodeBusiness(control) &&
-          this.fileControlBindings.get(control) === binding
-          ? control
-          : undefined;
-      },
+      currentControl: (nodeId, binding) => this.currentDataControl(nodeId, binding),
       response: (nodeId, socket, envelope, bytes, declaredLength) =>
         this.requestBroker.resolveFile(nodeId, socket, envelope, bytes, declaredLength),
       disconnected: (socket) => this.requestBroker.rejectFileSocket(socket)
@@ -212,6 +233,52 @@ export class NodeControl extends NodeIdentityControl {
       throw error;
     }
     this.requestBroker = components.requestBroker;
+    this.fileStreamTickets = new WorkspaceFileStreamTickets({
+      audits: database,
+      allowed: (userId, nodeId, workspaceId) =>
+        this.requestBroker.canUseWorkspaceFile(userId, nodeId, workspaceId),
+      prepare: ({ nodeId, user, descriptor, share }, signal) =>
+        this.requestNode(
+          nodeId,
+          'workspace.file.stream.prepare',
+          {
+            workspaceId: descriptor.resource.workspaceId,
+            descriptor,
+            ...(share !== undefined && { sessionId: share.sessionId })
+          },
+          user,
+          undefined,
+          signal
+        )
+    });
+    this.hostedFileTickets = new FileStreamTickets({
+      kind: (ticket) => ticket.kind,
+      allowed: (ticket) => ticket.allowed(),
+      prepare: async (ticket, signal) => {
+        const { nodeId, user, templateId, allowed } = ticket;
+        if (!(await allowed().catch(() => false)))
+          throw new NodeRequestAdmissionError('RESOURCE_DENIED');
+        signal.throwIfAborted();
+        const [operation, data] =
+          ticket.kind === 'hosted-file-upload'
+            ? ([
+                'conversation.hosted.files.upload.stream.prepare',
+                { conversationId: ticket.conversationId, uploadId: ticket.uploadId }
+              ] as const)
+            : (['conversation.hosted.file.stream.prepare', ticket.descriptor] as const);
+        return this.requestBroker.requestHostedConversation(
+          nodeId,
+          operation,
+          {
+            ...data,
+            __sourceTemplateId: templateId
+          },
+          user,
+          undefined,
+          signal
+        );
+      }
+    });
     this.workbenchRelay = components.workbenchRelay;
     this.directTransfers = components.directTransfers;
     this.terminalRelay = components.terminalRelay;
@@ -228,9 +295,9 @@ export class NodeControl extends NodeIdentityControl {
     const payload = super.capabilityAckPayload(socket);
     if (!this.allowsNodeBusiness(socket)) return payload;
     // Do not pair a delayed handshake with a different control connection for the same Node.
-    const fileControlBinding = this.fileControlBindings.get(socket) ?? randomUUID();
-    this.fileControlBindings.set(socket, fileControlBinding);
-    return { ...payload, fileControlBinding };
+    const dataControlBinding = this.dataControlBindings.get(socket) ?? randomUUID();
+    this.dataControlBindings.set(socket, dataControlBinding);
+    return { ...payload, dataControlBinding, fileControlBinding: dataControlBinding };
   }
 
   runtimeCredentialCapability(nodeId: string) {
@@ -258,6 +325,7 @@ export class NodeControl extends NodeIdentityControl {
 
   protected override onNodeConnected(nodeId: string, replaced: boolean): void {
     if (replaced) {
+      this.dataRelay.disconnectNode(nodeId);
       this.fileRelay.disconnectNode(nodeId);
       this.requestBroker.rejectNode(nodeId, new Error('NODE_CONNECTION_REPLACED'));
       this.desktopDirect.revokeNode(nodeId, 'NODE_CONNECTION_REPLACED');
@@ -323,6 +391,7 @@ export class NodeControl extends NodeIdentityControl {
       );
   }
   protected override onNodeDisconnected(nodeId: string): void {
+    this.dataRelay.disconnectNode(nodeId);
     this.fileRelay.disconnectNode(nodeId);
     this.consumers.scheduledTaskConnectionChanged?.(nodeId);
     this.browser?.revokeNode(nodeId);
@@ -341,7 +410,8 @@ export class NodeControl extends NodeIdentityControl {
 
   protected override onBusinessAdmissionRevoked(nodeId: string): void {
     const control = this.sockets.get(nodeId);
-    if (control) this.fileControlBindings.delete(control);
+    if (control) this.dataControlBindings.delete(control);
+    this.dataRelay.disconnectNode(nodeId);
     this.fileRelay.disconnectNode(nodeId);
     this.browser?.revokeNode(nodeId);
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
@@ -353,17 +423,22 @@ export class NodeControl extends NodeIdentityControl {
     this.terminalRelay.disconnectNode(nodeId);
   }
 
-  /**
-   * This is deliberately a second, narrowly authenticated Node socket.  It
-   * never accepts Node-control envelopes or arbitrary RPC; it only transports
-   * frames for an attachment previously authorized on the control socket.
-   */
-  attachTerminal(socket: WebSocket): void {
-    this.terminalRelay.attachNode(socket);
-  }
-
   attachFileRelay(socket: WebSocket): void {
     this.fileRelay.attach(socket);
+  }
+
+  attachNodeRelay(socket: WebSocket): void {
+    this.dataRelay.attachNode(socket);
+  }
+
+  private currentDataControl(nodeId: string, binding: string): WebSocket | undefined {
+    const control = this.sockets.get(nodeId);
+    return control &&
+      control.readyState === control.OPEN &&
+      this.allowsNodeBusiness(control) &&
+      this.dataControlBindings.get(control) === binding
+      ? control
+      : undefined;
   }
 
   createTerminalTicket(input: {
@@ -384,40 +459,110 @@ export class NodeControl extends NodeIdentityControl {
     return this.terminalRelay.createTicket(input);
   }
 
-  /** Called only after Browser Origin/Cookie validation by the Fastify route. */
-  attachBrowserTerminal(
+  attachClientRelay(
     socket: WebSocket,
-    ticketValue: unknown,
-    user: UserNodeAuthorization
-  ): void {
-    this.terminalRelay.attachBrowser(socket, ticketValue, user);
-  }
-
-  attachCliMux(...args: Parameters<TerminalRelayService['attachCliMux']>): void {
-    this.terminalRelay.attachCliMux(...args);
-  }
-
-  attachCliTerminal(
-    socket: WebSocket,
-    ticketValue: unknown,
+    nodeId: string,
     user: UserNodeAuthorization,
-    expiresAt: number
+    cliExpiresAt?: number,
+    hostedOnly = false
   ): void {
-    this.terminalRelay.attachBrowser(socket, ticketValue, user, { type: 'single', expiresAt });
+    if (socket.readyState !== socket.OPEN) return;
+    if (cliExpiresAt !== undefined && cliExpiresAt <= Date.now()) {
+      socket.close(1008, 'UNAUTHENTICATED');
+      return;
+    }
+    this.dataClients.set(socket, user);
+    const expiry =
+      cliExpiresAt === undefined
+        ? undefined
+        : setTimeout(() => socket.terminate(), Math.min(2_147_483_647, cliExpiresAt - Date.now()));
+    expiry?.unref();
+    socket.once('close', () => {
+      clearTimeout(expiry);
+      this.dataClients.delete(socket);
+    });
+    this.dataRelay.attachClient(socket, nodeId, async ({ kind, grant }, signal) => {
+      if (
+        (kind === 'hosted-file-upload' || kind === 'hosted-file-download') &&
+        cliExpiresAt === undefined
+      )
+        return this.hostedFileTickets.authorize(kind, grant, nodeId, user, signal);
+      if (hostedOnly) return undefined;
+      if (cliExpiresAt === undefined && kind === 'browser-rfb')
+        return this.browser?.authorizePictureStream(grant, nodeId, user, signal);
+      if (
+        cliExpiresAt === undefined &&
+        (kind === 'browser-file-download' || kind === 'browser-file-upload')
+      )
+        return this.browser?.authorizeFileStream(kind, grant, nodeId, user, signal);
+      if (kind === 'terminal')
+        return this.terminalRelay.authorizeStream(
+          grant,
+          nodeId,
+          user,
+          cliExpiresAt !== undefined,
+          signal
+        );
+      if (cliExpiresAt === undefined && (kind === 'file-upload' || kind === 'file-download'))
+        return this.fileStreamTickets.authorize(kind, grant, nodeId, user, signal);
+      return undefined;
+    });
+  }
+
+  attachShareFileRelay(
+    socket: WebSocket,
+    access: {
+      shareId: string;
+      nodeId: string;
+      user: UserNodeAuthorization;
+      expiresAt: number | null;
+    }
+  ): void {
+    if (socket.readyState !== socket.OPEN) return;
+    const { shareId, nodeId, user, expiresAt } = access;
+    this.shareDataClients.set(socket, shareId);
+    const expire = () => {
+      if (expiresAt === null) return;
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) socket.close(1008, 'SESSION_SHARE_EXPIRED');
+      else expiry = setTimeout(expire, Math.min(2_147_483_647, remaining)).unref();
+    };
+    let expiry: NodeJS.Timeout | undefined;
+    socket.once('close', () => {
+      clearTimeout(expiry);
+      this.shareDataClients.delete(socket);
+    });
+    expire();
+    this.dataRelay.attachClient(socket, nodeId, async ({ kind, grant }, signal) =>
+      kind === 'file-upload' || kind === 'file-download'
+        ? this.fileStreamTickets.authorize(kind, grant, nodeId, user, signal)
+        : undefined
+    );
+  }
+
+  createShareFileStreamTicket(
+    nodeId: string,
+    user: UserNodeAuthorization,
+    descriptor: DirectTransferDescriptor,
+    share: { sessionId: string; allowed: () => Promise<boolean> }
+  ) {
+    return this.fileStreamTickets.issue({ nodeId, user, descriptor, share });
+  }
+
+  createHostedFileStreamTicket(ticket: HostedFileStreamTicket): Promise<string> {
+    return this.hostedFileTickets.issue(ticket);
+  }
+
+  createWorkspaceFileStreamTicket(
+    nodeId: string,
+    user: UserNodeAuthorization,
+    descriptor: DirectTransferDescriptor
+  ): Promise<string> {
+    return this.fileStreamTickets.issue({ nodeId, user, descriptor });
   }
 
   attachNodeDesktopRelay(socket: WebSocket): void {
     this.desktopRelaySockets.attachNode(socket);
-  }
-
-  attachNodeBrowserRelay(socket: WebSocket, headers: IncomingHttpHeaders): void {
-    if (this.browser) this.browser.attachNode(socket, headers);
-    else socket.terminate();
-  }
-
-  attachBrowserRelay(socket: WebSocket, user: UserNodeAuthorization, connectionId: string): void {
-    if (this.browser) this.browser.attachBrowser(socket, user, connectionId);
-    else socket.terminate();
   }
 
   uploadBrowserFile(
@@ -438,9 +583,25 @@ export class NodeControl extends NodeIdentityControl {
     return this.browser.download(user, connectionId, download);
   }
 
-  openBrowserDownload(...args: Parameters<BrowserWorkbenchService['openDownload']>) {
+  createBrowserDownloadTicket(
+    ...args: Parameters<BrowserWorkbenchService['createDownloadTicket']>
+  ) {
     if (!this.browser) throw new Error('BROWSER_UNAVAILABLE');
-    return this.browser.openDownload(...args);
+    return this.browser.createDownloadTicket(...args);
+  }
+
+  createBrowserUploadTicket(...args: Parameters<BrowserWorkbenchService['createUploadTicket']>) {
+    if (!this.browser) throw new Error('BROWSER_UNAVAILABLE');
+    return this.browser.createUploadTicket(...args);
+  }
+
+  openBrowserDirectFile(...args: Parameters<BrowserWorkbenchService['openDirectFile']>) {
+    if (!this.browser) throw new Error('BROWSER_UNAVAILABLE');
+    return this.browser.openDirectFile(...args);
+  }
+
+  closeBrowserDirectFile(...args: Parameters<BrowserWorkbenchService['closeDirectFile']>) {
+    this.browser?.closeDirectFile(...args);
   }
 
   /** Called only after Browser Origin/Cookie validation. */
@@ -459,6 +620,7 @@ export class NodeControl extends NodeIdentityControl {
 
   invalidateSessionShare(shareId: string, code: string): void {
     this.workbenchRelay.invalidateShare(shareId, code);
+    for (const [socket, id] of this.shareDataClients) if (id === shareId) socket.terminate();
   }
 
   closeUserWorkbench(sessionHash: string): void {
@@ -466,11 +628,14 @@ export class NodeControl extends NodeIdentityControl {
   }
 
   closeUserTerminals(sessionHash: string): void {
+    for (const [socket, user] of this.dataClients)
+      if (user.sessionHash === sessionHash) socket.terminate();
     this.terminalRelay.closeSession(sessionHash);
     this.terminalDirect.revokeSession(sessionHash);
   }
 
   closeUserSessions(userId: number): void {
+    for (const [socket, user] of this.dataClients) if (user.userId === userId) socket.terminate();
     this.workbenchRelay.closeUser(userId);
     this.terminalRelay.closeUser(userId);
     this.terminalDirect.revokeUser(userId);
@@ -482,8 +647,17 @@ export class NodeControl extends NodeIdentityControl {
     this.terminalRelay.closeAllRelays();
   }
 
-  async revalidateTerminalAuthorizations(): Promise<void> {
-    await this.terminalRelay.revalidateAuthorizations();
+  revalidateHostedFileAuthorizations(): Promise<void> {
+    return this.hostedFileTickets.revalidate();
+  }
+
+  async revalidateDataAuthorizations(): Promise<void> {
+    await Promise.all([
+      this.terminalRelay.revalidateAuthorizations(),
+      this.fileStreamTickets.revalidate(),
+      this.browser?.revalidateFileAuthorizations(),
+      this.revalidateHostedFileAuthorizations()
+    ]);
   }
 
   closeAllWorkbench(): void {
@@ -514,7 +688,6 @@ export class NodeControl extends NodeIdentityControl {
     const revoked = await this.database.revokeNode(nodeId, actorUserId);
     if (!revoked) return false;
     this.closeNode(nodeId, 4003, 'NODE_DISABLED');
-    this.terminalRelay.shutdownNode(nodeId, 4003, 'NODE_DISABLED');
     return true;
   }
 
@@ -527,7 +700,6 @@ export class NodeControl extends NodeIdentityControl {
 
   closeManagedNode(nodeId: string): void {
     this.closeNode(nodeId, 4003, 'NODE_DELETED');
-    this.terminalRelay.shutdownNode(nodeId, 4003, 'NODE_DELETED');
   }
 
   onWorkbenchEvent(listener: (event: RelayedWorkbenchEvent) => void): () => void {
@@ -538,7 +710,8 @@ export class NodeControl extends NodeIdentityControl {
     await Promise.all([
       this.drainControlMessages(),
       this.messageProjector.drain(),
-      this.fileRelay.drainAuthentications()
+      this.fileRelay.drainAuthentications(),
+      this.dataRelay.drainAuthentications()
     ]);
   }
 
@@ -555,7 +728,10 @@ export class NodeControl extends NodeIdentityControl {
       () => super.close(),
       () => this.requestBroker.close(),
       () => this.terminalRelay.close(),
+      () => this.fileStreamTickets.close(),
+      () => this.hostedFileTickets.close(),
       () => this.fileRelay.close(),
+      () => this.dataRelay.close(),
       () => this.closeAllWorkbench()
     ]) {
       try {

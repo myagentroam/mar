@@ -285,6 +285,7 @@ const search = ref('');
 const action = ref('');
 // Keep transport pending while the real dock and xterm render their presentation.
 const terminalDirect = { attach: () => new Promise<never>(() => undefined) };
+const openTerminalStream = () => Promise.reject(new Error('FIXTURE_NO_RELAY'));
 const selectedSession = ref('active');
 const markerSessions: Session[] = [
   { id: 'Scheduled', pinOrder: 0, schedule: { enabled: true, nextRunAt: null } },
@@ -902,6 +903,7 @@ if (composerFixture) {
         :node-os-release="undefined"
         :capability="terminalCapability"
         :direct="terminalDirect"
+        :open-stream="openTerminalStream"
         :error-message="String"
       />
     </section>

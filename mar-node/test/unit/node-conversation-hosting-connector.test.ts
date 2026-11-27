@@ -752,7 +752,6 @@ describe('Node conversation hosting registration lifecycle', () => {
     };
     const onRegistered = vi.fn(async () => undefined);
     const control = { send: vi.fn(), ready: vi.fn(() => true), connection: vi.fn(() => ({})) };
-    const terminal = { connect: vi.fn() };
     const service = new NodeConnectionLifecycleService({
       config: () => config,
       setConfig: (next) => {
@@ -765,7 +764,6 @@ describe('Node conversation hosting registration lifecycle', () => {
       stopped: () => false,
       setCapabilities: () => undefined,
       control: control as never,
-      terminal: terminal as never,
       metrics: new NodeMetrics(),
       heartbeatMs: 60_000,
       refreshMs: 60_000,
@@ -805,7 +803,6 @@ describe('Node conversation hosting registration lifecycle', () => {
       connection: () => connection,
       ready: vi.fn((_capabilities: NodeCapabilities, expected: object) => expected === connection)
     };
-    const terminal = { connect: vi.fn() };
     const service = new NodeConnectionLifecycleService({
       config: () => config,
       setConfig: (next) => {
@@ -818,7 +815,6 @@ describe('Node conversation hosting registration lifecycle', () => {
       stopped: () => false,
       setCapabilities: () => undefined,
       control: control as never,
-      terminal: terminal as never,
       metrics: new NodeMetrics(),
       heartbeatMs: 60_000,
       refreshMs: 60_000,
@@ -830,7 +826,6 @@ describe('Node conversation hosting registration lifecycle', () => {
     release();
     await registering;
     expect(control.ready).toHaveBeenCalledWith(expect.anything(), original);
-    expect(terminal.connect).not.toHaveBeenCalled();
     expect(control.send).not.toHaveBeenCalled();
     service.stop();
   });

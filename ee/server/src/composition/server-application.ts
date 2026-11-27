@@ -89,7 +89,10 @@ import {
 } from './quick-start-node-bootstrap.js';
 import { ConversationTemplateService } from '../service/conversation-template-service.js';
 import { registerConversationTemplateRoutes } from '../route/conversation-template-routes.js';
-import { registerHostedConversationRoutes } from '../route/hosted-conversation-routes.js';
+import {
+  authorizeHostedRelayTarget,
+  registerHostedConversationRoutes
+} from '../route/hosted-conversation-routes.js';
 import { HostedConversationActivityService } from '../service/hosted-conversation-activity-service.js';
 import { NodeUpgradeProgress } from '@myagentroam/server-core/node-upgrade-progress';
 const serverVersion = typeof serverPackage.version === 'string' ? serverPackage.version : 'unknown';
@@ -485,8 +488,6 @@ export async function composeServerApplication(
       nodeControl: {
         requestNode: (...args) => nodeControl.requestNode(...args),
         createTerminalTicket: (input) => nodeControl.createTerminalTicket(input),
-        attachCliMux: (...args) => nodeControl.attachCliMux(...args),
-        attachCliTerminal: (...args) => nodeControl.attachCliTerminal(...args),
         closeTerminal: (nodeId, terminalId) => nodeControl.closeTerminal(nodeId, terminalId),
         attachWorkbench: (socket, user) => nodeControl.attachBrowserWorkbench(socket, user)
       },
@@ -581,6 +582,7 @@ export async function composeServerApplication(
         database,
         nodeControl,
         shares: sessionShares,
+        issueFileStream: nodeControl.createShareFileStreamTicket.bind(nodeControl),
         channels: new SessionChannelService(inputs),
         profiles: {
           secrets: environmentSecrets,
@@ -596,9 +598,21 @@ export async function composeServerApplication(
       nodeControl,
       publicOrigin,
       sessionShares,
-      attachMarctl: marctl.attach,
-      attachMarctlLive: marctl.attachLive,
-      attachMarctlMux: marctl.attachMux
+      relayAccess: {
+        credentials: userCredentials,
+        canUseNode: (userId, nodeId) => resources.canUseNode(userId, nodeId),
+        canAccessNodeContainer: (userId, nodeId) =>
+          resources.canAccessNodeContainer(userId, nodeId),
+        canAccessHostedConversation: (user, nodeId, conversationId) =>
+          authorizeHostedRelayTarget({ templates: conversationTemplates, nodeControl }, user, {
+            nodeId,
+            conversationId
+          }).then(
+            () => true,
+            () => false
+          )
+      },
+      attachMarctlLive: marctl.attachLive
     });
     registerHtmlPreviewRoutes({
       app,
@@ -738,6 +752,7 @@ export async function composeServerApplication(
         models: marAgentModels,
         marAgentRuntimeModels,
         nodeControl,
+        issueFileStreamTicket: (ticket) => nodeControl.createHostedFileStreamTicket(ticket),
         publicOrigin
       });
     }

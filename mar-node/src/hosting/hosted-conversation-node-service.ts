@@ -10,11 +10,7 @@ import {
   type HostedConversationProcessExecutorInput
 } from './hosted-conversation-templates.js';
 export type { HostedConversationProcessExecutorInput } from './hosted-conversation-templates.js';
-import {
-  openRegularFile,
-  regularFileMetadata,
-  assertRegularFileMetadata
-} from './hosted-conversation-file-identity.js';
+import { readHostedFileRange, withHostedFileSnapshot } from './hosted-conversation-file-reader.js';
 import { HostedConversationUploads } from './hosted-conversation-uploads.js';
 import { HostedConversationRuns } from './hosted-conversation-runs.js';
 import { HostedConversationFileOperations } from './hosted-conversation-file-operations.js';
@@ -37,8 +33,12 @@ export type {
 import { resolveSessionRollbackTarget } from '../service/session-rollback-target.js';
 import { imagePreviews, imagePreviewSourceLimit } from '../service/image-preview-service.js';
 import { modelUsageGrantSchema } from '@myagentroam/protocol';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import type { NodeStreamHandler } from '@myagentroam/protocol/node-stream-mux';
+import { NodeStreamGrants } from '../connection/node-stream-grants.js';
+import { sendFileDownload } from '../connection/file-download-stream.js';
+import { safeErrorCode } from '../util/safe-error.js';
 import { randomUUID } from 'node:crypto';
-import type { Stats } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import {
   toolResultResourceInputSchema,
@@ -53,6 +53,8 @@ import {
   hostedConversationFileDeleteResultSchema,
   hostedConversationFileReadInputSchema,
   hostedConversationFileReadResultSchema,
+  hostedConversationFileStreamInputSchema,
+  hostedConversationFileTargetInputSchema,
   hostedConversationFilesSchema,
   hostedConversationHistoryInputSchema,
   hostedConversationHistoryPageSchema,
@@ -67,7 +69,6 @@ import {
   hostedConversationRollbackInputSchema,
   hostedConversationSnapshotSchema,
   hostedConversationUnwatchInputSchema,
-  hostedConversationUploadChunkInputSchema,
   hostedConversationUploadControlInputSchema,
   hostedConversationUploadCreateInputSchema,
   hostedConversationWatchInputSchema,
@@ -132,6 +133,8 @@ export class HostedConversationNodeService {
   private readonly templates: HostedConversationTemplates;
   private readonly fileOperations = new HostedConversationFileOperations();
   private readonly hostedUploads: HostedConversationUploads;
+  private readonly fileStreamGrants = new NodeStreamGrants();
+  private readonly fileStreamLifetime = new AbortController();
   private closing: Promise<void> | undefined;
   private readonly cleanupLocks = new Set<string>();
   private readonly historyMutations = new Map<string, Promise<unknown>>();
@@ -217,6 +220,8 @@ export class HostedConversationNodeService {
       'conversation.hosted.tool-resource.read': (raw) => this.readToolResource(raw),
       'conversation.hosted.files.list': (raw) => this.listFiles(raw),
       'conversation.hosted.file.read': (raw) => this.readFile(raw),
+      'conversation.hosted.file.describe': (raw) => this.describeFile(raw),
+      'conversation.hosted.file.stream.prepare': (raw) => this.prepareFileDownload(raw),
       'conversation.hosted.file.delete': (raw) =>
         this.fileWrite(raw, hostedConversationFileDeleteInputSchema, () => this.deleteFile(raw)),
       'conversation.hosted.files.upload.preflight': (raw) =>
@@ -225,11 +230,8 @@ export class HostedConversationNodeService {
         this.fileWrite(raw, hostedConversationUploadCreateInputSchema, () =>
           this.hostedUploads.createUpload(raw)
         ),
-      'conversation.hosted.files.upload.chunk': (raw) =>
-        this.fileWrite(raw, hostedConversationUploadChunkInputSchema, () =>
-          this.hostedUploads.writeUploadChunk(raw)
-        ),
       'conversation.hosted.files.upload.status': (raw) => this.hostedUploads.uploadStatus(raw),
+      'conversation.hosted.files.upload.stream.prepare': (raw) => this.prepareUploadStream(raw),
       'conversation.hosted.files.upload.complete': (raw) =>
         this.fileWrite(raw, hostedConversationUploadControlInputSchema, () =>
           this.hostedUploads.completeUpload(raw)
@@ -662,6 +664,8 @@ export class HostedConversationNodeService {
   dispose(): Promise<void> {
     if (this.closing) return this.closing;
     this.disablePrepared = true;
+    this.fileStreamGrants.clear();
+    this.fileStreamLifetime.abort();
     const runs = this.runs.close();
     this.hostedWatch.close();
     this.closing = (async () => {
@@ -690,6 +694,68 @@ export class HostedConversationNodeService {
     if (this.closing) throw new Error('CONVERSATION_HOSTING_UNAVAILABLE');
     this.requireWritableConversation(payload.userId, input.conversationId);
     return this.fileOperations.write(input.conversationId, input.uploadId, operation);
+  }
+
+  consumeFileStream(kind: string, grant: string): NodeStreamHandler | undefined {
+    return this.fileStreamGrants.consume(kind, grant);
+  }
+
+  clearFileStreamGrants(): void {
+    this.fileStreamGrants.clear();
+  }
+
+  private prepareUploadStream(raw: unknown): { grant: string } {
+    const payload = hostedRequest(raw);
+    const { conversationId, uploadId } = hostedConversationUploadControlInputSchema.parse(
+      payload.data
+    );
+    this.assertUploadStreamContext(payload, conversationId, uploadId);
+    // Preparing a grant does not acquire the writer or open the temporary file.
+    return {
+      grant: this.fileStreamGrants.issue('hosted-file-upload', async (stream, signal) => {
+        try {
+          this.assertUploadStreamContext(payload, conversationId, uploadId);
+          await this.receiveUploadStream(raw, stream, signal);
+        } catch (error) {
+          if (!signal.aborted) {
+            const code = safeErrorCode(error, 'FILE_STREAM_FAILED');
+            stream.reset(code.length <= 96 ? code : 'FILE_STREAM_FAILED');
+          }
+        }
+      })
+    };
+  }
+
+  private assertUploadStreamContext(
+    payload: HostedRequestPayload,
+    conversationId: string,
+    uploadId: string
+  ): void {
+    if (this.disablePrepared) throw new Error('CONVERSATION_HOSTING_UNAVAILABLE');
+    this.assertTemplateContext(
+      payload,
+      this.requireWritableConversation(payload.userId, conversationId)
+    );
+    this.hostedUploads.assertUploadPending(payload.userId, conversationId, uploadId);
+  }
+
+  /** Hosted owns the writer and commit; closing Hosted must wake a stalled stream reader. */
+  private async receiveUploadStream(
+    raw: unknown,
+    stream: NodeStream,
+    signal: AbortSignal
+  ): Promise<void> {
+    const lifetime = this.fileStreamLifetime.signal;
+    const close = () => stream.reset('CONVERSATION_HOSTING_UNAVAILABLE');
+    lifetime.addEventListener('abort', close, { once: true });
+    try {
+      await this.fileWrite(raw, hostedConversationUploadControlInputSchema, () =>
+        this.hostedUploads.receiveUpload(raw, stream, signal)
+      );
+      await stream.endWrite();
+    } finally {
+      lifetime.removeEventListener('abort', close);
+    }
   }
 
   private async waitForFileWrites(conversationId: string): Promise<void> {
@@ -1083,61 +1149,78 @@ export class HostedConversationNodeService {
     const path = this.options.store.filePath(payload.userId, file);
     const offset = input.preview === undefined ? (input.offset ?? 0) : 0;
     const limit = Math.min(input.limit ?? MAX_FILE_READ_BYTES, MAX_FILE_READ_BYTES);
-    const handle = await openRegularFile(path);
-    try {
-      const before = await handle.stat();
-      assertRegularFileMetadata(before);
-      const pathMetadata = await regularFileMetadata(path);
-      if (!sameFileIdentity(before, pathMetadata))
-        throw new Error('HOSTED_CONVERSATION_FILE_INVALID');
-      if (offset > before.size) throw new Error('HOSTED_CONVERSATION_FILE_RANGE_INVALID');
-      if (input.preview !== undefined && before.size > imagePreviewSourceLimit(input.preview))
+    return withHostedFileSnapshot(path, file, async (source) => {
+      const { size } = source.file;
+      if (offset > size) throw new Error('HOSTED_CONVERSATION_FILE_RANGE_INVALID');
+      if (input.preview !== undefined && size > imagePreviewSourceLimit(input.preview))
         throw new Error('IMAGE_PREVIEW_TOO_LARGE');
-      const buffer = Buffer.alloc(
-        input.preview === undefined
-          ? Math.min(limit, Math.max(0, before.size - offset))
-          : before.size
+      const bytes = await source.read(
+        offset,
+        input.preview === undefined ? Math.min(limit, size - offset) : size
       );
-      const read = await handle.read(buffer, 0, buffer.length, offset);
-      if (input.preview !== undefined) {
-        while (read.bytesRead < buffer.length) {
-          const next = await handle.read(
-            buffer,
-            read.bytesRead,
-            buffer.length - read.bytesRead,
-            read.bytesRead
-          );
-          if (next.bytesRead === 0) throw new Error('HOSTED_CONVERSATION_FILE_INVALID');
-          read.bytesRead += next.bytesRead;
-        }
-      }
-      const after = await handle.stat();
-      const currentPathMetadata = await regularFileMetadata(path);
-      if (!sameFileSnapshot(before, after) || !sameFileSnapshot(after, currentPathMetadata))
-        throw new Error('HOSTED_CONVERSATION_FILE_INVALID');
+      await source.assertUnchanged();
       if (input.preview !== undefined)
-        return { image: await imagePreviews.create(buffer, input.preview) };
-      const next = offset + read.bytesRead;
-      const eof = next >= after.size;
-      const currentFile: ConversationFileProjection = {
-        ...file,
-        size: after.size,
-        updatedAt: Math.max(
-          file.createdAt,
-          safeFileTimestamp(after.mtimeMs),
-          safeFileTimestamp(after.ctimeMs)
-        )
-      };
+        return { image: await imagePreviews.create(bytes, input.preview) };
+      const next = offset + bytes.byteLength;
+      const eof = next >= size;
       return hostedConversationFileReadResultSchema.parse({
-        file: currentFile,
-        bytes: buffer.subarray(0, read.bytesRead),
+        file: source.file,
+        bytes,
         offset,
         nextOffset: eof ? null : next,
         eof
       });
-    } finally {
-      await handle.close();
-    }
+    });
+  }
+
+  private describeFile(raw: unknown): ConversationFileProjection {
+    const payload = hostedRequest(raw);
+    const { conversationId, fileId } = hostedConversationFileTargetInputSchema.parse(payload.data);
+    const store = this.options.store;
+    this.assertTemplateContext(payload, store.requireConversation(payload.userId, conversationId));
+    return store.requireFile(payload.userId, conversationId, fileId);
+  }
+
+  private prepareFileDownload(raw: unknown): { grant: string } {
+    const payload = hostedRequest(raw);
+    const { conversationId, fileId, revision, range } =
+      hostedConversationFileStreamInputSchema.parse(payload.data);
+    const store = this.options.store;
+    const requireSource = () => {
+      if (this.disablePrepared) throw new Error('CONVERSATION_HOSTING_UNAVAILABLE');
+      this.assertTemplateContext(
+        payload,
+        store.requireConversation(payload.userId, conversationId)
+      );
+      return store.requireFile(payload.userId, conversationId, fileId);
+    };
+    requireSource();
+    return {
+      grant: this.fileStreamGrants.issue('hosted-file-download', async (stream, signal) => {
+        const lifetime = this.fileStreamLifetime.signal;
+        const close = () => stream.reset('CONVERSATION_HOSTING_UNAVAILABLE');
+        lifetime.addEventListener('abort', close, { once: true });
+        try {
+          const file = requireSource();
+          // Match the Hosted file projection, not platform identity or timestamps from the transport.
+          if (revision !== `${file.updatedAt}-${file.size}`)
+            throw new Error('HOSTED_CONVERSATION_FILE_CONFLICT');
+          const offset = range?.offset ?? 0;
+          const length = range?.length ?? file.size;
+          if (offset > file.size || length > file.size - offset)
+            throw new Error('HOSTED_CONVERSATION_FILE_RANGE_INVALID');
+          const path = store.filePath(payload.userId, file);
+          await sendFileDownload(stream, readHostedFileRange(path, offset, length), length, signal);
+        } catch (error) {
+          if (!signal.aborted) {
+            const code = safeErrorCode(error, 'FILE_STREAM_FAILED');
+            stream.reset(code.length <= 96 ? code : 'FILE_STREAM_FAILED');
+          }
+        } finally {
+          lifetime.removeEventListener('abort', close);
+        }
+      })
+    };
   }
 
   private async deleteFile(raw: unknown): Promise<unknown> {
@@ -1390,25 +1473,6 @@ function terminalHostedTurnStatus(status: string): boolean {
     status === 'INTERRUPTED' ||
     status === 'LOST'
   );
-}
-
-function sameFileIdentity(left: Stats, right: Stats): boolean {
-  return left.dev === right.dev && left.ino === right.ino;
-}
-
-function sameFileSnapshot(left: Stats, right: Stats): boolean {
-  return (
-    sameFileIdentity(left, right) &&
-    left.nlink === right.nlink &&
-    left.size === right.size &&
-    left.mtimeMs === right.mtimeMs &&
-    left.ctimeMs === right.ctimeMs
-  );
-}
-
-function safeFileTimestamp(value: number): number {
-  if (!Number.isFinite(value) || value < 0) return 0;
-  return Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(value));
 }
 
 function record(value: unknown): value is Record<string, unknown> {

@@ -102,10 +102,10 @@ try {
     await assert.rejects(save('linked/saved.bin'), /FILE_PATH_ESCAPE/);
   }
   assert.equal(fileChanges, 1);
-  assert.deepEqual(await tabs.download({ action: 'chunk', id: ready.id, offset: 0, limit: 3 }), {
-    contentBase64: first.subarray(0, 3).toString('base64'),
-    offset: 0
-  });
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of tabs.readDownloadStream(ready.id, size, new AbortController().signal))
+    chunks.push(chunk);
+  assert.deepEqual(Buffer.concat(chunks), output);
 
   await page.getByRole('link', { name: 'Unknown', exact: true }).click();
   const unknown = await until(async () =>

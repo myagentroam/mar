@@ -1,12 +1,11 @@
 import { createUuid } from '../util/uuid.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
-import { computed, ref, type Ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import type { ComposerAttachment } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
-import { errorCode } from '../util/api-error.js';
 import { workspaceFileSha256 } from '../util/workspace-file-checksum.js';
 import { errorMessage } from '../util/error-presentation.js';
-import type { DirectTransferDescriptor } from '@myagentroam/protocol';
+import type { createWorkspaceFileStreamClient } from './workspace-file-stream-client.js';
 import type { DraftPane, DraftTarget } from './session-draft-service.js';
 import { isBmpAttachment, normalizeComposerImage } from '../util/composer-image-compatibility.js';
 
@@ -19,7 +18,6 @@ interface AttachmentTarget {
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
-const CHUNK_BYTES = 512 * 1024;
 
 /** Owns tab-local uploads by Workspace and Composer pane, independently of session selection.
  * Submission retention protects captured files; cancellation and preview URL cleanup stay here.
@@ -29,21 +27,7 @@ export function createComposerAttachmentService(options: {
   readonly onAdded?: (target: AttachmentTarget) => void;
   readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
-  readonly resourceUrl?: (path: string) => string;
-  readonly csrfToken: Ref<string>;
-  readonly renewCsrfToken: () => Promise<string>;
-  readonly onUnauthenticated: () => void;
-  readonly direct?: {
-    readonly generation: (nodeId: string) => string | undefined;
-    readonly upload: (input: {
-      readonly nodeId: string;
-      readonly nodeGeneration: string;
-      readonly descriptor: DirectTransferDescriptor;
-      readonly file: File;
-      readonly onProgress: (offset: number) => void;
-      readonly signal: AbortSignal;
-    }) => Promise<void>;
-  };
+  readonly sendBody: ReturnType<typeof createWorkspaceFileStreamClient>['upload'];
 }) {
   const attachments = ref<ComposerAttachment[]>([]);
   let owners = new Map<string, AttachmentTarget>();
@@ -73,8 +57,7 @@ export function createComposerAttachmentService(options: {
   const dragging = ref(false);
   const preview = ref<ComposerAttachment>();
   const previewOpen = ref(false);
-  const directRequests = new Map<string, AbortController>();
-  const activeRequests = new Map<string, XMLHttpRequest>();
+  const streamRequests = new Map<string, AbortController>();
   const isCurrent = (attachment: ComposerAttachment) => owners.has(attachment.id);
 
   function addFor(context: AttachmentTarget | undefined, files: Iterable<File>): void {
@@ -107,7 +90,7 @@ export function createComposerAttachmentService(options: {
           ),
           'warning'
         );
-      const attachment: ComposerAttachment = {
+      const attachment = reactive<ComposerAttachment>({
         id: createUuid(),
         file,
         nodeId: context.nodeId,
@@ -115,7 +98,7 @@ export function createComposerAttachmentService(options: {
         previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
         receivedBytes: 0,
         status: 'UPLOADING'
-      };
+      });
       owners.set(attachment.id, { ...context });
       attachments.value = [...attachments.value, attachment];
       options.onAdded?.(context);
@@ -225,94 +208,41 @@ export function createComposerAttachmentService(options: {
         current.file = file;
         attachment = current;
       }
-      const generation = options.direct?.generation(attachment.nodeId);
-      if (generation !== undefined) {
-        const controller = new AbortController();
-        directRequests.set(attachment.id, controller);
-        try {
-          if (!attachments.value.some((item) => item.id === attachment.id))
-            throw new Error('UPLOAD_CANCELLED');
-          attachment.transport = 'DIRECT';
-          const sha256 = await workspaceFileSha256(attachment.file);
-          if (controller.signal.aborted) throw new Error('UPLOAD_CANCELLED');
-          await options.direct!.upload({
-            nodeId: attachment.nodeId,
-            nodeGeneration: generation,
-            descriptor: {
-              direction: 'UPLOAD',
-              resource: {
-                kind: 'WORKSPACE_FILE',
-                workspaceId: attachment.workspaceId,
-                path: attachment.file.name
-              },
-              fileName: attachment.file.name,
-              size: attachment.file.size,
-              sha256,
-              overwrite: false,
-              composerAttachment: {
-                id: attachment.id,
-                mime: attachment.file.type || 'application/octet-stream'
-              }
-            },
-            file: attachment.file,
-            onProgress: (offset) => {
-              attachment.receivedBytes = offset;
-            },
-            signal: controller.signal
-          });
-          const current = attachments.value.find((item) => item.id === attachment.id);
-          if (current !== undefined) current.status = 'COMPLETED';
-          return;
-        } catch {
-          if (!attachments.value.some((item) => item.id === attachment.id)) return;
-          attachment.receivedBytes = 0;
-          attachment.transport = 'SERVER';
-          attachment.directFallback = true;
-        } finally {
-          directRequests.delete(attachment.id);
-        }
-      }
-      attachment.transport = 'SERVER';
-      const created = await options.request<{
-        upload: {
-          readonly uploadId: string;
-          readonly receivedBytes: number;
-          readonly size: number;
-        };
-      }>(`/api/workspaces/${encodeURIComponent(attachment.workspaceId)}/uploads`, {
-        method: 'POST',
-        body: JSON.stringify({
+      const controller = new AbortController();
+      streamRequests.set(attachment.id, controller);
+      try {
+        if (!isCurrent(attachment)) return;
+        const sha256 = await workspaceFileSha256(attachment.file, controller.signal);
+        controller.signal.throwIfAborted();
+        await options.sendBody({
           nodeId: attachment.nodeId,
-          name: attachment.file.name,
-          mime: attachment.file.type || 'application/octet-stream',
-          size: attachment.file.size,
-          overwrite: false,
-          composerAttachmentId: attachment.id
-        })
-      });
-      if (!attachments.value.some((item) => item.id === attachment.id)) {
-        if (owner === owners) await cancel({ ...attachment, uploadId: created.upload.uploadId });
-        return;
+          descriptor: {
+            direction: 'UPLOAD',
+            resource: {
+              kind: 'WORKSPACE_FILE',
+              workspaceId: attachment.workspaceId,
+              path: attachment.file.name
+            },
+            fileName: attachment.file.name,
+            size: attachment.file.size,
+            sha256,
+            overwrite: false,
+            composerAttachment: {
+              id: attachment.id,
+              mime: attachment.file.type || 'application/octet-stream'
+            }
+          },
+          file: attachment.file,
+          onProgress: (offset) => {
+            attachment.receivedBytes = offset;
+          },
+          signal: controller.signal
+        });
+        attachment.status = 'COMPLETED';
+        if (!isCurrent(attachment) && owner === owners) await cancel(attachment);
+      } finally {
+        streamRequests.delete(attachment.id);
       }
-      const current = attachments.value.find((item) => item.id === attachment.id);
-      if (current === undefined) return;
-      current.uploadId = created.upload.uploadId;
-      current.receivedBytes = created.upload.receivedBytes;
-      while (current.receivedBytes < current.file.size) {
-        if (!isCurrent(current)) return;
-        const offset = current.receivedBytes;
-        const chunk = current.file.slice(offset, Math.min(current.file.size, offset + CHUNK_BYTES));
-        const uploaded = await uploadChunk(current, offset, chunk);
-        if (!isCurrent(current)) return;
-        current.receivedBytes = uploaded.receivedBytes;
-      }
-      if (!isCurrent(current)) return;
-      if (current.uploadId === undefined) throw new Error('COMPOSER_ATTACHMENT_UPLOAD_FAILED');
-      await options.request(
-        `/api/workspaces/${encodeURIComponent(attachment.workspaceId)}/uploads/${encodeURIComponent(current.uploadId)}/complete`,
-        { method: 'POST', body: JSON.stringify({ nodeId: attachment.nodeId }) }
-      );
-      current.status = 'COMPLETED';
     } catch (error) {
       const current = attachments.value.find((item) => item.id === attachment.id);
       if (current === undefined) return;
@@ -322,87 +252,16 @@ export function createComposerAttachmentService(options: {
     }
   }
 
-  async function uploadChunk(
-    attachment: ComposerAttachment,
-    offset: number,
-    chunk: Blob
-  ): Promise<{ readonly receivedBytes: number }> {
-    let lastError: unknown;
-    let renewedCsrfToken = false;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (!isCurrent(attachment)) throw new Error('UPLOAD_CANCELLED');
-      try {
-        return await new Promise<{ readonly receivedBytes: number }>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          activeRequests.set(attachment.id, xhr);
-          const path = `/api/workspaces/${encodeURIComponent(attachment.workspaceId)}/uploads/${encodeURIComponent(attachment.uploadId ?? '')}/chunks?nodeId=${encodeURIComponent(attachment.nodeId)}&offset=${offset}`;
-          xhr.open('POST', options.resourceUrl?.(path) ?? path);
-          xhr.withCredentials = true;
-          xhr.setRequestHeader('content-type', 'application/octet-stream');
-          xhr.setRequestHeader('x-csrf-token', options.csrfToken.value);
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable)
-              attachment.receivedBytes = Math.min(attachment.file.size, offset + event.loaded);
-          };
-          xhr.onerror = () => reject(new Error('UPLOAD_NETWORK_FAILED'));
-          xhr.onabort = () => reject(new Error('UPLOAD_CANCELLED'));
-          xhr.onload = () => {
-            if (!isCurrent(attachment)) {
-              reject(new Error('UPLOAD_CANCELLED'));
-              return;
-            }
-            if (xhr.status < 200 || xhr.status >= 300) {
-              let code: string | undefined;
-              try {
-                code = (JSON.parse(xhr.responseText) as { error?: { code?: string } }).error?.code;
-              } catch {
-                code = undefined;
-              }
-              if (code === 'UNAUTHENTICATED') options.onUnauthenticated();
-              reject(new Error(code ?? `REQUEST_FAILED_${xhr.status}`));
-              return;
-            }
-            try {
-              const body = JSON.parse(xhr.responseText) as { upload?: { receivedBytes?: unknown } };
-              if (!Number.isSafeInteger(body.upload?.receivedBytes))
-                throw new Error('NODE_RESPONSE_INVALID');
-              resolve({ receivedBytes: body.upload?.receivedBytes as number });
-            } catch (error) {
-              reject(error);
-            }
-          };
-          xhr.send(chunk);
-        });
-      } catch (error) {
-        lastError = error;
-        if (!isCurrent(attachment) || errorCode(error) === 'UPLOAD_CANCELLED') throw error;
-        if (errorCode(error) === 'UNAUTHENTICATED') throw error;
-        if (errorCode(error) === 'CSRF_INVALID') {
-          if (renewedCsrfToken) throw error;
-          renewedCsrfToken = true;
-          await options.renewCsrfToken();
-        }
-        attachment.receivedBytes = offset;
-      } finally {
-        activeRequests.delete(attachment.id);
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error('COMPOSER_ATTACHMENT_UPLOAD_FAILED');
-  }
-
   async function cancel(attachment: ComposerAttachment, remote = true): Promise<void> {
-    directRequests.get(attachment.id)?.abort();
-    directRequests.delete(attachment.id);
-    activeRequests.get(attachment.id)?.abort();
-    activeRequests.delete(attachment.id);
+    streamRequests.get(attachment.id)?.abort();
+    streamRequests.delete(attachment.id);
     // Removing a draft attachment must not cancel a message already in flight.
     // Unconsumed uploads removed in flight are left to Node's expiry cleanup.
     if (!remote || submissions.has(attachmentKey(attachment))) return;
-    const uploadId = attachment.status === 'COMPLETED' ? attachment.id : attachment.uploadId;
-    if (uploadId === undefined) return;
+    if (attachment.status !== 'COMPLETED') return;
     await options
       .request(
-        `/api/workspaces/${encodeURIComponent(attachment.workspaceId)}/uploads/${encodeURIComponent(uploadId)}/cancel`,
+        `/api/workspaces/${encodeURIComponent(attachment.workspaceId)}/uploads/${encodeURIComponent(attachment.id)}/cancel`,
         { method: 'POST', body: JSON.stringify({ nodeId: attachment.nodeId }) }
       )
       .catch(() => undefined);

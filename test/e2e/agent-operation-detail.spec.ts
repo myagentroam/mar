@@ -29,11 +29,13 @@ test('shows historical whiteboard receipts and errors inside Agent collaboration
   await group.locator(':scope > summary').click();
   await expect(group.getByText('start Native review')).toBeVisible();
   const rows = group.locator('.conversation-tool-detail');
-  const update = rows.filter({ has: page.getByText('Update whiteboard', { exact: true }) });
+  const update = rows.filter({
+    has: page.getByText('Update collaboration whiteboard', { exact: true })
+  });
   await expect(update.locator(':scope > summary')).not.toContainText('board-owner');
   await update.locator(':scope > summary').press('Enter');
   const facts = update.locator('.whiteboard-detail');
-  await expect(facts).toHaveText('Board owner: board-owner');
+  await expect(facts).toHaveText('Collaboration whiteboard owner: board-owner');
   await expect(update.locator('.tool-detail')).not.toContainText(
     /Board revision|Requested operations|Input:|Output:|"changed"/
   );
@@ -41,9 +43,9 @@ test('shows historical whiteboard receipts and errors inside Agent collaboration
   await expect
     .poll(() =>
       facts.evaluate((element) => {
-        const text = document.createRange();
-        text.selectNodeContents(element);
-        return new Set(Array.from(text.getClientRects(), (rect) => rect.top)).size;
+        // Inline element and text rectangles can have different tops on the same line.
+        const lineHeight = parseFloat(getComputedStyle(element).lineHeight);
+        return Math.round(element.getBoundingClientRect().height / lineHeight);
       })
     )
     .toBe(1);
@@ -62,17 +64,27 @@ test('shows historical whiteboard receipts and errors inside Agent collaboration
     outputSummary: '{"changed":false}',
     toolPresentation: { kind: 'EXTENSION', name: 'whiteboard', data: { boardRevision: 0 } }
   });
-  const join = rows.filter({ has: page.getByText('Join whiteboard', { exact: true }) });
+  const join = rows.filter({
+    has: page.getByText('Join collaboration whiteboard', { exact: true })
+  });
   await expect(join.locator(':scope > summary')).toContainText('Failed');
   await join.locator(':scope > summary').click();
-  await expect(join.locator('.whiteboard-detail')).toHaveText('Board owner: unknown-owner');
+  await expect(join.locator('.whiteboard-detail')).toHaveText(
+    'Collaboration whiteboard owner: unknown-owner'
+  );
   await expect(join.getByText('Board is not active.')).toBeVisible();
-  const read = rows.filter({ has: page.getByText('Read whiteboard', { exact: true }) });
+  const read = rows.filter({
+    has: page.getByText('Read collaboration whiteboard', { exact: true })
+  });
   await expect(read.locator(':scope > summary')).toContainText('Running');
   await read.locator(':scope > summary').click();
-  await expect(read.locator('.whiteboard-detail')).toHaveText('Board owner: board-owner');
+  await expect(read.locator('.whiteboard-detail')).toHaveText(
+    'Collaboration whiteboard owner: board-owner'
+  );
   await expect(read.locator('.tool-detail')).not.toContainText('Running');
-  const leave = rows.filter({ has: page.getByText('Leave whiteboard', { exact: true }) });
+  const leave = rows.filter({
+    has: page.getByText('Leave collaboration whiteboard', { exact: true })
+  });
   await expect(leave.locator(':scope > summary')).toContainText('Cancelled');
   await group.locator(':scope > summary').click();
   await expect(group.locator('.whiteboard-detail')).toHaveCount(0);
@@ -91,16 +103,16 @@ test('renders only meaningful whiteboard results on a narrow Chinese viewport', 
   await group.locator(':scope > summary').click();
   const summaries = group
     .locator('.conversation-tool-detail > summary')
-    .filter({ hasText: '白板' });
+    .filter({ hasText: '协作白板' });
   await expect(summaries).toHaveCount(6);
   for (const summary of await summaries.all()) await summary.click();
   await expect(group.locator('.whiteboard-detail')).toHaveText([
-    '白板所有者: shared-board · 3 条记录',
-    '白板所有者: empty-board · 白板为空',
-    '白板所有者: 交付评审',
-    '白板所有者: shared-board',
-    '没有额外关注的白板',
-    '白板所有者: 交付评审 · 已取消关注'
+    '协作白板所有者: shared-board · 3 条记录',
+    '协作白板所有者: empty-board · 协作白板为空',
+    '协作白板所有者: 交付评审',
+    '协作白板所有者: shared-board',
+    '没有额外关注的协作白板',
+    '协作白板所有者: 交付评审 · 已取消关注'
   ]);
   await expect(group.locator('.whiteboard-entry-changes li')).toHaveText([
     '保留兼容接口',
@@ -112,7 +124,7 @@ test('renders only meaningful whiteboard results on a narrow Chinese viewport', 
   await expect(group.getByText('fixture receipt')).toHaveCount(0);
   await expect(group.getByText('[Truncated]', { exact: true })).toBeVisible();
   const successfulLeave = group.locator('.conversation-tool-detail').filter({
-    has: page.getByText('白板所有者: 交付评审 · 已取消关注', { exact: true })
+    has: page.getByText('协作白板所有者: 交付评审 · 已取消关注', { exact: true })
   });
   await expect(successfulLeave.locator('.tool-detail-copy')).toBeVisible();
   await group.screenshot({ path: testInfo.outputPath('whiteboard-summary-mobile.png') });

@@ -1,3 +1,4 @@
+import { openComposerUploadFixture } from '../support/workspace-composer-upload.js';
 vi.mock('ws', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ws')>();
   const { mockedWebSocket } = await import('./support/control-socket.js');
@@ -577,24 +578,14 @@ describe('Codex input, commands, and event projection', () => {
         cwd: workspace.path
       })) as { readonly session: { readonly id: string } };
       const attachmentId = '55b57a95-a246-4f49-a084-adbe7aeb6a14';
-      const uploaded = (await internals.executeNodeOperation('workspace.files.upload.create', {
+      const complete = await openComposerUploadFixture(connector, {
         workspaceId: workspace.id,
+        id: attachmentId,
         name: 'diagram.svg',
         mime: 'image/svg+xml',
-        size: 6,
-        overwrite: false,
-        composerAttachmentId: attachmentId
-      })) as { readonly upload: { readonly uploadId: string } };
-      await internals.executeNodeOperation('workspace.files.upload.chunk', {
-        workspaceId: workspace.id,
-        uploadId: uploaded.upload.uploadId,
-        offset: 0,
-        dataBase64: 'PHN2Zy8+'
+        bytes: Buffer.from('<svg/>')
       });
-      await internals.executeNodeOperation('workspace.files.upload.complete', {
-        workspaceId: workspace.id,
-        uploadId: uploaded.upload.uploadId
-      });
+      await complete();
       const message = (await internals.executeNodeOperation('session.message', {
         sessionId: created.session.id,
         clientMessageId: 'run-image-cache',

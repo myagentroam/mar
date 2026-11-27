@@ -4,7 +4,6 @@ import { computed, ref, shallowRef, useId, watch, watchEffect } from 'vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { MarIcon } from '@myagentroam/mar-ui/icons';
-import { readOverflowText } from '@myagentroam/mar-ui/tooltip';
 import type { SessionCollaborationEdge } from '@myagentroam/protocol';
 import type { NavigationSession } from '../../service/session-navigation-projection.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -278,9 +277,10 @@ function lostCapture(event: PointerEvent) {
 }
 
 function nodeTooltip(id: string): string | undefined {
-  return readOverflowText(
-    port.value?.querySelector(`[data-node-title='${CSS.escape(id)}']`) ?? null
-  );
+  const title = port.value?.querySelector<HTMLElement>(`[data-node-title='${CSS.escape(id)}']`);
+  if (title && title.clientHeight > 0 && title.scrollHeight > title.clientHeight) {
+    return title.textContent?.trim() || undefined;
+  }
 }
 
 function openNodeMenu(event: MouseEvent | KeyboardEvent) {
@@ -454,8 +454,22 @@ function showFocusedEdge(event: FocusEvent) {
       >
         <svg class="network-edges" :width="graph.width" :height="graph.height">
           <defs>
-            <marker :id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-              <path class="network-arrow" d="M0 0L6 3.5 0 7z" />
+            <marker
+              v-for="variant in ['muted', 'related']"
+              :id="`${arrow}-${variant}`"
+              :key="variant"
+              markerUnits="userSpaceOnUse"
+              markerWidth="8"
+              markerHeight="10"
+              refX="6"
+              refY="5"
+              orient="auto"
+            >
+              <path
+                class="network-arrow"
+                :class="{ 'is-related': variant === 'related' }"
+                d="M2 1.5 6 5 2 8.5"
+              />
             </marker>
           </defs>
           <g
@@ -472,7 +486,11 @@ function showFocusedEdge(event: FocusEvent) {
                 `edge-${edge.kind}`,
                 { 'is-related': edge.from === selected || edge.to === selected }
               ]"
-              :marker-end="edge.kind === 'parent' ? `url(#${arrow})` : undefined"
+              :marker-end="
+                edge.kind === 'parent'
+                  ? `url(#${arrow}-${edge.from === selected || edge.to === selected ? 'related' : 'muted'})`
+                  : undefined
+              "
             />
             <path
               v-if="edge.kind === 'sharing'"
@@ -548,7 +566,7 @@ function showFocusedEdge(event: FocusEvent) {
             >
               <MarButton
                 v-tooltip="translate('sessionGroups.actions')"
-                class="network-node-more mar-icon-action"
+                class="network-node-more mar-icon-action mar-icon-action--inline"
                 icon="more"
                 text
                 :aria-label="translate('collaboration.sessionActions', { title: session.title })"
@@ -671,7 +689,7 @@ function showFocusedEdge(event: FocusEvent) {
   fill: none;
   stroke-width: 1.35;
 }
-.network-edges .edge-parent {
+.network-edges :is(.edge-parent, .network-arrow) {
   stroke: var(--mar-border-strong);
 }
 .network-edges .edge-sharing {
@@ -681,7 +699,7 @@ function showFocusedEdge(event: FocusEvent) {
 .network-edges .is-related {
   stroke-width: 1.65;
 }
-.network-edges .edge-parent.is-related {
+.network-edges :is(.edge-parent, .network-arrow).is-related {
   stroke: var(--mar-text-secondary);
 }
 .network-edges g:has(.edge-hit-area:focus-visible) .edge-sharing {
@@ -709,7 +727,10 @@ function showFocusedEdge(event: FocusEvent) {
   }
 }
 .network-arrow {
-  fill: var(--mar-border-strong);
+  fill: none;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .network-node-shell {
   position: absolute;
@@ -726,20 +747,22 @@ function showFocusedEdge(event: FocusEvent) {
   color: var(--mar-text-primary);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  padding-inline-end: calc(var(--network-node-more-size) + 0.375rem);
+  gap: 0.375rem;
+  padding: 0.1875rem 0.5rem;
+  padding-inline-end: calc(var(--network-node-more-size) + 0.25rem);
   text-align: start;
-  font-size: var(--mar-font-size-detail);
+  font-size: calc(var(--mar-font-size-detail) * 0.92);
   font-weight: 400;
+  line-height: 1.25;
   cursor: pointer;
-}
-.network-node.is-current {
-  border-color: var(--mar-border-strong);
 }
 .network-node.is-selected {
   border-color: var(--mar-border-strong);
   background: var(--mar-fill-selection);
+}
+.network-node.is-current {
+  /* The entry stays marked independently of the board selection or Agent activity. */
+  border-color: var(--mar-conversation-activity-fg);
 }
 .network-node:hover:not(.is-selected) {
   background: var(--mar-fill-row-hover);
@@ -748,8 +771,8 @@ function showFocusedEdge(event: FocusEvent) {
   flex: none;
   display: grid;
   place-items: center;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.125rem;
+  height: 1.125rem;
   color: var(--mar-text-primary);
 }
 .network-node-copy {
@@ -757,12 +780,14 @@ function showFocusedEdge(event: FocusEvent) {
   min-width: 0;
 }
 .network-node-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  /* Keep the hidden lines measurable for the overflow-only tooltip. */
+  -webkit-line-clamp: 2;
+  overflow: clip;
+  overflow-wrap: anywhere;
 }
 .network-node-badge {
-  font-size: var(--mar-font-size-meta);
   color: var(--mar-text-secondary);
 }
 .network-node-actions {
@@ -841,25 +866,30 @@ function showFocusedEdge(event: FocusEvent) {
   margin-inline-start: 0;
 }
 .network-legend {
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
   font-size: var(--mar-font-size-meta);
   color: var(--mar-text-secondary);
 }
 .network-legend span {
+  max-inline-size: 100%;
   gap: 0.3rem;
 }
 .network-legend i {
   position: relative;
+  flex: none;
   width: 1.25rem;
   border-top: 1px solid var(--mar-border-strong);
 }
 .network-legend i:not(.legend-sharing)::after {
   position: absolute;
-  inset: -3px 0 auto auto;
+  inset: -3px 1px auto auto;
+  width: 4px;
+  height: 4px;
   content: '';
-  border: 2px solid transparent;
-  border-inline-start: 4px solid var(--mar-border-strong);
-  border-inline-end: 0;
+  border: solid var(--mar-border-strong);
+  border-width: 1px 1px 0 0;
+  transform: rotate(45deg);
 }
 .network-legend .legend-sharing {
   border-top-color: var(--network-sharing-stroke);

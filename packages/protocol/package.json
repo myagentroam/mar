@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/protocol",
-  "version": "0.15.20",
+  "version": "0.15.21",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/myagentroam/mar.git",
@@ -17,10 +17,55 @@
     "access": "public"
   },
   "exports": {
+    "./browser-stream": {
+      "development": "./src/browser-stream.ts",
+      "types": "./dist/browser-stream.d.ts",
+      "import": "./dist/browser-stream.js"
+    },
+    "./node-stream": {
+      "development": "./src/node-stream.ts",
+      "types": "./dist/node-stream.d.ts",
+      "import": "./dist/node-stream.js"
+    },
+    "./file-upload-stream": {
+      "development": "./src/file-upload-stream.ts",
+      "types": "./dist/file-upload-stream.d.ts",
+      "import": "./dist/file-upload-stream.js"
+    },
+    "./terminal-stream": {
+      "development": "./src/terminal-stream.ts",
+      "types": "./dist/terminal-stream.d.ts",
+      "import": "./dist/terminal-stream.js"
+    },
     "./package.json": "./package.json",
     "./byte-frame": {
       "types": "./dist/byte-frame.d.ts",
       "import": "./dist/byte-frame.js"
+    },
+    "./node-connection": {
+      "development": "./src/node-connection.ts",
+      "types": "./dist/node-connection.d.ts",
+      "import": "./dist/node-connection.js"
+    },
+    "./node-relay-path": {
+      "development": "./src/node-relay-path.ts",
+      "types": "./dist/node-relay-path.d.ts",
+      "import": "./dist/node-relay-path.js"
+    },
+    "./node-stream-mux": {
+      "development": "./src/node-stream-mux.ts",
+      "types": "./dist/node-stream-mux.d.ts",
+      "import": "./dist/node-stream-mux.js"
+    },
+    "./node-stream-path": {
+      "development": "./src/node-stream-path.ts",
+      "types": "./dist/node-stream-path.d.ts",
+      "import": "./dist/node-stream-path.js"
+    },
+    "./node-stream-wire": {
+      "development": "./src/node-stream-wire.ts",
+      "types": "./dist/node-stream-wire.d.ts",
+      "import": "./dist/node-stream-wire.js"
     },
     ".": {
       "types": "./dist/index.d.ts",

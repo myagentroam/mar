@@ -7,6 +7,9 @@ import type { HostedConversationSnapshot, HostedConversationSummary } from '@mya
 import { ApiError } from '../../src/util/api-error.js';
 import { createHostedConversationEntryService } from '../../src/service/hosted-conversation-entry-service.js';
 import { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
+import { createWorkbenchNodeConnectionService } from '../../src/service/workbench-node-connection-service.js';
+import { createHostedFileDownloadService } from '../../src/service/hosted-file-download-service.js';
+import { sendFileUploadBody } from '../../src/service/workspace-upload-stream.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
@@ -57,7 +60,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return value as T;
 }
 
+const nodeConnections = createWorkbenchNodeConnectionService({ http: { request } });
 const workspace = createHostedConversationWorkspaceService({
+  downloads: createHostedFileDownloadService({
+    http: { request },
+    openStream: nodeConnections.openStream
+  }),
+  sendUploadBody: ({ nodeId, conversationId, uploadId }, file, signal, onProgress) =>
+    sendFileUploadBody(
+      () =>
+        nodeConnections.openStream(
+          nodeId,
+          { kind: 'hosted-file-upload', conversationId, uploadId },
+          signal
+        ),
+      file,
+      signal,
+      onProgress
+    ),
   request,
   workbenchConnectionId: () => (existing ? 'fixture-connection' : undefined),
   heartbeatMs: 30000,

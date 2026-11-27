@@ -1,8 +1,8 @@
-import type { CurrentUserSession } from './session.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 import type { HostedNodeControl } from './hosted-contracts.js';
 export function requestHostedConversationNode(
   nodeControl: Pick<HostedNodeControl, 'requestHostedConversationNode'>,
-  admin: CurrentUserSession,
+  actor: UserNodeAuthorization,
   nodeId: string,
   operation: string,
   data: unknown,
@@ -13,8 +13,8 @@ export function requestHostedConversationNode(
     operation,
     data,
     {
-      userId: admin.userId,
-      sessionHash: admin.sessionHash
+      userId: actor.userId,
+      sessionHash: actor.sessionHash
     },
     timeoutMs
   );

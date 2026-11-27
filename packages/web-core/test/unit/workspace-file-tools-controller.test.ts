@@ -144,13 +144,15 @@ it.each([
     const pendingRead = new Promise<WorkspaceDirectFileRange>((resolve) => {
       finishRead = resolve;
     });
-    const directFileReadRange = vi.fn(
+    const readPreviewRange = vi.fn(
       (
-        ...args: [string, number, number, string?, unknown?, string?, AbortSignal?]
+        ...args: Parameters<
+          ReturnType<ReturnType<typeof createFileAccessFixture>>['readPreviewRange']
+        >
       ): Promise<WorkspaceDirectFileRange> => {
         if (holdNextRead) {
           holdNextRead = false;
-          readSignal = args[6];
+          readSignal = args[3];
           return pendingRead;
         }
         return Promise.resolve({
@@ -176,7 +178,7 @@ it.each([
       onRevealFailure: vi.fn(),
       access: createFileAccessFixture({
         http,
-        transfers: () => ({ directFileReadRange })
+        transfers: () => ({ readPreviewRange })
       }),
       preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }

@@ -5,6 +5,9 @@ import type { DirectBrowserMessage, TerminalDirectBrowserMessage } from '@myagen
 import { createActiveNodeTransportService } from './active-node-transport-service.js';
 import { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
 import { createTerminalDirectClient } from './terminal-direct-client.js';
+import type { WorkbenchHttpService } from './workbench-http-service.js';
+import { openBrowserDirectFile } from './browser-direct-file-stream.js';
+import type { WorkbenchNodePath } from './workbench-node-connection-service.js';
 
 interface TransportNode {
   readonly id: string;
@@ -13,6 +16,7 @@ interface TransportNode {
   readonly nodeAppVersion?: string;
 }
 interface Options {
+  readonly http?: WorkbenchHttpService['request'];
   readonly nodes: () => readonly TransportNode[];
   readonly discover: (nodeId: string) => Promise<NodeWorkbenchManifest | undefined>;
   readonly sendDirect: (message: DirectBrowserMessage) => boolean;
@@ -39,13 +43,7 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
   });
   const terminal = createTerminalDirectClient({
     send: (message) =>
-      connectionId !== undefined && !disposed && options.sendTerminalDirect(message),
-    acquire: (nodeId) => {
-      const capability = capabilities.get(nodeId);
-      return !eligible(nodeId) || capability?.terminalDirect !== true
-        ? undefined
-        : workspace.acquireTerminalTransport(nodeId, capability.generation);
-    }
+      connectionId !== undefined && !disposed && options.sendTerminalDirect(message)
   });
   const activeNodes = createActiveNodeTransportService({
     activate: (nodeId) => {
@@ -263,11 +261,71 @@ export function createWorkbenchDirectTransportCoordinator(options: Options) {
     return nodeId !== undefined && networkInfo(nodeId)?.scope === 'LOOPBACK';
   });
 
+  async function connectNodePath(nodeId: string, signal: AbortSignal): Promise<WorkbenchNodePath> {
+    if (!capabilities.has(nodeId)) await refresh(nodeId);
+    signal.throwIfAborted();
+    const capability = capabilities.get(nodeId);
+    if (!eligible(nodeId) || capability === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
+    const result = await workspace.ensureTransport(nodeId, capability.generation);
+    signal.throwIfAborted();
+    if (
+      result !== 'DIRECT_AVAILABLE' ||
+      capabilities.get(nodeId) !== capability ||
+      !eligible(nodeId)
+    )
+      throw new Error('NODE_DIRECT_UNAVAILABLE');
+    const transport = workspace.acquireTerminalTransport(nodeId, capability.generation);
+    if (transport === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
+    try {
+      const path = await transport.readyStreamPath(signal);
+      signal.throwIfAborted();
+      if (path === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
+      const { nodeGeneration, transportSessionId } = transport;
+      return {
+        get closed() {
+          return path.closed;
+        },
+        close: transport.release,
+        async openStream(request, opening) {
+          if (request.kind === 'file-upload' || request.kind === 'file-download')
+            return workspace.openFileStream(nodeId, nodeGeneration, request.descriptor, opening);
+          if (request.kind === 'browser-rfb') {
+            const grant = await request.prepare(transportSessionId, opening);
+            if (grant !== undefined) return path.openStream({ kind: request.kind, grant }, opening);
+            return undefined;
+          }
+          if (request.kind === 'browser-file-upload' || request.kind === 'browser-file-download') {
+            if (!options.http) return undefined;
+            return openBrowserDirectFile(
+              options.http,
+              path,
+              nodeId,
+              transportSessionId,
+              request,
+              opening
+            );
+          }
+          if (request.kind !== 'terminal') return undefined;
+          if (!capability.terminalDirect) return undefined;
+          const { terminalId, workspaceId, afterSequence } = request;
+          return terminal.openStream(
+            nodeId,
+            { terminalId, afterSequence, ...(workspaceId === undefined ? {} : { workspaceId }) },
+            { nodeGeneration, transportSessionId },
+            path,
+            opening
+          );
+        }
+      };
+    } catch (error) {
+      transport.release();
+      throw error;
+    }
+  }
+
   return {
     workspace: { upload: workspace.upload, download: workspace.download },
-    acquireBrowser: (nodeId: string, generation: string) =>
-      workspace.acquireBrowserTransport(nodeId, generation),
-    terminal: { attach: terminal.attach },
+    connectNodePath,
     handleDirect: workspace.handle,
     handleTerminalDirect: terminal.handle,
     selectNode: (nodeId: string | undefined) => {

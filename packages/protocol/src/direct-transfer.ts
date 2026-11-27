@@ -53,6 +53,7 @@ const gitCommitBlobResourceSchema = z
     workspaceId: resourceIdentifierSchema,
     commit: z.string().min(1).max(256),
     path: relativePathSchema,
+    refs: z.array(z.string().min(1).max(4096)).max(128).optional(),
     repositoryPath: z.string().max(4096).optional(),
     worktreePath: z.string().max(4096).optional()
   })
@@ -74,6 +75,7 @@ const directUploadDescriptorSchema = directTransferDescriptorBaseSchema
   .extend({
     direction: z.literal('UPLOAD'),
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    uploadId: z.string().uuid().optional(),
     overwrite: z.boolean().optional(),
     resumeOffset: safeIntegerSchema.optional(),
     composerAttachment: z
@@ -86,6 +88,14 @@ const directUploadDescriptorSchema = directTransferDescriptorBaseSchema
   })
   .strict()
   .superRefine((descriptor, context) => {
+    const staged = descriptor.uploadId !== undefined;
+    const attachment = descriptor.composerAttachment !== undefined;
+    if (staged === attachment)
+      context.addIssue({
+        code: 'custom',
+        path: ['uploadId'],
+        message: 'An upload must use either a staging ID or a Composer attachment ID'
+      });
     if (
       descriptor.resource.kind === 'WORKSPACE_FILE' &&
       (descriptor.resource.repositoryPath !== undefined ||
@@ -359,36 +369,3 @@ export const directNodeEventSchema = z.discriminatedUnion('type', [
     .strict()
 ]);
 export type DirectNodeEvent = z.infer<typeof directNodeEventSchema>;
-
-export const directDataOpenFrameSchema = z
-  .object({
-    type: z.literal('OPEN'),
-    directSessionId: identifierSchema,
-    grant: z.string().min(32).max(4096)
-  })
-  .strict();
-export const directDataAckFrameSchema = z
-  .object({
-    type: z.literal('ACK'),
-    offset: safeIntegerSchema
-  })
-  .strict();
-export const directDataCompleteFrameSchema = z
-  .object({
-    type: z.literal('COMPLETE'),
-    size: safeIntegerSchema
-  })
-  .strict();
-export const directDataErrorFrameSchema = z
-  .object({
-    type: z.literal('ERROR'),
-    code: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u)
-  })
-  .strict();
-export const directDataControlFrameSchema = z.discriminatedUnion('type', [
-  directDataOpenFrameSchema,
-  directDataAckFrameSchema,
-  directDataCompleteFrameSchema,
-  directDataErrorFrameSchema
-]);
-export type DirectDataControlFrame = z.infer<typeof directDataControlFrameSchema>;

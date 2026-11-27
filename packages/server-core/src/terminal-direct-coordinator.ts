@@ -257,9 +257,12 @@ export class TerminalDirectCoordinator {
         'TERMINAL_GIT_OWNER_REQUIRED'
       ].includes(reason)
         ? reason
-        : ['NODE_ACCESS_DENIED', 'WORKSPACE_ACCESS_DENIED', 'USER_AUTHORIZATION_REQUIRED'].includes(
-              reason
-            )
+        : [
+              'NODE_ACCESS_DENIED',
+              'WORKSPACE_ACCESS_DENIED',
+              'USER_AUTHORIZATION_REQUIRED',
+              'TERMINAL_OWNER_REQUIRED'
+            ].includes(reason)
           ? 'TERMINAL_NOT_AUTHORIZED'
           : 'TERMINAL_DIRECT_UNAVAILABLE';
       await this.error(identity.workbenchConnectionId, request.requestId, code);

@@ -362,9 +362,7 @@ function createQuoteOwners(target: Ref<DraftTarget | undefined>) {
     context: () => target.value,
     notice: vi.fn(),
     request: async <T>() => ({}) as T,
-    csrfToken: ref(''),
-    renewCsrfToken: async () => '',
-    onUnauthenticated: vi.fn()
+    sendBody: vi.fn(async () => undefined)
   });
   const submissions = createWorkbenchSubmissionOwner();
   return { storage, drafts, attachments, submissions };

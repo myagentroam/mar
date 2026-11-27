@@ -55,6 +55,7 @@ interface ManagedProcess {
   exitObserved: boolean;
   finalized: boolean;
   terminalResultReturned: boolean;
+  discardReplay: boolean;
   terminate?: Promise<void>;
   waiters: Set<() => void>;
   supersedePoll?: () => void;
@@ -174,12 +175,13 @@ export class ExecTool {
           );
         process.child.stdin.write(input.data);
       }
-      if (input.action === 'cancel') await this.#terminate(process, true);
-      const result = this.#result(input.processId, process);
-      if (process.status !== 'running') {
-        this.#retainCompleted(input.processId, process);
-        if (input.action === 'cancel') this.#removeCompleted(input.processId);
+      if (input.action === 'cancel') {
+        // Mark before awaiting termination so concurrent collection cannot evict another replay.
+        process.discardReplay = true;
+        await this.#terminate(process, true);
       }
+      const result = this.#result(input.processId, process);
+      if (process.status !== 'running') this.#releaseCollectedProcess(input.processId, process);
       return {
         ...result,
         ...(input.action === 'poll'
@@ -214,7 +216,9 @@ export class ExecTool {
     if (input.timeoutMs !== undefined) {
       managed.timer = setTimeout(
         () => {
-          void this.#terminate(managed, true).then(() => this.#retainCompleted(id, managed));
+          void this.#terminate(managed, true).then(() =>
+            this.#releaseCollectedProcess(id, managed)
+          );
         },
         Math.min(input.timeoutMs, TOOL_EXECUTION_LIMITS.execMaxTimeoutMs)
       );
@@ -230,7 +234,7 @@ export class ExecTool {
       onOutput
     );
     const result = this.#result(id, managed);
-    if (managed.status !== 'running') this.#retainCompleted(id, managed);
+    if (managed.status !== 'running') this.#releaseCollectedProcess(id, managed);
     return {
       ...result,
       ...waitMetadata(
@@ -301,6 +305,7 @@ export class ExecTool {
         ...(child.signalCode == null ? {} : { exitSignal: child.signalCode }),
         finalized: false,
         terminalResultReturned: false,
+        discardReplay: false,
         waiters: new Set()
       };
       this.#processes.set(id, managed);
@@ -340,7 +345,7 @@ export class ExecTool {
         managed.resolveExited();
         if (!native)
           void finalizeAfterOutputGrace(managed, this.maxOutputBytes).then(() =>
-            this.#retainCompleted(id, managed)
+            this.#releaseCollectedProcess(id, managed)
           );
       });
       child.once('close', (code, signal) => {
@@ -349,7 +354,7 @@ export class ExecTool {
         managed.resolveExited();
         finalizeManagedProcess(managed, this.maxOutputBytes, code);
         if (native) this.#processes.delete(id);
-        else this.#retainCompleted(id, managed);
+        else this.#releaseCollectedProcess(id, managed);
       });
       child.once('error', (error) => {
         if (managed.finalized) return;
@@ -377,7 +382,7 @@ export class ExecTool {
         if (child.stdout.closed && child.stderr.closed) {
           finalizeManagedProcess(managed, this.maxOutputBytes, child.exitCode);
           if (native) this.#processes.delete(id);
-          else this.#retainCompleted(id, managed);
+          else this.#releaseCollectedProcess(id, managed);
         }
       }
       return { id, managed };
@@ -549,7 +554,7 @@ export class ExecTool {
     clearTimeout(completed.timer);
     this.#completed.delete(id);
   }
-  #retainCompleted(id: string, process: ManagedProcess) {
+  #releaseCollectedProcess(id: string, process: ManagedProcess) {
     if (
       process.native ||
       process.status === 'running' ||
@@ -559,6 +564,7 @@ export class ExecTool {
     )
       return;
     this.#processes.delete(id);
+    if (process.discardReplay) return;
     const stdout = consumeOutput(process.stdoutHistory);
     const stderr = consumeOutput(process.stderrHistory);
     const timer = setTimeout(

@@ -1,3 +1,4 @@
+import { mockWorkspaceUploadRelay } from './support/mock-workspace-upload-relay.js';
 import { expect, test, type Page } from '@playwright/test';
 import { recordWebm, silentWave } from './support/file-preview-media.js';
 import {
@@ -1205,7 +1206,7 @@ test('Reload marks uploads interrupted in notifications, permits resume or delet
       ])
     );
     window.sessionStorage.setItem(
-      'mar.workspace-upload-tasks',
+      'mar.account.v1.1.mar.workspace-upload-tasks',
       JSON.stringify([
         {
           id: 'resume-task',
@@ -1235,12 +1236,17 @@ test('Reload marks uploads interrupted in notifications, permits resume or delet
     );
   });
   await page.route('**/api/workspaces/workspace-1/uploads/upload-resume?nodeId=node-1', (route) =>
-    json(route, { upload: { uploadId: 'upload-resume', receivedBytes: 1, size: 2 } })
+    json(route, {
+      upload: { uploadId: 'upload-resume', path: 'src/paused.txt', receivedBytes: 1, size: 2 }
+    })
   );
-  await page.route(
-    '**/api/workspaces/workspace-1/uploads/upload-resume/chunks?nodeId=node-1&offset=1',
-    (route) => json(route, { upload: { receivedBytes: 2 } })
-  );
+  await mockWorkspaceUploadRelay(page, {
+    offset: () => 1,
+    received: (upload, body) => {
+      expect(upload.uploadId).toBe('upload-resume');
+      expect(body).toEqual(Buffer.from('b'));
+    }
+  });
   await page.route('**/api/workspaces/workspace-1/uploads/upload-resume/complete', (route) =>
     json(route, { upload: { receivedBytes: 2 } })
   );

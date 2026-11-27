@@ -1,3 +1,4 @@
+import { mockWorkspaceUploadRelay } from './support/mock-workspace-upload-relay.js';
 import { expect, test, type Locator, type Route } from '@playwright/test';
 import type { AgentEvent } from '../../mar-agent/src/index.js';
 import { MarAgentConversationNormalizer } from '../../mar-node/src/runner/mar-agent/conversation-normalizer.js';
@@ -9,6 +10,7 @@ import { verifyConversationThemes } from './support/conversation-visual.js';
 import {
   emitMockSessionEvent,
   fulfillMockSessionWatch,
+  fulfillMockWorkspaceWatch,
   mockConsoleApi,
   json
 } from './support/web-console-api.js';
@@ -270,12 +272,23 @@ test('Sending an image in an idle session follows the latest message after its t
   page
 }) => {
   const capabilities = ['history.read', 'turn.start'];
-  await mockConsoleApi(page, 'MANAGED', capabilities, []);
+  await mockConsoleApi(
+    page,
+    'MANAGED',
+    capabilities,
+    [],
+    'DIRECTORY',
+    true,
+    'IDLE',
+    undefined,
+    '0.11.69'
+  );
   const session = {
     id: 'session-1',
     workspaceId: 'workspace-1',
     runner: 'codex',
     activity: 'IDLE',
+    customTitle: 'Image upload conversation',
     control: { level: 'MANAGED', capabilities }
   };
   const history = watchedConversation([
@@ -297,21 +310,18 @@ test('Sending an image in an idle session follows the latest message after its t
   await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
     fulfillMockSessionWatch(page, route, session, { ...history, session })
   );
+  await page.route('**/api/workspaces/workspace-1/watch', (route) =>
+    fulfillMockWorkspaceWatch(page, route, session, 'DIRECTORY')
+  );
 
   const name = 'diagram.png';
   const image = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aM1sAAAAASUVORK5CYII=',
     'base64'
   );
-  await page.route('**/api/workspaces/workspace-1/uploads', (route) =>
-    json(route, { upload: { uploadId: 'image-upload', receivedBytes: 0, size: image.length } })
-  );
-  await page.route('**/api/workspaces/workspace-1/uploads/image-upload/chunks?*', (route) =>
-    json(route, { upload: { receivedBytes: image.length } })
-  );
-  await page.route('**/api/workspaces/workspace-1/uploads/image-upload/complete', (route) =>
-    json(route, { upload: { receivedBytes: image.length } })
-  );
+  await mockWorkspaceUploadRelay(page, {
+    received: (_upload, body) => expect(body).toEqual(image)
+  });
   const path = `mar-attachment://00000000-0000-4000-8000-000000000001/${name}`;
   const thumbnailPending = Promise.withResolvers<void>();
   await page.route('**/api/workspaces/workspace-1/files/content?*', async (route) => {
@@ -406,7 +416,9 @@ test('Sending an image in an idle session follows the latest message after its t
     await expect.poll(bottomGap).toBeLessThanOrEqual(1);
     const height = await region.evaluate((el) => el.scrollHeight);
     thumbnailPending.resolve();
-    await expect.poll(() => thumbnail.evaluate((el) => el.naturalWidth)).toBe(320);
+    await expect
+      .poll(() => thumbnail.evaluate((el: HTMLImageElement) => el.naturalWidth))
+      .toBe(320);
     await expect.poll(() => region.evaluate((el) => el.scrollHeight)).toBeGreaterThan(height);
     await expect.poll(bottomGap).toBeLessThanOrEqual(1);
     await expect(thumbnail).toBeInViewport();
@@ -2331,7 +2343,7 @@ test.describe('Independent tool presentation', () => {
 function watchedConversation(
   segments: readonly Record<string, unknown>[],
   nextCursor: string | null = null
-): Record<string, unknown> {
+) {
   const normalizedSegments = segments.map((segment) => {
     const turnId = String(segment.turnId);
     const runId = typeof segment.runId === 'string' ? segment.runId : null;

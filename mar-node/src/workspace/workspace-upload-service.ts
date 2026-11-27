@@ -20,7 +20,10 @@ export interface ActiveWorkspaceUpload {
   readonly size: number;
   readonly overwrite: boolean;
   readonly directSha256?: string;
+  readonly streamStaging?: boolean;
   writing?: boolean;
+  streamOpen?: boolean;
+  completing?: boolean;
   cancelled?: boolean;
   readonly composerAttachment?: {
     readonly id: string;
@@ -61,9 +64,11 @@ export interface ComposerAttachmentReservation {
   release(): void;
 }
 
+/** Owns Workspace staging, target reservations and temporary Composer attachments. */
 export class WorkspaceUploadService {
   private readonly uploads = new Map<string, ActiveWorkspaceUpload>();
   private readonly composerAttachments = new Map<string, CompletedComposerAttachment>();
+  private readonly creatingTargets = new Set<string>();
 
   constructor(
     private readonly onCompleted: (workspaceId: string) => void,
@@ -109,12 +114,7 @@ export class WorkspaceUploadService {
       throw new Error('UPLOAD_INVALID');
     if (
       attachment !== undefined &&
-      (!validComposerAttachmentName(input.name) ||
-        (input.size as number) > MAX_ATTACHMENT_BYTES ||
-        this.composerAttachments.has(attachment.id) ||
-        [...this.uploads.values()].some(
-          (upload) => upload.composerAttachment?.id === attachment.id
-        ))
+      (!validComposerAttachmentName(input.name) || (input.size as number) > MAX_ATTACHMENT_BYTES)
     )
       throw new Error('COMPOSER_ATTACHMENT_INVALID');
     const target =
@@ -129,39 +129,57 @@ export class WorkspaceUploadService {
     if (target.status === 'EXISTS_DIRECTORY') throw new Error('UPLOAD_TARGET_DIRECTORY');
     if (target.status === 'EXISTS_FILE' && !input.overwrite)
       throw new Error('UPLOAD_TARGET_EXISTS');
-    if (
-      [...this.uploads.values()].some(
-        (upload) => upload.workspaceId === workspace.id && upload.targetPath === target.absolutePath
+    const attachmentKey = attachment === undefined ? undefined : `attachment:${attachment.id}`;
+    if (attachmentKey !== undefined && attachment !== undefined) {
+      if (
+        this.creatingTargets.has(attachmentKey) ||
+        this.composerAttachments.has(attachment.id) ||
+        [...this.uploads.values()].some((upload) => upload.composerAttachment?.id === attachment.id)
       )
-    )
+        throw new Error('COMPOSER_ATTACHMENT_INVALID');
+    }
+    if (
+      this.creatingTargets.has(target.absolutePath) ||
+      [...this.uploads.values()].some((upload) => upload.targetPath === target.absolutePath)
+    ) {
       throw new Error('UPLOAD_TARGET_BUSY');
-    const id = randomUUID();
-    const temporaryPath = resolve(dirname(target.absolutePath), workspaceUploadTemporaryName(id));
-    const handle = await open(temporaryPath, 'wx+');
-    const timer = setTimeout(() => {
-      const upload = this.uploads.get(id);
-      if (upload !== undefined) void this.remove(upload).catch(() => undefined);
-    }, TTL_MS);
-    const upload: ActiveWorkspaceUpload = {
-      id,
-      workspaceId: workspace.id,
-      workspacePath: workspace.path,
-      path: target.path,
-      targetPath: target.absolutePath,
-      temporaryPath,
-      size: input.size as number,
-      overwrite: input.overwrite,
-      ...(typeof input.sha256 === 'string' ? { directSha256: input.sha256 } : {}),
-      ...(attachment === undefined ? {} : { composerAttachment: attachment }),
-      handle,
-      receivedBytes: 0,
-      timer
-    };
-    this.uploads.set(id, upload);
-    return this.status(id);
+    }
+    // Reserve through the asynchronous file open, then hand ownership to the staged upload.
+    this.creatingTargets.add(target.absolutePath);
+    if (attachmentKey !== undefined) this.creatingTargets.add(attachmentKey);
+    try {
+      const id = randomUUID();
+      const temporaryPath = resolve(dirname(target.absolutePath), workspaceUploadTemporaryName(id));
+      const handle = await open(temporaryPath, 'wx+');
+      const timer = setTimeout(() => {
+        const upload = this.uploads.get(id);
+        if (upload !== undefined) void this.remove(upload).catch(() => undefined);
+      }, TTL_MS);
+      const upload: ActiveWorkspaceUpload = {
+        id,
+        workspaceId: workspace.id,
+        workspacePath: workspace.path,
+        path: target.path,
+        targetPath: target.absolutePath,
+        temporaryPath,
+        size: input.size as number,
+        overwrite: input.overwrite,
+        ...(typeof input.sha256 === 'string' ? { directSha256: input.sha256 } : {}),
+        ...(input.streamStaging === true ? { streamStaging: true } : {}),
+        ...(attachment === undefined ? {} : { composerAttachment: attachment }),
+        handle,
+        receivedBytes: 0,
+        timer
+      };
+      this.uploads.set(id, upload);
+      return this.status(id);
+    } finally {
+      this.creatingTargets.delete(target.absolutePath);
+      if (attachmentKey !== undefined) this.creatingTargets.delete(attachmentKey);
+    }
   }
 
-  async write(input: Record<string, unknown>): Promise<UploadStatus> {
+  async write(input: Record<string, unknown>, fromStream = false): Promise<UploadStatus> {
     if (
       typeof input.uploadId !== 'string' ||
       !Number.isSafeInteger(input.offset) ||
@@ -170,6 +188,8 @@ export class WorkspaceUploadService {
     )
       throw new Error('UPLOAD_CHUNK_INVALID');
     const upload = this.require(input.uploadId);
+    if (upload.completing || (upload.streamStaging && !fromStream))
+      throw new Error('UPLOAD_TARGET_BUSY');
     if (upload.writing) throw new Error('UPLOAD_OFFSET_INVALID');
     if (input.offset !== upload.receivedBytes) throw new Error('UPLOAD_OFFSET_INVALID');
     const { bytes } = input;
@@ -186,64 +206,70 @@ export class WorkspaceUploadService {
     }
   }
 
-  async createDirect(
+  openStreamUpload(
+    workspace: NodeWorkspace,
+    input: { uploadId: string; path: string; size: number; sha256: string; overwrite: boolean }
+  ) {
+    const upload = this.require(input.uploadId);
+    if (
+      !upload.streamStaging ||
+      upload.workspaceId !== workspace.id ||
+      upload.workspacePath !== workspace.path ||
+      upload.path !== input.path ||
+      upload.size !== input.size ||
+      upload.overwrite !== input.overwrite ||
+      upload.composerAttachment !== undefined
+    )
+      throw new Error('UPLOAD_NOT_FOUND');
+    if (upload.directSha256 !== input.sha256) throw new Error('UPLOAD_SOURCE_MISMATCH');
+    if (upload.streamOpen || upload.writing || upload.completing)
+      throw new Error('UPLOAD_TARGET_BUSY');
+    upload.streamOpen = true;
+    let owned = true;
+    const release = () => {
+      if (!owned) return;
+      owned = false;
+      delete upload.streamOpen;
+    };
+    return {
+      offset: upload.receivedBytes,
+      write: (bytes: Uint8Array) => this.writeDirect(upload.id, bytes, true),
+      complete: async () => release(),
+      // The task owns explicit cleanup by ID across both paths; dropping the stream releases only its writer.
+      cancel: async () => {},
+      release
+    };
+  }
+
+  createComposerUpload(
     workspace: NodeWorkspace,
     input: {
       readonly path: string;
       readonly size: number;
       readonly sha256: string;
       readonly overwrite: boolean;
-      readonly composerAttachment?: { readonly id: string; readonly mime: string };
+      readonly attachment: { readonly id: string; readonly mime: string };
     }
   ): Promise<UploadStatus> {
-    const normalized = input.path.replaceAll('\\', '/');
-    const existing = [...this.uploads.values()].find(
-      (upload) =>
-        input.composerAttachment === undefined &&
-        upload.composerAttachment === undefined &&
-        upload.workspaceId === workspace.id &&
-        upload.path === normalized &&
-        upload.size === input.size &&
-        upload.overwrite === input.overwrite &&
-        upload.directSha256 === input.sha256
-    );
-    if (existing !== undefined) {
-      const target = await preflightWorkspaceUpload(
-        workspace.path,
-        posix.dirname(normalized),
-        posix.basename(normalized)
-      );
-      if (
-        target.absolutePath !== existing.targetPath ||
-        target.path !== existing.path ||
-        target.status === 'INVALID_NAME' ||
-        target.status === 'EXISTS_DIRECTORY' ||
-        (target.status === 'EXISTS_FILE' && !existing.overwrite)
-      )
-        throw new Error('UPLOAD_TARGET_INVALID');
-      return this.status(existing.id);
-    }
-    const status = await this.create(workspace, {
-      name: posix.basename(normalized),
+    return this.create(workspace, {
+      name: posix.basename(input.path.replaceAll('\\', '/')),
       size: input.size,
       overwrite: input.overwrite,
       sha256: input.sha256,
-      ...(input.composerAttachment === undefined
-        ? { directory: posix.dirname(normalized) }
-        : {
-            composerAttachmentId: input.composerAttachment.id,
-            mime: input.composerAttachment.mime
-          })
+      composerAttachmentId: input.attachment.id,
+      mime: input.attachment.mime
     });
-    return status;
   }
 
-  async writeDirect(uploadId: string, bytes: Uint8Array): Promise<number> {
-    const status = await this.write({
-      uploadId,
-      offset: this.status(uploadId).receivedBytes,
-      bytes
-    });
+  async writeDirect(uploadId: string, bytes: Uint8Array, fromStream = false): Promise<number> {
+    const status = await this.write(
+      {
+        uploadId,
+        offset: this.status(uploadId).receivedBytes,
+        bytes
+      },
+      fromStream
+    );
     return status.receivedBytes;
   }
 
@@ -251,21 +277,28 @@ export class WorkspaceUploadService {
     const upload = this.require(uploadId);
     if (size !== upload.size || upload.receivedBytes !== upload.size)
       throw new Error('UPLOAD_SIZE_INVALID');
+    await this.complete(uploadId, signal);
+  }
+
+  private async verifyDigest(upload: ActiveWorkspaceUpload, signal?: AbortSignal): Promise<void> {
     const hash = createHash('sha256');
+    let length = 0;
     for await (const bytes of upload.handle.createReadStream({ start: 0, autoClose: false })) {
       this.assertActive(upload, signal);
+      length += bytes.length;
+      if (length > upload.size) throw new Error('UPLOAD_STAGING_INVALID');
       hash.update(bytes);
     }
     this.assertActive(upload, signal);
+    if (length !== upload.size) throw new Error('UPLOAD_STAGING_INVALID');
     if (hash.digest('hex') !== upload.directSha256) {
       await this.remove(upload);
       throw new Error('DIRECT_INTEGRITY_FAILED');
     }
-    await this.complete(uploadId, signal);
   }
 
-  status(uploadId: unknown): UploadStatus {
-    const upload = this.require(uploadId);
+  status(uploadId: unknown, workspaceId?: unknown): UploadStatus {
+    const upload = this.require(uploadId, workspaceId);
     return {
       uploadId: upload.id,
       path: upload.path,
@@ -276,7 +309,19 @@ export class WorkspaceUploadService {
 
   async complete(uploadId: unknown, signal?: AbortSignal): Promise<UploadStatus> {
     const upload = this.require(uploadId);
+    if (upload.streamOpen || upload.writing || upload.completing)
+      throw new Error('UPLOAD_TARGET_BUSY');
     if (upload.receivedBytes !== upload.size) throw new Error('UPLOAD_INCOMPLETE');
+    upload.completing = true;
+    try {
+      return await this.commit(upload, signal);
+    } finally {
+      delete upload.completing;
+    }
+  }
+
+  private async commit(upload: ActiveWorkspaceUpload, signal?: AbortSignal): Promise<UploadStatus> {
+    if (upload.directSha256 !== undefined) await this.verifyDigest(upload, signal);
     await upload.handle.sync();
     this.assertActive(upload, signal);
     await upload.handle.close();
@@ -321,12 +366,20 @@ export class WorkspaceUploadService {
     };
   }
 
-  async cancel(uploadId: unknown): Promise<void> {
+  async cancel(uploadId: unknown, workspaceId?: unknown): Promise<void> {
     if (typeof uploadId !== 'string') throw new Error('UPLOAD_NOT_FOUND');
     const active = this.uploads.get(uploadId);
-    if (active !== undefined) return this.remove(active);
+    if (active !== undefined) {
+      if (workspaceId !== undefined && active.workspaceId !== workspaceId)
+        throw new Error('UPLOAD_NOT_FOUND');
+      return this.remove(active);
+    }
     const attachment = this.composerAttachments.get(uploadId);
-    if (attachment === undefined) throw new Error('UPLOAD_NOT_FOUND');
+    if (
+      attachment === undefined ||
+      (workspaceId !== undefined && attachment.workspaceId !== workspaceId)
+    )
+      throw new Error('UPLOAD_NOT_FOUND');
     if (attachment.reserved) throw new Error('COMPOSER_ATTACHMENT_UNAVAILABLE');
     await this.removeCompleted(attachment);
   }
@@ -418,10 +471,15 @@ export class WorkspaceUploadService {
     return undefined;
   }
 
-  private require(id: unknown): ActiveWorkspaceUpload {
+  private require(id: unknown, workspaceId?: unknown): ActiveWorkspaceUpload {
     if (typeof id !== 'string') throw new Error('UPLOAD_NOT_FOUND');
     const upload = this.uploads.get(id);
-    if (upload === undefined || upload.cancelled) throw new Error('UPLOAD_NOT_FOUND');
+    if (
+      upload === undefined ||
+      upload.cancelled ||
+      (workspaceId !== undefined && upload.workspaceId !== workspaceId)
+    )
+      throw new Error('UPLOAD_NOT_FOUND');
     return upload;
   }
   private assertActive(upload: ActiveWorkspaceUpload, signal?: AbortSignal): void {

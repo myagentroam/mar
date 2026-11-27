@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { marIcon } from '@myagentroam/mar-ui/icons';
+import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -20,18 +21,16 @@ import MarkdownFilePreview from './MarkdownFilePreview.vue';
 import { markdownPreviewPreferenceService } from '../../service/markdown-preview-preference-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { createStandaloneWorkspaceDirectTransferService } from '../../service/standalone-workspace-direct-transfer-service.js';
+import { createWorkbenchNodeConnectionService } from '../../service/workbench-node-connection-service.js';
+import { createHostedFileDownloadService } from '../../service/hosted-file-download-service.js';
 import { usePwaApplicationService } from '../../service/pwa-application-service.js';
 import { createStandaloneFileWindowService } from '../../service/standalone-file-window-service.js';
 import { directFileContentRevision } from '../../service/workspace-direct-file-read-service.js';
 import {
-  decodeFilePreviewRead,
   readFilePreview,
-  readFilePreviewObject
+  usesNativeHttpFilePreview
 } from '../../service/file-preview-read-service.js';
-import {
-  revokeWorkspaceDirectObjectUrl,
-  triggerBrowserFileDownload
-} from '../../service/workspace-direct-object-url-service.js';
+import { revokeWorkspaceDirectObjectUrl } from '../../service/workspace-direct-object-url-service.js';
 import {
   decodeFilePreviewContent,
   filePreviewKind,
@@ -111,6 +110,7 @@ const dirtyDrafts = ref<readonly DirtyTextDraft[]>(restoreDirtyDrafts());
 const file = ref<FileRead>();
 const standaloneRoot = ref<HTMLElement>();
 const errorKey = ref('');
+const downloadFailure = ref<unknown>();
 const contentUrl = ref<string>();
 const objectUrl = ref<string>();
 const loading = ref(true);
@@ -119,13 +119,29 @@ const csrfToken = ref(
   shareAccess === undefined ? (sessionStorage.getItem('mar.user.csrf-token') ?? '') : ''
 );
 const writeEnabled =
-  shareAccess === undefined && query.get('write') === '1' && Object.keys(fileTarget).length === 0;
+  shareAccess === undefined &&
+  query.get('write') === '1' &&
+  Object.keys(fileTarget).length === 0 &&
+  !isComposerAttachmentResourcePath(query.get('path') ?? '');
 const http =
   shareClient ??
   createScopedHttpService({
     csrfToken: () => csrfToken.value,
     renewCsrfToken: renewCsrfToken
   });
+const hostedLifetime = new AbortController();
+const hostedConnections =
+  hostedMode && shareAccess === undefined
+    ? createWorkbenchNodeConnectionService({ http })
+    : undefined;
+const hostedFiles =
+  hostedConnections === undefined
+    ? undefined
+    : createHostedFileDownloadService({
+        http,
+        openStream: hostedConnections.openStream,
+        activeWorker: pwaApplication.activeWorker
+      });
 const htmlPreview = createHtmlPreviewService(http);
 const htmlState = htmlPreview.state;
 const error = computed(() =>
@@ -149,7 +165,21 @@ const kind = computed<FilePreviewKind>(() => {
 });
 let directTransfer: ReturnType<typeof createStandaloneWorkspaceDirectTransferService> | undefined;
 let directIdentity: { readonly revision: string; readonly size: number } | undefined;
-let directReadStarted = false;
+
+function workspaceTransfer() {
+  const nodeId = query.get('nodeId');
+  const workspaceId = query.get('workspaceId');
+  if (nodeId === null || workspaceId === null) throw new Error('NODE_CONNECTION_UNAVAILABLE');
+  // Native HTTP previews do not warm a connection; a file-stream operation owns that decision.
+  return (directTransfer ??= createStandaloneWorkspaceDirectTransferService({
+    nodeId,
+    workspaceId,
+    activeDownloadWorker: pwaApplication.activeWorker,
+    ...(shareAccess !== undefined && { fileStreams: shareAccess.fileStreams }),
+    http,
+    ...fileTarget
+  }));
+}
 
 function restoreStandaloneTabs(): void {
   if (renderedPreviewMode) return;
@@ -329,13 +359,6 @@ onMounted(async () => {
     errorKey.value = 'generated.standaloneFilePreviewPage.theFilePreviewURLIsInvalid';
     return;
   }
-  if (!hostedMode && shareAccess === undefined)
-    directTransfer = createStandaloneWorkspaceDirectTransferService({
-      nodeId,
-      workspaceId,
-      activeDownloadWorker: pwaApplication.activeWorker,
-      ...fileTarget
-    });
   if (htmlPreviewMode) {
     loading.value = true;
     if (!hostedMode && isHtmlFile(path) && Object.keys(fileTarget).length === 0) {
@@ -349,7 +372,7 @@ onMounted(async () => {
   await loadFile();
 });
 
-async function loadFile(serverOnly = false): Promise<void> {
+async function loadFile(): Promise<void> {
   const nodeId = query.get('nodeId');
   const workspaceId = query.get('workspaceId');
   const path = query.get('path');
@@ -357,7 +380,6 @@ async function loadFile(serverOnly = false): Promise<void> {
   loading.value = true;
   errorKey.value = '';
   directIdentity = undefined;
-  directReadStarted = false;
   if (objectUrl.value !== undefined) revokeWorkspaceDirectObjectUrl(objectUrl.value);
   objectUrl.value = undefined;
   const textPreview = shouldReadTextFilePreview(path);
@@ -374,52 +396,30 @@ async function loadFile(serverOnly = false): Promise<void> {
     return;
   }
   try {
-    if (usesRawFilePreview(path) && query.get('rawContent') === '1') {
-      const directObject = serverOnly
-        ? undefined
-        : await readFilePreviewObject(path, async () => directTransfer?.objectUrl(path));
-      if (directObject !== undefined) {
-        objectUrl.value = directObject.url;
-        file.value = {
-          path,
-          size: directObject.size,
-          encoding: 'base64',
-          content: '',
-          truncated: false,
-          nextOffset: null,
-          revision: directObject.revision
-        };
-        contentUrl.value = directObject.url;
-        return;
-      }
-      const metadata = await readRange(nodeId, workspaceId, path, 0, false, 1);
-      file.value = {
-        path,
-        ...(metadata.size === undefined ? {} : { size: metadata.size }),
-        encoding: 'base64',
-        content: '',
-        truncated: false,
-        nextOffset: null
-      };
+    // Keep native image caching and player Range requests on their original URLs.
+    if (usesNativeHttpFilePreview(path)) {
       contentUrl.value = rawContentUrl(nodeId, workspaceId, path);
       return;
     }
-    const first = await readFilePreview((limit) =>
-      readRange(nodeId, workspaceId, path, 0, !serverOnly, limit)
-    );
+    if (usesRawFilePreview(path)) {
+      const preview = await readFileObject(path);
+      file.value = {
+        path,
+        size: preview.size,
+        encoding: 'base64',
+        content: '',
+        truncated: false,
+        nextOffset: null,
+        revision: preview.revision
+      };
+      return;
+    }
+    const first = await readFilePreview((limit) => readRange(path, limit));
     if (first.encoding === 'base64') {
       if (objectUrl.value !== undefined) revokeWorkspaceDirectObjectUrl(objectUrl.value);
       file.value = { ...first, content: '', truncated: false, nextOffset: null };
       if (filePreviewKind(path, 'base64') === 'unsupported') return;
-      const directObject = serverOnly
-        ? undefined
-        : await readFilePreviewObject(path, async () => directTransfer?.objectUrl(path));
-      objectUrl.value = directObject?.url;
-      if (directObject !== undefined) {
-        contentUrl.value = objectUrl.value;
-        return;
-      }
-      contentUrl.value = rawContentUrl(nodeId, workspaceId, path);
+      await readFileObject(path);
     } else {
       file.value = {
         ...first,
@@ -428,21 +428,23 @@ async function loadFile(serverOnly = false): Promise<void> {
       };
     }
   } catch {
-    if (!serverOnly && directReadStarted) {
-      await loadFile(true);
-      return;
-    }
     errorKey.value = 'generated.standaloneFilePreviewPage.unableToReadTheFileCheckYour';
   } finally {
     loading.value = false;
   }
 }
 
+async function readFileObject(path: string) {
+  const preview = await workspaceTransfer().objectUrl(path);
+  objectUrl.value = contentUrl.value = preview.url;
+  return preview;
+}
+
 async function loadHostedFile(nodeId: string, path: string): Promise<void> {
   const conversationId = query.get('conversationId');
   const fileId = query.get('fileId');
   const mimeType = query.get('mimeType') ?? '';
-  let size = Number(query.get('size'));
+  const size = Number(query.get('size'));
   if (
     conversationId === null ||
     query.get('workspaceId') !== conversationId ||
@@ -464,52 +466,37 @@ async function loadHostedFile(nodeId: string, path: string): Promise<void> {
     truncated: false,
     nextOffset: null
   };
-  if (!textPreview) {
+  if (usesNativeHttpFilePreview(path)) {
     contentUrl.value = url;
     loading.value = false;
     return;
   }
   try {
-    if (size === 0) {
-      const metadata = await fetch(url, { credentials: 'same-origin', method: 'HEAD' });
-      if (!metadata.ok) throw new Error(`REQUEST_FAILED_${metadata.status}`);
-      const length = metadata.headers.get('content-length');
-      if (length === null || !Number.isSafeInteger(Number(length)) || Number(length) < 0)
-        throw new Error('NODE_RESPONSE_INVALID');
-      size = Number(length);
-      if (size === 0) {
-        file.value = {
-          path,
-          size,
-          encoding: 'utf-8',
-          content: '',
-          truncated: false,
-          nextOffset: null
-        };
-        return;
-      }
+    if (hostedFiles === undefined) throw new Error('NODE_CONNECTION_UNAVAILABLE');
+    const signal = hostedLifetime.signal;
+    const snapshot = await hostedFiles.describe({ nodeId, conversationId, fileId }, signal);
+    signal.throwIfAborted();
+    const revision = `${snapshot.updatedAt}-${snapshot.size}`;
+    if (!textPreview) {
+      file.value = { ...file.value, size: snapshot.size, revision };
+      objectUrl.value = await hostedFiles.objectUrl(nodeId, snapshot, signal);
+      contentUrl.value = objectUrl.value;
+      return;
     }
     file.value = await readFilePreview(async (limit): Promise<FileRead> => {
-      const response = await fetch(url, {
-        credentials: 'same-origin',
-        headers: { Range: `bytes=0-${limit - 1}` }
-      });
-      if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      const total = response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1];
-      const readSize = total === undefined ? size : Number(total);
-      if (!Number.isSafeInteger(readSize) || readSize < 0) throw new Error('NODE_RESPONSE_INVALID');
+      const bytes = await hostedFiles.readRange(nodeId, snapshot, 0, limit, signal);
+      const readSize = snapshot.size;
       const decoded = decodeFilePreviewContent(bytes, path, bytes.byteLength >= readSize, mimeType);
       return {
         path,
         size: readSize,
+        revision,
         ...decoded,
         truncated: decoded.encoding === 'utf-8' && bytes.byteLength < readSize,
         nextOffset:
           decoded.encoding === 'utf-8' && bytes.byteLength < readSize ? bytes.byteLength : null
       };
     });
-    if (file.value.encoding === 'base64') contentUrl.value = url;
   } catch {
     errorKey.value = 'generated.standaloneFilePreviewPage.unableToReadTheFileCheckYour';
   } finally {
@@ -562,6 +549,8 @@ async function saveFile(content: string, expectedRevision: string): Promise<stri
 }
 
 onBeforeUnmount(() => {
+  hostedLifetime.abort();
+  hostedConnections?.reset();
   htmlPreview.release();
   if (renderedPreviewMode) windowInteraction.dispose();
   else window.removeEventListener('mar-before-standalone-navigation', captureDirtyDrafts);
@@ -573,6 +562,7 @@ onBeforeUnmount(() => {
 
 async function download(): Promise<void> {
   if (file.value === undefined) return;
+  downloadFailure.value = undefined;
   downloading.value = true;
   try {
     const nodeId = query.get('nodeId');
@@ -583,22 +573,14 @@ async function download(): Promise<void> {
       const conversationId = query.get('conversationId');
       const fileId = query.get('fileId');
       if (conversationId === null || fileId === null) return;
-      const anchor = document.createElement('a');
-      anchor.href = `/api/nodes/${encodeURIComponent(nodeId)}/hosted-conversations/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(fileId)}/content?download=1`;
-      anchor.download = path.split('/').at(-1) ?? 'download';
-      anchor.click();
+      if (hostedFiles === undefined) throw new Error('NODE_CONNECTION_UNAVAILABLE');
+      await hostedFiles.download({ nodeId, conversationId, fileId }, hostedLifetime.signal);
       return;
     }
-    if (objectUrl.value?.startsWith('blob:')) {
-      triggerBrowserFileDownload(objectUrl.value, path.split('/').at(-1) ?? 'download');
-      return;
-    }
-    const result = await directTransfer?.download(path);
-    if (result !== undefined && result !== 'UNAVAILABLE') return;
-    const anchor = document.createElement('a');
-    anchor.href = rawContentUrl(nodeId, workspaceId, path, true);
-    anchor.download = file.value.path.split('/').at(-1) ?? 'download';
-    anchor.click();
+    await workspaceTransfer().download(path);
+  } catch (failure) {
+    if (!(failure instanceof DOMException && failure.name === 'AbortError'))
+      downloadFailure.value = failure;
   } finally {
     downloading.value = false;
   }
@@ -608,62 +590,25 @@ function handleNetworkChange(): void {
   directTransfer?.networkChanged();
 }
 
-async function readRange(
-  nodeId: string,
-  workspaceId: string,
-  path: string,
-  offset: number,
-  allowDirect = true,
-  limit = 512 * 1024
-): Promise<FileRead> {
-  const direct = allowDirect
-    ? await directTransfer?.readRange(path, offset, limit, directIdentity)
-    : undefined;
-  if (direct !== undefined) {
-    directReadStarted = true;
-    directIdentity = {
-      revision: direct.revision,
-      size: direct.size
-    };
-    const revision = await directFileContentRevision(direct);
-    const decoded = decodeFilePreviewContent(direct.bytes, path, direct.nextOffset === null);
-    return {
-      path,
-      size: direct.size,
-      ...decoded,
-      truncated: direct.nextOffset !== null,
-      nextOffset: direct.nextOffset,
-      ...(revision === undefined ? {} : { revision })
-    };
-  }
-  if (allowDirect && directReadStarted) throw new Error('DIRECT_FILE_READ_FAILED');
-  const parameters = new URLSearchParams({
-    nodeId,
+async function readRange(path: string, limit: number): Promise<FileRead> {
+  const direct = await workspaceTransfer().readRange(path, 0, limit, directIdentity);
+  directIdentity = {
+    revision: direct.revision,
+    size: direct.size
+  };
+  const decoded = decodeFilePreviewContent(direct.bytes, path, direct.nextOffset === null);
+  const revision =
+    writeEnabled && decoded.encoding === 'utf-8' && decoded.previewEncoding === undefined
+      ? await directFileContentRevision(direct)
+      : undefined;
+  return {
     path,
-    offset: String(offset),
-    limit: String(limit),
-    ...fileTarget
-  });
-  let body: { readonly file?: FileRead };
-  if (shareClient !== undefined)
-    body = await shareClient.request(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/files/read?${parameters.toString()}`
-    );
-  else {
-    const response = await fetch(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/files/read?${parameters.toString()}`,
-      { credentials: 'same-origin' }
-    );
-    if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
-    body = (await response.json()) as { readonly file?: FileRead };
-  }
-  if (
-    body.file === undefined ||
-    (body.file.encoding !== 'utf-8' && body.file.encoding !== 'base64') ||
-    (body.file.nextOffset !== null && !Number.isSafeInteger(body.file.nextOffset))
-  )
-    throw new Error('NODE_RESPONSE_INVALID');
-  return decodeFilePreviewRead(body.file, path);
+    size: direct.size,
+    ...decoded,
+    truncated: direct.nextOffset !== null,
+    nextOffset: direct.nextOffset,
+    ...(revision === undefined ? {} : { revision })
+  };
 }
 
 function escapeXml(value: string): string {
@@ -736,16 +681,10 @@ function openHtml(path: string): void {
     errorKey.value = 'htmlPreview.unavailable';
 }
 
-function rawContentUrl(
-  nodeId: string,
-  workspaceId: string,
-  path: string,
-  download = false
-): string {
+function rawContentUrl(nodeId: string, workspaceId: string, path: string): string {
   const parameters = new URLSearchParams({
     nodeId,
     path,
-    ...(download ? { download: '1' } : {}),
     ...fileTarget
   });
   const url = `/api/workspaces/${encodeURIComponent(workspaceId)}/files/content?${parameters.toString()}`;
@@ -810,6 +749,9 @@ function rawContentUrl(
     @close-all="closeStandaloneTabs"
     v-slot="{ tab, active, registerPageHandle, requestClose, requestCloseAll }"
   >
+    <p v-if="active && downloadFailure" class="standalone-error" role="alert">
+      {{ filePreviewErrorMessage(downloadFailure, file?.path ?? '') }}
+    </p>
     <p v-if="active && error" class="standalone-error">{{ error }}</p>
     <WorkspaceTextFilePage
       :quote-target="props.quoteTarget"

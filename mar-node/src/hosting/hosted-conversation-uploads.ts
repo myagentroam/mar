@@ -1,9 +1,8 @@
 import { assertRegularFile } from './hosted-conversation-file-identity.js';
 import type { Stats } from 'node:fs';
-import { lstat, open, rename, rm, utimes } from 'node:fs/promises';
+import { lstat, open, rename, rm, utimes, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  hostedConversationUploadChunkInputSchema,
   hostedConversationUploadControlInputSchema,
   hostedConversationUploadCreateInputSchema,
   hostedConversationUploadPreflightInputSchema,
@@ -13,6 +12,8 @@ import {
   type ConversationTemplateDraft,
   type HostedConversationManifest
 } from '@myagentroam/protocol';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import { receiveFileUpload } from '../connection/file-upload-stream.js';
 import type {
   HostedConversationPaths,
   HostedConversationStore
@@ -173,25 +174,43 @@ export class HostedConversationUploads {
     return { upload: hostedConversationUploadSchema.parse(uploadProjection(upload)) };
   }
 
-  async writeUploadChunk(raw: unknown): Promise<unknown> {
+  /** Runs under the Hosted per-upload writer lease. FIN accepts the body, not the file. */
+  async receiveUpload(raw: unknown, stream: NodeStream, signal: AbortSignal): Promise<void> {
     const payload = this.options.request(raw);
-    const input = hostedConversationUploadChunkInputSchema.parse(payload.data);
+    const input = hostedConversationUploadControlInputSchema.parse(payload.data);
     const upload = this.requireUpload(payload.userId, input.conversationId, input.uploadId);
     if (upload.status !== 'UPLOADING') throw new Error('HOSTED_CONVERSATION_UPLOAD_STATE_INVALID');
-    if (input.offset !== upload.receivedBytes)
-      throw new Error('HOSTED_CONVERSATION_UPLOAD_OFFSET_INVALID');
-    const chunk = input.bytes;
-    if (upload.receivedBytes + chunk.byteLength > upload.size)
-      throw new Error('HOSTED_CONVERSATION_UPLOAD_SIZE_INVALID');
+    signal.throwIfAborted();
     await assertUploadTemporaryFile(upload.temporaryPath, upload.receivedBytes);
     const handle = await open(upload.temporaryPath, 'r+');
     try {
-      await handle.write(chunk, 0, chunk.byteLength, upload.receivedBytes);
+      await receiveFileUpload(
+        stream,
+        {
+          offset: upload.receivedBytes,
+          write: (bytes) => this.appendUpload(upload, handle, bytes)
+        },
+        upload.size,
+        signal
+      );
     } finally {
       await handle.close();
     }
-    upload.receivedBytes += chunk.byteLength;
-    return { upload: hostedConversationUploadSchema.parse(uploadProjection(upload)) };
+  }
+
+  private async appendUpload(upload: ActiveUpload, handle: FileHandle, bytes: Uint8Array) {
+    for (let written = 0; written < bytes.byteLength;) {
+      const { bytesWritten } = await handle.write(
+        bytes,
+        written,
+        bytes.byteLength - written,
+        upload.receivedBytes
+      );
+      if (bytesWritten === 0) throw new Error('HOSTED_CONVERSATION_UPLOAD_STATE_INVALID');
+      written += bytesWritten;
+      upload.receivedBytes += bytesWritten;
+    }
+    return upload.receivedBytes;
   }
 
   uploadStatus(raw: unknown): unknown {
@@ -199,6 +218,11 @@ export class HostedConversationUploads {
     const input = hostedConversationUploadControlInputSchema.parse(payload.data);
     const upload = this.requireUpload(payload.userId, input.conversationId, input.uploadId);
     return { upload: hostedConversationUploadSchema.parse(uploadProjection(upload)) };
+  }
+
+  assertUploadPending(userId: number, conversationId: string, uploadId: string): void {
+    if (this.requireUpload(userId, conversationId, uploadId).status !== 'UPLOADING')
+      throw new Error('HOSTED_CONVERSATION_UPLOAD_STATE_INVALID');
   }
 
   async completeUpload(raw: unknown): Promise<unknown> {

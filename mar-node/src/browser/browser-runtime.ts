@@ -1,11 +1,13 @@
 import type { BrowserContext, CDPSession } from 'playwright';
 import {
   BROWSER_TAB_LIMIT,
-  type BrowserDownloadRead,
+  type BrowserDownloadStream,
   type BrowserNodeAttachmentCommand,
   type BrowserProfileTarget,
   type BrowserSettingsSnapshot
 } from '@myagentroam/protocol';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
+import { sendFileDownload } from '../connection/file-download-stream.js';
 import { BrowserAttachmentService } from './browser-attachment-service.js';
 import {
   BrowserAgentAccess,
@@ -179,13 +181,20 @@ export class BrowserRuntime {
     } else await detach;
   }
 
-  readDownload(
+  streamDownload(
     userId: number,
-    { workspaceId, browserId, command }: BrowserDownloadRead
-  ): Promise<unknown> {
+    input: BrowserDownloadStream,
+    stream: NodeStream,
+    signal: AbortSignal
+  ) {
     if (this.stopped) return Promise.reject(new Error('BROWSER_STOPPED'));
+    const {
+      workspaceId,
+      browserId,
+      command: { id, size }
+    } = input;
     return this.sessions.use({ userId, workspaceId }, browserId, ({ tabs }) =>
-      tabs.download(command)
+      sendFileDownload(stream, tabs.readDownloadStream(id, size, signal), size, signal)
     );
   }
 

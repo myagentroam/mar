@@ -30,8 +30,7 @@ function mountWorkspace() {
   const target = { id: crypto.randomUUID(), kind: 'live', persistent: true } as const;
   const browser = createWorkbenchBrowserService({
     send: () => false,
-    connectionId: () => undefined,
-    acquire: () => undefined
+    connectionId: () => undefined
   });
   browser.status.value = 'ready';
   browser.browserId = () => target.id;

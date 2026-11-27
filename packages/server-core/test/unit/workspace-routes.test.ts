@@ -20,7 +20,7 @@ function fixture(resources?: WorkspaceResourcePolicy, handleError?: typeof datab
   apps.push(app);
   const requestNode = vi.fn(async (..._args: unknown[]): Promise<unknown> => ({ workspaces: [] }));
   const ownsWorkbenchConnection = vi.fn(() => false);
-  const revalidateTerminalAuthorizations = vi.fn(async () => undefined);
+  const revalidateDataAuthorizations = vi.fn(async () => undefined);
   const session = {
     userId: 1,
     username: 'admin',
@@ -36,7 +36,7 @@ function fixture(resources?: WorkspaceResourcePolicy, handleError?: typeof datab
     nodeControl: {
       requestNode,
       ownsWorkbenchConnection,
-      revalidateTerminalAuthorizations
+      revalidateDataAuthorizations
     },
     resources: resources ?? personalWorkspacePolicy(),
     databaseError:
@@ -48,7 +48,7 @@ function fixture(resources?: WorkspaceResourcePolicy, handleError?: typeof datab
     app,
     requestNode,
     ownsWorkbenchConnection,
-    revalidateTerminalAuthorizations,
+    revalidateDataAuthorizations,
     headers: {
       cookie: `${SESSION_COOKIE_NAME}=session`,
       origin: 'http://localhost',
@@ -320,7 +320,7 @@ describe('Shared Workspace HTTP routes', () => {
       .mockRejectedValueOnce(new Error(code));
 
     const response = await app.inject({
-      url: `/api/workspaces/workspace-1${route}?nodeId=node-1&path=clip.mp4&download=1`,
+      url: `/api/workspaces/workspace-1${route}?nodeId=node-1&path=clip.mp4`,
       headers: { ...headers, range: 'bytes=1-2' }
     });
 
@@ -334,7 +334,7 @@ describe('Shared Workspace HTTP routes', () => {
     ]);
   });
 
-  it('rejects a same-size Workspace revision change before sending download headers', async () => {
+  it('rejects a same-size Workspace revision change before sending native preview headers', async () => {
     const { app, requestNode, headers } = fixture(undefined, databaseError);
     requestNode
       .mockResolvedValueOnce({
@@ -344,7 +344,7 @@ describe('Shared Workspace HTTP routes', () => {
         file: { size: 4, offset: 1, sourceRevision: 'b'.repeat(64), bytes: Buffer.of(2, 3) }
       });
     const response = await app.inject({
-      url: '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=changed.bin&download=1',
+      url: '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=changed.mp4',
       headers: { ...headers, range: 'bytes=1-2' }
     });
     expect(response.statusCode).toBe(502);
@@ -353,7 +353,7 @@ describe('Shared Workspace HTTP routes', () => {
     expect(response.headers['content-disposition']).toBeUndefined();
   });
 
-  it('aborts a started Workspace download without emitting bytes from a new revision', async () => {
+  it('aborts a started Workspace media preview without emitting bytes from a new revision', async () => {
     const { app, requestNode, headers } = fixture(undefined, databaseError);
     const nextChunk = Promise.withResolvers<void>();
     requestNode
@@ -372,7 +372,7 @@ describe('Shared Workspace HTTP routes', () => {
     const origin = await app.listen({ host: '127.0.0.1', port: 0 });
     try {
       const response = await fetch(
-        `${origin}/api/workspaces/workspace-1/files/content?nodeId=node-1&path=changed.bin&download=1`,
+        `${origin}/api/workspaces/workspace-1/files/content?nodeId=node-1&path=changed.mp4`,
         { headers }
       );
       expect(response.status).toBe(200);
@@ -454,18 +454,18 @@ describe('Shared Workspace HTTP routes', () => {
     }
   );
 
-  it('retains the complete non-media preview limit and rejects invalid ranges', async () => {
+  it('retains the complete image preview limit and rejects invalid ranges', async () => {
     const { app, requestNode, headers } = fixture();
     requestNode.mockResolvedValue({
       file: {
-        path: 'large.docx',
+        path: 'large.png',
         size: 20 * 1024 * 1024 + 1,
         offset: 0,
         sourceRevision: 'a'.repeat(64),
         bytes: Buffer.from([0])
       }
     });
-    const url = '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=large.docx';
+    const url = '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=large.png';
     expect((await app.inject({ method: 'GET', url, headers })).statusCode).toBe(413);
     expect(
       (await app.inject({ method: 'GET', url, headers: { ...headers, range: 'bytes=99999999-' } }))
@@ -473,6 +473,25 @@ describe('Shared Workspace HTTP routes', () => {
     ).toBe(416);
     expect(requestNode).toHaveBeenCalledTimes(2);
   });
+
+  it.each(['/files/content', `/git/commits/${'a'.repeat(40)}/files/content`])(
+    'rejects ordinary file body requests at the native HTTP endpoint %s',
+    async (route) => {
+      const { app, requestNode, headers } = fixture();
+      const url = `/api/workspaces/workspace-1${route}?nodeId=node-1&path=`;
+      for (const method of ['GET', 'HEAD'] as const) {
+        expect((await app.inject({ method, url: `${url}text.txt`, headers })).statusCode).toBe(415);
+      }
+      expect((await app.inject({ url: `${url}clip.mp4&download=1`, headers })).statusCode).toBe(
+        400
+      );
+      expect(
+        (await app.inject({ url: `${url}large.bin`, headers: { ...headers, range: 'bytes=0-1' } }))
+          .statusCode
+      ).toBe(415);
+      expect(requestNode).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([undefined, 'bytes=0-', 'bytes=1-524296', 'bytes=-9'])(
     'streams complete Git previews across chunk boundaries (%s)',
@@ -595,7 +614,7 @@ describe('Shared Workspace HTTP routes', () => {
       undefined
     );
   });
-  it('parses bounded binary upload chunks in every product composition', async () => {
+  it('does not accept Workspace upload bodies over HTTP', async () => {
     const { app, requestNode, headers } = fixture();
     const reply = await app.inject({
       method: 'POST',
@@ -603,27 +622,7 @@ describe('Shared Workspace HTTP routes', () => {
       headers: { ...headers, 'content-type': 'application/octet-stream' },
       payload: Buffer.from([0, 1, 255])
     });
-    expect(reply.statusCode).toBe(200);
-    expect(requestNode).toHaveBeenCalledWith(
-      'node-1',
-      'workspace.files.upload.chunk',
-      {
-        workspaceId: 'workspace-1',
-        uploadId: 'upload-1',
-        offset: 0,
-        bytes: Buffer.from([0, 1, 255])
-      },
-      { userId: 1, sessionHash: 'session-hash', workspaceId: 'workspace-1' },
-      undefined
-    );
-    requestNode.mockClear();
-    const oversized = await app.inject({
-      method: 'POST',
-      url: '/api/workspaces/workspace-1/uploads/upload-1/chunks?nodeId=node-1&offset=0',
-      headers: { ...headers, 'content-type': 'application/octet-stream' },
-      payload: Buffer.alloc(512 * 1024 + 1)
-    });
-    expect(oversized.statusCode).toBe(413);
+    expect(reply.statusCode).toBe(404);
     expect(requestNode).not.toHaveBeenCalled();
   });
   it('rejects a valid-origin write with an invalid CSRF token', async () => {
@@ -697,7 +696,7 @@ describe('Shared Workspace HTTP routes', () => {
       updateWorkspaceGroupName,
       updateWorkspace
     } satisfies WorkspaceResourcePolicy;
-    const { app, headers, revalidateTerminalAuthorizations } = fixture(resources);
+    const { app, headers, revalidateDataAuthorizations } = fixture(resources);
 
     const invalid = await app.inject({
       method: 'PATCH',
@@ -733,7 +732,7 @@ describe('Shared Workspace HTTP routes', () => {
       'Engineering'
     );
     expect(updateWorkspace).not.toHaveBeenCalled();
-    expect(revalidateTerminalAuthorizations).not.toHaveBeenCalled();
+    expect(revalidateDataAuthorizations).not.toHaveBeenCalled();
   });
   it('authorizes Workspace removal with the dedicated registration-level policy', async () => {
     const assertCanManageWorkspace = vi.fn(async () => undefined);

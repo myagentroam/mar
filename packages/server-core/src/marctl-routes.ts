@@ -54,30 +54,13 @@ export function registerMarctlRoutes(
         readonly computer?: boolean;
         readonly cli?: boolean;
       }): { readonly ticket: string };
-      attachCliTerminal(
-        socket: WebSocket,
-        ticket: unknown,
-        user: UserNodeAuthorization,
-        expiresAt: number
-      ): void;
-      attachCliMux?(
-        socket: WebSocket,
-        nodeId: string,
-        user: UserNodeAuthorization,
-        expiresAt: number
-      ): void;
       closeTerminal(nodeId: string, terminalId: string): void;
       attachWorkbench(socket: WebSocket, user: UserNodeAuthorization): void;
     };
     readonly onError?: (reply: FastifyReply, error: unknown) => FastifyReply;
   }
 ): {
-  attach(
-    socket: WebSocket,
-    request: FastifyRequest<{ Querystring: { ticket?: string; deferred?: string } }>
-  ): void;
   attachLive(socket: WebSocket, request: FastifyRequest): void;
-  attachMux(socket: WebSocket, request: FastifyRequest<{ Querystring: { node?: string } }>): void;
 } {
   const { app, userCredentials, nodeControl, publicOrigin } = input;
   const onError = input.onError ?? defaultDatabaseError;
@@ -211,7 +194,7 @@ export function registerMarctlRoutes(
         );
         if (capabilities === null || typeof capabilities !== 'object')
           return reply.send(capabilities);
-        return reply.send({ ...capabilities, deferredRelay: true });
+        return reply.send(capabilities);
       } catch (error) {
         return onError(reply, error);
       }
@@ -338,32 +321,6 @@ export function registerMarctlRoutes(
     }
   );
   return {
-    attachMux(socket, request) {
-      const nodeId = request.query.node;
-      if (
-        !validOrigin(request) ||
-        typeof nodeId !== 'string' ||
-        !nodeId ||
-        nodeId.length > 128 ||
-        nodeControl.attachCliMux === undefined
-      ) {
-        socket.close(1008, 'TERMINAL_MUX_INVALID');
-        return;
-      }
-      const header = request.headers.authorization;
-      socket.pause();
-      void userCredentials
-        .authenticateContext(header)
-        .then(async (context) => {
-          if (context === undefined || !(await authorizedNode(context.user, nodeId))) {
-            socket.close(1008, 'UNAUTHENTICATED');
-            return;
-          }
-          nodeControl.attachCliMux?.(socket, nodeId, context.user, context.expiresAt);
-        })
-        .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'))
-        .finally(() => socket.resume());
-    },
     attachLive(socket, request) {
       if (!validOrigin(request)) {
         socket.close(1008, 'ORIGIN_NOT_ALLOWED');
@@ -386,27 +343,6 @@ export function registerMarctlRoutes(
         })
         .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'))
         .finally(() => socket.resume());
-    },
-    attach(socket, request) {
-      if (!validOrigin(request)) {
-        socket.close(1008, 'ORIGIN_NOT_ALLOWED');
-        return;
-      }
-      void userCredentials
-        .authenticateContext(request.headers.authorization)
-        .then((context) => {
-          if (context === undefined) socket.close(1008, 'UNAUTHENTICATED');
-          else
-            nodeControl.attachCliTerminal(
-              socket,
-              request.query.deferred === '1'
-                ? { ticket: request.query.ticket, deferred: true }
-                : request.query.ticket,
-              context.user,
-              context.expiresAt
-            );
-        })
-        .catch(() => socket.close(1011, 'USER_AUTHORIZATION_UNAVAILABLE'));
     }
   };
 }

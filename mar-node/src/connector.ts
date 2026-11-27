@@ -107,8 +107,8 @@ import {
   RunAttachmentService,
   type RunnerImageAttachment
 } from './service/run-attachment-service.js';
-import { NodeTerminalChannel } from './service/node-terminal-channel.js';
 import { NodeFileChannel } from './service/node-file-channel.js';
+import { NodeDataChannel } from './service/node-data-channel.js';
 import { WorkspaceWorkbenchService } from './workspace/workspace-workbench-service.js';
 import { NativeSessionWatchService } from './service/native-session-watch-service.js';
 import { SessionWatchSlotCoordinator } from './service/session-watch-slot-coordinator.js';
@@ -226,11 +226,13 @@ const HOSTED_CONVERSATION_OPERATIONS = [
   'conversation.hosted.tool-resource.read',
   'conversation.hosted.files.list',
   'conversation.hosted.file.read',
+  'conversation.hosted.file.describe',
+  'conversation.hosted.file.stream.prepare',
   'conversation.hosted.file.delete',
   'conversation.hosted.files.upload.preflight',
   'conversation.hosted.files.upload.create',
-  'conversation.hosted.files.upload.chunk',
   'conversation.hosted.files.upload.status',
+  'conversation.hosted.files.upload.stream.prepare',
   'conversation.hosted.files.upload.complete',
   'conversation.hosted.files.upload.cancel',
   'conversation.hosted.delete'
@@ -346,8 +348,8 @@ export class NodeConnector {
   private readonly sessionCommandService: SessionCommandService;
   private readonly runAttachmentService: RunAttachmentService;
   private readonly modelResourcePublicationService: ModelResourcePublicationService;
-  private readonly terminalChannel: NodeTerminalChannel;
   private readonly fileChannel: NodeFileChannel;
+  private readonly dataChannel: NodeDataChannel;
   private readonly codexClient: CodexRunner;
   private readonly codexRunController: CodexManagedRunController<RunnerImageAttachment>;
   private readonly claudeClient: ClaudeCodeRunner;
@@ -1667,14 +1669,6 @@ export class NodeConnector {
     this.terminalManager.onSummary((summary, kind) => {
       if (kind === 'terminal') this.workspaceCoordinator.persistTerminal(summary);
     });
-    this.terminalChannel = new NodeTerminalChannel({
-      config: () => this.config,
-      controlConnected: () => this.controlChannel.connected(),
-      stopped: () => this.stopped,
-      reconnect: this.reconnect,
-      reconnectDelay: nextReconnectDelay,
-      manager: this.terminalManager
-    });
     this.controlChannel = new NodeControlChannel({
       config: () => this.config,
       capabilities: () => this.capabilities,
@@ -1701,8 +1695,11 @@ export class NodeConnector {
         this.marctlExecutionCredentials.disconnected();
         this.browserUse.disconnect();
         this.upgradeCredentials.disconnect();
-        this.terminalChannel.disconnect();
         this.fileChannel.disconnect();
+        this.dataChannel.disconnect();
+        this.terminalService.streams.clear();
+        this.workspaceWorkbenchService.fileStreams.clear();
+        this.conversationHosting.clearFileStreamGrants();
         if (code === 4000 && reason === 'NODE_CONNECTION_REPLACED')
           nodeLog('node.connection.replaced', {
             message:
@@ -1757,9 +1754,11 @@ export class NodeConnector {
         this.browserUse.setFeatures(payload);
         this.upgradeCredentials.setFeatures(payload);
       },
-      fileBindingAck: (requestId, binding) => {
+      dataBindingAck: (requestId, bindings) => {
         // A second socket can reach the Server before the capability report on control.
-        if (this.controlChannel.acceptCapabilitiesAck(requestId)) this.fileChannel.connect(binding);
+        if (!this.controlChannel.acceptCapabilitiesAck(requestId)) return;
+        if (bindings.file !== undefined) this.fileChannel.connect(bindings.file);
+        if (bindings.relay !== undefined) this.dataChannel.connect(bindings.relay);
       },
       close: (code, reason) => this.controlChannel.close(code, reason),
       inspectWorkspace: (envelope) => this.workspaceCoordinator.inspect(envelope),
@@ -1818,6 +1817,22 @@ export class NodeConnector {
       reconnect: this.reconnect,
       reconnectDelay: nextReconnectDelay,
       request: (envelope, reply) => this.nodeRequests.handle(envelope, reply)
+    });
+    this.dataChannel = new NodeDataChannel({
+      config: () => this.config,
+      controlConnected: () => !this.stopped && this.controlChannel.connected(),
+      reconnect: this.reconnect,
+      reconnectDelay: nextReconnectDelay,
+      accept: async ({ kind, grant }) =>
+        kind === 'terminal'
+          ? this.terminalService.streams.consume(grant)
+          : kind === 'hosted-file-upload' || kind === 'hosted-file-download'
+            ? this.conversationHosting.consumeFileStream(kind, grant)
+            : kind === 'browser-rfb'
+              ? this.browserService?.consumePictureStream(grant, { type: 'relay' })
+              : kind === 'browser-file-download' || kind === 'browser-file-upload'
+                ? this.browserService?.consumeFileStream(kind, grant)
+                : this.workspaceWorkbenchService.fileStreams.consume(kind, grant)
     });
     const workspaceApplication = composeWorkspaceApplication({
       config: () => this.config,
@@ -1903,7 +1918,6 @@ export class NodeConnector {
           )
         })),
       control: this.controlChannel,
-      terminal: this.terminalChannel,
       metrics: this.metrics,
       heartbeatMs: HEARTBEAT_MS,
       refreshMs: CAPABILITY_REFRESH_MS,
@@ -2469,11 +2483,10 @@ export class NodeConnector {
       return await DirectTransferService.create({
         nodeGeneration: () => nodeGeneration,
         send: (type, payload) => this.send(type, payload),
-        openBrowserChannel: (route, channel, first) => {
-          const browser = this.browserService;
-          if (browser) browser.openIce(route, channel, first);
-          else channel.close();
-        },
+        acceptBrowserFile: (kind, grant, binding, signal) =>
+          this.browserService?.consumeFileStream(kind, grant, { binding, signal }),
+        acceptBrowserPicture: (grant, route) =>
+          this.browserService?.consumePictureStream(grant, route),
         desktop: {
           registry: this.desktopAttachmentRegistry,
           isCurrent: (command) => this.isCurrentDesktop(command, nodeGeneration),
@@ -2485,27 +2498,7 @@ export class NodeConnector {
         sendTerminalReady: (directSessionId, phase) =>
           this.send('terminal.direct.ready', { directSessionId, ...(phase ? { phase } : {}) }),
         udpPortRange: () => directTransferUdpPortRange(this.config),
-        openUpload: async (descriptor) => {
-          if (descriptor.direction !== 'UPLOAD' || descriptor.resource.kind !== 'WORKSPACE_FILE')
-            throw new Error('DIRECT_RESOURCE_UNSUPPORTED');
-          const workspace = this.workspaceCoordinator.require(descriptor.resource.workspaceId);
-          const upload = await this.workspaceUploadService.createDirect(workspace, {
-            path: descriptor.resource.path,
-            size: descriptor.size,
-            sha256: descriptor.sha256,
-            overwrite: descriptor.overwrite === true,
-            ...(descriptor.composerAttachment === undefined
-              ? {}
-              : { composerAttachment: descriptor.composerAttachment })
-          });
-          return {
-            offset: upload.receivedBytes,
-            write: (bytes) => this.workspaceUploadService.writeDirect(upload.uploadId, bytes),
-            complete: (size, signal) =>
-              this.workspaceUploadService.completeDirect(upload.uploadId, size, signal),
-            cancel: () => this.workspaceUploadService.cancel(upload.uploadId)
-          };
-        },
+        openUpload: (descriptor) => this.workspaceWorkbenchService.openFileUpload(descriptor),
         openDownload: async (descriptor) => {
           if (this.workspaceWorkbenchService === undefined)
             throw new Error('DIRECT_RESOURCE_UNAVAILABLE');
@@ -2573,13 +2566,6 @@ export class NodeConnector {
       },
       workspacePath: (id) => this.database?.getWorkspace(id)?.path,
       workspaceFilesChanged: (id) => this.invalidateWorkspaceFiles(id),
-      relay: () => {
-        const current = this.config;
-        if (!current?.nodeId || !current.credential) throw new Error('BROWSER_RELAY_UNAVAILABLE');
-        const endpoint = new URL(nodeDesktopRelayEndpoint(current.serverUrl));
-        endpoint.pathname = endpoint.pathname.replace(/desktop-relay$/u, 'browser-relay');
-        return { endpoint: endpoint.href, nodeId: current.nodeId, credential: current.credential };
-      },
       failed: (error) =>
         nodeLog('browser.failed', { errorCode: safeErrorCode(error, 'BROWSER_FAILED') })
     });
@@ -2724,8 +2710,11 @@ export class NodeConnector {
     // close() transitions metadata before awaiting process-tree termination,
     // so the lifecycle is persisted before this synchronous shutdown returns.
     const terminalDrain = this.terminalManager.shutdown();
-    this.terminalChannel.stop();
     this.fileChannel.disconnect();
+    this.dataChannel.disconnect();
+    this.terminalService.streams.clear();
+    this.workspaceWorkbenchService.fileStreams.clear();
+    this.conversationHosting.clearFileStreamGrants();
     this.runtimeCredentials.close();
     this.chatgptLogins.close();
     const scheduledDrain = this.scheduledSessions.stop();

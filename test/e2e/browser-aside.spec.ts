@@ -1,7 +1,8 @@
 import { once } from 'node:events';
 import { createSocket } from 'node:dgram';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { createServer, get } from 'node:http';
+import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
@@ -15,6 +16,9 @@ import {
 import { NodeConnector } from '../../mar-node/src/connector.js';
 import { unavailableCapabilities } from '../../mar-node/src/capabilities.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { openNodeRelayPath } from '../../packages/protocol/src/node-relay-path.js';
+
+const RelayWebSocket = createRequire(new URL('../../mar-node/package.json', import.meta.url))('ws');
 
 test.use({
   viewport: { width: 1600, height: 900 },
@@ -137,6 +141,22 @@ test('Browser Aside finds and paints text in open shadow trees', async ({
   await browserAsideJourney(page, baseURL, testInfo, 'find');
 });
 
+for (const path of ['ice', 'relay'] as const) {
+  test(`Browser picture and file bodies share one ${path} carrier`, async ({
+    page,
+    baseURL,
+    browserName
+  }, testInfo) => {
+    test.skip(browserName !== 'chromium', 'This journey uses the real Chromium browser.');
+    await browserAsideJourney(
+      page,
+      baseURL,
+      testInfo,
+      path === 'ice' ? 'files-ice' : 'files-relay'
+    );
+  });
+}
+
 test('Browser Aside uses its content size on the first address and paints the complete page', async ({
   page,
   baseURL,
@@ -158,7 +178,8 @@ async function browserAsideJourney(
   page: Page,
   baseURL: string | undefined,
   testInfo: TestInfo,
-  scenario: 'interaction' | 'close-last' | 'full' | 'find' | 'first-address'
+  scenario:
+    'interaction' | 'close-last' | 'full' | 'find' | 'first-address' | 'files-ice' | 'files-relay'
 ): Promise<void> {
   // The full journey serially uploads two multi-file selections over different paths.
   test.setTimeout(scenario === 'full' ? 180_000 : 120_000);
@@ -517,37 +538,58 @@ async function browserAsideJourney(
     }
 
     // Observe ICE readiness without replacing either production transport.
-    await page.addInitScript(() => {
-      const Socket = window.WebSocket;
-      window.WebSocket = class extends Socket {
-        constructor(url: string | URL, protocols?: string | string[]) {
-          super(url, protocols);
-          if (new URL(url, location.href).pathname === '/api/workbench/live') {
-            this.addEventListener('open', () => {
-              const root = document.documentElement;
-              root.dataset.workbenchConnections = String(
-                Number(root.dataset.workbenchConnections ?? 0) + 1
-              );
-            });
-            const drop = () => this.close(4001, 'test reconnect');
-            window.addEventListener('test-drop-workbench', drop, { once: true });
-            this.addEventListener('close', () =>
-              window.removeEventListener('test-drop-workbench', drop)
-            );
-          }
-        }
-      };
-      const createPeer = window.RTCPeerConnection;
-      window.RTCPeerConnection = class extends createPeer {
-        constructor(config?: RTCConfiguration) {
-          super(config);
-          this.addEventListener('connectionstatechange', () => {
-            if (this.connectionState === 'connected')
-              document.documentElement.dataset.iceConnected = 'true';
-          });
-        }
-      };
+    let relayCarriers = 0;
+    page.on('websocket', (socket) => {
+      if (new URL(socket.url()).pathname === `/api/relay/${nodeId}`) relayCarriers++;
     });
+    await page.addInitScript(
+      ({ scenario, nodeId }) => {
+        const Socket = window.WebSocket;
+        window.WebSocket = class extends Socket {
+          constructor(url: string | URL, protocols?: string | string[]) {
+            if (
+              scenario === 'files-ice' &&
+              new URL(url, location.href).pathname === `/api/relay/${nodeId}`
+            )
+              throw new Error('TEST_RELAY_UNAVAILABLE');
+            super(url, protocols);
+            if (new URL(url, location.href).pathname === '/api/workbench/live') {
+              this.addEventListener('open', () => {
+                const root = document.documentElement;
+                root.dataset.workbenchConnections = String(
+                  Number(root.dataset.workbenchConnections ?? 0) + 1
+                );
+              });
+              const drop = () => this.close(4001, 'test reconnect');
+              window.addEventListener('test-drop-workbench', drop, { once: true });
+              this.addEventListener('close', () =>
+                window.removeEventListener('test-drop-workbench', drop)
+              );
+            }
+          }
+        };
+        const createPeer = window.RTCPeerConnection;
+        window.RTCPeerConnection = class extends createPeer {
+          constructor(config?: RTCConfiguration) {
+            if (scenario === 'files-relay') throw new Error('TEST_ICE_UNAVAILABLE');
+            super(config);
+            this.addEventListener('connectionstatechange', () => {
+              if (this.connectionState === 'connected')
+                document.documentElement.dataset.iceConnected = 'true';
+            });
+          }
+          createDataChannel(label: string, options?: RTCDataChannelInit) {
+            const root = document.documentElement;
+            root.dataset.dataChannels = [
+              ...(root.dataset.dataChannels?.split(',') ?? []),
+              label
+            ].join(',');
+            return super.createDataChannel(label, options);
+          }
+        };
+      },
+      { scenario, nodeId }
+    );
     await page.goto(route);
     await ensureWorkspace();
     await expect(addAside.or(expandAside).first()).toBeVisible({ timeout: 15_000 });
@@ -563,11 +605,12 @@ async function browserAsideJourney(
     });
     await addBrowser.click();
     await expect(browserTab).toHaveAttribute('aria-selected', 'true');
-    await page.waitForFunction(
-      () => document.documentElement.dataset.iceConnected === 'true',
-      undefined,
-      { timeout: 15_000 }
-    );
+    if (scenario !== 'files-relay')
+      await page.waitForFunction(
+        () => document.documentElement.dataset.iceConnected === 'true',
+        undefined,
+        { timeout: 15_000 }
+      );
     const newWebTab = page.getByRole('button', { name: /^(New tab|新建标签页)$/u });
     const tabRow = page.locator('.node-browser-tabs').getByRole('tablist');
     async function captureBrowserChrome(name: string) {
@@ -724,6 +767,22 @@ async function browserAsideJourney(
       return;
     }
     await expectViewportFits();
+    if (scenario === 'files-ice' || scenario === 'files-relay') {
+      const path = scenario === 'files-ice' ? 'ice' : 'relay';
+      if (path === 'relay') {
+        await address.fill(`${origin}/relay`);
+        await address.press('Enter');
+        await expect(address).toHaveValue(`${origin}/relay`);
+      }
+      await upload(path);
+      await download('saved', path);
+      if (path === 'ice') {
+        expect(relayCarriers).toBe(0);
+        const channels = await page.locator('html').getAttribute('data-data-channels');
+        expect(channels?.split(',')).toEqual(['mar-node-stream']);
+      } else expect(relayCarriers).toBe(1);
+      return;
+    }
     if (scenario === 'find') {
       await verifyFind(`${origin}/ice`);
       return;
@@ -832,7 +891,9 @@ async function browserAsideJourney(
       .getAttribute('aria-description', { timeout: 15_000 });
     expect(directDescription).toBeTruthy();
     await expect(performancePanel.getByText(directDescription!, { exact: true })).toBeVisible();
-    await expect(performancePanel.getByText('RFB (Tight)', { exact: true })).toBeVisible();
+    await expect(
+      performancePanel.getByRole('combobox', { name: /^(Picture quality preference|画质偏好)$/u })
+    ).toBeVisible();
     await expect(performancePanel.getByText(/^[\d.,]+ (?:[kM]?bit\/s)$/u)).toBeVisible();
     await expect(performancePanel.getByText(/^[\d.,]+ fps$/u)).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('browser-performance-ice.png') });
@@ -945,7 +1006,7 @@ async function browserAsideJourney(
         paths.push(path);
       }
       await dialog.locator('input[type=file]').setInputFiles(paths);
-      // Requests are acknowledged serially, including all chunks of the 9 MiB file.
+      // Chromium receives the selection only after all files complete staging.
       await expect
         .poll(() => requests.filter((path) => path.startsWith(`/received?name=${label}.txt&`)), {
           timeout: 60_000
@@ -967,63 +1028,105 @@ async function browserAsideJourney(
       const name = `${action === 'saved' ? route : action}.bin`;
       const row = dialog.getByRole('listitem').filter({ hasText: name });
       if (action === 'saved') {
-        const save = row.getByRole('link', { name: /^(Save to device|保存到本机)$/u });
+        const save = row.getByRole('button', { name: /^(Save to device|保存到本机)$/u });
         await expect(save).toBeVisible();
         await expect(row.getByText('9 MB', { exact: true })).toBeVisible();
-        const href = (await save.getAttribute('href'))!;
-        const mismatched = new URL(href, page.url());
-        mismatched.searchParams.set('attachmentId', '12345678-1234-4234-8234-123456789012');
-        expect((await request.get(mismatched.href)).status()).toBe(403);
-        const pending = page.waitForEvent('download');
+        const admission = page.waitForResponse(
+          (response) => new URL(response.url()).pathname === '/api/browser/downloads/stream-ticket'
+        );
+        const pending = page.waitForEvent('download', { timeout: 20_000 });
         await save.click();
+        const admitted = await admission;
+        expect(admitted.ok()).toBe(true);
+        const { nodeId } = (await admitted.json()) as { nodeId: string };
+        const { attachmentId, id } = admitted.request().postDataJSON() as {
+          attachmentId: string;
+          id: string;
+        };
+        const csrf = (await admitted.request().allHeaders())['x-csrf-token']!;
+        const ticketFor = (attachment: string) =>
+          request.post(admitted.url(), {
+            headers: { origin: new URL(page.url()).origin, 'x-csrf-token': csrf },
+            data: { attachmentId: attachment, id }
+          });
+        expect((await ticketFor('12345678-1234-4234-8234-123456789012')).status()).toBe(403);
         const file = await pending;
         expect(file.suggestedFilename()).toBe(name);
         expect((await readFile((await file.path())!)).equals(largeFile)).toBe(true);
         if (route === 'relay') {
           await page.keyboard.press('Escape');
           await expect(dialog).toBeHidden();
-          const url = new URL(href, serverUrl);
-          const cookie = (await page.context().cookies(url.href))
+          const next = await ticketFor(attachmentId);
+          expect(next.ok()).toBe(true);
+          const { ticket } = (await next.json()) as { ticket: string };
+          const url = new URL(`/api/relay/${nodeId}`, serverUrl);
+          const cookie = (await page.context().cookies(page.url()))
             .map(({ name, value }) => `${name}=${value}`)
             .join('; ');
-          const stream = get(url, { headers: { cookie } });
+          url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+          const socket = new RelayWebSocket(url, {
+            headers: { cookie, origin: new URL(page.url()).origin }
+          });
+          socket.on('error', () => socket.terminate());
+          const deadline = AbortSignal.timeout(30_000);
+          const expire = () => socket.terminate();
+          deadline.addEventListener('abort', expire, { once: true });
           try {
-            const [response] = await once(stream, 'response');
-            expect(response.statusCode).toBe(200);
-            const [first] = await once(response, 'data');
-            response.pause();
+            const path = await openNodeRelayPath({
+              carrier: {
+                send: async (bytes) => {
+                  socket.send(bytes);
+                },
+                close: () => socket.close(),
+                onMessage: (receive) => socket.on('message', receive),
+                onClose: (close) => socket.once('close', close)
+              },
+              maxStreams: 2,
+              signal: deadline
+            });
+            const stream = await path.openStream(
+              { kind: 'browser-file-download', grant: ticket },
+              deadline
+            );
+            if (!stream) throw new Error('Device save stream failed to open');
+            const chunks = stream[Symbol.asyncIterator]();
+            const first = await chunks.next();
+            expect(first.done).toBe(false);
             const aside = page.locator('.workspace-aside');
             await aside
               .getByRole('button', { name: /^(Close Browser|关闭\s*浏览器)$/u })
               .first()
               .click();
-            const listing = new URL(href, page.url());
+            const listing = new URL(admitted.url());
             listing.pathname = '/api/browser/downloads';
-            listing.searchParams.delete('id');
+            listing.searchParams.set('attachmentId', attachmentId);
             listing.searchParams.set('offset', '0');
             await expect
               .poll(async () => (await page.request.get(listing.href)).status())
               .toBe(403);
-            expect(response.complete).toBe(false);
-            let offset = first.length;
-            expect(first.equals(largeFile.subarray(0, offset))).toBe(true);
-            for await (const bytes of response) {
-              expect(bytes.equals(largeFile.subarray(offset, offset + bytes.length))).toBe(true);
-              offset += bytes.length;
+            let offset = 0;
+            for (let chunk = first; !chunk.done; chunk = await chunks.next()) {
+              const bytes = Buffer.from(chunk.value);
+              expect(bytes.equals(largeFile.subarray(offset, offset + bytes.byteLength))).toBe(
+                true
+              );
+              offset += bytes.byteLength;
             }
             expect(offset).toBe(largeFile.length);
+            await stream.endWrite();
           } finally {
-            stream.destroy();
+            deadline.removeEventListener('abort', expire);
+            socket.terminate();
           }
           await openWorkspaceBrowser();
-          await checkRelay();
+          if (scenario !== 'files-relay') await checkRelay();
           return;
         }
         await row.getByRole('button', { name: /^(Delete download|删除下载)$/u }).click();
         const confirm = page.getByRole('dialog', { name: /^(Delete download|删除下载)$/u });
         await confirm.getByRole('button', { name: /^(Delete|删除)$/u }).click();
         await expect(row).toHaveCount(0);
-        expect((await request.get(href)).status()).toBe(409);
+        expect((await ticketFor(attachmentId)).status()).toBe(409);
         expect((await readFile((await file.path())!)).equals(largeFile)).toBe(true);
       } else if (action === 'cancel') {
         const previous = canceledRequests;
@@ -1118,16 +1221,16 @@ async function browserAsideJourney(
     await performanceInfo.press('Escape');
     await expect(performancePanel).toBeHidden();
     await upload('relay');
-    await download('saved', 'relay');
+    await test.step('Finish a Relay download after closing the Browser Aside', () =>
+      download('saved', 'relay'));
     await download('fail', 'relay');
     await verifyContextMenu('relay');
     for (let attempt = 0; attempt < 2; attempt++) {
-      const freshRelay = page.waitForEvent(
-        'websocket',
-        (socket) => new URL(socket.url()).pathname === '/api/browser/relay'
-      );
+      const connectCount = () =>
+        page.evaluate(() => Number(document.documentElement.dataset.workbenchConnections ?? 0));
+      const before = await connectCount();
       await page.evaluate(() => window.dispatchEvent(new Event('test-drop-workbench')));
-      await freshRelay;
+      await expect.poll(connectCount, { timeout: 15_000 }).toBeGreaterThan(before);
       await checkRelay();
       await expect(address).toHaveValue(`${origin}/relay`);
     }

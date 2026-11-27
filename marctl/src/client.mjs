@@ -1,6 +1,6 @@
 import { MarctlError } from './errors.mjs';
 import { createTranslator } from './i18n/index.mjs';
-import { TerminalBrokerClient } from './terminal-broker-client.mjs';
+import { openPrivateTerminalBroker, TerminalBrokerClient } from './terminal-broker-client.mjs';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 
@@ -113,18 +113,7 @@ export class MarctlClient {
       !isNonEmptyString(payload.manifest.nodeGeneration)
     )
       throw new MarctlError(this.#translate('errors.serverInvalidManifest'));
-    return {
-      ...payload.manifest,
-      ...(payload.deferredRelay === true ? { deferredRelay: true } : {})
-    };
-  }
-
-  async openDirectTerminal(options) {
-    const { openDirectTerminalProcess } = await import('./direct-process.mjs');
-    return openDirectTerminalProcess({
-      ...options,
-      connection: { serverUrl: this.#serverUrl, key: this.#key }
-    });
+    return payload.manifest;
   }
 
   async createAttachTicket({ nodeId, terminalId, afterSequence }) {
@@ -153,39 +142,13 @@ export class MarctlClient {
     });
   }
 
-  openPooledTerminal(WebSocketClass, { nodeId, terminalId, ticket, computer }) {
-    if (!this.#reuseTerminalConnections) return undefined;
-    return new TerminalBrokerClient(
-      { serverUrl: this.#serverUrl, key: this.#key, nodeId },
-      { terminalId, ticket, computer },
-      async () =>
-        this.openTerminalWebSocket(WebSocketClass, {
-          terminalId,
-          ticket: ticket ?? (await this.createAttachTicket({ nodeId, terminalId }))
-        })
-    );
-  }
-
-  openTerminalWebSocket(WebSocketClass, { terminalId, ticket, deferred = false }) {
-    validateTerminalId(terminalId, this.#translate);
-    if (!isNonEmptyString(ticket))
-      throw new MarctlError(this.#translate('errors.terminalTicketInvalid'));
-
-    const url = new URL(
-      `/api/marctl/terminals/${encodeURIComponent(terminalId)}/connect`,
-      `${this.#serverUrl}/`
-    );
-    url.searchParams.set('ticket', ticket);
-    if (deferred) url.searchParams.set('deferred', '1');
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-
-    try {
-      return new WebSocketClass(url.toString(), {
-        headers: { Authorization: `Bearer ${this.#key}` }
-      });
-    } catch {
-      throw new MarctlError(this.#translate('errors.terminalConnectionStart'));
-    }
+  openTerminalEndpoint({ nodeId, terminalId, ticket, computer }) {
+    const config = { serverUrl: this.#serverUrl, key: this.#key, nodeId };
+    const request = { terminalId, ticket, computer };
+    const openPrivate = () => openPrivateTerminalBroker(config, request);
+    return this.#reuseTerminalConnections
+      ? new TerminalBrokerClient(config, request, openPrivate)
+      : openPrivate();
   }
 
   openWorkbenchWebSocket(WebSocketClass) {

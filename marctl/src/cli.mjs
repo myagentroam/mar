@@ -98,14 +98,12 @@ export async function main(
       return 0;
     }
     if (args.command === 'scp') {
-      const socketClass = WebSocketClass ?? (await import('ws')).default;
       return await withCommandSignals((signal) =>
         runScp({
           source: args.source,
           destination: args.destination,
           preserve: args.preserve,
           client: marctlClient,
-          WebSocketClass: socketClass,
           resolveNodeId: (reference) => resolveNodeId(marctlClient, reference, translate),
           translate,
           signal
@@ -114,12 +112,10 @@ export async function main(
     }
 
     const nodeId = await resolveNodeId(marctlClient, args.nodeId, translate);
-    const socketClass = WebSocketClass ?? (await import('ws')).default;
     if (args.command === 'computer')
       return await withCommandSignals((signal) =>
         runComputer({
           client: marctlClient,
-          WebSocketClass: socketClass,
           nodeId,
           directory: args.directory,
           stdin,
@@ -131,10 +127,8 @@ export async function main(
     return await withCommandSignals((signal) =>
       runTerminalSession({
         client: marctlClient,
-        WebSocketClass: socketClass,
         nodeId,
         command: args.remoteCommand,
-        raceConnections: true,
         stdin,
         stdout,
         stderr,

@@ -3,8 +3,10 @@ import type {
   BrowserDownloadRequest,
   BrowserAttachmentMessage,
   BrowserPageInput,
-  BrowserUpload
+  BrowserUpload,
+  BrowserUploadStream
 } from '@myagentroam/protocol';
+import type { NodeStream } from '@myagentroam/protocol/node-stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { BrowserVncStream } from './browser-vnc-stream.js';
 import type { BrowserPageCapture, BrowserPageView } from './browser-page-view.js';
@@ -215,6 +217,16 @@ export class BrowserAttachment {
     });
     this.uploading = operation;
     return operation;
+  }
+
+  uploadStream(
+    request: BrowserUploadStream,
+    stream: NodeStream,
+    signal: AbortSignal
+  ): Promise<void> {
+    if (this.closed || this.uploading || !this.borrow.activity())
+      return Promise.reject(new Error('BROWSER_LEASE_ENDED'));
+    return this.borrow.resource.uploadStream(request, stream, signal);
   }
 
   close(): Promise<void> {

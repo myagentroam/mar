@@ -22,6 +22,7 @@ type Lease = {
   generation: string;
   grant: BrowserAttachmentPrepare;
   closing?: Promise<void>;
+  relayStream?: AbortController;
 };
 const LEASE_MS = 15_000;
 
@@ -33,7 +34,7 @@ export class BrowserScopeRevoked extends Error {
 
 /** Owns authorized Browser leases on both paths. The host checks its current
  * session/Workbench connection and supplies authoritative ICE and Node RPC;
- * relay pairing and the Node's browser registry stay outside this owner.
+ * byte forwarding and the Node's browser registry stay outside this owner.
  */
 export class BrowserAttachmentCoordinator {
   private readonly leases = new Map<string, Lease>();
@@ -69,7 +70,6 @@ export class BrowserAttachmentCoordinator {
         code: string,
         identity: Identity
       ): Promise<void>;
-      closeRelay(attachmentId: string): void;
       resource(
         nodeId: string,
         generation: string,
@@ -144,23 +144,40 @@ export class BrowserAttachmentCoordinator {
     }
   }
 
-  relayNode(id: string, nodeId: string, generation: string): boolean {
-    const lease = this.leases.get(id);
-    return (
-      !!lease &&
-      this.live(lease) &&
-      lease.grant.route.type === 'relay' &&
-      lease.target.nodeId === nodeId &&
-      lease.generation === generation
-    );
-  }
-
-  async relayBrowser(identity: Identity, open: BrowserAttachmentOpen): Promise<boolean> {
+  private async relayBrowser(identity: Identity, open: BrowserAttachmentOpen): Promise<boolean> {
     const lease = this.owned(identity, open.attachmentId);
     if (!lease || lease.grant.route.type !== 'relay' || lease.grant.ticket !== open.ticket)
       return false;
     const node = await this.options.authorize(identity, lease.target);
     return this.live(lease) && node?.generation === lease.generation;
+  }
+
+  async authorizeRelayStream(
+    user: Pick<Identity, 'userId' | 'sessionFingerprint'>,
+    nodeId: string,
+    open: BrowserAttachmentOpen,
+    signal: AbortSignal
+  ) {
+    const lease = this.leases.get(open.attachmentId);
+    if (
+      !lease ||
+      lease.target.nodeId !== nodeId ||
+      lease.relayStream ||
+      lease.identity.userId !== user.userId ||
+      lease.identity.sessionFingerprint !== user.sessionFingerprint ||
+      !(await this.relayBrowser(lease.identity, open))
+    )
+      return undefined;
+    signal.throwIfAborted();
+    if (!this.live(lease) || lease.relayStream) return undefined;
+    const scope = new AbortController();
+    lease.relayStream = scope;
+    return {
+      revoked: scope.signal,
+      onEnd: () => {
+        void this.close(open.attachmentId, 'BROWSER_DISCONNECTED').catch(this.options.failed);
+      }
+    };
   }
 
   async renew(identity: Identity, id: string): Promise<void> {
@@ -264,14 +281,11 @@ export class BrowserAttachmentCoordinator {
     const lease = this.leases.get(id);
     if (!lease) return Promise.resolve();
     return (lease.closing ??= Promise.resolve().then(async () => {
+      lease.relayStream?.abort();
       try {
-        this.options.closeRelay(id);
+        await this.options.revoke(lease.target, lease.generation, id, code, lease.identity);
       } finally {
-        try {
-          await this.options.revoke(lease.target, lease.generation, id, code, lease.identity);
-        } finally {
-          this.leases.delete(id);
-        }
+        this.leases.delete(id);
       }
     }));
   }

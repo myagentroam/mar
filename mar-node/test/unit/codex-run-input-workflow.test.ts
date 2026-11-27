@@ -1,3 +1,4 @@
+import { openComposerUploadFixture } from '../support/workspace-composer-upload.js';
 import type { GoalContinuationCoordinator } from '../../src/service/goal-continuation-coordinator.js';
 import { withNonImageAttachmentPrompt } from '../../src/session/attachments.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -493,14 +494,13 @@ describe('Codex input, commands, and event projection', () => {
           cwd: root
         })) as { readonly session: { readonly id: string } };
         const attachmentId = '9e93ee84-61a1-413b-a8c3-df4cd70320b9';
-        const uploaded = (await execute.executeNodeOperation('workspace.files.upload.create', {
+        const complete = await openComposerUploadFixture(connector, {
           workspaceId: workspace.id,
+          id: attachmentId,
           name,
           mime,
-          size: Buffer.byteLength(contents[0]!),
-          overwrite: false,
-          composerAttachmentId: attachmentId
-        })) as { readonly upload: { readonly uploadId: string } };
+          bytes: Buffer.from(contents[0]!)
+        });
         await expect(
           execute.executeNodeOperation('session.message', {
             sessionId: created.session.id,
@@ -509,38 +509,19 @@ describe('Codex input, commands, and event projection', () => {
             attachmentIds: [attachmentId]
           })
         ).rejects.toThrow('COMPOSER_ATTACHMENT_UNAVAILABLE');
-        await execute.executeNodeOperation('workspace.files.upload.chunk', {
-          workspaceId: workspace.id,
-          uploadId: uploaded.upload.uploadId,
-          offset: 0,
-          dataBase64: Buffer.from(contents[0]!).toString('base64')
-        });
-        await execute.executeNodeOperation('workspace.files.upload.complete', {
-          workspaceId: workspace.id,
-          uploadId: uploaded.upload.uploadId
-        });
+        await complete();
         const attachmentIds = [attachmentId];
         for (const [index, content] of contents.entries()) {
           if (index === 0) continue;
           const id = '9e93ee84-61a1-413b-a8c3-df4cd70320ba';
-          const next = (await execute.executeNodeOperation('workspace.files.upload.create', {
+          const completeNext = await openComposerUploadFixture(connector, {
             workspaceId: workspace.id,
+            id,
             name,
             mime,
-            size: Buffer.byteLength(content),
-            overwrite: false,
-            composerAttachmentId: id
-          })) as { readonly upload: { readonly uploadId: string } };
-          await execute.executeNodeOperation('workspace.files.upload.chunk', {
-            workspaceId: workspace.id,
-            uploadId: next.upload.uploadId,
-            offset: 0,
-            dataBase64: Buffer.from(content).toString('base64')
+            bytes: Buffer.from(content)
           });
-          await execute.executeNodeOperation('workspace.files.upload.complete', {
-            workspaceId: workspace.id,
-            uploadId: next.upload.uploadId
-          });
+          await completeNext();
           attachmentIds.push(id);
         }
         const message = (await execute.executeNodeOperation('session.message', {
@@ -717,24 +698,14 @@ describe('Codex input, commands, and event projection', () => {
       expect(internals.runtime.getRun(compact.run.id)?.status).toBe('RUNNING');
 
       const attachmentId = '00000000-0000-4000-8000-000000000002';
-      const uploaded = (await internals.executeNodeOperation('workspace.files.upload.create', {
+      const complete = await openComposerUploadFixture(connector, {
         workspaceId: workspace.id,
+        id: attachmentId,
         name: 'notes.pdf',
         mime: 'application/pdf',
-        size: 3,
-        overwrite: false,
-        composerAttachmentId: attachmentId
-      })) as { readonly upload: { readonly uploadId: string } };
-      await internals.executeNodeOperation('workspace.files.upload.chunk', {
-        workspaceId: workspace.id,
-        uploadId: uploaded.upload.uploadId,
-        offset: 0,
-        dataBase64: 'cGRm'
+        bytes: Buffer.from('pdf')
       });
-      await internals.executeNodeOperation('workspace.files.upload.complete', {
-        workspaceId: workspace.id,
-        uploadId: uploaded.upload.uploadId
-      });
+      await complete();
 
       const queued = (await internals.executeNodeOperation('session.message', {
         sessionId: session.id,

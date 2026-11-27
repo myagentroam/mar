@@ -1,3 +1,4 @@
+import { openComposerUploadFixture } from '../support/workspace-composer-upload.js';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -2435,24 +2436,14 @@ describe('Node Agent Network owner integration', () => {
       };
       const attachmentId = '9e93ee84-61a1-413b-a8c3-df4cd70320b9';
       if (kind === 'reference') {
-        const uploaded = (await internals.executeNodeOperation('workspace.files.upload.create', {
+        const complete = await openComposerUploadFixture(connector, {
           workspaceId: workspace.id,
+          id: attachmentId,
           name: image.name,
           mime: image.mime,
-          size: Buffer.from(image.dataBase64, 'base64').length,
-          overwrite: false,
-          composerAttachmentId: attachmentId
-        })) as { upload: { uploadId: string } };
-        await internals.executeNodeOperation('workspace.files.upload.chunk', {
-          workspaceId: workspace.id,
-          uploadId: uploaded.upload.uploadId,
-          offset: 0,
-          dataBase64: image.dataBase64
+          bytes: Buffer.from(image.dataBase64, 'base64')
         });
-        await internals.executeNodeOperation('workspace.files.upload.complete', {
-          workspaceId: workspace.id,
-          uploadId: uploaded.upload.uploadId
-        });
+        await complete();
       }
       const persist = vi.spyOn(internals.runAttachmentService, 'persistFiles');
       const actor = { sessionId: parent.id, requestUserId: 7 };

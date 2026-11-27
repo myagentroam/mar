@@ -1,48 +1,59 @@
 import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
 import type { NodeWorkbenchManifest } from '../model/workbench.js';
-import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import { createWorkbenchLiveService } from './workbench-live-service.js';
 import { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
-import { readWorkspaceDirectObjectUrl } from './workspace-direct-object-url-service.js';
-import {
-  downloadWorkspaceDirectFile,
-  type WorkspaceDirectDownloadResult
-} from './workspace-direct-download-stream-service.js';
+import { readWorkspaceFileObjectUrl } from './workspace-direct-object-url-service.js';
+import { MAX_BINARY_PREVIEW_BYTES } from '../util/file-preview.js';
+import { downloadWorkspaceFileToBrowser } from './workspace-direct-download-stream-service.js';
+import type { ScopedHttpService } from './scoped-http-service.js';
+import { createWorkbenchNodeConnectionService } from './workbench-node-connection-service.js';
+import { createWorkspaceFileStreamClient } from './workspace-file-stream-client.js';
 import {
   readWorkspaceDirectFileMetadata,
-  readWorkspaceDirectFileRange
+  readWorkspaceFileRange
 } from './workspace-direct-file-read-service.js';
 
 const INITIAL_DIRECT_WAIT_MS = 800;
 
+/** Owns the independent window's transport and download lifetime, not its preview state. */
 export function createStandaloneWorkspaceDirectTransferService(input: {
   readonly nodeId: string;
   readonly workspaceId: string;
   readonly repositoryPath?: string;
   readonly worktreePath?: string;
   readonly activeDownloadWorker?: () => Promise<ServiceWorker | undefined>;
+  readonly http: ScopedHttpService;
+  readonly fileStreams?: ReturnType<typeof createWorkspaceFileStreamClient>;
 }) {
-  function fileTarget() {
+  function fileResource(path: string) {
     return {
+      kind: 'WORKSPACE_FILE' as const,
+      workspaceId: input.workspaceId,
+      path,
       ...(input.repositoryPath === undefined ? {} : { repositoryPath: input.repositoryPath }),
       ...(input.worktreePath === undefined ? {} : { worktreePath: input.worktreePath })
     };
   }
-  let active = true;
+  const lifetime = new AbortController();
+  const active = () => !lifetime.signal.aborted;
+  const { http } = input;
   let generation: string | undefined;
   let initialization = 0;
   let settleReady: ((available: boolean) => void) | undefined;
   const ready = new Promise<boolean>((resolve) => {
     settleReady = resolve;
   });
-  const readyTimer = setTimeout(() => settleReady?.(false), INITIAL_DIRECT_WAIT_MS);
+  const readyTimer =
+    input.fileStreams === undefined
+      ? setTimeout(() => settleReady?.(false), INITIAL_DIRECT_WAIT_MS)
+      : undefined;
   const direct = createWorkspaceDirectTransferService({
     send: (message) => live.sendDirect(message),
     shouldRetryProbe: (nodeId, nodeGeneration) =>
-      active && nodeId === input.nodeId && nodeGeneration === generation
+      active() && nodeId === input.nodeId && nodeGeneration === generation
   });
   const live = createWorkbenchLiveService({
-    canConnect: () => active,
+    canConnect: active,
     onEvent: () => undefined,
     onResyncRequired: () => undefined,
     onNodeConnection: (nodeId, connected) => {
@@ -59,6 +70,37 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
     onUnauthenticated: () => settle(false),
     onInvalidMessage: () => undefined
   });
+  const connections = createWorkbenchNodeConnectionService({
+    http,
+    async connectDirect(nodeId, signal) {
+      // Reuse a warm peer; on a cold start the bounded ICE probe races Relay.
+      if (generation === undefined || !direct.isConnected(nodeId, generation)) await ready;
+      signal.throwIfAborted();
+      const nodeGeneration = generation;
+      if (nodeGeneration === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
+      const transport = direct.acquireTerminalTransport(nodeId, nodeGeneration);
+      if (transport === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
+      try {
+        const path = await transport.readyStreamPath(signal);
+        signal.throwIfAborted();
+        if (path === undefined) throw new Error('NODE_DIRECT_UNAVAILABLE');
+        return {
+          get closed() {
+            return path.closed;
+          },
+          close: transport.release,
+          openStream: (request, opening) =>
+            request.kind === 'file-upload' || request.kind === 'file-download'
+              ? direct.openFileStream(nodeId, nodeGeneration, request.descriptor, opening)
+              : Promise.resolve(undefined)
+        };
+      } catch (error) {
+        transport.release();
+        throw error;
+      }
+    }
+  });
+  const files = input.fileStreams ?? createWorkspaceFileStreamClient(connections.openStream);
 
   async function initialize(): Promise<void> {
     const requestId = ++initialization;
@@ -72,7 +114,7 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
         readonly manifest?: NodeWorkbenchManifest;
       };
       const manifest = body.manifest;
-      if (!active || requestId !== initialization) return;
+      if (!active() || requestId !== initialization) return;
       if (
         manifest?.directTransfer?.apiVersion !== 3 ||
         manifest.directTransfer.transport !== true ||
@@ -84,9 +126,9 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
       }
       generation = manifest.nodeGeneration;
       const availability = await direct.ensureTransport(input.nodeId, generation);
-      if (active && requestId === initialization) settle(availability === 'DIRECT_AVAILABLE');
+      if (active() && requestId === initialization) settle(availability === 'DIRECT_AVAILABLE');
     } catch {
-      if (active && requestId === initialization) settle(false);
+      if (active() && requestId === initialization) settle(false);
     }
   }
 
@@ -96,68 +138,78 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
     settleReady = undefined;
   }
 
-  async function fileOperation(path: string, waitForInitialReady = true) {
-    if (isComposerAttachmentResourcePath(path)) return undefined;
-    if (waitForInitialReady && !(await ready)) return undefined;
-    const nodeGeneration = generation;
-    if (
-      !active ||
-      nodeGeneration === undefined ||
-      !direct.isConnected(input.nodeId, nodeGeneration)
-    )
-      return undefined;
-    const resource = {
-      kind: 'WORKSPACE_FILE' as const,
-      workspaceId: input.workspaceId,
-      path,
-      ...fileTarget()
-    };
-    return {
-      direct,
-      nodeId: input.nodeId,
-      nodeGeneration,
-      resource,
-      metadata: async () => {
-        const identity = await readWorkspaceDirectFileMetadata({
-          nodeId: input.nodeId,
-          resource,
-          request: async (url) => {
-            const response = await fetch(url, { credentials: 'same-origin' });
-            return response.ok ? response.json() : {};
-          }
-        });
-        return active ? identity : undefined;
-      }
-    };
-  }
-
   async function readRange(
     path: string,
     offset: number,
     length: number,
     identity?: WorkspaceDirectFileIdentity
   ) {
-    const target = await fileOperation(path);
-    if (target === undefined) return undefined;
-    return readWorkspaceDirectFileRange({
-      ...target,
-      fileName: path.split('/').at(-1) ?? 'file',
-      offset,
-      length,
-      ...(identity === undefined ? {} : { identity })
-    }).catch(() => undefined);
+    const resource = fileResource(path);
+    // All non-native reads share the download carrier; a stream failure is not an HTTP retry.
+    return readWorkspaceFileRange(
+      {
+        resource,
+        fileName: path.split('/').at(-1) ?? 'file',
+        offset,
+        length,
+        ...(identity === undefined ? {} : { identity }),
+        signal: lifetime.signal,
+        metadata: () => metadata(resource)
+      },
+      (transfer) => files.download({ ...transfer, nodeId: input.nodeId })
+    );
   }
 
   async function objectUrl(path: string) {
-    const target = await fileOperation(path);
-    return target === undefined ? undefined : readWorkspaceDirectObjectUrl(target);
+    const resource = fileResource(path);
+    const identity = await metadata(resource);
+    if (identity.size > MAX_BINARY_PREVIEW_BYTES) return { ...identity, url: undefined };
+    const signal = lifetime.signal;
+    const fileName = path.split('/').at(-1) ?? 'file';
+    const url = await readWorkspaceFileObjectUrl(fileName, signal, (sink) =>
+      files.download({
+        nodeId: input.nodeId,
+        descriptor: { direction: 'DOWNLOAD', resource, fileName, ...identity },
+        sink,
+        signal
+      })
+    );
+    return { url, ...identity };
   }
 
-  async function download(path: string): Promise<WorkspaceDirectDownloadResult> {
-    const target = await fileOperation(path, false);
-    return target === undefined || input.activeDownloadWorker === undefined
-      ? 'UNAVAILABLE'
-      : downloadWorkspaceDirectFile({ ...target, activeWorker: input.activeDownloadWorker });
+  async function metadata(resource: ReturnType<typeof fileResource>) {
+    const signal = lifetime.signal;
+    signal.throwIfAborted();
+    const identity = await readWorkspaceDirectFileMetadata({
+      request: http.request,
+      nodeId: input.nodeId,
+      resource,
+      signal
+    });
+    signal.throwIfAborted();
+    if (identity === undefined) throw new Error('NODE_RESPONSE_INVALID');
+    return identity;
+  }
+
+  async function download(path: string): Promise<'COMPLETED' | 'CANCELLED'> {
+    const signal = lifetime.signal;
+    const resource = fileResource(path);
+    const identity = await metadata(resource);
+    const fileName = path.split('/').at(-1) ?? 'download';
+    return downloadWorkspaceFileToBrowser({
+      fileName,
+      size: identity.size,
+      ...(input.activeDownloadWorker === undefined
+        ? {}
+        : { activeWorker: input.activeDownloadWorker }),
+      download: (sink, cancellation) =>
+        files.download({
+          nodeId: input.nodeId,
+          descriptor: { direction: 'DOWNLOAD', resource, fileName, ...identity },
+          sink,
+          signal: cancellation === undefined ? signal : AbortSignal.any([signal, cancellation])
+        })
+    });
   }
 
   function networkChanged(): void {
@@ -165,13 +217,13 @@ export function createStandaloneWorkspaceDirectTransferService(input: {
   }
 
   function close(): void {
-    active = false;
-    initialization += 1;
+    lifetime.abort();
     settle(false);
+    connections.reset();
     direct.invalidateNetwork();
     live.close();
   }
 
-  live.connect();
+  if (input.fileStreams === undefined) live.connect();
   return { objectUrl, readRange, download, networkChanged, close };
 }

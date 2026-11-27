@@ -23,26 +23,53 @@ export async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
     );
   }
 
-  // Read complete blocks in place; only the final one or two blocks need padding.
-  const fullLength = bytes.length - (bytes.length % 64);
-  const remainder = bytes.subarray(fullLength);
-  const tail = new Uint8Array(remainder.length < 56 ? 64 : 128);
-  tail.set(remainder);
-  tail[remainder.length] = 0x80;
-  const tailView = new DataView(tail.buffer);
-  tailView.setUint32(tail.length - 8, Math.floor(bytes.length / 0x20000000));
-  tailView.setUint32(tail.length - 4, bytes.length << 3);
-  const inputView = new DataView(bytes.buffer, bytes.byteOffset, fullLength);
+  return sha256Chunks(
+    (async function* () {
+      const stride = 256 * 1024;
+      for (let start = 0; start < bytes.length; start += stride) {
+        if (start > 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        yield bytes.subarray(start, start + stride);
+      }
+    })()
+  );
+}
+
+/** Streams full blocks in place; owns only one partial block and the compression state. */
+export async function sha256Chunks(chunks: AsyncIterable<Uint8Array>): Promise<string> {
   const state = new Uint32Array([
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
   ]);
   const words = new Uint32Array(64);
-  for (let offset = 0; offset < fullLength + tail.length; offset += 64) {
-    // Let the UI and cancellation handlers run while hashing larger files on HTTP.
-    if (offset > 0 && offset % (256 * 1024) === 0)
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    const view = offset < fullLength ? inputView : tailView;
-    const blockOffset = offset < fullLength ? offset : offset - fullLength;
+  const tail = new Uint8Array(128);
+  const tailView = new DataView(tail.buffer);
+  let length = 0;
+  let remaining = 0;
+  for await (const bytes of chunks) {
+    length += bytes.length;
+    let offset = 0;
+    if (remaining > 0) {
+      offset = Math.min(64 - remaining, bytes.length);
+      tail.set(bytes.subarray(0, offset), remaining);
+      remaining += offset;
+      if (remaining < 64) continue;
+      compress(tailView, 0);
+      remaining = 0;
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+    for (; offset + 64 <= bytes.length; offset += 64) compress(view, offset);
+    remaining = bytes.length - offset;
+    tail.set(bytes.subarray(offset), 0);
+  }
+  tail.fill(0, remaining);
+  tail[remaining] = 0x80;
+  const paddedLength = remaining < 56 ? 64 : 128;
+  tailView.setUint32(paddedLength - 8, Math.floor(length / 0x20000000));
+  tailView.setUint32(paddedLength - 4, length << 3);
+  compress(tailView, 0);
+  if (paddedLength === 128) compress(tailView, 64);
+  return Array.from(state, (word) => word.toString(16).padStart(8, '0')).join('');
+
+  function compress(view: DataView, blockOffset: number): void {
     for (let i = 0; i < 16; i++) words[i] = view.getUint32(blockOffset + i * 4);
     for (let i = 16; i < 64; i++) {
       const x = words[i - 15]!;
@@ -53,16 +80,14 @@ export async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
         words[i - 7]! +
         (rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10));
     }
-    let [a, b, c, d, e, f, g, h] = Array.from(state) as [
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number
-    ];
+    let a = state[0]!,
+      b = state[1]!,
+      c = state[2]!,
+      d = state[3]!;
+    let e = state[4]!,
+      f = state[5]!,
+      g = state[6]!,
+      h = state[7]!;
     for (let i = 0; i < 64; i++) {
       const first =
         h +
@@ -83,5 +108,4 @@ export async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
     const block = [a, b, c, d, e, f, g, h];
     for (let i = 0; i < 8; i++) state[i] = state[i]! + block[i]!;
   }
-  return Array.from(state, (word) => word.toString(16).padStart(8, '0')).join('');
 }

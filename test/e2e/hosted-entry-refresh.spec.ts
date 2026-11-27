@@ -1,10 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import {
   hostedConversationSummarySchema,
   hostedConversationSnapshotSchema,
   type HostedConversationSnapshot
 } from '../../packages/protocol/src/index.js';
 import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
+import { encodeUploadOffset } from '../../packages/protocol/src/file-upload-stream.js';
+import { NodeStreamMux } from '../../packages/protocol/src/node-stream-mux.js';
+import { encodeNodeRelayHandshake } from '../../packages/protocol/src/node-stream-wire.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/view/conversation/HostedConversationComposer.vue
@@ -625,6 +629,182 @@ async function openHostedSend(
     }
   };
 }
+
+test('Hosted Files uploads, previews, and downloads through one browser Relay socket', async ({
+  page
+}) => {
+  const bodies = [Buffer.of(0, 0x80, 0xff), Buffer.from('second body')];
+  const uploads = new Map<
+    string,
+    { name: string; size: number; mimeType: string; parts: Buffer[] }
+  >();
+  const order: string[] = [];
+  let carriers = 0;
+  let oldRequests = 0;
+  const rangeReads: Array<{ offset: number; length: number } | undefined> = [];
+  const textFile = 'browser-1.txt';
+  const filePath = '**/api/nodes/node-1/hosted-conversations/conversation-1/files/file-upload-2';
+  await page.route(`${filePath}/metadata`, (route) =>
+    route.fulfill({
+      json: {
+        id: 'file-upload-2',
+        conversationId: 'conversation-1',
+        category: 'UPLOAD',
+        relativePath: textFile,
+        displayName: textFile,
+        mimeType: 'text/plain',
+        size: bodies[1]!.byteLength,
+        source: 'USER',
+        createdAt: 2,
+        updatedAt: 2
+      }
+    })
+  );
+  await page.route(`${filePath}/stream-ticket`, (route) => {
+    const { revision, range } = route.request().postDataJSON() as {
+      revision: string;
+      range?: { offset: number; length: number };
+    };
+    expect(revision).toBe(`2-${bodies[1]!.byteLength}`);
+    rangeReads.push(range);
+    return route.fulfill({ json: { ticket: String(rangeReads.length - 1) } });
+  });
+  await page.route(`${filePath}/content**`, (route) => {
+    oldRequests++;
+    return route.abort();
+  });
+  await page.route(
+    /\/api\/nodes\/node-1\/hosted-conversations\/conversation-1\/uploads(?:\/|$)/u,
+    async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/preflight')) {
+        const { files } = route.request().postDataJSON() as { files: { name: string }[] };
+        return route.fulfill({
+          json: { files: files.map(({ name }) => ({ name, status: 'READY' })) }
+        });
+      }
+      if (path.endsWith('/uploads')) {
+        const { name, size, mimeType } = route.request().postDataJSON() as {
+          name: string;
+          size: number;
+          mimeType: string;
+        };
+        const uploadId = `upload-${uploads.size + 1}`;
+        uploads.set(uploadId, { name, size, mimeType, parts: [] });
+        return route.fulfill({
+          json: {
+            upload: {
+              uploadId,
+              conversationId: 'conversation-1',
+              name,
+              size,
+              mimeType,
+              receivedBytes: 0,
+              status: 'UPLOADING'
+            }
+          }
+        });
+      }
+      const uploadId = path.split('/').at(-2)!;
+      if (path.endsWith('/stream-ticket')) return route.fulfill({ json: { ticket: uploadId } });
+      if (path.endsWith('/complete')) {
+        order.push(`complete:${uploadId}`);
+        const { name, size, mimeType, parts } = uploads.get(uploadId)!;
+        const receivedBytes = Buffer.concat(parts).byteLength;
+        return route.fulfill({
+          json: {
+            upload: {
+              uploadId,
+              conversationId: 'conversation-1',
+              name,
+              size,
+              mimeType,
+              receivedBytes,
+              status: 'COMPLETED',
+              file: {
+                id: `file-${uploadId}`,
+                conversationId: 'conversation-1',
+                category: 'UPLOAD',
+                relativePath: name,
+                displayName: name,
+                mimeType,
+                size,
+                source: 'USER',
+                createdAt: 2,
+                updatedAt: 2
+              }
+            }
+          }
+        });
+      }
+      oldRequests++;
+      return route.abort();
+    }
+  );
+  await page.routeWebSocket(
+    /\/api\/relay\/node-1\?hostedConversationId=conversation-1$/u,
+    (socket) => {
+      carriers++;
+      const mux = new NodeStreamMux({
+        maxStreams: 2,
+        async send(bytes) {
+          socket.send(Buffer.from(bytes));
+        },
+        async accept({ kind, grant }) {
+          if (kind === 'hosted-file-download') {
+            return async (stream) => {
+              const bytes = Buffer.concat(uploads.get('upload-2')!.parts);
+              const range = rangeReads[Number(grant)] ?? { offset: 0, length: bytes.byteLength };
+              await stream.write(bytes.subarray(range.offset, range.offset + range.length));
+              await stream.endWrite();
+              for await (const _chunk of stream) throw new Error('Unexpected reverse DATA');
+            };
+          }
+          const target = uploads.get(grant);
+          if (kind !== 'hosted-file-upload' || target === undefined) return undefined;
+          return async (stream) => {
+            let offset = 0;
+            await stream.write(encodeUploadOffset(offset));
+            for await (const bytes of stream) {
+              target.parts.push(Buffer.from(bytes));
+              offset += bytes.byteLength;
+              await stream.write(encodeUploadOffset(offset));
+            }
+            order.push(`fin:${grant}`);
+            await stream.endWrite();
+          };
+        }
+      });
+      socket.onMessage((message) => mux.receive(message));
+      socket.onClose(() => mux.disconnect());
+      socket.send(Buffer.from(encodeNodeRelayHandshake({ type: 'RELAY_READY' })));
+    }
+  );
+  await openHostedSend(page);
+  const fileInput = page.locator('.related-files-input');
+  await expect(fileInput).toBeEnabled();
+  await fileInput.setInputFiles(
+    bodies.map((buffer, index) => ({
+      name: index === 0 ? 'browser-0.bin' : textFile,
+      mimeType: index === 0 ? 'application/octet-stream' : 'text/plain',
+      buffer
+    }))
+  );
+  await expect(page.locator('.file-open').filter({ hasText: 'browser-0.bin' })).toBeVisible();
+  await page.locator('.file-open').filter({ hasText: textFile }).click();
+  const preview = page.getByRole('dialog');
+  await expect(preview.locator('.cm-content')).toContainText('second body');
+  const downloadEvent = page.waitForEvent('download');
+  await preview.getByRole('button', { name: /^(Download file|下载文件)$/iu }).click();
+  const downloaded = await downloadEvent;
+  expect(downloaded.suggestedFilename()).toBe(textFile);
+  expect(await readFile(await downloaded.path())).toEqual(bodies[1]);
+  expect(rangeReads).toEqual([{ offset: 0, length: bodies[1]!.byteLength }, undefined]);
+  expect([...uploads.values()].map(({ parts }) => Buffer.concat(parts))).toEqual(bodies);
+  expect(order).toEqual(['fin:upload-1', 'complete:upload-1', 'fin:upload-2', 'complete:upload-2']);
+  expect(carriers).toBe(1);
+  expect(oldRequests).toBe(0);
+});
 
 for (const theme of ['daylight', 'dark']) {
   test(`Hosted draft keeps its canvas and controls steady after history in ${theme}`, async ({

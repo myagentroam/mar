@@ -49,7 +49,6 @@ export async function sendWorkspaceFileContent(input: {
   method: string;
   range: string | undefined;
   path: string;
-  download: boolean;
   read: FileContentReader;
 }): Promise<FastifyReply> {
   const { reply } = input;
@@ -62,7 +61,7 @@ export async function sendWorkspaceFileContent(input: {
   const filename = input.path.split('/').at(-1) ?? 'file';
   const contentType = fileContentType(filename);
   const media = contentType.startsWith('audio/') || contentType.startsWith('video/');
-  if (!input.download && !media && range === undefined && length > 20 * 1024 * 1024)
+  if (!media && range === undefined && length > 20 * 1024 * 1024)
     return sendError(reply, 413, 'FILE_PREVIEW_TOO_LARGE');
   const stream =
     input.method === 'HEAD' ? undefined : await openFileContentStream(read, start, end);
@@ -70,10 +69,7 @@ export async function sendWorkspaceFileContent(input: {
     .header('accept-ranges', 'bytes')
     .header('cache-control', 'private, no-store')
     .header('content-type', contentType)
-    .header(
-      'content-disposition',
-      `${input.download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(filename)}`
-    )
+    .header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`)
     .header('x-content-type-options', 'nosniff');
   if (contentType === 'image/svg+xml') reply.header('content-security-policy', 'sandbox');
   if (range !== undefined && size > 0)
@@ -184,4 +180,8 @@ export function fileContentType(path: string): string {
       xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     }[extension] ?? 'application/octet-stream'
   );
+}
+
+export function isNativeFilePreviewType(contentType: string): boolean {
+  return /^(?:image|audio|video)\//u.test(contentType);
 }

@@ -1,4 +1,5 @@
-import { encodeFileRelayFrame } from '@myagentroam/protocol';
+import { unusedHostedFileDownloads } from '../support/hosted-file-downloads.js';
+import { createHostedFileDownloadService } from '../../src/service/hosted-file-download-service.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../src/util/api-error.js';
 import {
@@ -74,9 +75,21 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function service(request: HostedConversationRequest) {
+function service(
+  request: HostedConversationRequest,
+  sendUploadBody: Parameters<
+    typeof createHostedConversationWorkspaceService
+  >[0]['sendUploadBody'] = async (_target, file, signal, progress) => {
+    const body = await file.slice(0, file.size).arrayBuffer();
+    signal.throwIfAborted();
+    progress(body.byteLength);
+  },
+  downloads = unusedHostedFileDownloads as ReturnType<typeof createHostedFileDownloadService>
+) {
   return createHostedConversationWorkspaceService({
     request,
+    sendUploadBody,
+    downloads,
     workbenchConnectionId: () => 'connection-current',
     heartbeatMs: 60_000,
     requestTimeoutMs: 1_000,
@@ -500,8 +513,6 @@ describe('Web Hosted Conversation Workspace Service', () => {
         if (path.endsWith('/preflight'))
           return { files: [{ name: 'note.txt', status: 'READY' }] } as never;
         if (path.endsWith('/uploads')) return { upload } as never;
-        if (stage === 'complete' && path.includes('/chunks?offset='))
-          return { upload: { ...upload, receivedBytes: 3 } } as never;
         if (stage === 'complete' && path.endsWith('/complete'))
           return {
             upload: {
@@ -689,7 +700,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(workspace.snapshot.value?.files).toEqual([]);
   });
 
-  it('Uploads in preflight, creation, sequential chunk, and completion order, and strictly parses file reads', async () => {
+  it('Uploads in preflight, creation, binary stream, and completion order, and strictly parses file reads', async () => {
     const requests: Array<{ path: string; init?: RequestInit }> = [];
     const uploadedFile = {
       id: 'file-uploaded',
@@ -703,54 +714,69 @@ describe('Web Hosted Conversation Workspace Service', () => {
       createdAt: 2,
       updatedAt: 2
     } as const;
-    const workspace = service(async (path, init) => {
-      recordRequest(requests, path, init);
-      if (path.endsWith('/uploads/preflight'))
-        return { files: [{ name: 'note.txt', status: 'READY' }] } as never;
-      if (path.endsWith('/uploads'))
-        return {
-          upload: {
-            uploadId: 'upload-1',
+    const workspace = service(
+      async (path, init) => {
+        recordRequest(requests, path, init);
+        if (path.endsWith('/uploads/preflight'))
+          return { files: [{ name: 'note.txt', status: 'READY' }] } as never;
+        if (path.endsWith('/uploads'))
+          return {
+            upload: {
+              uploadId: 'upload-1',
+              conversationId: 'conversation-1',
+              name: 'note.txt',
+              mimeType: 'text/plain',
+              receivedBytes: 0,
+              size: 3,
+              status: 'UPLOADING'
+            }
+          } as never;
+        if (path.endsWith('/complete'))
+          return {
+            upload: {
+              uploadId: 'upload-1',
+              conversationId: 'conversation-1',
+              name: 'note.txt',
+              mimeType: 'text/plain',
+              receivedBytes: 3,
+              size: 3,
+              status: 'COMPLETED',
+              file: uploadedFile
+            }
+          } as never;
+        return undefined as never;
+      },
+      async (target, selectedFile, _signal, progress) => {
+        expect(target).toEqual({
+          nodeId: 'node-1',
+          conversationId: 'conversation-1',
+          uploadId: 'upload-1'
+        });
+        expect(requests.map(({ path }) => path.split('/').at(-1))).toEqual([
+          'preflight',
+          'uploads'
+        ]);
+        expect(
+          new Uint8Array(await selectedFile.slice(0, selectedFile.size).arrayBuffer())
+        ).toEqual(new TextEncoder().encode('abc'));
+        progress(selectedFile.size);
+      },
+      {
+        ...unusedHostedFileDownloads,
+        async describe(target) {
+          expect(target).toEqual({
+            nodeId: 'node-1',
             conversationId: 'conversation-1',
-            name: 'note.txt',
-            mimeType: 'text/plain',
-            receivedBytes: 0,
-            size: 3,
-            status: 'UPLOADING'
-          }
-        } as never;
-      if (path.includes('/chunks?offset='))
-        return {
-          upload: {
-            uploadId: 'upload-1',
-            conversationId: 'conversation-1',
-            name: 'note.txt',
-            mimeType: 'text/plain',
-            receivedBytes: 3,
-            size: 3,
-            status: 'UPLOADING'
-          }
-        } as never;
-      if (path.endsWith('/complete'))
-        return {
-          upload: {
-            uploadId: 'upload-1',
-            conversationId: 'conversation-1',
-            name: 'note.txt',
-            mimeType: 'text/plain',
-            receivedBytes: 3,
-            size: 3,
-            status: 'COMPLETED',
-            file: uploadedFile
-          }
-        } as never;
-      if (path.includes('/files/file-uploaded'))
-        return encodeFileRelayFrame(
-          { type: 'file.read', file: uploadedFile, offset: 0, nextOffset: null, eof: true },
-          new TextEncoder().encode('abc')
-        ).buffer as never;
-      return undefined as never;
-    });
+            fileId: 'file-uploaded'
+          });
+          return uploadedFile;
+        },
+        async readRange(nodeId, file, offset, limit) {
+          expect([nodeId, file, offset, limit]).toEqual(['node-1', uploadedFile, 0, 512 * 1024]);
+          return new TextEncoder().encode('abc');
+        }
+      }
+    );
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
     const file = {
       name: 'note.txt',
@@ -773,16 +799,10 @@ describe('Web Hosted Conversation Workspace Service', () => {
       eof: true
     });
 
-    expect(requests[2]?.init?.headers).toEqual({ 'content-type': 'application/octet-stream' });
-    expect(new Uint8Array(requests[2]?.init?.body as ArrayBuffer)).toEqual(
-      new TextEncoder().encode('abc')
-    );
     expect(requests.map((entry) => entry.path)).toEqual([
       '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/preflight',
       '/api/nodes/node-1/hosted-conversations/conversation-1/uploads',
-      '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1/chunks?offset=0',
-      '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1/complete',
-      '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-uploaded?offset=0&limit=524288'
+      '/api/nodes/node-1/hosted-conversations/conversation-1/uploads/upload-1/complete'
     ]);
   });
 
@@ -1000,39 +1020,43 @@ describe('Web Hosted Conversation Workspace Service', () => {
     ).toHaveLength(2);
   });
 
-  it('Attempts to cancel the temporary Node upload after a chunk upload fails', async () => {
+  it('Attempts to cancel the temporary Node upload after its stream fails', async () => {
     const requests: Array<{ path: string; init?: RequestInit }> = [];
-    const workspace = service(async (path, init) => {
-      recordRequest(requests, path, init);
-      if (path.endsWith('/uploads/preflight'))
-        return { files: [{ name: 'broken.txt', status: 'READY' }] } as never;
-      if (path.endsWith('/uploads'))
-        return {
-          upload: {
-            uploadId: 'upload-broken',
-            conversationId: 'conversation-1',
-            name: 'broken.txt',
-            mimeType: 'text/plain',
-            receivedBytes: 0,
-            size: 3,
-            status: 'UPLOADING'
-          }
-        } as never;
-      if (path.includes('/chunks?offset=')) throw new Error('NETWORK_FAILED');
-      if (path.endsWith('/cancel'))
-        return {
-          upload: {
-            uploadId: 'upload-broken',
-            conversationId: 'conversation-1',
-            name: 'broken.txt',
-            mimeType: 'text/plain',
-            receivedBytes: 0,
-            size: 3,
-            status: 'CANCELLED'
-          }
-        } as never;
-      return undefined as never;
-    });
+    const workspace = service(
+      async (path, init) => {
+        recordRequest(requests, path, init);
+        if (path.endsWith('/uploads/preflight'))
+          return { files: [{ name: 'broken.txt', status: 'READY' }] } as never;
+        if (path.endsWith('/uploads'))
+          return {
+            upload: {
+              uploadId: 'upload-broken',
+              conversationId: 'conversation-1',
+              name: 'broken.txt',
+              mimeType: 'text/plain',
+              receivedBytes: 0,
+              size: 3,
+              status: 'UPLOADING'
+            }
+          } as never;
+        if (path.endsWith('/cancel'))
+          return {
+            upload: {
+              uploadId: 'upload-broken',
+              conversationId: 'conversation-1',
+              name: 'broken.txt',
+              mimeType: 'text/plain',
+              receivedBytes: 0,
+              size: 3,
+              status: 'CANCELLED'
+            }
+          } as never;
+        return undefined as never;
+      },
+      async () => {
+        throw new Error('NETWORK_FAILED');
+      }
+    );
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
     const file = {
       name: 'broken.txt',
@@ -1117,36 +1141,33 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(requests.some((entry) => entry.path.includes('/chunks?offset='))).toBe(false);
   });
 
-  it('Requires file chunk responses to match the request offset and projected size to prevent download loops or misaligned assembly', async () => {
-    const workspace = service(
-      async () =>
-        encodeFileRelayFrame(
-          {
-            type: 'file.read',
-            file: {
-              id: 'file-1',
-              conversationId: 'conversation-1',
-              category: 'OUTPUT',
-              relativePath: 'result.txt',
-              displayName: 'result.txt',
-              mimeType: 'text/plain',
-              size: 3,
-              source: 'AGENT',
-              createdAt: 2,
-              updatedAt: 2
-            },
-            offset: 0,
-            nextOffset: 1,
-            eof: false
-          },
-          Uint8Array.of(97)
-        ).buffer as never
-    );
+  it('Rejects metadata for a different file before opening a Hosted read stream', async () => {
+    const openStream = vi.fn();
+    const downloads = createHostedFileDownloadService({
+      http: {
+        request: async () =>
+          ({
+            id: 'other-file',
+            conversationId: 'conversation-1',
+            category: 'OUTPUT',
+            relativePath: 'result.txt',
+            displayName: 'result.txt',
+            mimeType: 'text/plain',
+            size: 3,
+            source: 'AGENT',
+            createdAt: 2,
+            updatedAt: 2
+          }) as never
+      },
+      openStream
+    });
+    const workspace = service(async () => undefined as never, undefined, downloads);
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
 
     await expect(workspace.readFile('file-1', 1, 1)).rejects.toThrow(
       'HOSTED_CONVERSATION_RESPONSE_INVALID'
     );
+    expect(openStream).not.toHaveBeenCalled();
   });
 });
 

@@ -101,12 +101,11 @@ test('Parent Git repositories preserve child Workspace files and support disabli
     const changes = await page.request.get(`${base}/changes?nodeId=${nodeId}`);
     expect(changes.status()).toBe(200);
     expect((await changes.json()).repositoryRoot).toBe(repository);
-    const range = await page.request.get(
+    const retired = await page.request.get(
       `${base}/files/content?nodeId=${nodeId}&path=same.txt&repositoryPath=`,
       { headers: { range: 'bytes=0-5' } }
     );
-    expect(range.status()).toBe(206);
-    expect((await range.body()).toString()).toBe('parent');
+    expect(retired.status()).toBe(415);
     const history = await page.request.get(`${base}/git/history?nodeId=${nodeId}`);
     expect(history.status()).toBe(200);
 
@@ -116,8 +115,8 @@ test('Parent Git repositories preserve child Workspace files and support disabli
     await tree.getByRole('button', { name: 'child', exact: true }).click();
     await expect(page.getByRole('treeitem', { name: 'same.txt', exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'Git 变更', exact: true }).click();
-    await page.locator('.change-path[title="same.txt"]').click();
-    await page.keyboard.press('Control+e');
+    await page.getByRole('button', { name: '查看 same.txt 的 Diff', exact: true }).click();
+    await page.getByRole('button', { name: '打开源文件', exact: true }).click();
     const preview = page.getByRole('dialog', { name: 'same.txt 文件预览', exact: true });
     await expect(preview).toContainText('parent after');
     await expect(preview).not.toContainText('child unchanged');

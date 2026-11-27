@@ -6,6 +6,7 @@ import {
   type MarAgentRuntimeModelConfiguration
 } from '@myagentroam/protocol';
 import type { CurrentUserSession } from './session.js';
+import type { UserNodeAuthorization } from './node-access-contracts.js';
 import type { HostedNodeControl } from './hosted-contracts.js';
 import type { ConversationTemplateService } from './conversation-template-service.js';
 import type { MarAgentModelService } from './mar-agent-model-service.js';
@@ -28,6 +29,30 @@ interface ExistingConversationAuthorization {
   readonly workspaceId?: string;
 }
 
+export async function hostedConversationOwnerSnapshot(
+  nodeControl: Pick<HostedNodeControl, 'requestHostedConversationNode'>,
+  actor: UserNodeAuthorization,
+  identifiers: { readonly nodeId: string; readonly conversationId: string }
+): Promise<HostedConversationSnapshot> {
+  const conversation = hostedConversationIdInputSchema.parse({
+    conversationId: identifiers.conversationId
+  });
+  const probe = hostedConversationSnapshotSchema.parse(
+    await requestHostedConversationNode(
+      nodeControl,
+      actor,
+      identifiers.nodeId,
+      'conversation.hosted.get',
+      {
+        ...conversation,
+        __marAgentModels: []
+      }
+    )
+  );
+  assertHostedSnapshotIdentity(probe, identifiers);
+  return probe;
+}
+
 export async function authorizeExistingConversation(
   input: HostedConversationContextDependencies,
   actor: CurrentUserSession,
@@ -43,19 +68,7 @@ export async function authorizeExistingConversation(
     input.searchBackendAvailable === undefined
       ? {}
       : { searchBackendAvailable: input.searchBackendAvailable() };
-  const probe = hostedConversationSnapshotSchema.parse(
-    await requestHostedConversationNode(
-      input.nodeControl,
-      actor,
-      identifiers.nodeId,
-      'conversation.hosted.get',
-      {
-        ...conversation,
-        __marAgentModels: []
-      }
-    )
-  );
-  assertHostedSnapshotIdentity(probe, identifiers);
+  const probe = await hostedConversationOwnerSnapshot(input.nodeControl, actor, identifiers);
 
   if (input.marAgentRuntimeModels === undefined) {
     template = await input.templates.assertCanUse(actor.userId, probe.conversation.templateId);

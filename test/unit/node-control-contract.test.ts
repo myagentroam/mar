@@ -6,14 +6,15 @@ import {
   workbenchNodeOperationSchema
 } from '../../packages/protocol/src/index.js';
 import {
-  decodeTerminalMessage,
-  encodeTerminalMessage
-} from '../../packages/protocol/src/byte-frame.js';
+  encodeNodeStreamFrame,
+  type NodeStreamFrame
+} from '../../packages/protocol/src/node-stream-wire.js';
 import { ServerDatabase } from '../../ee/server/src/database.js';
 import type { AuditEvent as AuditInput } from '../../packages/server-core/src/audit.js';
 import { createTestNodeControl, testNodeConsumers } from '../support/create-test-node-control.js';
 import { createTestNodeMessageProjector } from '../../packages/server-core/test/unit/support/node-message-projector.js';
 import { NodeRequestBroker } from '../../ee/server/src/service/node-request-broker.js';
+import { NodeStreamRelay } from '../../packages/server-core/src/node-stream-relay.js';
 import { TerminalRelayService } from '../../packages/server-core/src/terminal-relay-service.js';
 import { WorkbenchRelayService } from '../../packages/server-core/src/workbench-relay-service.js';
 import { DirectTransferCoordinator } from '../../packages/server-core/src/direct-transfer-coordinator.js';
@@ -1351,209 +1352,104 @@ describe('Node controlled relay contract', () => {
     broker.close();
   });
 
-  it('Closing the user session releases Node terminal attachments without establishing Browser relay', async () => {
-    const database = new ServerDatabase(':memory:');
-    let resolveAuthorization!: (value: unknown) => void;
-    const relay = new TerminalRelayService({
-      database,
-      authorizeNodeRequest: (userId, nodeId) => database.userOwnsNode(userId, nodeId),
-      requestNode: () =>
-        new Promise((resolve) => {
-          resolveAuthorization = resolve;
-        })
+  it('does not send a late Terminal OPEN after its user session closes', async () => {
+    const nodeId = 'node-a';
+    const user = { userId: 1, sessionHash: 'login' };
+    const pending = Promise.withResolvers<unknown>();
+    const requestNode = vi.fn(() => pending.promise);
+    const terminal = new TerminalRelayService({
+      authorizeNodeRequest: async () => true,
+      requestNode
     });
-    const terminalSent: unknown[] = [];
-    const terminalClosed: string[] = [];
-    const terminal = {
-      readyState: 1,
-      OPEN: 1,
-      send(raw: Uint8Array) {
-        terminalSent.push(decodeTerminalMessage(raw));
-      },
-      close(_code: number, reason: string) {
-        terminalClosed.push(reason);
-      }
-    };
-    (relay as unknown as { sockets: Map<string, typeof terminal> }).sockets.set('node-a', terminal);
-    const browserClosed: string[] = [];
-    const browser = {
-      readyState: 1,
-      OPEN: 1,
-      CLOSING: 2,
-      bufferedAmount: 0,
-      send() {},
-      close(_code: number, reason: string) {
-        browserClosed.push(reason);
-      },
-      on() {},
-      once() {}
-    };
-    const user = { userId: 1, sessionHash: 'a'.repeat(43) };
-    const ticket = relay.createTicket({
-      nodeId: 'node-a',
-      terminalId: 'terminal-a',
-      afterSequence: 3,
-      user
-    });
-    relay.attachBrowser(browser as never, ticket.ticket, user);
-    relay.closeSession(user.sessionHash);
-    resolveAuthorization({
-      attachment: {
-        attachmentId: 'attachment-a',
-        terminalId: 'terminal-a'
-      }
-    });
-    await vi.waitFor(() =>
-      expect(terminalSent).toEqual([
-        {
-          type: 'attach',
-          ticket: ticket.ticket,
-          terminalId: 'terminal-a',
-          attachmentId: 'attachment-a',
-          afterSequence: 3
-        },
-        { type: 'detach', ticket: ticket.ticket }
-      ])
+    const nodeSend = vi.fn<(frame: NodeStreamFrame) => void>();
+    const clientSend = vi.fn<(frame: NodeStreamFrame) => void>();
+    const relay = new NodeStreamRelay(nodeSend, { perClient: 2, perNode: 2 });
+    const client = relay.attachClient(clientSend, ({ grant }, signal) =>
+      terminal.authorizeStream(grant, nodeId, user, false, signal)
     );
-    expect(browserClosed).toEqual([]);
-    expect((relay as unknown as { relays: Map<string, unknown> }).relays.size).toBe(0);
-    const handleNodeMessage = (
-      relay as unknown as {
-        handleNodeMessage(
-          socket: typeof terminal,
-          raw: Uint8Array,
-          getNodeId: () => string | undefined,
-          setNodeId: (nodeId: string) => void
-        ): Promise<void>;
-      }
-    ).handleNodeMessage.bind(relay);
-    await handleNodeMessage(
-      terminal,
-      encodeTerminalMessage({
-        type: 'detach',
-        ticket: ticket.ticket,
-        reason: 'TERMINAL_ATTACH_FAILED'
-      }),
-      () => 'node-a',
-      () => undefined
-    );
-    const detachedBrowser = {
-      ...browser,
-      close(_code: number, reason: string) {
-        browserClosed.push(reason);
-      }
-    };
-    (
-      relay as unknown as {
-        relays: Map<
-          string,
-          {
-            ticket: string;
-            nodeId: string;
-            terminalId: string;
-            userSessionHash: string;
-            userId: number;
-            readonly: boolean;
-            browser: typeof detachedBrowser;
-          }
-        >;
-      }
-    ).relays.set('active-ticket', {
-      ticket: 'active-ticket',
-      nodeId: 'node-a',
-      terminalId: 'terminal-a',
-      userSessionHash: user.sessionHash,
-      userId: user.userId,
-      readonly: false,
-      browser: detachedBrowser
-    });
-    await handleNodeMessage(
-      terminal,
-      encodeTerminalMessage({
-        type: 'detach',
-        ticket: 'active-ticket',
-        reason: 'TERMINAL_ATTACH_FAILED'
-      }),
-      () => 'node-a',
-      () => undefined
-    );
-    expect(browserClosed).toEqual(['TERMINAL_ATTACH_FAILED']);
-    expect(terminalSent.at(-1)).toEqual({ type: 'detach', ticket: 'active-ticket' });
-    expect(terminalClosed).toEqual([]);
-    relay.close();
-    database.close();
+    const authResult = vi.spyOn(terminal, 'authorizeStream');
+    try {
+      const { ticket } = terminal.createTicket({ nodeId, terminalId: 'terminal-1', user });
+      client.receive(
+        encodeNodeStreamFrame({ type: 'OPEN', kind: 'terminal', grant: ticket, streamId: 1 })
+      );
+      expect(terminal.countSession(user.sessionHash)).toBe(1);
+      terminal.closeSession(user.sessionHash);
+      pending.resolve({ grant: 'late-grant' });
+      await authResult.mock.results[0]?.value;
+      expect(nodeSend).not.toHaveBeenCalled();
+      expect(clientSend).toHaveBeenCalledOnce();
+      expect(clientSend.mock.calls[0]?.[0]).toMatchObject({ type: 'RESET', streamId: 1 });
+      expect(terminal.countSession(user.sessionHash)).toBe(0);
+    } finally {
+      relay.close();
+      terminal.close();
+    }
   });
 
-  it('Resource authorization changes close revoked Terminal relays while preserving authorized Workspace relays', async () => {
-    const database = {
-      userCanRequestNode: vi.fn(
-        async (
-          _userId: number,
-          _nodeId: string,
-          _operation: string,
-          _data: unknown,
-          workspaceId?: string
-        ) => workspaceId === 'workspace-allowed'
-      )
-    };
-    const relay = new TerminalRelayService({
-      database: database as never,
-      authorizeNodeRequest: database.userCanRequestNode,
-      requestNode: vi.fn()
-    });
-    const terminalSent: unknown[] = [];
-    const terminal = {
-      readyState: 1,
-      OPEN: 1,
-      send(raw: Uint8Array) {
-        terminalSent.push(decodeTerminalMessage(raw));
-      },
-      close: vi.fn()
-    };
-    const closed: string[] = [];
-    const browser = (name: string) => ({
-      readyState: 1,
-      OPEN: 1,
-      CLOSING: 2,
-      close(_code: number, reason: string) {
-        closed.push(`${name}:${reason}`);
-      }
-    });
-    (relay as unknown as { sockets: Map<string, typeof terminal> }).sockets.set('node-a', terminal);
-    const allowed = {
-      ticket: 'allowed',
-      nodeId: 'node-a',
-      terminalId: 'terminal-allowed',
-      userSessionHash: 'a'.repeat(43),
-      userId: 2,
-      workspaceId: 'workspace-allowed',
-      readonly: false,
-      browser: browser('allowed')
-    };
-    const denied = {
-      ...allowed,
-      ticket: 'denied',
-      terminalId: 'terminal-denied',
-      workspaceId: 'workspace-denied',
-      browser: browser('denied')
-    };
-    const relays = (relay as unknown as { relays: Map<string, typeof allowed> }).relays;
-    relays.set(allowed.ticket, allowed);
-    relays.set(denied.ticket, denied);
-
-    await relay.revalidateAuthorizations();
-
-    expect([...relays.keys()]).toEqual(['allowed']);
-    expect(closed).toEqual(['denied:TERMINAL_AUTHORIZATION_REVOKED']);
-    expect(terminalSent).toEqual([{ type: 'close', ticket: 'denied' }]);
-    expect(terminal.close).not.toHaveBeenCalled();
-    expect(database.userCanRequestNode).toHaveBeenCalledWith(
-      2,
-      'node-a',
-      'terminal.attach.authorize',
-      {},
-      'workspace-denied'
+  it('resets only the Terminal stream whose Workspace permission was revoked', async () => {
+    const nodeId = 'node-a';
+    const user = { userId: 2, sessionHash: 'login' };
+    const allowed = vi.fn(
+      async (
+        _user: number,
+        _node: string,
+        _operation: string,
+        _input: unknown,
+        workspace?: string
+      ) => workspace === 'workspace-allowed'
     );
+    const terminal = new TerminalRelayService({
+      authorizeNodeRequest: allowed,
+      requestNode: async (_node, _operation, input) => ({
+        grant: (input as { terminalId: string }).terminalId
+      })
+    });
+    const nodeSend = vi.fn<(frame: NodeStreamFrame) => void>();
+    const clientSend = vi.fn<(frame: NodeStreamFrame) => void>();
+    const relay = new NodeStreamRelay(nodeSend, { perClient: 2, perNode: 2 });
+    const client = relay.attachClient(clientSend, ({ grant }, signal) =>
+      terminal.authorizeStream(grant, nodeId, user, false, signal)
+    );
+    try {
+      for (const [streamId, workspaceId] of [
+        [1, 'workspace-allowed'],
+        [2, 'workspace-denied']
+      ] as const) {
+        const { ticket } = terminal.createTicket({
+          nodeId,
+          terminalId: `terminal-${streamId}`,
+          workspaceId,
+          user
+        });
+        client.receive(
+          encodeNodeStreamFrame({ type: 'OPEN', kind: 'terminal', grant: ticket, streamId })
+        );
+      }
+      await vi.waitFor(() => expect(nodeSend).toHaveBeenCalledTimes(2));
+      relay.receiveNode(encodeNodeStreamFrame({ type: 'OPENED', streamId: 1 }));
+      relay.receiveNode(encodeNodeStreamFrame({ type: 'OPENED', streamId: 2 }));
+      clientSend.mockClear();
+      nodeSend.mockClear();
+      await terminal.revalidateAuthorizations();
+
+      const reset = { type: 'RESET', streamId: 2, code: 'RESOURCE_DENIED' };
+      expect(clientSend).toHaveBeenCalledExactlyOnceWith(reset);
+      expect(nodeSend).toHaveBeenCalledExactlyOnceWith(reset);
+      const data = { type: 'DATA', streamId: 1, bytes: Uint8Array.of(9) } as const;
+      relay.receiveNode(encodeNodeStreamFrame(data));
+      expect(clientSend).toHaveBeenLastCalledWith(data);
+      expect(allowed).toHaveBeenCalledWith(
+        user.userId,
+        nodeId,
+        'terminal.attach.authorize',
+        {},
+        'workspace-denied'
+      );
+    } finally {
+      relay.close();
+      terminal.close();
+    }
   });
 
   it('Only the target Node can answer correlated requests and unanswered requests time out', async () => {

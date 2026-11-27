@@ -14,21 +14,21 @@ import {
   type BrowserPictureQuality,
   type BrowserTabSnapshot
 } from '@myagentroam/protocol';
+import { browserStreamGrant } from '@myagentroam/protocol/browser-stream';
+import { BrowserRecordLink } from './browser-record-link.js';
 import { createUuid } from '../util/uuid.js';
 import { BrowserAttachmentClient, type BrowserStreamSample } from './browser-attachment-client.js';
 import type { BrowserDrawnView } from './browser-viewport.js';
 import { uploadBrowserFiles } from './browser-upload.js';
 import type { WorkbenchHttpService } from './workbench-http-service.js';
 import { ApiError } from '../util/api-error.js';
+import type { OpenWorkbenchNodeStream } from './workbench-node-connection-service.js';
+import { downloadWorkspaceFileToBrowser } from './workspace-direct-download-stream-service.js';
+import { receiveFileDownloadBody } from './workspace-download-stream.js';
 
 type Scope = { nodeId: string; workspaceId: string };
 export type BrowserDestination = { url: string } | { htmlPath: string };
 type Request = BrowserControlRequest['request'];
-type Transport = {
-  transportSessionId: string;
-  createChannel(label: string): RTCDataChannel;
-  release(): void;
-};
 type Path = 'ice' | 'relay';
 type Connection = {
   selection?: { id: string; finish: (text: string) => void };
@@ -44,7 +44,7 @@ type Connection = {
   controlLost?: true;
   attachmentId?: string;
   data?: BrowserAttachmentClient;
-  transport?: Transport;
+  opening?: AbortController;
   deadline?: ReturnType<typeof setTimeout>;
   renew?: ReturnType<typeof setTimeout>;
   presence?: AbortController;
@@ -56,8 +56,9 @@ type Connection = {
 export function createWorkbenchBrowserService(options: {
   send(message: BrowserControlRequest): boolean;
   connectionId(): string | undefined;
-  acquire(nodeId: string, generation: string): Transport | undefined;
   http?: WorkbenchHttpService['request'];
+  openStream?: OpenWorkbenchNodeStream;
+  activeDownloadWorker?: () => Promise<ServiceWorker | undefined>;
 }) {
   const pending = new Map<string, (message: BrowserControlResponse) => void>();
   const snapshot = shallowRef<BrowserTabSnapshot>();
@@ -123,13 +124,13 @@ export function createWorkbenchBrowserService(options: {
     connection.data?.close();
     tabIcons.value = new Map();
     streamSample.value = undefined;
-    connection.transport?.release();
+    connection.opening?.abort();
     if (attachmentId) {
       const releaseOld = release(attachmentId);
       cleanup = Promise.all([cleanup, releaseOld]).then(() => undefined);
     }
     delete connection.data;
-    delete connection.transport;
+    delete connection.opening;
   }
 
   function hide(): void {
@@ -164,7 +165,7 @@ export function createWorkbenchBrowserService(options: {
     connection.retried = true;
     error.value = undefined;
     status.value = 'connecting';
-    void attach(connection, connection.capability, true);
+    void attach(connection, connection.capability);
   }
 
   function recoverAttachment(
@@ -189,57 +190,81 @@ export function createWorkbenchBrowserService(options: {
       status.value = 'connecting';
       snapshot.value = frame.value = path.value = error.value = undefined;
       stop(connection);
-      void attach(connection, capability, route === 'ice');
+      void attach(connection, capability);
     } else fail(connection, code);
   }
 
   async function attach(
     connection: Connection,
-    capability: WorkbenchBrowserCapability,
-    relayOnly = false
+    capability: WorkbenchBrowserCapability
   ): Promise<void> {
     if (current !== connection || !connection.browserId) return;
+    if (!options.openStream) return fail(connection, 'BROWSER_LINK_UNAVAILABLE');
     const { scope, canvas, viewportElement, browserId } = connection;
     const attempt = ++connection.attempt;
-    const transport =
-      !relayOnly && capability.ice
-        ? options.acquire(scope.nodeId, capability.nodeGeneration)
-        : undefined;
-    if (transport) connection.transport = transport;
-    const route = transport ? 'ice' : 'relay';
-    const active = () =>
-      current === connection && connection.attempt === attempt && status.value !== 'failed';
-    let open: ReturnType<typeof browserAttachmentOpenSchema.parse>;
+    const opening = new AbortController();
+    connection.opening = opening;
+    let route: Path = 'relay';
+    const active = () => current === connection && connection.attempt === attempt;
+    let stream;
     try {
-      const next = admission.then(async () => {
-        await cleanup;
-        if (!active()) return;
-        const grant = browserAttachmentOpenSchema.parse(
-          await request({
-            action: 'attach',
-            ...scope,
-            browserId,
-            ...(transport ? { transportId: transport.transportSessionId } : {})
-          })
-        );
-        if (!active()) {
-          await release(grant.attachmentId);
-          return;
-        }
-        connection.attachmentId = grant.attachmentId;
-        return { ...grant, rfb: true as const };
-      });
-      admission = next.catch(() => undefined);
-      const grant = await next;
-      if (!grant) return;
-      open = grant;
+      stream = await options.openStream(
+        scope.nodeId,
+        {
+          kind: 'browser-rfb',
+          prepare: async (transportId, signal) => {
+            if (transportId !== undefined && !capability.ice) return undefined;
+            const next = admission.then(async () => {
+              await cleanup;
+              signal.throwIfAborted();
+              try {
+                const grant = browserAttachmentOpenSchema.parse(
+                  await request({
+                    action: 'attach',
+                    ...scope,
+                    browserId,
+                    ...(transportId !== undefined && { transportId })
+                  })
+                );
+                if (!active() || signal.aborted) {
+                  await release(grant.attachmentId);
+                  signal.throwIfAborted();
+                  return undefined;
+                }
+                route = transportId === undefined ? 'relay' : 'ice';
+                connection.attachmentId = grant.attachmentId;
+                return browserStreamGrant(grant);
+              } catch (error) {
+                if (
+                  transportId !== undefined &&
+                  error instanceof Error &&
+                  error.message === 'BROWSER_ICE_UNAVAILABLE'
+                )
+                  return undefined;
+                throw error;
+              }
+            });
+            admission = next.catch(() => undefined);
+            return next;
+          }
+        },
+        opening.signal
+      );
     } catch (cause) {
       if (!active()) return;
-      const code = cause instanceof Error ? cause.message : 'BROWSER_FAILED';
+      const code =
+        cause instanceof Error && cause.message.startsWith('BROWSER_')
+          ? cause.message
+          : 'BROWSER_DISCONNECTED';
       return recoverAttachment(connection, capability, route, code);
     }
-    if (!active() || connection.attachmentId !== open.attachmentId) return;
-    const attachedHere = () => active() && connection.attachmentId === open.attachmentId;
+    const attachmentId = connection.attachmentId;
+    if (!active() || !attachmentId) {
+      stream.close();
+      return;
+    }
+    delete connection.opening;
+    const attachedHere = () => active() && connection.attachmentId === attachmentId;
     const linkFailed = (code: string) => {
       if (attachedHere()) recoverAttachment(connection, capability, route, code);
     };
@@ -247,20 +272,6 @@ export function createWorkbenchBrowserService(options: {
       clearTimeout(connection.deadline);
       connection.deadline = setTimeout(() => linkFailed('BROWSER_NO_FRAME'), 10_000);
     };
-    let link: WebSocket | RTCDataChannel;
-    try {
-      const connectionId = options.connectionId();
-      if (!connectionId) return fail(connection, 'BROWSER_CONTROL_DISCONNECTED');
-      if (transport) link = transport.createChannel(`mar-browser-${open.attachmentId}`);
-      else {
-        const endpoint = new URL('/api/browser/relay', window.location.origin);
-        endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : 'ws:';
-        endpoint.searchParams.set('connectionId', connectionId);
-        link = new WebSocket(endpoint);
-      }
-    } catch {
-      return linkFailed('BROWSER_DISCONNECTED');
-    }
     const reportPresence = () => {
       if (attachedHere() && connection.presence && document.visibilityState === 'visible')
         connection.data?.send({ type: 'presence' });
@@ -268,11 +279,11 @@ export function createWorkbenchBrowserService(options: {
     const renew = async () => {
       reportPresence();
       try {
-        await request({ action: 'renew', attachmentId: open.attachmentId });
-        if (current === connection && connection.attachmentId === open.attachmentId)
+        await request({ action: 'renew', attachmentId });
+        if (current === connection && connection.attachmentId === attachmentId)
           connection.renew = setTimeout(() => void renew(), 5_000);
       } catch (cause) {
-        if (connection.attachmentId === open.attachmentId) {
+        if (connection.attachmentId === attachmentId) {
           const code = cause instanceof Error ? cause.message : 'BROWSER_LEASE_ENDED';
           // An unacknowledged renewal is just as unsafe to keep using as an expired lease.
           linkFailed(code === 'BROWSER_OUTCOME_UNKNOWN' ? 'BROWSER_LEASE_ENDED' : code);
@@ -280,7 +291,7 @@ export function createWorkbenchBrowserService(options: {
       }
     };
     awaitPicture();
-    connection.data = new BrowserAttachmentClient(link, canvas, open, {
+    connection.data = new BrowserAttachmentClient(new BrowserRecordLink(stream), canvas, {
       ...(capability.resizeViewport && { viewportElement }),
       downloadManagement: capability.downloadManagement === true,
       tabControls: capability.tabControls === true,
@@ -502,6 +513,14 @@ export function createWorkbenchBrowserService(options: {
     try {
       await uploadBrowserFiles(options.http, connectionId, { attachmentId, chooserId }, files, {
         signal: controller.signal,
+        openStream: (ticket, signal) => {
+          if (!options.openStream) throw new Error('NODE_CONNECTION_UNAVAILABLE');
+          return options.openStream(
+            connection.scope.nodeId,
+            { kind: 'browser-file-upload', ticket },
+            signal
+          );
+        },
         finishing: () => {
           if (connection.upload === controller && !controller.signal.aborted)
             uploadStatus.value = 'finishing';
@@ -564,9 +583,45 @@ export function createWorkbenchBrowserService(options: {
     );
   }
 
-  function downloadHref(id: string): string | undefined {
+  function downloadTargetKey(): string | undefined {
     const target = downloadTarget();
-    if (target) return `/api/browser/downloads/file?${new URLSearchParams({ ...target, id })}`;
+    if (target) return `${target.connectionId}:${target.attachmentId}`;
+  }
+
+  async function saveDownload(id: string): Promise<void> {
+    const target = downloadTarget();
+    const nodeId = current?.scope.nodeId;
+    const { http, openStream, activeDownloadWorker } = options;
+    if (!target || !nodeId || !http || !openStream) throw new Error('BROWSER_LEASE_ENDED');
+    const { connectionId, attachmentId } = target;
+    const {
+      ticket,
+      name,
+      size,
+      nodeId: grantedNode
+    } = await http<{
+      ticket: string;
+      name: string;
+      size: number;
+      nodeId: string;
+    }>(`/api/browser/downloads/stream-ticket?${new URLSearchParams({ connectionId })}`, {
+      method: 'POST',
+      body: JSON.stringify({ attachmentId, id })
+    });
+    if (grantedNode !== nodeId) throw new Error('NODE_RESPONSE_INVALID');
+    // The Server binds admission to the live Browser instance; hiding its picture does not stop an admitted save.
+    await downloadWorkspaceFileToBrowser({
+      fileName: name,
+      size,
+      ...(activeDownloadWorker === undefined ? {} : { activeWorker: activeDownloadWorker }),
+      download: (sink, cancellation = new AbortController().signal) =>
+        receiveFileDownloadBody(
+          () => openStream(nodeId, { kind: 'browser-file-download', ticket }, cancellation),
+          sink,
+          size,
+          cancellation
+        )
+    });
   }
 
   return {
@@ -600,7 +655,8 @@ export function createWorkbenchBrowserService(options: {
     cancelDownload: (id: string) => changeDownload('cancel', id),
     deleteDownload: (id: string) => changeDownload('delete', id),
     saveDownloadToWorkspace: (id: string, path: string) => changeDownload('workspace', id, path),
-    downloadHref,
+    downloadTargetKey,
+    saveDownload,
     hide,
     show,
     handle,

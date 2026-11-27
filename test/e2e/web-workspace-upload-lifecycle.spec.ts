@@ -1,3 +1,4 @@
+import { mockWorkspaceUploadRelay } from './support/mock-workspace-upload-relay.js';
 import { expect, test } from '@playwright/test';
 import { json, mockConsoleApi, mockEmptyWorkspaceFiles } from './support/web-console-api.js';
 
@@ -11,7 +12,12 @@ test('Workspace upload page teardown cleans late creates without draining or ove
   const creates: string[] = [];
   const cancels: string[] = [];
   const completes: string[] = [];
-  const chunks: string[] = [];
+  const bodies: string[] = [];
+  await mockWorkspaceUploadRelay(page, {
+    beforeBody: (upload) => {
+      bodies.push(upload.fileName);
+    }
+  });
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -33,7 +39,7 @@ test('Workspace upload page teardown cleans late creates without draining or ove
       return json(route, { cancelled: true });
     }
     if (path.endsWith('/complete')) completes.push(path);
-    else chunks.push(path);
+    else throw new Error(`Unexpected upload request: ${path}`);
     return json(route, {});
   });
   try {
@@ -84,7 +90,7 @@ test('Workspace upload page teardown cleans late creates without draining or ove
     });
     expect(creates).toEqual(['one.txt', 'two.txt']);
     expect(cancels.sort()).toEqual(['one.txt', 'two.txt']);
-    expect(chunks).toEqual([]);
+    expect(bodies).toEqual([]);
     expect(completes).toEqual([]);
     expect(
       await page.evaluate(() =>
@@ -291,7 +297,11 @@ test('Workspace upload selection changes preserve the original target and normal
     })
   );
   const creates: string[] = [];
-  const chunks: string[] = [];
+  const bodies: { resource: unknown; uploadId: string | undefined; bytes: Buffer }[] = [];
+  await mockWorkspaceUploadRelay(page, {
+    received: (upload, bytes) =>
+      bodies.push({ resource: upload.resource, uploadId: upload.uploadId, bytes })
+  });
   const completes: string[] = [];
   const cancels: string[] = [];
   let release!: () => void;
@@ -307,7 +317,9 @@ test('Workspace upload selection changes preserve the original target and normal
     if (path.endsWith('/uploads')) {
       creates.push(path);
       await gate;
-      return json(route, { upload: { uploadId: 'original-upload', receivedBytes: 0, size: 1 } });
+      return json(route, {
+        upload: { uploadId: 'original-upload', path: 'switch.txt', receivedBytes: 0, size: 1 }
+      });
     }
     if (path.endsWith('/complete')) {
       completes.push(path);
@@ -317,9 +329,7 @@ test('Workspace upload selection changes preserve the original target and normal
       cancels.push(path);
       return json(route, { cancelled: true });
     }
-    chunks.push(path);
-    expect(route.request().postDataBuffer()).toEqual(Buffer.from('x'));
-    return json(route, { upload: { uploadId: 'original-upload', receivedBytes: 1, size: 1 } });
+    throw new Error(`Unexpected upload request: ${path}`);
   });
   try {
     await page.goto('/console');
@@ -350,7 +360,13 @@ test('Workspace upload selection changes preserve the original target and normal
       )
       .toBeNull();
     expect(creates).toEqual(['/api/workspaces/workspace-1/uploads']);
-    expect(chunks).toEqual(['/api/workspaces/workspace-1/uploads/original-upload/chunks']);
+    expect(bodies).toEqual([
+      {
+        resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace-1', path: 'switch.txt' },
+        uploadId: 'original-upload',
+        bytes: Buffer.from('x')
+      }
+    ]);
     expect(completes).toEqual(['/api/workspaces/workspace-1/uploads/original-upload/complete']);
     expect(cancels).toEqual([]);
     await expect(

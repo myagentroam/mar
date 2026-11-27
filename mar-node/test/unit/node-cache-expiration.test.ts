@@ -48,6 +48,97 @@ function uploadState(service: WorkspaceUploadService) {
 }
 
 describe('Node process cache cleanup', () => {
+  it('grants one staging task per target without blocking unrelated targets', async () => {
+    const root = await temporaryDirectory();
+    const service = new WorkspaceUploadService(
+      () => undefined,
+      () => root
+    );
+    const workspace = { id: 'workspace-staging', path: root } as NodeWorkspace;
+    const input = { name: 'same.bin', size: 1, overwrite: true, streamStaging: true };
+    try {
+      const attempts = await Promise.allSettled([
+        service.create(workspace, input),
+        service.create(workspace, input),
+        service.create(workspace, { ...input, name: 'other.bin' })
+      ]);
+      const [accepted, rejected] = attempts
+        .slice(0, 2)
+        .sort((a, b) => a.status.localeCompare(b.status));
+      expect(rejected).toMatchObject({
+        status: 'rejected',
+        reason: new Error('UPLOAD_TARGET_BUSY')
+      });
+      expect(attempts[2]).toMatchObject({ status: 'fulfilled', value: { path: 'other.bin' } });
+      if (accepted?.status !== 'fulfilled') throw new Error('Expected one staging task');
+      await service.cancel(accepted.value.uploadId);
+      await expect(service.create(workspace, input)).resolves.toMatchObject({ path: 'same.bin' });
+    } finally {
+      await service.shutdown();
+    }
+  });
+
+  it('releases the staging target if opening its temporary file fails', async () => {
+    const root = await temporaryDirectory();
+    const service = new WorkspaceUploadService(
+      () => undefined,
+      () => root
+    );
+    const workspace = { id: 'workspace-staging-error', path: root } as NodeWorkspace;
+    const input = { name: 'retry.bin', size: 1, overwrite: false, streamStaging: true };
+    vi.spyOn(uploadFiles, 'open').mockRejectedValueOnce(new Error('Staging open failed'));
+    try {
+      await expect(service.create(workspace, input)).rejects.toThrow('Staging open failed');
+      await expect(service.create(workspace, input)).resolves.toMatchObject({ path: 'retry.bin' });
+    } finally {
+      await service.shutdown();
+    }
+  });
+
+  it('keeps a staged upload resumable across streams and commits only under the task ID', async () => {
+    const root = await temporaryDirectory();
+    const service = new WorkspaceUploadService(
+      () => undefined,
+      () => root
+    );
+    const workspace = { id: 'workspace-stream', path: root } as NodeWorkspace;
+    const bytes = Buffer.from('abc');
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    const { uploadId } = await service.create(workspace, {
+      name: 'file.bin',
+      size: bytes.length,
+      overwrite: false,
+      sha256,
+      streamStaging: true
+    });
+    const input = { uploadId, path: 'file.bin', size: bytes.length, overwrite: false, sha256 };
+    try {
+      expect(() => service.openStreamUpload({ ...workspace, id: 'other' }, input)).toThrow(
+        'UPLOAD_NOT_FOUND'
+      );
+      await expect(service.cancel(uploadId, 'other')).rejects.toThrow('UPLOAD_NOT_FOUND');
+      const first = service.openStreamUpload(workspace, input);
+      expect(() => service.openStreamUpload(workspace, input)).toThrow('UPLOAD_TARGET_BUSY');
+      await expect(service.write({ uploadId, offset: 0, bytes })).rejects.toThrow(
+        'UPLOAD_TARGET_BUSY'
+      );
+      await expect(first.write(bytes.subarray(0, 1))).resolves.toBe(1);
+      first.release();
+      const second = service.openStreamUpload(workspace, input);
+      expect(second.offset).toBe(1);
+      first.release();
+      expect(() => service.openStreamUpload(workspace, input)).toThrow('UPLOAD_TARGET_BUSY');
+      await second.write(bytes.subarray(1));
+      await expect(service.complete(uploadId)).rejects.toThrow('UPLOAD_TARGET_BUSY');
+      await second.complete();
+      await expect(access(join(root, 'file.bin'))).rejects.toMatchObject({ code: 'ENOENT' });
+      await service.complete(uploadId);
+      expect(await readFile(join(root, 'file.bin'))).toEqual(bytes);
+    } finally {
+      await service.shutdown();
+    }
+  });
+
   it('reports cleanup failures without forgetting its cancelled upload or keeping its handle open', async () => {
     const root = await temporaryDirectory();
     const service = new WorkspaceUploadService(
@@ -55,8 +146,8 @@ describe('Node process cache cleanup', () => {
       () => root
     );
     const workspace = { id: 'workspace-cleanup-error', path: root } as NodeWorkspace;
-    const upload = await service.createDirect(workspace, {
-      path: 'file.bin',
+    const upload = await service.create(workspace, {
+      name: 'file.bin',
       size: 0,
       overwrite: false,
       sha256: createHash('sha256').digest('hex')
@@ -85,7 +176,7 @@ describe('Node process cache cleanup', () => {
     const workspace = { id: 'workspace-validation', path: root } as NodeWorkspace;
     const payload = Buffer.from('new');
     const input = {
-      path: 'file.bin',
+      name: 'file.bin',
       size: 3,
       overwrite: true,
       sha256: createHash('sha256').update(payload).digest('hex')
@@ -93,7 +184,7 @@ describe('Node process cache cleanup', () => {
     const target = join(root, 'file.bin');
     await writeFile(target, 'old');
     try {
-      const upload = await service.createDirect(workspace, input);
+      const upload = await service.create(workspace, input);
       await service.writeDirect(upload.uploadId, payload);
       const record = uploadState(service).uploads.get(upload.uploadId)!;
       await writeFile(record.temporaryPath, 'changed size');
@@ -101,7 +192,7 @@ describe('Node process cache cleanup', () => {
       expect(await readFile(target, 'utf8')).toBe('old');
       await service.cancel(upload.uploadId);
 
-      const next = await service.createDirect(workspace, input);
+      const next = await service.create(workspace, input);
       await service.writeDirect(next.uploadId, payload);
       const preflight = vi.spyOn(workspaceFiles, 'preflightWorkspaceUpload').mockResolvedValue({
         path: 'different.bin',
@@ -150,12 +241,12 @@ describe('Node process cache cleanup', () => {
         mime: 'text/plain'
       };
       try {
-        const upload = await service.createDirect(workspace, {
+        const upload = await service.createComposerUpload(workspace, {
           path: input.name,
           size: input.size,
           overwrite: false,
           sha256: createHash('sha256').update(payload).digest('hex'),
-          composerAttachment: { id, mime: input.mime }
+          attachment: { id, mime: input.mime }
         });
         await service.writeDirect(upload.uploadId, payload);
         if (operation === 'complete') {
@@ -173,7 +264,7 @@ describe('Node process cache cleanup', () => {
         await service.write({
           uploadId: retry.uploadId,
           offset: 0,
-          dataBase64: payload.toString('base64')
+          bytes: payload
         });
         await service.complete(retry.uploadId);
         expect(await readFile(join(root, id, input.name))).toEqual(payload);
@@ -192,8 +283,8 @@ describe('Node process cache cleanup', () => {
     );
     const workspace = { id: 'workspace-no-replace', path: root } as NodeWorkspace;
     try {
-      const upload = await service.createDirect(workspace, {
-        path: 'file.bin',
+      const upload = await service.create(workspace, {
+        name: 'file.bin',
         size: 0,
         overwrite: false,
         sha256: createHash('sha256').digest('hex')
@@ -224,8 +315,8 @@ describe('Node process cache cleanup', () => {
     const workspace = { id: 'workspace-aborted', path: root } as NodeWorkspace;
     await writeFile(join(root, 'file.bin'), 'old');
     try {
-      const upload = await service.createDirect(workspace, {
-        path: 'file.bin',
+      const upload = await service.create(workspace, {
+        name: 'file.bin',
         size: 0,
         overwrite: true,
         sha256: createHash('sha256').digest('hex')
@@ -247,8 +338,8 @@ describe('Node process cache cleanup', () => {
     );
     const workspace = { id: 'workspace-overlap', path: root } as NodeWorkspace;
     try {
-      const upload = await service.createDirect(workspace, {
-        path: 'file.bin',
+      const upload = await service.create(workspace, {
+        name: 'file.bin',
         size: 3,
         overwrite: false,
         sha256: createHash('sha256').update('new').digest('hex')
@@ -280,8 +371,8 @@ describe('Node process cache cleanup', () => {
       const target = join(root, 'target.bin');
       await writeFile(target, 'old target');
       try {
-        const upload = await service.createDirect(workspace, {
-          path: 'target.bin',
+        const upload = await service.create(workspace, {
+          name: 'target.bin',
           size: 3,
           overwrite: true,
           sha256: createHash('sha256').update('new').digest('hex')
@@ -303,7 +394,7 @@ describe('Node process cache cleanup', () => {
     }
   );
 
-  it('rechecks path and overwrite authorization before resuming staging', async () => {
+  it('applies path and overwrite policy when reserving an upload target', async () => {
     const root = await temporaryDirectory();
     const service = new WorkspaceUploadService(
       () => undefined,
@@ -312,23 +403,23 @@ describe('Node process cache cleanup', () => {
     const workspace = { id: 'workspace-path', path: root } as NodeWorkspace;
     const target = join(root, 'target.bin');
     const input = {
-      path: 'target.bin',
+      name: 'target.bin',
       size: 3,
       overwrite: false,
       sha256: createHash('sha256').update('new').digest('hex')
     };
     try {
-      const upload = await service.createDirect(workspace, input);
-      await expect(service.createDirect(workspace, { ...input, overwrite: true })).rejects.toThrow(
+      const upload = await service.create(workspace, input);
+      await expect(service.create(workspace, { ...input, overwrite: true })).rejects.toThrow(
         'UPLOAD_TARGET_BUSY'
       );
       await writeFile(target, 'arrived later');
-      await expect(service.createDirect(workspace, input)).rejects.toThrow('UPLOAD_TARGET_INVALID');
+      await expect(service.create(workspace, input)).rejects.toThrow('UPLOAD_TARGET_EXISTS');
       await rm(target);
       const outside = join(root, 'other.bin');
       await writeFile(outside, 'other target');
       await symlink(outside, target);
-      await expect(service.createDirect(workspace, input)).rejects.toThrow();
+      await expect(service.create(workspace, input)).rejects.toThrow();
       expect(service.status(upload.uploadId).receivedBytes).toBe(0);
       expect(await readFile(outside, 'utf8')).toBe('other target');
     } finally {
@@ -347,26 +438,30 @@ describe('Node process cache cleanup', () => {
     );
     const payload = Buffer.from('correct');
     const sha256 = createHash('sha256').update(payload).digest('hex');
-    const input = { path: 'file.bin', size: payload.length, sha256, overwrite: true };
+    const input = { name: 'file.bin', size: payload.length, sha256, overwrite: true };
     try {
-      const first = await service.createDirect(workspace, input);
-      await service.writeDirect(first.uploadId, payload.subarray(0, 3));
-      await expect(
-        service.createDirect(workspace, { ...input, sha256: 'f'.repeat(64) })
-      ).rejects.toThrow('UPLOAD_TARGET_BUSY');
-      const resumed = await service.createDirect(workspace, input);
-      expect(resumed.uploadId).toBe(first.uploadId);
-      expect(resumed.receivedBytes).toBe(3);
+      const first = await service.create(workspace, { ...input, streamStaging: true });
+      const descriptor = { ...input, path: input.name, uploadId: first.uploadId };
+      const writer = service.openStreamUpload(workspace, descriptor);
+      await writer.write(payload.subarray(0, 3));
+      expect(() => service.openStreamUpload(workspace, descriptor)).toThrow('UPLOAD_TARGET_BUSY');
+      writer.release();
+      expect(() =>
+        service.openStreamUpload(workspace, { ...descriptor, sha256: 'f'.repeat(64) })
+      ).toThrow('UPLOAD_SOURCE_MISMATCH');
+      const resumed = service.openStreamUpload(workspace, descriptor);
+      expect(resumed.offset).toBe(3);
       for (const offset of [0, payload.length + 1]) {
         await expect(
-          service.write({ uploadId: resumed.uploadId, offset, dataBase64: 'eA==' })
+          service.write({ uploadId: first.uploadId, offset, bytes: Buffer.from('x') }, true)
         ).rejects.toThrow('UPLOAD_OFFSET_INVALID');
       }
-      await service.writeDirect(resumed.uploadId, payload.subarray(3));
-      await service.completeDirect(resumed.uploadId, payload.length);
+      await resumed.write(payload.subarray(3));
+      await resumed.complete();
+      await service.complete(first.uploadId);
       expect(await readFile(target, 'utf8')).toBe('correct');
 
-      const staged = await service.createDirect(workspace, input);
+      const staged = await service.create(workspace, input);
       await service.writeDirect(staged.uploadId, payload);
       const stagedFile = uploadState(service).uploads.get(staged.uploadId)!;
       await writeFile(stagedFile.temporaryPath, 'changed');
@@ -375,7 +470,7 @@ describe('Node process cache cleanup', () => {
       );
       expect(await readFile(target, 'utf8')).toBe('correct');
 
-      const rejected = await service.createDirect(workspace, input);
+      const rejected = await service.create(workspace, input);
       await service.writeDirect(rejected.uploadId, payload.subarray(0, 3));
       await service.writeDirect(rejected.uploadId, Buffer.from('changed').subarray(3));
       await expect(service.completeDirect(rejected.uploadId, payload.length)).rejects.toThrow(
@@ -827,7 +922,7 @@ describe('Node process cache cleanup', () => {
         )
       ).toMatchObject({
         path: resource,
-        contentBase64: Buffer.from('igin').toString('base64'),
+        bytes: Buffer.from('igin'),
         offset: 2
       });
       await expect(
@@ -836,8 +931,22 @@ describe('Node process cache cleanup', () => {
       await expect(
         files.readContent(workspace, { path: resource, previewDirectory: '.' })
       ).rejects.toThrow('FILE_PATH_ESCAPE');
+      const metadata = await files.directMetadata(workspace, { path: resource });
+      const stream = { path: resource, size: metadata.size };
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of files.readDirect(workspace, stream)) chunks.push(chunk);
+      expect(Buffer.concat(chunks)).toEqual(Buffer.from('original image'));
+      await expect(
+        files
+          .readDirect({ ...workspace, id: 'other' }, stream)
+          [Symbol.asyncIterator]()
+          .next()
+      ).rejects.toThrow('FILE_NOT_FOUND');
       await attachments.releaseSession('native');
       await expect(files.read(workspace, { path: resource })).rejects.toThrow('FILE_NOT_FOUND');
+      await expect(
+        files.readDirect(workspace, stream)[Symbol.asyncIterator]().next()
+      ).rejects.toThrow('FILE_NOT_FOUND');
     } finally {
       await uploads.shutdown();
       attachments.dispose();
@@ -1049,7 +1158,7 @@ async function uploadAttachment(
   await uploads.write({
     uploadId: upload.uploadId,
     offset: 0,
-    dataBase64: Buffer.from(content).toString('base64')
+    bytes: Buffer.from(content)
   });
   const completed = await uploads.complete(upload.uploadId);
   return {

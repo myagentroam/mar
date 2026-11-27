@@ -8,17 +8,16 @@ import { Readable, Writable } from 'node:stream';
 import test from 'node:test';
 import { WebSocketServer } from 'ws';
 import {
-  decodeTerminalMux,
   decodeTerminalMessage,
   encodeByteFrame,
-  encodeTerminalMessage,
-  encodeTerminalMux,
-  TERMINAL_MUX
+  encodeTerminalMessage
 } from '@myagentroam/protocol/byte-frame';
+import { NodeStreamMux } from '@myagentroam/protocol/node-stream-mux';
+import { encodeNodeRelayHandshake } from '@myagentroam/protocol/node-stream-wire';
+import { readTerminalRecords, writeTerminalRecord } from '@myagentroam/protocol/terminal-stream';
 import { runComputer } from '../../src/computer.mjs';
 import { main } from '../../src/cli.mjs';
 import { MarctlClient } from '../../src/client.mjs';
-import { DirectFallbackError } from '../../src/direct-errors.mjs';
 import { startTerminalBroker } from '../../src/terminal-broker.mjs';
 
 const terminalId = 'desktop';
@@ -56,11 +55,10 @@ async function fixture(t, onInput, args = {}) {
     for (const data of [packet.subarray(0, 2), packet.subarray(2)])
       emit({ type: 'output', sequence: ++sequence, data });
   };
-  const openWebSocket = args.mux
-    ? await pooledSocket(t, socket, emit)
-    : (_WebSocket, { ticket, deferred }) => {
+  const openEndpoint = args.relay
+    ? await relayEndpoint(t, socket, emit, args.relay === 'pooled')
+    : ({ ticket }) => {
         assert.equal(ticket, 'ticket');
-        assert.equal(deferred, undefined);
         queueMicrotask(() => emit({ type: 'attach', afterSequence: 0 }));
         return socket;
       };
@@ -72,16 +70,7 @@ async function fixture(t, onInput, args = {}) {
       async openComputer() {
         return { terminalId, ticket: 'ticket' };
       },
-      async getTerminalManifest() {
-        return { deferredRelay: true };
-      },
-      async openDirectTerminal({ computer }) {
-        assert.equal(computer, true);
-        throw new DirectFallbackError('DIRECT_UNAVAILABLE');
-      },
-      ...(args.mux
-        ? { openPooledTerminal: openWebSocket }
-        : { openTerminalWebSocket: openWebSocket }),
+      openTerminalEndpoint: openEndpoint,
       async deleteTerminal(args) {
         deletions.push(args);
       }
@@ -126,7 +115,7 @@ async function fixture(t, onInput, args = {}) {
   };
 }
 
-async function pooledSocket(t, desktop, emit) {
+async function relayEndpoint(t, desktop, emit, reuseTerminalConnections) {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(server, 'listening');
   t.after(async () => {
@@ -138,41 +127,62 @@ async function pooledSocket(t, desktop, emit) {
     nodeId: 'linux',
     key: randomUUID()
   };
-  const broker = await startTerminalBroker(config);
-  t.after(() => broker.close());
-  server.on('connection', (wire) => {
-    wire.send(encodeTerminalMux(TERMINAL_MUX.ready, 0));
+  if (reuseTerminalConnections) {
+    const broker = await startTerminalBroker(config);
+    t.after(() => broker.close());
+  }
+  server.on('connection', (wire, request) => {
+    assert.equal(request.url, '/api/relay/linux');
+    const mux = new NodeStreamMux({
+      maxStreams: 1,
+      send: (bytes) =>
+        new Promise((resolve, reject) =>
+          wire.send(bytes, (error) => (error ? reject(error) : resolve()))
+        ),
+      accept: async ({ kind, grant }) => {
+        assert.equal(kind, 'terminal');
+        assert.equal(grant, 'ticket');
+        return async (stream) => {
+          let output = Promise.resolve();
+          const send = (frame) => {
+            output = output.then(() => stream.write(writeTerminalRecord(frame)));
+            void output.catch(() => {});
+          };
+          desktop.on('message', send);
+          try {
+            emit({ type: 'attach', afterSequence: 0 });
+            for await (const frame of readTerminalRecords(stream)) desktop.send(frame);
+            await output;
+          } finally {
+            desktop.removeListener('message', send);
+          }
+        };
+      }
+    });
+    wire.send(encodeNodeRelayHandshake({ type: 'RELAY_READY' }));
+    wire.once('close', () => mux.disconnect());
     wire.on('message', (bytes, binary) => {
       assert.equal(binary, true);
-      const { type, stream, payload } = decodeTerminalMux(bytes);
-      if (type === TERMINAL_MUX.open) {
-        desktop.on('message', (frame) =>
-          wire.send(encodeTerminalMux(TERMINAL_MUX.data, stream, frame))
-        );
-        emit({ type: 'attach', afterSequence: 0 });
-      } else if (type === TERMINAL_MUX.data) desktop.send(payload);
+      mux.receive(bytes);
     });
   });
-  const client = new MarctlClient({ ...config, reuseTerminalConnections: true });
-  class UnexpectedSingleConnection {
-    constructor() {
-      throw Error('Expected a pooled connection');
-    }
-  }
-  return (_WebSocket, attachment) =>
-    client.openPooledTerminal(UnexpectedSingleConnection, attachment);
+  const client = new MarctlClient({ ...config, reuseTerminalConnections });
+  return (attachment) => client.openTerminalEndpoint(attachment);
 }
 
 test(
   'computer sends a script through the pooled relay and writes only the raw PNG path to stdout',
   { timeout: 8_000 },
-  (t) => assertPngResult(t, { mux: true, code: 'log("ready")' })
+  (t) => assertPngResult(t, { relay: 'pooled', code: 'log("ready")' })
 );
 
-test('computer falls back to its single-stream relay when the independent Direct path is unavailable', (t) =>
-  assertPngResult(t, { mux: false, code: '' }));
+test(
+  'computer uses the same binary Relay when its private broker cannot connect directly',
+  { timeout: 8_000 },
+  (t) => assertPngResult(t, { relay: 'private', code: '' })
+);
 
-async function assertPngResult(t, { mux, code }) {
+async function assertPngResult(t, { relay, code }) {
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPp8AAAAASUVORK5CYII=',
     'base64'
@@ -194,7 +204,7 @@ async function assertPngResult(t, { mux, code }) {
       reply({ type: 'png' }, png);
       reply({ type: 'complete' });
     },
-    { mux, input: `${JSON.stringify({ code })}\n` }
+    { relay, input: `${JSON.stringify({ code })}\n` }
   );
   assert.equal(await f.run, 0);
   const result = JSON.parse(f.output());

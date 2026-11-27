@@ -5,21 +5,28 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocketServer } from 'ws';
 import { RTCPeerConnection } from 'node-datachannel/polyfill';
 import { cleanup } from 'node-datachannel';
 import { build } from 'esbuild';
 import { chromium, type Browser, type Page } from 'playwright';
-import { BROWSER_CONTROL_MAX_BYTES, type BrowserAttachmentOpen } from '@myagentroam/protocol';
+import type { BrowserAttachmentOpen } from '@myagentroam/protocol';
 import {
   BrowserAttachmentCoordinator,
   BrowserScopeRevoked
 } from '../../../packages/server-core/src/browser-attachment-coordinator.js';
-import { BrowserRelayService } from '../../../packages/server-core/src/browser-relay-service.js';
+import { NodeStreamRelay } from '../../../packages/server-core/src/node-stream-relay.js';
 import {
-  openBrowserIceChannel,
-  openBrowserRelayChannel
-} from '../../src/browser/browser-data-channel.js';
+  bindNodeStreamPath,
+  bindNodeDirectPath,
+  rtcNodeStreamCarrier
+} from '@myagentroam/protocol/node-stream-path';
+import {
+  encodeNodeStreamFrame,
+  MAX_NODE_STREAM_FRAME_BYTES
+} from '@myagentroam/protocol/node-stream-wire';
+import { parseBrowserStreamGrant } from '@myagentroam/protocol/browser-stream';
+import { serveBrowserStream } from '../../src/browser/browser-stream-channel.js';
 import {
   BROWSER_DEVICE_SCALE_FACTOR,
   browserStreamSize
@@ -83,7 +90,7 @@ const server = createServer((request, response) => {
   response.end('<canvas></canvas>');
 }).listen(0, '127.0.0.1');
 const listening = once(server, 'listening');
-const wss = new WebSocketServer({ server, maxPayload: BROWSER_CONTROL_MAX_BYTES });
+const wss = new WebSocketServer({ server, maxPayload: MAX_NODE_STREAM_FRAME_BYTES });
 const errors: unknown[] = [];
 const failed = (error: unknown) => errors.push(error);
 const scope = { workspaceId: 'isolated-test', userId: 1 };
@@ -94,8 +101,6 @@ const identity = {
 };
 const generation = 'test-generation';
 let chrome: Browser | undefined;
-let wsNode: WebSocket | undefined;
-let wsOther: WebSocket | undefined;
 let nativePeer: RTCPeerConnection | undefined;
 let targetPage: Page | undefined;
 const profileRoot = await mkdtemp(join(tmpdir(), 'mar-browser-attachment-'));
@@ -209,14 +214,42 @@ const coordinator = new BrowserAttachmentCoordinator({
       code
     });
   },
-  closeRelay: (id) => relay.close(id),
   resource: (_node, nodeGeneration, data) => {
     assert.equal(nodeGeneration, generation);
     return resource(data);
   },
   failed
 });
-const relay = new BrowserRelayService(coordinator, failed);
+const relayNode = bindNodeStreamPath({
+  carrier: {
+    send: async (bytes) => relay.receiveNode(bytes),
+    close: () => relay.close()
+  },
+  maxStreams: 32,
+  accept: async ({ kind, grant }) => {
+    const open = kind === 'browser-rfb' && parseBrowserStreamGrant(grant);
+    return open
+      ? (stream) => serveBrowserStream(service, open, { type: 'relay' }, stream)
+      : undefined;
+  }
+});
+const relay = new NodeStreamRelay((frame) => relayNode.receive(encodeNodeStreamFrame(frame)), {
+  perClient: 4,
+  perNode: 32
+});
+wss.on('connection', (socket) => {
+  const client = relay.attachClient(
+    (frame) => socket.send(encodeNodeStreamFrame(frame)),
+    async ({ kind, grant }, signal) => {
+      const open = kind === 'browser-rfb' && parseBrowserStreamGrant(grant);
+      if (!open) return undefined;
+      const admission = await coordinator.authorizeRelayStream(identity, 'node', open, signal);
+      if (admission) return { grant, ...admission };
+    }
+  );
+  socket.on('message', (bytes, binary) => (binary ? client.receive(bytes) : socket.terminate()));
+  socket.once('close', client.close);
+});
 let primaryRenewal: ReturnType<typeof setInterval> | undefined;
 
 try {
@@ -258,34 +291,32 @@ try {
     ...(mode !== 'relay' ? { transportId } : {})
   });
   assert.equal(
-    await coordinator.relayBrowser({ ...identity, connectionId: 'wrong-page' }, open),
-    false
+    await coordinator.authorizeRelayStream(
+      identity,
+      'wrong-node',
+      open,
+      new AbortController().signal
+    ),
+    undefined
   );
-  assert.equal(coordinator.relayNode(open.attachmentId, 'node', 'wrong-generation'), false);
-  assert.equal(await coordinator.relayBrowser(identity, open), mode === 'relay');
-  assert.equal(coordinator.relayNode(open.attachmentId, 'node', generation), mode === 'relay');
-  if (mode === 'relay') {
-    const peer = once(wss, 'connection');
-    wsNode = new WebSocket(ws, { maxPayload: BROWSER_CONTROL_MAX_BYTES });
-    await once(wsNode, 'open');
-    openBrowserRelayChannel(service, open.attachmentId, wsNode, failed);
-    const [nodeSocket] = (await peer) as [WebSocket];
-    assert.equal(relay.node(open.attachmentId, 'node', 'wrong-generation', nodeSocket), false);
-    assert.equal(relay.node(open.attachmentId, 'node', generation, nodeSocket), true);
-    assert.equal(relay.node(open.attachmentId, 'node', generation, nodeSocket), false);
-    wss.once('connection', (webSocket) => {
-      webSocket.once('message', (data, binary) => {
-        if (binary) webSocket.terminate();
-        else
-          void relay
-            .browser(identity, webSocket, data.toString())
-            .then((paired) => {
-              if (!paired) webSocket.terminate();
-            })
-            .catch(failed);
-      });
-    });
-  }
+  assert.equal(
+    await coordinator.authorizeRelayStream(
+      { ...identity, sessionFingerprint: 'wrong-session' },
+      'node',
+      open,
+      new AbortController().signal
+    ),
+    undefined
+  );
+  assert.equal(
+    await coordinator.authorizeRelayStream(
+      identity,
+      'node',
+      { ...open, ticket: 'x'.repeat(32) },
+      new AbortController().signal
+    ),
+    undefined
+  );
   const web = await chrome.newPage();
   const webProfile = measure ? await web.context().newCDPSession(web) : undefined;
   await webProfile?.send('Performance.enable', { timeDomain: 'threadTicks' });
@@ -333,7 +364,12 @@ try {
     stdin: {
       resolveDir: import.meta.dirname,
       contents: `import { BrowserAttachmentClient } from '../../../packages/web-core/src/service/browser-attachment-client.ts';
-        async function start(link, grant) {
+        import { BrowserRecordLink } from '../../../packages/web-core/src/service/browser-record-link.ts';
+        import { bindNodeDirectPath, rtcNodeStreamCarrier } from '@myagentroam/protocol/node-stream-path';
+        import { browserStreamGrant } from '@myagentroam/protocol/browser-stream';
+        async function start(path, grant) {
+          const stream = await path.openStream({ kind: 'browser-rfb', grant: browserStreamGrant(grant) });
+          const link = new BrowserRecordLink(stream);
           let version;
           const button = (edge) => client.send({ type: 'input', action: {
             type: 'button', button: 'left', x: 20, y: 16, viewVersion: version, edge
@@ -351,7 +387,7 @@ try {
             client.send({ type: 'viewport.resize', width: 391, height: 701 }) &&
             client.send({ type: 'navigate', address, viewVersion: version })
           };
-          const client = new BrowserAttachmentClient(link, document.querySelector('canvas'), { ...grant, rfb: true }, {
+          const client = new BrowserAttachmentClient(link, document.querySelector('canvas'), {
             attached: () => {
               if (${hd}) client.send({ type: 'viewport.resize', width: 1920, height: 1080 });
             },
@@ -364,11 +400,23 @@ try {
             ended: (code) => { window.probe.ended = code; }
           });
         }
-        window.startProbe = (url, grant) => start(new WebSocket(url), grant);
+        window.startProbe = async (url, grant) => {
+          const ws = new WebSocket(url);
+          ws.binaryType = 'arraybuffer';
+          const path = bindNodeDirectPath({ maxStreams: 4, carrier: {
+            send: async (bytes) => ws.send(bytes), close: () => ws.close(),
+            onMessage: (receive) => ws.addEventListener('message', ({ data }) => receive(data)),
+            onClose: (close) => ws.addEventListener('close', close)
+          }});
+          await new Promise((resolve) => ws.addEventListener('open', resolve, { once: true }));
+          await start(path, grant);
+        };
         window.startIce = async (grant) => {
           const pc = new RTCPeerConnection({ iceServers: [] });
           window.receiveAnswer = (answer) => pc.setRemoteDescription(answer);
-          await start(pc.createDataChannel('mar-browser-fixture'), grant);
+          const channel = pc.createDataChannel('mar-node-stream');
+          const path = bindNodeDirectPath({ maxStreams: 4, carrier: rtcNodeStreamCarrier(channel) });
+          channel.addEventListener('open', () => void start(path, grant), { once: true });
           await pc.setLocalDescription(await pc.createOffer());
           if (pc.iceGatheringState !== 'complete') await new Promise(resolve => pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); }));
           return pc.localDescription.toJSON();
@@ -389,18 +437,17 @@ try {
       maxMessageSize: 64 * 1024
     }));
     peer.addEventListener('datachannel', ({ channel }) => {
-      channel.addEventListener(
-        'message',
-        ({ data }) =>
-          openBrowserIceChannel(
-            service,
-            { type: 'ice', transportId, fingerprint },
-            channel,
-            data,
-            failed
-          ),
-        { once: true }
-      );
+      bindNodeDirectPath({
+        carrier: rtcNodeStreamCarrier(channel),
+        maxStreams: 4,
+        accept: async ({ kind, grant }) => {
+          const open = kind === 'browser-rfb' && parseBrowserStreamGrant(grant);
+          return open
+            ? (stream) =>
+                serveBrowserStream(service, open, { type: 'ice', transportId, fingerprint }, stream)
+            : undefined;
+        }
+      });
     });
     await peer.setRemoteDescription(await web.evaluate((open) => window.startIce(open), open));
     if (peer.iceGatheringState !== 'complete')
@@ -415,7 +462,7 @@ try {
     });
   }
   await web.waitForFunction(
-    () => (window.probe.frame > 0 && !!window.probe.active) || !!window.probe.ended,
+    () => (window.probe?.frame > 0 && !!window.probe.active) || !!window.probe?.ended,
     undefined,
     { timeout: 8_000 }
   );
@@ -824,18 +871,6 @@ try {
   assert.deepEqual(await target.evaluate(() => [innerWidth, innerHeight]), [391, 701]);
   const other = { ...identity, connectionId: 'other-workbench' };
   const otherGrant = await coordinator.prepare(other, { ...targetScope, browserId });
-  const otherNode = once(wss, 'connection');
-  wsOther = new WebSocket(ws, { maxPayload: BROWSER_CONTROL_MAX_BYTES });
-  await once(wsOther, 'open');
-  openBrowserRelayChannel(service, otherGrant.attachmentId, wsOther, failed);
-  const [otherSocket] = (await otherNode) as [WebSocket];
-  assert.equal(relay.node(otherGrant.attachmentId, 'node', generation, otherSocket), true);
-  wss.once('connection', (webSocket) => {
-    webSocket.once('message', (data, binary) => {
-      if (binary) webSocket.terminate();
-      else void relay.browser(other, webSocket, data.toString()).catch(failed);
-    });
-  });
   const otherWeb = await chrome.newPage();
   otherWeb.on('pageerror', failed);
   await otherWeb.goto(http);
@@ -951,8 +986,7 @@ try {
   clearInterval(primaryRenewal);
   await coordinator.shutdown();
   await runtime.shutdown();
-  wsNode?.terminate();
-  wsOther?.terminate();
+  relayNode.path.close();
   nativePeer?.close();
   for (const socket of wss.clients) socket.terminate();
   await chrome?.close();

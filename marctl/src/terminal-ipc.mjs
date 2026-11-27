@@ -4,14 +4,25 @@ import { lstatSync, unlinkSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
-import { MAX_TERMINAL_MUX_BYTES } from '@myagentroam/protocol/byte-frame';
+import { MAX_TERMINAL_FRAME_BYTES } from '@myagentroam/protocol/byte-frame';
 
 export const IPC_BUFFER_LIMIT = 1024 * 1024;
 export const IPC_HANDSHAKE_MS = 5_000;
 
-export function terminalBrokerAddress({ serverUrl, key, nodeId }, platform = process.platform) {
+export function terminalBrokerAddress(
+  { serverUrl, key, nodeId, privateId },
+  platform = process.platform
+) {
   const scope = createHash('sha256')
-    .update(JSON.stringify(['marctl-terminal-v3', serverUrl, nodeId, key]))
+    .update(
+      JSON.stringify([
+        'marctl-terminal-v4',
+        serverUrl,
+        nodeId,
+        key,
+        ...(privateId ? [privateId] : [])
+      ])
+    )
     .digest('hex')
     .slice(0, 32);
   if (platform === 'linux') return `\0marctl-terminal-${scope}`;
@@ -107,7 +118,7 @@ export class TerminalIpc extends EventEmitter {
   #drain() {
     while (!this.#paused && !this.socket.destroyed && this.#pending.length >= 4) {
       const size = this.#pending.readUInt32BE(0);
-      if (size === 0 || size > MAX_TERMINAL_MUX_BYTES) return this.close();
+      if (size === 0 || size > MAX_TERMINAL_FRAME_BYTES) return this.close();
       if (this.#pending.length < 4 + size) return;
       const body = this.#pending.subarray(4, 4 + size);
       this.#pending = this.#pending.subarray(4 + size);
@@ -119,7 +130,7 @@ export class TerminalIpc extends EventEmitter {
     if (
       this.socket.destroyed ||
       this.socket.writableEnded ||
-      bytes.byteLength > MAX_TERMINAL_MUX_BYTES ||
+      bytes.byteLength > MAX_TERMINAL_FRAME_BYTES ||
       this.bufferedAmount + bytes.byteLength + 4 > IPC_BUFFER_LIMIT
     ) {
       done?.(new Error('TERMINAL_IPC_UNAVAILABLE'));

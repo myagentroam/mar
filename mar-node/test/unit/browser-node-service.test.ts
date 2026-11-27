@@ -14,9 +14,6 @@ it('only advertises Browser if Chromium can start and closes the probe process',
     generation: 'node',
     requireWorkspace: () => {},
     workspacePath: () => undefined,
-    relay: () => {
-      throw new Error('not used');
-    },
     failed
   });
   try {

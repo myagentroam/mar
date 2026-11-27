@@ -1,4 +1,9 @@
-import { decodeTerminalMessage, encodeTerminalMessage } from '@myagentroam/protocol';
+import { bindNodeDirectPath, rtcNodeStreamCarrier } from '@myagentroam/protocol/node-stream-path';
+import {
+  decodeNodeStreamFrame,
+  encodeNodeStreamFrame,
+  type NodeStreamFrame
+} from '@myagentroam/protocol/node-stream-wire';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTerminalDirectClient } from '../../src/service/terminal-direct-client.js';
 
@@ -14,23 +19,19 @@ class Channel extends EventTarget {
     this.readyState = 'closed';
     this.dispatchEvent(new Event('close'));
   }
-  receive(data: object) {
-    this.dispatchEvent(new MessageEvent('message', { data: encodeTerminalMessage(data).buffer }));
+  receive(data: NodeStreamFrame) {
+    this.dispatchEvent(new MessageEvent('message', { data: encodeNodeStreamFrame(data).buffer }));
   }
 }
 
-const input = (signal: AbortSignal) => ({
-  nodeId: 'node-a',
-  terminalId: 'terminal-a',
-  workspaceId: 'workspace-a',
-  afterSequence: 5,
-  readonly: false,
-  takeover: true,
-  onFrame: vi.fn(),
-  onAttached: vi.fn(),
-  onDisconnected: vi.fn(),
-  signal
-});
+const input = { terminalId: 'terminal-a', workspaceId: 'workspace-a', afterSequence: 5 };
+const binding = { nodeGeneration: 'generation-a', transportSessionId: 'transport-a' };
+function carrier(channel = new Channel()) {
+  return bindNodeDirectPath({
+    carrier: rtcNodeStreamCarrier(channel as unknown as RTCDataChannel),
+    maxStreams: 32
+  });
+}
 
 describe('Terminal direct client handshake', () => {
   beforeEach(() => {
@@ -43,132 +44,106 @@ describe('Terminal direct client handshake', () => {
     vi.unstubAllGlobals();
   });
 
-  it('waits for Node acknowledgement, gates writes, and releases the channel on control revocation', async () => {
+  it('authorizes once and revokes the stream without closing its ICE carrier', async () => {
     const channel = new Channel();
-    const release = vi.fn();
+    const path = carrier(channel);
     const send = vi.fn((_message: unknown) => true);
-    const client = createTerminalDirectClient({
-      send,
-      acquire: () => ({
-        nodeGeneration: 'generation-a',
-        transportSessionId: 'transport-a',
-        createChannel: () => channel as unknown as RTCDataChannel,
-        release
-      })
-    });
-    const options = input(new AbortController().signal);
-    const connecting = client.attach(options);
+    const client = createTerminalDirectClient({ send });
+    const connecting = client.openStream(
+      'node-a',
+      input,
+      binding,
+      path,
+      new AbortController().signal
+    );
     const prepare = send.mock.calls[0]![0] as { requestId: string };
     expect(prepare).toMatchObject({
       type: 'terminal.direct.prepare',
-      afterSequence: 5,
+      ...binding,
+      ...input,
       readonly: false
     });
-    client.handle({
-      type: 'terminal.direct.prepared',
-      requestId: prepare.requestId,
-      directSessionId: 'session-1234',
-      grant: 'a'.repeat(32),
-      openExpiresAt: Date.now() + 15_000,
-      expiresAt: Date.now() + 30_000
-    });
-    const connection = await connecting;
-    connection!.send({
-      type: 'input',
-      terminalId: 'terminal-a',
-      data: new TextEncoder().encode('before')
-    });
-    expect(channel.sent).toEqual([]);
-    channel.dispatchEvent(new Event('open'));
-    expect(decodeTerminalMessage(channel.sent[0]!)).toMatchObject({
-      type: 'OPEN',
-      directSessionId: 'session-1234',
-      grant: 'a'.repeat(32)
-    });
-    channel.receive({ type: 'ATTACHED', terminalId: 'terminal-a', afterSequence: 5 });
-    expect(options.onAttached).toHaveBeenCalledOnce();
-    connection!.send({
-      type: 'input',
-      terminalId: 'terminal-a',
-      data: new TextEncoder().encode('after')
-    });
-    expect(decodeTerminalMessage(channel.sent[1]!)).toMatchObject({
-      data: new TextEncoder().encode('after')
-    });
+    grant(client, prepare.requestId);
+    await Promise.resolve();
+    expect(channel.sent.map(decodeNodeStreamFrame)).toEqual([
+      { type: 'OPEN', streamId: 1, kind: 'terminal', grant: 'a'.repeat(32) }
+    ]);
+    channel.receive({ type: 'OPENED', streamId: 1 });
+    const stream = (await connecting)!;
+    const reading = stream[Symbol.asyncIterator]().next();
     client.handle({
       type: 'terminal.direct.closed',
       directSessionId: 'session-1234',
       code: 'NODE_OFFLINE'
     });
-    expect(options.onDisconnected).toHaveBeenCalledWith('NODE_OFFLINE');
-    expect(release).toHaveBeenCalledOnce();
-    expect(channel.readyState).toBe('closed');
-  });
-
-  it('cancels an orphaned grant after preparation times out', async () => {
-    const release = vi.fn();
-    const send = vi.fn((_message: unknown) => true);
-    const client = createTerminalDirectClient({
-      send,
-      acquire: () => ({
-        nodeGeneration: 'generation-a',
-        transportSessionId: 'transport-a',
-        createChannel: () => {
-          throw new Error('unexpected channel');
-        },
-        release
-      })
-    });
-    const connecting = client.attach(input(new AbortController().signal));
-    const rejection = expect(connecting).rejects.toMatchObject({ code: 'TERMINAL_DIRECT_TIMEOUT' });
-    await vi.advanceTimersByTimeAsync(5_000);
-    await rejection;
-    expect(release).toHaveBeenCalledOnce();
-    client.handle({
-      type: 'terminal.direct.prepared',
-      requestId: '12345678123412341234123456789abc',
-      directSessionId: 'orphan-1234',
-      grant: 'a'.repeat(32),
-      openExpiresAt: Date.now() + 15_000,
-      expiresAt: Date.now() + 30_000
+    await expect(reading).rejects.toMatchObject({ code: 'NODE_OFFLINE' });
+    expect(channel.readyState).toBe('open');
+    expect(decodeNodeStreamFrame(channel.sent.at(-1)!)).toEqual({
+      type: 'RESET',
+      streamId: 1,
+      code: 'NODE_OFFLINE'
     });
     expect(send).toHaveBeenLastCalledWith({
       type: 'terminal.direct.cancel',
-      directSessionId: 'orphan-1234'
+      directSessionId: 'session-1234'
     });
+    path.close();
   });
 
-  it('cancels a delivered grant when the DataChannel cannot be created', async () => {
-    const release = vi.fn();
+  it('cancels an orphaned grant after a pre-OPEN timeout', async () => {
+    const path = carrier();
     const send = vi.fn((_message: unknown) => true);
-    const client = createTerminalDirectClient({
-      send,
-      acquire: () => ({
-        nodeGeneration: 'generation-a',
-        transportSessionId: 'transport-a',
-        createChannel: () => {
-          throw new Error('transport closed');
-        },
-        release
-      })
+    const client = createTerminalDirectClient({ send });
+    const connecting = client.openStream(
+      'node-a',
+      input,
+      binding,
+      path,
+      new AbortController().signal
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(connecting).resolves.toBeUndefined();
+    grant(client, '12345678123412341234123456789abc');
+    expect(send).toHaveBeenLastCalledWith({
+      type: 'terminal.direct.cancel',
+      directSessionId: 'session-1234'
     });
-    const connecting = client.attach(input(new AbortController().signal));
-    const rejected = expect(connecting).rejects.toMatchObject({
-      code: 'TERMINAL_DIRECT_UNAVAILABLE'
-    });
-    client.handle({
-      type: 'terminal.direct.prepared',
-      requestId: '12345678123412341234123456789abc',
-      directSessionId: 'orphan-1234',
-      grant: 'a'.repeat(32),
-      openExpiresAt: Date.now() + 15_000,
-      expiresAt: Date.now() + 30_000
-    });
+    path.close();
+  });
+
+  it('does not turn an uncertain dispatched OPEN into a safe unavailable result', async () => {
+    const send = vi.fn((_message: unknown) => true);
+    const client = createTerminalDirectClient({ send });
+    const connecting = client.openStream(
+      'node-a',
+      input,
+      binding,
+      {
+        closed: false,
+        close() {},
+        async openStream() {
+          throw new Error('NODE_STREAM_DISCONNECTED');
+        }
+      },
+      new AbortController().signal
+    );
+    const rejected = expect(connecting).rejects.toThrow('NODE_STREAM_DISCONNECTED');
+    grant(client, '12345678123412341234123456789abc');
     await rejected;
     expect(send).toHaveBeenLastCalledWith({
       type: 'terminal.direct.cancel',
-      directSessionId: 'orphan-1234'
+      directSessionId: 'session-1234'
     });
-    expect(release).toHaveBeenCalledOnce();
   });
 });
+
+function grant(client: ReturnType<typeof createTerminalDirectClient>, requestId: string) {
+  client.handle({
+    type: 'terminal.direct.prepared',
+    requestId,
+    directSessionId: 'session-1234',
+    grant: 'a'.repeat(32),
+    openExpiresAt: Date.now() + 15_000,
+    expiresAt: Date.now() + 30_000
+  });
+}
