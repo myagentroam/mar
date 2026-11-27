@@ -47,6 +47,7 @@ Notes:
 Usage:
   {program} start [-m <text> | --message-file <file|->]
     [--runner <runner>] [--parent <id>] [--model-id <id>] [--effort <value>]
+    [--relation child|peer]
     [--title <name>] [--goal <objective> | --clear-goal]
     [--client-message-id <id>] [--json]
   {program} send <id> [-m <text> | --message-file <file|->]
@@ -88,6 +89,9 @@ Input and results:
   From an Agent, omit --runner to use the calling Agent's type.
   From a terminal, specify --runner or --parent.
   Without --runner, the parent Session supplies the Agent type.
+  Agents start a child by default. --relation peer starts an independent
+  Session and cannot be combined with --parent. An explicit child from a
+  terminal requires --parent; otherwise a terminal with no parent starts a root.
   Start returns without waiting.
   Send defaults to --steer for timely communication or course correction.
   If it cannot deliver in place, Node may interrupt the current execution.

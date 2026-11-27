@@ -262,7 +262,7 @@ it.each([false, true])(
       );
       expect(instructions).not.toContain('Join or stop task-required child work');
       expect(instructions).toContain(
-        "Use agent_start to select a child's model or effort at creation."
+        "Use agent_start to select a new Agent's model or effort at creation."
       );
       expect(instructions).toContain('Do not switch to marctl when a native operation fails.');
       expect(instructions).not.toContain('existing authorized Sessions');
@@ -293,7 +293,11 @@ it('selects delegation and lateral guidance independently and omits both during 
       instructions.includes('# Workspace collaboration'),
       instructions.includes('# Workspace management')
     ]).toEqual(expected);
-    expect(instructions.includes('Available subagent models:')).toBe(expected[0]);
+    expect(instructions.includes('Available MAR Agent models for agent_start:')).toBe(expected[0]);
+    expect(instructions.includes('with agent_start and relation: "peer"')).toBe(expected[0]);
+    expect(instructions.includes("Use agent_start to select a new Agent's model or effort")).toBe(
+      expected[0]
+    );
     for (const guidance of [
       'An accepted message normally needs no separate acknowledgment.',
       'Requests for receipt-only replies',
@@ -313,7 +317,7 @@ it('selects delegation and lateral guidance independently and omits both during 
 });
 
 it.each([false, true])(
-  'injects only eligible subagent models with Code Mode %s',
+  'marks eligible child models and includes conversation-only peer models with Code Mode %s',
   async (codeMode) => {
     const test = await fixture(codeMode, undefined, [
       {
@@ -333,23 +337,36 @@ it.each([false, true])(
     const text = composed.sections.find(
       (section) => section.id === 'mar.node.orchestration'
     )!.text!;
-    expect(JSON.parse(text.split('Available subagent models:\n')[1]!.split('\n')[0]!)).toEqual({
+    expect(text).toContain('A child requires a model marked subagentModel: true.');
+    expect(
+      JSON.parse(text.split('Available MAR Agent models for agent_start:\n')[1]!.split('\n')[0]!)
+    ).toEqual({
       runner: 'mar-agent',
       models: [
         {
+          id: 'fixture',
+          name: 'Fixture',
+          subagentModel: false,
+          supportedEfforts: [],
+          defaultEffort: 'medium'
+        },
+        {
           id: 'child',
           name: 'Child model',
+          subagentModel: true,
           supportedEfforts: ['low', 'high'],
           defaultEffort: 'high'
         }
       ]
     });
-    expect(JSON.stringify(test.requests[0])).toContain('Available subagent models:');
+    expect(JSON.stringify(test.requests[0])).toContain(
+      'Available MAR Agent models for agent_start:'
+    );
     expect(test.invoke).not.toHaveBeenCalled();
   }
 );
 
-it('refreshes the injected models after reconfiguration and represents an empty catalog', async () => {
+it('refreshes model eligibility after reconfiguration and leaves the conversation model available', async () => {
   const test = await fixture();
   for (const models of [[{ ...test.configuration, id: 'next-child', subagentModel: true }], []]) {
     await test.agent.reconfigureModels({ models: [test.configuration, ...models] });
@@ -357,13 +374,33 @@ it('refreshes the injected models after reconfiguration and represents an empty 
     const text = composed.sections.find(
       (section) => section.id === 'mar.node.orchestration'
     )!.text!;
-    const catalog = JSON.parse(text.split('Available subagent models:\n')[1]!.split('\n')[0]!);
-    expect(catalog.models.map((model: { id: string }) => model.id)).toEqual(
-      models.map((model) => model.id)
+    const catalog = JSON.parse(
+      text.split('Available MAR Agent models for agent_start:\n')[1]!.split('\n')[0]!
     );
+    expect(
+      catalog.models.map((model: { id: string; subagentModel: boolean }) => [
+        model.id,
+        model.subagentModel
+      ])
+    ).toEqual([[test.configuration.id, false], ...models.map((model) => [model.id, true])]);
   }
   expect(test.invoke).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  'passes explicit peer creation through the tool with Code Mode %s',
+  async (codeMode) => {
+    const input = { title: 'Independent session', content: 'Work together', relation: 'peer' };
+    const test = await fixture(codeMode, { name: 'agent_start', input });
+    expect(test.invoke).toHaveBeenCalledWith(
+      'execution',
+      'start',
+      input,
+      expect.anything(),
+      expect.anything()
+    );
+  }
+);
 
 it.each([false, true])(
   'preserves bounded agent details through SDK events with Code Mode %s',

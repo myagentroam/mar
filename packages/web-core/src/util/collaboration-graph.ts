@@ -23,8 +23,8 @@ export interface CollaborationGraph extends GraphSize {
 }
 
 export const collaborationNodeSize = { width: 156, height: 46 };
-export const MIN_COLLABORATION_SCALE = 0.8;
-export const MAX_COLLABORATION_SCALE = 1.75;
+export const MIN_COLLABORATION_SCALE = 0.1;
+export const MAX_COLLABORATION_SCALE = 1;
 const col = 180;
 const row = 112;
 const halfHeight = collaborationNodeSize.height / 2;
@@ -33,7 +33,6 @@ const halfWidth = collaborationNodeSize.width / 2;
 /** Lays out formal parent links as a forest; temporary sharing edges never drive tree depth. */
 export function buildCollaborationGraph(
   sessions: readonly { readonly id: string; readonly parentSessionId: string | null }[],
-  anchor: string,
   sharing: readonly SessionCollaborationEdge[]
 ): CollaborationGraph {
   const ordered = [...new Map(sessions.map((session) => [session.id, session])).values()].sort(
@@ -50,13 +49,15 @@ export function buildCollaborationGraph(
       children.set(parent, list);
     } else roots.push(node.id);
   }
-  const chain = new Set<string>();
-  let root = anchor;
-  while (!chain.has(root)) {
-    chain.add(root);
-    const parent = byId.get(root)?.parentSessionId;
-    if (!parent || !byId.has(parent) || chain.has(parent)) break;
-    root = parent;
+  // Use the largest formal tree as the layout reference regardless of entry point.
+  let root = ordered[0]?.id;
+  let largest = 0;
+  for (const id of roots) {
+    const family = [id];
+    for (let i = 0; i < family.length; i++) family.push(...(children.get(family[i]!) ?? []));
+    if (family.length <= largest) continue;
+    largest = family.length;
+    root = id;
   }
   const nodes = new Map<string, GraphPoint>();
   const seen = new Set<string>();
@@ -75,8 +76,11 @@ export function buildCollaborationGraph(
     nodes.set(id, { x, y: row / 2 + row * depth });
     return x;
   }
-  if (byId.has(root)) place(root, 0);
-  const focus = nodes.get(anchor) ?? { x: col / 2, y: row / 2 };
+  if (root !== undefined) place(root, 0);
+  const reference = (root === undefined ? undefined : nodes.get(root)) ?? {
+    x: col / 2,
+    y: row / 2
+  };
   // Close gaps above wide descendant rows without changing the left-to-right branch order.
   const layers = new Map<number, Array<[string, GraphPoint]>>();
   for (const entry of nodes) {
@@ -89,7 +93,9 @@ export function buildCollaborationGraph(
     layer.sort((a, b) => a[1].x - b[1].x);
     const center = layer.reduce(
       (nearest, entry, index) =>
-        Math.abs(entry[1].x - focus.x) < Math.abs(layer[nearest]![1].x - focus.x) ? index : nearest,
+        Math.abs(entry[1].x - reference.x) < Math.abs(layer[nearest]![1].x - reference.x)
+          ? index
+          : nearest,
       0
     );
     let x = layer[center]![1].x;
@@ -110,8 +116,8 @@ export function buildCollaborationGraph(
     if (seen.has(id)) continue;
     if (!children.has(id)) {
       const offset = isolated++;
-      const y = Math.max(row / 2, focus.y - row) + row * ((offset + 1) % 3);
-      let x = focus.x + col;
+      const y = reference.y + row * ((offset + 1) % 3);
+      let x = reference.x + col;
       for (const node of [...nodes.values()]
         .filter((point) => point.y === y)
         .sort((a, b) => a.x - b.x)) {
@@ -195,7 +201,11 @@ export function focusCollaborationGraph(
     scale ??
     Math.max(
       MIN_COLLABORATION_SCALE,
-      Math.min(1, (port.width - 24) / graph.width, (port.height - 24) / graph.height)
+      Math.min(
+        MAX_COLLABORATION_SCALE,
+        (port.width - 24) / graph.width,
+        (port.height - 24) / graph.height
+      )
     );
   const center = (anchor === undefined ? undefined : graph.nodes.get(anchor)) ?? {
     x: graph.width / 2,
@@ -213,7 +223,8 @@ export function zoomCollaborationGraph(
   port: GraphSize,
   camera: GraphCamera,
   origin: GraphPoint,
-  factor: number
+  factor: number,
+  destination = origin
 ): GraphCamera {
   const scale = Math.min(
     MAX_COLLABORATION_SCALE,
@@ -222,7 +233,7 @@ export function zoomCollaborationGraph(
   const ratio = scale / camera.scale;
   return boundCollaborationGraph(graph, port, {
     scale,
-    x: origin.x - (origin.x - camera.x) * ratio,
-    y: origin.y - (origin.y - camera.y) * ratio
+    x: destination.x - (origin.x - camera.x) * ratio,
+    y: destination.y - (origin.y - camera.y) * ratio
   });
 }

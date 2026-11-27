@@ -11,15 +11,22 @@ function fixture() {
     kind: 'GIT_WORKSPACE',
     gitSummary: null
   };
-  const events: Array<{ watchId: string; topic: string; payload: unknown }> = [];
+  const events: Array<{
+    watchId: string;
+    workbenchConnectionId: string;
+    topic: string;
+    payload: unknown;
+  }> = [];
   const files = vi.fn(async () => ({ entries: [{ name: 'first.txt' }], nextCursor: null }));
   const changes = vi.fn(async () => ({ changes: [{ path: 'first.txt' }] }));
   const sessions = vi.fn(async (_id: string, group?: 'MAIN' | 'CHILD') => ({
     sessions: [{ id: group ?? 'ALL' }]
   }));
-  const navigation = vi.fn(async (_id: string, query: { treeAnchor?: string | undefined }) => ({
-    anchor: query.treeAnchor
-  }));
+  const navigation = vi.fn(
+    async (_id: string, query: { treeAnchor?: string | undefined }, _userId?: number) => ({
+      anchor: query.treeAnchor
+    })
+  );
   const requireWorkspace = (id: unknown) =>
     id === workspace.id ? workspace : { ...workspace, id: String(id), path: '/other' };
   const unused = vi.fn(() => snapshots.clear(workspace.id));
@@ -90,6 +97,9 @@ function fixture() {
 }
 
 describe('Workspace Watch session group switching', () => {
+  const summary = { sessionIds: [], summaryAnchors: ['one'], limit: 20 };
+  const collaboration = { ...summary, treeAnchor: 'one', collaboration: {} };
+
   it('rejects invalid navigation query shapes with the existing watch error code', async () => {
     const f = fixture();
     try {
@@ -185,6 +195,152 @@ describe('Workspace Watch session group switching', () => {
       expect(f.files).not.toHaveBeenCalled();
       expect(f.changes).not.toHaveBeenCalled();
     } finally {
+      f.close();
+    }
+  });
+
+  it('isolates navigation projections by active lease', async () => {
+    const f = fixture();
+    const watchId = 'shared-watch-id';
+    const connections = [
+      {
+        workbenchConnectionId: 'connection-1',
+        __workspaceWatchSessionHash: 'first',
+        __requestUserId: 7
+      },
+      {
+        workbenchConnectionId: 'connection-2',
+        __workspaceWatchSessionHash: 'second',
+        __requestUserId: 8
+      }
+    ];
+    try {
+      await Promise.all(
+        connections.map((connection) =>
+          f.select('MAIN', { ...connection, watchId }, { sessionNavigation: collaboration })
+        )
+      );
+      await vi.waitFor(() =>
+        expect(f.events.filter(({ topic }) => topic === 'sessionNavigation')).toHaveLength(2)
+      );
+      f.events.length = 0;
+      f.navigation.mockImplementation(async (_id, query, userId) => ({
+        anchor: `${query.treeAnchor}:${userId}`
+      }));
+
+      await f.snapshots.invalidate('workspace-1', 'sessionNavigation');
+
+      expect(f.events).toEqual(
+        connections.map((connection) =>
+          expect.objectContaining({
+            workbenchConnectionId: connection.workbenchConnectionId,
+            topic: 'sessionNavigation',
+            payload: { anchor: `one:${connection.__requestUserId}` }
+          })
+        )
+      );
+    } finally {
+      f.close();
+    }
+  });
+
+  it('discards a replaced lease’s pending navigation result when the watch ID is retained', async () => {
+    const f = fixture();
+    const watchId = 'shared-watch-id';
+    let complete!: (value: { anchor: string }) => void;
+    const oldRead = new Promise<{ anchor: string }>((resolve) => {
+      complete = resolve;
+    });
+    try {
+      f.navigation.mockReturnValueOnce(oldRead);
+      await f.select('MAIN', { watchId }, { sessionNavigation: collaboration });
+      await f.select(
+        'MAIN',
+        { watchId },
+        { sessionNavigation: { ...collaboration, treeAnchor: 'two' } }
+      );
+      complete({ anchor: 'one' });
+      // Drain delivery from the old read before checking that it never published.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(f.events.filter(({ topic }) => topic === 'sessionNavigation')).toEqual([
+        expect.objectContaining({ payload: { anchor: 'two' } })
+      ]);
+    } finally {
+      complete({ anchor: 'one' });
+      f.close();
+    }
+  });
+
+  it('refreshes only collaboration leases on whiteboard changes and still refreshes all navigation on session changes', async () => {
+    const f = fixture();
+    try {
+      await f.select('MAIN', {}, { sessionNavigation: summary });
+      await vi.waitFor(() => expect(f.events).toHaveLength(4));
+      f.events.length = 0;
+      f.navigation.mockClear();
+
+      await f.snapshots.invalidate('workspace-1', 'collaboration');
+      expect(f.navigation).not.toHaveBeenCalled();
+      expect(f.events).toEqual([]);
+
+      const watchId = await f.select(
+        'MAIN',
+        { workbenchConnectionId: 'connection-2' },
+        { sessionNavigation: collaboration }
+      );
+      await vi.waitFor(() => expect(f.events).toHaveLength(4));
+      f.events.length = 0;
+      f.navigation.mockClear();
+
+      await f.snapshots.invalidate('workspace-1', 'collaboration');
+      expect(f.navigation.mock.calls.map(([, query]) => query)).toEqual([collaboration]);
+      expect(f.events).toEqual([expect.objectContaining({ watchId, topic: 'sessionNavigation' })]);
+
+      f.events.length = 0;
+      f.navigation.mockClear();
+      await f.snapshots.invalidate('workspace-1', 'sessions');
+      await vi.waitFor(() =>
+        expect(f.events.filter(({ topic }) => topic === 'sessionNavigation')).toHaveLength(2)
+      );
+      expect(f.navigation.mock.calls.map(([, query]) => query)).toEqual([summary, collaboration]);
+    } finally {
+      f.close();
+    }
+  });
+
+  it('keeps full navigation invalidation pending when whiteboard refreshes overlap', async () => {
+    const f = fixture();
+    let complete!: (value: { anchor: string }) => void;
+    const pending = new Promise<{ anchor: string }>((resolve) => {
+      complete = resolve;
+    });
+    try {
+      await f.select('MAIN', {}, { sessionNavigation: summary });
+      await f.select(
+        'MAIN',
+        { workbenchConnectionId: 'connection-2' },
+        { sessionNavigation: collaboration }
+      );
+      await vi.waitFor(() => expect(f.events).toHaveLength(8));
+      f.events.length = 0;
+      f.navigation.mockClear();
+      f.navigation.mockReturnValueOnce(pending);
+
+      const narrow = f.snapshots.invalidate('workspace-1', 'collaboration');
+      const full = f.snapshots.invalidate('workspace-1', 'sessionNavigation');
+      const laterNarrow = f.snapshots.invalidate('workspace-1', 'collaboration');
+      expect(f.navigation.mock.calls.map(([, query]) => query)).toEqual([collaboration]);
+      complete({ anchor: 'one' });
+      await Promise.all([narrow, full, laterNarrow]);
+
+      await vi.waitFor(() => expect(f.events).toHaveLength(3));
+      expect(f.navigation.mock.calls.map(([, query]) => query)).toEqual([
+        collaboration,
+        summary,
+        collaboration
+      ]);
+    } finally {
+      complete({ anchor: 'one' });
       f.close();
     }
   });

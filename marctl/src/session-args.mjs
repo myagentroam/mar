@@ -17,6 +17,7 @@ const commands = {
     'message',
     'message-file',
     'client-message-id',
+    'relation',
     'parent',
     'goal',
     'clear-goal'
@@ -289,5 +290,10 @@ export function parseSessionArgs(argv, translate = createTranslator()) {
     throw invalid();
   if (args.query !== undefined && args.query.length > 160) throw invalid();
   if (args.parentSessionId !== undefined && args.parentSessionId.length > 512) throw invalid();
+  if (
+    (args.relation !== undefined && !['child', 'peer'].includes(args.relation)) ||
+    (args.relation === 'peer' && args.parentSessionId !== undefined)
+  )
+    throw invalid();
   return args;
 }

@@ -33,7 +33,7 @@ it('publishes concise Agent tool descriptions and delivery parameter guidance', 
   const definitions = register.mock.calls.map(([tool]) => tool);
   expect(Object.fromEntries(definitions.map((tool) => [tool.name, tool.description]))).toEqual({
     agent_start:
-      'Start a child Agent with a task and optional Goal; returns without waiting for completion.',
+      'Start an Agent with a task and optional Goal; returns without waiting for completion.',
     agent_send: 'Send a message to an Agent, update its Goal, or decide an approval.',
     agent_wait: 'Wait for Agent messages or execution completion.',
     agent_stop: 'Stop the Agent’s current execution and clear its Goal.',
@@ -145,6 +145,7 @@ it('publishes paired full MCP and management-only Host guidance without credenti
       'agents list',
       'agents view',
       '[--runner <runner>] [--parent <id>]',
+      '[--relation child|peer]',
       "From an Agent, omit --runner to use the calling Agent's type.",
       'From a terminal, specify --runner or --parent.',
       'Without --runner, the parent Session supplies the Agent type.',

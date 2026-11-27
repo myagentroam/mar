@@ -58,6 +58,7 @@ const networkCommand = z.discriminatedUnion('operation', [
           modelId: id.optional(),
           effort: z.string().max(120).optional(),
           title: z.string().min(1).max(160).optional(),
+          relation: z.enum(['child', 'peer']).optional(),
           parentSessionId: id.optional(),
           goal
         })
@@ -418,6 +419,22 @@ export function registerMarctlSessionRoutes(
         if (body.action === 'network') {
           const { operation, input: arguments_ } = body.command;
           const networkInput: Record<string, unknown> = { ...arguments_ };
+          const peerStart = operation === 'start' && arguments_.relation === 'peer';
+          if (operation === 'start') {
+            if (peerStart && arguments_.parentSessionId !== undefined)
+              return sendError(reply, 400, 'MARCTL_SESSION_INPUT_INVALID', {
+                details: 'A peer session cannot have a parent.'
+              });
+            if (
+              caller.type === 'terminal' &&
+              arguments_.relation === 'child' &&
+              arguments_.parentSessionId === undefined
+            )
+              return sendError(reply, 400, 'MARCTL_SESSION_INPUT_INVALID', {
+                details: 'A terminal must specify a parent to create a child session.'
+              });
+          }
+          if (peerStart) delete networkInput.relation;
           const messageInput =
             operation === 'start' || operation === 'send' ? arguments_ : undefined;
           const hasMessage = messageInput !== undefined && !!messageInput.content?.trim();
@@ -609,7 +626,7 @@ export function registerMarctlSessionRoutes(
             const timeoutMs = effectiveWait === undefined ? undefined : effectiveWait + 5_000;
             const result = await call(
               'agent.network',
-              { action: operation, input: networkInput, ...resources },
+              { action: peerStart ? 'start-peer' : operation, input: networkInput, ...resources },
               timeoutMs,
               controller?.signal,
               executionResources

@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-27
 ---
 
 # 配置和使用 MAR Agent
@@ -137,7 +137,9 @@ MAR Agent 会扫描 HOME 与工作区中的标准 Skill 目录，先向模型提
 
 Node Agent Network 不设置旧的 16 个创建或并发限制；独立 SDK Subagent 扩展保留自己的准入策略。
 
-协作工具为 `agent_start`、`agent_send`、`agent_wait`、`agent_stop`、`agent_list` 和 `agent_view`。`agent_start` 使用文本任务和非空标题，登记子会话和首个执行后即返回，不等待完成；手动 marctl 创建时标题可省略。使用结果中的 `agentId` 寻址子会话。`agent_send` 可发送文本消息、更新 Goal 或对获授权会话的审批作决定；可指定投递意图，包括替换当前执行。`agent_wait` 默认等待直接子会话终态 30 秒，`waitMs=0` 只查看快照，正数按传入时长等待。`agent_stop` 只需会话 ID，停止目标当前执行并清除 Goal；列表和查看工具用于发现获授权的会话及其状态。
+协作工具为 `agent_start`、`agent_send`、`agent_wait`、`agent_stop`、`agent_list` 和 `agent_view`。`agent_start` 接受文本任务和非空标题，启动后立即返回 `agentId`，不等待任务完成。默认创建直接子会话；`relation: "peer"` 创建独立的横向会话，不自动向发起方回报，可按返回的 Agent ID 显式等待或发消息。横向会话可使用获授权、已启用的对话模型；子会话还要求模型支持 Subagent。两种启动方式都沿用白板自动共享规则。对应 CLI 用法见 [marctl](../operations/marctl.md)。
+
+`agent_send` 可发送文本消息、更新 Goal 或对获授权会话的审批作决定；可指定投递意图，包括替换当前执行。`agent_wait` 默认等待直接子会话终态 30 秒，`waitMs=0` 只查看快照，正数按传入时长等待。`agent_stop` 只需会话 ID，停止目标当前执行并清除 Goal；列表和查看工具用于发现获授权的会话及其状态。
 
 `agent_view` 仅接受 `agentId`，返回状态、当前 Goal 和有界最近活动，不公开 Run 或 Execution ID，不读取会话历史。完整记录通过独立的 `marctl agents history <session-id>` 按需分页查询；`marctl agents view` 遵循相同的状态查询边界。
 

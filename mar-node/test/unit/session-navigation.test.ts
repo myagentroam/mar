@@ -3,6 +3,7 @@ import { NodeDatabase } from '../../src/database.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
+import { collectSessionCollaborationScope } from '../../src/session/session-collaboration-scope.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 import type { NodeAgentSession } from '../../src/session/contracts.js';
 import { WhiteboardService } from '../../src/orchestration/whiteboard/whiteboard-service.js';
@@ -120,11 +121,24 @@ function fixture() {
 }
 
 describe('Session Navigation bounded tree', () => {
-  it('adds cross-tree peers from authorized live board relationships and only reads the requested board', () => {
+  it('returns the same authorized connected network from any entry and only reads the requested board', () => {
     const f = fixture();
     try {
       const store = new WhiteboardStore(f.database.raw);
-      const ids = ['owner', 'child', 'peer'];
+      const parentById: Record<string, string> = {
+        child: 'owner',
+        sibling: 'owner',
+        nephew: 'sibling',
+        'peer-leaf': 'peer'
+      };
+      const otherWorkspace = f.database.saveWorkspace({
+        path: '/navigation-other',
+        kind: 'DIRECTORY',
+        gitSummary: null
+      });
+      f.register('foreign-child', 'owner', otherWorkspace.id);
+      f.register('foreign-parent', undefined, otherWorkspace.id);
+      const ids = ['owner', 'child', 'sibling', 'nephew', 'peer', 'peer-leaf', 'relay'];
       const active = new Map(
         ids.map((id) => [
           id,
@@ -136,13 +150,15 @@ describe('Session Navigation bounded tree', () => {
           }
         ])
       );
-      for (const id of ids)
+      for (const id of ids) {
+        const parentSessionId = id === 'relay' ? 'foreign-parent' : parentById[id];
         f.database.saveNativeSessionMetadata({
           runner: 'mar-agent',
           externalSessionId: id,
           workspaceId: f.workspace.id,
-          ...(id === 'child' ? { parentSessionId: 'owner' } : {})
+          ...(parentSessionId ? { parentSessionId } : {})
         });
+      }
       const changed = vi.fn();
       const whiteboard = new WhiteboardService({
         store: () => store,
@@ -154,6 +170,7 @@ describe('Session Navigation bounded tree', () => {
       });
       whiteboard.join('child', 'owner');
       whiteboard.join('peer', 'owner');
+      whiteboard.join('relay', 'peer-leaf');
       whiteboard.update('peer', {
         expectedBoardId: 'owner',
         ops: [{ op: 'add', content: 'Shared decision' }]
@@ -166,14 +183,44 @@ describe('Session Navigation bounded tree', () => {
         collaboration: {},
         limit: 100
       };
-      const graph = f.catalog.navigation(request, { userId: 7, whiteboard });
-      expect(graph.tree?.nodes.map((node) => node.id)).toEqual(['child']);
-      expect(graph.collaboration?.peers.map((node) => node.id)).toEqual(['peer']);
-      expect(graph.collaboration?.sharing).toEqual([
+      const sharing = [
         { ownerSessionId: 'owner', followerSessionId: 'child' },
-        { ownerSessionId: 'owner', followerSessionId: 'peer' }
+        { ownerSessionId: 'owner', followerSessionId: 'peer' },
+        { ownerSessionId: 'peer-leaf', followerSessionId: 'relay' }
+      ];
+      for (const treeAnchor of ids) {
+        const graph = f.catalog.navigation({ ...request, treeAnchor }, { userId: 7, whiteboard });
+        expect(graph.tree?.anchorSessionId).toBe(treeAnchor);
+        expect(graph.tree?.parent?.id).toBe(parentById[treeAnchor]);
+        expect(graph.collaboration?.anchor.id).toBe(treeAnchor);
+        expect(graph.collaboration?.truncated).toBe(false);
+        expect(graph.collaboration?.sharing).toEqual(sharing);
+        expect(graph.collaboration?.board).toBeUndefined();
+        expect(
+          [
+            treeAnchor,
+            ...(graph.tree?.parent ? [graph.tree.parent.id] : []),
+            ...graph.tree!.nodes.map(({ id }) => id),
+            ...graph.collaboration!.peers.map(({ id }) => id)
+          ].sort()
+        ).toEqual([...ids].sort());
+      }
+      const { collaboration: _network, ...legacy } = request;
+      const tree = f.catalog.navigation({ ...legacy, treeAnchor: 'child' });
+      expect(tree.tree).toMatchObject({
+        anchorSessionId: 'child',
+        parent: { id: 'owner' },
+        nodes: []
+      });
+      const onlyOwnTree = f.catalog.navigation(request, { userId: 8, whiteboard });
+      expect(onlyOwnTree.collaboration?.sharing).toEqual([]);
+      expect(onlyOwnTree.tree?.nodes.map(({ id }) => id).sort()).toEqual([
+        'child',
+        'nephew',
+        'sibling'
       ]);
-      for (let i = 0; i < 34; i++) {
+
+      for (let i = 0; i < 40; i++) {
         const id = `other-${i}`;
         f.database.saveNativeSessionMetadata({
           runner: 'mar-agent',
@@ -181,22 +228,19 @@ describe('Session Navigation bounded tree', () => {
           workspaceId: f.workspace.id
         });
         active.set(id, { id, sessionId: id, workspaceId: f.workspace.id, initiatedByUserId: 7 });
-        whiteboard.join(id, i === 33 ? 'child' : 'owner');
+        whiteboard.join(id, i === 39 ? 'child' : 'owner');
       }
       const bounded = f.catalog.navigation(
-        { ...request, treeAnchor: 'child' },
+        { ...request, treeAnchor: 'child', limit: 1 },
         { userId: 7, whiteboard }
-      ).collaboration;
-      expect(bounded?.truncated).toBe(true);
-      expect(bounded?.peers).toHaveLength(32);
-      expect(bounded?.sharing.slice(0, 2)).toEqual([
-        { ownerSessionId: 'owner', followerSessionId: 'child' },
-        { ownerSessionId: 'child', followerSessionId: 'other-33' }
-      ]);
-      expect(graph.collaboration?.board).toBeUndefined();
-      expect(
-        f.catalog.navigation(request, { userId: 8, whiteboard }).collaboration?.sharing
-      ).toEqual([]);
+      );
+      expect(bounded.tree).toMatchObject({ parent: { id: 'owner' }, nodes: [{ id: 'other-39' }] });
+      expect(bounded.collaboration?.truncated).toBe(true);
+      expect(bounded.collaboration?.peers).toHaveLength(32);
+      expect(bounded.collaboration?.sharing).toContainEqual({
+        ownerSessionId: 'child',
+        followerSessionId: 'other-39'
+      });
       active.delete('owner');
       changed.mockClear();
       whiteboard.release('owner', f.workspace.id);
@@ -207,10 +251,45 @@ describe('Session Navigation bounded tree', () => {
           { userId: 7, whiteboard }
         );
       expect(read('owner').collaboration).toMatchObject({
-        sharing: [{ ownerSessionId: 'child', followerSessionId: 'other-33' }],
+        sharing: [{ ownerSessionId: 'child', followerSessionId: 'other-39' }],
         board: { entries: [{ content: 'Shared decision' }] }
       });
       expect(read('unknown').collaboration?.board).toBeNull();
+      expect(read('foreign-parent').collaboration?.board).toBeNull();
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it('preserves the edge that connects a remote branch when sharing edges are truncated', () => {
+    const f = fixture();
+    try {
+      const family = Array.from({ length: 13 }, (_, i) => `child-${i}`);
+      for (const id of family) f.register(id, 'root');
+      f.register('z-owner');
+      f.register('z-child', 'z-owner');
+      const anchor = f.database.getSessionRecord('root')!;
+      const bridge = { ownerSessionId: 'z-owner', followerSessionId: family[0]! };
+      const result = collectSessionCollaborationScope({
+        anchor,
+        limit: 100,
+        get: (id) => f.database.getSessionRecord(id),
+        children: (id, limit) => f.database.listChildSessionRecords(f.workspace.id, id, limit),
+        sharing: [
+          ...family.flatMap((ownerSessionId) =>
+            family
+              .filter((id) => id !== ownerSessionId)
+              .map((followerSessionId) => ({ ownerSessionId, followerSessionId }))
+          ),
+          bridge
+        ]
+      });
+      expect(result.truncated).toBe(true);
+      expect(result.nodes.map(({ id }) => id)).toEqual(
+        expect.arrayContaining(['z-owner', 'z-child'])
+      );
+      expect(result.sharing).toHaveLength(134);
+      expect(result.sharing).toContainEqual(bridge);
     } finally {
       f.database.close();
     }

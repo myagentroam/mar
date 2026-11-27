@@ -159,10 +159,15 @@ export function agentNetworkExecutionCommand(input: {
       !isPlainRecord(data.__marctlCaller) ||
       typeof data.__requestUserId !== 'number' ||
       typeof data.workspaceId !== 'string' ||
-      !['start', 'send', 'wait', 'stop', 'list', 'view'].includes(String(data.action)) ||
+      !['start', 'start-peer', 'send', 'wait', 'stop', 'list', 'view'].includes(
+        String(data.action)
+      ) ||
       !isPlainRecord(data.input)
     )
       throw new Error('MARCTL_EXECUTION_CREDENTIAL_INVALID');
+    // Older Nodes reject the distinct relay action instead of silently creating a child.
+    const action = (data.action === 'start-peer' ? 'start' : data.action) as AgentNetworkAction;
+    const payload = data.action === 'start-peer' ? { ...data.input, relation: 'peer' } : data.input;
     if (data.__marctlCaller.type === 'terminal') {
       if (
         !input.observations ||
@@ -204,8 +209,8 @@ export function agentNetworkExecutionCommand(input: {
         return await invokeAgentNetwork(
           input.service,
           actor,
-          data.action as AgentNetworkAction,
-          data.input,
+          action,
+          payload,
           undefined,
           data.__requestAbortSignal instanceof AbortSignal ? data.__requestAbortSignal : undefined
         );
@@ -228,8 +233,7 @@ export function agentNetworkExecutionCommand(input: {
     if (actor.requestUserId !== data.__requestUserId || session?.workspaceId !== data.workspaceId)
       throw new Error('MARCTL_EXECUTION_CREDENTIAL_INVALID');
     const resources =
-      ['start', 'send'].includes(String(data.action)) &&
-      isPlainRecord(data.__marctlExecutionResources)
+      (action === 'start' || action === 'send') && isPlainRecord(data.__marctlExecutionResources)
         ? data.__marctlExecutionResources
         : undefined;
     const boundActor =
@@ -251,8 +255,8 @@ export function agentNetworkExecutionCommand(input: {
     return invokeAgentNetwork(
       input.service,
       boundActor,
-      data.action as AgentNetworkAction,
-      data.input,
+      action,
+      payload,
       undefined,
       data.__requestAbortSignal instanceof AbortSignal ? data.__requestAbortSignal : undefined
     );

@@ -162,6 +162,7 @@ async function fixture(title?: string) {
     });
   return {
     node,
+    database,
     session,
     startTurn,
     respond,
@@ -184,6 +185,49 @@ async function fixture(title?: string) {
 }
 
 describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
+  it('starts an independent peer through the CLI and explicitly waits by Agent ID', async () => {
+    const h = await fixture();
+    try {
+      const defaults = {
+        runner: 'codex' as const,
+        modelId: 'gpt-5.6-sol',
+        effort: 'low',
+        access: 'full-access'
+      };
+      h.database.saveRunnerDefaults(defaults);
+      const { agentId } = await h.command(
+        'start',
+        '--relation',
+        'peer',
+        '--runner',
+        'codex',
+        '--model-id',
+        'gpt-5.6-terra',
+        '--effort',
+        'high',
+        '--title',
+        'Horizontal collaboration',
+        '-m',
+        'Start independent work'
+      );
+      expect(h.node.runtime.getAgentSession(agentId)).toMatchObject({
+        parentSessionId: null,
+        workspaceId: h.session.workspaceId,
+        runnerTitle: 'Horizontal collaboration',
+        modelId: 'gpt-5.6-terra',
+        effort: 'high'
+      });
+      expect(h.database.getRunnerDefaults()).toContainEqual(defaults);
+      await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledOnce());
+      expect(h.startTurn.mock.calls[0]?.[1]).toContain('Start independent work');
+      expect(await h.command('wait', agentId, '--timeout', '0ms')).toMatchObject({
+        agents: [expect.objectContaining({ agentId, waitOutcome: 'snapshot' })]
+      });
+    } finally {
+      await h.close();
+    }
+  });
+
   it('sends with the default intent and returns an explicit single-target wait as a group snapshot', async () => {
     const h = await fixture();
     try {

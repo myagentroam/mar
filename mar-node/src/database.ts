@@ -595,14 +595,15 @@ export class NodeDatabase {
 
   listChildSessionRecords(
     workspaceId: string,
-    parentSessionId: string
+    parentSessionId: string,
+    limit = -1
   ): ReturnType<NodeDatabase['listSessionRecords']> {
     return (
       this.raw
         .prepare(
-          'SELECT id, workspace_id, runner, pin_order, metadata, parent_session_id FROM agent_sessions WHERE workspace_id = ? AND parent_session_id = ? ORDER BY id'
+          'SELECT id, workspace_id, runner, pin_order, metadata, parent_session_id FROM agent_sessions WHERE workspace_id = ? AND parent_session_id = ? ORDER BY id LIMIT ?'
         )
-        .all(workspaceId, parentSessionId) as readonly SqlRow[]
+        .all(workspaceId, parentSessionId, limit) as readonly SqlRow[]
     ).map(sessionRecord);
   }
 

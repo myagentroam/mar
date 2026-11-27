@@ -28,6 +28,7 @@ import { WorkspaceWatchController } from '../service/workspace-watch-controller.
 import { WorkspaceWatchService } from './workspace-watch-service.js';
 import {
   WorkspaceWatchSnapshotService,
+  type WorkspaceWatchInvalidation,
   type WorkspaceWatchTopic
 } from './workspace-watch-snapshot-service.js';
 
@@ -124,7 +125,7 @@ export class WorkspaceWorkbenchService {
     };
   }
 
-  invalidateTopic(workspaceId: string, topic: WorkspaceWatchTopic): Promise<void> {
+  invalidateTopic(workspaceId: string, topic: WorkspaceWatchInvalidation): Promise<void> {
     return this.snapshots.invalidate(workspaceId, topic);
   }
 

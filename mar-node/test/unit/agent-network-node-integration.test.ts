@@ -40,7 +40,7 @@ import { WhiteboardService } from '../../src/orchestration/whiteboard/whiteboard
 import { WhiteboardStore } from '../../src/orchestration/whiteboard/whiteboard-store.js';
 
 describe('Node Agent Network owner integration', () => {
-  it('inherits the board through real Node start, Goal and idle-send admission without switching an already active board', async () => {
+  it('inherits the board through child, peer, Goal and idle-send admission without switching an already active board', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-orchestration-admission-'));
     const database = new NodeDatabase(':memory:', 'orchestration-admission');
     const workspace = database.saveWorkspace({
@@ -88,7 +88,8 @@ describe('Node Agent Network owner integration', () => {
       enabled: true,
       sortOrder: 0
     };
-    const resources = { marAgentModel: model, marAgentModels: [model] };
+    const conversation = { ...model, id: 'conversation-only', subagentModel: false };
+    const resources = { marAgentModel: model, marAgentModels: [model, conversation] };
     const create = async (clientMessageId: string, content?: string) => {
       const result = await core.sessionLifecycleService.operations()[
         content ? 'session.start' : 'session.create'
@@ -134,10 +135,91 @@ describe('Node Agent Network owner integration', () => {
         (await core.agentNetworkService.start(actor(b), {
           title: 'Grandchild',
           content: 'Continue the work',
+          clientMessageId: 'orchestration-c',
           modelId: model.id
         })) as { agentId: string }
       ).agentId;
       await seeBoards(c, a);
+      await expect(
+        core.agentNetworkService.start(actor(a), {
+          title: 'Same message ID, different parent',
+          content: 'Do not reuse a child of B',
+          clientMessageId: 'orchestration-c'
+        })
+      ).rejects.toMatchObject({ code: 'AGENT_START_INVALID' });
+      const peerInput = {
+        title: 'Horizontal collaboration',
+        content: 'Keep the same board in an independent session',
+        modelId: conversation.id,
+        clientMessageId: 'orchestration-peer',
+        relation: 'peer' as const
+      };
+      await expect(
+        core.agentNetworkService.start(actor(b), { ...peerInput, relation: 'child' })
+      ).rejects.toMatchObject({ code: 'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE' });
+      await expect(
+        core.agentNetworkService.start(actor(c), {
+          ...peerInput,
+          relation: 'child',
+          modelId: model.id
+        })
+      ).rejects.toThrow('SESSION_DEPTH_EXCEEDED');
+      await expect(
+        core.agentNetworkService.start(actor(c), { ...peerInput, modelId: 'ungranted' })
+      ).rejects.toMatchObject({ code: 'MAR_AGENT_CONVERSATION_MODEL_UNAVAILABLE' });
+      const peer = (await core.agentNetworkService.start(actor(c), peerInput)) as {
+        agentId: string;
+      };
+      expect(core.runtime.getAgentSession(peer.agentId)).toMatchObject({
+        parentSessionId: null,
+        modelId: conversation.id
+      });
+      await seeBoards(peer.agentId, a);
+      await expect(core.agentNetworkService.start(actor(c), peerInput)).resolves.toMatchObject(
+        peer
+      );
+      await expect(core.agentNetworkService.start(actor(other), peerInput)).rejects.toMatchObject({
+        code: 'AGENT_START_INVALID'
+      });
+      await expect(
+        core.agentNetworkService.start(actor(b), {
+          ...peerInput,
+          relation: 'child',
+          modelId: model.id
+        })
+      ).rejects.toMatchObject({ code: 'AGENT_START_INVALID' });
+      await expect(core.agentNetworkService.list(actor(c))).resolves.toMatchObject({
+        sessions: expect.not.arrayContaining([expect.objectContaining({ id: peer.agentId })])
+      });
+      await expect(core.agentNetworkService.wait(actor(c), { waitMs: 0 })).rejects.toMatchObject({
+        code: 'AGENT_WAIT_NO_TARGETS'
+      });
+      await expect(
+        core.agentNetworkService.wait(actor(c), { agentIds: [peer.agentId], waitMs: 0 })
+      ).resolves.toMatchObject({ agents: [expect.objectContaining({ agentId: peer.agentId })] });
+      database.saveRunnerDefaults({
+        runner: 'mar-agent',
+        modelId: conversation.id,
+        effort: '',
+        access: 'auto'
+      });
+      const goalPeer = (await core.agentNetworkService.start(actor(b), {
+        title: 'Peer with a Goal',
+        content: 'Use the target Runner default',
+        relation: 'peer',
+        clientMessageId: 'orchestration-peer-goal',
+        goal: { objective: 'Advance independent work' }
+      })) as { agentId: string };
+      expect(core.runtime.getAgentSession(goalPeer.agentId)).toMatchObject({
+        parentSessionId: null,
+        modelId: conversation.id
+      });
+      await seeBoards(goalPeer.agentId, a);
+      await expect(
+        core.agentNetworkService.view(actor(b), { agentId: goalPeer.agentId })
+      ).resolves.toMatchObject({
+        goal: expect.objectContaining({ objective: 'Advance independent work' })
+      });
       const side = await create('orchestration-side');
       const idleBoard = 'known-idle-mar-session';
       database.saveNativeSessionMetadata({
@@ -1942,6 +2024,16 @@ describe('Node Agent Network owner integration', () => {
         parentSessionId: parent.id,
         runner: 'mar-agent',
         modelId: 'eligible'
+      });
+      const peerModel = { ...model, id: 'peer-only', subagentModel: false };
+      const peer = await request(
+        'start-peer',
+        { runner: 'mar-agent', modelId: peerModel.id, title: 'Peer', content: 'Independent work' },
+        { marAgentModel: peerModel, marAgentModels: [peerModel] }
+      );
+      expect(core.runtime.getAgentSession(peer.agentId as string)).toMatchObject({
+        parentSessionId: null,
+        modelId: peerModel.id
       });
       const childBefore = { ...core.runtime.getAgentSession(childId)! };
       const queueBefore = structuredClone(core.runtime.sessionQueue(childId));

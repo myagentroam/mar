@@ -1,3 +1,4 @@
+import { AgentError } from '@myagentroam/agent';
 import type { RunnerDefaultConfiguration, ScheduledNewSession } from '@myagentroam/protocol';
 import { ORCHESTRATION_INPUT_SOURCE } from '../orchestration/input-source.js';
 import {
@@ -22,6 +23,8 @@ import { resolveWorkspaceExecutionDirectory } from '../workspace/path-access.js'
 import { checkSessionAdmission } from './operation-admission.js';
 
 const AGENT_GOAL_START = Symbol('agent-goal-start');
+/** Internal creation intent, independent of whether the message has an Agent sender. */
+export const PRESERVE_RUNNER_DEFAULTS = Symbol('preserve-runner-defaults');
 type AgentGoalStart = (
   session: NodeAgentSession,
   executionContext: RunnerExecutionContext
@@ -41,8 +44,16 @@ interface SessionLifecycleServiceOptions {
   readonly interceptedSessionId: (clientMessageId: string) => string | undefined;
 }
 
+interface SessionStartReceipt {
+  readonly userId: number | undefined;
+  readonly sourceId: string | undefined;
+  readonly parentId: string | undefined;
+  readonly result: Promise<unknown>;
+}
+
+/** Owns Session creation, bootstrap and configuration; Runner and Goal owners submit execution. */
 export class SessionLifecycleService {
-  private readonly starts = new Map<string, Promise<unknown>>();
+  private readonly starts = new Map<string, SessionStartReceipt>();
 
   constructor(private readonly options: SessionLifecycleServiceOptions) {}
 
@@ -161,7 +172,9 @@ export class SessionLifecycleService {
   }
 
   private async create(input: Record<string, unknown>): Promise<unknown> {
-    const session = await this.createSession(input, input.__marctlOrigin === undefined);
+    const saveDefaults =
+      input.__marctlOrigin === undefined && !Object.hasOwn(input, PRESERVE_RUNNER_DEFAULTS);
+    const session = await this.createSession(input, saveDefaults);
     return { session: this.options.present(session) };
   }
 
@@ -370,10 +383,25 @@ export class SessionLifecycleService {
     )
       throw new Error('RUNNER_COMMAND_INVALID');
     const startKey = `${input.workspaceId}\u0000${input.runner}\u0000${input.clientMessageId}`;
+    const origin = isPlainRecord(input.__marctlOrigin) ? input.__marctlOrigin : undefined;
+    const userId = typeof input.__requestUserId === 'number' ? input.__requestUserId : undefined;
+    const sourceId = typeof origin?.sessionId === 'string' ? origin.sessionId : undefined;
+    const parentId = typeof input.parentSessionId === 'string' ? input.parentSessionId : undefined;
     const existing = this.starts.get(startKey);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      if (
+        existing.userId !== userId ||
+        existing.sourceId !== sourceId ||
+        existing.parentId !== parentId
+      )
+        throw new AgentError(
+          'AGENT_START_INVALID',
+          'This client message ID is already in use for a different session start.'
+        );
+      return existing.result;
+    }
     const start = this.startFresh(input);
-    this.starts.set(startKey, start);
+    this.starts.set(startKey, { userId, sourceId, parentId, result: start });
     try {
       const result = await start;
       while (this.starts.size > 512) {

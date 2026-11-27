@@ -153,9 +153,11 @@ export class WorkspaceWatchService {
     return watch;
   }
 
-  matches(workspaceId: string, key: string, watchId: string): boolean {
-    const watch = this.watches.get(workspaceId)?.get(key);
-    return watch !== undefined && watch.watchId === watchId && watch.expiresAt > Date.now();
+  isCurrent(watch: WorkspaceWatch): boolean {
+    return (
+      this.existing(watch.workspaceId, `${watch.sessionHash}:${watch.workbenchConnectionId}`) ===
+      watch
+    );
   }
 
   observes(workspaceId: string, sessionHash: string, connectionId: string): boolean {

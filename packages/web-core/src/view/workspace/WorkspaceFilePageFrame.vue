@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import './file-tooltip-trigger.css';
 import './file-preview.css';
+import './view-toolbar-control.css';
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -195,20 +196,6 @@ defineExpose({ root });
 
 .workspace-file-page-frame :deep(.mar-file-preview-actions .mar-ui-button.mar-ui-button--circle) {
   border-radius: var(--mar-radius-control);
-}
-
-.workspace-file-page-frame :deep(:is(.file-toolbar-control, .image-preview-control)) {
-  --mar-ui-button-bg: var(--mar-bg-panel);
-  --mar-ui-button-border: var(--mar-border-default);
-  --mar-ui-button-fg: var(--mar-text-secondary);
-  --mar-ui-button-hover-bg: var(--mar-fill-row-hover);
-  --mar-ui-button-hover-border: var(--mar-border-medium);
-  --mar-ui-button-hover-fg: var(--mar-text-primary);
-  --mar-ui-button-active-bg: var(--mar-fill-selection);
-  --mar-ui-button-active-border: var(--mar-border-medium);
-  --mar-ui-button-active-fg: var(--mar-text-primary);
-  --mar-ui-button-disabled-bg: var(--mar-bg-panel);
-  --mar-ui-button-disabled-border: var(--mar-border-subtle);
 }
 
 @media (min-width: 768px) {

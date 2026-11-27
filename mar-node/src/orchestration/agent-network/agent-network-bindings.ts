@@ -9,7 +9,10 @@ import { resolvedPersonalInstructions } from '../../runner/personal-instructions
 import type { NodeDatabase } from '../../database.js';
 import type { NodeRuntimeState } from '../../runtime-state.js';
 import type { NodeAgentSession } from '../../session/contracts.js';
-import type { SessionLifecycleService } from '../../session/session-lifecycle-service.js';
+import {
+  PRESERVE_RUNNER_DEFAULTS,
+  type SessionLifecycleService
+} from '../../session/session-lifecycle-service.js';
 import type { SessionMessageService } from '../../session/session-message-service.js';
 import type { NativeSessionProjectionService } from '../../session/native-session-projection-service.js';
 import type { ExternalSessionResumeService } from '../../service/external-session-resume-service.js';
@@ -160,7 +163,14 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
         !selected.conversationModel ||
         (requireSubagent && !selected.subagentModel)
       )
-        throw new Error('MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE');
+        throw new AgentError(
+          requireSubagent
+            ? 'MAR_AGENT_SUBAGENT_MODEL_UNAVAILABLE'
+            : 'MAR_AGENT_CONVERSATION_MODEL_UNAVAILABLE',
+          requireSubagent
+            ? 'The selected MAR Agent model is not available for child sessions.'
+            : 'The selected MAR Agent model is not available for conversations.'
+        );
       result.marAgentModel = selected;
     }
     return result;
@@ -265,20 +275,23 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
     },
     start: async (actor, input, signal) => {
       const terminal = terminalCalls.get(actor);
-      const parent = terminal
-        ? input.parentSessionId === undefined
-          ? undefined
-          : await target(actor, input.parentSessionId)
-        : await actorSession(actor);
-      if (!terminal && input.parentSessionId !== undefined && input.parentSessionId !== parent?.id)
+      const source = terminal ? undefined : await actorSession(actor);
+      if (source && input.parentSessionId !== undefined && input.parentSessionId !== source.id)
         throw new Error('AGENT_TARGET_NOT_AUTHORIZED');
+      const parent =
+        input.relation === 'peer'
+          ? undefined
+          : (source ??
+            (input.parentSessionId ? await target(actor, input.parentSessionId) : undefined));
+      if (input.relation === 'child' && !parent)
+        throw new AgentError('AGENT_START_INVALID', 'A child session requires a parent.');
       signal?.throwIfAborted();
-      options.ensureObservations(actor);
-      const runner = input.runner ?? parent?.runner;
+      if (parent) options.ensureObservations(actor);
+      const runner = input.runner ?? (source ?? parent)?.runner;
       if (!runner) throw new Error('RUNNER_REQUIRED');
       const runnerAdapter = options.runners.product(runner);
       const database = options.database();
-      const workspaceId = terminal?.workspaceId ?? parent?.workspaceId;
+      const workspaceId = terminal?.workspaceId ?? source?.workspaceId;
       const workspace = workspaceId === undefined ? undefined : database?.getWorkspace(workspaceId);
       if (!runnerAdapter || !database || !workspace) throw new Error('SESSION_INVALID');
       const model =
@@ -292,16 +305,17 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
       const request = {
         ...executionInput(actor, runner, model, parent !== undefined),
         workspaceId: workspace.id,
+        [PRESERVE_RUNNER_DEFAULTS]: true,
         ...(signal ? { [SESSION_ADMISSION_SIGNAL]: signal } : {}),
         ...(parent ? { parentSessionId: parent.id } : {}),
         runner,
-        cwd: parent?.cwd ?? workspace.path,
+        cwd: (source ?? parent)?.cwd ?? workspace.path,
         content: input.content,
         clientMessageId: input.clientMessageId,
         __suppressNotifications: true,
         [ORCHESTRATION_INPUT_SOURCE]:
           !terminal && actor.runId ? { runId: actor.runId, hasMessage: true } : undefined,
-        ...(!terminal && parent ? { __marctlOrigin: origin(parent) } : {}),
+        ...(source ? { __marctlOrigin: origin(source) } : {}),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(model ? { modelId: model } : {}),
         ...(input.effort === undefined ? {} : { effort: input.effort })
@@ -320,7 +334,7 @@ export function createNodeAgentNetwork(options: Bindings): AgentNetworkService {
                   ? { orchestrationSource: { runId: actor.runId, hasMessage: true } }
                   : {}),
                 suppressNotifications: true,
-                ...(!terminal && parent ? { messageOrigin: origin(parent) } : {}),
+                ...(source ? { messageOrigin: origin(source) } : {}),
                 clientMessageId: input.clientMessageId,
                 ...(actor.requestUserId === undefined
                   ? {}

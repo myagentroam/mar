@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-27
 ---
 
 # Configure and Use MAR Agent
@@ -137,7 +137,9 @@ To skip login initialization, ask the Agent to use `exec({ command: "…", login
 
 Node Agent Network does not impose the old 16-child creation or concurrency limits. The independent SDK Subagent extension retains its own admission policy.
 
-The collaboration tools are `agent_start`, `agent_send`, `agent_wait`, `agent_stop`, `agent_list`, and `agent_view`. `agent_start` takes a text task and a nonblank title and returns after registering the child session and its first execution, without waiting for completion; a manual marctl creation may omit the title. Use the returned `agentId` to address the child. `agent_send` can deliver a text message, update a Goal, or decide an approval for an authorized session; its delivery intent can replace the current execution. `agent_wait` defaults to waiting 30 seconds for direct children to finish; `waitMs=0` reads a snapshot and positive values use the requested duration. `agent_stop` takes only the session ID, stops its current execution, and clears its Goal; list and view discover authorized sessions and their status.
+The collaboration tools are `agent_start`, `agent_send`, `agent_wait`, `agent_stop`, `agent_list`, and `agent_view`. `agent_start` takes a text task and a nonblank title and returns an `agentId` without waiting for completion. It creates a direct child by default. Use `relation: "peer"` for an independent Session that does not automatically report back; wait or send a message using its returned Agent ID. Peers can use an authorized, enabled conversation model; children also require Subagent support. Both follow the same automatic whiteboard-sharing rules. See [marctl](../operations/marctl.md) for the CLI equivalent.
+
+`agent_send` can deliver a text message, update a Goal, or decide an approval for an authorized session; its delivery intent can replace the current execution. `agent_wait` defaults to waiting 30 seconds for direct children to finish; `waitMs=0` reads a snapshot and positive values use the requested duration. `agent_stop` takes only the session ID, stops its current execution, and clears its Goal; list and view discover authorized sessions and their status.
 
 `agent_view` accepts only `agentId` and returns state, the current Goal, and bounded recent activity without Run or Execution IDs and without reading session history. Use the separate `marctl agents history <session-id>` command for paginated records when needed. `marctl agents view` follows the same state-query boundary.
 
