@@ -168,11 +168,21 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
       }
     }
   );
-  const frames: string[] = [];
-  socket.on('message', (data: unknown) => frames.push(String(data)));
+  const frames: Uint8Array[] = [];
+  socket.on('message', (data: unknown) => {
+    if (typeof data === 'string') frames.push(Buffer.from(data, 'binary'));
+    else if (data instanceof ArrayBuffer) frames.push(new Uint8Array(data));
+    else if (ArrayBuffer.isView(data))
+      frames.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    else throw new TypeError('Unexpected terminal frame payload');
+  });
   try {
     await once(socket, 'open');
-    await expect.poll(() => frames.join('\n')).toContain('"type":"attach"');
+    await expect
+      .poll(() =>
+        frames.map((frame) => Buffer.from(frame).toString('utf8')).join('\n')
+      )
+      .toContain('"type":"attach"');
     // Node is already required on both platforms; keep the marker out of input echo.
     const command = `node -p "'RELEASE_' + 'TERMINAL_OK'"\r`;
     socket.send(JSON.stringify({ type: 'input', terminalId, data: command }));

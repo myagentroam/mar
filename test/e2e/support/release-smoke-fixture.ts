@@ -9,13 +9,21 @@ import { expect, request, type APIResponse } from '@playwright/test';
 import { createPlaywrightTestLicenseDocument } from './playwright-test-license.js';
 import { makeWritable, startResponsesServer } from './hosted-conversation-flow-fixture.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../../packages/server-core/src/password.js';
+import { decodeByteFrame } from '../../../packages/protocol/src/byte-frame.js';
 
-export function terminalOutput(frames: readonly string[]): string {
+/** Terminal frames are binary byte frames: JSON metadata header plus an optional raw payload. */
+export function terminalOutput(frames: readonly (string | Uint8Array)[]): string {
   return stripVTControlCharacters(
     frames
       .map((raw) => {
-        const frame = JSON.parse(raw) as { type: string; data?: string };
-        return frame.type === 'output' ? (frame.data ?? '') : '';
+        const text = (input: string | Uint8Array) =>
+          typeof input === 'string' ? Buffer.from(input, 'binary') : input;
+        const { metadata, payload } = decodeByteFrame(text(raw));
+        if (metadata.type !== 'output') return '';
+        // Binary output carries raw bytes; metadata-only frames keep the JSON `data` string.
+        return payload.byteLength > 0
+          ? Buffer.from(payload).toString('utf8')
+          : String((metadata.data as string | undefined) ?? '');
       })
       .join('')
   );

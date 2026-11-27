@@ -329,7 +329,14 @@ test('smoke Terminal checks decoded output across frames, not input echo or erro
       `
     import assert from 'node:assert/strict';
     import { terminalOutput } from './test/e2e/support/release-smoke-fixture.ts';
-    const frame = (type, data) => JSON.stringify({type, data});
+    import { encodeTerminalMessage } from './packages/protocol/src/byte-frame.ts';
+    // Output and input frames carry raw bytes as the payload; other types must not.
+    const frame = (type, data) =>
+      encodeTerminalMessage(
+        type === 'output' || type === 'input'
+          ? {type, data: Buffer.from(data, 'utf8')}
+          : {type}
+      );
     const frames = [frame('attach', 'RELEASE_TERMINAL_OK'), frame('error', 'RELEASE_TERMINAL_OK'),
       frame('output', 'PS> echo RELEASE_TERMINAL_OK\\r\\n')];
     const resultLine = /(?:^|[\\r\\n])RELEASE_TERMINAL_OK[ \\t]*[\\r\\n]/u;
@@ -337,6 +344,8 @@ test('smoke Terminal checks decoded output across frames, not input echo or erro
     frames.push(frame('output', '\\x1b[32mRELEASE_TER'), frame('output', 'MINAL_OK\\x1b[0m\\r\\n'));
     assert.match(terminalOutput(frames), resultLine);
     assert.match(terminalOutput([frame('output', 'prompt> echo RELEASE_TERMINAL_OK  \\rRELEASE_TERMINAL_OK \\n')]), resultLine);
+    // Frames without an output payload must not contribute to the transcript.
+    assert.equal(terminalOutput([frame('exit')]), '');
     console.log('Terminal output verified');
   `
     ],
