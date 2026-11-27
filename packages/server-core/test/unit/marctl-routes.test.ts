@@ -79,7 +79,8 @@ describe('marctl execution-context authorization', () => {
           nodeId: 'desktop',
           terminalId: 'computer-terminal',
           user,
-          computer: true
+          computer: true,
+          cli: true
         });
       }
       expect(requestNode).toHaveBeenCalledTimes(keys.length);
@@ -270,7 +271,7 @@ describe('marctl execution-context authorization', () => {
     const { credentials, token } = createUserContext();
     const app = Fastify();
     const requestNode = vi.fn(async (_nodeId: string, operation: string) =>
-      ['terminal.open', 'terminal.command.open'].includes(operation)
+      ['terminal.open', 'terminal.command.open', 'terminal.copy.open'].includes(operation)
         ? { terminal: { id: 'terminal-1' } }
         : operation === 'node.workbench.capabilities'
           ? {
@@ -369,6 +370,48 @@ describe('marctl execution-context authorization', () => {
         payload: { nodeId: 'private-node', rows: 25, cols: 80 }
       });
       expect(denied.statusCode).toBe(403);
+      const copy = { mode: 'read', path: "/tmp/report 'quoted' 文档.bin" };
+      const openCopy = (payload: unknown, headers: Record<string, string> = auth) =>
+        app.inject({
+          method: 'POST',
+          url: '/api/marctl/terminals/copy',
+          headers,
+          payload: JSON.stringify(payload)
+        });
+      const expected = requestNode.mock.calls.length;
+      expect(
+        (await openCopy({ nodeId: 'node-1', copy }, { 'content-type': 'application/json' }))
+          .statusCode
+      ).toBe(401);
+      expect(
+        (
+          await openCopy(
+            { nodeId: 'private-node', copy },
+            { ...auth, 'content-type': 'application/json' }
+          )
+        ).statusCode
+      ).toBe(403);
+      for (const payload of [
+        { nodeId: 'node-1', copy: { ...copy, executable: '/bin/sh' } },
+        { nodeId: 'node-1', copy: { mode: 'write', path: copy.path } },
+        { nodeId: 'node-1', copy, command: 'echo ok' }
+      ])
+        expect(
+          (await openCopy(payload, { ...auth, 'content-type': 'application/json' })).statusCode
+        ).toBe(400);
+      expect(requestNode).toHaveBeenCalledTimes(expected);
+      const copyOpened = await openCopy(
+        { nodeId: 'node-1', copy },
+        { ...auth, 'content-type': 'application/json' }
+      );
+      expect(copyOpened.statusCode).toBe(201);
+      expect(copyOpened.json()).toEqual({ terminalId: 'terminal-1' });
+      expect(requestNode).toHaveBeenLastCalledWith(
+        'node-1',
+        'terminal.copy.open',
+        { copy },
+        { userId: 1, sessionHash: expect.any(String) }
+      );
       const opened = await app.inject({
         method: 'POST',
         url: '/api/marctl/terminals',
@@ -418,13 +461,16 @@ describe('marctl execution-context authorization', () => {
       const existingOpens = requestNode.mock.calls.filter(
         ([, operation]) => operation === 'terminal.command.open'
       ).length;
-      const incompatible = await app.inject({
-        method: 'POST',
-        url: '/api/marctl/terminals',
-        headers: auth,
-        payload: { nodeId: 'node-1', rows: 25, cols: 80, command: 'copy', binary: true }
-      });
-      expect(incompatible.statusCode).toBe(400);
+      for (const extra of [{ binary: true }, { unexpected: true }]) {
+        const incompatible = await app.inject({
+          method: 'POST',
+          url: '/api/marctl/terminals',
+          headers: auth,
+          payload: { nodeId: 'node-1', rows: 25, cols: 80, command: 'copy', ...extra }
+        });
+        expect(incompatible.statusCode).toBe(400);
+        expect(incompatible.json().error.code).toBe('TERMINAL_OPEN_INVALID');
+      }
       expect(
         requestNode.mock.calls.filter(([, operation]) => operation === 'terminal.command.open')
       ).toHaveLength(existingOpens);

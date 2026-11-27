@@ -9,6 +9,11 @@ import {
 } from '@myagentroam/protocol';
 import type { NodeRequestAuthorization, UserNodeAuthorization } from './node-access-contracts.js';
 import { safeErrorCode } from './http-errors.js';
+import {
+  attachTerminalMux,
+  TerminalMuxStream,
+  type TerminalRelaySocket
+} from './terminal-multiplex.js';
 
 const TERMINAL_TICKET_TTL_MS = 30_000;
 const MAX_TERMINAL_RELAYS_PER_USER = 10;
@@ -28,6 +33,7 @@ interface TerminalTicketRecord {
   readonly afterSequence: number;
   readonly readonly: boolean;
   readonly computer: boolean;
+  readonly cli: boolean;
   readonly expiresAt: number;
   readonly timer: NodeJS.Timeout;
 }
@@ -42,7 +48,7 @@ interface TerminalRelayRecord {
   readonly workspaceId?: string;
   readonly readonly: boolean;
   readonly computer: boolean;
-  readonly browser: WebSocket;
+  readonly browser: TerminalRelaySocket;
   pendingFrames: { readonly frame: TerminalDataFrame; readonly encoded: Uint8Array }[];
   pendingBytes: number;
   writing: boolean;
@@ -51,7 +57,7 @@ interface TerminalRelayRecord {
 }
 
 interface DeferredTerminalAttach {
-  readonly socket: WebSocket;
+  readonly socket: TerminalRelaySocket;
   readonly ticket: TerminalTicketRecord;
   readonly onMessage: (raw: RawData, isBinary: boolean) => void;
   readonly onClose: () => void;
@@ -98,7 +104,11 @@ export class TerminalRelayService {
     string,
     { readonly nodeId: string; expiresAt: number }
   >();
-  private readonly socketActivity = new Map<WebSocket, number>();
+  private readonly socketActivity = new Map<TerminalRelaySocket, number>();
+  private readonly muxSockets = new Map<
+    WebSocket,
+    { nodeId: string; user: UserNodeAuthorization; close: (code: number, reason: string) => void }
+  >();
   private readonly heartbeatTimer: NodeJS.Timeout;
 
   constructor(private readonly options: TerminalRelayOptions) {
@@ -146,6 +156,7 @@ export class TerminalRelayService {
     readonly afterSequence?: unknown;
     readonly readonly?: unknown;
     readonly computer?: boolean;
+    readonly cli?: boolean;
   }): {
     readonly ticket: string;
     readonly nodeId: string;
@@ -177,6 +188,7 @@ export class TerminalRelayService {
       afterSequence: afterSequence as number,
       readonly: input.readonly === true,
       computer: input.computer === true,
+      cli: input.cli === true,
       expiresAt,
       timer: setTimeout(() => this.expireTicket(ticket), TERMINAL_TICKET_TTL_MS)
     };
@@ -185,12 +197,57 @@ export class TerminalRelayService {
     return { ticket, nodeId: record.nodeId, terminalId: record.terminalId, expiresAt };
   }
 
-  attachBrowser(socket: WebSocket, ticketValue: unknown, user: UserNodeAuthorization): void {
+  attachCliMux(
+    socket: WebSocket,
+    nodeId: string,
+    user: UserNodeAuthorization,
+    expiresAt: number,
+    authorize: () => Promise<UserNodeAuthorization | undefined>
+  ): void {
+    if (socket.readyState !== socket.OPEN) return;
+    if (this.closed || expiresAt <= Date.now()) {
+      socket.close(this.closed ? 1001 : 1008, this.closed ? 'SERVER_SHUTDOWN' : 'UNAUTHENTICATED');
+      return;
+    }
+    if (
+      [...this.muxSockets.values()].filter((entry) => entry.user.sessionHash === user.sessionHash)
+        .length >= MAX_TERMINAL_RELAYS_PER_USER
+    ) {
+      socket.close(4008, 'TERMINAL_RELAY_LIMIT_REACHED');
+      return;
+    }
+    this.trackSocket(socket);
+    const close = attachTerminalMux({
+      socket,
+      authorize,
+      attach: (stream, ticket, deferred, actor) => {
+        this.attachBrowser(stream, deferred ? { ticket, deferred: true } : ticket, actor, nodeId);
+      }
+    });
+    this.muxSockets.set(socket, { nodeId, user, close });
+    const expiry = setTimeout(() => close(1008, 'UNAUTHENTICATED'), expiresAt - Date.now());
+    expiry.unref();
+    socket.once('close', () => {
+      clearTimeout(expiry);
+      this.muxSockets.delete(socket);
+    });
+  }
+
+  attachBrowser(
+    socket: TerminalRelaySocket,
+    ticketValue: unknown,
+    user: UserNodeAuthorization,
+    cliNodeId?: string
+  ): void {
     const attach = browserAttachRequest(ticketValue);
     const ticket = attach === undefined ? undefined : this.tickets.get(attach.ticket);
     if (
       ticket === undefined ||
       ticket.expiresAt <= Date.now() ||
+      // Only the original pending attachment may activate a reserved ticket.
+      this.deferredAttaches.has(ticket.ticket) ||
+      // Pooled disconnect closes CLI-owned resources, not browser attachments.
+      (cliNodeId !== undefined && (!ticket.cli || ticket.nodeId !== cliNodeId)) ||
       ticket.userSessionHash !== user.sessionHash ||
       ticket.userId !== user.userId
     ) {
@@ -198,9 +255,7 @@ export class TerminalRelayService {
       return;
     }
     if (
-      this.userRelayCount(user.sessionHash) +
-        this.userDeferredCount(user.sessionHash) +
-        (this.directCount?.(user.sessionHash) ?? 0) >=
+      this.countSession(user.sessionHash) + (this.directCount?.(user.sessionHash) ?? 0) >=
       MAX_TERMINAL_RELAYS_PER_USER
     ) {
       socket.close(4008, 'TERMINAL_RELAY_LIMIT_REACHED');
@@ -213,10 +268,6 @@ export class TerminalRelayService {
     }
     if (attach?.deferred === true) {
       if (ticket.computer) {
-        socket.close(4008, 'TERMINAL_TICKET_INVALID');
-        return;
-      }
-      if (this.deferredAttaches.has(ticket.ticket)) {
         socket.close(4008, 'TERMINAL_TICKET_INVALID');
         return;
       }
@@ -266,6 +317,7 @@ export class TerminalRelayService {
     this.dropAuthorizing((record) => record.userSessionHash === sessionHash);
     for (const relay of [...this.relays.values()])
       if (relay.userSessionHash === sessionHash) this.closeRelay(relay, true);
+    this.closeMux((entry) => entry.user.sessionHash === sessionHash);
   }
 
   closeUser(userId: number): void {
@@ -273,6 +325,7 @@ export class TerminalRelayService {
     this.dropAuthorizing((record) => record.userId === userId);
     for (const relay of [...this.relays.values()])
       if (relay.userId === userId) this.closeRelay(relay, true);
+    this.closeMux((entry) => entry.user.userId === userId);
   }
 
   closeTerminal(nodeId: string, terminalId: string): void {
@@ -288,13 +341,19 @@ export class TerminalRelayService {
   }
 
   countSession(sessionHash: string): number {
-    return this.userRelayCount(sessionHash) + this.userDeferredCount(sessionHash);
+    return (
+      this.userRelayCount(sessionHash) +
+      this.userDeferredCount(sessionHash) +
+      [...this.authorizing.values()].filter((record) => record.userSessionHash === sessionHash)
+        .length
+    );
   }
 
   closeAllRelays(): void {
     this.dropTickets(() => true);
     this.dropAuthorizing(() => true);
     for (const relay of [...this.relays.values()]) this.closeRelay(relay, true);
+    this.closeMux(() => true);
   }
 
   async revalidateAuthorizations(): Promise<void> {
@@ -329,6 +388,9 @@ export class TerminalRelayService {
     for (const relay of [...this.relays.values()])
       if (!(await allowed(relay, relay.computer)))
         this.closeRelay(relay, true, 'TERMINAL_AUTHORIZATION_REVOKED');
+    for (const entry of [...this.muxSockets.values()])
+      if (!(await allowed({ ...entry, userId: entry.user.userId }, true)))
+        this.closeMux((candidate) => candidate === entry);
   }
 
   closeNode(nodeId: string, terminate: boolean): void {
@@ -336,6 +398,14 @@ export class TerminalRelayService {
     this.dropAuthorizing((record) => record.nodeId === nodeId);
     for (const relay of [...this.relays.values()])
       if (relay.nodeId === nodeId) this.closeRelay(relay, terminate);
+    this.closeMux((entry) => entry.nodeId === nodeId);
+  }
+
+  private closeMux(
+    matches: (entry: { nodeId: string; user: UserNodeAuthorization }) => boolean
+  ): void {
+    for (const entry of this.muxSockets.values())
+      if (matches(entry)) entry.close(1008, 'TERMINAL_CONNECTION_CLOSED');
   }
 
   disconnectNode(nodeId: string): void {
@@ -368,7 +438,10 @@ export class TerminalRelayService {
     this.socketActivity.clear();
   }
 
-  private async authorizeBrowser(browser: WebSocket, ticket: TerminalTicketRecord): Promise<void> {
+  private async authorizeBrowser(
+    browser: TerminalRelaySocket,
+    ticket: TerminalTicketRecord
+  ): Promise<void> {
     try {
       const response = await this.options.requestNode(
         ticket.nodeId,
@@ -388,6 +461,22 @@ export class TerminalRelayService {
       const terminalSocket = this.sockets.get(ticket.nodeId);
       const authorizationActive = this.authorizing.get(ticket.ticket) === ticket;
       this.authorizing.delete(ticket.ticket);
+      if (
+        browser instanceof TerminalMuxStream &&
+        (!authorizationActive || browser.readyState !== browser.OPEN)
+      ) {
+        if (attachment?.terminalId === ticket.terminalId)
+          await this.options
+            .requestNode(
+              ticket.nodeId,
+              'terminal.close',
+              { terminalId: ticket.terminalId },
+              { userId: ticket.userId, sessionHash: ticket.userSessionHash }
+            )
+            .catch(() => undefined);
+        browser.close();
+        return;
+      }
       if (
         !authorizationActive &&
         attachment !== undefined &&
@@ -483,7 +572,7 @@ export class TerminalRelayService {
     }
   }
 
-  private activateDeferredAttach(ticketValue: string, socket: WebSocket): void {
+  private activateDeferredAttach(ticketValue: string, socket: TerminalRelaySocket): void {
     const pending = this.deferredAttaches.get(ticketValue);
     if (pending === undefined || pending.socket !== socket) {
       socket.close(4008, 'TERMINAL_TICKET_INVALID');
@@ -812,6 +901,10 @@ export class TerminalRelayService {
   }
   private detachRelay(relay: TerminalRelayRecord): void {
     if (this.relays.get(relay.ticket) !== relay) return;
+    if (relay.browser instanceof TerminalMuxStream) {
+      this.closeRelay(relay, true);
+      return;
+    }
     this.clearBrowserFrames(relay);
     this.relays.delete(relay.ticket);
     this.retireTicket(relay.ticket, relay.nodeId);
@@ -834,7 +927,7 @@ export class TerminalRelayService {
     if (socket !== undefined && socket.readyState === socket.OPEN)
       this.sendTerminal(
         socket,
-        terminate
+        terminate || relay.browser instanceof TerminalMuxStream
           ? { type: 'close', ticket: relay.ticket }
           : { type: 'detach', ticket: relay.ticket }
       );
@@ -854,7 +947,7 @@ export class TerminalRelayService {
     ).length;
   }
   private sendTerminal(
-    socket: WebSocket,
+    socket: TerminalRelaySocket,
     message: object,
     completed?: (error?: Error | null) => void
   ): void {
@@ -869,7 +962,7 @@ export class TerminalRelayService {
       socket.close(1011, 'TERMINAL_SEND_FAILED');
     }
   }
-  private sendBrowser(socket: WebSocket, frame: TerminalDataFrame): void {
+  private sendBrowser(socket: TerminalRelaySocket, frame: TerminalDataFrame): void {
     this.sendTerminal(socket, frame);
   }
 
@@ -886,7 +979,7 @@ export class TerminalRelayService {
     }
   }
 
-  private trackSocket(socket: WebSocket): void {
+  private trackSocket(socket: TerminalRelaySocket): void {
     this.socketActivity.set(socket, Date.now());
     socket.on('pong', () => this.socketActivity.set(socket, Date.now()));
     socket.once('close', () => this.socketActivity.delete(socket));

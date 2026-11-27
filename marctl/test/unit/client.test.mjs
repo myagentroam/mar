@@ -110,6 +110,26 @@ test('opens a command terminal without a transport mode option', async () => {
   );
 });
 
+test('submits a structured copy without falling back to a shell on rejection', async () => {
+  const copy = { mode: 'read', path: "/tmp/report 'quoted' 文档.bin" };
+  const requests = [];
+  const client = new MarctlClient({
+    serverUrl: 'https://server.test',
+    key: 'test-key',
+    fetchImpl: async (url, options) => {
+      requests.push([url.pathname, JSON.parse(options.body)]);
+      return response(
+        { error: { code: 'OPERATION_UNSUPPORTED', message: 'Unsupported operation.' } },
+        { ok: false }
+      );
+    }
+  });
+  await assert.rejects(client.createTerminal({ nodeId: 'node-1', rows: 24, cols: 80, copy }), {
+    code: 'OPERATION_UNSUPPORTED'
+  });
+  assert.deepEqual(requests, [['/api/marctl/terminals/copy', { nodeId: 'node-1', copy }]]);
+});
+
 test('does not expose response bodies or credentials in request failures', async () => {
   const client = new MarctlClient({
     serverUrl: 'https://server.test',

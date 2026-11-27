@@ -5,7 +5,13 @@ import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
+import { fileURLToPath } from 'node:url';
+import { closeScpWorker } from '@myagentroam/marctl/src/scp-worker-close.mjs';
+import {
+  terminalDataFrameSchema,
+  type TerminalCopy,
+  type TerminalDataFrame
+} from '@myagentroam/protocol';
 import { nodeExecutionEnvironment } from './node-execution-environment.js';
 import { nodeLog } from './operational.js';
 import { terminateProcessTree, type ManagedProcess } from './process-tree.js';
@@ -49,6 +55,7 @@ export interface TerminalSpawnOptions {
   readonly rows: number;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
+  readonly copyWorker?: true;
 }
 
 export type TerminalPtyFactory = (
@@ -68,7 +75,7 @@ export interface TerminalPipe extends ManagedProcess {
 }
 
 export type TerminalPipeFactory = (
-  shell: string,
+  executable: string,
   args: readonly string[],
   options: TerminalSpawnOptions
 ) => TerminalPipe;
@@ -134,7 +141,7 @@ interface ManagedTerminal {
   outputPaused?: boolean;
   outputBackpressureAttachments?: ReadonlySet<string>;
   deferredCommand?: {
-    readonly shell: string;
+    readonly executable: string;
     readonly args: readonly string[];
     readonly options: TerminalSpawnOptions;
   };
@@ -291,6 +298,15 @@ export class TerminalManager {
     return this.openInternal(input, command);
   }
 
+  /** The copy operation chooses a fixed installed worker, never a caller-supplied executable. */
+  openCopy(copy: TerminalCopy): TerminalSummary {
+    const worker = fileURLToPath(import.meta.resolve('@myagentroam/marctl/src/scp-worker.cjs'));
+    return this.openInternal(
+      {},
+      { executable: process.execPath, args: [worker, JSON.stringify(copy)], copyWorker: true }
+    );
+  }
+
   openComputer(open: (id: string) => TerminalPipe): TerminalSummary {
     return this.openInternal({}, undefined, open);
   }
@@ -309,7 +325,7 @@ export class TerminalManager {
       const pipe =
         terminal.openComputer !== undefined
           ? terminal.openComputer(terminal.id)
-          : this.pipeFactory(deferred!.shell, deferred!.args, deferred!.options);
+          : this.pipeFactory(deferred!.executable, deferred!.args, deferred!.options);
       terminal.pipe = pipe;
       if (terminal.outputPaused) pipe.pause?.();
       pipe.onData((data, stream) => this.recordBinaryOutput(terminal, data, stream));
@@ -322,7 +338,13 @@ export class TerminalManager {
 
   private openInternal(
     input: Parameters<TerminalManager['open']>[0] = {},
-    command?: string,
+    command?:
+      | string
+      | {
+          readonly executable: string;
+          readonly args: readonly string[];
+          readonly copyWorker: true;
+        },
     openComputer?: (id: string) => TerminalPipe
   ): TerminalSummary {
     const profileId = input.profileId ?? this.profiles.find((profile) => profile.isDefault)?.id;
@@ -345,18 +367,23 @@ export class TerminalManager {
       cols,
       rows,
       cwd: typeof input.cwd === 'string' ? input.cwd : this.cwd,
-      env: nodeExecutionEnvironment(input.environment, process.env, { platform: this.platform })
+      env: nodeExecutionEnvironment(input.environment, process.env, { platform: this.platform }),
+      ...(typeof command === 'object' ? { copyWorker: command.copyWorker } : {})
     };
-    const commandArgs =
-      command === undefined
-        ? undefined
-        : this.platform === 'win32'
-          ? profile.shell.toLowerCase().endsWith('cmd.exe')
-            ? ['/D', '/C', command]
-            : ['-NoLogo', '-NoProfile', '-Command', command]
-          : ['-c', command];
+    const commandProcess =
+      typeof command !== 'string'
+        ? command
+        : {
+            executable: profile.shell,
+            args:
+              this.platform === 'win32'
+                ? profile.shell.toLowerCase().endsWith('cmd.exe')
+                  ? ['/D', '/C', command]
+                  : ['-NoLogo', '-NoProfile', '-Command', command]
+                : ['-c', command]
+          };
     const pty =
-      commandArgs === undefined && openComputer === undefined
+      commandProcess === undefined && openComputer === undefined
         ? this.ptyFactory(profile.shell, profile.args, options)
         : undefined;
     const createdAt = this.now();
@@ -369,9 +396,7 @@ export class TerminalManager {
       subscriptions: [],
       usePipe: command !== undefined || openComputer !== undefined,
       ...(openComputer === undefined ? {} : { openComputer }),
-      ...(commandArgs === undefined
-        ? {}
-        : { deferredCommand: { shell: profile.shell, args: commandArgs, options } }),
+      ...(commandProcess === undefined ? {} : { deferredCommand: { ...commandProcess, options } }),
       createdAt,
       state: 'RUNNING',
       updatedAt: createdAt,
@@ -953,11 +978,11 @@ export function repairPtySpawnHelper(
 }
 
 function nodePipeFactory(
-  shell: string,
+  executable: string,
   args: readonly string[],
   options: TerminalSpawnOptions
 ): TerminalPipe {
-  const child = spawnProcess(shell, [...args], {
+  const child = spawnProcess(executable, [...args], {
     cwd: options.cwd,
     env: options.env,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -965,8 +990,12 @@ function nodePipeFactory(
     windowsHide: true
   });
   child.stdin.on('error', () => undefined);
+  const closed = options.copyWorker
+    ? new Promise<void>((resolve) => child.once('close', () => resolve()))
+    : undefined;
   return {
     pid: child.pid,
+    ...(closed === undefined ? {} : { close: () => closeScpWorker(child, closed) }),
     kill: (signal) => child.kill(signal),
     pause: () => {
       child.stdout.pause();

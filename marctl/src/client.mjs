@@ -1,5 +1,6 @@
 import { MarctlError } from './errors.mjs';
 import { createTranslator } from './i18n/index.mjs';
+import { TerminalBrokerClient } from './terminal-broker-client.mjs';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 
@@ -9,19 +10,22 @@ export class MarctlClient {
   #fetch;
   #translate;
   #requestTimeoutMs;
+  #reuseTerminalConnections;
 
   constructor({
     serverUrl,
     key,
     fetchImpl = globalThis.fetch,
     translate = createTranslator(),
-    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    reuseTerminalConnections = false
   }) {
     this.#serverUrl = serverUrl;
     this.#key = key;
     this.#fetch = fetchImpl;
     this.#translate = translate;
     this.#requestTimeoutMs = requestTimeoutMs;
+    this.#reuseTerminalConnections = reuseTerminalConnections;
     if (typeof this.#fetch !== 'function')
       throw new MarctlError(this.#translate('errors.fetchUnavailable'));
   }
@@ -64,17 +68,22 @@ export class MarctlClient {
     return result;
   }
 
-  async createTerminal({ nodeId, rows, cols, command }) {
+  async createTerminal({ nodeId, rows, cols, command, copy }) {
     validateNodeId(nodeId, this.#translate);
     validateDimensions(rows, cols, this.#translate);
     if (command !== undefined && typeof command !== 'string')
       throw new MarctlError(this.#translate('errors.terminalCommandInvalid'));
-    const body = { nodeId, rows, cols };
-    if (command !== undefined) body.command = command;
-    const payload = await this.#requestJson('/api/marctl/terminals', {
-      method: 'POST',
-      body
-    });
+    const payload = await this.#requestJson(
+      copy === undefined ? '/api/marctl/terminals' : '/api/marctl/terminals/copy',
+      {
+        method: 'POST',
+        preserveError: copy !== undefined,
+        body:
+          copy === undefined
+            ? { nodeId, rows, cols, ...(command === undefined ? {} : { command }) }
+            : { nodeId, copy }
+      }
+    );
     if (!isRecord(payload) || !isNonEmptyString(payload.terminalId))
       throw new MarctlError(this.#translate('errors.serverInvalidTerminalId'));
     return payload.terminalId;
@@ -144,7 +153,7 @@ export class MarctlClient {
     });
   }
 
-  openTerminalWebSocket(WebSocketClass, { terminalId, ticket, deferred = false }) {
+  openTerminalWebSocket(WebSocketClass, { nodeId, terminalId, ticket, deferred = false }) {
     validateTerminalId(terminalId, this.#translate);
     if (!isNonEmptyString(ticket))
       throw new MarctlError(this.#translate('errors.terminalTicketInvalid'));
@@ -157,10 +166,18 @@ export class MarctlClient {
     if (deferred) url.searchParams.set('deferred', '1');
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
 
-    try {
-      return new WebSocketClass(url.toString(), {
+    const openSingle = () =>
+      new WebSocketClass(url.toString(), {
         headers: { Authorization: `Bearer ${this.#key}` }
       });
+    try {
+      if (this.#reuseTerminalConnections && nodeId !== undefined)
+        return new TerminalBrokerClient(
+          { serverUrl: this.#serverUrl, key: this.#key, nodeId },
+          { ticket, deferred },
+          openSingle
+        );
+      return openSingle();
     } catch {
       throw new MarctlError(this.#translate('errors.terminalConnectionStart'));
     }

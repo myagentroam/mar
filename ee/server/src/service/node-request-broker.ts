@@ -31,6 +31,7 @@ const BROWSER_WORKSPACE_SAVE_TIMEOUT_MS = 120_000;
 
 // Fixed server-side operations still pass their own resource authorization below.
 const FIXED_SERVER_NODE_OPERATIONS = new Set<string>([
+  'terminal.copy.open',
   'computer.use.open',
   'computer.use.attach',
   'chatgpt.login.start',
@@ -109,6 +110,7 @@ const AUDITED_MANAGEMENT_RELAY_OPERATIONS = new Set<string>([
   'workspace.files.upload.cancel',
   'terminal.open',
   'terminal.command.open',
+  'terminal.copy.open',
   'node.skills.install',
   'node.skills.remove',
   'workspace.skills.install',

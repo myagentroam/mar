@@ -44,7 +44,8 @@ ${configurationHelp}
   commandHelp: Object.freeze({
     computer: `{program} — 使用 Python/PyAutoGUI 操作已授权的 Node 桌面
 
-{program} <node> <output-directory>
+{program} [--no-reuse] <node> <output-directory>
+  --no-reuse       仅本次调用绕过中继连接池。
   所需 Node 使用权与 SSH 相同，且目标 Node 须开启远程 Computer Use。
   输出目录须已存在。从 stdin 每次发送一行 JSON。
   先发 {"code":""}，再从 stdout 读取 observationId 和本地 PNG 路径（images）。
@@ -163,6 +164,7 @@ ${configurationHelp}`,
   [command ...]   交给远端 Shell 的命令；省略时打开交互 Shell。
 
 选项（放在节点前）：
+  --no-reuse       仅本次调用绕过中继连接池，不禁用直连。
   -h, --help       显示帮助后退出。
   -V, --version    显示 CLI 包版本后退出。
 
@@ -195,6 +197,7 @@ ${configurationHelp}`,
 选项：
   -p              保留源文件权限及访问、修改时间。
   -q              不显示进度（默认已不显示）。
+  --no-reuse       仅本次复制绕过中继连接池，须放在首个文件端点前。
   -h, --help       显示帮助后退出，须放在第一个文件端点前。
   -V, --version    显示 CLI 包版本后退出，须放在第一个文件端点前。
   --              后续参数按字面路径处理。
@@ -208,7 +211,7 @@ ${configurationHelp}`,
   已有目标目录自动追加源文件名；目录路径必须已存在。
   已有普通文件默认覆盖，未使用 -p 时保留其权限。
   拒绝源目录、符号链接、接收平台不合法的文件名及最终目标目录；不支持递归 -r、多源及 SSH 连接选项。
-  Server 和 Node 均须支持二进制 Terminal pipe；这不是系统 SCP。
+  请一起更新 CLI、Server 和 Node，以支持结构化复制任务和二进制传输；这不是系统 SCP。
   文件访问遵循 Node 服务账号权限。完整校验后原子发布，失败不替换原文件；
   强制终止可能留下临时文件，传输不自动重试。
 
@@ -297,6 +300,7 @@ ${configurationHelp}`,
     sessionDeliveryRequired: 'send 必须且只能选择 --steer 或 --queue，即使目标空闲也需指定。',
     sshOptionsUnsupported: '不支持 SSH 选项，请使用 marssh <节点>。',
     scpOptionsUnsupported: 'Node Terminal 传输不支持此 SCP 选项。',
+    scpOpenInvalid: '复制参数无效。',
     terminalBinaryUnavailable: '二进制复制需要支持 pipe 终端的 Server 与 Node。',
     commandFailed: '命令执行失败。'
   })

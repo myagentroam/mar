@@ -18,13 +18,16 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { resolveNodeId } from '../../src/cli.mjs';
 import { runScp } from '../../src/scp.mjs';
 import { parseScpEndpoint, scpSourceBasename } from '../../src/scp-endpoint.mjs';
 import { createTranslator } from '../../src/i18n/index.mjs';
 
 const translate = createTranslator();
+const workerPath = fileURLToPath(new URL('../../src/scp-worker.cjs', import.meta.url));
 
 function fakeNodeClient({
   corrupt = false,
@@ -62,16 +65,9 @@ function fakeNodeClient({
 
     start() {
       started += 1;
-      const child = spawn(
-        process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : '/bin/sh',
-        process.platform === 'win32'
-          ? ['/d', '/s', '/c', `"${this.terminal.command}"`]
-          : ['-c', this.terminal.command],
-        {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          windowsVerbatimArguments: process.platform === 'win32'
-        }
-      );
+      const child = spawn(process.execPath, [workerPath, JSON.stringify(this.terminal.copy)], {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
       this.terminal.child = child;
       child.stdin.on('error', () => {});
       child.stderr.resume();
@@ -112,7 +108,11 @@ function fakeNodeClient({
       const frame = decodeTerminalMessage(text);
       if (frame.type === 'input') {
         assert.ok(Buffer.from(frame.data).length <= 32 * 1024);
-        const write = () => this.terminal.child.stdin.write(Buffer.from(frame.data), callback);
+        // A WebSocket write confirms transport acceptance, not a later worker stdin write.
+        const write = () => {
+          this.terminal.child.stdin.write(Buffer.from(frame.data));
+          callback?.();
+        };
         if (onInput) onInput(frame, write, this);
         else write();
       } else callback?.();
@@ -141,7 +141,8 @@ function fakeNodeClient({
     async createTerminal(input) {
       const id = `terminal-${++counter}`;
       createdNodes.push(input.nodeId);
-      terminals.set(id, { id, command: input.command });
+      assert.equal(input.command, undefined);
+      terminals.set(id, { id, copy: input.copy });
       onCreate?.();
       return id;
     },
@@ -392,12 +393,17 @@ test('rejects source filenames that cannot be a Windows destination leaf', async
       [
         '-e',
         script,
-        'write',
-        Buffer.from(path.resolve('target')).toString('base64url'),
-        '0',
-        Buffer.alloc(20).toString('base64url'),
-        '0',
-        Buffer.from(filename).toString('base64url')
+        workerPath,
+        JSON.stringify({
+          mode: 'write',
+          path: path.resolve('target'),
+          size: 0,
+          sourceMode: 0,
+          atimeMs: 0,
+          mtimeMs: 0,
+          preserve: false,
+          sourceBasename: filename
+        })
       ],
       { stdio: ['pipe', 'pipe', 'pipe'] }
     );
@@ -501,6 +507,58 @@ test('refuses a symlink source and rejects an invalid binary output', async () =
   }
 });
 
+test(
+  'cleans the local destination temporary file when a download is cancelled',
+  { timeout: 5000 },
+  async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-local-cancel-'));
+    const source = path.join(dir, 'source');
+    const target = path.join(dir, 'target');
+    const controller = new AbortController();
+    let copying;
+    let delivered = 0;
+    try {
+      const client = fakeNodeClient({
+        onOutput(bytes, deliver) {
+          // Send file size and metadata, but not the complete payload or its checksum.
+          if (delivered >= 28) return;
+          delivered += bytes.length;
+          deliver();
+        }
+      });
+      await writeFile(source, Buffer.alloc(1024 * 1024, 42));
+      await writeFile(target, 'original');
+      copying = assert.rejects(
+        runScp({
+          source: `linux://${source}`,
+          destination: target,
+          client,
+          WebSocketClass: class {},
+          resolveNodeId: async (host) => host,
+          translate,
+          signal: controller.signal
+        }),
+        /interrupted/
+      );
+      const deadline = Date.now() + 2000;
+      while ((await readdir(dir)).length === 2 && Date.now() < deadline) await delay(10);
+      assert.equal(
+        (await readdir(dir)).length,
+        3,
+        'destination worker has opened its temporary file'
+      );
+      controller.abort('SIGINT');
+      await copying;
+      assert.deepEqual((await readdir(dir)).sort(), ['source', 'target']);
+      assert.equal(await readFile(target, 'utf8'), 'original');
+    } finally {
+      controller.abort('SIGINT');
+      await copying?.catch(() => {});
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+);
+
 test('copies an empty file and never follows or replaces an existing destination symlink', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'marctl-scp-empty-'));
   try {
@@ -539,7 +597,7 @@ test('reads a Windows file when path stat omits its device ID', async () => {
     `;
     const child = spawn(
       process.execPath,
-      ['-e', script, 'read', Buffer.from(source).toString('base64url')],
+      ['-e', script, workerPath, JSON.stringify({ mode: 'read', path: source })],
       {
         stdio: ['pipe', 'pipe', 'pipe']
       }
@@ -831,12 +889,12 @@ for (const side of ['source', 'target']) {
         });
         const client = fakeNodeClient({
           onOutput(bytes, deliver, socket) {
-            sockets.set(socket.terminal.command.includes('" read ') ? 'source' : 'target', socket);
+            sockets.set(socket.terminal.copy.mode === 'read' ? 'source' : 'target', socket);
             deliver();
           },
           onInput(frame, write, socket) {
             const bytes = Buffer.from(frame.data);
-            const isSource = socket.terminal.command.includes('" read ');
+            const isSource = socket.terminal.copy.mode === 'read';
             if (
               !releaseWrite &&
               ((side === 'source' && !isSource && bytes.length > 1024) ||
@@ -974,7 +1032,7 @@ for (const direction of ['upload', 'download', 'Node-to-Node']) {
       });
       const client = fakeNodeClient({
         onInput(frame, write, socket) {
-          if (socket.terminal.command.includes('" write ')) {
+          if (socket.terminal.copy.mode === 'write') {
             pending = Buffer.concat([pending, Buffer.from(frame.data)]);
             while (pending.length >= 4) {
               const length = pending.readUInt32BE();
@@ -988,7 +1046,7 @@ for (const direction of ['upload', 'download', 'Node-to-Node']) {
           else write();
         },
         onOutput(bytes, deliver, socket) {
-          if (socket.terminal.command.includes('" write ')) {
+          if (socket.terminal.copy.mode === 'write') {
             if (!targetReady) {
               targetReady = true;
               deliver();
@@ -1091,12 +1149,12 @@ for (const side of ['target', 'source']) {
       let targetReady = false;
       const client = fakeNodeClient({
         onInput(frame, write, socket) {
-          if (side === 'source' && socket.terminal.command.includes('" read '))
+          if (side === 'source' && socket.terminal.copy.mode === 'read')
             frame.data = Buffer.alloc(Buffer.from(frame.data).length);
           write();
         },
         onOutput(bytes, deliver, socket) {
-          if (side === 'source' || !socket.terminal.command.includes('" write ')) return deliver();
+          if (side === 'source' || socket.terminal.copy.mode !== 'write') return deliver();
           if (!targetReady) {
             targetReady = true;
             return deliver();

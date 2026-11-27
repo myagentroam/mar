@@ -1,17 +1,24 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
+import { EventEmitter, once } from 'node:events';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import test from 'node:test';
+import { WebSocketServer } from 'ws';
 import {
+  decodeTerminalMux,
   decodeTerminalMessage,
   encodeByteFrame,
-  encodeTerminalMessage
+  encodeTerminalMessage,
+  encodeTerminalMux,
+  TERMINAL_MUX
 } from '@myagentroam/protocol/byte-frame';
 import { runComputer } from '../../src/computer.mjs';
 import { main } from '../../src/cli.mjs';
+import { MarctlClient } from '../../src/client.mjs';
+import { startTerminalBroker } from '../../src/terminal-broker.mjs';
 
 const terminalId = 'desktop';
 
@@ -48,6 +55,12 @@ async function fixture(t, onInput, args = {}) {
     for (const data of [packet.subarray(0, 2), packet.subarray(2)])
       emit({ type: 'output', sequence: ++sequence, data });
   };
+  const openWebSocket = args.mux
+    ? await pooledSocket(t, socket, emit)
+    : () => {
+        queueMicrotask(() => emit({ type: 'attach', afterSequence: 0 }));
+        return socket;
+      };
   const options = {
     client: {
       async listNodes() {
@@ -56,10 +69,7 @@ async function fixture(t, onInput, args = {}) {
       async openComputer() {
         return { terminalId, ticket: 'ticket' };
       },
-      openTerminalWebSocket() {
-        queueMicrotask(() => emit({ type: 'attach', afterSequence: 0 }));
-        return socket;
-      },
+      openTerminalWebSocket: openWebSocket,
       async deleteTerminal(args) {
         deletions.push(args);
       }
@@ -104,34 +114,84 @@ async function fixture(t, onInput, args = {}) {
   };
 }
 
-test('computer writes the binary PNG to disk and only its path to stdout', async (t) => {
+async function pooledSocket(t, desktop, emit) {
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await once(server, 'listening');
+  t.after(async () => {
+    for (const client of server.clients) client.terminate();
+    await new Promise((resolve) => server.close(resolve));
+  });
+  const config = {
+    serverUrl: `http://127.0.0.1:${server.address().port}`,
+    nodeId: 'linux',
+    key: randomUUID()
+  };
+  const broker = await startTerminalBroker(config);
+  t.after(() => broker.close());
+  server.on('connection', (wire) => {
+    wire.send(encodeTerminalMux(TERMINAL_MUX.ready, 0));
+    wire.on('message', (bytes, binary) => {
+      assert.equal(binary, true);
+      const { type, stream, payload } = decodeTerminalMux(bytes);
+      if (type === TERMINAL_MUX.open) {
+        desktop.on('message', (frame) =>
+          wire.send(encodeTerminalMux(TERMINAL_MUX.data, stream, frame))
+        );
+        emit({ type: 'attach', afterSequence: 0 });
+      } else if (type === TERMINAL_MUX.data) desktop.send(payload);
+    });
+  });
+  const client = new MarctlClient({ ...config, reuseTerminalConnections: true });
+  class UnexpectedSingleConnection {
+    constructor() {
+      throw Error('Expected a pooled connection');
+    }
+  }
+  return (_WebSocket, attachment) =>
+    client.openTerminalWebSocket(UnexpectedSingleConnection, attachment);
+}
+
+test(
+  'computer sends a script through the pooled relay and writes only the raw PNG path to stdout',
+  { timeout: 8_000 },
+  (t) => assertPngResult(t, { mux: true, code: 'log("ready")' })
+);
+
+test('computer saves the result of an observation on a single-stream relay', (t) =>
+  assertPngResult(t, { mux: false, code: '' }));
+
+async function assertPngResult(t, { mux, code }) {
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPp8AAAAASUVORK5CYII=',
     'base64'
   );
-  const f = await fixture(t, (reply) => {
-    const report = Buffer.from('{"logs":["ready"]}');
-    reply({
-      type: 'result',
-      status: 'COMPLETED',
-      outcome: 'SUCCEEDED',
-      observationId: 'observed',
-      reportBytes: report.length,
-      imageCount: 1
-    });
-    reply({ type: 'report' }, report);
-    reply({ type: 'image', index: 0, size: png.length });
-    reply({ type: 'png' }, png);
-    reply({ type: 'complete' });
-  });
+  const f = await fixture(
+    t,
+    (reply) => {
+      const report = Buffer.from('{"logs":["ready"]}');
+      reply({
+        type: 'result',
+        status: 'COMPLETED',
+        outcome: 'SUCCEEDED',
+        observationId: 'observed',
+        reportBytes: report.length,
+        imageCount: 1
+      });
+      reply({ type: 'report' }, report);
+      reply({ type: 'image', index: 0, size: png.length });
+      reply({ type: 'png' }, png);
+      reply({ type: 'complete' });
+    },
+    { mux, input: `${JSON.stringify({ code })}\n` }
+  );
   assert.equal(await f.run, 0);
   const result = JSON.parse(f.output());
   assert.equal(result.observationId, 'observed');
   assert.deepEqual(result.logs, ['ready']);
   assert.equal(result.images.length, 1);
   assert.deepEqual(await readFile(result.images[0]), png);
-  assert.deepEqual(f.requests, [{ code: '' }]);
-});
+  assert.deepEqual(f.requests, [{ code }]);
+}
 
 test('computer reports a definitive request failure and publishes no success', async (t) => {
   const f = await fixture(t, (reply) =>

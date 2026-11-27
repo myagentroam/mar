@@ -17,7 +17,7 @@ export async function openRelayTransport({
 }) {
   const ticket = grantedTicket ?? (await client.createAttachTicket({ nodeId, terminalId }));
   if (signal?.aborted) throw new DirectFallbackError('DIRECT_RACE_CANCELLED');
-  const socket = client.openTerminalWebSocket(WebSocketClass, { terminalId, ticket });
+  const socket = client.openTerminalWebSocket(WebSocketClass, { nodeId, terminalId, ticket });
   const transport = new BufferedRelayTransport({
     socket,
     terminalId,
@@ -47,6 +47,7 @@ export async function prepareRelayTransport({
   if (onPrepared) await onPrepared();
   if (signal?.aborted) throw new MarctlError(translate('errors.terminalAttachConnection'));
   const socket = client.openTerminalWebSocket(WebSocketClass, {
+    nodeId,
     terminalId,
     ticket,
     deferred: true

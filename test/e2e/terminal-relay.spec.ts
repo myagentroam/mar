@@ -73,6 +73,10 @@ test('marctl executes and copies through isolated Server and Node, with real dir
         publicOrigin: origin
       })
     ).app;
+    let muxConnections = 0;
+    app.server.on('upgrade', (request) => {
+      if (request.url?.startsWith('/api/marctl/terminal-mux?')) muxConnections++;
+    });
     await app.listen({ host: '127.0.0.1', port: address.port });
     const admin = await adminHeaders(app);
     const registration = await app.inject({
@@ -128,9 +132,10 @@ test('marctl executes and copies through isolated Server and Node, with real dir
     const product = process.cwd();
     const entry = (file: string) => pathToFileURL(join(product, 'marctl', file)).href;
     const resultPath = join(directory, 'result.json');
-    const source = join(directory, 'source.bin');
-    const remote = join(directory, 'remote.bin');
+    const source = join(directory, "source 'quoted' 字节.bin");
+    const remote = join(directory, "remote 'quoted' 字节.bin");
     const copied = join(directory, 'copied.bin');
+    const copiedWithoutPool = join(directory, 'copied-without-pool.bin');
     const starts = join(directory, 'starts.txt');
     const bytes = Buffer.from(Array.from({ length: 65536 }, (_, index) => index % 256));
     await writeFile(source, bytes);
@@ -158,13 +163,14 @@ test('marctl executes and copies through isolated Server and Node, with real dir
         result.cli = (await run(cli, [node, ${JSON.stringify(`printf x >> ${JSON.stringify(starts)}; printf cli-ok`)}])).stdout;
         await run(scp, [${JSON.stringify(source)}, node + '://' + ${JSON.stringify(remote)}]);
         await run(scp, [node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copied)}]);
-        const client = new MarctlClient({ serverUrl: process.env.MAR_CTL_SERVER_URL, key: process.env.MAR_CTL_USER_TOKEN });
+        await run(scp, ['--no-reuse', node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copiedWithoutPool)}]);
+        const client = new MarctlClient({ serverUrl: process.env.MAR_CTL_SERVER_URL, key: process.env.MAR_CTL_USER_TOKEN, reuseTerminalConnections: true });
         try { await client.openComputer(node); }
         catch (error) { result.computer = error.code; }
-        for (const mode of ['relay', 'direct']) {
+        for (const mode of ['relay', 'relayAgain', 'direct']) {
           let output = '';
           const stdout = new Writable({ write(chunk, _encoding, done) { output += chunk.toString(); done(); } });
-          const open = mode === 'relay' ? async () => { throw new DirectFallbackError('TEST_RELAY'); } : async (options) => {
+          const open = mode !== 'direct' ? async () => { throw new DirectFallbackError('TEST_RELAY'); } : async (options) => {
             try { return await openDirectTerminal(options); }
             catch (error) { throw new Error('DIRECT_REQUIRED:' + error.code); }
           };
@@ -199,10 +205,13 @@ test('marctl executes and copies through isolated Server and Node, with real dir
       cli: 'cli-ok',
       computer: 'COMPUTER_REMOTE_DISABLED',
       relay: { code: 0, output: 'relay' },
+      relayAgain: { code: 0, output: 'relayAgain' },
       direct: { code: 0, output: 'direct' }
     });
+    expect(muxConnections).toBe(1);
     expect(await readFile(starts, 'utf8')).toBe('x');
     expect(await readFile(copied)).toEqual(bytes);
+    expect(await readFile(copiedWithoutPool)).toEqual(bytes);
     expect(await readFile(remote)).toEqual(bytes);
   } finally {
     socket?.close();

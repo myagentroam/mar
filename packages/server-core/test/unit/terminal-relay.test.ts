@@ -1,10 +1,210 @@
 import type { WebSocket } from 'ws';
-import type { TerminalDataFrame } from '@myagentroam/protocol';
+import {
+  decodeTerminalMux,
+  encodeByteFrame,
+  encodeTerminalMux,
+  TERMINAL_MUX,
+  type TerminalDataFrame
+} from '@myagentroam/protocol';
+import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import { TerminalRelayService } from '../../src/terminal-relay-service.js';
 import { TerminalRelaySocket as RelaySocket } from './support/relay-socket.js';
 
 describe('public Terminal relay', () => {
+  it('isolates logical streams on a CLI relay and terminates the pooled connection on logout', async () => {
+    const requestNode = vi.fn(async (_nodeId: string, _operation: string, data: unknown) => {
+      const { terminalId } = data as { terminalId: string };
+      return { attachment: { attachmentId: terminalId, terminalId } };
+    });
+    const user = { userId: 1, sessionHash: 'active-login' };
+    const authorize = vi.fn(async () => user);
+    const relay = new TerminalRelayService({
+      database: { authenticateNode: async () => ({ id: 'node-1', disabled: false }) },
+      authorizeNodeRequest: async () => true,
+      requestNode
+    });
+    const node = new RelaySocket();
+    const wire = new MuxSocket();
+    const makeTicket = (terminalId: string, nodeId = 'node-1') =>
+      relay.createTicket({ nodeId, terminalId, user, cli: true }).ticket;
+    try {
+      relay.attachNode(node as unknown as WebSocket);
+      node.receive({ type: 'authenticate', nodeId: 'node-1', credential: 'fixture' });
+      await vi.waitFor(() => expect(node.sent[0]?.type).toBe('authenticated'));
+      const ssh = makeTicket('ssh');
+      const computer = relay.createTicket({
+        nodeId: 'node-1',
+        terminalId: 'computer',
+        user,
+        computer: true,
+        cli: true
+      }).ticket;
+      relay.attachCliMux(
+        wire as unknown as WebSocket,
+        'node-1',
+        user,
+        Date.now() + 60_000,
+        authorize
+      );
+      wire.openStream(1, ssh);
+      wire.openStream(2, makeTicket('wrong-node', 'node-2'));
+      wire.openStream(3, computer);
+      const browserTicket = relay.createTicket({
+        nodeId: 'node-1',
+        terminalId: 'browser',
+        user,
+        readonly: true
+      }).ticket;
+      wire.openStream(4, browserTicket);
+      await vi.waitFor(() => expect(requestNode).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() =>
+        expect(node.sent.filter((frame) => frame.type === 'attach')).toHaveLength(2)
+      );
+      expect(relay.countSession(user.sessionHash)).toBe(2);
+      expect(authorize).toHaveBeenCalledTimes(4);
+      expect(requestNode.mock.calls.map(([, operation]) => operation)).toEqual([
+        'terminal.attach.authorize',
+        'computer.use.attach'
+      ]);
+      expect(wire.send.mock.results.map(({ value }) => [value.type, value.stream])).toEqual([
+        [TERMINAL_MUX.ready, 0],
+        [TERMINAL_MUX.close, 2],
+        [TERMINAL_MUX.close, 4]
+      ]);
+
+      const cancelledAuthorization = Promise.withResolvers<typeof user>();
+      authorize.mockImplementationOnce(() => cancelledAuthorization.promise);
+      wire.openStream(5, makeTicket('cancelled'));
+      wire.emit('message', Buffer.from(encodeTerminalMux(TERMINAL_MUX.close, 5)), true);
+      cancelledAuthorization.reject(new Error('USER_AUTHORIZATION_UNAVAILABLE'));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(wire.readyState).toBe(1);
+      expect(relay.countSession(user.sessionHash)).toBe(2);
+
+      wire.emit('message', Buffer.from(encodeTerminalMux(TERMINAL_MUX.close, 1)), true);
+      expect(node.sent).toContainEqual({ type: 'close', ticket: ssh });
+      expect(relay.countSession(user.sessionHash)).toBe(1);
+      expect(wire.readyState).toBe(1);
+      relay.closeSession(user.sessionHash);
+      expect(node.sent).toContainEqual({ type: 'close', ticket: computer });
+      expect(wire.readyState).toBe(3);
+    } finally {
+      relay.close();
+    }
+  });
+
+  it('counts in-flight attachments and closes the remote terminal if a mux stream is cancelled during authorization', async () => {
+    const user = { userId: 1, sessionHash: 'active-login' };
+    const nodeId = 'node-1';
+    const attachment = Promise.withResolvers<void>();
+    const requestNode = vi.fn(async (_nodeId: string, operation: string, data: unknown) => {
+      if (operation !== 'terminal.attach.authorize') return {};
+      const { terminalId } = data as { terminalId: string };
+      await attachment.promise;
+      return { attachment: { attachmentId: terminalId, terminalId } };
+    });
+    const relay = new TerminalRelayService({
+      database: { authenticateNode: async () => ({ id: nodeId, disabled: false }) },
+      authorizeNodeRequest: async () => true,
+      requestNode
+    });
+    const node = new RelaySocket();
+    const first = new MuxSocket();
+    const second = new MuxSocket();
+    try {
+      relay.attachNode(node as unknown as WebSocket);
+      node.receive({ type: 'authenticate', nodeId, credential: 'fixture' });
+      await vi.waitFor(() => expect(node.sent[0]?.type).toBe('authenticated'));
+      for (const wire of [first, second])
+        relay.attachCliMux(
+          wire as unknown as WebSocket,
+          nodeId,
+          user,
+          Date.now() + 60_000,
+          async () => user
+        );
+      const makeTicket = (terminalId: string) =>
+        relay.createTicket({ nodeId, terminalId, user, cli: true }).ticket;
+      first.openStream(1, makeTicket('cancelled-shell'));
+      for (let n = 1; n <= 10; n++) second.openStream(n, makeTicket(`shell-${n}`));
+      await vi.waitFor(() =>
+        expect(second.send.mock.results[1]?.value).toMatchObject({
+          type: TERMINAL_MUX.close,
+          stream: 10
+        })
+      );
+      expect(requestNode).toHaveBeenCalledTimes(10);
+      expect(relay.countSession(user.sessionHash)).toBe(10);
+      first.emit('message', Buffer.from(encodeTerminalMux(TERMINAL_MUX.close, 1)), true);
+      attachment.resolve();
+      await vi.waitFor(() =>
+        expect(requestNode).toHaveBeenCalledWith(
+          nodeId,
+          'terminal.close',
+          { terminalId: 'cancelled-shell' },
+          user
+        )
+      );
+      expect(node.sent.filter((frame) => frame.type === 'attach')).toHaveLength(9);
+      expect(relay.countSession(user.sessionHash)).toBe(9);
+    } finally {
+      attachment.resolve();
+      relay.close();
+    }
+  });
+
+  it('closes an attached desktop on credential expiry without waiting for the physical close handshake', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const user = { userId: 1, sessionHash: 'expiring-login' };
+    const nodeId = 'node-1';
+    const relay = new TerminalRelayService({
+      database: { authenticateNode: async () => ({ id: nodeId, disabled: false }) },
+      authorizeNodeRequest: async () => true,
+      requestNode: async () => ({
+        attachment: { attachmentId: 'desktop-attachment', terminalId: 'desktop' }
+      })
+    });
+    const node = new RelaySocket();
+    // A peer need not acknowledge a WebSocket close promptly.
+    const wire = new (class extends MuxSocket {
+      override close() {
+        this.readyState = 2;
+      }
+    })();
+    try {
+      relay.attachNode(node as unknown as WebSocket);
+      node.receive({ type: 'authenticate', nodeId, credential: 'fixture' });
+      await vi.waitFor(() => expect(node.sent[0]?.type).toBe('authenticated'));
+      const { ticket } = relay.createTicket({
+        nodeId,
+        terminalId: 'desktop',
+        user,
+        computer: true,
+        cli: true
+      });
+      relay.attachCliMux(
+        wire as unknown as WebSocket,
+        nodeId,
+        user,
+        Date.now() + 60_000,
+        async () => user
+      );
+      wire.openStream(1, ticket);
+      await vi.waitFor(() => expect(node.sent.some((frame) => frame.type === 'attach')).toBe(true));
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(wire.readyState).toBe(2);
+      expect([...node.sent]).toContainEqual({ type: 'close', ticket });
+      expect(relay.countSession(user.sessionHash)).toBe(0);
+    } finally {
+      wire.emit('close');
+      relay.close();
+      vi.useRealTimers();
+    }
+  });
+
   it.each(['login', 'node access'])(
     'binds a computer ticket to its user and closes the desktop on %s revocation',
     async (revocation) => {
@@ -243,7 +443,7 @@ describe('public Terminal relay', () => {
     }
   });
 
-  it('supports an explicit deferred attach without consuming the ticket before activation', async () => {
+  it('reserves a deferred ticket for its original attachment until activation', async () => {
     const requestNode = vi.fn(async () => ({
       attachment: {
         attachmentId: 'attachment-1',
@@ -276,6 +476,11 @@ describe('public Terminal relay', () => {
       expect(browser.sent).toEqual([{ type: 'ready', terminalId: 'terminal-1' }]);
       expect(requestNode).not.toHaveBeenCalled();
 
+      const duplicate = new RelaySocket();
+      relay.attachBrowser(duplicate as unknown as WebSocket, ticket.ticket, user);
+      expect(duplicate.close).toHaveBeenCalledWith(4008, 'TERMINAL_TICKET_INVALID');
+      expect(requestNode).not.toHaveBeenCalled();
+
       browser.receive({ type: 'activate', terminalId: 'terminal-1' });
       await vi.waitFor(() =>
         expect(requestNode).toHaveBeenCalledWith(
@@ -292,6 +497,7 @@ describe('public Terminal relay', () => {
           terminalId: 'terminal-1'
         })
       );
+      expect(requestNode).toHaveBeenCalledTimes(1);
     } finally {
       relay.close();
     }
@@ -692,6 +898,29 @@ describe('public Terminal relay', () => {
     }
   });
 });
+
+class MuxSocket extends EventEmitter {
+  readonly OPEN = 1;
+  readyState = this.OPEN;
+  bufferedAmount = 0;
+  send = vi.fn((data: Uint8Array) => decodeTerminalMux(data));
+
+  close() {
+    if (this.readyState !== this.OPEN) return;
+    this.readyState = 3;
+    this.emit('close');
+  }
+
+  openStream(stream: number, ticket: string) {
+    this.emit(
+      'message',
+      Buffer.from(
+        encodeTerminalMux(TERMINAL_MUX.open, stream, encodeByteFrame({ ticket, deferred: false }))
+      ),
+      true
+    );
+  }
+}
 
 async function frameFixture(frames: readonly TerminalDataFrame[]) {
   const relay = new TerminalRelayService({

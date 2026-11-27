@@ -1,3 +1,5 @@
+import { isAbsolute } from 'node:path';
+import { terminalCopySchema } from '@myagentroam/protocol';
 import type { NodeDatabase } from '../database.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type { TerminalManager } from '../terminal.js';
@@ -51,6 +53,7 @@ export class TerminalService {
     return {
       'terminal.open': (data) => this.open(data),
       'terminal.command.open': (data) => this.open(data, true),
+      'terminal.copy.open': (data) => this.openCopy(data),
       'terminal.list': (data) => ({
         terminals: this.database()
           .listTerminalSessions()
@@ -66,6 +69,18 @@ export class TerminalService {
       'computer.use.attach': (data) => this.authorizeAttach(data, true),
       'terminal.direct.preflight': (data) => this.preflightDirect(data)
     };
+  }
+
+  private openCopy(data: unknown): unknown {
+    if (data === null || typeof data !== 'object') throw new Error('SCP_OPEN_INVALID');
+    const { __requestUserId: userId, copy } = data as Record<string, unknown>;
+    if (typeof userId !== 'number' || !Number.isSafeInteger(userId) || userId <= 0)
+      throw new Error('USER_AUTHORIZATION_REQUIRED');
+    const parsed = terminalCopySchema.safeParse(copy);
+    if (!parsed.success || !isAbsolute(parsed.data.path)) throw new Error('SCP_OPEN_INVALID');
+    const terminal = this.terminalManager.openCopy(parsed.data);
+    this.terminalOwners.set(terminal.id, { userId, release: () => undefined, kind: 'COMMAND' });
+    return { terminal };
   }
 
   private open(data: unknown, commandMode = false): unknown {

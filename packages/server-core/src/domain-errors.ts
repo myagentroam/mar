@@ -14,6 +14,7 @@ export function domainErrorStatus(code: string): number {
   if (code === 'SESSION_SHARE_ACCESS_INVALID' || code === 'NODE_NOT_AUTHORIZED') return 403;
   if (code === 'TERMINAL_GIT_OWNER_REQUIRED' || code === 'TERMINAL_OWNER_REQUIRED') return 403;
   if (code === 'COMPUTER_REMOTE_DISABLED') return 403;
+  if (code === 'SCP_OPEN_INVALID') return 400;
   return code === 'SESSION_NOT_FOUND' ||
     code === 'WORKSPACE_NOT_FOUND' ||
     code === 'RUN_NOT_FOUND' ||

@@ -12,6 +12,7 @@ export async function runTerminalSession({
   WebSocketClass,
   nodeId,
   command,
+  copy,
   attached,
   stdin = process.stdin,
   stdout = process.stdout,
@@ -34,7 +35,8 @@ export async function runTerminalSession({
     terminalId = await client.createTerminal({
       nodeId,
       ...dimensions,
-      ...(command === undefined ? {} : { command })
+      ...(command === undefined ? {} : { command }),
+      ...(copy === undefined ? {} : { copy })
     });
     if (signal?.aborted) return signal.reason === 'SIGTERM' ? 143 : 130;
     try {

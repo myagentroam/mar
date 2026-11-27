@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
@@ -982,6 +982,33 @@ describe('Node Admin Terminal', () => {
     }
   });
 
+  it('removes a pending SCP destination temporary file when its terminal closes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mar-terminal-copy-cancel-'));
+    const destination = join(dir, 'destination');
+    const manager = new TerminalManager({});
+    try {
+      await writeFile(destination, 'original');
+      const terminal = manager.openCopy({
+        mode: 'write',
+        path: destination,
+        size: 5,
+        sourceMode: 0o600,
+        atimeMs: 0,
+        mtimeMs: 0,
+        preserve: false,
+        sourceBasename: 'source'
+      });
+      manager.startCommand(terminal.id);
+      await vi.waitFor(async () => expect(await readdir(dir)).toHaveLength(2));
+      await manager.close(terminal.id);
+      expect(await readdir(dir)).toEqual(['destination']);
+      expect(await readFile(destination, 'utf8')).toBe('original');
+    } finally {
+      await manager.shutdown();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it.runIf(process.platform === 'linux')(
     'copies through CLI, real Server relay and Node pipe channels while source operations remain responsive',
     async () => {
@@ -1069,8 +1096,10 @@ describe('Node Admin Terminal', () => {
         });
         const client = {
           getTerminalManifest: async () => ({}),
-          createTerminal: async (input: { nodeId: string; command: string }) =>
-            nodes.get(input.nodeId)!.manager.openCommand({}, input.command).id,
+          createTerminal: async (input: {
+            nodeId: string;
+            copy: Parameters<TerminalManager['openCopy']>[0];
+          }) => nodes.get(input.nodeId)!.manager.openCopy(input.copy).id,
           createAttachTicket: async (input: { nodeId: string; terminalId: string }) =>
             relay.createTicket({ ...input, user }).ticket,
           openTerminalWebSocket: (_Socket: unknown, input: { ticket: string }) => {

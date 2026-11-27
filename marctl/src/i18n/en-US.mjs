@@ -45,7 +45,8 @@ Notes:
   commandHelp: Object.freeze({
     computer: `{program} — Operate an authorized Node desktop with Python/PyAutoGUI
 
-{program} <node> <output-directory>
+{program} [--no-reuse] <node> <output-directory>
+  --no-reuse       Bypass the relay pool for this invocation only.
   Requires the same Node access as SSH and remote Computer Use enabled on the Node.
   Use an existing output directory. Send one JSON line at a time on stdin.
   Start with {"code":""}; read observationId and local PNG paths (images) from stdout.
@@ -172,6 +173,7 @@ Arguments:
   [command ...]   A command for the remote shell; omit it for an interactive shell.
 
 Options (before <node>):
+  --no-reuse       Bypass the relay pool for this invocation; keep direct connections enabled.
   -h, --help       Show help and exit.
   -V, --version    Print the CLI package version and exit.
 
@@ -206,6 +208,7 @@ Arguments:
 Options:
   -p              Preserve source permissions and access/modification times.
   -q              Suppress progress output (already the default).
+  --no-reuse       Bypass the relay pool for this copy; place before the first endpoint.
   -h, --help       Show help and exit; place before the first endpoint.
   -V, --version    Print the CLI package version and exit; place before the first endpoint.
   --              Treat remaining arguments as literal paths.
@@ -220,7 +223,8 @@ Notes:
   Existing regular files are overwritten, retaining their permissions unless -p is used.
   Directory sources, symlinks, invalid destination filenames, and directory final targets
   are rejected. Recursive -r, multiple sources, and SSH connection options are unsupported.
-  Both Server and Node must support binary Terminal pipes; this is not system SCP.
+  Upgrade this CLI, Server and Node together for structured copy tasks and binary transfer.
+  This is not system SCP.
   File access uses the Node service account's permissions. Checksums are verified before
   atomic publication; failed transfers leave the original unchanged. Forced termination
   may leave a temporary file. Transfers are not retried.
@@ -317,6 +321,7 @@ No configuration, authorization, or Server connection is required.`
     sessionDeliveryRequired: 'Send requires exactly one of --steer or --queue, even when idle.',
     sshOptionsUnsupported: 'SSH options are not supported; use marssh <host>.',
     scpOptionsUnsupported: 'This SCP option is not supported by the Node Terminal transport.',
+    scpOpenInvalid: 'Invalid copy parameters.',
     commandFailed: 'The command failed.'
   })
 });

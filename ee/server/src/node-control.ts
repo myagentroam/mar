@@ -334,6 +334,7 @@ export class NodeControl extends NodeIdentityControl {
     readonly afterSequence?: unknown;
     readonly readonly?: unknown;
     readonly computer?: boolean;
+    readonly cli?: boolean;
   }): {
     readonly ticket: string;
     readonly nodeId: string;
@@ -350,6 +351,10 @@ export class NodeControl extends NodeIdentityControl {
     user: UserNodeAuthorization
   ): void {
     this.terminalRelay.attachBrowser(socket, ticketValue, user);
+  }
+
+  attachCliMux(...args: Parameters<TerminalRelayService['attachCliMux']>): void {
+    this.terminalRelay.attachCliMux(...args);
   }
 
   attachNodeDesktopRelay(socket: WebSocket): void {

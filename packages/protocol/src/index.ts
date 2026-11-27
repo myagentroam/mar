@@ -25,6 +25,7 @@ export * from './mcp.js';
 export * from './git-identity.js';
 export * from './direct-transfer.js';
 export * from './terminal-direct.js';
+export * from './terminal-copy.js';
 export * from './byte-frame.js';
 export * from './remote-desktop.js';
 export * from './browser-frame.js';
