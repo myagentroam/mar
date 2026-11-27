@@ -23,8 +23,8 @@ export interface CollaborationGraph extends GraphSize {
 }
 
 export const collaborationNodeSize = { width: 156, height: 46 };
-export const MIN_COLLABORATION_SCALE = 0.8;
-export const MAX_COLLABORATION_SCALE = 1.75;
+export const MIN_COLLABORATION_SCALE = 0.1;
+export const MAX_COLLABORATION_SCALE = 1;
 const col = 180;
 const row = 112;
 const halfHeight = collaborationNodeSize.height / 2;
@@ -201,7 +201,11 @@ export function focusCollaborationGraph(
     scale ??
     Math.max(
       MIN_COLLABORATION_SCALE,
-      Math.min(1, (port.width - 24) / graph.width, (port.height - 24) / graph.height)
+      Math.min(
+        MAX_COLLABORATION_SCALE,
+        (port.width - 24) / graph.width,
+        (port.height - 24) / graph.height
+      )
     );
   const center = (anchor === undefined ? undefined : graph.nodes.get(anchor)) ?? {
     x: graph.width / 2,
@@ -219,7 +223,8 @@ export function zoomCollaborationGraph(
   port: GraphSize,
   camera: GraphCamera,
   origin: GraphPoint,
-  factor: number
+  factor: number,
+  destination = origin
 ): GraphCamera {
   const scale = Math.min(
     MAX_COLLABORATION_SCALE,
@@ -228,7 +233,7 @@ export function zoomCollaborationGraph(
   const ratio = scale / camera.scale;
   return boundCollaborationGraph(graph, port, {
     scale,
-    x: origin.x - (origin.x - camera.x) * ratio,
-    y: origin.y - (origin.y - camera.y) * ratio
+    x: destination.x - (origin.x - camera.x) * ratio,
+    y: destination.y - (origin.y - camera.y) * ratio
   });
 }

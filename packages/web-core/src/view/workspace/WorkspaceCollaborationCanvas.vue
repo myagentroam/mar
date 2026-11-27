@@ -16,7 +16,8 @@ import {
   MAX_COLLABORATION_SCALE,
   MIN_COLLABORATION_SCALE,
   zoomCollaborationGraph,
-  type GraphCamera
+  type GraphCamera,
+  type GraphPoint
 } from '../../util/collaboration-graph.js';
 
 /** Renders the relationship canvas and owns its view transform, never session or board state. */
@@ -72,6 +73,8 @@ const dragging = ref(false);
 let manual = false;
 let blockClick = false;
 let gesture: { id: number; x: number; y: number; camera: GraphCamera } | undefined;
+const touches = new Map<number, GraphPoint>();
+let pinchStart: { center: GraphPoint; distance: number; camera: GraphCamera } | undefined;
 
 watchEffect((cleanup) => {
   const element = port.value;
@@ -80,7 +83,15 @@ watchEffect((cleanup) => {
     size.value = { width: element.clientWidth, height: element.clientHeight };
   });
   observer.observe(element);
-  cleanup(() => observer.disconnect());
+  // Before a drag starts, a removed hit target can leave the pointer ending outside the canvas.
+  const document = element.ownerDocument;
+  document.addEventListener('pointerup', end, true);
+  document.addEventListener('pointercancel', end, true);
+  cleanup(() => {
+    observer.disconnect();
+    document.removeEventListener('pointerup', end, true);
+    document.removeEventListener('pointercancel', end, true);
+  });
 });
 
 watch(graph, ({ nodes, edges }) => {
@@ -137,6 +148,7 @@ watch([graph, size], ([next, viewport], [previous, oldViewport]) => {
         ((old?.y ?? current.y) - current.y) * camera.value.scale
     });
   }
+  if (pinchStart) beginPinch();
 });
 
 function position(id?: string, keepScale = false) {
@@ -154,10 +166,14 @@ function zoom(factor: number, x = size.value.width / 2, y = size.value.height / 
   camera.value = zoomCollaborationGraph(graph.value, size.value, camera.value, { x, y }, factor);
 }
 
+function closeNodeMenu() {
+  port.value?.querySelector<HTMLButtonElement>('.network-node-more[aria-expanded="true"]')?.click();
+}
+
 function wheel(event: WheelEvent) {
   if (event.ctrlKey || event.metaKey || !port.value) return;
   event.preventDefault();
-  port.value.querySelector<HTMLButtonElement>('.network-node-more[aria-expanded="true"]')?.click();
+  closeNodeMenu();
   const rect = port.value.getBoundingClientRect();
   const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
   const delta = Math.max(-300, Math.min(300, event.deltaY * units));
@@ -165,12 +181,61 @@ function wheel(event: WheelEvent) {
 }
 
 function down(event: PointerEvent) {
-  if (!event.isPrimary || event.button !== 0) return;
+  if (event.button !== 0) return;
+  if (event.pointerType === 'touch') {
+    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (touches.size > 1) {
+      if (touches.size === 2) {
+        // Keep the gesture on the canvas even if a live update removes the touched node or edge.
+        for (const id of touches.keys()) port.value?.setPointerCapture(id);
+        closeNodeMenu();
+        beginPinch();
+      } else {
+        port.value?.setPointerCapture(event.pointerId);
+      }
+      gesture = undefined;
+      dragging.value = true;
+      blockClick = true;
+      manual = true;
+      return;
+    }
+  } else if (!event.isPrimary || touches.size) return;
   gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, camera: camera.value };
   blockClick = false;
 }
 
+function measurePinch() {
+  const [first, second] = touches.values();
+  const rect = port.value?.getBoundingClientRect();
+  if (!first || !second || !rect) return;
+  return {
+    center: { x: (first.x + second.x) / 2 - rect.left, y: (first.y + second.y) / 2 - rect.top },
+    distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y))
+  };
+}
+
+function beginPinch() {
+  const pair = measurePinch();
+  pinchStart = pair && { ...pair, camera: camera.value };
+}
+
 function move(event: PointerEvent) {
+  if (touches.has(event.pointerId)) {
+    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const next = pinchStart && measurePinch();
+    if (pinchStart && next) {
+      // Pointer moves arrive separately. Clamping an incremental ratio would introduce drift.
+      camera.value = zoomCollaborationGraph(
+        graph.value,
+        size.value,
+        pinchStart.camera,
+        pinchStart.center,
+        next.distance / pinchStart.distance,
+        next.center
+      );
+      return;
+    }
+  }
   if (gesture?.id !== event.pointerId) return;
   if (event.pointerType === 'mouse' && !(event.buttons & 1)) {
     end(event);
@@ -180,8 +245,7 @@ function move(event: PointerEvent) {
   const dy = event.clientY - gesture.y;
   if (!dragging.value) {
     if (Math.hypot(dx, dy) < 6) return;
-    // Touch pointers are already captured by the touched node or the canvas.
-    if (event.pointerType === 'mouse') port.value?.setPointerCapture(event.pointerId);
+    port.value?.setPointerCapture(event.pointerId);
     dragging.value = true;
     blockClick = true;
   }
@@ -194,9 +258,23 @@ function move(event: PointerEvent) {
 }
 
 function end(event: PointerEvent) {
-  if (gesture?.id !== event.pointerId) return;
+  if (touches.delete(event.pointerId)) {
+    beginPinch();
+    if (touches.size >= 2) return;
+    const [remaining] = touches;
+    if (remaining) {
+      const [id, point] = remaining;
+      gesture = { id, ...point, camera: camera.value };
+      return;
+    }
+  } else if (gesture?.id !== event.pointerId) return;
   gesture = undefined;
   dragging.value = false;
+}
+
+function lostCapture(event: PointerEvent) {
+  // Ignore the original target losing capture when the canvas takes it over.
+  if (!port.value?.hasPointerCapture(event.pointerId)) end(event);
 }
 
 function nodeTooltip(id: string): string | undefined {
@@ -245,7 +323,7 @@ function keyboard(event: KeyboardEvent) {
 }
 
 function showFocused(id: string) {
-  if (gesture) return;
+  if (gesture || dragging.value) return;
   const point = graph.value.nodes.get(id);
   if (!point || !size.value.width) return;
   const x = camera.value.x + point.x * camera.value.scale;
@@ -332,7 +410,7 @@ function activateEdge(event: MouseEvent, owner: string, follower: string) {
 
 function showFocusedEdge(event: FocusEvent) {
   const path = event.currentTarget as SVGPathElement;
-  if (gesture || !path.matches(':focus-visible')) return;
+  if (gesture || dragging.value || !path.matches(':focus-visible')) return;
   const point = path.getPointAtLength(path.getTotalLength() / 2);
   const { scale, x, y } = camera.value;
   const { width, height } = size.value;
@@ -360,9 +438,7 @@ function showFocusedEdge(event: FocusEvent) {
       @wheel="wheel"
       @pointerdown="down"
       @pointermove="move"
-      @pointerup="end"
-      @pointercancel="end"
-      @lostpointercapture.self="end"
+      @lostpointercapture="lostCapture"
       @click.capture="stopDragClick"
       @keydown="keyboard"
     >

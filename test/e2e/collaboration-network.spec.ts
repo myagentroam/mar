@@ -246,7 +246,8 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await expect(current.locator(agentIcon)).toBeVisible();
   await expect(port.locator('.edge-parent')).toHaveCount(27);
   await expect(port.locator('.edge-sharing')).toHaveCount(6);
-  await expect(dialog.locator('output')).toHaveText('80%');
+  const scale = dialog.locator('output');
+  await expect.poll(async () => Number.parseInt(await scale.innerText())).toBeLessThan(80);
   const board = dialog.getByRole('region', { name: '白板', exact: true });
   await expect(board.getByText('发布前先核对回归结果。')).toBeVisible();
   await expect(board.getByRole('heading', { name: '最近变更' })).toBeVisible();
@@ -279,9 +280,12 @@ test('focuses the current session in a complex network, zooms at the pointer and
   await expect.poll(centered).toBeGreaterThan(70);
   await dialog.getByRole('button', { name: '定位', exact: true }).click();
   await expect.poll(centered).toBeLessThan(2);
+  const beforeWheel = Number.parseInt(await scale.innerText());
   await page.mouse.move(viewport.x + viewport.width * 0.28, viewport.y + viewport.height * 0.35);
   await page.mouse.wheel(0, -240);
-  await expect(dialog.locator('output')).not.toHaveText('80%');
+  await expect
+    .poll(async () => Number.parseInt(await scale.innerText()))
+    .toBeGreaterThan(beforeWheel);
   await expect.poll(centered).toBeGreaterThan(30);
   await dialog.getByRole('button', { name: '定位', exact: true }).click();
   await expect.poll(centered).toBeLessThan(2);
@@ -370,8 +374,8 @@ test('keeps the three zoom controls together and fits the network at 320px in En
   const plus = zoom.getByRole('button', { name: 'Zoom in' });
   const fit = controls.getByRole('button', { name: 'Fit network' });
   const locate = controls.getByRole('button', { name: 'Locate', exact: true });
-  await expect(scale).toHaveText('80%');
-  await expect(out).toBeDisabled();
+  await expect.poll(async () => Number.parseInt(await scale.innerText())).toBeLessThan(80);
+  const fitted = await scale.innerText();
   await expect(fit.locator('[data-mar-icon="fit"]')).toBeVisible();
   const [outBox, scaleBox, plusBox, controlsBox, locateBox] = await Promise.all(
     [out, scale, plus, controls, locate].map((locator) => locator.boundingBox())
@@ -381,24 +385,23 @@ test('keeps the three zoom controls together and fits the network at 320px in En
   expect(scaleBox!.x + scaleBox!.width).toBeCloseTo(plusBox!.x);
   expect(locateBox!.x + locateBox!.width).toBeLessThanOrEqual(controlsBox!.x + controlsBox!.width);
 
-  await plus.press('Enter');
-  await expect(scale).toHaveText('96%');
-  await out.press('Enter');
-  await expect(scale).toHaveText('80%');
+  await out.focus();
+  for (let step = 0; step < 14; step++) await page.keyboard.press('Enter');
+  await expect(scale).toHaveText('10%');
   await expect(out).toBeDisabled();
   await expect(out).toBeFocused();
   await out.press('Space');
-  await expect(scale).toHaveText('80%');
+  await expect(scale).toHaveText('10%');
   await page.keyboard.press('Tab');
   await expect(plus).toBeFocused();
-  for (let step = 0; step < 5; step++) await page.keyboard.press('Enter');
-  await expect(scale).toHaveText('175%');
+  for (let step = 0; step < 14; step++) await page.keyboard.press('Enter');
+  await expect(scale).toHaveText('100%');
   await expect(plus).toBeDisabled();
   await expect(plus).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(fit).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(scale).toHaveText('80%');
+  await expect(scale).toHaveText(fitted);
   await locate.click();
   await page.screenshot({
     path: info.outputPath('collaboration-network-zoom-mobile.png'),
@@ -429,9 +432,188 @@ test.describe('narrow viewport', () => {
 test.describe('touch viewport', () => {
   test.skip(
     ({ browserName }) => browserName !== 'chromium',
-    'Touch panning requires Chromium CDP.'
+    'Simulated multitouch and touch panning require Chromium CDP.'
   );
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  test('pans at maximum zoom and continues dragging after one finger lifts', async ({ page }) => {
+    const { dialog, port, current } = await openNetwork(page, 'daylight');
+    const scale = dialog.locator('output');
+    const zoomIn = dialog.getByRole('button', { name: '放大', exact: true });
+    for (let step = 0; step < 13 && (await scale.innerText()) !== '100%'; step++) {
+      await zoomIn.tap();
+    }
+    await expect(scale).toHaveText('100%');
+    await dialog.getByRole('button', { name: '定位', exact: true }).tap();
+    const initial = (await current.boundingBox())!;
+    const x = Math.round(initial.x + initial.width / 2);
+    const y = Math.round(initial.y + initial.height / 2);
+    const input = await page.context().newCDPSession(page);
+    try {
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [
+          { x, y, id: 1 },
+          { x: x + 64, y, id: 2 }
+        ]
+      });
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          { x: x - 32, y, id: 1 },
+          { x: x + 64, y, id: 2 }
+        ]
+      });
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          { x: x - 32, y, id: 1 },
+          { x: x + 32, y, id: 2 }
+        ]
+      });
+      await expect
+        .poll(async () => (await current.boundingBox())!.x - initial.x)
+        .toBeCloseTo(-32, 0);
+      await expect(scale).toHaveText('100%');
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [{ x: x + 32, y, id: 2 }]
+      });
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: x - 56, y, id: 1 }]
+      });
+      await expect
+        .poll(async () => (await current.boundingBox())!.x - initial.x)
+        .toBeCloseTo(-56, 0);
+      await expect(scale).toHaveText('100%');
+      await input.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    } finally {
+      await input.detach();
+    }
+    await expect(port).not.toHaveClass(/is-dragging/);
+    const parent = port.getByRole('button', { name: '发布计划', exact: true });
+    await parent.tap();
+    await expect(parent).toHaveAttribute('aria-pressed', 'true');
+  });
+  test('zooms with two fingers without changing the selected whiteboard', async ({ page }) => {
+    const { dialog, port, current } = await openNetwork(page, 'daylight');
+    const parent = port.getByRole('button', { name: '发布计划', exact: true });
+    await parent.tap();
+    const scale = dialog.locator('output');
+    const before = Number.parseInt(await scale.innerText());
+    const initial = (await current.boundingBox())!;
+    const x = Math.round(initial.x + initial.width / 2);
+    const y = Math.round(initial.y + initial.height / 2);
+    const input = await page.context().newCDPSession(page);
+    try {
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [
+          { x, y, id: 1 },
+          { x: x + 64, y, id: 2 }
+        ]
+      });
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          { x: x - 32, y, id: 1 },
+          { x: x + 96, y, id: 2 }
+        ]
+      });
+      await expect
+        .poll(async () => Number.parseInt(await scale.innerText()))
+        .toBeGreaterThan(before);
+      const zoomed = (await current.boundingBox())!;
+      expect(zoomed.width / initial.width).toBeCloseTo(2, 1);
+      expect(zoomed.x + zoomed.width / 2).toBeCloseTo(x - 32, 0);
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          { x: x + 28, y, id: 1 },
+          { x: x + 36, y, id: 2 }
+        ]
+      });
+      await expect(scale).toHaveText('10%');
+      await input.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    } finally {
+      await input.detach();
+    }
+    await expect(port).not.toHaveClass(/is-dragging/);
+    await expect(parent).toHaveAttribute('aria-pressed', 'true');
+    await current.tap();
+    await expect(current).toHaveAttribute('aria-pressed', 'true');
+  });
+  test('finishes a pinch when a touched session leaves the live network', async ({ page }) => {
+    const { port, current } = await openNetwork(page, 'daylight');
+    const peer = port.getByRole('button', { name: '安全审查', exact: true });
+    const center = async (locator: Locator) => {
+      const { x, y, width, height } = (await locator.boundingBox())!;
+      return { x: Math.round(x + width / 2), y: Math.round(y + height / 2) };
+    };
+    const first = { ...(await center(current)), id: 1 };
+    const second = { ...(await center(peer)), id: 2 };
+    const viewport = (await port.boundingBox())!;
+    const input = await page.context().newCDPSession(page);
+    try {
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [first, second]
+      });
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [first, { ...second, x: second.x + 3 }]
+      });
+      await expect(port).toHaveClass(/is-dragging/);
+      await page.evaluate(() => window.dispatchEvent(new Event('fixture-board-detached')));
+      await expect(peer).toHaveCount(0);
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [first, { ...second, y: Math.ceil(viewport.y + viewport.height + 20) }]
+      });
+      await input.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    } finally {
+      await input.detach();
+    }
+    await expect(port).not.toHaveClass(/is-dragging/);
+  });
+  test('does not enter a phantom pinch after a touched session is removed before dragging', async ({
+    page
+  }) => {
+    const { port, current } = await openNetwork(page, 'daylight');
+    const errors: Error[] = [];
+    page.on('pageerror', (error) => errors.push(error));
+    const peer = port.getByRole('button', { name: '安全审查', exact: true });
+    const { x, y, width, height } = (await peer.boundingBox())!;
+    const touch = { x: Math.round(x + width / 2), y: Math.round(y + height / 2), id: 1 };
+    const viewport = (await port.boundingBox())!;
+    const input = await page.context().newCDPSession(page);
+    try {
+      await input.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touch] });
+      await page.evaluate(() => window.dispatchEvent(new Event('fixture-board-detached')));
+      await expect(peer).toHaveCount(0);
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ ...touch, y: Math.ceil(viewport.y + viewport.height + 20) }]
+      });
+      await input.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      const node = (await current.boundingBox())!;
+      await port.evaluate((element) => {
+        element.addEventListener('pointerdown', () => element.setAttribute('data-touched', ''), {
+          once: true
+        });
+      });
+      await input.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: node.x + node.width / 2, y: node.y + node.height / 2, id: 2 }]
+      });
+      await expect(port).toHaveAttribute('data-touched', '');
+      await expect(port).not.toHaveClass(/is-dragging/);
+      await input.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+      expect(errors).toEqual([]);
+    } finally {
+      await input.detach();
+    }
+  });
   test('pans diagonally without selecting the touched session and returns to current', async ({
     page
   }, info) => {
@@ -474,6 +656,16 @@ test.describe('touch viewport', () => {
       .toBeLessThan(2);
     await current.tap();
     await expect(current).toHaveAttribute('aria-pressed', 'true');
+    // Leave the fitted overview before testing a precise touch on two overlapping hit areas.
+    const zoomIn = dialog.getByRole('button', { name: '放大', exact: true });
+    const scale = dialog.locator('output');
+    for (let step = 0; step < 13 && Number.parseInt(await scale.innerText()) < 80; step++) {
+      await zoomIn.tap();
+    }
+    await expect
+      .poll(async () => Number.parseInt(await scale.innerText()))
+      .toBeGreaterThanOrEqual(80);
+    await dialog.getByRole('button', { name: '定位', exact: true }).tap();
     const reverse = port.getByRole('button', { name: '发布协调 向 安全审查 共享白板' });
     const reverseHit = await edgeHitPoint(reverse);
     await page.touchscreen.tap(reverseHit.x, reverseHit.y);
