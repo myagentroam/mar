@@ -675,7 +675,7 @@ describe('Node Files and Changes fixed operations', () => {
         path: temporaryImage,
         size: 4,
         offset: 0,
-        contentBase64: Buffer.from([0, 1, 2, 3]).toString('base64'),
+        bytes: Buffer.of(0, 1, 2, 3),
         nextOffset: null,
         sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/u)
       }
@@ -784,18 +784,18 @@ describe('Node Files and Changes fixed operations', () => {
       operation(connector, 'workspace.files.upload.chunk', {
         uploadId: created.upload.uploadId,
         offset: 1,
-        dataBase64: payload.subarray(0, 1).toString('base64')
+        bytes: payload.subarray(0, 1)
       })
     ).rejects.toThrow('UPLOAD_OFFSET_INVALID');
     await operation(connector, 'workspace.files.upload.chunk', {
       uploadId: created.upload.uploadId,
       offset: 0,
-      dataBase64: payload.subarray(0, 512 * 1024).toString('base64')
+      bytes: payload.subarray(0, 512 * 1024)
     });
     await operation(connector, 'workspace.files.upload.chunk', {
       uploadId: created.upload.uploadId,
       offset: 512 * 1024,
-      dataBase64: payload.subarray(512 * 1024).toString('base64')
+      bytes: payload.subarray(512 * 1024)
     });
     await operation(connector, 'workspace.files.upload.complete', {
       uploadId: created.upload.uploadId
@@ -828,7 +828,7 @@ describe('Node Files and Changes fixed operations', () => {
     await operation(connector, 'workspace.files.upload.chunk', {
       uploadId: replacement.upload.uploadId,
       offset: 0,
-      dataBase64: Buffer.from('new').toString('base64')
+      bytes: Buffer.from('new')
     });
     await operation(connector, 'workspace.files.upload.complete', {
       uploadId: replacement.upload.uploadId
@@ -1576,7 +1576,7 @@ describe('Node Files and Changes fixed operations', () => {
       ).resolves.toMatchObject({
         file: {
           path: 'uncommitted.txt',
-          contentBase64: Buffer.from('pending\n').toString('base64')
+          bytes: Buffer.from('pending\n')
         }
       });
       await expect(

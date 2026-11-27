@@ -159,7 +159,7 @@ describe('Node Files and Changes fixed-operation handling', () => {
         path: 'history.png',
         size: 2,
         offset: 1,
-        contentBase64: Buffer.from([11]).toString('base64'),
+        bytes: Buffer.of(11),
         nextOffset: null
       }
     });
