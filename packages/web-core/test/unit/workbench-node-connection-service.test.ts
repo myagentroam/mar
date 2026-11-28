@@ -5,8 +5,12 @@ import {
   encodeNodeStreamFrame
 } from '@myagentroam/protocol/node-stream-wire';
 import { NodeStream } from '@myagentroam/protocol/node-stream';
+import { NodeStreamMux } from '@myagentroam/protocol/node-stream-mux';
 import { createActiveNodeTransportService } from '../../src/service/active-node-transport-service.js';
+import { openBrowserDirectFile } from '../../src/service/browser-direct-file-stream.js';
+import type { WorkbenchHttpService } from '../../src/service/workbench-http-service.js';
 import { createWorkbenchNodeConnectionService } from '../../src/service/workbench-node-connection-service.js';
+import { ApiError } from '../../src/util/api-error.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -113,7 +117,7 @@ it('releases both paths after a Workspace lease expires and the last stream ends
     lease.select('node');
     const pending = service.openStream(
       'node',
-      { kind: 'browser-file-upload', ticket: 'ticket' },
+      { kind: 'browser-file-upload', issueTicket: async () => 'ticket' },
       new AbortController().signal
     );
     const stream = await pending;
@@ -182,7 +186,7 @@ it('uses recovered Direct only for new streams and does not start another probe 
   const open = (ticket: string) =>
     service.openRoutedStream(
       'node',
-      { kind: 'browser-file-download', ticket },
+      { kind: 'browser-file-download', issueTicket: async () => ticket },
       new AbortController().signal
     );
   try {
@@ -201,7 +205,7 @@ it('uses recovered Direct only for new streams and does not start another probe 
     expect(await open('three')).toMatchObject({ stream: direct, transport: 'ice' });
     expect(connectDirect).toHaveBeenCalledTimes(2);
     expect(path.openStream).toHaveBeenCalledExactlyOnceWith(
-      { kind: 'browser-file-download', ticket: 'three' },
+      { kind: 'browser-file-download', issueTicket: expect.any(Function) },
       expect.any(AbortSignal)
     );
     expect(sockets[0]!.opened).toEqual(['one', 'two']);
@@ -243,6 +247,105 @@ it('reports Relay for a file stream when Direct declines before OPEN', async () 
     expect(opened.transport).toBe('relay');
     expect(sockets[0]!.opened).toEqual(['allowed-ticket']);
     opened.close();
+  } finally {
+    service.reset();
+  }
+});
+
+it.each([
+  ['browser-file-upload', 'before OPEN'],
+  ['browser-file-download', 'before OPEN'],
+  ['browser-file-upload', 'after OPEN'],
+  ['browser-file-download', 'after OPEN'],
+  ['browser-file-download', 'unavailable at redemption'],
+  ['browser-file-download', 'denied at redemption'],
+  ['browser-file-download', 'redemption response lost'],
+  ['browser-file-upload', 'cancelled at redemption']
+] as const)('applies the Direct fallback boundary to %s (%s)', async (kind, failure) => {
+  const controller = new AbortController();
+  const cancellation = new DOMException('Upload cancelled', 'AbortError');
+  const directOpens: string[] = [];
+  const direct = new NodeStreamMux({
+    maxStreams: 4,
+    async send(bytes) {
+      const frame = decodeNodeStreamFrame(bytes);
+      if (frame.type === 'OPEN') directOpens.push(frame.grant);
+      direct.disconnect();
+    }
+  });
+  const requests: { method: string | undefined; ticket: string }[] = [];
+  const http: WorkbenchHttpService['request'] = async <T>(_url: string, init?: RequestInit) => {
+    const { ticket } = JSON.parse(String(init?.body)) as { ticket: string };
+    requests.push({ method: init?.method, ticket });
+    if (init?.method === 'POST') {
+      if (failure === 'unavailable at redemption') {
+        throw new ApiError('BROWSER_ICE_UNAVAILABLE', 'Direct transport is unavailable.');
+      }
+      if (failure === 'denied at redemption') {
+        throw new ApiError('BROWSER_LEASE_ENDED', 'Browser lease ended.');
+      }
+      if (failure === 'redemption response lost') {
+        throw new ApiError('NETWORK_UNAVAILABLE', 'The network connection is unavailable.');
+      }
+      if (failure === 'cancelled at redemption') controller.abort(cancellation);
+      if (failure === 'before OPEN') direct.disconnect();
+    }
+    return { grant: 'direct-grant' } as T;
+  };
+  const { sockets, service } = fixture({
+    connectDirect: async () => ({
+      get closed() {
+        return direct.closed;
+      },
+      close: () => direct.disconnect(),
+      openStream: (request, signal) => {
+        if (request.kind !== kind) throw new Error('Unexpected request kind');
+        return openBrowserDirectFile(http, direct, 'node', 'transport', request, signal);
+      }
+    })
+  });
+  try {
+    const issueTicket = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce('direct-ticket')
+      .mockResolvedValueOnce('relay-ticket');
+    const request = { kind, issueTicket };
+    const pending = service.openRoutedStream('node', request, controller.signal);
+    if (failure === 'before OPEN' || failure === 'unavailable at redemption') {
+      const [opened] = await Promise.all([
+        pending,
+        vi
+          .waitFor(() => expect(sockets).toHaveLength(1))
+          .then(() => {
+            sockets[0]!.inbound(encodeNodeRelayHandshake({ type: 'RELAY_READY' }));
+          })
+      ]);
+      expect(opened.transport).toBe('relay');
+      expect(issueTicket).toHaveBeenCalledTimes(2);
+      expect(directOpens).toEqual([]);
+      expect(sockets[0]!.opened).toEqual(['relay-ticket']);
+      opened.close();
+    } else {
+      if (failure === 'after OPEN')
+        await expect(pending).rejects.toThrow('NODE_STREAM_DISCONNECTED');
+      else if (failure === 'cancelled at redemption')
+        await expect(pending).rejects.toBe(cancellation);
+      else
+        await expect(pending).rejects.toMatchObject({
+          code: failure === 'denied at redemption' ? 'BROWSER_LEASE_ENDED' : 'NETWORK_UNAVAILABLE'
+        });
+      expect(issueTicket).toHaveBeenCalledTimes(1);
+      expect(directOpens).toEqual(failure === 'after OPEN' ? ['direct-grant'] : []);
+      expect(sockets.flatMap((socket) => socket.opened)).toEqual([]);
+    }
+    expect(requests).toEqual(
+      failure === 'unavailable at redemption'
+        ? [{ method: 'POST', ticket: 'direct-ticket' }]
+        : [
+            { method: 'POST', ticket: 'direct-ticket' },
+            { method: 'DELETE', ticket: 'direct-ticket' }
+          ]
+    );
   } finally {
     service.reset();
   }

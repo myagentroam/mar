@@ -20,6 +20,10 @@ export type WorkbenchFileStreamRequest =
       readonly kind: 'file-download';
       readonly descriptor: Extract<DirectTransferDescriptor, { direction: 'DOWNLOAD' }>;
     };
+export type BrowserFileStreamRequest = {
+  /** Each path attempt needs its own unconsumed Browser file ticket. */
+  readonly issueTicket: (signal: AbortSignal) => Promise<string>;
+} & ({ readonly kind: 'browser-file-download' } | { readonly kind: 'browser-file-upload' });
 export type WorkbenchStreamRequest =
   | (TerminalAttachmentRequest & { readonly kind: 'terminal' })
   | WorkbenchFileStreamRequest
@@ -30,8 +34,7 @@ export type WorkbenchStreamRequest =
         signal: AbortSignal
       ) => Promise<string | undefined>;
     }
-  | { readonly kind: 'browser-file-download'; readonly ticket: string }
-  | { readonly kind: 'browser-file-upload'; readonly ticket: string }
+  | BrowserFileStreamRequest
   | {
       readonly kind: 'hosted-file-upload';
       readonly conversationId: string;
@@ -231,8 +234,10 @@ async function connectRelay(
         if (grant !== undefined) return path.openStream({ kind, grant }, signal);
         return undefined;
       }
-      if (kind === 'browser-file-download' || kind === 'browser-file-upload')
-        return path.openStream({ kind, grant: request.ticket }, signal);
+      if (kind === 'browser-file-download' || kind === 'browser-file-upload') {
+        const ticket = await request.issueTicket(signal);
+        return path.openStream({ kind, grant: ticket }, signal);
+      }
       let url: string;
       let input: object;
       if (kind === 'terminal') {

@@ -513,11 +513,11 @@ export function createWorkbenchBrowserService(options: {
     try {
       await uploadBrowserFiles(options.http, connectionId, { attachmentId, chooserId }, files, {
         signal: controller.signal,
-        openStream: (ticket, signal) => {
+        openStream: (issueTicket, signal) => {
           if (!options.openStream) throw new Error('NODE_CONNECTION_UNAVAILABLE');
           return options.openStream(
             connection.scope.nodeId,
-            { kind: 'browser-file-upload', ticket },
+            { kind: 'browser-file-upload', issueTicket },
             signal
           );
         },
@@ -594,21 +594,29 @@ export function createWorkbenchBrowserService(options: {
     const { http, openStream, activeDownloadWorker } = options;
     if (!target || !nodeId || !http || !openStream) throw new Error('BROWSER_LEASE_ENDED');
     const { connectionId, attachmentId } = target;
-    const {
-      ticket,
-      name,
-      size,
-      nodeId: grantedNode
-    } = await http<{
-      ticket: string;
-      name: string;
-      size: number;
-      nodeId: string;
-    }>(`/api/browser/downloads/stream-ticket?${new URLSearchParams({ connectionId })}`, {
-      method: 'POST',
-      body: JSON.stringify({ attachmentId, id })
-    });
+    const url = `/api/browser/downloads/stream-ticket?${new URLSearchParams({ connectionId })}`;
+    const requestTicket = (signal?: AbortSignal) =>
+      http<{ ticket: string; name: string; size: number; nodeId: string }>(url, {
+        method: 'POST',
+        body: JSON.stringify({ attachmentId, id }),
+        ...(signal === undefined ? {} : { signal })
+      });
+    const { ticket, name, size, nodeId: grantedNode } = await requestTicket();
     if (grantedNode !== nodeId) throw new Error('NODE_RESPONSE_INVALID');
+    // The initial ticket also supplies sink metadata. A different path must get its own ticket.
+    let firstTicket: string | undefined = ticket;
+    const issueTicket = async (signal: AbortSignal) => {
+      signal.throwIfAborted();
+      if (firstTicket !== undefined) {
+        const first = firstTicket;
+        firstTicket = undefined;
+        return first;
+      }
+      const next = await requestTicket(signal);
+      if (next.nodeId !== nodeId || next.name !== name || next.size !== size)
+        throw new Error('NODE_RESPONSE_INVALID');
+      return next.ticket;
+    };
     // The Server binds admission to the live Browser instance; hiding its picture does not stop an admitted save.
     await downloadWorkspaceFileToBrowser({
       fileName: name,
@@ -616,7 +624,7 @@ export function createWorkbenchBrowserService(options: {
       ...(activeDownloadWorker === undefined ? {} : { activeWorker: activeDownloadWorker }),
       download: (sink, cancellation = new AbortController().signal) =>
         receiveFileDownloadBody(
-          () => openStream(nodeId, { kind: 'browser-file-download', ticket }, cancellation),
+          () => openStream(nodeId, { kind: 'browser-file-download', issueTicket }, cancellation),
           sink,
           size,
           cancellation

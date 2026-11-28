@@ -21,6 +21,7 @@ import {
   type NodeRequestAuthorization,
   type UserNodeAuthorization
 } from '@myagentroam/server-core/node-access-contracts';
+import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
 import type {
   WorkbenchDirectTransferIdentity,
   WorkbenchRelayService
@@ -70,7 +71,8 @@ export class BrowserWorkbenchService {
         generation
       )
     )
-      throw new Error('BROWSER_ICE_UNAVAILABLE');
+      // No Node file grant was prepared; the client can safely choose another path.
+      throw new NodeRequestAdmissionError('BROWSER_ICE_UNAVAILABLE');
     const payload =
       ticket.kind === 'browser-file-upload'
         ? ticket.upload
