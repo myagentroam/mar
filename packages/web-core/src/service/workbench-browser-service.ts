@@ -7,6 +7,7 @@ import {
   type BrowserContextOptions,
   type BrowserControlRequest,
   type BrowserControlResponse,
+  type BrowserDownloadInfo,
   type BrowserFindOperation,
   type BrowserFindResult,
   type BrowserProfileCommand,
@@ -588,34 +589,28 @@ export function createWorkbenchBrowserService(options: {
     if (target) return `${target.connectionId}:${target.attachmentId}`;
   }
 
-  async function saveDownload(id: string): Promise<void> {
+  async function saveDownload({ id, name, size, state }: BrowserDownloadInfo): Promise<void> {
     const target = downloadTarget();
     const nodeId = current?.scope.nodeId;
     const { http, openStream, activeDownloadWorker } = options;
     if (!target || !nodeId || !http || !openStream) throw new Error('BROWSER_LEASE_ENDED');
+    if (state !== 'ready' || size === undefined) throw new Error('BROWSER_DOWNLOAD_NOT_READY');
     const { connectionId, attachmentId } = target;
     const url = `/api/browser/downloads/stream-ticket?${new URLSearchParams({ connectionId })}`;
-    const requestTicket = (signal?: AbortSignal) =>
-      http<{ ticket: string; name: string; size: number; nodeId: string }>(url, {
-        method: 'POST',
-        body: JSON.stringify({ attachmentId, id }),
-        ...(signal === undefined ? {} : { signal })
-      });
-    const { ticket, name, size, nodeId: grantedNode } = await requestTicket();
-    if (grantedNode !== nodeId) throw new Error('NODE_RESPONSE_INVALID');
-    // The initial ticket also supplies sink metadata. A different path must get its own ticket.
-    let firstTicket: string | undefined = ticket;
+    // Use the list metadata for the sink; start the ticket lifetime only when a path can use it.
     const issueTicket = async (signal: AbortSignal) => {
       signal.throwIfAborted();
-      if (firstTicket !== undefined) {
-        const first = firstTicket;
-        firstTicket = undefined;
-        return first;
-      }
-      const next = await requestTicket(signal);
-      if (next.nodeId !== nodeId || next.name !== name || next.size !== size)
+      const grant = await http<{ ticket: string; name: string; size: number; nodeId: string }>(
+        url,
+        {
+          method: 'POST',
+          body: JSON.stringify({ attachmentId, id }),
+          signal
+        }
+      );
+      if (grant.nodeId !== nodeId || grant.name !== name || grant.size !== size)
         throw new Error('NODE_RESPONSE_INVALID');
-      return next.ticket;
+      return grant.ticket;
     };
     // The Server binds admission to the live Browser instance; hiding its picture does not stop an admitted save.
     await downloadWorkspaceFileToBrowser({

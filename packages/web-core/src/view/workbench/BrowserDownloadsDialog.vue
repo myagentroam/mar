@@ -194,7 +194,7 @@ async function saveToDevice(item: BrowserDownloadInfo): Promise<void> {
   changing.value = item.id;
   actionFailure.value = undefined;
   try {
-    await props.browser.saveDownload(item.id);
+    await props.browser.saveDownload(item);
   } catch {
     if (!lifetime.signal.aborted) actionFailure.value = { id: item.id, action: 'save' };
   } finally {
