@@ -13,18 +13,28 @@ import {
 
 type Registration = {
   readonly nodeId: string;
-  readonly allowed: () => Promise<boolean>;
+  readonly userId: number;
+  readonly canUseNode: () => Promise<boolean>;
   readonly scope: AbortController;
   readonly id: string;
   readonly direction: 'local' | 'reverse';
   ready: boolean;
 };
 
+export interface TcpForwardAdmissionChecks {
+  readonly canUseNode: () => Promise<boolean>;
+  readonly authenticate: () => Promise<boolean>;
+}
+
 /** Owns forwarding admissions and revocation, not listener sockets or payload. */
 export class TcpForwardRelay {
   private readonly active = new Set<Registration>();
 
-  forCarrier(nodeId: string, allowed: () => Promise<boolean>): NodeStreamAuthorizer {
+  forCarrier(
+    nodeId: string,
+    userId: number,
+    { canUseNode, authenticate }: TcpForwardAdmissionChecks
+  ): NodeStreamAuthorizer {
     let owner: Registration | undefined;
     return async ({ kind, grant }, signal) => {
       if (signal.aborted) return undefined;
@@ -48,9 +58,10 @@ export class TcpForwardRelay {
       if (request === undefined) return undefined;
       const entry: Registration = {
         nodeId,
+        userId,
         id: randomUUID(),
         direction: request.direction,
-        allowed,
+        canUseNode,
         scope: new AbortController(),
         ready: false
       };
@@ -62,7 +73,12 @@ export class TcpForwardRelay {
       };
       this.active.add(entry);
       signal.addEventListener('abort', release, { once: true });
-      if (!(await allowed().catch(() => false)) || entry.scope.signal.aborted) {
+      if (
+        !(await canUseNode().catch(() => false)) ||
+        entry.scope.signal.aborted ||
+        !(await authenticate().catch(() => false)) ||
+        entry.scope.signal.aborted
+      ) {
         release();
         return undefined;
       }
@@ -75,12 +91,23 @@ export class TcpForwardRelay {
     };
   }
 
-  async revalidate(nodeId: string): Promise<void> {
+  revokeUser(userId: number): void {
+    for (const entry of this.active) if (entry.userId === userId) entry.scope.abort();
+  }
+
+  async revalidate(
+    scope: { readonly nodeId?: string; readonly userId?: number } = {}
+  ): Promise<void> {
+    // An existing forwarding lease depends on resource access, not on the original login.
     await Promise.all(
       [...this.active]
-        .filter((entry) => entry.nodeId === nodeId)
-        .map(async ({ allowed, scope }) => {
-          if (!(await allowed().catch(() => false))) scope.abort();
+        .filter(
+          (entry) =>
+            (scope.nodeId === undefined || entry.nodeId === scope.nodeId) &&
+            (scope.userId === undefined || entry.userId === scope.userId)
+        )
+        .map(async (entry) => {
+          if (!(await entry.canUseNode().catch(() => false))) entry.scope.abort();
         })
     );
   }

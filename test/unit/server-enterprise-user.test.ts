@@ -11,9 +11,8 @@ describe('Server enterprise user membership', () => {
     const fixture = enterpriseUserFixture();
     const service = new EnterpriseUserService(fixture.database, fixture.authorization, () => 2_000);
     await expect(service.assign(1, 9, 'ADMIN', 7)).resolves.toMatchObject({
-      id: 9,
-      role: 'ADMIN',
-      organizationId: 1
+      user: { id: 9, role: 'ADMIN', organizationId: 1 },
+      membershipChanged: true
     });
     const update = fixture.calls.find((call) => call.sql.includes('UPDATE users SET role'));
     expect(update?.values).toEqual(['ADMIN', 1, 2_000, 9]);
@@ -46,7 +45,7 @@ describe('Server enterprise user membership', () => {
         role: 'ORG_ADMIN',
         organizationId: 2
       })
-    ).resolves.toMatchObject({ id: 9 });
+    ).resolves.toMatchObject({ user: { id: 9 }, membershipChanged: true });
     expect(
       fixture.calls.some((call) => call.sql.includes('role=?,organization_id=?,email=?,nickname=?'))
     ).toBe(true);
@@ -63,12 +62,15 @@ describe('Server enterprise user membership', () => {
         organizationId: 1
       })
     ).resolves.toMatchObject({
-      id: 1,
-      email: 'admin@example.com',
-      nickname: 'Recovery admin',
-      role: 'ADMIN',
-      organizationId: 1,
-      fixedAdmin: true
+      user: {
+        id: 1,
+        email: 'admin@example.com',
+        nickname: 'Recovery admin',
+        role: 'ADMIN',
+        organizationId: 1,
+        fixedAdmin: true
+      },
+      membershipChanged: false
     });
     const updates = fixture.calls.filter((call) => call.sql.startsWith('UPDATE users'));
     expect(updates).toHaveLength(1);
@@ -100,9 +102,13 @@ describe('Server enterprise user membership', () => {
     expect(fixture.commit).not.toHaveBeenCalled();
   });
 
-  it.each([true, false])(
-    'preserves fixed admin connections but revokes ordinary membership changes: fixedAdmin=$0',
-    async (fixedAdmin) => {
+  it.each([
+    { fixedAdmin: true, role: 'ADMIN', organizationId: 1, changed: false },
+    { fixedAdmin: false, role: 'MEMBER', organizationId: 2, changed: false },
+    { fixedAdmin: false, role: 'ORG_ADMIN', organizationId: 2, changed: true }
+  ])(
+    'revalidates only actual membership changes: $role / fixedAdmin=$fixedAdmin',
+    async ({ fixedAdmin, role, organizationId, changed }) => {
       const fixture = enterpriseUserFixture(fixedAdmin);
       const sessions = {
         findCurrentUserSession: () => ({
@@ -114,13 +120,15 @@ describe('Server enterprise user membership', () => {
           csrfTokenHash: hashOpaque('csrf-token')
         })
       };
-      const closeUserSessions = vi.fn();
+      const revalidateUserAuthorizations = vi.fn(async (_userId: number) => {
+        expect(fixture.commit).toHaveBeenCalledOnce();
+      });
       const app = Fastify();
       registerEnterpriseUserRoutes({
         app,
         database: sessions,
         users: new EnterpriseUserService(fixture.database, fixture.authorization),
-        nodeControl: { closeUserSessions },
+        nodeControl: { revalidateUserAuthorizations },
         publicOrigin: undefined
       });
       try {
@@ -132,14 +140,16 @@ describe('Server enterprise user membership', () => {
           payload: {
             email: 'updated@example.com',
             nickname: 'Updated',
-            role: fixedAdmin ? 'ADMIN' : 'ORG_ADMIN',
-            organizationId: fixedAdmin ? 1 : 2
+            role,
+            organizationId
           }
         });
         expect(response.statusCode).toBe(200);
-        expect(response.json().user).toMatchObject({ id: userId, fixedAdmin });
-        if (fixedAdmin) expect(closeUserSessions).not.toHaveBeenCalled();
-        else expect(closeUserSessions).toHaveBeenCalledExactlyOnceWith(userId);
+        expect(response.json()).toEqual({
+          user: expect.objectContaining({ id: userId, fixedAdmin, role, organizationId })
+        });
+        if (changed) expect(revalidateUserAuthorizations).toHaveBeenCalledExactlyOnceWith(userId);
+        else expect(revalidateUserAuthorizations).not.toHaveBeenCalled();
       } finally {
         await app.close();
       }
@@ -263,7 +273,11 @@ function enterpriseUserFixture(fixedAdmin = false) {
         }
         return [{ affectedRows: 1 }, []];
       }
-      if (sql.startsWith('UPDATE users') && fixedAdmin) return [{ affectedRows: 0 }, []];
+      if (sql.startsWith('UPDATE users SET role=')) {
+        if (fixedAdmin) return [{ affectedRows: 0 }, []];
+        userRow.role = values?.[0] as string;
+        userRow.organization_id = values?.[1] as number;
+      }
       if (sql.includes('SELECT id FROM organizations')) return [[{ id: 1 }], []];
       if (sql.startsWith('SELECT id FROM organizations WHERE id=? FOR UPDATE'))
         return [[{ id: values?.[0] }], []];
@@ -276,8 +290,8 @@ function enterpriseUserFixture(fixedAdmin = false) {
     username: fixedAdmin ? 'admin' : 'member',
     email: null as string | null,
     nickname: null as string | null,
-    role: 'ADMIN',
-    organization_id: 1,
+    role: fixedAdmin ? 'ADMIN' : 'MEMBER',
+    organization_id: fixedAdmin ? 1 : 2,
     is_fixed_admin: fixedAdmin,
     enabled: true,
     created_at: 1_000

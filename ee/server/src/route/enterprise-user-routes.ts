@@ -19,7 +19,7 @@ export function registerEnterpriseUserRoutes(input: {
   readonly database: SessionLookup;
   readonly users: EnterpriseUserService;
   readonly publicOrigin: string | undefined;
-  readonly nodeControl: { closeUserSessions(userId: number): void };
+  readonly nodeControl: { revalidateUserAuthorizations(userId: number): Promise<void> };
 }): void {
   const { app, database, users, publicOrigin, nodeControl } = input;
   app.get<{ Querystring: Record<string, unknown> }>(
@@ -66,8 +66,13 @@ export function registerEnterpriseUserRoutes(input: {
     if (userId === undefined || role === undefined || !positiveNumber(organizationId))
       return sendError(reply, 400, 'USER_MEMBERSHIP_INVALID');
     try {
-      const user = await users.assign(actor.userId, userId, role, organizationId);
-      nodeControl.closeUserSessions(userId);
+      const { user, membershipChanged } = await users.assign(
+        actor.userId,
+        userId,
+        role,
+        organizationId
+      );
+      if (membershipChanged) await nodeControl.revalidateUserAuthorizations(userId);
       return reply.send({ user });
     } catch (error) {
       return databaseError(reply, error);
@@ -84,9 +89,8 @@ export function registerEnterpriseUserRoutes(input: {
     if (userId === undefined || values === undefined)
       return sendError(reply, 400, 'USER_INPUT_INVALID');
     try {
-      const user = await users.update(actor.userId, userId, values);
-      // Fixed-admin profile updates cannot change authorization.
-      if (!user.fixedAdmin) nodeControl.closeUserSessions(userId);
+      const { user, membershipChanged } = await users.update(actor.userId, userId, values);
+      if (membershipChanged) await nodeControl.revalidateUserAuthorizations(userId);
       return reply.send({ user });
     } catch (error) {
       return databaseError(reply, error);

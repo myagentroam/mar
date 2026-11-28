@@ -187,13 +187,10 @@ export function registerRealtimeRoutes(input: {
               !normalAccess,
               bearer === undefined
                 ? undefined
-                : async () => {
-                    // A carrier can outlive the credentials that admitted it. Check only the
-                    // forwarding lease, not each TCP connection underneath it.
-                    return (
-                      (await relayAccess.canUseNode(user.userId, nodeId)) &&
+                : {
+                    canUseNode: () => relayAccess.canUseNode(user.userId, nodeId),
+                    authenticate: async () =>
                       (await relayAccess.credentials.authenticateContext(header)) !== undefined
-                    );
                   }
             );
           })()
