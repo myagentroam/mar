@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
     ),
     isConnected: vi.fn(() => true),
     acquireTerminalTransport: vi.fn(() => ({
-      readyStreamPath: async () => ({ closed: false }),
+      streamPath: { closed: false },
       release: vi.fn()
     })),
     openFileStream: vi.fn(async (..._args: unknown[]) => {

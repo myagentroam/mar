@@ -173,17 +173,26 @@ function fixture(ids: string[], overrides: Record<string, unknown> = {}) {
   return { service, sent, peers };
 }
 
-async function connect(f: ReturnType<typeof fixture>) {
-  const pending = f.service.ensureTransport('node-1', 'generation-1');
+function prepareTransport(
+  f: ReturnType<typeof fixture>,
+  requestId = 'transport-request',
+  directSessionId = 'transport-session',
+  nodeGeneration = 'generation-1'
+) {
   f.service.handle({
     type: 'direct.prepared',
-    requestId: 'transport-request',
-    directSessionId: 'transport-session',
+    requestId,
+    directSessionId,
     nodeId: 'node-1',
-    nodeGeneration: 'generation-1',
+    nodeGeneration,
     purpose: 'TRANSPORT',
     expiresAt: Date.now() + 60_000
   });
+}
+
+async function connect(f: ReturnType<typeof fixture>) {
+  const pending = f.service.ensureTransport('node-1', 'generation-1');
+  prepareTransport(f);
   await vi.waitFor(() => expect(f.peers).toHaveLength(1));
   f.peers[0]!.connected();
   f.service.handle({ type: 'direct.opened', directSessionId: 'transport-session', offset: 0 });
@@ -194,6 +203,89 @@ describe('Workspace direct transfer browser service', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('does not announce Direct until the shared DataChannel opens', async () => {
+    const onTransportReady = vi.fn();
+    const f = fixture(['transport-request'], { onTransportReady });
+    try {
+      const pending = f.service.ensureTransport('node-1', 'generation-1');
+      prepareTransport(f);
+      const peer = f.peers[0]!;
+      const channel = peer.channels[0]!;
+      channel.readyState = 'connecting';
+      peer.connected();
+      f.service.handle({ type: 'direct.opened', directSessionId: 'transport-session', offset: 0 });
+
+      expect(f.service.result('node-1', 'generation-1')).toBe('RELAY_ONLY');
+      expect(f.service.acquireTerminalTransport('node-1', 'generation-1')).toBeUndefined();
+      expect(onTransportReady).not.toHaveBeenCalled();
+
+      channel.readyState = 'open';
+      channel.dispatchEvent(new Event('open'));
+      await expect(pending).resolves.toBe('DIRECT_AVAILABLE');
+      expect(onTransportReady).toHaveBeenCalledExactlyOnceWith('node-1');
+    } finally {
+      f.service.close();
+    }
+  });
+
+  it('expires both bounded attempts when signaling succeeds but the DataChannel never opens', async () => {
+    vi.useFakeTimers();
+    const f = fixture(['transport-request-1', 'transport-request-2'], { probeTimeoutMs: 100 });
+    try {
+      const pending = f.service.ensureTransport('node-1', 'generation-1');
+      for (const attempt of [1, 2]) {
+        const session = `transport-session-${attempt}`;
+        prepareTransport(f, `transport-request-${attempt}`, session);
+        const peer = f.peers[attempt - 1]!;
+        const channel = peer.channels[0]!;
+        channel.readyState = 'connecting';
+        peer.connected();
+        f.service.handle({ type: 'direct.opened', directSessionId: session, offset: 0 });
+        await vi.advanceTimersByTimeAsync(99);
+        expect(channel.readyState).toBe('connecting');
+        await vi.advanceTimersByTimeAsync(1);
+        expect(channel.readyState).toBe('closed');
+      }
+      await expect(pending).resolves.toBe('RELAY_ONLY');
+      expect(f.service.acquireTerminalTransport('node-1', 'generation-1')).toBeUndefined();
+    } finally {
+      f.service.releaseTransport('node-1');
+      f.service.close();
+    }
+  });
+
+  it('does not let a late prepare from the old Node generation replace the new carrier', async () => {
+    vi.useFakeTimers();
+    const f = fixture(['old-request', 'new-request'], { probeTimeoutMs: 20 });
+    try {
+      const old = f.service.ensureTransport('node-1', 'generation-1');
+      const current = f.service.ensureTransport('node-1', 'generation-2');
+      expect(f.service.ensureTransport('node-1', 'generation-2')).toBe(current);
+      prepareTransport(f, 'new-request', 'new-session', 'generation-2');
+      const peer = f.peers[0]!;
+      peer.channels[0]!.readyState = 'connecting';
+      peer.connected();
+      f.service.handle({ type: 'direct.opened', directSessionId: 'new-session', offset: 0 });
+
+      prepareTransport(f, 'old-request', 'old-session');
+      expect(f.peers).toHaveLength(1);
+      await expect(old).resolves.toBe('RELAY_ONLY');
+
+      peer.channels[0]!.readyState = 'open';
+      peer.channels[0]!.dispatchEvent(new Event('open'));
+      await expect(current).resolves.toBe('DIRECT_AVAILABLE');
+      const lease = f.service.acquireTerminalTransport('node-1', 'generation-2');
+      expect(lease?.transportSessionId).toBe('new-session');
+      lease?.release();
+      await vi.advanceTimersByTimeAsync(40);
+      expect(
+        f.sent.filter((message) => (message as { type?: string }).type === 'direct.prepare')
+      ).toHaveLength(2);
+    } finally {
+      f.service.close();
+    }
   });
 
   it('hands off a Node-created desktop channel once, regardless of arrival order', async () => {
@@ -268,16 +360,9 @@ describe('Workspace direct transfer browser service', () => {
       const file = f.service.acquireTerminalTransport('node-1', 'generation-1')!;
       const peer = f.peers[0]!;
       const carrier = peer.channels[0]!;
-      carrier.readyState = 'connecting';
-      const abort = new AbortController();
-      const waiting = terminal.readyStreamPath(abort.signal);
-      abort.abort();
-      await expect(waiting).rejects.toMatchObject({ name: 'AbortError' });
-      carrier.readyState = 'open';
-      carrier.dispatchEvent(new Event('open'));
       const signal = new AbortController().signal;
-      const path = (await terminal.readyStreamPath(signal))!;
-      expect(await file.readyStreamPath(signal)).toBe(path);
+      const path = terminal.streamPath!;
+      expect(file.streamPath).toBe(path);
       const terminalStream = path.openStream(
         { kind: 'terminal', grant: 'terminal-ticket' },
         signal
@@ -291,6 +376,7 @@ describe('Workspace direct transfer browser service', () => {
       carrier.receive(encodeNodeStreamFrame({ type: 'OPENED', streamId: 2 }).buffer);
       (await terminalStream)!.close();
       terminal.release();
+      expect(terminal.streamPath).toBeUndefined();
       await (await fileStream)!.write(Uint8Array.of(0, 255, 42));
       expect(carrier.sent.slice(2).map(decodeNodeStreamFrame)).toEqual([
         { type: 'RESET', streamId: 1, code: 'NODE_STREAM_CANCELLED' },
@@ -395,6 +481,49 @@ describe('Workspace direct transfer browser service', () => {
       f.peers[0]!.connected();
       expect(onTransportReady).toHaveBeenCalledExactlyOnceWith('node-1');
     } finally {
+      f.service.close();
+    }
+  });
+
+  it('increases the background retry delay and resets it after the probe succeeds', async () => {
+    vi.useFakeTimers();
+    const f = fixture([], {
+      randomId: (() => {
+        let next = 0;
+        return () => `request-${++next}`;
+      })(),
+      probeTimeoutMs: 10,
+      probeRetryDelaysMs: [25, 100],
+      shouldRetryProbe: () => true
+    });
+    const prepares = () =>
+      f.sent.filter((value) => (value as { type?: string }).type === 'direct.prepare');
+    try {
+      const pending = f.service.ensureTransport('node-1', 'generation-1');
+      await vi.advanceTimersByTimeAsync(20);
+      await expect(pending).resolves.toBe('RELAY_ONLY');
+      await vi.advanceTimersByTimeAsync(25);
+      expect(prepares()).toHaveLength(3);
+
+      await vi.advanceTimersByTimeAsync(20);
+      expect(prepares()).toHaveLength(4);
+      await vi.advanceTimersByTimeAsync(99);
+      expect(prepares()).toHaveLength(4);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(prepares()).toHaveLength(5);
+
+      prepareTransport(f, 'request-5');
+      const peer = f.peers[0]!;
+      peer.connected();
+      f.service.handle({ type: 'direct.opened', directSessionId: 'transport-session', offset: 0 });
+      expect(f.service.result('node-1', 'generation-1')).toBe('DIRECT_AVAILABLE');
+      peer.channels[0]!.close();
+      await vi.advanceTimersByTimeAsync(24);
+      expect(prepares()).toHaveLength(5);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(prepares()).toHaveLength(6);
+    } finally {
+      f.service.releaseTransport('node-1');
       f.service.close();
     }
   });
