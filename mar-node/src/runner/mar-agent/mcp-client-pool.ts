@@ -441,18 +441,15 @@ export class MarAgentMcpClientPool {
     const job = (async () => {
       if (state.isAvailable()) {
         try {
-          do {
-            // Yield the slot after each sweep so noisy servers cannot starve queued recovery.
-            const tools = await this.#withRefreshSlot(state, () => {
-              state.dirty = false;
-              return this.#enumerate(state);
-            });
-            if (this.#closed) return;
-            if (!state.isAvailable()) throw mcpConnectionUnavailable();
-            this.#publish({ state, tools });
-            state.retryAt = 0;
-          } while (state.dirty);
-          return;
+          const tools = await this.#withRefreshSlot(state, () => {
+            state.dirty = false;
+            return this.#enumerate(state);
+          });
+          if (this.#closed) return;
+          if (!state.isAvailable()) throw mcpConnectionUnavailable();
+          this.#publish({ state, tools });
+          state.retryAt = 0;
+          return state;
         } catch (error) {
           // A catalog error alone does not invalidate the connection.
           if (state.isAvailable() || !state.reopen) throw error;
@@ -460,7 +457,7 @@ export class MarAgentMcpClientPool {
       }
       const reopen = state.reopen;
       if (this.#closed || !reopen) return;
-      await this.#withRefreshSlot(state, async () => {
+      return this.#withRefreshSlot(state, async () => {
         if (this.#closed) return;
         await state.close().catch(() => undefined);
         const recovered = await reopen();
@@ -468,20 +465,25 @@ export class MarAgentMcpClientPool {
           if (this.#closed) return;
           if (!recovered.isAvailable()) throw mcpConnectionUnavailable();
           this.#publish({ state, tools: recovered.tools, recovered });
-          if (recovered.dirty) void this.#refresh(recovered).catch(() => undefined);
+          return recovered;
         } finally {
           if (this.#servers.get(state.metadata.id) !== recovered)
             void recovered.close().catch(() => undefined);
         }
       });
-    })()
-      .catch((error: unknown) => {
-        state.retryAt = Date.now() + MCP_CATALOG_LIMITS.retryMs;
-        throw error;
-      })
-      .finally(() => {
+    })().then(
+      (published) => {
         delete state.refreshing;
-      });
+        // Follow-up sweeps rejoin the queue and never extend a Run's startup barrier.
+        if (published?.dirty && published.isAvailable())
+          void this.#refresh(published).catch(() => undefined);
+      },
+      (error: unknown) => {
+        state.retryAt = Date.now() + MCP_CATALOG_LIMITS.retryMs;
+        delete state.refreshing;
+        throw error;
+      }
+    );
     state.refreshing = job;
     return job;
   }
