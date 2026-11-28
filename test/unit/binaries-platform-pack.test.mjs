@@ -21,6 +21,17 @@ const targets = [
 ];
 const nativeTarget = `${process.platform}-${process.arch}`;
 
+test('bundled Windows UltraVNC returns before UDP Echo initialization', async () => {
+  for (const name of ['binaries', 'binaries-win32-x64']) {
+    const vendor = join(product, 'packages', name, 'vendor/ultravnc');
+    const manifest = JSON.parse(await readFile(join(vendor, 'manifest.json'), 'utf8'));
+    const { server, serverSha256 } = manifest.targets['win32-x64'];
+    const image = await readFile(join(vendor, server));
+    assert.equal(image.subarray(0x35c10, 0x35c15).toString('hex'), 'c3574881ec', name);
+    assert.equal(createHash('sha256').update(image).digest('hex'), serverSha256, name);
+  }
+});
+
 function npm(args, cwd, cache) {
   const windows = process.platform === 'win32';
   const quote = (arg) => `"${arg.replaceAll('"', '\\"')}"`;

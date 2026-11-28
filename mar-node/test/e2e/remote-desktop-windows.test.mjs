@@ -1,17 +1,43 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
+import { promisify } from 'node:util';
 
 // Opt-in native integration: owns only its VNC backend and never sends desktop input.
 const enabled =
   process.platform === 'win32' && process.env.MAR_TEST_WINDOWS_DESKTOP_EXCLUSIVE === '1';
 
+async function assertLoopbackOnly(port) {
+  assert(Number.isInteger(port), 'The authenticated RFB connection must have a peer port.');
+  // Scope the check to the backend serving this connection, not other VNC processes.
+  const query = `
+$ErrorActionPreference = 'Stop'
+$tcp = @(Get-NetTCPConnection -State Listen)
+$rfb = @($tcp | Where-Object { $_.LocalAddress -eq '127.0.0.1' -and $_.LocalPort -eq ${port} })
+if ($rfb.Count -ne 1) { throw 'Expected one IPv4 loopback RFB listener.' }
+$owner = $rfb[0].OwningProcess
+$udp = @(Get-NetUDPEndpoint | Where-Object { $_.OwningProcess -eq $owner })
+@{
+  tcp = @($tcp | Where-Object { $_.OwningProcess -eq $owner } | Select-Object LocalAddress, LocalPort)
+  udp = @($udp | Select-Object LocalAddress, LocalPort)
+} | ConvertTo-Json -Depth 3 -Compress`;
+  const { stdout } = await promisify(execFile)(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', query],
+    { timeout: 10_000, windowsHide: true }
+  );
+  const endpoints = JSON.parse(stdout);
+  assert.deepEqual(endpoints.tcp, [{ LocalAddress: '127.0.0.1', LocalPort: port }]);
+  assert.deepEqual(endpoints.udp, [], 'The managed VNC server must not open a UDP endpoint.');
+}
+
 test(
-  'Windows monitor topology matches the physical pixels of the managed VNC framebuffer',
+  'Windows managed VNC uses only TCP loopback and matches the physical monitor topology',
   {
     skip: enabled ? false : 'Requires an exclusively allocated interactive Windows desktop.',
-    timeout: 30_000
+    timeout: 40_000
   },
   async () => {
     const dist = resolve(
@@ -44,6 +70,7 @@ test(
         assert.equal(display.nativeBounds.width, display.framebufferBounds.width);
         assert.equal(display.nativeBounds.height, display.framebufferBounds.height);
       }
+      await assertLoopbackOnly(connection.socket.remotePort);
     } finally {
       connection?.socket.destroy();
       try {
