@@ -486,7 +486,6 @@ export class NodeControl extends NodeIdentityControl {
     nodeId: string,
     user: UserNodeAuthorization,
     cliExpiresAt?: number,
-    hostedOnly = false,
     tcpForwardAdmission?: TcpForwardAdmissionChecks
   ): void {
     if (socket.readyState !== socket.OPEN) return;
@@ -505,7 +504,7 @@ export class NodeControl extends NodeIdentityControl {
       this.dataClients.delete(socket);
     });
     const forward =
-      cliExpiresAt !== undefined && !hostedOnly && tcpForwardAdmission !== undefined
+      cliExpiresAt !== undefined && tcpForwardAdmission !== undefined
         ? this.tcpForwardRelay.forCarrier(nodeId, user.userId, tcpForwardAdmission)
         : undefined;
     const authorize: NodeStreamAuthorizer = async ({ kind, grant }, signal) => {
@@ -516,7 +515,6 @@ export class NodeControl extends NodeIdentityControl {
         cliExpiresAt === undefined
       )
         return this.hostedFileTickets.authorize(kind, grant, nodeId, user, signal);
-      if (hostedOnly) return undefined;
       if (cliExpiresAt === undefined && kind === 'browser-rfb')
         return this.browser?.authorizePictureStream(grant, nodeId, user, signal);
       if (
