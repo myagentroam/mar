@@ -657,15 +657,13 @@ export class NodeControl extends NodeIdentityControl {
     for (const [socket, id] of this.shareDataClients) if (id === shareId) socket.terminate();
   }
 
-  closeUserWorkbench(sessionHash: string): void {
-    this.workbenchRelay.closeSession(sessionHash);
-  }
-
-  closeUserTerminals(sessionHash: string): void {
+  invalidateLoginSession(sessionHash: string): void {
+    // Retire the login's admission, not the shared carrier or unrelated credentials.
     for (const [socket, user] of this.dataClients)
       if (user.sessionHash === sessionHash) this.dataClients.delete(socket);
     this.terminalRelay.closeSession(sessionHash);
     this.terminalDirect.revokeSession(sessionHash);
+    this.workbenchRelay.closeSession(sessionHash);
   }
 
   closeUserSessions(userId: number): void {

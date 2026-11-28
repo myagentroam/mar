@@ -265,10 +265,9 @@ function authDatabaseFixture() {
   };
 }
 
-function nodeControlFixture(): Pick<NodeControl, 'closeUserTerminals' | 'closeUserWorkbench'> {
+function nodeControlFixture(): Pick<NodeControl, 'invalidateLoginSession'> {
   return {
-    closeUserTerminals: vi.fn(),
-    closeUserWorkbench: vi.fn()
+    invalidateLoginSession: vi.fn()
   };
 }
 

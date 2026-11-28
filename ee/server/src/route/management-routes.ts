@@ -172,8 +172,8 @@ export function registerManagementRoutes(input: {
       if (userId === undefined) return sendError(reply, 400, 'USER_ID_INVALID');
       const temporaryPassword = randomBytes(18).toString('base64url');
       try {
-        await database.resetUserPassword(userId, temporaryPassword, admin.userId);
-        nodeControl.closeUserSessions(userId);
+        const revoked = await database.resetUserPassword(userId, temporaryPassword, admin.userId);
+        for (const hash of revoked) nodeControl.invalidateLoginSession(hash);
         return reply.send({ temporaryPassword });
       } catch (error) {
         return databaseError(reply, error);

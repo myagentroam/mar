@@ -267,10 +267,8 @@ export function registerOAuthRoutes(input: {
         ipAddress: requestIp(request),
         userAgent: boundedUserAgent(request.headers['user-agent'])
       });
-      for (const sessionHash of session.evictedSessionHashes) {
-        nodeControl.closeUserTerminals(sessionHash);
-        nodeControl.closeUserWorkbench(sessionHash);
-      }
+      for (const sessionHash of session.evictedSessionHashes)
+        nodeControl.invalidateLoginSession(sessionHash);
       emitAudit(database, {
         eventType: 'login_succeeded',
         actorUserId: userId,

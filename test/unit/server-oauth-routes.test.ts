@@ -12,10 +12,11 @@ describe('Server OAuth routes', () => {
     const audit = vi.fn(async () => {
       throw new Error('audit failed');
     });
+    const invalidateLoginSession = vi.fn();
     const createUserSession = vi.fn(async () => ({
       sessionId: 'session-id',
       csrfToken: 'csrf',
-      evictedSessionHashes: []
+      evictedSessionHashes: ['evicted-login-hash']
     }));
     registerOAuthRoutes({
       app,
@@ -24,8 +25,7 @@ describe('Server OAuth routes', () => {
         callback: vi.fn(async () => ({ userId: 2, flowType: 'LOGIN' as const }))
       } as unknown as OAuthService,
       nodeControl: {
-        closeUserTerminals: vi.fn(),
-        closeUserWorkbench: vi.fn()
+        invalidateLoginSession
       } as unknown as NodeControl,
       publicOrigin: 'https://mar.example',
       secureCookies: true
@@ -40,6 +40,7 @@ describe('Server OAuth routes', () => {
       expect(response.headers.location).toBe('/console');
       expect(String(response.headers['set-cookie'])).toContain('mar_user_session=session-id');
       expect(createUserSession).toHaveBeenCalledOnce();
+      expect(invalidateLoginSession).toHaveBeenCalledExactlyOnceWith('evicted-login-hash');
       expect(audit).toHaveBeenCalledOnce();
       expect(warning).toHaveBeenCalledWith('AUDIT_WRITE_FAILED');
     } finally {
@@ -71,8 +72,7 @@ describe('Server OAuth routes', () => {
       database: database as unknown as MysqlServerDatabase,
       oauth: oauth as unknown as OAuthService,
       nodeControl: {
-        closeUserTerminals: vi.fn(),
-        closeUserWorkbench: vi.fn()
+        invalidateLoginSession: vi.fn()
       } as unknown as NodeControl,
       publicOrigin: 'https://mar.example',
       secureCookies: true
@@ -135,8 +135,7 @@ describe('Server OAuth routes', () => {
       database: database as unknown as MysqlServerDatabase,
       oauth: oauth as unknown as OAuthService,
       nodeControl: {
-        closeUserTerminals: vi.fn(),
-        closeUserWorkbench: vi.fn()
+        invalidateLoginSession: vi.fn()
       } as unknown as NodeControl,
       publicOrigin: 'https://mar.example',
       secureCookies: true

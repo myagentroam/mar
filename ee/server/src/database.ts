@@ -207,22 +207,36 @@ export class ServerDatabase {
     }
   }
 
-  resetUserPassword(userId: number, password: string, actorUserId: number): void {
+  resetUserPassword(userId: number, password: string, actorUserId: number): readonly string[] {
     assertPasswordPolicy(password);
-    const result = this.raw
-      .prepare(
-        'UPDATE users SET password_hash = ?, must_change_password = 1, updated_at = ? WHERE id = ? AND is_admin = 0'
-      )
-      .run(hashPassword(password), this.now(), userId);
-    if (Number(result.changes) !== 1) throw new Error('USER_NOT_FOUND_OR_PROTECTED');
-    this.raw
-      .prepare('UPDATE user_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL')
-      .run(this.now(), userId);
+    let revoked: readonly string[];
+    this.raw.exec('BEGIN IMMEDIATE');
+    try {
+      const timestamp = this.now();
+      const result = this.raw
+        .prepare(
+          'UPDATE users SET password_hash = ?, must_change_password = 1, updated_at = ? WHERE id = ? AND is_admin = 0'
+        )
+        .run(hashPassword(password), timestamp, userId);
+      if (Number(result.changes) !== 1) throw new Error('USER_NOT_FOUND_OR_PROTECTED');
+      revoked = this.raw
+        .prepare(
+          'UPDATE user_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL RETURNING session_hash'
+        )
+        .all(timestamp, userId)
+        .map((row) => String(row['session_hash']));
+      this.raw.exec('COMMIT');
+    } catch (error) {
+      this.raw.exec('ROLLBACK');
+      throw error;
+    }
+    // Dispatch only after commit so a rollback cannot leave a successful reset audit.
     this.audit({
       eventType: 'user_password_reset',
       actorUserId,
       metadata: JSON.stringify({ userId })
     });
+    return revoked;
   }
 
   createUserSession(
