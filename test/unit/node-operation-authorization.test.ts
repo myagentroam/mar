@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
+import { createRequire } from 'node:module';
+import Fastify from '../../ee/server/node_modules/fastify/fastify.js';
 import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '../../packages/protocol/src/index.js';
 import {
@@ -10,9 +12,118 @@ import {
   type NodeStreamFrame
 } from '../../packages/protocol/src/node-stream-wire.js';
 import { ServerDatabase } from '../../ee/server/src/database.js';
+import { registerRealtimeRoutes } from '../../ee/server/src/route/realtime-routes.js';
+import { SESSION_COOKIE_NAME } from '../../packages/server-core/src/auth.js';
 import { createTestNodeControl } from '../support/create-test-node-control.js';
 
+const WebSocket = createRequire(import.meta.url)(
+  '../../ee/server/node_modules/ws'
+) as typeof import('../../ee/server/node_modules/@types/ws/index.js');
+
 describe('Node operation authorization changes', () => {
+  it('uses current Workspace access on a carrier admitted through a Hosted conversation', async () => {
+    const f = await fixture();
+    const app = Fastify();
+    const user = { userId: 2, sessionHash: 'hosted-session' };
+    const workspaceTicket = () =>
+      f.control.createWorkspaceFileStreamTicket(f.nodeId, user, {
+        direction: 'DOWNLOAD',
+        resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'file' },
+        fileName: 'file',
+        size: 1,
+        revision: 'revision'
+      });
+    let client: InstanceType<typeof WebSocket> | undefined;
+    try {
+      const oldTicket = await workspaceTicket();
+      f.denied.add(user.userId);
+      registerRealtimeRoutes({
+        app,
+        database: {
+          findCurrentUserSession: (cookie) =>
+            cookie === 'hosted-login'
+              ? {
+                  ...user,
+                  username: 'member',
+                  csrfTokenHash: 'csrf',
+                  isAdmin: false,
+                  mustChangePassword: false
+                }
+              : undefined
+        },
+        nodeControl: f.control,
+        publicOrigin: undefined,
+        relayAccess: {
+          credentials: { authenticateContext: async () => undefined },
+          canUseNode: async () => false,
+          canAccessNodeContainer: async () => !f.denied.has(user.userId),
+          canAccessHostedConversation: async (actor, node, conversationId) =>
+            actor.userId === user.userId && node === f.nodeId && conversationId === 'conversation'
+        }
+      });
+      const origin = await app.listen({ host: '127.0.0.1', port: 0 });
+      const socket = new WebSocket(
+        `${origin.replace(/^http:/u, 'ws:')}/api/relay/${f.nodeId}?hostedConversationId=conversation`,
+        { headers: { origin, cookie: `${SESSION_COOKIE_NAME}=hosted-login` } }
+      );
+      client = socket;
+      socket.binaryType = 'arraybuffer';
+      const receive = async () => (await once(socket, 'message'))[0];
+      expect(decodeNodeRelayHandshake(await receive())).toEqual({ type: 'RELAY_READY' });
+      const send = async (frame: NodeStreamFrame) => {
+        const reply = receive();
+        socket.send(encodeNodeStreamFrame(frame));
+        return decodeNodeStreamFrame(await reply);
+      };
+      const acknowledge = async (kind: string) => {
+        await vi.waitFor(() => expect(f.relay.sent).toHaveLength(1));
+        const open = decodeNodeStreamFrame(f.relay.sent.shift());
+        expect(open).toMatchObject({ type: 'OPEN', kind });
+        f.relay.receiveFrame({ type: 'OPENED', streamId: open.streamId });
+        return open.streamId;
+      };
+      const hosted = await f.control.createHostedFileStreamTicket({
+        kind: 'hosted-file-download',
+        nodeId: f.nodeId,
+        user,
+        templateId: 'template',
+        descriptor: { conversationId: 'conversation', fileId: 'file', revision: '1-1' },
+        allowed: async () => true
+      });
+      const [hostedReply, hostedNodeId] = await Promise.all([
+        send({ type: 'OPEN', streamId: 1, kind: 'hosted-file-download', grant: hosted }),
+        acknowledge('hosted-file-download')
+      ]);
+      expect(hostedReply).toEqual({ type: 'OPENED', streamId: 1 });
+      expect(
+        await send({ type: 'OPEN', streamId: 2, kind: 'file-download', grant: oldTicket })
+      ).toEqual({ type: 'RESET', streamId: 2, code: 'NODE_ACCESS_DENIED' });
+      expect(f.relay.sent).toEqual([]);
+
+      f.denied.delete(user.userId);
+      const grant = await workspaceTicket();
+      const [, workspaceNodeId] = await Promise.all([
+        send({ type: 'OPEN', streamId: 3, kind: 'file-download', grant }).then((reply) =>
+          expect(reply).toEqual({ type: 'OPENED', streamId: 3 })
+        ),
+        acknowledge('file-download')
+      ]);
+      for (const [streamId, nodeStreamId] of [
+        [1, hostedNodeId],
+        [3, workspaceNodeId]
+      ] as const) {
+        const bytes = Uint8Array.of(streamId);
+        const data = receive();
+        f.relay.receiveFrame({ type: 'DATA', streamId: nodeStreamId, bytes });
+        expect(decodeNodeStreamFrame(await data)).toEqual({ type: 'DATA', streamId, bytes });
+      }
+    } finally {
+      client?.terminate();
+      await app.close();
+      f.close();
+    }
+  });
+
   it.each([
     { change: 'tree change', reset: [1, 2, 3] },
     { change: 'membership change', reset: [1, 2, 3] },
@@ -194,6 +305,7 @@ async function fixture() {
     control,
     nodeId,
     denied,
+    relay,
     close,
     openOperations,
     assertData(operations: Awaited<ReturnType<typeof openOperations>>, streamId: number) {

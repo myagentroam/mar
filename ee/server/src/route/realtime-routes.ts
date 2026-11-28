@@ -156,7 +156,7 @@ export function registerRealtimeRoutes(input: {
               header === undefined ? relayAccess.canAccessNodeContainer : relayAccess.canUseNode;
             const normalAccess = await admit(user.userId, nodeId);
             const conversationId = request.query.hostedConversationId;
-            // A template-only session may use this same endpoint, but only Hosted grants.
+            // Hosted access can admit the carrier; each OPEN still needs current operation access.
             if (
               !normalAccess &&
               !(
@@ -184,7 +184,6 @@ export function registerRealtimeRoutes(input: {
               nodeId,
               { userId: user.userId, sessionHash: user.sessionHash },
               bearer?.expiresAt,
-              !normalAccess,
               bearer === undefined
                 ? undefined
                 : {
