@@ -137,7 +137,7 @@ describe('portable authentication HTTP flow', () => {
       evictedSessionHashes: ['evicted-hash-a', 'evicted-hash-b']
     });
     expect((await login()).statusCode).toBe(200);
-    expect(lifecycle.closeSessionConnections.mock.calls).toEqual([
+    expect(lifecycle.invalidateSessionAccess.mock.calls).toEqual([
       ['evicted-hash-a'],
       ['evicted-hash-b']
     ]);
@@ -145,7 +145,7 @@ describe('portable authentication HTTP flow', () => {
       'login_session_lru_evicted',
       'login_succeeded'
     ]);
-    expect(lifecycle.closeSessionConnections.mock.invocationCallOrder.at(-1)).toBeLessThan(
+    expect(lifecycle.invalidateSessionAccess.mock.invocationCallOrder.at(-1)).toBeLessThan(
       audit.record.mock.invocationCallOrder[0]!
     );
   });
@@ -226,7 +226,7 @@ describe('portable authentication HTTP flow', () => {
         })
       ).statusCode
     ).toBe(404);
-    expect(lifecycle.closeSessionConnections).not.toHaveBeenCalled();
+    expect(lifecycle.invalidateSessionAccess).not.toHaveBeenCalled();
     const revoked = await app.inject({
       method: 'DELETE',
       url: '/api/auth/sessions/public-1',
@@ -234,14 +234,15 @@ describe('portable authentication HTTP flow', () => {
     });
     expect(revoked.statusCode).toBe(204);
     expect(revoked.headers['set-cookie']).toContain('Max-Age=0');
-    expect(lifecycle.closeSessionConnections).toHaveBeenCalledWith(hashOpaque('session-1'));
+    expect(lifecycle.invalidateSessionAccess).toHaveBeenCalledWith(hashOpaque('session-1'));
     expect(audits.at(-1)?.eventType).toBe('user_session_revoked');
     expect((await app.inject({ url: '/api/auth/me', headers })).statusCode).toBe(401);
   });
 
-  it('changes the password through the atomic store operation before closing connections and issuing a new session', async () => {
+  it('changes the password through the atomic store operation before invalidating old admission and issuing a new session', async () => {
     const { app, login, store, lifecycle, audits } = fixture();
     const headers = credentials(await login());
+    const other = credentials(await login());
     const changed = await app.inject({
       method: 'POST',
       url: '/api/auth/change-password',
@@ -257,13 +258,18 @@ describe('portable authentication HTTP flow', () => {
       '127.0.0.1'
     );
     expect(store.changePassword.mock.invocationCallOrder[0]).toBeLessThan(
-      lifecycle.closeAllConnections.mock.invocationCallOrder[0]!
+      lifecycle.invalidateSessionAccess.mock.invocationCallOrder[0]!
     );
-    expect(lifecycle.closeAllConnections.mock.invocationCallOrder[0]).toBeLessThan(
-      store.createUserSession.mock.invocationCallOrder[1]!
+    expect(lifecycle.invalidateSessionAccess.mock.calls).toEqual([
+      [hashOpaque('session-1')],
+      [hashOpaque('session-2')]
+    ]);
+    expect(lifecycle.invalidateSessionAccess.mock.invocationCallOrder[1]).toBeLessThan(
+      store.createUserSession.mock.invocationCallOrder[2]!
     );
     expect(audits.filter((event) => event.eventType === 'password_changed')).toEqual([]);
     expect((await app.inject({ url: '/api/auth/me', headers })).statusCode).toBe(401);
+    expect((await app.inject({ url: '/api/auth/me', headers: other })).statusCode).toBe(401);
     expect(
       (await app.inject({ url: '/api/auth/me', headers: credentials(changed) })).statusCode
     ).toBe(200);
@@ -286,7 +292,7 @@ describe('portable authentication HTTP flow', () => {
       expect(result.json()).toMatchObject({ error: { code } });
     }
     expect(store.changePassword).not.toHaveBeenCalled();
-    expect(lifecycle.closeAllConnections).not.toHaveBeenCalled();
+    expect(lifecycle.invalidateSessionAccess).not.toHaveBeenCalled();
   });
 
   it('logs out only the current session and never sends raw cookies to the lifecycle sink', async () => {
@@ -296,8 +302,9 @@ describe('portable authentication HTTP flow', () => {
     const result = await app.inject({ method: 'POST', url: '/api/auth/logout', headers });
     expect(result.statusCode).toBe(204);
     expect(result.headers['set-cookie']).toContain('Max-Age=0');
-    expect(lifecycle.closeSessionConnections).toHaveBeenCalledWith(hashOpaque('session-1'));
-    expect(lifecycle.closeAllConnections).not.toHaveBeenCalled();
+    expect(lifecycle.invalidateSessionAccess).toHaveBeenCalledExactlyOnceWith(
+      hashOpaque('session-1')
+    );
     expect(audit.record).toHaveBeenLastCalledWith({
       eventType: 'logout',
       actorUserId: 1,
@@ -325,7 +332,7 @@ describe('portable authentication HTTP flow', () => {
       payload: { currentPassword: INITIAL_ADMIN_PASSWORD, password: 'new-test-password' }
     });
     expect(changed.statusCode).toBe(500);
-    expect(third.lifecycle.closeAllConnections).not.toHaveBeenCalled();
+    expect(third.lifecycle.invalidateSessionAccess).not.toHaveBeenCalled();
     expect(third.store.createUserSession).toHaveBeenCalledTimes(1);
   });
 });

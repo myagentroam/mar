@@ -10,6 +10,7 @@ import {
   resolvePlaywrightTestDatabase
 } from '../e2e/support/playwright-test-database.js';
 import { INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import { hashOpaque } from '../../packages/server-core/src/session-token.js';
 
 describe.skipIf(process.env['MAR_TEST_DATABASE_ADMIN_URL'] === undefined)(
   'Server MySQL database integration',
@@ -55,6 +56,28 @@ describe.skipIf(process.env['MAR_TEST_DATABASE_ADMIN_URL'] === undefined)(
       expect((await database.findCurrentUserSession(session.sessionId))?.userId).toBe(admin.id);
       await database.revokeSession(session.sessionId);
       expect(await database.findCurrentUserSession(session.sessionId)).toBeUndefined();
+    });
+
+    it('returns exactly the login scopes revoked by a password change', async () => {
+      const { id } = await database.getAdmin();
+      const create = () =>
+        database.createUserSession(id, { ipAddress: '127.0.0.1', userAgent: 'mysql-change-test' });
+      const first = await create();
+      const second = await create();
+      const alreadyRevoked = await create();
+      await database.revokeSession(alreadyRevoked.sessionId);
+      try {
+        const revoked = await database.changePassword(id, 'temporary-admin-password-2');
+        expect([...revoked].sort()).toEqual(
+          [first, second].map(({ sessionId }) => hashOpaque(sessionId)).sort()
+        );
+        expect(database.findCurrentUserSession(first.sessionId)).toBeUndefined();
+        expect(database.findCurrentUserSession(second.sessionId)).toBeUndefined();
+        const fresh = await create();
+        expect(database.findCurrentUserSession(fresh.sessionId)?.userId).toBe(id);
+      } finally {
+        await database.resetPassword(INITIAL_ADMIN_PASSWORD, 'local-command');
+      }
     });
 
     it('resets the fixed admin password and revokes its sessions', async () => {

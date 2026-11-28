@@ -574,7 +574,12 @@ describe('Node direct transfer service', () => {
         { type: 'OPENED', streamId: 1 },
         { type: 'RESET', streamId: 1, code: 'DIRECT_TRANSFER_CANCELLED' }
       ]);
-      expect(f.events).not.toContainEqual(expect.objectContaining({ type: 'direct.opened' }));
+      expect(f.events).toContainEqual({
+        type: 'direct.opened',
+        directSessionId: 'transfer-0001',
+        offset: 0
+      });
+      expect(f.events).not.toContainEqual(expect.objectContaining({ type: 'direct.complete' }));
     } finally {
       f.service.dispose();
     }

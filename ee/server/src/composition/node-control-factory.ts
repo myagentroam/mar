@@ -55,6 +55,8 @@ export function createNodeControl(
         constructed.push(() => workbenchRelay.close());
         const directTransfers = new DirectTransferCoordinator({
           audits: database,
+          ownsPage: ({ sessionHash, workbenchConnectionId }) =>
+            workbenchRelay.ownsConnection(sessionHash, workbenchConnectionId),
           authorize: async (userId, nodeId, workspaceId) => {
             if (transport.capabilities(nodeId)?.workspaceDirectTransfer === undefined) return false;
             return authorize(

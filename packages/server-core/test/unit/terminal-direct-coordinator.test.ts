@@ -241,6 +241,36 @@ describe('Terminal direct coordinator', () => {
     }
   });
 
+  it('does not poll resources on the lease sweep and closes only after effective loss', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    try {
+      await f.coordinator.handleBrowser(identity, request);
+      const [nodeId, prepared] = f.sendNode.mock.calls[0]!;
+      if (prepared.type !== 'terminal.direct.prepare') throw new Error('Expected a grant');
+      await f.coordinator.onNodeReady(nodeId, prepared.directSessionId);
+      f.authorize.mockClear();
+      f.advance(5_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(f.authorize).not.toHaveBeenCalled();
+      await f.coordinator.revalidateAuthorizations({ nodeId, workspaceId: 'other-workspace' });
+      expect(f.authorize).not.toHaveBeenCalled();
+      const scope = { nodeId, workspaceId: request.workspaceId };
+      await f.coordinator.revalidateAuthorizations(scope);
+      expect(f.coordinator.sessionCount(identity.sessionHash)).toBe(1);
+      f.deny();
+      await f.coordinator.revalidateAuthorizations(scope);
+      expect(f.sendNode).toHaveBeenLastCalledWith(nodeId, {
+        type: 'terminal.direct.cancel',
+        directSessionId: prepared.directSessionId,
+        code: 'TERMINAL_NOT_AUTHORIZED'
+      });
+    } finally {
+      f.coordinator.close();
+      vi.useRealTimers();
+    }
+  });
+
   it('releases a prepared Node grant if the browser cannot receive it', async () => {
     const f = fixture();
     try {

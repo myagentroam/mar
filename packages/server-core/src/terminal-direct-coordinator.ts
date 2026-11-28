@@ -9,6 +9,7 @@ import type {
   DirectTransferCoordinator
 } from './direct-transfer-coordinator.js';
 import { NodeRequestError } from './node-request-error.js';
+import { matchesNodeResource, type NodeResourceScope } from './node-access-contracts.js';
 
 const LEASE_MS = 30_000;
 const OPEN_MS = 15_000;
@@ -371,11 +372,25 @@ export class TerminalDirectCoordinator {
   }
 
   private async expire(): Promise<void> {
+    const now = this.now();
+    // Heartbeat and resource-change events own authorization checks; a sweep only expires leases.
     for (const session of [...this.sessions.values()])
-      if (session.openExpiresAt <= this.now() && !session.ready)
+      if (session.openExpiresAt <= now && !session.ready)
         await this.closeSession(session, 'TERMINAL_DIRECT_TIMEOUT');
-      else if (!(await this.authorized(session)))
+      else if (session.expiresAt <= now)
         await this.closeSession(session, 'TERMINAL_DIRECT_LEASE_EXPIRED');
+  }
+
+  async revalidateAuthorizations(scope: NodeResourceScope): Promise<void> {
+    await Promise.all(
+      [...this.sessions.values()].map(async (session) => {
+        if (
+          matchesNodeResource(scope, session) &&
+          !(await this.authorized(session).catch(() => false))
+        )
+          await this.closeSession(session, 'TERMINAL_NOT_AUTHORIZED');
+      })
+    );
   }
 
   private async closeSession(session: DirectTerminalSession, code: string): Promise<void> {

@@ -104,7 +104,7 @@ export interface WorkbenchBrowserHandler {
 }
 
 export class WorkbenchRelayService {
-  private readonly attached = new Map<WebSocket, UserNodeAuthorization>();
+  private readonly attached = new Map<WebSocket, UserNodeAuthorization | undefined>();
   private readonly shareSockets = new Map<WebSocket, ShareWorkbenchAccess>();
   private readonly shareTimers = new Map<string, NodeJS.Timeout>();
   private readonly browsers = new Map<WebSocket, UserNodeAuthorization>();
@@ -289,25 +289,21 @@ export class WorkbenchRelayService {
   }
 
   closeSession(sessionHash: string): void {
-    for (const connection of [...this.connections.values()])
-      if (connection.user.sessionHash === sessionHash)
-        this.revokeConnection(connection, 'USER_SESSION_CLOSED');
-    for (const [socket, user] of [...this.attached])
-      if (user.sessionHash === sessionHash) {
-        this.attached.delete(socket);
-        socket.close(1000, 'USER_SESSION_CLOSED');
-      }
+    this.revokeIdentity((user) => user.sessionHash === sessionHash, 'USER_SESSION_CLOSED');
   }
 
   closeUser(userId: number): void {
+    this.revokeIdentity((user) => user.userId === userId, 'USER_SESSIONS_CLOSED');
+  }
+
+  private revokeIdentity(matches: (user: UserNodeAuthorization) => boolean, reason: string): void {
     for (const connection of [...this.connections.values()])
-      if (connection.user.userId === userId)
-        this.revokeConnection(connection, 'USER_SESSIONS_CLOSED');
-    for (const [socket, user] of [...this.attached])
-      if (user.userId === userId) {
-        this.attached.delete(socket);
-        socket.close(1000, 'USER_SESSIONS_CLOSED');
-      }
+      if (connection.share === undefined && matches(connection.user))
+        this.revokeConnection(connection, reason, false);
+    // Retire the identity, not the socket. Keep ownership until the socket actually closes.
+    for (const [socket, user] of this.attached)
+      if (user !== undefined && !this.shareSockets.has(socket) && matches(user))
+        this.attached.set(socket, undefined);
   }
 
   close(): void {
@@ -663,7 +659,11 @@ export class WorkbenchRelayService {
     this.browserHandler?.revoked(connection.id);
   }
 
-  private revokeConnection(connection: WorkbenchConnection, reason: string): void {
+  private revokeConnection(
+    connection: WorkbenchConnection,
+    reason: string,
+    closeSocket = true
+  ): void {
     if (connection.releaseTimer !== undefined) clearTimeout(connection.releaseTimer);
     this.connections.delete(connection.id);
     this.directTransferHandler?.revoked?.(connection.id, directRevocationCode(reason));
@@ -674,14 +674,15 @@ export class WorkbenchRelayService {
     const socket = connection.socket;
     delete connection.socket;
     if (socket === undefined) return;
-    this.attached.delete(socket);
+    if (closeSocket) this.attached.delete(socket);
+    else this.attached.set(socket, undefined);
     const share = this.shareSockets.get(socket);
     this.shareSockets.delete(socket);
     if (share !== undefined) this.refreshSharePresence(share);
     this.browsers.delete(socket);
     this.broadcastTails.delete(socket);
     this.socketConnections.delete(socket);
-    socket.close(1000, reason);
+    if (closeSocket) socket.close(1000, reason);
   }
 
   invalidateShare(shareId: string, code: string): void {

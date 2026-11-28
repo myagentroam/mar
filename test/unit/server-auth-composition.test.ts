@@ -15,6 +15,7 @@ function transactionalDatabase() {
     beginTransaction: vi.fn(async () => undefined),
     execute: vi.fn(async (sql: string) => {
       expect(sql).toEqual(expect.any(String));
+      if (sql.startsWith('SELECT session_hash')) return [[], []];
       return [{ affectedRows: 1 }, []];
     }),
     commit: vi.fn(async () => undefined),
@@ -62,15 +63,14 @@ describe('authentication persistence composition', () => {
     }
   );
 
-  it('connects shared session lifecycle events to both terminal and Workbench closures', async () => {
+  it('invalidates only revoked login scopes in terminal and Workbench', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'core-auth-adapter-'));
     const database = openServerDatabase(join(directory, 'server.sqlite'), { now: () => 1_000 });
     const app = Fastify();
     const nodeControl = {
       closeUserTerminals: vi.fn(),
       closeUserWorkbench: vi.fn(),
-      closeAllTerminals: vi.fn(),
-      closeAllWorkbench: vi.fn()
+      closeUserSessions: vi.fn()
     };
     try {
       registerAuthRoutes({
@@ -102,7 +102,14 @@ describe('authentication persistence composition', () => {
       });
       expect(me.json().userId).toBe(userId);
       // Equal timestamps use the existing database tie-break; assert the actual evicted hash.
-      for (let index = 0; index < 5; index++) expect((await login()).statusCode).toBe(200);
+      const issued = [hashOpaque(firstToken)];
+      for (let index = 0; index < 5; index++) {
+        const session = await login();
+        expect(session.statusCode).toBe(200);
+        issued.push(
+          hashOpaque(String(session.headers['set-cookie']).split(';')[0]!.split('=')[1]!)
+        );
+      }
       expect(nodeControl.closeUserTerminals).toHaveBeenCalledOnce();
       expect(nodeControl.closeUserWorkbench.mock.calls).toEqual(
         nodeControl.closeUserTerminals.mock.calls
@@ -110,6 +117,12 @@ describe('authentication persistence composition', () => {
       expect(nodeControl.closeUserTerminals.mock.calls[0]![0]).not.toBe(firstToken);
       expect(nodeControl.closeUserTerminals.mock.calls[0]![0]).toMatch(/^[A-Za-z0-9_-]{43}$/u);
       const latest = await login();
+      issued.push(hashOpaque(String(latest.headers['set-cookie']).split(';')[0]!.split('=')[1]!));
+      const evicted = new Set(nodeControl.closeUserTerminals.mock.calls.flat());
+      const active = issued.filter((hash) => !evicted.has(hash));
+      expect(active).toHaveLength(5);
+      nodeControl.closeUserTerminals.mockClear();
+      nodeControl.closeUserWorkbench.mockClear();
       const changed = await app.inject({
         method: 'POST',
         url: '/api/auth/change-password',
@@ -121,8 +134,11 @@ describe('authentication persistence composition', () => {
       });
       expect(changed.statusCode).toBe(200);
       expect(changed.json().userId).toBe(userId);
-      expect(nodeControl.closeAllTerminals).toHaveBeenCalledOnce();
-      expect(nodeControl.closeAllWorkbench).toHaveBeenCalledOnce();
+      expect(nodeControl.closeUserSessions).not.toHaveBeenCalled();
+      expect(nodeControl.closeUserTerminals.mock.calls.flat().sort()).toEqual(active.sort());
+      expect(nodeControl.closeUserWorkbench.mock.calls).toEqual(
+        nodeControl.closeUserTerminals.mock.calls
+      );
       const cookie = String(changed.headers['set-cookie']).split(';')[0]!;
       const logout = await app.inject({
         method: 'POST',
@@ -186,7 +202,7 @@ describe('authentication persistence composition', () => {
     vi.spyOn(database, 'audit').mockRejectedValue(new Error('AUDIT_WRITE_FAILED'));
     await expect(
       database.changePassword(7, 'new-test-password', 'password_changed', '127.0.0.1')
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual([]);
     expect(connection.commit).toHaveBeenCalledOnce();
     expect(connection.rollback).not.toHaveBeenCalled();
     expect(connection.release).toHaveBeenCalledOnce();

@@ -12,6 +12,7 @@ import {
 } from '@myagentroam/protocol/tcp-forward';
 
 type Registration = {
+  readonly nodeId: string;
   readonly allowed: () => Promise<boolean>;
   readonly scope: AbortController;
   readonly id: string;
@@ -23,7 +24,7 @@ type Registration = {
 export class TcpForwardRelay {
   private readonly active = new Set<Registration>();
 
-  forCarrier(allowed: () => Promise<boolean>): NodeStreamAuthorizer {
+  forCarrier(nodeId: string, allowed: () => Promise<boolean>): NodeStreamAuthorizer {
     let owner: Registration | undefined;
     return async ({ kind, grant }, signal) => {
       if (signal.aborted) return undefined;
@@ -46,6 +47,7 @@ export class TcpForwardRelay {
       const request = decodeTcpForward(tcpForwardRequest, grant);
       if (request === undefined) return undefined;
       const entry: Registration = {
+        nodeId,
         id: randomUUID(),
         direction: request.direction,
         allowed,
@@ -73,15 +75,13 @@ export class TcpForwardRelay {
     };
   }
 
-  async revalidate(): Promise<void> {
+  async revalidate(nodeId: string): Promise<void> {
     await Promise.all(
-      [...this.active].map(async ({ allowed, scope }) => {
-        if (!(await allowed().catch(() => false))) scope.abort();
-      })
+      [...this.active]
+        .filter((entry) => entry.nodeId === nodeId)
+        .map(async ({ allowed, scope }) => {
+          if (!(await allowed().catch(() => false))) scope.abort();
+        })
     );
-  }
-
-  revokeAll(): void {
-    for (const { scope } of this.active) scope.abort();
   }
 }

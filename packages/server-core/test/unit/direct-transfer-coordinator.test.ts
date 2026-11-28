@@ -11,11 +11,13 @@ function fixture(authorizeTransport?: (userId: number, nodeId: string) => Promis
     async (_connectionId: string, _message: unknown) => 'delivered' as const
   );
   const authorize = vi.fn(async () => true);
+  const ownsPage = vi.fn(() => true);
   let now = 1_000_000;
   const audit = vi.fn(async (_event: unknown) => undefined);
   const coordinator = new DirectTransferCoordinator({
     audits: { audit },
     authorize,
+    ownsPage,
     ...(authorizeTransport === undefined ? {} : { authorizeTransport }),
     sendNode,
     sendBrowser,
@@ -29,6 +31,7 @@ function fixture(authorizeTransport?: (userId: number, nodeId: string) => Promis
     coordinator,
     audit,
     authorize,
+    ownsPage,
     sendNode,
     sendBrowser,
     advance: (ms: number) => (now += ms)
@@ -136,6 +139,128 @@ describe('Workspace direct transfer coordinator', () => {
       ).toBeUndefined();
       f.coordinator.revokeNode('node', 'NODE_OFFLINE');
       expect(f.coordinator.authorizedTransport(identity, id, 'node', 'generation')).toBeUndefined();
+    } finally {
+      f.coordinator.close();
+    }
+  });
+
+  it('retains an ICE carrier on login invalidation but removes it from new admission', async () => {
+    const f = fixture();
+    try {
+      const id = await prepareTransport(f);
+      await connectTransport(f, id);
+      f.sendNode.mockClear();
+
+      f.coordinator.revokeConnection(identity.workbenchConnectionId, 'DIRECT_USER_SESSION_CLOSED');
+
+      expect(f.coordinator.authorizedTransport(identity, id, 'node', 'generation')).toBeUndefined();
+      expect(f.sendNode).not.toHaveBeenCalled();
+
+      f.coordinator.revokeNode('node', 'NODE_OFFLINE');
+      expect(f.sendNode).toHaveBeenCalledWith(
+        'node',
+        'direct.cancel',
+        expect.objectContaining({ directSessionId: id })
+      );
+    } finally {
+      f.coordinator.close();
+    }
+  });
+
+  it('does not create a transport if the page loses ownership during authorization', async () => {
+    const { promise, resolve } = Promise.withResolvers<boolean>();
+    const authorizeTransport = vi.fn(() => promise);
+    const f = fixture(authorizeTransport);
+    try {
+      const pending = f.coordinator.handleBrowserMessage(identity, {
+        type: 'direct.prepare',
+        requestId: 'request-transport',
+        nodeId: 'node',
+        nodeGeneration: 'generation',
+        purpose: 'TRANSPORT'
+      });
+      expect(authorizeTransport).toHaveBeenCalledOnce();
+      f.ownsPage.mockReturnValue(false);
+      f.coordinator.revokeConnection(identity.workbenchConnectionId, 'DIRECT_USER_SESSION_CLOSED');
+      resolve(true);
+      await pending;
+      expect(f.sendNode).not.toHaveBeenCalled();
+      expect(f.sendBrowser).not.toHaveBeenCalled();
+    } finally {
+      f.coordinator.close();
+    }
+  });
+
+  it('keeps a confirmed ordinary download and its carrier while revoking a still-unused grant', async () => {
+    const authorizeTransport = vi.fn(async () => true);
+    const f = fixture(authorizeTransport);
+    try {
+      const transportSessionId = await prepareTransport(f);
+      await connectTransport(f, transportSessionId);
+      const prepare = (requestId: string) =>
+        f.coordinator.handleBrowserMessage(identity, {
+          type: 'direct.prepare',
+          requestId,
+          nodeId: 'node',
+          nodeGeneration: 'generation',
+          purpose: 'TRANSFER',
+          transportSessionId,
+          transfer: {
+            direction: 'DOWNLOAD',
+            resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'file' },
+            fileName: 'file',
+            size: 1,
+            revision: 'revision'
+          }
+        });
+      const grant = () => f.sendNode.mock.calls.at(-1)![2] as { directSessionId: string };
+      await prepare('active');
+      const active = grant().directSessionId;
+      f.coordinator.handleNodeMessage('node', {
+        type: 'direct.opened',
+        directSessionId: active,
+        offset: 0
+      });
+      await prepare('pending');
+      const pending = grant().directSessionId;
+      f.authorize.mockResolvedValue(false);
+      authorizeTransport.mockResolvedValue(false);
+      f.sendNode.mockClear();
+      await f.coordinator.revalidateAuthorizations({ nodeId: 'node', workspaceId: 'other' });
+      expect(f.sendNode).not.toHaveBeenCalled();
+      await f.coordinator.revalidateAuthorizations({ nodeId: 'node', workspaceId: 'workspace' });
+      expect(f.sendNode).toHaveBeenCalledExactlyOnceWith(
+        'node',
+        'direct.cancel',
+        expect.objectContaining({
+          directSessionId: pending,
+          code: 'DIRECT_TRANSFER_NOT_AUTHORIZED'
+        })
+      );
+      for (const directSessionId of [transportSessionId, active])
+        await f.coordinator.handleBrowserMessage(identity, {
+          type: 'direct.heartbeat',
+          directSessionId
+        });
+      expect(
+        f.sendNode.mock.calls
+          .slice(1)
+          .map(([, type, payload]) => [
+            type,
+            (payload as { directSessionId: string }).directSessionId
+          ])
+      ).toEqual([
+        ['direct.heartbeat', transportSessionId],
+        ['direct.heartbeat', active]
+      ]);
+      await prepare('denied');
+      expect(f.sendBrowser).toHaveBeenLastCalledWith(
+        'connection',
+        expect.objectContaining({
+          requestId: 'denied',
+          code: 'DIRECT_TRANSFER_NOT_AUTHORIZED'
+        })
+      );
     } finally {
       f.coordinator.close();
     }

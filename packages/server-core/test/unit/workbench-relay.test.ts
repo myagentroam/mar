@@ -236,7 +236,7 @@ describe('public page-level Workbench relay', () => {
       relay.closeSession('pending-session');
       socket.receive({ type: 'resume' });
       expect(socket.sent).toEqual([]);
-      expect(socket.close).toHaveBeenCalledWith(1000, 'USER_SESSION_CLOSED');
+      expect(socket.close).not.toHaveBeenCalled();
     } finally {
       relay.close();
     }
@@ -374,7 +374,9 @@ describe('public page-level Workbench relay', () => {
       expect(first.close).toHaveBeenCalledWith(4000, 'WORKBENCH_CONNECTION_REPLACED');
       relay.closeSession('session-one');
       expect(relay.ownsConnection('session-one', String(ready.workbenchConnectionId))).toBe(false);
-      expect(resumed.close).toHaveBeenCalledWith(1000, 'USER_SESSION_CLOSED');
+      expect(resumed.close).not.toHaveBeenCalled();
+      resumed.receive({ type: 'resume' });
+      expect(resumed.sent).toHaveLength(1);
       expect(impostor.close).not.toHaveBeenCalled();
     } finally {
       relay.close();

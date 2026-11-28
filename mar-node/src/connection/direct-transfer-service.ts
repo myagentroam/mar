@@ -543,6 +543,12 @@ export class DirectTransferService {
       const size = transferredSize(descriptor);
       try {
         signal.throwIfAborted();
+        // Confirm the one-use grant was consumed; authoritative upload offsets stay in the stream.
+        this.emit(transfer.command.directSessionId, {
+          type: 'direct.opened',
+          directSessionId: transfer.command.directSessionId,
+          offset: 0
+        });
         if (direction === 'UPLOAD' && openUpload !== undefined) {
           const upload = await openUpload(descriptor);
           transfer.upload = upload;

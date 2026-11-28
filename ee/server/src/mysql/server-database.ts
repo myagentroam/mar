@@ -533,7 +533,7 @@ export class MysqlServerDatabase {
     password: string,
     eventType: 'password_changed' = 'password_changed',
     ipAddress?: string
-  ): Promise<void> {
+  ): Promise<readonly string[]> {
     return this.authentication.changePassword(userId, password, eventType, ipAddress);
   }
 

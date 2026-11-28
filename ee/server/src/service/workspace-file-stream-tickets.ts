@@ -1,6 +1,11 @@
 import type { DirectTransferDescriptor } from '@myagentroam/protocol';
 import { emitAudit, type AuditObserver } from '@myagentroam/server-core/audit';
-import type { UserNodeAuthorization } from '@myagentroam/server-core/node-access-contracts';
+import {
+  isOrdinaryFileStream,
+  matchesNodeResource,
+  type NodeResourceScope,
+  type UserNodeAuthorization
+} from '@myagentroam/server-core/node-access-contracts';
 import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
 import { FileStreamTickets } from './file-stream-tickets.js';
 
@@ -24,6 +29,8 @@ export class WorkspaceFileStreamTickets extends FileStreamTickets<Ticket> {
       allowed: async ({ user, nodeId, descriptor, share }) =>
         (share === undefined || (await share.allowed())) &&
         options.allowed(user.userId, nodeId, descriptor.resource.workspaceId),
+      finishAfterResourceRevocation: ({ descriptor, share }) =>
+        share === undefined && isOrdinaryFileStream(descriptor),
       prepare: async (ticket, signal) => {
         if (ticket.share !== undefined && !(await ticket.share.allowed().catch(() => false)))
           throw new NodeRequestAdmissionError('RESOURCE_DENIED');
@@ -37,6 +44,12 @@ export class WorkspaceFileStreamTickets extends FileStreamTickets<Ticket> {
           ? (code) => auditUpload(options.audits!, ticket, code)
           : undefined
     });
+  }
+
+  revalidateResource(scope: NodeResourceScope): Promise<void> {
+    return this.revalidate(({ nodeId, descriptor }) =>
+      matchesNodeResource(scope, { nodeId, workspaceId: descriptor.resource.workspaceId })
+    );
   }
 }
 

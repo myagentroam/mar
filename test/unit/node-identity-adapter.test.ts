@@ -6,12 +6,16 @@ describe('enterprise Node identity persistence boundary', () => {
     const rejectNode = vi.fn();
     const activateNodeConnection = vi.fn();
     const disconnectData = vi.fn();
+    const revokeDirect = vi.fn();
     const receiver = {
       requestBroker: { rejectNode },
       runtimeCredentials: { activateNodeConnection },
       consumers: {},
       dataRelay: { disconnectNode: disconnectData },
       fileRelay: { disconnectNode: vi.fn() },
+      directTransfers: { revokeNode: revokeDirect },
+      terminalDirect: { revokeNode: vi.fn() },
+      terminalRelay: { disconnectNode: vi.fn() },
       desktopDirect: { revokeNode: vi.fn() },
       desktopRelay: { revokeNode: vi.fn() },
       workbenchRelay: { broadcast: vi.fn() }
@@ -22,6 +26,7 @@ describe('enterprise Node identity persistence boundary', () => {
     hooks.onNodeConnected.call(receiver, 'node-1', false);
     expect(rejectNode).not.toHaveBeenCalled();
     expect(disconnectData).not.toHaveBeenCalled();
+    expect(revokeDirect).not.toHaveBeenCalled();
     expect(activateNodeConnection).toHaveBeenCalledExactlyOnceWith('node-1');
     hooks.onNodeConnected.call(receiver, 'node-1', true);
     expect(rejectNode).toHaveBeenCalledWith(
@@ -30,6 +35,7 @@ describe('enterprise Node identity persistence boundary', () => {
     );
     expect(rejectNode).toHaveBeenCalledOnce();
     expect(disconnectData).toHaveBeenCalledExactlyOnceWith('node-1');
+    expect(revokeDirect).toHaveBeenCalledExactlyOnceWith('node-1', 'NODE_CONNECTION_REPLACED');
     expect(activateNodeConnection).toHaveBeenNthCalledWith(2, 'node-1');
   });
   it.each(['revokeNode', 'deleteNode'] as const)(

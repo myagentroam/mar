@@ -168,13 +168,17 @@ export function registerRealtimeRoutes(input: {
               socket.close(1008, 'NODE_RELAY_AUTH_INVALID');
               return;
             }
-            // Cookie authorization may have ended while Node access was being checked.
-            if (
-              header === undefined &&
-              authorizeRealtimeConnection(socket, request, database, publicOrigin)?.sessionHash !==
-                user.sessionHash
-            )
+            // The login can end while Node access is checked, before the carrier is registered.
+            if (header === undefined) {
+              if (
+                authorizeRealtimeConnection(socket, request, database, publicOrigin)
+                  ?.sessionHash !== user.sessionHash
+              )
+                return;
+            } else if ((await relayAccess.credentials.authenticateContext(header)) === undefined) {
+              socket.close(1008, 'NODE_RELAY_AUTH_INVALID');
               return;
+            }
             nodeControl.attachClientRelay(
               socket,
               nodeId,

@@ -380,7 +380,7 @@ export class ServerDatabase {
     password: string,
     eventType: 'password_changed' | 'password_reset',
     ipAddress?: string
-  ): void {
+  ): readonly string[] {
     assertPasswordPolicy(password);
     this.raw.exec('BEGIN IMMEDIATE');
     try {
@@ -390,6 +390,9 @@ export class ServerDatabase {
           'UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = ? WHERE id = ?'
         )
         .run(hashPassword(password), timestamp, userId);
+      const sessions = this.raw
+        .prepare('SELECT session_hash FROM user_sessions WHERE user_id = ? AND revoked_at IS NULL')
+        .all(userId);
       this.raw
         .prepare('UPDATE user_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL')
         .run(timestamp, userId);
@@ -399,6 +402,7 @@ export class ServerDatabase {
         ...(ipAddress === undefined ? {} : { ipAddress })
       });
       this.raw.exec('COMMIT');
+      return sessions.map((row) => String(row['session_hash']));
     } catch (error) {
       this.raw.exec('ROLLBACK');
       throw error;

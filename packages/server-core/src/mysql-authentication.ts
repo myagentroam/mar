@@ -313,7 +313,7 @@ export class MysqlAuthenticationStorage {
     password: string,
     eventType: 'password_changed' = 'password_changed',
     ipAddress?: string
-  ): Promise<void> {
+  ): Promise<readonly string[]> {
     const connection = await this.raw.getConnection();
     try {
       await connection.beginTransaction();
@@ -321,6 +321,12 @@ export class MysqlAuthenticationStorage {
         'UPDATE users SET password_hash=?, must_change_password=FALSE, updated_at=? WHERE id=?',
         [hashPassword(password), this.now(), userId]
       );
+      // Under the user lock, capture the login identities revoked by this transaction only.
+      const [sessions] = await connection.execute<RowDataPacket[]>(
+        'SELECT session_hash FROM user_sessions WHERE user_id=? AND revoked_at IS NULL FOR UPDATE',
+        [userId]
+      );
+      const hashes = sessions.map((row) => String(row['session_hash']));
       await connection.execute(
         'UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL',
         [this.now(), userId]
@@ -337,7 +343,8 @@ export class MysqlAuthenticationStorage {
       );
       await connection.commit();
       commitMysqlAudits(connection);
-      this.invalidateUserSessions(userId);
+      for (const hash of hashes) this.sessionProjection.delete(hash);
+      return hashes;
     } catch (error) {
       discardMysqlAudits(connection);
       await connection.rollback();

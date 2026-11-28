@@ -17,7 +17,9 @@ function fixture() {
   };
   const connection = {
     beginTransaction: vi.fn(async () => undefined),
-    execute: vi.fn(async () => [{ affectedRows: 1 }, []]),
+    execute: vi.fn(async (sql: string) =>
+      sql.startsWith('SELECT session_hash') ? [[row], []] : [{ affectedRows: 1 }, []]
+    ),
     commit: vi.fn(async () => undefined),
     rollback: vi.fn(async () => undefined),
     release: vi.fn()
@@ -64,9 +66,11 @@ describe('shared MySQL authentication storage', () => {
   });
 
   it('commits password and revocation before handing audit off', async () => {
-    const { store, audit, connection } = fixture();
+    const { store, audit, connection, row } = fixture();
     await store.reloadSessions();
-    await store.changePassword(1, 'fixture-password', 'password_changed', '127.0.0.1');
+    await expect(
+      store.changePassword(1, 'fixture-password', 'password_changed', '127.0.0.1')
+    ).resolves.toEqual([row.session_hash]);
     expect(audit).toHaveBeenCalledWith(connection, {
       eventType: 'password_changed',
       actorUserId: 1,
@@ -80,12 +84,12 @@ describe('shared MySQL authentication storage', () => {
   });
 
   it('invalidates the projection without rollback when audit writing fails', async () => {
-    const { store, audit, connection } = fixture();
+    const { store, audit, connection, row } = fixture();
     await store.reloadSessions();
     audit.mockRejectedValue(new Error('AUDIT_WRITE_FAILED'));
     await expect(
       store.changePassword(1, 'fixture-password', 'password_changed', '127.0.0.1')
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual([row.session_hash]);
     expect(connection.commit).toHaveBeenCalledOnce();
     expect(connection.rollback).not.toHaveBeenCalled();
     expect(store.findCurrentUserSession('cookie')).toBeUndefined();

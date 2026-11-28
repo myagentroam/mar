@@ -113,13 +113,12 @@ async function fixture({ expireSessionOnCarrierAdmission = false } = {}) {
   data.connect(binding);
   teardown.push(() => data.disconnect());
   return {
-    closeAuthenticatedConnections() {
-      control.closeAllTerminals();
-      control.closeAllWorkbench();
+    closeAuthenticatedConnections(userId = user.userId) {
+      control.closeUserSessions(userId);
     },
     async revoke() {
       allowed = false;
-      await control.revalidateDataAuthorizations();
+      await control.revalidateDataAuthorizations({ nodeId });
     },
     run(
       direction: '-L' | '-R',
@@ -139,7 +138,8 @@ async function fixture({ expireSessionOnCarrierAdmission = false } = {}) {
       const spec = `${backgroundBind === undefined ? '' : `${backgroundBind}:`}${listen}:${targetHost}:${target}`;
       const flags =
         backgroundBind === undefined ? ['-N', direction, spec] : [`-fN${direction[1]}${spec}`];
-      const child = spawn(process.execPath, [cli, 'ssh', ...flags, nodeId], {
+      // The in-memory registry uses base64url IDs, which can begin with a hyphen.
+      const child = spawn(process.execPath, [cli, 'ssh', ...flags, '--', nodeId], {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: {
           PATH: process.env.PATH,
@@ -260,21 +260,40 @@ describe('marctl TCP forwarding through the production Relay', () => {
     }
   );
 
-  it('closes a reverse listener when password change invalidates authenticated connections', async () => {
+  it('blocks new relay data after sign-in invalidation without closing admitted data', async () => {
     const runtime = await fixture();
     const target = await reserve();
     const listener = await reserve();
     await new Promise<void>((resolve) => listener.server.close(() => resolve()));
-    const forward = runtime.run('-R', listener.port, target.port);
+    const forward = runtime.run('-L', listener.port, target.port);
     expect(await forward.ready()).toContain(`127.0.0.1:${listener.port}`);
 
-    runtime.closeAuthenticatedConnections();
+    const accepted = once(target.server, 'connection');
+    const probe = createConnection({ port: listener.port, host });
+    const [[remote]] = await Promise.all([accepted, once(probe, 'connect')]);
+    try {
+      runtime.closeAuthenticatedConnections();
+      const data = once(probe, 'data');
+      remote.write('still admitted');
+      expect(String((await data)[0])).toBe('still admitted');
 
+      const extra = createConnection({ port: listener.port, host });
+      try {
+        await once(extra, 'close', { signal: AbortSignal.timeout(2_000) });
+      } finally {
+        extra.destroy();
+      }
+    } finally {
+      remote.destroy();
+      probe.destroy();
+    }
+
+    await runtime.revoke();
     await vi.waitFor(() => bind(listener.server, listener.port));
     expect(await forward.result()).toMatchObject({ status: 1 });
   });
 
-  it('does not admit a listener when a CLI session expires after carrier authentication', async () => {
+  it('does not admit the carrier when a CLI session expires during Node authorization', async () => {
     const runtime = await fixture({ expireSessionOnCarrierAdmission: true });
     const target = await reserve();
     const listener = await reserve();
@@ -283,7 +302,7 @@ describe('marctl TCP forwarding through the production Relay', () => {
     expect(await runtime.run('-R', listener.port, target.port).result()).toMatchObject({
       status: 1,
       stdout: '',
-      stderr: expect.stringContaining('RESOURCE_DENIED')
+      stderr: expect.stringContaining('NODE_RELAY_UNAVAILABLE')
     });
     await bind(listener.server, listener.port);
   });

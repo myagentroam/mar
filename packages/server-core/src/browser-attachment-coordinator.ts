@@ -249,6 +249,22 @@ export class BrowserAttachmentCoordinator {
       if (result.status === 'rejected') this.options.failed(result.reason);
   }
 
+  async revalidateAuthorizations(matches: (target: Scope) => boolean): Promise<void> {
+    await Promise.all(
+      [...this.leases].map(async ([id, lease]) => {
+        if (!matches(lease.target) || !this.live(lease)) return;
+        try {
+          await this.options.authorize(lease.identity, lease.target);
+        } catch (error) {
+          // Only confirmed resource denial has Browser's explicit Workspace-revocation semantics.
+          if (error instanceof BrowserScopeRevoked)
+            await this.close(id, 'BROWSER_NOT_AUTHORIZED').catch(this.options.failed);
+          else this.options.failed(error);
+        }
+      })
+    );
+  }
+
   async shutdown(): Promise<void> {
     this.stopped = true;
     clearInterval(this.sweep);

@@ -265,15 +265,10 @@ function authDatabaseFixture() {
   };
 }
 
-function nodeControlFixture(): Pick<
-  NodeControl,
-  'closeUserTerminals' | 'closeUserWorkbench' | 'closeAllTerminals' | 'closeAllWorkbench'
-> {
+function nodeControlFixture(): Pick<NodeControl, 'closeUserTerminals' | 'closeUserWorkbench'> {
   return {
     closeUserTerminals: vi.fn(),
-    closeUserWorkbench: vi.fn(),
-    closeAllTerminals: vi.fn(),
-    closeAllWorkbench: vi.fn()
+    closeUserWorkbench: vi.fn()
   };
 }
 
