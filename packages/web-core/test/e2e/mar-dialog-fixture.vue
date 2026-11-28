@@ -56,6 +56,7 @@ async function prompt() {
 
 <template>
   <SharedTooltipHost />
+  <div id="confirmation-host"></div>
   <button type="button" @click="opened">Open editor</button>
   <button type="button" @click="prompt">Open prompt</button>
   <button type="button" @click="MarMessageBox.alert('Operation completed.', 'Result')">
@@ -63,6 +64,9 @@ async function prompt() {
   </button>
   <button type="button" @click="showMessage('Background saved', 'success')">
     Background command
+  </button>
+  <button type="button" @click="showMessage('Usage authentication failed.', 'error')">
+    Complete failed usage request
   </button>
   <label><input v-model="locked" type="checkbox" /> Guard close</label>
   <label><input v-model="focusDraft" type="checkbox" /> Autofocus draft</label>
@@ -91,21 +95,26 @@ async function prompt() {
       <button type="button" @click="prompt">Rename inside editor</button>
       <button type="button" @click="open = false">Owner close</button>
     </template>
-    <MarDialog v-if="child" v-model="child" append-to-body title="Discard changes?">
-      <button type="button" @click="answer(true)">Keep draft</button>
-      <button type="button" @click="answer(false)">Discard draft</button>
-      <button v-if="showThirdOpener" type="button" @click="third = true">Open more options</button>
-      <MarDialog v-if="third" v-model="third" append-to-body title="More options">
-        <button
-          type="button"
-          @click="
-            showThirdOpener = false;
-            third = false;
-          "
-        >
-          Remove opener and close
+    <Teleport to="#confirmation-host">
+      <!-- Keep the later-opened confirmation before its parent in DOM order. -->
+      <MarDialog v-if="child" v-model="child" title="Discard changes?">
+        <button type="button" @click="answer(true)">Keep draft</button>
+        <button type="button" @click="answer(false)">Discard draft</button>
+        <button v-if="showThirdOpener" type="button" @click="third = true">
+          Open more options
         </button>
+        <MarDialog v-if="third" v-model="third" append-to-body title="More options">
+          <button
+            type="button"
+            @click="
+              showThirdOpener = false;
+              third = false;
+            "
+          >
+            Remove opener and close
+          </button>
+        </MarDialog>
       </MarDialog>
-    </MarDialog>
+    </Teleport>
   </MarDialog>
 </template>

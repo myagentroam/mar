@@ -1,3 +1,4 @@
+import { getActiveMarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarMessage } from '@myagentroam/mar-ui/message';
 import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import marEn from '@myagentroam/mar-ui/locale/en';
@@ -77,10 +78,8 @@ function mount(owner: HTMLElement, signal?: AbortSignal) {
 export function presentMessage(message: string, type: MessageType, surface?: MessageSurface): void {
   if (typeof document === 'undefined' || !document.body) return;
   if (surface && (surface.signal.aborted || !surface.owner.isConnected)) return;
-  const owner =
-    surface?.owner ??
-    document.activeElement?.closest<HTMLElement>('dialog[open]:not([data-closing])') ??
-    document.body;
+  // Body-level feedback cannot paint above, or receive input through, a native modal.
+  const owner = surface?.owner ?? getActiveMarDialog(document) ?? document.body;
   (surfaces.get(owner) ?? mount(owner, surface?.signal)).add({ id: ++sequence, type, message });
 }
 
