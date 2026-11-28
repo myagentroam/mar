@@ -277,7 +277,7 @@ describe('HTTP MCP catalog', () => {
         return originalList.apply(this, args);
       });
       await pool.refreshForExecution();
-      expect(sweepOrder).toHaveLength(9);
+      await vi.waitFor(() => expect(sweepOrder).toHaveLength(9));
       expect(new Set(sweepOrder.slice(0, 5)).size).toBe(5);
     } finally {
       list.mockRestore();

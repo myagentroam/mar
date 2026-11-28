@@ -174,7 +174,7 @@ async function temporaryDirectory() {
 }
 
 describe('MCP catalog notifications', () => {
-  it('waits for initial notification convergence at the first execution boundary', async () => {
+  it('waits for an in-flight initial refresh at the first execution boundary', async () => {
     const cwd = await temporaryDirectory();
     const f = await fixture({ initialNotification: true, heldLists: [2] });
     let pool: MarAgentMcpClientPool | undefined;
@@ -197,6 +197,45 @@ describe('MCP catalog notifications', () => {
     }
   });
 
+  it.each([true, false])(
+    'unblocks the execution after one catalog publication despite further notifications (cold: %s)',
+    async (initialNotification) => {
+      const cwd = await temporaryDirectory();
+      const f = await fixture({ initialNotification, heldLists: [2, 3, 4] });
+      let pool: MarAgentMcpClientPool | undefined;
+      try {
+        pool = await MarAgentMcpClientPool.connect([f.server], cwd);
+        if (!initialNotification) await pool.refreshForExecution();
+        let generationAtBoundary: string | undefined;
+        const boundary = pool.refreshForExecution().then(() => {
+          generationAtBoundary = pool!.catalog().tools[0]?.definition.description;
+        });
+        await f.waitForList(2);
+        expect(generationAtBoundary).toBeUndefined();
+        await f.notify();
+        f.releaseList(2);
+
+        await f.waitForList(3);
+        await f.notify();
+        // The second sweep is still held, but the startup barrier must already release.
+        await vi.waitFor(() => expect(generationAtBoundary).toBe('Catalog generation 2'));
+        await boundary;
+        f.releaseList(3);
+        await f.waitForList(4);
+        expect(pool.catalog().tools[0]?.definition.description).toBe('Catalog generation 3');
+        f.releaseList(4);
+        await vi.waitFor(() =>
+          expect(pool!.catalog().tools[0]?.definition.description).toBe('Catalog generation 4')
+        );
+        expect(f.listCount()).toBe(4);
+      } finally {
+        await pool?.close();
+        await f.close();
+        await rm(cwd, { recursive: true, force: true });
+      }
+    }
+  );
+
   it('catches initial and follow-up notifications, merges an in-flight burst, and converges', async () => {
     const cwd = await temporaryDirectory();
     const f = await fixture({ initialNotification: true, heldLists: [2, 3] });
@@ -217,6 +256,41 @@ describe('MCP catalog notifications', () => {
         expect(pool!.catalog().tools[0]?.definition.description).toBe('Catalog generation 4')
       );
       expect(f.listCount()).toBe(4);
+    } finally {
+      await pool?.close();
+      await f.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('cancels only the waiting execution and aborts the detached follow-up on pool close', async () => {
+    const cwd = await temporaryDirectory();
+    const f = await fixture({ heldLists: [2, 3] });
+    let pool: MarAgentMcpClientPool | undefined;
+    try {
+      pool = await MarAgentMcpClientPool.connect([f.server], cwd);
+      await pool.refreshForExecution();
+      const controller = new AbortController();
+      const reason = new Error('Execution stopped');
+      const cancelled = expect(pool.refreshForExecution(controller.signal)).rejects.toBe(reason);
+      let settled = false;
+      const remaining = pool.refreshForExecution().then(() => {
+        settled = true;
+      });
+      await f.waitForList(2);
+      controller.abort(reason);
+      await cancelled;
+      await f.notify();
+      f.releaseList(2);
+      await f.waitForList(3);
+      await vi.waitFor(() => expect(settled).toBe(true));
+      await remaining;
+      expect(pool.catalog().tools[0]?.definition.description).toBe('Catalog generation 2');
+
+      await pool.close();
+      await f.waitForAbortedList();
+      expect(f.listCount()).toBe(3);
+      expect(pool.catalog()).toMatchObject({ servers: [], tools: [] });
     } finally {
       await pool?.close();
       await f.close();
