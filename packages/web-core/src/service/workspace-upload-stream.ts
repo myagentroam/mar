@@ -3,18 +3,19 @@ import type { NodeStream } from '@myagentroam/protocol/node-stream';
 
 type UploadStream = Pick<NodeStream, typeof Symbol.asyncIterator | 'write' | 'endWrite' | 'close'>;
 
-/** Owns one upload substream from OPEN through completion or cancellation. */
+/** Owns an opened upload stream through completion, including route publication and cancellation. */
 export async function sendFileUploadBody(
-  open: () => Promise<UploadStream>,
+  stream: UploadStream,
   file: File,
   signal: AbortSignal,
-  onProgress?: (offset: number) => void
+  onProgress?: (offset: number) => void,
+  onOpened?: () => void
 ): Promise<void> {
-  const stream = await open();
   const abort = () => stream.close();
   signal.addEventListener('abort', abort, { once: true });
   try {
     signal.throwIfAborted();
+    onOpened?.();
     await sendWorkspaceUpload(stream, file, signal, onProgress);
   } catch (error) {
     stream.close();

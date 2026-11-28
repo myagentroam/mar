@@ -117,9 +117,8 @@ export const composerZhCN = {
   },
   generated: {
     composerAttachments: {
-      directTransport: '局域网直连',
+      directTransport: '点对点直连',
       serverTransport: 'Server 中继',
-      serverFallbackTransport: 'Server 中继',
       enlargeAttachment: '放大查看附件 {value0}',
       enlarge: '放大查看 {value0}',
       uploading: '上传中…',

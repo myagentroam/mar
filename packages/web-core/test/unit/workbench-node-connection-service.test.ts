@@ -180,7 +180,7 @@ it('uses recovered Direct only for new streams and does not start another probe 
     .mockRejectedValueOnce(new Error('DIRECT_UNAVAILABLE'));
   const { sockets, service } = fixture({ connectDirect });
   const open = (ticket: string) =>
-    service.openStream(
+    service.openRoutedStream(
       'node',
       { kind: 'browser-file-download', ticket },
       new AbortController().signal
@@ -192,21 +192,57 @@ it('uses recovered Direct only for new streams and does not start another probe 
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0]!.inbound(encodeNodeRelayHandshake({ type: 'RELAY_READY' }));
     const existing = await pending;
+    expect(existing.transport).toBe('relay');
     (await open('two')).close();
     expect(connectDirect).toHaveBeenCalledOnce();
 
     await service.directReady('node');
     expect(path.openStream).not.toHaveBeenCalled();
-    expect(await open('three')).toBe(direct);
+    expect(await open('three')).toMatchObject({ stream: direct, transport: 'ice' });
     expect(connectDirect).toHaveBeenCalledTimes(2);
     expect(path.openStream).toHaveBeenCalledExactlyOnceWith(
       { kind: 'browser-file-download', ticket: 'three' },
       expect.any(AbortSignal)
     );
     expect(sockets[0]!.opened).toEqual(['one', 'two']);
-    await existing.write(Uint8Array.of(42));
+    expect(existing.transport).toBe('relay');
+    await existing.stream.write(Uint8Array.of(42));
     existing.close();
     direct.close();
+  } finally {
+    service.reset();
+  }
+});
+
+it('reports Relay for a file stream when Direct declines before OPEN', async () => {
+  const openStream = vi.fn(async () => undefined);
+  const { sockets, service } = fixture({
+    connectDirect: async () => ({ closed: false, close() {}, openStream })
+  });
+  try {
+    const pending = service.openRoutedStream(
+      'node',
+      {
+        kind: 'file-upload',
+        descriptor: {
+          direction: 'UPLOAD',
+          resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'file.txt' },
+          fileName: 'file.txt',
+          uploadId: 'upload',
+          size: 1,
+          sha256: 'a'.repeat(64),
+          overwrite: false
+        }
+      },
+      new AbortController().signal
+    );
+    await vi.waitFor(() => expect(openStream).toHaveBeenCalledOnce());
+    expect(sockets).toHaveLength(1);
+    sockets[0]!.inbound(encodeNodeRelayHandshake({ type: 'RELAY_READY' }));
+    const opened = await pending;
+    expect(opened.transport).toBe('relay');
+    expect(sockets[0]!.opened).toEqual(['allowed-ticket']);
+    opened.close();
   } finally {
     service.reset();
   }

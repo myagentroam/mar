@@ -183,6 +183,8 @@ test('Workspace streams preserve direct upload recovery and reuse the Relay carr
         expect(await page.evaluate(() => window.uploadFlow.connect())).toBe('DIRECT_AVAILABLE');
       };
       await initialize();
+      const desktopViewport = page.viewportSize()!;
+      await page.setViewportSize({ width: 360, height: 800 });
       const bytes = Buffer.alloc(700_003);
       for (let index = 0; index < bytes.length; index++) bytes[index] = index % 251;
       const sha256 = createHash('sha256').update(bytes).digest('hex');
@@ -202,6 +204,13 @@ test('Workspace streams preserve direct upload recovery and reuse the Relay carr
         code: 'ENOENT'
       });
       expect(await readFile(temporaryPath)).toEqual(bytes.subarray(0, staged.receivedBytes));
+      const row = page.locator('.workbench-notification-upload');
+      const status = page.locator('.activity-preview .workbench-notification-upload small');
+      await expect(page.locator('.workbench-activity-center.mobile-mode')).toBeVisible();
+      await expect(status).toBeVisible();
+      await expect(status).toContainText('Uploading over a peer-to-peer connection');
+      expect(await status.evaluate((line) => line.scrollWidth <= line.clientWidth)).toBe(true);
+      await page.setViewportSize(desktopViewport);
       await page.evaluate(() => window.uploadFlow.interrupt());
       await expect
         .poll(() => page.evaluate(() => window.uploadFlow.snapshot().tasks[0]?.status))
@@ -219,7 +228,6 @@ test('Workspace streams preserve direct upload recovery and reuse the Relay carr
       expect(failed.httpUploadCalls).toBe(0);
       await page.getByRole('button', { name: 'Sessions & notifications' }).click();
       await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
-      const row = page.locator('.workbench-notification-upload');
       await expect(row).toContainText('resumed.bin');
       await expect(row.getByRole('button', { name: 'Retry', exact: true })).toBeEnabled();
       expect(uploads.status(staged.uploadId)).toEqual(staged);
@@ -296,10 +304,11 @@ test('Workspace streams preserve direct upload recovery and reuse the Relay carr
       expect(await readFile((await attachmentSaved.path())!, 'utf8')).toBe(
         'composer stream bytes\n'
       );
-      expect(directComposer).toEqual(composer);
+      expect(directComposer).toEqual({ ...composer, transport: 'ice' });
       expect(composer).toEqual({
         receivedBytes: 22,
         body: 'composer stream bytes\n',
+        transport: 'relay',
         uploadCalls: []
       });
       expect(relaySockets).toHaveLength(1);

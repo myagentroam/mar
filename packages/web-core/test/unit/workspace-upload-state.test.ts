@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
+import { NodeStream } from '@myagentroam/protocol/node-stream';
 import { nextTick, ref } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { composerEnUS, composerZhCN } from '../../src/i18n/composer.js';
 import { errorPresentationEnUS, errorPresentationZhCN } from '../../src/i18n/error-presentation.js';
 import { workspaceFileSha256 } from '../../src/util/workspace-file-checksum.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
 import { createAccountStorage } from '../../src/service/account-storage-service.js';
+import { translate } from '../../src/service/locale-preference-service.js';
+import { createWorkspaceFileStreamClient } from '../../src/service/workspace-file-stream-client.js';
 import {
   createWorkspaceUploadService,
   parseStoredWorkspaceUploads
@@ -22,6 +24,40 @@ describe('Web Workspace Upload State', () => {
     const promise = new Promise<T>((release) => (resolve = release));
     return { promise, resolve };
   }
+
+  it('releases the opened stream if its route cannot be published', async () => {
+    const send = vi.fn(async () => {});
+    const release = vi.fn();
+    const stream = new NodeStream(1, send, release);
+    const opened = gate<{ stream: NodeStream; transport: 'relay' }>();
+    const open = vi.fn(() => opened.promise);
+    const onTransport = vi.fn(() => {
+      throw new Error('Route consumer failed');
+    });
+    const upload = createWorkspaceFileStreamClient(open).upload({
+      nodeId: 'node',
+      descriptor: {
+        direction: 'UPLOAD',
+        resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'file.txt' },
+        fileName: 'file.txt',
+        uploadId: 'upload',
+        size: 1,
+        sha256: 'a'.repeat(64),
+        overwrite: false
+      },
+      file: new File(['x'], 'file.txt'),
+      onTransport
+    });
+    expect(open).toHaveBeenCalledOnce();
+    expect(onTransport).not.toHaveBeenCalled();
+    opened.resolve({ stream, transport: 'relay' });
+    await expect(upload).rejects.toThrow('Route consumer failed');
+    expect(onTransport).toHaveBeenCalledExactlyOnceWith('relay');
+    expect(release).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ type: 'RESET', streamId: 1 })
+    );
+  });
 
   function lifecycleFixture(
     request: ReturnType<typeof vi.fn>,
@@ -67,25 +103,50 @@ describe('Web Workspace Upload State', () => {
       throw new Error('UNEXPECTED_REQUEST');
     });
     const calls: string[] = [];
+    const firstMayFail = gate<void>();
+    const retryMayOpen = gate<void>();
+    const retryMayComplete = gate<void>();
     const service = createWorkspaceUploadService({
       workspaceTarget: ref({ nodeId: 'node-1', workspaceId: 'workspace-1' }),
       request: request as Parameters<typeof createWorkspaceUploadService>[0]['request'],
-      async sendBody({ descriptor, onProgress }) {
+      async sendBody({ descriptor, onProgress, onTransport }) {
         if (descriptor.direction !== 'UPLOAD') throw new Error('Unexpected stream');
         expect(descriptor.resource.path).toBe(staged.path);
         calls.push(descriptor.uploadId!);
         if (calls.length === 1) {
+          onTransport?.('relay');
           onProgress?.(1);
+          await firstMayFail.promise;
           throw new Error('NODE_STREAM_DISCONNECTED');
         }
+        await retryMayOpen.promise;
+        onTransport?.('ice');
+        await retryMayComplete.promise;
         onProgress?.(3);
       },
       onFilesChanged() {}
     });
     service.queue([{ file: new File(['abc'], 'file.bin'), directory: '.', overwrite: false }]);
+    await vi.waitFor(() => expect(service.tasks.value[0]?.transport).toBe('relay'));
+    expect(service.statusLabel(service.tasks.value[0]!)).toBe(
+      translate('generated.workspaceUploadService.uploadingServer')
+    );
+    firstMayFail.resolve();
     await vi.waitFor(() => expect(service.tasks.value[0]?.status).toBe('FAILED'));
+    expect(service.tasks.value[0]?.transport).toBe('relay');
     expect(request).toHaveBeenCalledTimes(1);
     await service.retry(service.tasks.value[0]!);
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    expect(service.tasks.value[0]?.transport).toBeUndefined();
+    expect(service.statusLabel(service.tasks.value[0]!)).toBe(
+      translate('generated.workspaceUploadService.uploading')
+    );
+    retryMayOpen.resolve();
+    await vi.waitFor(() => expect(service.tasks.value[0]?.transport).toBe('ice'));
+    expect(service.statusLabel(service.tasks.value[0]!)).toBe(
+      translate('generated.workspaceUploadService.uploadingDirect')
+    );
+    retryMayComplete.resolve();
     await vi.waitFor(() => expect(service.tasks.value[0]?.status).toBe('COMPLETED'));
     expect(calls).toEqual(['upload-1', 'upload-1']);
     expect(request.mock.calls.map(([path]) => path.split('?')[0])).toEqual([
@@ -844,15 +905,6 @@ describe('Web Workspace Upload State', () => {
       }
     }
   );
-
-  it('describes the active Composer Server transport without repeating direct unavailability', () => {
-    expect(composerEnUS.generated.composerAttachments.serverFallbackTransport).toBe(
-      composerEnUS.generated.composerAttachments.serverTransport
-    );
-    expect(composerZhCN.generated.composerAttachments.serverFallbackTransport).toBe(
-      composerZhCN.generated.composerAttachments.serverTransport
-    );
-  });
 
   it('Restores valid unfinished tasks as interrupted after refresh', () => {
     expect(

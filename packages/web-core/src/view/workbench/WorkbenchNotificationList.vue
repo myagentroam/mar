@@ -133,7 +133,7 @@ async function retrySnapshot(): Promise<void> {
             <MarIcon name="upload" />
             <div>
               <strong v-tooltip="task.name">{{ task.name }}</strong>
-              <small>
+              <small :class="{ 'workbench-upload-status-active': task.status === 'UPLOADING' }">
                 <span class="workbench-upload-size"
                   >{{ fileSizeLabel(task.receivedBytes) }} / {{ fileSizeLabel(task.size) }}</span
                 >
@@ -326,6 +326,10 @@ async function retrySnapshot(): Promise<void> {
 .workbench-notification-upload small,
 .workbench-notification-list small {
   color: var(--mar-text-secondary);
+}
+.workbench-notification-upload .workbench-upload-status-active {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .workbench-notification-list > li > button:first-child strong {
   font-size: var(--mar-font-size-meta);

@@ -60,9 +60,8 @@ export const notificationsEnUS = {
   generated: {
     workspaceUploadService: {
       uploading: 'Uploading',
-      uploadingDirect: 'Uploading over direct LAN connection',
+      uploadingDirect: 'Uploading over a peer-to-peer connection',
       uploadingServer: 'Uploading through Server relay',
-      uploadingServerFallback: 'Uploading through Server relay',
       queued: 'Queued',
       completed: 'Completed',
       canceled: 'Canceled',

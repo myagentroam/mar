@@ -22,6 +22,7 @@ import {
 } from '../../src/service/workspace-direct-file-read-service.js';
 import { workspaceFileSha256 } from '../../src/util/workspace-file-checksum.js';
 import { unboundAccountStorage } from '../../src/service/account-storage-service.js';
+import { MOBILE_WORKBENCH_VIEWPORT_QUERY } from '../../src/util/mobile-workbench.js';
 
 const target = ref<WorkspaceTarget>();
 const csrfToken = ref('');
@@ -36,7 +37,7 @@ let bodySignal: AbortSignal | undefined;
 const notifications = createWorkbenchNotificationService(ref('upload-functional-user'));
 const http = createScopedHttpService({ csrfToken: () => csrfToken.value });
 const relay = createWorkbenchNodeConnectionService({ http });
-const relayFiles = createWorkspaceFileStreamClient(relay.openStream);
+const relayFiles = createWorkspaceFileStreamClient(relay.openRoutedStream);
 const direct = createWorkspaceDirectTransferService({
   send(message) {
     sent.push(message);
@@ -90,6 +91,9 @@ const uploads = createWorkspaceUploadService({
   }
 });
 localePreferenceService().setLocale('en-US');
+const viewport = window.matchMedia(MOBILE_WORKBENCH_VIEWPORT_QUERY);
+const mobileMode = ref(viewport.matches);
+viewport.addEventListener('change', (event) => (mobileMode.value = event.matches));
 createApp({
   setup: () => () =>
     h('main', [
@@ -112,7 +116,7 @@ createApp({
       }),
       h(WorkbenchActivityCenter, {
         service: notifications,
-        mobileMode: false,
+        mobileMode: mobileMode.value,
         uploads: uploads.tasks.value,
         statusLabel: uploads.statusLabel,
         onRetryUpload: uploads.retry,
@@ -127,11 +131,9 @@ createApp({
 function fileClientForPath(path: 'direct' | 'relay') {
   if (path === 'relay') return relayFiles;
   return createWorkspaceFileStreamClient(async (targetNode, request, signal) => {
-    if (request.kind !== 'file-upload' && request.kind !== 'file-download')
-      throw new Error('Unexpected non-Workspace stream');
     const stream = await direct.openFileStream(targetNode, generation, request.descriptor, signal);
     if (stream === undefined) throw new Error('Expected the existing ICE carrier');
-    return stream;
+    return { stream, transport: 'ice' };
   });
 }
 
@@ -146,7 +148,19 @@ async function inspectPreview<T>(
     request: http.request,
     http: {
       request: (url, init) => {
-        if (url.includes('/files/read?')) throw new Error('Unexpected HTTP file body');
+        const { pathname, searchParams } = new URL(url, window.location.origin);
+        // A private attachment still needs a one-byte access check before opening its body stream.
+        if (
+          pathname.endsWith('/files/read') &&
+          !(
+            fileName.startsWith('mar-attachment://') &&
+            searchParams.get('path') === fileName &&
+            searchParams.get('offset') === '0' &&
+            searchParams.get('limit') === '1'
+          )
+        ) {
+          throw new Error('Unexpected HTTP file body');
+        }
         return http.request(url, init);
       }
     },
@@ -349,12 +363,12 @@ export const harness = {
           }
         );
       });
-      const { id, receivedBytes } = attachments.attachments.value[0]!;
+      const { id, receivedBytes, transport } = attachments.attachments.value[0]!;
       const resource = `mar-attachment://${id}/${file.name}`;
       if (save && (await harness.downloadToBrowser(resource)) !== 'COMPLETED')
         throw new Error('Expected the private attachment download to complete');
       const body = await inspectPreview(path, resource, undefined, (content) => content);
-      return { receivedBytes, body, uploadCalls: [...calls] };
+      return { receivedBytes, body, transport, uploadCalls: [...calls] };
     } finally {
       attachments.clear();
     }

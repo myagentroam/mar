@@ -692,50 +692,64 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     }
   });
 
-  it('renders attachment progress, preview and escaped filenames', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null });
-    vi.stubGlobal('document', {
-      documentElement: {
-        setAttribute: vi.fn(),
-        removeAttribute: vi.fn(),
-        classList: { add: vi.fn(), remove: vi.fn() },
-        style: { removeProperty: vi.fn(), setProperty: vi.fn() }
-      },
-      querySelector: () => null
-    });
-    const html = await render(ComposerAttachments, {
-      attachments: [
-        {
-          id: 'image',
-          file: { name: '<image>.png', size: 2048 },
-          status: 'UPLOADING',
-          receivedBytes: 1024,
-          previewUrl: '/preview.png'
+  it.each([
+    [undefined, undefined],
+    ['ice', 'generated.composerAttachments.directTransport'],
+    ['relay', 'generated.composerAttachments.serverTransport']
+  ] as const)(
+    'renders attachment progress, preview and escaped filenames (%s)',
+    async (transport, label) => {
+      vi.stubGlobal('localStorage', { getItem: () => null });
+      vi.stubGlobal('document', {
+        documentElement: {
+          setAttribute: vi.fn(),
+          removeAttribute: vi.fn(),
+          classList: { add: vi.fn(), remove: vi.fn() },
+          style: { removeProperty: vi.fn(), setProperty: vi.fn() }
         },
-        {
-          id: 'failed',
-          file: { name: 'generated.report.txt', size: 12 },
-          status: 'FAILED',
-          receivedBytes: 0,
-          previewUrl: null,
-          error: 'Remote failure'
-        }
-      ]
-    });
-    expect(html).toContain('50%');
-    expect(html).toContain('&lt;image&gt;.png');
-    expect(html).toContain('generated.report.txt');
-    expect(html).toContain('Remote failure');
-    expect(html).toContain('src="/preview.png"');
-    const icon = await render(FileTypeIcon, { name: 'generated.report.txt' });
-    expect(html.replace(/ data-v-[\da-f]+/gu, '')).toContain(
-      icon.replace(/ data-v-[\da-f]+/gu, '')
-    );
-    expect(html.match(/class="file-type-icon /gu)).toHaveLength(1);
-    expect(html).toContain(i18n.global.t('generated.composerAttachments.uploading2'));
-    expect(html).toContain(i18n.global.t('generated.composerAttachments.uploadFailed'));
-    expect(await render(ComposerAttachments, { attachments: [] })).not.toContain('<ul');
-  });
+        querySelector: () => null
+      });
+      const html = await render(ComposerAttachments, {
+        attachments: [
+          {
+            id: 'image',
+            file: { name: '<image>.png', size: 2048 },
+            status: 'UPLOADING',
+            receivedBytes: 1024,
+            transport,
+            previewUrl: '/preview.png'
+          },
+          {
+            id: 'failed',
+            file: { name: 'generated.report.txt', size: 12 },
+            status: 'FAILED',
+            receivedBytes: 0,
+            previewUrl: null,
+            error: 'Remote failure'
+          }
+        ]
+      });
+      expect(html).toContain('50%');
+      expect(html).toContain('&lt;image&gt;.png');
+      expect(html).toContain('generated.report.txt');
+      expect(html).toContain('Remote failure');
+      expect(html).toContain('src="/preview.png"');
+      const icon = await render(FileTypeIcon, { name: 'generated.report.txt' });
+      expect(html.replace(/ data-v-[\da-f]+/gu, '')).toContain(
+        icon.replace(/ data-v-[\da-f]+/gu, '')
+      );
+      expect(html.match(/class="file-type-icon /gu)).toHaveLength(1);
+      expect(html).toContain(i18n.global.t('generated.composerAttachments.uploading2'));
+      for (const key of [
+        'generated.composerAttachments.directTransport',
+        'generated.composerAttachments.serverTransport'
+      ]) {
+        expect(html.includes(i18n.global.t(key))).toBe(key === label);
+      }
+      expect(html).toContain(i18n.global.t('generated.composerAttachments.uploadFailed'));
+      expect(await render(ComposerAttachments, { attachments: [] })).not.toContain('<ul');
+    }
+  );
 
   it('renders command and skill candidates with the same active-index semantics', async () => {
     const html = await render(ComposerCommandPicker, {

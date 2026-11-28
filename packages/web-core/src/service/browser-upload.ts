@@ -42,7 +42,7 @@ export async function uploadBrowserFiles(
       { method: 'POST', body: JSON.stringify(body), signal: lifecycle.signal }
     );
     await sendFileUploadBody(
-      () => lifecycle.openStream(ticket, lifecycle.signal),
+      await lifecycle.openStream(ticket, lifecycle.signal),
       file,
       lifecycle.signal
     );

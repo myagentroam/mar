@@ -233,6 +233,8 @@ export interface Approval {
   readonly decidedAt?: number | null;
 }
 
+export type WorkbenchStreamTransport = 'ice' | 'relay';
+
 export interface ComposerAttachment {
   readonly id: string;
   file: File;
@@ -242,8 +244,7 @@ export interface ComposerAttachment {
   uploadId?: string;
   receivedBytes: number;
   status: 'UPLOADING' | 'COMPLETED' | 'FAILED';
-  transport?: 'DIRECT' | 'SERVER';
-  directFallback?: boolean;
+  transport?: WorkbenchStreamTransport;
   error?: string;
 }
 
