@@ -513,7 +513,7 @@ async function openHostedSend(
     snapshotSequence: 1
   });
   const requests: { prompt: string; clientMessageId: string }[] = [];
-  const replies: ((failure: boolean) => void)[] = [];
+  const replies: ((failure: boolean | 'cancelled') => void)[] = [];
   const run = {
     id: 'run-1',
     status: 'RUNNING',
@@ -542,11 +542,18 @@ async function openHostedSend(
   });
   await page.route('**/hosted-conversations/conversation-1/messages', async (route) => {
     requests.push(route.request().postDataJSON());
-    const failure = await new Promise<boolean>((resolve) => replies.push(resolve));
+    const failure = await new Promise<boolean | 'cancelled'>((resolve) => replies.push(resolve));
     if (failure) {
       return route.fulfill({
         status: 409,
-        json: { error: { code: 'HOSTED_CONVERSATION_RUN_ACTIVE' } }
+        json: {
+          error: {
+            code:
+              failure === 'cancelled'
+                ? 'HOSTED_CONVERSATION_START_CANCELLED'
+                : 'HOSTED_CONVERSATION_RUN_ACTIVE'
+          }
+        }
       });
     }
     return route.fulfill({ json: { conversation: snapshot.conversation, run } });
@@ -619,7 +626,7 @@ async function openHostedSend(
     message,
     requests,
     emitRun,
-    reply(failure = false) {
+    reply(failure: boolean | 'cancelled' = false) {
       const resolve = replies.shift();
       if (resolve === undefined) throw new Error('No pending Hosted message POST');
       resolve(failure);
@@ -629,6 +636,54 @@ async function openHostedSend(
     }
   };
 }
+
+test('Hosted Composer stops a pending startup before a Run exists and keeps the draft', async ({
+  page
+}) => {
+  const interrupt = Promise.withResolvers<void>();
+  let stops = 0;
+  await page.route('**/hosted-conversations/conversation-1/interrupt', async (route) => {
+    stops++;
+    await interrupt.promise;
+    await route.fulfill({ json: { interrupted: true } });
+  });
+  const f = await openHostedSend(page);
+  const stop = f.composer.locator('.hosted-stop-button');
+  const emit = (status: 'RUNNING' | 'CANCELLING' | 'IDLE', version: number) =>
+    page.evaluate(
+      (detail) => window.dispatchEvent(new CustomEvent('fixture-hosted-watch', { detail })),
+      {
+        type: 'hosted-conversation.activity',
+        nodeId: 'node-1',
+        conversationId: 'conversation-1',
+        activity: { status, version, updatedAt: version }
+      }
+    );
+  try {
+    await f.input.fill(f.prompt);
+    await f.send.click();
+    await expect.poll(() => f.requests.length).toBe(1);
+    await expect(stop).toHaveCount(0);
+    await emit('RUNNING', 1);
+    await expect(f.sending).toBeVisible();
+    await expect(stop).toBeEnabled();
+    await stop.click();
+    await expect.poll(() => stops).toBe(1);
+    await expect(stop).toBeDisabled();
+    await emit('CANCELLING', 2);
+    interrupt.resolve();
+    await expect(stop).toBeDisabled();
+    f.reply('cancelled');
+    await emit('IDLE', 3);
+    await expect(f.send).toBeEnabled();
+    await expect(f.input).toHaveValue(f.prompt);
+    await expect(f.message).toHaveCount(0);
+    await expect(page.locator('.mar-message')).toHaveCount(0);
+  } finally {
+    interrupt.resolve();
+    f.release();
+  }
+});
 
 test('Hosted Files uploads, previews, and downloads through one browser Relay socket', async ({
   page

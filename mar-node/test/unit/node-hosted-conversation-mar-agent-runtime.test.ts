@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createServer } from 'node:http';
 import type { HostDescription, AgentHost } from '../../../mar-agent/src/host.js';
 import type { AgentEvent, AgentSession } from '../../../mar-agent/src/index.js';
 import { AgentError } from '../../../mar-agent/src/index.js';
@@ -945,6 +946,62 @@ describe('MAR Agent hosted conversation runtime', () => {
       readonly item: { readonly itemId: string };
     };
     expect(delta.itemId).toBe(item.item.itemId);
+  });
+
+  it('cancels a stalled MCP handshake before creating the Hosted Agent', async () => {
+    const reached = vi.fn();
+    const disconnected = vi.fn();
+    const server = createServer((request, response) => {
+      response.once('close', disconnected);
+      request.resume();
+      request.once('end', reached);
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Fixture server did not bind.');
+    const controller = new AbortController();
+    const createAgent = vi.fn();
+    const runtime = new MarAgentHostedConversationRuntime({ createAgent });
+    const stopped = new Error('START_STOPPED');
+    let startupError: unknown;
+    const started = runtime
+      .startRun({
+        conversationId: 'conversation-1',
+        sessionId: 'session-1',
+        clientMessageId: 'message-mcp-stopped',
+        userPrompt: 'Run.',
+        prompt: 'Run.',
+        attachmentIds: [],
+        access: 'full-access',
+        modelId: 'model-1',
+        models: [model],
+        systemInstruction: 'Hosted.',
+        homeDirectory: '/private/home',
+        workspaceDirectory: '/private/work',
+        temporaryDirectory: '/private/tmp/run-1',
+        pathMounts: [],
+        processExecutor: { spawn: vi.fn() },
+        mcpServers: [
+          { name: 'stalled', transport: 'HTTP', url: `http://127.0.0.1:${address.port}/mcp` }
+        ],
+        webAccess: false,
+        signal: controller.signal
+      })
+      .catch((error: unknown) => {
+        startupError = error;
+      });
+    try {
+      await vi.waitFor(() => expect(reached).toHaveBeenCalledOnce());
+      controller.abort(stopped);
+      await vi.waitFor(() => expect(startupError).toBe(stopped));
+      await vi.waitFor(() => expect(disconnected).toHaveBeenCalledOnce());
+      expect(createAgent).not.toHaveBeenCalled();
+    } finally {
+      controller.abort(stopped);
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await started;
+    }
   });
 
   it('closes the Execution MCP pool when Host creation fails', async () => {

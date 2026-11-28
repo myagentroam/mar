@@ -18,7 +18,16 @@ import ComposerSendButton from '../composer/ComposerSendButton.vue';
 import '../composer/composer-toolbar.css';
 import type { ConversationTemplateSummary, HostedConversationUpload } from '@myagentroam/protocol';
 import { MarMessageBox } from '../../service/message-box-service.js';
-import { computed, inject, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
+import {
+  computed,
+  inject,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  useTemplateRef,
+  watch
+} from 'vue';
 import { registerComposerShortcuts } from '../../service/composer-shortcut-service.js';
 import {
   composerSendKeys,
@@ -199,9 +208,24 @@ const inputHasContent = computed(
 const canReplaceCurrent = computed(
   () => activeRun.value !== undefined && activeRun.value.status !== 'CANCELLING'
 );
+const pendingStops = reactive(new Set<string>());
+const stopStatus = computed(() => {
+  const conversation = snapshot.value?.conversation;
+  if (
+    conversation === undefined ||
+    props.workspace.selectedNodeId.value !== conversation.nodeId ||
+    props.workspace.selectedConversationId.value !== conversation.id
+  )
+    return 'IDLE';
+  if (conversation.activity.status === 'CANCELLING' || activeRun.value?.status === 'CANCELLING')
+    return 'CANCELLING';
+  return activeRun.value === undefined ? conversation.activity.status : 'RUNNING';
+});
 const canStopCurrent = computed(
   () =>
-    activeRun.value !== undefined && activeRun.value.status !== 'CANCELLING' && !submitting.value
+    stopStatus.value === 'RUNNING' &&
+    selectedSubmissionContext.value !== undefined &&
+    !pendingStops.has(selectedSubmissionContext.value)
 );
 const inputReadonly = computed(
   () =>
@@ -570,7 +594,8 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
     try {
       if (await props.entry.submit()) emit('started');
     } catch (error) {
-      showMessage(hostedErrorMessage(error), 'error', error);
+      if (errorCode(error) !== 'HOSTED_CONVERSATION_START_CANCELLED')
+        showMessage(hostedErrorMessage(error), 'error', error);
     }
     return;
   }
@@ -605,7 +630,8 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
   } catch (error) {
     if (messageIntent === submittedIntent && errorCode(error) !== undefined)
       messageIntent = undefined;
-    showMessage(hostedErrorMessage(error), 'error', error);
+    if (errorCode(error) !== 'HOSTED_CONVERSATION_START_CANCELLED')
+      showMessage(hostedErrorMessage(error), 'error', error);
   }
 }
 
@@ -648,10 +674,15 @@ async function updateModel(modelId: string): Promise<void> {
 }
 
 async function stop(): Promise<void> {
+  const context = selectedSubmissionContext.value;
+  if (context === undefined || !canStopCurrent.value) return;
+  pendingStops.add(context);
   try {
     await props.workspace.interrupt();
   } catch (error) {
     showMessage(hostedErrorMessage(error), 'error', error);
+  } finally {
+    pendingStops.delete(context);
   }
 }
 
@@ -963,11 +994,11 @@ onBeforeUnmount(() => {
           >
           <button
             v-tooltip="
-              activeRun.status === 'CANCELLING'
+              stopStatus === 'CANCELLING'
                 ? translate('generated.composerToolbar.stopping')
                 : translate('hostedConversations.stop')
             "
-            v-if="activeRun"
+            v-if="stopStatus !== 'IDLE'"
             class="hosted-stop-button mar-composer-action mar-composer-stop-action"
             type="button"
             :disabled="!canStopCurrent"
@@ -983,7 +1014,7 @@ onBeforeUnmount(() => {
                 !mobileViewport && !sendDisabled ? [composerSendKeys[0]] : []
               )
             "
-            v-if="!activeRun || (mobileViewport && canReplaceCurrent && inputHasContent)"
+            v-if="stopStatus === 'IDLE' || (mobileViewport && canReplaceCurrent && inputHasContent)"
             class="hosted-send-button mar-composer-action"
             :disabled="sendDisabled"
             :mobile-viewport="mobileViewport"

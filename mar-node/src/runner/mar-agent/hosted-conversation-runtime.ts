@@ -277,14 +277,18 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
     input: HostedConversationRuntimeRunInput
   ): Promise<HostedConversationRuntimeHandle> {
     if (this.#active.has(input.sessionId)) throw new Error('HOSTED_CONVERSATION_RUN_ACTIVE');
-    const { agent, mcp, closeImages, models } = await this.#createRuntime(input);
+    const { agent, mcp, closeImages, models } = await this.#createRuntime(input, input.signal);
     const titleController = new AbortController();
     let titleTask: Promise<string | undefined> | undefined;
-    const metadata = await agent.getSession(input.sessionId).catch(() => undefined);
+    let metadata: Awaited<ReturnType<Agent['getSession']>> | undefined;
     let execution: ReturnType<Awaited<ReturnType<Agent['openSession']>>['run']>;
     let session: Awaited<ReturnType<Agent['openSession']>>;
     try {
+      input.signal?.throwIfAborted();
+      metadata = await agent.getSession(input.sessionId).catch(() => undefined);
+      input.signal?.throwIfAborted();
       session = await agent.openSession(input.sessionId);
+      input.signal?.throwIfAborted();
       execution = session.run({
         prompt: input.prompt,
         clientMessageId: input.clientMessageId,
@@ -455,13 +459,15 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
   }
 
   async #createRuntime(
-    input: HostedConversationRuntimeSessionInput | HostedConversationRuntimeRunInput
+    input: HostedConversationRuntimeSessionInput | HostedConversationRuntimeRunInput,
+    signal?: AbortSignal
   ): Promise<{
     readonly agent: Agent;
     readonly mcp?: MarAgentMcpClientPool;
     readonly closeImages: () => Promise<void>;
     readonly models: readonly MarAgentRuntimeModel[];
   }> {
+    signal?.throwIfAborted();
     const generatedImageDisplayDirectory =
       'sessionId' in input
         ? hostedConversationGeneratedImagesDisplayDirectory(input.sessionId)
@@ -471,6 +477,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
         ? await MarAgentMcpClientPool.connect(input.mcpServers, input.workspaceDirectory, {
             authorizationScope: JSON.stringify([input.homeDirectory, input.sessionId]),
             processExecutor: input.processExecutor,
+            ...(signal === undefined ? {} : { signal }),
             owner: {
               sessionId: input.sessionId,
               executionId: input.clientMessageId
@@ -483,6 +490,7 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
     const compactState: MarAgentCompactState = { revision: 0 };
     const closeImages = () => closeImageCredentialProviders(models);
     try {
+      signal?.throwIfAborted();
       models = this.#modelFactory.create(compactRuntimeConfigurations(input.models, compact), {
         ...(input.runtimeScopeId === undefined ? {} : { runtimeScopeId: input.runtimeScopeId }),
         executionId: 'clientMessageId' in input ? input.clientMessageId : input.conversationId

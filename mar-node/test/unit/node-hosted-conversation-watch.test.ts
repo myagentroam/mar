@@ -324,6 +324,138 @@ describe('Node hosted conversation watch', () => {
     }
   });
 
+  it.each(['interrupt', 'shutdown', 'late handoff', 'delete'] as const)(
+    'cancels a Hosted Run during startup on %s',
+    async (mode) => {
+      const f = await watchFixture();
+      const entered = Promise.withResolvers<void>();
+      const cleanup = Promise.withResolvers<void>();
+      const abandoned = new AbortController();
+      const cancel = vi.fn(() => true);
+      try {
+        const conversationId = await createConversation(f);
+        const createMessage = vi.spyOn(f.store, 'createMessage');
+        f.runtime.startRun.mockImplementationOnce(async (input) => {
+          const signal = input.signal
+            ? AbortSignal.any([input.signal, abandoned.signal])
+            : abandoned.signal;
+          entered.resolve();
+          if (!signal.aborted)
+            await new Promise<void>((resolve) =>
+              signal.addEventListener('abort', () => resolve(), { once: true })
+            );
+          cleanup.resolve();
+          if (mode === 'late handoff' && !abandoned.signal.aborted)
+            return {
+              run: { id: 'late-run', status: 'RUNNING', startedAt: 2_000, completedAt: null },
+              completion: Promise.resolve({ status: 'INTERRUPTED', completedAt: 2300 }),
+              cancel
+            };
+          signal.throwIfAborted();
+          throw new Error('UNREACHABLE');
+        });
+        const send = async (clientMessageId: string) =>
+          f.service.operations()['conversation.hosted.message']!({
+            conversationId,
+            clientMessageId,
+            prompt: 'hello',
+            attachmentIds: [],
+            __requestUserId: 7,
+            __marAgentModels: [model]
+          });
+        const sent = send('cancelled').catch((error: unknown) => error);
+        await entered.promise;
+        if (mode === 'delete') {
+          await expect(
+            f.service.operations()['conversation.hosted.delete']!({
+              conversationId,
+              __requestUserId: 7
+            })
+          ).resolves.toEqual({ deletedConversationId: conversationId });
+        } else if (mode !== 'shutdown') {
+          const interrupt = () =>
+            f.service.operations()['conversation.hosted.interrupt']!({
+              conversationId,
+              __requestUserId: 7
+            });
+          expect(await interrupt()).toEqual({ interrupted: true });
+          expect(await interrupt()).toEqual({ interrupted: false });
+        } else {
+          void f.service.dispose();
+        }
+        if (mode === 'late handoff') {
+          await expect(sent).resolves.toMatchObject({ run: { id: 'late-run' } });
+          expect(cancel).toHaveBeenCalledExactlyOnceWith('interrupt');
+          await vi.waitFor(() =>
+            expect(f.store.findMessage(7, conversationId, 'cancelled')?.status).toBe('INTERRUPTED')
+          );
+          expect(f.events.map((event) => event.payload)).not.toContainEqual(
+            expect.objectContaining({ kind: 'notification' })
+          );
+          return;
+        }
+        await expect(sent).resolves.toMatchObject({ code: 'HOSTED_CONVERSATION_START_CANCELLED' });
+        await cleanup.promise;
+        expect(createMessage).not.toHaveBeenCalled();
+        expect(f.events.map((event) => event.payload)).not.toContainEqual(
+          expect.objectContaining({ kind: 'notification' })
+        );
+        if (mode === 'interrupt') {
+          await expect(send('retry')).resolves.toMatchObject({ run: { status: 'RUNNING' } });
+          f.completeRun({ status: 'SUCCEEDED', completedAt: 2300 });
+        }
+      } finally {
+        abandoned.abort();
+        f.completeRun({ status: 'INTERRUPTED', completedAt: 2300 });
+        await f.service.dispose();
+        f.database.close();
+      }
+    }
+  );
+
+  it('does not start a Hosted Runtime when deletion acquires the lock during preparation', async () => {
+    const f = await watchFixture();
+    const preparing = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    try {
+      const conversationId = await createConversation(f);
+      const prepare = f.store.prepareConversationTemporaryDirectory.bind(f.store);
+      vi.spyOn(f.store, 'prepareConversationTemporaryDirectory').mockImplementationOnce(
+        async (...args) => {
+          const directory = await prepare(...args);
+          preparing.resolve();
+          await resume.promise;
+          return directory;
+        }
+      );
+      const sent = Promise.resolve(
+        f.service.operations()['conversation.hosted.message']!({
+          conversationId,
+          clientMessageId: 'preparing',
+          prompt: 'hello',
+          attachmentIds: [],
+          __requestUserId: 7,
+          __marAgentModels: [model]
+        })
+      ).catch((error: unknown) => error);
+      await preparing.promise;
+      const deleted = f.service.operations()['conversation.hosted.delete']!({
+        conversationId,
+        __requestUserId: 7
+      });
+      resume.resolve();
+      f.completeRun({ status: 'INTERRUPTED', completedAt: 2300 });
+      await expect(deleted).resolves.toEqual({ deletedConversationId: conversationId });
+      expect(f.runtime.startRun.mock.calls).toHaveLength(0);
+      await expect(sent).resolves.toMatchObject({ message: 'HOSTED_CONVERSATION_STATE_INVALID' });
+    } finally {
+      resume.resolve();
+      f.completeRun({ status: 'INTERRUPTED', completedAt: 2300 });
+      await f.service.dispose();
+      f.database.close();
+    }
+  });
+
   it('cancels and joins the native handle when message acceptance persistence fails', async () => {
     const f = await watchFixture();
     try {

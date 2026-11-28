@@ -632,7 +632,7 @@ export class MarAgentMcpClientPool {
               args: [...(server.args ?? [])],
               env: environment,
               cwd,
-              stderr: 'pipe'
+              stderr: 'ignore'
             })
           : new ExecutorStdioClientTransport({
               processExecutor: options.processExecutor,
@@ -641,7 +641,8 @@ export class MarAgentMcpClientPool {
               environment,
               environmentKeys: Object.keys(server.environment ?? {}),
               cwd,
-              owner: requireMcpOwner(options.owner)
+              owner: requireMcpOwner(options.owner),
+              signal
             })
         : (new StreamableHTTPClientTransport(new URL(server.url!), {
             requestInit: { headers: { ...(server.headers ?? {}) } },

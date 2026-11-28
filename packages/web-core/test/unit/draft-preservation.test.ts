@@ -84,6 +84,7 @@ interface FileBindings {
   readonly savedContent: Ref<string>;
   readonly revision: Ref<string>;
   readonly dirty: Ref<boolean>;
+  toggleEdit(): 'CHANGED' | 'UNAVAILABLE';
   save(): Promise<void>;
   canClose(): Promise<boolean>;
   captureDirtyDrafts(): readonly { path: string; content: string; expectedRevision: string }[];
@@ -108,6 +109,7 @@ function fileFixture() {
     tabIdentity: 'first-tab'
   });
   const page = mountBindings<FileBindings>(WorkspaceTextFilePage, props);
+  expect(page.toggleEdit()).toBe('CHANGED');
   return { response, saveFile, props, page };
 }
 
@@ -190,6 +192,7 @@ describe('file save draft preservation', () => {
     props.file = { ...props.file, path: 'second.txt', content: 'second original', revision: 's1' };
     props.editorIdentity = 'second-tab';
     await nextTick();
+    expect(page.toggleEdit()).toBe('CHANGED');
     page.editorContent.value = 'second-file edit';
     response.resolve('r2');
     await pending;
@@ -257,6 +260,8 @@ function hostedFixture(mobileViewport = false) {
   const workspace = {
     templateChanging: shallowRef(false),
     watchReady: shallowRef(true),
+    selectedNodeId: shallowRef('node-1'),
+    selectedConversationId: shallowRef('conversation-1'),
     selectedWatchId: vi.fn(() => 'watch-1'),
     listTemplateOptions: vi.fn(async () => [
       { id: 'template-2', nodeId: 'node-1', name: 'Second template' }
@@ -273,7 +278,7 @@ function hostedFixture(mobileViewport = false) {
         templateId: 'template-1',
         activeVersionId: 'version-1',
         status: 'ACTIVE',
-        activity: { status: 'IDLE' }
+        activity: { status: 'IDLE', version: 1, updatedAt: 1 }
       },
       run: null,
       models: []

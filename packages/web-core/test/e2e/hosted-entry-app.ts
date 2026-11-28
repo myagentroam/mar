@@ -85,7 +85,8 @@ const workspace = createHostedConversationWorkspaceService({
 });
 if (new URL(location.href).searchParams.has('watch-events')) {
   window.addEventListener('fixture-hosted-watch', (event) => {
-    if (event instanceof CustomEvent) workspace.handleWatchEvent(event.detail);
+    if (event instanceof CustomEvent && !workspace.projectActivityMessage(event.detail))
+      workspace.handleWatchEvent(event.detail);
   });
 }
 const entry = createHostedConversationEntryService(request, {

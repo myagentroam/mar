@@ -8,6 +8,7 @@ import {
   type createHostedConversationWorkspaceService
 } from '../../src/service/hosted-conversation-workspace-service.js';
 import { computed, h, ref, resolveDirective, withDirectives } from 'vue';
+import type { HostedConversationActivity } from '@myagentroam/protocol';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import SharedTooltipFixture from './shared-tooltip-fixture.vue';
@@ -90,6 +91,11 @@ const hostedSnapshot = ref({
     nodeId: 'node',
     sessionId: 'session',
     modelId: 'one',
+    activity: {
+      status: cancelling ? 'CANCELLING' : interrupting ? 'RUNNING' : 'IDLE',
+      version: 1,
+      updatedAt: 1
+    } satisfies HostedConversationActivity,
     templateName: new URLSearchParams(location.search).get('template-name') ?? 'Template'
   },
   run:
@@ -106,6 +112,8 @@ const hostedSnapshot = ref({
 const hostedWorkspace = {
   templateChanging: ref(false),
   snapshot: hostedSnapshot,
+  selectedNodeId: ref('node'),
+  selectedConversationId: ref('conversation'),
   messageSubmitting: ref(submitting),
   messageSubmissionContext: ref(
     submitting ? hostedConversationSubmissionContext('node', 'conversation') : undefined

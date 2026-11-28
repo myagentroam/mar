@@ -90,6 +90,7 @@ export function domainErrorStatus(code: string): number {
         code === 'HOSTED_CONVERSATION_STATE_INVALID' ||
         code === 'HOSTED_CONVERSATION_TEMPLATE_CONFLICT' ||
         code === 'HOSTED_CONVERSATION_RUN_ACTIVE' ||
+        code === 'HOSTED_CONVERSATION_START_CANCELLED' ||
         code === 'HOSTED_CONVERSATION_ROLLBACK_TARGET_INVALID' ||
         code === 'HOSTED_CONVERSATION_FILE_CONFLICT' ||
         code === 'HOSTED_CONVERSATION_UPLOAD_STATE_INVALID' ||

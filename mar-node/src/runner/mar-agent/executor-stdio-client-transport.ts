@@ -1,5 +1,4 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { PassThrough, type Stream } from 'node:stream';
 import type { LocalProcessExecutor } from '@myagentroam/agent/host';
 import { ReadBuffer, serializeMessage } from '@modelcontextprotocol/sdk/shared/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -14,6 +13,7 @@ export interface ExecutorStdioClientTransportOptions {
   readonly cwd: string;
   readonly owner: { readonly sessionId: string; readonly executionId: string };
   readonly maxBufferSize?: number;
+  readonly signal?: AbortSignal;
 }
 
 /** MCP stdio transport whose process creation is delegated to the Host executor. */
@@ -22,8 +22,8 @@ export class ExecutorStdioClientTransport implements Transport {
   onerror?: (error: Error) => void;
   onmessage?: (message: JSONRPCMessage) => void;
   readonly #readBuffer: ReadBuffer;
-  readonly #stderr = new PassThrough();
   #child: ChildProcessWithoutNullStreams | undefined;
+  #childClosed: Promise<true> | undefined;
   #closing: Promise<void> | undefined;
 
   constructor(private readonly options: ExecutorStdioClientTransportOptions) {
@@ -32,16 +32,14 @@ export class ExecutorStdioClientTransport implements Transport {
     );
   }
 
-  get stderr(): Stream {
-    return this.#stderr;
-  }
-
   get pid(): number | null {
     return this.#child?.pid ?? null;
   }
 
   async start(): Promise<void> {
     if (this.#child !== undefined) throw new Error('MCP_EXECUTOR_TRANSPORT_ALREADY_STARTED');
+    const { signal } = this.options;
+    signal?.throwIfAborted();
     const child = await this.options.processExecutor.spawn({
       command: this.options.command,
       ...(this.options.args === undefined ? {} : { args: this.options.args }),
@@ -50,14 +48,18 @@ export class ExecutorStdioClientTransport implements Transport {
       environment: this.options.environment,
       environmentKeys: this.options.environmentKeys,
       detached: process.platform !== 'win32',
-      owner: this.options.owner
+      owner: this.options.owner,
+      ...(signal === undefined ? {} : { signal })
     });
     this.#child = child;
     child.once('error', (error) => this.onerror?.(error));
-    child.once('close', () => {
-      if (this.#child === child) this.#child = undefined;
-      this.onclose?.();
-    });
+    this.#childClosed = new Promise((resolve) =>
+      child.once('close', () => {
+        if (this.#child === child) this.#child = undefined;
+        resolve(true);
+        this.onclose?.();
+      })
+    );
     child.stdin.on('error', (error) => this.onerror?.(error));
     child.stdout.on('error', (error) => this.onerror?.(error));
     child.stdout.on('data', (chunk: Buffer) => {
@@ -69,7 +71,10 @@ export class ExecutorStdioClientTransport implements Transport {
         void this.close();
       }
     });
-    child.stderr.pipe(this.#stderr);
+    // Stderr is not part of MCP framing. Drain it so logs cannot stall stdout or initialization.
+    child.stderr.on('error', (error) => this.onerror?.(error));
+    child.stderr.resume();
+    signal?.throwIfAborted();
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
@@ -98,13 +103,17 @@ export class ExecutorStdioClientTransport implements Transport {
 
   async #close(): Promise<void> {
     const child = this.#child;
+    const closed = this.#childClosed;
     this.#child = undefined;
     this.#readBuffer.clear();
-    if (child === undefined) return;
+    if (child === undefined || closed === undefined) return;
     child.stdin.end();
-    if (child.exitCode === null) await signalProcessTree(child, 'SIGTERM');
-    if (!(await waitForClose(child, 2_000))) await signalProcessTree(child, 'SIGKILL');
-    await waitForClose(child, 2_000);
+    if (child.exitCode === null && child.signalCode === null)
+      await signalProcessTree(child, 'SIGTERM');
+    // Join the same close event on both paths, including signal exits with no exit code.
+    if (await waitForClose(closed, 2_000)) return;
+    await signalProcessTree(child, 'SIGKILL');
+    await waitForClose(closed, 2_000);
   }
 
   #processReadBuffer(): void {
@@ -132,15 +141,11 @@ async function signalProcessTree(
   child.kill(signal);
 }
 
-async function waitForClose(
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs: number
-): Promise<boolean> {
-  if (child.exitCode !== null) return true;
+async function waitForClose(closed: Promise<true>, timeoutMs: number): Promise<boolean> {
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
-      new Promise<true>((resolve) => child.once('close', () => resolve(true))),
+      closed,
       new Promise<false>((resolve) => {
         timer = setTimeout(() => resolve(false), timeoutMs);
         timer.unref();

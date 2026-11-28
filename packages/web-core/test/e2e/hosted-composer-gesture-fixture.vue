@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, shallowRef } from 'vue';
+import type { HostedConversationActivity } from '@myagentroam/protocol';
 import HostedConversationComposer from '../../src/view/conversation/HostedConversationComposer.vue';
 import { hostedConversationSubmissionContext } from '../../src/service/hosted-conversation-workspace-service.js';
 
@@ -18,13 +19,19 @@ const snapshot = shallowRef({
     templateId: 'template-a',
     templateName: 'Mobile template',
     status: 'ACTIVE',
-    activity: { status: idleComposer ? 'IDLE' : 'RUNNING' }
+    activity: {
+      status: idleComposer ? 'IDLE' : 'RUNNING',
+      version: 1,
+      updatedAt: 1
+    } satisfies HostedConversationActivity
   },
   run: idleComposer ? undefined : { id: 'run-a', status: 'RUNNING', startedAt: Date.now() },
   models: [{ id: 'model-a', name: 'Default model' }]
 });
 const workspace = {
   snapshot,
+  selectedNodeId: ref('node-a'),
+  selectedConversationId: ref('conversation-a'),
   selectedWatchId: () => 'conversation-a',
   turns: ref([]),
   templateChanging: ref(false),
