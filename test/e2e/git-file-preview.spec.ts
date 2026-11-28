@@ -158,6 +158,62 @@ for (const closeEarly of [false, true]) {
   });
 }
 
+test('resumes Changes when a background preview changes renderer during window close', async ({
+  page
+}) => {
+  const background = Promise.withResolvers<void>();
+  const changes = Promise.withResolvers<void>();
+  await page.route('**/api/workspaces/workspace/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/changes')) {
+      await changes.promise;
+      return route.fulfill({ json: { changes: [], worktrees: [], repositories: [] } });
+    }
+    const isBackground = url.searchParams.get('path') === 'background.ts';
+    if (isBackground) await background.promise;
+    // The background file starts as a text preview but resolves as binary.
+    const content = isBackground ? '\0' : '// comparison source';
+    return route.fulfill({
+      json: {
+        file: { encoding: 'utf-8', size: content.length, content, nextOffset: null, revision: 'r1' }
+      }
+    });
+  });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}file-tabs.html?preview-preflight`);
+  await page.addStyleTag({
+    content: 'dialog[data-closing="true"] { animation-play-state: paused !important; }'
+  });
+  const dialog = page
+    .locator('dialog[open]')
+    .filter({ has: page.locator('.file-preview-surface') });
+  const comparison = dialog.getByRole('tab', { name: 'comparison.ts', exact: true });
+  try {
+    await page.getByRole('button', { name: 'Load both files' }).click();
+    await expect(dialog.getByRole('tab')).toHaveCount(2);
+    await expect(dialog.locator('.workspace-file-page-frame')).toHaveCount(1);
+    await expect(dialog.locator('.workspace-comparison-loading')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveAttribute('data-closing', 'true');
+
+    background.resolve();
+    await expect(dialog.locator('.file-preview-state')).toContainText('cannot be previewed');
+    await dialog.evaluate((element) => {
+      element.getAnimations().forEach((animation) => animation.finish());
+    });
+
+    await expect(dialog).toBeVisible();
+    await expect(dialog).not.toHaveAttribute('data-closing', 'true');
+    await expect(comparison).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.locator('.workspace-comparison-loading')).toBeVisible();
+  } finally {
+    background.resolve();
+    changes.resolve();
+  }
+  await expect(dialog.locator('.cm-content:visible')).toHaveText('// comparison source');
+  await expect(dialog.getByRole('tab')).toHaveCount(2);
+});
+
 test('opens a temporary file before validation and never shows unvalidated content', async ({
   page
 }) => {
