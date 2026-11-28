@@ -751,7 +751,7 @@ describe('Shared Workspace HTTP routes', () => {
       updateWorkspaceGroupName: vi.fn(async () => undefined),
       updateWorkspace: vi.fn(async () => undefined)
     } satisfies WorkspaceResourcePolicy;
-    const { app, headers, requestNode } = fixture(resources);
+    const { app, headers, requestNode, revalidateDataAuthorizations } = fixture(resources);
 
     const response = await app.inject({
       method: 'DELETE',
@@ -770,6 +770,11 @@ describe('Shared Workspace HTTP routes', () => {
       undefined
     );
     expect(unregisterWorkspace).toHaveBeenCalledWith(1, 'node-1', 'workspace-1');
+    expect(revalidateDataAuthorizations).toHaveBeenCalledExactlyOnceWith({
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1'
+    });
+    expect(unregisterWorkspace).toHaveBeenCalledBefore(revalidateDataAuthorizations);
   });
   it('lets a currently authorized retry finish Server cleanup after Node removal and a revoked first attempt', async () => {
     const resources = personalWorkspacePolicy();
@@ -784,7 +789,7 @@ describe('Shared Workspace HTTP routes', () => {
       serverWorkspaceExists = false;
     });
     resources.unregisterWorkspace = unregister;
-    const { app, headers, requestNode } = fixture(resources);
+    const { app, headers, requestNode, revalidateDataAuthorizations } = fixture(resources);
     requestNode.mockImplementation(async () => {
       if (!nodeWorkspaceExists)
         throw new NodeRequestError(
@@ -809,6 +814,7 @@ describe('Shared Workspace HTTP routes', () => {
     const deniedRetry = await app.inject(request);
     expect(deniedRetry.statusCode).toBe(409);
     expect(requestNode).toHaveBeenCalledTimes(1);
+    expect(revalidateDataAuthorizations).not.toHaveBeenCalled();
     authorized = true;
     const retry = await app.inject(request);
     expect(retry.statusCode).toBe(200);
@@ -816,6 +822,10 @@ describe('Shared Workspace HTTP routes', () => {
     expect(serverWorkspaceExists).toBe(false);
     expect(unregister).toHaveBeenCalledTimes(2);
     expect(unregister).toHaveBeenLastCalledWith(1, 'node-1', 'workspace-1');
+    expect(revalidateDataAuthorizations).toHaveBeenCalledExactlyOnceWith({
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1'
+    });
   });
 
   it('finishes an authorized retry from a correlated Node response through the real request channel', async () => {

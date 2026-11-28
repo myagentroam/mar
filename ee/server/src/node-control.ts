@@ -44,9 +44,10 @@ import { TcpForwardRelay, type TcpForwardAdmissionChecks } from './service/tcp-f
 import { tcpForwardControlKind, tcpForwardDataKind } from '@myagentroam/protocol/tcp-forward';
 import type { HostedFileStreamTicket } from '@myagentroam/server-core/hosted-conversation-routes';
 import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
-import type {
-  NodeResourceScope,
-  UserNodeAuthorization
+import {
+  matchesNodeOperation,
+  type NodeOperationScope,
+  type UserNodeAuthorization
 } from '@myagentroam/server-core/node-access-contracts';
 import type { NodeStreamAuthorizer } from '@myagentroam/server-core/node-relay-channel';
 import type { TerminalRelayService } from '@myagentroam/server-core/terminal-relay-service';
@@ -669,34 +670,35 @@ export class NodeControl extends NodeIdentityControl {
   closeUserSessions(userId: number): void {
     for (const [socket, user] of this.dataClients)
       if (user.userId === userId) this.dataClients.delete(socket);
-    this.closeUserAttachments(userId);
-    this.tcpForwardRelay.revokeUser(userId);
-  }
-
-  revalidateUserAuthorizations(userId: number): Promise<void> {
-    this.closeUserAttachments(userId);
-    return this.tcpForwardRelay.revalidate({ userId });
-  }
-
-  revalidateOrganizationAuthorizations(memberUserIds: readonly number[]): Promise<void> {
-    for (const userId of memberUserIds) this.closeUserAttachments(userId);
-    // A tree change can also invalidate grants held by users outside the moved subtree.
-    return this.tcpForwardRelay.revalidate();
-  }
-
-  private closeUserAttachments(userId: number): void {
     this.workbenchRelay.closeUser(userId);
     this.terminalRelay.closeUser(userId);
     this.terminalDirect.revokeUser(userId);
     this.desktopDirect.revokeUser(userId);
     this.desktopRelay.revokeUser(userId);
+    this.tcpForwardRelay.revokeUser(userId);
+    this.fileStreamTickets.revokeUser(userId);
+    this.hostedFileTickets.revokeUser(userId);
+  }
+
+  revalidateUserAuthorizations(userId: number): Promise<void> {
+    return this.revalidateDataAuthorizations({ userId });
+  }
+
+  revalidateOrganizationAuthorizations(): Promise<void> {
+    // A tree change can also invalidate grants held by users outside the moved subtree.
+    return this.revalidateDataAuthorizations({});
   }
 
   revalidateHostedFileAuthorizations(templateId: string): Promise<void> {
-    return this.hostedFileTickets.revalidate((ticket) => ticket.templateId === templateId);
+    return this.revalidateDataAuthorizations({ templateId });
   }
 
-  async revalidateDataAuthorizations(scope: NodeResourceScope): Promise<void> {
+  /** Dispatch committed access changes to lease owners; shared carriers and login are not leases. */
+  async revalidateDataAuthorizations(
+    scope: NodeOperationScope | { templateId: string }
+  ): Promise<void> {
+    if ('templateId' in scope)
+      return this.hostedFileTickets.revalidate((ticket) => ticket.templateId === scope.templateId);
     await Promise.all([
       this.terminalRelay.revalidateAuthorizations(scope),
       this.terminalDirect.revalidateAuthorizations(scope),
@@ -705,8 +707,10 @@ export class NodeControl extends NodeIdentityControl {
       this.browser?.revalidateAuthorizations(scope),
       ...(scope.workspaceId === undefined
         ? [
-            this.tcpForwardRelay.revalidate({ nodeId: scope.nodeId }),
-            this.hostedFileTickets.revalidate((ticket) => ticket.nodeId === scope.nodeId)
+            this.tcpForwardRelay.revalidate(scope),
+            this.hostedFileTickets.revalidate(({ nodeId, user }) =>
+              matchesNodeOperation(scope, { nodeId, userId: user.userId })
+            )
           ]
         : [])
     ]);

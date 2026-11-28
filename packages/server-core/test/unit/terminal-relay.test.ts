@@ -120,6 +120,36 @@ describe('public Terminal relay', () => {
     }
   });
 
+  it('discards a late Node grant after an in-flight attachment loses access', async () => {
+    const nodeId = 'node-1';
+    const workspaceId = 'workspace-1';
+    const user = { userId: 1, sessionHash: 'login' };
+    const pending = Promise.withResolvers<{ grant: string }>();
+    const requestNode = vi.fn(() => pending.promise);
+    const authorizeNodeRequest = vi.fn(async () => true);
+    const relay = new TerminalRelayService({ authorizeNodeRequest, requestNode });
+    try {
+      const { ticket } = relay.createTicket({ nodeId, workspaceId, terminalId: 'shell', user });
+      const open = relay.authorizeStream(ticket, nodeId, user, false, new AbortController().signal);
+      authorizeNodeRequest.mockResolvedValue(false);
+      await relay.revalidateAuthorizations({ nodeId, workspaceId: 'unrelated' });
+      expect(authorizeNodeRequest).not.toHaveBeenCalled();
+      await relay.revalidateAuthorizations({ nodeId, workspaceId });
+      expect(authorizeNodeRequest).toHaveBeenCalledExactlyOnceWith(
+        user.userId,
+        nodeId,
+        'terminal.attach.authorize',
+        {},
+        workspaceId
+      );
+      pending.resolve({ grant: 'late-node-grant' });
+      expect(await open).toEqual({ code: 'NODE_STREAM_UNAVAILABLE' });
+      expect(relay.countSession(user.sessionHash)).toBe(0);
+    } finally {
+      relay.close();
+    }
+  });
+
   it('uses the same session limit for in-flight Relay authorization and Direct attachments', async () => {
     const nodeId = 'node-1';
     const user = { userId: 1, sessionHash: 'login' };

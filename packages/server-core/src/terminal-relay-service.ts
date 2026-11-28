@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
-  matchesNodeResource,
+  matchesNodeOperation,
   type NodeRequestAuthorization,
-  type NodeResourceScope,
+  type NodeOperationScope,
   type UserNodeAuthorization
 } from './node-access-contracts.js';
 import { safeErrorCode } from './http-errors.js';
@@ -207,7 +207,7 @@ export class TerminalRelayService {
     this.revoke(() => true);
   }
 
-  async revalidateAuthorizations(resource: NodeResourceScope): Promise<void> {
+  async revalidateAuthorizations(scope: NodeOperationScope): Promise<void> {
     const authorizationChecks = new Map<string, Promise<boolean>>();
     const allowed = (
       record: { readonly userId: number; readonly nodeId: string; readonly workspaceId?: string },
@@ -231,9 +231,9 @@ export class TerminalRelayService {
       return check;
     };
     // Pending tickets already check current authorization when OPEN consumes them.
-    for (const [record, scope] of this.streams)
-      if (matchesNodeResource(resource, record) && !(await allowed(record, record.computer)))
-        scope.abort();
+    for (const [record, operation] of this.streams)
+      if (matchesNodeOperation(scope, record) && !(await allowed(record, record.computer)))
+        operation.abort();
   }
 
   disconnectNode(nodeId: string): void {

@@ -9,10 +9,18 @@ export interface NodeResourceScope {
   readonly workspaceId?: string;
 }
 
-/** A Node grant may also provide effective access to Workspaces on that Node. */
-export function matchesNodeResource(scope: NodeResourceScope, target: NodeResourceScope): boolean {
+export interface NodeOperationScope extends Partial<NodeResourceScope> {
+  readonly userId?: number;
+}
+
+/** Select affected operations, not carriers. A Node change also covers its Workspaces. */
+export function matchesNodeOperation(
+  scope: NodeOperationScope,
+  target: NodeResourceScope & { readonly userId: number }
+): boolean {
   return (
-    scope.nodeId === target.nodeId &&
+    (scope.userId === undefined || scope.userId === target.userId) &&
+    (scope.nodeId === undefined || scope.nodeId === target.nodeId) &&
     (scope.workspaceId === undefined || scope.workspaceId === target.workspaceId)
   );
 }

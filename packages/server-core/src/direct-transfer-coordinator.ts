@@ -2,8 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { emitAudit, type AuditObserver } from './audit.js';
 import {
   isOrdinaryFileStream,
-  matchesNodeResource,
-  type NodeResourceScope
+  matchesNodeOperation,
+  type NodeOperationScope
 } from './node-access-contracts.js';
 import type {
   DirectBrowserMessage,
@@ -285,14 +285,15 @@ export class DirectTransferCoordinator {
       if (session.nodeId === nodeId) void this.closeSession(session, code);
   }
 
-  async revalidateAuthorizations(scope: NodeResourceScope): Promise<void> {
+  async revalidateAuthorizations(scope: NodeOperationScope): Promise<void> {
     await Promise.all(
       [...this.sessions.values()].map(async (session) => {
         if (
           session.purpose !== 'TRANSFER' ||
           this.mayFinish(session) ||
-          !matchesNodeResource(scope, {
+          !matchesNodeOperation(scope, {
             nodeId: session.nodeId,
+            userId: session.userId,
             workspaceId: session.transfer.resource.workspaceId
           })
         )

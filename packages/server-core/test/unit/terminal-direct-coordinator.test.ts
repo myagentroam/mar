@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TerminalDirectNodeCommand, TerminalDirectServerMessage } from '@myagentroam/protocol';
-import { TerminalDirectCoordinator } from '../../src/terminal-direct-coordinator.js';
+import {
+  TerminalDirectCoordinator,
+  type TerminalDirectCoordinatorOptions
+} from '../../src/terminal-direct-coordinator.js';
 import { NodeRequestError } from '../../src/node-request-error.js';
 
 const identity = { userId: 7, sessionHash: 'session-7', workbenchConnectionId: 'page-12345678' };
@@ -19,10 +22,12 @@ const request = {
 function fixture() {
   let now = 1_000_000;
   let permitted = true;
-  const transport = vi.fn(() => ({
-    browserFingerprint: `sha-256 ${'AA:'.repeat(31)}AA`,
-    nodeFingerprint: `sha-256 ${'BB:'.repeat(31)}BB`
-  }));
+  const transport = vi.fn<TerminalDirectCoordinatorOptions['transport']['terminalTransport']>(
+    () => ({
+      browserFingerprint: `sha-256 ${'AA:'.repeat(31)}AA`,
+      nodeFingerprint: `sha-256 ${'BB:'.repeat(31)}BB`
+    })
+  );
   const authorize = vi.fn(async () => permitted);
   const preflight = vi.fn(async () => undefined);
   const sendNode = vi.fn((_id: string, _message: TerminalDirectNodeCommand) => true);
@@ -258,8 +263,21 @@ describe('Terminal direct coordinator', () => {
       const scope = { nodeId, workspaceId: request.workspaceId };
       await f.coordinator.revalidateAuthorizations(scope);
       expect(f.coordinator.sessionCount(identity.sessionHash)).toBe(1);
+      // The Workbench control socket can resume while the Direct data attachment is still live.
+      f.transport.mockReturnValue(undefined);
+      f.transport.mockClear();
+      f.authorize.mockClear();
+      await f.coordinator.revalidateAuthorizations({ userId: identity.userId });
+      expect(f.coordinator.sessionCount(identity.sessionHash)).toBe(1);
+      expect(f.authorize).toHaveBeenCalledExactlyOnceWith(
+        identity.userId,
+        nodeId,
+        request.workspaceId,
+        undefined
+      );
       f.deny();
       await f.coordinator.revalidateAuthorizations(scope);
+      expect(f.transport).not.toHaveBeenCalled();
       expect(f.sendNode).toHaveBeenLastCalledWith(nodeId, {
         type: 'terminal.direct.cancel',
         directSessionId: prepared.directSessionId,

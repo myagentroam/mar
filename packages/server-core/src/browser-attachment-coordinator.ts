@@ -249,10 +249,12 @@ export class BrowserAttachmentCoordinator {
       if (result.status === 'rejected') this.options.failed(result.reason);
   }
 
-  async revalidateAuthorizations(matches: (target: Scope) => boolean): Promise<void> {
+  async revalidateAuthorizations(
+    matches: (target: Scope, identity: Identity) => boolean
+  ): Promise<void> {
     await Promise.all(
       [...this.leases].map(async ([id, lease]) => {
-        if (!matches(lease.target) || !this.live(lease)) return;
+        if (!matches(lease.target, lease.identity) || !this.live(lease)) return;
         try {
           await this.options.authorize(lease.identity, lease.target);
         } catch (error) {

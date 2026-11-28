@@ -2,8 +2,8 @@ import type { DirectTransferDescriptor } from '@myagentroam/protocol';
 import { emitAudit, type AuditObserver } from '@myagentroam/server-core/audit';
 import {
   isOrdinaryFileStream,
-  matchesNodeResource,
-  type NodeResourceScope,
+  matchesNodeOperation,
+  type NodeOperationScope,
   type UserNodeAuthorization
 } from '@myagentroam/server-core/node-access-contracts';
 import { NodeRequestAdmissionError } from '@myagentroam/server-core/node-request-error';
@@ -46,9 +46,13 @@ export class WorkspaceFileStreamTickets extends FileStreamTickets<Ticket> {
     });
   }
 
-  revalidateResource(scope: NodeResourceScope): Promise<void> {
-    return this.revalidate(({ nodeId, descriptor }) =>
-      matchesNodeResource(scope, { nodeId, workspaceId: descriptor.resource.workspaceId })
+  revalidateResource(scope: NodeOperationScope): Promise<void> {
+    return this.revalidate(({ nodeId, user, descriptor }) =>
+      matchesNodeOperation(scope, {
+        nodeId,
+        userId: user.userId,
+        workspaceId: descriptor.resource.workspaceId
+      })
     );
   }
 }

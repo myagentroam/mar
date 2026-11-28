@@ -16,8 +16,8 @@ import {
 } from '@myagentroam/server-core/browser-attachment-coordinator';
 import type { DirectTransferCoordinator } from '@myagentroam/server-core/direct-transfer-coordinator';
 import {
-  matchesNodeResource,
-  type NodeResourceScope,
+  matchesNodeOperation,
+  type NodeOperationScope,
   type NodeRequestAuthorization,
   type UserNodeAuthorization
 } from '@myagentroam/server-core/node-access-contracts';
@@ -333,11 +333,12 @@ export class BrowserWorkbenchService {
       current.scope.abort();
   }
 
-  async revalidateAuthorizations(scope: NodeResourceScope): Promise<void> {
-    const matches = (target: Scope) => matchesNodeResource(scope, target);
+  async revalidateAuthorizations(scope: NodeOperationScope): Promise<void> {
+    const matches = (target: Scope, { userId }: { userId: number }) =>
+      matchesNodeOperation(scope, { ...target, userId });
     await Promise.all([
       this.attachments.revalidateAuthorizations(matches),
-      this.fileTickets.revalidate(matches)
+      this.fileTickets.revalidate((ticket) => matches(ticket, ticket.user))
     ]);
   }
 

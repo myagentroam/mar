@@ -128,7 +128,7 @@ async function fixture({ expireSessionOnCarrierAdmission = false } = {}) {
     },
     async changeOrganizationAccess() {
       allowed = false;
-      await control.revalidateOrganizationAuthorizations([]);
+      await control.revalidateOrganizationAuthorizations();
     },
     revalidateNodeAccess() {
       return control.revalidateDataAuthorizations({ nodeId });
