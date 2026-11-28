@@ -6,6 +6,7 @@ import AgentMarkdown from '../../src/view/conversation/AgentMarkdown.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import { createConversationImageService } from '../../src/service/conversation-image-service.js';
+import { ApiError } from '../../src/util/api-error.js';
 
 const query = new URLSearchParams(location.search);
 localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
@@ -17,9 +18,12 @@ const name = query.get('name') ?? 'Image preview';
 const images = createConversationImageService(ref('node'), {
   fileAttachments: {
     target: ref('fixture'),
-    revalidate: async () => undefined,
-    sourceUrl: () => first,
-    onError: () => undefined
+    revalidate: async () => {
+      if (!query.has('attachment-check')) return;
+      const response = await fetch('/preview-fixture-check');
+      if (!response.ok) throw new ApiError('FILE_NOT_FOUND', 'File not found.');
+    },
+    sourceUrl: () => first
   }
 });
 const { previewOpen: open, preview } = images;
@@ -41,13 +45,14 @@ createApp({
       h(AgentMarkdown, {
         content: '![Markdown picture](picture.png)',
         imageResourceUrl: () => second,
-        'onOpen-image': (url: string) => show(url)
+        'onOpen-image': ({ previewUrl }: { previewUrl: string }) => show(previewUrl)
       }),
       h(ImagePreviewDialogs, {
         attachmentOpen: false,
         attachment: undefined,
         conversationOpen: open.value,
         conversation: preview.value,
+        onConversationClose: images.invalidateFilePreview,
         onConversationError: (url: string) => void images.previewFailed(url),
         'onUpdate:conversationOpen': (value: boolean) => {
           open.value = value;

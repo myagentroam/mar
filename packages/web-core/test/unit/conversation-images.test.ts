@@ -7,8 +7,7 @@ import { ApiError } from '../../src/util/api-error.js';
 
 function fileOptions(
   target: Ref<{ nodeId: string; workspaceId: string }>,
-  request: (path: string, init?: RequestInit) => Promise<unknown>,
-  onError: (error: unknown, path: string) => void
+  request: (path: string, init?: RequestInit) => Promise<unknown>
 ) {
   return {
     target: computed(() => JSON.stringify(target.value)),
@@ -20,8 +19,7 @@ function fileOptions(
         preview: String(revision)
       });
       return `/api/workspaces/${target.value.workspaceId}/files/content?${parameters}`;
-    },
-    onError
+    }
   };
 }
 
@@ -34,8 +32,7 @@ describe('Web Conversation Image State', () => {
       fileAttachments: {
         target,
         revalidate: vi.fn(async () => ({})),
-        sourceUrl: () => '/api/workspaces/workspace/files/content?path=picture.png',
-        onError: vi.fn()
+        sourceUrl: () => '/api/workspaces/workspace/files/content?path=picture.png'
       }
     });
     try {
@@ -54,9 +51,8 @@ describe('Web Conversation Image State', () => {
   it('uses a fresh image URL on reopening and ignores a failed previous image', async () => {
     const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async () => ({}));
-    const onError = vi.fn();
     const state = createConversationImageService(ref('node-1'), {
-      fileAttachments: fileOptions(target, request, onError)
+      fileAttachments: fileOptions(target, request)
     });
     const file = {
       name: 'photo.png',
@@ -65,23 +61,22 @@ describe('Web Conversation Image State', () => {
     };
     try {
       await state.openFileAttachment(file);
-      const previousUrl = state.preview.value!.url;
+      const previousUrl = state.preview.value!.url!;
       state.previewOpen.value = false;
       await state.openFileAttachment(file);
-      const currentUrl = state.preview.value!.url;
+      const currentUrl = state.preview.value!.url!;
       expect(currentUrl).not.toBe(previousUrl);
       await state.previewFailed(previousUrl);
       expect(request).toHaveBeenCalledTimes(2);
       expect(state.previewOpen.value).toBe(true);
       expect(state.preview.value?.url).toBe(currentUrl);
-      expect(onError).not.toHaveBeenCalled();
+      expect(state.preview.value?.failure).toBeUndefined();
     } finally {
       state.dispose();
     }
   });
   it('uses the configured authority and ignores late reads after disposal', async () => {
     const target = ref('node-1:workspace-1');
-    const onError = vi.fn();
     let finish!: () => void;
     const revalidate = vi.fn(
       () =>
@@ -93,8 +88,7 @@ describe('Web Conversation Image State', () => {
       fileAttachments: {
         target,
         revalidate,
-        sourceUrl: () => '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=photo.png',
-        onError
+        sourceUrl: () => '/api/workspaces/workspace-1/files/content?nodeId=node-1&path=photo.png'
       }
     });
     const file = {
@@ -103,6 +97,8 @@ describe('Web Conversation Image State', () => {
       path: '.mar/temp-files/session/photo.png'
     };
     const first = state.openFileAttachment(file);
+    expect(state.previewOpen.value).toBe(true);
+    expect(state.preview.value).toEqual({ name: file.name });
     finish();
     await first;
     expect(state.preview.value?.url).toContain('/workspaces/workspace-1/');
@@ -112,15 +108,14 @@ describe('Web Conversation Image State', () => {
     await second;
     expect(state.previewOpen.value).toBe(false);
     expect(state.preview.value).toBeUndefined();
-    expect(onError).not.toHaveBeenCalled();
+    expect(state.preview.value?.failure).toBeUndefined();
   });
 
   it('keeps a valid attachment open for retry and ignores errors from replaced previews', async () => {
     const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async (_path: string, _init?: RequestInit) => ({}));
-    const onError = vi.fn();
     const state = createConversationImageService(ref('node-1'), {
-      fileAttachments: fileOptions(target, request, onError)
+      fileAttachments: fileOptions(target, request)
     });
     try {
       const file = {
@@ -129,17 +124,17 @@ describe('Web Conversation Image State', () => {
         path: '.mar/temp-files/session/photo.png'
       };
       await state.openFileAttachment(file);
-      const url = state.preview.value!.url;
+      const url = state.preview.value!.url!;
       await state.previewFailed(url);
       expect(state.previewOpen.value).toBe(true);
       expect(state.preview.value?.url).toBe(url);
       expect(request).toHaveBeenCalledTimes(2);
-      expect(onError).not.toHaveBeenCalled();
+      expect(state.preview.value?.failure).toBeUndefined();
       await state.openFileAttachment(file);
       state.open({ name: 'generated.png', previewUrl: '/api/agent-runs/run-1/images/0' });
       await state.previewFailed(url);
       expect(state.preview.value?.name).toBe('generated.png');
-      expect(onError).not.toHaveBeenCalled();
+      expect(state.preview.value?.failure).toBeUndefined();
     } finally {
       state.dispose();
     }
@@ -147,9 +142,8 @@ describe('Web Conversation Image State', () => {
   it('ignores source revalidation failures after a different image is opened', async () => {
     const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async (_path: string, _init?: RequestInit) => ({}));
-    const onError = vi.fn();
     const state = createConversationImageService(ref('node-1'), {
-      fileAttachments: fileOptions(target, request, onError)
+      fileAttachments: fileOptions(target, request)
     });
     try {
       await state.openFileAttachment({ name: 'photo.png', mime: 'image/png', path: 'photo.png' });
@@ -160,13 +154,13 @@ describe('Web Conversation Image State', () => {
             reject = fail;
           })
       );
-      const pending = state.previewFailed(state.preview.value!.url);
+      const pending = state.previewFailed(state.preview.value!.url!);
       state.open({ name: 'generated.png', previewUrl: '/api/agent-runs/run-1/images/0' });
       reject(new ApiError('FILE_NOT_FOUND', 'File not found.'));
       await pending;
       expect(state.previewOpen.value).toBe(true);
       expect(state.preview.value?.name).toBe('generated.png');
-      expect(onError).not.toHaveBeenCalled();
+      expect(state.preview.value?.failure).toBeUndefined();
     } finally {
       state.dispose();
     }
@@ -175,9 +169,8 @@ describe('Web Conversation Image State', () => {
   it('revalidates each Workspace attachment click and uses the shared URL-backed dialog', async () => {
     const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async (_path: string, _init?: RequestInit) => ({}));
-    const onError = vi.fn();
     const state = createConversationImageService(ref('node-1'), {
-      fileAttachments: fileOptions(target, request, onError)
+      fileAttachments: fileOptions(target, request)
     });
     const file = {
       name: '原图 with spaces.png',
@@ -188,20 +181,21 @@ describe('Web Conversation Image State', () => {
       await state.openFileAttachment(file);
       expect(state.previewOpen.value).toBe(true);
       expect(state.preview.value?.name).toBe(file.name);
-      const url = new URL(state.preview.value!.url, 'http://localhost');
+      const url = new URL(state.preview.value!.url!, 'http://localhost');
       expect(url.pathname).toBe('/api/workspaces/workspace-1/files/content');
       expect(url.searchParams.get('path')).toBe(file.path);
       expect(url.searchParams.get('nodeId')).toBe('node-1');
-      expect(state.preview.value!.url).not.toMatch(/^blob:|^data:/u);
+      expect(state.preview.value!.url!).not.toMatch(/^blob:|^data:/u);
       request.mockRejectedValueOnce(new ApiError('FILE_NOT_FOUND', 'File not found.'));
       await state.openFileAttachment(file);
       expect(request).toHaveBeenCalledTimes(2);
       expect(request.mock.calls[0]?.[1]).toEqual({ cache: 'no-store' });
-      expect(state.previewOpen.value).toBe(false);
-      expect(onError).toHaveBeenCalledWith(
-        expect.objectContaining({ code: 'FILE_NOT_FOUND' }),
-        file.path
-      );
+      expect(state.previewOpen.value).toBe(true);
+      expect(state.preview.value?.url).toBeUndefined();
+      expect(state.preview.value?.failure).toMatchObject({
+        cause: { code: 'FILE_NOT_FOUND' },
+        path: file.path
+      });
     } finally {
       state.dispose();
     }
@@ -217,7 +211,7 @@ describe('Web Conversation Image State', () => {
         })
     );
     const state = createConversationImageService(ref('node-1'), {
-      fileAttachments: fileOptions(target, request, vi.fn())
+      fileAttachments: fileOptions(target, request)
     });
     try {
       const pending = state.openFileAttachment({
@@ -236,12 +230,11 @@ describe('Web Conversation Image State', () => {
     }
   });
 
-  it('reports a source removed during image loading without keeping a broken preview', async () => {
+  it('keeps the dialog and reports a source removed during image loading without keeping its URL', async () => {
     const target = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
     const request = vi.fn(async (_path: string, _init?: RequestInit) => ({}));
-    const onError = vi.fn();
     const state = createConversationImageService(ref('node-1'), {
-      fileAttachments: fileOptions(target, request, onError)
+      fileAttachments: fileOptions(target, request)
     });
     const file = {
       name: 'photo.png',
@@ -250,16 +243,17 @@ describe('Web Conversation Image State', () => {
     };
     try {
       await state.openFileAttachment(file);
-      const url = state.preview.value!.url;
+      const url = state.preview.value!.url!;
       request.mockRejectedValueOnce(new ApiError('FILE_NOT_FOUND', 'File not found.'));
       await state.previewFailed(url);
-      expect(state.previewOpen.value).toBe(false);
-      expect(onError).toHaveBeenCalledWith(
-        expect.objectContaining({ code: 'FILE_NOT_FOUND' }),
-        file.path
-      );
+      expect(state.previewOpen.value).toBe(true);
+      expect(state.preview.value?.url).toBeUndefined();
+      expect(state.preview.value?.failure).toMatchObject({
+        cause: { code: 'FILE_NOT_FOUND' },
+        path: file.path
+      });
       await state.previewFailed(url);
-      expect(onError).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledTimes(2);
     } finally {
       state.dispose();
     }

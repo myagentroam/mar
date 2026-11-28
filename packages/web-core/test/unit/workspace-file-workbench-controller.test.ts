@@ -1532,6 +1532,53 @@ it('aborts a pending preview read on dispose and ignores its late result', async
   }
 });
 
+it('resumes a retained private file on interrupted close without accepting the old read', async () => {
+  const target = { nodeId: 'n', workspaceId: 'w' };
+  const validation = Promise.withResolvers<unknown>();
+  const validated = { file: { encoding: 'utf-8', content: 'p', size: 1, nextOffset: null } };
+  const request = vi.fn().mockReturnValueOnce(validation.promise).mockResolvedValue(validated);
+  const http = { request } as unknown as ReturnType<typeof createScopedHttpService>;
+  const readPreviewRange = vi.fn(async () => ({
+    bytes: new TextEncoder().encode('private text'),
+    size: 12,
+    offset: 0,
+    nextOffset: null,
+    revision: 'r1'
+  }));
+  const owner = createWorkspaceFileWorkbenchController({
+    externalTarget: () => target,
+    fileWriteEnabled: () => false,
+    onPopupBlocked: vi.fn(),
+    target: () => target,
+    prewarmEnabled: () => false,
+    resolveRepositoryPath: () => undefined,
+    reveal: async () => {},
+    onOpenFailure: vi.fn(),
+    onRevealFailure: vi.fn(),
+    comparison: async () => undefined,
+    page: () => undefined,
+    access: createFileAccessFixture({ http, transfers: () => ({ readPreviewRange }) }),
+    preview: { onWritten: vi.fn() },
+    navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
+  });
+  try {
+    const opening = owner.openFile('.mar/temp-files/run/pending.ts');
+    const frame = owner.frames.value[0]!;
+    const resume = owner.prepareConfirmedTabClose([frame.id]);
+    validation.resolve(validated);
+    await opening;
+    expect(frame.loading.value).toBe(true);
+    expect(readPreviewRange).not.toHaveBeenCalled();
+    resume();
+    await vi.waitFor(() => expect(frame.fileContent.value?.content).toBe('private text'));
+    expect(owner.activeTabId.value).toBe(frame.id);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(readPreviewRange).toHaveBeenCalledTimes(1);
+  } finally {
+    owner.dispose();
+  }
+});
+
 it('commits confirmed closure of an unmounted dirty tab without retaining its draft', () => {
   const http = createScopedHttpService();
   const owner = createWorkspaceFileWorkbenchController({

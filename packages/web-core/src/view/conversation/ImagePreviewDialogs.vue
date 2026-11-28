@@ -11,6 +11,9 @@ import { translate } from '../../service/locale-preference-service.js';
 import type { ComposerAttachment } from '../../model/workbench.js';
 import type { ConversationImagePreview } from '../../service/conversation-image-service.js';
 import DecodedPreviewImage from './DecodedPreviewImage.vue';
+import FilePreviewLoading from '../workspace/FilePreviewLoading.vue';
+import FilePreviewState from '../workspace/FilePreviewState.vue';
+import { filePreviewErrorSummary } from '../../util/error-presentation.js';
 
 const props = defineProps<{
   readonly attachmentOpen: boolean;
@@ -24,6 +27,7 @@ const emit = defineEmits<{
   'update:conversationOpen': [value: boolean];
   clearAttachment: [];
   clearConversation: [];
+  conversationClose: [];
   conversationError: [url: string];
 }>();
 
@@ -35,6 +39,22 @@ const conversationTitle = computed(
 );
 const original = ref(false);
 const resized = ref(false);
+const conversationDialog = ref<InstanceType<typeof MarDialog>>();
+const conversationFailure = ref<InstanceType<typeof FilePreviewState>>();
+watch(
+  () => props.conversation?.failure,
+  (failure, previous) => {
+    // A completed retry removes its button, but must not steal focus from other controls.
+    if (
+      !failure &&
+      previous?.retrying &&
+      props.conversationOpen &&
+      props.conversation?.url &&
+      conversationFailure.value?.hasRetryFocus()
+    )
+      conversationDialog.value?.focusClose();
+  }
+);
 watch(
   [() => props.conversation?.url, () => props.conversation?.direct, () => props.conversationOpen],
   () => {
@@ -68,6 +88,7 @@ watch(
     append-to-body
     align-center
     class="attachment-preview-dialog"
+    focus-close-on-open
     destroy-on-close
     @update:model-value="emit('update:attachmentOpen', $event)"
   >
@@ -86,12 +107,15 @@ watch(
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="conversationOpen"
+    ref="conversationDialog"
     :model-value="conversationOpen"
     :title="conversationTitle"
     append-to-body
     align-center
     class="attachment-preview-dialog"
+    focus-close-on-open
     destroy-on-close
+    @close="emit('conversationClose')"
     @update:model-value="emit('update:conversationOpen', $event)"
   >
     <template #header="{ titleId, titleClass }">
@@ -99,8 +123,16 @@ watch(
         conversationTitle
       }}</span>
     </template>
+    <FilePreviewState
+      v-if="conversation?.failure"
+      ref="conversationFailure"
+      :message="filePreviewErrorSummary(conversation.failure.cause, conversation.failure.path)"
+      :retrying="conversation.failure.retrying === true"
+      retryable
+      @retry="conversation?.failure?.retry()"
+    />
     <DecodedPreviewImage
-      v-if="conversation !== undefined"
+      v-else-if="conversation?.url"
       :key="conversation.url"
       :source="conversation.url"
       :name="conversation.name"
@@ -115,6 +147,7 @@ watch(
         </MarButton>
       </template>
     </DecodedPreviewImage>
+    <FilePreviewLoading v-else-if="conversation" />
   </MarDialog>
 </template>
 

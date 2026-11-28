@@ -14,7 +14,10 @@ import type {
   WorkspaceNavigationNotice,
   WorkspaceNavigationTarget
 } from '../model/workspace-navigation.js';
-import { createWorkspaceFilePreviewService } from './workspace-file-preview-service.js';
+import {
+  createWorkspaceFilePreviewService,
+  needsReadablePreviewCheck
+} from './workspace-file-preview-service.js';
 import { createWorkspaceCodeNavigationService } from './workspace-code-navigation-service.js';
 import {
   createWorkspaceFileNavigationHistoryService,
@@ -24,12 +27,12 @@ import { createWorkspaceFileTabService } from './workspace-file-tab-service.js';
 import type { WorkspaceFileTreeEntry } from './workspace-file-tree-service.js';
 import type { WorkspaceFileOperationTarget } from './workspace-file-operation-service.js';
 import { shouldReadTextFilePreview, usesRawFilePreview } from '../util/file-preview.js';
-import type {
-  WorkspaceFileOpenIntent,
-  WorkspaceFileTab,
-  WorkspaceFileTabsSnapshot
+import {
+  workspaceFileTabName,
+  type WorkspaceFileOpenIntent,
+  type WorkspaceFileTab,
+  type WorkspaceFileTabsSnapshot
 } from '../util/workspace-file-tab.js';
-import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import {
   createStandaloneFileWindowService,
   type StandaloneFileOpenIntent
@@ -179,6 +182,12 @@ export function createWorkspaceFileWorkbenchController(options: {
   const frames = shallowRef<readonly WorkspaceFilePreviewFrame[]>([]);
   const suspended = ref(false);
   const drafts = new Map<string, DirtyTextDraft>();
+  // The unresolved comparison is a presentation-only tab, never a file or history entry.
+  const pendingComparison = shallowRef<{
+    readonly tab: WorkspaceFileTab;
+    readonly error?: { readonly cause: unknown; readonly retry: () => void };
+    readonly retrying?: boolean;
+  }>();
   let openGeneration = 0;
   let restoreGeneration = 0;
   let restorationPending = false;
@@ -186,6 +195,7 @@ export function createWorkspaceFileWorkbenchController(options: {
     { tab: WorkspaceFileTab; generation: number; line?: number; column?: number } | undefined;
   function beginOpen(): number {
     pendingFocus = undefined;
+    pendingComparison.value = undefined;
     return ++openGeneration;
   }
   function isOpenCurrent(generation: number): boolean {
@@ -194,6 +204,12 @@ export function createWorkspaceFileWorkbenchController(options: {
   function invalidateOpen(): void {
     openGeneration += 1;
     pendingFocus = undefined;
+    pendingComparison.value = undefined;
+  }
+  function finishComparison(): boolean {
+    if (pendingComparison.value === undefined) return false;
+    pendingComparison.value = undefined;
+    return true;
   }
   function pageReady(id?: number): void {
     const pending = pendingFocus;
@@ -515,7 +531,7 @@ export function createWorkspaceFileWorkbenchController(options: {
           ? `${tab.repositoryPath}/${tab.path}`
           : tab.path;
     if (repositoryPath === undefined && tab.worktreePath === '') {
-      const opening = openFile(path, undefined, undefined, tab.quotePane);
+      const opening = openFile(path, undefined, undefined, tab.quotePane, continueOpen);
       const sourceGeneration = openGeneration;
       const sourceTab = tabs.activeTab.value;
       await opening;
@@ -537,13 +553,13 @@ export function createWorkspaceFileWorkbenchController(options: {
       true,
       true
     );
-    focusWhenReady(tabs.activeTab.value, generation);
+    if (!finishComparison()) focusWhenReady(tabs.activeTab.value, generation);
     const targetId = tabs.activeTabId.value;
     if (targetId !== undefined) recordNavigation(source, targetId);
     await opening;
     return isOpenCurrent(generation) && tabs.activeTabId.value === targetId ? targetId : undefined;
   }
-  async function openTab(intent: WorkspaceFileOpenIntent): Promise<void> {
+  async function openTab(intent: WorkspaceFileOpenIntent, continueOpen = false): Promise<void> {
     const target = options.target();
     if (
       target === undefined ||
@@ -551,7 +567,7 @@ export function createWorkspaceFileWorkbenchController(options: {
       target.workspaceId !== intent.workspaceId
     )
       return;
-    const generation = beginOpen();
+    const generation = continueOpen ? openGeneration : beginOpen();
     setSuspended(false);
     if (
       usesRawFilePreview(intent.path) &&
@@ -566,30 +582,31 @@ export function createWorkspaceFileWorkbenchController(options: {
       if (!intent.commit) return;
       const opening = openHistoryText(intent);
       const tab = tabs.activeTab.value;
-      focusWhenReady(tab, generation);
+      if (!finishComparison()) focusWhenReady(tab, generation);
       await opening;
       return;
     }
     if (intent.kind === 'HISTORY_TEXT') {
       if (!intent.commit) return;
       const opening = openHistoryText(intent);
-      focusWhenReady(tabs.activeTab.value, generation);
+      if (!finishComparison()) focusWhenReady(tabs.activeTab.value, generation);
       await opening;
       return;
     }
     const source = currentPosition();
     const tab = tabs.open(intent);
     recordNavigation(source, tab.id, intent.targetLine, intent.targetColumn);
-    focusWhenReady(tabs.activeTab.value, generation);
+    if (!finishComparison()) focusWhenReady(tabs.activeTab.value, generation);
     await nextTick();
   }
   async function openFile(
     path: string,
     line?: number,
     column?: number,
-    quotePane: 'main' | 'aside' = 'main'
+    quotePane: 'main' | 'aside' = 'main',
+    continueOpen = false
   ): Promise<void> {
-    const generation = beginOpen();
+    const generation = continueOpen ? openGeneration : beginOpen();
     const target = options.target();
     if (target === undefined) return;
     const source = currentPosition();
@@ -601,23 +618,17 @@ export function createWorkspaceFileWorkbenchController(options: {
         current.workspaceId === target.workspaceId
       );
     };
-    if (isComposerAttachmentResourcePath(path) || path.startsWith('.mar/temp-files/')) {
-      try {
-        await previews.checkReadable({ ...target, path });
-      } catch (error) {
-        if (sameTarget()) options.onOpenFailure(error, path);
-        return;
-      }
-      if (!sameTarget()) return;
-    }
     setSuspended(false);
-    const existing = frames.value.find(
-      (frame) =>
-        frame.worktreePath.value === undefined &&
-        frame.repositoryPath === undefined &&
-        frame.historySource === undefined &&
-        frame.fileContent.value?.path === path
-    );
+    const revalidate = needsReadablePreviewCheck(path);
+    const existing = !revalidate
+      ? frames.value.find(
+          (frame) =>
+            frame.worktreePath.value === undefined &&
+            frame.repositoryPath === undefined &&
+            frame.historySource === undefined &&
+            frame.fileContent.value?.path === path
+        )
+      : undefined;
     if (existing !== undefined) {
       tabs.activate(existing.id);
       if (line !== undefined) existing.targetLine.value = line;
@@ -627,6 +638,7 @@ export function createWorkspaceFileWorkbenchController(options: {
       existing === undefined
         ? openWorkspaceFile(path, line, undefined, true, column, undefined, true, true)
         : Promise.resolve();
+    const keepFocus = finishComparison() || revalidate;
     if (tabs.activeTabId.value !== undefined) tabs.setQuotePane(tabs.activeTabId.value, quotePane);
     const targetTab = tabs.activeTab.value;
     const targetId = targetTab?.id;
@@ -637,14 +649,18 @@ export function createWorkspaceFileWorkbenchController(options: {
       tabs.activeTabId.value === targetId;
     if (current() && targetId !== undefined) {
       recordNavigation(source, targetId, line, column);
-      pendingFocus = {
-        tab: targetTab!,
-        generation,
-        ...(existing !== undefined && line !== undefined ? { line } : {}),
-        ...(existing !== undefined && column !== undefined ? { column } : {})
-      };
+      if (!keepFocus)
+        pendingFocus = {
+          tab: targetTab!,
+          generation,
+          ...(existing !== undefined && line !== undefined ? { line } : {}),
+          ...(existing !== undefined && column !== undefined ? { column } : {})
+        };
       void nextTick(() => {
-        if (current()) pageReady(targetId);
+        if (!current()) return;
+        if (!keepFocus) pageReady(targetId);
+        else if (existing !== undefined && line !== undefined)
+          page()?.navigateTo(targetId, line, column, false);
       });
     }
     void options.reveal(path, current).catch((error: unknown) => {
@@ -658,19 +674,51 @@ export function createWorkspaceFileWorkbenchController(options: {
     column?: number,
     quotePane: 'main' | 'aside' = 'main'
   ): Promise<void> {
+    if (needsReadablePreviewCheck(path)) return openFile(path, line, column, quotePane);
     const generation = beginOpen();
     const target = options.target();
     if (target === undefined) return;
-    const intent = await options.comparison(path);
-    const current = options.target();
-    if (
-      !isOpenCurrent(generation) ||
-      current?.nodeId !== target.nodeId ||
-      current.workspaceId !== target.workspaceId
-    )
-      return;
-    if (intent !== undefined) await openTab({ ...intent, quotePane });
-    else await openFile(path, line, column, quotePane);
+    const tab: WorkspaceFileTab = {
+      ...target,
+      id: 0,
+      identity: '',
+      kind: 'WORKTREE_PREVIEW',
+      path,
+      fileName: workspaceFileTabName(path),
+      repositoryPath: '',
+      worktreePath: ''
+    };
+    const current = () => {
+      const active = options.target();
+      return (
+        isOpenCurrent(generation) &&
+        active?.nodeId === target.nodeId &&
+        active.workspaceId === target.workspaceId
+      );
+    };
+    setSuspended(false);
+    pendingComparison.value = { tab };
+    async function resolveComparison(): Promise<void> {
+      try {
+        const intent = await options.comparison(path);
+        if (!current()) return;
+        if (intent !== undefined) await openTab({ ...intent, quotePane }, true);
+        else await openFile(path, line, column, quotePane, true);
+      } catch (cause) {
+        if (!current() || pendingComparison.value?.tab !== tab) return;
+        const error = {
+          cause,
+          retry: () => {
+            const pending = pendingComparison.value;
+            if (!current() || pending?.error !== error || pending.retrying) return;
+            pendingComparison.value = { ...pending, retrying: true };
+            void resolveComparison();
+          }
+        };
+        pendingComparison.value = { tab, error };
+      }
+    }
+    await resolveComparison();
   }
   async function openStandalone(intent: StandaloneFileOpenIntent): Promise<void> {
     if (intent.tab !== undefined) return openTab(intent.tab);
@@ -723,6 +771,7 @@ export function createWorkspaceFileWorkbenchController(options: {
   function travel(direction: -1 | 1): void {
     const target = history.travel(direction, currentPosition());
     if (target === undefined || !tabs.tabs.value.some((tab) => tab.id === target.tabId)) return;
+    if (pendingComparison.value !== undefined) invalidateOpen();
     tabs.activate(target.tabId);
     const tab = tabs.activeTab.value;
     const targetPage = page();
@@ -769,6 +818,7 @@ export function createWorkspaceFileWorkbenchController(options: {
   }
   function closeTabs(ids: readonly number[]): void {
     for (const id of ids) {
+      if (pendingComparison.value?.tab.id === id) invalidateOpen();
       const tab = tabs.tabs.value.find((item) => item.id === id);
       if (tab === undefined) continue;
       drafts.delete(tab.identity);
@@ -779,6 +829,14 @@ export function createWorkspaceFileWorkbenchController(options: {
         removeNavigation(id);
       }
     }
+  }
+  function prepareConfirmedTabClose(ids: readonly number[]): () => void {
+    // Keep the visible shell until its leave animation finishes, but reject the
+    // in-flight result as soon as closing has passed any unsaved-file guard.
+    if (pendingComparison.value && ids.includes(pendingComparison.value.tab.id))
+      openGeneration += 1;
+    const resume = ids.map((id) => previews.suspendPrivateRead(id));
+    return () => resume.forEach((restore) => restore?.());
   }
   function reset(): void {
     invalidateTarget();
@@ -808,6 +866,8 @@ export function createWorkspaceFileWorkbenchController(options: {
     );
   }
   function activateTab(id: number): void {
+    if (pendingComparison.value?.tab.id === id) return;
+    if (pendingComparison.value !== undefined) invalidateOpen();
     const source = currentPosition();
     tabs.activate(id);
     if (tabs.activeTabId.value !== id) return;
@@ -920,6 +980,7 @@ export function createWorkspaceFileWorkbenchController(options: {
       watch(
         [lifecycle.ready, lifecycle.workspaceKind],
         ([ready, kind], [, oldKind]) => {
+          if (!ready && pendingComparison.value !== undefined) invalidateOpen();
           if (oldKind === 'GIT_WORKSPACE' && kind !== undefined && kind !== 'GIT_WORKSPACE')
             removeGitTabs();
           if (ready) resumeRestoration();
@@ -934,6 +995,7 @@ export function createWorkspaceFileWorkbenchController(options: {
     standalone,
     setPage,
     tabList: tabs.tabs,
+    pendingComparison: shallowReadonly(pendingComparison),
     activeTabId: tabs.activeTabId,
     activeTab: tabs.activeTab,
     activateTab,
@@ -972,6 +1034,7 @@ export function createWorkspaceFileWorkbenchController(options: {
     canGoForward,
     travel,
     closeTabs,
+    prepareConfirmedTabClose,
     reset,
     invalidateDeletedSelection,
     removeGitTabs,

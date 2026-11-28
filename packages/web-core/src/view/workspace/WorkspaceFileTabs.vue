@@ -21,7 +21,7 @@ import type { WorkspaceFileTab } from '../../util/workspace-file-tab.js';
 export interface WorkspaceFilePageHandle {
   focus(): void;
   cursorPosition?(): { readonly line: number; readonly column: number } | undefined;
-  navigateTo?(line: number, column?: number): void;
+  navigateTo?(line: number, column?: number, moveFocus?: boolean): void;
   openFind(): boolean;
   selectAll(): boolean;
   toggleEdit(): 'CHANGED' | 'UNAVAILABLE';
@@ -38,6 +38,8 @@ const props = defineProps<{
   readonly canGoBack?: boolean;
   readonly canGoForward?: boolean;
   readonly canCloseUnmountedTab?: (id: number) => Promise<boolean>;
+  readonly prepareConfirmedClose?: (ids: readonly number[]) => () => void;
+  readonly initialFocusClose?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -51,6 +53,7 @@ const emit = defineEmits<{
   forward: [];
 }>();
 const root = ref<HTMLElement>();
+const closeButton = ref<HTMLButtonElement>();
 const tabPrefix = `file-tabs-${useId()}`;
 const surface = ref<InstanceType<typeof FilePreviewSurface>>();
 const pageHandles = new Map<number, WorkspaceFilePageHandle>();
@@ -125,12 +128,14 @@ async function requestCloseTabs(ids: readonly number[], all: boolean): Promise<b
     props.tabs.every((tab, index) => tab === tabs[index]) &&
     ids.every((id, index) => pageHandles.get(id) === handles[index]);
   closing.value = true;
+  let resumeAfterInterruptedClose: (() => void) | undefined;
   try {
     for (const [index, handle] of handles.entries()) {
       const canClose = handle?.canClose() ?? props.canCloseUnmountedTab?.(ids[index]!) ?? true;
       if (!(await canClose)) return false;
     }
     if (!current()) return false;
+    resumeAfterInterruptedClose = props.prepareConfirmedClose?.(ids);
     const closesLastTab = ids.length === props.tabs.length;
     if (closesLastTab && props.presentation !== 'window' && surface.value) {
       leaving.value = true;
@@ -141,6 +146,7 @@ async function requestCloseTabs(ids: readonly number[], all: boolean): Promise<b
       }
     }
     for (const handle of handles) handle?.prepareForConfirmedClose?.();
+    resumeAfterInterruptedClose = undefined;
     if (all) emit('closeAll', ids);
     else emit('close', ids[0]!);
     if (closesLastTab) emit('closeLast');
@@ -148,6 +154,7 @@ async function requestCloseTabs(ids: readonly number[], all: boolean): Promise<b
   } finally {
     leaving.value = false;
     closing.value = false;
+    resumeAfterInterruptedClose?.();
   }
 }
 
@@ -231,8 +238,8 @@ function cursorPosition(
   return pageHandles.get(id)?.cursorPosition?.();
 }
 
-function navigateTo(id: number, line: number, column?: number): void {
-  pageHandles.get(id)?.navigateTo?.(line, column);
+function navigateTo(id: number, line: number, column?: number, moveFocus?: boolean): void {
+  pageHandles.get(id)?.navigateTo?.(line, column, moveFocus);
 }
 
 function focusPage(id: number): boolean {
@@ -281,7 +288,8 @@ defineExpose({
   hasPendingSave,
   cursorPosition,
   navigateTo,
-  focusPage
+  focusPage,
+  focusClose: () => closeButton.value?.focus({ preventScroll: true })
 });
 </script>
 
@@ -332,6 +340,7 @@ defineExpose({
           @tab-close="requestClose"
         />
         <button
+          ref="closeButton"
           v-tooltip="
             shortcutTooltip(
               translate('filePreviewDialog.closeFileWindow'),
@@ -340,6 +349,7 @@ defineExpose({
           "
           class="mar-icon-button mar-icon-action workspace-file-window-close"
           type="button"
+          :autofocus="initialFocusClose || undefined"
           :disabled="closing"
           :aria-label="translate('filePreviewDialog.closeFileWindow')"
           @click="requestCloseAll"

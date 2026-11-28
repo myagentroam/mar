@@ -10,6 +10,7 @@ const props = defineProps<{
   readonly quoteTarget?: ComposerQuoteTarget | undefined;
   readonly tab: WorkspaceFileTab;
   readonly active: boolean;
+  readonly focusOnMount?: boolean;
   readonly load: (tab: WorkspaceFileTab, signal?: AbortSignal) => Promise<unknown>;
   readonly codeNavigationEnabled?: boolean;
 }>();
@@ -99,6 +100,7 @@ defineExpose({
     :revision="props.tab.commit"
     ref="viewer"
     :active="props.active"
+    :focus-on-mount="props.focusOnMount !== false"
     :code-navigation-enabled="
       props.codeNavigationEnabled === true && props.tab.kind === 'WORKTREE_DIFF'
     "

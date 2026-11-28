@@ -9,6 +9,244 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const changed of [false, true]) {
+  test(`opens one file dialog before Changes resolves (${changed ? 'Diff' : 'source'})`, async ({
+    page
+  }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const reached: string[] = [];
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      const { pathname } = new URL(route.request().url());
+      reached.push(pathname);
+      if (pathname.endsWith('/changes')) {
+        await gate;
+        const changes = changed
+          ? [
+              {
+                repositoryPath: '',
+                repositoryName: 'project',
+                source: 'ROOT',
+                path: 'comparison.ts',
+                state: 'UNSTAGED',
+                change: 'MODIFIED',
+                diffAvailable: true
+              }
+            ]
+          : [];
+        return route.fulfill({
+          json: {
+            changes,
+            worktrees: [],
+            repositories: [
+              {
+                repositoryPath: '',
+                repositoryName: 'project',
+                source: 'ROOT',
+                current: true,
+                branch: 'main',
+                changes
+              }
+            ]
+          }
+        });
+      }
+      if (pathname.endsWith('/diff'))
+        return route.fulfill({
+          json: {
+            diff: {
+              text: 'diff --git a/comparison.ts b/comparison.ts\n--- a/comparison.ts\n+++ b/comparison.ts\n@@ -1 +1 @@\n-old value\n+new value'
+            }
+          }
+        });
+      return route.fulfill({
+        json: {
+          file: {
+            encoding: 'utf-8',
+            size: 25,
+            content: '// source\nconst answer=42',
+            nextOffset: null,
+            revision: 'r1'
+          }
+        }
+      });
+    });
+    await page.goto(`${fixture.url}file-tabs.html?preview-preflight`);
+    const trigger = page.getByRole('button', { name: 'Open comparison' });
+    const dialog = page
+      .locator('dialog[open]')
+      .filter({ has: page.locator('.file-preview-surface') });
+    const close = dialog.getByRole('button', { name: 'Close file window' });
+    await trigger.press('Enter');
+    try {
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole('tab', { name: 'comparison.ts' })).toBeVisible();
+      await expect(dialog.locator('.file-preview-loading')).toBeVisible();
+      await expect.poll(() => reached.length).toBe(1);
+      await expect(close).toBeFocused();
+    } finally {
+      release();
+    }
+    if (changed) await expect(dialog.locator('code')).toContainText('+new value');
+    else
+      await expect(dialog.locator('.cm-code-navigation-destination')).toHaveText('const answer=42');
+    await expect(close).toBeFocused();
+    await expect(dialog).toHaveCount(1);
+    expect(reached.filter((path) => path.endsWith('/diff'))).toHaveLength(Number(changed));
+    expect(reached.some((path) => path.endsWith('/files/read'))).toBe(!changed);
+    await close.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  });
+}
+
+for (const closeEarly of [false, true]) {
+  test(`keeps failed Changes in the dialog (${closeEarly ? 'early close' : 'inline retry'})`, async ({
+    page
+  }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let queries = 0;
+    let reads = 0;
+    await page.route('**/api/workspaces/workspace/**', async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith('/changes')) {
+        if (++queries === 1)
+          return route.fulfill({
+            status: 503,
+            json: { error: { code: 'FIXTURE_CHANGES_UNAVAILABLE', message: 'Changes unavailable' } }
+          });
+        await gate;
+        return route.fulfill({ json: { changes: [], worktrees: [], repositories: [] } });
+      }
+      reads += 1;
+      return route.fulfill({
+        json: {
+          file: { encoding: 'utf-8', size: 7, content: 'retried', nextOffset: null, revision: 'r1' }
+        }
+      });
+    });
+    await page.goto(`${fixture.url}file-tabs.html?preview-preflight`);
+    const dialog = page
+      .locator('dialog[open]')
+      .filter({ has: page.locator('.file-preview-surface') });
+    await page.getByRole('button', { name: 'Open comparison' }).click();
+    await expect(dialog.locator('.file-preview-state')).toContainText('Unable to load the file');
+    expect(reads).toBe(0);
+    await dialog.getByRole('button', { name: 'Retry' }).press('Enter');
+    try {
+      await expect.poll(() => queries).toBe(2);
+      const busy = dialog.getByRole('button', { name: 'Loading…' });
+      await expect(busy).toHaveAttribute('aria-busy', 'true');
+      await expect(busy).toBeFocused();
+      await page.keyboard.press('Enter');
+      expect(queries).toBe(2);
+      if (closeEarly) {
+        await page.keyboard.press('Escape');
+        await expect(dialog).toHaveAttribute('data-closing', 'true');
+      }
+    } finally {
+      release();
+    }
+    if (closeEarly) {
+      await expect(dialog).toHaveCount(0);
+      expect(reads).toBe(0);
+    } else {
+      await expect(dialog.locator('.cm-content')).toContainText('retried');
+      await expect(dialog.getByRole('button', { name: 'Close file window' })).toBeFocused();
+      expect(reads).toBe(1);
+    }
+  });
+}
+
+test('opens a temporary file before validation and never shows unvalidated content', async ({
+  page
+}) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const limits: string[] = [];
+  await page.route('**/api/workspaces/workspace/files/read?*', async (route) => {
+    const limit = new URL(route.request().url()).searchParams.get('limit')!;
+    limits.push(limit);
+    if (limit === '1') await gate;
+    return route.fulfill({
+      json: {
+        file: {
+          encoding: 'utf-8',
+          size: 12,
+          content: limit === '1' ? 'p' : 'private text',
+          nextOffset: limit === '1' ? 1 : null,
+          revision: 'r1'
+        }
+      }
+    });
+  });
+  await page.goto(`${fixture.url}file-tabs.html?preview-preflight`);
+  const dialog = page
+    .locator('dialog[open]')
+    .filter({ has: page.locator('.file-preview-surface') });
+  await page.getByRole('button', { name: 'Open temporary file' }).click();
+  try {
+    await expect(dialog.getByRole('tab', { name: 'temp.ts' })).toBeVisible();
+    await expect(dialog.locator('.file-preview-loading')).toBeVisible();
+    await expect.poll(() => limits).toEqual(['1']);
+    await expect(dialog.locator('.cm-content')).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(dialog.locator('.cm-content')).toContainText('private text');
+});
+
+test('closing a temporary file during validation does not start its body read', async ({
+  page
+}) => {
+  const gate = Promise.withResolvers<void>();
+  const validationHandled = Promise.withResolvers<void>();
+  const limits: string[] = [];
+  await page.route('**/api/workspaces/workspace/files/read?*', async (route) => {
+    const limit = new URL(route.request().url()).searchParams.get('limit')!;
+    limits.push(limit);
+    if (limit === '1') await gate.promise;
+    try {
+      await route.fulfill({
+        json: {
+          file: { encoding: 'utf-8', size: 1, content: 'p', nextOffset: null, revision: 'r1' }
+        }
+      });
+    } finally {
+      if (limit === '1') validationHandled.resolve();
+    }
+  });
+  await page.goto(`${fixture.url}file-tabs.html?preview-preflight`);
+  await page.addStyleTag({
+    content: 'dialog[data-closing="true"] { animation-play-state: paused !important; }'
+  });
+  const dialog = page
+    .locator('dialog[open]')
+    .filter({ has: page.locator('.file-preview-surface') });
+  const trigger = page.getByRole('button', { name: 'Open temporary file' });
+  await trigger.press('Enter');
+  try {
+    await expect.poll(() => limits).toEqual(['1']);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveAttribute('data-closing', 'true');
+  } finally {
+    gate.resolve();
+  }
+  await validationHandled.promise;
+  await dialog.evaluate(async (element) => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    );
+    element.getAnimations().forEach((animation) => animation.finish());
+  });
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  expect(limits).toEqual(['1']);
+  await trigger.press('Enter');
+  await expect(dialog.locator('.cm-content')).toHaveText('p');
+  expect(limits).toEqual(['1', '1', '4096']);
+});
+
 for (const [locale, theme, width, historyLabel, filesLabel, copyLabel, copiedLabel] of [
   ['en-US', 'daylight', 1280, 'Git History', 'Files', 'Copy commit ID', 'Commit ID copied.'],
   ['zh-CN', 'dark', 390, 'Git 历史', '文件', '复制 Commit ID', '已复制 Commit ID。']

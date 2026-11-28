@@ -1,4 +1,5 @@
 import { mockWorkspaceUploadRelay } from './support/mock-workspace-upload-relay.js';
+import { mockWorkspaceFileRelay } from './support/mock-workspace-file-relay.js';
 import { expect, test, type Locator, type Route } from '@playwright/test';
 import type { AgentEvent } from '../../mar-agent/src/index.js';
 import { MarAgentConversationNormalizer } from '../../mar-node/src/runner/mar-agent/conversation-normalizer.js';
@@ -541,6 +542,11 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
     const fileName = 'Reference_20261010_185346_com.microsoft.emmx_笔记 with spaces.txt';
     const path = `mar-attachment://00000000-0000-4000-8000-000000000001/${fileName}`;
+    const attachmentContent = 'Retained attachment';
+    const relay = await mockWorkspaceFileRelay(page, 'node-1', 'workspace-1', (resourcePath) => {
+      expect(resourcePath).toBe(path);
+      return Buffer.from(attachmentContent);
+    });
     const imageName = 'Screenshot_20261010_185346_com.microsoft.emmx_原图 with spaces.jpg';
     const skills = serializeComposerTag('mar_skills', {
       action: 'use',
@@ -622,14 +628,16 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     let imageVanishesDuringLoad = false;
     let thumbnailUnavailable = false;
     let imageReads = 0;
+    let imageValidation: Promise<void> | undefined;
     const imagePath = `mar-attachment://00000000-0000-4000-8000-000000000001/${imageName}`;
     let reads = 0;
     await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
       json(route, { preparation: { state: 'UNAVAILABLE' } })
     );
-    await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) => {
+    await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, async (route) => {
       if (new URL(route.request().url()).searchParams.get('path') === imagePath) {
         imageReads += 1;
+        await imageValidation;
         if (imageExpired)
           return json(route, { error: { code: 'FILE_NOT_FOUND', message: 'File not found' } }, 404);
         return json(route, {
@@ -651,8 +659,8 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         file: {
           path,
           encoding: 'utf-8',
-          size: 19,
-          content: 'Retained attachment',
+          size: attachmentContent.length,
+          content: attachmentContent,
           truncated: false,
           nextOffset: null
         }
@@ -789,9 +797,14 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(page.locator('.mar-message')).toHaveCount(0);
     expect(imageReads).toBe(0);
     thumbnailUnavailable = false;
+    let validateImage!: () => void;
+    imageValidation = new Promise<void>((resolve) => (validateImage = resolve));
     await imageFile.click();
-    const dialog = page.locator('.attachment-preview-dialog').filter({ has: page.locator('img') });
+    const dialog = page.locator('dialog[open] .attachment-preview-dialog');
     await expect(dialog).toBeVisible();
+    await expect(dialog.locator('.file-preview-loading')).toBeVisible();
+    await expect(dialog.locator('img')).toHaveCount(0);
+    validateImage();
     await expect(dialog.locator('img')).toHaveAttribute('alt', imageName);
     await expect
       .poll(() => dialog.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth))
@@ -801,18 +814,19 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(dialog).not.toBeVisible();
     imageExpired = true;
     await imageFile.click();
-    await expect(
-      page
-        .locator('.mar-message')
-        .filter({ hasText: english ? 'File has expired' : '文件已过期' })
-        .last()
-    ).toBeVisible();
+    const expiredCopy = english ? 'File has expired' : '文件已过期';
+    await expect(dialog.getByText(expiredCopy, { exact: true })).toBeVisible();
+    await expect(dialog.locator('img')).toHaveCount(0);
+    await dialog.locator('.mar-ui-dialog__close').click();
     await expect(dialog).not.toBeVisible();
     expect(imageReads).toBe(2);
     imageExpired = false;
     imageVanishesDuringLoad = true;
     await imageFile.click();
     await expect.poll(() => imageReads).toBe(4);
+    await expect(dialog.getByText(expiredCopy, { exact: true })).toBeVisible();
+    await expect(dialog.locator('img')).toHaveCount(0);
+    await dialog.locator('.mar-ui-dialog__close').click();
     await expect(dialog).not.toBeVisible();
     await emitMockSessionEvent(page, 'queue', {
       sessionId: 'session-1',
@@ -851,21 +865,19 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       name: english ? `Preview file: ${fileName}` : `预览文件：${fileName}`
     });
     await file.click();
-    await expect(
-      page.locator('.cm-content').filter({ hasText: 'Retained attachment' })
-    ).toBeVisible();
+    await expect(page.locator('.cm-content').filter({ hasText: attachmentContent })).toBeVisible();
+    expect(relay().descriptors).toHaveLength(1);
     const before = reads;
     expired = true;
     // Keep the preview tab mounted to exercise the cached-tab revalidation boundary.
     await file.dispatchEvent('click');
     await expect.poll(() => reads).toBeGreaterThan(before);
-    await expect(page.getByText(/FILE_NOT_FOUND/).first()).toBeVisible();
     await expect(
-      page
-        .locator('.mar-message')
-        .filter({ hasText: english ? 'File has expired' : '文件已过期' })
-        .last()
+      page.locator('.file-preview-surface').getByText(expiredCopy, { exact: true })
     ).toBeVisible();
+    await expect(page.locator('.cm-content').filter({ hasText: attachmentContent })).toHaveCount(0);
+    expect(relay().descriptors).toHaveLength(1);
+    await expect(page.locator('.mar-message').filter({ hasText: expiredCopy })).toHaveCount(0);
     await expect(page.locator('.conversation-file-attachment')).toHaveCount(2);
   });
 }

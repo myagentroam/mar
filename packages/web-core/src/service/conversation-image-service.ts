@@ -11,10 +11,18 @@ export interface ConversationImageAttachment {
   readonly direct?: boolean | undefined;
 }
 
+interface ConversationImagePreviewFailure {
+  readonly cause: unknown;
+  readonly path: string;
+  readonly retry: () => void;
+  readonly retrying?: boolean;
+}
+
 export interface ConversationImagePreview {
   readonly name: string;
-  readonly url: string;
+  readonly url?: string;
   readonly direct?: boolean | undefined;
+  readonly failure?: ConversationImagePreviewFailure;
 }
 
 export interface ConversationImageSourceInput {
@@ -29,7 +37,6 @@ interface ConversationImageServiceOptions {
     readonly target: Readonly<Ref<string | undefined>>;
     readonly revalidate: (file: ComposerAttachmentFile) => Promise<unknown>;
     readonly sourceUrl: (file: ComposerAttachmentFile, revision: number) => string;
-    readonly onError: (error: unknown, path: string) => void;
   };
 }
 
@@ -44,14 +51,17 @@ export function createConversationImageService(
   let filePreview:
     | { readonly file: ComposerAttachmentFile; readonly target: string; readonly url: string }
     | undefined;
+  function invalidateFilePreview(): void {
+    previewGeneration += 1;
+    filePreview = undefined;
+  }
   const stopTargetWatch =
     options.fileAttachments === undefined
       ? undefined
       : watch(
           options.fileAttachments.target,
           () => {
-            previewGeneration += 1;
-            filePreview = undefined;
+            invalidateFilePreview();
             previewOpen.value = false;
             preview.value = undefined;
           },
@@ -63,34 +73,65 @@ export function createConversationImageService(
       : watch(
           previewOpen,
           (isOpen) => {
-            if (!isOpen) {
-              previewGeneration += 1;
-              filePreview = undefined;
-            }
+            if (!isOpen) invalidateFilePreview();
           },
           { flush: 'sync' }
         );
 
   function currentFilePreview(generation: number, target: string): boolean {
-    return generation === previewGeneration && options.fileAttachments?.target.value === target;
+    return (
+      previewOpen.value &&
+      generation === previewGeneration &&
+      options.fileAttachments?.target.value === target
+    );
   }
 
-  async function openFileAttachment(file: ComposerAttachmentFile): Promise<void> {
+  function failFilePreview(
+    file: ComposerAttachmentFile,
+    generation: number,
+    target: string,
+    cause: unknown
+  ): void {
+    if (!currentFilePreview(generation, target)) return;
+    filePreview = undefined;
+    const failure: ConversationImagePreviewFailure = {
+      cause,
+      path: file.path,
+      retry: () => {
+        if (currentFilePreview(generation, target)) void loadFileAttachment(file, failure);
+      }
+    };
+    preview.value = { name: file.name, failure };
+  }
+
+  function openFileAttachment(file: ComposerAttachmentFile): Promise<void> {
+    return loadFileAttachment(file);
+  }
+
+  async function loadFileAttachment(
+    file: ComposerAttachmentFile,
+    previousFailure?: ConversationImagePreviewFailure
+  ): Promise<void> {
     const files = options.fileAttachments;
     const target = files?.target.value;
     if (files === undefined || target === undefined) return;
     filePreview = undefined;
-    previewOpen.value = false;
-    preview.value = undefined;
     const generation = ++previewGeneration;
+    // The dialog may open from the known filename. Only the successful check may
+    // publish the image URL and let the renderer start loading it.
+    preview.value = {
+      name: file.name,
+      ...(previousFailure === undefined ? {} : { failure: { ...previousFailure, retrying: true } })
+    };
+    previewOpen.value = true;
     try {
-      const url = files.sourceUrl(file, generation);
       await files.revalidate(file);
       if (!currentFilePreview(generation, target)) return;
-      open({ name: file.name, previewUrl: url, direct: file.mime === 'image/gif' });
+      const url = files.sourceUrl(file, generation);
+      preview.value = { name: file.name, url, direct: file.mime === 'image/gif' };
       filePreview = { file, target, url };
     } catch (error) {
-      if (currentFilePreview(generation, target)) files.onError(error, file.path);
+      failFilePreview(file, generation, target, error);
     }
   }
 
@@ -106,15 +147,8 @@ export function createConversationImageService(
     } catch (error) {
       failure = error;
     }
-    if (
-      !currentFilePreview(generation, source.target) ||
-      preview.value?.url !== url ||
-      !previewOpen.value
-    )
-      return;
-    previewOpen.value = false;
-    preview.value = undefined;
-    files.onError(failure, source.file.path);
+    if (preview.value?.url === url)
+      failFilePreview(source.file, generation, source.target, failure);
   }
 
   function dispose(): void {
@@ -223,6 +257,7 @@ export function createConversationImageService(
     open,
     openFileAttachment,
     previewFailed,
+    invalidateFilePreview,
     dispose
   };
 }

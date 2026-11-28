@@ -2552,6 +2552,7 @@ export function createWorkbenchPageController<
       closeQuickOpenFile,
       conversationImagePreview,
       conversationImagePreviewOpen,
+      invalidateConversationFilePreview: () => imagePreviewOwner.value.invalidateFilePreview(),
       handleConversationImagePreviewError: (url: string) =>
         imagePreviewOwner.value.previewFailed(url),
       openQuickWorkspaceFile,
