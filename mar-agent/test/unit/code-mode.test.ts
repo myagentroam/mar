@@ -256,33 +256,35 @@ describe('QuickJS Code Mode', () => {
   );
 
   it('describes raw source, helper bindings and MAR envelopes without unsupported Codex helpers', () => {
-    expect(codeModeToolDefinition.description).toContain(
-      'catalog.tools() returns a read-only array'
-    );
     const description = codeModeToolDefinition.description;
-    expect(description).toContain('including single-tool operations');
-    expect(description).toContain('awaited Promise.all');
-    expect(description).toContain('sequential await for dependent calls');
-    expect(description).toContain('Unawaited calls fail the cell');
+    for (const removed of [
+      'catalog.tools',
+      'Promise.all',
+      'sequential await',
+      'Examples (',
+      'observe.result(patched)',
+      'result.data.results[0].text'
+    ])
+      expect(description).not.toContain(removed);
+    expect(description).toContain('returns an awaitable');
+    expect(description).toContain('unconsumed tool calls or pending operations');
     expect(description).not.toContain(
       'A good Code Mode cell should perform meaningful computation'
     );
     expect(description).toContain('When exposed as a freeform tool, send the source directly');
     expect(description).toContain('when exposed with a JSON input schema');
-    expect(description).toContain('Do not add another JSON wrapper');
+    expect(description).toContain('not a JSON wrapper');
     expect(description).toContain('code field');
     expect(description).not.toContain('String.raw');
     expect(description).toContain('restricted ECMAScript runtime');
     expect(description).toContain('not Node.js or a browser');
     expect(description).toContain('standard ECMAScript built-ins');
-    expect(description).toContain('Do not use Node.js, browser or Web APIs');
+    expect(description).toContain('Module imports, filesystem and network APIs are unavailable');
     expect(description).not.toContain('restricted QuickJS runtime');
-    expect(description).toContain('Do not shadow');
-    expect(description).toContain('observe.result(patched)');
+    expect(description).toContain('frozen tools, observe, state and cell bindings');
     expect(description).toContain('an unmodified complete tools.NAME result or caught tool error');
     expect(description).toContain('registering one does not trigger a new model request');
-    expect(description).toContain('result.data.results[0].text');
-    expect(description).toContain('Tool errors reject');
+    expect(description).toContain('Tool execution errors reject');
     expect(description).toContain('completed tool effects are not rolled back');
     expect(description).not.toContain('maxOutputTokens');
     expect(codeExecWaitToolDefinition.inputSchema.properties).not.toHaveProperty('maxOutputTokens');
@@ -305,12 +307,7 @@ describe('QuickJS Code Mode', () => {
     expect(applyPatchToolDefinition.description).not.toContain('resolves on success');
   });
 
-  it('executes its documented examples unchanged', async () => {
-    const examples = Array.from(
-      codeModeToolDefinition.description.matchAll(/```js\n([\s\S]*?)\n```/gu),
-      (match) => match[1]!
-    );
-    expect(examples).toHaveLength(2);
+  it('observes parallel reads and applies a patch after reading its precondition', async () => {
     const { home, workspace } = await fixture();
     await writeFile(join(workspace, 'a.txt'), 'a-evidence\n');
     await writeFile(join(workspace, 'b.txt'), 'b-evidence\n');
@@ -323,7 +320,11 @@ describe('QuickJS Code Mode', () => {
     };
     try {
       const parallel = await host.executeTool(
-        { name: 'code_exec', arguments: examples[0]! },
+        {
+          name: 'code_exec',
+          arguments: `const results = await Promise.all(['a.txt', 'b.txt'].map(path => tools.read({reads: [{path}]})));
+            for (const result of results) observe.result(result);`
+        },
         input
       );
       expectCellEnvelope(parallel, 'completed');
@@ -338,8 +339,15 @@ describe('QuickJS Code Mode', () => {
       ).toEqual(['read', 'read']);
       expect(reads?.[0]?.type === 'tool_result' && reads[0].result.content).toContain('a-evidence');
       expect(reads?.[1]?.type === 'tool_result' && reads[1].result.content).toContain('b-evidence');
+      const patch =
+        '*** Begin Patch\n*** Update File: source.txt\n@@\n original=1\n+updated=2\n*** End Patch';
       const sequential = await host.executeTool(
-        { name: 'code_exec', arguments: examples[1]! },
+        {
+          name: 'code_exec',
+          arguments: `const read = await tools.read({reads: [{path: 'source.txt'}]});
+            if (!read.data.results[0].text.includes('original=1')) throw Error('Unexpected source');
+            observe.result(await tools.apply_patch({input: ${JSON.stringify(patch)}}));`
+        },
         input
       );
       expectCellEnvelope(sequential, 'completed');
@@ -529,12 +537,22 @@ describe('QuickJS Code Mode', () => {
     const marker = 'Programmatic tools: ';
     const directory = JSON.parse(
       outer.description.slice(outer.description.lastIndexOf(marker) + marker.length)
+    ) as ClientToolDefinition[];
+    expect(directory).toEqual(
+      row.programmatic
+        ? [
+            {
+              name: tool.name,
+              description: expect.stringContaining(tool.description),
+              inputSchema: tool.inputSchema
+            }
+          ]
+        : []
     );
-    expect(directory.callableNames.includes(tool.name)).toBe(row.programmatic);
-    if (row.direct && row.programmatic) {
-      expect(directory.tools[0].description).toContain('Call directly or as tools.fixture_tool');
-      expect(directory.tools[0]).not.toHaveProperty('codeModeExposure');
-    }
+    if (row.programmatic)
+      expect(directory[0]!.description).toContain(
+        row.direct ? 'Call directly or as tools.fixture_tool' : 'Call only as tools.fixture_tool'
+      );
     expect(projectCodeModeTools([tool]).some((entry) => entry.name === tool.name)).toBe(
       row.callers.includes('direct')
     );
@@ -555,7 +573,7 @@ describe('QuickJS Code Mode', () => {
     const legacyControls = new Set(['agent_start', 'agent_wait', 'agent_message', 'agent_cancel']);
     for (const tool of BUILTIN_TOOL_DEFINITIONS)
       expect(tool.allowedCallers, tool.name).toEqual(
-        controls.has(tool.name) || legacyControls.has(tool.name)
+        controls.has(tool.name) || legacyControls.has(tool.name) || tool.name === 'thought'
           ? ['direct']
           : ['direct', 'programmatic']
       );
@@ -594,7 +612,8 @@ describe('QuickJS Code Mode', () => {
     const directoryMarker = 'Programmatic tools: ';
     const directory = JSON.parse(
       description.slice(description.lastIndexOf(directoryMarker) + directoryMarker.length)
-    ) as { callableNames: string[]; tools: Array<{ name: string }> };
+    ) as ClientToolDefinition[];
+    const programmaticNames = directory.map((tool) => tool.name);
 
     expect(toolCallers(defaultsToDirect)).toEqual(['direct']);
     expect(allowsToolCaller(defaultsToDirect, 'programmatic')).toBe(false);
@@ -620,22 +639,22 @@ describe('QuickJS Code Mode', () => {
       'code_exec_wait',
       'apply_patch',
       'question',
+      'thought',
       'sleep',
       'default_direct'
     ]);
-    expect(description).toContain('callableNames');
+    expect(description).not.toContain('callableNames');
     expect(description).toContain('"programmatic_only"');
     expect(description).toContain('"inputSchema"');
     expect(description).not.toContain('secretOutputContract');
     expect(description).not.toContain('outputSchema');
     expect(description).not.toContain('ToolResults');
-    expect(directory.callableNames).toContain('programmatic_only');
-    expect(directory.callableNames).toContain('exec');
-    expect(directory.callableNames).toContain('skill_load');
-    expect(directory.callableNames).toContain('tool_search');
+    expect(programmaticNames).toEqual(
+      expect.arrayContaining(['programmatic_only', 'exec', 'skill_load', 'tool_search'])
+    );
     for (const name of controls) {
       expect(names).toContain(name);
-      expect(directory.callableNames).not.toContain(name);
+      expect(programmaticNames).not.toContain(name);
       expect(
         allowsToolCaller(
           widenedControls.find((tool) => tool.name === name)!,
@@ -643,17 +662,16 @@ describe('QuickJS Code Mode', () => {
         )
       ).toBe(false);
     }
-    expect(directory.tools.map((tool) => tool.name)).toEqual(
+    expect(programmaticNames).toEqual(
       widenedControls
         .filter((tool) => allowsToolCaller(tool, 'programmatic'))
         .map((tool) => tool.name)
         .concat('programmatic_only')
         .sort()
     );
-    expect(directory.tools).toContainEqual(
+    expect(directory).toContainEqual(
       expect.objectContaining({ name: 'read', inputSchema: expect.any(Object) })
     );
-    expect(description).toContain('including single-tool operations');
     expect(description).not.toContain('A single direct tool call is preferable');
     const withoutCodeMode = projectCodeModeTools(
       widenedControls.filter((tool) => tool.name !== 'code_exec')
@@ -679,8 +697,8 @@ describe('QuickJS Code Mode', () => {
     );
     expect(outer.inputMode).toBe(codeModeToolDefinition.inputMode);
     expect(definitions.find((tool) => tool.name === direct.name)).toEqual(direct);
-    for (const tool of directory.tools) expect(tool).not.toHaveProperty('inputMode');
-    const visible = directory.tools.find((tool: { name: string }) => tool.name === raw.name);
+    for (const tool of directory) expect(tool).not.toHaveProperty('inputMode');
+    const visible = directory.find((tool: { name: string }) => tool.name === raw.name);
     expect(visible.inputSchema).toEqual(raw.inputSchema);
     expect(visible.description).toContain(`Call directly or as tools.${raw.name} inside code_exec`);
     const message = {
@@ -713,7 +731,7 @@ describe('QuickJS Code Mode', () => {
     expect(tools).toEqual(original);
   });
 
-  it('hides cell catalog transport modes without changing tool arguments', async () => {
+  it('passes programmatic arguments unchanged regardless of the direct transport mode', async () => {
     const { home, workspace } = await fixture();
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
     const input = context();
@@ -728,26 +746,12 @@ describe('QuickJS Code Mode', () => {
           name: 'code_exec',
           arguments: [
             `await tools.raw_text(${JSON.stringify(payload)});`,
-            `await tools.raw_text(${JSON.stringify(text)});`,
-            'observe.text(catalog.tools());'
+            `await tools.raw_text(${JSON.stringify(text)});`
           ].join(String.fromCharCode(10))
         },
         input
       );
       expectCellEnvelope(result, 'completed');
-      const catalog = JSON.parse(observedText(result));
-      for (const tool of catalog) expect(tool).not.toHaveProperty('inputMode');
-      const outer = projectCodeModeTools([codeModeToolDefinition, raw, readToolDefinition]).find(
-        (tool) => tool.name === 'code_exec'
-      )!;
-      const marker = 'Programmatic tools: ';
-      const directory = JSON.parse(
-        outer.description.slice(outer.description.lastIndexOf(marker) + marker.length)
-      );
-      expect(catalog).toEqual(directory.tools);
-      expect(catalog.find((tool: { name: string }) => tool.name === raw.name).inputSchema).toEqual(
-        raw.inputSchema
-      );
       expect(invoke.mock.calls.map(([call]) => call.arguments)).toEqual([payload, text]);
     } finally {
       await host.dispose();
@@ -770,16 +774,15 @@ describe('QuickJS Code Mode', () => {
       [codeModeToolDefinition, ...tools].map(projectPermissionTool)
     );
     const description = projected.find((tool) => tool.name === 'code_exec')!.description;
-    expect(description).toContain(
-      'Pass a JavaScript value matching the current catalog inputSchema'
-    );
+    expect(description).toContain("Pass a JavaScript value matching the tool's inputSchema");
     const marker = 'Programmatic tools: ';
     const serialized = description.slice(description.lastIndexOf(marker) + marker.length);
     expect(Buffer.byteLength(serialized)).toBeLessThanOrEqual(32 * 1024);
     const directory = JSON.parse(serialized);
-    expect(directory.callableNames).toEqual(expect.arrayContaining(tools.map((tool) => tool.name)));
-    expect(directory.tools).toHaveLength(tools.length);
-    for (const tool of directory.tools) {
+    expect(directory.map((tool: ClientToolDefinition) => tool.name)).toEqual(
+      tools.map((tool) => tool.name).sort()
+    );
+    for (const tool of directory) {
       expect(tool.description).not.toContain('Inside code_exec, pass a JavaScript value');
       expect(tool.description).toContain(`Call only as tools.${tool.name} inside code_exec`);
       expect(tool.inputSchema.properties.permission.properties.action.enum).toEqual([

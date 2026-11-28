@@ -126,15 +126,16 @@ describe('Code Mode exec exposure', () => {
           const directory = JSON.parse(
             description.slice(description.lastIndexOf(marker) + marker.length)
           );
-          expect(directory.callableNames).toContain('exec');
-          expect(
-            directory.tools.find((tool: { name: string }) => tool.name === 'exec').description
-          ).toContain('Call directly or as tools.exec');
-          const only = /Code Mode Only: ([^.]+) are callable/.exec(
-            effectiveInstructions(request)
-          )?.[1];
-          expect(only).toBeDefined();
-          expect(only!.split(', ')).not.toContain('exec');
+          expect(directory).toContainEqual(
+            expect.objectContaining({
+              name: 'exec',
+              description: expect.stringContaining('Call directly or as tools.exec'),
+              inputSchema: expect.objectContaining({
+                required: expect.arrayContaining(['command'])
+              })
+            })
+          );
+          expect(effectiveInstructions(request)).not.toContain('Available client tools:');
         }
       } finally {
         await agent.dispose();

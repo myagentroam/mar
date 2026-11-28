@@ -161,13 +161,6 @@ export async function createCodeModeEngine(options) {
             try { return walk(value); } catch { return ''; }
           };
         })();
-        globalThis.__deepFreeze = function deepFreeze(value) {
-          if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-            for (const item of Object.values(value)) deepFreeze(item);
-            Object.freeze(value);
-          }
-          return value;
-        };
       `);
       if (setup.error) fail(setup.error);
       setup.value.dispose();
@@ -192,7 +185,6 @@ export async function createCodeModeEngine(options) {
           value.value.dispose();
         }
       };
-      const deepFreeze = vm.getProp(vm.global, '__deepFreeze');
       const parse = (value) => {
         const handle = vm.newString(JSON.stringify(value));
         try {
@@ -238,6 +230,7 @@ export async function createCodeModeEngine(options) {
       };
 
       const tools = vm.newObject();
+      // The internal snapshot still determines which tools may omit their argument.
       const parameterlessTools = new Set(
         input.catalog.filter(isParameterlessTool).map((tool) => tool.name)
       );
@@ -473,23 +466,6 @@ export async function createCodeModeEngine(options) {
       vm.setProp(vm.global, 'state', stateObject);
       stateObject.dispose();
 
-      const catalog = vm.newObject();
-      method(catalog, 'tools', () => {
-        const value = parse(
-          input.catalog.map(({ name, description, inputSchema }) => ({
-            name,
-            description,
-            inputSchema
-          }))
-        );
-        const frozen = callGuest(deepFreeze, vm.undefined, value);
-        value.dispose();
-        if (frozen.error) return { error: frozen.error };
-        return frozen.value;
-      });
-      vm.setProp(vm.global, 'catalog', catalog);
-      catalog.dispose();
-
       const cell = vm.newObject();
       method(cell, 'yield_control', () => {
         input.onYield();
@@ -562,7 +538,7 @@ export async function createCodeModeEngine(options) {
               { code: 'MAR_AGENT_TOOL_NOT_AVAILABLE' }); };
           return target[name];
         }});
-        for (const name of ['tools', 'observe', 'state', 'catalog', 'cell']) {
+        for (const name of ['tools', 'observe', 'state', 'cell']) {
           const value = globalThis[name];
           Object.freeze(value);
           Object.defineProperty(globalThis, name, {
@@ -573,7 +549,6 @@ export async function createCodeModeEngine(options) {
         delete globalThis.__serialize;
         delete globalThis.__text;
         delete globalThis.__snapshot;
-        delete globalThis.__deepFreeze;
         delete globalThis.__consumeToolCall;
       `);
       if (lock.error) fail(lock.error);
@@ -629,7 +604,6 @@ export async function createCodeModeEngine(options) {
         formatText.dispose();
         snapshotFunction.dispose();
         for (const origin of origins) origin.handle.dispose();
-        deepFreeze.dispose();
       }
     },
     async dispose() {

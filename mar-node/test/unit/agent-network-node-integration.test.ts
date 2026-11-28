@@ -1339,7 +1339,7 @@ describe('Node Agent Network owner integration', () => {
     }
   });
 
-  it('allows all six native operations in the live cell catalog and executes a programmatic call', async () => {
+  it('allows all six native operations in the live cell and executes a programmatic call', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-network-catalog-'));
     const names = [
       'agent_start',
@@ -1386,10 +1386,10 @@ describe('Node Agent Network owner integration', () => {
           if (requests.length === 1) {
             yield {
               type: 'client_tool.call',
-              callId: 'catalog',
+              callId: 'network-cell',
               name: 'code_exec',
               arguments: {
-                code: "const child=await tools.agent_start({title:'Cell child',content:'work'}); await tools.agent_list({}); observe.text(JSON.stringify({child:child.data.agentId,eligible:catalog.tools().filter((tool)=>tool.name.startsWith('agent_')).map((tool)=>tool.name),read:catalog.tools().some((tool)=>tool.name==='read')}));"
+                code: "const child=await tools.agent_start({title:'Cell child',content:'work'}); await tools.agent_list({}); observe.text(JSON.stringify({child:child.data.agentId,eligible:Object.keys(tools).filter((name)=>name.startsWith('agent_')),read:Object.hasOwn(tools,'read')}));"
               }
             };
             yield { type: 'completed', reason: 'tool_use' };

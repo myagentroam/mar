@@ -631,7 +631,10 @@ describe('MCP discovery runtime', () => {
             if (JSON.stringify(data) !== ${JSON.stringify(JSON.stringify({ tools: [externalName] }))} || content !== undefined) throw Error('unexpected search result');
             const miss = await tools.tool_search({query:'nothing_matches_this'});
             if (miss.data.tools.length !== 0) throw Error('unexpected match');
-            if (catalog.tools().some(tool => tool.name === ${JSON.stringify(externalName)})) throw Error('cell directory changed');`
+            const name = ${JSON.stringify(externalName)};
+            let error;
+            try { await tools[name]({record:'unexpected'}); } catch (failure) { error = failure.code; }
+            if (Object.hasOwn(tools, name) || error !== 'MAR_AGENT_TOOL_NOT_AVAILABLE') throw Error('cell tool surface changed');`
             }
           }
         ]);

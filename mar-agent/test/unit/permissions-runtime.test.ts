@@ -167,12 +167,10 @@ observe.result(await tools.effect({target:'blocked',permission:{action:'deny',re
     const code = f.requests[0]!.tools.find((tool) => tool.name === 'code_exec')!;
     const directory = JSON.parse(code.description.split('\nProgrammatic tools: ')[1]!);
     expect(
-      directory.tools.find((tool: ClientToolDefinition) => tool.name === 'todo').inputSchema
-        .properties
+      directory.find((tool: ClientToolDefinition) => tool.name === 'todo').inputSchema.properties
     ).not.toHaveProperty('permission');
     expect(
-      directory.tools.find((tool: ClientToolDefinition) => tool.name === 'effect').inputSchema
-        .properties
+      directory.find((tool: ClientToolDefinition) => tool.name === 'effect').inputSchema.properties
     ).toHaveProperty('permission');
     expect(code.inputSchema.properties).toHaveProperty('permission');
     expect(await persistedToolResult(f.home, f.session.id, 'cell')).toEqual(

@@ -41,49 +41,27 @@ import { failedToolResultExtensions } from '../result-extensions.js';
 
 export const codeModeToolDefinition: ClientToolDefinition = {
   name: 'code_exec',
-  description: `Run JavaScript to orchestrate or compose tool calls.
-- Code Mode Only by default: call the programmatic tools listed below through tools.NAME, including single-tool operations. Tools exposed in both places may also be called directly.
+  description: `Run JavaScript with programmatic tools.
 - Evaluates source in a fresh restricted ECMAScript runtime with top-level await. It is not Node.js or a browser. JavaScript globals do not survive between cells; bounded JSON state is available through state.
-- Accepts JavaScript source text. When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. JSON input example: \`{"code":"observe.text(1);"}\`. Do not add another JSON wrapper, quoted string, or markdown code fence inside the source.
-- Use only standard ECMAScript built-ins and the explicitly documented tools, observe, state, catalog and cell namespaces. Do not use Node.js, browser or Web APIs. Module imports, filesystem and network APIs are unavailable. Obtain external capabilities only through available tools. Use tools.exec to start managed processes when permitted; follow exec_wait's calling guidance for process control.
+- When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. The source itself is raw JavaScript, not a JSON wrapper, quoted string, or markdown code fence.
+- Provides standard ECMAScript built-ins and frozen tools, observe, state and cell bindings. Module imports, filesystem and network APIs are unavailable in the guest.
 
 Tool calls:
-- tools.NAME(input) returns a Promise. Pass a JavaScript value matching the current catalog inputSchema. For parameterless tools prefer tools.NAME({}); tools.NAME() is accepted only for explicitly closed empty-object schemas.
-- Results use the MAR envelope: { content?: string, data?: unknown, images?: Array<{mimeType:string,dataBase64:string,url?:string,urlExpiresAt?:number}>, truncated?: boolean }. Redundant JSON content is omitted when it exactly renders data; independent text remains in content. Prefer data for programmatic results: result.data.results[0].text for read source text and result.data.exitCode/result.data.stdout for exec. content, when present, is rendered text, not raw file bytes. Use only fields documented by that tool; do not invent success or ok flags.
-- Await every tool call. Independent calls can run concurrently in an awaited Promise.all; use sequential await for dependent calls. Unawaited calls fail the cell. Runtime preserves safe/serial barriers and Host checks.
-- Tool errors reject with code/message and may be caught, except nested Auto deny, which skips only that call and resolves with data.error/data.message. A failed cell preserves already emitted output alongside its status and error; completed tool effects are not rolled back. Check the failed cell result before retrying.
+- tools.NAME(input) returns an awaitable. Pass a JavaScript value matching the tool's inputSchema. Only parameterless tools accept an omitted argument.
+- Results use the MAR envelope: { content?: string, data?: unknown, images?: Array<{mimeType:string,dataBase64:string,url?:string,urlExpiresAt?:number}>, truncated?: boolean }. Redundant JSON content is omitted when it exactly renders data; independent rendered text remains in content.
+- A cell cannot finish successfully with unconsumed tool calls or pending operations. Runtime preserves safe/serial barriers and Host checks.
+- Tool execution errors reject with code/message, except nested Auto deny, which skips only that call and resolves with data.error/data.message. A failed cell preserves already emitted output alongside its status and error; completed tool effects are not rolled back.
 - Direct-only tools cannot be called here. When available, tools.tool_search discovers deferred tools for the next model request; the current cell's tools do not change.
 
 Built-in namespaces:
 - observe.result(result): void registers an unmodified complete tools.NAME result or caught tool error as a tool_result observation, using the original text and all images without repeating program data. Non-original, copied or modified values are rejected.
 - observe.text(value): void registers text/JSON values. observe.image(value): void registers one image value when image input is supported. Both accept original tool results for compatibility and register the full result as tool_result. Extracted images, copies and computed summaries are value observations. Observations are returned in registration order; registering one does not trigger a new model request. No out or callable observe(value) alias exists.
 - state.get(key), state.has(key), state.set(key, value), state.delete(key) access bounded session JSON state. Mutations commit atomically only when the cell succeeds; failed or cancelled cells discard them.
-- catalog.tools() returns a read-only array of the tools callable in this cell, including name, description and inputSchema. It does not discover or authorize additional tools.
 - await cell.sleep(ms) performs a cancellable delay up to ${limits.codeSleepMaxMs} ms.
 - await cell.yield_control() returns accumulated output to the model immediately while this cell continues running.
 - Optionally start source with // @options: {"yieldMs": ${limits.codeDefaultYieldMs}}. yieldMs defaults to ${limits.codeDefaultYieldMs} ms and controls this call's wait window (0..${limits.codeMaxYieldMs}), not nested tool timeouts or wait windows. A running result includes cellId (c_ plus 12 lowercase hex characters); use direct code_exec_wait for new output, completion or termination.
 - waitOutcome separates snapshot, completion, timeout, and yield from the cell status. A foreground steer returns interrupted with reason=steer without stopping the cell or its internal tool waits.
-- Registered cells are Session warm resources: ending or cancelling the model Execution cancels its wait, not the cell. Reuse retained cellId; do not start duplicate work. Host cleanup or explicit termination stops the cell.
-- tools, observe, state, catalog and cell are frozen bindings. Do not shadow their names.
-
-Examples (copy the JavaScript source, not the fences; use only tools available in the current directory):
-Independent reads, observing the original tool results:
-\`\`\`js
-const [a, b] = await Promise.all([
-  tools.read({ reads: [{ path: "a.txt" }] }),
-  tools.read({ reads: [{ path: "b.txt" }] })
-]);
-observe.result(a);
-observe.result(b);
-\`\`\`
-Inspect before a dependent edit; successful await needs no invented success flag:
-\`\`\`js
-const inspected = await tools.read({ reads: [{ path: "source.txt" }] });
-const sourceText = inspected.data.results[0].text;
-if (!sourceText?.includes("original=1")) throw new Error("Unexpected source");
-const patched = await tools.apply_patch({ input: "*** Begin Patch\\n*** Update File: source.txt\\n@@\\n original=1\\n+updated=2\\n*** End Patch" });
-observe.result(patched);
-\`\`\``,
+- Registered cells are Session warm resources: ending or cancelling the model Execution cancels its wait, not the cell. Host cleanup or explicit termination stops the cell.`,
   inputMode: 'freeform',
   inputSchema: {
     type: 'object',
@@ -145,10 +123,7 @@ export function projectCodeModeTools(
   const programmatic = orderToolDefinitions(
     residentTools.filter((tool) => allowsToolCaller(tool, 'programmatic'))
   );
-  const directory = JSON.stringify({
-    callableNames: programmatic.map((tool) => tool.name),
-    tools: programmatic.map(projectProgrammaticTool)
-  });
+  const directory = JSON.stringify(programmatic.map(projectProgrammaticTool));
   if (Buffer.byteLength(directory) > 48 * 1024)
     throw new AgentError(
       'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
