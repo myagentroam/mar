@@ -206,8 +206,20 @@ test('marctl executes and copies through isolated Server and Node, with real dir
     const copied = join(directory, 'copied.bin');
     const copiedWithoutPool = join(directory, 'copied-without-pool.bin');
     const starts = join(directory, 'starts.txt');
+    const slowStdin = join(directory, 'slow-stdin.cjs');
     const bytes = Buffer.from(Array.from({ length: 384 * 1024 + 7 }, (_, index) => index % 256));
     await writeFile(source, bytes);
+    await writeFile(
+      slowStdin,
+      `let size = 0;
+setTimeout(() => {
+  process.stdin.on('data', (chunk) => {
+    if (chunk.some((byte) => byte !== 0xa5)) process.exit(2);
+    size += chunk.length;
+  });
+  process.stdin.on('end', () => process.stdout.write(String(size)));
+}, 150);`
+    );
     const script = join(directory, 'journey.mjs');
     await writeFile(
       script,
@@ -237,6 +249,10 @@ test('marctl executes and copies through isolated Server and Node, with real dir
           await sleep(30);
         }
         result.warm = (await run(cli, [node, 'printf warm'])).stdout;
+        const largeInput = run(cli, [node, ${JSON.stringify(`${JSON.stringify(process.execPath)} ${JSON.stringify(slowStdin)}`)}]);
+        largeInput.child.stdin.on('error', () => {});
+        largeInput.child.stdin.end(Buffer.alloc(6 * 1024 * 1024, 0xa5));
+        result.slowStdin = (await largeInput).stdout;
         await run(scp, [${JSON.stringify(source)}, node + '://' + ${JSON.stringify(remote)}]);
         await run(scp, [node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copied)}]);
         await run(scp, ['--no-reuse', node + '://' + ${JSON.stringify(remote)}, ${JSON.stringify(copiedWithoutPool)}]);
@@ -328,6 +344,7 @@ test('marctl executes and copies through isolated Server and Node, with real dir
     expect(result).toEqual({
       cli: 'cli-ok',
       warm: 'warm',
+      slowStdin: String(6 * 1024 * 1024),
       afterPrivate: 'after-private',
       abandoned: expect.any(String),
       abandonedPid: expect.any(Number),

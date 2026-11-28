@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { spawn as spawnProcess } from 'node:child_process';
+import { addAbortListener } from 'node:events';
 import { chmodSync, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -20,7 +21,6 @@ import { TerminalPtyPool } from './terminal-pty-pool.js';
 import { safeErrorCode } from './util/safe-error.js';
 
 const MAX_FRAME_CHARACTERS = 10_922;
-const MAX_PIPE_STDIN_BYTES = 4 * 1024 * 1024;
 const TERMINAL_COMMAND_MAX_BYTES = 64 * 1024;
 const DEFAULT_MAX_TERMINALS = 10;
 const DEFAULT_MAX_TERMINALS_PER_WORKSPACE = 5;
@@ -67,7 +67,7 @@ export type TerminalPtyFactory = (
 export interface TerminalPipe extends ManagedProcess {
   pause?(): void;
   resume?(): void;
-  write(data: Buffer): void;
+  write(data: Buffer, signal?: AbortSignal): void | Promise<void>;
   end?(): void;
   onData(listener: (data: Buffer, stream?: 'stderr') => void): void;
   onExit(listener: (exitCode: number) => void): void;
@@ -537,7 +537,8 @@ export class TerminalManager {
   }
 
   /** Processes data frames from an already-authorized Server relay attachment. */
-  async acceptFrame(attachmentId: string, frame: unknown): Promise<void> {
+  async acceptFrame(attachmentId: string, frame: unknown, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     const parsed = terminalDataFrameSchema.safeParse(frame);
     if (!parsed.success) throw new Error('TERMINAL_FRAME_INVALID');
     const attachment = this.attachments.get(attachmentId);
@@ -560,7 +561,7 @@ export class TerminalManager {
     if (parsed.data.type === 'input') {
       if (terminal.usePipe) {
         if (terminal.pipe === undefined) throw new Error('TERMINAL_COMMAND_NOT_STARTED');
-        terminal.pipe.write(Buffer.from(parsed.data.data));
+        await terminal.pipe.write(Buffer.from(parsed.data.data), signal);
         return;
       }
       if (terminal.pty === undefined) throw new Error('TERMINAL_COMMAND_NOT_STARTED');
@@ -1030,12 +1031,30 @@ function nodePipeFactory(
       child.stdout.resume();
       child.stderr.resume();
     },
-    write: (bytes) => {
-      if (child.stdin.destroyed || child.stdin.writableEnded)
-        throw new Error('TERMINAL_PIPE_CLOSED');
-      if (child.stdin.writableLength + bytes.length > MAX_PIPE_STDIN_BYTES)
-        throw new Error('TERMINAL_BACKPRESSURE');
-      child.stdin.write(bytes);
+    write: async (bytes, signal) => {
+      if (child.stdin.writableEnded) throw new Error('TERMINAL_PIPE_CLOSED');
+      // A child may stop reading before it finishes producing output.
+      if (child.stdin.destroyed) return;
+      // Cancellation stops waiting, not the write already submitted to the local pipe.
+      let abort: ReturnType<typeof addAbortListener> | undefined;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          if (signal !== undefined) abort = addAbortListener(signal, () => reject(signal.reason));
+          child.stdin.write(bytes, (error) => {
+            const code = (error as NodeJS.ErrnoException | undefined)?.code;
+            if (
+              error &&
+              code !== 'EPIPE' &&
+              code !== 'ECONNRESET' &&
+              code !== 'ERR_STREAM_DESTROYED'
+            )
+              reject(new Error('TERMINAL_PIPE_CLOSED'));
+            else resolve();
+          });
+        });
+      } finally {
+        abort?.[Symbol.dispose]();
+      }
     },
     end: () => {
       if (!child.stdin.writableEnded) child.stdin.end();

@@ -76,6 +76,7 @@ export class TerminalStreamService {
 
     const { attachmentId } = attachment;
     let queued = 0;
+    let inputClosed = false;
     const finished = Promise.withResolvers<void>();
     const finish = () => finished.resolve();
     signal.addEventListener('abort', finish, { once: true });
@@ -117,7 +118,9 @@ export class TerminalStreamService {
         .catch(disconnected);
     };
     const stop = this.manager.onFrame((frame) => {
-      if (frame.terminalId === terminalId) enqueue(frame);
+      if (frame.terminalId !== terminalId) return;
+      if (frame.type === 'exit') inputClosed = true;
+      enqueue(frame);
     });
 
     try {
@@ -126,7 +129,19 @@ export class TerminalStreamService {
         onAttached?.();
       }
       await Promise.all([
-        receiveInput(this.manager, attachmentId, terminalId, stream),
+        receiveInput(stream, terminalId, async (frame) => {
+          if (inputClosed) return;
+          // Pulling the next chunk releases credit; wait for the local input sink first.
+          try {
+            await this.manager.acceptFrame(attachmentId, frame, signal);
+          } catch (error) {
+            // Explicit close detaches before publishing exit. Drain already-sent input
+            // without resetting the stream and preempting that exit record.
+            if (signal.aborted || (!inputClosed && this.manager.get(terminalId).state !== 'CLOSED'))
+              throw error;
+            inputClosed = true;
+          }
+        }),
         finished.promise
       ]);
     } finally {
@@ -138,10 +153,9 @@ export class TerminalStreamService {
 }
 
 async function receiveInput(
-  manager: TerminalManager,
-  attachmentId: string,
+  stream: NodeStream,
   terminalId: string,
-  stream: NodeStream
+  accept: (frame: TerminalDataFrame) => Promise<void>
 ) {
   for await (const record of readTerminalRecords(stream)) {
     const frame = terminalDataFrameSchema.parse(decodeTerminalMessage(record));
@@ -150,6 +164,6 @@ async function receiveInput(
       !['input', 'eof', 'resize', 'close'].includes(frame.type)
     )
       throw new Error('TERMINAL_FRAME_INVALID');
-    await manager.acceptFrame(attachmentId, frame);
+    await accept(frame);
   }
 }

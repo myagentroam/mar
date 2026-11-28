@@ -564,7 +564,7 @@ describe('isolated terminal PTY', () => {
       });
       let output = '';
       manager.onFrame((frame) => {
-        if (frame.type === 'output') output += frame.data;
+        if (frame.type === 'output') output += Buffer.from(frame.data!).toString('utf8');
       });
       try {
         const terminal = manager.open();
@@ -578,7 +578,7 @@ describe('isolated terminal PTY', () => {
         await manager.acceptFrame(attachment.attachmentId, {
           type: 'input',
           terminalId: terminal.id,
-          data: "stty size; printf 'READY_OK\\n'\n"
+          data: Buffer.from("stty size; printf 'READY_OK\\n'\n")
         });
         await expect.poll(() => output).toContain('37 101');
         await expect.poll(() => output).toContain('READY_OK\r\n');
